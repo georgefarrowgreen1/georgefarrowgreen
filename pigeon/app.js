@@ -61,6 +61,8 @@ const IFL = (() => {
     upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
     share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
     addp: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>',
+    bubble: '<path d="M21 11.5a8.4 8.4 0 0 1-12.2 7.5L3 21l2-5.4A8.4 8.4 0 1 1 21 11.5Z"/>',
+    grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   };
   const svg = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name] || ""}</svg>`;
@@ -421,30 +423,43 @@ const IFL = (() => {
   //   href(app, section) an app at a section: ("weather", "radar") → "/weather/#radar", ("markets", "s=TSCO") →
   //                      "/markets/#s=TSCO", ("chat", "open=<id>") → "/chats/#open=<id>"; off the hub, null (the hub's
   //                      paths aren't pages at an app's own address: the app links its own way, as it always has)
-  //   tabs(el, current)  Today · Chats · Apps · You, as links, into el; current (its key: today, chats, apps or you)
-  //                      marked; off the hub, el left as it is
+  //   tabs(el, current)  Today · Chats · Apps · You, the hub's tab bar, into el; current (its key: today, chats, apps or
+  //                      you) marked; off the hub, el left as it is
   //   back()             back where you came from in the window (the breadcrumb, below), else to Apps; never history's
   //                      own back (Mail keeps history of its own, and an app opened from a notification has none). → true;
   //                      off the hub, nothing done: false
-  //   chat()             Chat's engine (Chat's own page in a hidden frame, which sends a card without leaving): a promise
-  //                      of it, or of null where there's none
-  //   send(words, packed, { to })   a card to a friend: the engine's sheet, else Chats' own, which comes back here after.
-  //                      → a promise of what the engine's sheet says, or true once it's gone to Chats'; off the hub, of
-  //                      false, nothing done (the app sends its own way, chat.<site>/#share=…, as it always has)
-  //   sent(say), closed()           the engine's word that it's sent (said in a toast) or that its sheet's shut
+  //   chat()             Chat's engine: Chat's own page (/chats/?engine=1) in a frame over this one, unseen until it shows
+  //                      its send sheet, which sends a card without leaving. A promise of it (its IFLChat, ready), or of
+  //                      null: not ready (signed out of Chats, its key not here yet, locked), or no answer in 15 seconds.
+  //                      Made on first use, kept while the page is open, dropped after 10 minutes out of sight
+  //   send(words, packed, { to })   a card to a friend: the engine's sheet over this page, else Chats' own, which comes
+  //                      back here after (#share=…&card=…&back=<this page>). → a promise of what the engine's sheet says,
+  //                      or true once it's gone to Chats'; off the hub, of false, nothing done (the app sends its own
+  //                      way, chat.<site>/#share=…, as it always has)
+  //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
+  //                      here" said) or that its sheet's shut (put away)
   //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
   //                      nothing done: false
-  //   moved(app, { off })           an old Home Screen icon's note that InFlite is one app now
+  //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen): once, the card
+  //                      saying InFlite is one app now, with How to Add and Turn Off Notifications Here (off). → true if shown
+  //   degrade(links)     this page of the hub runs as the apps did before it (its Worker can't serve them yet: Today's
+  //                      /api/hub says not ready): go, href and the tabs give the apps' own addresses (links: { chat,
+  //                      weather, fitness, finance, email }, each an origin; else <app>.<site>), send goes to
+  //                      chat.<site>/#share=…, and there's no engine. degraded: whether it does
   // The breadcrumb: where a page of the hub was left from, for its Back (Chat's pages send no Referer). Written, as the
-  // page you're on (its path, ≤ 200 characters), by go and href to another page, the tabs and links to one; read once as
-  // a page opens (what it was left from); taken as Back goes, so Back never bounces between two pages.
-  // (Working now: on, base, go, href, the breadcrumb and back, signIn, send's way through Chats, sent's toast, tabs as
-  // plain links. Chat's engine, the styled tab bar, moved's note and a notification tapped while a page is open: batch S.)
-  const CRUMB = "ifl-crumb";
+  // page you're on (its path, ≤ 200 characters), by go and href to another page, the tabs and links to one, and a
+  // notification opened on another page; read once as a page opens (what it was left from); taken as Back goes, so Back
+  // never bounces between two pages.
+  // A notification tapped while a page of the hub is open: the root worker (/sw.js) posts { ifl: "open", url } to the
+  // window, and the page goes there (a path of this site's only), in the same window; within an app, its hashchange.
+  // Sent from Chats' own sheet (send's way through Chats): sessionStorage["ifl-sent"], said once here as the page opens.
+  const CRUMB = "ifl-crumb", SENT = "ifl-sent";
   const SUBS = { chat: "/chats/", weather: "/weather/", fitness: "/fitness/", finance: "/markets/", email: "/mail/" };
   const HUB_APPS = { today: "/", chat: "/chats/", chats: "/chats/", weather: "/weather/", fitness: "/fitness/", markets: "/markets/", mail: "/mail/" };
+  // (each hub path's app, by its own address's first part: degraded, the way back to it)
+  const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/"], chats: ["Chats", "/chats/"], apps: ["Apps", "/#apps"], you: ["You", "/#you"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -455,9 +470,16 @@ const IFL = (() => {
   // (what this page was left from, read as it opens: its own later writes are for the page it goes to next)
   const cameFrom = (() => { try { const c = store()?.getItem(CRUMB); return ownPath(c) ? c : null; } catch (_) { return null; } })();
   const leaving = (p) => ownPath(p) && pageOf(p) !== location.pathname;
+  const standalone = () => { try { return navigator.standalone === true || !!matchMedia?.("(display-mode: standalone)").matches; } catch (_) { return false; } };
+  // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
+  let links = {};
+  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
+  const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
+  const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
     on: !!marker,
     base: marker ? marker.getAttribute("content") || "/" : "",
+    degraded: false,
     go(url) {
       if (!hub.on) return url;
       let u;
@@ -469,28 +491,32 @@ const IFL = (() => {
       if (u.host === location.host || u.host === site) p = rest;
       else if (sub && sub[2] === site && SUBS[sub[1]]) p = SUBS[sub[1]].slice(0, -1) + rest;
       if (p == null) return url;
+      if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
     },
     href(app, section = "") {
       if (!hub.on) return null;
       const s = String(section || ""), p = (HUB_APPS[app] || "/") + (!s ? "" : /^[#?]/.test(s) ? s : "#" + s);
+      if (hub.degraded) return ownAt(p) || p;
       if (leaving(p)) crumb();
       return p;
     },
-    tabs(el, current) {
-      if (!el || !hub.on) return el;
-      if (el.tagName !== "NAV") el.setAttribute("role", "navigation");
-      el.setAttribute("aria-label", "InFlite");
-      el.classList.add("ifl-tabs");
-      el.replaceChildren(...Object.entries(TABS).map(([k, [label, to]]) => {
-        const a = document.createElement("a");
-        a.className = "ifl-tab"; a.href = to; a.dataset.tab = k; a.textContent = label;
+    tabs(nav, current) {
+      if (!nav || !hub.on) return nav;
+      if (nav.tagName !== "NAV") nav.setAttribute("role", "navigation");
+      nav.setAttribute("aria-label", "InFlite");
+      nav.classList.add("ifl-tabs");
+      nav.replaceChildren(...Object.entries(TABS).map(([k, [label, to, icon]]) => {
+        const a = document.createElement("a"), href = hub.degraded ? ownAt(to) || to : to;
+        a.className = "ifl-tab"; a.href = href; a.dataset.tab = k;
+        a.insertAdjacentHTML("afterbegin", svg(icon, "ifl-tab-ic"));
+        a.append(el("span", "ifl-tab-l", label));
         if (k === current) a.setAttribute("aria-current", "page");
-        a.addEventListener("click", () => { if (leaving(to)) crumb(); });
+        a.addEventListener("click", () => { if (!hub.degraded && leaving(to)) crumb(); });
         return a;
       }));
-      return el;
+      return nav;
     },
     back() {
       if (!hub.on) return false;
@@ -499,33 +525,193 @@ const IFL = (() => {
       location.assign(to);
       return true;
     },
-    chat: () => Promise.resolve(null),
+    chat,
     send(words, packed, { to } = {}) {
       if (!hub.on) return Promise.resolve(false);
+      const card = typeof packed === "string" && /^[A-Za-z0-9_-]+$/.test(packed) ? "&card=" + packed : "";
+      if (hub.degraded) {
+        location.assign(`${origin("chat")}/#share=${encodeURIComponent(String(words ?? ""))}${card}`);
+        return Promise.resolve(true);
+      }
       return hub.chat().then((c) => {
         if (c && c.state === "ready") return c.share(words, packed, { to });
-        const card = typeof packed === "string" && /^[A-Za-z0-9_-]+$/.test(packed) ? "&card=" + packed : "";
         location.assign("/chats/#share=" + encodeURIComponent(String(words ?? "")) + card + "&back=" + encodeURIComponent(location.pathname + location.hash));
         return true;
       });
     },
-    sent(say) { if (say) toast(String(say)); },
-    closed() {},
+    sent(say) { hide(); if (say) toast(stillHere(String(say).slice(0, 200))); },
+    closed() { hide(); },
     signIn() {
-      if (!hub.on) return false;
+      if (!hub.on || hub.degraded) return false;
       location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
-    moved(app, { off } = {}) {},
+    moved(app, { off } = {}) {
+      if (hub.on || !standalone() || !document.body || !NAME[app]) return false;
+      const k = `ifl-moved:${app}`;
+      try { if (localStorage.getItem(k)) return false; localStorage.setItem(k, String(Date.now())); } catch (_) { return false; }
+      movedCard(app, typeof off === "function" ? off : null);
+      return true;
+    },
+    degrade(own = {}) {
+      if (!hub.on) return false;
+      links = {};
+      for (const k of Object.values(OWN)) if (typeof own?.[k] === "string" && /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(own[k])) links[k] = own[k];
+      hub.degraded = true;
+      dropEngine();
+      return true;
+    },
   };
+
+  // Chat's engine: /chats/?engine=1 in a frame over the page, its IFLChat once it says it's ready (ifl-chat-ready, on
+  // this window), and the frame seen only while it shows its sheet (put away by sent or closed, or when its answer says
+  // no sheet is showing). The frame is in a dialog of its own: shown, the dialog's modal, so it's in the top layer, over
+  // every sheet of the page's own (a modal one too, which would otherwise make it inert) and the only thing a tap
+  // reaches; put away, the dialog's shut but still laid out (unseen, never in the way of a tap: menu.css), so the engine
+  // runs on and its sheet opens at once. The frame is never moved (that would load it again)
+  const ENGINE_WAIT = 15e3, ENGINE_DROP = 10 * 60e3;
+  let engine = null, resting = false;
+  function dropEngine() { engine?.box.remove(); engine = null; }
+  function hide() {
+    const b = engine?.box;
+    if (!b) return;
+    b.classList.remove("on");
+    try { if (b.open) b.close(); } catch (_) {}
+  }
+  function show() {
+    const b = engine?.box;
+    if (!b) return;
+    b.classList.add("on");
+    try { if (!b.open) b.showModal(); } catch (_) {}
+  }
+  // (the engine as the page uses it: its own calls, the frame shown for its sheet, and put away where nothing's showing:
+  // a card refused (false, { ok: false }, { why }); sendTo's one tap sent ({ ok: true, say }: said here too). A sheet
+  // that's shown is put away by its own word, sent or closed)
+  const none = (r) => r === false || (!!r && typeof r === "object" && (r.ok === false || !!r.why));
+  const wrap = (c) => ({
+    get state() { return c.state; },
+    share(...a) { show(); return Promise.resolve().then(() => c.share(...a)).then((r) => { if (none(r)) hide(); return r; }, (e) => { hide(); throw e; }); },
+    sendTo(...a) {
+      show();
+      return Promise.resolve().then(() => c.sendTo(...a)).then((r) => { if (r?.ok === true) hub.sent(r.say || "Sent"); else if (none(r)) hide(); return r; }, (e) => { hide(); throw e; });
+    },
+    waiting: (...a) => c.waiting(...a),
+    since: (...a) => c.since(...a),
+    refresh: (...a) => c.refresh(...a),
+    signOut: (...a) => c.signOut(...a),
+  });
+  const ready = () => { const c = engine?.api; return c && c.state === "ready" ? wrap(c) : null; };
+  function chat() {
+    if (!hub.on || hub.degraded || resting || !document.body) return Promise.resolve(null);
+    if (engine) return engine.api ? Promise.resolve(ready()) : engine.wait;
+    const box = document.createElement("dialog"), f = document.createElement("iframe");
+    box.className = "ifl-engine-box";
+    box.setAttribute("aria-label", "Chats");
+    // (shut some other way (Escape, while the page has the focus): put away, as closed() would. Not when it's been shown
+    // again since: this word comes a moment after it's shut)
+    box.addEventListener("close", () => { if (!box.open) box.classList.remove("on"); });
+    f.name = "ifl-chat"; f.className = "ifl-engine"; f.src = "/chats/?engine=1";
+    f.setAttribute("title", "Chats");
+    box.append(f);
+    const e = engine = { box, frame: f, api: null, wait: null };
+    e.wait = new Promise((ok) => {
+      let t = 0;
+      const done = () => {
+        clearTimeout(t);
+        removeEventListener("ifl-chat-ready", done);
+        if (engine !== e) return ok(null);
+        let c = null;
+        try { c = f.contentWindow?.IFLChat || null; } catch (_) {}
+        // (no engine in time: the frame dropped, and for two minutes none asked for again (a Send goes through Chats'
+        // own sheet at once meanwhile); after that, the next use asks again)
+        if (!c) { dropEngine(); resting = true; setTimeout(() => { resting = false; }, 2 * 60e3); return ok(null); }
+        e.api = c;
+        ok(ready());
+      };
+      addEventListener("ifl-chat-ready", done);
+      t = setTimeout(done, ENGINE_WAIT);
+    });
+    document.body.append(box);
+    return e.wait;
+  }
+  // (out of sight for ten minutes, the engine's let go: made again when it's next wanted)
+  let hiddenAt = 0, dropT = 0;
+  if (hub.on) document.addEventListener("visibilitychange", () => {
+    clearTimeout(dropT);
+    if (document.visibilityState === "hidden") { hiddenAt = Date.now(); dropT = setTimeout(() => { if (document.visibilityState === "hidden") dropEngine(); }, ENGINE_DROP); return; }
+    if (hiddenAt && Date.now() - hiddenAt >= ENGINE_DROP) dropEngine();
+    hiddenAt = 0;
+  });
+
   // (a link to another of the hub's pages, followed: the breadcrumb, as the page is left, with where it was scrolled to)
   if (hub.on) document.addEventListener("click", (e) => {
     const a = e.target?.closest?.("a[href]");
-    if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+    if (hub.degraded || !a || a.target === "_blank" || a.hasAttribute("download")) return;
     let u;
     try { u = new URL(a.href, location.href); } catch (_) { return; }
     if (u.origin === location.origin && leaving(u.pathname + u.hash)) crumb();
   }, true);
+  // (a notification tapped while this page is open: the root worker's word, to a path of this site's only. Heard, it's
+  // said so on the port the worker gave, else the worker opens it some other way: a page that has no ear for it)
+  if (hub.on) navigator.serviceWorker?.addEventListener?.("message", (e) => {
+    const d = e.data;
+    if (!d || d.ifl !== "open" || !ownPath(d.url)) return;
+    try { e.ports?.[0]?.postMessage({ ifl: "opened" }); } catch (_) {}
+    if (hub.degraded) return location.assign(hub.go(d.url));
+    if (leaving(d.url)) crumb();
+    location.assign(d.url);
+  });
+  // (the hub's look: html.ifl-hub, and pages that cross-fade into each other, the tab bar staying put. menu.css asks for
+  // it of every page (@view-transition, which can't be kept to html.ifl-hub there, and must be in a stylesheet to be
+  // there as the next page's first shown): off the hub, every page lets it go as it's left, so nothing changes there; at
+  // the hub, one that can't be done is let go quietly)
+  if (hub.on) document.documentElement?.classList.add("ifl-hub");
+  // (the Home Screen icon's badge, as many notifications as are still showing: counted again by the root worker as a
+  // page of the hub opens and each time it's back in sight, so those tapped or cleared meanwhile are gone from it)
+  const recount = () => { try { navigator.serviceWorker?.getRegistration?.("/")?.then?.((r) => r?.active?.postMessage({ ifl: "badge" }), () => {}); } catch (_) {} };
+  if (hub.on) {
+    recount();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recount(); });
+  }
+  const vt = (e) => { const t = e.viewTransition; if (!t) return; for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); if (!hub.on) t.skipTransition?.(); };
+  addEventListener("pageswap", vt);
+  addEventListener("pagereveal", vt);
+
+  // the card for an old Home Screen icon: InFlite is one app now (as allow's sheet looks)
+  function movedCard(app, off) {
+    const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
+    const how = el("button", "ifa-go", "How to Add"), stop = off ? el("button", "ifa-later ifa-off", "Turn Off Notifications Here") : null, later = el("button", "ifa-later", "Not Now");
+    for (const b of [how, stop, later]) if (b) b.type = "button";
+    const steps = el("p", "ifa-p ifa-steps", "In Safari, open inflite.ai, tap Share, then Add to Home Screen. Sign in there once, and every app is in it.");
+    steps.hidden = true;
+    const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "InFlite is one app now"), el("p", "ifa-p", "Today, Chats and every app in one place. Add inflite.ai to your Home Screen."), steps, how, stop, later);
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "InFlite is one app now");
+    const layer = el("div", "ifa-layer ifl-moved", sheet), was = document.activeElement;
+    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); was?.focus?.({ preventScroll: true }); };
+    // (Escape shuts it; Tab and Shift-Tab go round its buttons, never behind it)
+    const key = (e) => {
+      if (e.key === "Escape") return shut();
+      if (e.key !== "Tab") return;
+      const f = [how, stop, later].filter((b) => b && !b.hidden && !b.disabled);
+      if (!f.length) return;
+      e.preventDefault();
+      const i = f.indexOf(document.activeElement);
+      f[i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus({ preventScroll: true });
+    };
+    how.onclick = () => { steps.hidden = false; how.hidden = true; later.textContent = "Done"; later.focus({ preventScroll: true }); };
+    if (stop) stop.onclick = async () => {
+      stop.disabled = true; stop.textContent = "Turning Off…";
+      const done = await Promise.resolve().then(off).then(() => true, () => false);
+      if (done) { shut(); note(app, "Notifications off here", "They come to InFlite instead, once it’s on your Home Screen"); }
+      else { stop.disabled = false; stop.textContent = "Turn Off Notifications Here"; }
+    };
+    later.onclick = shut;
+    layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
+    document.addEventListener("keydown", key, true);
+    document.body.append(layer);
+    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    how.focus?.({ preventScroll: true });
+  }
   // a plain toast: the words alone, said out, gone in a few seconds
   let toastEl = null, toastT = 0;
   function toast(text) {
@@ -538,9 +724,21 @@ const IFL = (() => {
     requestAnimationFrame(() => requestAnimationFrame(() => { if (toastEl !== t) return; t.classList.add("on"); sayEl.textContent = text; }));
     toastT = setTimeout(() => { t.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => t.remove(), 400); }, 3600);
   }
+  // (sent from Chats' own sheet, and back: said once, here)
+  if (hub.on) {
+    let said = null;
+    try { said = store()?.getItem(SENT); store()?.removeItem(SENT); } catch (_) {}
+    if (said) toast(stillHere(String(said).slice(0, 200)));
+  }
 
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
+  const api = { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
     updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
+  // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
+  // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
+  // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
+  // page's own global IFL never clashes with it, and one put there first (a test's stand-in) is left as it is)
+  if (hub.on && typeof window !== "undefined") try { Object.defineProperty(window, "IFL", { value: api, configurable: true, writable: true }); } catch (_) {}
+  return api;
 })();
 // ==== end of InFlite's menu ====
 /* ---------- InFlite's hub: Chat as a page of inflite.ai (/chats/), and as the engine in a frame of another ----------
