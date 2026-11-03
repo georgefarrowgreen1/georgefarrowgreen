@@ -832,8 +832,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.68";            // shown in InFlite's menu
-const APP_NEWS = "Send a friend the weather where they are, a stock or a ride from +, and agree a time for a call";       // (said once it's in)
+const APP_VERSION = "1.69";            // shown in InFlite's menu
+const APP_NEWS = "In InFlite, Chats follows your phone’s Light or Dark until you choose one";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -10919,7 +10919,9 @@ $(".page").addEventListener("keydown", (e) => {
    ============================================================ */
 const THEMES = ["light", "dark", "auto"];
 const THEME_NAMES = { light: "Light", dark: "Dark", auto: "Automatic" };
-function theme() { try { const t = localStorage.getItem("inflight-theme"); return THEMES.includes(t) ? t : "light"; } catch (_) { return "light"; } }
+// (nothing chosen: Light, or at InFlite's hub the phone's, as Today has it, theme.js)
+const THEME_DEFAULT = typeof document !== "undefined" && document.querySelector?.('meta[name="ifl-hub"]') ? "auto" : "light";
+function theme() { try { const t = localStorage.getItem("inflight-theme"); return THEMES.includes(t) ? t : THEME_DEFAULT; } catch (_) { return THEME_DEFAULT; } }
 // Saved to the account (so every phone you sign in on matches) and kept on
 // this phone too, so theme.js can draw the right colours before the app loads.
 function setTheme(t) {

@@ -1,9 +1,11 @@
 // Applies this phone's appearance (Account → Appearance) before the page is
 // drawn, so it never flashes the wrong colours. Light unless chosen otherwise.
 (function () {
-  var t = "light";
-  try { t = localStorage.getItem("inflight-theme") || "light"; } catch (e) { /* storage blocked: stay light */ }
-  if (t !== "dark" && t !== "auto") t = "light";
+  // (at InFlite's hub, nothing chosen follows the phone, as Today does, so the hub's tab bar is one bar on every page)
+  var dflt = document.querySelector('meta[name="ifl-hub"]') ? "auto" : "light";
+  var t = dflt;
+  try { t = localStorage.getItem("inflight-theme") || dflt; } catch (e) { /* storage blocked: the default */ }
+  if (t !== "dark" && t !== "auto" && t !== "light") t = dflt;
   var root = document.documentElement;
   root.setAttribute("data-theme", t);
   // InFlite's hub: Chat as its engine, in a frame of another of the hub's own pages (app.js ENGINE), is see-through from
