@@ -28,8 +28,8 @@ const size = (buf) => [buf.readUInt32BE(16), buf.readUInt32BE(20)];
 
 test('Today’s copies are this repository’s, byte for byte', { skip }, () => {
   assert.ok(pub('wxicons.js').equals(here('weather/icons.js')), 'today/public/wxicons.js differs from weather/icons.js: copy it again');
-  for (const a of ['chat', 'weather', 'fitness', 'markets']) assert.ok(pub(`apps/${a}.svg`).equals(here(`.tools/inflite/icons/${a}.svg`)), `apps/${a}.svg differs from .tools/inflite/icons/${a}.svg`);
-  assert.deepEqual(readdirSync(new URL('apps/', PUB)).sort(), ['chat.svg', 'fitness.svg', 'markets.svg', 'weather.svg']);
+  for (const a of ['chat', 'weather', 'fitness', 'markets', 'mail']) assert.ok(pub(`apps/${a}.svg`).equals(here(`.tools/inflite/icons/${a}.svg`)), `apps/${a}.svg differs from .tools/inflite/icons/${a}.svg`);
+  assert.deepEqual(readdirSync(new URL('apps/', PUB)).sort(), ['chat.svg', 'fitness.svg', 'mail.svg', 'markets.svg', 'weather.svg']);
   assert.ok(pub('icon.svg').equals(here('.tools/inflite/inflite.svg')), 'icon.svg differs from .tools/inflite/inflite.svg');
   assert.ok(pub('inflite.svg').equals(here('.tools/inflite/inflite.svg')), 'inflite.svg differs from .tools/inflite/inflite.svg');
 });

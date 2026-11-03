@@ -42,6 +42,7 @@ globalThis.location ??= { protocol: 'https:', host: 'inflite.ai', origin: 'https
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: true, language: 'en-GB' }, configurable: true, writable: true });
 globalThis.addEventListener ??= () => {};
 globalThis.removeEventListener ??= () => {};
+globalThis.window ??= globalThis;   // (the real bodyframe.js listens on window, once MB's file is in)
 globalThis.fetch = async () => { throw new Error('no network in this test'); };
 const tick = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((ok) => setTimeout(ok, 0)); };
 const text = (n) => n?.textContent ?? '';
