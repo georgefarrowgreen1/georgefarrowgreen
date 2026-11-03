@@ -91,9 +91,10 @@ async function gather(env, u, t, zone, cards) {
   for (const h of hours) if (Number.isFinite(h.close) && h.close >= today.start && h.close < today.end) eveningAt = Math.max(eveningAt, wallMins(zone, h.close) + 5);
   if (quietOn && p.quietFrom * 60 > dayStart) eveningAt = Math.min(eveningAt, p.quietFrom * 60);
   // the acts' overlay: the rides an undone add hides
-  const acts = actDays[0], allActs = actDays.flat();
+  // (functions/_todayacts.js actsFor gives the day's acts, and those of earlier days adding a ride to it; each once)
+  const acts = actDays[0], allActs = actDays.flat().filter((a, i, all) => all.findIndex((b) => b.id === a.id) === i);
   const undone = allActs.filter((a) => a.state === "undone" && (a.kind === "add" || a.rule === "addRide"));
-  const hide = new Set(undone.flatMap((a) => [a.now?.id, a.now?.offerId, a.target, String(a.target || "").replace(/^offer:/, "")]).filter((x) => typeof x === "string" && x));
+  const hide = new Set(undone.flatMap(actOfferIds));
   for (const a of undone) for (const o of offers) if (o.role === "today" && a.now && o.start === a.now.start && o.stop === a.now.stop) hide.add(o.id);
   // today's explicit rides: offers first (an overlapping time gives way to one), then the times set
   const hold = holdLevel !== "quiet", inDay = (ms) => ms >= today.start && ms < today.end;
@@ -199,16 +200,21 @@ function topFor(phase, x, at) {
   return null;
 }
 
+// (the offer ids an act names: now's offer, as functions/_todayacts.js keeps it, and the target "offer:<id>")
+function actOfferIds(a) {
+  return [a.now?.offer, a.now?.id, a.now?.offerId, /^offer:/.test(String(a.target || "")) ? String(a.target).slice(6) : null].filter((x) => typeof x === "string" && x);
+}
 // (the weather card's temperatures as Weather's settings say them)
 const degOf = (x) => x.cards?.weather?.forDay?.deg || ((c) => `${Math.round(c) < 0 ? "−" : ""}${Math.abs(Math.round(c))}°`);
 // (the next agreed call or meeting after a moment, today)
 const nextTime = (x, after) => x.g.times.filter((tm) => tm.start > after && tm.start < x.today.end).sort((a, b) => a.start - b.start)[0] || null;
-// (an act's offer, by its id or its time, among those listed)
+// (an act's offer, by its id (its now's offer, or its target "offer:<id>") or its time, among those listed)
 const offerOf = (a, offers) => {
-  const ids = [a.now?.id, a.now?.offerId, a.target, String(a.target || "").replace(/^offer:/, "")].filter(Boolean);
+  const ids = actOfferIds(a);
   return offers.find((o) => ids.includes(o.id)) || offers.find((o) => o.role === "today" && a.now && o.start === a.now.start && o.stop === a.now.stop) || null;
 };
-const actDay = (x, a) => (Number.isFinite(a.now?.start) ? dayOf(x.zone).format(new Date(a.now.start)) : null);
+// (the day an act's about: its now's day, or the day its now starts on)
+const actDay = (x, a) => (typeof a.now?.day === "string" ? a.now.day : Number.isFinite(a.now?.start) ? dayOf(x.zone).format(new Date(a.now.start)) : null);
 
 // ---- morning: the plan, joined up ----
 function planTop(x) {
@@ -223,26 +229,29 @@ function planTop(x) {
   if (parts.length) lines.push(`Today: ${parts.join(", ")}.`);
   // what Today did or offers today: each at do with Undo, each suggestion with its button
   const weekday = (a) => { const d = actDay(x, a); return d ? weekdayOf(d) : null; };
+  const undoLabel = (a) => (a.rule === "moveRide" ? "Undo the Move" : a.rule === "addRide" ? `Undo ${weekday(a) ? `${poss(weekday(a))} Ride` : "the Ride"}` : "Undo");
+  // (an add made on an earlier day, for today: said below, with Keep)
+  const earlierAdd = (a) => a.rule === "addRide" && typeof a.day === "string" && a.day !== x.D && actDay(x, a) === x.D;
   let chip = null;
   for (const a of g.acts) {
     const said = stop(a.said);
+    if (earlierAdd(a)) continue;
     if (a.state === "done") {
       if (said) lines.push(`${said}.`);
-      if (a.undoUntil > t) buttons.push({ do: "undo", id: a.id, label: a.rule === "moveRide" ? "Undo the Move" : a.rule === "addRide" ? `Undo ${weekday(a) ? `${poss(weekday(a))} Ride` : "the Ride"}` : "Undo" });
+      if (a.undoUntil > t) buttons.push({ do: "undo", id: a.id, label: undoLabel(a) });
       chip = chip || (a.rule === "moveRide" ? "Moved" : a.rule === "addRide" ? "From habit" : "Done");
     } else if (a.state === "offered") {
       if (said) lines.push(`${said}.`);
       const label = a.rule === "moveRide" && Number.isFinite(a.now?.start) ? `Move It to ${hm(a.now.start)}` : a.rule === "addRide" ? `Add ${weekday(a) ? `${poss(weekday(a))} Ride` : "the Ride"}` : a.rule === "rideThen" ? "Ride Then" : "Do It";
-      buttons.push({ do: "take", id: a.id, label });
-      chip = chip || "A suggestion";
-    } else if ((a.state === "taken" || a.state === "kept") && said) lines.push(`${said}.`);
+      if (!(a.undoUntil <= t)) { buttons.push({ do: "take", id: a.id, label }); chip = chip || "A suggestion"; }
+    } else if ((a.state === "taken" || a.state === "kept" || a.state === "said") && said) lines.push(`${said}.`);
   }
-  // a ride from your habit on its day, added and not kept yet: Keep
+  // a ride from your habit on its day, added and not kept yet: Keep (and Undo, while it can be)
   for (const o of g.offers) {
     if (o.role !== "today" || o.state !== "yes" || o.taken || g.hide.has(o.id) || !(o.start >= x.today.start && o.start < x.today.end)) continue;
     lines.push(`From your habit: a ride at ${hm(o.start)} today.`);
     const act = g.allActs.find((a) => (a.rule === "addRide" || a.kind === "add") && a.state === "done" && offerOf(a, [o]));
-    if (act) buttons.push({ do: "take", id: act.id, label: "Keep" });
+    if (act) { buttons.push({ do: "take", id: act.id, label: "Keep" }); if (act.undoUntil > t) buttons.push({ do: "undo", id: act.id, label: "Undo the Ride" }); chip = chip || "From habit"; }
   }
   // a ride agreed in Chat today, not added in Fitness yet
   for (const o of g.offers) {
@@ -261,7 +270,7 @@ function planTop(x) {
     else if (h && h.close > t) lines.push(`${h.where} is open until ${hm(h.close)}.`);
     else if (m.market?.shut?.length) lines.push(`${andList(m.market.shut)} shut today.`);
   }
-  if (!g.acts.some((a) => a.state === "done" || a.state === "offered")) lines.push("Nothing needed moving.");
+  if (!g.acts.some((a) => ["done", "offered", "said", "taken"].includes(a.state))) lines.push("Nothing needed moving.");
   if (w && rain !== undefined) stats.push({ label: "Rain", value: !rain ? "Dry" : rain.now ? "Now" : `From ${hm(rain.at)}` });
   if (R) stats.push({ label: "Ride", value: hm(R.start) });
   if (call) stats.push({ label: cap1(callOf(call)), value: hm(call.start) });

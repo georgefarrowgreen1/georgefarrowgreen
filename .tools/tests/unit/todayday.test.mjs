@@ -81,12 +81,14 @@ const HABIT = "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a81", WITH_LEO = "5e6f7a8b-9c0d-
 const offer = (o) => put("fx_offers", { user_id: ME, start: at(10, 0, 5), stop: at(11, 0, 5), tz: LON, sport: "ride", wid: "free-ride", name: "Ride", secs: 3600, who: "", role: "today", far: 0, dry: 1, state: "yes", made: at(6), until: at(11, 0, 5) + 12 * H, taken: 0, ...o });
 offer({ id: HABIT });
 offer({ id: WITH_LEO, role: "answered", who: "Leo", with_id: LEO, state: "new" });
-// Today's two acts this morning: the move, and the add
+// Today's two acts this morning, as functions/_todayacts.js keeps them: the move (target the day's fx_times row), and the
+// add (target the day it adds to; its offer in now)
 const MOVE = "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a01", ADD = "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a02";
-put("td_acts", { id: MOVE, user_id: ME, rule: "moveRide", day: "2026-11-02", target: "2026-11-02", kind: "move", state: "done", level: "do", was: JSON.stringify({ start: at(18), stop: at(19, 15), source: "set" }),
-  now: JSON.stringify({ start: at(16, 45), stop: at(18), source: "moved" }), said: "Moved your ride to 16:45, clear of Mira’s call", made: at(6), undo_until: at(15, 45) });
-put("td_acts", { id: ADD, user_id: ME, rule: "addRide", day: "2026-11-02", target: HABIT, kind: "add", state: "done", level: "do", was: JSON.stringify({ planned: "rest" }),
-  now: JSON.stringify({ id: HABIT, start: at(10, 0, 5), stop: at(11, 0, 5), state: "yes" }), said: "Added: a ride on Thursday at 10:00", made: at(6), undo_until: at(9, 0, 5) });
+const act = (a) => put("td_acts", { user_id: ME, made: at(6), ...a, was: a.was === undefined ? null : JSON.stringify(a.was), now: a.now === undefined ? null : JSON.stringify(a.now) });
+act({ id: MOVE, rule: "moveRide", day: "2026-11-02", target: "time:2026-11-02", kind: "move", state: "done", level: "do", was: { day: "2026-11-02", start: at(18), stop: at(19, 15), tz: LON, sport: "ride", source: "set" },
+  now: { day: "2026-11-02", start: at(16, 45), stop: at(18), tz: LON, sport: "ride", source: "moved", why: { kind: "call", who: "Mira", start: at(18, 30) } }, said: "Moved your ride to 16:45, clear of Mira’s call", undo_until: at(15, 45) });
+act({ id: ADD, rule: "addRide", day: "2026-11-02", target: "day:2026-11-05", kind: "add", state: "done", level: "do", was: { planned: "rest" },
+  now: { offer: HABIT, day: "2026-11-05", start: at(10, 0, 5), stop: at(11, 0, 5), state: "yes", secs: 3600, k: 6, n: 8 }, said: "Added: a ride on Thursday at 10:00", undo_until: at(9, 0, 5) });
 put("td_plans", { user_id: ME, day: "2026-11-02", at: at(6) });
 
 // each moment's cards: the fixture's, with what the cards hold apart for the day (Markets' hours and alerts, tomorrow)
@@ -304,8 +306,8 @@ test("the overlay: an add undone today hides its ride everywhere, and Fitness's 
   const TODAY_HABIT = "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a99";
   // (Today's habit ride for today at 10:00, undone; Fitness hasn't heard, so its plan still says the habit's session)
   offer({ id: TODAY_HABIT, start: at(10), stop: at(11), state: "yes", taken: 1 });
-  put("td_acts", { id: "undone-add", user_id: ME, rule: "addRide", day: "2026-10-30", target: TODAY_HABIT, kind: "add", state: "undone", level: "suggest", was: JSON.stringify({ planned: "rest" }),
-    now: JSON.stringify({ id: TODAY_HABIT, start: at(10), stop: at(11), state: "yes" }), said: "Added: a ride today at 10:00", made: at(7, 0, 30), undo_until: at(9) });
+  act({ id: "undone-add", rule: "addRide", day: "2026-10-30", target: "day:2026-11-02", kind: "add", state: "undone", level: "suggest", was: { planned: "rest" },
+    now: { offer: TODAY_HABIT, day: "2026-11-02", start: at(10), stop: at(11), state: "yes" }, said: "Added: a ride today at 10:00", made: at(7, 0, 30), undo_until: at(9) });
   const cards = cardsAt("morning");
   cards.fitness = { ...cards.fitness, session: { ...cards.fitness.session, id: "free-ride", name: "Free ride" } };
   const d = await dayFor(env, U, at(8), cards, { tz: LON });
@@ -317,6 +319,45 @@ test("the overlay: an add undone today hides its ride everywhere, and Fitness's 
   assert.deepEqual(inputs.rides.map((r) => r.start), [at(16, 45)]);
   assert.equal(inputs.dayStart, 360); assert.equal(inputs.eveningAt, 1140);
   sql.prepare("DELETE FROM fx_offers WHERE id = ?").run(TODAY_HABIT); sql.prepare("DELETE FROM td_acts WHERE id = ?").run("undone-add");
+});
+
+test("a ride from habit on its day, added and not kept: Keep (and Undo while it can be); an earlier day's add said once", async () => {
+  const ON_DAY = "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a98";
+  offer({ id: ON_DAY, start: at(10), stop: at(11), state: "yes", taken: 0 });
+  act({ id: "add-on-day", rule: "addRide", day: "2026-10-30", target: "day:2026-11-02", kind: "add", state: "done", level: "do", was: { planned: "none" },
+    now: { offer: ON_DAY, day: "2026-11-02", start: at(10), stop: at(11), state: "yes", secs: 3600 }, said: "Added: a ride on Monday at 10:00", made: at(7, 0, 30), undo_until: at(9) });
+  let m = (await day("morning", at(8))).tops.morning;
+  assert.ok(m.lines.includes("From your habit: a ride at 10:00 today."), m.lines.join(" | "));
+  assert.ok(!m.lines.includes("Added: a ride on Monday at 10:00."), "said once, as Keep's line");
+  assert.deepEqual(m.buttons.filter((b) => b.id === "add-on-day"), [{ do: "take", id: "add-on-day", label: "Keep" }, { do: "undo", id: "add-on-day", label: "Undo the Ride" }]);
+  let d = await day("morning", at(9, 30));
+  assert.deepEqual(d.tops.morning.buttons.filter((b) => b.id === "add-on-day"), [{ do: "take", id: "add-on-day", label: "Keep" }], "past its Undo: Keep alone");
+  assert.ok(d.upcoming.some((r) => r.id === `offer:${ON_DAY}` && r.sub === "From habit, dry"), "Coming Up: from habit, not kept");
+  assert.notEqual(d.ride.start, at(10), "not kept: no phase of its own");
+  // (kept: an explicit ride, the day's)
+  sql.prepare("UPDATE fx_offers SET taken = 1 WHERE id = ?").run(ON_DAY);
+  d = await day("morning", at(9, 30));
+  assert.equal(d.phase, "preride"); assert.equal(d.ride.start, at(10)); assert.equal(d.ride.source, "offer");
+  assert.ok(!d.tops.morning || !d.tops.morning.lines.includes("From your habit: a ride at 10:00 today."));
+  sql.prepare("DELETE FROM fx_offers WHERE id = ?").run(ON_DAY); sql.prepare("DELETE FROM td_acts WHERE id = ?").run("add-on-day");
+});
+
+test("at suggest and at quiet: the suggestion's button (until it's past), the clash's line only; Nothing needed moving when there's nothing", async () => {
+  sql.prepare("UPDATE td_acts SET state = 'offered', level = 'suggest', said = 'Your ride runs into Mira’s call at 18:30; 16:45 is clear' WHERE id = ?").run(MOVE);
+  sql.prepare("UPDATE td_acts SET state = 'said', level = 'quiet', said = 'Thursday’s often a ride day' WHERE id = ?").run(ADD);
+  let m = (await day("morning", at(7))).tops.morning;
+  assert.deepEqual(m.buttons, [{ do: "take", id: MOVE, label: "Move It to 16:45" }]);
+  assert.ok(m.lines.includes("Your ride runs into Mira’s call at 18:30; 16:45 is clear.") && m.lines.includes("Thursday’s often a ride day."), m.lines.join(" | "));
+  assert.equal(m.chip, "A suggestion"); assert.ok(!m.lines.includes("Nothing needed moving."));
+  sql.prepare("UPDATE td_acts SET undo_until = ? WHERE id = ?").run(at(8), MOVE);
+  m = (await day("morning", at(9))).tops.morning;
+  assert.deepEqual(m.buttons, [], "the suggestion's time is past: its line, no button");
+  sql.prepare("UPDATE td_acts SET state = 'ignored' WHERE id IN (?, ?)").run(MOVE, ADD);
+  m = (await day("morning", at(9))).tops.morning;
+  assert.ok(m.lines.includes("Nothing needed moving."), m.lines.join(" | ")); assert.equal(m.chip, "Your day");
+  // (back as they were)
+  sql.prepare("UPDATE td_acts SET state = 'done', level = 'do', said = 'Moved your ride to 16:45, clear of Mira’s call', undo_until = ? WHERE id = ?").run(at(15, 45), MOVE);
+  sql.prepare("UPDATE td_acts SET state = 'done', level = 'do', said = 'Added: a ride on Thursday at 10:00' WHERE id = ?").run(ADD);
 });
 
 test("the walls: no quiet hours and no morning, 05:00; the morning's time; quiet from 18:00 brings the evening forward; a New York holding takes it past 19:00", async () => {
