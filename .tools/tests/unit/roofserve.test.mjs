@@ -56,7 +56,10 @@ test('roofPage: the assets’ /, asked afresh with no condition, cookie or query
   assert.equal(missing.status, 404); assert.equal(missing.headers.get('x-robots-tag'), 'noindex');
 });
 
-test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly Weather’s origins (_wxapp.js CONNECT without the beacon, and IMAGES), nothing inline, no other site; geolocation for itself alone', { skip }, () => {
+// (Mail's Worker, which Mail's module calls and frames its bodies from (stage 4, s4 C13; s24-contracts §11): in
+// connect-src and frame-src alone, its live address and the test stack's, once the inflite repo beside has stage 4's R0)
+const MAIL_ORIGINS = ['https://email.inflite.ai', 'http://email.ifl.test:8788'];
+test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly Weather’s origins (_wxapp.js CONNECT without the beacon, and IMAGES) and Mail’s Worker, nothing inline, no other site; geolocation for itself alone', { skip }, () => {
   const csp = R.PAGE_HEADERS['Content-Security-Policy'];
   assert.deepEqual(R.PAGE_HEADERS, {
     'Content-Security-Policy': csp, 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)', 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
@@ -71,12 +74,14 @@ test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly
   const wx = readFileSync(new URL('functions/_wxapp.js', MAIN), 'utf8');
   const CONNECT = listOf(wx, 'CONNECT').filter((o) => !/cloudflareinsights/.test(o)), IMAGES = listOf(wx, 'IMAGES');
   assert.ok(CONNECT.length >= 10 && IMAGES.length >= 3, 'Weather’s lists read');
-  assert.deepEqual(directive(csp, 'connect-src'), ["'self'", ...CONNECT], 'connect-src: Weather’s own, exactly');
+  const mail = directive(csp, 'connect-src').includes(MAIL_ORIGINS[0]) ? MAIL_ORIGINS : [];
+  assert.deepEqual(directive(csp, 'connect-src'), ["'self'", ...mail, ...CONNECT], 'connect-src: Weather’s own (and Mail’s Worker), exactly');
+  assert.deepEqual(directive(csp, 'frame-src'), ["'self'", ...mail], 'frame-src: this site (and Mail’s Worker, for its bodies), exactly');
   assert.deepEqual(directive(csp, 'img-src'), ["'self'", 'data:', 'blob:', ...IMAGES], 'img-src: Weather’s own, exactly');
-  const others = csp.split(';').filter((d) => !/^\s*(connect|img)-src /.test(d)).join(';');
+  const others = csp.split(';').filter((d) => !/^\s*(connect|img|frame)-src /.test(d)).join(';');
   assert.doesNotMatch(others, /https?:/, 'no other site anywhere else in it');
   assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|wasm-unsafe-eval|cloudflareinsights/);
-  for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "frame-src 'self'", "manifest-src 'self'", "worker-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", "object-src 'none'"])
+  for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "manifest-src 'self'", "worker-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", "object-src 'none'"])
     assert.ok(csp.split('; ').includes(d), d);
 });
 
@@ -124,4 +129,24 @@ test('RETIRE_SW, in a worker’s global: takes over at once; lets Weather’s ca
   assert.equal(await r.text(), R.RETIRE_SW);
   assert.equal(R.retireWorker(new Request(`${SITE}/weather/sw.js`, { method: 'HEAD' })).body, null);
   assert.equal(await R.retireWorker().text(), R.RETIRE_SW);
+});
+
+// ---- stages 2–4 (s24-contracts §1): a switch per module ----
+test('stages 2–4: roofOn(env, app) opt-in for Markets, Fitness and Mail ("1" only), opt-out for Weather (ROOF_OFF_WEATHER), ROOF_OFF over all; modOf, docOf, filesOf, retireSw per app', { skip: skip || (typeof R?.appsOn !== 'function' && 'the inflite repo beside has no per-app switch yet') }, () => {
+  for (const app of ['markets', 'fitness', 'mail']) {
+    const K = `ROOF_${app.toUpperCase()}`;
+    assert.equal(R.roofOn({}, app), false, `${app}: absent is off`);
+    assert.equal(R.roofOn({ [K]: '1' }, app), true);
+    for (const v of ['0', '', 'true', 'on']) assert.equal(R.roofOn({ [K]: v }, app), false, `${app} ${v}`);
+    assert.equal(R.roofOn({ [K]: '1', ROOF_OFF: '1' }, app), false, `${app}: ROOF_OFF wins`);
+    assert.equal(R.roofOn({ [K]: '1', ROOF_OFF_WEATHER: '1' }, app), true, `${app}: Weather's switch isn't ${app}'s`);
+  }
+  assert.equal(R.roofOn({}, 'weather'), true); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '1' }), false); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '0' }), true);
+  assert.equal(R.roofOn({ ROOF_WEATHER: '0' }), true, 'no other spelling turns Weather off');
+  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false });
+  for (const [p, a] of [['/markets/', 'markets'], ['/fitness/index.html', 'fitness'], ['/weather/', 'weather'], ['/mail/', 'mail'], ['/markets', null], ['/markets/x.html', null], ['/chats/', null], ['/', null]]) assert.equal(R.modOf(p), a, p);
+  assert.ok(R.filesOf('fitness').test('/fitness/roof/core.js')); assert.ok(!R.filesOf('fitness').test('/fitness/roofs.js'));
+  assert.equal(R.RETIRE_SW, R.retireSw('weather'), 'Weather’s retiring worker as stage 1 had it');
+  assert.match(R.retireSw('markets'), /startsWith\("markets-app-"\)/); assert.match(R.retireSw('fitness'), /startsWith\("fitness-app-"\)/);
+  assert.doesNotMatch(R.retireSw('markets'), /wx-|fitness-app-/);
 });

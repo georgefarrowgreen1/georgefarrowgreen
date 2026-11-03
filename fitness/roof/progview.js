@@ -339,6 +339,8 @@ function engineView() {
 
 
 // ---- the openers the entry binds (ctx.open.*), and the section ----
+// (fitness and form, from Progress's Form tile: actsview.js's sheet, frozen here too by j0's surface)
+export function openForm(ctx) { use(ctx); openSheet(formView, { sheet: "form" }); }
 export function openPower(ctx) { use(ctx); openSheet(powerView, { sheet: "power", tall: true }); }
 export function openTraining(ctx) { use(ctx); openSheet(trainingView, { sheet: "training", tall: true }); }
 export function openEngine(ctx) { use(ctx); openSheet(engineView, { sheet: "engine", tall: true }); }
