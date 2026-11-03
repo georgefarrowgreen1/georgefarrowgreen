@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.68";
-export const NEWS = "Getting ready to open inside InFlite";
+export const BUILD = "1.69";
+export const NEWS = "Progress inside InFlite: Your history, All-time bests and Fitness at its peak look as they do in Fitness";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -169,7 +169,7 @@ export async function mount(root, fw) {
     if (!onScreen) return;
     const name = SECTIONS.find(([k]) => k === shown)?.[1] || "Fitness", line = lineOf(shown);
     fw.header.set({
-      title: name, compactTitle: line ? `Fitness · ${line}` : "Fitness", pick: null, line,
+      title: name, compactTitle: line ? (/^Fitness\b/.test(line) ? line : `Fitness · ${line}`) : "Fitness", pick: null, line,
       acts: [{ icon: "upload", label: "Add Files", run: choose }, { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
     });
   };

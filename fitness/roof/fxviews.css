@@ -404,3 +404,38 @@
 .ifl-sheet[data-app=fitness] .fxs-strava[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
 .ifl-sheet[data-app=fitness] .fxs-powered { text-align: center; }
 .ifl-sheet[data-app=fitness] .fxs-zones .zone-chip { margin-right: 4px; }
+
+/* ---- Progress: Your history, All-time bests, Fitness at its peak, the year charts (fitness/styles.css, re-scoped; they were missing here) ---- */
+.m-fitness .p-history{display: grid; gap: 10px; width: 100%; padding: 16px 16px 12px; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out);}
+.m-fitness .p-history:active{transform: scale(0.985);}
+.m-fitness .ph-top{display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;}
+.m-fitness .ph-top small{display: block; font-size: 13px; font-weight: 600; color: var(--text-2);}
+.m-fitness .ph-top b{font: 700 30px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums;}
+.m-fitness .ph-top b u{text-decoration: none; font-size: 15px; color: var(--text-2);}
+.m-fitness .years-chart .y-prev{fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-dasharray: 4 4; opacity: 0.6;}
+.m-fitness .years-chart .y-cur{fill: none; stroke: var(--tint); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round;}
+.m-fitness .years-chart .y-area{fill: color-mix(in srgb, var(--tint) 14%, transparent);}
+.m-fitness .years-chart .y-now{fill: var(--tint); stroke: var(--glass-strong); stroke-width: 2;}
+.m-fitness .years-chart .y-then{fill: var(--text-3);}
+.m-fitness .n-key .k-cur{background: var(--tint); height: 3px;}
+.m-fitness .n-key .k-prev{height: 0; border-top: 2px dashed var(--text-3); border-radius: 0;}
+.m-fitness .ph-more{margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--tint-text);}
+.m-fitness .ph-bests .row{min-height: 56px;}
+.m-fitness .ph-len{flex: none; width: 52px; font: 700 14px/1 var(--font-d); color: var(--text-2);}
+.m-fitness .ph-yr{font-size: 13px; color: var(--text-2); white-space: nowrap;}
+.m-fitness .ph-yr.best{color: var(--good-text); font-weight: 650;}
+.m-fitness .ph-peaks{display: grid; gap: 10px; padding: 16px;}
+.m-fitness .pk-row{display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px 32px; align-items: center; gap: 10px;}
+.m-fitness .pk-row small{font-size: 13px; font-weight: 600; color: var(--text-2);}
+.m-fitness .pk-row b{font: 700 15px/1 var(--font-d); text-align: right; font-variant-numeric: tabular-nums;}
+.m-fitness .pk-row .pk-when{font-weight: 500; color: var(--text-3);}
+.m-fitness .pk-bar{height: 10px; border-radius: 5px; background: var(--field); overflow: hidden;}
+.m-fitness .pk-bar i{display: block; height: 100%; border-radius: 5px; background: color-mix(in srgb, var(--fit) 55%, transparent);}
+.m-fitness .pk-row.now .pk-bar i{background: var(--fit);}
+.m-fitness .pk-row.now small:first-child{color: var(--text);}
+.m-fitness .month-bars .mb{fill: color-mix(in srgb, var(--tint) 45%, transparent);}
+.m-fitness .month-bars .mb.top{fill: var(--tint);}
+@media (min-width: 1100px){
+  .m-fitness .t-progress > .p-half{grid-column: span 6;}
+  .m-fitness .p-more{display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));}
+}
