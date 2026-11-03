@@ -166,9 +166,13 @@ const offerId = meAnswer().offers[0].id;
   }, H.FX_DROP);
   ok(await until(() => seen.workers > before, 5000), 'a file dropped on Fitness’s screen is read (the Worker made)');
   ok(await until(() => p.workers().length === 0, 6000), 'and gone again after');
-  // (hidden: the page's guard goes with it)
+  // (hidden: the page's guard goes with it; the batch's sheet (FXB's Upload, once it's in) closed first)
+  for (let i = 0; i < 3 && await visible(p, H.SHEET_OPEN); i++) {
+    if (await visible(p, H.SHEET_CLOSE)) await p.locator(H.SHEET_CLOSE).first().click().catch(() => {}); else await p.keyboard.press('Escape');
+    await p.waitForTimeout(500);
+  }
   await p.locator(H.tab ? H.tab('today') : 'nav#tabs .ifl-tab[data-tab=today]').click().catch(() => {});
-  await until(() => visible(p, 'main#today'), 4000);
+  ok(await until(() => visible(p, 'main#today'), 4000), 'InFlite’s Today shown, Fitness hidden');
   const away = await p.evaluate(() => {
     const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([1])], 'x.fit'));
     const ev = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }); document.body.dispatchEvent(ev); return ev.defaultPrevented;
