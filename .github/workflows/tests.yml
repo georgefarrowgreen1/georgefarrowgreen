@@ -1,8 +1,14 @@
 name: Chat checks
 
 # On every push: every server and app file parses, and the unit tests pass (the space
-# maths, eclipses, pigeons following people between worlds, key checks, the weather app's insights). Quick: no
-# browser, no database. The end-to-end tests run locally: see .tools/tests/README.md.
+# maths, eclipses, pigeons following people between worlds, key checks, the weather app's insights, and InFlite's: the
+# hub, Today's Worker and page, Mail). Quick: no browser, no database. The end-to-end tests run locally: see
+# .tools/tests/README.md.
+#
+# The tests that read the inflite repo look for it beside this one (../inflite), and skip where it isn't, so both are
+# checked out side by side in the workspace: this repo in georgefarrowgreen/, the inflite repo (public: no token) in
+# inflite/, at the branch of the same name as this push's where it has one, else its live branch (claude/inflite). This
+# repo goes live before the inflite repo does, so a test whose inflite file isn't on that branch yet skips.
 on:
   push:
   pull_request:
@@ -10,19 +16,42 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: georgefarrowgreen
+      - name: The inflite repo beside it
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          R=https://github.com/georgefarrowgreen1/inflite
+          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
+          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+          echo "The inflite repo beside: $B at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+          # (whether it's this branch's own twin: where it's the live branch instead, a test comparing its copies with
+          # this repo's templates may skip, as they follow when it goes live)
+          if [ "$B" = "$BRANCH" ]; then echo "INFLITE_TWIN=1" >> "$GITHUB_ENV"; else echo "INFLITE_TWIN=0" >> "$GITHUB_ENV"; fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # (Mail's one package, which its tests' mail goes through; not its tools)
+      - name: Mail's package
+        run: |
+          if [ -f inflite/email/package-lock.json ]; then npm ci --prefix inflite/email --omit=dev --no-audit --no-fund; fi
       - name: Every file parses
+        working-directory: georgefarrowgreen
         run: |
           fail=0
           for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
       - name: Unit tests
+        working-directory: georgefarrowgreen
         run: node --test .tools/tests/unit/*.test.mjs
