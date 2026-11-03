@@ -119,7 +119,7 @@ const has = (hay, needle, l) => ok(hay.includes(needle), l, `“${needle}” not
 // which each app's Sign Out keeps (Weather's places and settings, each app's look). Seeded before a Sign Out with
 // Fitness's files and Chat's sign-in in their IndexedDB stores, as each app keeps them; read after it, from a page here
 const APP_KEYS = ['markets:last', 'markets:years', 'markets:recent', 'markets:newsRead', 'markets:newsHide', 'markets:newsSeen', 'markets:plan', 'wx:acct',
-  'fitness:hk', 'fitness:today-sent', 'fitness:meAt', 'fitness:files', 'fitness:morning', 'fitness:sums', 'inflight-lock', 'inflight-badges', 'inflight-pushsub', 'inflight-opened'];
+  'fitness:hk', 'fitness:today-sent', 'fitness:today-swaps', 'fitness:meAt', 'fitness:files', 'fitness:morning', 'fitness:sums', 'inflight-lock', 'inflight-badges', 'inflight-pushsub', 'inflight-opened'];
 const PHONE_KEYS = ['wx:places', 'wx:settings', 'markets:appearance', 'fitness:appearance', 'inflight-theme'];
 const seedApps = (p) => p.evaluate(async ({ app, phone }) => {
   for (const k of [...app, ...phone]) localStorage.setItem(k, JSON.stringify({ seeded: k }));
@@ -130,7 +130,8 @@ const seedApps = (p) => p.evaluate(async ({ app, phone }) => {
     r.onsuccess = () => { const db = r.result, tx = db.transaction(store, 'readwrite'); for (const [k, v] of rows) tx.objectStore(store).put(v, k); tx.oncomplete = () => { db.close(); ok(); }; tx.onerror = () => no(tx.error); };
   });
   await put('fitness', 'files', [['me:last', '{"acts":[1,2,3]}'], ['acct1/ride-7', 'bytes']]);
-  await put('inflight', 'kv', [['session', { token: 'tok', me: { id: 'u77' } }], ['cache:u77', { chats: ['seeded'] }], ['outbox:u77', [{ sealed: true }]], ['drafts:u77', { a: 'sealed' }]]);
+  await put('inflight', 'kv', [['session', { token: 'tok', me: { id: 'u77' } }], ['cache:u77', { chats: ['seeded'] }], ['outbox:u77', [{ sealed: true }]], ['drafts:u77', { a: 'sealed' }],
+    ['pins:u77', { c1: 1 }], ['pinsup:u77', 1793700000000]]);
 }, { app: APP_KEYS, phone: PHONE_KEYS });
 const readApps = async (ctx) => {
   await ctx.route((u) => new URL(u).pathname === '/__kept', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>kept</title>' }));
@@ -446,7 +447,7 @@ await part('you: this phone', async () => {
   const kept = await readApps(ctx);
   same(kept.left, PHONE_KEYS, 'Sign Out lets go of every app’s copy of you kept here (Markets’ holdings, Weather’s account, Fitness’s, Chat’s), and keeps the phone’s own (Weather’s places and settings, each app’s look)');
   same(kept.fitness, [], 'and Fitness’s copies of your files and of you (IndexedDB), as its own Sign Out does');
-  same(kept.chat, ['cache:u77', 'drafts:u77', 'outbox:u77', 'session'], 'Chat’s own sign-in left to Chat, whose engine signed out here');
+  same(kept.chat, ['cache:u77', 'drafts:u77', 'outbox:u77', 'pins:u77', 'pinsup:u77', 'session'], 'Chat’s own sign-in left to Chat, whose engine signed out here');
   const out = await reqs(), del = out.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), so = out.findIndex((e) => e.path.endsWith('/signout'));
   ok(del >= 0 && so > del, 'DELETE /api/device first, then signed out');
   same(JSON.parse(out[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device { endpoint }');
@@ -501,7 +502,7 @@ await part('degraded', async () => {
   const kept = await readApps(ctx);
   same(kept.left, PHONE_KEYS, 'not ready: Sign Out lets go of every app’s copy of you kept here all the same');
   same(kept.fitness, [], 'and Fitness’s files');
-  same(kept.chat, ['drafts:u77', 'outbox:u77'], 'and, with no engine, Chat’s sign-in and its kept chats; what wasn’t sent stays, sealed');
+  same(kept.chat, ['drafts:u77', 'outbox:u77'], 'and, with no engine, Chat’s sign-in, its kept chats and its pins the account keeps too (pinsup); what wasn’t sent stays, sealed');
   await ctx.close();
   await mode({ mode: 'out' });
   ({ ctx, p } = await open({ hub: false, signedIn: false }));
@@ -616,6 +617,24 @@ await part('cross-fade at the hub only', async () => {
   const off = await go(false, '/a', '/b');
   ok(off.swap === 'let go' && off.reveal !== 'kept', 'off the hub: the page left lets the cross-fade go, so none is drawn', JSON.stringify(off));
   same((await go(false, '/c', '/d')).reveal, 'let go', 'off the hub: a page opened from one without menu.js lets it go as it opens');
+  // (Today's own page with its module slow to come, as on a slow phone: the cross-fade it opens with is called off
+  // before it's shown, and caught by fade.js as the page's head is read, before app.js (a module, run after) could.
+  // Four times: without fade.js, nearly every one says so as an error (review-i1 I9))
+  const slow = [];
+  for (let i = 0; i < 4; i++) {
+    const { ctx, p } = await open({ path: '/__fade', wait: false, setup: async (c) => {
+      await c.route((u) => new URL(u).pathname === '/__fade', (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta charset="utf-8"><title>From</title><style>@view-transition { navigation: auto; }</style></head><body><a id="next" href="/">Today</a></body></html>' }));
+      await c.route((u) => new URL(u).pathname === '/app.js', async (r) => { await new Promise((go) => setTimeout(go, 1500)); await r.continue().catch(() => {}); });
+    } });
+    p.on('pageerror', (e) => slow.push(`${new URL(p.url()).pathname}: ${e.message}`));
+    await p.waitForTimeout(300);
+    await p.click('#next');
+    await p.waitForURL(BASE + '/');
+    await p.waitForSelector('#in:not([hidden]) #tabs .ifl-tab', { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1000);
+    await ctx.close();
+  }
+  same(slow, [], 'Today’s page with its app.js slow to come: the cross-fade it opened with, called off, says nothing (fade.js, read before the module)');
 });
 
 // ======================================================================= every size, light and dark: no sideways scroll, axe, no errors
