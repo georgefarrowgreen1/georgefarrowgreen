@@ -132,7 +132,8 @@ await G.ctx.addInitScript(({ to, w, pk }) => {
   const t0 = Date.now();
   const go = () => {
     let c = null; try { c = document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat || null; } catch (_) {}
-    if (c && c.state === 'ready') return Promise.resolve(c.sendTo(to, w, pk)).then((r) => console.log('notap ' + JSON.stringify({ r, active: navigator.userActivation?.isActive })), (e) => console.log('notap ' + JSON.stringify({ err: String(e) })));
+    // (and only once the page has no activation of any tap: a script, on its own; checked in the same turn as the call)
+    if (c && c.state === 'ready' && navigator.userActivation?.isActive === false) return Promise.resolve(c.sendTo(to, w, pk)).then((r) => console.log('notap ' + JSON.stringify({ r, active: navigator.userActivation?.isActive })), (e) => console.log('notap ' + JSON.stringify({ err: String(e) })));
     if (Date.now() - t0 < 45000) setTimeout(go, 400); else console.log('notap ' + JSON.stringify({ err: 'no engine' }));
   };
   setTimeout(go, 400);
