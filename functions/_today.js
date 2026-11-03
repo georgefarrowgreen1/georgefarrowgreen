@@ -12,6 +12,7 @@
 
 import { HttpError, sha256, b64url, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk } from "./_notify.js";
+import { timesExport, dropTimes } from "./_times.js";
 
 // the cards, in the order a new account has them
 export const CARDS = ["weather", "chat", "fitness", "markets"];
@@ -260,22 +261,38 @@ export async function morningUsers(env) {
 }
 
 // ---- the account going, and what it keeps ----
-// (each on its own, as the tables may not be made yet)
+// (each on its own, as the tables may not be made yet): its cards and morning, its devices, what Today did or offered,
+// the days its plan ran, its rules' levels and records, and the times it agreed in Chat (functions/_times.js)
 export async function dropToday(env, userId) {
   if (!env.DB) return;
-  await env.DB.prepare("DELETE FROM td_push WHERE user_id = ?").bind(userId).run().catch(() => {});
-  await env.DB.prepare("DELETE FROM td_prefs WHERE user_id = ?").bind(userId).run().catch(() => {});
+  for (const t of ["td_push", "td_prefs", "td_acts", "td_plans", "td_rules"]) await env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(userId).run().catch(() => {});
+  await dropTimes(env, userId);
 }
+// (each act as the account can read it: what it was and did, never another account's id; was and now, as kept)
+const actOut = (r) => ({ rule: r.rule, day: r.day, kind: r.kind, state: r.state, level: r.level, said: r.said, made: r.made, undoUntil: r.undo_until,
+  was: parsed(r.was, null), now: parsed(r.now, null) });
+const ruleOut = (r) => ({ rule: r.rule, level: r.level, setBy: r.set_by, levelAt: r.level_at || null,
+  record: { done: r.done, kept: r.kept, undone: r.undone, ignored: r.ignored, held: r.held, keptSince: r.kept_since } });
 // For the account's data (functions/api/account export): the cards as the account has them, its morning notification
-// and how many devices it's on
+// and how many devices it's on; and Today First's: what Today did or offered (acts), its rules with their levels and
+// records, the days its plan has run, and the times agreed in Chat (no ids: the letter's or the friend's)
 export async function todayExport(env, userId) {
   const D = await tddb(env);
-  const [row, devs, u] = await Promise.all([todayPrefs(env, userId), todayDevices(env, userId),
-    D.prepare("SELECT notify_prefs FROM pg_users WHERE id = ?").bind(userId).first().catch(() => null)]);
+  const all = (q) => D.prepare(q).bind(userId).all().then((r) => r.results || [], () => []);
+  const [row, devs, u, acts, rules, plans, times] = await Promise.all([todayPrefs(env, userId), todayDevices(env, userId),
+    D.prepare("SELECT notify_prefs FROM pg_users WHERE id = ?").bind(userId).first().catch(() => null),
+    all("SELECT rule, day, kind, state, level, said, made, undo_until, was, now FROM td_acts WHERE user_id = ? ORDER BY made, id"),
+    all("SELECT rule, level, set_by, done, kept, undone, ignored, held, kept_since, level_at FROM td_rules WHERE user_id = ? ORDER BY rule"),
+    all("SELECT day FROM td_plans WHERE user_id = ? ORDER BY day"),
+    timesExport(env, userId).catch(() => [])]);
   return {
     cards: row.cards,
     morning: { on: !!row.m_on, at: hhmm(row.m_at), timeZone: morningTz({ id: userId, notify_prefs: u?.notify_prefs }, row),
       lines: Object.fromEntries(CARDS.map((k) => [k, row.m_lines[k] !== false])), lastSent: row.m_sent || null },
     devices: devs.length,
+    acts: acts.map(actOut),
+    rules: rules.map(ruleOut),
+    planned: plans.map((r) => r.day),
+    times,
   };
 }

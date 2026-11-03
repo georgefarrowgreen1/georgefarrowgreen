@@ -5,6 +5,11 @@
 // of a letter. And what a card does when what it needs isn't there: MeteoAlarm down (Weather still there, with no
 // warning), Open-Meteo down or its allowance kept for the morning's briefings (Weather's error, with its place, and
 // Open-Meteo not asked), and no price for anything you own (Markets' error). (Today's address stood in for by ifl.test.)
+// And Today First's day with them (?v=2), from real rows: a ride set with Ride At (fx_times) half an hour away, the
+// preride's card; then the same ride ended five minutes ago with its activity waiting from Garmin, the honest after card
+// (no stress until Fitness has it), who wrote while you rode, and who's waiting, by name and never by their words; in
+// between, the ride past its cap with nothing in for it (not in yet, its Coming Up row flagged late). The account's zone
+// is chosen so it's mid-afternoon there now (spec §14.4, layer 3).
 import http from 'http';
 import { execSync } from 'child_process';
 import { acctCall } from './handback.mjs';
@@ -166,6 +171,63 @@ try {
   ok(co.state === 'ok' && co.pigeons === false && co.streak === null && co.share === 'Sending you a message.', 'pigeons off: no streak, and the line to send is plain', JSON.stringify({ pigeons: co.pigeons, streak: co.streak, share: co.share }));
   ok(co.inbound?.length === 1 && co.inbound[0].who.first === 'Sam' && co.unread?.find((u) => u.who?.first === 'Sam')?.messages === 1, 'and letters on their way still shown, and the message still unread', JSON.stringify({ in: co.inbound?.length, un: co.unread }));
   sql(`UPDATE pg_users SET pigeons = 1 WHERE id = '${A}'`);
+
+  // ---- 3b. Today First: the day with the cards (?v=2), from real rows ----
+  {
+    const riley = await signup('Riley Day', 'rileyday', 15), R = idOf('rileyday');
+    // (the account's zone: one where it's 15:00 or so now, so the ride and its activity fall in today's afternoon there)
+    const zoneAt = (hh, at = Date.now()) => { const off = ((hh - new Date(at).getUTCHours() + 36) % 24) - 12; return off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`; };
+    const zone = zoneAt(15), clock = (ms) => new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+    sql(`UPDATE pg_users SET notify_prefs = '{\\"tz\\":\\"${zone}\\"}' WHERE id = '${R}'; INSERT INTO pg_links (a, b, status, created_at) VALUES ('${R}', '${SAM}', 'ok', 0)`);
+    r = await app('weather', 'PUT', '/api/weather/me', riley, { base: 0, data: { places: [{ name: 'London', lat: 51.5072, lon: -0.1276 }], settings: {}, notify: { places: [], brief: null, briefAt: '07:00' } } });
+    ok(r.s === 200, 'Riley’s place kept in Weather', `${r.s}`);
+    // (a first read makes Today First's tables; then the ride, as Fitness's Ride At writes it, 30 minutes from now)
+    r = await cards(riley, '?v=2');
+    ok(r.s === 200 && r.j.v === 2 && r.j.ride === null && typeof r.j.phase === 'string' && Array.isArray(r.j.timeline) && r.j.apps?.mail === false, 'v=2: the day with the cards, no ride yet', `${r.s} ${r.text.slice(0, 300)}`);
+    let now = Date.now();
+    const start = Math.ceil((now + 30 * 60e3) / 300e3) * 300e3, stop = start + 75 * 60e3;
+    sql(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('${R}', '${dayIn(zone, start)}', ${start}, ${stop}, '${zone}', 'ride', 'set', ${now})`);
+    r = await cards(riley, '?v=2');
+    const a = r.j;
+    ok(r.s === 200 && a.phase === 'preride' && a.since === start - 40 * 60e3 && a.until === start, 'Ride At half an hour away: preride, from 40 minutes before it, until it starts', `${r.s} ${JSON.stringify({ phase: a.phase, since: a.since, until: a.until, start })}`);
+    ok(a.ride?.start === start && a.ride.stop === stop && a.ride.secs === 4500 && a.ride.source === 'set' && a.ride.hold === true && a.ride.name === 'Ride', 'the ride: its time from fx_times, held for while you ride', JSON.stringify(a.ride));
+    const pre = a.tops?.preride || {};
+    ok(pre.kind === 'ride' && pre.title === `Ride at ${clock(start)}` && pre.stats?.[0]?.value === '1:15' && pre.share === `My ride today at ${clock(start)}.` && pre.stats.some((x) => x.label === 'Roads' && x.value === 'Dry') && pre.lines?.includes('Messages are held while you ride, except warnings'),
+      'the preride card: the ride, its time, the roads (dry, from the weather where you ride), messages held', JSON.stringify(pre));
+    ok(a.timeline?.[0]?.phase === 'preride' && a.timeline[1]?.phase === 'riding' && a.timeline[1].at === start && a.tops?.riding && a.upcoming?.some((x) => x.id === 'ride' && x.at === start && x.title === 'Ride' && x.href === '/fitness/#today'),
+      'the rest of the day: riding at its start, its card worked out already, the ride in Coming Up', JSON.stringify({ timeline: a.timeline, up: a.upcoming }));
+    ok(a.planning === true && Array.isArray(a.acts), 'its day not yet planned: worked out in the background', JSON.stringify({ planning: a.planning, acts: a.acts }));
+    r = await cards(riley);
+    ok(r.s === 200 && !('v' in r.j) && !('phase' in r.j) && Object.keys(r.j).join() === 'at,tz,cards', 'without v=2: version 1’s answer, the cards alone', Object.keys(r.j).join());
+    // (the same ride, its cap passed ten minutes ago, with nothing in for it: it says so, and Coming Up keeps its row, late)
+    now = Date.now();
+    const s1 = Math.floor((now - 130 * 60e3) / 300e3) * 300e3;
+    sql(`UPDATE fx_times SET day = '${dayIn(zone, s1)}', start = ${s1}, stop = ${s1 + 75 * 60e3} WHERE user_id = '${R}'`);
+    r = await cards(riley, '?v=2');
+    const nin = r.j, row = (nin.upcoming || []).find((x) => x.id === 'ride'), topNow = nin.tops?.[nin.phase] || {};
+    ok(r.s === 200 && nin.ride?.start === s1 && !('doneAt' in nin.ride) && row?.sub === 'Not in yet' && row.late === true && row.at === s1 && row.href === '/fitness/#activities'
+      && (topNow.lines || []).some((l) => l.includes(`${clock(s1)} ride isn’t in yet`)), 'past its cap with nothing in: not in yet, in the top card, and its Coming Up row kept, flagged late',
+      JSON.stringify({ phase: nin.phase, row, lines: topNow.lines }));
+    // (the same ride, ended five minutes ago, its activity waiting from Garmin with its time and distance; Sam wrote during it)
+    now = Date.now();
+    const s2 = Math.floor((now - 80 * 60e3) / 300e3) * 300e3, e2 = s2 + 75 * 60e3;
+    sql(`UPDATE fx_times SET day = '${dayIn(zone, s2)}', start = ${s2}, stop = ${e2} WHERE user_id = '${R}';
+      CREATE TABLE IF NOT EXISTS fx_garmin_new (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER, name TEXT, added INTEGER NOT NULL, size INTEGER NOT NULL DEFAULT 0, sport TEXT, secs INTEGER, dist REAL, PRIMARY KEY (user_id, id));
+      INSERT INTO fx_garmin_new (user_id, id, start, name, added, size, sport, secs, dist) VALUES ('${R}', 'g-v2', ${s2 + 60e3}, 'Afternoon Ride', ${now - 4 * 60e3}, 1000, 'cycling', 4500, 36050);
+      INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, swift, instant, stamped) VALUES ('td-v2-sam', '${SAM}', '${R}', 'SECRET-WHILE-YOU-RODE', 0, ${s2 + 30 * 60e3}, ${s2 + 30 * 60e3}, 0, 1, 1)`);
+    r = await cards(riley, '?v=2');
+    const b = r.j, done = b.tops?.after || {};
+    // (after from when it came in, the row's added, where Fitness's done rows say it; else from its end)
+    const inAt = [s2 + 60e3 + 4500e3, now - 4 * 60e3];
+    ok(r.s === 200 && b.phase === 'after' && inAt.includes(b.since) && b.until === b.since + 90 * 60e3 && b.ride?.doneAt === b.since, 'the activity in from Garmin: after, from when it came in (or its end), for 90 minutes', `${r.s} ${JSON.stringify({ phase: b.phase, since: b.since, inAt, ride: b.ride })}`);
+    ok(done.kind === 'done' && done.lines?.[0] === 'From your watch' && done.lines.includes('Stress and fitness once Fitness has it') && done.stats?.some((x) => x.label === 'Distance' && /^36\.[01] km$/.test(x.value)) && !done.stats.some((x) => x.label === 'Stress')
+      && done.buttons?.some((x) => x.label === 'Open Fitness' && x.href === '/fitness/#activities'), 'the honest after card: time and distance from the watch, no stress until Fitness has it, Open Fitness', JSON.stringify(done));
+    ok(done.wrote?.some((w) => w.id === SAM && w.first === 'Sam') && done.lines.includes('Sam wrote while you rode') && done.buttons.some((x) => x.do === 'answer' && x.href === `/chats/#open=${SAM}`), 'who wrote while you rode, and Answer Sam', JSON.stringify({ wrote: done.wrote, buttons: done.buttons }));
+    ok(b.waiting?.length === 1 && b.waiting[0].id === SAM && b.waiting[0].first === 'Sam' && b.waiting[0].n === 1 && Object.keys(b.waiting[0]).sort().join() === 'at,first,id,n', 'Waiting for You: Sam, by name and when, nothing more', JSON.stringify(b.waiting));
+    ok(!/SECRET/.test(r.text), 'and never a word of what Sam said');
+    const dc = done.sendCard ? JSON.parse(Buffer.from(done.sendCard, 'base64url').toString()) : null;
+    ok(dc?.kind === 'fitness' && dc.snap?.done?.secs === 4500 && dc.snap.done.dist === 36050 && !('tss' in dc.snap.done), 'the finished ride’s card for Chat: only what’s known', JSON.stringify(dc?.snap));
+  }
 
   // ---- 4. When what a card needs isn't there ----
   warn = 'down';

@@ -200,7 +200,7 @@ async function view(env, u) {
 // asked of it from the page (the admin's alone). Each app's devices are each its own: how many it's on, said ----
 const CHAT_KINDS = ["messages", "landed", "takeoff", "rerouted", "lost", "delays", "requests", "accepted", "reactions", "moments", "streaks", "weekly"];
 const near = (a, b) => a && b && Math.abs(a.lat - b.lat) < 0.006 && Math.abs(a.lon - b.lon) < 0.006;
-async function notifySettings(env, u) {
+export async function notifySettings(env, u) {
   const D = await db(env), p = prefsOf(u), wx = (await weatherOf(env, u.id)).data || {}, n = wx.notify || {}, solar = wx.settings?.solar;
   const none = (x, v) => x.catch(() => v);
   const [chatOn, wxOn, fm, admin, mk, td, tdOn] = await Promise.all([
@@ -230,7 +230,7 @@ async function notifySettings(env, u) {
     today: { on: !!td?.m_on, at: td?.m_at ?? 420, devices: tdOn, lines: Object.fromEntries(["weather", "fitness", "chat", "markets"].map((k) => [k, td?.m_lines?.[k] !== false])) },
   };
 }
-async function setNotify(env, u, b) {
+export async function setNotify(env, u, b) {
   const D = await db(env);
   if (b.quiet !== undefined) {
     const q = b.quiet && typeof b.quiet === "object" ? b.quiet : null;
