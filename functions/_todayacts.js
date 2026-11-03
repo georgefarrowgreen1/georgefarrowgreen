@@ -4,8 +4,10 @@
 // read never both act). The rules in milestone 1: moveRide (a clash moved), addRide (a habit ride added, holding nothing
 // until a tap keeps it), holdRide (functions/_busy.js), and rideThen (an offer, not a rule). Writes never touch
 // fx_state: a move changes fx_times or an offer's times, an add is an fx_offers row (functions/_fitshare.js).
-//   planDay(env, u, t, deps = {}) → { acts }: claims the day, tallies, then the clash, Ride Then and the habit (deps:
-//     stand-ins for pastWet, hoursAt and bestWindow, for tests)
+//   planDay(env, u, t, deps = {}) → { acts, left? }: claims the day, tallies, then the clash, Ride Then and the habit
+//     (deps: stand-ins for pastWet, hoursAt and bestWindow, for tests; and left, () => the ms the plan has left, the
+//     morning's tick's deadline: its waits on the weather cut short there, and the habit, short of it, left for a later
+//     run with the day given back: left: true)
 //   actTake(env, u, { id }, { t }) → { act, rule: { rule, level, line } }       (POST today/act: Take, or Keep)
 //   actUndo(env, u, { id }, { t }) → { act, rule, said }                         (POST today/act/undo; restores only
 //     what's unchanged since, in one guarded batch, else says "You’ve changed it since, so nothing was undone.")
@@ -14,6 +16,9 @@
 //   actsFor(env, userId, day) → the day's acts: [{ id, rule, kind, state, level, said, undoUntil, target, was, now, day }]
 //     (those planned that day, and a ride Today added for that day on an earlier one, so its day can Keep it)
 //   planned(env, userId, day) → whether the day's plan has run (its td_plans row)
+//   hasPlanned(env, userId) → whether any of the account's days has been planned: the morning's tick acts only for
+//     an account whose Today has planned a day itself first (spec §15.4: MAIN goes live before Today 1.09; 1.08 has no Undo)
+//   tidyOffers(env, userId, t, { made }) → how many of Today's own rides with no act to undo them by were answered no
 //   ruleLevel(env, userId, rule) → "do" | "suggest" | "quiet" (no row, or no table yet: "do")
 //   levelOf(rec, t, { undo }) → { level, changed }: a rule's level from its record (below); clashOf(ride, timed) → the
 //     first timed thing a ride runs into, or null; habitRide(env, u, t, tz, deps) → the habit ride to add, or null;
@@ -32,7 +37,7 @@
 import { HttpError } from "./_http.js";
 import { tddb, todayPrefs, morningTz } from "./_today.js";
 import { timeFor, setTimeQ, dropTimeQ, explicitRide } from "./_fittimes.js";
-import { offersFor, addTodayOffer, setOfferTimesQ, takeOffer, answerOffer, answerOfferQ } from "./_fitshare.js";
+import { offersFor, addTodayOffer, setOfferTimesQ, takeOffer, answerOffer, answerOfferQ, offersReady } from "./_fitshare.js";
 import { timesFor } from "./_times.js";
 import { pastWet as realPastWet, hoursAt as realHoursAt } from "./_fitwx.js";
 import { snapshotOf } from "./_fittoday.js";
@@ -51,6 +56,11 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR, WEEK = 7 * DAY, MONTH = 30 *
 const KEEP_ACTS = 60 * DAY;
 // (a ride's acted on only when it starts at least this far off; a clash is a timed thing within this of a ride)
 const AHEAD = HOUR, NEAR = 15 * MIN;
+// (what Today does on its own can be undone for an hour at least from when it's done (the morning's push says "Undo on
+// Today"), and never once the ride's begun: a ride is acted on only an hour or more off, so both hold)
+const UNDO_LEAST = HOUR;
+// (a plan with a deadline begins the habit only with this much of it left: the habit waits on the weather twice)
+const HABIT_LEFT = 5e3;
 const DAYKEY = /^\d{4}-\d\d-\d\d$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const parsed = (s) => { if (s == null) return null; try { return JSON.parse(s); } catch (_) { return null; } };
@@ -166,6 +176,29 @@ export async function planned(env, userId, day) {
   const D = await tddb(env);
   return !!(await D.prepare("SELECT 1 AS ok FROM td_plans WHERE user_id = ? AND day = ?").bind(userId, day).first());
 }
+// Whether any day of the account's has been planned. The morning's tick plans an account's day only where one has
+// been (functions/_todaymorning.js): the first is always planned by Today's own read of the day (functions/_todayday.js
+// dayFor, Today 1.09's), so Today acts only for those whose Today can show what it did and undo it (spec §15.4: MAIN
+// goes live first, while Today 1.08, which has no Undo, is still what people have).
+export async function hasPlanned(env, userId) {
+  const D = await tddb(env);
+  return !!(await D.prepare("SELECT 1 AS ok FROM td_plans WHERE user_id = ? LIMIT 1").bind(userId).first());
+}
+// Today's own rides left with no act to undo them by (the offer made, then its act's row refused: the tick's share of
+// the database spent between the two, or the tick cut off there): each answered no while it's still just as it was
+// made, so Fitness never adds a ride Today can't undo. made: only those made at that moment (a plan's own, stopped part
+// way); else those made before t (a later plan's tidying). → how many were answered
+export async function tidyOffers(env, userId, t, { made = null } = {}) {
+  need(t, "tidyOffers");
+  const D = await tddb(env);
+  await offersReady(env);
+  const { results } = await D.prepare(`SELECT o.id, o.start, o.stop, o.state FROM fx_offers o WHERE o.user_id = ?1 AND o.role = 'today' AND o.state IN ('new', 'yes')
+    AND o.taken = 0 AND o.until > ?2 AND ${made == null ? "o.made < ?2" : "o.made = ?3"} AND NOT EXISTS (SELECT 1 FROM td_acts a WHERE a.user_id = ?1 AND a.rule = 'addRide'
+      AND (CASE WHEN json_valid(a.now) THEN json_extract(a.now, '$.offer') END) = o.id) LIMIT 10`).bind(userId, t, ...(made == null ? [] : [made])).all();
+  if (!results?.length) return 0;
+  const qs = await Promise.all(results.map((o) => answerOfferQ(env, userId, o.id, "no", { t, expect: { start: o.start, stop: o.stop, state: o.state } })));
+  return (await D.batch(qs)).filter((r) => r?.meta?.changes).length;
+}
 export async function ruleLevel(env, userId, rule) {
   try {
     const D = await tddb(env), r = await D.prepare("SELECT level FROM td_rules WHERE user_id = ? AND rule = ?").bind(userId, String(rule ?? "")).first();
@@ -196,7 +229,7 @@ const timeRowOf = (x) => ({ day: x.day, start: x.start, stop: x.stop, tz: x.tz, 
 // Fitness's days)
 function contextFor(env, u, t, tz, day, deps, D) {
   const memo = new Map(), once = (k, f) => { if (!memo.has(k)) memo.set(k, f()); return memo.get(k); };
-  const ctx = { env, u, uid: u.id, t, tz, day, d: deps, D, acts: [] };
+  const ctx = { env, u, uid: u.id, t, tz, day, d: deps, D, acts: [], forget: (k) => memo.delete(k) };
   ctx.offers = () => once("offers", () => offersFor(env, u.id, { today: true, t }));
   ctx.snap = () => once("snap", () => snapshotOf(env, u.id).catch(() => null));
   ctx.home = () => once("home", async () => {
@@ -208,12 +241,23 @@ function contextFor(env, u, t, tz, day, deps, D) {
   ctx.hh = (ms) => hhmm(tz, ms);
   return ctx;
 }
-const withDeps = (deps) => ({ pastWet: realPastWet, hoursAt: realHoursAt, bestWindow: realBestWindow, ...deps });
+// (a plan with a deadline, deps.left: () => the ms it has left (the morning's tick gives each account's its share): its
+// waits on the weather cut short there, answered as none to be had)
+const cutAt = (left, f) => async (...a) => {
+  let timer = null;
+  try { return await Promise.race([f(...a), new Promise((ok) => { timer = setTimeout(() => ok(null), Math.max(0, Number(left()) || 0)); })]); }
+  finally { clearTimeout(timer); }
+};
+const withDeps = (deps) => {
+  const d = { pastWet: realPastWet, hoursAt: realHoursAt, bestWindow: realBestWindow, ...deps };
+  return typeof d.left === "function" ? { ...d, hoursAt: cutAt(d.left, d.hoursAt), pastWet: cutAt(d.left, d.pastWet) } : d;
+};
 
 // The day's plan, for an account (u: { id, notify_prefs }), at t: claims the day first (another run that has it already
 // leaves this one nothing to do), tallies what's kept and ignored, steps the rules' levels, then acts: the clash, Ride
 // Then and the habit. Idempotent besides (an act a rule, day and target). One that fails part way gives the day back, so
-// a later run (the next tick, the next read) does what's left. → { acts } (the acts made)
+// a later run (the next tick, the next read) does what's left; so does one short of its deadline (deps.left) when the
+// habit's still to do. → { acts (the acts made), left: true (given back, short of time) }
 export async function planDay(env, u, t, deps = {}) {
   need(t, "planDay");
   const D = await tddb(env), row = await todayPrefs(env, u.id), tz = zoneOf(morningTz(u, row)), day = dayIn(tz, t);
@@ -224,6 +268,10 @@ export async function planDay(env, u, t, deps = {}) {
     await tally(ctx);
     await moveRides(ctx);
     await rideThen(ctx);
+    if (typeof ctx.d.left === "function" && ctx.d.left() < HABIT_LEFT) {
+      await D.prepare("DELETE FROM td_plans WHERE user_id = ? AND day = ? AND at = ?").bind(u.id, day, t).run();
+      return { acts: ctx.acts, left: true };
+    }
     await addRide(ctx);
     return { acts: ctx.acts };
   } catch (e) {
@@ -234,7 +282,10 @@ export async function planDay(env, u, t, deps = {}) {
 
 // A done or taken act past undo_until is kept (kept, and kept since the level's last change, counted); one offered and
 // left past it is ignored (counted). Then each rule's level stepped, where its record says so. Acts older than 60 days go.
-async function tally({ D, uid, t, day }) {
+// And any of Today's own rides an earlier plan left with no act (tidyOffers) answered no, before the habit looks again.
+async function tally(ctx) {
+  const { D, env, uid, t, day } = ctx;
+  if ((await ctx.offers()).some((o) => o.role === "today" && !o.taken) && await tidyOffers(env, uid, t)) ctx.forget("offers");
   const due = "a.user_id = td_rules.user_id AND a.rule = td_rules.rule AND a.undo_until <= ?2";
   await D.batch([
     D.prepare("INSERT OR IGNORE INTO td_rules (user_id, rule) VALUES (?1, 'moveRide'), (?1, 'addRide'), (?1, 'holdRide')").bind(uid),
@@ -287,9 +338,14 @@ function whatOf(x, names, hh) {
   return named ? `${who}’s call` : `your ${hh(x.start)} call`;
 }
 // An explicit own ride of today's (the day's fx_times row, or a kept ride of Today's own), starting at least an hour
-// from now, that runs into a call, a meeting or an agreed ride: at do, moved to the best free time today (the same
-// length; daylight; earlier preferred), with Undo; at suggest, offered; at quiet, the line alone. No clear time: said
-// so, at no level. An agreed ride with a friend is never moved: the line alone.
+// from now, that runs into a call, a meeting or another agreed ride: at do, moved to the best free time today (the
+// same length; daylight; as near its own time as is clear and dry, earlier first), with Undo; at suggest, offered; at
+// quiet, the line alone. No clear time: said so, at no level. An agreed ride with a friend is never moved: the line
+// alone. Nor is an own ride that overlaps one: it's that ride (as Today's day has them, functions/_todayday.js: an
+// agreed ride wins over a time it overlaps, and a time beside one still waiting is a ride with that friend), so it's
+// checked against the calls alone, and said once: by the agreed ride's own line where that's agreed (yes), else by
+// its own.
+const whyOf = (c) => ({ kind: c.kind, who: c.who || "", start: c.start });
 async function moveRides(ctx) {
   const { env, uid, t, tz, day } = ctx, span = spanOf(tz, day), offers = await ctx.offers();
   const own = [], time = await timeFor(env, uid, day);
@@ -302,33 +358,51 @@ async function moveRides(ctx) {
   const timed = [...calls, ...agreed.map((o) => ({ kind: "ride", start: o.start, stop: o.stop, who: o.who, id: `offer:${o.id}` }))];
   if (!timed.length) return;
   let level = null;
+  const lined = new Set();
   for (const ride of own.sort((a, b) => a.start - b.start)) {
+    const same = agreed.filter((o) => o.start < ride.stop && ride.start < o.stop);
+    if (same.length) {
+      if (same.some((o) => o.state === "yes")) continue;
+      const clash = clashOf(ride, calls);
+      if (!clash) continue;
+      for (const o of same) lined.add(o.id);
+      if (await actExists(ctx, "moveRide", ride.target)) continue;
+      await sayOnly(ctx, { rule: "moveRide", target: ride.target, kind: "move", level: "none", was: ride.was, now: { ...ride.was, why: whyOf(clash) },
+        said: `Your ride with ${same[0].who} at ${ctx.hh(ride.start)} runs into ${whatOf(clash, true, ctx.hh)} at ${ctx.hh(clash.start)}` });
+      continue;
+    }
     const clash = clashOf(ride, timed);
     if (!clash || await actExists(ctx, "moveRide", ride.target)) continue;
     level ??= await ruleLevel(env, uid, "moveRide");
     await moveOne(ctx, ride, clash, timed, own, level);
   }
   for (const o of agreed) {
-    const clash = o.start >= t + AHEAD && clashOf(o, calls), target = `offer:${o.id}`;
+    const clash = o.start >= t + AHEAD && !lined.has(o.id) && clashOf(o, calls), target = `offer:${o.id}`;
     if (!clash || await actExists(ctx, "moveRide", target)) continue;
-    await sayOnly(ctx, { rule: "moveRide", target, kind: "move", level: "none", was: null, now: { offer: o.id, day, start: o.start, stop: o.stop, state: o.state, why: { kind: clash.kind, who: clash.who || "", start: clash.start } },
+    await sayOnly(ctx, { rule: "moveRide", target, kind: "move", level: "none", was: null, now: { offer: o.id, day, start: o.start, stop: o.stop, state: o.state, why: whyOf(clash) },
       said: `Your ride with ${o.who} at ${ctx.hh(o.start)} runs into ${whatOf(clash, true, ctx.hh)} at ${ctx.hh(clash.start)}` });
   }
 }
 // The best free time today for a ride: clear of every timed thing by 15 minutes, of the day's other rides, and of the
-// next hour → { start } | { none: true } (no clear time) | { unknown: true } (no place, or its weather not to be had)
+// next hour; as near the ride's own time as one's clear and dry (within an hour of it, then two, and so on to six: the
+// best of each, earlier first), else the best of the day → { start } | { none: true } (no clear time) | { unknown: true }
+// (no place, or its weather not to be had)
+const NEARBY = [1, 2, 3, 4, 5, 6].map((h) => h * HOUR);
 async function freeTime(ctx, ride, timed, own) {
   const { t } = ctx, wx = await ctx.wx();
   if (!wx?.hours?.length) return { unknown: true };
   const avoid = [[t - DAY, t + AHEAD], ...timed.map((x) => [x.start - NEAR, x.stop + NEAR]), ...own.filter((o) => o !== ride).map((o) => [o.start, o.stop])];
-  const len = ride.stop - ride.start;
-  const w = ctx.d.bestWindow(wx, { secs: Math.round(len / 1000), now: t, sport: ride.sport === "run" ? "run" : "ride", avoid });
+  const len = ride.stop - ride.start, opts = { secs: Math.round(len / 1000), now: t, sport: ride.sport === "run" ? "run" : "ride" };
+  const near = (r) => ctx.d.bestWindow(wx, { ...opts, avoid: [...avoid, [t - DAY, ride.start - r], [ride.stop + r, t + 2 * DAY]] });
+  let w = null;
+  for (const r of NEARBY) { const x = near(r); if (x?.dry) { w = x; break; } }
+  w ||= ctx.d.bestWindow(wx, { ...opts, avoid });
   const start = w?.start, tz = ride.was?.tz || ctx.tz;
   if (!Number.isFinite(start) || start < t + AHEAD || start % (5 * MIN) || dayIn(zoneOf(tz), start) !== ctx.day || clashOf({ start, stop: start + len }, timed)) return { none: true };
   return { start };
 }
 async function moveOne(ctx, ride, clash, timed, own, level) {
-  const { env, D, uid, t, day } = ctx, hh = ctx.hh, why = { kind: clash.kind, who: clash.who || "", start: clash.start };
+  const { env, D, uid, t, day } = ctx, hh = ctx.hh, why = whyOf(clash);
   const line = `Your ride at ${hh(ride.start)} runs into ${whatOf(clash, true, hh)} at ${hh(clash.start)}`;
   const base = { rule: "moveRide", target: ride.target, kind: "move", was: ride.was };
   if (level === "quiet") return sayOnly(ctx, { ...base, level: "quiet", now: { ...ride.was, why }, said: line });
@@ -336,7 +410,7 @@ async function moveOne(ctx, ride, clash, timed, own, level) {
   if (!free.start) return sayOnly(ctx, { ...base, level: "none", now: { ...ride.was, why }, said: free.none ? `${line}, and there’s no clear time left today to move it to` : line });
   const start = free.start, stop = start + (ride.stop - ride.start);
   const now = ride.kind === "time" ? { ...ride.was, start, stop, source: "moved", why } : { ...ride.was, start, stop, why };
-  const act = { ...base, id: crypto.randomUUID(), uid, day, now, made: t, undoUntil: Math.max(t + NEAR, Math.min(start, ride.start) - HOUR) };
+  const act = { ...base, id: crypto.randomUUID(), uid, day, now, made: t, undoUntil: Math.max(t + UNDO_LEAST, Math.min(start, ride.start) - HOUR) };
   if (level === "suggest") {
     const r = await actInsert(D, { ...act, state: "offered", level, said: `${line}; ${hh(start)} is clear` }).run();
     if (r.meta?.changes) ctx.acts.push({ ...act, state: "offered", level });
@@ -469,7 +543,7 @@ async function addRide(ctx) {
   const act = { id: crypto.randomUUID(), uid, rule: "addRide", day, target: `day:${h.day}`, kind: "add", state: at === "do" ? "done" : "offered", level: at,
     was: { planned: h.planned }, now: { offer, day: h.day, start: h.start, stop: h.stop, state, secs: h.secs, k: h.k, n: h.n },
     said: at === "do" ? `Added: a ride ${whenOf(h.dd, h.weekday)} at ${hh} · ${why}` : `A ride ${whenOf(h.dd, h.weekday)} at ${hh} · ${why}`,
-    made: t, undoUntil: Math.max(t + NEAR, h.start - HOUR) };
+    made: t, undoUntil: Math.max(t + UNDO_LEAST, h.start - HOUR) };
   let ins = null;
   try {
     [ins] = await D.batch([actInsert(D, act), ...(at === "do" ? [D.prepare("UPDATE td_rules SET done = done + 1 WHERE user_id = ? AND rule = 'addRide' AND EXISTS (SELECT 1 FROM td_acts WHERE id = ?)").bind(uid, act.id)] : [])]);
@@ -548,8 +622,16 @@ async function takeThen(env, D, u, a, t, d) {
   if (!Number.isFinite(start) || start < t || start % (5 * MIN) || dayIn(tz, start) !== day) throw new HttpError(409, "There’s no good time left today.");
   const row = { day, start, stop: start + len, tz, sport: now.sport === "run" ? "run" : "ride", source: "today" };
   const write = await setTimeQ(env, uid, row, { t });
-  const r = await D.batch([stateQ(D, a, "taken", null, { now: JSON.stringify(row), said: `Riding at ${hhmm(tz, start)}`, undo_until: Math.max(t + NEAR, start - HOUR) }), write]);
-  if (!r[0]?.meta?.changes && (await reread(D, a)).state === "offered") throw new HttpError(409, "That’s been done already.");
+  // (the act claimed first, and only while the day still has no time: a second tap, or Ride At in Fitness while the
+  // weather was asked for, has one, and that's kept. Then the time written, and the claim given back if that fails)
+  const none = { sql: "NOT EXISTS (SELECT 1 FROM fx_times WHERE user_id = ?1 AND day = ?2)", args: [uid, day], from: 1 };
+  const claim = await stateQ(D, a, "taken", none, { now: JSON.stringify(row), said: `Riding at ${hhmm(tz, start)}`, undo_until: Math.max(t + NEAR, start - HOUR) }).run();
+  if (!claim.meta?.changes) throw new HttpError(409, (await reread(D, a)).state === "offered" ? "Your ride has a time already." : "That’s been done already.");
+  try { await write.run(); }
+  catch (e) {
+    await stateQ(D, { ...a, state: "taken" }, "offered", null, { now: a.now == null ? null : JSON.stringify(a.now), said: a.said, undo_until: a.undoUntil }).run().catch(() => {});
+    throw e;
+  }
 }
 async function keep(env, D, uid, a, t) {
   if (!a.now?.offer || !(await takeOffer(env, uid, a.now.offer, { t }))) throw new HttpError(409, "That ride has changed in Fitness since.");

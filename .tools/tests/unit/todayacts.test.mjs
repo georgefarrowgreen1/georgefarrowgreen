@@ -2,11 +2,13 @@
 // SQLite in memory, standing in for D1, with the site's schema), the weather stood in for through planDay's deps: the
 // day's plan claimed once (td_plans), so the morning's tick and a page read never both act, and idempotent besides; acts
 // only on rides an hour or more off; a clash moved at do (an explicit own ride only: the day's fx_times row or a kept
-// ride of Today's own; an agreed ride with a friend never), offered at suggest, the line alone at quiet, and said with
-// no act when no time is free; the habit adding a ride at 6 of 8 dry weeks, offering one at 4, nothing at 3, indoor
+// ride of Today's own; an agreed ride with a friend never, nor your own that overlaps one, which is that ride), as near
+// its own time as is clear and dry, with an hour's Undo at least, offered at suggest, the line alone at quiet, and said
+// with no act when no time is free; a plan with a deadline (the morning's tick's) waiting no longer on the weather, and
+// leaving the habit for later with the day given back; a ride of Today's own left with no act answered no; the habit adding a ride at 6 of 8 dry weeks, offering one at 4, nothing at 3, indoor
 // rides not counted, a wet or planned day skipped; Take, Keep and Undo, which restores only what's unchanged since,
-// once however many ask at once, and never another account's; what's kept and ignored tallied; Ride Then; and the
-// account's export and drop.
+// once however many ask at once, and never another account's; what's kept and ignored tallied; Ride Then, whose Take
+// writes one time however many tap and keeps a time set meanwhile; and the account's export and drop.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -101,23 +103,91 @@ test("a clash at do: the ride moved to the best free time today (the same length
   assert.deepEqual(seen.map((a) => [a.id, a.state, a.undoUntil, a.day]), [[x.id, "done", x.undo_until, TODAY]]);
 });
 
-test("acts only on a ride starting an hour or more from now; an agreed ride with a friend is never moved, only said; one of your own that runs into it is", async () => {
+test("acts only on a ride starting an hour or more from now; an agreed ride with a friend is never moved, only said", async () => {
   const soon = await account();
   await rideAt(soon, T + 30 * MIN); call(soon, T + 45 * MIN);
   assert.deepEqual((await A.planDay(env, soon, T, deps())).acts, [], "starting in 30 minutes: left alone");
   assert.equal((await timeFor(env, soon.id, TODAY)).source, "set");
 
   const u = await account();
-  const leo = agreed(u, london(TODAY, 15), 2), mine = london(TODAY, 16);
+  const leo = agreed(u, london(TODAY, 15), 2);
   call(u, london(TODAY, 16, 30));
-  await rideAt(u, mine, 60);
   await A.planDay(env, u, T, deps(week()));
-  const xs = acts(u), moved = xs.find((a) => a.target === `time:${TODAY}`), line = xs.find((a) => a.target === `offer:${leo}`);
-  assert.equal(moved.state, "done");
-  assert.ok((await timeFor(env, u.id, TODAY)).start < london(TODAY, 14, 45), "your own moved clear of Leo's ride and the call");
-  assert.deepEqual({ state: line.state, level: line.level }, { state: "said", level: "none" });
+  const [line] = acts(u);
+  assert.deepEqual({ target: line.target, state: line.state, level: line.level }, { target: `offer:${leo}`, state: "said", level: "none" });
   assert.equal(line.said, "Your ride with Leo at 15:00 runs into Mira’s call at 16:30");
   assert.deepEqual([offer(leo).start, offer(leo).stop], [london(TODAY, 15), london(TODAY, 17)], "Leo's ride as it was");
+});
+
+test("your own ride that overlaps a ride agreed with a friend is that ride: never moved, said once against the calls alone; one beside it is moved clear of it", async () => {
+  // (Leo's ride added in Fitness, then Ride At set on the day to just that: it doesn't run into itself)
+  const same = await account();
+  const leo = agreed(same, london(TODAY, 14), 2);
+  await rideAt(same, london(TODAY, 14), 120);
+  assert.deepEqual((await A.planDay(env, same, T, deps(week()))).acts, [], "nothing to do");
+  assert.deepEqual(await timeFor(env, same.id, TODAY), { day: TODAY, start: london(TODAY, 14), stop: london(TODAY, 16), tz: TZ, sport: "ride", source: "set" });
+  assert.deepEqual([offer(leo).start, offer(leo).stop], [london(TODAY, 14), london(TODAY, 16)]);
+
+  // (the same, with a call in the middle of it: said once, as Leo's ride, and nothing moved)
+  const called = await account();
+  const leo2 = agreed(called, london(TODAY, 14), 2);
+  await rideAt(called, london(TODAY, 14), 120); call(called, london(TODAY, 14, 30));
+  await A.planDay(env, called, T, deps(week()));
+  assert.deepEqual(acts(called).map((a) => [a.target, a.state, a.level, a.said]), [[`offer:${leo2}`, "said", "none", "Your ride with Leo at 14:00 runs into Mira’s call at 14:30"]]);
+  assert.equal((await timeFor(env, called.id, TODAY)).source, "set", "not moved");
+  assert.equal(rule(called, "moveRide").done, 0);
+
+  // (partly overlapping: Leo's 15:00 to 17:00, yours 16:00 to 17:00, a call at 16:30)
+  const part = await account();
+  const leo3 = agreed(part, london(TODAY, 15), 2);
+  await rideAt(part, london(TODAY, 16), 60); call(part, london(TODAY, 16, 30));
+  await A.planDay(env, part, T, deps(week()));
+  assert.deepEqual(acts(part).map((a) => [a.target, a.state, a.said]), [[`offer:${leo3}`, "said", "Your ride with Leo at 15:00 runs into Mira’s call at 16:30"]]);
+  assert.deepEqual(await timeFor(env, part.id, TODAY), { day: TODAY, start: london(TODAY, 16), stop: london(TODAY, 17), tz: TZ, sport: "ride", source: "set" });
+
+  // (beside a ride Leo's still to agree (new): your time is the ride with Leo, said as yours, once)
+  const waiting = await account();
+  const leo4 = agreed(waiting, london(TODAY, 14), 2, "Leo", "new");
+  await rideAt(waiting, london(TODAY, 13, 30), 90); call(waiting, london(TODAY, 14, 30));
+  await A.planDay(env, waiting, T, deps(week()));
+  assert.deepEqual(acts(waiting).map((a) => [a.target, a.state, a.level, a.said]), [[`time:${TODAY}`, "said", "none", "Your ride with Leo at 13:30 runs into Mira’s call at 14:30"]]);
+  assert.equal((await timeFor(env, waiting.id, TODAY)).start, london(TODAY, 13, 30));
+  assert.equal(offer(leo4).start, london(TODAY, 14));
+
+  // (one of yours that doesn't overlap Leo's, but starts within 15 minutes of its end: another ride, moved clear of it)
+  const beside = await account();
+  agreed(beside, london(TODAY, 15), 2);
+  await rideAt(beside, london(TODAY, 17, 10), 60);
+  await A.planDay(env, beside, T, deps(week()));
+  const [x] = acts(beside);
+  assert.deepEqual({ target: x.target, state: x.state }, { target: `time:${TODAY}`, state: "done" });
+  assert.equal(x.said, "Moved your ride to 13:00, clear of your ride with Leo");
+  assert.equal((await timeFor(env, beside.id, TODAY)).start, london(TODAY, 13), "the nearest clear hour before Leo's ride, 15 minutes clear of it");
+});
+
+test("a move lands as near the ride's own time as is clear, not at the first free hour; its Undo lasts an hour at least, and never past the ride", async () => {
+  // (planned at 07:00, a ride at 16:00 and a call at 16:30, every hour dry: 15:00, not 08:00)
+  const u = await account();
+  await rideAt(u, london(TODAY, 16), 60); call(u, london(TODAY, 16, 30));
+  await A.planDay(env, u, T, deps(week()));
+  const [x] = acts(u);
+  assert.equal((await timeFor(env, u.id, TODAY)).start, london(TODAY, 15));
+  assert.equal(x.undo_until, london(TODAY, 14), "Undo until an hour before");
+  // (a ride at 08:10, just over an hour off, and a call at 08:30: moved to 10:00, Undo until 08:00, an hour from the plan
+  // and before the ride)
+  const v = await account();
+  await rideAt(v, london(TODAY, 8, 10), 30); call(v, london(TODAY, 8, 30));
+  await A.planDay(env, v, T, deps(week()));
+  const [y] = acts(v);
+  assert.equal(y.state, "done");
+  assert.equal((await timeFor(env, v.id, TODAY)).start, london(TODAY, 10));
+  assert.equal(y.undo_until, T + H);
+  assert.ok(y.undo_until <= london(TODAY, 8, 10));
+  // (and where the near hours are wet, the nearest dry one, further off: rain from 12:00 to 15:00, a ride at 14:00)
+  const w = await account();
+  await rideAt(w, london(TODAY, 14), 60); call(w, london(TODAY, 14, 30));
+  await A.planDay(env, w, T, deps(week((t) => t >= Date.UTC(2026, 10, 2, 12) && t < Date.UTC(2026, 10, 2, 15))));
+  assert.equal((await timeFor(env, w.id, TODAY)).start, london(TODAY, 16), "16:00, the nearest dry hour clear of the call (11:00 is further)");
 });
 
 test("at suggest: offered (Move It), nothing moved until Take; then the record counts it; Undo after a hand change restores nothing and says so", async () => {
@@ -382,6 +452,78 @@ test("Ride Then: today's session with no time offered; taken, set to the best ti
   await rideAt(v, london(TODAY, 12));
   await assert.rejects(A.actTake(env, v, { id: acts(v)[0].id }, { t: T + H, deps: deps() }), (e) => e.status === 409);
   assert.equal((await timeFor(env, v.id, TODAY)).start, london(TODAY, 12));
+});
+
+test("Ride Then's Take: two at once give one time; a ride set in Fitness while the weather's asked for is kept, and the offer stays", async () => {
+  const SESSION = { tz: TZ, units: "metric", days: { [TODAY]: { state: "session", id: "rh:endurance:75", sport: "ride", name: "Endurance 75", kind: "Endurance", secs: 4500, tss: 60 } } };
+  const u = await account();
+  await setSnapshot(env, u.id, SESSION);
+  await A.planDay(env, u, T, deps());
+  const [x] = acts(u);
+  const both = await Promise.allSettled([A.actTake(env, u, { id: x.id }, { t: T + H, deps: deps() }), A.actTake(env, u, { id: x.id }, { t: T + H, deps: deps() })]);
+  assert.deepEqual(both.map((r) => r.status).sort(), ["fulfilled", "rejected"]);
+  assert.equal(both.find((r) => r.status === "rejected").reason.status, 409);
+  const [taken] = acts(u), time = await timeFor(env, u.id, TODAY);
+  assert.equal(taken.state, "taken");
+  assert.deepEqual({ start: time.start, stop: time.stop, source: time.source }, { start: taken.now.start, stop: taken.now.stop, source: "today" }, "the time is the act's");
+  assert.equal((await A.actUndo(env, u, { id: x.id }, { t: T + 2 * H })).said, "Undone. Your ride has no time again.", "so its Undo works");
+
+  // (Ride At in Fitness at 12:00, set while Take was asking for the weather)
+  const v = await account();
+  await setSnapshot(env, v.id, SESSION);
+  await A.planDay(env, v, T, deps());
+  const [y] = acts(v);
+  const meanwhile = { hoursAt: async () => { await rideAt(v, london(TODAY, 12)); return RAINY_MORNING; }, pastWet: async () => null };
+  await assert.rejects(A.actTake(env, v, { id: y.id }, { t: T + H, deps: meanwhile }), (e) => e.status === 409 && e.message === "Your ride has a time already.");
+  assert.deepEqual(await timeFor(env, v.id, TODAY), { day: TODAY, start: london(TODAY, 12), stop: london(TODAY, 13, 15), tz: TZ, sport: "ride", source: "set" }, "your own time kept");
+  assert.equal(acts(v)[0].state, "offered", "the offer as it was");
+});
+
+test("a plan with a deadline: the weather waited for no longer, the habit left for a later run with the day given back when it's short", async () => {
+  // (short already: the clash done (the weather's at hand), the habit not begun, the day given back; the next run adds it)
+  const u = await habitual(6);
+  await rideAt(u, london(TODAY, 16), 60); call(u, london(TODAY, 16, 30));
+  const r = await A.planDay(env, u, T, { ...deps(week()), left: () => 0 });
+  assert.equal(r.left, true);
+  assert.deepEqual(acts(u).map((a) => [a.rule, a.state]), [["moveRide", "done"]]);
+  assert.equal(await A.planned(env, u.id, TODAY), false, "the day given back");
+  const again = await A.planDay(env, u, T + MIN, deps(week()));
+  assert.deepEqual(again.acts.map((a) => a.rule), ["addRide"], "the habit, and the clash not done twice");
+  assert.equal(await A.planned(env, u.id, TODAY), true);
+  // (the weather slow to come: cut short at the deadline, so the clash is said, and the plan's over at once)
+  const v = await account();
+  await rideAt(v, london(TODAY, 18)); call(v, london(TODAY, 18, 30));
+  const slow = { hoursAt: () => new Promise((ok) => { setTimeout(() => ok(week()), 3000).unref(); }), pastWet: async () => null };
+  const by = Date.now() + 200, began = Date.now();
+  await A.planDay(env, v, T, { ...slow, left: () => by - Date.now() });
+  assert.ok(Date.now() - began < 1500, `over in ${Date.now() - began} ms`);
+  assert.deepEqual(acts(v).map((a) => [a.state, a.level, a.said]), [["said", "none", "Your ride at 18:00 runs into Mira’s call at 18:30"]]);
+  assert.equal((await timeFor(env, v.id, TODAY)).start, london(TODAY, 18));
+});
+
+test("a ride of Today's own left with no act (a plan stopped between the two) is answered no by the next plan, which adds it again with its act; one with an act, or kept, is never touched", async () => {
+  const u = await habitual(6);
+  const orphan = await addTodayOffer(env, u.id, { start: london("2026-11-05", 10), stop: london("2026-11-05", 12), tz: TZ, sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, state: "yes" }, { t: T - 5 * MIN });
+  await A.planDay(env, u, T, deps(week()));
+  assert.equal(offer(orphan).state, "no", "the one with no act answered no");
+  const [x] = acts(u);
+  assert.deepEqual({ rule: x.rule, state: x.state, target: x.target }, { rule: "addRide", state: "done", target: "day:2026-11-05" });
+  assert.notEqual(x.now.offer, orphan);
+  assert.deepEqual(q("SELECT id, state FROM fx_offers WHERE user_id = ? AND role = 'today' AND state != 'no'", u.id).map((r) => [r.id, r.state]), [[x.now.offer, "yes"]], "one ride on Thursday, the one Today can undo");
+  // (tidyOffers with made: only those made at that moment)
+  const v = await account();
+  const a1 = await addTodayOffer(env, v.id, { start: london("2026-11-04", 10), stop: london("2026-11-04", 11), tz: TZ, sport: "ride", wid: "free-ride", name: "Ride", secs: 3600, state: "yes" }, { t: T });
+  const a2 = await addTodayOffer(env, v.id, { start: london("2026-11-05", 10), stop: london("2026-11-05", 11), tz: TZ, sport: "ride", wid: "free-ride", name: "Ride", secs: 3600, state: "new" }, { t: T - H });
+  const kept = await addTodayOffer(env, v.id, { start: london("2026-11-06", 10), stop: london("2026-11-06", 11), tz: TZ, sport: "ride", wid: "free-ride", name: "Ride", secs: 3600, state: "yes" }, { t: T });
+  await takeOffer(env, v.id, kept, { t: T });
+  assert.equal(await A.tidyOffers(env, v.id, T, { made: T }), 1);
+  assert.deepEqual([offer(a1).state, offer(a2).state, offer(kept).state], ["no", "new", "yes"]);
+  // (the habit's own, with its act, untouched by a later plan's tidying)
+  const w = await habitual(6);
+  await A.planDay(env, w, T, deps(week()));
+  const [y] = acts(w);
+  assert.equal(await A.tidyOffers(env, w.id, T + DAY), 0);
+  assert.equal(offer(y.now.offer).state, "yes");
 });
 
 test("the morning's words for an act: the friend named only with Chat's names on; the ride from habit by its day", () => {
