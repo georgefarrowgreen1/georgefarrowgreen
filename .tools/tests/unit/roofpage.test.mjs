@@ -194,3 +194,31 @@ test('stages 2–4, app.js: fw.changed() marks Today’s cards, which are asked 
   assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt" \};/);
   assert.doesNotMatch(js, /preloadWeather/);
 });
+
+// ---- stage 2 FW (s2 §9.1 roofpage): sign-out elsewhere clears every app's copy, never offline; old workers per module;
+// each module's own address by its link (Markets: links.finance) ----
+test('stage 2, app.js: a confirmed sign-out found out about (401, the account’s word, the worker’s) clears every APP_KEPT key and the fitness store; no answer at all (offline) clears nothing', { skip: s24 }, () => {
+  const js = own();
+  const fa = js.slice(js.indexOf('async function forgetApps('), js.indexOf('function keptFor('));
+  assert.match(fa, /for \(const k of APP_KEPT\) localStorage\.removeItem\(k\)/, 'every APP_KEPT key');
+  assert.match(fa, /inStore\("fitness", "files", \(s\) => s\.clear\(\)\)/, 'the fitness store emptied');
+  // (the callers of signedOutNow: a 401, the account saying signed out, the worker's word, the frame's confirmed lost())
+  const calls = [...js.matchAll(/^.*signedOutNow\(\).*$/gm)].map((m) => m[0].trim()).filter((l) => !/^\/\/|^function signedOutNow/.test(l));
+  for (const l of calls) assert.match(l, /status === 401|!view\?\.signedIn|!view\?\.user\?\.id|d\.ifl === "signedout"/, `signedOutNow only once it’s confirmed: ${l}`);
+  assert.match(js, /lost: signedOutNow,/, 'and the frame’s lost(), which calls it only on a confirmed “signed out” (D3)');
+  // (offline: the load's catch keeps the copy or shows the way in with the message, never signedOutNow)
+  const ld = js.slice(js.indexOf('async function load()'), js.indexOf('const save = '));
+  const offline = ld.slice(ld.indexOf('const ks = e.status === 0'), ld.indexOf('if (view?.links)'));
+  assert.ok(offline.length > 0 && !/signedOutNow/.test(offline), 'no answer at all: nothing signed out, nothing cleared');
+});
+
+test('stage 2, app.js: each module’s old worker at its own path let go of once its switch is known on (S2-D14); REGISTRY’s link names Markets’ own address (links.finance)', { skip: s24 }, async () => {
+  const js = own();
+  const ro = js.slice(js.indexOf('function retireOld()'), js.indexOf('const ownLinks'));
+  assert.match(ro, /Object\.keys\(appsSaid\)\.filter\(\(a\) => appsSaid\[a\] && !retired\.has\(a\)\)/, 'only modules known on, each once');
+  assert.match(ro, /r\.unregister\(\)/);
+  const { REGISTRY } = await import(new URL('today/public/roof/router.js', IFL));
+  assert.equal(REGISTRY.markets?.link, 'finance', 'Markets on its own: links.finance');
+  assert.equal(REGISTRY.fitness?.link, undefined, 'Fitness on its own: links.fitness (its name)');
+  assert.match(js, /finance: at\("finance"\)/, 'DEFAULT_LINKS has finance');
+});
