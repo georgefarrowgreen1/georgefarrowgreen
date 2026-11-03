@@ -1,4 +1,4 @@
-// needs: hub
+// needs: hub roof-off
 // Weather at InFlite's hub (Today First, spec §9.2, §14.3): /weather/ a page of inflite.ai (ifl.test:8788 here, the
 // inflite repo's Worker, fetching Weather from weather.ifl.test), opened on any of its sections (#radar, #day=…,
 // #warnings, a place by ?lat=&lon=&name=) and told again while it's open (hashchange, and a notification tapped
