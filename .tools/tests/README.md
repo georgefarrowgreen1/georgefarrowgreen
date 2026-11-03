@@ -7,6 +7,13 @@ every file parses.
 
     node --test .tools/tests/unit/*.test.mjs
 
+Some read the inflite repo (InFlite's hub, `today/src/hub.js`; Today's Worker and page; Mail), which they look for
+beside this one (`../inflite`), and skip where it isn't there. Run them with it beside, on the branch of the same name
+(and Mail's one package installed: `npm ci --prefix ../inflite/email --omit=dev`): 0 failed and 0 skipped is a pass.
+On each push, `tests.yml` checks this repo out with the inflite repo cloned beside it, at the branch of the same name
+where it has one, else its live branch `claude/inflite`. This repo goes live first, so a test whose inflite file
+isn't on that branch yet skips, never fails (Today First's, where it has no `today/src/hub.js`).
+
 **End-to-end tests** (everything else here): real browsers (Playwright) drive the app against a
 fresh local copy of the site for each test (`wrangler pages dev` on :8788, an empty database),
 with stand-ins for Web Push, email, GIPHY, the weather and Have I Been Pwned (`mocks/`). People
@@ -19,6 +26,27 @@ check what lands, what's drawn and what's pushed.
     echo "127.0.0.1 chat.localhost" | sudo tee -a /etc/hosts
     ./run.sh                                 # every test in suite.txt (about 1½ hours)
     ./run.sh followtest lowsev               # just these
+
+**InFlite in one window** (Today First): a test whose first line is `// needs: hub` runs with the hub beside the site
+(`hubstack.mjs`): the inflite repo's Worker in `wrangler dev` on :8787 as `ifl.test:8788`, with `HUB_KEY=hub-test-key`
+and `TEST_AT=1`, and a pass-through for each app's host (`mocks/hostpass.mjs`: :8791 account., :8792 chat., :8802
+weather., :8803 fitness., :8804 finance., each request noted in `$S/hostpass.jsonl`); `// needs: hub mail` adds Mail's
+Worker on :8806. `server.sh` gives the site `HUB_KEY=hub-test-key`, `HUB_ORIGINS=http://ifl.test:8788`, `HUB_PUSH=1`
+and `TODAY_TEST_AT=1`. Without the inflite repo beside, such a test isn't run: its line in `results.log` says
+`SKIPPED (no inflite repo beside)`, which is not a pass, and the run's last line counts them. `lib.mjs`'s `hubPhone()`
+opens an iPhone at the hub (standalone, its push stand-in and keys); one window is asserted (`ctx.on('page')` stays at
+1). The hub's tests: `hubserve` (the apps through the hub, signed in by the cookie), `wxhub`, `mkthub`, `ridetime`
+(Fitness's Ride At), `hubmail` (Mail framed at `/mail/`), `chats`, `hubshare` (sending from Today and the apps, and
+nothing readable left on the server), `hubpush` (one device, every app's notifications) and `todaymoments` (the six
+moments of the day on real data, every request body and push recorded).
+
+Today's own page against a stand-in for the account (`mocks/todaystub.mjs` on :8789, its answers in
+`mocks/today/*.json`): `todaypage`, `todayshell` (the tab bar, Apps, You, and the hub not ready: Today on the apps' own
+addresses) and `todayphases` (each phase of the demo's day, Monday 2 November 2026 in London, with Playwright's clock
+installed at the phase's moment; crossing a boundary redraws with no request). On the real stack through the API:
+`todayrules` (acts, Undo, levels) and `ridehold` (a planned ride holding notifications). A clock phase on the real
+stack is reached by choosing the account's and the browser's time zone so that now is the hour wanted (`zoneAt`), never
+by moving the server's clock.
 
 To aim the kit at another local copy of the site (another worktree on another port, say), set `TEST_BASE`
 (`TEST_BASE=http://localhost:8790 node --import ./mapopen.mjs func.mjs <state> <out>`); tests that name port 8788

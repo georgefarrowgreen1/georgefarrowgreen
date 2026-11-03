@@ -60,3 +60,17 @@ shareplan
 wxshare
 fitshare
 homelink
+todayrules
+ridehold
+todaypage
+todayshell
+todayphases
+hubserve
+wxhub
+mkthub
+ridetime
+hubmail
+chats
+hubshare
+hubpush
+todaymoments
