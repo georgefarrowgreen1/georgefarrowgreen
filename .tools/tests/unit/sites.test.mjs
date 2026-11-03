@@ -7,7 +7,7 @@ import { isChat } from '../../../functions/_app.js';
 import { isWeather } from '../../../functions/_wxapp.js';
 import { isFitness } from '../../../functions/_fitapp.js';
 import { isAccount } from '../../../functions/_acctapp.js';
-import { siteOf, oldApp, appOrigin, todayOrigin, todayLinks } from '../../../functions/_sites.js';
+import { siteOf, oldApp, appOrigin, todayOrigin, todayLinks, hubOrigins, cfOf } from '../../../functions/_sites.js';
 
 const at = (h) => ({ hostname: h });
 test('each app answers at its inflite.ai address, and at its old one (its API, for what was set up there)', () => {
@@ -39,4 +39,20 @@ test('InFlite Today is at the apps’ site itself, and links to each app at its 
   assert.equal(todayLinks(env, req).chat, 'http://chat.ifl.test:8788');
   assert.equal(todayLinks(env, req).auth, 'http://auth.ifl.test:8788');
   assert.equal(todayLinks(env, null).finance, 'https://finance.ifl.test');
+});
+test('InFlite’s hub: its origins (HUB_ORIGINS, each exactly, else Today’s own), and the browser’s place only on the hub’s word (cfOf)', () => {
+  assert.deepEqual(hubOrigins({}), ['https://inflite.ai']);
+  assert.deepEqual(hubOrigins({}, new Request('https://chat.inflite.ai/api/pigeon/x')), ['https://inflite.ai'], 'production: never the request’s own');
+  assert.deepEqual(hubOrigins({ HUB_ORIGINS: 'https://inflite.ai,https://next.inflite.ai' }), ['https://inflite.ai', 'https://next.inflite.ai']);
+  assert.deepEqual(hubOrigins({ HUB_ORIGINS: ' https://inflite.ai , ,https://next.inflite.ai ' }), ['https://inflite.ai', 'https://next.inflite.ai'], 'trimmed, blanks dropped');
+  assert.deepEqual(hubOrigins({ HUB_ORIGINS: ' , ' }), ['https://inflite.ai'], 'none given: Today’s own');
+  assert.deepEqual(hubOrigins({ APPS_SITE: 'ifl.test' }, new Request('http://chat.ifl.test:8788/x')), ['http://ifl.test:8788'], 'the tests’ site, on its port');
+  assert.deepEqual(hubOrigins({ APPS_SITE: 'ifl.test', HUB_ORIGINS: 'http://ifl.test:8788' }, new Request('http://chat.ifl.test:8788/x')), ['http://ifl.test:8788']);
+  // cfOf: Cloudflare's own word, unless the hub's key said the hub's is the browser's (X-Hub-Ok, set by the middleware alone)
+  const geo = Buffer.from(JSON.stringify({ country: 'GB', city: 'London', timezone: 'Europe/London', latitude: '51.5', longitude: '-0.1', region: 'England', colo: 'X' })).toString('base64url');
+  const at = (headers) => { const r = new Request('https://weather.inflite.ai/api/weather/where', { headers }); Object.defineProperty(r, 'cf', { value: { country: 'US', city: 'Ashburn', colo: 'IAD' } }); return r; };
+  assert.deepEqual(cfOf(at({})), { country: 'US', city: 'Ashburn', colo: 'IAD' });
+  assert.deepEqual(cfOf(at({ 'X-Hub-Geo': geo })), { country: 'US', city: 'Ashburn', colo: 'IAD' }, 'not without X-Hub-Ok');
+  assert.deepEqual(cfOf(at({ 'X-Hub-Geo': geo, 'X-Hub-Ok': '1' })), { country: 'GB', city: 'London', colo: 'IAD', timezone: 'Europe/London', latitude: '51.5', longitude: '-0.1', region: 'England' });
+  assert.deepEqual(cfOf(new Request('https://x/')), {}); assert.deepEqual(cfOf(undefined), {});
 });

@@ -15,6 +15,7 @@
 // today where you are (Cloudflare's guess of your time zone), unless it says { day: "YYYY-MM-DD" }.
 import { HttpError, hex, sha256, limit, randomToken, readCapped, clientNet } from "./_pigeon.js";
 import { tablesOnce } from "./_fitness.js";
+import { cfOf } from "./_sites.js";
 
 // (made once for each change to them, as Fitness's own are: functions/_fitness.js tablesOnce)
 const tables = (env) => tablesOnce(env, "health", (D) => D.batch([
@@ -112,7 +113,7 @@ export async function takeNight(env, request, b, inPath = null) {
   if (!k) { await limit(env, `fxhealthbad:${clientNet(request)}`, 30, 3600e3); throw new HttpError(401, "That key isn’t Fitness’s any more: make a new one in Fitness, Apple Health."); }
   await limit(env, `fxhealth:${k.user_id}`, 60, 86400e3);
   // (a day said: a missed morning sent later, up to a month back, but none ahead of tomorrow, where it'd never be pruned)
-  const today = dayIn(request.cf?.timezone), near = (d) => { const x = Date.parse(d) - Date.parse(today); return x <= 86400e3 && x >= -30 * 86400e3; };
+  const today = dayIn(cfOf(request).timezone), near = (d) => { const x = Date.parse(d) - Date.parse(today); return x <= 86400e3 && x >= -30 * 86400e3; };
   const n = nightFrom(b), day = typeof b.day === "string" && DATE.test(b.day) && near(b.day) ? b.day : today;
   if (n.hrv == null && n.rhr == null && n.sleep == null) {
     await D.prepare("UPDATE fx_health_key SET last = ?2, said = ?3 WHERE user_id = ?1").bind(k.user_id, Date.now(), JSON.stringify({ day, none: true })).run();
