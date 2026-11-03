@@ -93,8 +93,39 @@ Branch `r3/b0` in both repos (from `claude/one-roof-24`). Brief: `s3/handoff.md`
   name `chats: false` (`appsFrom`/`appsOf` walk REGISTRY). roofshell wasn't run (not in B0's brief): **HOST please run it**.
 
 ## Sizes
-- `roof/*.js` gzip (comments stripped, roofui's measure): 22,496 B before B0 → **23,215 B** after (router +383 B, frame/
-  modules/tabs stubs +336 B): B0 spent ~719 B of stage 3's 1,300 B; **HOST has ~581 B** (+ the ~75 B slack) under 24 KB.
-  The spec allows HOST to raise it to 25 KB with a recorded reason; that will likely be needed.
+- `roof/*.js` gzip (comments stripped, roofui's measure): 22,496 B on `claude/one-roof-24` → **23,211 B** on `r3/b0`
+  (router +383 B, frame/modules/tabs stubs +332 B). Cap 24,576 B: **1,365 B left for HOST**. Against s24 §13's split
+  (stage 3 ≤ 1,300 B), B0 used ~715 B, so HOST has ~585 B of stage 3's share; stage 2's FW used only ~146 B of its 850, so
+  the cap itself still has room. If HOST needs more, the spec lets it raise the cap to 25 KB with a recorded reason.
 
-## Tests (counts filled at the end)
+## Tests (on the final commits: MAIN `8e70792`, IFL `f44193f`)
+- Unit, IFL `r3/b0` beside: **1,303 tests, 1,295 pass, 1 fail, 7 skipped** (baseline on `claude/one-roof-24`: 1,290 /
+  1,282 / 1 / 7). The one failure is `min.test` ("minified copy out of date"), which already failed on baseline for
+  stage 2's Fitness files and now lists B0's new files too. Expected until integration minifies; B0 never runs minify.mjs.
+- Unit, IFL `claude/one-roof-24` beside (no `REGISTRY.chats`): every stage-3 case (13) skips with "the inflite repo beside
+  has no REGISTRY.chats yet (router.js before stage 3’s B0)". (Case 665 fails in that run only because the copy I used
+  had Mail's public files but not its Worker.)
+- Unit, IFL `r3/b0` with `router.js` moved aside: 123 roof cases skip with roofSkip's reason. `roofpage` case 2 and
+  `todaysw` "every file Today's page loads" fail in that half-removed state, and fail the same way on baseline (checked).
+- New cases: `roofrouter` +4 (16 pass), `roofcontract` +9 Chats cases (34 pass, 2 skipped as before).
+- `node --check`: every file changed or added in both repos is clean. IFL dry run (`npx wrangler deploy --dry-run`): ok.
+- e2e `./run.sh roofkit todayshell`: **roofkit FAILS 0 (307 PASS), todayshell FAILS 0 (202 PASS)**. roofkit's new part
+  12: the stub module mounts at `/chats/` with Chats on; F.service gives the frozen facade and fw.service the same full
+  service over one Worker; opts.serviceState hears `ready`; one stub sheet per opener file opens and closes (list,
+  friends, sheets, flight, media, scan, settings, send); sendTo on a tap gives the Send sheet; `?state=locked` gives
+  the facade `locked` with nothing waiting; with Chats off, F.service is refused, no `/chats/roof/` file is asked for, and
+  `/chats/` is its own page.
+
+## For the wave batches
+- **CORE**: build to `core.js`'s header and `RPC`/`META` data (the header may only gain comments). The kit page with
+  `?apps=weather,chats` (no `?service=`) runs MAIN's real `core.js`; `?service=stub` swaps in the stub core. roofcontract
+  already pins: the Worker grep set, imports, `idb.js`'s NAME, PROTOCOL ×3, facade keys (with a stand-in Worker in node:
+  keep `startService` runnable with only `Worker`, `localStorage`, `document.visibilityState`).
+- **UI-A / UI-B**: the stubs' exports and signatures are pinned (openers take `ctx` first; `openSend(ui, svc, { card,
+  words, to })`). Use only `roofhooks.mjs`'s stage-3 block. The stub core answers every method from `fixtures/chats.mjs`
+  (`?state=` for each state). `connector.files`/`lazy` must stay exactly the graphs: re-check whenever an import changes.
+- **HOST**: fill `F.service`/`releaseService`/`fw.service`/`fw.tabs.*`, the push relay, `serviceState`. Please run
+  `roofshell` (B0 changed its `APPS_ON` to name `chats: false`). `roofkit/**` is yours from here.
+- **SV**: `todaysw`'s MODPATH now names `chats` (B0). Use s24's opt-in `ROOF_CHATS="1"`, not `ROOF_OFF_CHATS`.
+- **Q**: `todayauth` with Chats off = the default stack. `hubstack.mjs roof-chats` turns Chats on.
+- needsFromOthers: none blocking.
