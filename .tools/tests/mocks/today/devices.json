@@ -1,0 +1,36 @@
+{
+  "fan": true,
+  "here": [
+    "td_push"
+  ],
+  "devices": [
+    {
+      "id": "d1-7Qm2xK9pLwR4",
+      "label": "Chat on iPhone",
+      "home": true,
+      "apps": [
+        "chat"
+      ],
+      "at": 1793520720000
+    },
+    {
+      "id": "d2-Vb6nJ3sTq8Yc",
+      "label": "Weather on iPad",
+      "home": true,
+      "apps": [
+        "weather"
+      ],
+      "at": 1793389200000
+    },
+    {
+      "id": "d3-Hk5rP1wZm7Ue",
+      "label": "Markets on iPhone",
+      "home": true,
+      "apps": [
+        "markets",
+        "today"
+      ],
+      "at": 1793480700000
+    }
+  ]
+}

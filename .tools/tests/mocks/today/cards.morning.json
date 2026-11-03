@@ -1,0 +1,537 @@
+{
+  "at": 1793602800000,
+  "tz": "Europe/London",
+  "cards": {
+    "weather": {
+      "state": "ok",
+      "place": {
+        "name": "London",
+        "lat": 51.5072,
+        "lon": -0.1276
+      },
+      "href": "https://weather.inflite.ai/?lat=51.5072&lon=-0.1276&name=London",
+      "clock": "24",
+      "offset": 0,
+      "sky": "partly-day",
+      "now": {
+        "temp": "9°",
+        "feels": "7°",
+        "label": "Partly Cloudy",
+        "icon": "partly-sun",
+        "isDay": true
+      },
+      "day": {
+        "hi": "14°",
+        "lo": "8°"
+      },
+      "lead": "Dry until about 15:00, then rain, heaviest around 17:00.",
+      "more": "High 14°.",
+      "warning": null,
+      "hours": {
+        "label": "Next four hours",
+        "wet": false,
+        "list": [
+          {
+            "t": 1793602800000,
+            "time": "Now",
+            "temp": "9°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793606400000,
+            "time": "08",
+            "temp": "8°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793610000000,
+            "time": "09",
+            "temp": "8°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793613600000,
+            "time": "10",
+            "temp": "7°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793617200000,
+            "time": "11",
+            "temp": "7°",
+            "icon": "partly-sun",
+            "label": "Partly Cloudy",
+            "pop": 5
+          }
+        ]
+      },
+      "brief": {
+        "title": "London · 14° / 8°"
+      },
+      "rain": {
+        "now": false,
+        "at": 1793631600000,
+        "end": 1793649600000,
+        "peak": 1793638800000
+      },
+      "share": "London today: dry until about 15:00, then rain, heaviest around 17:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoid2VhdGhlciIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJMb25kb24gdG9kYXk6IGRyeSB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiByYWluLCBoZWF2aWVzdCBhcm91bmQgMTc6MDAuIiwic25hcCI6eyJwbGFjZSI6IkxvbmRvbiIsInR6IjoiRXVyb3BlL0xvbmRvbiIsInRlbXAiOjksImZlZWxzIjo3LCJoaSI6MTQsImxvIjo4LCJjb2RlIjozLCJpc0RheSI6dHJ1ZSwibGVhZCI6IkRyeSB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiByYWluLCBoZWF2aWVzdCBhcm91bmQgMTc6MDAuIiwicmFpbiI6eyJub3ciOmZhbHNlLCJhdCI6MTc5MzYzMTYwMDAwMCwiZW5kIjoxNzkzNjQ5NjAwMDAwfSwic3BlbGwiOm51bGx9LCJyZWYiOnsiY2VsbCI6WzUxLjUsLTAuMTVdfX0"
+    },
+    "chat": {
+      "state": "ok",
+      "pigeons": true,
+      "href": "https://chat.inflite.ai/",
+      "inbound": [
+        {
+          "who": {
+            "id": "b1c2d3e4-0000-4000-8000-000000000014",
+            "name": "Nia Adeyemi",
+            "first": "Nia",
+            "photoAt": null
+          },
+          "sentAt": 1793599800000,
+          "landsAt": 1793640000000,
+          "km": 534,
+          "kind": "standard",
+          "mystery": false,
+          "bird": {
+            "name": "Pebble",
+            "rank": "Courier"
+          },
+          "from": "Edinburgh",
+          "href": "https://chat.inflite.ai/#open=b1c2d3e4-0000-4000-8000-000000000014"
+        }
+      ],
+      "inboundTotal": 1,
+      "inboundFrom": 1,
+      "unread": [],
+      "mine": [],
+      "more": 0,
+      "streak": null,
+      "share": "Sending you a pigeon."
+    },
+    "fitness": {
+      "state": "ok",
+      "href": "https://fitness.inflite.ai/#today",
+      "day": "2026-11-02",
+      "tz": "Europe/London",
+      "units": "imperial",
+      "snapshotAt": 1793601000000,
+      "event": null,
+      "kind": "session",
+      "session": {
+        "id": "rh:endurance:75",
+        "sport": "ride",
+        "name": "Endurance 75",
+        "kind": "Endurance",
+        "secs": 4500,
+        "tss": 55,
+        "hard": false,
+        "why": "An easy hour and a quarter after the weekend.",
+        "steps": [
+          [
+            900,
+            0.5,
+            0.65
+          ],
+          [
+            2700,
+            0.65,
+            0.7
+          ],
+          [
+            900,
+            0.6,
+            0.45
+          ]
+        ]
+      },
+      "why": null,
+      "done": null,
+      "best": {
+        "start": 1793637900000,
+        "end": 1793642400000,
+        "span": "16:45–18:00",
+        "rating": "Fair",
+        "poor": false,
+        "said": "Best 16:45 to 18:00",
+        "sub": "11°, light rain at first · London",
+        "grid": [
+          {
+            "t": 1793628000000,
+            "rating": "Good"
+          },
+          {
+            "t": 1793631600000,
+            "rating": "Fair"
+          },
+          {
+            "t": 1793635200000,
+            "rating": "Fair"
+          },
+          {
+            "t": 1793638800000,
+            "rating": "Fair"
+          },
+          {
+            "t": 1793642400000,
+            "rating": "Good"
+          }
+        ]
+      },
+      "next": null,
+      "share": "Today: Endurance 75, 1 h 15. Best time to ride 16:45 to 18:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSByaWRlIHRvZGF5OiBFbmR1cmFuY2UgNzUgYXQgMTY6NDUuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjpudWxsfX0"
+    },
+    "markets": {
+      "state": "ok",
+      "href": "https://finance.inflite.ai/",
+      "owned": 6,
+      "following": 1,
+      "value": 20801.21,
+      "change": 0,
+      "pct": 0,
+      "traded": false,
+      "market": {
+        "open": false,
+        "said": "London opens at 08:00",
+        "shut": [],
+        "closesAt": 1793637000000
+      },
+      "top": {
+        "name": "Tesco",
+        "symbol": "TSCO.L",
+        "change": 2.7,
+        "pct": 0.3,
+        "href": "https://finance.inflite.ai/#s=TSCO.L"
+      },
+      "low": {
+        "name": "Rolls-Royce",
+        "symbol": "RR.L",
+        "change": -4.8,
+        "pct": -0.8,
+        "href": "https://finance.inflite.ai/#s=RR.L"
+      },
+      "spark": null,
+      "dividend": {
+        "name": "Tesco",
+        "symbol": "TSCO.L",
+        "at": 1793923200000,
+        "value": 43.2,
+        "href": "https://finance.inflite.ai/#s=TSCO.L"
+      },
+      "isa": {
+        "year": "2026/27",
+        "paid": 8000,
+        "allowance": 20000,
+        "left": 12000,
+        "used": 0.4,
+        "days": 155,
+        "inIsa": 15230.1
+      },
+      "leftOut": [],
+      "stale": false,
+      "holdings": [
+        {
+          "sym": "TSCO.L",
+          "name": "Tesco",
+          "pct": 0.3,
+          "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJUZXNjbyArMC4zJSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJUZXNjbyIsInN5bSI6IlRTQ08uTCIsInBjdCI6MC4zLCJkYXkiOiIyMDI2LTExLTAyIn0sInJlZiI6eyJzeW0iOiJUU0NPLkwifX0"
+        },
+        {
+          "sym": "RR.L",
+          "name": "Rolls-Royce",
+          "pct": -0.8,
+          "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJSb2xscy1Sb3ljZSAtMC44JSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJSb2xscy1Sb3ljZSIsInN5bSI6IlJSLkwiLCJwY3QiOi0wLjgsImRheSI6IjIwMjYtMTEtMDIifSwicmVmIjp7InN5bSI6IlJSLkwifX0"
+        }
+      ],
+      "share": "My portfolio is up 0% today.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSBwb3J0Zm9saW8gaXMgdXAgMCUgdG9kYXkuIiwic25hcCI6eyJuYW1lIjoiUG9ydGZvbGlvIiwic3ltIjpudWxsLCJwY3QiOjAsImRheSI6IjIwMjYtMTEtMDIifX0"
+    }
+  },
+  "v": 2,
+  "phase": "morning",
+  "since": 1793599200000,
+  "until": 1793617200000,
+  "timeline": [
+    {
+      "phase": "morning",
+      "at": 1793599200000
+    },
+    {
+      "phase": "midday",
+      "at": 1793617200000
+    },
+    {
+      "phase": "preride",
+      "at": 1793635500000
+    },
+    {
+      "phase": "riding",
+      "at": 1793637900000
+    },
+    {
+      "phase": "evening",
+      "at": 1793646000000
+    },
+    {
+      "phase": "morning",
+      "at": 1793685600000
+    }
+  ],
+  "tops": {
+    "morning": {
+      "kind": "plan",
+      "chip": "Moved",
+      "title": "Your day, joined up",
+      "lines": [
+        "Today: rain from 15:00, your ride at 16:45 before Mira’s call at 18:30.",
+        "Moved your ride to 16:45, clear of Mira’s call.",
+        "Added: a ride on Thursday at 10:00 · Six of the last eight dry Thursdays. Thursday’s dry.",
+        "London opens at 08:00."
+      ],
+      "stats": [
+        {
+          "label": "Rain",
+          "value": "From 15:00"
+        },
+        {
+          "label": "Ride",
+          "value": "16:45"
+        },
+        {
+          "label": "Call",
+          "value": "18:30"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "undo",
+          "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a01",
+          "label": "Undo the Move"
+        },
+        {
+          "do": "undo",
+          "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a02",
+          "label": "Undo Thursday’s Ride"
+        }
+      ],
+      "share": "My ride today: Endurance 75 at 16:45.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSByaWRlIHRvZGF5OiBFbmR1cmFuY2UgNzUgYXQgMTY6NDUuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjpudWxsfX0"
+    },
+    "midday": {
+      "kind": "weather",
+      "chip": "London · now",
+      "title": "14° · Dry until 15:00",
+      "lines": [
+        "Then rain, heaviest at 17:00.",
+        "Your ride at 16:45 catches light rain at first, clearing by 18:00."
+      ],
+      "stats": [
+        {
+          "label": "Now",
+          "value": "14°"
+        },
+        {
+          "label": "Rain",
+          "value": "From 15:00"
+        },
+        {
+          "label": "Heaviest",
+          "value": "17:00"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "open",
+          "label": "Radar",
+          "href": "/weather/#radar"
+        }
+      ],
+      "share": "London today: dry until about 15:00, then rain, heaviest around 17:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoid2VhdGhlciIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJMb25kb24gdG9kYXk6IGRyeSB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiByYWluLCBoZWF2aWVzdCBhcm91bmQgMTc6MDAuIiwic25hcCI6eyJwbGFjZSI6IkxvbmRvbiIsInR6IjoiRXVyb3BlL0xvbmRvbiIsInRlbXAiOjE0LCJmZWVscyI6MTIsImhpIjoxNCwibG8iOjgsImNvZGUiOjMsImlzRGF5Ijp0cnVlLCJsZWFkIjoiRHJ5IHVudGlsIGFib3V0IDE1OjAwLCB0aGVuIHJhaW4sIGhlYXZpZXN0IGFyb3VuZCAxNzowMC4iLCJyYWluIjp7Im5vdyI6ZmFsc2UsImF0IjoxNzkzNjMxNjAwMDAwLCJlbmQiOjE3OTM2NDk2MDAwMDB9LCJzcGVsbCI6bnVsbH0sInJlZiI6eyJjZWxsIjpbNTEuNSwtMC4xNV19fQ"
+    },
+    "preride": {
+      "kind": "ride",
+      "chip": "In 40 minutes",
+      "title": "Endurance 75 at 16:45",
+      "lines": [
+        "Clearing, light wind, dry by 18:00",
+        "A jacket for the first half hour",
+        "Messages are held while you ride, except warnings",
+        "Done before Mira’s call at 18:30"
+      ],
+      "stats": [
+        {
+          "label": "Time",
+          "value": "1:15"
+        },
+        {
+          "label": "Out in",
+          "value": "11°"
+        },
+        {
+          "label": "Roads",
+          "value": "Wet",
+          "tone": "warn"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "open",
+          "label": "Radar",
+          "href": "/weather/#radar"
+        },
+        {
+          "do": "open",
+          "label": "The Session",
+          "href": "/fitness/#today"
+        }
+      ],
+      "share": "My ride today: Endurance 75 at 16:45.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSByaWRlIHRvZGF5OiBFbmR1cmFuY2UgNzUgYXQgMTY6NDUuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjpudWxsfX0"
+    },
+    "riding": {
+      "kind": "ride",
+      "chip": "Riding · messages held",
+      "title": "Endurance 75 · since 16:45",
+      "lines": [
+        "Clearing, light wind, dry by 18:00",
+        "Nothing held yet; warnings still get through",
+        "Done before Mira’s call at 18:30"
+      ],
+      "stats": [
+        {
+          "label": "Time",
+          "value": "1:15"
+        },
+        {
+          "label": "Held",
+          "value": "0"
+        },
+        {
+          "label": "Roads",
+          "value": "Wet",
+          "tone": "warn"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "open",
+          "label": "Radar",
+          "href": "/weather/#radar"
+        },
+        {
+          "do": "open",
+          "label": "The Session",
+          "href": "/fitness/#today"
+        }
+      ],
+      "share": "My ride today: Endurance 75 at 16:45.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSByaWRlIHRvZGF5OiBFbmR1cmFuY2UgNzUgYXQgMTY6NDUuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjpudWxsfX0"
+    }
+  },
+  "waiting": [],
+  "upcoming": [
+    {
+      "at": 1793631600000,
+      "app": "weather",
+      "title": "Rain reaches London",
+      "sub": "Heaviest around 17:00",
+      "href": "/weather/#radar",
+      "id": "rain",
+      "share": "London today: dry until about 15:00, then rain, heaviest around 17:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoid2VhdGhlciIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJMb25kb24gdG9kYXk6IGRyeSB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiByYWluLCBoZWF2aWVzdCBhcm91bmQgMTc6MDAuIiwic25hcCI6eyJwbGFjZSI6IkxvbmRvbiIsInR6IjoiRXVyb3BlL0xvbmRvbiIsInRlbXAiOjE0LCJmZWVscyI6MTIsImhpIjoxNCwibG8iOjgsImNvZGUiOjMsImlzRGF5Ijp0cnVlLCJsZWFkIjoiRHJ5IHVudGlsIGFib3V0IDE1OjAwLCB0aGVuIHJhaW4sIGhlYXZpZXN0IGFyb3VuZCAxNzowMC4iLCJyYWluIjp7Im5vdyI6ZmFsc2UsImF0IjoxNzkzNjMxNjAwMDAwLCJlbmQiOjE3OTM2NDk2MDAwMDB9LCJzcGVsbCI6bnVsbH0sInJlZiI6eyJjZWxsIjpbNTEuNSwtMC4xNV19fQ"
+    },
+    {
+      "at": 1793637000000,
+      "app": "markets",
+      "title": "London closes",
+      "sub": "Opens at 08:00",
+      "href": "/markets/#today",
+      "id": "close"
+    },
+    {
+      "at": 1793637900000,
+      "app": "fitness",
+      "title": "Ride: Endurance 75",
+      "sub": "Light rain at first",
+      "href": "/fitness/#today",
+      "id": "ride",
+      "share": "My ride today: Endurance 75 at 16:45.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjAyODAwMDAwLCJzYXkiOiJNeSByaWRlIHRvZGF5OiBFbmR1cmFuY2UgNzUgYXQgMTY6NDUuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjpudWxsfX0"
+    },
+    {
+      "at": 1793640000000,
+      "app": "chat",
+      "title": "Pigeon from Nia lands",
+      "sub": "From Edinburgh",
+      "href": "/chats/#open=b1c2d3e4-0000-4000-8000-000000000014",
+      "id": "pigeon:b1c2d3e4-0000-4000-8000-000000000014"
+    },
+    {
+      "at": 1793644200000,
+      "app": "chat",
+      "title": "Call with Mira",
+      "sub": "Agreed in Chat",
+      "href": "/chats/#open=b1c2d3e4-0000-4000-8000-000000000012",
+      "id": "time:9c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5"
+    },
+    {
+      "at": 1793872800000,
+      "app": "fitness",
+      "title": "Ride",
+      "sub": "From habit, dry",
+      "href": "/fitness/#day=2026-11-05",
+      "id": "offer:5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a81"
+    }
+  ],
+  "acts": [
+    {
+      "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a01",
+      "rule": "moveRide",
+      "kind": "move",
+      "state": "done",
+      "level": "do",
+      "said": "Moved your ride to 16:45, clear of Mira’s call",
+      "undoUntil": 1793634300000
+    },
+    {
+      "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a02",
+      "rule": "addRide",
+      "kind": "add",
+      "state": "done",
+      "level": "do",
+      "said": "Added: a ride on Thursday at 10:00",
+      "undoUntil": 1793869200000
+    }
+  ],
+  "ride": {
+    "start": 1793637900000,
+    "stop": 1793642400000,
+    "name": "Endurance 75",
+    "secs": 4500,
+    "sport": "ride",
+    "source": "moved",
+    "hold": true
+  },
+  "quiet": {
+    "on": true,
+    "from": 21,
+    "to": 6
+  },
+  "apps": {
+    "weather": "9°, rain from 15:00",
+    "fitness": "Endurance 75 today",
+    "markets": "Opens at 08:00",
+    "mail": false
+  }
+}

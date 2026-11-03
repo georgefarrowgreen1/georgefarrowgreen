@@ -1,0 +1,76 @@
+{
+  "rules": [
+    {
+      "rule": "moveRide",
+      "name": "Move a ride around a clash",
+      "level": "do",
+      "setBy": "auto",
+      "record": {
+        "done": 3,
+        "kept": 3,
+        "undone": 0,
+        "ignored": 0,
+        "held": 0
+      },
+      "line": "Moved 3 · kept 3"
+    },
+    {
+      "rule": "addRide",
+      "name": "Add a ride from habit",
+      "level": "do",
+      "setBy": "auto",
+      "record": {
+        "done": 2,
+        "kept": 2,
+        "undone": 0,
+        "ignored": 0,
+        "held": 0
+      },
+      "line": "Added 2 · kept 2"
+    },
+    {
+      "rule": "holdRide",
+      "name": "Hold messages while you ride",
+      "level": "do",
+      "setBy": "auto",
+      "record": {
+        "done": 0,
+        "kept": 0,
+        "undone": 0,
+        "ignored": 0,
+        "held": 14
+      },
+      "line": "Held 14"
+    },
+    {
+      "rule": "later",
+      "name": "Deliver when a friend is free",
+      "level": "do",
+      "setBy": "auto",
+      "record": {
+        "done": 0,
+        "kept": 0,
+        "undone": 0,
+        "ignored": 0,
+        "held": 0
+      },
+      "line": "Coming in a later version",
+      "soon": true
+    },
+    {
+      "rule": "arrange",
+      "name": "Arrange group rides",
+      "level": "do",
+      "setBy": "auto",
+      "record": {
+        "done": 0,
+        "kept": 0,
+        "undone": 0,
+        "ignored": 0,
+        "held": 0
+      },
+      "line": "Coming in a later version",
+      "soon": true
+    }
+  ]
+}

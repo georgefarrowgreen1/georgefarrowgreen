@@ -1,0 +1,434 @@
+{
+  "at": 1793642700000,
+  "tz": "Europe/London",
+  "cards": {
+    "weather": {
+      "state": "ok",
+      "place": {
+        "name": "London",
+        "lat": 51.5072,
+        "lon": -0.1276
+      },
+      "href": "https://weather.inflite.ai/?lat=51.5072&lon=-0.1276&name=London",
+      "clock": "24",
+      "offset": 0,
+      "sky": "partly-day",
+      "now": {
+        "temp": "10°",
+        "feels": "8°",
+        "label": "Cloudy",
+        "icon": "cloud",
+        "isDay": true
+      },
+      "day": {
+        "hi": "14°",
+        "lo": "8°"
+      },
+      "lead": "Dry until about 15:00, then rain, heaviest around 17:00.",
+      "more": "High 14°.",
+      "warning": null,
+      "hours": {
+        "label": "Next four hours",
+        "wet": true,
+        "list": [
+          {
+            "t": 1793642400000,
+            "time": "Now",
+            "temp": "10°",
+            "icon": "rain",
+            "label": "Light Rain",
+            "pop": 50
+          },
+          {
+            "t": 1793646000000,
+            "time": "19",
+            "temp": "9°",
+            "icon": "rain",
+            "label": "Light Rain",
+            "pop": 50
+          },
+          {
+            "t": 1793649600000,
+            "time": "20",
+            "temp": "9°",
+            "icon": "cloud",
+            "label": "Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793653200000,
+            "time": "21",
+            "temp": "8°",
+            "icon": "cloud",
+            "label": "Cloudy",
+            "pop": 5
+          },
+          {
+            "t": 1793656800000,
+            "time": "22",
+            "temp": "8°",
+            "icon": "cloud",
+            "label": "Cloudy",
+            "pop": 5
+          }
+        ]
+      },
+      "brief": {
+        "title": "London · 14° / 8°"
+      },
+      "rain": {
+        "now": true,
+        "at": 1793631600000,
+        "end": 1793649600000,
+        "peak": 1793638800000
+      },
+      "share": "London today: dry until about 15:00, then rain, heaviest around 17:00.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoid2VhdGhlciIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJMb25kb24gdG9kYXk6IGRyeSB1bnRpbCBhYm91dCAxNTowMCwgdGhlbiByYWluLCBoZWF2aWVzdCBhcm91bmQgMTc6MDAuIiwic25hcCI6eyJwbGFjZSI6IkxvbmRvbiIsInR6IjoiRXVyb3BlL0xvbmRvbiIsInRlbXAiOjEwLCJmZWVscyI6OCwiaGkiOjE0LCJsbyI6OCwiY29kZSI6MywiaXNEYXkiOnRydWUsImxlYWQiOiJEcnkgdW50aWwgYWJvdXQgMTU6MDAsIHRoZW4gcmFpbiwgaGVhdmllc3QgYXJvdW5kIDE3OjAwLiIsInJhaW4iOnsibm93IjpmYWxzZSwiYXQiOjE3OTM2MzE2MDAwMDAsImVuZCI6MTc5MzY0OTYwMDAwMH0sInNwZWxsIjpudWxsfSwicmVmIjp7ImNlbGwiOls1MS41LC0wLjE1XX19"
+    },
+    "chat": {
+      "state": "ok",
+      "pigeons": true,
+      "href": "https://chat.inflite.ai/",
+      "inbound": [],
+      "inboundTotal": 0,
+      "inboundFrom": 0,
+      "unread": [
+        {
+          "who": {
+            "id": "b1c2d3e4-0000-4000-8000-000000000012",
+            "name": "Mira Shah",
+            "first": "Mira",
+            "photoAt": null
+          },
+          "n": 1,
+          "messages": 1,
+          "last": 1793639280000,
+          "href": "https://chat.inflite.ai/#open=b1c2d3e4-0000-4000-8000-000000000012"
+        },
+        {
+          "who": {
+            "id": "b1c2d3e4-0000-4000-8000-000000000014",
+            "name": "Nia Adeyemi",
+            "first": "Nia",
+            "photoAt": null
+          },
+          "n": 1,
+          "messages": 0,
+          "last": 1793640000000,
+          "href": "https://chat.inflite.ai/#open=b1c2d3e4-0000-4000-8000-000000000014"
+        }
+      ],
+      "mine": [],
+      "more": 0,
+      "streak": null,
+      "share": "Sending you a pigeon."
+    },
+    "fitness": {
+      "state": "ok",
+      "href": "https://fitness.inflite.ai/#today",
+      "day": "2026-11-02",
+      "tz": "Europe/London",
+      "units": "imperial",
+      "snapshotAt": 1793601000000,
+      "event": null,
+      "kind": "done",
+      "session": {
+        "id": "rh:endurance:75",
+        "sport": "ride",
+        "name": "Endurance 75",
+        "kind": "Endurance",
+        "secs": 4500,
+        "tss": 55,
+        "hard": false,
+        "why": "An easy hour and a quarter after the weekend.",
+        "steps": [
+          [
+            900,
+            0.5,
+            0.65
+          ],
+          [
+            2700,
+            0.65,
+            0.7
+          ],
+          [
+            900,
+            0.6,
+            0.45
+          ]
+        ]
+      },
+      "why": null,
+      "done": {
+        "name": "Endurance 75",
+        "sport": "ride",
+        "start": 1793637960000,
+        "secs": 4500,
+        "dist": 36050,
+        "tss": null,
+        "from": "garmin"
+      },
+      "best": null,
+      "next": {
+        "day": "2026-11-03",
+        "label": "Tuesday",
+        "name": "Recovery 45",
+        "secs": 2700,
+        "kind": "Recovery"
+      },
+      "share": "Rode my endurance session today: Endurance 75.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJEb25lOiBFbmR1cmFuY2UgNzUsIDE6MTUsIDIyLjQgbWkuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjp7InNlY3MiOjQ1MDAsImRpc3QiOjM2MDUwfX19"
+    },
+    "markets": {
+      "state": "ok",
+      "href": "https://finance.inflite.ai/",
+      "owned": 6,
+      "following": 1,
+      "value": 20884.41,
+      "change": 83.2,
+      "pct": 0.4,
+      "traded": true,
+      "market": {
+        "open": false,
+        "said": "London closed · Tesco +3.4%",
+        "shut": [
+          "London"
+        ],
+        "closesAt": 1793637000000
+      },
+      "top": {
+        "name": "Tesco",
+        "symbol": "TSCO.L",
+        "change": 30.9,
+        "pct": 3.4,
+        "href": "https://finance.inflite.ai/#s=TSCO.L"
+      },
+      "low": {
+        "name": "Rolls-Royce",
+        "symbol": "RR.L",
+        "change": -4.8,
+        "pct": -0.8,
+        "href": "https://finance.inflite.ai/#s=RR.L"
+      },
+      "spark": {
+        "vals": [
+          20801.21,
+          20809.5,
+          20884.41
+        ],
+        "base": 20801.21
+      },
+      "dividend": {
+        "name": "Tesco",
+        "symbol": "TSCO.L",
+        "at": 1793923200000,
+        "value": 43.2,
+        "href": "https://finance.inflite.ai/#s=TSCO.L"
+      },
+      "isa": {
+        "year": "2026/27",
+        "paid": 8000,
+        "allowance": 20000,
+        "left": 12000,
+        "used": 0.4,
+        "days": 155,
+        "inIsa": 15230.1
+      },
+      "leftOut": [],
+      "stale": false,
+      "holdings": [
+        {
+          "sym": "TSCO.L",
+          "name": "Tesco",
+          "pct": 3.4,
+          "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJUZXNjbyArMy40JSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJUZXNjbyIsInN5bSI6IlRTQ08uTCIsInBjdCI6My40LCJkYXkiOiIyMDI2LTExLTAyIn0sInJlZiI6eyJzeW0iOiJUU0NPLkwifX0"
+        },
+        {
+          "sym": "RR.L",
+          "name": "Rolls-Royce",
+          "pct": -0.8,
+          "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJSb2xscy1Sb3ljZSAtMC44JSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJSb2xscy1Sb3ljZSIsInN5bSI6IlJSLkwiLCJwY3QiOi0wLjgsImRheSI6IjIwMjYtMTEtMDIifSwicmVmIjp7InN5bSI6IlJSLkwifX0"
+        }
+      ],
+      "share": "My portfolio is up 0.4% today.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJNeSBwb3J0Zm9saW8gaXMgdXAgMC40JSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJQb3J0Zm9saW8iLCJzeW0iOm51bGwsInBjdCI6MC40LCJkYXkiOiIyMDI2LTExLTAyIn19"
+    }
+  },
+  "v": 2,
+  "phase": "after",
+  "since": 1793642520000,
+  "until": 1793647920000,
+  "timeline": [
+    {
+      "phase": "after",
+      "at": 1793642520000
+    },
+    {
+      "phase": "evening",
+      "at": 1793647920000
+    },
+    {
+      "phase": "morning",
+      "at": 1793685600000
+    }
+  ],
+  "tops": {
+    "after": {
+      "kind": "done",
+      "chip": "Done",
+      "title": "Endurance 75 · 1:15",
+      "lines": [
+        "From your watch",
+        "Stress and fitness once Fitness has it",
+        "Mira wrote while you rode"
+      ],
+      "stats": [
+        {
+          "label": "Time",
+          "value": "1:15"
+        },
+        {
+          "label": "Distance",
+          "value": "22.4 mi"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "open",
+          "label": "Open Fitness",
+          "href": "/fitness/#activities"
+        },
+        {
+          "do": "answer",
+          "id": "b1c2d3e4-0000-4000-8000-000000000012",
+          "label": "Answer Mira",
+          "href": "/chats/#open=b1c2d3e4-0000-4000-8000-000000000012"
+        },
+        {
+          "do": "sendto",
+          "id": "b1c2d3e4-0000-4000-8000-000000000003",
+          "to": "b1c2d3e4-0000-4000-8000-000000000003",
+          "label": "Send to Leo"
+        }
+      ],
+      "share": "Done: Endurance 75, 1:15, 22.4 mi.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoiZml0bmVzcyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJEb25lOiBFbmR1cmFuY2UgNzUsIDE6MTUsIDIyLjQgbWkuIiwic25hcCI6eyJkYXkiOiIyMDI2LTExLTAyIiwidHoiOiJFdXJvcGUvTG9uZG9uIiwic3BvcnQiOiJyaWRlIiwibmFtZSI6IkVuZHVyYW5jZSA3NSIsImtpbmQiOiJFbmR1cmFuY2UiLCJ3aWQiOiJyaDplbmR1cmFuY2U6NzUiLCJzZWNzIjo0NTAwLCJiZXN0Ijp7InN0YXJ0IjoxNzkzNjM3OTAwMDAwLCJlbmQiOjE3OTM2NDI0MDAwMDAsImRyeSI6ZmFsc2V9LCJkb25lIjp7InNlY3MiOjQ1MDAsImRpc3QiOjM2MDUwfX19",
+      "sendTo": {
+        "id": "b1c2d3e4-0000-4000-8000-000000000003",
+        "first": "Leo",
+        "why": "Riding with you Thursday"
+      },
+      "wrote": [
+        {
+          "id": "b1c2d3e4-0000-4000-8000-000000000012",
+          "first": "Mira",
+          "at": 1793639280000
+        }
+      ]
+    },
+    "evening": {
+      "kind": "closed",
+      "chip": "The day closed",
+      "title": "Up 0.4%, 22 miles, and Mira’s call",
+      "lines": [
+        "Markets: Tesco finished +3.4%, past your 3% alert",
+        "Fitness: 1:15; stress once Fitness has it",
+        "Tomorrow first: dry and still at 07:00, a good morning for a run",
+        "Quiet hours until 06:00"
+      ],
+      "stats": [
+        {
+          "label": "Portfolio",
+          "value": "+0.4%",
+          "tone": "up"
+        },
+        {
+          "label": "Ride",
+          "value": "22 mi"
+        }
+      ],
+      "buttons": [
+        {
+          "do": "open",
+          "label": "Markets",
+          "href": "/markets/#today"
+        },
+        {
+          "do": "open",
+          "label": "The Ride",
+          "href": "/fitness/#activities"
+        }
+      ],
+      "share": "Tesco finished up 3.4% today.",
+      "sendCard": "eyJ2IjoxLCJraW5kIjoibWFya2V0cyIsImZyb20iOiJ0b2RheSIsImF0IjoxNzkzNjQyNzAwMDAwLCJzYXkiOiJUZXNjbyArMy40JSB0b2RheS4iLCJzbmFwIjp7Im5hbWUiOiJUZXNjbyIsInN5bSI6IlRTQ08uTCIsInBjdCI6My40LCJkYXkiOiIyMDI2LTExLTAyIn0sInJlZiI6eyJzeW0iOiJUU0NPLkwifX0"
+    }
+  },
+  "waiting": [
+    {
+      "id": "b1c2d3e4-0000-4000-8000-000000000012",
+      "first": "Mira",
+      "at": 1793639280000,
+      "n": 1
+    }
+  ],
+  "upcoming": [
+    {
+      "at": 1793644200000,
+      "app": "chat",
+      "title": "Call with Mira",
+      "sub": "Agreed in Chat",
+      "href": "/chats/#open=b1c2d3e4-0000-4000-8000-000000000012",
+      "id": "time:9c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5"
+    },
+    {
+      "at": 1793872800000,
+      "app": "fitness",
+      "title": "Ride with Leo",
+      "sub": "Dry for both",
+      "href": "/fitness/#day=2026-11-05",
+      "id": "offer:5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a82"
+    }
+  ],
+  "acts": [
+    {
+      "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a01",
+      "rule": "moveRide",
+      "kind": "move",
+      "state": "done",
+      "level": "do",
+      "said": "Moved your ride to 16:45, clear of Mira’s call",
+      "undoUntil": 1793634300000
+    },
+    {
+      "id": "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a02",
+      "rule": "addRide",
+      "kind": "add",
+      "state": "done",
+      "level": "do",
+      "said": "Added: a ride on Thursday at 10:00",
+      "undoUntil": 1793869200000
+    }
+  ],
+  "ride": {
+    "start": 1793637900000,
+    "stop": 1793642400000,
+    "name": "Endurance 75",
+    "secs": 4500,
+    "sport": "ride",
+    "source": "moved",
+    "hold": true,
+    "doneAt": 1793642520000
+  },
+  "quiet": {
+    "on": true,
+    "from": 21,
+    "to": 6
+  },
+  "apps": {
+    "weather": "10°, dry by 20:00",
+    "fitness": "Endurance 75 done",
+    "markets": "Tesco +3.4%",
+    "mail": false
+  }
+}

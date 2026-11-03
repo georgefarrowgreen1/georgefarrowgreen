@@ -10,6 +10,15 @@
 // account, it refuses a request whose Origin isn't Today's (EXPECT_ORIGIN, default http://localhost:8787).
 // Control, on the same port: POST /__mode {mode}, POST /__morning {…} (merged into what morning.json says, until the
 // next /__mode), GET /__log (every request: method, path, query, headers, body), POST /__reset (the log emptied).
+// Today First's, beside those (spec §6.1, §14.4):
+//   POST /mode {phase} (or /__mode {phase}): signed in, and GET today/cards answers that moment's whole version 2 answer,
+//     cards.<phase>.json (morning, midday, preride, riding, after, after-fit, evening), when the page asks ?v=2, and its
+//     four cards alone (version 1's) when it doesn't. Without a phase, every answer is as above. Each /mode or /__mode
+//     starts You's state afresh.
+//   POST today/act, today/act/undo {id}: the acts of that moment's answer, taken, kept or undone (and the same answer's
+//     acts then say so); GET/PUT today/rules (rules.json); GET/PATCH today/notify (notify.json, merged a part at a
+//     time); POST/DELETE today/device; GET/DELETE today/devices (devices.json)
+//   POST /__log/reset: the log emptied (as /__reset)
 //   node todaystub.mjs [port] [log file]     (port 8789)
 import { createServer } from 'node:http';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -24,6 +33,22 @@ const FILES = { ok: 'cards.json', slow: 'cards.json', clean: 'cards.json', empty
 const HOSTILE = [['Sam "Q" & O\'Neil', 'Sam Quinn'], ["O'Brien", 'Obrien'], ['<b>x</b>', 'Lisbon']];
 
 let mode = 'ok', morningPatch = {}, log = [];
+// Today First's: the moment answered (null: none), and You's state, afresh with each mode
+const PHASES = ['morning', 'midday', 'preride', 'riding', 'after', 'after-fit', 'evening'];
+let phase = null, you = null;
+const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json') });
+you = fresh();
+const LEVELS = ['do', 'suggest', 'quiet'];
+const NAMES = { moveRide: ['Moved', 'Moves are suggested now, not made'], addRide: ['Added', 'Rides are suggested now, not added'], holdRide: ['Held', 'Only app notices are held now'] };
+const lineOf = (r) => r.soon ? r.line : r.rule === 'holdRide' ? `Held ${r.record.held}` : [`${NAMES[r.rule]?.[0] || 'Done'} ${r.record.done}`, `kept ${r.record.kept}`, r.record.undone ? `undone ${r.record.undone}` : null].filter(Boolean).join(' · ');
+const ruleView = (r) => ({ rule: r.rule, level: r.level, line: lineOf(r) });
+// (that moment's answer, with the acts as they've been taken, kept or undone since)
+function dayAnswer(v2) {
+  const a = read(`cards.${phase}.json`);
+  if (!v2) return { at: a.at, tz: a.tz, cards: a.cards };
+  a.acts = (a.acts || []).map((x) => ({ ...x, ...(you.acts.get(x.id) || {}) }));
+  return a;
+}
 const session = () => read('session.json');
 const morning = () => {
   const m = { ...read('morning.json'), ...morningPatch };
@@ -64,12 +89,16 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   let body = '';
   for await (const c of req) body += c;
-  if (url.pathname.startsWith('/__')) {
+  if (url.pathname.startsWith('/__') || url.pathname === '/mode') {
     const b = body ? JSON.parse(body) : {};
-    if (url.pathname === '/__mode') { mode = b.mode || 'ok'; morningPatch = {}; return json(res, { mode }); }
+    if (url.pathname === '/__mode' || url.pathname === '/mode') {
+      if (b.phase != null && !PHASES.includes(b.phase)) return json(res, { error: `No such phase: ${b.phase}` }, 400);
+      mode = b.mode || 'ok'; phase = b.phase || null; morningPatch = {}; you = fresh();
+      return json(res, { mode, phase });
+    }
     if (url.pathname === '/__morning') { morningPatch = { ...morningPatch, ...b }; return json(res, { morning: morning() }); }
     if (url.pathname === '/__log') return json(res, log);
-    if (url.pathname === '/__reset') { log = []; return json(res, { ok: true }); }
+    if (url.pathname === '/__reset' || url.pathname === '/__log/reset') { log = []; return json(res, { ok: true }); }
     return json(res, { error: 'Not found.' }, 404);
   }
   const entry = { at: Date.now(), method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers, body: body || null, mode };
@@ -94,7 +123,8 @@ createServer(async (req, res) => {
   if (out) return json(res, { error: 'Sign in to see your day.', field: 'session' }, 401);
   if (key === 'GET cards') {
     const only = url.searchParams.get('only')?.split(',').filter(Boolean) || null;
-    const a = cards(only);
+    const a = phase ? dayAnswer(url.searchParams.get('v') === '2' && !only) : cards(only);
+    if (phase && only) a.cards = Object.fromEntries(Object.entries(a.cards).filter(([k]) => only.includes(k)));
     if (url.searchParams.get('with') === 'morning' && !only) a.morning = morning();
     if (mode === 'slow') await new Promise((ok) => setTimeout(ok, 3000));
     return json(res, a);
@@ -119,6 +149,49 @@ createServer(async (req, res) => {
   if (key === 'POST push-move') return json(res, { moved: true });
   if (key === 'DELETE push') return json(res, { ok: true, devices: 0 });
   if (key === 'POST account-link') return json(res, { code: 'stubhandoffcode' });
+  // ---- Today First's (spec §6.1) ----
+  if (key === 'POST act' || key === 'POST act/undo') {
+    const act = phase ? dayAnswer(true).acts.find((x) => x.id === b?.id) : null;
+    if (!act) return json(res, { error: 'Not found.' }, 404);
+    const r = you.rules.rules.find((x) => x.rule === act.rule);
+    if (key === 'POST act') {
+      const state = act.state === 'offered' ? 'taken' : act.state === 'done' && act.kind === 'add' ? 'kept' : null;
+      if (!state) return json(res, { error: 'That’s been done already.' }, 409);
+      you.acts.set(act.id, { state });
+      if (r) { r.record.kept += state === 'kept' ? 1 : 0; r.record.done += state === 'taken' ? 1 : 0; }
+      return json(res, { act: { ...act, state }, rule: r ? ruleView(r) : { rule: act.rule, level: act.level, line: '' } });
+    }
+    if (!['done', 'taken', 'kept'].includes(act.state)) return json(res, { act, said: 'You’ve changed it since, so nothing was undone.' });
+    you.acts.set(act.id, { state: 'undone' });
+    if (r) { r.record.undone += 1; r.level = LEVELS[Math.min(2, LEVELS.indexOf(r.level) + 1)]; }
+    return json(res, { act: { ...act, state: 'undone' }, rule: r ? ruleView(r) : { rule: act.rule, level: 'suggest', line: '' }, said: `Undone. ${NAMES[act.rule]?.[1] || 'It’s suggested now'}` });
+  }
+  if (key === 'GET rules') return json(res, { rules: you.rules.rules.map((r) => ({ ...r, line: lineOf(r) })) });
+  if (key === 'PUT rules') {
+    const r = you.rules.rules.find((x) => x.rule === b?.rule && !x.soon);
+    if (!r || !LEVELS.includes(b?.level)) return json(res, { error: 'Choose Do, Suggest or Quiet.' }, 400);
+    r.level = b.level; r.setBy = 'you';
+    return json(res, { rule: r.rule, level: r.level, setBy: 'you', line: lineOf(r) });
+  }
+  if (key === 'GET notify') return json(res, you.notify);
+  if (key === 'PATCH notify') {
+    if (!b || typeof b !== 'object') return json(res, { error: 'Bad request.' }, 400);
+    for (const [k, v] of Object.entries(b)) if (v && typeof v === 'object' && you.notify[k] && typeof you.notify[k] === 'object') you.notify[k] = { ...you.notify[k], ...v };
+    return json(res, you.notify);
+  }
+  if (key === 'POST device') {
+    if (!/^https:\/\//.test(b?.sub?.endpoint || '')) return json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400);
+    const tables = b.fan === true && you.devices.fan && !b.was ? ['td_push', 'pg_push', 'mk_push', 'wx_devs'] : ['td_push'];
+    you.devices.here = [...new Set([...(you.devices.here || []), ...tables])];
+    return json(res, { ok: true, tables });
+  }
+  if (key === 'DELETE device') { you.devices.here = []; return json(res, { ok: true }); }
+  if (key === 'GET devices') return json(res, { ...you.devices, here: url.searchParams.get('device') ? you.devices.here : [] });
+  if (key === 'DELETE devices') {
+    const n = you.devices.devices.length;
+    you.devices.devices = you.devices.devices.filter((d) => d.id !== b?.id);
+    return you.devices.devices.length < n ? json(res, { ok: true }) : json(res, { error: 'Not found.' }, 404);
+  }
   if (key === 'GET avatar') {
     const id = url.searchParams.get('id') || '';
     if (!/^[\w-]{8,64}$/.test(id) || id.endsWith('3')) return json(res, { error: 'No picture.' }, 404);

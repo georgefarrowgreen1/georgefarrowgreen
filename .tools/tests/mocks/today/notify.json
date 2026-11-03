@@ -1,0 +1,77 @@
+{
+  "quiet": {
+    "on": true,
+    "from": 21,
+    "to": 6,
+    "tz": "Europe/London"
+  },
+  "emailOk": true,
+  "chat": {
+    "on": 1,
+    "kinds": {
+      "messages": true,
+      "landed": true,
+      "takeoff": false,
+      "rerouted": true,
+      "lost": true,
+      "delays": true,
+      "requests": true,
+      "accepted": true,
+      "reactions": true,
+      "moments": true,
+      "streaks": true,
+      "weekly": true
+    },
+    "names": false,
+    "email": false,
+    "pigeons": true
+  },
+  "weather": {
+    "on": 1,
+    "places": [
+      {
+        "name": "London",
+        "lat": 51.5072,
+        "lon": -0.1276,
+        "rain": true,
+        "warn": true
+      }
+    ],
+    "brief": null,
+    "briefAt": "07:00",
+    "email": {
+      "warn": false,
+      "brief": false
+    },
+    "solar": null
+  },
+  "fitness": {
+    "on": 0,
+    "morning": true,
+    "at": null
+  },
+  "markets": {
+    "on": 1,
+    "off": false,
+    "wrap": true,
+    "alerts": [
+      {
+        "symbol": "TSCO.L",
+        "name": "Tesco",
+        "pct": 3
+      }
+    ]
+  },
+  "mail": null,
+  "today": {
+    "on": true,
+    "at": 420,
+    "devices": 1,
+    "lines": {
+      "weather": true,
+      "fitness": true,
+      "chat": true,
+      "markets": true
+    }
+  }
+}
