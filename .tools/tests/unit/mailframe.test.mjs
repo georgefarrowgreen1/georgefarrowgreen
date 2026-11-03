@@ -113,7 +113,10 @@ test('every other file: the files’ own answer, untouched (and the API as it wa
 test('wrangler.jsonc: the page runs the Worker first, and the hubs’ addresses are InFlite’s and its staging hub’s', { skip }, () => {
   const text = readFileSync(new URL('wrangler.jsonc', MAIL), 'utf8');
   const conf = JSON.parse(text.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
-  assert.deepEqual(conf.assets.run_worker_first, ['/api/*', '/', '/index.html']);
+  // (and, where the inflite repo beside has Mail's module, One roof stage 4's: /body and /body/* the body shell, /roof/*
+  // the module's files, both answered by the Worker; before it, the page and the API alone)
+  const roof = existsSync(new URL('public/roof/mail.js', MAIL));
+  assert.deepEqual(conf.assets.run_worker_first, ['/api/*', '/', '/index.html', ...(roof ? ['/body', '/body/*', '/roof/*'] : [])]);
   // (the staging hub, next.inflite.ai, frames Mail too, for the phone checks before going live: spec §15.2 K7)
   assert.equal(conf.vars.HUB_ORIGIN, 'https://inflite.ai https://next.inflite.ai');
   // (_headers keeps 'none' for every file: the Worker's answer is the only one framed by the hub)
