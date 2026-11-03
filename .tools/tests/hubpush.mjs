@@ -235,6 +235,9 @@ step(4, 'the root worker’s pulse: Mira’s tick turns delivered with no Chat o
 // ======================================================================================================================
 await G.p.goto(`${HUB}/weather/`);
 await G.p.waitForLoadState('load');
+// (a friend's messages in a row buzz you once in ten seconds: this one past that, so it has its own push)
+const lastMira = Number(rows(`SELECT MAX(sent_at) AS t FROM pg_msgs WHERE sender = '${M.id}'`)[0]?.t || 0);
+if (lastMira + 11e3 > Date.now()) await wait(lastMira + 11e3 - Date.now());
 since = Date.now();
 await M.p.fill('#msg', 'Back at six'); await M.p.click('.send');
 const msg = await until(() => rows(`SELECT id, got_at FROM pg_msgs WHERE sender = '${M.id}' AND recipient = '${GID}' ORDER BY sent_at DESC LIMIT 1`)[0], 10000);

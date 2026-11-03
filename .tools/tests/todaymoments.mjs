@@ -83,7 +83,7 @@ const step5 = (t) => Math.ceil(t / (5 * MIN)) * 5 * MIN, q15 = (t) => Math.ceil(
 // Every day where George is: dry, but rain from 15:00 to 18:00 his time, heaviest at 17:00; 14°, feeling 11°; light
 // wind; light from 06:00 to 20:00 his time. MeteoAlarm says nothing until a moment asks for its warning (WX.warn).
 // (the place's clock is George's: Open-Meteo answers in the place's own zone, and George's place is where he is)
-const WX = { tz: 'Europe/London', warn: false };
+const WX = { tz: zoneAt(7), warn: false };
 const RAIN = { 15: 0.6, 16: 1.2, 17: 2.5 };
 const byHour = (lh) => { const p = RAIN[lh] || 0;
   return { precip: p, code: p ? (p > 2 ? 65 : 63) : 2, pop: p ? 90 : 5, temp: 14, feels: 11, wind: 9, gust: 18, day: lh >= 6 && lh < 20 ? 1 : 0 }; };
@@ -316,7 +316,8 @@ for (const ph of [P, M, L]) await ph.p.reload().catch(() => {});
 
 // George's apps, each through its own route at the hub (spoken for as the app by the Worker)
 const CELLS = [[51.45, -0.15], [51.5, -0.15], [51.55, -0.15], [51.6, -0.15], [51.4, -0.15], [51.65, -0.1]];
-const HOME = { name: 'London', lat: CELLS[0][0], lon: CELLS[0][1] };
+// (set up at a cell of its own: the moments' cells are 0 to 3, each asked for first in its own moment)
+const HOME = { name: 'London', lat: CELLS[5][0], lon: CELLS[5][1] };
 let r = await hubCall('GET', '/api/weather/me');
 r = await hubCall('PUT', '/api/weather/me', { base: r.j?.ver || 0, data: { places: [HOME], settings: {}, notify: { places: [{ ...HOME, rain: true, warn: true }], brief: null, briefAt: '07:00' } } });
 ok(r.s === 200, 'George’s Weather: London, its rain and warnings wanted (Weather’s own route, at /api/weather/)', `${r.s} ${js(r.j, 120)}`);
@@ -535,6 +536,8 @@ step(3, 'send: the weather to Pat from Today; you stay on Today', '§4.1, §8.2,
   const card = await until(async () => { const c = (await P.p.locator('.msgs .cd-card').last().textContent().catch(() => '')).replace(/\s+/g, ' '); return /When sent/.test(c) && /Now/.test(c) ? c : null; }, 20000);
   ok(!!card, 'live in Pat’s chat: “When sent · …” and “Now · …”', card || await P.p.locator('.msgs').innerText().catch(() => ''));
   await P.p.screenshot({ path: `${out}/3-pat.png` }).catch(() => {});
+  // (wherever Send took the window, back to the hub for what follows)
+  if (new URL(G.p.url()).origin !== HUB) await G.p.goto(HUB + '/');
 }
 
 // ======================================================================================================================
@@ -576,9 +579,11 @@ let RIDE4 = null, MIRA_AT = 0;
   await chatTick(); await wait(1500);
   const chat = (await pushesSince('george', since)).filter((x) => x.app === 'chat');
   ok(!!mm.id && !chat.length, 'Mira writes while George rides: no push (held at do)', js(chat, 200));
-  // a MeteoAlarm warning passes the hold
-  WX.warn = true; since = Date.now();
+  // a MeteoAlarm warning passes the hold (Weather's turn once with none, as each new place's first turn learns its clock;
+  // then the warning)
   run(`UPDATE wx_subs SET told = '{}', last_rain = ${Date.now()} WHERE dev IN (SELECT dev FROM wx_devs WHERE user_id = '${GID}')`);
+  await weatherTick();
+  WX.warn = true; since = Date.now();
   const wt = await weatherTick();
   const warned = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'weather' && /warning/i.test(`${x.title} ${x.body}`)), 10000);
   ok(!!warned, 'a MeteoAlarm warning still gets through, as Weather’s (app: weather)', `${js(wt.j, 160)} ${js(warned, 200)}`);
@@ -618,7 +623,8 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   const words = await until(async () => { const w = await textOf(`#top .dt-said[data-wid="${M.id}"]`); return w.includes(SAID.mira) ? w : null; }, 20000);
   ok(!!words, 'and her words, from the engine on this phone', words);
   const to = await textOf('#top .dt-to');
-  ok(/^Leo · Riding with you (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)$/i.test(to) && !!(await G.p.$(`#top [data-do=sendto][data-to="${L.id}"]`)), '“Leo · Riding with you <the day you agreed>”, and Send to Leo', to);
+  ok(/^Leo · Riding with you (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)$/i.test(to), '“Leo · Riding with you <the day you agreed>”', to);
+  ok(!!(await G.p.$(`#top [data-do=sendto][data-to="${L.id}"]`)), 'Send to Leo, a button for one tap (sendTo)', await G.p.evaluate(() => document.querySelector('#top .tc-foot')?.innerHTML.slice(0, 300)).catch(() => ''));
   const fit = await G.p.$('#top a[data-do=open]:has-text("Open Fitness")');
   ok(!!fit && (await fit.getAttribute('href')) === '/fitness/#activities', 'Open Fitness, at /fitness/#activities');
   await shot(G, '5-after-honest');
