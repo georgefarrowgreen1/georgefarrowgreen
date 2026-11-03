@@ -51,6 +51,11 @@ await p.goto(`${HUB}/robots.txt`);
 const seeded = await weatherAccount(p, { places: [London], settings: { temp: 'c' } });
 ok(seeded.s === 200, 'Noor’s Weather place in the account (London)', js(seeded));
 
+// (a milestone-1 page stood in for, as the real one is in this: it takes the hub's cross-fade in (its styles.css, menu.css's
+// @view-transition) and catches the one it opens with as its head is read (as today/public/fade.js and menu.js do), so a
+// cross-fade called off as it arrives (an opt-in it hasn't, the window's size changed) is never an error on the page)
+const M1_PAGE = (app) => `<!doctype html><meta charset="utf-8"><title>${app}</title><style>@view-transition { navigation: auto; }</style><script>(() => { const t = document.activeViewTransition; if (t) for (const k of ['ready', 'finished', 'updateCallbackDone']) t[k]?.catch?.(() => {}); })();</script><h1>MILESTONE 1 ${app.toUpperCase()}</h1>`;
+
 // ======================================================================================================================
 await part(1, 'a notification tapped with the framework open: in the page, sheets closed first', '§3.2, §8.2 openIn, D10, D22', async () => {
 // ======================================================================================================================
@@ -238,7 +243,7 @@ await part(8, 'the roof turned off mid-session (the client’s side): a shown We
     ph.off = false;
     await route(ph.ctx, /^http:\/\/ifl\.test:8788\/api\/hub(\?|$)/, (r) => (ph.off ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: '{"ready":true,"roof":false}' }) : r.continue()));
     await route(ph.ctx, /^http:\/\/ifl\.test:8788\/weather\/roof\//, (r) => (ph.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found' }) : r.continue()));
-    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/weather\/(index\.html)?(\?[^#]*)?$/, (r) => (ph.off && r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Weather</title><h1>MILESTONE 1 WEATHER</h1>' }) : r.continue()));
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/weather\/(index\.html)?(\?[^#]*)?$/, (r) => (ph.off && r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html', body: M1_PAGE('Weather') }) : r.continue()));
   };
   const R = await open('noor-off', { sw: 'block', clock: true });
   await offOn(R);
@@ -317,7 +322,7 @@ await part(9, 'one module turned off mid-session: a shown Markets bounces once; 
       return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify(j) });
     });
     await route(ph.ctx, /^http:\/\/ifl\.test:8788\/markets\/roof\//, (r) => (ph.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found' }) : r.continue()));
-    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/markets\/(index\.html)?(\?[^#]*)?$/, (r) => (ph.off && r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Markets</title><h1>MILESTONE 1 MARKETS</h1>' }) : r.continue()));
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/markets\/(index\.html)?(\?[^#]*)?$/, (r) => (ph.off && r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html', body: M1_PAGE('Markets') }) : r.continue()));
   };
   // a shown Markets: bounced once, by replace, to /markets/ (the hub's page), with the marker
   const R = await open('noor-mk-off', { sw: 'block', clock: true });
