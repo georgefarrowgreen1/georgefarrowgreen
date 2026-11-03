@@ -37,9 +37,9 @@ const shot = (p, name) => p.screenshot({ path: `${out}/${name}.png` }).catch(() 
 const K = await kit(S, out);
 
 // ---- Mail's hooks (roofhooks.mjs, spec §10.2) ----
-const M_MAIL = H.M_MAIL, ROW = H.MAIL_ROW, BODY = H.MAIL_BODY;
-const row = (id) => H.mailRow(id);
-const SH = (name) => H.sheet(name);
+const M_MAIL = H.M_MAIL, ROW = H.MAIL_THREAD, BODY = H.MAIL_BODY;
+const row = (id) => H.mailThread(id);
+const SH = (name) => H.mailSheet(name);
 const COMPOSE = SH('mail-compose');
 
 const sql = (q) => {
@@ -257,7 +257,7 @@ await part('C', 'the switch off: a shown Mail bounces once, not while composing;
   const q = R.p, docs = loads(q);
   await q.goto(`${HUB}/mail/`);
   await mailUp(q);
-  await q.click(H.hdAct('compose'));
+  await q.click(H.HD_COMPOSE);
   await sheetUp(q, 'mail-compose');
   await q.locator(COMPOSE).getByRole('textbox', { name: /^Subject/i }).first().fill('Roof switch draft').catch(() => {});
   docs.reset();
@@ -314,7 +314,7 @@ await part('D', 'signed out elsewhere: no mail:* key left', 'C10, S4-D16', async
   await mailUp(q);
   await q.click(H.hdSec('later')); await wait(800);
   await q.click(H.hdSec('people')); await wait(500);
-  await q.click(H.hdAct('compose')); await sheetUp(q, 'mail-compose');
+  await q.click(H.HD_COMPOSE); await sheetUp(q, 'mail-compose');
   await q.locator(COMPOSE).getByRole('textbox', { name: /^Subject/i }).first().fill('Roof remote sign out').catch(() => {});
   await q.keyboard.press('Escape'); await wait(1500);
   const before = await mailKeys(q);
@@ -358,7 +358,7 @@ await part('E', 'offline on the Home Screen after one online open: Mail’s offl
   const words = await q.waitForFunction((s) => /Mail needs a connection/.test(document.querySelector(s)?.textContent || ''), M_MAIL, { timeout: 30000 }).then(() => true, () => false);
   ok(words, 'E. offline: Mail’s own words, “Mail needs a connection. Your mail is safe at Mail…” (S4-D15)', await textOf(q, M_MAIL));
   await shot(q, 'E-offline');
-  await q.click(H.hdAct('compose')).catch(() => {});
+  await q.click(H.HD_COMPOSE).catch(() => {});
   ok(await sheetUp(q, 'mail-compose', 15000), 'E. …Write opens compose offline (compose.js kept, S4-D15, C11)');
   await shot(q, 'E-offline-compose');
   const away = navs.filter((u) => { try { return new URL(u).origin === MAIL; } catch (_) { return false; } });

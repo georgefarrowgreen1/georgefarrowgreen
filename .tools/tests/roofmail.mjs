@@ -37,11 +37,11 @@ const shot = (p, name) => p.screenshot({ path: `${out}/${name}.png` }).catch(() 
 
 // ---- Mail's hooks (roofhooks.mjs, spec §10.2) ----
 const M_MAIL = H.M_MAIL;                                   // main#m-mail
-const ROW = H.MAIL_ROW;                                    // .m-mail [data-thread]
-const row = (id) => H.mailRow(id);                         // that conversation's row
+const ROW = H.MAIL_THREAD;                                 // .m-mail [data-thread]
+const row = (id) => H.mailThread(id);                     // that conversation's row
 const BODY = H.MAIL_BODY;                                  // .m-mail iframe.mail-body
 const act = (name) => H.mailAct(name);                     // .m-mail [data-act=done|later|reply|send|undo]
-const SH = (name) => H.sheet(name);                        // dialog.ifl-sheet[data-sheet=mail-…]
+const SH = (name) => H.mailSheet(name);                    // dialog.ifl-sheet[data-sheet=mail-…]
 const COMPOSE = SH('mail-compose');
 
 // ---- the site's database (as lib.mjs reads it: wrangler d1 on the site's local state) ----
@@ -154,9 +154,9 @@ const fill = async (p, { to, subject, text }) => {
   if (subject != null) await field(p, /^Subject/i).first().fill(subject);
   if (text != null) await field(p, /message|body/i).first().fill(text);
 };
-const write = async (p) => { await p.click(H.hdAct('compose')); return sheetUp(p, 'mail-compose'); };
-const sendNow = (p) => p.click(`${COMPOSE} [data-act=send]`);
-const toastUndo = (p) => p.locator(H.TOAST).getByRole('button', { name: /^Undo$/ }).first();
+const write = async (p) => { await p.click(H.HD_COMPOSE); return sheetUp(p, 'mail-compose'); };
+const sendNow = (p) => p.click(`${COMPOSE} ${H.MAIL_SEND}`);
+const toastUndo = (p) => p.locator(`${H.TOAST} ${H.MAIL_UNDO}`).first();
 // (a row swiped by a finger: pointer down at x0 on the row's middle, moved in steps to x1, up)
 const swipe = async (p, sel, x0, x1) => {
   const b = await p.locator(sel).first().boundingBox(); if (!b) return false;
@@ -192,7 +192,7 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
   const c = await countsNow(), unread = c?.people?.unread ?? null;
   const line = (await textOf(p, H.HD_LINE)) || '';
   ok(unread != null && (unread > 0 ? line === `${unread} unread` : line === 'All caught up'), `1. the line: “${unread} unread” (Mail’s count, §2.1)`, js({ line, counts: c?.people }));
-  ok((await count(p, H.hdAct('compose'))) === 1 && !(await count(p, H.HD_SETTINGS)) && !(await count(p, H.HD_EDIT)), '1. one act: Write (data-act=compose); no Settings, no Edit (S4-D26)');
+  ok((await count(p, H.HD_COMPOSE)) === 1 && !(await count(p, H.HD_SETTINGS)) && !(await count(p, H.HD_EDIT)), '1. one act: Write (data-act=compose); no Settings, no Edit (S4-D26)');
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Apps', '1. Back says “Back to Apps” (§2.1)', await attrOf(p, H.HD_BACK, 'aria-label'));
   const secs = await sections(p);
   ok(js(secs.map((s) => s.id)) === js(['people', 'updates', 'later', 'done']) && secs[0]?.on === 'true', '1. the switcher: People · Updates · Later · Done, People selected (§2.1, REGISTRY)', js(secs));
@@ -507,8 +507,10 @@ await part(5, 'Send with Undo and the outbox; a reply Mail quotes itself; a forw
   await fill(p, { to: 'jo@example.com', subject: 'Roof before sign out', text: 'Unfinished business' });
   await p.click(H.tab('you'));
   await shown(p, H.YOU, 15000);
-  const outBtn = H.YOU_SIGNOUT;
-  await p.click(outBtn).catch(() => {});
+  // (Sign Out in InFlite's menu, your photo's: the button by its name)
+  await p.click(H.HD_ME).catch(() => {});
+  await p.getByRole('button', { name: 'Sign Out' }).first().click().catch(() => {});
+  if (await shown(p, `${H.SIGNOUT_ANYWAY}[open]`, 3000)) await p.locator(`${H.SIGNOUT_ANYWAY}[open]`).getByRole('button', { name: 'Sign Out' }).click().catch(() => {});
   await p.waitForURL((u) => u.host !== 'ifl.test:8788' || u.hash.includes('signout'), { timeout: 20000 }).catch(() => {});
   await wait(2500);
   const c2 = freshCookie(GID);

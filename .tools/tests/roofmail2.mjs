@@ -30,9 +30,9 @@ const MAIL_PASS = 8807;    // the pass-through the root Worker reaches Mail's Wo
 const shot = (p, name) => p.screenshot({ path: `${out}/${name}.png` }).catch(() => {});
 
 // ---- Mail's hooks (roofhooks.mjs, spec §10.2) ----
-const M_MAIL = H.M_MAIL, ROW = H.MAIL_ROW, BODY = H.MAIL_BODY;
-const row = (id) => H.mailRow(id);
-const SH = (name) => H.sheet(name);
+const M_MAIL = H.M_MAIL, ROW = H.MAIL_THREAD, BODY = H.MAIL_BODY;
+const row = (id) => H.mailThread(id);
+const SH = (name) => H.mailSheet(name);
 
 // ---- the site's database (as lib.mjs reads it) ----
 const sql = (q) => {
@@ -136,7 +136,7 @@ await part(8, 'Today’s Mail card, the Apps tile’s line, mini and chips; Pat 
   const wantLine = n > 0 ? `${n} from people` : 'All caught up';
   await p.goto(`${HUB}/`);
   await todayUp(p);
-  const card = H.todayCard('mail');
+  const card = H.TODAY_MAIL_CARD;
   const drawn = await shown(p, card, 30000);
   const ct = drawn ? (await textOf(p, card)) || '' : '';
   ok(drawn && /^Mail\b/.test(ct) && ct.includes(wantLine) && !SUBJECTS.some((s) => ct.includes(s)) && !/Pat/.test(ct), `8. Today: Mail’s card, “${wantLine}”, numbers only (no subject, no sender, S4-D10)`, ct.slice(0, 200));
@@ -161,7 +161,7 @@ await part(8, 'Today’s Mail card, the Apps tile’s line, mini and chips; Pat 
   const P = watch(await phone('pat', { cookies: pa.cookies || {} }));
   await P.p.goto(`${HUB}/`);
   await todayUp(P.p); await wait(1500);
-  ok(!(await count(P.p, H.todayCard('mail'))), '8. Pat: no Mail card on Today (S4-D21)');
+  ok(!(await count(P.p, H.TODAY_MAIL_CARD)), '8. Pat: no Mail card on Today (S4-D21)');
   await P.p.click(H.HD_EDIT);
   const edit = await shown(P.p, H.SHEET_OPEN, 10000);
   const list = edit ? (await textOf(P.p, H.SHEET_OPEN)) || '' : '';
