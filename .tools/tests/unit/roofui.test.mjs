@@ -156,8 +156,8 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 });
 
 // (stage 1 left roof/*.js at 20,452 of 20,480 B; stages 2–4 raise the cap to 24 KB once, for the per-app switch, the
-// reload rules, flush, the stay keys and the connector providers they all need (s24-contracts §13; s4 spec §5): j0's
-// share ≤ 1.5 KB plus stage 2's framework work, stage 3's ≤ 1.3 KB after)
+// reload rules, flush, the stay keys and the connector providers they all need (s24-contracts §13; s4 spec §5). j0, which
+// did most of stage 2's framework parts too, left 22,350 B: stage 2's FW ≤ 850 B more, stage 3 ≤ 1,300 B, ~75 B slack)
 test('roof/*.js together: at most 24 KB gzipped, comments stripped', { skip: roofSkip }, () => {
   const all = files().map((f) => strip(read(f))).join('\n');
   const gz = gzipSync(all).length;
@@ -171,21 +171,19 @@ test('stages 2–4, frame.js: sections false hides the switcher, back: { label }
   const f = strip(read('frame.js'));
   assert.match(f, /sections: h\.sections === false \|\| h\.sections === null \? null : R\.sections/, 'false (and null) hide it; anything else shows it');
   assert.match(f, /back: \{ label: h\.back\?\.label \|\| \(to \? `Back to \$\{to\}` : "Back"\) \}/, 'the module’s label, the action always F.nav.back');
-  assert.match(f, /go: \(path, o\) => F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: o\?\.kind \}\)/);
+  assert.match(f, /go: \(path, o\) => F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: KINDS\.includes\(o\?\.kind\) \? o\.kind : null \}\)/, 'a module’s kind: push, tab, zoom or section only (roofframe.test runs it)');
   assert.match(f, /depth: \(\) => curDepth\(\)/);
   assert.match(f, /function tidy\(r\) \{\n\s*if \(REGISTRY\[r\.app\]\?\.stay\?\.includes\(r\.key\)\) return;/, 'a stay key stays in the address');
   assert.match(f, /changed: \(\) => \{ T\(\(\) => opts\.changed\?\.\(app\)\); \}/);
   assert.match(f, /hubAgain: \(\) => F\.hubAgain\(\)/);
   assert.ok(!/roofOn\(\)/.test(f), 'no single flag for every app: roofs() gives parse the map');
-  assert.match(f, /const roofs = \(\) => \{ const s = sess\(\); return s\.hub \? s\.apps : false; \};/);
+  assert.match(f, /const roofs = \(\) => sess\(\)\.apps;/, 'the map, {} with the hub off (no app route is ours)');
 });
 
 test('stages 2–4, frame.js: F.flush caps each module at 2 s and sums lost; reloads the frame starts itself wait while busy; the bounce flushes first; fw.lazy asks the version and retries with ?retry=<n>', { skip: s24 }, () => {
   const f = strip(read('frame.js'));
-  assert.match(f, /flush\(\) \{\n\s*return Promise\.all\(Object\.values\(mods\)\.map\(\(m\) => Promise\.race\(\[Promise\.resolve\(\)\.then\(\(\) => m\.instance\?\.flush\?\.\(\)\)\.catch\(\(\) => null\), new Promise\(\(ok\) => setTimeout\(ok, 2000\)\)\]\)\)\)/);
-  assert.match(f, /lost: a\.reduce\(\(n, x\) => n \+ \(Number\(x\?\.lost\) \|\| 0\), 0\)/);
-  assert.match(f, /if \(!F\.busy\(\)\) \{ T\(\(\) => mods\[shownApp\]\?\.instance\?\.flush\?\.\(\)\); return go\(\); \}\n\s*F\.flush\(\)\.then\(\(\) => safely\(go\)\);/, 'the bounce: at once with nothing unsaved (stage 1), else flushed, then once nothing is unsaved');
-  assert.match(f, /if \(!F\.busy\(\)\) \{ clearInterval\(later\); return go\(\); \}/);
+  // (F.flush's cap, setRoof's bounce, the waits while busy and fw.lazy's version ask and ?retry are run, not read, in
+  // roofframe.test.mjs; here only the stale guards that test doesn't drive)
   assert.match(f, /if \(r\.kind === "app" && stale && prev && !same && !F\.busy\(\)\) return reloadStale\(\);/);
   assert.match(f, /if \(stale && away >= 60e3 && !F\.busy\(\)\) return reloadStale\(\);/);
   assert.match(f, /if \(stale && !F\.busy\(\)\) \{ reloadStale\(\); return new Promise\(\(\) => \{\}\); \}/, 'stale and busy: the import goes ahead');
@@ -205,7 +203,7 @@ test('stages 2–4: toast() gives { close() }; connectors.js has a provider per 
   assert.equal(await connectorOf('mail', F({})), STATIC.mail);
   assert.equal(await connectorOf('chats', F({})), STATIC.chats);
   const m = strip(read('modules.js'));
-  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error/);
+  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error\(`the hub or the roof is off/, 'stage 1’s words (roofshell allows exactly that error)');
   assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
   assert.match(m, /keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\]\)\), 10e3\)/, 'lazy kept only on the Home Screen, 10 s on');
 });

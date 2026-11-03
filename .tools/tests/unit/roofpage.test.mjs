@@ -84,11 +84,18 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   assert.ok(!/class="bsheet"|class="dimmer"/.test(html), 'none of the page’s old sheets');
 });
 
-test('under the roof, its sheets are InFlite’s sheet, in the frozen markup: Morning, Every App’s, Edit Today and Weather Notifications', { skip: roofOnly }, () => {
+test('under the roof, its sheets are InFlite’s sheet, in the frozen markup: Morning, Every App’s, Edit Today, Weather Notifications and (stage 4) Mail Notifications', { skip: roofOnly }, () => {
   const html = String(pub('index.html'));
   const dialogs = [...html.matchAll(/<dialog\b[^>]*>[\s\S]*?<\/dialog>/g)].map((m) => m[0]);
   const ids = dialogs.map((d) => /\sid="([^"]+)"/.exec(d)?.[1]);
-  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify'], 'the four, as dialogs');
+  // (stage 4's B0-b adds Mail Notifications with Mail's module, s4/spec §3.8; an inflite beside without Mail's module
+  // has the four)
+  const mail = existsSync(new URL('../../email/public/roof/mail.js', PUB));
+  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify', ...(mail ? ['sh-mailnotify'] : [])], mail ? 'the five, as dialogs' : 'the four, as dialogs');
+  if (mail) {
+    assert.match(html, /<h2 id="sh-mailnotify-t" tabindex="-1">Mail Notifications<\/h2>/);
+    assert.match(html, /<div class="ifs-body" id="mlnBody"><\/div><\/dialog>/, 'Mail Notifications’ body, drawn by mailnotify.js');
+  }
   for (const [i, d] of dialogs.entries()) {
     const id = ids[i];
     const head = new RegExp(`^<dialog class="ifl-sheet" id="${id}" aria-labelledby="${id}-t"><div class="ifs-grab" aria-hidden="true"></div><header class="ifs-head"><h2 id="${id}-t" tabindex="-1">[^<]+</h2><button class="ifs-btn" type="button" data-close aria-label="Close">✕</button></header><div class="ifs-body"[^>]*>`);
@@ -167,8 +174,14 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
   assert.match(so, /if \(fl\?\.lost > 0 && !\(await anyway\(\)\)\) return;/, 'lost > 0: asked; Cancel signs nobody out');
   assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
-  const out = js.slice(js.indexOf('function signedOutNow()'), js.indexOf('function signedIn('));
-  assert.match(out, /forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere: the apps’ copies (Chat’s engine signs itself out)');
+  const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
+  assert.ok(out.length > 0, 'signedOutNow');
+  assert.match(out, /if \(sure === true\) forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere, the account said so: the apps’ copies (Chat’s engine signs itself out)');
+  assert.match(out, /sessionCheck = null; checkSession\(\)\.then\(\(inn\) => inn === false && forgetApps\(\{ chat: false \}\)\)/, 'any other 401 or word: the account asked afresh first (review I-8)');
+  // (sure only from the account's own answer, or the frame's lost(), which asks it first)
+  assert.match(js, /lost: \(\) => signedOutNow\(true\)/);
+  assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \(!view\?\.signedIn\) return signedOutNow\(true\);/);
+  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\(\);/, 'a 401 from any other call: not sure');
   assert.match(js, /const APP_SESSION_KEPT = \["mail:signin-verifier"\];/);
   assert.match(js, /for \(const k of APP_SESSION_KEPT\) sessionStorage\.removeItem\(k\)/);
   for (const k of ['mail:replies', 'mail:unsent', 'mail:outbox', 'mail:remote-images', 'mail:lens']) assert.ok(js.includes(`"${k}"`), `APP_KEPT: ${k}`);
@@ -180,4 +193,32 @@ test('stages 2–4, app.js: fw.changed() marks Today’s cards, which are asked 
   assert.match(js, /onShow\(\) \{ drawLine\(true\); if \(cardsStale\) \{ cardsStale = false; refresh\(\); \} \}/);
   assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt" \};/);
   assert.doesNotMatch(js, /preloadWeather/);
+});
+
+// ---- stage 2 FW (s2 §9.1 roofpage): sign-out elsewhere clears every app's copy, never offline; old workers per module;
+// each module's own address by its link (Markets: links.finance) ----
+test('stage 2, app.js: a confirmed sign-out found out about (401, the account’s word, the worker’s) clears every APP_KEPT key and the fitness store; no answer at all (offline) clears nothing', { skip: s24 }, () => {
+  const js = own();
+  const fa = js.slice(js.indexOf('async function forgetApps('), js.indexOf('function keptFor('));
+  assert.match(fa, /for \(const k of APP_KEPT\) localStorage\.removeItem\(k\)/, 'every APP_KEPT key');
+  assert.match(fa, /inStore\("fitness", "files", \(s\) => s\.clear\(\)\)/, 'the fitness store emptied');
+  // (the callers of signedOutNow: a 401, the account saying signed out, the worker's word, the frame's confirmed lost())
+  const calls = [...js.matchAll(/^.*signedOutNow\(\).*$/gm)].map((m) => m[0].trim()).filter((l) => !/^\/\/|^function signedOutNow/.test(l));
+  for (const l of calls) assert.match(l, /status === 401|!view\?\.signedIn|!view\?\.user\?\.id|d\.ifl === "signedout"/, `signedOutNow only once it’s confirmed: ${l}`);
+  assert.match(js, /lost: (?:signedOutNow|\(\) => signedOutNow\(true\)),/, 'and the frame’s lost(), which calls it only on a confirmed “signed out” (D3)');
+  // (offline: the load's catch keeps the copy or shows the way in with the message, never signedOutNow)
+  const ld = js.slice(js.indexOf('async function load()'), js.indexOf('const save = '));
+  const offline = ld.slice(ld.indexOf('const ks = e.status === 0'), ld.indexOf('if (view?.links)'));
+  assert.ok(offline.length > 0 && !/signedOutNow/.test(offline), 'no answer at all: nothing signed out, nothing cleared');
+});
+
+test('stage 2, app.js: each module’s old worker at its own path let go of once its switch is known on (S2-D14); REGISTRY’s link names Markets’ own address (links.finance)', { skip: s24 }, async () => {
+  const js = own();
+  const ro = js.slice(js.indexOf('function retireOld()'), js.indexOf('const ownLinks'));
+  assert.match(ro, /Object\.keys\(appsSaid\)\.filter\(\(a\) => appsSaid\[a\] && !retired\.has\(a\)\)/, 'only modules known on, each once');
+  assert.match(ro, /r\.unregister\(\)/);
+  const { REGISTRY } = await import(new URL('today/public/roof/router.js', IFL));
+  assert.equal(REGISTRY.markets?.link, 'finance', 'Markets on its own: links.finance');
+  assert.equal(REGISTRY.fitness?.link, undefined, 'Fitness on its own: links.fitness (its name)');
+  assert.match(js, /finance: at\("finance"\)/, 'DEFAULT_LINKS has finance');
 });
