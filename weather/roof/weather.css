@@ -253,7 +253,8 @@
 @media (max-width: 380px) {
   .m-weather .wx-dtail[data-mode="temp"] { grid-template-columns: 26px minmax(28px, 40px) 32px; column-gap: 5px; }
   .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 26px minmax(28px, 44px) 56px; }
-  .m-weather .wx-dname { width: 40px; }
+  .m-weather .wx-dname { width: 50px; }
+  .m-weather .wx-dname small { font-size: 11.5px; }
   .m-weather .wx-day .ifl-tx b { font-size: 14px; }
 }
 
