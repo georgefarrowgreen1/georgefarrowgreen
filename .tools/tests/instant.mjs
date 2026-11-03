@@ -141,7 +141,10 @@ await privacy(L, 'showTyping');
 // (no typing Worker: typing is off, everything else as ever)
 restart({ TYPING: '0' });
 await reload(M); await reload(L);
-const [, p0] = await api(ls.token, 'pulse', { since: Date.now(), open: MI });
+// (Leo's own page pulses with the same sign-in every few seconds, and the server refuses a second pulse within a second
+// of the last (429, with the ms to wait): asked again after that, as his app would)
+let p0 = null;
+for (let i = 0; i < 5; i++) { const [st, j] = await api(ls.token, 'pulse', { since: Date.now(), open: MI }); p0 = j; if (st !== 429) break; await wait(Math.min(2000, Number(j?.retry) || 1000) + 100); }
 ok(p0 && p0.typing === null && Array.isArray(p0.changed), '4. no typing Worker: the pulse answers, with typing null', JSON.stringify(p0).slice(0, 160));
 await openChat(L, MI); await openChat(M, LE);
 await L.p.click('#msg'); await L.p.type('#msg', 'Hello?', { delay: 60 });
