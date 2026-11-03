@@ -27,7 +27,7 @@ import { gpxFromActivity } from '../../fitness/formats.js';
 import { demo, samples } from '../../fitness/sample.js';
 import {
   HUB, ROOT, EXCEPT, checker, phone, account, wxServer, weatherAccount, pageCall, alive, loads, history, said, here, shown, textOf, attrOf, count,
-  storage, changed, axe, meter, connectorFiles, hide, show, route, hostCall, PLACES, wait, until, js, closeAll,
+  storage, changed, axe, meter, connectorFiles, connectorLazy, hide, show, route, hostCall, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -50,9 +50,7 @@ const notReady = [
 ];
 if (notReady.length) { for (const r of notReady) console.log(`SKIPPED  ${r}`); console.log('FAILS 1'); process.exit(0); }
 
-const conn = src('fitness/roof/connector.js') || '';
-const listIn = (k) => { const m = new RegExp(`${k}:\\s*\\[([\\s\\S]*?)\\]`).exec(conn); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
-const FILES = connectorFiles(APP), LAZY = listIn('lazy');
+const FILES = connectorFiles(APP), LAZY = connectorLazy(APP);
 
 // ---- the database (the rows the server writes itself: older rides, Today's offers), as lib.mjs's kit asks it ----
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT || ROOT, stdio: 'pipe' }).toString();

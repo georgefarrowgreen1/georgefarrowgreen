@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
 import {
   HUB, ROOT, EXCEPT, checker, phone, account, wxServer, engine, weatherAccount, pageCall, alive, loads, history, said, here, shown, textOf, attrOf, count,
-  storage, changed, axe, meter, connectorFiles, hide, show, route, hostCall, tapNotification, rootWorker, PLACES, wait, until, js, closeAll,
+  storage, changed, axe, meter, connectorFiles, connectorLazy, hide, show, route, hostCall, tapNotification, rootWorker, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -48,9 +48,7 @@ const notReady = [
 if (notReady.length) { for (const r of notReady) console.log(`SKIPPED  ${r}`); console.log('FAILS 1'); process.exit(0); }
 
 // ---- the module's own numbers, read from its files ----
-const conn = src('markets/roof/connector.js') || '';
-const listIn = (k) => { const m = new RegExp(`${k}:\\s*\\[([\\s\\S]*?)\\]`).exec(conn); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
-const FILES = connectorFiles(APP), LAZY = listIn('lazy');
+const FILES = connectorFiles(APP), LAZY = connectorLazy(APP);
 const BUILD = /^export const BUILD = "([^"]+)";/m.exec(entry)?.[1] || null;
 // (an amount of George's: the two holdings' values, the total, the day's change in pounds: none may leave the screen)
 const AMOUNTS = /£|824\.00|357\.60|1,181|1181\.6|9\.04|\b6\.64\b|\b2\.40\b/;

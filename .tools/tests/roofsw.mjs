@@ -20,9 +20,9 @@
 //   f in a browser tab (not standalone): only connector.files kept, never the lazy files (RI8)
 // In real Chromium against the hub stack (hubstack.mjs). Selectors from roofhooks.mjs (§3.14), save rooflib's declared
 // exceptions (EXCEPT: the hub's marker, the way in).
-import { rmSync, readFileSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
-import { HUB, ROOT, EXCEPT, checker, connectorFiles, phone, persistent, dress, account, wxServer, weatherAccount, shown, here, count, textOf, ownGuard, route, PLACES, wait, until, js, closeAll } from './rooflib.mjs';
+import { HUB, EXCEPT, checker, connectorFiles, connectorLazy, phone, persistent, dress, account, wxServer, weatherAccount, shown, here, count, textOf, ownGuard, route, PLACES, wait, until, js, closeAll } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
 const { ok, part, fails } = checker();
@@ -177,7 +177,7 @@ async function oldAppWorker(ph, app) {
   await ph.ctx.unroute(re);
   return st;
 }
-const lazyOf = (app) => { const t = (() => { try { return readFileSync(`${ROOT}/${app}/roof/connector.js`, 'utf8'); } catch (_) { return ''; } })(); const m = /lazy:\s*\[([\s\S]*?)\]/.exec(t); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
+const lazyOf = (app) => { try { return connectorLazy(app); } catch (_) { return []; } };
 // (the paths kept in an app's roof-<app>-<build> cache: { name, paths } or null)
 const keptOf = (p, app) => p.evaluate(async (app) => {
   const name = (await caches.keys()).find((k) => new RegExp(`^roof-${app}-\\d+\\.\\d{2}$`).test(k));
