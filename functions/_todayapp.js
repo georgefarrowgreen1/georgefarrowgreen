@@ -19,6 +19,18 @@
 //   DELETE /api/account/today/push          …and taken off
 //   POST   /api/account/today/account-link  a code that signs the account's page in (good once, for a minute)
 //   GET    /api/account/today/avatar        a friend's photo, or your own, as Chat would show it
+// And Today First's (the one window at inflite.ai: Today, Chats, Apps and You; each handled in its own module, which
+// takes plain arguments and gives back a plain answer, sent here as it is):
+//   POST   /api/account/today/act           an act taken (Move It, Add Thursday's Ride, Ride Then) or kept (Keep)
+//   POST   /api/account/today/act/undo      …undone, where it hasn't been changed by hand since (functions/_todayacts.js)
+//   GET    /api/account/today/rules         the rules Today acts by, each with its level and record
+//   PUT    /api/account/today/rules         …a level set by hand
+//   GET    /api/account/today/notify        the account's notifications, as its own page has them
+//   PATCH  /api/account/today/notify        …changed (functions/_todaynotify.js)
+//   POST   /api/account/today/device        this device for every app's notifications (after a tap), or moved
+//   DELETE /api/account/today/device        …taken off everywhere
+//   GET    /api/account/today/devices       the account's other devices getting notifications
+//   DELETE /api/account/today/devices       …one stopped there, never signed out (functions/_devices.js)
 // (a device is named in an address only by its hash, never its push address: an address ends up in logs)
 
 import { HttpError, db, hex, sha256, issueSession, limit, randomToken, logError } from "./_pigeon.js";
@@ -33,6 +45,10 @@ import { previewMorning, sendMorningNow } from "./_todaymorning.js";
 import { kept as weatherKept } from "./_wxacct.js";
 import { devicesOf as weatherDevices } from "./_wxpush.js";
 import { morningOf } from "./_fitpush.js";
+import { adminOf } from "./api/pigeon/[[path]].js";
+import { actTake, actUndo, rulesGet, rulesPut } from "./_todayacts.js";
+import { notifyGet, notifyPatch } from "./_todaynotify.js";
+import { deviceAdd, deviceDrop, devicesList, devicesStop } from "./_devices.js";
 
 // (only from Today's own page: its server passes the page's Origin on, which a page elsewhere can't make Today's)
 function fromToday(request, env) {
@@ -53,10 +69,19 @@ const DEVICE = /^[A-Za-z0-9_-]{16}$/;
 // (the morning's lines, in the order the Morning section has them)
 const LINES = ["weather", "fitness", "chat", "markets"];
 const firstName = (u) => String(u.name || "").trim().split(/\s+/)[0] || u.handle || "";
+// (tests only: the moment Today's day is worked out at, set by the request, where this server's TODAY_TEST_AT is "1"
+// and Today's Worker passed the header on (its own TEST_AT); never set in production, where it's always now)
+const momentOf = (request, env) => {
+  const at = request.headers.get("X-Today-At") || "";
+  return env.TODAY_TEST_AT === "1" && /^\d{13}$/.test(at) ? Number(at) : Date.now();
+};
 
-// The session view: who, Edit's cards, the morning in a word, and the apps' addresses (functions/_sites.js todayLinks)
+// The session view: who, Edit's cards, the morning in a word, and the apps' addresses (functions/_sites.js todayLinks);
+// and for Today First's You and Apps: quiet hours (Chat's, the account's for every app), whether Mail's there for you
+// (the site's admin alone), and whether every app's notifications can come through InFlite (the Pages var HUB_PUSH)
 async function todayView(env, u, request) {
-  const [row, devs] = await Promise.all([todayPrefs(env, u.id), todayDevices(env, u.id)]);
+  const [row, devs, admin] = await Promise.all([todayPrefs(env, u.id), todayDevices(env, u.id), adminOf(env).catch(() => null)]);
+  const p = prefsOf(u);
   return {
     signedIn: true,
     user: { id: u.id, name: u.name, first: firstName(u), handle: u.handle, photoAt: u.avatar_at || null,
@@ -65,12 +90,16 @@ async function todayView(env, u, request) {
     prefs: row.cards,
     morning: { on: !!row.m_on, at: row.m_at, devices: devs.length },
     links: todayLinks(env, request),
+    quiet: { on: !!p.quiet, from: p.quietFrom, to: p.quietTo },
+    apps: { mail: !!admin && admin.id === u.id },
+    hubPush: env.HUB_PUSH === "1",
   };
 }
 
-// (the cards worked out now, for the page, and kept a minute for the Morning section's changes: functions/_todaycards.js)
-async function freshCards(env, u, row, request, t) {
-  const answer = await cardsFor(env, u, { t, request, tz: morningTz(u, row), links: todayLinks(env, request) });
+// (the cards worked out now, for the page, and kept a minute for the Morning section's changes: functions/_todaycards.js;
+// v: 2 for Today First's day with them, functions/_todayday.js)
+async function freshCards(env, u, row, request, t, { v = 1 } = {}) {
+  const answer = await cardsFor(env, u, { t, request, tz: morningTz(u, row), links: todayLinks(env, request), v });
   cardsMemo.set(u.id, answer);
   return answer;
 }
@@ -141,15 +170,16 @@ export const TODAY_ROUTES = {
     return withoutSession(json({ ok: true }), request, env);
   },
   // The cards (?only=: those asked for, a list; none, all four), and, for them all, the Morning section composed from
-  // the same cards (?with=morning, and ?device=: this device's hash)
+  // the same cards (?with=morning, and ?device=: this device's hash); ?v=2: Today First's day with them (its phase, top
+  // cards, Waiting for You, Coming Up, acts, ride), where a page that knows it asks
   "GET today/cards": async ({ request, env, waitUntil }) => {
     fromToday(request, env);
     const u = await signedIn(request, env), q = new URL(request.url).searchParams;
     await limit(env, "today:" + u.id, 600, 3600e3);
     const asked = String(q.get("only") || "").split(",").filter((k) => CARD_KEYS.includes(k)), only = asked.length ? [...new Set(asked)] : null;
-    const row = await todayPrefs(env, u.id), envW = withWait(env, waitUntil), t = Date.now();
+    const row = await todayPrefs(env, u.id), envW = withWait(env, waitUntil), t = momentOf(request, env), v = q.get("v") === "2" ? 2 : 1;
     if (only) return json(await cardsFor(envW, u, { only, t, request, tz: morningTz(u, row), links: todayLinks(env, request) }));
-    const answer = await freshCards(envW, u, row, request, t);
+    const answer = await freshCards(envW, u, row, request, t, { v });
     if (q.get("with") !== "morning") return json(answer);
     return json({ ...answer, morning: await morningView(envW, u, row, { t, device: q.get("device"), cards: answer.cards, request }) });
   },
@@ -232,6 +262,87 @@ export const TODAY_ROUTES = {
     await limit(env, "todayav:" + u.id, 1200, 3600e3);
     const res = /^[A-Za-z0-9-]{1,64}$/.test(id) ? await avatarFor(env, u.id, id) : null;
     return res || json({ error: "No picture." }, 404);
+  },
+
+  // ---- Today First's (spec §6.1): each checked here as every route above is, then its module's, with plain
+  // arguments, its answer sent as it is (an HttpError it throws is the error's answer, as everywhere) ----
+  // { id } → { act, rule: { rule, level, line } }: an offered act taken, or a done add kept
+  "POST today/act": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024), t = Date.now();
+    return json(await actTake(env, u, b, { t }));
+  },
+  // { id } → { act, rule, said }: undone, where nothing's changed it by hand since
+  "POST today/act/undo": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024), t = Date.now();
+    return json(await actUndo(env, u, b, { t }));
+  },
+  // → { rules: [{ rule, name, level, setBy, record, line, soon? }] }
+  "GET today/rules": async ({ request, env }) => {
+    fromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const t = Date.now();
+    return json(await rulesGet(env, u, { t }));
+  },
+  // { rule, level } → { rule, level, setBy: "you", line }
+  "PUT today/rules": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024), t = Date.now();
+    return json(await rulesPut(env, u, b, { t }));
+  },
+  // → the account's notifications, as its own page has them
+  "GET today/notify": async ({ request, env }) => {
+    fromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    return json(await notifyGet(env, u));
+  },
+  // a change, as the account's page sends it → the same, after
+  "PATCH today/notify": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024);
+    return json(await notifyPatch(env, u, b));
+  },
+  // { sub, was?, fan?, tz } → { ok, tables }
+  "POST today/device": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024);
+    return json(await deviceAdd(env, u, b, { request }));
+  },
+  // { endpoint } → { ok }
+  "DELETE today/device": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024);
+    return json(await deviceDrop(env, u, b));
+  },
+  // ?device=: this device's hash → { fan, here, devices }
+  "GET today/devices": async ({ request, env }) => {
+    fromToday(request, env);
+    const u = await signedIn(request, env), q = new URL(request.url).searchParams;
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    return json(await devicesList(env, u, { device: q.get("device") }, { request }));
+  },
+  // { id } → { ok }
+  "DELETE today/devices": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 8 * 1024);
+    return json(await devicesStop(env, u, b));
   },
 };
 
