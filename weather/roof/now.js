@@ -16,7 +16,7 @@ import { codeInfo, iconOf, label, LIGHT_MMH, HEAVY_MMH, heaviness } from "../cod
 import { weatherIcon, glyph } from "../icons.js";
 import { timeChart, rangeChart } from "../charts.js";
 import { climateOn, rankIn, yearsAgo } from "../climate.js";
-import { inForce, colourOf, titleOf, glyphOf } from "../official.js";
+import { inForce, colourOf, titleOf, glyphOf, spanOf } from "../official.js";
 import { zonesSay, zonesSpell, zoneSaid, ZONE_COLOURS } from "../solar.js";
 import { weatherSendCard, packCard } from "../send.js";
 import { fetchSolar, store, cell } from "../data.js";
@@ -50,6 +50,29 @@ export function viewFor(wx, now, f) {
 // the briefing's first sentence, and the rest
 export const splitBrief = (said) => { const m = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said); return m ? [m[1], m[2]] : [said, ""]; };
 
+// The hero's status line (pure): { text, warn, retry, failed }. "Updating…" only while a refresh you asked for is under
+// way; a refresh the app makes by itself says nothing, though the kept forecast is past its life (data.js load() says so
+// as it starts); once one has failed, or the forecast's kept from before with none come since, "Offline · from 09:40"
+// (the time it was fetched) with Try Again; the account's sync failing says so, without Retry (it clears itself). With no
+// forecast at all, the hero's own words say it failed: the line's empty, and Try Again shows.
+export function statusOf(S, wx, f, asked = false, sync = "Couldn’t sync with your account") {
+  const isSync = !!sync && S.error === sync, failed = S.error && !isSync ? String(S.error) : null;
+  const none = { text: "", warn: false, retry: false, failed };
+  if (!wx) return isSync ? { ...none, text: sync, warn: true } : { ...none, retry: !!failed && !S.loading };
+  if (S.loading) return asked ? { ...none, text: "Updating…" } : isSync ? { ...none, text: sync, warn: true } : none;
+  if (failed || S.stale) {
+    const at = f.time(nowWall(wx.place.offset, wx.fetchedAt || S.updatedAt || Date.now()));
+    return { text: `${failed && /busy/i.test(failed) ? "Forecast service busy" : "Offline"} · from ${at}`, warn: true, retry: true, failed };
+  }
+  return isSync ? { ...none, text: sync, warn: true } : none;
+}
+// a box's children made these, in this order, moving only those out of place (a node left where it is keeps its focus)
+function arrange(box, nodes) {
+  const want = nodes.filter(Boolean);
+  want.forEach((n, i) => { if (box.childNodes[i] !== n) box.insertBefore(n, box.childNodes[i] || null); });
+  while (box.childNodes.length > want.length) box.lastChild.remove();
+}
+
 export function view(el, ctx) {
   const fw = ctx.fw, ui = fw.ui;
   let mode = null, chosen = false, asked = false, bigSig = null, heroSig = null, zoomedFor = undefined, alive = true, allIns = false, allWins = false;
@@ -64,67 +87,82 @@ export function view(el, ctx) {
   const foot = h("footer", { class: "wx-foot" }, h("p", { class: "wx-foot-refresh" }, updated, " · ", refresh), credits);
   const parts = [hero, alerts, cards, foot];
   const place = () => ctx.core.place?.() || ctx.S.places?.[ctx.S.cur] || null;
-  const placeName = () => { const p = place(); return p?.gps ? "My Location" : p?.name || ctx.S.wx?.place?.name || ctx.hint?.place || ""; };
+  // (the header's rule, weather.js titleOf: a place found by GPS by its own name, "My Location" only until it has one)
+  const placeName = () => { const p = place(); return (p?.gps && p.name === "My Location" ? "My Location" : p?.name) || ctx.S.wx?.place?.name || ctx.hint?.place || ""; };
 
   // ---- the hero, Today's card's markup: the sky, the place and its clock, the temperature, the words, Send ----
+  // (its parts kept where they are and changed in place: the clock's words each minute, the status line's words as they
+  // change, Send and Try Again kept unless what they do changes, so focus and a screen reader stay where they were)
+  const heroApp = h("span", { class: "tc-app" }), heroClock = h("span", { class: "tc-meta" });
+  const heroHead = h("div", { class: "tc-head" }, heroApp);
+  const statusEl = h("p", { class: "wx-status", role: "status" });
+  const acts = h("div", { class: "tc-foot" });
+  const retry = ui.btn("Try Again", { small: true, act: "retry", run: () => { asked = true; ctx.core.refresh(); } });
+  let heroBody = [], sendBtn = null, sendSig = null;
   function drawHero(wx, now, f) {
     const S = ctx.S, hint = ctx.hint;
     const sky = wx ? skyClass(wx, now).slice(6) : skyOk(hint?.sky) ? hint.sky : "cloudy-day";
     const c = wx ? wx.current || I.hourAt(wx, now) : null, d = wx ? I.dayOf(wx, now) : null;
     const said = wx && c ? I.headline(wx, now, f) : "";
-    // (the forecast's own failure has Try Again; the account's sync failing says so, and clears itself once one goes through)
-    const sync = ctx.core.SYNC_ERROR || "Couldn’t sync with your account", failed = S.error && S.error !== sync ? String(S.error) : null;
     if (!S.loading) asked = false;
-    const status = !wx ? (S.error === sync ? sync : "") : S.loading && asked ? "Updating…" : failed ? failed : S.stale ? `Offline · from ${f.time(nowWall(wx.place.offset, wx.fetchedAt || S.updatedAt || Date.now()))}` : S.error === sync ? sync : "";
-    const sig = JSON.stringify([sky, placeName(), c ? [f.temp(c.temp), c.code, c.isDay, f.temp(c.feels)] : hint?.temp ?? null, d ? [f.temp(d.tmax), f.temp(d.tmin)] : null, said, status, failed, !!S.loading, !!wx, Math.floor(now / 60e3)]);
-    if (sig === heroSig) return;
-    heroSig = sig;
+    const st = statusOf(S, wx, f, asked, ctx.core.SYNC_ERROR), failed = st.failed;
     hero.className = `tcard glass wx wx-hero wx-sk-${sky}${isNight(sky) || sky === "storm" ? " night" : ""}`;
-    const meta = h("div", { class: "tc-head" }, h("span", { class: "tc-app" }, placeName() || "Weather"), wx ? h("span", { class: "tc-meta" }, `· ${clockAt(now, f)}`) : null);
-    const kids = [meta];
-    if (c) {
-      kids.push(h("div", { class: "wx-now" }, h("span", { class: "t num" }, f.temp(c.temp)), h("span", { class: "wi", svg: weatherIcon(iconOf(c.code, c.isDay), 58) }),
-        h("span", { class: "d" }, h("b", {}, label(c.code, c.isDay)), h("small", {}, d ? h("span", { class: "nw" }, `H ${f.temp(d.tmax)} L ${f.temp(d.tmin)}`) : null, " ", h("span", { class: "nw" }, `${d ? "· " : ""}Feels like ${f.temp(c.feels)}`)))));
-      const [lead, rest] = splitBrief(said);
-      kids.push(h("p", { class: "wx-brief" }, h("b", {}, lead), rest ? ` ${rest}` : ""));
-    } else {
-      const busy = failed && /busy/i.test(failed);
-      kids.push(h("div", { class: "wx-now" }, h("span", { class: "t num" }, hint?.temp != null && !failed ? String(hint.temp) : "–"),
-        h("span", { class: "d" }, h("b", {}, failed ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…"),
-          failed ? h("small", {}, busy ? "Try again in a few minutes." : "You may be offline, or the forecast service didn’t answer.") : null)));
+    heroApp.textContent = placeName() || "Weather";
+    if (wx) { heroClock.textContent = `· ${clockAt(now, f)}`; if (heroClock.parentNode !== heroHead) heroHead.append(heroClock); } else heroClock.remove();
+    const sig = JSON.stringify([c ? [f.temp(c.temp), c.code, c.isDay, f.temp(c.feels)] : hint?.temp ?? null, d ? [f.temp(d.tmax), f.temp(d.tmin)] : null, said, c ? null : failed]);
+    if (sig !== heroSig) {
+      heroSig = sig;
+      if (c) {
+        const [lead, rest] = splitBrief(said);
+        heroBody = [h("div", { class: "wx-now" }, h("span", { class: "t num" }, f.temp(c.temp)), h("span", { class: "wi", svg: weatherIcon(iconOf(c.code, c.isDay), 58) }),
+          h("span", { class: "d" }, h("b", {}, label(c.code, c.isDay)), h("small", {}, d ? h("span", { class: "nw" }, `H ${f.temp(d.tmax)} L ${f.temp(d.tmin)}`) : null, " ", h("span", { class: "nw" }, `${d ? "· " : ""}Feels like ${f.temp(c.feels)}`)))),
+        h("p", { class: "wx-brief" }, h("b", {}, lead), rest ? ` ${rest}` : "")];
+      } else {
+        const busy = failed && /busy/i.test(failed);
+        heroBody = [h("div", { class: "wx-now" }, h("span", { class: "t num" }, hint?.temp != null && !failed ? String(hint.temp) : "–"),
+          h("span", { class: "d" }, h("b", {}, failed ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…"),
+            failed ? h("small", {}, busy ? "Try again in a few minutes." : "You may be offline, or the forecast service didn’t answer.") : null))];
+      }
     }
-    if (status) kids.push(h("p", { class: `wx-status${failed || S.stale || S.error ? " warn" : ""}`, role: "status" }, status));
-    const acts = h("div", { class: "tc-foot" });
-    if (failed) acts.append(ui.btn("Try Again", { small: true, act: "retry", run: () => { asked = true; ctx.core.refresh(); } }));
-    if (wx && c) {
-      const card = weatherSendCard(wx, now, f, { activities: S.settings?.activities, name: placeName() || wx.place.name, headline: said });
-      const words = card?.say || said;
-      const b = fw.sendButton({ words, packed: packCard(card), what: "the weather" });
-      if (b) { if (!b.dataset.act) b.dataset.act = "send"; acts.append(b); }
+    if (statusEl.textContent !== st.text) statusEl.textContent = st.text;
+    statusEl.classList.toggle("warn", st.warn);
+    // Send: made again only when what it would send changes
+    let card = null;
+    if (wx && c) card = weatherSendCard(wx, now, f, { activities: S.settings?.activities, name: placeName() || wx.place.name, headline: said });
+    const words = card ? card.say || said : null, packed = card ? packCard(card) : null, ss = words ? JSON.stringify([words, packed]) : null;
+    if (ss !== sendSig) {
+      sendSig = ss;
+      sendBtn?.remove();
+      sendBtn = ss ? fw.sendButton({ words, packed, what: "the weather" }) || null : null;
+      if (sendBtn && !sendBtn.dataset.act) sendBtn.dataset.act = "send";
     }
-    if (acts.childNodes.length) kids.push(acts);
-    hero.replaceChildren(...kids);
+    arrange(acts, [st.retry ? retry : null, sendBtn]);
+    arrange(hero, [heroHead, ...heroBody, statusEl, acts.childNodes.length ? acts : null]);
     hero.setAttribute("aria-busy", String(!wx && !failed));
   }
 
   // ---- the warnings slot, straight under the hero: one card for one, a banner for more; a tap opens Warnings ----
-  function drawAlerts(wx, now) {
+  function drawAlerts(wx, now, f) {
     const list = wx ? listFor(ctx, now) : [], s = slotOf(list);
     if (!s.n) { alerts.hidden = true; alerts.replaceChildren(); return; }
     alerts.hidden = false;
     const top = list[0], g = top.kind === "official" ? glyphOf(top.w) : top.c.icon;
-    const sub = s.kind === "one" ? (top.kind === "official" ? top.w.headline || top.w.issuer || "" : top.c.text || "") : "See them all in Warnings";
+    // (one official warning: its headline, or when it's in force and who says so, as the Warnings row has it)
+    const sub = s.kind === "one" ? (top.kind === "official" ? top.w.headline || [spanOf(top.w, now, f, wx.place.offset), top.w.issuer].filter(Boolean).join(" · ") : top.c.text || "") : "See them all in Warnings";
     const b = h("button", { class: "wx-alert", type: "button", data: { level: s.level, colour: s.colour || "", kind: s.kind }, onclick: () => fw.nav.section("warnings"),
-      "aria-label": `${s.kind === "banner" ? s.text : s.text}. Open Warnings` },
+      "aria-label": `${s.text}. Open Warnings` },
       h("span", { class: "wx-wchip", data: { colour: s.colour || (s.level === "alert" ? "red" : "yellow") }, svg: glyph(g, 18) }),
       h("span", { class: "wx-alert-words" }, h("b", {}, s.kind === "banner" ? `${s.n} warnings` : s.text), h("small", {}, s.kind === "banner" ? s.line : sub)),
       h("span", { class: "wx-chev", svg: glyph("chevron", 16) }));
+    // (the same words: the one there kept, with its focus)
+    if (alerts.firstChild?.outerHTML === b.outerHTML) return;
     alerts.replaceChildren(b);
   }
 
   // ---- the cards ----
   const made = new Map();
-  const later = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => alive && fn()) : setTimeout(fn, 0));
+  // (a card's chart drawn once it's in the page; not when the card was the same as the one there, which is kept instead)
+  const later = (fn, host) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => alive && (!host || host.isConnected) && fn()) : setTimeout(() => (!host || host.isConnected) && fn(), 0));
   function nowcastCard(wx, now, f) {
     const nc = I.nowcast(wx, now, f);
     if (!nc || (!nc.now && nc.startsAt - now > 2 * HOUR)) return null;
@@ -142,7 +180,7 @@ export function view(el, ctx) {
       now, summary: `Rain, every 15 minutes for the next 4 hours, on a scale of light, moderate and heavy. ${nc.text}`,
       tip: (p) => ({ title: p.radar ? `${f.time(p.t)} · radar` : f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? ["light", "moderate", "heavy"][heaviness(p.mm * 4) - 1] : "dry"]] }),
       table: { head: ["Time", "Rain"], rows: m.map((x) => [f.time(x.t), f.rate(x.precip * 4)]) },
-    }));
+    }), host);
     return card;
   }
   // (each zone's sunlight asked for at most every half hour, kept for when it's offline: app.js sunHours)
@@ -194,7 +232,7 @@ export function view(el, ctx) {
     const seg = ui.seg([["temp", "Temp"], ["rain", "Rain"], ["wind", "Wind"]], mode, (v) => { mode = v; chosen = true; hourChart(host, wx, nowWall(wx.place.offset), hrs, mode, true, ctx.S.f || f); }, { label: "Chart" });
     seg.dataset.key = "metric";
     const card = wxCard(ctx, { id: "hourly", title: "Next 48 hours", g: "clock", extra: seg }, strip(wx, now, f, hrs), host);
-    later(() => hourChart(host, wx, now, hrs, mode, true, f));
+    later(() => hourChart(host, wx, now, hrs, mode, true, f), host);
     return card;
   }
   function rightNowCard(wx, now, f) {
@@ -270,7 +308,7 @@ export function view(el, ctx) {
         c.wet != null ? fact(`${Math.round(c.wet * 100)}%`, "Days with rain") : null,
         ago ? fact(`${f.temp(ago.tmax)}, ${ago.rain >= 0.5 ? f.precip(ago.rain) : "dry"}`, "This day last year") : null));
     later(() => rangeChart(chart, { key: cell(wx.place.lat, wx.place.lon), p10: t(c.tmax.p10), p25: t(c.tmax.p25), p75: t(c.tmax.p75), p90: t(c.tmax.p90), mean: t(c.tmax.mean), value: t(d.tmax), valueLabel: `Today ${f.temp(d.tmax)}`, record: c.recordHigh ? { v: t(c.recordHigh.v), year: c.recordHigh.year } : null,
-      fmt: (v) => f.deg(v), summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` }));
+      fmt: (v) => f.deg(v), summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` }), chart);
     return card;
   }
   function askCard() {
@@ -281,6 +319,18 @@ export function view(el, ctx) {
       h("div", { class: "wx-acts" },
         ui.btn(r.handle ? `Keep Them with @${r.handle}` : "Keep Them", { primary: true, small: true, run: () => ctx.core.answerAsk(true) }),
         ui.btn("Not Now", { small: true, run: () => ctx.core.answerAsk(false) })));
+  }
+  // (what a card's chart is drawn from beyond its words: a card with the same words and chart is kept as it is)
+  const chartKey = (id, wx, now) => (id === "nowcast" ? [wx.fetchedAt, Math.floor(now / 300e3)] : id === "hourly" ? [wx.fetchedAt, Math.floor(now / HOUR), mode] : id === "climate" ? [wx.fetchedAt] : null);
+  // where focus is in the cards, to put it back on the same control if its card is made again
+  function focusIn() {
+    const a = typeof document !== "undefined" ? document.activeElement : null;
+    if (!a || !cards.contains(a)) return null;
+    const card = a.closest("[data-card]");
+    if (!card) return null;
+    const by = ["detail", "act", "key", "day"].find((k) => a.dataset?.[k] != null);
+    const all = [...card.querySelectorAll("button, a[href], [tabindex]")];
+    return { el: a, id: card.dataset.card, by, val: by ? a.dataset[by] : null, at: all.indexOf(a) };
   }
   function drawCards(wx, now, f) {
     const S = ctx.S, list = [];
@@ -294,7 +344,25 @@ export function view(el, ctx) {
       } catch (e) { console.error(e); }
       if (c) list.push(c);
     }
-    cards.replaceChildren(...list);
+    // only the cards whose words (or chart) changed are swapped in; the rest stay as they are, with their focus, the hour
+    // strip where it was scrolled to and an open chart's tooltip (app.js cards())
+    const was = focusIn(), old = new Map([...cards.children].map((x) => [x.dataset?.card, x])), scrolls = new Map();
+    const out = list.map((c) => {
+      c._sig = `${c.outerHTML ?? ""}|${JSON.stringify(chartKey(c.dataset.card, wx, now))}`;
+      const o = old.get(c.dataset.card);
+      if (o && o._sig === c._sig) return o;
+      const sl = o?.querySelector?.(".wx-strip")?.scrollLeft;
+      if (sl) scrolls.set(c, sl);
+      return c;
+    });
+    arrange(cards, out);
+    for (const [c, sl] of scrolls) { const st = c.querySelector(".wx-strip"); if (st) st.scrollLeft = sl; }
+    if (was && !was.el.isConnected) {
+      const card = out.find((x) => x.dataset.card === was.id);
+      const all = card ? [...card.querySelectorAll("button, a[href], [tabindex]")] : [];
+      const to = (was.by && all.find((x) => x.dataset[was.by] === was.val)) || all[Math.min(was.at, all.length - 1)] || null;
+      to?.focus?.({ preventScroll: true });
+    }
   }
 
   function draw() {
@@ -311,10 +379,10 @@ export function view(el, ctx) {
       return;
     }
     const st = S.settings || {};
-    const sig = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, S.updatedAt, f.units, st.layout, st.solar, st.activities, st.extras, st.commute, st.tune, S.ask?.handle ?? null, !!S.acct, Math.floor(now / 300e3), allIns, allWins, wx.official?.length ?? null, !!wx.climate, !!wx.skill?.skill]);
+    const sig = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, S.updatedAt, f.units, st.layout, st.solar, st.activities, st.extras, st.commute, st.tune, S.ask?.handle ?? null, !!S.acct, Math.floor(now / 300e3), allIns, allWins, wx.official?.length ?? null, !!wx.climate, !!wx.skill?.skill, !!wx.air, !!wx.marine, !!wx.ensemble, !!wx.models]);
     if (sig === bigSig) return;
     bigSig = sig;
-    drawAlerts(wx, now);
+    drawAlerts(wx, now, f);
     drawCards(wx, now, f);
   }
   return {

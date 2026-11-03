@@ -8,14 +8,33 @@ import { readFileSync } from "node:fs";
 
 // (what charts.js asks of the browser as it loads)
 globalThis.innerWidth ??= 390; globalThis.addEventListener ??= () => {};
+// a small stand-in DOM, enough for the views' element builders (wxui.js h()) to be run and their words read
+class Node {
+  constructor(tag) { this.tagName = tag; this.childNodes = []; this.attrs = {}; this.dataset = {}; this.className = ""; this.parentNode = null; this.style = { setProperty() {} }; this.listeners = {}; }
+  append(...xs) { for (const x of xs) { if (x instanceof Node && x.tagName === "#fragment") this.append(...x.childNodes); else { if (x instanceof Node) x.parentNode = this; this.childNodes.push(x); } } }
+  appendChild(x) { this.append(x); return x; }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return this.attrs[k] ?? null; }
+  hasAttribute(k) { return k in this.attrs; }
+  addEventListener(k, fn) { this.listeners[k] = fn; }
+  get classList() { const n = this; return { add: (...c) => { n.className = [...new Set([...n.className.split(" ").filter(Boolean), ...c])].join(" "); }, toggle() {}, contains: (c) => n.className.split(" ").includes(c) }; }
+  get children() { return this.childNodes.filter((x) => x instanceof Node); }
+  get textContent() { return this.childNodes.map((x) => (x instanceof Node ? x.textContent : x)).join(""); }
+  set innerHTML(_) {}
+  get content() { return { cloneNode: () => new Node("#fragment") }; }
+}
+globalThis.Node ??= Node;
+globalThis.document ??= { createElement: (t) => new Node(t) };
 const MOD = new URL("../../../weather/roof/", import.meta.url);
 const read = (p) => readFileSync(new URL(p, new URL("../../../", import.meta.url)), "utf8");
 const UI = await import(new URL("wxui.js", MOD));
 const WARN = await import(new URL("warnings.js", MOD));
 const DAYS = await import(new URL("days.js", MOD));
 const NOW = await import(new URL("now.js", MOD));
+const I = await import("../../../weather/insights.js");
 const { skyFor } = await import("../../../functions/_todaywx.js");
-const { makeFormat, DAY, HOUR } = await import("../../../weather/format.js");
+const F = await import("../../../weather/format.js"), { makeFormat, DAY, HOUR } = F;
+const SKY = await import("../../../weather/sky.js");
 
 // the source of `head` up to its matching close (brace or bracket matched, strings skipped)
 function extract(src, head) {
@@ -103,6 +122,81 @@ test("the detail sheet's words are weather/detail.js's, and the tiles weather/ap
   for (const k of ["feels", "wind", "humidity", "rain", "pressure", "visibility", "uv", "sun"]) assert.ok(kinds.includes(k), k);
   for (const t of tiles) assert.ok(typeof t[3] === "string" && t[3], `${t[0]} has a value`);
   assert.equal(tiles.find((t) => t[0] === "wind")[3], `${f.windNum(18)} ${f.windUnit}`);
+});
+
+// One place, its forecast with the air, the sea and the sky in it: a day, the hours around it, and the week ahead
+const NOON = D0 + 12 * HOUR;
+function fixture() {
+  const hourly = Array.from({ length: 24 * 9 }, (_, i) => {
+    const t = D0 - DAY + i * HOUR, hr = ((t - D0) / HOUR + 240) % 24, day = hr >= 7 && hr < 16.5;
+    return { t, temp: 6 + 6 * Math.sin(((hr - 9) / 24) * 2 * Math.PI), feels: 3 + 6 * Math.sin(((hr - 9) / 24) * 2 * Math.PI), wind: 10 + (i % 7) * 3, gust: 25 + (i % 5) * 6, dir: (200 + i * 7) % 360,
+      rh: 60 + (i % 30), dew: 4 + (i % 5) * 0.4, pressure: 1016 - i * 0.12, vis: 8000 + (i % 9) * 2500, uv: day ? Math.max(0, 3 * Math.sin(((hr - 7) / 9.5) * Math.PI)) : 0,
+      precip: i % 11 === 0 ? 1.4 : i % 5 === 0 ? 0.2 : 0, pop: (i * 13) % 100, code: i % 11 === 0 ? 61 : 3, isDay: day };
+  });
+  const daily = Array.from({ length: 9 }, (_, k) => { const date = D0 + (k - 1) * DAY; return { key: new Date(date).toISOString().slice(0, 10), date, sunrise: date + 7 * HOUR + k * 2 * 60e3, sunset: date + 16.5 * HOUR - k * 2 * 60e3, daylight: (9.5 * 3600) - k * 240, tmax: 12 + k % 3, tmin: 3 + k % 2, code: 3 }; });
+  const air = { current: { eaqi: 34, pm25: 7.6 }, hourly: Array.from({ length: 60 }, (_, i) => ({ t: NOON - 2 * HOUR + i * HOUR, eaqi: 20 + (i % 12) * 3, pm25: 5 + (i % 6), grass: i < 14 ? 35 : 5 })) };
+  const marine = { km: 7, hourly: Array.from({ length: 60 }, (_, i) => ({ t: NOON - 3 * HOUR + i * HOUR, sst: 12.4, wave: 0.8 + 0.3 * Math.sin(i / 4), waveDir: 240, period: 7, tide: 1.8 * Math.sin(((i - 3) / 12.4) * 2 * Math.PI) })),
+    tides: [{ t: NOON + 3 * HOUR, h: 1.8, high: true }, { t: NOON + 9.2 * HOUR, h: -1.8, high: false }, { t: NOON + 15.4 * HOUR, h: 1.8, high: true }, { t: NOON + 21.6 * HOUR, h: -1.8, high: false }] };
+  return { place: { lat: 51.5, lon: -0.1, offset: 0, name: "Brighton" }, current: { ...hourly.find((x) => x.t === NOON), t: NOON }, hourly, daily, air, marine, fetchedAt: NOON };
+}
+// a top-level function's source, to its closing brace at the start of a line
+const top = (src, head) => { const i = src.indexOf(head); assert.ok(i >= 0, `found ${head}`); return src.slice(i, src.indexOf("\n}\n", i) + 2); };
+const words = (nodes) => (nodes || []).flat(Infinity).filter(Boolean).map((n) => (typeof n === "string" ? n : n.textContent).replace(/\s+/g, " ").trim()).filter(Boolean);
+
+test("Right now's sheets say what weather/app.js tiles() and weather/detail.js openDetail() say, word for word, on one forecast with the air, the sea and the sky", () => {
+  const app = read("weather/app.js"), detail = read("weather/detail.js");
+  const fmt = F, wx = fixture();
+  const line = (head) => app.split("\n").find((l) => l.startsWith(head));
+  const fns = ["thermometer", "pressureDial", "rainBars", "tideCurve"];
+  for (const units of [{ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" }, { temp: "f", wind: "kmh", precip: "in", pressure: "inhg", clock: "12" }]) {
+    const f = makeFormat(units), S = { f, wx };
+    // app.js tiles(), run as it is: its drawings stand-ins (no words in them), the rest app.js's own
+    const scope = { S, I, DAY, HOUR, dayStart: fmt.dayStart, compassWord: fmt.compassWord, beaufort: fmt.beaufort, h: UI.h, uvName: UI.uvName, airName: UI.airName, seaName: UI.seaName, TILES: UI.TILES,
+      moonIcon: () => "", nextPhases: SKY.nextPhases, cell: () => "c", tileFor: () => null, $: () => ({ replaceChildren() {}, children: [] }), moving: () => false, rewords() {}, motion() {}, innerHeight: 800,
+      fillBar: () => null, ...Object.fromEntries(fns.map((k) => [k, () => (k === "thermometer" ? "" : null)])) };
+    const tilesSrc = [line("const knob = "), line("const scaleBar = "), line("const mid = "), top(app, "function tiles(wx, now) {")].join("\n");
+    new Function(...Object.keys(scope), `${tilesSrc}\ntiles(S.wx, ${NOON});`)(...Object.values(scope));
+    const mine = UI.tileSays(wx, NOON, f);
+    assert.deepEqual(Object.keys(mine.say).sort(), Object.keys(S.say).sort(), "the same tiles");
+    for (const k of ["air", "sea", "sun", "moon"]) assert.ok(S.say[k], `the fixture has ${k}`);
+    for (const k of Object.keys(S.say)) assert.deepEqual(words(mine.say[k]()), words(S.say[k]()), `${k}: what it says now`);
+    for (const k of Object.keys(S.more)) assert.deepEqual(words(mine.more[k]()), words(S.more[k]()), `${k}: the rest of its sheet`);
+    // detail.js openDetail(), run as it is: the sheet's words (charts aside), against detailBody's
+    let got = null;
+    const dscope = { S, TILES: UI.TILES, nowWall: () => NOON, I, h: UI.h, cell: () => "c", timeChart() {}, nightsOf: UI.nightsOf, T: () => (f.units.temp === "f" ? (c) => c * 9 / 5 + 32 : (c) => c), COLOR: UI.COLOR,
+      compassWord: fmt.compassWord, compass: fmt.compass, dayStart: fmt.dayStart, keyOf: fmt.keyOf, uvName: UI.uvName, airName: UI.airName, HOUR, DAY, drawHourChart() {}, calm: () => false, glyph: () => "",
+      $: (id) => (id === "detail-body" ? { replaceChildren: (...k) => { got = k; } } : { open: false, children: [], replaceChildren() {}, querySelector: () => ({}) }),
+      retitle() {}, detailKinds: () => [], easeHeight: (_, fn) => fn(), openSheet() {}, slideIn() {}, requestAnimationFrame() {} };
+    const ABOUT = extract(detail, "const ABOUT = {");
+    const open = new Function(...Object.keys(dscope), `${ABOUT};\n${top(detail, "export function openDetail(kind, dir = 0) {").replace(/^export /, "")}\nreturn openDetail;`)(...Object.values(dscope));
+    for (const k of Object.keys(S.say)) {
+      got = null;
+      open(k);
+      assert.ok(got, `${k}: detail.js drew its sheet`);
+      assert.deepEqual(words(UI.detailBody(wx, NOON, f, k).kids), words(got), `${k}: the sheet's words (${units.temp})`);
+    }
+  }
+});
+
+test("Now's status line: nothing while it refreshes by itself (a stale forecast included); Offline · from its time, with Retry, once it fails; the sync error without Retry; Updating… when asked", () => {
+  const f = makeFormat({ clock: "24" }), wx = fixture(), sync = "Couldn’t sync with your account", at = f.time(NOON);
+  const S = (o) => ({ loading: false, error: null, stale: false, updatedAt: NOON, ...o });
+  // (data.js load() reports the kept forecast as stale as the refresh starts: not "Offline")
+  assert.deepEqual(NOW.statusOf(S({ loading: true, stale: true }), wx, f, false, sync), { text: "", warn: false, retry: false, failed: null });
+  // (the refresh failed with a forecast in hand: Offline, from when it was fetched, and Try Again)
+  const off = NOW.statusOf(S({ error: "Couldn’t get the forecast", stale: false }), wx, f, false, sync);
+  assert.equal(off.text, `Offline · from ${at}`); assert.equal(off.retry, true); assert.equal(off.warn, true);
+  assert.equal(NOW.statusOf(S({ stale: true }), wx, f, false, sync).text, `Offline · from ${at}`, "kept, and nothing come since");
+  assert.match(NOW.statusOf(S({ error: "The forecast service is busy" }), wx, f, false, sync).text, /^Forecast service busy · from /);
+  // (the account's sync: said, no Retry, even while a refresh is under way)
+  assert.deepEqual(NOW.statusOf(S({ error: sync }), wx, f, false, sync), { text: sync, warn: true, retry: false, failed: null });
+  assert.equal(NOW.statusOf(S({ error: sync, loading: true }), wx, f, false, sync).retry, false);
+  // (asked for: Updating…, though the kept one is stale)
+  assert.deepEqual(NOW.statusOf(S({ loading: true, stale: true }), wx, f, true, sync), { text: "Updating…", warn: false, retry: false, failed: null });
+  // (no forecast at all: the hero says it failed; the line's empty and Try Again shows)
+  assert.deepEqual(NOW.statusOf(S({ error: "Couldn’t get the forecast" }), null, f, false, sync), { text: "", warn: false, retry: true, failed: "Couldn’t get the forecast" });
+  assert.equal(NOW.statusOf(S({ loading: true }), null, f, false, sync).text, "");
+  assert.equal(NOW.statusOf(S({}), wx, f, false, sync).text, "", "fresh: nothing to say");
 });
 
 const W = (o) => ({ id: o.id, issuer: "Met Office", via: "MeteoAlarm", onset: "2026-11-03T06:00:00Z", expires: "2099-01-01T00:00:00Z", ...o });

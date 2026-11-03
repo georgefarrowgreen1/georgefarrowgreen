@@ -54,6 +54,8 @@
 .m-weather .wx-hero .wx-now .wi { flex: none; display: grid; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18)); }
 .m-weather .wx-hero[aria-busy="true"] .wx-now .t { opacity: 0.6; }
 .m-weather .wx-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-2); }
+/* (kept in the page while it has nothing to say, so what it says next is read out; out of the flow until then) */
+.m-weather .wx-status:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .m-weather .wx-status.warn::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--wx-ink, currentColor); opacity: 0.8; vertical-align: 1px; }
 .m-weather .wx-hero .tc-foot { margin-top: 0; }
 
@@ -220,7 +222,8 @@
 .m-weather .wx-dname small { font-size: 12px; color: var(--text-3); white-space: nowrap; }
 .m-weather .wx-dname small.unsure { color: var(--warn, var(--text-2)); }
 .m-weather .wx-day .ifl-tx { min-width: 0; }
-.m-weather .wx-day .ifl-tx b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (the day's words on up to two lines, broken between words, not cut short after a few letters) */
+.m-weather .wx-day .ifl-tx b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: normal; line-height: 1.2; }
 .m-weather .wx-dtail { display: grid; grid-template-columns: 30px 32px minmax(40px, 88px) 34px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 30px minmax(40px, 88px) 62px; }
 .m-weather .wx-dicon { display: grid; justify-items: center; }
@@ -239,9 +242,19 @@
   .m-weather .wx-dtail { grid-template-columns: 28px 30px minmax(36px, 52px) 32px; gap: 4px; }
   .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 28px minmax(36px, 56px) 58px; }
 }
+/* (on a phone, the low under the high: the words get the room) */
+@media (max-width: 420px) {
+  .m-weather .wx-dtail[data-mode="temp"] { grid-template-columns: 28px minmax(32px, 52px) 34px; grid-template-areas: "ic bar hi" "ic bar lo"; row-gap: 0; column-gap: 6px; }
+  .m-weather .wx-dtail[data-mode="temp"] .wx-dicon { grid-area: ic; }
+  .m-weather .wx-dtail[data-mode="temp"] .wx-range { grid-area: bar; }
+  .m-weather .wx-dtail[data-mode="temp"] .wx-hi { grid-area: hi; text-align: right; line-height: 1.2; }
+  .m-weather .wx-dtail[data-mode="temp"] .wx-lo { grid-area: lo; font-size: 13px; line-height: 1.2; }
+}
 @media (max-width: 380px) {
-  .m-weather .wx-dtail { grid-template-columns: 26px 28px minmax(28px, 40px) 30px; }
+  .m-weather .wx-dtail[data-mode="temp"] { grid-template-columns: 26px minmax(28px, 40px) 32px; column-gap: 5px; }
+  .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 26px minmax(28px, 44px) 56px; }
   .m-weather .wx-dname { width: 40px; }
+  .m-weather .wx-day .ifl-tx b { font-size: 14px; }
 }
 
 /* ---- Warnings ---- */

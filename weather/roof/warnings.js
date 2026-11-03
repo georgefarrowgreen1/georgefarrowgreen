@@ -49,7 +49,8 @@ export const emptyWords = (which, place) => (which === "unavailable"
 // "What: ")
 export const paras = (s) => String(s || "").split(/\n\s*\n/).map((x) => x.replace(/\s*\n\s*/g, " ").trim().replace(/^\*\s*([A-Z][A-Z /]*?)\.\.\.\s*/, (m, k) => `${k[0]}${k.slice(1).toLowerCase()}: `)).filter(Boolean);
 
-const placeName = (ctx) => { const p = ctx.S.places?.[ctx.S.cur]; return p?.gps ? "My Location" : p?.name || ctx.S.wx?.place?.name || "this place"; };
+// (the header's rule, weather.js titleOf: a GPS place by its own name; app.js's "here" when there's none)
+const placeName = (ctx) => { const p = ctx.core?.place?.() || ctx.S.places?.[ctx.S.cur]; return (p?.gps && p.name === "My Location" ? "My Location" : p?.name) || ctx.S.wx?.place?.name || "here"; };
 const fmt = (ctx) => ctx.S.f || makeFormat({});
 // the list the views draw (Now's slot and this section), from ctx
 export function listFor(ctx, now) {

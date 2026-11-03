@@ -36,12 +36,15 @@ export function view(el, ctx) {
     const S = ctx.S, wx = S.wx;
     if (!head.isConnected) el.replaceChildren(head, box);
     if (!wx) { if (sig !== "none") { sig = "none"; box.replaceChildren(ctx.fw.ui.skeleton("rows", 6)); } return; }
-    const f = S.f || makeFormat({}), now = nowWall(wx.place.offset), days = daysOf(wx, now);
-    const s = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, mode, f.units, keyOf(now)]);
+    const f = S.f || makeFormat({}), now = nowWall(wx.place.offset), days = daysOf(wx, now), conf = I.confidence(wx);
+    // (drawn again when what a row says changes: the forecast, and what comes after it with the same fetchedAt, the
+    // tuning for here, the ensemble and the models (how sure: "Uncertain"), the tune setting)
+    const s = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, mode, f.units, keyOf(now), S.settings?.tune ?? null, !!wx.skill?.skill, !!wx.ensemble, !!wx.models,
+      days.map((d) => [d.key, d.code, d.tmax, d.tmin, d.popMax, d.precip, d.windMax, d.gustMax, conf[d.key]?.level ?? null])]);
     if (s === sig) return;
     sig = s;
     if (!days.length) { box.replaceChildren(ctx.fw.ui.empty({ title: "No days to show", body: "The forecast hasn’t come yet." })); return; }
-    const sc = daysScale(days, mode), conf = I.confidence(wx), curT = (wx.current || I.hourAt(wx, now))?.temp;
+    const sc = daysScale(days, mode), curT = (wx.current || I.hourAt(wx, now))?.temp;
     const rows = days.map((d, i) => {
       const w = rowWords(d, mode, f, i), c = conf[d.key], unsure = c?.level === "low" && i > 0 && i < 7;
       const name = i === 0 ? "Today" : f.dayShort(d.date);
@@ -80,7 +83,7 @@ export function openDay(ctx, key) {
   const at = days.findIndex((x) => x.key === key), d = at >= 0 ? days[at] : wx.daily.find((x) => x.key === key);
   if (!d) return null;
   let handle = null;
-  const fill = (day) => {
+  const fill = (day, act = null) => {
     const i = days.findIndex((x) => x.key === day.key);
     const parts = I.dayParts(wx, day.key), conf = I.confidence(wx)[day.key];
     const hrs = I.hoursBetween(wx, day.date, day.date + DAY);
@@ -128,10 +131,10 @@ export function openDay(ctx, key) {
     }
     // the day before and after
     const prev = i > 0 ? days[i - 1] : null, next = i >= 0 && i < days.length - 1 ? days[i + 1] : null;
-    const go = (x) => () => { fill(x); };
+    const go = (x, act) => () => { fill(x, act); };
     kids.push(h("div", { class: "wx-day-step" },
-      ui.btn(prev ? (i - 1 === 0 ? "Today" : f.dayName(prev.date)) : "Earlier", { small: true, run: prev ? go(prev) : null, label: prev ? `The day before: ${dayTitle(f, prev.date, now)}` : "No day before", act: "prev" }),
-      ui.btn(next ? f.dayName(next.date) : "Later", { small: true, run: next ? go(next) : null, label: next ? `The day after: ${dayTitle(f, next.date, now)}` : "No day after", act: "next" })));
+      ui.btn(prev ? (i - 1 === 0 ? "Today" : f.dayName(prev.date)) : "Earlier", { small: true, run: prev ? go(prev, "prev") : null, label: prev ? `The day before: ${dayTitle(f, prev.date, now)}` : "No day before", act: "prev" }),
+      ui.btn(next ? f.dayName(next.date) : "Later", { small: true, run: next ? go(next, "next") : null, label: next ? `The day after: ${dayTitle(f, next.date, now)}` : "No day after", act: "next" })));
     const steps = kids[kids.length - 1].querySelectorAll("[data-act]");
     if (!prev && steps[0]) steps[0].disabled = true;
     if (!next && steps[1]) steps[1].disabled = true;
@@ -143,6 +146,13 @@ export function openDay(ctx, key) {
       const b = handle.body || handle.el.querySelector(".ifs-body"), t = handle.el.querySelector("h2");
       if (t) t.textContent = title;
       if (b) { b.replaceChildren(body); b.scrollTop = 0; }
+      // (the button pressed went with the old day: focus on the new one, the other if this way's done, else the title)
+      if (act) {
+        const btn = (a) => body.querySelector(`.wx-day-step [data-act="${a}"]`), here = btn(act), other = btn(act === "prev" ? "next" : "prev");
+        const to = here && !here.disabled ? here : other && !other.disabled ? other : t;
+        if (to === t && t && !t.hasAttribute("tabindex")) t.setAttribute("tabindex", "-1");
+        to?.focus?.({ preventScroll: true });
+      }
     }
     const draw = () => { for (const [m, , host] of charts) hourChart(host, wx, now, hrs, m, day.key === keyOf(now), f); };
     (typeof requestAnimationFrame === "function" ? requestAnimationFrame : (fn) => setTimeout(fn, 0))(() => { try { draw(); } catch (e) { console.error(e); } });
