@@ -5,10 +5,14 @@
 // You're still here", then on the friend's phone with When Sent and Now.
 //   - from Today: the weather to Pat, a stock to Pat (percent only, in every word drawn and in the payload as Pat's phone
 //     opens it), the ride planned with Leo to Pat, the finished ride to Leo in one tap (IFLChat.sendTo, from a tap on
-//     the page); IFLChat.sendTo called from a script with no tap is refused;
+//     the page); IFLChat.sendTo called from a script with no tap is refused, even when the script says it was tapped;
+//   - what's waiting for George, as Today asks the engine (waiting, since): Pat's words, the stock she named, her
+//     group's, nothing marked read or kept; Write More in the Chat from the engine's sheet (the card handed over alone);
 //   - from Weather's and Markets' pages at the hub: the same sheet;
 //   - a group as a target;
-//   - the engine not ready: Chats' own sheet by the back= navigation, and back on Today with the toast;
+//   - the engine not ready: Chats' own sheet by the back= navigation, and back on Today with the toast; and the key state
+//     for real (signed in to InFlite, no Chat key on the phone): Send goes the back= way;
+//   - the card's links at the hub: /weather/?lat&lon (no place by name) and /markets/#s=, in the same window;
 //   - privacy: for each exact string sent (the words typed, the place on a card), a before/after diff of every table of
 //     the database finds it in no new or changed row outside a sealed ct, and no request body or URL recorded from any
 //     frame of any phone holds it.
@@ -101,7 +105,29 @@ const cards = {
   done: { v: 1, kind: 'fitness', from: 'today', at: Date.now() - MIN, say: 'Done today: Endurance 75.', snap: { day, tz: 'Europe/London', sport: 'ride', name: 'Endurance 75', kind: 'Endurance', secs: 4500, done: { secs: 4620, dist: 36100, tss: 64 } } },
 };
 const packed = Object.fromEntries(Object.entries(cards).map(([k, c]) => [k, packCard(c)]));
-const TYPED = { weather: 'Rain at three in Cley, bring a coat', stock: 'Look at Tesco go today', ride: 'Fancy joining us Thursday', group: 'Wet weekend coming for us all', back: 'Sent the long way round today', weatherApp: 'From the weather page itself', marketsApp: 'From the markets page itself' };
+const TYPED = { weather: 'Rain at three in Cley, bring a coat', stock: 'Look at Tesco go today', ride: 'Fancy joining us Thursday', group: 'Wet weekend coming for us all', back: 'Sent the long way round today', weatherApp: 'From the weather page itself', marketsApp: 'From the markets page itself', more: 'Typed then taken to the chat' };
+// (Pat's own words to George and to the group, read by the engine for Today: never anywhere but sealed)
+const PAT = { a: 'Tesco is flying today have you seen it', b: 'Are we still on for lunch on Friday', g: 'Who is bringing the flask on Saturday', late: 'Running ten minutes late sorry' };
+// (an address as it reaches a server: + and %20 both a space; and each of its query's values)
+const dec = (u) => { try { return decodeURIComponent(String(u).replace(/\+/g, ' ')); } catch (_) { return String(u); } };
+const params = (u) => { try { return [...new URL(u).searchParams.values()]; } catch (_) { return []; } };
+// everything this site keeps on George's phone (localStorage, sessionStorage, every IndexedDB store): its keys, and its
+// values as text
+const store = () => G.p.evaluate(async () => {
+  const keys = [], parts = [];
+  for (const [n, st] of [['local', localStorage], ['session', sessionStorage]]) for (let i = 0; i < st.length; i++) { const k = st.key(i); keys.push(`${n}:${k}`); parts.push(st.getItem(k) || ''); }
+  for (const { name } of await indexedDB.databases()) {
+    const db = await new Promise((res) => { const r = indexedDB.open(name); r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
+    if (!db) continue;
+    for (const os of db.objectStoreNames) {
+      const [ks, vs] = await new Promise((res) => { try { const o = db.transaction(os).objectStore(os), a = o.getAllKeys(), b = o.getAll(); b.onsuccess = () => res([a.result || [], b.result || []]); b.onerror = () => res([[], []]); } catch (_) { res([[], []]); } });
+      for (const k of ks) keys.push(`idb:${name}/${os}/${String(k)}`);
+      for (const v of vs) { try { parts.push(JSON.stringify(v)); } catch (_) {} }
+    }
+    db.close();
+  }
+  return { keys, text: parts.join('\n') };
+}).catch(() => ({ keys: [], text: '' }));
 
 // the engine on the page: its frame, and its state as the page sees it
 const F = () => G.p.frameLocator('iframe[name="ifl-chat"]');
@@ -123,30 +149,43 @@ async function sendVia(key, to, typed, { name } = {}) {
   return { said, res, sheetText, stayed: navs.length === n0 && G.p.url() === url0 };
 }
 
-// ---- 1. Today: the engine there, ready; a script's sendTo with no tap refused ----
+// ---- 1. Today: the engine there, ready; a script's sendTo with no tap refused, though the script says there was one ----
 // (the script is the page's own, run as it opens, never tapped: Playwright's own evaluate counts as a tap, so nothing of
-// the test touches the page until the script has said what it got, on the console. In the hub stack's headless Chromium
-// Today's page can still report an activation with no tap (not seen on a bare page, cause not found), so this page's
-// activation is read as the never-tapped one it is; the tap's own path is step 5's, with a real tap)
+// the test touches the page until the script has said what it got, on the console. It waits until the page truly has no
+// activation (read through the browser's own getters, as the engine reads it), then claims one every way a page script
+// can: an own userActivation on its navigator, UserActivation's isActive on the page's prototype and on the engine
+// frame's, all saying true. The engine reads its own getters, taken as it started, so it's still refused)
 const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
 await G.ctx.addInitScript(({ to, w, pk }) => {
   if (location.pathname !== '/' || location.hash !== '#notap' || window.top !== window) return;
-  try { Object.defineProperty(navigator, 'userActivation', { configurable: true, value: { isActive: false, hasBeenActive: false } }); } catch (_) {}
-  const t0 = Date.now();
+  const uaGet = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userActivation')?.get;
+  const actGet = Object.getOwnPropertyDescriptor(UserActivation.prototype, 'isActive')?.get;
+  const realActive = () => { try { return actGet.call(uaGet.call(navigator)); } catch (_) { return null; } };
+  const t0 = Date.now(), seen = [];
   const go = () => {
-    let c = null; try { c = document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat || null; } catch (_) {}
-    // (and only once the page has no activation of any tap: a script, on its own; checked in the same turn as the call)
-    // (the page's own activation back as it is once that's asked: step 5's real tap is read from it)
-    const done = (x) => { try { delete navigator.userActivation; } catch (_) {} console.log('notap ' + JSON.stringify(x)); };
-    if (c && c.state === 'ready' && navigator.userActivation?.isActive === false) return Promise.resolve(c.sendTo(to, w, pk)).then((r) => done({ r, active: false }), (e) => done({ err: String(e) }));
-    if (Date.now() - t0 < 45000) setTimeout(go, 400); else done({ err: 'no engine' });
+    let fw = null, c = null; try { fw = document.querySelector('iframe[name=ifl-chat]')?.contentWindow || null; c = fw?.IFLChat || null; } catch (_) {}
+    const real = realActive(); if (seen.at(-1) !== real) seen.push(real);
+    const done = (x) => console.log('notap ' + JSON.stringify({ ...x, seen }));
+    if (c && c.state === 'ready' && real === false) {
+      const undo = [];
+      try { Object.defineProperty(navigator, 'userActivation', { configurable: true, value: { isActive: true, hasBeenActive: true } }); undo.push(() => delete navigator.userActivation); } catch (_) {}
+      for (const [where, P] of [['page', window.UserActivation?.prototype], ['engine', fw.UserActivation?.prototype]]) {
+        const was = P && Object.getOwnPropertyDescriptor(P, 'isActive');
+        try { Object.defineProperty(P, 'isActive', { configurable: true, get: () => true }); undo.push(() => Object.defineProperty(P, 'isActive', was)); } catch (_) { seen.push(`no ${where} prototype`); }
+      }
+      const claimed = navigator.userActivation?.isActive === true;
+      // (in the same turn as the call: the page's own view says tapped, the browser's says not)
+      return Promise.resolve(c.sendTo(to, w, pk)).then((r) => { for (const u of undo) try { u(); } catch (_) {} done({ r, claimed, real: false }); },
+        (e) => { for (const u of undo) try { u(); } catch (_) {} done({ err: String(e) }); });
+    }
+    if (Date.now() - t0 < 50000) setTimeout(go, 400); else done({ err: c ? 'the page kept an activation' : 'no engine' });
   };
   setTimeout(go, 400);
 }, { to: P.id, w: cards.weather.say, pk: packed.weather });
-const notap = new Promise((ok) => { const on = (m) => { if (m.text().startsWith('notap ')) { G.p.off('console', on); ok(JSON.parse(m.text().slice(6))); } }; G.p.on('console', on); setTimeout(() => ok(null), 60000); });
+const notap = new Promise((ok) => { const on = (m) => { if (m.text().startsWith('notap ')) { G.p.off('console', on); ok(JSON.parse(m.text().slice(6))); } }; G.p.on('console', on); setTimeout(() => ok(null), 65000); });
 await G.p.goto(`${HUB}/#notap`);
 const nt = await notap;
-ok(nt?.r?.ok === false && nt.r.why === 'tap' && nt.active === false, '1. IFLChat.sendTo from the page’s own script, with no tap: refused', js(nt));
+ok(nt?.r?.ok === false && nt.r.why === 'tap' && nt.claimed === true && nt.real === false, '1. IFLChat.sendTo from the page’s own script, no tap, the script claiming one (its navigator and both prototypes): refused', js(nt));
 ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0) === m0, '1. and nothing sent');
 const ready = await until(async () => (await engineState()) === 'ready', 40000);
 ok(!!ready, '1. Today: Chat’s engine in its frame, ready', String(await engineState()));
@@ -186,6 +225,50 @@ ok(/Sent to Weekend/.test(g1.said || '') && g1.stayed, '6. the weather to the gr
 const gm = one(`SELECT COUNT(*) AS n FROM pg_gmsgs WHERE group_id = '${GRP}' AND sender = '${GID}'`)[0];
 ok(Number(gm?.n) === 1, '6. one group letter, sealed once for the three', js(gm));
 
+// ---- 6a. what's waiting for George, as Today asks the engine: Pat's words, the Tesco she named, the group's by its id;
+// read in memory, nothing marked read, nothing kept on the phone, none of it in a request ----
+await reloadChat(P); await K.openChat(P, GID);
+for (const t of [PAT.a, PAT.b]) { await P.p.fill('#msg', t); await P.p.click('.send'); await wait(900); }
+await K.openChat(P, GRP); await P.p.fill('#msg', PAT.g); await P.p.click('.send'); await wait(900);
+await until(() => Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${P.id}' AND recipient = '${GID}'`)[0]?.n) >= 2 && Number(one(`SELECT COUNT(*) AS n FROM pg_gmsgs WHERE sender = '${P.id}'`)[0]?.n) >= 1, 15000);
+const st0 = await store(), seenW = seen.length;
+const wt = await G.p.evaluate(({ ids }) => window.IFL.hub.chat().then((c) => (c ? c.waiting({ ids, stocks: [{ sym: 'TSCO.L', name: 'Tesco' }] }) : 'no engine')), { ids: [P.id, GRP] }).catch((e) => String(e));
+const pw = Array.isArray(wt) ? wt.find((x) => x.id === P.id) : null, gw = Array.isArray(wt) ? wt.find((x) => x.id === GRP) : null;
+ok(pw?.first === 'Pat' && pw.said.includes(PAT.a) && pw.said.includes(PAT.b), '6a. waiting(): Pat’s own words, from the engine', js(wt, 600));
+ok(!!pw?.topics?.some((t) => t.kind === 'markets' && t.sym === 'TSCO.L'), '6a. the Tesco she named, as a topic', js(pw?.topics));
+ok(gw?.first === 'Weekend' && gw.said.includes(PAT.g), '6a. and the group’s, asked by its id', js(gw));
+const unread = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${P.id}' AND recipient = '${GID}' AND read_at IS NULL`)[0]?.n || 0);
+const gunread = Number(one(`SELECT COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = '${P.id}' AND d.user_id = '${GID}' AND d.read_at IS NULL`)[0]?.n || 0);
+ok(unread >= 2 && gunread >= 1, '6a. nothing marked read (Pat’s letters to George, hers to the group)', js({ unread, gunread }));
+const st1 = await store();
+const newKeys = st1.keys.filter((k) => !st0.keys.includes(k)), kept = Object.values(PAT).filter((w) => st1.text.includes(w));
+ok(!newKeys.length && !kept.length, '6a. nothing kept: no new key in this site’s storage on the phone, and her words in none of it', js({ newKeys, kept }));
+// (since: only what she said after t)
+const t6 = Date.now(); await wait(1500);
+await K.openChat(P, GID); await P.p.fill('#msg', PAT.late); await P.p.click('.send');
+const sn = await until(() => G.p.evaluate(({ id, t }) => window.IFL.hub.chat().then((c) => c && c.since(id, t)), { id: P.id, t: t6 }), 15000);
+ok(!!sn && sn.said.includes(PAT.late) && !sn.said.includes(PAT.a) && sn.at >= t6, '6a. since(t): only what she said after it', js(sn));
+const inReq6 = seen.slice(seenW).filter((r) => r.who === 'george' && Object.values(PAT).some((w) => r.body.includes(w) || dec(r.url).includes(w) || params(r.url).some((v) => v.includes(w))));
+ok(!inReq6.length, '6a. and none of her words in any request from George’s phone', js(inReq6));
+
+// ---- 6b. Write More in the Chat, from the engine's sheet: Chats in the page's place, Pat's chat open, the card waiting
+// above its box; the words typed in the sheet not carried, the hand-over gone from the tab's storage ----
+await G.p.goto(`${HUB}/`); await until(async () => (await engineState()) === 'ready', 40000);
+await G.p.evaluate(({ w, pk }) => { window.IFL.hub.send(w, pk); }, { w: cards.weather.say, pk: packed.weather });
+const wrow = F().locator(`.sheet [data-act=sendpick][data-id="${P.id}"]`);
+await wrow.waitFor({ timeout: 30000 }).catch(() => {});
+await F().locator('#f-sendwords').fill(TYPED.more).catch(() => {});
+await wrow.click().catch(() => {});
+const toChat = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 30000 }).then(() => true, () => false);
+await F().locator('.sheet [data-act=sendchat]').click().catch(() => {});
+const wentChat = await toChat;
+await G.p.waitForSelector('.compose .cardatt:not([hidden])', { timeout: 20000 }).catch(() => {});
+const wm = await G.p.evaluate(() => ({ who: document.querySelector('.chatnav .chatwho')?.textContent.replace(/\s+/g, ' ') || '', att: document.querySelector('.compose .cardatt:not([hidden])')?.textContent.replace(/\s+/g, ' ') || '',
+  msg: document.querySelector('#msg')?.value ?? null, wait: sessionStorage.getItem('ifl-chat-wait') })).catch(() => ({}));
+ok(wentChat && /Pat/.test(wm.who) && new RegExp(PLACE).test(wm.att), '6b. Write More in the Chat: Chats, Pat’s chat, the card waiting above its box', js(wm));
+ok(wm.msg !== null && !String(wm.msg).includes(TYPED.more) && wm.wait === null, '6b. the words typed in the sheet not carried, and the hand-over gone from the tab’s storage', js(wm));
+await G.p.click('[data-act=cardrm]').catch(() => {});
+
 // ---- 7. from Weather's and Markets' pages: the same sheet ----
 for (const [path, key, typed, label] of [['/weather/', 'weather', TYPED.weatherApp, 'Weather'], ['/markets/', 'stock', TYPED.marketsApp, 'Markets']]) {
   await G.p.goto(HUB + path, { waitUntil: 'load' });
@@ -199,9 +282,11 @@ await shot(G, '7-from-markets');
 // (the engine saying it hasn't Chat's key here yet, as one on a phone signed in to InFlite but not to Chats does)
 await G.ctx.addInitScript(() => {
   if (location.pathname !== '/chats/' || !/[?&]engine/.test(location.search)) return;
+  try { if (localStorage.getItem('t-forcekey') !== '1') return; } catch (_) { return; }
   let real = null;
   Object.defineProperty(window, 'IFLChat', { configurable: true, get: () => (real ? { state: 'key', share: real.share, sendTo: real.sendTo, waiting: real.waiting, since: real.since, refresh: real.refresh, signOut: real.signOut } : undefined), set: (v) => { real = v; } });
 });
+await G.p.evaluate(() => localStorage.setItem('t-forcekey', '1'));
 await G.p.goto(`${HUB}/`);
 await G.p.waitForTimeout(1500);
 const away = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 40000 }).then(() => true, () => false);
@@ -215,6 +300,7 @@ await pick.click(); await G.p.click('.sheet [data-act=sendgo]');
 await G.p.waitForURL((u) => u.pathname === '/' && !u.hash, { timeout: 20000 }).catch(() => {});
 const backSaid = await toastSaid(/Sent to Pat/, 10000);
 ok(new URL(G.p.url()).pathname === '/' && /You’re still here/.test(backSaid || ''), '8. sent, and back on Today with the toast', js({ url: G.p.url(), backSaid }));
+await G.p.evaluate(() => localStorage.removeItem('t-forcekey'));
 
 // ---- 9. on the friends' phones: When Sent and Now; percent only in the stock's payload as Pat's phone opens it ----
 await reloadChat(P); await K.openChat(P, GID);
@@ -243,9 +329,23 @@ await reloadChat(L); await K.openChat(L, GID);
 const lc = await until(() => L.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.textContent.replace(/\s+/g, ' ')).find((t) => /Done/.test(t)) || null), 15000);
 ok(!!lc && /When sent/i.test(lc) && /Done/.test(lc), '9. Leo: the finished ride, live in his chat', lc);
 
+// ---- 9b. the card's links at the hub: the hub's own pages, in the same window, the square only (no place by name) ----
+await G.p.goto(`${HUB}/chats/`); await G.p.waitForSelector('.mlist .mrow', { timeout: 30000 }).catch(() => {});
+await K.openChat(G, P.id);
+await until(async () => (await G.p.locator('.msgs .cd-card a.cd-open').count()) >= 2, 15000);
+const links = await G.p.$$eval('.msgs .cd-card a.cd-open', (as) => as.map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target'), text: a.textContent.trim() }))).catch(() => []);
+const wxl = links.filter((l) => /Weather/.test(l.text)), mkl = links.filter((l) => /Markets/.test(l.text));
+ok(wxl.length > 0 && wxl.every((l) => /^\/weather\/\?lat=-?\d+\.\d\d&lon=-?\d+\.\d\d$/.test(l.href) && !l.target), '9b. Open in Weather: /weather/?lat&lon, the square only (no place by name), in this window', js(wxl));
+ok(mkl.length > 0 && mkl.every((l) => l.href === '/markets/#s=TSCO.L' && !l.target), '9b. Open in Markets: /markets/#s=TSCO.L, in this window', js(mkl));
+const pages9 = G.pages.length;
+const toWx = G.p.waitForURL((u) => u.pathname === '/weather/', { timeout: 20000 }).then(() => true, () => false);
+await G.p.locator('.msgs .cd-card a.cd-open', { hasText: 'Weather' }).last().click().catch(() => {});
+const wxAt = await toWx ? new URL(G.p.url()) : null;
+ok(!!wxAt && G.pages.length === pages9 && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lat') || '') && !wxAt.searchParams.has('name') && !new RegExp(PLACE).test(dec(G.p.url())), '9b. tapped: Weather at the hub, in this window, at that square', G.p.url());
+
 // ---- 10. privacy: the exact strings sent, in no new or changed row outside a sealed ct, and in no request ----
 const after = snapshot();
-const strings = [...Object.values(TYPED), PLACE];
+const strings = [...Object.values(TYPED), ...Object.values(PAT), PLACE];
 const leaks = [];
 for (const [table, rows] of after) {
   const was = before.get(table) || new Set();
@@ -257,8 +357,20 @@ for (const [table, rows] of after) {
 }
 ok(!leaks.length, `10. no new or changed row of any table (${after.size} read) holds a word sent or a card’s place, outside what’s sealed`, js(leaks, 400));
 const asked = seen.slice(seen0), inReq = [];
-for (const r of asked) for (const s of strings) { if (r.body.includes(s) || r.url.includes(encodeURIComponent(s)) || r.url.includes(s)) inReq.push(`${r.who} ${r.url.slice(0, 80)}: ${s}`); }
+// (each URL decoded as a server reads it, + as a space, and each of its query's values; each body as sent and decoded)
+for (const r of asked) for (const s of strings) { if (r.body.includes(s) || dec(r.body).includes(s) || r.url.includes(s) || dec(r.url).includes(s) || params(r.url).some((v) => v.includes(s))) inReq.push(`${r.who} ${r.url.slice(0, 80)}: ${s}`); }
 ok(asked.length > 50 && !inReq.length, `10. nor any of the ${asked.length} requests from every frame of every phone (URL or body)`, js(inReq, 400));
+
+// ---- 11. the engine's key state for real: signed in to InFlite by the site's cookie, Chat's key not on this phone (its
+// sign-in here taken away, as Sign In Without Chats leaves none); Send goes the back= way to Chats ----
+await G.p.goto(`${HUB}/`);
+const dropped = await G.p.evaluate(() => new Promise((res) => { try { const r = indexedDB.open('inflight'); r.onsuccess = () => { try { const tx = r.result.transaction('kv', 'readwrite'); tx.objectStore('kv').delete('session'); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (_) { res(false); } }; r.onerror = () => res(false); } catch (_) { res(false); } })).catch(() => false);
+await G.p.goto(`${HUB}/`);
+const keyState = await until(async () => { const s = await engineState(); return s && s !== 'ready' ? s : null; }, 40000);
+ok(dropped && keyState === 'key', '11. no Chat key here, the site signed in: the engine says key (not forced)', js({ dropped, keyState }));
+const away11 = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 30000 }).then(() => true, () => false);
+await G.p.evaluate(({ w, pk }) => { window.IFL.hub.send(w, pk); }, { w: cards.weather.say, pk: packed.weather });
+ok(await away11, '11. and Send goes the back= way, to Chats', G.p.url());
 
 // ---- one window ----
 ok(G.pages.length === 1 && !(await G.p.evaluate(() => window.__opened?.length || 0)), 'one window throughout, nothing opened beside it', String(G.pages.length));

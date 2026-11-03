@@ -1,12 +1,14 @@
 // needs: hub
 // Chats at the hub (Today First, spec §8.1, §8.4–§8.6, §11.1, §14.3): Chat as InFlite's page /chats/ (ifl.test:8788),
 // George's phone there, Mira and Pat on Chat's own address (chat.ifl.test) as it was installed before, one database.
-//   - signing in for the whole of InFlite in one trip (/chats/#signin-start&then=/), back on Today;
+//   - signing in for the whole of InFlite in one trip (/chats/#signin-start&then=/), back on Today, a tap on the
+//     welcome's Sign In while the trip gets ready starting no second one;
 //   - only people and groups in the list (two friends and a group, and those rows alone); nowhere to ask an app;
 //   - the hub's tab bar in place of Chat's own (which Chat at its own address still has); Friends from the people button;
 //   - a message to Mira with typing dots on her phone (the typing Worker, through the hub);
 //   - the + offering the rows of §8.5, for Mira and for the group; the weather where Mira is, sent, says "Where you are"
-//     on her phone alone;
+//     on her phone alone, and links to nowhere with her place in it, on either phone (George's at the hub, hers off it);
+//     a stock you've both sent and the ride planned together, as rows;
 //   - A Time to Talk asked, then George's page shut: Mira's Yes on her phone agrees it for both (td_times, both yes); a
 //     ride planned with the send sheet, answered Yes with Mira's buttons: fx_offers for both, each with the other's id;
 //   - the held row while George's ride holds his messages;
@@ -50,11 +52,30 @@ async function chatPhone(name) {
   return { p, ctx, name };
 }
 const reload = async (ph, sel = '.mlist, .firstrun, .empty') => { await ph.p.reload(); await ph.p.waitForSelector(sel, { timeout: 30000 }).catch(() => {}); await wait(700); };
+// (an address as it reaches a server: + and %20 both a space)
+const dec = (u) => { try { return decodeURIComponent(String(u).replace(/\+/g, ' ')); } catch (_) { return String(u); } };
+// every link in the cards of a phone's open chat whose words match re
+const hrefsIn = (ph, re) => ph.p.evaluate((src) => [...document.querySelectorAll('.msgs .cd-card')].filter((c) => new RegExp(src, 'i').test(c.textContent)).map((c) => [...c.querySelectorAll('a[href]')].map((a) => a.getAttribute('href'))), re.source).catch(() => []);
 
 // ---- 0. George's account, made on the account's page; Chats signed in by the one trip, and back on Today ----
 const G = await K.hubPhone('george', await K.makeKeys());
 await makeAccount(G.p, `${ACCT}/`, { name: 'George Farrow', handle: 'george', email: 'george@example.com' });
 const navs = []; G.p.on('framenavigated', (f) => { if (f === G.p.mainFrame()) navs.push(f.url()); });
+// (a tap on the welcome's Sign In while the trip gets ready, as someone who's just tapped Sign In on Today might: each
+// one drawn is tapped at once, and noted as it was, in this site's own storage, for after)
+await G.ctx.addInitScript(() => {
+  if (location.host !== 'ifl.test:8788' || location.pathname !== '/chats/' || !/^#signin-start/.test(location.hash)) return;
+  const seen = [];
+  const tap = () => {
+    for (const b of document.querySelectorAll('.welcome .ifl-go')) {
+      if (b.__tapped) continue;
+      b.__tapped = true; seen.push({ text: b.innerText.trim(), disabled: b.disabled, act: b.dataset.act || null });
+      try { localStorage.setItem('t-cta', JSON.stringify(seen)); } catch (_) {}
+      b.click();
+    }
+  };
+  new MutationObserver(tap).observe(document, { childList: true, subtree: true });
+});
 await G.p.goto(`${HUB}/chats/#signin-start&then=/`);
 const wentAway = await G.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 30000 }).then(() => true, () => false);
 ok(wentAway, '0. /chats/#signin-start: straight to the sign-in page, nothing to tap first', G.p.url());
@@ -63,6 +84,8 @@ await G.p.waitForURL((u) => u.host === 'ifl.test:8788' && u.pathname === '/', { 
 const gs = await until(() => sessAt(G.p), 20000);
 ok(new URL(G.p.url()).pathname === '/' && !!gs?.token, '0. back on Today (then=/), with Chat’s key kept at the hub’s own address', `${G.p.url()} ${!!gs?.token}`);
 ok(navs.some((u) => /\/chats\/#?/.test(new URL(u).pathname + new URL(u).hash) && /ifl\.test:8788/.test(u)) && !navs.some((u) => new URL(u).host === 'chat.ifl.test:8788'), '0. the trip went through /chats/, never Chat’s own address', js(navs.map((u) => u.replace(/#.*/, '#…'))));
+const cta = await G.p.evaluate(() => { try { return JSON.parse(localStorage.getItem('t-cta') || 'null'); } catch (_) { return null; } }).catch(() => null);
+ok(Array.isArray(cta) && cta.length > 0 && cta.every((b) => b.disabled && !b.act && /Signing in/.test(b.text)), '0. while the trip gets ready, the welcome says “Signing in…” and takes no tap (each one drawn was tapped, and no second trip began)', js(cta));
 const GID = gs?.id;
 const today = await G.p.evaluate(async () => { const r = await fetch('/api/session', { credentials: 'same-origin' }); return { s: r.status, j: await r.json().catch(() => null) }; });
 ok(today.s === 200 && (today.j?.signedIn === true || !!today.j?.name || !!today.j?.user), '0. Today signed in by the same trip (the site’s cookie on the same sign-in)', js(today));
@@ -83,6 +106,11 @@ for (const ph of [M, P]) {
 }
 
 // ---- 1. /chats/: those rows alone; the hub's tab bar, not Chat's; Friends from the people button ----
+// (a push subscription on this phone already, as Chat at its own address leaves one, notifications allowed: at the hub
+// Chat neither asks for its key nor posts the subscription as its own)
+await G.p.evaluate(() => localStorage.setItem('fakesub', btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(65))))));
+const pushAsks = [], onPush = (r) => { if (/\/api\/pigeon\/push-(sub|key)\b/.test(r.url())) pushAsks.push(`${r.method()} ${r.url()}`); };
+G.ctx.on('request', onPush);
 await G.p.goto(`${HUB}/chats/`);
 // (Chat's first open here asks where you are, as a new sign-in does: London)
 if (await G.p.waitForSelector('#city', { state: 'attached', timeout: 15000 }).catch(() => null)) {
@@ -121,7 +149,9 @@ const nrow = await G.p.locator('.ifm-pop [data-k=notify]').innerText().catch(() 
 ok(/Set in You/.test(nrow), '1. Notifications: “Set in You” (the hub’s, from You)', nrow);
 await G.p.keyboard.press('Escape'); await wait(400);
 const subs = Number(one(`SELECT COUNT(*) AS n FROM pg_push WHERE user_id = '${GID}'`)[0]?.n || 0);
-ok(subs === 0, '1. Chat asked for no push subscription of its own at the hub', String(subs));
+ok(subs === 0 && !pushAsks.length, '1. Chat asked for no push subscription of its own at the hub, with one on the phone (no push-key, no push-sub, no pg_push row)', js({ subs, pushAsks }));
+G.ctx.off('request', onPush);
+await G.p.evaluate(() => localStorage.removeItem('fakesub')).catch(() => {});
 
 // ---- 2. a message to Mira, with typing dots on her phone ----
 await reload(M, '.tabs'); await K.openChat(M, GID);
@@ -147,13 +177,23 @@ await shot(G, '3-plus-mira');
 ok(['photo', 'there', 'weather', 'timetalk'].every((k) => forMira.includes(k)), '3. for Mira: Photo, Where Mira is, Weather here, A Time to Talk', js(forMira));
 const thereLine = await G.p.locator('.sheet [data-act=fromapp][data-id=there]').innerText().catch(() => '');
 ok(/Where Mira is/.test(thereLine) && /Norwich/.test(thereLine), '3. “Where Mira is”, with her place and its weather', thereLine.replace(/\s+/g, ' '));
-// (the weather where Mira is: in her chat's box, sent; on her phone, "Where you are")
+// (the weather where Mira is: in her chat's box, sent; on her phone, "Where you are". Her place, a Chat place, is in no
+// link of the card on either phone (none to Weather at all), nor in any address either phone asks for from here)
+const urls3 = [], onUrl3 = (r) => urls3.push(r.url());
+G.ctx.on('request', onUrl3); M.ctx.on('request', onUrl3);
 await G.p.click('.sheet [data-act=fromapp][data-id=there]');
 await G.p.waitForSelector('.compose .cardatt:not([hidden])', { timeout: 8000 }).catch(() => {});
 await G.p.fill('#msg', 'Looks wet up there'); await G.p.click('.send'); await wait(1200);
+const gThere = await until(async () => { const h = await hrefsIn(G, /Where Mira is/); return h.length ? h : null; }, 10000) || [];
+ok(gThere.length > 0 && gThere.flat().every((h) => !/Norwich/i.test(dec(h)) && !/weather/i.test(h)), '3. George’s copy, at the hub: no link with Mira’s place, none to Weather', js(gThere));
 await reload(M, '.tabs'); await K.openChat(M, GID);
 const where = await until(() => M.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.textContent.replace(/\s+/g, ' ')).find((t) => /Where you are/i.test(t)) || null), 15000);
 ok(!!where, '3. on Mira’s phone the card says “Where you are”', where || await M.p.locator('.msgs').innerText().catch(() => ''));
+const mThere = await hrefsIn(M, /Where you are/);
+ok(mThere.length > 0 && mThere.flat().every((h) => !/Norwich/i.test(dec(h)) && !/weather/i.test(h)), '3. Mira’s, off the hub (Chat’s own address): no link with her place, none to Weather', js(mThere));
+G.ctx.off('request', onUrl3); M.ctx.off('request', onUrl3);
+const placeAsked = urls3.filter((u) => /Norwich/i.test(dec(u)) || [...(() => { try { return new URL(u).searchParams.values(); } catch (_) { return []; } })()].some((v) => /Norwich/i.test(v)));
+ok(urls3.length > 5 && !placeAsked.length, `3. and none of the ${urls3.length} addresses either phone asked for holds her place`, js(placeAsked));
 await K.openChat(G, GRP);
 const forGroup = await plusRows();
 ok(forGroup.includes('photo') && forGroup.includes('weather') && !forGroup.includes('there') && !forGroup.includes('timetalk'), '3. for the group: Photo and Weather here; never where a friend is, nor A Time to Talk', js(forGroup));
@@ -212,6 +252,29 @@ await M.p.waitForSelector('.msgs [data-act=planans][data-a=yes]', { timeout: 150
 await M.p.locator('.msgs [data-act=planans][data-a=yes]').last().click();
 const rides = await until(() => { const g = one(`SELECT state, with_id FROM fx_offers WHERE user_id = '${GID}' AND id = '${planId}'`)[0], m = one(`SELECT state, with_id, role FROM fx_offers WHERE user_id = '${M.id}' ORDER BY made DESC LIMIT 1`)[0]; return g?.state === 'new' && m ? { g, m } : null; }, 15000);
 ok(!!rides && rides.g.with_id === M.id && rides.m.with_id === GID && rides.m.role === 'answered', '5. Mira’s Yes (her button): her offer with George’s id, George’s agreed with hers, his page shut', js(rides || one(`SELECT user_id, state, with_id, role FROM fx_offers`)));
+
+// ---- 5b. the + for Mira again: Tesco, which you've both sent (and George holds), and the ride you've planned together ----
+const scard = { v: 1, kind: 'markets', from: 'markets', at: Date.now() - 60e3, say: 'Tesco is up 1.40% today.', snap: { name: 'Tesco', sym: 'TSCO.L', pct: 1.4, day }, ref: { sym: 'TSCO.L' } };
+await G.p.goto(`${HUB}/`);
+const heldTsco = await G.p.evaluate(() => fetch('/api/markets/holding', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'TSCO.L', qty: 100 }) }).then((r) => r.status)).catch(() => 0);
+// (Tesco sent each way: George's from a card link at the hub, Mira's from one at Chat's own address)
+for (const [ph, base, to] of [[G, `${HUB}/chats/`, M.id], [M, `${CHAT}/`, GID]]) {
+  await ph.p.goto(base + chatHash(scard.say, scard));
+  await ph.p.waitForSelector(`.sheet [data-act=sendpick][data-id="${to}"]`, { timeout: 30000 }).catch(() => {});
+  await ph.p.click(`.sheet [data-act=sendpick][data-id="${to}"]`).catch(() => {});
+  await ph.p.click('.sheet [data-act=sendgo]').catch(() => {});
+  await ph.p.waitForSelector('.sheet', { state: 'detached', timeout: 20000 }).catch(() => {});
+}
+await G.p.goto(`${HUB}/chats/`); await G.p.waitForSelector('.mlist .mrow', { timeout: 30000 }).catch(() => {});
+await K.openChat(G, M.id);
+await until(async () => (await G.p.locator('.msgs .cd-card', { hasText: 'Tesco' }).count()) >= 2, 15000);
+const rows5 = await plusRows().catch(() => []);
+const rowText = (k) => G.p.locator(`.sheet [data-act=fromapp][data-id="${k}"]`).innerText().then((t) => t.replace(/\s+/g, ' '), () => '');
+const stockRow = await rowText('markets:TSCO.L'), rideRow = await rowText('ride');
+await shot(G, '5b-plus-mira');
+ok(heldTsco === 200 && rows5.includes('markets:TSCO.L') && /Tesco/.test(stockRow) && /you’ve both sent it/.test(stockRow), '5b. the +: Tesco, “you’ve both sent it”', js({ heldTsco, rows5, stockRow }));
+ok(rows5.includes('ride') && /(Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)’s ride together/.test(rideRow) && /\d\d:\d\d–\d\d:\d\d/.test(rideRow), '5b. and the ride planned with her: “Thursday’s ride together · 10:00–12:00”', rideRow);
+await G.p.click('.sheet header [data-act=close]').catch(() => {}); await wait(400);
 
 // ---- 6. the held row: George's ride holding his messages ----
 sql(`CREATE TABLE IF NOT EXISTS fx_times (user_id TEXT NOT NULL, day TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL DEFAULT 'ride', source TEXT NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (user_id, day))`);
