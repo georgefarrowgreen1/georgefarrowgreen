@@ -412,7 +412,7 @@ const IFL = (() => {
   // ---- the hub: every app a page of inflite.ai, in one window ----
   // At inflite.ai, Today, Apps and You are one page (/, /#apps, /#you), and Chats, Weather, Fitness and Markets are pages
   // beside it (/chats/, /weather/, /fitness/, /markets/), each fetched from the app's own address by the site's Worker,
-  // which marks each one it serves: <meta name="ifl-hub" content="/weather/"> (Today's own page has content="/"). That
+  // which marks each one it serves with a meta tag named ifl-hub, its content the app's path ("/weather/"; Today's own page has "/"). That
   // marker, and never the address, is what says an app is at the hub: at chat.inflite.ai, chat.localhost or a test's
   // address there's none, and every app is exactly what it was. (Mail stays at its own address, framed at /mail/.)
   //   on, base           the marker's there; what it says ("" where it isn't)
