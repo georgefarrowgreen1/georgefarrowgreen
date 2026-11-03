@@ -55,6 +55,16 @@ const cacheNames = (p) => p.evaluate(() => caches.keys()).catch(() => null);
 // (the framework's page: Today's, with its hub marker for /; never the old one)
 const framework = (p) => p.evaluate((m) => document.querySelector(m)?.content === '/' && !/OLD WEATHER/.test(document.body?.textContent || ''), EXCEPT.HUB_MARKER).catch(() => false);
 
+// (an app's connector.lazy, and the paths kept in its roof-<app>-<build> cache: { name, paths } or null)
+function lazyOf(app) { try { return connectorLazy(app); } catch (_) { return []; } }
+function keptOf(p, app) {
+  return p.evaluate(async (app) => {
+    const name = (await caches.keys()).find((k) => new RegExp(`^roof-${app}-\\d+\\.\\d{2}$`).test(k));
+    if (!name) return null;
+    return { name, paths: (await (await caches.open(name)).keys()).map((r) => new URL(r.url).pathname) };
+  }, app).catch(() => null);
+}
+
 wxServer();
 const acct = await account('Ola Brandt', 'olaroof');
 ok(!!acct.cookies, 'an account made at the tests’ sign-in page, its cookie on the tests’ site', js(acct.json));
@@ -124,6 +134,11 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
     return n >= 20 && cell ? { name, n } : null;
   }, 30000);
   ok(!!keptFiles, 'c. the module’s files kept by the root worker in roof-weather-<build> ({ ifl: "keep" }, all or nothing), and the forecast in wx:<cell>', js({ kept: keptFiles, caches: await cacheNames(p) }));
+  // (stage 2: 16 Days, Warnings, Places, Weather Settings and the detail file are lazy, kept on the Home Screen at idle,
+  // ≥ 10 s after the first show, C4: waited for before going offline)
+  const wxLazy = lazyOf('weather');
+  const lazyKept = await until(async () => { const k = await keptOf(p, 'weather'); return k && wxLazy.every((f) => k.paths.includes(f)) ? k : null; }, 45000);
+  ok(!wxLazy.length || !!lazyKept, `c. standalone: Weather’s ${wxLazy.length} lazy files kept too, at idle (stage 2 C4)`, js({ lazy: wxLazy, kept: (await keptOf(p, 'weather'))?.paths?.filter((x) => wxLazy.includes(x)) }));
   await ctx.close();
 
   // a fresh window of the same profile: sessionStorage empty, offline
@@ -177,13 +192,6 @@ async function oldAppWorker(ph, app) {
   await ph.ctx.unroute(re);
   return st;
 }
-const lazyOf = (app) => { try { return connectorLazy(app); } catch (_) { return []; } };
-// (the paths kept in an app's roof-<app>-<build> cache: { name, paths } or null)
-const keptOf = (p, app) => p.evaluate(async (app) => {
-  const name = (await caches.keys()).find((k) => new RegExp(`^roof-${app}-\\d+\\.\\d{2}$`).test(k));
-  if (!name) return null;
-  return { name, paths: (await (await caches.open(name)).keys()).map((r) => new URL(r.url).pathname) };
-}, app).catch(() => null);
 const SCREEN = { markets: [H.M_MARKETS, () => `${H.M_MARKETS} ${H.MK_HERO}`], fitness: [H.M_FITNESS, () => `${H.M_FITNESS} ${H.FX_DAYCARD}`] };
 
 // ======================================================================================================================
