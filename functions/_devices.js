@@ -4,7 +4,8 @@
 // var HUB_PUSH is "1", also pg_push, mk_push and wx_devs/wx_subs, each row marked via = 'hub' so a rollback can take
 // back exactly those. A device is named to the page only by an opaque id, never its endpoint or its session's hash.
 //   deviceAdd(env, u, { sub, was?, fan?, tz }, { request }) → { ok: true, tables }       (POST today/device; with was,
-//     the endpoint is moved in every table that holds was)
+//     the endpoint is moved in every table that holds was. tz is accepted and not used (nor is it by POST today/push):
+//     the morning's zone comes with the Morning section's own changes, functions/_todayapp.js)
 //   deviceDrop(env, u, { endpoint }) → { ok: true }                                     (DELETE today/device)
 //   devicesList(env, u, { device }, { request }) → { fan, here, devices: [{ id, label, home, apps, at }] }
 //                                                                                       (GET today/devices)
@@ -33,7 +34,9 @@ const DEVICE = /^[A-Za-z0-9_-]{16}$/, ID = /^[A-Za-z0-9_-]{16}$/;
 // each table's app, as You names them, in the order they're listed
 const APPS = [["pg_push", "chat"], ["wx_devs", "weather"], ["mk_push", "markets"], ["fx_push", "fitness"], ["td_push", "today"]];
 const HERE_ORDER = ["td_push", "pg_push", "mk_push", "wx_devs", "fx_push"];
-const NAMES = { inflight: "Chat", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", today: "Today", account: "Account" };
+// (the names of what a sign-in is a Home Screen app of, or used in: pg_sessions' home and apps; "inflite" is any sign-in
+// used in InFlite's window, and Today's own Home Screen app, functions/_pigeon.js homeOf)
+const NAMES = { inflight: "Chat", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", today: "Today", account: "Account", inflite: "InFlite", mail: "Mail" };
 const MAIL = "mail:";
 
 // ---- the tables ----

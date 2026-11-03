@@ -2,10 +2,11 @@
 // (Node's SQLite, made to look like D1): POST today/device without fan, or with fan but the Pages var HUB_PUSH unset,
 // writes Today's td_push only; with both, Chat's pg_push (the cookie's sign-in), Markets' mk_push and Weather's
 // wx_devs/wx_subs too, for one endpoint, each via 'hub', each with its own rules, and never another account's live row;
-// a move takes it everywhere, a delete only this endpoint; today/devices lists the account's other sign-ins with a push
-// row in any of the five tables (Weather's by sess), by an opaque id, and Stop There drops only that sign-in's rows,
-// signing nothing out; §15.4's four rollback DELETEs leave every row not fanned out; and Weather's ended() deletes a
-// hub-made device whose sign-in has ended, where it only unlinks the others.
+// a move takes it everywhere (Fitness's morning too), a delete only this endpoint; today/devices lists the account's other
+// sign-ins with a push row in any of the five tables (Weather's by sess), by an opaque id ("InFlite on iPad" for one
+// used in InFlite's window), and Stop There drops only that sign-in's rows, signing nothing out; §15.4's four rollback
+// DELETEs leave every row not fanned out, and the first of them has its column wherever Chat's tick has run; and
+// Weather's ended() deletes a hub-made device whose sign-in has ended, where it only unlinks the others.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +14,7 @@ import { db } from "../../../functions/_pigeon.js";
 import { deviceAdd, deviceDrop, devicesList, devicesStop, otherDevices, stopDevice, ready } from "../../../functions/_devices.js";
 import { deviceHash } from "../../../functions/_today.js";
 import { keepPush } from "../../../functions/_markets.js";
+import { tick } from "../../../functions/_notify.js";
 import { unlinkEnded, subscribe } from "../../../functions/_wxpush.js";
 
 function d1() {
@@ -73,6 +75,8 @@ const where = (endpoint) => ({
   mk: one("SELECT user_id, session, via FROM mk_push WHERE endpoint = ?", endpoint),
   wx: one("SELECT user_id, sess, via FROM wx_devs WHERE endpoint = ?", endpoint),
 });
+// (Fitness's morning row for an endpoint: never fanned out, but moved and dropped with the rest)
+const fxAt = (endpoint) => one("SELECT user_id, p256dh, session FROM fx_push WHERE endpoint = ?", endpoint);
 const places = (endpoint) => all("SELECT s.name, s.rain, s.warn FROM wx_subs s JOIN wx_devs d ON d.dev = s.dev WHERE d.endpoint = ? ORDER BY s.name", endpoint);
 // (the account's Weather notifications, as its own page keeps them: functions/_wxacct.js)
 const weatherOf = (id, notify) => run("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?, ?, 1, ?)", id, JSON.stringify({ places: [], notify, settings: { temp: "c" } }), T);
@@ -143,19 +147,25 @@ test("moved by the browser (was): every table that had it, this account's only; 
   await deviceAdd(env, u, { sub: s, fan: true });
   const u2 = userOf(me, signIn(me));
   await deviceAdd(env, u2, { sub: keep, fan: true });
+  // (Fitness's morning on the same phone, as its own page adds it)
+  run("INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, added, session) VALUES (?, ?, ?, ?, 420, 'Europe/London', ?, ?)", s.endpoint, me, s.keys.p256dh, s.keys.auth, T, u.sessionHash);
   // (someone else can't move it: was is only ever theirs)
   const them = person("Gus"), g = userOf(them, signIn(them));
   assert.deepEqual((await deviceAdd(env, g, { sub: await sub("gus"), was: s.endpoint })).tables, []);
-  assert.deepEqual(await deviceAdd(env, u, { sub: next, was: s.endpoint }), { ok: true, tables: ["td_push", "pg_push", "mk_push", "wx_devs"] });
+  assert.deepEqual(fxAt(s.endpoint)?.user_id, me, "Fitness's row not moved by someone else");
+  assert.deepEqual(await deviceAdd(env, u, { sub: next, was: s.endpoint }), { ok: true, tables: ["td_push", "pg_push", "mk_push", "wx_devs", "fx_push"] });
   assert.deepEqual(where(s.endpoint), { td: null, pg: null, mk: null, wx: null });
+  assert.equal(fxAt(s.endpoint), null);
+  assert.deepEqual(fxAt(next.endpoint), { user_id: me, p256dh: next.keys.p256dh, session: u.sessionHash }, "Fitness's moved too, its new keys with it");
   assert.equal(where(next.endpoint).wx.via, "hub");
   assert.equal(places(next.endpoint).length, 2, "Weather's places went with it");
   await assert.rejects(deviceAdd(env, u, { sub: next, was: 42 }), /Bad request/);
   // dropped by someone else: nothing
   await deviceDrop(env, g, { endpoint: next.endpoint });
-  assert.ok(where(next.endpoint).pg);
+  assert.ok(where(next.endpoint).pg && fxAt(next.endpoint));
   assert.deepEqual(await deviceDrop(env, u, { endpoint: next.endpoint }), { ok: true });
   assert.deepEqual(where(next.endpoint), { td: null, pg: null, mk: null, wx: null });
+  assert.equal(fxAt(next.endpoint), null, "Fitness's morning dropped with it");
   assert.deepEqual(places(next.endpoint), []);
   assert.ok(where(keep.endpoint).pg && where(keep.endpoint).wx, "the other device untouched");
   await assert.rejects(deviceDrop(env, u, {}), /Bad request/);
@@ -218,6 +228,21 @@ test("today/devices: the account's other sign-ins with a push row in any app's t
   assert.ok(none && page);
 });
 
+test("a sign-in used in InFlite's window (or Today's own Home Screen app) is named InFlite, however many apps it has a row in", async () => {
+  const me = person("Jo"), u = userOf(me, signIn(me, { home: "inflite" }));
+  weatherOf(me, NOTIFY);
+  // another phone's InFlite: fanned out into four apps; another's with Today's morning alone; a Mac's Mail
+  const pad = signIn(me, { label: "iPad · Safari", home: "inflite", apps: "today,inflight,weather,markets", seen: T - 1000 });
+  const phone = signIn(me, { label: "iPhone · Safari", home: "inflite", apps: "today", seen: T - 2000 });
+  const mac = signIn(me, { label: "Mac · Safari", home: "mail", apps: "account", seen: T - 3000 });
+  await deviceAdd(env, userOf(me, pad), { sub: await sub("jo-pad"), fan: true });
+  await deviceAdd(env, userOf(me, phone), { sub: await sub("jo-phone") });
+  const m = await sub("jo-mac");
+  run("INSERT INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUES (?, ?, ?, ?, ?, ?)", m.endpoint, me, m.keys.p256dh, m.keys.auth, mac, T);
+  assert.deepEqual((await otherDevices(env, u)).map((d) => [d.label, d.home, d.apps]), [
+    ["InFlite on iPad", true, ["chat", "weather", "markets", "today"]], ["InFlite on iPhone", true, ["today"]], ["Mail on Mac", true, ["today"]]]);
+});
+
 test("the four rollback DELETEs of spec §15.4 take back exactly what was fanned out", async () => {
   const me = person("Jo"), u = userOf(me, signIn(me)), s = await sub("jo-hub"), own = await sub("jo-own"), wxOwn = await sub("jo-wx");
   weatherOf(me, NOTIFY);
@@ -239,6 +264,17 @@ test("the four rollback DELETEs of spec §15.4 take back exactly what was fanned
   assert.deepEqual(count(), { pg: 1, mk: 1, wx: 1, subs: 2, td: 1 }, "each app's own kept, and Today's td_push");
   assert.deepEqual(where(s.endpoint), { td: { user_id: me, session: u.sessionHash }, pg: null, mk: null, wx: null });
   assert.ok(where(own.endpoint).pg && where(own.endpoint).mk && where(wxOwn.endpoint).wx);
+});
+
+test("the rollback's pg_push line can be run on a database no device route has been used on, once Chat's tick has run there", async () => {
+  const e = { DB: d1(), PIGEON_PUSH_URL: PUSH, PIGEON_SECRET: "devices-test-secret" }, cols = () => e.DB.sql.prepare("PRAGMA table_info(pg_push)").all().map((c) => c.name);
+  // (Chat's tables made in it, by a copy of Chat's setup of its own: this copy's is done once, for the first database)
+  await (await import(`../../../functions/_pigeon.js?setup=devices-${Date.now()}`)).db(e);
+  assert.ok(!cols().includes("via"), "Chat's own tables: no via");
+  await tick(e, "http://localhost");
+  assert.ok(cols().includes("via"), "made by the tick");
+  assert.doesNotThrow(() => e.DB.sql.exec("DELETE FROM pg_push WHERE via = 'hub'"));
+  await assert.doesNotReject(tick(e, "http://localhost"), "and the next tick, where it's there, is as ever");
 });
 
 test("Weather's ended(): a hub-made device whose sign-in has ended is deleted with its places; any other is unlinked and keeps them", async () => {
