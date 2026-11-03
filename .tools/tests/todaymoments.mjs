@@ -32,7 +32,9 @@ import { writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { kit } from './lib.mjs';
 import { execSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
 import { makeAccount, joinChat, onAccountPage } from './join.mjs';
+import { hostCall } from './handback.mjs';
 import * as F from './mocks/wxappdata.mjs';
 import * as OW from './mocks/wxwarnings.mjs';
 
@@ -299,8 +301,20 @@ async function chatsSignIn() {
   }
   return until(() => sessAt(G.p), 30000);
 }
-const gs = await chatsSignIn();
+// (where Chats couldn't be signed in at the hub, and that's failed already: Chat's own sign-in for its API, handed back by
+// the account from this phone's cookie as hubserve.mjs does, so the steps after it still run and say what they find)
+async function bearerFromCookie() {
+  const jar = (await G.ctx.cookies()).find((c) => c.name === 'account' || c.name === '__Secure-account');
+  if (!jar) return null;
+  const word = randomBytes(32).toString('base64url');
+  const code = await hostCall('auth.ifl.test', '/api/account/handback', { app: 'inflight', ask: createHash('sha256').update(word).digest('base64url'), box: 'x'.repeat(48) }, { cookie: `${jar.name}=${jar.value}` });
+  const r = code.s === 200 ? await hostCall('chat.ifl.test', '/api/pigeon/handback', { code: code.j.code, verifier: word }) : null;
+  console.log('(Chats not signed in at the hub: Chat’s API from here with a sign-in the account handed back from the cookie)', code.s, r?.s);
+  return r?.j?.token ? { token: r.j.token, id: r.j.me?.id } : null;
+}
+let gs = await chatsSignIn();
 ok(!!gs?.token && new URL(G.p.url()).host === 'ifl.test:8788', 'George: Chats signed in at the hub by the one trip, Chat’s key kept at the hub’s address', G.p.url());
+if (!gs?.token) gs = await bearerFromCookie();
 const GID = gs?.id || rows("SELECT id FROM pg_users WHERE handle = 'george'")[0]?.id;
 G.id = GID;
 const [P, M, L] = await Promise.all(['pat', 'mira', 'leo'].map((n) => chatPhone(n)));

@@ -13,10 +13,11 @@
 //   6. Stop There for an old sign-in: only its rows go, Weather's device and its places included; nothing signed out
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { kit } from './lib.mjs';
 import { makeAccount, joinChat, onAccountPage } from './join.mjs';
+import { hostCall } from './handback.mjs';
 
 const [,, S, out] = process.argv;
 // (instant chats, as new accounts have them on the site: PIGEONS=0, the database kept; instant.mjs does the same)
@@ -108,6 +109,17 @@ async function chatsSignIn() {
   }
   return until(() => sessAt(G.p), 30000);
 }
+// (where Chats couldn't be signed in at the hub, and that's failed already: Chat's own sign-in for its API, handed back by
+// the account from this phone's cookie as hubserve.mjs does, so the steps after it still run and say what they find)
+async function bearerFromCookie() {
+  const jar = (await G.ctx.cookies()).find((c) => c.name === 'account' || c.name === '__Secure-account');
+  if (!jar) return null;
+  const word = randomBytes(32).toString('base64url');
+  const code = await hostCall('auth.ifl.test', '/api/account/handback', { app: 'inflight', ask: createHash('sha256').update(word).digest('base64url'), box: 'x'.repeat(48) }, { cookie: `${jar.name}=${jar.value}` });
+  const r = code.s === 200 ? await hostCall('chat.ifl.test', '/api/pigeon/handback', { code: code.j.code, verifier: word }) : null;
+  console.log('(Chats not signed in at the hub: Chat’s API from here with a sign-in the account handed back from the cookie)', code.s, r?.s);
+  return r?.j?.token ? { token: r.j.token, id: r.j.me?.id } : null;
+}
 // (the tables the old installs' rows go in, as their modules make them; each module's own setup is IF NOT EXISTS too)
 function tables() {
   run(`CREATE TABLE IF NOT EXISTS td_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, session TEXT, added INTEGER NOT NULL, fails INTEGER NOT NULL DEFAULT 0, ok_at INTEGER)`);
@@ -143,8 +155,9 @@ const oldToday = await oldSub('oldtoday'), oldWeather = await oldSub('oldweather
 run(`INSERT OR REPLACE INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUES ('${oldToday.endpoint}', '${GID}', '${oldToday.p256dh}', '${oldToday.auth}', '${S1}', ${Date.now()})`);
 weatherDevice('oldwx-1', oldWeather, GID, S1, 'iPhone');
 // Chats, signed in by the one trip: Chat's first hand-back
-const gs = await chatsSignIn();
+let gs = await chatsSignIn();
 ok(!!gs?.token && gs.id === GID, 'Chats signed in at the hub (Chat’s first hand-back)', G.p.url());
+if (!gs?.token) gs = await bearerFromCookie();
 const live = rows(`SELECT hash FROM pg_sessions WHERE user_id = '${GID}'`).map((x) => x.hash);
 const td0 = rows(`SELECT session FROM td_push WHERE endpoint = '${oldToday.endpoint}'`)[0];
 const wx0 = rows(`SELECT user_id, sess FROM wx_devs WHERE dev = 'oldwx-1'`)[0];
