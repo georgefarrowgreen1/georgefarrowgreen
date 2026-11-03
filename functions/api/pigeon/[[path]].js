@@ -758,15 +758,18 @@ async function plansQs(env, D, uid, t) {
 }
 const timeOut = (r) => { const x = timeView(r); return { id: x.id, with: x.withId, kind: x.kind, start: x.start, stop: x.stop }; };
 const rideOut = (r) => ({ id: r.id, with: r.with_id, start: r.start, stop: r.stop, sport: r.sport, state: r.state });
-// What's holding your notifications now, for Chat's held row: a planned ride (functions/_busy.js, at its do level, the
-// one that holds friends), else your quiet hours, each with when it ends → { why: "ride" | "quiet", until }, or null
-async function holdOf(env, u, t) {
-  const busy = await busyNow(env, u.id, t).catch((e) => { logError(env, "sync hold", e); return null; });
-  if (busy && Number.isFinite(busy.until) && busy.until > t && (busy.level == null || busy.level === "do")) return { why: "ride", until: busy.until };
-  const p = prefsOf(u);
+// What's holding your notifications now, for Chat's held row: a planned ride that holds friends' messages (busy:
+// functions/_busy.js busyNow's { until, level }), else your quiet hours (p: prefsOf), each with when it ends
+// → { why: "ride" | "quiet", until }, or null
+export function holdOf(busy, p, t) {
+  if (friendsHeld(busy) && Number.isFinite(busy.until) && busy.until > t) return { why: "ride", until: busy.until };
   try { if (isQuiet(p, t)) return { why: "quiet", until: quietEnd(p, t) }; } catch (_) { /* a zone this server can't read: no hold said */ }
   return null;
 }
+// (a ride holds friends' messages at its do level alone (at suggest, apps' only; at quiet, nothing): functions/_busy.js
+// holdsFor(busy, "friends"), batch N's. B0's _busy.js doesn't have it yet, so the same rule is said here until N's is
+// merged, and holdsFor is then imported in its place)
+const friendsHeld = (b) => !!b && b.level === "do";
 // (the first quarter hour, from t, that isn't in quiet hours (every zone's offset is whole quarter hours): by the clock
 // read now, quietTo o'clock; checked, and on the day the clocks change, found a quarter hour at a time)
 export function quietEnd(p, t) {
@@ -784,13 +787,13 @@ async function sync({ request, env }) {
   // friends as just seen, as Today being open isn't you using Chat)
   const quiet = new URL(request.url).searchParams.get("quiet") === "1";
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
-  const plans = await plansQs(env, D, u.id, t), holdP = holdOf(env, u, t);
+  const plans = await plansQs(env, D, u.id, t), busyP = busyNow(env, u.id, t).catch((e) => { logError(env, "sync hold", e); return null; });
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
   // question costs a round trip. Your links and everyone on the other end (one query whatever their
   // number: an IN list would overflow D1's 100 parameters), the last pigeon each way with each of them
   // (two index look-ups each, not a read of your whole history), whose turn it is, what's unread,
   // passkeys, streaks, feathers, named pigeons, and your groups (a fixed set of questions however many)
-  const res = await D.batch([
+  const qs = [
     D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
     D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.no_receipts_at, p.notify_prefs, p.pigeons, p.new_way
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id),
@@ -819,10 +822,19 @@ async function sync({ request, env }) {
     ...deliveredQs(D, u, t),
     // an open app syncs every 15 s; note it at most once a minute for Last Online (never for Today's engine: quiet)
     ...(quiet || t - (u.seen_at || 0) < SEEN_EVERY ? [] : [D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id)]),
-    // (last, so every other answer keeps its place: your agreed times and planned rides, Today First's)
-    ...plans,
-  ]);
-  const [timeRows, rideRows] = plans.length ? res.slice(-2).map((r) => r?.results || []) : [[], []];
+  ];
+  // Your agreed times and planned rides (Today First's) last, in the same trip, so every other answer keeps its place. A
+  // batch is one transaction, so were either of their tables ever not as they should be (another module's), the whole
+  // of it would fail: then it's asked again without them (times and rides said as none, the error noted), and Chat's
+  // sync never rests on them. (No more trips while they're fine.)
+  let res, got = plans;
+  try { res = await D.batch([...qs, ...plans]); }
+  catch (e) {
+    if (!plans.length) throw e;
+    await logError(env, "sync plans", e);
+    got = []; res = await D.batch(qs);
+  }
+  const [timeRows, rideRows] = got.length ? res.slice(-2).map((r) => r?.results || []) : [[], []];
   const [{ results: links }, { results: peopleRows }, { results: lasts }, { results: turnRows }, { results: unread }, { results: vanishRows }, { results: pks }, { results: streakRows }, { results: [bal] }, { results: birdRows }, { results: flightRows }] = res;
   const other = (l) => (l.a === u.id ? l.b : l.a);
   const people = new Map(peopleRows.map((p) => [p.id, p]));
@@ -865,7 +877,7 @@ async function sync({ request, env }) {
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })),
     // Today First: what's holding your notifications, your times agreed with friends and your rides planned with one (ids
     // and times only)
-    hold: await holdP, times: timeRows.map(timeOut), rides: rideRows.map(rideOut) },
+    hold: holdOf(await busyP, prefsOf(u), t), times: timeRows.map(timeOut), rides: rideRows.map(rideOut) },
   );
 }
 
