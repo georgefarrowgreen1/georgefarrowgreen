@@ -9,7 +9,8 @@
 // 5 seconds on. At the hub (IFL.hub stood in for, as hubshare.mjs and wxhub.mjs spy on it): the hub's paths through
 // IFL.hub.go, Send through IFL.hub.send with the card's words and card, Send to Leo in one tap through Chat's engine,
 // and Waiting for You's words from the engine only beside a message the server named and only when as new as the
-// server's. No CSP violation, console error or sideways scroll anywhere.
+// server's. And once Today's page is the hub's (its marker, batch S), the page's own IFL.hub with no stand-in: the
+// hub's paths and Send a button, with /api/hub saying ready. No CSP violation, console error or sideways scroll anywhere.
 //   node .tools/tests/todayphases.mjs [state dir] [screenshots dir]     (or ./run.sh todayphases)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -55,6 +56,9 @@ const real = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, ms = 5000) { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v || Date.now() > end) return v; await real(100); } }
 
 // ---- IFL.hub, stood in for: everything asked of it written down in window.__hub; Chat's engine, if given ----
+// (kept as the page's IFL.hub where the page sets its own on window too, as the hub's page does for Chat's engine: the
+// page's setting it, by assignment or defineProperty, is let be here and its own hub left alone, so these parts test
+// day.js and cards.js against this stand-in whatever the page does. The page's own hub: 'the page’s own IFL.hub' below)
 function standInHub(o) {
   const log = (window.__hub = []);
   const engine = o.engine ? {
@@ -65,7 +69,7 @@ function standInHub(o) {
     share: async (...a) => { log.push(['share', ...a]); return true; },
   } : null;
   const SUBS = { chat: '/chats/', weather: '/weather/', fitness: '/fitness/', finance: '/markets/' };
-  window.IFL = { hub: {
+  const IFL = { hub: {
     on: true, base: '/',
     go(url) {
       log.push(['go', String(url)]);
@@ -80,6 +84,9 @@ function standInHub(o) {
     sent(say) { log.push(['sent', say]); },
     closed() {},
   } };
+  const define = Object.defineProperty;
+  define(window, 'IFL', { get: () => IFL, set() {}, enumerable: true, configurable: false });
+  Object.defineProperty = function (obj, key, desc) { return obj === window && key === 'IFL' ? obj : define.call(Object, obj, key, desc); };
 }
 const hubLog = (p, kind) => p.evaluate((k) => (window.__hub || []).filter((x) => !k || x[0] === k), kind);
 
@@ -87,7 +94,7 @@ const hubLog = (p, kind) => p.evaluate((k) => (window.__hub || []).filter((x) =>
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const errs = [];
 // a phone at a moment of the day: the stand-in answering that moment, the page's clock installed at it
-async function open(ph, { time = F[ph].at, hub = null, w = 390, h = 844, scheme = 'dark', patch = null, wait = true } = {}) {
+async function open(ph, { time = F[ph].at, hub = null, w = 390, h = 844, scheme = 'dark', patch = null, wait = true, setup = null } = {}) {
   await ctl('/__mode', { phase: ph });
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'block' });
   await ctx.addCookies([{ name: 'account', value: SESSION, url: BASE }]);
@@ -105,6 +112,7 @@ async function open(ph, { time = F[ph].at, hub = null, w = 390, h = 844, scheme 
       await r.fulfill({ response: res, json: patch(a) });
     } catch {}
   });
+  if (setup) await setup(p);
   await p.goto(BASE + '/');
   if (wait) await p.waitForSelector(`${DAY}[data-phase="${F[ph].phase}"] #top .day-top`, { timeout: 15000 });
   return { ctx, p };
@@ -142,7 +150,10 @@ await part('each phase', async () => {
     }
     if (want.includes('c')) {
       const rows = await p.$$eval(`${sel} #coming .dc-row`, (rs) => rs.map((r) => [r.querySelector('b').textContent, !!r.querySelector('[data-send]')]));
-      const exp = a.upcoming.filter((r) => r.at > a.at).slice(0, a.phase === 'evening' ? 1 : 99).map((r) => [r.title, !!r.share]);
+      // (in the evening, what's left of tonight and tomorrow's first: nothing after the next morning's first row)
+      const dawn = a.timeline.find((x) => x.phase === 'morning' && x.at > a.at)?.at ?? Infinity, later = a.upcoming.filter((r) => r.at > a.at);
+      const cut = a.phase === 'evening' ? later.findIndex((r) => r.at >= dawn) : -1;
+      const exp = (cut < 0 ? later : later.slice(0, cut + 1)).map((r) => [r.title, !!r.share]);
       same(rows, exp, `${ph}: Coming Up’s rows, each with a card having Send`);
     }
     same(await p.$$eval(`${DAY} input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), ${DAY} textarea, ${DAY} [contenteditable]`, (xs) => xs.length), 0, `${ph}: no box to type in`);
@@ -184,11 +195,11 @@ await part('a boundary crossed', async () => {
   await p.route('**/api/**', (r) => { held.push(r.request().url()); });
   await p.clock.runFor(2 * 60e3);
   await p.waitForSelector(`${DAY}[data-phase="preride"] #top .day-top[data-phase="preride"]`, { timeout: 5000 });
-  same(await reqs(), [], 'the ride took over at its minute, with no request (the stand-in’s log)');
+  same(held, [], 'the ride took over at its minute, with no request made by the page');
+  same(await reqs(), [], 'and none reached the stand-in');
   same(await text(p, `${DAY} #top .dt-h`), F.preride.tops.preride.title, 'the ride’s card, from the midday answer’s tops');
   same(await text(p, '#hd .ifh-line'), '16:06 · your ride', 'the header says so');
   ok(!(await shown(p, `${DAY} #waiting`)) && !(await shown(p, `${DAY} #coming`)) && !(await shown(p, `${DAY} #rest`)), 'the ride alone');
-  console.log(`      (requests the page made meanwhile, held: ${held.length})`);
   await p.screenshot({ path: `${OUT}/boundary-preride.png`, fullPage: true });
   await ctx.close();
 });
@@ -327,7 +338,9 @@ await part('at the hub: links and Send', async () => {
   same((await hubLog(p, 'send')).at(-1), ['send', a.cards.markets.share, a.cards.markets.sendCard, {}], 'the Markets card: the same, percent only');
   ok(!/[£$€]/.test(JSON.stringify(await hubLog(p, 'send'))), 'no amount in anything sent');
   same(new URL(p.url()).pathname, '/', 'still on Today');
-  await p.route('**/weather/**', (r) => r.fulfill({ body: '<!doctype html><title>Weather</title>', contentType: 'text/html' }));
+  // (a stand-in Weather page, which asks for the hub's cross-fade as every hub page does (InFlite's menu.css:
+  // @view-transition): one that didn't would have the browser give up the cross-fade from Today with an error)
+  await p.route('**/weather/**', (r) => r.fulfill({ body: '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style>', contentType: 'text/html' }));
   await p.click(`${DAY} #top a[data-do="open"]`);
   await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
   ok(true, 'Radar opens /weather/#radar in the same window');
@@ -389,6 +402,30 @@ await part('at the hub: the after card', async () => {
   await until(async () => (await hubLog(none.p, 'send')).length > 0, 3000);
   same((await hubLog(none.p, 'send'))[0], ['send', top.share, top.sendCard, { to: LEO }], 'no engine: IFL.hub.send(…, { to: Leo })');
   await none.ctx.close();
+});
+
+// ======================================================================= at the hub: the page's own IFL.hub
+// (no stand-in: Today's own IFL.hub, the hub's Worker saying it's ready (/api/hub, addendum A1), as day.js and cards.js
+// find it on the page itself. Only once Today's page is the hub's (its marker, batch S's index.html): before that the page
+// has no hub of its own to use. Chats isn't served here: its engine's frame gets a blank page)
+await part('at the hub: the page’s own IFL.hub', async () => {
+  const setup = async (p) => {
+    await p.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: true }, headers: { 'Cache-Control': 'no-store' } }));
+    await p.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ body: '<!doctype html><title>Chats</title>', contentType: 'text/html' }));
+  };
+  const { ctx, p } = await open('midday', { setup });
+  if (!(await p.$('meta[name="ifl-hub"]'))) {
+    console.log('SKIP  at the hub, the page’s own IFL.hub: Today’s page isn’t the hub’s yet (no ifl-hub marker: batch S)');
+    await ctx.close();
+    return;
+  }
+  ok(await p.evaluate(() => !('__hub' in window)), 'no stand-in on this page');
+  same(await p.$eval(`${DAY} #top a[data-do="open"]`, (x) => x.getAttribute('href')), '/weather/#radar', 'the page’s own hub: Radar at the hub’s path, in the one window');
+  ok(await p.$(`${DAY} #top button[data-send]`), 'the page’s own hub: the top card’s Send a button (Chat’s sheet over the page), not a link to Chat');
+  ok(await p.$eval(`${DAY} #rest .tcard[data-app="weather"] .tc-head`, (x) => x.getAttribute('href').startsWith('/weather/')).catch(() => false), 'the page’s own hub: the Weather card’s head at /weather/');
+  ok(!(await p.$$eval(`${DAY} a[href]`, (as) => as.some((a) => /^https?:\/\/(chat|weather|fitness|finance)\./.test(a.getAttribute('href'))))), 'no link of the day’s leaves the hub');
+  await p.screenshot({ path: `${OUT}/hub-own.png`, fullPage: true });
+  await ctx.close();
 });
 
 // ======================================================================= every width, light and dark
