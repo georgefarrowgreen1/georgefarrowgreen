@@ -27,7 +27,7 @@ import { E2E, b64url, fromB64url } from "./crypto.js";
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
 // few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself,
-// and the updater every app shares (updates, below).
+// the updater every app shares (updates, below), and the hub (hub, below: every app as a page of inflite.ai).
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
@@ -418,8 +418,125 @@ const IFL = (() => {
 
   // (the open menu's rows drawn again, as what they say changes: one that's come or gone)
   const redraw = (rows) => open?.redraw(rows);
+
+  // ---- the hub: every app a page of inflite.ai, in one window ----
+  // At inflite.ai, Today, Apps and You are one page (/, /#apps, /#you), and Chats, Weather, Fitness and Markets are pages
+  // beside it (/chats/, /weather/, /fitness/, /markets/), each fetched from the app's own address by the site's Worker,
+  // which marks each one it serves: <meta name="ifl-hub" content="/weather/"> (Today's own page has content="/"). That
+  // marker, and never the address, is what says an app is at the hub: at chat.inflite.ai, chat.localhost or a test's
+  // address there's none, and every app is exactly what it was. (Mail stays at its own address, framed at /mail/.)
+  //   on, base           the marker's there; what it says ("" where it isn't)
+  //   go(url)            an app's own address as the hub's: https://chat.<site>/#x → /chats/#x, weather. → /weather/,
+  //                      fitness. → /fitness/, finance. → /markets/, email. → /mail/, <site>/ → /; account., auth. and
+  //                      any other site as they are (a test's site, ifl.test, the same way); off the hub, url as it is
+  //   href(app, section) an app at a section: ("weather", "radar") → "/weather/#radar", ("markets", "s=TSCO") →
+  //                      "/markets/#s=TSCO", ("chat", "open=<id>") → "/chats/#open=<id>"
+  //   tabs(el, current)  Today · Chats · Apps · You, as links, into el; current (its key: today, chats, apps or you) marked
+  //   back()             back where you came from in the window (the breadcrumb, below), else to Apps; never history's
+  //                      own back (Mail keeps history of its own, and an app opened from a notification has none)
+  //   chat()             Chat's engine (Chat's own page in a hidden frame, which sends a card without leaving): a promise
+  //                      of it, or of null where there's none
+  //   send(words, packed, { to })   a card to a friend: the engine's sheet, else Chats' own, which comes back here after
+  //   sent(say), closed()           the engine's word that it's sent (said in a toast) or that its sheet's shut
+  //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here
+  //   moved(app, { off })           an old Home Screen icon's note that InFlite is one app now
+  // The breadcrumb: where a page of the hub was left from, for its Back (Chat's pages send no Referer). Written, as the
+  // page you're on (its path, ≤ 200 characters), by go and href to another page, the tabs and links to one; read once as
+  // a page opens (what it was left from); taken as Back goes, so Back never bounces between two pages.
+  // (Working now: on, base, go, href, the breadcrumb and back, signIn, send's way through Chats, sent's toast, tabs as
+  // plain links. Chat's engine, the styled tab bar, moved's note and a notification tapped while a page is open: batch S.)
+  const CRUMB = "ifl-crumb";
+  const SUBS = { chat: "/chats/", weather: "/weather/", fitness: "/fitness/", finance: "/markets/", email: "/mail/" };
+  const HUB_APPS = { today: "/", chat: "/chats/", chats: "/chats/", weather: "/weather/", fitness: "/fitness/", markets: "/markets/", mail: "/mail/" };
+  // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
+  const TABS = { today: ["Today", "/"], chats: ["Chats", "/chats/"], apps: ["Apps", "/#apps"], you: ["You", "/#you"] };
+  const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
+  // (a path of this site's: starts /, not //, no \, no more than 200 characters)
+  const ownPath = (p) => typeof p === "string" && p.length <= 200 && /^\/(?!\/)/.test(p) && !p.includes("\\");
+  const pageOf = (p) => { try { return new URL(p, location.origin).pathname; } catch (_) { return null; } };
+  const store = () => { try { return sessionStorage; } catch (_) { return null; } };
+  const crumb = () => { const p = location.pathname + location.hash; try { if (ownPath(p)) store()?.setItem(CRUMB, p); } catch (_) {} };
+  // (what this page was left from, read as it opens: its own later writes are for the page it goes to next)
+  const cameFrom = (() => { try { const c = store()?.getItem(CRUMB); return ownPath(c) ? c : null; } catch (_) { return null; } })();
+  const leaving = (p) => ownPath(p) && pageOf(p) !== location.pathname;
+  const hub = {
+    on: !!marker,
+    base: marker ? marker.getAttribute("content") || "/" : "",
+    go(url) {
+      if (!hub.on) return url;
+      let u;
+      try { u = new URL(String(url), location.href); } catch (_) { return url; }
+      if (!/^https?:$/.test(u.protocol) || u.username || u.password) return url;
+      // (the site: this page's, the staging hub's next. taken off, so its links to the apps' own addresses come here too)
+      const site = location.host.replace(/^next\./, ""), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
+      let p = null;
+      if (u.host === location.host || u.host === site) p = rest;
+      else if (sub && sub[2] === site && SUBS[sub[1]]) p = SUBS[sub[1]].slice(0, -1) + rest;
+      if (p == null) return url;
+      if (leaving(p)) crumb();
+      return p;
+    },
+    href(app, section = "") {
+      const s = String(section || ""), p = (HUB_APPS[app] || "/") + (!s ? "" : /^[#?]/.test(s) ? s : "#" + s);
+      if (hub.on && leaving(p)) crumb();
+      return p;
+    },
+    tabs(el, current) {
+      if (!el) return el;
+      if (el.tagName !== "NAV") el.setAttribute("role", "navigation");
+      el.setAttribute("aria-label", "InFlite");
+      el.classList.add("ifl-tabs");
+      el.replaceChildren(...Object.entries(TABS).map(([k, [label, to]]) => {
+        const a = document.createElement("a");
+        a.className = "ifl-tab"; a.href = to; a.dataset.tab = k; a.textContent = label;
+        if (k === current) a.setAttribute("aria-current", "page");
+        a.addEventListener("click", () => { if (leaving(to)) crumb(); });
+        return a;
+      }));
+      return el;
+    },
+    back() {
+      const to = cameFrom && pageOf(cameFrom) !== location.pathname ? cameFrom : "/#apps";
+      try { store()?.removeItem(CRUMB); } catch (_) {}
+      location.assign(to);
+    },
+    chat: () => Promise.resolve(null),
+    send(words, packed, { to } = {}) {
+      return hub.chat().then((c) => {
+        if (c && c.state === "ready") return c.share(words, packed, { to });
+        const card = typeof packed === "string" && /^[A-Za-z0-9_-]+$/.test(packed) ? "&card=" + packed : "";
+        location.assign("/chats/#share=" + encodeURIComponent(String(words ?? "")) + card + "&back=" + encodeURIComponent(location.pathname + location.hash));
+        return null;
+      });
+    },
+    sent(say) { if (say) toast(String(say)); },
+    closed() {},
+    signIn() { location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash)); },
+    moved(app, { off } = {}) {},
+  };
+  // (a link to another of the hub's pages, followed: the breadcrumb, as the page is left, with where it was scrolled to)
+  if (hub.on) document.addEventListener("click", (e) => {
+    const a = e.target?.closest?.("a[href]");
+    if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+    let u;
+    try { u = new URL(a.href, location.href); } catch (_) { return; }
+    if (u.origin === location.origin && leaving(u.pathname + u.hash)) crumb();
+  }, true);
+  // a plain toast: the words alone, said out, gone in a few seconds
+  let toastEl = null, toastT = 0;
+  function toast(text) {
+    toastEl?.remove();
+    clearTimeout(toastT);
+    const t = toastEl = el("div", "ifm-note ifl-toast", el("span", "ifm-note-tx", el("b", "", text)));
+    document.body.append(t);
+    if (!sayEl.isConnected) document.body.append(sayEl);
+    sayEl.textContent = "";
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (toastEl !== t) return; t.classList.add("on"); sayEl.textContent = text; }));
+    toastT = setTimeout(() => { t.classList.remove("on"); sayEl.textContent = ""; setTimeout(() => t.remove(), 400); }, 3600);
+  }
+
   return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
-    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready };
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
 })();
 // ==== end of InFlite's menu ====
 
