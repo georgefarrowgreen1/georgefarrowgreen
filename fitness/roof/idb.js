@@ -5,15 +5,15 @@
 //   idb.get(k) / put(k, v) / del(k) / clear() / keys() → Promise      (opened on first use)
 //   close()                            the open handle let go (core.stop); the next use opens it again
 //   keepFile(k, bytes) / dropFile(k) / tidyFiles()   the 50 files last used (fitness:files), app.js's LRU
-export const NAME = "fitness", STORE = "files";
-const DB = NAME;
+export const NAME = "fitness";
+export const STORE = "files";
 const store = {
   get(k, d) { try { const v = localStorage.getItem("fitness:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("fitness:" + k, JSON.stringify(v)); } catch (_) {} },
 };
 let p = null;
 const open = () => (p ||= new Promise((res, rej) => {
-  const r = indexedDB.open(DB, 1);
+  const r = indexedDB.open(NAME, 1);
   r.onupgradeneeded = () => r.result.createObjectStore(STORE);
   r.onsuccess = () => res(r.result); r.onerror = () => { p = null; rej(r.error); };
 }));

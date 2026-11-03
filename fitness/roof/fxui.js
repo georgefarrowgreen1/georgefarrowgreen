@@ -136,7 +136,7 @@ export function openSheet(view, o = {}) {
     Sheet.handle.el.dataset.sheet = v.sheet || o.sheet || "fitness";
     return Sheet.handle;
   }
-  const cont = h("div.fx-sheet");
+  const cont = h("div.m-fitness.fx-sheet");
   Sheet.stack = [view]; Sheet.conts = [cont];
   const handle = Q.fw.sheet.open({
     sheet: v.sheet || o.sheet || "fitness", title: v.title || "", label: v.title || "Fitness", app: "fitness",
@@ -153,7 +153,7 @@ export function openSheet(view, o = {}) {
 }
 export function pushSheet(view) {
   if (!sheetEl.open) return openSheet(view);
-  const v = view(), cont = h("div.fx-sheet");
+  const v = view(), cont = h("div.m-fitness.fx-sheet");
   Sheet.stack.push(view);
   const pg = Sheet.handle.push({ page: v.page || v.sheet || `p${Sheet.stack.length}`, title: v.title || "", body: cont });
   Sheet.conts.push(cont);

@@ -18,6 +18,7 @@ import { sessionSendCard, packCard } from "../send.js";
 export { effortsOf, effortFigs };
 // (the view's context, for the functions below as today.js had app.js's: set by view())
 let ctx = null;
+const use = (c) => { ctx = c; };
 const scr = () => ctx?.fw?.screenEl || null;
 
 // ---- Today ----
@@ -799,8 +800,8 @@ function firstUse() {
 
 // ---- the section ----
 // view(el, ctx): Today drawn into its section; drawn again on core's events while it shows (fitness.js)
-export function view(el, c) {
-  ctx = c;
+export function view(el, ctx) {
+  use(ctx);
   const doc = el.ownerDocument, win = doc.defaultView;
   // (should a drag end without saying so, the next click or key ends it; back online, a ride's map tried again)
   const endDrag = () => { if (scr()?.classList.contains("day-drag")) dragDone(); };
@@ -818,7 +819,7 @@ export function view(el, c) {
     hide() { on = false; dragDone(); },
     destroy() {
       win.removeEventListener("pointerdown", endDrag, true); win.removeEventListener("keydown", endDrag, true); win.removeEventListener("online", online);
-      setAsk(null); todayMap?.g?.remove?.(); todayMap = null; effortsSeen.clear(); el.replaceChildren(); ctx = null; on = false;
+      setAsk(null); todayMap?.g?.remove?.(); todayMap = null; effortsSeen.clear(); el.replaceChildren(); use(null); on = false;
     },
   };
 }
