@@ -763,6 +763,13 @@ function engineRule(on, search, win, par) {
 // (the engine's sync, and Chats' at the top: the engine never says you've been seen just now, as Today being open isn't
 // you in Chats; delivered ticks still happen)
 const syncPath = (engine) => (engine ? "sync?quiet=1" : "sync");
+// The page's tap (its user activation), read through this document's own getters (getUA: Navigator's userActivation,
+// getActive: UserActivation's isActive), so nothing a script on the page sets on its navigator, or on its own copies of
+// them, counts. (A script of the page's own could still do more than this: only the site's own scripts run on it, and
+// that's the boundary; this only raises the bar.)
+function tappedOn(nav, getUA, getActive) {
+  try { const ua = typeof getUA === "function" ? getUA.call(nav) : null; return !!(ua && typeof getActive === "function" && getActive.call(ua) === true); } catch (_) { return false; }
+}
 // IFLChat, as the page the engine's in has it: these keys only. A card sent in one tap (sendTo) only from a tap on that
 // page (its user activation, as the page's own Send button gives it); anything else is refused, and says why
 function makeIFLChat(d) {
@@ -2737,8 +2744,15 @@ const SIGNIN_KEY = "inflight-signin";
 // (one started and never finished, its word and key not kept past a couple of hours)
 try { const k = JSON.parse(localStorage.getItem(SIGNIN_KEY) || "null"); if (k && !(Math.abs(Date.now() - k.at) < 2 * 3600e3)) localStorage.removeItem(SIGNIN_KEY); } catch (_) {}
 // (then: at the hub, the page of it this sign-in was asked from, gone back to once it's done: a path of this site's only)
+// (one trip at a time: a second tap while one is getting ready would write a new word over the first's, and whichever
+// went would come back to the wrong one; free again if it doesn't go, or the browser brings this page back)
+let signInGoing = false;
+const freeSignIn = () => { signInGoing = false; if (S.signingIn && !S.me) { S.signingIn = false; if (S.view === "welcome") render(); } };
+addEventListener("pageshow", (e) => { if (e.persisted) freeSignIn(); });
 async function toAccountSignIn(e, mode, { then = null } = {}) {
   e?.preventDefault?.();
+  if (signInGoing) return;
+  signInGoing = true;
   const covered = handOff();      // (the page's sky comes in while the trip's got ready)
   try {
     const t = await E2E.handbackPair();
@@ -2747,7 +2761,9 @@ async function toAccountSignIn(e, mode, { then = null } = {}) {
     await covered;
     const q = new URLSearchParams({ [mode]: "inflight", ask: t.ask, seal: t.pub, back });
     location.assign(toAuth(`#${q}`));
-  } catch (_) { handBack(); toast("This browser can’t sign in to Chat. Try Safari or Chrome."); }
+    // (and if the page never goes, as a page sometimes doesn't: free to try again, as the sky goes)
+    setTimeout(() => { if (document.visibilityState === "visible") freeSignIn(); }, 15000);
+  } catch (_) { handBack(); freeSignIn(); toast("This browser can’t sign in to Chat. Try Safari or Chrome."); }
 }
 // Back from the account's page with a code for the sign-in made there: swapped, with the word kept for it, for
 // Chat's own sign-in, and the key unlocked with what the page sealed to this phone (the password's first half, or the
@@ -4620,7 +4636,7 @@ function mount() {
       <div class="attach" hidden></div>
       <div class="replybar" hidden></div>
       <div class="crow">
-        <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
+        <button type="button" class="plus" data-act="attachmenu" aria-label="${HUB ? "Add to Your Message" : "Add a photo"}">${I.plus}</button>
         <div class="field-wrap">
           <button type="button" class="mode" data-act="nextmode" data-next="now" hidden></button>
           <button type="button" class="kind" data-act="flysheet" aria-haspopup="dialog" hidden></button>
@@ -5257,7 +5273,10 @@ function noteCard() {
   if (!S.me) return "";
   // (Chats at the hub for the first time on this phone (spec §11.2): what came with the sign-in and what didn't, said
   // plainly, and the lock offered once, as it doesn't come across)
-  if (HUB && lsGet("inflight-hubnote") !== "done") return `<div class="notecard" data-key="hubnote" role="note"><div class="tt"><i aria-hidden="true">${I.lock}</i><b>Chats is part of InFlite now</b></div>
+  // (not for a brand-new account, with nothing to have brought: no friends or groups once Chats has heard from the server,
+  // decided then and kept)
+  if (HUB && lsGet("inflight-hubnote") !== "done" && !S.friends.length && !S.groups.length && S.synced) lsSet("inflight-hubnote", "done");
+  if (HUB && lsGet("inflight-hubnote") !== "done" && (S.friends.length || S.groups.length)) return `<div class="notecard" data-key="hubnote" role="note"><div class="tt"><i aria-hidden="true">${I.lock}</i><b>Chats is part of InFlite now</b></div>
     <p>Your friends and every message are here. Drafts, anything still waiting to send and Chat’s lock stay with Chat on its own.${passkeysSupported() ? ` Lock Chats with ${isIOS() ? "Face ID" : "a passkey"}?` : ""}</p>
     <div class="tfoot">${passkeysSupported() ? `<button type="button" class="btn small" data-act="hubnotelock">Lock Chats</button>` : ""}<button type="button" class="btn small plain" data-act="hubnoteok">${passkeysSupported() ? "Not Now" : "Got It"}</button></div></div>`;
   const tip = (key, title, text, btns) => `<div class="pgtip" data-key="${key}" role="note"><div class="tt"><i aria-hidden="true">${I.bird}</i><b>${title}</b></div><p>${text}</p><div class="tfoot">${btns}</div></div>`;
@@ -9366,6 +9385,13 @@ async function onClick1(e, t) {
     case "tab": return go(id);
     // (at the hub: Chat's settings, opened from You, go back to it)
     case "hubyou": return location.assign("/#you");
+    // (the engine's sheet with no friends yet: Chats' own Friends, in the page's place, to add one)
+    case "enginefriends": {
+      const sh = S.sheet; if (!ENGINE || sh?.type !== "send" || !sh.engine) return;
+      sh.engine.done?.({ ok: false, why: "friends" }); S.sheet = null; renderSheet();
+      try { parent.location.assign("/chats/#requests"); } catch (_) {}
+      return;
+    }
     case "signinnotnow": { const to = S.notNow; S.notNow = null; return to && location.replace(to); }
     // Search, beside the tabs: Friends' search where you're on Friends, else Messages' (within the tap, so the keyboard comes)
     case "tabsearch": {
@@ -9739,10 +9765,13 @@ async function onClick1(e, t) {
         { label: "Block", icon: I.block, act: "blockask", id: f.id, destructive: true },
       ]);
     }
-    // The phone's own picker already offers Photo Library, Take Photo and Choose File,
-    // so go straight to it rather than putting a menu of ours in front of it.
-    // The +: Photo and GIF, and the cards that fit this chat, from your apps (openFromApps)
-    case "attachmenu": haptic("tick"); return openFromApps(S.chat);
+    // The +: at the hub, Photo and GIF and the cards that fit this chat, from your apps (openFromApps). Off it, as it
+    // was: the phone's own picker already offers Photo Library, Take Photo and Choose File, so straight to it rather
+    // than a menu of ours in front of it (or Photo and GIF)
+    case "attachmenu":
+      if (HUB) { haptic("tick"); return openFromApps(S.chat); }
+      if (!S.gifsOn) { haptic("tick"); return $("#file-lib")?.click(); }
+      return openMenu(t, [{ label: "Photo", icon: I.photo, act: "pick", id: "file-lib" }, { label: "GIF", icon: `<span class="gifico" aria-hidden="true">GIF</span>`, act: "gifs" }]);
     case "fromapp": return fromApp(id);
     case "whenlater": S.laterOpen = S.laterOpen === id ? null : id; return render();
     case "whenans": return whenAnswer(id, t.dataset.a, t.dataset.t != null ? Number(t.dataset.t) : NaN);
@@ -9836,7 +9865,7 @@ async function onClick1(e, t) {
       try { await withFresh(() => api("passkey", { method: "DELETE", body: { id } })); toast("Passkey removed. You can also delete it from your phone’s Passwords app."); }
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
-    case "acctsignin": return toAccountSignIn(e, "signin", { then: S.notNow });
+    case "acctsignin": return toAccountSignIn(e, "signin", { then: S.notNow || S.thenTo });
     case "retrysync": S.syncFails = 0; render(); return sync().then(() => { if (!S.started) render(); });
     case "acctjoin": return toAccountSignIn(e, "join");
     case "signout": {
@@ -11069,7 +11098,12 @@ const appOrigin = (name) => (/^chat\./.test(location.host) ? location.origin.rep
 // then made the hub's paths, in the same window, by linkActs)
 const HUB_APP = { weather: "/weather/", finance: "/markets/" };
 const hubOwn = (name) => `${location.protocol}//${name}.${hubSite()}`;
-const cardLinks = () => (HUB ? { weather: hubOwn("weather"), finance: hubOwn("finance") } : { weather: appOrigin("weather"), finance: appOrigin("finance") });
+// (none to Weather on the weather where a friend is, at the hub or off it: its place is that friend's Chat place, and
+// Weather's address would carry it)
+const cardLinks = (c) => {
+  const l = HUB ? { weather: hubOwn("weather"), finance: hubOwn("finance") } : { weather: appOrigin("weather"), finance: appOrigin("finance") };
+  return c?.there ? { ...l, weather: null } : l;
+};
 // a letter's parts, each checked on its own: a card that fails is words only, never "couldn't be opened"
 // (a group's letter read as a group's: no time to talk, no answer to one, and never the weather where a friend is;
 // unless told, as the chat on screen is)
@@ -11170,7 +11204,7 @@ function liveSoon(chat) {
 function cardBlock(f, m, p, g) {
   const pp = partsOf(p, !!g); if (!pp || !(pp.card || pp.plan || pp.ans || pp.when)) return null;
   try {
-    const mine = m.from === S.me.id, who = first(f?.name || "A friend"), t = now(), tz = MY_TZ, id = m.id, links = cardLinks();
+    const mine = m.from === S.me.id, who = first(f?.name || "A friend"), t = now(), tz = MY_TZ, id = m.id;
     const list = S.msgs.get(S.chat) || [];
     const any = (fn) => list.some((x) => x.id !== id && fn(x, partsOf(S.plain.get(x.id), !!g)));
     // (answered by you: a ride's invite by its letter's id (re), a time to talk by its own (id))
@@ -11178,7 +11212,7 @@ function cardBlock(f, m, p, g) {
     // (the weather where a friend is: "Where Leo is" on yours, "Where you are" only on that friend's own phone)
     const one = (c, mineC, landedAt) => {
       const live = !(g && c.kind === "fitness") && isLive(c, { landedAt, mine: mineC, now: t });
-      return { live, html: cardHtml(c, { now: live ? nowVal(c) : null, viewAt: t, sentAt: m.sentAt, live, mine: mineC, links, tz, who: mineC ? who : "", me: S.me.id }), sig: live ? `${nowHad(c)?.at || "w"}` : "s" };
+      return { live, html: cardHtml(c, { now: live ? nowVal(c) : null, viewAt: t, sentAt: m.sentAt, live, mine: mineC, links: cardLinks(c), tz, who: mineC ? who : "", me: S.me.id }), sig: live ? `${nowHad(c)?.at || "w"}` : "s" };
     };
     let html = "", sig = `${Math.floor(t / 600e3)}`;            // (phrased for when it's seen: "Rain due 15:00", then "Rain was due 15:00")
     if (pp.when && !pp.ans) {
@@ -11313,7 +11347,8 @@ function openSendSheet(card, { words = "", link = false, engine = null, to = nul
   if (!card || !S.me) return;
   let seen = new Map(); try { seen = seenFrom(lettersHere(), S.me.id) || new Map(); } catch (_) {}
   const s = { type: "send", card, base: String(words || card.say || cardWords(card) || "").trim().slice(0, 500), words: "", edited: false, link, engine, back,
-    pick: [], when: pigeonsOn() && S.me.newChats === "pigeon" ? "asap" : "now", ask: false, plan: false, together: null, win: 0, rain: null, seen, asked: askedHere(), busy: false, progress: null, err: "", note: "" };
+    pick: [], when: pigeonsOn() && S.me.newChats === "pigeon" && !(typeof to === "string" && group(to)) ? "asap" : "now", ask: false, plan: false, together: null, win: 0, rain: null, seen, asked: askedHere(), busy: false, progress: null, err: "", note: "" };
+  // (a group asked for starts at Now, the only way a group's letter goes)
   if (typeof to === "string" && to && sendRows(s).some((r) => r.id === to && r.can)) s.pick = [to];
   S.sheet = s; renderSheet();
   nowFor([card]);
@@ -11391,8 +11426,10 @@ function plannedHere() {
   const out = [...(S.rides || [])], t = now();
   for (const [chat, list] of S.msgs) {
     if (!friend(chat)) continue;
+    // (an invite answered No isn't a ride planned)
+    const no = new Set(list.map((m) => partsOf(S.plain.get(m.id), false)?.ans).filter((a) => a?.a === "no" && a.re).map((a) => a.re));
     for (const m of list) {
-      const pp = partsOf(S.plain.get(m.id), false), pl = pp?.plan || (pp?.ans?.a === "yes" ? pp.ans.plan : null);
+      const pp = partsOf(S.plain.get(m.id), false), pl = pp?.plan && !no.has(m.id) ? pp.plan : pp?.ans?.a === "yes" ? pp.ans.plan : null;
       if (pl && pl.end > t) out.push({ with: chat, start: pl.start, end: pl.end, sport: pl.sport });
     }
   }
@@ -11470,7 +11507,7 @@ async function planFetch(s) {
 }
 function drawSend(s) {
   syncPlanWords(s);
-  const card = s.card, t = now(), tz = MY_TZ, rows = sendRows(s), links = cardLinks();
+  const card = s.card, t = now(), tz = MY_TZ, rows = sendRows(s), links = cardLinks(card);
   // (a group picked, then a way it can't have chosen: By Pigeon, their morning, a plan: no longer picked)
   s.pick = s.pick.filter((id) => { const r = rows.find((x) => x.id === id); return !!r && (r.can || !r.group); });
   const picked = rows.filter((r) => s.pick.includes(r.id)), names = picked.map((r) => (r.group ? group(r.id)?.name || "the group" : first(friend(r.id).name)));
@@ -11490,7 +11527,8 @@ function drawSend(s) {
   const f0 = picked[0] && friend(picked[0].id), shown = s.edited ? s.words : wordsFor(s, f0, f0 && landFor(s, f0), false);
   const top = `<div class="sendcard">${cardPart}</div>
     <div class="group mt-s"><label class="fcell"><input id="f-sendwords" maxlength="500" placeholder="Add a line" aria-label="Words to go with it" autocomplete="off" value="${esc(shown)}"></label></div>`;
-  if (!S.friends.length) return sheetHtml("Send to a Friend", `${top}<p class="empty">Add a friend in Chat, and you can send them this.<br><button type="button" class="btn" data-act="addfriend">Add a Friend</button></p>`, { left: { label: "Cancel", act: "close" }, right: null });
+  // (in the engine, Add a Friend is Chats' own Friends, at the top: its frame is only ever the sheet)
+  if (!S.friends.length) return sheetHtml("Send to a Friend", `${top}<p class="empty">Add a friend in Chat, and you can send them this.<br><button type="button" class="btn" data-act="${s.engine ? "enginefriends" : "addfriend"}">Add a Friend</button></p>`, { left: { label: "Cancel", act: "close" }, right: null });
   const row = (r) => {
     const on = s.pick.includes(r.id);
     if (r.group) {
@@ -11578,7 +11616,7 @@ async function sendGo() {
   if (!failed.length) {
     // (from another page of the hub: back there, saying so. The engine: put away, and its page says it; Chats' own
     // sheet, opened with back=: the page it came from, which says it once it's open)
-    if (s.engine) { s.engine.done?.({ ok: true, say: say || "Sent" }); hubParent()?.sent?.(say || "Sent"); if (S.sheet === s) { S.sheet = null; renderSheet(); } return; }
+    if (s.engine) { s.engine.done?.({ ok: true, say: say || "Sent" }); if (!s.engine.bySendTo) hubParent()?.sent?.(say || "Sent"); if (S.sheet === s) { S.sheet = null; renderSheet(); } return; }
     if (s.back) { try { sessionStorage.setItem("ifl-sent", say || "Sent"); } catch (_) {} location.replace(s.back); return; }
     if (S.sheet === s) { S.sheet = null; renderSheet(); }
   } else if (S.sheet === s) renderSheet();
@@ -11731,7 +11769,7 @@ function drawAskBack(s) {
   if (s.wait) body = `<p class="empty">Getting yours…</p>`;
   else if (!s.card) body = `<p class="empty"><b>${esc(s.said)}</b>${href ? `<a class="btn" href="${esc(href + "/")}" target="_blank" rel="noopener">Open ${word}</a>` : ""}</p>`;
   else {
-    let c = ""; try { c = linkActs(sheetCardHtml(s.card, { now: keyOfCard(s.card) ? nowVal(s.card) : null, viewAt: now(), links: cardLinks(), tz: MY_TZ })); } catch (_) {}
+    let c = ""; try { c = linkActs(sheetCardHtml(s.card, { now: keyOfCard(s.card) ? nowVal(s.card) : null, viewAt: now(), links: cardLinks(s.card), tz: MY_TZ })); } catch (_) {}
     body = `<div class="sendcard">${c || `<p class="sendsay">${esc(s.card.say || "")}</p>`}</div>
       <div class="group mt-s"><label class="fcell"><input id="f-askwords" maxlength="500" placeholder="Add a line" aria-label="Words to go with it" autocomplete="off" value="${esc(s.words)}"></label></div>
       <p class="gfoot">Only this card goes back to ${who}. Nothing else from ${word} is shared.${s.kind === "markets" ? " Percentages only, never amounts." : ""}</p>
@@ -11918,7 +11956,8 @@ function fromRows(s) {
     rows.push({ key: `markets:${st.sym}`, icon: I.dist, tile: "green", label: esc(st.name), sub: h ? (h.card ? esc(why) : null) : "…", card: h?.card || null, sym: st.sym });
   }
   const r = chatRide(chat);
-  if (r) { const c = rideCard(r, chat); if (c) rows.push({ key: "ride", icon: I.clock, tile: "orange", label: f ? "Our ride together" : "The ride planned", sub: esc(`${clockSay(c.snap.best.start)}–${fmtTime(c.snap.best.end)}${c.snap.best.dry ? " · dry for both" : ""}`), card: c }); }
+  // ("Thursday’s ride together · 10:00–12:00, dry for both"; none for a ride whose times can't be read)
+  if (r) { const c = rideCard(r, chat), b = c?.snap?.best; if (b && Number.isFinite(b.start) && Number.isFinite(b.end)) rows.push({ key: "ride", icon: I.clock, tile: "orange", label: `${sameDay(b.start, now()) ? "Today" : DOW_LONG[new Date(b.start).getDay()]}’s ride together`, sub: esc(`${fmtTime(b.start)}–${fmtTime(b.end)}${b.dry ? ", dry for both" : ""}`), card: c }); }
   const fit = keptFrom("my:fitness:");
   rows.push({ key: "fitness", icon: I.bolt, tile: "orange", label: fit?.card?.snap?.done ? `Today’s ${fit.card.snap.sport === "ride" ? "ride" : "session"}` : "Today’s session",
     sub: fit ? (fit.card ? esc(fit.card.snap.done ? [Number.isFinite(fit.card.snap.done.dist) ? `${(fit.card.snap.done.dist / 1609.344).toFixed(1)} mi` : "", Number.isFinite(fit.card.snap.done.secs) ? `${Math.floor(fit.card.snap.done.secs / 3600)}:${pad2(Math.round((fit.card.snap.done.secs % 3600) / 60))}` : ""].filter(Boolean).join(" · ") || "Done" : fit.card.snap.name) : null) : "…", card: fit?.card || null });
@@ -12020,7 +12059,8 @@ function drawTimeTalk(s) {
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d.getTime(); });
   const dayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const day = dayOf(s.start), mins = new Date(s.start).getHours() * 60 + new Date(s.start).getMinutes();
-  const slots = Array.from({ length: 96 }, (_, i) => i * 15).filter((q) => day + q * MIN > t);
+  const at = (q) => { const d = new Date(day); d.setHours(Math.floor(q / 60), q % 60, 0, 0); return d.getTime(); };     // (by the clock: a day the clocks change isn't 24 hours)
+  const slots = Array.from({ length: 96 }, (_, i) => i * 15).filter((q) => at(q) > t);
   const label = (q) => `${pad2(Math.floor(q / 60))}:${pad2(q % 60)}`;
   const dayName = (d, i) => (i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${DOW_LONG[new Date(d).getDay()]} ${new Date(d).getDate()} ${MON[new Date(d).getMonth()]}`);
   const chip = (act, id, on, text, off) => `<button type="button" class="schip" role="radio" aria-checked="${on}" data-act="${act}" data-id="${esc(id)}"${off ? " disabled" : ""}>${esc(text)}</button>`;
@@ -12048,7 +12088,8 @@ async function timeTalkSend() {
   const s = S.sheet; if (s?.type !== "timetalk" || s.busy) return;
   const f = friend(s.chat), w = timeTalkWhen(s); if (!f || !w) return;
   if (!(w.start > now())) { s.err = "That time has passed."; return renderSheet(); }
-  const kind = defaultNext(f) === "now" ? "instant" : oneKind(f); if (!kind) { s.err = "No pigeon free just now."; return renderSheet(); }
+  // (as a message, at once, whatever the chat's way: a pigeon could land after the time it asks about)
+  const kind = "instant";
   s.busy = true; s.err = ""; renderSheet();
   try {
     let t = ""; try { t = whenWords(w, { tz: MY_TZ, now: now() }); } catch (_) {}
@@ -12088,11 +12129,13 @@ function engineCard(words, packed) {
 }
 // share: the send sheet over the page, with the card; → once it's sent ({ ok: true, say }), shut ({ ok: false, why }),
 // or refused (false: not ready, or no card that passes)
-function engineShare(words, packed, { to } = {}) {
+// (bySendTo: the sheet sendTo opened for a friend it couldn't send to in one tap; once it's sent, the page's sendTo says
+// so from the answer, so the engine doesn't say it too)
+function engineShare(words, packed, { to } = {}, bySendTo = false) {
   if (engineState() !== "ready") return Promise.resolve(false);
   const x = engineCard(words, packed); if (!x) return Promise.resolve(false);
   return new Promise((ok) => {
-    const en = { finished: false, done: (r) => { if (en.finished) return; en.finished = true; ok(r); } };
+    const en = { finished: false, bySendTo, done: (r) => { if (en.finished) return; en.finished = true; ok(r); } };
     closePop();
     openSendSheet(x.card, { words: x.words, link: true, engine: en, to: typeof to === "string" ? to : null });
     if (S.sheet?.engine !== en) en.done(false);
@@ -12104,10 +12147,10 @@ async function engineSendOne(id, words, packed) {
   if (engineState() !== "ready") return { ok: false, why: engineState() };
   const x = engineCard(words, packed); if (!x) return { ok: false, why: "card" };
   const f = friend(id), g = !f && group(id);
-  if ((!f && !g) || f?.keyChanged || (g && others(g).some((p) => p.keyChanged))) return engineShare(words, packed, { to: id });
+  if ((!f && !g) || f?.keyChanged || (g && others(g).some((p) => p.keyChanged))) return engineShare(words, packed, { to: id }, true);
   const s = { type: "send", card: x.card, base: String(x.words || x.card.say || cardWords(x.card) || "").trim().slice(0, 500), words: "", edited: false, link: true, engine: null, back: null,
     pick: [], when: "now", ask: false, plan: false, together: null, win: 0, rain: null, seen: new Map(), asked: [], busy: false, progress: null, err: "", note: "" };
-  if (!sendRows(s).some((r) => r.id === id && r.can)) return engineShare(words, packed, { to: id });
+  if (!sendRows(s).some((r) => r.id === id && r.can)) return engineShare(words, packed, { to: id }, true);
   s.pick = [id];
   const r = await sendRun(s);
   if (!r) return { ok: false, why: s.err || "offline" };
@@ -12119,7 +12162,8 @@ async function engineSendOne(id, words, packed) {
 // nothing kept. after: only those that landed at or after it. → digest.js's item | null
 async function waitingItem(id, after = -Infinity) {
   const f = friend(id), g = !f && group(id); if (!f && !g) return null;
-  const d = await api(f ? `messages?with=${encodeURIComponent(id)}` : `group-messages?id=${encodeURIComponent(id)}`);
+  // (quiet=1, as the engine's sync: Today being open isn't a day you used Chats, where the server reads it)
+  const d = await api(f ? `messages?with=${encodeURIComponent(id)}&quiet=1` : `group-messages?id=${encodeURIComponent(id)}&quiet=1`);
   const list = Array.isArray(d.messages) ? d.messages : [];
   let i = list.length - 1; while (i >= 0 && list[i].from !== S.me.id) i--;
   const theirs = list.slice(i + 1).filter((m) => m.from !== S.me.id && !m.flying && !m.lost && !m.waiting && (m.deliverAt || 0) >= after).slice(-5);
@@ -12162,10 +12206,13 @@ function engineKeyboard() {
   };
   vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit);
 }
+// (the engine's own getters for the page's tap, taken as it starts, before anything of the page's could reach them)
+const UA_GET = (() => { try { return Object.getOwnPropertyDescriptor(Navigator.prototype, "userActivation")?.get || null; } catch (_) { return null; } })();
+const ACTIVE_GET = (() => { try { return Object.getOwnPropertyDescriptor(UserActivation.prototype, "isActive")?.get || null; } catch (_) { return null; } })();
 function engineReady() {
   window.IFLChat = makeIFLChat({ state: engineState, share: engineShare, sendOne: engineSendOne, waiting: engineWaiting, since: engineSince,
     refresh: () => (S.token && S.priv ? sync().then(() => true, () => false) : Promise.resolve(false)), signOut: engineSignOut,
-    tapped: () => { try { return !!parent.navigator.userActivation?.isActive; } catch (_) { return false; } } });
+    tapped: () => { try { return tappedOn(parent.navigator, UA_GET, ACTIVE_GET); } catch (_) { return false; } } });
   try { parent.dispatchEvent(new parent.Event("ifl-chat-ready")); } catch (_) {}
 }
 // At the top, at the hub: a card handed over by the engine's Write More in the Chat (this tab's own storage, once, for
@@ -12305,6 +12352,9 @@ async function start() {
   // straight to the sign-in page, and back to that page once it's done (then, a path of this site's only)
   const startIn = /^#signin-start(?:&|$)/.test(location.hash), thenTo = startIn && HUB ? hashPath(location.hash, "then") : null;
   if (startIn) history.replaceState(null, "", location.pathname);
+  // (its welcome, while the trip gets ready, says "Signing in…" and takes no tap; then kept for the visit, so a sign-in
+  // tried again by hand, back from the account's page say, still ends where it was asked from)
+  if (startIn) { S.signingIn = true; S.thenTo = thenTo; }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) { sync(); pushTag(e.data.tag); } });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { keepAdd(m[1].toLowerCase()); history.replaceState(null, "", location.pathname); }
@@ -12315,7 +12365,7 @@ async function start() {
   // an invite, or a reset link (from before they were the account's page's): passed on to it
   const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (away) return location.replace(toAccount(`#${away[1]}=${away[2]}`));
-  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); arrival?.away(); return toast("This browser can’t run Chat’s encryption. Try Safari or Chrome."); }
+  if (!window.crypto?.subtle || !window.indexedDB) { S.signingIn = false; S.view = "welcome"; render(); arrival?.away(); return toast("This browser can’t run Chat’s encryption. Try Safari or Chrome."); }
   // the old address asked for what it kept: signed in here already, that's only clearing it, done alongside; signed out,
   // the welcome is up while it's asked (what it hands over, a sign-in, is taken up below)
   if ((await idb.get("session"))?.token) moveIn().catch(() => {});
@@ -12336,6 +12386,7 @@ async function start() {
     if (had) { await restorePins(); if (!S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins(); }      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
     if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else if (startIn) toAccountSignIn(null, "signin", { then: thenTo }); else resumeCheck(); } else {
+    S.signingIn = false;
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
     if (signedBack) {
       try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {}

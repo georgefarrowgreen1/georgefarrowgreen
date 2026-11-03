@@ -19,7 +19,7 @@ const block = (() => {
   return APP.slice(a, b);
 })();
 // (the block run with nothing of the page about: no window, no document, no location)
-const R = new Function("window", "document", "location", "parent", `"use strict";\n${block}\nreturn { hubPath, hashPath, engineRule, syncPath, makeIFLChat };`)(undefined, undefined, undefined, undefined);
+const R = new Function("window", "document", "location", "parent", `"use strict";\n${block}\nreturn { hubPath, hashPath, engineRule, syncPath, makeIFLChat, tappedOn };`)(undefined, undefined, undefined, undefined);
 
 // a window and its parent, as a frame of a page sees them: the parent's origin readable only when it's the same site
 const win = (origin) => ({ location: { origin } });
@@ -89,8 +89,37 @@ test("sendTo is refused without a tap on the page, and nothing is sent", async (
   const t = deps({ tapped: () => true }), c2 = R.makeIFLChat(t.d);
   assert.deepEqual(await c2.sendTo("pat-id", "Rain at 3", "eyJ"), { ok: true, say: "Sent to Pat" });
   assert.deepEqual(t.calls, [["sendOne", "pat-id", "Rain at 3", "eyJ"]]);
-  // (and the tap is the page's own user activation, read where the engine's frame can: its parent)
-  assert.match(APP, /tapped: \(\) => \{ try \{ return !!parent\.navigator\.userActivation\?\.isActive; \} catch \(_\) \{ return false; \} \}/);
+  // (and the tap is the page's own user activation, read where the engine's frame can: its parent, through the engine's
+  // own getters, taken as it starts)
+  assert.match(APP, /tapped: \(\) => \{ try \{ return tappedOn\(parent\.navigator, UA_GET, ACTIVE_GET\); \} catch \(_\) \{ return false; \} \}/);
+  assert.match(APP, /const UA_GET = \(\(\) => \{ try \{ return Object\.getOwnPropertyDescriptor\(Navigator\.prototype, "userActivation"\)\?\.get/);
+  assert.match(APP, /const ACTIVE_GET = \(\(\) => \{ try \{ return Object\.getOwnPropertyDescriptor\(UserActivation\.prototype, "isActive"\)\?\.get/);
+  assert.doesNotMatch(APP, /parent\.navigator\.userActivation/, "never the page's own property");
+});
+
+test("the page's tap is read through the engine's own getters: nothing the page sets on its navigator counts", () => {
+  // (a realm's Navigator and UserActivation, as the engine's frame has them: their getters read the platform's own state)
+  const real = new WeakMap();
+  class Nav { get userActivation() { return real.get(this) ?? null; } }
+  class UA { get isActive() { const s = real.get(this); if (!s) throw new TypeError("Illegal invocation"); return s.active; } }
+  const getUA = Object.getOwnPropertyDescriptor(Nav.prototype, "userActivation").get, getActive = Object.getOwnPropertyDescriptor(UA.prototype, "isActive").get;
+  const page = (active) => { const n = new Nav(), u = new UA(); real.set(n, u); real.set(u, { active }); return n; };
+  assert.equal(R.tappedOn(page(true), getUA, getActive), true, "tapped");
+  assert.equal(R.tappedOn(page(false), getUA, getActive), false, "not tapped");
+  // the page's own script says it's tapped, on its navigator: not counted
+  const lied = page(false);
+  Object.defineProperty(lied, "userActivation", { value: { isActive: true, hasBeenActive: true } });
+  assert.equal(lied.userActivation.isActive, true, "(as the page itself would read it)");
+  assert.equal(R.tappedOn(lied, getUA, getActive), false, "an own property on the page's navigator");
+  // nor a navigator that isn't one, nor a getter that isn't there (an older browser: never tapped)
+  assert.equal(R.tappedOn({ userActivation: { isActive: true } }, getUA, getActive), false, "a plain object");
+  assert.equal(R.tappedOn(page(true), null, getActive), false, "no userActivation getter");
+  assert.equal(R.tappedOn(page(true), getUA, null), false, "no isActive getter");
+  // (and a page's copy of the prototype changed after the engine took its getters: still the real state)
+  const pageUA = Object.getOwnPropertyDescriptor(UA.prototype, "isActive");
+  Object.defineProperty(UA.prototype, "isActive", { configurable: true, get: () => true });
+  try { assert.equal(R.tappedOn(page(false), getUA, getActive), false, "the prototype patched afterwards"); }
+  finally { Object.defineProperty(UA.prototype, "isActive", pageUA); }
 });
 
 test("share, waiting, since, refresh and signOut pass straight through, with what's given", async () => {
@@ -133,7 +162,7 @@ test("the engine draws no list or tab bar, never pulses, registers no worker, st
 
 test("waiting reads each named chat's messages since your last, five at most, opened in memory, through digest.js; nothing marked read or kept", () => {
   const w = APP.slice(APP.indexOf("async function waitingItem("), APP.indexOf("async function engineSignOut("));
-  assert.match(w, /api\(f \? `messages\?with=\$\{encodeURIComponent\(id\)\}` : `group-messages\?id=\$\{encodeURIComponent\(id\)\}`\)/);
+  assert.match(w, /api\(f \? `messages\?with=\$\{encodeURIComponent\(id\)\}&quiet=1` : `group-messages\?id=\$\{encodeURIComponent\(id\)\}&quiet=1`\)/, "quiet, as the engine's sync");
   assert.match(w, /\.slice\(-5\)/);
   assert.match(w, /\.slice\(0, 6\)/, "six chats at most");
   assert.match(w, /waitingDigest\(items, \{ stocks: S\.stocks \|\| \[\], now: Date\.now\(\) \}\)/);
