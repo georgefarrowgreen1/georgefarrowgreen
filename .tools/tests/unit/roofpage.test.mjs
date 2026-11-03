@@ -130,9 +130,60 @@ test('under the roof, app.js: the hub three ways with roof read as roof === true
   assert.match(js, /const thenHere = \(\) => encodeURIComponent\(location\.pathname \+ location\.hash\)/, 'its path and hash, never its query');
   assert.ok(!/replaceState\(\s*null/.test(js), 'history.state kept (the frame’s), never wiped by Today’s own code (RI1)');
   assert.ok((js.match(/F\?\.restamp\(\)/g) || []).length >= 2, 'and the frame asked to stamp its entry again after');
-  assert.match(js, /new URL\(r\.scope\)\.pathname === "\/weather\/"/, 'Weather’s old worker at /weather/ unregistered (D10)');
+  // (stage 1 named /weather/ itself; stages 2–4 each module's own path from REGISTRY, s24-contracts §10)
+  assert.ok(/new URL\(r\.scope\)\.pathname === "\/weather\/"/.test(js) || /const p = new URL\(r\.scope\)\.pathname; if \(go\.some\(\(a\) => p === REGISTRY\[a\]\.path\)\)/.test(js), 'Weather’s old worker at /weather/ unregistered (D10)');
   assert.match(js, /createFrame\(/); assert.match(js, /F\.screen\(/);
   for (const k of ['session:', 'lost:', 'checkSession', 'hubAgain:', 'save', 'onMe:', 'me:']) assert.ok(js.includes(k), `createFrame's opts: ${k}`);
   // (sessionStorage written only under the framework's and the hub's own keys, never with words of anyone's)
   for (const [, k] of js.matchAll(/sessionStorage\.setItem\(\s*([^,]+),/g)) assert.match(k.trim(), /^(VERIFIER_KEY|k)$/, `sessionStorage.setItem(${k})`);
+});
+
+// ---- stages 2–4 (s24-contracts §2, §10): the switches per module, and sign-out (C10) ----
+const s24 = roofOnly || (!/"ifl-roof-apps"/.test(own()) && 'the inflite repo beside is from before stages 2–4 (no ifl-roof-apps)');
+test('stages 2–4, app.js: /api/hub’s apps kept as ifl-roof-apps (booleans only), passed to the frame as session().apps and to parse as a map; F.setRoof(roof, apps)', { skip: s24 }, () => {
+  const js = own();
+  assert.match(js, /APPS_KEY = "ifl-roof-apps"/);
+  assert.match(js, /ss\.set\(APPS_KEY, JSON\.stringify\(apps\)\)/, 'kept as JSON');
+  assert.match(js, /const appsFrom = \(a, roof\) => \{ const o = \{\}; for \(const k of Object\.keys\(REGISTRY\)\) o\[k\] = a && typeof a === "object" \? a\[k\] === true : k === "weather" && !!roof; return o; \};/, 'names from REGISTRY, each only ever === true; none said: Weather’s roof alone');
+  assert.match(js, /session: \(\) => \(\{ view: S\.view, hub: S\.hub, roof: S\.roof, apps: S\.apps, links:/);
+  assert.match(js, /parse\(path, \{ roof: S\.hub \? S\.apps : false \}\)/, 'the host’s own parse: the map');
+  assert.match(js, /F\?\.setRoof\(on, apps\)/);
+  assert.doesNotMatch(js, /roof: S\.hub && S\.roof/, 'never one flag for every app');
+});
+
+test('stages 2–4, app.js: a module’s boot trusts a kept answer only with hub yes and that module on; the bounce marker kept for an off module’s path (RI4); its own address by REGISTRY’s link', { skip: s24 }, () => {
+  const js = own();
+  assert.match(js, /const trusted = BOOT_APP \? v === "1" && a\[BOOT_APP\.app\] === true :/);
+  assert.match(js, /if \(state === "yes"\) \{ retireOld\(\); if \(!BOOT_APP \|\| apps\[BOOT_APP\.app\]\) ss\.del\(BOUNCE_KEY\); \}/, 'the marker goes only where this document’s module is on');
+  assert.match(js, /if \(state === "yes" && !appsSaid\[BOOT_APP\.app\]\) \{\n    const ln = BOOT_APP\.link \|\| BOOT_APP\.app;/);
+  assert.match(js, /DEFAULT_LINKS\[ln\]\) \+ rest\.slice\(BOOT_APP\.path\.length - 1\)/);
+});
+
+test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited before anything else, “Sign Out Anyway?” where something was lost; signed out elsewhere: the apps’ copies and the tab’s Mail keys go', { skip: s24 }, () => {
+  const js = own();
+  const so = js.slice(js.indexOf('async function signOut()'), js.indexOf('// ---------------------------------------------------------------- the two states'));
+  const flush = so.indexOf('F?.flush?.()'), logout = so.indexOf('/api/logout'), dev = so.indexOf('/api/device');
+  assert.ok(flush > 0 && flush < dev && flush < logout, 'flushed before the device is let go of and before /api/logout');
+  assert.match(so, /if \(fl\?\.lost > 0 && !\(await anyway\(\)\)\) return;/, 'lost > 0: asked; Cancel signs nobody out');
+  assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
+  assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
+  const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
+  assert.ok(out.length > 0, 'signedOutNow');
+  assert.match(out, /if \(sure === true\) forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere, the account said so: the apps’ copies (Chat’s engine signs itself out)');
+  assert.match(out, /sessionCheck = null; checkSession\(\)\.then\(\(inn\) => inn === false && forgetApps\(\{ chat: false \}\)\)/, 'any other 401 or word: the account asked afresh first (review I-8)');
+  // (sure only from the account's own answer, or the frame's lost(), which asks it first)
+  assert.match(js, /lost: \(\) => signedOutNow\(true\)/);
+  assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \(!view\?\.signedIn\) return signedOutNow\(true\);/);
+  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\(\);/, 'a 401 from any other call: not sure');
+  assert.match(js, /const APP_SESSION_KEPT = \["mail:signin-verifier"\];/);
+  assert.match(js, /for \(const k of APP_SESSION_KEPT\) sessionStorage\.removeItem\(k\)/);
+  for (const k of ['mail:replies', 'mail:unsent', 'mail:outbox', 'mail:remote-images', 'mail:lens']) assert.ok(js.includes(`"${k}"`), `APP_KEPT: ${k}`);
+});
+
+test('stages 2–4, app.js: fw.changed() marks Today’s cards, which are asked again as Today is next shown; preload per module where used here', { skip: s24 }, () => {
+  const js = own();
+  assert.match(js, /changed: \(\) => \{ cardsStale = true; \}/);
+  assert.match(js, /onShow\(\) \{ drawLine\(true\); if \(cardsStale\) \{ cardsStale = false; refresh\(\); \} \}/);
+  assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt" \};/);
+  assert.doesNotMatch(js, /preloadWeather/);
 });

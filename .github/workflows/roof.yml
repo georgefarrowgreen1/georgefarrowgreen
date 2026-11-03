@@ -1,4 +1,4 @@
-name: Turn One roof off or on
+name: Turn One roof off or on (every module, or one)
 
 # One roof's off switch (stage 1, spec §8.5; rollback level 1 in §11.2). Weather is a module of InFlite's one page at
 # inflite.ai; state off puts the Worker secret ROOF_OFF = "1" on the hub's Worker(s), which at once makes /weather/
@@ -13,13 +13,25 @@ name: Turn One roof off or on
 # the One roof merge on the inflite repo's claude/inflite and dist7t). Never `wrangler versions secret put`, which builds
 # on the newest version, another branch's.
 #
+# Stages 2–4 (roof/s24-contracts.md §12): one switch per module beside it. app all (the default) is the switch above,
+# exactly. app weather puts ROOF_OFF_WEATHER "1" (off) or "0" (on): Weather alone. app markets, fitness or mail puts
+# ROOF_<APP> "1" (on) or "0" (off): each is off until it's "1", and its on is refused while ROOF_OFF is set (every module
+# off: turn them all on first). For mail, Mail's own Worker (inflite-email) is switched first, both ways: HUB_API for
+# inflite.ai, HUB_API_NEXT for next.inflite.ai, "1" or "0" (its gate opens before any page can load the module, and
+# closes before the page stops offering it); then the hub's. The settled check covers Mail's Worker too.
+#
 # Needs CLOUDFLARE_API_TOKEN with Account › Workers Scripts › Edit. CLOUDFLARE_ACCOUNT_ID only if the token can see more
 # than one account.
 on:
   workflow_dispatch:
     inputs:
+      app:
+        description: "Which: all (every module: stage 1's switch), or one module: weather, markets, fitness, mail"
+        type: choice
+        options: ["all", "weather", "markets", "fitness", "mail"]
+        default: all
       state:
-        description: "off: Weather's milestone-1 page at /weather/; on: Weather in InFlite's one page"
+        description: "off: the module's own page at its address (its milestone-1 page at the hub); on: the module in InFlite's one page"
         type: choice
         options: ["off", "on"]
         required: true
@@ -49,6 +61,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
+      ROOF_APP: ${{ inputs.app }}
       ROOF_STATE: ${{ inputs.state }}
       ROOF_WHERE: ${{ inputs.where }}
     steps:
@@ -63,6 +76,7 @@ jobs:
             exit 1
           fi
           case "$ROOF_STATE" in off|on) ;; *) echo "::error::No such state: \"$ROOF_STATE\" (off or on). Nothing was changed."; exit 1 ;; esac
+          case "${ROOF_APP:-all}" in all|weather|markets|fitness|mail) ;; *) echo "::error::No such module: \"$ROOF_APP\" (all, weather, markets, fitness or mail). Nothing was changed."; exit 1 ;; esac
           case "$ROOF_WHERE" in both|inflite.ai|next.inflite.ai) ;; *) echo "::error::No such hub: \"$ROOF_WHERE\" (both, inflite.ai or next.inflite.ai). Nothing was changed."; exit 1 ;; esac
       - uses: actions/setup-node@v4
         with:
@@ -81,17 +95,28 @@ jobs:
         run: |
           . .github/hub/hub.sh
           rc=0 unsettled=""
-          for w in $(hub_workers "$ROOF_WHERE"); do worker_settled "$w" || { rc=1; unsettled="$unsettled $w"; }; done
+          ws="$(hub_workers "$ROOF_WHERE")"; [ "${ROOF_APP:-all}" = mail ] && ws="$MAIL_WORKER $ws"
+          for w in $ws; do worker_settled "$w" || { rc=1; unsettled="$unsettled $w"; }; done
           echo "ROOF_UNSETTLED=${unsettled# }" >> "$GITHUB_ENV"
           exit $rc
+      # (a module's on, while every module is off (ROOF_OFF): refused, nothing changed; all and weather never are)
+      - name: Check a module's on isn't under ROOF_OFF
+        id: allowed
+        run: |
+          . .github/hub/hub.sh
+          for w in $(hub_workers "$ROOF_WHERE"); do roof_refused "${ROOF_APP:-all}" "$ROOF_STATE" "$w"; done
       # (in the runner's temporary folder: no wrangler config there, so wrangler takes each Worker by the name given;
-      # the staging Worker first, so the live one is untouched should it fail)
-      - name: Set ROOF_OFF (off) or delete it (on)
+      # the staging Worker first, so the live one is untouched should it fail; for mail, Mail's own Worker before each)
+      - name: Set the switch (ROOF_OFF, ROOF_OFF_WEATHER or ROOF_<APP>; for mail, HUB_API first)
         id: set
         working-directory: ${{ runner.temp }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
-          for w in $(hub_workers "$ROOF_WHERE"); do roof_set "$w" "$ROOF_STATE"; done
+          read -r name value <<<"$(roof_secret "${ROOF_APP:-all}" "$ROOF_STATE")"
+          for w in $(hub_workers "$ROOF_WHERE"); do
+            if [ "${ROOF_APP:-all}" = mail ]; then roof_set "$MAIL_WORKER" "$(mail_gate "$w")" "$value"; fi
+          done
+          for w in $(hub_workers "$ROOF_WHERE"); do roof_set "$w" "$name" "$value"; done
       - name: Wait for each hub's /api/hub to say so
         id: wait
         timeout-minutes: 5
@@ -99,7 +124,7 @@ jobs:
           . .github/hub/hub.sh
           rc=0
           want=$([ "$ROOF_STATE" = off ] && echo false || echo true)
-          for s in $(hub_sites "$ROOF_WHERE"); do wait_roof "$s" "$want" 120 || rc=1; done
+          for s in $(hub_sites "$ROOF_WHERE"); do wait_roof "$s" "${ROOF_APP:-all}" "$want" 120 || rc=1; done
           exit $rc
       - name: What's live now
         if: always()
@@ -107,6 +132,7 @@ jobs:
           OUT_TOKEN: ${{ steps.token.outcome }}
           OUT_ACCOUNT: ${{ steps.account.outcome }}
           OUT_SETTLED: ${{ steps.settled.outcome }}
+          OUT_ALLOWED: ${{ steps.allowed.outcome }}
           OUT_SET: ${{ steps.set.outcome }}
           OUT_WAIT: ${{ steps.wait.outcome }}
         run: |
