@@ -37,6 +37,18 @@ export async function mount(root, fw) {
     s.append(fw.ui.skeleton("card", 2));
     root.append(s);
   }
+  const ctx = { S: core.S, core, fw, open: {} };
+  Object.assign(ctx.open, {
+    stock: (...a) => fw.lazy((q) => import("./stock.js" + q)).then((m) => m.openStock(ctx, ...a)),
+    addStock: (...a) => fw.lazy((q) => import("./edit.js" + q)).then((m) => m.searchView(ctx, ...a)),
+    holding: (...a) => fw.lazy((q) => import("./edit.js" + q)).then((m) => m.openHolding(ctx, ...a)),
+    income: (...a) => fw.lazy((q) => import("./money.js" + q)).then((m) => m.openIncome(ctx, ...a)),
+    isa: (...a) => fw.lazy((q) => import("./money.js" + q)).then((m) => m.openIsa(ctx, ...a)),
+    vs: (...a) => fw.lazy((q) => import("./money.js" + q)).then((m) => m.openVs(ctx, ...a)),
+    story: (...a) => fw.lazy((q) => import("./news.js" + q)).then((m) => m.openStory(ctx, ...a)),
+    account: (...a) => fw.lazy((q) => import("./holdings.js" + q)).then((m) => m.openAccount(ctx, ...a)),
+    about: (...a) => fw.lazy((q) => import("./holdings.js" + q)).then((m) => m.openAbout(ctx, ...a)),
+  });
   const secOf = (id) => root.querySelector(`section[data-sec="${id}"]`);
   let shown = null;
   return {

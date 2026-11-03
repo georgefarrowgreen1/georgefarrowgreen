@@ -5,10 +5,10 @@
 // listFor move here from warnings.js:19-62 (which then re-exports them); now.js imports listFor and slotOf from here.
 // Not yet imported by anything: Weather's live graph is unchanged until WX moves the code.
 export const STUB = true;
-export function warningsOf() { throw new Error("not yet: warningsOf"); }
-export function nameOf() { throw new Error("not yet: nameOf"); }
-export function slotOf() { throw new Error("not yet: slotOf"); }
-export function emptyOf() { throw new Error("not yet: emptyOf"); }
-export function emptyWords() { throw new Error("not yet: emptyWords"); }
-export function paras() { throw new Error("not yet: paras"); }
-export function listFor() { throw new Error("not yet: listFor"); }
+export function warningsOf(...a) { throw new Error("not yet: warningsOf"); }
+export function nameOf(...a) { throw new Error("not yet: nameOf"); }
+export function slotOf(...a) { throw new Error("not yet: slotOf"); }
+export function emptyOf(...a) { throw new Error("not yet: emptyOf"); }
+export function emptyWords(...a) { throw new Error("not yet: emptyWords"); }
+export function paras(...a) { throw new Error("not yet: paras"); }
+export function listFor(...a) { throw new Error("not yet: listFor"); }

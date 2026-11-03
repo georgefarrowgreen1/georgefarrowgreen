@@ -9,7 +9,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { MAIN, ROOF, roofSkip } from './fixtures/roof.mjs';
+import { MAIN, ROOF, IFL, roofSkip, appsSkip, mailSkip, fileOf } from './fixtures/roof.mjs';
+import { staticGraph, lazyClosure, isNet, NET } from './fixtures/budget.mjs';
 
 const WX = new URL('weather/', MAIN), MOD = new URL('weather/roof/', MAIN);
 const read = (u) => readFileSync(u, 'utf8');
@@ -66,8 +67,10 @@ function graphFrom(start) {
   assert.deepEqual(bad, [], 'static imports are relative or /weather/…');
   return [...seen].map((h) => '/' + h.slice(MAIN.href.length));
 }
-// (every import( must be the body of fw.lazy(() => …): `fw.lazy(() => import(` or `fw.lazy(async () => import(`)
-const lazyOutside = (src) => { const s = uncomment(src), bad = []; for (const m of s.matchAll(/\bimport\s*\(/g)) if (!/fw\.lazy\(\s*(?:async\s*)?\(\s*\)\s*=>\s*(?:await\s+)?$/.test(s.slice(Math.max(0, m.index - 60), m.index))) bad.push(s.slice(Math.max(0, m.index - 40), m.index + 30)); return bad; };
+// (every import( must be the body of fw.lazy(() => …): `fw.lazy(() => import(` or `fw.lazy(async () => import(`, or with
+// the retry suffix's parameter, `fw.lazy((q) => import("./x.js" + q))` (s24-contracts §7); its first argument a string
+// literal naming the file)
+const lazyOutside = (src) => { const s = uncomment(src), bad = []; for (const m of s.matchAll(/\bimport\s*\(/g)) if (!/fw\.lazy\(\s*(?:async\s*)?\(\s*(?:[A-Za-z_$][\w$]*)?\s*\)\s*=>\s*(?:await\s+)?$/.test(s.slice(Math.max(0, m.index - 60), m.index)) || !/^import\s*\(\s*["']/.test(s.slice(m.index))) bad.push(s.slice(Math.max(0, m.index - 40), m.index + 30)); return bad; };
 const jsFiles = (dir) => readdirSync(dir).filter((f) => f.endsWith('.js'));
 
 const WEATHER = read(new URL('weather.js', MOD));
@@ -85,7 +88,7 @@ test('the framework’s files export the names §3.1 freezes', { skip: roofSkip 
     'ui.js': ['el', 'esc', 'icon', 'card', 'list', 'row', 'label', 'chip', 'stats', 'btn', 'iconBtn', 'seg', 'sw', 'field', 'tile', 'mini', 'avatar', 'badge', 'empty', 'error', 'skeleton'],
     'search.js': ['createSearch'], 'send.js': ['createSend'],
     'modules.js': ['loadModule', 'loadConnector', 'preload', 'watchVersion', 'keepOffline'],
-    'connectors.js': ['STATIC', 'connectorOf', 'miniOf', 'openConnector', 'placesProvider'],
+    'connectors.js': ['STATIC', 'connectorOf', 'miniOf', 'openConnector', 'placesProvider', ...(appsSkip ? [] : ['connectorProvider'])],
   };
   for (const [f, names] of Object.entries(want)) {
     const has = exportsOf(read(new URL(f, ROOF)));
@@ -269,6 +272,8 @@ test('every dynamic import in the module sits inside fw.lazy( (D21)', () => {
   assert.equal(lazyOutside('const r = await import("../radar.js");').length, 1);
   assert.equal(lazyOutside('fw.lazy(() => 1); import("../x.js")').length, 1);
   assert.deepEqual(lazyOutside('// import("../x.js")\nconst u = import.meta.url;'), []);
+  assert.deepEqual(lazyOutside('fw.lazy((q) => import("./stock.js" + q))'), [], 'the retry suffix (s24 §7)');
+  assert.equal(lazyOutside('fw.lazy((q) => import(name + q))').length, 1, 'never without its literal');
   for (const f of jsFiles(MOD)) assert.deepEqual(lazyOutside(read(new URL(f, MOD))), [], `weather/roof/${f}`);
 });
 
@@ -330,4 +335,153 @@ test('no style attribute and no inline handler in either folder (the pages’ CS
     assert.ok(!/setAttribute\(\s*["'`]style["'`]/.test(s), `${name}/${f} sets a style attribute`);
     assert.ok(!/\son[a-z]+=\\?["']/.test(s), `${name}/${f} writes an inline handler`);
   }
+});
+
+// ==== Stages 2–4 (s2/spec.md §3 C2–C5, §4; s24-contracts §3, §5, §8, §9): every REGISTRY module on disk ====
+// Markets and Fitness are this repo's (<app>/roof/), Mail the inflite repo's (email/public/roof/, served at /mail/roof/);
+// Weather's own cases are above and unchanged. A file that still exports STUB is B0's (j0's) stub: its behaviour cases
+// skip with "still B0's stub", its names and graph are checked all the same.
+const APPS2 = ['markets', 'fitness', 'mail'];
+const homeOf = (app) => (app === 'mail' ? IFL && new URL('email/public/roof/', IFL) : new URL(`${app}/roof/`, MAIN));
+const appSkip = (app) => (app === 'mail' ? mailSkip : appsSkip) || (!existsSync(new URL(`${app}.js`, homeOf(app))) && `no ${app}/roof/${app}.js on disk yet`);
+const appJs = (app) => (app === 'mail' ? new URL('email/public/app.js', IFL) : new URL(`${app}/app.js`, MAIN));
+const stub = (u) => exportsOf(read(u)).has('STUB');
+const modFiles = (app) => readdirSync(homeOf(app)).filter((f) => f.endsWith('.js'));
+// (the frozen names each file of Markets' and Fitness's exports (§4.2, §4.3, §4.7, as j0's stubs wrote them): the real
+// files keep every one; Mail's are stage 4's roofmailcontract.test's)
+const FROZEN = {
+  markets: {
+    'markets.js': ['CONTRACT', 'BUILD', 'NEWS', 'SECTIONS', 'mount'], 'connector.js': ['CONNECTOR', 'connector'],
+    'core.js': ['S', 'EVENTS', 'store', 'on', 'emit', 'start', 'stop', 'shown', 'busy', 'fmt', 'money', 'signed', 'pct', 'tone', 'priceSaid', 'chgSaid', 'plainSym', 'ago', 'rate', 'owned', 'valueOf', 'dayOf', 'divsOf', 'paidFor', 'unpriced', 'leftOutSaid', 'totals', 'byAccount', 'income', 'growthOf', 'isaYear', 'daySeries', 'marketSaid', 'lineSaid', 'insights', 'take', 'loadYears', 'loadPaid', 'loadIncome', 'refresh', 'loadNews', 'follow', 'removeHolding', 'alertSet', 'recent', 'live', 'calm'],
+    'mkui.js': ['bind', 'h', 'icon', 'openSheet', 'pushSheet', 'drawSheet', 'closeSheet', 'toast', 'render', 'sparkCard', 'mixBar', 'vbars', 'range52', 'ring', 'chart', 'paint'],
+    'todayview.js': ['view'], 'holdings.js': ['view', 'openAccount', 'openAbout'], 'news.js': ['view', 'openStory'], 'stock.js': ['openStock'],
+    'edit.js': ['searchView', 'openHolding'], 'money.js': ['openIncome', 'openVs', 'openIsa'],
+  },
+  fitness: {
+    'fitness.js': ['CONTRACT', 'BUILD', 'NEWS', 'SECTIONS', 'mount'], 'connector.js': ['CONNECTOR', 'connector'],
+    'core.js': ['S', 'EVENTS', 'store', 'on', 'emit', 'start', 'stop', 'shown', 'busy', 'saveSettings', 'A', 'BT', 'C', 'E', 'F', 'G', 'M', 'P', 'R', 'adopt', 'record', 'estimate', 'setNumber', 'logFtp', 'keep', 'inStep', 'rh', 'plannedOn', 'weeks', 'actsOn', 'sumOf', 'held', 'full', 'fileKey', 'readOff', 'load', 'sumUp', 'resum', 'fitnessSeries', 'fetchMe', 'lastMe', 'arrive', 'takeUp', 'pull', 'newDay', 'todayRides', 'todaySnap', 'todayRefresh', 'morningDays', 'forgetCopies', 'wellByDay', 'nightsFrom', 'nightsSeries', 'myPlan', 'planStart', 'rhDay', 'rhythmOn', 'missed', 'lightNow', 'paceFor', 'isSet', 'weekIndex', 'wkById', 'eventDay', 'choosePlan', 'numbers', 'runSpeed', 'swimSpeed', 'weekZip', 'setActs', 'saveFile', 'stopped'],
+    'fxui.js': ['bind', 'unbind', 'h', 'svg', 'icon', 'card', 'row', 'section', 'stat', 'wait', 'sportIcon', 'sportTile', 'face', 'stepper', 'calendar', 'toast', 'redraw', 'go', 'openSheet', 'pushSheet', 'sheetBack', 'drawSheet', 'closeSheet', 'sheetEl', 'chooseFiles', 'wide', 'mainW', 'partW', 'sheetW', 'cardW', 'mapsAlways'],
+    'fxcalc.js': ['rhythmSaid', 'dayStamp', 'dayChanges', 'progActs', 'rollAvg'], 'idb.js': ['idb', 'keepFile', 'dropFile', 'tidyFiles', 'close'],
+    'todayview.js': ['view'], 'offers.js': ['offerCards', 'undoToday', 'openOffer', 'addView'],
+    'actsview.js': ['view', 'openAct', 'openActMap', 'openActShare', 'openRename', 'openForm', 'openUpload'],
+    'progview.js': ['view', 'openPower', 'openTraining', 'openEngine', 'openYear'],
+    'planview.js': ['openSession', 'openWorkout', 'openDay', 'openMove', 'openWorkouts', 'openRhythmSetup', 'openSendDevice'],
+    'fxsettings.js': ['openSettings'],
+  },
+};
+// (the connectors' words, frozen by B0: s2/spec.md §4.2, §4.3)
+const SHARES = {
+  markets: { cards: 'How your holdings are doing today', search: 'Your holdings, on this phone', notifications: 'Price alerts and the evening wrap', actions: 'Open a stock or a section; send a stock’s day in percent', screens: 'Today · Holdings · News' },
+  fitness: { cards: 'Today’s session or the ride you’ve done', search: 'Your activities and sessions, on this phone', notifications: 'Your session, in the morning notification', actions: 'Open Today, Activities or Progress; send a session', screens: 'Today · Activities · Progress' },
+};
+
+for (const app of APPS2) {
+  const skip = appSkip(app);
+  test(`${app}: the entry exports CONTRACT 1, BUILD and NEWS equal to ${app === 'mail' ? 'email/public' : app}/app.js’s, SECTIONS = REGISTRY = connector, mount(root, fw); every frozen name there`, { skip }, async () => {
+    const H = homeOf(app), E = read(new URL(`${app}.js`, H)), A = read(appJs(app));
+    assert.equal(literalOf(E, 'CONTRACT'), 1);
+    assert.equal(literalOf(E, 'BUILD'), constOf(A, 'BUILD'), 'BUILD = app.js’s (I raises both together)');
+    assert.equal(literalOf(E, 'NEWS'), constOf(A, 'NEWS'), 'NEWS = app.js’s');
+    assert.match(uncomment(E), /\bexport\s+async\s+function\s+mount\s*\(\s*root\s*,\s*fw\s*\)/);
+    const { connector: c, CONNECTOR: v } = await import(new URL('connector.js', H));
+    assert.equal(v, 1);
+    assert.deepEqual(literalOf(E, 'SECTIONS'), JSON.parse(JSON.stringify(R.REGISTRY[app].sections)));
+    assert.deepEqual(c.sections, literalOf(E, 'SECTIONS'));
+    assert.deepEqual({ ...c.aliases }, { ...R.REGISTRY[app].aliases });
+    assert.equal(c.app, app); assert.equal(c.name, R.REGISTRY[app].name);
+    for (const [f, names] of Object.entries(FROZEN[app] || {})) {
+      const has = exportsOf(read(new URL(f, H)));
+      for (const n of names) assert.ok(has.has(n), `${app}/roof/${f} exports ${n}`);
+    }
+    for (const f of ['todayview.js', 'holdings.js', 'news.js', 'actsview.js', 'progview.js']) if (existsSync(new URL(f, H)) && FROZEN[app]?.[f]) assert.match(uncomment(read(new URL(f, H))), /\bexport\s+function\s+view\s*\(\s*el\s*,\s*ctx\s*\)/, `${f}: view(el, ctx)`);
+  });
+
+  test(`${app}: the connector: no imports, ≤ 4 KB, its words, mini and search(q, { userId })`, { skip }, async () => {
+    const src = read(new URL('connector.js', homeOf(app)));
+    assert.ok(!/\bimport\b/.test(uncomment(src)), 'no imports');
+    assert.ok(Buffer.byteLength(src) <= 4096, `${Buffer.byteLength(src)} bytes`);
+    const { connector: c } = await import(new URL('connector.js', homeOf(app)));
+    if (SHARES[app]) assert.deepEqual(c.shares, SHARES[app]);
+    // (Markets' and Fitness's connectors search on the phone (s2 §2.5); Mail's has none: its provider is the mounted
+    // module's, S4-D9)
+    // (Mail's connector has a mini but no search: s4 S4-D9, s24 §5)
+    assert.equal(typeof c.mini, 'function');
+    if (app !== 'mail') assert.equal(typeof c.search, 'function');
+    if (typeof c.search === 'function') assert.ok(Array.isArray(await c.search('', { userId: 'someone' })), 'search gives a list');
+  });
+
+  test(`${app}: connector.files = the static graph from the entry + REGISTRY’s CSS, exactly; lazy = the closure of the literal fw.lazy imports less files less NET; none in both; ≤ 60`, { skip }, async () => {
+    const { connector: c } = await import(new URL('connector.js', homeOf(app)));
+    const files = c.files, lazy = c.lazy || [];
+    assert.ok(Array.isArray(files) && new Set(files).size === files.length, 'files: a list, no repeats');
+    assert.ok(Array.isArray(lazy) && new Set(lazy).size === lazy.length, 'lazy: a list, no repeats');
+    for (const f of [...files, ...lazy]) {
+      assert.match(f, new RegExp(`^/${app}/`), `${f}: the app’s own path`);
+      assert.ok(fileOf(f) && existsSync(fileOf(f)), `${f} exists`);
+      assert.ok(!f.includes('/vendor/') && !isNet(app, f), `${f}: never vendor/ or a network-only file`);
+    }
+    const graph = await staticGraph(app);
+    assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
+    assert.deepEqual([...lazy].sort(), (await lazyClosure(app, graph)).sort(), 'lazy: the closure of fw.lazy’s literals, less files and NET');
+    assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
+    assert.ok(files.length + lazy.length <= 60, `files ∪ lazy: ${files.length + lazy.length} ≤ 60 (the root worker's cap)`);
+    // (static imports stay inside the app's own files: never another module's, never app.js)
+    for (const f of graph) assert.ok(!/\/app\.js$/.test(f), `${f}: never app.js`);
+  });
+
+  test(`${app}: every import( and new Worker( inside fw.lazy( with its literal; §5.1’s rules over ${app}/roof/*; indexedDB only in idb.js, opening REGISTRY’s name; /weather/vendor/ only from a NET file`, { skip }, () => {
+    const H = homeOf(app), idb = R.REGISTRY[app].idb;
+    for (const f of modFiles(app)) {
+      const s = uncomment(read(new URL(f, H)));
+      assert.deepEqual(lazyOutside(s), [], `${app}/roof/${f}: import( outside fw.lazy(`);
+      for (const m of s.matchAll(/\bnew\s+Worker\s*\(/g)) assert.match(s.slice(Math.max(0, m.index - 60), m.index + 40), /fw\.lazy\(\s*(?:async\s*)?\(\s*\w*\s*\)\s*=>\s*new\s+Worker\(\s*new\s+URL\(\s*["']/, `${app}/roof/${f}: a Worker only as fw.lazy(() => new Worker(new URL("…", import.meta.url), …)) (C5)`);
+      const RULES = [
+        [/serviceWorker/, 'registers no service worker'],
+        [/(?:\b(?:window|globalThis)\s*\.\s*|(?<![.\w$]))history\s*\./, 'no history.*'],
+        [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes'],
+        [/(?<![.\w$]|function\s+)(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert() (a module’s own opener of that name may be declared)'],
+        [/\bIFL\b/, 'no IFL'],
+        [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document-wide lookups'],
+        [/["'`]today:/, 'no today:* key'],
+        [/(?<![.\w$])parent\s*\./, 'no parent.'],
+        [/["'`]#(?:hd|tabs)\b|ifl-tabs|\.ifh-/, 'never the header’s or the tab bar’s DOM'],
+        [/\/weather\/vendor\//, '/weather/vendor/ only from a NET file (outside roof/)'],
+      ];
+      for (const [re, why] of RULES) assert.ok(!re.test(s), `${app}/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
+      if (/\bindexedDB\b/.test(s)) {
+        assert.equal(f, 'idb.js', `${app}/roof/${f}: indexedDB only in idb.js (C5)`);
+        assert.ok(idb, `${app} has no REGISTRY idb: no IndexedDB at all`);
+        for (const m of s.matchAll(/indexedDB\s*\.\s*open\(\s*([^,)]+)/g)) assert.ok(new RegExp(`^["']${idb}["']$|^NAME$`).test(m[1].trim()), `${app}/roof/idb.js opens only "${idb}" (${m[1]})`);
+      }
+      for (const [who, type] of globalListeners(s)) assert.ok(globalRemoves(s).some(([w, t]) => t === type && sameGlobal(w, who)), `${app}/roof/${f}: ${who}'s "${type}" listener removed`);
+      assert.ok(!/style=\\?["']/.test(s) && !/setAttribute\(\s*["'`]style["'`]/.test(s), `${app}/roof/${f}: no style attribute`);
+      assert.ok(!/\son[a-z]+=\\?["']/.test(s), `${app}/roof/${f}: no inline handler`);
+    }
+  });
+
+  test(`${app}: the module’s CSS is scoped: under .m-${app} or .ifl-sheet[data-app=${app}], nothing on :root, html or body`, { skip }, () => {
+    const H = homeOf(app);
+    for (const f of readdirSync(H).filter((x) => x.endsWith('.css'))) {
+      const css = read(new URL(f, H)).replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of css.matchAll(/([^{}]+)\{/g)) {
+        const sel = m[1].trim();
+        if (sel.startsWith('@') || /^(from|to|\d+%)(\s*,\s*(from|to|\d+%))*$/.test(sel)) continue;
+        for (const one of sel.split(',').map((x) => x.trim())) {
+          assert.ok(!/(^|[\s,>+~(])(?::root|html|body)(?![\w-])/.test(one), `${app}/roof/${f}: ${one}`);
+          assert.ok(one.startsWith(`.m-${app}`) || one.startsWith(`.ifl-sheet[data-app=${app}]`) || one.startsWith(`.ifl-sheet[data-app="${app}"]`) || one.startsWith(`[data-app="${app}"]`) || one.startsWith(`[data-app=${app}]`), `${app}/roof/${f}: ${one} isn’t scoped`);
+        }
+      }
+    }
+  });
+}
+
+test('markets: the connector’s search answers only for the account whose copy is kept, with no amount (RB1)', { skip: appSkip('markets') }, async (t) => {
+  const u = new URL('markets/roof/connector.js', MAIN);
+  if (stub(u)) return t.skip('still B0’s stub (MK’s roofmkviews proves it on the real one)');
+  const { connector: c } = await import(u);
+  globalThis.localStorage ||= { _: {}, getItem(k) { return this._[k] ?? null; }, setItem(k, v) { this._[k] = String(v); }, removeItem(k) { delete this._[k]; } };
+  localStorage.setItem('markets:last', JSON.stringify({ id: 'u1', me: { holdings: [{ sym: 'TSCO.L', name: 'Tesco', qty: 10, value: 3456.78 }] } }));
+  assert.deepEqual(await c.search('tes', { userId: 'u2' }), [], 'another account: nothing');
+  const mine = await c.search('tes', { userId: 'u1' });
+  assert.ok(!/3456|345[67]/.test(JSON.stringify(mine)), 'no amount');
 });
