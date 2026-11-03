@@ -2,27 +2,41 @@ name: Give InFlite's hub its key
 
 # InFlite's hub (inflite.ai/chats/, /weather/, /fitness/, /markets/: the inflite repo's today/src/hub.js) asks each app's
 # own address on the browser's behalf, and the apps' hosts (this repo's functions/_middleware.js) believe what it says
-# of the browser only with its key. The key is two secrets that must be the same: the Pages project's HUB_KEY
-# (georgefarrowgreen, production) and the Worker's (inflite). Until both are set, and match, every hub path answers 503
-# and Today links to each app's own address, as before (so this can be run at any time; and run again, it changes the
-# key, with a few minutes of Today linking to the apps' own addresses while Pages builds again).
+# of the browser only with its key. The key is secrets that must be the same: the Pages project's HUB_KEY
+# (georgefarrowgreen, production) and the Worker's (inflite; and the staging hub's, inflite-next at next.inflite.ai).
+# Until they're set, and match, every hub path answers 503 and Today links to each app's own address, as before.
 #
-# Run by hand (Actions → Give InFlite's hub its key → Run workflow), once this repo's and the inflite repo's Today First
-# builds are live (spec §15.4). It makes a new key, sets it on the Pages project first and then, only if that worked,
-# on the Worker; builds the Pages project's live production deployment again (a Pages secret reaches only deployments
-# made after it's set); waits for inflite.ai/api/hub to say {"ready": true}; and checks Chat's hub copy is still not
-# found to anyone without the key. The key is never written down: masked at once, never in a file or an output, and
-# only ever piped to wrangler. To turn the hub off: "Turn InFlite's hub off" (hub-off.yml).
+# Run by hand (Actions → Give InFlite's hub its key → Run workflow) in spec §15.4's order: once this repo's Today First
+# build is live, with "next.inflite.ai" for the staging checks (§15.2), before the inflite repo's build is live at
+# inflite.ai; then with "inflite.ai" (or "both") once it is. It makes a new key, sets it on the Pages project first and
+# then, only if that worked, on each Worker chosen (one that isn't there is never made: nothing changes); builds the
+# Pages project's live production deployment again (a Pages secret reaches only deployments made after it's set); waits
+# for each hub's /api/hub to say {"ready": true}; and checks Chat's hub copy is still not found to anyone without the
+# key. The key is never written down: masked at once, never in a file or an output, and only ever piped to wrangler.
+#
+# Run it again only when the hub is off or broken: on a live hub, the Worker takes the new key at once while Pages takes
+# minutes to build, and every hub path answers 503 until it's done (until the next push to main, if that build fails).
+# To turn the hub off: "Turn InFlite's hub off" (hub-off.yml).
 #
 # Needs CLOUDFLARE_API_TOKEN: a Cloudflare API token with Account › Cloudflare Pages › Edit and Account › Workers
 # Scripts › Edit. CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account.
 on:
   workflow_dispatch:
+    inputs:
+      hub:
+        description: "Which hub gets the key: inflite.ai (the live one), next.inflite.ai (the staging hub, before the inflite repo's Today First build is live at inflite.ai), or both"
+        type: choice
+        options:
+          - inflite.ai
+          - next.inflite.ai
+          - both
+        default: inflite.ai
 
 permissions:
   contents: read
 
-# (one change to the hub's key at a time: this and hub-off.yml share it)
+# (one change to the hub's key at a time: this and hub-off.yml share it. This one waits its turn; the off switch takes
+# over from it)
 concurrency:
   group: inflite-hub-key
   cancel-in-progress: false
@@ -34,55 +48,74 @@ defaults:
 jobs:
   key:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
+      HUBS: ${{ inputs.hub }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/hub
       - name: Check the token's there
+        id: token
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Cloudflare Pages › Edit and Account › Workers Scripts › Edit. Nothing was changed."
             exit 1
           fi
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github/hub
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # (and leaves it for the steps after as HUB_ACCOUNT: each step is a shell of its own)
       - name: Find the Cloudflare account
+        id: account
         run: |
           . .github/hub/hub.sh
           cf_account
-          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT" >> "$GITHUB_ENV"
-      # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Pages project and the Worker
+      # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Pages project and the Workers
       # by the names given, and never reads this repo's wrangler.toml as the Worker's)
       - name: Make a new key, and give it to the Pages project, then the Worker
+        id: key
         working-directory: ${{ runner.temp }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
-          give_key
+          give_key "$HUBS"
       - name: Build the Pages project's production again, so the site takes the key
+        id: redeploy
+        if: ${{ !cancelled() && steps.key.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 25
         run: |
           . .github/hub/hub.sh
           pages_redeploy
-      - name: Wait for inflite.ai/api/hub to say it's ready
+      - name: Wait for the hub to say it's ready
+        id: wait
+        if: ${{ !cancelled() && steps.redeploy.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 18
         run: |
           . .github/hub/hub.sh
-          wait_hub true 480
+          wait_ready "$HUBS"
       - name: Check Chat's hub copy is still not found to anyone without the key
+        id: door
+        if: ${{ !cancelled() && steps.key.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
         run: |
           . .github/hub/hub.sh
           door_shut
-      - name: If it went wrong
-        if: failure()
+      - name: What's live now
+        if: always()
+        env:
+          OUT_TOKEN: ${{ steps.token.outcome }}
+          OUT_ACCOUNT: ${{ steps.account.outcome }}
+          OUT_KEY: ${{ steps.key.outcome }}
+          OUT_REDEPLOY: ${{ steps.redeploy.outcome }}
+          OUT_WAIT: ${{ steps.wait.outcome }}
+          OUT_DOOR: ${{ steps.door.outcome }}
         run: |
-          {
-            echo "### What to do"
-            echo "- The step that failed says why, and which permission the token likely lacks (Cloudflare Pages: Edit; Workers Scripts: Edit)."
-            echo "- Running this again is always safe: it makes a new key and gives it to both."
-            echo "- Until both secrets match and Pages has built again, Today links to each app's own address, as before: nothing is broken for anyone."
-            echo "- To turn the hub off on purpose: Actions → Turn InFlite's hub off."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -f .github/hub/hub.sh ]; then echo "::error::This repo's .github/hub wasn't checked out: nothing was changed."; exit 1; fi
+          . .github/hub/hub.sh
+          key_verdict
