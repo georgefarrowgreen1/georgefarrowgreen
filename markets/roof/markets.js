@@ -143,7 +143,7 @@ export async function mount(root, fw) {
   // your holdings on this phone, Markets' sheets, and Find (connector.search, from what's live here)
   const unprovide = fw.search?.provide?.({
     id: "markets", group: "Markets", order: 30,
-    search: (q) => connector.search(q, { userId: fw.session.user.id, kept: S.me ? { id: S.me.id, holdings: S.list, quotes: S.q } : null }),
+    search: (q) => connector.search(q, { userId: fw.session?.user?.id ?? null, kept: S.me ? { id: S.me.id, holdings: S.list, quotes: S.q } : null }),
   }) || (() => {});
   // a search's Find: Add a Stock with what was typed, here if Markets shows, else once it does
   const takeWant = () => { if (!want.q || Date.now() - want.at > 30e3) return false; const q = want.q; want.q = null; openAdd(q); return true; };
