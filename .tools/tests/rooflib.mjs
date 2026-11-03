@@ -339,8 +339,9 @@ export function meter(p, app = 'weather') {
 }
 
 // ---- a module's own numbers, read from its files (connector.files and .lazy, BUILD); Weather's by default ----
-// (Mail's module is the inflite repo's, email/public/roof/; the others this repo's <app>/roof/)
-const modDir = (app) => (app === 'mail' ? `${IFL}/email/public/roof` : `${ROOT}/${app}/roof`);
+// (Mail's module is the inflite repo's, email/public/roof/; Chats' this repo's pigeon/roof/ (served at /chats/roof/,
+// stage 3 S3-D1); the others this repo's <app>/roof/)
+const modDir = (app) => (app === 'mail' ? `${IFL}/email/public/roof` : app === 'chats' ? `${ROOT}/pigeon/roof` : `${ROOT}/${app}/roof`);
 const listIn = (src, k) => { const m = new RegExp(`${k}:\\s*\\[([\\s\\S]*?)\\]`).exec(src); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
 export function connectorFiles(app = 'weather') { return listIn(readFileSync(`${modDir(app)}/connector.js`, 'utf8'), 'files'); }
 export function connectorLazy(app = 'weather') { return listIn(readFileSync(`${modDir(app)}/connector.js`, 'utf8'), 'lazy'); }
@@ -508,4 +509,102 @@ export function alike(a, b, tol = 16) {
   let near = 0;
   for (let i = 0; i < x.px.length; i += 4) if (Math.abs(x.px[i] - y.px[i]) <= tol && Math.abs(x.px[i + 1] - y.px[i + 1]) <= tol && Math.abs(x.px[i + 2] - y.px[i + 2]) <= tol) near++;
   return { same: near / (x.w * x.h), size: `${x.w}×${x.h}` };
+}
+
+// ==== Chats under the roof (stage 3, batch Q: roof/s3/spec.md §10.2) ====
+// chatPhone(name, o)   a phone with a Chat account, signed in and unlocked: at the hub (o.at "hub", the default: an
+//                      account made on the account's page, then InFlite's one sign-in trip /chats/#signin-start&then=/,
+//                      which under the roof hops to /chats/in/ (S3-D8) and with Chats off is milestone 1's own) or at
+//                      Chat's own address (o.at "chat": joinChat). Every request any frame or Worker of it makes is
+//                      noted in ph.seen ({ url without its #, method, body, at }); its Chat session (token, id) read
+//                      from its IndexedDB. → ph (phone()'s, plus token, id, handle, seen)
+// CHAT_LAZY            Chats' lazy files (connector.lazy and the network-only sheets, S3 §3.1, §5.3): never in a first
+//                      open's budget; CHAT_PAGE / CHAT_CORE the page's static graph and the core's (S3 §5.6)
+// workers(p)           the page's dedicated Workers now: { all, core } (core: chats-core, service.js's one, S3 §9.5)
+// hunt(words, where)   a sentence scanner: every place one of `words` shows up in what the phones sent (seen), the
+//                      hub's request log (hostpass.jsonl) and every log the stack writes, and a phone's storage
+//                      (localStorage, sessionStorage, every IndexedDB but Chat's own "inflight", Cache Storage keys)
+//                      → [{ where, word, at }]: empty is the pass (S3 §9.3, rule 5)
+// chatApi(token, path, body, method)   Chat's API at the site as a phone with that token calls it → [status, json]
+export const CHAT = 'http://chat.ifl.test:8788';
+export const ACCOUNT_AT = 'http://account.ifl.test:8788';
+export const CHAT_LAZY = /^\/chats\/roof\/(?:send|sheets|flight|media|scan|settings)\.js$|^\/chats\/(?:rank|moon|space|land|placegrid|places|countries|shapes|jsqr)\.js$/;
+export const CHAT_CORE = /^\/chats\/(?:roof\/(?:core|idb)|crypto|digest)\.js$/;
+export const CHAT_PAGE = /^\/chats\/(?:roof\/(?:chats|connector|store|list|friends|chat|lock)|cards|cardview|links)\.js$/;
+export const CHAT_CSS = /^\/chats\/(?:roof\/(?:chats|chsheets)|cards)\.css$/;
+export const workers = (p) => { const all = p.workers(); return { all: all.length, core: all.filter((w) => /\/chats\/roof\/core\.js/.test(w.url())).length, urls: all.map((w) => w.url()) }; };
+export async function chatApi(token, path, body, method) {
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(`http://localhost:8788/api/pigeon/${path}`, { method: method || (body ? 'POST' : 'GET'), headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return [r.status, await r.json().catch(() => ({}))];
+    } catch (e) { if (i > 3) throw e; await wait(500); }
+  }
+}
+// (Chat's session as its page keeps it: IndexedDB "inflight", store kv, key "session")
+export const chatSession = (p) => p.evaluate(() => new Promise((res) => {
+  try {
+    const r = indexedDB.open('inflight');
+    r.onupgradeneeded = () => { r.transaction.abort(); res(null); };
+    r.onerror = () => res(null);
+    r.onsuccess = () => { try { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => { r.result.close(); res(g.result?.token ? { token: g.result.token, id: g.result.me?.id || null } : null); }; g.onerror = () => res(null); } catch (_) { res(null); } };
+  } catch (_) { res(null); }
+})).catch(() => null);
+// (every request of a context, its frames' and Workers' too: Playwright's context events see a dedicated Worker's)
+export function noteRequests(ctx, list = []) {
+  ctx.on('request', (r) => { let u = r.url(); try { const x = new URL(u); x.hash = ''; u = x.href; } catch (_) {} list.push({ url: u, method: r.method(), body: r.postData() || '', at: Date.now(), headers: r.headers() }); });
+  return list;
+}
+export async function chatPhone(name, o = {}) {
+  const { join, at = 'hub', ...po } = o;
+  const handle = join?.handle || `${name}${randomBytes(3).toString('hex')}`;
+  const who = { name: join?.name || name[0].toUpperCase() + name.slice(1), handle, email: `${handle}@example.com` };
+  const ph = await phone(name, po);
+  ph.seen = noteRequests(ph.ctx);
+  const { makeAccount, onAccountPage, joinChat } = await import('./join.mjs');
+  if (at === 'chat') {
+    await joinChat(ph.p, `${CHAT}/`, { ...who, city: join?.city || 'London', pigeons: join?.pigeons });
+  } else {
+    await makeAccount(ph.p, `${ACCOUNT_AT}/`, who);
+    await ph.p.goto(`${HUB}/chats/#signin-start&then=${encodeURIComponent(o.then || '/')}`);
+    await onAccountPage(ph.p, { email: who.email });
+    await ph.p.waitForURL((u) => u.host === 'ifl.test:8788' && !u.pathname.startsWith('/chats/in/') && !/#signin/.test(u.hash), { timeout: 60000 }).catch(() => {});
+  }
+  const s = await until(() => chatSession(ph.p), 30000);
+  return Object.assign(ph, { token: s?.token || null, id: s?.id || null, handle, who });
+}
+// (two Chat accounts made friends, through the API as their phones would: a request, then accepted)
+export async function befriend(a, b) {
+  const r1 = await chatApi(a.token, 'friends', { handle: b.handle });
+  const r2 = await chatApi(b.token, 'friends-respond', { id: a.id, accept: true });
+  return r1[0] < 300 && r2[0] < 300;
+}
+// What a phone keeps that isn't Chat's own sealed store (S3-D4: no new key; nothing kept in today:*): local and session
+// storage, every IndexedDB but "inflight" (Chat's, the core's: its plaintext is Chat's own store, as today), the names
+// of Cache Storage's entries. → { keys: [where], text }
+export const kept = (p) => p.evaluate(async () => {
+  const keys = [], parts = [];
+  for (const [n, st] of [['local', localStorage], ['session', sessionStorage]]) for (let i = 0; i < st.length; i++) { const k = st.key(i); keys.push(`${n}:${k}`); parts.push(`${n}:${k} ${st.getItem(k) || ''}`); }
+  for (const { name } of (await indexedDB.databases?.()) || []) {
+    if (name === 'inflight') continue;
+    const db = await new Promise((res) => { const r = indexedDB.open(name); r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
+    if (!db) continue;
+    for (const os of db.objectStoreNames) {
+      const vs = await new Promise((res) => { try { const g = db.transaction(os).objectStore(os).getAll(); g.onsuccess = () => res(g.result || []); g.onerror = () => res([]); } catch (_) { res([]); } });
+      keys.push(`idb:${name}/${os}`); for (const v of vs) { try { parts.push(`idb:${name}/${os} ${JSON.stringify(v)}`); } catch (_) {} }
+    }
+    db.close();
+  }
+  try { for (const c of await caches.keys()) for (const q of await (await caches.open(c)).keys()) parts.push(`cache:${c} ${q.url}`); } catch (_) {}
+  return { keys, text: parts.join('\n') };
+}).catch(() => ({ keys: [], text: '' }));
+const LOGS = ['hostpass.jsonl', 'wrangler.log', 'ifl.log', 'live.log', 'hubstack.log', 'mail.log', 'pushbox.jsonl', 'mailbox.jsonl'];
+// (an address as a server reads it: + and %20 both a space)
+const unq = (u) => { try { return decodeURIComponent(String(u).replace(/\+/g, ' ')); } catch (_) { return String(u); } };
+export async function hunt(words, { S, seen = [], since = 0, phones = [] } = {}) {
+  const found = [], look = (where, text, at) => { for (const w of words) if (text && (text.includes(w) || unq(text).includes(w))) found.push({ where, word: w, at }); };
+  for (const r of seen) if (r.at >= since) { look(`request ${r.method} ${r.url.slice(0, 120)}`, r.url, r.at); look(`body of ${r.method} ${r.url.slice(0, 120)}`, r.body, r.at); }
+  if (S) for (const f of LOGS) { let t = ''; try { t = readFileSync(`${S}/${f}`, 'utf8'); } catch (_) { continue; } look(`log ${f}`, t, null); }
+  for (const ph of phones) for (const pg of ph.ctx.pages()) { const k = await kept(pg); look(`${ph.name}'s storage (${new URL(pg.url()).host})`, k.text, null); }
+  return found;
 }
