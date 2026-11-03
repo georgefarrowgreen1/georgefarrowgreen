@@ -77,6 +77,21 @@ async function get(env, token, path, raw = false) {
   if (u8.length > MAX_FILE) throw garminSaid("too big");
   return u8;
 }
+// An activity's sport, time and distance, as Garmin's list says them (each null where it doesn't, or isn't a number that
+// could be one): kept with its waiting row, so InFlite Today can show a ride before the app has read its file
+// (functions/_fitshare.js donesIn). The sport in Fitness's words, as Strava's are (functions/_strava.js sportOf);
+// the time in seconds and the distance in metres, as the app's own figures are.
+export const garminSport = (key) => {
+  const k = String(key || "").toLowerCase();
+  if (!k) return null;
+  return /cycling|biking|_ride$|^ride$|cyclocross|bmx|e_bike/.test(k) ? "ride" : /running|_run$|^run$/.test(k) ? "run" : /swim/.test(k) ? "swim"
+    : /walking|hiking|^walk$|^hike$/.test(k) ? "walk" : /strength|weight|crossfit|hiit/.test(k) ? "strength" : "other";
+};
+const figure = (v, most) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= most ? v : null);
+export const figuresOf = (a) => {
+  const secs = figure(a?.duration, 30 * 86400), dist = figure(a?.distance, 1e7);
+  return { sport: garminSport(a?.activityType?.typeKey), secs: secs == null ? null : Math.round(secs), dist: dist == null ? null : Math.round(dist * 10) / 10 };
+};
 // a time as Garmin writes it ("2026-10-25 08:12:03", in GMT, or milliseconds)
 const when = (v) => (typeof v === "number" ? v : typeof v === "string" ? Date.parse(v.replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? "" : "Z")) : NaN);
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
@@ -167,7 +182,7 @@ export async function fetchNew(env, userId, { force = false } = {}) {
         const xs = Array.isArray(page) ? page : page?.activities || page?.activityList || page?.results || [];
         for (const a of xs) {
           const id = String(a.activityId ?? a.id ?? "");
-          if (/^\d{1,20}$/.test(id) && !seen.has(id) && !waiting.has(id)) found.push({ id, start: when(a.startTimeGMT ?? a.beginTimestamp ?? a.startTimeLocal), name: String(a.activityName || "").slice(0, 80) || null });
+          if (/^\d{1,20}$/.test(id) && !seen.has(id) && !waiting.has(id)) found.push({ id, start: when(a.startTimeGMT ?? a.beginTimestamp ?? a.startTimeLocal), name: String(a.activityName || "").slice(0, 80) || null, ...figuresOf(a) });
         }
         if (xs.length < 100) break;
       }
@@ -208,7 +223,8 @@ export async function fetchNew(env, userId, { force = false } = {}) {
       room -= bytes.length;
       if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
       await env.BIO_R2.put(newKey(userId, a.id), bytes, { httpMetadata: { contentType: "application/octet-stream" } });
-      await D.prepare("INSERT OR IGNORE INTO fx_garmin_new (user_id, id, start, name, added, size) VALUES (?, ?, ?, ?, ?, ?)").bind(userId, a.id, Number.isFinite(a.start) ? a.start : null, a.name, Date.now(), bytes.length).run();
+      await D.prepare("INSERT OR IGNORE INTO fx_garmin_new (user_id, id, start, name, added, size, sport, secs, dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(userId, a.id, Number.isFinite(a.start) ? a.start : null, a.name, Date.now(), bytes.length, a.sport, a.secs, a.dist).run();
       seen.add(a.id);
       if (Number.isFinite(a.start)) since = Math.max(since, a.start);
     }

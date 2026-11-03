@@ -112,6 +112,14 @@ async function get(env, token, path) {
 // ---- an activity as a file: Strava's streams, written as TCX ----
 const RIDE = /^(Ride|VirtualRide|MountainBikeRide|GravelRide|EBikeRide|EMountainBikeRide|Velomobile|Handcycle)$/, RUN = /^(Run|TrailRun|VirtualRun)$/;
 export const sportOf = (a) => { const t = String(a.sport_type || a.type || ""); return RIDE.test(t) ? "ride" : RUN.test(t) ? "run" : /Swim/.test(t) ? "swim" : /^(Walk|Hike)$/.test(t) ? "walk" : /WeightTraining|Workout|Crossfit/.test(t) ? "strength" : "other"; };
+// An activity's moving time (seconds) and distance (metres), as Strava's activity says them (each null where it doesn't,
+// or isn't a number that could be one): kept with its waiting row, so InFlite Today can show a ride before the app has
+// read it (functions/_fitshare.js donesIn)
+const figure = (v, most) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= most ? v : null);
+export const figuresOf = (a) => {
+  const secs = figure(a?.moving_time, 30 * 86400), dist = figure(a?.distance, 1e7);
+  return { secs: secs == null ? null : Math.round(secs), dist: dist == null ? null : Math.round(dist * 10) / 10 };
+};
 const esc = (s) => String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
 const iso = (ms) => new Date(Math.round(ms / 1000) * 1000).toISOString().replace(".000Z", "Z");
 // (a: Strava's activity; st: its streams, by type (key_by_type), each { data: [...] }) → the TCX, as text
@@ -202,8 +210,9 @@ export async function fetchStrava(env, userId, { force = false } = {}) {
       room -= bytes.length;
       if (!env.BIO_R2) throw new HttpError(503, "Not set up.");
       await env.BIO_R2.put(sNewKey(userId, id), bytes, { httpMetadata: { contentType: "application/octet-stream" } });
-      await D.prepare("INSERT OR IGNORE INTO fx_strava_new (user_id, id, start, name, sport, indoor, device, size, added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(userId, id, Number.isFinite(start) ? start : null, String(a.name || "").slice(0, 80) || null, sportOf(a), a.trainer || /^Virtual/.test(String(a.sport_type || "")) ? 1 : 0, String(a.device_name || "").slice(0, 60) || null, bytes.length, Date.now()).run();
+      const { secs, dist } = figuresOf(a);
+      await D.prepare("INSERT OR IGNORE INTO fx_strava_new (user_id, id, start, name, sport, indoor, device, size, added, secs, dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(userId, id, Number.isFinite(start) ? start : null, String(a.name || "").slice(0, 80) || null, sportOf(a), a.trainer || /^Virtual/.test(String(a.sport_type || "")) ? 1 : 0, String(a.device_name || "").slice(0, 60) || null, bytes.length, Date.now(), secs, dist).run();
       seen.add(id);
       if (!back && Number.isFinite(start)) since = Math.max(since, start);
       if (back && Number.isFinite(start)) backAt = Math.min(backAt, start);
