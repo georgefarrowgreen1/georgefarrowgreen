@@ -135,10 +135,14 @@ const store = () => G.p.evaluate(async () => {
 const F = () => G.p.frameLocator('iframe[name="ifl-chat"]');
 const engineState = () => G.p.evaluate(() => { try { return document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat?.state || null; } catch (_) { return null; } }).catch(() => null);
 const toastSaid = (re, ms = 10000) => until(() => G.p.evaluate((src) => [...document.querySelectorAll('.ifl-toast')].map((t) => t.innerText.replace(/\s+/g, ' ')).find((t) => new RegExp(src).test(t)) || null, re.source), ms);
-const navs = []; G.p.on('framenavigated', (f) => { if (f === G.p.mainFrame()) navs.push(f.url()); });
-// one card sent through the page's IFL.hub.send, picking `to` in the engine's sheet with the words typed
+// (each new document the page loads. Not Playwright's framenavigated, which a history entry written within the same
+// document fires too: the framework stamps its entry with history.replaceState as it starts, the page staying as it is)
+const docs = []; G.p.on('domcontentloaded', () => docs.push(G.p.url()));
+// one card sent through the page's IFL.hub.send, picking `to` in the engine's sheet with the words typed. stayed: the same
+// document throughout (a mark left on its window still there, and no new document loaded), at the same address
 async function sendVia(key, to, typed, { name } = {}) {
-  const n0 = navs.length, url0 = G.p.url();
+  const d0 = docs.length, url0 = G.p.url();
+  await G.p.evaluate(() => { window.__stay = 1; });
   await G.p.evaluate(({ w, pk }) => { window.__sent = null; window.IFL.hub.send(w, pk).then((r) => { window.__sent = r; }); }, { w: cards[key].say, pk: packed[key] });
   const row = F().locator(`.sheet [data-act=sendpick][data-id="${to}"]`);
   await row.waitFor({ timeout: 30000 });
@@ -148,15 +152,17 @@ async function sendVia(key, to, typed, { name } = {}) {
   await F().locator('.sheet [data-act=sendgo]').click();
   const said = await toastSaid(new RegExp(`Sent to ${name}`));
   const res = await until(() => G.p.evaluate(() => window.__sent), 10000);
-  return { said, res, sheetText, stayed: navs.length === n0 && G.p.url() === url0 };
+  const same = await G.p.evaluate(() => window.__stay === 1).catch(() => false);
+  return { said, res, sheetText, stayed: same && docs.length === d0 && G.p.url() === url0, url0 };
 }
 
 // ---- 1. Today: the engine there, ready; a script's sendTo with no tap refused, though the script says there was one ----
 // (the script is the page's own, run as it opens, never tapped: Playwright's own evaluate counts as a tap, so nothing of
-// the test touches the page until the script has said what it got, on the console. It waits until the page truly has no
-// activation (read through the browser's own getters, as the engine reads it), then claims one every way a page script
-// can: an own userActivation on its navigator, UserActivation's isActive on the page's prototype and on the engine
-// frame's, all saying true. The engine reads its own getters, taken as it started, so it's still refused)
+// the test touches the page until the script has said what it got, on the console, and nothing is left asking it from
+// before (join.mjs's pastOffer looks for its offer a look at a time, never with a wait left running). It waits until the
+// page truly has no activation (read through the browser's own getters, as the engine reads it), then claims one every
+// way a page script can: an own userActivation on its navigator, UserActivation's isActive on the page's prototype and
+// on the engine frame's, all saying true. The engine reads its own getters, taken as it started, so it's still refused)
 const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
 await G.ctx.addInitScript(({ to, w, pk }) => {
   if (location.pathname !== '/' || location.hash !== '#notap' || window.top !== window) return;
@@ -197,7 +203,7 @@ const before = snapshot(), seen0 = seen.length;
 // ---- 2. from Today: the weather to Pat ----
 const w1 = await sendVia('weather', P.id, TYPED.weather, { name: 'Pat' });
 ok(/Sent to Pat/.test(w1.said || '') && /You’re still here/.test(w1.said || ''), '2. the weather to Pat: “Sent to Pat. You’re still here”', w1.said);
-ok(w1.stayed && w1.res?.ok === true, '2. in the same document: no navigation, still on Today', js({ navs: navs.slice(-2), res: w1.res }));
+ok(w1.stayed && w1.res?.ok === true, '2. in the same document: no navigation, still on Today', js({ url: G.p.url(), docs: docs.slice(-2), res: w1.res }));
 await shot(G, '2-sent-weather');
 // ---- 3. a stock to Pat: percent only ----
 const s1 = await sendVia('stock', P.id, TYPED.stock, { name: 'Pat' });
@@ -216,9 +222,11 @@ await G.p.evaluate(({ to, w, pk }) => {
 const l0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}' AND recipient = '${L.id}'`)[0]?.n || 0);
 await G.p.click('#t-onetap');
 const one1 = await until(() => G.p.evaluate(() => window.__one), 20000);
+// (the toast read first: it's up for 3.6 s, and a look at the database (wrangler, run synchronously) can take longer)
+const said5 = await toastSaid(/Sent to Leo/);
 ok(one1?.ok === true && /Leo/.test(one1.say || ''), '5. the finished ride to Leo in one tap: sent, no sheet', js(one1));
 ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}' AND recipient = '${L.id}'`)[0]?.n || 0) === l0 + 1, '5. one letter to Leo');
-ok(/You’re still here/.test((await toastSaid(/Sent to Leo/)) || ''), '5. “Sent to Leo. You’re still here”');
+ok(/You’re still here/.test(said5 || ''), '5. “Sent to Leo. You’re still here”', said5);
 await G.p.evaluate(() => document.getElementById('t-onetap')?.remove());
 
 // ---- 6. a group as a target ----
@@ -276,7 +284,7 @@ for (const [path, key, typed, label] of [['/weather/', 'weather', TYPED.weatherA
   await G.p.goto(HUB + path, { waitUntil: 'load' });
   await until(() => G.p.evaluate(() => !!window.IFL?.hub?.on), 15000);
   const x = await sendVia(key, P.id, typed, { name: 'Pat' });
-  ok(/Sent to Pat/.test(x.said || '') && /You’re still here/.test(x.said || '') && x.stayed && new URL(G.p.url()).pathname === path, `7. from ${label}’s page at the hub: the engine’s sheet, sent, still on ${label}`, js({ said: x.said, url: G.p.url() }));
+  ok(/Sent to Pat/.test(x.said || '') && /You’re still here/.test(x.said || '') && x.stayed && new URL(G.p.url()).pathname === path, `7. from ${label}’s page at the hub: the engine’s sheet, sent, still on ${label}`, js({ said: x.said, url: G.p.url(), stayed: x.stayed, url0: x.url0 }));
 }
 await shot(G, '7-from-markets');
 
