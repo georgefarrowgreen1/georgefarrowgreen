@@ -238,13 +238,13 @@ test("Waiting for You: who and since when, one-to-one and groups, the newest fir
   // (only the pinned columns of each table were read)
   const msgQs = asked.filter((q) => /\bpg_msgs\b/.test(q)), gQs = asked.filter((q) => /\bpg_gmsgs\b/.test(q));
   assert.ok(msgQs.length >= 2 && gQs.length >= 2);
-  for (const q of msgQs) {
-    const list = /SELECT\s+([\s\S]*?)\s+FROM\s+pg_msgs/i.exec(q)?.[1] || "";
+  // (each select list of each statement, a UNION's too)
+  const lists = (q) => [...q.matchAll(/SELECT\s+([\s\S]*?)\s+FROM\s/gi)].map((x) => x[1]);
+  for (const q of msgQs) for (const list of lists(q)) {
     for (const [, c] of list.matchAll(/\bm\.(\w+)/g)) assert.ok(CHAT_COLUMNS.includes(c), `m.${c} isn't in CHAT_COLUMNS`);
     assert.ok(!/\*/.test(list), list);
   }
-  for (const q of gQs) {
-    const list = /SELECT\s+([\s\S]*?)\s+FROM\s+pg_g/i.exec(q)?.[1] || "";
+  for (const q of gQs) for (const list of lists(q)) {
     for (const [, c] of list.matchAll(/\b[gd]\.(\w+)/g)) assert.ok(GROUP_COLUMNS.includes(c), `${c} isn't in GROUP_COLUMNS`);
     for (const c of ["body", "sender_key", "wrap", "photo", "legs", "from_place", "to_place", "wx"]) assert.ok(!new RegExp(`\\b[gd]\\.${c}\\b`).test(q), `${c} never read`);
   }
@@ -274,6 +274,32 @@ test("wrote while you rode: who wrote inside the window, friends and groups, the
   assert.ok(!w.some((x) => [CY, ED, WS, WX].includes(x.id)), "not Cy's (before it), Ed's (lost, gone or in the air), nor anyone not a friend");
   assert.ok(!JSON.stringify(w).includes("SECRET"));
   assert.deepEqual(await wroteWhile(env, { id: W }, T, T - H), [], "a window the wrong way round: nobody");
+});
+
+test("Waiting for You and who wrote: a message read in the window counts as one not read; a vanished group message doesn't", async () => {
+  said("w-di-read", DI, W, T - 1.5 * H, T - 1.5 * H, { read_at: T - H });
+  gsaid("g2-gone", G2, CY, T - 2 * H, [W], T - 2 * H);
+  sql.prepare("UPDATE pg_gmsgs SET gone_at = ? WHERE id = ?").run(T - H, "g2-gone");
+  const w = await wroteWhile(env, { id: W }, T - 3 * H, T);
+  assert.deepEqual(w.slice(0, 2).map((x) => x.id), [G1, DI], "Di's, read since, in the window");
+  assert.ok(!w.some((x) => x.id === G2), "Book Club's newest is gone");
+  const waiting = await waitingFor(env, { id: W }, T);
+  assert.ok(waiting.some((x) => x.id === DI && x.at === T - 1.5 * H && x.n === 1), JSON.stringify(waiting));
+  assert.ok(!waiting.some((x) => x.id === G2), "nobody waiting in Book Club: their newest there is gone, mine came after the one before");
+});
+
+test("Waiting for You and who wrote read by indexes on the account's own rows, never its whole history", async () => {
+  asked.length = 0;
+  await waitingFor(env, { id: W }, T); await wroteWhile(env, { id: W }, T - 3 * H, T);
+  const plans = asked.map((q) => [q, sql.prepare(`EXPLAIN QUERY PLAN ${q}`).all().map((r) => r.detail)]);
+  assert.equal(plans.length, 8);
+  for (const [q, plan] of plans) {
+    const where = q.replace(/\s+/g, " ").slice(0, 80);
+    assert.ok(!plan.some((d) => /^SCAN (m|g|d|k|l)\b/.test(d)), `${where}: ${plan.join(" | ")}`);
+    for (const d of plan.filter((x) => /^SEARCH m\b/.test(x))) assert.match(d, /pg_msgs_to \(recipient=\? AND read_at[=>]\?\)|pg_msgs_pair \(sender=\? AND recipient=\? AND sent_at>\? AND sent_at<\?\)/, where);
+    for (const d of plan.filter((x) => /^SEARCH d\b/.test(x))) assert.match(d, /pg_gdeliv_user \(user_id=\? AND deliver_at>\? AND deliver_at<\?\)/, where);
+    for (const d of plan.filter((x) => /^SEARCH g\b/.test(x))) assert.match(d, /\(id=\?\)|pg_gmsgs_group \(group_id=\? AND sent_at>\? AND sent_at<\?\)/, where);
+  }
 });
 
 test("GROUP_COLUMNS is exactly the allowlist", () => {
