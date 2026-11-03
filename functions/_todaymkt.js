@@ -6,7 +6,8 @@
 // market shut): no dividend, ISA or day's line, so a tick's accounts cost the database no more than they need
 
 import { holdings, quotes, rates, isaOf, dividends, yearOf, wrapFigures, dayIn, nextDividend, marketState, shutToday, INDICES } from "./_markets.js";
-import { Quiet, withSend } from "./_todaycards.js";
+import { Quiet, withSend, withForDay } from "./_todaycards.js";
+import { packCard } from "../pigeon/cards.js";
 
 // the prices by this long after the card's begun, and the rates a second after (what's late given as kept: quoteBy),
 // inside the card's 7 seconds
@@ -18,6 +19,10 @@ const PAYS_NONE = /^\^|=X$|-(USD|GBP|EUR)$/;
 // at most this many points in the day's line (markets/app.js daySeries, every holding's at each moment)
 const SPARK_MAX = 48;
 const pence = (v) => Math.round(v * 100) / 100;
+// (Today First's: the markets whose hours say when the day's prices are in, each with the zone its holdings trade in;
+// at most this many holdings on the card, each with its percent and its card)
+const HOURS_OF = [["London", "^FTSE", "Europe/London"], ["New York", "^GSPC", "America/New_York"]];
+const HOLDINGS_MAX = 20;
 
 // A holding's dividends, as far back as they go, from what Markets has kept (never asked for here: the card can't wait);
 // where nothing's kept, its year's, and the whole asked for after the answer's gone, so the next look has it
@@ -47,7 +52,8 @@ export async function marketsCard(env, u, ctx) {
   // Markets' own logic for the day: only what traded today counts (wrapFigures)
   const F = wrapFigures(held, fx, t);
   const traded = held.some((r) => r.x.kind === "crypto" || (!!r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t)));
-  const one = (r) => r && { name: r.name, symbol: r.symbol, change: pence(F.day(r)), href: at(r.symbol) };
+  const v2 = ctx.v === 2 && !morning;
+  const one = (r) => r && (v2 ? { name: r.name, symbol: r.symbol, change: pence(F.day(r)), pct: pctOf(r, t), href: at(r.symbol) } : { name: r.name, symbol: r.symbol, change: pence(F.day(r)), href: at(r.symbol) });
   const change = traded ? pence(F.total) : 0, pct = traded ? Math.round(F.pct * 100) / 100 : 0;
 
   // the ISA's tax year (markets/app.js isaYear, tracksIsa): shown once something's paid in, or something's held in it
@@ -65,7 +71,11 @@ export async function marketsCard(env, u, ctx) {
   const nd = items.length ? nextDividend(items, t) : null;
   const dividend = nd ? { name: nd.name, symbol: nd.symbol, at: nd.at < 1e11 ? nd.at * 1000 : nd.at, value: pence(nd.value), href: at(nd.symbol) } : null;
 
-  return withSend({
+  // (Today First's day, asked for with v=2: when the market you hold closes, each holding's percent and its card, and,
+  // held apart for the day's cards, each market's hours and the holdings past their alerts)
+  const shut = shutToday(held, t), hours = v2 ? hoursOf(q, held, t, shut) : [];
+  const rows = v2 ? held.map((r) => ({ sym: r.symbol, name: r.name, pct: pctOf(r, t), alert: Number.isFinite(r.alert) ? r.alert : null, day: dayIn(r.x.tz || "Europe/London", t), where: whereOf(r) })) : [];
+  const card = withSend({
     state: "ok",
     href,
     owned: mine.length,
@@ -74,7 +84,7 @@ export async function marketsCard(env, u, ctx) {
     change,
     pct,
     traded,
-    market: { ...marketState(q, t), shut: shutToday(held, t) },
+    market: { ...marketState(q, t), shut, ...(v2 ? { closesAt: hours[0]?.close ?? null } : {}) },
     top: traded && F.top && F.day(F.top) > 0 ? one(F.top) : null,
     low: traded && F.low && F.day(F.low) < 0 ? one(F.low) : null,
     spark: traded && !morning ? daySeries(held, fx, F.value) : null,
@@ -82,10 +92,46 @@ export async function marketsCard(env, u, ctx) {
     isa,
     leftOut: mine.filter((h) => !held.some((r) => r.symbol === h.symbol)).map((h) => h.name),
     stale: held.some((r) => !!r.x.stale),
+    ...(v2 ? { holdings: holdingsOf(rows, t) } : {}),
     share: !traded ? null : Math.abs(change) < 1 || Math.abs(pct).toFixed(1) === "0.0" ? "My portfolio’s little changed today." : `My portfolio is ${change > 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)}% today.`,
   // (the card for Chat, pigeon/cards.js: the whole portfolio's percent and nothing more, no holding named, no amount)
   }, traded ? { v: 1, kind: "markets", from: "today", at: t, say: Math.abs(pct).toFixed(1) === "0.0" ? "My portfolio’s little changed today." : `My portfolio is ${pct > 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)}% today.`,
     snap: { name: "Portfolio", sym: null, pct, day: dayIn("Europe/London", t) } } : null);
+  return v2 ? withForDay(card, { hours, held: rows.map(({ alert, ...r }) => r), alerts: alertsPast(rows) }) : card;
+}
+
+// ---- Today First's (spec §7.3, §7.4, §7.6): percents only, never an amount ----
+// a holding's change today, in percent (2 places): only what traded today, by its own market's day, as wrapFigures has it
+const tradedToday = (r, t) => r.x.kind === "crypto" || (!!r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t));
+const pctOf = (r, t) => (tradedToday(r, t) && r.x.prev ? Math.round(((r.x.price - r.x.prev) / r.x.prev) * 10000) / 100 : 0);
+const whereOf = (r) => HOURS_OF.find(([, , tz]) => tz === r.x.tz)?.[0] || null;
+// The hours today of each market you hold (London's, New York's), from its index's trading period, where it trades
+// today and isn't shut: [{ where, open, close }] (ms), London first
+function hoursOf(q, held, t, shut) {
+  return HOURS_OF.filter(([where, , tz]) => held.some((r) => r.x.tz === tz) && !shut.includes(where)).map(([where, sym, tz]) => {
+    const o = q?.[sym]?.open;
+    return o && Number.isFinite(o.start) && Number.isFinite(o.end) && dayIn(tz, o.start * 1000) === dayIn(tz, t) ? { where, open: o.start * 1000, close: o.end * 1000 } : null;
+  }).filter(Boolean);
+}
+const signed = (p) => `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%`;
+// A stock's card for Chat (pigeon/cards.js): its name, symbol and percent today, and nothing more (no amount, no
+// holding's size). finished: said once its market's closed. → the card, unpacked
+export function stockSend({ sym, name, pct, day }, t, { finished = false } = {}) {
+  const p = Number.isFinite(pct) ? pct : 0, nm = String(name || sym || "").slice(0, 60);
+  const say = finished ? `${nm} finished ${p > 0 ? "up " : p < 0 ? "down " : ""}${p ? `${Math.abs(p).toFixed(1)}%` : "level"} today.` : `${nm} ${signed(p)} today.`;
+  return { v: 1, kind: "markets", from: "today", at: t, say: say.slice(0, 200), snap: { name: nm, sym, pct: p, day }, ref: { sym } };
+}
+// Each holding with its percent today and its card, packed for the page: [{ sym, name, pct, sendCard }] (rows: { sym,
+// name, pct, day })
+export function holdingsOf(rows, t) {
+  return (rows || []).slice(0, HOLDINGS_MAX).map((r) => ({ sym: r.sym, name: r.name, pct: r.pct, sendCard: packCard(stockSend(r, t)) }));
+}
+// The holdings past their alert today (Markets' own rule: a move of at least the alert's percent, either way), computed
+// here because mk_alerts.fired is set only for accounts with a Markets phone; the biggest move first.
+// rows: [{ sym, name, pct, alert }] → [{ sym, name, pct, alert }]
+export function alertsPast(rows) {
+  return (rows || []).filter((r) => Number.isFinite(r.alert) && r.alert > 0 && Number.isFinite(r.pct) && Math.abs(r.pct) >= r.alert)
+    .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).map((r) => ({ sym: r.sym, name: r.name, pct: r.pct, alert: r.alert }));
 }
 
 // Your money through the day: each holding at its price at each moment, its last close before it opened (markets/app.js

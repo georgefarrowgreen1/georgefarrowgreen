@@ -2,6 +2,16 @@
 // friend; yours in the air; and a streak that ends today unless a pigeon flies. Friends only, and never a word of any
 // letter: only the columns in CHAT_COLUMNS are ever read (a unit test holds this to them, and proves nothing sealed can
 // leave), never a pigeon scheduled before it's taken off, and a pigeon that will be lost looks like any other in the air.
+// And Today First's Waiting for You (spec §7.4): who's waiting for an answer, and since when, never what they said.
+//   waitingFor(env, u, t) → [{ id, first, group?: { id, name }, at, n }], the newest first, at most 6: one-to-one friends
+//     whose newest landed letter or message in the chat is theirs (read or not), within 24 hours, not lost or gone, with
+//     nothing of yours sent since (n: how many of theirs since your last); and groups whose newest delivered to you is
+//     someone else's, within 24 hours, with nothing of yours sent to the group since (id: the group's; first: who wrote
+//     it). Their words are the phone's alone (Chat's engine, pigeon/digest.js).
+//   wroteWhile(env, u, start, end) → [{ id, first, group?, at }]: who wrote to you inside a window (a letter or message
+//     landing in it), the latest first, at most 6 (the after card's "Mira wrote while you rode")
+// Only CHAT_COLUMNS of pg_msgs, and GROUP_COLUMNS of pg_gmsgs and pg_gdeliv, are ever read (lost_at, gone_at and
+// recalled only in a WHERE); with pg_users' id and name, and pg_groups' name.
 
 import { db } from "./_pigeon.js";
 import { streaksFor, STREAK_MIN } from "./_streaks.js";
@@ -10,6 +20,10 @@ import { firstWord, withSend } from "./_todaycards.js";
 // the only columns of pg_msgs Today reads (with pg_users' id, name and avatar_at, for who). Never ct, via_ct, via_note,
 // body, wrap, sender_key, photo, photo_size, once, sched, legs, via*, wx*; lost_at only in a WHERE
 export const CHAT_COLUMNS = ["sender", "recipient", "sent_at", "deliver_at", "km", "pigeon", "swift", "mystery", "bird_name", "bird_rank", "from_place", "to_place", "read_at", "instant"];
+
+// the only columns of pg_gmsgs (group_id, sender, sent_at) and pg_gdeliv (user_id, deliver_at, read_at) Today reads,
+// joined by their keys. Never body, sender_key, wrap, photo*, legs, wx*, *_place, *_lat, *_lon
+export const GROUP_COLUMNS = ["group_id", "sender", "sent_at", "user_id", "deliver_at", "read_at"];
 
 // (how many of each the card shows)
 const INBOUND = 6, UNREAD = 6, MINE = 3;
@@ -83,4 +97,67 @@ export async function chatCard(env, u, ctx) {
   if (long) out.share = `My flight streak with ${firstWord(pals.get(long.id).name) || "you"} is ${long.n} days.`;
   // (the card for Chat, pigeon/cards.js: that streak, the friend's first name, its days and its best)
   return withSend(out, long ? { v: 1, kind: "streak", from: "today", at: t, say: out.share, snap: { who: (firstWord(pals.get(long.id).name) || "A friend").slice(0, 40), n: long.n, ...(Number.isFinite(long.best) ? { best: Math.max(long.best, long.n) } : {}) } } : null);
+}
+
+// ---- Today First's Waiting for You (spec §7.4): who and since when, never words ----
+const WAIT_MS = 24 * 3600e3, WAITING = 6;
+export async function waitingFor(env, u, t) {
+  const me = u.id, D = await db(env), since = t - WAIT_MS;
+  const [theirs, mine, gTheirs, gMine] = await Promise.all([
+    // theirs to me, landed in the last day, from friends
+    D.prepare(`SELECT m.sender, m.deliver_at, u.name FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
+      WHERE m.recipient = ?1 AND m.deliver_at <= ?2 AND m.deliver_at > ?3 AND m.lost_at IS NULL AND m.gone_at IS NULL ORDER BY m.deliver_at DESC LIMIT 300`).bind(me, t, since).all(),
+    // mine, sent or landed in the last day (one that will be lost later still counts as an answer: it's secret till then)
+    D.prepare(`SELECT m.recipient, m.sent_at, m.deliver_at FROM pg_msgs m
+      WHERE m.sender = ?1 AND m.sent_at <= ?2 AND (m.sent_at > ?3 OR m.deliver_at > ?3) AND (m.lost_at IS NULL OR m.lost_at > ?2) AND m.gone_at IS NULL LIMIT 600`).bind(me, t, since).all(),
+    // groups: delivered to me in the last day, someone else's, in a group I'm in
+    D.prepare(`SELECT g.group_id, g.sender, d.deliver_at, u.name, r.name AS gname FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
+      JOIN pg_group_members k ON k.group_id = g.group_id AND k.user_id = ?1 JOIN pg_groups r ON r.id = g.group_id JOIN pg_users u ON u.id = g.sender
+      WHERE d.user_id = ?1 AND d.deliver_at <= ?2 AND d.deliver_at > ?3 AND d.lost_at IS NULL AND d.recalled = 0 AND g.sender != ?1 ORDER BY d.deliver_at DESC LIMIT 300`).bind(me, t, since).all(),
+    // …and mine sent to my groups in the last day
+    D.prepare("SELECT g.group_id, g.sent_at FROM pg_gmsgs g WHERE g.sender = ?1 AND g.sent_at <= ?2 AND g.sent_at > ?3 LIMIT 600").bind(me, t, since).all(),
+  ]);
+  const out = [];
+  // one-to-one: their newest landed is the chat's newest landed, and nothing of mine sent since it
+  const byFriend = new Map();
+  for (const r of theirs.results || []) { const f = byFriend.get(r.sender) || byFriend.set(r.sender, { name: r.name, at: [] }).get(r.sender); f.at.push(r.deliver_at); }
+  const mineTo = new Map();
+  for (const r of mine.results || []) (mineTo.get(r.recipient) || mineTo.set(r.recipient, []).get(r.recipient)).push(r);
+  for (const [id, f] of byFriend) {
+    const last = Math.max(...f.at), m = mineTo.get(id) || [];
+    if (m.some((x) => x.sent_at >= last || (x.deliver_at > last && x.deliver_at <= t))) continue;
+    const answered = Math.max(-Infinity, ...m.map((x) => x.sent_at));
+    out.push({ id, first: firstWord(f.name), at: last, n: f.at.filter((x) => x > answered).length });
+  }
+  // groups: someone else's the newest delivered to me, nothing of mine sent to the group since it
+  const byGroup = new Map();
+  for (const r of gTheirs.results || []) {
+    const g = byGroup.get(r.group_id) || byGroup.set(r.group_id, { name: r.gname, first: firstWord(r.name), at: r.deliver_at, all: [] }).get(r.group_id);
+    g.all.push(r.deliver_at);
+  }
+  const mineIn = new Map();
+  for (const r of gMine.results || []) mineIn.set(r.group_id, Math.max(mineIn.get(r.group_id) ?? -Infinity, r.sent_at));
+  for (const [id, g] of byGroup) {
+    const answered = mineIn.get(id) ?? -Infinity;
+    if (answered >= g.at) continue;
+    out.push({ id, first: g.first, group: { id, name: String(g.name ?? "") }, at: g.at, n: g.all.filter((x) => x > answered).length });
+  }
+  return out.sort((a, b) => b.at - a.at).slice(0, WAITING);
+}
+export async function wroteWhile(env, u, start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+  const me = u.id, D = await db(env);
+  const [one, groups] = await Promise.all([
+    D.prepare(`SELECT m.sender, MAX(m.deliver_at) AS at, u.name FROM pg_msgs m ${FRIENDS} JOIN pg_users u ON u.id = m.sender
+      WHERE m.recipient = ?1 AND m.deliver_at >= ?2 AND m.deliver_at < ?3 AND m.lost_at IS NULL AND m.gone_at IS NULL GROUP BY m.sender ORDER BY at DESC LIMIT ${WAITING}`).bind(me, start, end).all(),
+    D.prepare(`SELECT g.group_id, d.deliver_at, u.name, r.name AS gname FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
+      JOIN pg_group_members k ON k.group_id = g.group_id AND k.user_id = ?1 JOIN pg_groups r ON r.id = g.group_id JOIN pg_users u ON u.id = g.sender
+      WHERE d.user_id = ?1 AND d.deliver_at >= ?2 AND d.deliver_at < ?3 AND d.lost_at IS NULL AND d.recalled = 0 AND g.sender != ?1 ORDER BY d.deliver_at DESC LIMIT 200`).bind(me, start, end).all(),
+  ]);
+  return [
+    ...(one.results || []).map((r) => ({ id: r.sender, first: firstWord(r.name), at: r.at })),
+    // (each group once, by who wrote in it last)
+    ...(groups.results || []).filter((r, i, all) => all.findIndex((x) => x.group_id === r.group_id) === i)
+      .map((r) => ({ id: r.group_id, first: firstWord(r.name), group: { id: r.group_id, name: String(r.gname ?? "") }, at: r.deliver_at })),
+  ].sort((a, b) => b.at - a.at).slice(0, WAITING);
 }
