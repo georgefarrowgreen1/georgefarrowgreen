@@ -274,7 +274,7 @@ export async function messageSent(env, from, toId, msgId) {
 }
 // …and in a group, to each member it went to (memberIds: never its sender), as each one's settings say
 export async function groupMessageSent(env, from, g, memberIds, msgId) {
-  const D = await db(env), busy = await busyMap(env.DB, memberIds, Date.now()).catch(() => new Map());
+  const D = await db(env), busy = await busyMap(env.DB, memberIds, Date.now(), env).catch(() => new Map());
   for (const id of memberIds) {
     const t = Date.now(), r = await userPrefs(env, id);
     if (!r || isQuiet(r.p, t) || openOn(r.u, g.id, t) || holdsFor(busy.get(id), "friends")) continue;
@@ -346,7 +346,7 @@ export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") 
 function etaText(ms) { const all = Math.max(1, Math.round(ms / MIN)), h = Math.floor(all / 60), m = all % 60; return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`; }
 const isMuted = async (env, gid, uid) => !!(await (await db(env)).prepare("SELECT muted FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).first())?.muted;
 export async function groupAdded(env, by, ids, g) {
-  const busy = await busyMap(env.DB, ids, Date.now()).catch(() => new Map());
+  const busy = await busyMap(env.DB, ids, Date.now(), env).catch(() => new Map());
   for (const id of ids) {
     const r = await userPrefs(env, id); if (!r || !r.p.requests) continue;
     if (isQuiet(r.p) || holdsFor(busy.get(id), "friends")) { await hold(env, id, "added", g.id, by.id); continue; }
@@ -385,7 +385,7 @@ export async function groupRerouted(env, senderId, to, gid, deliverAt) {
 // stands, a request still waiting, still friends, still in the group (said as it would have been, with whatever they've
 // chosen since: off now, it's not said at all). Still quiet, or still riding: it waits; three days on, it goes untold.
 // (H: the tick's view of who's riding, functions/_busy.js holdsAt)
-export async function heldTick(env, D, t, origin, H = holdsAt(D, t)) {
+export async function heldTick(env, D, t, origin, H = holdsAt(D, t, env)) {
   let told = 0;
   await D.prepare("DELETE FROM pg_held WHERE at < ?").bind(t - LOOKBACK).run();
   const { results } = await allRows(D, `SELECT h.user_id, h.kind, h.about, h.by_id, h.at, u.notify_prefs FROM pg_held h JOIN pg_users u ON u.id = h.user_id WHERE h.at >= ?1`, [t - LOOKBACK], "h", "at");
@@ -426,7 +426,7 @@ async function allRows(D, sql, binds, alias, key, per = 200, pages = 25) {
   }
   return { results };
 }
-async function groupTick(env, D, t, since, H = holdsAt(D, t)) {
+async function groupTick(env, D, t, since, H = holdsAt(D, t, env)) {
   let pushes = 0, landedN = 0, held = 0;
   const { results: due } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.deliver_at, d.read_at, m.sender, m.group_id, m.instant, g.name AS gname, u.notify_prefs, u.open_chat, u.open_at,
       COALESCE(gm.muted, 1) AS muted, s.name AS sname
@@ -656,7 +656,7 @@ async function shipTick(env, D, t, since) {
   }
   return pushes;
 }
-async function reactTick(env, D, t, since, H = holdsAt(D, t)) {
+async function reactTick(env, D, t, since, H = holdsAt(D, t, env)) {
   let pushes = 0, rode = new Map();
   const { results } = await allRows(D, `SELECT r.id, r.sender, r.recipient, r.group_id, r.deliver_at, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
     FROM pg_reacts r JOIN pg_users u ON u.id = r.recipient JOIN pg_users s ON s.id = r.sender
@@ -767,8 +767,14 @@ async function blurOld(D, t) {
 // Pigeons that have landed since the last tick: push now; email those who
 // asked, once things have been waiting a little while unread. Quiet hours hold
 // both until they end. Only landings after notifications went live count.
+// (pg_push's via column, which marks the rows InFlite's one device route fanned out (functions/_devices.js, which makes
+// it too): made by the tick as well, once a copy of the server's running, so the rollback's "DELETE FROM pg_push WHERE
+// via = 'hub'" (spec §15.4) has it to read on a database no device route has been used on. Its failure (it's there
+// already) ignored)
+const viaMade = new WeakSet();
 export async function tick(env, origin) {
   const D = await db(env), t = Date.now();
+  if (!viaMade.has(D)) { viaMade.add(D); await D.prepare("ALTER TABLE pg_push ADD COLUMN via TEXT").run().catch(() => {}); }
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
   await lockOldSecrets(D, env).catch((e) => logError(env, "pigeon at rest", e));
   await vanishSweep(env).catch((e) => logError(env, "pigeon vanish", e));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
@@ -799,7 +805,7 @@ export async function tick(env, origin) {
   // riding, for every pass of it); and a message waits while that chat is open on their phone (they're reading it), for
   // 5 minutes at most: an app that went without saying so still gets its push. (since never moves past LOOKBACK, so it's
   // seen again)
-  const H = holdsAt(D, t);
+  const H = holdsAt(D, t, env);
   await H.load(due.map((m) => m.recipient));
   const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t) && !H.holds(m.recipient) && !(m.instant && openOn(m, m.sender, t) && m.deliver_at > t - OPEN_HOLD));
   let landed = [];
@@ -817,10 +823,10 @@ export async function tick(env, origin) {
       landed.push(...results.filter((m) => (m.instant ? prefs.get(m.recipient).messages : prefs.get(m.recipient).landed) && !m.read_at));
     }
   }
-  // (those a ride held, told now it's done: "while you rode", each counted in the hold rule's record)
-  const rodeN = new Map(), rodeKeys = new Set();
-  for (const m of landed) if (H.rode(m.recipient, m.deliver_at)) { rodeN.set(m.recipient, (rodeN.get(m.recipient) || 0) + 1); rodeKeys.add(m.recipient + "|" + m.sender + "|" + (m.instant ? 1 : 0)); }
-  for (const [uid, n] of rodeN) await heldAdd(env, uid, n);
+  // (those a ride held, told now it's done: "while you rode", each counted in the hold rule's record as it's told, below:
+  // how many of each person's from each friend a ride held)
+  const rodeIn = new Map();
+  for (const m of landed) if (H.rode(m.recipient, m.deliver_at)) { const k = m.recipient + "|" + m.sender + "|" + (m.instant ? 1 : 0); rodeIn.set(k, (rodeIn.get(k) || 0) + 1); }
   let pushes = 0, emails = 0;
   // Pigeon Death: tell the sender when one of theirs is lost on the way
   const { results: lost } = await allRows(D, `SELECT m.id, m.sender, m.recipient, u.notify_prefs, r.name FROM pg_msgs m
@@ -847,14 +853,17 @@ export async function tick(env, origin) {
     // (letters and messages told apart: a message as it's told when sent, its words, count and tag the same, whichever claims it)
     const pairs = new Map();
     for (const m of landed) { const k = m.recipient + "|" + m.sender + "|" + (m.instant ? 1 : 0); pairs.set(k, (pairs.get(k) || 0) + 1); }
+    const rodeN = new Map();
     for (const [k, n] of pairs) {
       const [to, from, inst] = k.split("|"), names = prefs.get(to).names;
-      // blocked or unfriended since it took off: it still lands, but no one is told who sent it
+      // blocked or unfriended since it took off: it still lands, but no one is told who sent it (nor counted as held)
       if (!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(to, from).first())) continue;
-      if (inst === "1") { pushes += await tellMessage(env, D, to, { id: from, name: name.get(from) }, prefs.get(to), t, rodeKeys.has(k)); continue; }
+      if (rodeIn.has(k)) rodeN.set(to, (rodeN.get(to) || 0) + rodeIn.get(k));
+      if (inst === "1") { pushes += await tellMessage(env, D, to, { id: from, name: name.get(from) }, prefs.get(to), t, rodeIn.has(k)); continue; }
       pushes += await pushTo(env, to, { title: names ? firstName(name.get(from)) : "Chat",
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
+    for (const [uid, n] of rodeN) await heldAdd(env, uid, n);
   }
   // friend requests and the like that quiet hours or a ride held, now they've ended for whoever they're for
   await heldTick(env, D, t, origin, H).catch((e) => logError(env, "pigeon held", e));

@@ -1019,7 +1019,8 @@ await fitdb(env); await timesReady(env); await offersReady(env); await tddb(env)
 const MIN = 60e3;
 // a ride with a time (Ride At, or Ride Then: a tap), and its ride coming in (from Fitness), and the hold rule's level
 const rideAt = (p, start, len = 60 * MIN) => run("INSERT OR REPLACE INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES (?, ?, ?, ?, 'UTC', 'ride', 'set', ?)", p.id, new Date(start).toISOString().slice(0, 10), start, start + len, start);
-const rodeIn = (p, start) => put("fx_acts", { user_id: p.id, id: crypto.randomUUID(), start, sport: "ride", type: "fit", size: 1, added: Date.now() });
+// (added: when it came in, now unless it's said)
+const rodeIn = (p, start, added = Date.now()) => put("fx_acts", { user_id: p.id, id: crypto.randomUUID(), start, sport: "ride", type: "fit", size: 1, added });
 const holdAt = (p, level) => run("INSERT INTO td_rules (user_id, rule, level) VALUES (?, 'holdRide', ?) ON CONFLICT(user_id, rule) DO UPDATE SET level = excluded.level", p.id, level);
 const heldN = (p) => one("SELECT held FROM td_rules WHERE user_id = ? AND rule = 'holdRide'", p.id)?.held ?? 0;
 
@@ -1061,6 +1062,38 @@ test("a ride holds messages, group messages, reactions and requests at do; told 
   pushBurst.clear();
   await send(mira, rider, { instant: true });
   assert.ok((await told(rider)).some((x) => x.body === "Sent you 3 messages."), "as ever");
+});
+
+test("what came once the ride was in wasn't held: told as ever, not \"while you rode\", not counted; nor is one held from someone unfriended since", async () => {
+  pushBurst.clear();
+  const ray = await pushOn(await person("Ray Rider"), { names: true }), nia = await person("Nia Ross"), mira = await person("Mira Bell");
+  befriend(nia, ray); befriend(mira, ray);
+  // Ray's ride began 50 minutes ago (its cap an hour and ten minutes off), and came in 10 minutes ago
+  const start = Date.now() - 50 * MIN; rideAt(ray, start); rodeIn(ray, start + MIN, Date.now() - 10 * MIN);
+  pushes = [];
+  // a reaction to Ray's message now (only the tick tells reactions), and Mira's message while her chat's open on his phone
+  const mine = await send(ray, nia, { instant: true });
+  assert.equal((await api(nia, "POST", "react", { id: crypto.randomUUID(), msg: mine.body.message.id, ct: CT })).status, 200);
+  run("UPDATE pg_users SET open_chat = ?, open_at = ? WHERE id = ?", mira.id, Date.now(), ray.id);
+  const m = await send(mira, ray, { instant: true });
+  assert.equal(msgRow(m.body.message.id).notified_at, null, "open: left for the tick");
+  run("UPDATE pg_users SET open_at = ? WHERE id = ?", Date.now() - 31e3, ray.id);
+  await tick(env, "http://localhost");
+  assert.deepEqual((await told(ray)).map((x) => [x.title, x.body]).sort((a, b) => a[0].localeCompare(b[0])), [["Mira", "Sent you a message."], ["Nia", "Reacted to your message."]]);
+  assert.equal(heldN(ray), 0, "nothing came while he rode");
+  // Rae, riding: a message from Sol, then Sol unfriends her; and one from Nia. Her ride comes in: Nia's told and counted,
+  // Sol's lands untold and uncounted
+  const rae = await pushOn(await person("Rae Rider"), { names: true }), sol = await person("Sol Hart");
+  befriend(sol, rae); befriend(nia, rae);
+  const began = Date.now() - 5 * MIN; rideAt(rae, began);
+  pushes = []; pushBurst.clear();
+  await send(sol, rae, { instant: true }); await send(nia, rae, { instant: true });
+  assert.equal((await told(rae)).length, 0, "riding");
+  run("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)", sol.id, rae.id);
+  rodeIn(rae, began + MIN);
+  await tick(env, "http://localhost");
+  assert.deepEqual((await told(rae)).map((x) => [x.title, x.body]), [["Nia", "Sent you a message while you rode."]]);
+  assert.equal(heldN(rae), 1, "Nia's counted; Sol's, told to no one, isn't");
 });
 
 test("a ride's hold: names off said plainly; released at the cap with no ride in; nothing of Chat's held at suggest or quiet, nor by a habit ride Today added by itself", async () => {
