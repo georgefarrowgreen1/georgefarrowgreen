@@ -764,14 +764,14 @@ async function blurOld(D, t) {
     D.prepare(`DELETE FROM pg_flyover WHERE at < ? OR (NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_flyover.msg_id) AND NOT EXISTS (SELECT 1 FROM pg_gmsgs WHERE id = pg_flyover.msg_id))`).bind(t - BLUR_AFTER),
   ]);
 }
-// Pigeons that have landed since the last tick: push now; email those who
-// asked, once things have been waiting a little while unread. Quiet hours hold
-// both until they end. Only landings after notifications went live count.
 // (pg_push's via column, which marks the rows InFlite's one device route fanned out (functions/_devices.js, which makes
 // it too): made by the tick as well, once a copy of the server's running, so the rollback's "DELETE FROM pg_push WHERE
 // via = 'hub'" (spec §15.4) has it to read on a database no device route has been used on. Its failure (it's there
 // already) ignored)
 const viaMade = new WeakSet();
+// Pigeons that have landed since the last tick: push now; email those who
+// asked, once things have been waiting a little while unread. Quiet hours hold
+// both until they end. Only landings after notifications went live count.
 export async function tick(env, origin) {
   const D = await db(env), t = Date.now();
   if (!viaMade.has(D)) { viaMade.add(D); await D.prepare("ALTER TABLE pg_push ADD COLUMN via TEXT").run().catch(() => {}); }
