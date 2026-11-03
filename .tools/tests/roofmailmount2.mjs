@@ -42,12 +42,30 @@ if (core.length) { console.log(`SKIPPED: MM’s module core is still B0-b’s st
 const mine = ['reader.js', 'compose.js', 'mailsettings.js', 'viewer.js', 'signin.js'].filter(stub);
 if (mine.length) { ok(false, 'MR’s files are real', mine.join(', ')); done(); }
 const framesReal = !stub('bodyframe.js');
-let serveKit, KIT;
-try { ({ serveKit, KIT } = await import('./roofkit/serve.mjs')); } catch (e) { ok(false, 'FW’s kit page is here (.tools/tests/roofkit/serve.mjs)', e.message); done(); }
+let serveKit, KIT, PAGE_HEADERS;
+try { ({ serveKit, KIT, PAGE_HEADERS } = await import('./roofkit/serve.mjs')); } catch (e) { ok(false, 'FW’s kit page is here (.tools/tests/roofkit/serve.mjs)', e.message); done(); }
+// (until the kit page serves Mail itself (s24-contracts §13: Mail's module from IFL email/public/roof/, the session's
+// apps, http://email.kit.test in its CSP copy), this test puts those three in front of it, the same way, and says so)
+const KITDIR = new URL('./roofkit/', import.meta.url).pathname;
+const kitHasMail = /email\/public\/roof/.test(readFileSync(`${KITDIR}serve.mjs`, 'utf8'));
+async function kitMail(ctx) {
+  if (kitHasMail) return;
+  const typeOf = (f) => (/\.css$/.test(f) ? 'text/css' : 'text/javascript');
+  const csp = PAGE_HEADERS['content-security-policy'].replace(/(connect-src [^;]*)/, `$1 ${MAIL_KIT}`).replace(/(frame-src [^;]*)/, `$1 ${MAIL_KIT}`);
+  await ctx.route(new RegExp(`^${KIT.replace(/\./g, '\\.')}/(index\\.html)?(\\?.*)?$`), (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', headers: { ...PAGE_HEADERS, 'content-security-policy': csp }, body: readFileSync(`${KITDIR}index.html`, 'utf8') }));
+  await ctx.route(`${KIT}/kit/kit.js`, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'cache-control': 'no-cache' },
+    body: readFileSync(`${KITDIR}kit.js`, 'utf8').replace('session: () => ({ view: { user }, hub: state.hub, roof: state.roof,', 'session: () => ({ view: { user, apps: { mail: true } }, hub: state.hub, roof: state.roof, apps: { weather: state.roof, mail: true }, links: { email: "http://email.kit.test" },') }));
+  await ctx.route(`${KIT}/mail/roof/**`, (r) => {
+    const f = new URL(r.request().url()).pathname.replace('/mail/roof/', '');
+    return /^[\w-]+\.(js|css)$/.test(f) && existsSync(MR + f) ? r.fulfill({ status: 200, contentType: typeOf(f), headers: { 'cache-control': 'no-cache' }, body: readFileSync(MR + f) }) : r.fulfill({ status: 404, body: 'not found' });
+  });
+  await ctx.route(`${KIT}/mail/version`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ build: null }) }));
+}
+if (!kitHasMail) note('the kit page doesn’t serve Mail yet: this test puts Mail’s files, the session’s apps and Mail’s origin in the CSP in front of it');
 
 // hooks (roofhooks.mjs, s4 §10.2), with the spec's selectors where a name isn't there yet
 const M_MAIL = H.M_MAIL || 'main#m-mail';
-const ROW = H.MAIL_ROW || '.m-mail [data-thread]';
+const ROW = H.MAIL_THREAD || '.m-mail [data-thread]';
 const BODY = H.MAIL_BODY || '.m-mail iframe.mail-body';
 const sheet = (n) => (H.mailSheet ? H.mailSheet(n) : `dialog.ifl-sheet[data-sheet=${n}]`);
 const mact = (a) => (H.mailAct ? H.mailAct(a) : `.m-mail [data-act=${a}]`);
@@ -62,6 +80,7 @@ const here = (p) => p.evaluate(() => location.pathname + location.hash);
 async function phone({ width = 390, height = 844, touch = true, access = 'ok' } = {}) {
   const ctx = await b.newContext({ viewport: { width, height }, deviceScaleFactor: 2, hasTouch: touch, isMobile: touch, locale: 'en-GB', timezoneId: 'Europe/London', colorScheme: 'light' });
   await serveKit(ctx, { main: MAIN, ifl: IFL });
+  await kitMail(ctx);
   const mail = await routeMail(ctx, { origin: KIT, access });
   // (the body shell stood in: a blank page at Mail's /body/; the auth page a stand-in)
   await ctx.route(`${MAIL_KIT}/body/**`, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>body</title>' }));
