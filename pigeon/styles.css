@@ -2998,3 +2998,21 @@ html { touch-action: pan-x pan-y; }
 .ifl-tab[aria-current="page"] { font-weight: 700; }
 .ifl-toast { padding: 12px 20px; }
 /* ==== end of InFlite's menu ==== */
+
+/* ---------- InFlite's hub (Today First: app.js HUB, ENGINE) ---------- */
+/* Chat at the hub: the hub's tab bar for its own (menu.css .ifl-tabs), put away where Chat's would be */
+.hubtabs.ifl-tabs[hidden]{display:none}
+/* Friends, a button of Chats' own at the hub, with how many are asking */
+.hubpeople{position:relative}
+.hubpeople .pbadge{position:absolute;top:1px;right:1px;min-width:17px;height:17px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:#ff3b30;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center;pointer-events:none}
+/* the held row: a ride, or quiet hours, holding your notifications now */
+.heldrow{display:flex;align-items:center;gap:10px;margin:4px 16px 10px;padding:11px 14px;border-radius:16px;background:var(--cell);box-shadow:0 0 0 .5px var(--sep);color:var(--label-2);font-size:15px;line-height:1.3}
+.heldrow .ico{flex:none;width:20px;height:20px;color:var(--tint)}
+/* the engine: Chat in a frame over another page of the hub, see-through, nothing of its own but its sheet (and its
+   lock); the page under it dimmed by the sheet's own backdrop */
+html.engine,html.engine body,html.engine .page,html.engine .app{background:transparent!important;box-shadow:none!important}
+html.engine .view,html.engine .tabbar,html.engine .compose,html.engine .offline,html.engine .ptr,html.engine .nightsky{display:none!important}
+html.engine .ifm-note,html.engine .ifl-toast{display:none}
+/* A Time to Talk and the + sheet */
+.fromapps .cell[disabled]{opacity:.55}
+
