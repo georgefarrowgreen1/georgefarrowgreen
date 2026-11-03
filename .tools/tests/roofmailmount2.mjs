@@ -141,6 +141,8 @@ const sheetsCtx = (p) => p.evaluate(async () => {
   await p.locator('.m-mail .mr-tile').first().click();
   ok(await until(() => visible(p, `${sheet('mail-viewer')}[open] img.mv-img`)), 'a picture’s tap opens the viewer with it');
   ok(/1 of 2/.test(await text(p, `${sheet('mail-viewer')} .mv-count`)), 'one of the two', await text(p, `${sheet('mail-viewer')} .mv-count`));
+  const stage = await p.locator(`${sheet('mail-viewer')}[open] .mv-stage`).boundingBox().catch(() => null);
+  ok(stage && stage.width > 300 && stage.height > 300, 'the viewer’s stage fills the sheet', JSON.stringify(stage));
   await shot(p, '2-viewer');
   await p.keyboard.press('Escape');
   ok(await until(async () => !(await visible(p, `${sheet('mail-viewer')}[open]`))), 'Escape closes it');
@@ -189,6 +191,8 @@ const sheetsCtx = (p) => p.evaluate(async () => {
   ok(/Quoted below/.test(await text(p, `${C} .mc-quote`)) && /Attached are the updated explorations/.test(await text(p, `${C} .mc-quote`)), 'the snippet under “Quoted below”', await text(p, `${C} .mc-quote`));
   ok(/Re: Liquid Glass/.test(await p.locator(`${C} input[data-key=subject]`).inputValue()), 'Re: the subject');
   await p.locator(`${C} textarea[data-key=text]`).fill('Looks great — see you Thursday.');
+  const fits = await p.locator(`${C}[open]`).evaluate((d) => [...d.querySelectorAll('.mc *')].every((x) => x.getBoundingClientRect().right <= d.getBoundingClientRect().right + 1));
+  ok(fits, 'nothing in compose runs past the sheet’s edge');
   await shot(p, '4-compose');
   await p.locator(`${C} [data-act=send]`).click();
   ok(await until(async () => !(await visible(p, `${C}[open]`))), 'Send closes compose');
