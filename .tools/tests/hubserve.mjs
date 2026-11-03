@@ -13,8 +13,9 @@
 // Fitness are modules only where their switch is on (opt-in, ROOF_MARKETS / ROOF_FITNESS "1"): by default (this test's
 // `// needs: hub`) /markets/ and /fitness/ are pages of the hub exactly as before, their roof files not found (404,
 // no-store, never asked of the app's host) and their own workers the apps'; with `// needs: hub roof-markets roof-fitness`
-// (the stack's flags, read from this file's first line) each is the framework's page, /<app>/sw.js its retiring worker,
-// /<app> a 301 before the key, its module's files from its own host without a cookie. /api/hub says { ready, roof, apps }.
+// (hubserveroof.mjs: the stack's flags are read from the first line of the test run.sh named) each is the framework's
+// page, /<app>/sw.js its retiring worker, /<app> a 301 before the key, its module's files from its own host without a
+// cookie. /api/hub says { ready, roof, apps }.
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { kit } from './lib.mjs';
@@ -27,8 +28,9 @@ const ROOT = process.env.APP_ROOT || new URL('../../', import.meta.url).pathname
 const IFL = process.env.IFL_ROOT || `${ROOT}/../inflite/`;
 const R = await import(`${IFL}/today/src/roof.js`);
 // (stage 2's switch, where the inflite repo beside has it (roof.js appsOn): which modules the stack switched on, from the
-// flags on this file's first line, as run.sh passes them to hubstack.mjs; a stage-1 Worker has only Weather)
-const FLAGS = (/^\/\/ needs: *(.*)/.exec(readFileSync(new URL(import.meta.url), 'utf8').split('\n')[0])?.[1] || '').split(/\s+/);
+// flags on the first line of the test run.sh named (process.argv[1]: this file, or hubserveroof.mjs, which imports it), as
+// run.sh passes them to hubstack.mjs; a stage-1 Worker has only Weather)
+const FLAGS = (/^\/\/ needs: *(.*)/.exec(readFileSync(process.argv[1] || new URL(import.meta.url), 'utf8').split('\n')[0])?.[1] || '').split(/\s+/);
 const STAGE2 = typeof R.appsOn === 'function';
 const modOn = (app) => STAGE2 && FLAGS.includes(`roof-${app}`) && !FLAGS.includes('roof-off');
 const MODS2 = { '/markets/': 'markets', '/fitness/': 'fitness' };
@@ -148,9 +150,12 @@ for (const [base, app] of Object.entries(MODS2)) {
     if (hasMod) {
       const T4 = Date.now();
       const f = await hostAsk('ifl.test:8788', `${base}roof/${app}.js`, { cookie, headers: { Authorization: 'Bearer x-not-for-it', 'Sec-Fetch-Site': 'same-origin' } });
-      const rows = mine(T4);
+      // (only this check's own request: the browser's page, left on the framework, may ask the host for another module
+      // file meanwhile (the connector of each module that's on); none of the module's files ever with a cookie or bearer)
+      const rows = mine(T4).filter((r) => r.path === `/roof/${app}.js`), roofRows = mine(T4).filter((r) => r.path.startsWith('/roof/'));
       ok(f.status === 200 && /javascript/.test(f.headers['content-type'] || '') && f.headers['x-content-type-options'] === 'nosniff', `${base}roof/${app}.js (${app} on): its module’s entry, through the hub`, `${f.status} ${f.headers['content-type']}`);
-      ok(rows.length === 1 && rows[0].path === `/roof/${app}.js` && !rows[0].cookie && !rows[0].auth && rows[0].hub, `and from ${app}’s host, with neither cookie nor bearer, with the hub’s key`, JSON.stringify(rows));
+      ok(rows.length === 1 && !rows[0].cookie && !rows[0].auth && rows[0].hub, `and from ${app}’s host, with neither cookie nor bearer, with the hub’s key`, JSON.stringify(rows));
+      ok(roofRows.every((r) => !r.cookie && !r.auth), `no module file asked of ${app}’s host with a cookie or bearer`, JSON.stringify(roofRows));
     }
     const pg = await p.goto(HUB + base, { waitUntil: 'load' });
     const marker = await p.evaluate(() => document.head.querySelector('meta[name="ifl-hub"]')?.getAttribute('content'));

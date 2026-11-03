@@ -368,14 +368,30 @@ test('stages 2–4: each module’s document (/markets/, /fitness/, /mail/) as /
   for (const p of ['/markets', '/fitness/x.html', '/chats/']) assert.equal(await w.get(p, 'navigate'), null, p);
 });
 
-test('stages 2–4: a keep naming a NET file (network only, s24 §8: Weather’s radar and rain files, Fitness’s maps, share card, formats and reader) is ignored whole; the files beside them still kept on their own', { skip: s24Case }, async () => {
-  const { isNet } = await import('./fixtures/budget.mjs');
+// (the worker's own NET table, where it has one: batch sv's rule; j0's worker, from before it, keeps no such table)
+const SW_NET = S24 && /\nconst NET = (\{[^\n]*\});/.exec(readFileSync(SW, 'utf8'))?.[1];
+test('stages 2–4: a keep naming a NET file (network only, s24 §8: Weather’s radar and rain files, Fitness’s maps, share card, formats and reader) is ignored whole; the files beside them still kept on their own; the worker’s NET table is roofcontract’s', { skip: s24Case || (!SW_NET && 'the inflite repo beside predates the root worker’s NET rule (batch sv)') }, async () => {
+  const { NET, isNet } = await import('./fixtures/budget.mjs');
+  // (the two tables the same, less roofcontract's /weather/vendor/, which the worker refuses by its vendor rule for every app)
+  const VENDOR = /^\/weather\/vendor\//.source;
+  const swNet = vm.runInNewContext(`(${SW_NET})`);
+  for (const app of new Set([...Object.keys(NET), ...Object.keys(swNet)])) {
+    assert.deepEqual(swNet[app] ? [swNet[app].source] : [], (NET[app] || []).map((r) => r.source).filter((x) => x !== VENDOR), `${app}: the worker’s NET is roofcontract’s`);
+  }
+  // (every file roofcontract's NET names, from its own table: ^/<app>/(a|b|…)\.js$)
+  const net = {};
+  for (const [app, rs] of Object.entries(NET)) for (const r of rs) {
+    if (r.source === VENDOR) continue;
+    const m = /^\^(.*)\(([^()]*)\)(.*)\$$/.exec(r.source);
+    assert.ok(m, `${r}: a table entry this case can read`);
+    (net[app] ||= []).push(...m[2].split('|').map((f) => (m[1] + f + m[3]).replace(/\\/g, '')));
+  }
+  assert.ok(net.weather?.length >= 7 && net.fitness?.length >= 6, 'roofcontract’s NET files read');
   const w = worker((path) => okFile(path));
   const fx = ['/fitness/roof/fitness.js', '/fitness/roof/core.js', '/fitness/workouts.js', '/fitness/roof/fitness.css'];
-  const net = { weather: ['radar', 'radarmix', 'mapstyle', 'mapgl', 'mapleaf', 'rainmap', 'radarrain'].map((f) => `/weather/${f}.js`), fitness: ['map', 'mapstyle', 'share', 'formats', 'fit', 'reader'].map((f) => `/fitness/${f}.js`) };
   for (const [app, files] of Object.entries(net)) for (const f of files) {
     assert.ok(isNet(app, f), `${f}: in roofcontract’s NET table`);
-    await w.send('message', { data: { ifl: 'keep', app, build: '1.68', files: [...(app === 'fitness' ? fx : FILES12), f] }, source: { url: `${ORIGIN}/${app}/` }, ports: [] });
+    await w.send('message', { data: { ifl: 'keep', app, build: '1.68', files: [...({ fitness: fx, weather: FILES12 }[app] || [`/${app}/roof/${app}.js`]), f] }, source: { url: `${ORIGIN}/${app}/` }, ports: [] });
   }
   assert.deepEqual([...w.stores.keys()], [], 'a NET file among them: nothing kept');
   assert.deepEqual(w.asked, [], 'nothing fetched');

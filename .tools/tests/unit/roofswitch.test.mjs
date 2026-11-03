@@ -184,17 +184,17 @@ test('roof.yml’s set step, for every app × state × where: exactly these secr
   }
 });
 
-test('roof.yml’s allowed step: a module’s on refused while ROOF_OFF is set on any Worker named (nothing set after it); its off, all and weather never; the settled step checks Mail’s own Worker for mail alone', { skip: ymlSkip }, () => {
+test('roof.yml’s allowed step: a module’s on, Weather’s included, refused while ROOF_OFF is set on any Worker named (nothing set after it); its off and all never; the settled step checks Mail’s own Worker for mail alone', { skip: ymlSkip }, () => {
   const s = sandbox();
   s.names('inflite', ['HUB_KEY', 'ROOF_OFF']); s.names('inflite-next', ['HUB_KEY']);
-  for (const app of ['markets', 'fitness', 'mail']) {
+  for (const app of ['weather', 'markets', 'fitness', 'mail']) {
     let r = runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'both' });
     assert.notEqual(r.status, 0, `${app} on, both`); assert.match(r.stdout, /Every module is off \(ROOF_OFF\)\. Turn them all on first\./);
     r = runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'next.inflite.ai' });
     assert.equal(r.status, 0, `${app} on at next.inflite.ai, where ROOF_OFF isn’t: allowed`);
     assert.equal(runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'off', ROOF_WHERE: 'both' }).status, 0, `${app} off`);
   }
-  for (const app of ['all', 'weather']) for (const state of ['on', 'off']) assert.equal(runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: state, ROOF_WHERE: 'both' }).status, 0, `${app} ${state}`);
+  for (const state of ['on', 'off']) assert.equal(runStep(s, 'allowed', { ROOF_APP: 'all', ROOF_STATE: state, ROOF_WHERE: 'both' }).status, 0, `all ${state}`);
   assert.deepEqual(s.calls(), [], 'the check changes nothing');
   const env = (app) => ({ ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'inflite.ai', GITHUB_ENV: join(s.T, 'genv') });
   let r = runStep(s, 'settled', env('mail'));
