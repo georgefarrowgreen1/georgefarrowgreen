@@ -1,6 +1,6 @@
 // Instant Chat on the server, run as it is against a database of its own (Node's own SQLite in memory, made to look
 // like D1, with the site's schema): messages that arrive as they're sent, beside letters that still fly; turns, streaks,
-// lofts and records for letters only; the push at send, quiet hours and an open chat holding it; groups; reactions;
+// lofts and records for letters only; the push at send, quiet hours, an open chat and a planned ride holding it; groups; reactions;
 // typing held only in the memory of the Typing object (a real one, workers/live, behind a stand-in for the binding); the
 // pulse's change feed, delivered and read, its cost, pace and throttle; each chat's way and its lines; what goes and
 // what's counted; and the new setUp over a database from before this release, and a fresh one.
@@ -10,7 +10,12 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db, issueSession, msgView, hex, sha256 } from "../../../functions/_pigeon.js";
 import { onRequest, ADMIN_ROUTES } from "../../../functions/api/pigeon/[[path]].js";
-import { tick, pushBurst, openOn } from "../../../functions/_notify.js";
+import { tick, pushBurst, openOn, friendRequested } from "../../../functions/_notify.js";
+import { heldCount } from "../../../functions/_busy.js";
+import { fitdb } from "../../../functions/_fitness.js";
+import { timesReady } from "../../../functions/_fittimes.js";
+import { offersReady } from "../../../functions/_fitshare.js";
+import { tddb } from "../../../functions/_today.js";
 import { streakTick } from "../../../functions/_streaks.js";
 import { keepMonth } from "../../../functions/_retention.js";
 import { logFor } from "../../../functions/_stats.js";
@@ -1007,4 +1012,121 @@ test("schema: the new setUp runs over a pre-release database and a fresh one", a
   await (await fresh("d")).db(empty);
   assert.equal(empty.DB.sql.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('pg_msgs_letters', 'pg_msgs_notgot', 'pg_gmsgs_letters', 'pg_gdeliv_notgot', 'pg_ways', 'pg_wayev', 'pg_pulse')").get().n, 7);
   assert.equal(empty.DB.sql.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE '%typing%'").get().n, 0, "no typing table, ever");
+});
+
+// ================================ a ride holds Chat's notifications (Today First, spec §8.7) ================================
+await fitdb(env); await timesReady(env); await offersReady(env); await tddb(env);
+const MIN = 60e3;
+// a ride with a time (Ride At, or Ride Then: a tap), and its ride coming in (from Fitness), and the hold rule's level
+const rideAt = (p, start, len = 60 * MIN) => run("INSERT OR REPLACE INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES (?, ?, ?, ?, 'UTC', 'ride', 'set', ?)", p.id, new Date(start).toISOString().slice(0, 10), start, start + len, start);
+// (added: when it came in, now unless it's said)
+const rodeIn = (p, start, added = Date.now()) => put("fx_acts", { user_id: p.id, id: crypto.randomUUID(), start, sport: "ride", type: "fit", size: 1, added });
+const holdAt = (p, level) => run("INSERT INTO td_rules (user_id, rule, level) VALUES (?, 'holdRide', ?) ON CONFLICT(user_id, rule) DO UPDATE SET level = excluded.level", p.id, level);
+const heldN = (p) => one("SELECT held FROM td_rules WHERE user_id = ? AND rule = 'holdRide'", p.id)?.held ?? 0;
+
+test("a ride holds messages, group messages, reactions and requests at do; told when it's in, \"while you rode\", each counted in the rule's record", async () => {
+  pushBurst.clear();
+  const rider = await pushOn(await person("Rob Rider"), { names: true }), mira = await person("Mira Shah"), nia = await person("Nia");
+  befriend(mira, rider); befriend(nia, rider);
+  const start = Date.now() - 5 * MIN; rideAt(rider, start);
+  // a message from Mira, and another: no push, left unclaimed for the tick
+  pushes = [];
+  const m1 = await send(mira, rider, { instant: true }), m2 = await send(mira, rider, { instant: true });
+  assert.equal((await told(rider)).length, 0, "nothing while riding");
+  assert.deepEqual([msgRow(m1.body.message.id).notified_at, msgRow(m2.body.message.id).notified_at], [null, null], "held: unclaimed");
+  // a group's message
+  const gid = crypto.randomUUID();
+  put("pg_groups", { id: gid, name: "Riders", created_by: mira.id, created_at: 0 });
+  for (const m of [mira, rider, nia]) put("pg_group_members", { group_id: gid, user_id: m.id, added_by: mira.id, joined_at: 0 });
+  const g = await api(mira, "POST", "group-messages", { id: crypto.randomUUID(), group: gid, body: CT, keys: Object.fromEntries([mira, rider, nia].map((m) => [m.id, "k".repeat(30)])), instant: true });
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  // a reaction to the rider's own message, and a friend request
+  const mine = await send(rider, nia, { instant: true });
+  assert.equal((await api(nia, "POST", "react", { id: crypto.randomUUID(), msg: mine.body.message.id, ct: CT })).status, 200);
+  const sol = await person("Sol"); put("pg_links", { a: sol.id, b: rider.id, status: "pending", created_at: Date.now() });
+  await friendRequested(env, "http://localhost", { id: sol.id, name: "Sol", handle: "sol" }, rider.id);
+  await tick(env, "http://localhost");
+  assert.equal((await told(rider)).length, 0, "still riding: the tick holds them all");
+  assert.equal(await heldCount(env, rider.id, start - 10 * MIN, { t: Date.now() }), 4, "two messages, the group's and the reaction, waiting");
+  assert.equal(q("SELECT 1 FROM pg_held WHERE user_id = ? AND kind = 'request'", rider.id).length, 1, "the request kept");
+  // the ride comes in: everything told, once, said as held
+  rodeIn(rider, start + MIN);
+  await tick(env, "http://localhost");
+  const notes = (await told(rider)).map((x) => [x.title, x.body, x.app]).sort((a, b) => a[0].localeCompare(b[0]));
+  assert.deepEqual(notes, [["Friend request", `Sol (@${one("SELECT handle FROM pg_users WHERE id = ?", sol.id).handle}) wants to be friends on Chat.`, "chat"], ["Mira", "Sent you 2 messages while you rode.", "chat"],
+    ["Nia", "Reacted to your message.", "chat"], ["Riders", "Mira sent a message while you rode.", "chat"]]);
+  assert.equal(heldN(rider), 2 + 1 + 1 + 1, "each held one counted: two messages, the group's, the reaction, the request");
+  await tick(env, "http://localhost");
+  assert.equal((await told(rider)).length, 4, "and only once");
+  // now the ride's in, the next message comes at once (past the ten seconds a friend buzzes you in at most once)
+  pushBurst.clear();
+  await send(mira, rider, { instant: true });
+  assert.ok((await told(rider)).some((x) => x.body === "Sent you 3 messages."), "as ever");
+});
+
+test("what came once the ride was in wasn't held: told as ever, not \"while you rode\", not counted; nor is one held from someone unfriended since", async () => {
+  pushBurst.clear();
+  const ray = await pushOn(await person("Ray Rider"), { names: true }), nia = await person("Nia Ross"), mira = await person("Mira Bell");
+  befriend(nia, ray); befriend(mira, ray);
+  // Ray's ride began 50 minutes ago (its cap an hour and ten minutes off), and came in 10 minutes ago
+  const start = Date.now() - 50 * MIN; rideAt(ray, start); rodeIn(ray, start + MIN, Date.now() - 10 * MIN);
+  pushes = [];
+  // a reaction to Ray's message now (only the tick tells reactions), and Mira's message while her chat's open on his phone
+  const mine = await send(ray, nia, { instant: true });
+  assert.equal((await api(nia, "POST", "react", { id: crypto.randomUUID(), msg: mine.body.message.id, ct: CT })).status, 200);
+  run("UPDATE pg_users SET open_chat = ?, open_at = ? WHERE id = ?", mira.id, Date.now(), ray.id);
+  const m = await send(mira, ray, { instant: true });
+  assert.equal(msgRow(m.body.message.id).notified_at, null, "open: left for the tick");
+  run("UPDATE pg_users SET open_at = ? WHERE id = ?", Date.now() - 31e3, ray.id);
+  await tick(env, "http://localhost");
+  assert.deepEqual((await told(ray)).map((x) => [x.title, x.body]).sort((a, b) => a[0].localeCompare(b[0])), [["Mira", "Sent you a message."], ["Nia", "Reacted to your message."]]);
+  assert.equal(heldN(ray), 0, "nothing came while he rode");
+  // Rae, riding: a message from Sol, then Sol unfriends her; and one from Nia. Her ride comes in: Nia's told and counted,
+  // Sol's lands untold and uncounted
+  const rae = await pushOn(await person("Rae Rider"), { names: true }), sol = await person("Sol Hart");
+  befriend(sol, rae); befriend(nia, rae);
+  const began = Date.now() - 5 * MIN; rideAt(rae, began);
+  pushes = []; pushBurst.clear();
+  await send(sol, rae, { instant: true }); await send(nia, rae, { instant: true });
+  assert.equal((await told(rae)).length, 0, "riding");
+  run("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)", sol.id, rae.id);
+  rodeIn(rae, began + MIN);
+  await tick(env, "http://localhost");
+  assert.deepEqual((await told(rae)).map((x) => [x.title, x.body]), [["Nia", "Sent you a message while you rode."]]);
+  assert.equal(heldN(rae), 1, "Nia's counted; Sol's, told to no one, isn't");
+});
+
+test("a ride's hold: names off said plainly; released at the cap with no ride in; nothing of Chat's held at suggest or quiet, nor by a habit ride Today added by itself", async () => {
+  pushBurst.clear();
+  const mira = await person("Mira Kay");
+  // names off, and no ride coming in: told at the cap
+  const ann = await pushOn(await person("Ann"), {}); befriend(mira, ann);
+  const start = Date.now() - 115 * MIN; rideAt(ann, start);
+  pushes = [];
+  const held = await send(mira, ann, { instant: true });
+  await tick(env, "http://localhost");
+  assert.equal((await told(ann)).length, 0, "an hour and 55 minutes in: still held");
+  // (ten minutes on, as if: the ride and the message each ten minutes earlier, so its cap has passed)
+  rideAt(ann, start - 10 * MIN);
+  run("UPDATE pg_msgs SET sent_at = sent_at - ?1, deliver_at = deliver_at - ?1 WHERE id = ?2", 10 * MIN, held.body.message.id);
+  await tick(env, "http://localhost");
+  assert.deepEqual((await told(ann)).map((x) => x.body), ["A new message came while you rode."]);
+  // at suggest (apps only) and at quiet: Chat's come at once
+  for (const lv of ["suggest", "quiet"]) {
+    const p = await pushOn(await person(`Sue ${lv}`), { names: true }); befriend(mira, p); rideAt(p, Date.now() - 5 * MIN); holdAt(p, lv);
+    pushes = []; pushBurst.clear();
+    await send(mira, p, { instant: true });
+    assert.deepEqual((await told(p)).map((x) => x.body), ["Sent you a message."], lv);
+  }
+  // an auto-added habit ride (role today, yes, never tapped): holds nothing; kept with a tap, it does
+  const hal = await pushOn(await person("Hal"), { names: true }); befriend(mira, hal);
+  const oid = crypto.randomUUID(), at = Date.now() - 5 * MIN;
+  put("fx_offers", { user_id: hal.id, id: oid, start: at, stop: at + 3600e3, tz: "UTC", sport: "ride", wid: "w", name: "Endurance", secs: 3600, who: "", role: "today", state: "yes", made: at, until: at + 13 * 3600e3, taken: 0 });
+  pushes = []; pushBurst.clear();
+  await send(mira, hal, { instant: true });
+  assert.deepEqual((await told(hal)).map((x) => x.body), ["Sent you a message."], "an auto-added habit ride holds nothing");
+  run("UPDATE fx_offers SET taken = 1 WHERE id = ?", oid);
+  pushes = []; pushBurst.clear();
+  await send(mira, hal, { instant: true });
+  assert.equal((await told(hal)).length, 0, "kept with a tap: held");
 });

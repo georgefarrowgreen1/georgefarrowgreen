@@ -47,7 +47,7 @@ import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, TICK_WAIT, tic
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";
 import { repointSession } from "../../_sessions.js";
-import { busyNow } from "../../_busy.js";
+import { busyNow, holdsFor } from "../../_busy.js";
 import { timesForQ, timeView } from "../../_times.js";
 import { offersReady } from "../../_fitshare.js";
 
@@ -762,14 +762,12 @@ const rideOut = (r) => ({ id: r.id, with: r.with_id, start: r.start, stop: r.sto
 // functions/_busy.js busyNow's { until, level }), else your quiet hours (p: prefsOf), each with when it ends
 // → { why: "ride" | "quiet", until }, or null
 export function holdOf(busy, p, t) {
-  if (friendsHeld(busy) && Number.isFinite(busy.until) && busy.until > t) return { why: "ride", until: busy.until };
+  if (holdsFor(busy, "friends") && Number.isFinite(busy.until) && busy.until > t) return { why: "ride", until: busy.until };
   try { if (isQuiet(p, t)) return { why: "quiet", until: quietEnd(p, t) }; } catch (_) { /* a zone this server can't read: no hold said */ }
   return null;
 }
 // (a ride holds friends' messages at its do level alone (at suggest, apps' only; at quiet, nothing): functions/_busy.js
-// holdsFor(busy, "friends"), batch N's. B0's _busy.js doesn't have it yet, so the same rule is said here until N's is
-// merged, and holdsFor is then imported in its place)
-const friendsHeld = (b) => !!b && b.level === "do";
+// holdsFor(busy, "friends"))
 // (the first quarter hour, from t, that isn't in quiet hours (every zone's offset is whole quarter hours): by the clock
 // read now, quietTo o'clock; checked, and on the day the clocks change, found a quarter hour at a time)
 export function quietEnd(p, t) {
