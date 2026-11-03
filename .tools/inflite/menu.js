@@ -549,12 +549,25 @@ const IFL = (() => {
 
   // Chat's engine: /chats/?engine=1 in a frame over the page, its IFLChat once it says it's ready (ifl-chat-ready, on
   // this window), and the frame seen only while it shows its sheet (put away by sent or closed, or when its answer says
-  // no sheet is showing)
+  // no sheet is showing). The frame is in a dialog of its own: shown, the dialog's modal, so it's in the top layer, over
+  // every sheet of the page's own (a modal one too, which would otherwise make it inert) and the only thing a tap
+  // reaches; put away, the dialog's shut but still laid out (unseen, never in the way of a tap: menu.css), so the engine
+  // runs on and its sheet opens at once. The frame is never moved (that would load it again)
   const ENGINE_WAIT = 15e3, ENGINE_DROP = 10 * 60e3;
   let engine = null, resting = false;
-  function dropEngine() { engine?.frame.remove(); engine = null; }
-  function hide() { if (engine) engine.frame.hidden = true; }
-  function show() { if (engine) engine.frame.hidden = false; }
+  function dropEngine() { engine?.box.remove(); engine = null; }
+  function hide() {
+    const b = engine?.box;
+    if (!b) return;
+    b.classList.remove("on");
+    try { if (b.open) b.close(); } catch (_) {}
+  }
+  function show() {
+    const b = engine?.box;
+    if (!b) return;
+    b.classList.add("on");
+    try { if (!b.open) b.showModal(); } catch (_) {}
+  }
   // (the engine as the page uses it: its own calls, the frame shown for its sheet, and put away where nothing's showing:
   // a card refused (false, { ok: false }, { why }); sendTo's one tap sent ({ ok: true, say }: said here too). A sheet
   // that's shown is put away by its own word, sent or closed)
@@ -575,10 +588,16 @@ const IFL = (() => {
   function chat() {
     if (!hub.on || hub.degraded || resting || !document.body) return Promise.resolve(null);
     if (engine) return engine.api ? Promise.resolve(ready()) : engine.wait;
-    const f = document.createElement("iframe");
-    f.name = "ifl-chat"; f.className = "ifl-engine"; f.src = "/chats/?engine=1"; f.hidden = true;
+    const box = document.createElement("dialog"), f = document.createElement("iframe");
+    box.className = "ifl-engine-box";
+    box.setAttribute("aria-label", "Chats");
+    // (shut some other way (Escape, while the page has the focus): put away, as closed() would. Not when it's been shown
+    // again since: this word comes a moment after it's shut)
+    box.addEventListener("close", () => { if (!box.open) box.classList.remove("on"); });
+    f.name = "ifl-chat"; f.className = "ifl-engine"; f.src = "/chats/?engine=1";
     f.setAttribute("title", "Chats");
-    const e = engine = { frame: f, api: null, wait: null };
+    box.append(f);
+    const e = engine = { box, frame: f, api: null, wait: null };
     e.wait = new Promise((ok) => {
       let t = 0;
       const done = () => {
@@ -596,7 +615,7 @@ const IFL = (() => {
       addEventListener("ifl-chat-ready", done);
       t = setTimeout(done, ENGINE_WAIT);
     });
-    document.body.append(f);
+    document.body.append(box);
     return e.wait;
   }
   // (out of sight for ten minutes, the engine's let go: made again when it's next wanted)
@@ -616,10 +635,12 @@ const IFL = (() => {
     try { u = new URL(a.href, location.href); } catch (_) { return; }
     if (u.origin === location.origin && leaving(u.pathname + u.hash)) crumb();
   }, true);
-  // (a notification tapped while this page is open: the root worker's word, to a path of this site's only)
+  // (a notification tapped while this page is open: the root worker's word, to a path of this site's only. Heard, it's
+  // said so on the port the worker gave, else the worker opens it some other way: a page that has no ear for it)
   if (hub.on) navigator.serviceWorker?.addEventListener?.("message", (e) => {
     const d = e.data;
     if (!d || d.ifl !== "open" || !ownPath(d.url)) return;
+    try { e.ports?.[0]?.postMessage({ ifl: "opened" }); } catch (_) {}
     if (hub.degraded) return location.assign(hub.go(d.url));
     if (leaving(d.url)) crumb();
     location.assign(d.url);
@@ -629,6 +650,13 @@ const IFL = (() => {
   // there as the next page's first shown): off the hub, every page lets it go as it's left, so nothing changes there; at
   // the hub, one that can't be done is let go quietly)
   if (hub.on) document.documentElement?.classList.add("ifl-hub");
+  // (the Home Screen icon's badge, as many notifications as are still showing: counted again by the root worker as a
+  // page of the hub opens and each time it's back in sight, so those tapped or cleared meanwhile are gone from it)
+  const recount = () => { try { navigator.serviceWorker?.getRegistration?.("/")?.then?.((r) => r?.active?.postMessage({ ifl: "badge" }), () => {}); } catch (_) {} };
+  if (hub.on) {
+    recount();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recount(); });
+  }
   const vt = (e) => { const t = e.viewTransition; if (!t) return; for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); if (!hub.on) t.skipTransition?.(); };
   addEventListener("pageswap", vt);
   addEventListener("pagereveal", vt);
@@ -644,7 +672,16 @@ const IFL = (() => {
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "InFlite is one app now");
     const layer = el("div", "ifa-layer ifl-moved", sheet), was = document.activeElement;
     const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); was?.focus?.({ preventScroll: true }); };
-    const key = (e) => { if (e.key === "Escape") shut(); };
+    // (Escape shuts it; Tab and Shift-Tab go round its buttons, never behind it)
+    const key = (e) => {
+      if (e.key === "Escape") return shut();
+      if (e.key !== "Tab") return;
+      const f = [how, stop, later].filter((b) => b && !b.hidden && !b.disabled);
+      if (!f.length) return;
+      e.preventDefault();
+      const i = f.indexOf(document.activeElement);
+      f[i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus({ preventScroll: true });
+    };
     how.onclick = () => { steps.hidden = false; how.hidden = true; later.textContent = "Done"; later.focus({ preventScroll: true }); };
     if (stop) stop.onclick = async () => {
       stop.disabled = true; stop.textContent = "Turning Off…";
@@ -678,6 +715,12 @@ const IFL = (() => {
     if (said) toast(stillHere(String(said).slice(0, 200)));
   }
 
-  return { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
+  const api = { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
     updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
+  // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
+  // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
+  // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
+  // page's own global IFL never clashes with it, and one put there first (a test's stand-in) is left as it is)
+  if (hub.on && typeof window !== "undefined") try { Object.defineProperty(window, "IFL", { value: api, configurable: true, writable: true }); } catch (_) {}
+  return api;
 })();
