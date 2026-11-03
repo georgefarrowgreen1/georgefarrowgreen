@@ -471,8 +471,7 @@ try {
     const nav = p2.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
     const un = await p2.evaluate(() => { window.beforeBounce = 1; kit.set({ roof: false }); kit.F.setRoof(false); return kitMod.unmounts; });
     await nav; await settle(p2, 300); await p2.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
-    // (stage 2 C7: the shown module stays mounted until the reload, so its busy() and flush() still answer)
-    same([un, new URL(p2.url()).pathname + new URL(p2.url()).hash, await p2.evaluate(() => [window.beforeBounce ?? null, sessionStorage.getItem('ifl-roof-bounce')])], [0, '/weather/#days', [null, '1']], 'F.setRoof(false) in Weather (the session saying so): the page really loaded again (a hash alone would only scroll) at /weather/#days, ifl-roof-bounce kept');
+    same([un, new URL(p2.url()).pathname + new URL(p2.url()).hash, await p2.evaluate(() => [window.beforeBounce ?? null, sessionStorage.getItem('ifl-roof-bounce')])], [1, '/weather/#days', [null, '1']], 'F.setRoof(false) in Weather (the session saying so), nothing unsaved: the module unmounted at once, the page really loaded again (a hash alone would only scroll) at /weather/#days, ifl-roof-bounce kept');
     await clean(k2, 'CSS already in; the roof going off');
   }
 
