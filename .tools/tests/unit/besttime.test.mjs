@@ -1,4 +1,4 @@
-// Fitness's best time to ride: the stretch of today it picks, from the hours' weather
+// Fitness's best time to ride: the stretch of today it picks, from the hours' weather, clear of any times it's to avoid
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { bestWindow, hourScore, windWords, LIMITS, isWet } from "../../../fitness/besttime.js";
@@ -26,6 +26,34 @@ test("only what's left of today: none in the evening", () => {
   assert.equal(bestWindow(day(), { secs: 3600, now: DAY0 + 20 * H }), null);
   const b = bestWindow(day(), { secs: 3600, now: DAY0 + 10.5 * H });
   assert.ok(b.start >= DAY0 + 10 * H);
+});
+test("avoid: a stretch touching a time to keep clear is never picked; the next best is", () => {
+  const free = bestWindow(day(), { secs: 2 * 3600, now: DAY0 });
+  assert.equal(new Date(free.start).getUTCHours(), 7);
+  const call = [DAY0 + 8 * H + 30 * 60e3, DAY0 + 9 * H];
+  const b = bestWindow(day(), { secs: 2 * 3600, now: DAY0, avoid: [call] });
+  assert.ok(b.start >= call[1], "after the call");
+  assert.equal(new Date(b.start).getUTCHours(), 9, "the next best: straight after it");
+  assert.equal(new Date(bestWindow(day(), { secs: 2 * 3600, now: DAY0, avoid: [[DAY0 + 9 * H, DAY0 + 10 * H]] }).start).getUTCHours(), 7, "ending as it starts isn't touching it");
+  assert.equal(bestWindow(day(), { secs: 3600, now: DAY0, avoid: [[DAY0, DAY0 + 24 * H]] }), null, "none clear: none");
+  assert.equal(new Date(bestWindow(day(), { secs: 3600, now: DAY0, avoid: [[DAY0 + 7 * H, DAY0 + 8 * H], "x", [5], null, [DAY0 + 9 * H, DAY0 + 8 * H]] }).start).getUTCHours(), 8,
+    "what isn't a [start, end] is passed over");
+  // (never crossed, whatever the weather and whatever's to keep clear)
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let n = 0; n < 300; n++) {
+    const wx = day(() => ({ rain: rnd() < 0.3 ? 1 : 0, code: rnd() < 0.3 ? 61 : 1, temp: 5 + rnd() * 15, wind: rnd() * 30 }));
+    const avoid = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => { const s = DAY0 + Math.floor(rnd() * 48) * 15 * 60e3 + 6 * H; return [s, s + (15 + Math.floor(rnd() * 8) * 15) * 60e3]; });
+    const secs = 1800 + Math.floor(rnd() * 4) * 3600, w = bestWindow(wx, { secs, now: DAY0 + Math.floor(rnd() * 12) * H, avoid });
+    if (w) for (const [s, e] of avoid) assert.ok(!(Math.floor(w.start / H) * H < e && s < w.end), `case ${n}: ${new Date(w.start).toISOString()}–${new Date(w.end).toISOString()} crosses ${new Date(s).toISOString()}`);
+  }
+});
+test("avoid: left out, empty, or nowhere near, the answer's the same", () => {
+  for (const [wx, opts] of [[day(), { secs: 7200, now: DAY0 }], [day((h) => (h < 13 ? { rain: 1.5, code: 61, pop: 90 } : {})), { secs: 3600, now: DAY0 }],
+    [day((h) => ({ temp: h < 12 ? 2 : 14, feels: h < 12 ? 0 : 14 })), { secs: 5400, now: DAY0 + 3 * H, sport: "run" }], [day(), { secs: 3600, now: DAY0 + 20 * H }]]) {
+    const want = bestWindow(wx, opts);
+    for (const avoid of [undefined, [], [[DAY0 + 30 * H, DAY0 + 31 * H]], [[DAY0 - 5 * H, DAY0 - 4 * H]]]) assert.deepEqual(bestWindow(wx, { ...opts, avoid }), want, JSON.stringify(avoid));
+  }
 });
 test("an hour's score: wind, gusts and rain take it down", () => {
   const a = LIMITS.ride;

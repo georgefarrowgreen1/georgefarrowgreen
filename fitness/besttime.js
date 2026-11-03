@@ -32,17 +32,21 @@ export function windWords(kmh, deg) {
   return d ? `${how} ${d}` : `${how} wind`;
 }
 
-// The best stretch today, from now: wx { offset, hours }, secs the session's length. → { start, end, score, rating,
-// temp, wind, gust, dir, pop, dry } (start, end: ms), or null where there's no daylight left today in its hours.
-export function bestWindow(wx, { secs, now = Date.now(), sport = "ride" } = {}) {
+// The best stretch today, from now: wx { offset, hours }, secs the session's length; avoid, times it mustn't touch
+// ([[start, end], …] in ms: a call, a ride with a friend), so no stretch whose hours overlap one is picked. → { start,
+// end, score, rating, temp, wind, gust, dir, pop, dry } (start, end: ms), or null where there's no daylight left today
+// in its hours (or none clear of avoid).
+export function bestWindow(wx, { secs, now = Date.now(), sport = "ride", avoid = [] } = {}) {
   const a = LIMITS[sport] || LIMITS.ride, off = (wx?.offset || 0) * 1000, hours = wx?.hours || [];
   const local = (t) => new Date(t + off), dayOf = (t) => local(t).toISOString().slice(0, 10), hourOf = (t) => local(t).getUTCHours();
   const today = dayOf(now), len = clamp(Math.ceil((secs || 3600) / 3600), 1, 6);
   const ok = hours.filter((h) => h.t + HOUR > now && dayOf(h.t) === today && h.day && hourOf(h.t) >= a.from && hourOf(h.t) + 1 <= a.to);
+  const busy = (Array.isArray(avoid) ? avoid : []).filter((x) => Array.isArray(x) && Number.isFinite(x[0]) && Number.isFinite(x[1]) && x[1] > x[0]);
   let best = null;
   for (let i = 0; i + len <= ok.length; i++) {
     const hs = ok.slice(i, i + len);
     if (hs.at(-1).t - hs[0].t !== (len - 1) * HOUR) continue;
+    if (busy.some(([s, e]) => hs[0].t < e && s < hs.at(-1).t + HOUR)) continue;
     const each = hs.map((h) => hourScore(h, hours.find((x) => x.t === h.t - HOUR), a));
     const s = 0.7 * (each.reduce((x, y) => x + y, 0) / each.length) + 0.3 * Math.min(...each);
     // (sooner is better, a little)

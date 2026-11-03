@@ -42,3 +42,13 @@ export async function hoursAt(env, lat, lon) {
     rain: r1(H.precipitation?.[i]), code: H.weather_code?.[i] ?? null, wind: r1(H.wind_speed_10m?.[i]), gust: r1(H.wind_gusts_10m?.[i]), dir: H.wind_direction_10m?.[i] ?? null, day: H.is_day?.[i] === 1 }));
   return { offset: Number(d?.utc_offset_seconds) || 0, hours };
 }
+
+// Whether each of the last 56 days was wet or dry at a place, hour by hour (Today First's habit rule, functions/
+// _todayacts.js habitRide: a weekday's ride counts toward the habit only on the days it could have been ridden). Contract:
+// → { "YYYY-MM-DD": { [hour]: true (wet) | false (dry) } } for the last 56 days on the place's own clock, or null when
+// it isn't known. Open-Meteo's forecast address with past_days=56 and hourly=precipitation,weather_code, kept a day for
+// each 0.05° cell, not charged to Weather's allowance (as hoursAt isn't). t: now (ms).
+// (B0's stub: unknown, always. Batch F writes it; the name and arguments stay.)
+export async function pastWet(env, lat, lon, t) {
+  return null;
+}
