@@ -110,7 +110,9 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, ro
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
   p.on('response', (r) => { if (r.status() >= 500) errs.push(`${r.status()} from ${new URL(r.url()).pathname}`); });
-  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
+  // (the module's files missing, as a part asks: the frame's own word of it is expected, nothing else)
+  const expected = (t) => module === 'missing' && /Failed to fetch dynamically imported module: \S+\/weather\/roof\/weather\.js/.test(t);
+  p.on('console', (m) => { if (m.type() === 'error' && !expected(m.text()) && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
   await p.clock.setFixedTime(new Date(MIDDAY.at));
   // (documents loaded in the tab: a pushState or a hash is never one)
   let loads = 0;
