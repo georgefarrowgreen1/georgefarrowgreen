@@ -74,3 +74,9 @@ chats
 hubshare
 hubpush
 todaymoments
+roofkit
+roofwxmount
+roofshell
+roofweather
+roofnav
+roofsw

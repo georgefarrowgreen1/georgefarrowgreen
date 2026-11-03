@@ -40,6 +40,14 @@ opens an iPhone at the hub (standalone, its push stand-in and keys); one window 
 nothing readable left on the server), `hubpush` (one device, every app's notifications) and `todaymoments` (the six
 moments of the day on real data, every request body and push recorded).
 
+One roof (stage 1: one page at inflite.ai, Weather a module inside it): `roofkit` (the framework on its own kit page,
+`roofkit/`, with a stand-in module and connector, or a real one with `?module=`), `roofwxmount` (Weather's real module
+on the kit page), `roofshell` (Today, Apps and You on the framework, the hub's three answers and the `/weather/` boot
+rules) and, through the hub, `roofweather` (Weather opened from the tile and the card, deep links, places, Send,
+settings, the module's files and budget, updates), `roofnav` (Back, the tab bars, notification taps, the roof switch)
+and `roofsw` (the old `/weather/` worker retired, offline). Their kit is `rooflib.mjs`, their selectors `roofhooks.mjs`.
+With the inflite repo beside at a version without the roof (`today/src/roof.js`), the roof's unit cases skip, saying so.
+
 Today's own page against a stand-in for the account (`mocks/todaystub.mjs` on :8789, its answers in
 `mocks/today/*.json`): `todaypage`, `todayshell` (the tab bar, Apps, You, and the hub not ready: Today on the apps' own
 addresses) and `todayphases` (each phase of the demo's day, Monday 2 November 2026 in London, with Playwright's clock

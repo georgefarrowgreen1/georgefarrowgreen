@@ -38,8 +38,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.64";
-export const NEWS = "Ready for InFlite: links open on Radar, a day or Warnings, and Turn Off for an old icon stays off";
+export const BUILD = "1.65";
+export const NEWS = "Weather now opens inside InFlite: no page load, the same header and sheets, and Radar on a screen of its own";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 const VIEWS = { now: nowView, days: daysView, radar: radarView, warnings: warningsView };
