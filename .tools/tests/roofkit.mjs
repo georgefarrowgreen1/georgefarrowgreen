@@ -15,6 +15,12 @@
 // sheet; every member of F (§3.2) and fw (§5.2) with its type; "route" fired after F.route changes; a wiped state healed
 // by going on; one live region; a section tapped while the module loads; sign-out from Radar; CSS already in;
 // F.setRoof(false) inside the app; axe; 320, 390, 768 and 1280 wide, light and dark; no CSP violation, no page error.
+// Stage 2 (s2 §9.2 FW; s24-contracts §2, §4, §6, §7), with the fake module at Markets' and Mail's addresses too: a switch
+// per app (one switched off doesn't unmount another; the bounce of the shown one flushes and waits while it's busy);
+// sections: false, fw.nav.go with { replace }, fw.nav.depth(), a stay key (Mail's thread) left in the address; fw.lazy
+// while stale and busy imports with no reload, while stale and idle reloads at the route; a lazy file that fails: the
+// same build out, Try Again's ?retry=1, a new build out, the reload at the route; a provider per app (Weather's places
+// found while Markets' module provides its own; the connector's search given { userId }).
 //   node .tools/tests/roofkit.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';

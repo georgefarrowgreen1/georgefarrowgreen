@@ -24,6 +24,10 @@
 // of Weather's module files asked for (D13); Weather Notifications with no places (Open Weather), the solar line, Email
 // the Briefing, an account from before, the focus after a PATCH; the page's sheets reopened while they shut, their close
 // button the framework's cross; Edit Today from the menu on Today pushing no twin; Sign in's href after a move in the page.
+// And stage 2 (s2 §9.1, §9.2 FW): /api/hub's apps with Markets on and Fitness off (Markets' stand-in module in the page,
+// Fitness a page load, the map kept as ifl-roof-apps); signed out elsewhere (a confirmed 401): markets:*, fitness:*,
+// wx:acct and the fitness store gone, Weather's places kept, and offline nothing gone; Today's cards asked again on its
+// next show after fw.changed().
 //   node .tools/tests/roofshell.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
