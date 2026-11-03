@@ -109,8 +109,8 @@ export async function mount(root, fw) {
       if (loading) return;
       failed = false;
       el.replaceChildren(fw.ui.skeleton("card", 3));
-      loading = L[k]().then((m) => { loaded[k] = m; real = m.view(el, c); loading = null; if (drawn) real.draw(); }, (e) => {
-        console.error(e); loading = null; failed = true;
+      loading = L[k]().then((m) => { loaded[k] = m; real = m.view(el, c); loading = null; if (drawn) real.draw(); }).catch((e) => {
+        console.error(e); loading = null; failed = true; real = null;
         el.replaceChildren(fw.ui.error({ title: `${label} didn’t load`, body: "Check your connection, then try again.", acts: [{ label: "Try Again", act: "retry", run: () => go() }] }));
       });
     };
