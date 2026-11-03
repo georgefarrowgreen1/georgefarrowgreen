@@ -117,16 +117,18 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   const manifest = [...want].find((f) => f && /\.webmanifest$/.test(f));
   assert.ok(manifest, 'the page names its manifest');
   want.add(own(JSON.parse(read(manifest.slice(1))).start_url || '/', manifest));
-  for (const s of [...want].filter((f) => f?.endsWith('.js'))) {
+  for (const s of [...want].filter((f) => f?.endsWith('.js') && !f.startsWith('/weather/'))) {
     const src = read(s.slice(1));
     for (const [, a, b] of src.matchAll(/^\s*import\b[^'"]*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm)) want.add(own(a || b, s));
     for (const [, u] of src.matchAll(/["'`](\/[\w./-]+\.(?:svg|png|css|js|json|webmanifest))["'`?]/g)) if (u !== '/sw.js') want.add(u);
   }
-  for (const s of [...want].filter((f) => f?.endsWith('.js'))) {
+  for (const s of [...want].filter((f) => f?.endsWith('.js') && !f.startsWith('/weather/'))) {
     const src = read(s.slice(1));
     for (const [, a] of src.matchAll(/^\s*import\b[^'"]*["']([^"']+)["']/gm)) want.add(own(a, s));
   }
   want.delete(null);
+  // (Weather's module files under the roof are the hub's, kept by the worker in roof-weather-*, not in FILES)
+  for (const f of [...want]) if (f.startsWith('/weather/')) want.delete(f);
   // (the icons a phone asks for as Today's added to its Home Screen, never as it opens, needn't be kept)
   for (const f of ['/icon-512.png', '/icon-maskable-512.png', '/og.png']) want.delete(f);
   const missing = [...want].filter((f) => !FILES.includes(f));
