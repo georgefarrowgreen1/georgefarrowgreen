@@ -109,21 +109,21 @@ test("a hand-back's tries are counted under the network's address, or under a ke
 });
 
 test("Edit's cards: unknown names left out, missing ones added at the end, hidden only of the four; a bad body refused", async () => {
-  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["weather", "chat", "fitness", "markets"], hidden: [] }, "none kept: the usual order");
+  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["weather", "chat", "fitness", "markets", "mail"], hidden: [] }, "none kept: the usual order (Mail last: One roof stage 4)");
   assert.equal((await T.todayPrefs(env, "bo")).updated, null);
   let r = await T.savePrefs(env, "bo", { order: ["markets", "nope", "weather", "markets"], hidden: ["chat", "x", "chat"] });
-  assert.deepEqual(r.cards, { order: ["markets", "weather", "chat", "fitness"], hidden: ["chat"] });
+  assert.deepEqual(r.cards, { order: ["markets", "weather", "chat", "fitness", "mail"], hidden: ["chat"] });
   r = await T.savePrefs(env, "bo", { hidden: [] });
-  assert.deepEqual(r.cards, { order: ["markets", "weather", "chat", "fitness"], hidden: [] }, "the order as it was, when only hidden is sent");
+  assert.deepEqual(r.cards, { order: ["markets", "weather", "chat", "fitness", "mail"], hidden: [] }, "the order as it was, when only hidden is sent");
   r = await T.savePrefs(env, "bo", { order: ["fitness"] });
-  assert.deepEqual(r.cards.order, ["fitness", "weather", "chat", "markets"]);
+  assert.deepEqual(r.cards.order, ["fitness", "weather", "chat", "markets", "mail"]);
   for (const bad of [{ order: "weather" }, { order: [1] }, { hidden: {} }, { hidden: Array(21).fill("chat") }, { order: null }])
     await assert.rejects(T.savePrefs(env, "bo", bad), err(400, "Bad request."), JSON.stringify(bad));
   // (a row someone's tampered with: read as the four, in a sane order)
   await D.prepare("UPDATE td_prefs SET cards = '{\"order\":[\"x\",\"chat\"],\"hidden\":\"all\"}' WHERE user_id = 'bo'").run();
-  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["chat", "weather", "fitness", "markets"], hidden: [] });
+  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["chat", "weather", "fitness", "markets", "mail"], hidden: [] });
   await D.prepare("UPDATE td_prefs SET cards = 'not json' WHERE user_id = 'bo'").run();
-  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["weather", "chat", "fitness", "markets"], hidden: [] });
+  assert.deepEqual((await T.todayPrefs(env, "bo")).cards, { order: ["weather", "chat", "fitness", "markets", "mail"], hidden: [] });
 });
 
 test("the morning's settings: a time on the five minutes, on and lines as true or false, a zone only if the clocks know it", async () => {
@@ -310,7 +310,7 @@ test("every route only with Today's Origin; a change never straight from a brows
   r = await call("GET", "me", { cookie: annC });
   assert.equal(r.s, 200); assert.equal(r.j.signedIn, true);
   assert.deepEqual(r.j.user, { id: "ann", name: "Ann Tester", first: "Ann", handle: "ann", photoAt: null, appearance: "auto" });
-  assert.deepEqual(r.j.prefs, { order: ["weather", "chat", "fitness", "markets"], hidden: [] });
+  assert.deepEqual(r.j.prefs, { order: ["weather", "chat", "fitness", "markets", "mail"], hidden: [] });
   assert.deepEqual(r.j.morning, { on: false, at: 420, devices: 9 });
   assert.equal(r.j.links.auth, "http://auth.ifl.test:8788");
   assert.match(r.set || "", /^account=[A-Za-z0-9_-]+; Path=\/; Domain=ifl\.test; HttpOnly; SameSite=Lax; Max-Age=\d+$/, "the cookie renewed");
@@ -331,7 +331,7 @@ test("every route only with Today's Origin; a change never straight from a brows
     assert.equal(r.s, 403, site);
   }
   r = await call("PUT", "prefs", { cookie: annC, body: { hidden: ["chat"] } });
-  assert.deepEqual(r.j, { prefs: { order: ["weather", "chat", "fitness", "markets"], hidden: ["chat"] } }, "from Today's server");
+  assert.deepEqual(r.j, { prefs: { order: ["weather", "chat", "fitness", "markets", "mail"], hidden: ["chat"] } }, "from Today's server");
   r = await call("PUT", "prefs", { cookie: annC, body: { order: "nope" } });
   assert.equal(r.s, 400); assert.equal(r.j.error, "Bad request.");
   // (only at the account's address: not the sign-in page's)
@@ -373,7 +373,7 @@ test("the account's data has Today's, and the account going takes it", async () 
   await T.saveMorning(env, "fay", { on: true, at: 405, lines: { markets: false } });
   await T.claimMorning(env, "fay", "2026-11-02", null);
   const x = await T.todayExport(env, "fay");
-  assert.deepEqual(x, { cards: { order: ["chat", "weather", "fitness", "markets"], hidden: ["markets"] },
+  assert.deepEqual(x, { cards: { order: ["chat", "weather", "fitness", "markets", "mail"], hidden: ["markets"] },
     morning: { on: true, at: "06:45", timeZone: "America/New_York", lines: { weather: true, chat: true, fitness: true, markets: false }, lastSent: "2026-11-02" }, devices: 0,
     acts: [], rules: [], planned: [], times: [] }, "Today First's too (what Today did, its rules, the days it planned, times agreed in Chat): none yet");
   await T.addDevice(env, { id: "fay", sessionHash: "sFay" }, await device("fay"));

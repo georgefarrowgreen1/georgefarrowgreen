@@ -14,8 +14,11 @@ import { HttpError, sha256, b64url, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk } from "./_notify.js";
 import { timesExport, dropTimes } from "./_times.js";
 
-// the cards, in the order a new account has them
-export const CARDS = ["weather", "chat", "fitness", "markets"];
+// the cards, in the order a new account has them (Mail's last: the site's admin's alone, whose card is drawn only for
+// them; a saved order without it gets it at the end, as any card missing from one does)
+export const CARDS = ["weather", "chat", "fitness", "markets", "mail"];
+// the morning notification's lines: the cards but Mail's, which is never a line of the morning (One roof stage 4, BI14)
+export const LINES = ["weather", "chat", "fitness", "markets"];
 // devices an account keeps (an eleventh drops the oldest), and the failures in a row that drop one
 const DEVICES = 10, FAILS = 5;
 
@@ -82,7 +85,7 @@ function cardsOf(c) {
   return { order: [...order, ...CARDS.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
 }
 // (the lines turned off: false for each, nothing for one that's on)
-const linesOf = (l) => Object.fromEntries(CARDS.filter((k) => l?.[k] === false).map((k) => [k, false]));
+const linesOf = (l) => Object.fromEntries(LINES.filter((k) => l?.[k] === false).map((k) => [k, false]));
 const COLS = "cards, m_on, m_at, m_tz, m_lines, m_sent, m_last, updated";
 // (updated: when it was last changed; null for an account that's never changed anything here)
 const rowOf = (r) => ({
@@ -130,7 +133,7 @@ export async function saveMorning(env, userId, { on, at, lines, tz }) {
   const patch = {};
   if (lines !== undefined) {
     if (!lines || typeof lines !== "object" || Array.isArray(lines)) throw new HttpError(400, "Choose on or off.");
-    for (const k of CARDS) if (lines[k] !== undefined) { if (typeof lines[k] !== "boolean") throw new HttpError(400, "Choose on or off."); patch[k] = lines[k] ? null : false; }
+    for (const k of LINES) if (lines[k] !== undefined) { if (typeof lines[k] !== "boolean") throw new HttpError(400, "Choose on or off."); patch[k] = lines[k] ? null : false; }
   }
   const D = await tddb(env);
   await D.prepare(`INSERT INTO td_prefs (user_id, m_on, m_at, m_tz, m_lines, updated) VALUES (?1, COALESCE(?2, 0), COALESCE(?3, 420), ?4, json_patch('{}', ?5), ?6)
@@ -288,7 +291,7 @@ export async function todayExport(env, userId) {
   return {
     cards: row.cards,
     morning: { on: !!row.m_on, at: hhmm(row.m_at), timeZone: morningTz({ id: userId, notify_prefs: u?.notify_prefs }, row),
-      lines: Object.fromEntries(CARDS.map((k) => [k, row.m_lines[k] !== false])), lastSent: row.m_sent || null },
+      lines: Object.fromEntries(LINES.map((k) => [k, row.m_lines[k] !== false])), lastSent: row.m_sent || null },
     devices: devs.length,
     acts: acts.map(actOut),
     rules: rules.map(ruleOut),
