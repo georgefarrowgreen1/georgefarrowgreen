@@ -91,22 +91,35 @@ export async function mount(root, fw) {
   };
   const mods = {}, asked = {};
   const load = (f) => (asked[f] ||= LAZY[f]().then((m) => (mods[f] = m), (e) => { delete asked[f]; throw e; }));
-  // an opener from a lazy file: at once once it's in; else, past LOADING_MS, a skeleton sheet of its name till it is
-  const opener = (f, sheet, run) => (...a) => {
-    if (mods[f]) return run(mods[f], ...a);
-    let ph = null;
-    const t = setTimeout(() => { if (alive) ph = fw.sheet.open({ sheet, label: "Loading", body: fw.ui.skeleton("rows", 3), app: "weather" }); }, LOADING_MS);
-    return load(f).then((m) => {
-      clearTimeout(t);
-      if (ph) { if (ph.closed) return null; ph.now(); }
-      return alive ? run(m, ...a) : null;
-    }, (e) => {
-      clearTimeout(t);
-      ph?.now?.();
-      console.error(e);
-      if (alive) fw.toast(globalThis.navigator?.onLine === false ? "That needs a connection the first time." : "That didn’t open. Try again in a moment.");
-      return null;
-    });
+  // (on screen: show() sets it, hide() clears it; seen: how many times Weather has been left, so a sheet asked for before
+  // the person left never opens over what they went to, nor when they come back)
+  let shown = null, onScreen = false, opening = 0, seen = 0;
+  // an opener from a lazy file: at once once it's in; else, past LOADING_MS, a skeleton sheet of its name till it is. One
+  // ask at a time: a second tap while the file comes gets the first's promise and opens nothing more. The real sheet opens
+  // only if Weather still shows (never left meanwhile) and the skeleton sheet, if it came, wasn't put away (its close
+  // begun: Escape, ✕, a drag, a route change's closeAll)
+  const opener = (f, sheet, run) => {
+    let pending = null;
+    return (...a) => {
+      if (mods[f]) return run(mods[f], ...a);
+      if (pending) return pending;
+      const mine = seen, here = () => alive && onScreen && seen === mine;
+      let ph = null;
+      const t = setTimeout(() => { if (here()) ph = fw.sheet.open({ sheet, label: "Loading", body: fw.ui.skeleton("rows", 3), app: "weather" }); }, LOADING_MS);
+      const away = () => ph && (ph.closed || ph.el?.classList?.contains("closing"));
+      return (pending = load(f).then((m) => {
+        clearTimeout(t);
+        if (away()) return null;
+        ph?.now();
+        return here() ? run(m, ...a) : null;
+      }, (e) => {
+        clearTimeout(t);
+        ph?.now?.();
+        console.error(e);
+        if (alive) fw.toast(globalThis.navigator?.onLine === false ? "That needs a connection the first time." : "That didn’t open. Try again in a moment.");
+        return null;
+      }).finally(() => { pending = null; }));
+    };
   };
   Object.assign(ctx.open, {
     places: opener("places", "places", (m) => m.openPlaces(ctx)),
@@ -131,7 +144,6 @@ export async function mount(root, fw) {
     secs.set(id, el);
     views.set(id, VIEWS[id](el, ctx));
   }
-  let shown = null, onScreen = false, opening = 0;
   const draw = (id = shown) => { if (onScreen && id) { try { views.get(id)?.draw(); } catch (e) { console.error(e); } } };
   const header = () => {
     if (!onScreen) return;
@@ -191,6 +203,7 @@ export async function mount(root, fw) {
     },
     hide() {
       onScreen = false;
+      seen++;
       core.shown(false);
       if (shown) { try { views.get(shown).hide(); } catch (e) { console.error(e); } }
     },
