@@ -251,8 +251,8 @@ test('every dynamic import in the module sits inside fw.lazy( (D21)', () => {
 test('the module keeps §5.1’s rules: no service worker, history, location change, confirm/alert, IFL, page selectors, today:* key, indexedDB or parent; window/document listeners removed', () => {
   const RULES = [
     [/serviceWorker/, 'registers no service worker'],
-    [/\bhistory\s*\./, 'no history.*'],
-    [/\blocation\s*\.\s*(?:assign|replace|reload)\s*\(|\blocation\s*(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=)/, 'no location changes (reading only)'],
+    [/(?:\b(?:window|globalThis)\s*\.\s*|(?<![.\w$]))history\s*\./, 'no history.*'],
+    [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes (reading only)'],
     [/(?<![.\w$])(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert()'],
     [/\bIFL\s*\./, 'no IFL.'],
     [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document.getElementById/querySelector (only root, fw.screenEl and what it made)'],
@@ -268,7 +268,8 @@ test('the module keeps §5.1’s rules: no service worker, history, location cha
   }
   // (the rules bite)
   assert.ok(RULES[3][0].test('if (confirm("x")) 1') && !RULES[3][0].test('ctx.open.confirm(p); confirmPlace(ctx, p)'));
-  assert.ok(RULES[2][0].test('location.href = "/"') && !RULES[2][0].test('const p = location.pathname; if (location.hash === "#x") 1'));
+  assert.ok(RULES[2][0].test('location.href = "/"') && RULES[2][0].test('window.location.assign("/")') && RULES[2][0].test('location.reload()') && !RULES[2][0].test('const p = location.pathname; if (location.hash === "#x") 1; w.location = 2'));
+  assert.ok(RULES[1][0].test('history.back()') && RULES[1][0].test('window.history.pushState(1)') && !RULES[1][0].test('wx.history.length'));
   assert.ok(RULES[8][0].test('parent.postMessage(1)') && !RULES[8][0].test('el.parentNode; a.parent.x'));
 });
 
