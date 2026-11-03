@@ -39,6 +39,8 @@ export function untilWords(ts, now = Date.now()) {
   if (h < 24) return `${h}h ${pad2(m % 60)}m`;
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
+// (a name as the list says it: "me" is You)
+export const who = (n) => (n === "me" ? "You" : first(n));
 export const first = (name) => String(name || "").trim().split(/\s+/)[0] || String(name || "");
 // (every [data-tick] under root: its time words written again; data-tick = "until:<ts>" | "list:<ts>")
 export function tick(root, now = Date.now()) {
@@ -119,8 +121,8 @@ function build(sec, ctx) {
   }
   function airEl(a) {
     return el("button", { type: "button", class: "ch-airp", data: { act: "air", id: a.chatId, msg: a.id, sig: `${a.landsAt}|${a.from}|${a.to}` },
-      aria: { label: `A pigeon from ${a.from} to ${a.to}, lands in ${untilWords(a.landsAt)}` } },
-      el("span", { class: "ch-airwho", text: `${first(a.from)} → ${first(a.to)}` }),
+      aria: { label: `A pigeon from ${who(a.from)} to ${who(a.to)}, lands in ${untilWords(a.landsAt)}` } },
+      el("span", { class: "ch-airwho", text: `${who(a.from)} → ${who(a.to)}` }),
       el("span", { class: "ch-airt", data: { tick: `until:${a.landsAt}` }, text: untilWords(a.landsAt) }));
   }
   const drawWarn = () => {
