@@ -96,8 +96,9 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
   parent.dispatchEvent(new Event("ifl-chat-ready"));
 </script></body></html>`;
 const chatOut = [];
-async function open({ w = 390, h = 844, scheme = 'dark', hub = true, apps = null, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null, setup = null } = {}) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
+async function open({ w = 390, h = 844, scheme = 'dark', hub = true, apps = null, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null, setup = null, phone = false } = {}) {
+  // (phone: a phone's user agent, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, ...(phone ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' } : {}), colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
   if (standalone) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
@@ -518,7 +519,7 @@ await part('Chats in the page', async () => {
   if (!CHATS3) return console.log('SKIP  Chats in the page: the inflite repo beside has no REGISTRY.chats (before stage 3)');
   await mode({ phase: 'midday' }); await reset();
   const at = MIDDAY.waiting?.[0]?.at, pat = MIDDAY.waiting?.[0]?.id;
-  const { ctx, p } = await open({ apps: { weather: true, chats: true }, setup: chatsFiles({ waiting: [{ id: pat, first: 'Pat', at, said: SAID, kind: 'question', topics: [] }], lockAfter: 1500 }) });
+  const { ctx, p } = await open({ apps: { weather: true, chats: true }, phone: true, setup: chatsFiles({ waiting: [{ id: pat, first: 'Pat', at, said: SAID, kind: 'question', topics: [] }], lockAfter: 1500 }) });
   await p.waitForSelector('#today #waiting .dw-words.in:not([hidden])', { timeout: 20000 });
   same(await text(p, '#today #waiting .dw-words'), `“${SAID}”`, 'Waiting for You’s words from Chats’ service');
   same(await p.$$eval('iframe[name="ifl-chat"], dialog.ifl-engine-box', (n) => n.length), 0, 'no engine: no iframe, no dialog');

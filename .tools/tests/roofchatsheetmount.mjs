@@ -12,7 +12,7 @@
 //   friends with the outbox note;
 //   no CSP violation, no page error; no request carries the words typed (they cross to the Worker by postMessage only).
 //   node .tools/tests/roofchatsheetmount.mjs [state dir] [screenshots dir]      (run.sh does this)
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as H from './roofhooks.mjs';
@@ -35,7 +35,8 @@ const WORDS = 'Kittiwake lantern 4471';
 const PAT = '6c0f6f1e-0000-4000-8000-0000000000a1', ALI = '6c0f6f1e-0000-4000-8000-0000000000a2', GROUP = '6c0f6f1e-0000-4000-8000-0000000000b1';
 
 async function kit({ state = 'ready', scheme = 'light' } = {}) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  // (a phone's user agent: the real service keeps theme.js's device rule, and Chat is for phones, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: devices['iPhone 13'].userAgent, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   const served = await serveKit(ctx);
   // (the stub core in the state asked for: serve.mjs's own .replace('__KIT_STATE__', …) meets the placeholder in the
   // stub's header comment first, so it always starts ready; reported to B0. Routed here, after serveKit, so this wins)

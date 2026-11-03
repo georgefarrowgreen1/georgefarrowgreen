@@ -54,9 +54,18 @@ const everyone = [G, P];
 ok(!!(G.token && P.token) && (await befriend(G, P)), 'George at the hub and Pat at Chat’s own address, friends', js([G.id, P.id]));
 await G.p.goto(`${HUB}/robots.txt`);
 await weatherAccount(G.p, { places: [PLACES.London], settings: { temp: 'c' } });
+// (where George is, as Chat keeps it, and the two of them writing as messages there at once (each chat's usual way), as
+// roofchats has it: letters by pigeon would still be in the air when they're looked for)
+K.sql(`UPDATE pg_users SET lat = 51.5072, lon = -0.1276 WHERE id = '${G.id}'`);
+K.sql(`UPDATE pg_ways SET way = 'instant' WHERE a IN ('${G.id}', '${P.id}') AND b IN ('${G.id}', '${P.id}')`);
+K.sql(`UPDATE pg_users SET new_way = 'instant' WHERE id IN ('${G.id}', '${P.id}')`);
 const QUEUED = 'Posting this while the signal is gone';
-// (Pat's answer, on Chat's own page, so George has something to be told of)
-await P.p.evaluate((id) => { location.hash = '#open=' + id; }, G.id); await P.p.waitForSelector('#msg', { timeout: 20000 }).catch(() => {});
+// (Pat's answer, on Chat's own page, so George has something to be told of; the chat asked for again until it's drawn,
+// as Pat's page may not have her friends yet)
+for (let k = 0; k < 5; k++) {
+  await P.p.evaluate((id) => { history.replaceState(null, '', location.pathname); location.hash = '#open=' + id; }, G.id);
+  if (await P.p.waitForSelector('#msg', { timeout: 5000 }).then(() => true, () => false)) break;
+}
 await P.p.fill('#msg', 'Are you on the late train tonight'); await P.p.click('.send'); await wait(1200);
 
 // ======================================================================================================================

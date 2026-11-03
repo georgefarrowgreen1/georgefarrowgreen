@@ -85,8 +85,9 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
 // fakes: apps whose module and connector are the kit's stand-ins (roofkit/fake-module.js, fake-connector.js), their CSS
 // empty and their /<app>/version 9.99, and whose document (/<app>/) is the framework's page (stage 2 FW)
 const FAKE_MOD = readFileSync(`${HERE}roofkit/fake-module.js`, 'utf8'), FAKE_CONN = readFileSync(`${HERE}roofkit/fake-connector.js`, 'utf8');
-async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null, fakes = [] } = {}) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
+async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null, fakes = [], phone = false } = {}) {
+  // (phone: a phone's user agent, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, ...(phone ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' } : {}), colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
   const hubAsked = [];
@@ -661,7 +662,7 @@ await part('Chats in the page', async () => {
   if (!CHATS3) return console.log('SKIP  Chats in the page: the inflite repo beside has no REGISTRY.chats (before stage 3)');
   await mode({ phase: 'midday' }); await reset();
   const CHATS_ON = { weather: true, chats: true };
-  const { ctx, p, loads } = await open({ hub: { ready: true, roof: true, apps: CHATS_ON }, setup: chatsFiles });
+  const { ctx, p, loads } = await open({ hub: { ready: true, roof: true, apps: CHATS_ON }, setup: chatsFiles, phone: true });
   await p.evaluate(() => { window.__same = 1; });
   ok(await p.$eval('nav#tabs', (n) => n.classList.contains('chats')), 'the tab bar takes InFlite’s indigo (.chats)');
   const onColour = () => p.$eval(`${H.TAB}[aria-current]`, (a) => getComputedStyle(a).color);

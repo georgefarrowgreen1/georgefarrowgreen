@@ -28,7 +28,7 @@
 // stub): the module mounts, F.service's frozen facade and fw.service's full service over one Worker, opts.serviceState,
 // one stub sheet per opener file opening and closing, a locked start, and with Chats off nothing of it at all.
 //   node .tools/tests/roofkit.mjs [state dir] [screenshots dir]      (run.sh does this)
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { serveKit, KIT } from './roofkit/serve.mjs';
@@ -47,8 +47,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 
 const pages = [];
-async function kit({ w = 390, h = 844, scheme = 'light', path = '/', motion = 'no-preference', noVT = false, init = null } = {}) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, reducedMotion: motion, locale: 'en-GB', timezoneId: 'Europe/London' });
+async function kit({ w = 390, h = 844, scheme = 'light', path = '/', motion = 'no-preference', noVT = false, init = null, phone = false } = {}) {
+  // (phone: a phone's user agent and touch, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, reducedMotion: motion, locale: 'en-GB', timezoneId: 'Europe/London', ...(phone ? { userAgent: devices['iPhone 13'].userAgent, hasTouch: true, isMobile: true } : {}) });
   const served = await serveKit(ctx);
   if (noVT) await ctx.addInitScript(() => { delete Document.prototype.startViewTransition; });
   if (init) await ctx.addInitScript(init);
@@ -664,7 +665,7 @@ try {
   // Worker, opts.serviceState hears the state, one stub sheet opens and closes per opener file; ?state=locked starts
   // locked; with Chats off, /chats/ is still a page of its own (nothing changed for anyone)
   {
-    const k = await kit({ path: '/?apps=weather,chats&service=stub&state=ready' }), p = k.p;
+    const k = await kit({ path: '/?apps=weather,chats&service=stub&state=ready', phone: true }), p = k.p;
     await p.goto(KIT + '/chats/');
     await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('main#m-chats section.ch-sec'), null, { timeout: 15000 });
     await settle(p, 600);
@@ -715,7 +716,7 @@ try {
     await clean(k, 'Chats’ stub module and stub core');
     await k.ctx.close();
     // (the stub core started locked: the facade says so and Waiting for You gets nothing)
-    const k2 = await kit({ path: '/?apps=weather,chats&service=stub&state=locked' }), p2 = k2.p;
+    const k2 = await kit({ path: '/?apps=weather,chats&service=stub&state=locked', phone: true }), p2 = k2.p;
     same(await p2.evaluate(async () => { const f = await kit.F.service('chats'); return [f.state, (await f.waiting({ ids: [] })).length, await f.since('x', 0)]; }), ['locked', 0, null], '?state=locked: the facade locked, nothing waiting, nothing since');
     await clean(k2, 'the stub core, locked');
     await k2.ctx.close();

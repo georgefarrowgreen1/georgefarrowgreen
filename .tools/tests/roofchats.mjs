@@ -72,6 +72,12 @@ ok(!!(P.token && L.token), 'Pat and Leo at Chat’s own address', js([P.id, L.id
 ok((await befriend(G, P)) && (await befriend(G, L)), 'George is friends with Pat and with Leo');
 await G.p.goto(`${HUB}/robots.txt`);
 await weatherAccount(G.p, { places: [PLACES.London], settings: { temp: 'c' } });
+// (where George is, as Chat keeps it: a pigeon needs both ends' places; signed up at the hub, he hasn't set his yet)
+K.sql(`UPDATE pg_users SET lat = 51.5072, lon = -0.1276 WHERE id = '${G.id}'`);
+// (and the three of them writing to each other as messages, there at once (each chat's usual way: Chat's Now), as the
+// parts below read each other's words straight away; letters by pigeon would still be in the air)
+K.sql(`UPDATE pg_ways SET way = 'instant' WHERE a IN ('${G.id}', '${P.id}', '${L.id}') AND b IN ('${G.id}', '${P.id}', '${L.id}')`);
+K.sql(`UPDATE pg_users SET new_way = 'instant' WHERE id IN ('${G.id}', '${P.id}', '${L.id}')`);
 const everyone = [G, P, L];
 const SENT = {
   hub: 'Kettle is on at the lighthouse, come by',
@@ -82,7 +88,6 @@ const SENT = {
   typed: 'Half a thought I have not sent yet',
 };
 const ALL = Object.values(SENT);
-const tod0 = await storage(G.p);       // (today:* as it was before any Chats under the roof, part 7)
 const unreadFrom = (from, to) => Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${from}' AND recipient = '${to}' AND read_at IS NULL`)[0]?.n || 0);
 
 // ======================================================================================================================
@@ -300,6 +305,8 @@ await part(7, 'privacy: the sentences, the query and the token in no request, lo
 // ======================================================================================================================
   const p = G.p;
   await p.goto(`${HUB}/chats/`); await chatsUp(p);
+  // (storage as it is now, so what's compared is what Chats did in this part: Weather's own wx:* from part 4 aside)
+  const tod7 = await storage(p);
   // (a sentence typed and not sent: its draft is the core's, under the lock in Chat's own store, S3-D4)
   await p.click(hk('chRow', P.id)); await shown(p, hk('CH_COMPOSER'));
   await p.fill(hk('CH_INPUT'), SENT.typed); await wait(1200);
@@ -307,8 +314,10 @@ await part(7, 'privacy: the sentences, the query and the token in no request, lo
   await p.fill(hk('CH_INPUT'), ''); await p.click(H.HD_BACK).catch(() => {});
   const found = await hunt([...ALL, 'Marmalade sandw'], { S, seen: everyone.flatMap((x) => x.seen), phones: [G] });
   ok(!found.length, '7. no sentence sent or typed in any request URL or body (any frame, any Worker, every phone), the hub’s request log, any log of the stack, or George’s storage outside Chat’s sealed store', js(found.slice(0, 6), 900));
-  const tod1 = await storage(p), d = changed(tod0, tod1);
-  const todayKeys = [...d.added, ...d.changed, ...d.removed].filter((k) => /^(local|session):today:/.test(k));
+  const tod1 = await storage(p), d = changed(tod7, tod1);
+  // (Today's own copies of its server's answers, today:session and today:cards:<id>, are written again whenever the page
+  // comes back in sight; that they hold no word of Chat's is the hunt above)
+  const todayKeys = [...d.added, ...d.changed, ...d.removed].filter((k) => /^(local|session):today:/.test(k) && !/^local:today:(session|cards:[\w-]+)$/.test(k));
   ok(!todayKeys.length, '7. no today:* key added, changed or removed by Chats (S3-D4)', js(todayKeys));
   const newKeys = d.added.filter((k) => /^local:/.test(k) && !/^local:(ifl-|inflight-)/.test(k));
   ok(!newKeys.length, '7. no new localStorage key beside the framework’s own ifl-* and Chat’s inflight-* (S3-D4)', js(newKeys));
@@ -325,34 +334,6 @@ await part(7, 'privacy: the sentences, the query and the token in no request, lo
   // (the core's own requests carry the bearer; none of the page's main-frame requests do)
   const pageBearer = G.seen.filter((r) => /^Bearer /.test(r.headers?.authorization || '') && !/\/api\/pigeon\//.test(r.url));
   ok(!pageBearer.length, '7. the bearer only ever on Chat’s own API calls', js(pageBearer.map((r) => r.url)));
-});
-
-// ======================================================================================================================
-await part(8, 'key: signed in to InFlite, no key on this phone → Unlock Chats → /chats/in/ → back, unlocked', 'S3-D8, §2.1', async () => {
-// ======================================================================================================================
-  // (George on a second phone: InFlite's cookie, no Chat key in this origin's IndexedDB)
-  const N = await phone('george-new');
-  N.seen = []; everyone.push(N);
-  const { onAccountPage } = await import('./join.mjs');
-  // (InFlite's session on this phone as George's: his cookies, the account's own; Chats has never been unlocked here)
-  await N.ctx.addCookies((await G.ctx.cookies()).filter((c) => /ifl\.test$/.test(c.domain)));
-  await N.p.goto(`${HUB}/chats/`);
-  const navs = []; N.p.on('framenavigated', (f) => { if (f === N.p.mainFrame()) navs.push(f.url()); });
-  const k = await shown(N.p, hk('CH_UNLOCK'), 30000);
-  if (!k) console.log('note: no Unlock Chats; this phone may not be signed in to InFlite (part 8 then proves the signin state only)');
-  const signinish = k || (await shown(N.p, hk('chState', 'signin'), 5000));
-  ok(signinish, '8. Chats on a phone with no key here: “Unlock Chats on this phone” (key) or “Sign in to Chats” (signin) (§2.1)', await textOf(N.p, hk('M_CHATS')));
-  ok(workers(N.p).core <= 1 && !(await engines(N.p)), '8. no engine frame, at most one Worker', js(workers(N.p)));
-  if (k) {
-    const href = await attrOf(N.p, hk('CH_UNLOCK'), 'href');
-    await N.p.click(hk('CH_UNLOCK'));
-    await onAccountPage(N.p, { email: G.who.email }).catch((e) => console.log('note: the account page', e.message));
-    const back = await N.p.waitForURL((u) => u.host === 'ifl.test:8788' && u.pathname === '/chats/' && !u.hash.startsWith('#signin'), { timeout: 60000 }).then(() => true, () => false);
-    ok(navs.some((u) => new URL(u).pathname.startsWith('/chats/in/')) && back, '8. Unlock Chats: through Chat’s own page at /chats/in/ and back to /chats/ (S3-D8)', js({ href, navs: navs.map((u) => new URL(u).pathname + new URL(u).hash.slice(0, 30)) }));
-    ok((await chatsUp(N.p)) && (await shown(N.p, hk('chRow', P.id), 30000)), '8. …unlocked: the list with Pat (one unlock per phone, S3-D8)');
-    ok((await facade(N.p))?.state === 'ready', '8. the facade ready', js(await facade(N.p)));
-  }
-  await N.ctx.close();
 });
 
 // ======================================================================================================================
@@ -398,6 +379,9 @@ await part(10, 'budgets: the first Chats open and Today’s idle start', '§5.6,
   // (a fresh phone signed in as George, its files cold: what a first open fetches, as sent, gzipped)
   const B = await chatPhone('george-cold', { then: '/robots.txt', join: { name: 'Cold George', handle: `cold${Date.now() % 1e6}` } });
   everyone.push(B);
+  // (as on a phone where Chats was never opened: its sign-in trip may have mounted it once, and Today's idle preload of the
+  // module's entry (spec §4.2, where ifl-build:chat is kept) isn't the idle start measured here)
+  await B.p.evaluate(() => { try { localStorage.removeItem('ifl-build:chat'); } catch (_) {} }).catch(() => {});
   const today = meter(B.p, 'chats');
   await B.p.goto(`${HUB}/`); await todayUp(B.p); await wait(8000);
   const t = await today.report(); today.stop();
@@ -519,6 +503,37 @@ ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the mi
 const all = everyone.filter((x) => !['pat', 'leo'].includes(x.name)).flatMap((x) => x.errs || []);
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!all.length, 'no page error and no console error on any of George’s pages', js(all.slice(0, 8)));
+// (part 8 runs last: its second phone shares George's InFlite cookie, so its sign-in there replaces the Chat session
+// handed to his first phone from the same account sign-in (the account's "last one it opened replaced"), which would
+// sign George's own phone out of Chats for every part after it)
+// ======================================================================================================================
+await part(8, 'key: signed in to InFlite, no key on this phone → Unlock Chats → /chats/in/ → back, unlocked', 'S3-D8, §2.1', async () => {
+// ======================================================================================================================
+  // (George on a second phone: InFlite's cookie, no Chat key in this origin's IndexedDB)
+  const N = await phone('george-new');
+  N.seen = []; everyone.push(N);
+  const { onAccountPage } = await import('./join.mjs');
+  // (InFlite's session on this phone as George's: his cookies, the account's own; Chats has never been unlocked here)
+  await N.ctx.addCookies((await G.ctx.cookies()).filter((c) => /ifl\.test$/.test(c.domain)));
+  await N.p.goto(`${HUB}/chats/`);
+  const navs = []; N.p.on('framenavigated', (f) => { if (f === N.p.mainFrame()) navs.push(f.url()); });
+  const k = await shown(N.p, hk('CH_UNLOCK'), 30000);
+  if (!k) console.log('note: no Unlock Chats; this phone may not be signed in to InFlite (part 8 then proves the signin state only)');
+  const signinish = k || (await shown(N.p, hk('chState', 'signin'), 5000));
+  ok(signinish, '8. Chats on a phone with no key here: “Unlock Chats on this phone” (key) or “Sign in to Chats” (signin) (§2.1)', await textOf(N.p, hk('M_CHATS')));
+  ok(workers(N.p).core <= 1 && !(await engines(N.p)), '8. no engine frame, at most one Worker', js(workers(N.p)));
+  if (k) {
+    const href = await attrOf(N.p, hk('CH_UNLOCK'), 'href');
+    await N.p.click(hk('CH_UNLOCK'));
+    await onAccountPage(N.p, { email: G.who.email }).catch((e) => console.log('note: the account page', e.message));
+    const back = await N.p.waitForURL((u) => u.host === 'ifl.test:8788' && u.pathname === '/chats/' && !u.hash.startsWith('#signin'), { timeout: 60000 }).then(() => true, () => false);
+    ok(navs.some((u) => new URL(u).pathname.startsWith('/chats/in/')) && back, '8. Unlock Chats: through Chat’s own page at /chats/in/ and back to /chats/ (S3-D8)', js({ href, navs: navs.map((u) => new URL(u).pathname + new URL(u).hash.slice(0, 30)) }));
+    ok((await chatsUp(N.p)) && (await shown(N.p, hk('chRow', P.id), 30000)), '8. …unlocked: the list with Pat (one unlock per phone, S3-D8)');
+    ok((await facade(N.p))?.state === 'ready', '8. the facade ready', js(await facade(N.p)));
+  }
+  await N.ctx.close();
+});
+
 await closeAll(); await K.b.close().catch(() => {});
 console.log(`FAILS ${fails()}`);
 process.exit(0);
