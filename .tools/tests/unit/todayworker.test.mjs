@@ -5,18 +5,24 @@
 // be reached is said in fixed words; /version reads app.js's BUILD and carries no CORS; a picture is only ever a picture.
 // And Today First's: its routes (acts, rules, notifications, devices), the hub's paths and Mail's answered by the Worker,
 // never the assets, and a test's moment of the day passed on only where the Worker's TEST_AT says so. And the staging
-// hub's: at another address standing in for the site (TODAY_AS), the account spoken to as that site.
+// hub's: at another address standing in for the site (TODAY_AS), the account spoken to as that site. And One roof's
+// (stage 1, spec D7): a document at /weather/ reaches the assets by design (the framework's page, Today's /) while the
+// roof is on, never with it off, and Weather's files never.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { IFL, roofSkip } from './fixtures/roof.mjs';
 
-const SRC = new URL('../../../../inflite/today/src/index.js', import.meta.url);
-const APP = new URL('../../../../inflite/today/public/app.js', import.meta.url);
-const skip = !existsSync(SRC) && 'the inflite repo isn’t beside this one';
+const SRC = IFL && new URL('today/src/index.js', IFL);
+const APP = IFL && new URL('today/public/app.js', IFL);
+const skip = (!IFL || !existsSync(SRC)) && 'the inflite repo isn’t beside this one';
 const worker = skip ? null : (await import(SRC)).default;
 // (Today First's own cases: skipped, not failed, where the inflite repo beside has no hub yet: its live branch, as CI has
 // it beside main while this repo goes live first)
-const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+const tfSkip = skip || (!existsSync(new URL('today/src/hub.js', IFL)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+// (One roof's rule, where the inflite repo beside has it (today/src/roof.js); without it, milestone 1's case above holds)
+const hasRoof = !tfSkip && existsSync(new URL('today/src/roof.js', IFL));
+const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 
 const ACCOUNT = 'https://account.inflite.ai', SITE = 'https://inflite.ai';
 const TOKEN = 'Q2hhdFNlc3Npb25Ub2tlbjEyMzQ1Njc4';
@@ -174,10 +180,16 @@ test('each route goes to its own place on the account, with its method; an unkno
 test('the hub’s paths and Mail’s are the Worker’s own, never the assets’', { skip: tfSkip }, async () => {
   account();
   assets.length = 0;
-  for (const p of ['/chats', '/chats/', '/chats/x', '/chats/sw.js', '/weather', '/weather/', '/weather/?lat=1', '/fitness/', '/markets/app.js', '/mail', '/mail/', '/mail/x']) {
+  for (const p of ['/chats', '/chats/', '/chats/x', '/chats/sw.js', '/weather', '/weather/app.js', '/weather/sw.js', '/fitness/', '/markets/app.js', '/mail', '/mail/', '/mail/x']) {
     const { res } = await call(new Request(SITE + p, { headers: { 'Sec-Fetch-Site': 'same-origin' } }));
     assert.notEqual(await res.text(), '<!doctype html>page', p);
   }
+  // (Weather's own page at /weather/: the hub's, never the assets', in milestone 1, and with the roof off in One roof)
+  for (const p of ['/weather/', '/weather/?lat=1', '/weather/index.html']) {
+    const { res } = await call(new Request(SITE + p, { headers: { 'Sec-Fetch-Site': 'same-origin' } }), env({ ROOF_OFF: '1' }));
+    assert.notEqual(await res.text(), '<!doctype html>page', p);
+  }
+  if (!hasRoof) for (const p of ['/weather/', '/weather/?lat=1']) assert.notEqual(await (await call(new Request(SITE + p))).res.text(), '<!doctype html>page', p);
   assert.deepEqual(assets, [], 'none went to the assets');
   // (and these are the assets', as before: Today's icon folder, and names that only start the same)
   for (const p of ['/apps/chat.svg', '/chatsy', '/mailbox', '/weathers/', '/']) await call(new Request(SITE + p));
@@ -277,4 +289,19 @@ test('a picture comes back as it came, kept for good under its v=, and only if i
     assert.equal(res.status, 404);
     assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8');
   }
+});
+
+test('One roof: a document at /weather/ reaches the assets by design (their /, the framework’s page) while the roof is on; Weather’s files and the module’s never', { skip: roofCase }, async () => {
+  account();
+  assets.length = 0;
+  for (const p of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2&name=Here']) {
+    const { res } = await call(new Request(SITE + p, { headers: { 'Sec-Fetch-Site': 'none' } }));
+    assert.equal(res.status, 200, p);
+    assert.equal(await res.text(), '<!doctype html>page', p);
+    assert.equal(res.headers.get('x-robots-tag'), 'noindex', p);
+  }
+  assert.deepEqual(assets, ['/', '/', '/'], 'the assets’ / each time, never /weather/');
+  assets.length = 0;
+  for (const p of ['/weather/app.js', '/weather/roof/weather.js', '/weather/version', '/weather/sw.js', '/weather']) await call(new Request(SITE + p));
+  assert.deepEqual(assets, [], 'none of those');
 });
