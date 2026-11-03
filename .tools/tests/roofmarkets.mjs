@@ -62,6 +62,16 @@ const open = async (name, o = {}) => { const ph = await phone(name, { cookies, .
 
 // ---- helpers over the hooks ----
 const SEC = (id) => `${H.M_MARKETS} ${H.mkSec(id)}`;
+// (a holding's row as shown: Today's movers use the same row (data-k=holding) in the Today section, which comes first in
+// the DOM and is hidden once Holdings shows, so only the visible match is waited for or tapped)
+const MK_ANY = `${H.M_MARKETS} ${H.MK_SEC}`;
+const ROW = (sym) => `${H.M_MARKETS} ${H.mkRow(sym)} >> visible=true`;
+// (local aliases, no hook frozen for them yet (asked of j0 as MK_ALERT_OPEN and MK_ADD_FOLLOW): the stock sheet's
+// Alert Me tool, which pushes the view holding MK_ALERT's field (stock.js alertView), and a result's + to follow it)
+const ALERT_OPEN = `${H.sheet('stock')} [data-el=alert]`;
+const ADD_FOLLOW = (sym) => `${H.MK_ADD_RESULT}[data-sym="${sym}"] button[aria-label^="Follow"]`;
+// (Remove asks for a second tap on the same button within 3.5 s, "Tap again to remove": both taps given)
+const removeTwice = async (p) => { await p.locator(H.MK_STOCK_REMOVE).scrollIntoViewIfNeeded().catch(() => {}); await p.click(H.MK_STOCK_REMOVE); await wait(300); await p.click(H.MK_STOCK_REMOVE); };
 const titleIs = (p, want, ms = 20000) => p.waitForFunction(([s, w]) => document.querySelector(s)?.textContent.trim() === w, [H.HD_TITLE, want], { timeout: ms }).then(() => true, () => false);
 const at = (p, path, ms = 10000) => p.waitForFunction((u) => location.pathname + location.search + location.hash === u, path, { timeout: ms }).then(() => true, () => false);
 const marketsUp = async (p, sec = 'today', ms = 30000) => (await shown(p, H.M_MARKETS, ms)) && (await shown(p, SEC(sec), ms)) && (sec !== 'today' || (await shown(p, `${H.M_MARKETS} ${H.MK_HERO}`, ms)));
@@ -90,7 +100,14 @@ const put = [await pageCall(p, 'PUT', '/api/markets/holding', { symbol: 'TSCO.L'
 ok(put.every((r) => r.s === 200), 'Imogen’s two holdings in the account through the hub (Tesco 200, Rolls-Royce 40), and London in Weather', js(put.map((r) => r.s)));
 await p.goto(`${HUB}/`);
 await todayUp(p);
+// (the baseline once Today has kept its own copy, today:cards:<id> and today:session (today/public/app.js keepSession),
+// so the host's own writes aren't taken for the module's)
+await until(async () => (Object.keys((await storage(p)).local).some((k) => k.startsWith('today:cards:')) ? 'kept' : null), 20000);
 const before = await storage(p);
+// (Today's own keys, written by the host whenever it draws: not the module's; never removed while signed in)
+const HOST_KEYS = /^local:today:(session$|cards:)/;
+// (money as it would sit in a kept value: pounds, or one of George's figures written out)
+const MONEY = /£|824\.00|357\.60|1,181|1181\.6/;
 
 // ======================================================================================================================
 await part(1, 'Today’s card and Apps’ tile open Markets in the page; the header', '§2.1, §2.4, S2-D17, S2-D18, D2, D6', async () => {
@@ -115,7 +132,11 @@ await part(1, 'Today’s card and Apps’ tile open Markets in the page; the hea
   ok(await p.waitForFunction((c) => !document.querySelector(c), `${H.M_MARKETS} .ifl-zoom-slot`, { timeout: 15000 }).then(() => true, () => false), '1. …the card’s clone taken away once the hero is in (S2-D17)');
   ok(await at(p, '/markets/'), '1. the address tidied to /markets/ once shown (D6)', here(p));
   const hs = (await history(p)).slice(h0);
-  ok(hs[0]?.kind === 'push' && hs.some((x) => x.kind === 'replace' && new URL(x.url).pathname === '/markets/' && !new URL(x.url).hash), '1. pushed with the card’s address, then replaced by /markets/', js(hs.map((x) => `${x.kind} ${x.url}`)));
+  // (the card's head links finance.inflite.ai/, which maps to /markets/ exactly: one push and nothing to tidy; a replace
+  // is asked for only when the pushed address had a hash to take away)
+  const pushed = hs[0]?.kind === 'push' ? new URL(hs[0].url) : null;
+  const plain = (u) => u.pathname === '/markets/' && !u.hash && !u.search;
+  ok(!!pushed && (plain(pushed) || hs.some((x) => x.kind === 'replace' && plain(new URL(x.url)))), '1. pushed with the card’s address (/markets/), replaced by /markets/ only if it had a hash', js(hs.map((x) => `${x.kind} ${x.url}`)));
   ok((await life.same()) && docs.n() === 0, '1. one page: the same document, no document fetched (D2)', js(docs.list));
   await shot(p, '1-today-from-card');
 
@@ -154,7 +175,7 @@ await part(2, 'sections by replaceState; Back with the scroll kept; Apps tab fro
 // ======================================================================================================================
   const life = await alive(p), h0 = (await history(p)).length;
   await p.click(H.hdSec('holdings'));
-  const hold = (await shown(p, SEC('holdings'), 30000)) && (await shown(p, `${H.M_MARKETS} ${H.mkRow('TSCO.L')}`, 30000));
+  const hold = (await shown(p, SEC('holdings'), 30000)) && (await shown(p, ROW('TSCO.L'), 30000));
   ok(hold && (await at(p, '/markets/#holdings')), '2. Holdings (lazy, its file loaded on first open): Tesco’s row; the address /markets/#holdings', here(p));
   ok(await titleIs(p, 'Holdings'), '2. …the title Holdings', await textOf(p, H.HD_TITLE));
   await p.click(H.hdSec('news'));
@@ -177,14 +198,17 @@ await part(2, 'sections by replaceState; Back with the scroll kept; Apps tab fro
   const y2 = await until(async () => { const y = await p.evaluate(() => Math.round(scrollY)); return Math.abs(y - y1) <= 6 ? String(y) : null; }, 6000);
   ok(y2 != null, `2. Back to Today: its scroll as it was when the card was tapped (${y1}px, D20)`, js({ y0, y1, now: await p.evaluate(() => scrollY) }));
 
-  // the tab bar's Apps from inside Markets, and back in: Markets kept mounted
+  // the tab bar's Apps from inside Markets, and back in: Markets kept mounted (the tile's address is /markets/, Markets'
+  // Today, D6: no section is promised back from a tile)
   await tapEl(p, H.TODAY_MK_OPEN); await marketsUp(p);
   await p.click(H.hdSec('holdings')); await shown(p, SEC('holdings'));
   await p.click(H.tab('apps'));
   ok((await shown(p, H.APPS)) && (await at(p, '/#apps')), '2. the tab bar’s Apps from inside Markets: Apps', here(p));
+  const d3 = loads(p);
   await tapTile(p);
-  ok((await marketsUp(p, 'holdings')) && (await at(p, '/markets/#holdings')), '2. Markets again from its tile: kept as it was (Holdings), the same page', here(p));
+  ok((await shown(p, H.M_MARKETS, 30000)) && (await shown(p, MK_ANY, 30000)) && d3.n() === 0 && new URL(p.url()).pathname === '/markets/', '2. Markets again from its tile: mounted, in the same page, no document fetched', js({ at: here(p), docs: d3.list }));
   ok(await life.same(), '2. …still the one page');
+  d3.stop();
 });
 
 // ======================================================================================================================
@@ -202,8 +226,9 @@ await part(3, 'cold links, shown, then the address tidied', 'C1, §2.6, S2-D15, 
     ok(up && d.n() === 1, `3. ${path} cold: one document, Markets on ${sec} (§2.6)`, js({ docs: d.list, at: here(p) }));
     if (sheetName) {
       const sh = await sheetOpen(p, sheetName, 30000);
-      const t = (await textOf(p, H.SHEET_TITLE)) || (await textOf(p, `${H.sheet(sheetName)}[open]`)) || '';
-      ok(sh && (!title || title.test(t)), `3. …the ${sheetName} sheet open${title ? ` (${title.source})` : ''} (C1: the symbol decoded once)`, t.slice(0, 120));
+      // (the whole open sheet's words: Markets' stock sheet heads itself "TSCO · London" and puts the name in its body)
+      const t = (await textOf(p, `${H.sheet(sheetName)}[open]`)) || '';
+      ok(sh && (!title || title.test(t)), `3. …the ${sheetName} sheet open${title ? ` (${title.source})` : ''} (C1: the symbol decoded once)`, t.replace(/\s+/g, ' ').slice(0, 120));
     }
     const tidied = await until(() => { const u = new URL(p.url()); return u.pathname === new URL(tidy, HUB).pathname && !/[#&](s|income)=|#income$/.test(u.hash) && !u.search ? 'y' : null; }, 10000);
     ok(!!tidied && (sheetName || here(p) === tidy), `3. …the address tidied to ${tidy} once shown (D6)`, here(p));
@@ -217,16 +242,21 @@ await part(3, 'cold links, shown, then the address tidied', 'C1, §2.6, S2-D15, 
 await part(4, 'the stock sheet: alert %, Send through Chat’s engine (percent only), Remove; the portfolio’s Send', 'S2-D6, §2.1, R2', async () => {
 // ======================================================================================================================
   await cold(p, '/markets/#holdings');
-  await marketsUp(p, 'holdings'); await shown(p, `${H.M_MARKETS} ${H.mkRow('TSCO.L')}`, 30000);
+  await marketsUp(p, 'holdings'); await shown(p, ROW('TSCO.L'), 30000);
   const api = apiLog(p);
-  await p.click(`${H.M_MARKETS} ${H.mkRow('TSCO.L')}`);
+  await p.click(ROW('TSCO.L'));
   ok(await sheetOpen(p, 'stock', 20000), '4. Tesco’s row: its stock sheet (ctx.open.stock)');
-  // the alert: 5%
-  await p.locator(H.MK_ALERT).scrollIntoViewIfNeeded().catch(() => {});
-  await p.fill(H.MK_ALERT, '5'); await p.press(H.MK_ALERT, 'Enter').catch(() => {}); await p.locator(H.MK_ALERT).blur().catch(() => {});
+  // the alert: 5%, from the sheet's Alert Me (a page pushed in the same sheet, its own field MK_ALERT; Enter sets it)
+  await p.locator(ALERT_OPEN).scrollIntoViewIfNeeded().catch(() => {});
+  await p.click(ALERT_OPEN, { timeout: 10000 }).catch(() => {});
+  const field = await shown(p, H.MK_ALERT, 10000);
+  ok(field, '4. Alert Me: its page, with the field for a move of your own (stock.js alertView)');
+  if (field) { await p.fill(H.MK_ALERT, '5'); await p.press(H.MK_ALERT, 'Enter').catch(() => {}); }
   const al = await until(() => api.list.find((x) => x.m === 'PUT' && /\/api\/markets\/alert$/.test(x.u)), 10000);
   let body = null; try { body = JSON.parse(al?.body || 'null'); } catch (_) {}
   ok(!!al && body?.symbol === 'TSCO.L' && Number(body?.pct) === 5 && body?.on !== false, '4. the alert at 5%: PUT /api/markets/alert { symbol: TSCO.L, pct: 5 } (§2.1)', js(al));
+  // (set, Alert Me steps back to the stock sheet, where Send is)
+  await shown(p, H.MK_STOCK_SEND, 10000);
   // Send: the engine stand-in hears it
   await p.evaluate(() => { delete window.__shared; });
   await p.click(H.MK_STOCK_SEND);
@@ -242,14 +272,13 @@ await part(4, 'the stock sheet: alert %, Send through Chat’s engine (percent o
 
   // Remove Rolls-Royce from its sheet
   api.reset();
-  await p.click(`${H.M_MARKETS} ${H.mkRow('RR.L')}`);
+  await p.click(ROW('RR.L'));
   await sheetOpen(p, 'stock', 20000);
-  await p.locator(H.MK_STOCK_REMOVE).scrollIntoViewIfNeeded().catch(() => {});
-  await p.click(H.MK_STOCK_REMOVE);
+  await removeTwice(p);
   const del = await until(() => api.list.find((x) => x.m === 'DELETE' && /\/api\/markets\/holding\?s=RR\.L$/.test(x.u)), 10000);
-  ok(!!del, '4. Remove: DELETE /api/markets/holding?s=RR.L (§2.1)', js(api.list));
+  ok(!!del, '4. Remove, tapped twice (“Tap again to remove”): DELETE /api/markets/holding?s=RR.L (§2.1)', js(api.list));
   await closeSheets(p);
-  ok(await p.waitForSelector(`${H.M_MARKETS} ${H.mkRow('RR.L')}`, { state: 'detached', timeout: 10000 }).then(() => true, () => false), '4. …its row gone from Holdings');
+  ok(await p.waitForSelector(ROW('RR.L'), { state: 'detached', timeout: 10000 }).then(() => true, () => false), '4. …its row gone from Holdings');
   const me = await pageCall(p, 'GET', '/api/markets/me');
   ok(js(me.j).includes('TSCO.L') && !js(me.j).includes('"RR.L"'), '4. …and from the account (GET /api/markets/me)', js(me.j, 200));
 
@@ -317,9 +346,11 @@ await part(7, 'storage and privacy: no new key, no today:* change, no amount in 
   await p.goto(`${HUB}/`); await todayUp(p);
   const after = await storage(p), ch = changed(before, after);
   const allowed = (k) => /^local:markets:/.test(k) || /^local:ifl-build:markets$/.test(k) || /^session:ifl-/.test(k) || /^local:(wx:|ifl-build:weather|ifl-here)/.test(k);
-  const odd = [...ch.added, ...ch.changed].filter((k) => !allowed(k));
-  ok(!odd.length, '7. after Markets in use: only Markets’ own markets:* keys (and the framework’s ifl-*) added or changed (no new key, S2-D10)', js(ch));
-  ok(![...ch.added, ...ch.changed, ...ch.removed].some((k) => /today:/.test(k)), '7. no today:* key added, changed or removed (§5.1)', js(ch));
+  const odd = [...ch.added, ...ch.changed].filter((k) => !allowed(k) && !HOST_KEYS.test(k));
+  ok(!odd.length, '7. after Markets in use: only Markets’ own markets:* keys (and the framework’s ifl-*, Today’s own today:session / today:cards:*) added or changed (no new key, S2-D10)', js(ch));
+  ok(![...ch.added, ...ch.changed].some((k) => /today:/.test(k) && !HOST_KEYS.test(k)) && !ch.removed.some((k) => /today:/.test(k)), '7. no today:* key added or changed beyond Today’s own, none removed (§5.1)', js(ch));
+  const todayMoney = Object.entries(after.local).filter(([k, v]) => /^today:/.test(k) && MONEY.test(v || '')).map(([k]) => k);
+  ok(!todayMoney.length, '7. no today:* value holds an amount (Today keeps no Markets figure, §5.1)', js(todayMoney));
   const last = (() => { try { return JSON.parse(after.local['markets:last'] || 'null'); } catch (_) { return null; } })();
   const uid = await p.evaluate(() => fetch('/api/session', { credentials: 'same-origin' }).then((r) => r.json()).then((j) => j?.user?.id || j?.id || null, () => null));
   ok(!!last && last.id && (!uid || last.id === uid), '7. markets:last carries the account’s id (S2-D9)', js({ id: last?.id, uid }));
@@ -336,24 +367,27 @@ await part(7, 'storage and privacy: no new key, no today:* change, no amount in 
 // ======================================================================================================================
 await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out leaves no markets:*', 'D3, RB1, S2-D2, S2-D10', async () => {
 // ======================================================================================================================
-  const E = await open('imogen-401', { sw: 'block' });
+  // (Markets hands a 401 to fw.session.lost() from its loaders: the half-minute refresh, me at start (core.js refresh,
+  // start): so the refusal is met by the refresh, with the page's clock moved on while Markets is shown, as part 5 does)
+  const E = await open('imogen-401', { sw: 'block', clock: true });
   const q = E.p;
   let refuse = 0;
-  await route(E.ctx, /\/api\/markets\/(chart|quotes|me)(\?|$)/, (r) => (refuse > 0 ? (refuse--, r.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"Sign in"}' })) : r.continue()));
+  await route(E.ctx, /\/api\/markets\/quotes(\?|$)/, (r) => (refuse > 0 ? (refuse--, r.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"Sign in"}' })) : r.continue()));
   const sessAsks = []; q.on('request', (r) => { if (/\/api\/session(\?|$)/.test(r.url())) sessAsks.push(Date.now()); });
-  await q.goto(`${HUB}/markets/#holdings`); await marketsUp(q, 'holdings'); await shown(q, `${H.M_MARKETS} ${H.mkRow('TSCO.L')}`, 30000);
+  await q.goto(`${HUB}/markets/`); await marketsUp(q); await wait(1500);
   const s0 = sessAsks.length;
   refuse = 2;
-  await q.click(`${H.M_MARKETS} ${H.mkRow('TSCO.L')}`);
-  await wait(4000);
-  ok(sessAsks.length > s0, '8. a 401 from Markets’ API: the framework asks /api/session (fw.session.lost, D3)', js({ before: s0, after: sessAsks.length }));
+  await E.ctx.clock.fastForward('00:40');
+  await until(() => sessAsks.length > s0, 8000);
+  ok(sessAsks.length > s0, '8. the half-minute prices refused 401: the framework asks /api/session (fw.session.lost, D3)', js({ before: s0, after: sessAsks.length, refusedLeft: refuse }));
   ok((await shown(q, H.M_MARKETS, 3000)) && !(await count(q, EXCEPT.SIGNIN)), '8. …still signed in: Markets shown, no way in offered (D3)');
   ok(Object.keys((await storage(q)).local).some((k) => k.startsWith('markets:')), '8. …Markets’ kept copy left alone');
-  await closeSheets(q);
-  // signed out for real: the cookie gone from this phone, then Markets' next ask refused
-  // (in the page, no reload: a sign-out the page finds out about, signedOutNow, not a signed-out boot)
+  // signed out for real: the cookie gone from this phone, then Markets' next refresh refused by the server itself
+  // (in the page, no reload: a sign-out the page finds out about, signedOutNow, not a signed-out boot; past lost()'s
+  // 30 s share)
+  refuse = 0;
   await E.ctx.clearCookies();
-  await tapEl(q, `${H.M_MARKETS} ${H.mkRow('TSCO.L')}`);
+  await E.ctx.clock.fastForward('00:40');
   const goneKeys = await until(async () => { const l = (await storage(q)).local; return !Object.keys(l).some((k) => k.startsWith('markets:')) ? 'gone' : null; }, 20000);
   ok(!!goneKeys, '8b. signed out (confirmed): no markets:* key left on this phone (signedOutNow → forgetApps, RB1)', js(Object.keys((await storage(q)).local)));
   ok(await shown(q, EXCEPT.SIGNIN, 20000), '8b. …and the way in offered');
@@ -409,7 +443,7 @@ await part(10, 'a price alert’s tap: the stock sheet, in the page', '§2.7, §
   const life = await alive(p), docs = loads(p);
   const r = await tapNotification(M.ctx, { app: APP, url: './#s=TSCO.L' });
   const went = (await marketsUp(p)) && (await sheetOpen(p, 'stock', 30000));
-  const t = (await textOf(p, H.SHEET_TITLE)) || '';
+  const t = ((await textOf(p, `${H.sheet('stock')}[open]`)) || '').replace(/\s+/g, ' ');
   ok(!!sw && r === 'done' && went && /Tesco/.test(t), '10. a Tesco alert tapped (./#s=TSCO.L) with Today open: Markets, Tesco’s stock sheet (the worker’s { ifl: "route" })', js({ r, at: here(p), t }));
   ok((await life.same()) && docs.n() === 0 && M.pages.length === 1, '10. …in the same page, one window', js({ docs: docs.list, pages: M.pages.length }));
   docs.stop();
@@ -439,24 +473,41 @@ await part(11, 'You’s Evening Wrap switch → PATCH /api/notify { markets: { w
 // ======================================================================================================================
 await part(12, 'a holding changed in Markets: Today’s cards asked for again on return', 'RI3, C8, S2-D11', async () => {
 // ======================================================================================================================
-  // (Rolls-Royce added back through the API, then taken out again from its sheet in the module, which says fw.changed())
+  // (as §9.2 has it, a holding added in the module: Shell followed from Add a Stock's result, its + (edit.js follow →
+  // core.follow → fw.changed); then Rolls-Royce, put back through the API first, taken out from its sheet, which Today's
+  // card counts: qty 0 isn't one of its holdings)
   await pageCall(p, 'PUT', '/api/markets/holding', { symbol: 'RR.L', name: 'Rolls-Royce', qty: 40 });
   await p.goto(`${HUB}/`); await todayUp(p);
   await p.waitForFunction((s) => /2 holdings/.test(document.querySelector(s)?.textContent || ''), H.TODAY_MK_CARD, { timeout: 30000 }).catch(() => {});
   const meta0 = (await textOf(p, H.TODAY_MK_CARD)) || '';
   const cards = []; const onC = (r) => { if (/\/api\/today(\?|$)/.test(r.url())) cards.push(r.url()); }; p.on('request', onC);
+  const puts = apiLog(p, /\/api\/markets\/holding$/);
+  // the add
   await tapEl(p, H.TODAY_MK_OPEN); await marketsUp(p);
-  await p.click(H.hdSec('holdings')); await shown(p, `${H.M_MARKETS} ${H.mkRow('RR.L')}`, 30000);
-  await p.click(`${H.M_MARKETS} ${H.mkRow('RR.L')}`); await sheetOpen(p, 'stock');
-  await p.click(H.MK_STOCK_REMOVE);
-  await p.waitForSelector(`${H.M_MARKETS} ${H.mkRow('RR.L')}`, { state: 'detached', timeout: 10000 }).catch(() => {});
+  await p.click(H.hdAct('plus')); await sheetOpen(p, 'add-stock');
+  await p.fill(H.MK_ADD_INPUT, 'Shell');
+  await shown(p, ADD_FOLLOW('SHEL.L'), 15000);
+  await p.click(ADD_FOLLOW('SHEL.L')).catch(() => {});
+  const added = await until(() => puts.list.find((x) => x.m === 'PUT' && /SHEL\.L/.test(x.body || '')), 10000);
+  ok(!!added, '12. Add a Stock, Shell’s +: followed (PUT /api/markets/holding { symbol: SHEL.L })', js(puts.list));
+  await wait(800); await closeSheets(p);
+  let c0 = cards.length;
+  await p.click(H.HD_BACK); await todayUp(p);
+  ok(await until(() => cards.length > c0, 10000), '12. back on Today after a holding added in Markets: Today’s cards asked for again (GET /api/today, fw.changed → opts.changed, RI3)', js({ before: c0, now: cards.length }));
+  // the removal
+  await tapEl(p, H.TODAY_MK_OPEN); await marketsUp(p);
+  await p.click(H.hdSec('holdings')); await shown(p, ROW('RR.L'), 30000);
+  await p.click(ROW('RR.L')); await sheetOpen(p, 'stock');
+  await removeTwice(p);
+  await p.waitForSelector(ROW('RR.L'), { state: 'detached', timeout: 10000 }).catch(() => {});
   await closeSheets(p);
-  const c0 = cards.length;
+  c0 = cards.length;
   await p.click(H.HD_BACK); await todayUp(p);
   const asked = await until(() => cards.length > c0, 10000);
-  ok(asked, '12. back on Today after a holding removed in Markets: Today’s cards asked for again (GET /api/today, fw.changed → opts.changed, RI3)', js({ before: c0, now: cards.length }));
+  ok(asked, '12. …and after a holding removed in Markets: asked for again', js({ before: c0, now: cards.length }));
   const meta1 = await p.waitForFunction((s) => /1 holding\b/.test(document.querySelector(s)?.textContent || ''), H.TODAY_MK_CARD, { timeout: 15000 }).then(() => true, () => false);
   ok(/2 holdings/.test(meta0) && meta1, '12. …its Markets card says 1 holding now (was 2)', (await textOf(p, H.TODAY_MK_CARD))?.slice(0, 120));
+  puts.stop();
   p.off('request', onC);
 });
 
@@ -538,8 +589,9 @@ await part(14, 'axe, 320/390 light and dark, the 1280 layout', '§2.1, S2-D8, S2
   ok(cols >= 2 && (await W.p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '14. 1280 wide: Today in two columns, no sideways scroll (S2-D8)', String(cols));
   await shot(W.p, '14-1280-today');
   await W.p.click(H.hdSec('holdings')); await shown(W.p, SEC('holdings')); await wait(1000);
-  const desk = await W.p.evaluate((s) => [...document.querySelectorAll(`${s} a[href]`)].map((a) => ({ t: a.textContent.trim(), h: a.href })).find((x) => /desk/i.test(x.t)) || null, SEC('holdings'));
-  ok(!!desk && /^https?:\/\/finance\./.test(desk.h), '14. 1280, Holdings: the desk row, “The desk view is in Markets on its own”, to Markets’ own address (S2-D8)', js(desk));
+  // (the row whose words say "desk view", and its link (“Open Markets”) to Markets' own address)
+  const desk = await W.p.evaluate((s) => { const row = [...document.querySelectorAll(`${s} *`)].reverse().find((e) => /desk view/i.test(e.textContent) && e.querySelector('a[href]')); const a = row?.querySelector('a[href]'); return row ? { t: row.textContent.replace(/\s+/g, ' ').trim().slice(0, 100), h: a?.href || null, shown: row.getClientRects().length > 0 } : null; }, SEC('holdings'));
+  ok(!!desk && desk.shown && /^https?:\/\/finance\./.test(desk.h || ''), '14. 1280, Holdings: the desk row, “The desk view is in Markets on its own”, its link to Markets’ own address (S2-D8)', js(desk));
   await shot(W.p, '14-1280-holdings');
   await W.ctx.close();
 
