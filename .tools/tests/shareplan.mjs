@@ -31,7 +31,8 @@ const text = async (ph, sel) => ((await ph.p.locator(sel).last().textContent().c
 const lofts = (id) => sql(`UPDATE pg_users SET swift = 9, swift_at = ${Date.now()} WHERE id = '${id}'`);
 // (the tables the server makes as it's first asked: made here with the same words, so they can be read before then)
 sql(`CREATE TABLE IF NOT EXISTS fx_offers (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL, wid TEXT NOT NULL, name TEXT NOT NULL, secs INTEGER NOT NULL, who TEXT NOT NULL, role TEXT NOT NULL, far INTEGER NOT NULL DEFAULT 0, dry INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'new', made INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (user_id, id))`);
-const fxState = () => sql('SELECT * FROM fx_state ORDER BY user_id').replace(/"duration": [\d.]+/g, '');
+// (George's and Mira's alone: a test before this one in the same run may leave another account's Fitness importing)
+const fxState = () => sql(`SELECT * FROM fx_state WHERE user_id IN ('${gs.me.id}', '${ms.me.id}') ORDER BY user_id`).replace(/"duration": [\d.]+/g, '');
 const state0 = fxState();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -100,11 +101,12 @@ await G.p.click('.chatnav .back'); await G.p.waitForTimeout(400);
 
 // ---- No: nothing added ----
 // (the inviter's own pending row is written as the invite goes, spec §8.4: a No adds nothing anyone can see in Fitness)
-const o0 = count(`fx_offers WHERE state <> 'pending'`), p0 = count(`fx_offers WHERE state = 'pending' AND user_id = '${gs.me.id}' AND with_id = '${ms.me.id}'`);
+const ours = `user_id IN ('${gs.me.id}', '${ms.me.id}')`;
+const o0 = count(`fx_offers WHERE state <> 'pending' AND ${ours}`), p0 = count(`fx_offers WHERE state = 'pending' AND user_id = '${gs.me.id}' AND with_id = '${ms.me.id}'`);
 await invite();
 ok(count(`fx_offers WHERE state = 'pending' AND user_id = '${gs.me.id}' AND with_id = '${ms.me.id}'`) === p0 + 1, 'the invite keeps George’s own pending row, with Mira', `${p0}`);
 await answer('no');
-ok(count(`fx_offers WHERE state <> 'pending'`) === o0, 'No: nothing in anyone’s Fitness');
+ok(count(`fx_offers WHERE state <> 'pending' AND ${ours}`) === o0, 'No: nothing in anyone’s Fitness');
 ok(fxState() === state0, 'and no plan changed');
 
 // ---- typed words, then another time picked: the letter names the time picked, never the earlier one ----
