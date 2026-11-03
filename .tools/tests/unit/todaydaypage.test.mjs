@@ -142,6 +142,21 @@ test("tickDay: a passed row taken away with no request, and the section put away
   assert.deepEqual(asked, [], "no request");
 });
 
+test("a ride not in yet (late) stays in Coming Up though its time has passed, drawn and ticked, until the next morning", { skip }, () => {
+  const a = FIX("midday"), late = { at: a.at - 30 * 60000, app: "fitness", title: "Free ride", sub: "Not in yet", href: "/fitness/", id: "late", late: true };
+  assert.deepEqual(day.comingAt([late, ...a.upcoming], a.at, "midday").map((r) => r.title), ["Free ride", ...a.upcoming.map((r) => r.title)], "kept, first");
+  assert.deepEqual(day.comingAt([{ ...late, late: undefined }], a.at, "midday"), [], "a passed row that isn't late is gone");
+  const b = { ...a, upcoming: [late, ...a.upcoming.slice(0, 1)] }, d = drawn(b, b.at);
+  assert.equal(d.sec("coming").rows.length, 2, "drawn");
+  day.tickDay(d.root, b, b.upcoming[1].at + 1);
+  assert.equal(d.sec("coming").rows.length, 1, "the rain's row gone, the late ride kept");
+  assert.ok(!d.sec("coming").hidden, "Coming Up still out");
+  const dawn = (b.timeline || []).filter((x) => x.phase === "morning" && x.at > b.at).map((x) => x.at).sort((x, y) => x - y)[0];
+  assert.ok(dawn, "the fixture has the next morning");
+  day.tickDay(d.root, b, dawn);
+  assert.equal(d.sec("coming").rows.length, 0, "gone by the next morning");
+});
+
 test("tickDay: at until, the next phase from the answer's tops, with no request; the ride alone before it", { skip }, () => {
   const a = FIX("midday"), d = drawn(a, a.at);
   asked.length = 0;

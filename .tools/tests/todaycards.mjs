@@ -184,6 +184,7 @@ try {
     // (a first read makes Today First's tables; then the ride, as Fitness's Ride At writes it, 30 minutes from now)
     r = await cards(riley, '?v=2');
     ok(r.s === 200 && r.j.v === 2 && r.j.ride === null && typeof r.j.phase === 'string' && Array.isArray(r.j.timeline) && r.j.apps?.mail === false, 'v=2: the day with the cards, no ride yet', `${r.s} ${r.text.slice(0, 300)}`);
+    ok(r.j.planning === true && Array.isArray(r.j.acts), 'a new account’s day not yet planned: worked out in the background', JSON.stringify({ planning: r.j.planning, acts: r.j.acts }));
     let now = Date.now();
     const start = Math.ceil((now + 30 * 60e3) / 300e3) * 300e3, stop = start + 75 * 60e3;
     sql(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('${R}', '${dayIn(zone, start)}', ${start}, ${stop}, '${zone}', 'ride', 'set', ${now})`);
@@ -196,7 +197,8 @@ try {
       'the preride card: the ride, its time, the roads (dry, from the weather where you ride), messages held', JSON.stringify(pre));
     ok(a.timeline?.[0]?.phase === 'preride' && a.timeline[1]?.phase === 'riding' && a.timeline[1].at === start && a.tops?.riding && a.upcoming?.some((x) => x.id === 'ride' && x.at === start && x.title === 'Ride' && x.href === '/fitness/#today'),
       'the rest of the day: riding at its start, its card worked out already, the ride in Coming Up', JSON.stringify({ timeline: a.timeline, up: a.upcoming }));
-    ok(a.planning === true && Array.isArray(a.acts), 'its day not yet planned: worked out in the background', JSON.stringify({ planning: a.planning, acts: a.acts }));
+    // (by now the first read's plan has usually run, in the background, so planning may be either)
+    ok((a.planning === undefined || a.planning === true) && Array.isArray(a.acts), 'the day’s acts beside it, planned or still planning', JSON.stringify({ planning: a.planning, acts: a.acts }));
     r = await cards(riley);
     ok(r.s === 200 && !('v' in r.j) && !('phase' in r.j) && Object.keys(r.j).join() === 'at,tz,cards', 'without v=2: version 1’s answer, the cards alone', Object.keys(r.j).join());
     // (the same ride, its cap passed ten minutes ago, with nothing in for it: it says so, and Coming Up keeps its row, late)
