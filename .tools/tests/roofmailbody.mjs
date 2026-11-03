@@ -225,8 +225,8 @@ else {
   const asked = [];
   p.on('request', (r) => { if (r.url().startsWith(`${MAIL}/api/`) && r.frame() === p.mainFrame()) asked.push(`${r.method()} ${new URL(r.url()).pathname}`); });
   await p.goto(`${HUB}/mail/#thread=${ids.Hostile.threadId}`);
-  const frame = await p.waitForSelector(H.mailBody || '.m-mail iframe.mail-body', { timeout: 30000 }).then(() => true, () => false);
-  const b = frame ? await p.evaluate((sel) => { const f = document.querySelector(sel); return { src: f.src, doc: f.contentDocument === null, sandbox: f.getAttribute('sandbox') }; }, H.mailBody || '.m-mail iframe.mail-body') : null;
+  const frame = await p.waitForSelector(H.MAIL_BODY, { timeout: 30000 }).then(() => true, () => false);
+  const b = frame ? await p.evaluate((sel) => { const f = document.querySelector(sel); return { src: f.src, doc: f.contentDocument === null, sandbox: f.getAttribute('sandbox') }; }, H.MAIL_BODY) : null;
   ok(b?.src.startsWith(`${MAIL}/body/#`) && b.doc && b.sandbox === 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox', 'B: the reader frames Mail’s shell', JSON.stringify(b));
   await wait(2500);
   ok(!asked.some((a) => /^GET \/api\/messages\/[\w-]+(\/raw)?$/.test(a)), 'B: the page never asked Mail for a body', JSON.stringify(asked));

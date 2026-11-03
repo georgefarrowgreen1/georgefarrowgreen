@@ -13,14 +13,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { IFL } from './fixtures/roof.mjs';
+import { IFL, mailSkip } from './fixtures/roof.mjs';
 
 const EMAIL = IFL && new URL('email/', IFL);
 const PUB = EMAIL && new URL('public/', EMAIL);
 const skip = !IFL ? 'the inflite repo isn’t beside this one'
   : !existsSync(new URL('src/body.js', EMAIL)) || !existsSync(new URL('body/body.js', PUB)) ? 'the inflite repo beside has no body shell yet (email/src/body.js): from before One roof stage 4'
   : false;
-const frameSkip = skip || (!existsSync(new URL('roof/api.js', PUB)) && 'the inflite repo beside has no Mail module yet (email/public/roof/api.js)');
+const frameSkip = skip || mailSkip;
 const read = (rel) => readFileSync(new URL(rel, PUB), 'utf8');
 const APP = skip ? '' : read('app.js');
 const SHELL_JS = skip ? '' : read('body/body.js');
@@ -532,4 +532,17 @@ test('bodyframe.js never reads a frame’s document, never posts to “*”, nev
   assert.ok(!/["'`]\*["'`]/.test(code));
   for (const m of code.matchAll(/postMessage\(([^)]*)\)/g)) assert.match(m[1], /, MAIL$/, m[0]);
   assert.match(code, /e\.origin !== MAIL/);
+});
+
+// (spec §4.5: the shell ≤ 8 KB gzip once, then nothing; bodyframe.js ≤ 3 KB; gzip -9, whole-line comments stripped)
+test('sizes: the shell’s three files ≤ 8 KB gzipped together, bodyframe.js ≤ 3 KB', { skip }, async () => {
+  const { gzipSync } = await import('node:zlib');
+  const strip = (s) => s.replace(/^\s*\/\/.*\n/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+  const gz = (s) => gzipSync(Buffer.from(s), { level: 9 }).length;
+  const shellBytes = gz(['body/index.html', 'body/body.js', 'body/body.css'].map((f) => strip(read(f))).join(''));
+  assert.ok(shellBytes <= 8192, `the shell: ${shellBytes} B`);
+  if (existsSync(new URL('roof/bodyframe.js', PUB))) {
+    const bf = gz(strip(read('roof/bodyframe.js')));
+    assert.ok(bf <= 3072, `bodyframe.js: ${bf} B`);
+  }
 });
