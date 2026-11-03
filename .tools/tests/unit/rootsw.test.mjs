@@ -5,27 +5,37 @@
 // pulsing Chat with the sign-in it keeps in IndexedDB (and only Chat's); the badge as many as are showing, counted again
 // as one's tapped or cleared and as a page asks; a window that doesn't say it's heard the tap sent there, or a new one,
 // through Today while the hub can't serve the app; and a renewed subscription moved in every app's table through the
-// device route (Today's own, on an account side from before it).
+// device route (Today's own, on an account side from before it). And One roof's (spec §8.2): a window of the framework
+// (Today's page at / or /weather/) told to route there in the page ({ ifl: "route", url }, heard as { ifl: "routed" }),
+// any other page of the site's told to open it as before, and one that doesn't say it's heard sent there.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { IFL, roofSkip } from './fixtures/roof.mjs';
 
-const SW = new URL('../../../../inflite/today/public/sw.js', import.meta.url);
-const skip = (!existsSync(SW) && 'the inflite repo isn’t beside this one') ||
-  (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+const SW = IFL && new URL('today/public/sw.js', IFL);
+const skip = (!IFL && 'the inflite repo isn’t beside this one') ||
+  (!existsSync(new URL('today/src/hub.js', IFL)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+// (One roof's rule, where the inflite repo beside has it (today/src/roof.js, with this worker's route): a window of the
+// framework is told to route; elsewhere, as milestone 1, every window is told to open)
+const hasRoof = !skip && existsSync(new URL('today/src/roof.js', IFL));
+const roofCase = skip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
+const FRAMEWORK = ['/', '/index.html', '/weather/', '/weather/index.html'];
+const kindAt = (url) => (hasRoof && FRAMEWORK.includes(new URL(url).pathname) ? 'route' : 'open');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
 // (the worker, with a network, its windows (url, and frameType, focused, visibilityState; hears: whether its page says
-// it's heard a tap, as IFL.hub's listener does; controlled: whether this worker controls it, so it can be sent
+// it's heard a tap, as IFL.hub's listener does, and the framework's for a route; 'open': only an open, as a page from
+// before the roof; controlled: whether this worker controls it, so it can be sent
 // elsewhere), Chat's sign-in in IndexedDB or none, and what it showed, posted and opened)
 function worker(net = () => Response.json({ ok: true }), { windows = [], token = null } = {}) {
   const on = {}, shown = [], opened = [], posts = [], badges = [];
   let subscribed = true, cleared = 0;
   const win = (w) => ({ frameType: 'top-level', focused: false, visibilityState: 'hidden', hears: true, controlled: true, ...(typeof w === 'string' ? { url: w } : w), messages: [], focusedNow: false, went: [],
     focus() { this.focusedNow = true; return Promise.resolve(this); },
-    postMessage(m, ports = []) { this.messages.push(m); if (this.hears && m?.ifl === 'open') ports[0]?.postMessage({ ifl: 'opened' }); },
+    postMessage(m, ports = []) { this.messages.push(m); if (this.hears && m?.ifl === 'open') ports[0]?.postMessage({ ifl: 'opened' }); else if (this.hears === true && m?.ifl === 'route') ports[0]?.postMessage({ ifl: 'routed' }); },
     navigate(u) { if (!this.controlled) return Promise.reject(new TypeError('not controlled by this worker')); this.went.push(u); return Promise.resolve(this); } });
   const wins = windows.map(win);
   let asked = null;
@@ -118,13 +128,13 @@ test('a tap with a page of InFlite open: that window focused and told where ({ i
   await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
   assert.deepEqual(w.opened, []);
   assert.equal(w.wins[2].focusedNow, true, 'the one in sight');
-  assert.deepEqual(plain(w.wins[2].messages), [{ ifl: 'open', url: '/chats/#open=abc' }]);
+  assert.deepEqual(plain(w.wins[2].messages), [{ ifl: kindAt(`${ORIGIN}/weather/`), url: '/chats/#open=abc' }]);
   for (const i of [0, 1, 3]) assert.deepEqual(plain(w.wins[i].messages), [], `window ${i} left be`);
   assert.equal(w.asked()?.includeUncontrolled, true, 'pages no worker of this one’s controls (Chats has its own) are found too');
   // (the focused one, before one merely in sight)
   w = worker(undefined, { windows: [{ url: `${ORIGIN}/markets/`, visibilityState: 'visible' }, { url: `${ORIGIN}/`, focused: true }] });
   await w.tap({ app: 'markets', url: './#s=TSCO' });
-  assert.deepEqual(plain(w.wins[1].messages), [{ ifl: 'open', url: '/markets/#s=TSCO' }]);
+  assert.deepEqual(plain(w.wins[1].messages), [{ ifl: kindAt(`${ORIGIN}/`), url: '/markets/#s=TSCO' }]);
   assert.deepEqual(plain(w.wins[0].messages), []);
   // (only another site's window, or a frame: a new window)
   w = worker(undefined, { windows: ['https://weather.inflite.ai/', { url: `${ORIGIN}/chats/?engine=1`, frameType: 'nested' }] });
@@ -264,4 +274,35 @@ test('the hub not ready (before its key, or rolled back): an app’s notificatio
     await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
     assert.deepEqual(w.opened, [`${ORIGIN}/chats/#open=abc`]);
   }
+});
+
+test('One roof: a window of the framework (/ or /weather/) is told to route in the page; any other page of the site’s to open it; not heard, sent there', { skip: roofCase }, async () => {
+  // (the framework at each of its addresses, as it is in a window: routed, in the page, nothing navigated or opened)
+  for (const at of ['/', '/index.html', '/weather/', '/weather/index.html', '/weather/?lat=1&lon=2', '/#apps', '/weather/#radar']) {
+    const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    await w.tap({ app: 'weather', url: './?lat=51.5&lon=-0.12&name=London' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/?lat=51.5&lon=-0.12&name=London' }], at);
+    assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}: routed in the page`);
+  }
+  // (Chats, Fitness, Markets, Mail and the 404 page: told to open it, as before)
+  for (const at of ['/chats/', '/fitness/#today', '/markets/', '/mail/', '/nowhere', '/weather/app.js']) {
+    const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    await w.tap({ app: 'weather', url: './#warnings' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/weather/#warnings' }], at);
+    assert.deepEqual(w.wins[0].went, [], at);
+  }
+  // (a framework window that doesn't say it's routed (Today from before the roof, which only opens): sent there, after a
+  // second; one another worker controls: a new window)
+  let w = worker(undefined, { windows: [{ url: `${ORIGIN}/`, focused: true, hears: 'open' }] });
+  await w.tap({ app: 'weather', url: './#warnings' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }], 'told to route first');
+  assert.deepEqual(w.wins[0].went, [`${ORIGIN}/weather/#warnings`], 'then sent there');
+  w = worker(undefined, { windows: [{ url: `${ORIGIN}/weather/`, focused: true, hears: false, controlled: false }] });
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }]);
+  assert.deepEqual(w.opened, [`${ORIGIN}/chats/#open=abc`]);
+  // (no window: the framework opened at the place, the page at /weather/ being the framework's)
+  w = worker();
+  await w.tap({ app: 'weather', url: './?lat=1&lon=2&name=Here' });
+  assert.deepEqual(w.opened, [`${ORIGIN}/weather/?lat=1&lon=2&name=Here`]);
 });
