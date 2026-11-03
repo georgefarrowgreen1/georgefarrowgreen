@@ -101,12 +101,67 @@ test("topics: from cards, and your holdings by name or symbol in any of the mess
   assert.deepEqual(t([{ text: "BP is down", at: NOW - H }]).map((x) => x.sym), ["BP.L"]);
   assert.deepEqual(t([{ text: "tsco and bp, in small letters, and a bpm of 140, and Tescotastic", at: NOW - H }]), [], "symbols only in capitals, names only whole");
   assert.deepEqual(t([{ text: "Tesco", at: NOW - H }], { stocks: [] }), [], "only your own holdings");
+  assert.deepEqual(t([{ text: "Delta Air Lines is late again", at: NOW - H }], { stocks: [{ sym: "DAL", name: "Delta Air Lines, Inc." }] }).map((x) => x.sym), ["DAL"], "a name with a comma before its Inc.");
   // newest first, each once (said again: the newest time, asked if any asked)
   const many = t([{ text: "Did you see Tesco?", at: NOW - 3 * H }, { text: "Rolls-Royce too", at: NOW - 2 * H }, { text: "Tesco again", at: NOW - H, card: { kind: "markets", snap: { name: "Tesco", sym: "TSCO.L" } } }]);
   assert.deepEqual(many.map((x) => [x.sym, x.at, x.asked, x.via]), [["TSCO.L", NOW - H, true, "card"], ["RR.L", NOW - 2 * H, false, "words"]]);
   assert.ok(t(Array.from({ length: 5 }, (_, i) => ({ text: "x", at: NOW - H - i, card: { kind: "markets", snap: { name: `S${i}`, sym: `S${i}X` } } })).concat([{ text: "Tesco BP Rolls-Royce", at: NOW - 10 * MIN }])).length <= 6);
 });
 
+test("a name that's also an everyday word: only with its capital, and not as a sentence's first word", () => {
+  const stocks = [{ sym: "NXT.L", name: "Next plc" }, { sym: "TGT", name: "Target Corporation" }, { sym: "AAPL", name: "Apple Inc." }, { sym: "SHEL.L", name: "Shell plc" }, ...STOCKS];
+  const t = (text) => one([pat([{ text, at: NOW - H }])], { stocks })[0].topics.map((x) => [x.sym, x.asked]);
+  // the review's three: nothing
+  assert.deepEqual(t("Dinner next week? I'm on target to finish early"), [], "next week, on target");
+  assert.deepEqual(t("Bought an apple pie"), [], "apple pie");
+  assert.deepEqual(t("Shells on the beach, and a shell"), []);
+  // at a sentence's start, capital or not: nothing (a new line starts one too)
+  for (const x of ["Next week?", "Apple pie for pudding.", "Great. Next week then?", "Thanks!\nNext week?", "Done… Next?", "(Next) week?", "“Target practice” he said", "😀 Next week"]) assert.deepEqual(t(x), [], x);
+  // with its capital mid-sentence, its full name in any case, or its symbol: the stock
+  assert.deepEqual(t("Did you see Next today?"), [["NXT.L", true]]);
+  assert.deepEqual(t("I'm thinking of selling Apple"), [["AAPL", false]]);
+  assert.deepEqual(t("next plc's results are out"), [["NXT.L", false]], "the full name, any case");
+  assert.deepEqual(t("Target Corporation is down"), [["TGT", false]]);
+  assert.deepEqual(t("$TGT and NXT up, AAPL down"), [["NXT.L", false], ["TGT", false], ["AAPL", false]], "symbols, in capitals (in your holdings' order)");
+  assert.deepEqual(t("NEXT WEEK?"), [], "shouted words aren't a name");
+  // names that aren't everyday words, as ever: any case, anywhere
+  assert.deepEqual(t("Tesco's results?"), [["TSCO.L", true]]);
+  assert.deepEqual(t("tesco's results?"), [["TSCO.L", true]]);
+  assert.deepEqual(t("rolls-royce did well"), [["RR.L", false]]);
+  assert.deepEqual(t("Rolls-Royce did well"), [["RR.L", false]], "even first in a sentence");
+});
+test("builds on every engine: no lookbehind, and a pattern that won't build loses only itself", () => {
+  const src = readFileSync(fileURLToPath(new URL("../../../pigeon/digest.js", import.meta.url)), "utf8");
+  assert.ok(!/\(\?<[=!]/.test(src), "no lookbehind: Safari before 16.4 (iOS 15) throws on one");
+  // an engine that can't build a pattern with \p{…} in it: the words still come, and the topics from cards
+  const Real = globalThis.RegExp;
+  globalThis.RegExp = function RegExp(src, flags) { if (/\\p\{/.test(String(src))) throw new SyntaxError("Invalid regular expression"); return new Real(src, flags); };
+  try {
+    const [d] = one([pat([{ text: "Did you see Tesco this week?", at: NOW - 2 * H }, { text: "Up today", at: NOW - H, card: { kind: "markets", snap: { name: "Rolls-Royce", sym: "RR.L" } } }])]);
+    assert.equal(d.said, "Did you see Tesco this week? Up today");
+    assert.equal(d.kind, "question");
+    assert.deepEqual(d.topics.map((x) => x.sym), ["RR.L"], "the card's stock, though no name could be looked for");
+  } finally { globalThis.RegExp = Real; }
+  // one bad item costs only its row
+  const bad = { id: "bad", first: "Bad", get msgs() { throw new Error("no"); } };
+  assert.deepEqual(one([bad, pat([{ text: "Dinner Friday?", at: NOW - H }])]).map((x) => [x.id, x.said]), [["pat", "Dinner Friday?"]]);
+  const evil = { id: "evil", first: "E", msgs: [{ at: NOW - H, get text() { throw new Error("no"); } }] };
+  assert.deepEqual(one([pat([{ text: "Hi", at: NOW - H }]), evil]).map((x) => x.id), ["pat"]);
+  assert.deepEqual(one([pat([{ text: "Hi", at: NOW - H }])], { stocks: [{ get name() { throw new Error("no"); } }, { sym: "TSCO.L", name: "Tesco" }] })[0].said, "Hi", "nor a bad holding");
+});
+test("landed: by the phone's clock give or take half a minute, or by the server's own at", () => {
+  // the server says Pat's newest landed 5 seconds after the phone's now (its clock behind): it counts, words and all
+  let [d] = one([pat([{ text: "Hi", at: NOW - H }, { text: "Just now?", at: NOW + 5000 }], { at: NOW + 5000 })]);
+  assert.equal(d.said, "Hi Just now?"); assert.equal(d.kind, "question"); assert.equal(d.at, NOW + 5000);
+  [d] = one([pat([{ text: "Hi", at: NOW - H }, { text: "Five minutes on?", at: NOW + 5 * MIN }], { at: NOW + 5 * MIN })]);
+  assert.equal(d.said, "Hi Five minutes on?", "however far behind, the server's at says it landed");
+  // no server time: half a minute either way still counts, more doesn't
+  assert.equal(one([pat([{ text: "Seconds ago", at: NOW + 20e3 }])])[0].said, "Seconds ago");
+  assert.deepEqual(one([pat([{ text: "On its way", at: NOW + 5 * MIN }])]), []);
+  // never past the server's own at: a later one hasn't landed
+  [d] = one([pat([{ text: "Landed", at: NOW + 5000 }, { text: "In the air", at: NOW + 10 * MIN }], { at: NOW + 5000 })]);
+  assert.equal(d.said, "Landed"); assert.equal(d.at, NOW + 5000);
+});
 test("the stale rule: older than the server's newest, no words (and never old words beside a new message)", () => {
   const msgs = [{ text: "Did you see Tesco this week?", at: NOW - 3 * H }];
   const [stale] = one([pat(msgs, { at: NOW - H })]);
