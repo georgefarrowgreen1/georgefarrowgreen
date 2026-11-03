@@ -66,23 +66,29 @@ export function todayWords(o, now = Date.now()) {
     line: `${added ? "Today added this ride: you often ride then." : "Today suggests this ride: you often ride then."}${o.dry ? " It looks dry." : ""} ${added ? "Keep it, or undo it." : "Add it to your plan?"}`,
   };
 }
-// The swaps Today's own rides make (spec §9.2), worked out as Fitness opens with the account's own answer: each agreed one
-// (state yes) put in its day as a swap the first time it's seen here (remembered in applied, by its id: its day and
-// workout), unless that day's been changed by hand meanwhile; and each applied before that's no longer agreed (undone,
-// here or on Today, or gone) taken out again, but only while its day, today or later, still holds its workout (withOffer's
-// test). offers: GET me's; swaps: the record's; applied: { id: { day, wid } }, as last left; today: today's start.
+// The swaps Today's own rides make (spec §9.2), worked out as Fitness opens with the account's own answer (GET me?today=1,
+// which lists Today's own undone ones too till they're past their time): each agreed one (state yes) put in its day as a
+// swap the first time it's seen here (remembered in applied, by its id: its day and workout), unless that day's been
+// changed by hand meanwhile, or is gone by; and each applied before that's since been undone (here or on Today: there,
+// said no to) taken out again, but only while its day, today or later, still holds its workout (withOffer's test). One
+// simply not there any more (past its time) is forgotten, its swap left as it is: a ride kept, or left in, stays in its
+// day. offers: GET me's, as read whole (a read that failed changes nothing: app.js todayRides); swaps: the record's;
+// applied: { id: { day, wid } }, as last left; today: today's start.
 // → { set: [[day, wid]], drop: [day], applied } (applied as it now is; set and drop for the record's swaps)
 export function todaySwaps(offers, swaps, applied, today) {
-  const yes = new Map((Array.isArray(offers) ? offers : []).filter((o) => ok(o) && o.role === "today" && o.state === "yes").map((o) => [o.id, o]));
+  const mine = (Array.isArray(offers) ? offers : []).filter((o) => ok(o) && o.role === "today");
+  const yes = new Map(mine.filter((o) => o.state === "yes").map((o) => [o.id, o])), no = new Set(mine.filter((o) => o.state === "no").map((o) => o.id));
   const was = applied && typeof applied === "object" ? applied : {}, out = {}, set = [], drop = [], sw = swaps || {};
   for (const o of yes.values()) {
     if (was[o.id]) { out[o.id] = was[o.id]; continue; }
     const day = startOfDay(o.start);
+    // (one whose day is gone by, first seen now: left out of it, as any day past is)
+    if (!(day >= today)) continue;
     if (sw[day] === undefined && !set.some(([d]) => d === day)) set.push([day, o.wid]);
     out[o.id] = { day, wid: o.wid };
   }
   for (const [id, a] of Object.entries(was)) {
-    if (yes.has(id) || !a || !Number.isFinite(a.day)) continue;
+    if (yes.has(id) || !no.has(id) || !a || !Number.isFinite(a.day)) continue;
     if (a.day >= today && sw[a.day] === a.wid) drop.push(a.day);
   }
   return { set, drop, applied: out };
@@ -162,7 +168,7 @@ export async function undoToday(X, o) {
 // An offer by its id (#offer=<id>: InFlite's links and notifications), opened: one waiting to be added, its sheet; one of
 // Today's added already, its card, in sight. → whether there was one
 export function openOffer(X, id) {
-  const o = (X.S.offers || []).find((x) => ok(x) && x.id === String(id).toLowerCase() && x.stop > Date.now());
+  const o = (X.S.offers || []).find((x) => ok(x) && x.id === String(id).toLowerCase() && (x.state === "new" || x.state === "yes") && x.stop > Date.now());
   if (!o || !X.wkById(o.wid)) return false;
   later.delete(o.id);
   if (o.state === "new") { X.openSheet(() => addView(X, o)); return true; }

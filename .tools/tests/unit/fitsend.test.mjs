@@ -197,14 +197,29 @@ test("Today's own rides as swaps: put in once, never over a day changed by hand;
   // (a day changed by hand before it was first seen: left as it is, but remembered)
   r = todaySwaps([t("c", 3, "yes")], { [d3]: "endurance-90" }, {}, TODAY);
   assert.deepEqual([r.set, r.drop], [[], []]); assert.ok(r.applied.c);
-  // (undone, on Today or here: no longer agreed, so taken out, while its day still holds its workout)
-  r = todaySwaps([], { [d2]: "free-ride" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
+  // (undone, on Today or here: said no to (GET me?today=1 lists those till they're past their time), so taken out, while
+  // its day still holds its workout)
+  r = todaySwaps([t("a", 2, "no")], { [d2]: "free-ride" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
   assert.deepEqual([r.set, r.drop, r.applied], [[], [d2], {}]);
   // (but not where the day's been changed since, nor a day gone by)
-  r = todaySwaps([], { [d2]: "endurance-90" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
+  r = todaySwaps([t("a", 2, "no")], { [d2]: "endurance-90" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
   assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}]);
-  r = todaySwaps([], { [d1]: "free-ride" }, { a: { day: d1, wid: "free-ride" } }, TODAY);
+  r = todaySwaps([t("a", -1, "no")], { [d1]: "free-ride" }, { a: { day: d1, wid: "free-ride" } }, TODAY);
   assert.deepEqual(r.drop, [], "a day gone by stays as it was");
+  // (one simply not there any more: past its time (a ride today, 12 hours after it ended), or a list that came back
+  // short: forgotten, its swap left in its day, kept or not)
+  const d0 = TODAY;
+  r = todaySwaps([], { [d0]: "free-ride" }, { a: { day: d0, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}], "gone by on its own day: the ride stays in it");
+  r = todaySwaps([t("x", 3, "yes")], { [d2]: "free-ride", [d3]: "free-ride" }, { a: { day: d2, wid: "free-ride" }, x: { day: d3, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, Object.keys(r.applied)], [[], [], ["x"]], "absent isn't undone");
+  // (a friend's no, or a no never put in here: nothing to take out)
+  r = todaySwaps([{ ...t("f", 2, "no"), role: "asked", who: "Leo" }, t("z", 2, "no")], { [d2]: "free-ride" }, { f: { day: d2, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}]);
+  // (agreed, but first seen once its day had gone by (a ride last night, Fitness opened this morning): not put in a day
+  // gone by, nor remembered; one today, first seen today, is)
+  r = todaySwaps([t("y", -1, "yes"), t("w", 0, "yes")], {}, {}, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[[d0, "free-ride"]], [], { w: { day: d0, wid: "free-ride" } }]);
   // (kept with a tap: still agreed, still in; and nothing odd taken as remembered)
   r = todaySwaps([t("a", 2, "yes", { taken: true })], { [d2]: "free-ride" }, { a: { day: d2, wid: "free-ride" }, junk: null }, TODAY);
   assert.deepEqual([r.set, r.drop, Object.keys(r.applied)], [[], [], ["a"]]);

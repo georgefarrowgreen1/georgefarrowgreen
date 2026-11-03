@@ -105,7 +105,8 @@ export async function signInWord() {
   return { word, ask: b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(word))) };
 }
 // the code it came back with, and the word, swapped for the sign-in: the account, as me() has it
-export const handback = (code, verifier) => call("handback", { method: "POST", body: { code, verifier } });
+// (answered as GET me is: with InFlite Today's own rides and the week's times, by this phone's zone)
+export const handback = (code, verifier) => { let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {} return call("handback", { method: "POST", body: { code, verifier, today: 1, ...(tz ? { tz } : {}) } }); };
 
 // ---- in step ----
 // Your record as this device has it, put together with the account's where another device changed it meanwhile: each

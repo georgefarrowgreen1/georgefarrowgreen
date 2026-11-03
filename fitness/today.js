@@ -309,19 +309,19 @@ function sessionCard(w, id, done, day = TODAY) {
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day");
   if (!w && rd) {
     const next = [1, 2, 3].map((n) => rhDay(addDays(TODAY, n))).find((x) => x?.id), nw = next && wkById(next.id);
-    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), nw && nextUp(next.date, nw));
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), rideAtRow(null), nw && nextUp(next.date, nw));
   }
   if (!w && myPlan() && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
     return h("div.card.hero.glass.session.rest", {},
       heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"), `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}`),
-      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }), fw && nextUp(first.date, fw));
+      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }), rideAtRow(null), fw && nextUp(first.date, fw));
   }
   if (!w) {
     const next = [1, 2, 3].map((n) => addDays(TODAY, n)).find((d) => plannedOn(d));
     const nw = next && plannedOn(next) !== "event" ? wkById(plannedOn(next)) : null;
     return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"),
-      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), nw && nextUp(next, nw));
+      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), rideAtRow(null), nw && nextUp(next, nw));
   }
   const m = measure(w, paceFor(w.sport)), swapped = S.swaps[TODAY] !== undefined;
   const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
@@ -376,7 +376,8 @@ const hhmm = (t) => { const d = new Date(t); return `${pad2(d.getHours())}:${pad
 const phoneTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (_) { return "UTC"; } };
 // (a day's ride time, as the account has it: GET me's times, by this phone's day key), or null
 const rideTimeOn = (day) => (S.times || []).find((x) => x.day === dayStamp(day)) || null;
-// The row on today's session: the time set, and who set it; or the way to set one (a ride's, or a time Today set)
+// The row on today's session: the time set, and who set it; or the way to set one (a ride's, or a time Today set: on a
+// run's day or a rest day too, where Today set one, so it can be seen, changed or cleared here; w: null for a rest day)
 function rideAtRow(w) {
   const t = rideTimeOn(TODAY);
   if (!t && w?.sport !== "ride") return null;

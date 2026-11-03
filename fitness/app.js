@@ -1241,7 +1241,8 @@ function youMenu(at) {
       "-",
       { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
     ].filter(Boolean),
-    account: openAccount, signOut: () => signOutHere(),
+    // (at the hub, no Sign Out of Fitness's own: signing out is You's, for the whole of InFlite)
+    account: openAccount, signOut: HUB.on ? null : () => signOutHere(),
   });
 }
 // (at the hub: You, InFlite's own, where its notifications are set)
@@ -1322,7 +1323,7 @@ function settingsView() {
         row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }))),
-      section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: signOutHere }, "Sign Out"))),
+      !HUB.on && section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: () => signOutHere() }, "Sign Out"))),
     ],
   };
 }
@@ -2092,8 +2093,9 @@ async function morningOn(at) {
 async function morningOffHere() {
   const m = morningOf();
   store.set("morning", null);
-  // (at the hub, never a subscription let go: InFlite's, which the account's settings decide)
-  try { await A.morningOff(m?.endpoint); if (!HUB.on) (await morningSub(false))?.unsubscribe(); } catch (_) {}
+  // (at the hub, nothing asked or let go: the one subscription there is InFlite's, which You's settings decide)
+  if (HUB.on) return;
+  try { await A.morningOff(m?.endpoint); (await morningSub(false))?.unsubscribe(); } catch (_) {}
 }
 // (the week's words sent again, a moment after anything that changes them: another plan chosen too, so the last one's
 // words don't go on being sent)
@@ -2438,11 +2440,17 @@ async function signedBack(code) {
   catch (e) { toast(e.message, true); return null; }
 }
 // The older activities, where only the newest came (a phone new to the account: those are drawn at once), brought in a
-// page at a time behind, then the screen drawn again with them all
-async function older() {
-  if (older.busy || !S.me?.more) return;
-  older.busy = true;
-  const me = S.me.id;
+// page at a time behind, then the screen drawn again with them all. → a promise, kept till it's done (one already
+// bringing them in: that one), so a ride asked for by the address can wait for it (openTo)
+function older() {
+  if (older.p) return older.p;
+  if (!S.me?.more) return Promise.resolve();
+  const p = olderIn(S.me.id);
+  older.p = p;
+  p.finally(() => { if (older.p === p) older.p = null; });
+  return p;
+}
+async function olderIn(me) {
   try {
     for (;;) {
       const last = S.own.reduce((o, a) => (!o || a.start < o.start || (a.start === o.start && a.id < o.id) ? a : o), null);
@@ -2457,7 +2465,7 @@ async function older() {
     S.me.more = false;
     if (meBase?.id === me) lastMe.put({ ...meBase, more: false });
     S.own.sort((a, b) => b.start - a.start); setActs(); redraw();
-  } catch (_) {} finally { older.busy = false; }
+  } catch (_) {}
 }
 // Signed in: your record and your activities, from the account
 // The account as last fetched, kept on this phone: the app's drawn from it at once as it opens, while what's changed
@@ -2493,6 +2501,8 @@ function arrive(m, kept = false) {
   // (plans from Chat only from the account's own answer, never the copy kept here: one said no to on another device
   // mustn't show, ready to tap, till then)
   S.offers = !kept && Array.isArray(m.offers) ? m.offers : [];
+  // (and whether they're read whole, Today's own and those undone among them: only then are Today's swaps changed by them)
+  S.offersToday = !kept && m.offersToday === true;
   S.times = Array.isArray(m.times) ? m.times : [];
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
@@ -2529,9 +2539,10 @@ function background(m) {
 }
 // InFlite Today's own rides (invites.js todaySwaps): each agreed one put in its day as a swap, once, as Fitness opens; one
 // undone (on Today, or here) taken out again while its day still holds its workout. Only from the account's own answer
-// (S.offers), never the copy kept here; what's been put in remembered on this device, for this account
+// (S.offers), read whole (S.offersToday: GET me?today=1's, which didn't fail), never the copy kept here; what's been put
+// in remembered on this device, for this account
 function todayRides() {
-  if (!S.me || S.examples) return;
+  if (!S.me || S.examples || !S.offersToday) return;
   const k = store.get("today-swaps", null), was = k?.id === S.me.id && k.applied && typeof k.applied === "object" ? k.applied : {};
   const r = todaySwaps(S.offers, S.swaps, was, TODAY);
   store.set("today-swaps", { id: S.me.id, applied: r.applied });
@@ -2553,6 +2564,7 @@ function takeUp(m) {
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   S.health = m.health || { on: false };
   S.offers = Array.isArray(m.offers) ? m.offers : [];
+  S.offersToday = m.offersToday === true;
   S.times = Array.isArray(m.times) ? m.times : [];
   S.me.more = m.more;
   todayRides();
@@ -2613,6 +2625,9 @@ IFL.watch(window);
 // Signing out, here (everywhere on the site, in this browser), or found to be signed out (elsewhere): this device's
 // copies of your files go too
 async function signOutHere(already = false) {
+  // (at InFlite's hub, signing out is You's, for the whole of InFlite: its device, Chats' keys and Today's copies go with
+  // it, spec §11.5; Fitness's own would sign the site out and leave the window. Found signed out there, just this page's)
+  if (already !== true && HUB.on) return toYou();
   // (this phone's morning reminder goes with the sign-in: found signed out, here only, the account's server forgetting it
   // with the sign-in, functions/_fitpush.js)
   if (already !== true && morningOf()) await morningOffHere();
@@ -2624,7 +2639,7 @@ async function signOutHere(already = false) {
   const d = already !== true && S.me ? dusk() : null;
   if (d) await d.dark;
   held.clear(); S.own = []; S.sums.clear(); S.dirty.clear(); setActs();
-  store.set("meAt", null); store.set("files", null); const cleared = idb.clear().catch(() => {});
+  const cleared = forgetCopies();
   welcome(already === true ? "You’re signed out. Sign in again to carry on." : "Signed out.", { again: true });
   d?.done();
   // (on to the sign-in page once this phone's copies of your files are gone, not before: leaving would stop that)
@@ -2633,6 +2648,23 @@ async function signOutHere(already = false) {
 
 // (the sign-in gone, found out mid-way: signed out here too, and said so)
 const signedOutHere = () => signOutHere(true);
+// (this phone's copies of your files, all of them: the account as last fetched, the activities' files, and what's kept
+// for them; → when they're gone)
+function forgetCopies() {
+  for (const k of ["meAt", "files", "hk", "today-sent", "today-swaps"]) store.set(k, null);
+  return idb.clear().catch(() => {});
+}
+// (another account's activities' files, and what's kept for them, found here: let go)
+function forgetFiles() {
+  for (const k of filesUsed()) idb.del(k).catch(() => {});
+  for (const k of ["files", "hk", "today-sent"]) store.set(k, null);
+}
+// At InFlite's hub: whether InFlite's own sign-in, as Today keeps it in this browser (today:session, { id }: kept as
+// Today finds you signed in, gone as you sign out in You or Today finds you signed out), is the account given. Read only,
+// never written (rule 6: nothing of Fitness's under today:*); missing or unreadable, no (as Markets does)
+function hubKeptIs(id) {
+  try { const k = JSON.parse(localStorage.getItem("today:session") || "null"); return id != null && k?.id === id; } catch (_) { return false; }
+}
 
 // ---- sections, by the address: #today, #activities, #progress (the tabs), #act=<id> (one ride), #day=YYYY-MM-DD (a day)
 // and #offer=<id> (a plan waiting, or one of Today's rides). Read as Fitness opens and whenever the hash changes (an open
@@ -2655,7 +2687,14 @@ function openTo(hash) {
   if (tab !== S.tab) go(tab); else try { history.replaceState(null, "", location.pathname + location.search + "#" + tab); } catch (_) {}
   // (one ride, or a plan waiting: its sheet, in place of any that's up; a day Today shows, looked at there, and one
   // further off, its own sheet; a tab, just that)
-  if (m[2]) { const a = S.acts.find((x) => x.id === m[2]); if (a) openAct(a); else toast("That activity isn’t here.", true); }
+  // (one not among those here yet, a phone new to the account bringing the older ones in behind: looked for again once
+  // they're in, and only then said not to be here)
+  if (m[2]) {
+    const find = () => S.acts.find((x) => x.id === m[2]), a = find();
+    if (a) openAct(a);
+    else if (older.p || S.me.more) older().then(() => { const b = find(); if (b) openAct(b); else toast("That activity isn’t here.", true); });
+    else toast("That activity isn’t here.", true);
+  }
   else if (m[3]) {
     const d = dayOfKey(m[3]), lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13);
     if (d == null) return true;
@@ -2682,15 +2721,17 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
   if (wantTab) S.tab = wantTab;
   // (just updated: the tab you were on, and how far down)
   else if (was && TABS.some(([id]) => id === was.tab)) { S.tab = was.tab; if (was.y) setTimeout(() => scrollTo(0, was.y), 700); }
-  let m = null, early = null;
+  let m = null, early = null, kept = null;
   try {
     if (code) { m = await signedBack(code); if (m) lastMe.put(m); }
     if (!m) {
-      // (the copy kept here, drawn at once; then what's changed since, taken up)
-      const kept = await lastMe.get();
+      // (the copy kept here, drawn at once; then what's changed since, taken up. At InFlite's hub, drawn only while
+      // InFlite's own sign-in, as Today keeps it here, is the same account's: signing out in You leaves Fitness's copy,
+      // which mustn't be drawn for whoever opens Fitness next; then it waits for the account's answer)
+      kept = await lastMe.get();
       // (what's changed asked for at once, while the copy's drawn, not after)
       const now = fetchMe(kept);
-      if (kept?.signedIn && Array.isArray(kept.acts)) { early = kept; meBase = kept; arrive(kept, true); }
+      if (kept?.signedIn && Array.isArray(kept.acts) && (!HUB.on || hubKeptIs(kept.id))) { early = kept; meBase = kept; arrive(kept, true); }
       m = await now;
     }
   } catch (e) {
@@ -2711,6 +2752,10 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
     else if (e.offline) addEventListener("online", () => location.reload(), { once: true });
     return welcome(e.slow ? "Fitness is taking too long to answer. It’ll try again in a moment." : e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message);
   }
+  // (a copy not drawn, at the hub, found to be nobody's now: let go; another's: its files let go, the account as fetched
+  // having taken its place)
+  if (!early && kept?.signedIn && !m.signedIn) forgetCopies();
+  else if (!early && kept?.signedIn && kept.id !== m.id) forgetFiles();
   if (!m.signedIn) { arv?.away(); return early ? signOutHere(true) : welcome(); }
   if (early && m.id !== early.id) return location.reload();
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
@@ -2727,5 +2772,7 @@ export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView, stopped };
+// (and signing out, which at the hub is You's: for the tests, to try it there)
+export { signOutHere };
 export { IFL, HUB, todayRides };
 export { A, BT, C, DAY, E, F, G, HR_ZONES, M, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, bigMapView, calendar, canMorph, card, cardW, chooseFiles, choosePlan, clock, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, drawSheet, dropFile, dur, eventDay, face, fileKey, fitness, fitnessSeries, flatten, formSaid, full, garminView, go, h, head, height, held, hm, icon, idb, isSet, keep, layOut, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, numbers, once, openSheet, pace, paceFor, pct, perSecond, plan, planStart, plannedOn, plural, pushSheet, record, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, runSpeed, saveFile, section, setActs, setExamples, settingsView, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportIcon, sportTile, startOfDay, stat, stepLen, stepper, store, sumOf, summarise, svgOf, swimSpeed, timeOf, toast, upload, wait, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf };
