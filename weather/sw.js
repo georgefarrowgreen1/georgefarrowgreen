@@ -47,14 +47,18 @@ self.addEventListener("install", (e) => {
     await self.skipWaiting();
   })());
 });
+// (a new version started: the last ones' copies let go, Weather's own alone (wx-…): at InFlite's hub, Weather shares its
+// address with Today, Chats and the rest, each keeping copies of its own beside Weather's, which are theirs to keep)
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== LIBS && k !== TINT).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("wx-") && k !== CACHE && k !== LIBS && k !== TINT).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", (e) => {
   const req = e.request, u = new URL(req.url), page = req.mode === "navigate";
   // (never /version: the updater every app shares asks it which version's deployed, IFL.updates, and a kept answer would
-  // say the same forever)
-  if (req.method !== "GET" || u.origin !== self.location.origin || u.pathname.startsWith("/api/") || u.pathname.endsWith("/version")) return;
+  // say the same forever; and nothing outside Weather's own part of its address: at InFlite's hub, Weather is /weather/,
+  // and the page asks the site for things that aren't Weather's (its manifest, Chats' page), each answered as the site
+  // has it, never kept here)
+  if (req.method !== "GET" || u.origin !== self.location.origin || !req.url.startsWith(self.registration.scope) || u.pathname.startsWith("/api/") || u.pathname.endsWith("/version")) return;
   e.respondWith((async () => {
     // (a page is kept under the one address, not each link's own: those would pile up, and say where you've looked)
     const cache = await caches.open(u.pathname.includes("/vendor/") ? LIBS : CACHE), key = page ? "./" : req;
