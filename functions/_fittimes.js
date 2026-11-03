@@ -19,11 +19,14 @@
 //     Then), only while the day's row is still just that
 //   dropTimeQ(env, userId, day, { expect }) → the same as one statement, for the caller's own D.batch
 //   timesReady(env) → the database, fx_times made in it (for a caller reading it with its own SQL)
+//   timesExport(env, userId) → [{ day, start, stop, tz, sport, source }]: every row of the account's, for its export
+//     (the table needn't be made yet: then none)
+//   dropTimes(env, userId) → nothing (the account's rows gone, with the account; the table needn't be made yet)
 //   EXPLICIT_OFFER: the SQL condition for an explicit offer, written against the alias o
 //   explicitRide(row) → whether an fx_times row (the one with source) or an fx_offers row is an explicit ride
-// (Made by B0, then batch F's, which adds timesExport and dropTimes; the names and arguments stay.)
+// (Made by B0, then batch F's; the names and arguments stay.)
 import { HttpError } from "./_http.js";
-import { tablesOnce } from "./_fitness.js";
+import { fitdb, tablesOnce } from "./_fitness.js";
 import { zoneOk } from "../pigeon/cards.js";
 
 export const EXPLICIT_OFFER = "o.state = 'yes' AND (o.role IN ('asked','answered') OR o.taken = 1)";
@@ -48,8 +51,10 @@ const timesDb = (env) => tablesOnce(env, "times", makeTimes);
 // ---- days ----
 const DAYKEY = /^\d{4}-\d\d-\d\d$/;
 const dayOk = (s) => { if (typeof s !== "string" || !DAYKEY.test(s)) return false; const [y, m, d] = s.split("-").map(Number), x = new Date(Date.UTC(y, m - 1, d)); return x.getUTCFullYear() === y && x.getUTCMonth() === m - 1 && x.getUTCDate() === d && y >= 2020 && y <= 2100; };
+// (one formatter kept per zone, at most 500 of them: a zone's name may be written any number of ways)
 const DAYS = new Map();
-const dayIn = (tz, t) => (DAYS.get(tz) || DAYS.set(tz, new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })).get(tz)).format(new Date(t));
+const fmtOf = (tz) => { let f = DAYS.get(tz); if (!f) { if (DAYS.size >= 500) DAYS.clear(); f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); DAYS.set(tz, f); } return f; };
+const dayIn = (tz, t) => fmtOf(tz).format(new Date(t));
 
 const COLS = "day, start, stop, tz, sport, source";
 const rowOf = (r) => ({ day: r.day, start: r.start, stop: r.stop, tz: r.tz, sport: r.sport, source: r.source });
@@ -112,3 +117,16 @@ export async function dropTimeQ(env, userId, day, { expect } = {}) {
   return dropQ(await timesDb(env), userId, day, ex);
 }
 export const timesReady = (env) => timesDb(env);
+
+// ---- the account's export, and an account gone ----
+// (neither makes the table: an account that never set a time has nothing in it)
+export async function timesExport(env, userId) {
+  try {
+    const D = await fitdb(env);
+    return ((await D.prepare(`SELECT ${COLS} FROM fx_times WHERE user_id = ? ORDER BY day`).bind(userId).all()).results || []).map(rowOf);
+  } catch (_) { return []; }
+}
+export async function dropTimes(env, userId) {
+  const D = await fitdb(env);
+  await D.prepare("DELETE FROM fx_times WHERE user_id = ?").bind(userId).run().catch(() => {});
+}

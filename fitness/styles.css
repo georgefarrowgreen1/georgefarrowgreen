@@ -1992,6 +1992,23 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
 }
 /* ==== end of InFlite's way in ==== */
 
+/* Ride At on today's session (today.js): the time of day you'll ride, for InFlite Today, as the best time's row */
+.ride-at { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, #000 18%, transparent); }
+.ride-at .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; }
+.ride-at .tx { flex: 1; min-width: 0; display: grid; gap: 1px; } .ride-at b { font-size: 15px; font-weight: 600; } .ride-at small { font-size: 13px; color: var(--text-2); }
+.ride-at .pill { flex: none; }
+.ride-at-time { width: auto; min-width: 7.5em; font-variant-numeric: tabular-nums; }
+.ride-at-set, .ride-at-clear { width: 100%; margin-top: 10px; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .ride-at { background: rgba(255, 255, 255, 0.7); } }
+:root[data-theme="light"] .ride-at { background: rgba(255, 255, 255, 0.7); }
+/* InFlite Today's own rides, at the top of Today (invites.js) */
+.offer.from-today .offer-chip { color: var(--tint-text); }
+/* At InFlite's hub (IFL.hub.on): Back in your photo's place (menu.css .ifl-back), Fitness's own few from their own
+   button (on a computer the sidebar has them: there, not this), and Back over the signed-out morning too */
+.ifh .ifl-back { margin-right: 4px; }
+.welcome.dawn > .w-back { position: absolute; top: calc(var(--top) + 6px); left: 16px; z-index: 3; }
+@media (min-width: 760px) { .ifh .hub-more { display: none; } }
+.hub-strava { margin: 10px 4px 0; text-align: center; }
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
 /* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
 html { touch-action: pan-x pan-y; }

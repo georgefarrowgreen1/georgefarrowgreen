@@ -14,6 +14,7 @@
 
 import { HttpError, limit } from "./_pigeon.js";
 import { dropShares } from "./_fitshare.js";
+import { dropTimes } from "./_fittimes.js";
 
 export const MAX_ACTS = 5000, MAX_FILE = 25 * 1024 * 1024, MAX_STORE = 2 * 1024 * 1024 * 1024, MAX_STATE = 256 * 1024;
 export const SPORTS = ["ride", "run", "swim", "walk", "strength", "row", "other"];
@@ -340,4 +341,6 @@ export async function dropFitness(env, userId) {
   await D.prepare("DELETE FROM fx_today WHERE user_id = ?").bind(userId).run().catch(() => {});
   // (and the sessions sent to friends from Chat, and the plans from Chat waiting: functions/_fitshare.js)
   await dropShares(env, userId);
+  // (and the planned rides' times of day: Ride At, and Today's: functions/_fittimes.js)
+  await dropTimes(env, userId);
 }

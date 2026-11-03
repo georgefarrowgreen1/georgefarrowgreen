@@ -16,7 +16,9 @@ import { db } from "../../../functions/_pigeon.js";
 import { fitdb } from "../../../functions/_fitness.js";
 import { shareFor, dropShare, doneIn, donesIn, addOffer, offersFor, answerOffer, sharesOf, offersOf, dropShares, daySpan, fitNow, OFFER_KEEP,
   addTodayOffer, setOfferTimes, setOfferTimesQ, takeOffer, promoteOffer, answerOfferQ, offersReady } from "../../../functions/_fitshare.js";
-import { timeFor, timesOf, setTime, setTimeQ, dropTime, dropTimeQ, timesReady, EXPLICIT_OFFER, explicitRide } from "../../../functions/_fittimes.js";
+import { timeFor, timesOf, setTime, setTimeQ, dropTime, dropTimeQ, timesReady, EXPLICIT_OFFER, explicitRide, timesExport, dropTimes } from "../../../functions/_fittimes.js";
+import { onRequest as fitnessApi } from "../../../functions/api/fitness/[[path]].js";
+import { issueSession, hex, sha256 } from "../../../functions/_pigeon.js";
 import { timesFor, timesAround } from "../../../functions/_times.js";
 
 const sql = new DatabaseSync(":memory:");
@@ -164,14 +166,24 @@ test("done: the waiting tables without their figures still answer (one trip, the
   for (const c of ["sport TEXT", "secs INTEGER", "dist REAL"]) sql.exec(`ALTER TABLE fx_garmin_new ADD COLUMN ${c}`);
   for (const c of ["secs INTEGER", "dist REAL"]) sql.exec(`ALTER TABLE fx_strava_new ADD COLUMN ${c}`);
   const d2 = daySpan("2026-10-20", "Europe/London");
-  put("fx_garmin_new", { user_id: "eli", id: "g1", start: d2.start + 10 * H, name: "Lunch Ride", added: 0, sport: "ride", secs: 4500, dist: 32100.5 });
-  put("fx_garmin_new", { user_id: "eli", id: "g0", start: d2.start + 7 * H, name: null, added: 0 });
-  put("fx_strava_new", { user_id: "eli", id: "s1", start: d2.start + 9 * H, name: "Run", sport: "run", added: 0, secs: 2400, dist: 6000 });
-  assert.deepEqual(await donesIn(env, "eli", d2.start, d2.end), [
-    { name: "Lunch Ride", sport: "ride", start: d2.start + 10 * H, secs: 4500, dist: 32100.5, tss: null, from: "garmin" },
-    { name: "Run", sport: "run", start: d2.start + 9 * H, secs: 2400, dist: 6000, tss: null, from: "strava" },
-    { name: "Activity", sport: null, start: d2.start + 7 * H, secs: null, dist: null, tss: null, from: "garmin" },
+  put("fx_garmin_new", { user_id: "eli", id: "g1", start: d2.start + 10 * H, name: "Lunch Ride", added: d2.start + 14 * H, sport: "ride", secs: 4500, dist: 32100.5 });
+  put("fx_garmin_new", { user_id: "eli", id: "g0", start: d2.start + 7 * H, name: null, added: d2.start + 8 * H });
+  put("fx_strava_new", { user_id: "eli", id: "s1", start: d2.start + 9 * H, name: "Run", sport: "run", added: d2.start + 10 * H, secs: 2400, dist: 6000 });
+  // (added, asked for: when each came in, so Today's after phase starts then, for one that came in late)
+  assert.deepEqual(await donesIn(env, "eli", d2.start, d2.end, { added: true }), [
+    { name: "Lunch Ride", sport: "ride", start: d2.start + 10 * H, secs: 4500, dist: 32100.5, tss: null, from: "garmin", added: d2.start + 14 * H },
+    { name: "Run", sport: "run", start: d2.start + 9 * H, secs: 2400, dist: 6000, tss: null, from: "strava", added: d2.start + 10 * H },
+    { name: "Activity", sport: null, start: d2.start + 7 * H, secs: null, dist: null, tss: null, from: "garmin", added: d2.start + 8 * H },
   ], "null where it came without them");
+  assert.ok((await donesIn(env, "eli", d2.start, d2.end)).every((r) => !("added" in r)), "not asked for: the rows as they were");
+  // (Garmin's waiting rows say their sport now: a walk isn't a ride, a friend's or Today's; one that says none still may be)
+  const d3 = daySpan("2026-10-21", "Europe/London");
+  put("fx_garmin_new", { user_id: "eli", id: "g2", start: d3.start + 10 * H, name: "Walk", added: d3.start + 11 * H, sport: "walk", secs: 1800, dist: 2400 });
+  assert.equal(await doneIn(env, "eli", d3.start, d3.end, "ride"), null, "a Garmin walk isn't a done ride");
+  assert.deepEqual(await doneIn(env, "eli", d3.start, d3.end, "walk"), { secs: 1800, dist: 2400, sport: "walk", start: d3.start + 10 * H });
+  put("fx_garmin_new", { user_id: "eli", id: "g3", start: d3.start + 7 * H, name: null, added: d3.start + 8 * H });
+  assert.deepEqual(await doneIn(env, "eli", d3.start, d3.end, "ride"), { sport: null, start: d3.start + 7 * H }, "one saying no sport may be it");
+  assert.equal((await donesIn(env, "eli", d3.start, d3.end, { added: true })).every((r) => Number.isFinite(r.added)), true);
   assert.deepEqual(await doneIn(env, "eli", d2.start, d2.end, "run"), { secs: 2400, dist: 6000, sport: "run", start: d2.start + 9 * H });
   assert.deepEqual(await doneIn(env, "eli", d2.start, d2.end, "ride"), { secs: 4500, dist: 32100.5, sport: "ride", start: d2.start + 10 * H });
   const own = await shareFor(env, "eli", { day: "2026-10-20", tz: "Europe/London", sport: "ride" });
@@ -450,4 +462,87 @@ test("offersReady and timesReady: the tables and the columns a caller's own SQL 
   for (const c of ["with_id", "taken", "opts"]) assert.ok(cols("fx_offers").includes(c), c);
   assert.ok(cols("fx_times").includes("source"));
   assert.ok(Array.isArray(sql.prepare(`SELECT o.id FROM fx_offers o WHERE ${EXPLICIT_OFFER}`).all()));
+});
+
+// ---------- Fitness's side of Today's own rides (batch F: functions/api/fitness/[[path]].js) ----------
+test("Fitness's GET me?today=1 lists Today's own rides with taken; a plain GET me never does; Add to My Plan and Keep set taken, Undo says no", async () => {
+  env.FITNESS_HOST = "fitness.localhost";
+  sql.prepare(`INSERT OR REPLACE INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES ('bea', 'bea', 'Bea', 'bea@example.com', '{}', 's', 'p', 'v', 9, 0, 0)`).run();
+  const FIT = "http://fitness.localhost", cookie = "fbea".padEnd(43, "x");
+  const hash = hex(await sha256(await issueSession(env, "bea", new Request(`${FIT}/api/fitness/me`))));
+  sql.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").run(hex(await sha256(cookie)), hash);
+  const fit = (method, path, data) => fitnessApi({ env, params: { path: path.split("?")[0].split("/") }, waitUntil: () => {},
+    request: new Request(`${FIT}/api/fitness/${path}`, { method, headers: { Cookie: `account=${cookie}`, Origin: FIT, "Content-Type": "application/json" }, ...(data ? { body: JSON.stringify(data) } : {}) }) })
+    .then(async (r) => ({ status: r.status, body: await r.json() }));
+  const added = await addTodayOffer(env, "bea", ride({ state: "yes" }), { t: now });
+  const offered = await addTodayOffer(env, "bea", ride({ start: S0 + 24 * H, stop: S0 + 26 * H, state: "new" }), { t: now });
+  const plain = await fit("GET", "me");
+  assert.equal(plain.status, 200, JSON.stringify(plain.body));
+  assert.deepEqual(plain.body.offers, [], "a plain GET me: none of Today's (an older Fitness never draws a blank \"Ride with \")");
+  const mine = (await fit("GET", "me?today=1")).body.offers;
+  assert.deepEqual(mine.map((o) => [o.id, o.role, o.who, o.state, o.taken]), [[added, "today", "", "yes", false], [offered, "today", "", "new", false]]);
+  // Keep (on the one added) and Add to My Plan (on the one offered): answer yes, a tap, so taken; Undo: no, from agreed
+  for (const id of [added, offered]) assert.deepEqual(await fit("POST", `offers/${id}`, { answer: "yes" }), { status: 200, body: { ok: true } });
+  assert.deepEqual((await fit("GET", "me?today=1")).body.offers.map((o) => [o.state, o.taken]), [["yes", true], ["yes", true]]);
+  assert.ok(explicitRide(rowOf("bea", added)) && explicitRide(rowOf("bea", offered)), "kept by a tap: explicit rides now");
+  assert.deepEqual(await fit("POST", `offers/${added}`, { answer: "no" }), { status: 200, body: { ok: true } });
+  // (undone: no longer drawn, but still listed, said no to, till it's past its time, so Fitness takes its swap out; and
+  // the answer says it read Today's whole)
+  const after = (await fit("GET", "me?today=1")).body;
+  assert.deepEqual(after.offers.map((o) => [o.id, o.state]), [[added, "no"], [offered, "yes"]], "undone: listed as no, for Fitness to take its swap out");
+  assert.equal(after.offersToday, true, "read whole");
+  const plain2 = (await fit("GET", "me")).body;
+  assert.deepEqual([plain2.offers, plain2.offersToday], [[], undefined], "a plain GET me: still none, and no word of Today's");
+  // (one past its time, said no to or not, gone from the list: Fitness forgets it, its day left as it is; a friend's no
+  // is never listed)
+  sql.prepare("UPDATE fx_offers SET until = ? WHERE id = ?").run(now - 1000, added);
+  assert.deepEqual((await fit("GET", "me?today=1")).body.offers.map((o) => o.id), [offered], "past its time: gone");
+  const fr = offer();
+  await addOffer(env, "bea", fr, CHECKED);
+  await answerOffer(env, "bea", fr.id, "no");
+  assert.ok(!(await fit("GET", "me?today=1")).body.offers.some((o) => o.id === fr.id), "a friend's plan said no to: never listed");
+  assert.deepEqual((await offersFor(env, "bea", { today: true, t: now })).map((o) => o.id), [offered], "Today's own reads: no undone ones (undone: Fitness's alone)");
+  // (a read of the offers that fails: none, and no offersToday, so Fitness changes nothing by them; a plain GET me's
+  // read failing answers none, as ever)
+  const prep0 = env.DB.prepare;
+  env.DB.prepare = (q) => { if (/^SELECT id, start, stop, sport, wid, name, secs, who, role/.test(q)) throw new Error("D1 is down"); return prep0(q); };
+  try {
+    const broke = await fit("GET", "me?today=1");
+    assert.equal(broke.status, 200);
+    assert.deepEqual([broke.body.offers, broke.body.offersToday], [[], undefined], "a failed read: none, and not said to be whole");
+    await assert.rejects(offersFor(env, "bea", { today: true, t: now, undone: true, strict: true }), /D1 is down/);
+    assert.deepEqual(await offersFor(env, "bea", { today: true, t: now }), [], "without strict: none, as before");
+  } finally { env.DB.prepare = prep0; }
+});
+
+test("Keep in Fitness is a change since for Today's Undo (expect taken: 0); before it, Undo says no", async () => {
+  env.FITNESS_HOST = "fitness.localhost";
+  sql.prepare(`INSERT OR REPLACE INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES ('kev', 'kev', 'Kev', 'kev@example.com', '{}', 's', 'p', 'v', 9, 0, 0)`).run();
+  const FIT = "http://fitness.localhost", cookie = "fkev".padEnd(43, "x");
+  const hash = hex(await sha256(await issueSession(env, "kev", new Request(`${FIT}/api/fitness/me`))));
+  sql.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").run(hex(await sha256(cookie)), hash);
+  const fit = (method, path, data) => fitnessApi({ env, params: { path: path.split("?")[0].split("/") }, waitUntil: () => {},
+    request: new Request(`${FIT}/api/fitness/${path}`, { method, headers: { Cookie: `account=${cookie}`, Origin: FIT, "Content-Type": "application/json" }, ...(data ? { body: JSON.stringify(data) } : {}) }) })
+    .then(async (r) => ({ status: r.status, body: await r.json() }));
+  const ex = { start: S0, stop: S0 + 2 * H, state: "yes", taken: 0 };
+  const kept = await addTodayOffer(env, "kev", ride({ state: "yes" }), { t: now });
+  assert.deepEqual(await fit("POST", `offers/${kept}`, { answer: "yes" }), { status: 200, body: { ok: true } }, "Keep in Fitness");
+  assert.equal(rowOf("kev", kept).taken, 1);
+  assert.equal(await answerOffer(env, "kev", kept, "no", { expect: ex, t: now }), false, "Today's Undo after Keep: changed since, nothing done");
+  assert.equal(await (await answerOfferQ(env, "kev", kept, "no", { expect: ex, t: now })).run().then((r) => r.meta.changes), 0, "the same as a statement");
+  assert.deepEqual([rowOf("kev", kept).state, rowOf("kev", kept).taken], ["yes", 1], "kept: still in");
+  // (one not kept: Undo says no, as before; taken as true/false is the same as 1/0; anything else is refused)
+  const left = await addTodayOffer(env, "kev", ride({ start: S0 + 24 * H, stop: S0 + 26 * H, state: "yes" }), { t: now });
+  assert.equal(await answerOffer(env, "kev", left, "no", { expect: { start: S0 + 24 * H, stop: S0 + 26 * H, state: "yes", taken: false }, t: now }), true);
+  assert.equal(rowOf("kev", left).state, "no");
+  for (const taken of [2, "0", -1]) await assert.rejects(answerOffer(env, "kev", kept, "no", { expect: { ...ex, taken }, t: now }), /Bad request/, String(taken));
+});
+
+test("ride times in the account's export and gone with the account (functions/_fittimes.js timesExport, dropTimes)", async () => {
+  const d = "2026-11-20", s = daySpan(d, "Europe/London").start + 10 * H;
+  await setTime(env, "cal", { day: d, start: s, stop: s + H, tz: "Europe/London", source: "set" }, { t: now });
+  assert.deepEqual(await timesExport(env, "cal"), [{ day: d, start: s, stop: s + H, tz: "Europe/London", sport: "ride", source: "set" }]);
+  await dropTimes(env, "cal");
+  assert.deepEqual(await timesExport(env, "cal"), []);
+  assert.ok((await timesOf(env, "rae", "2026-09-01", "2026-12-31")).length, "nobody else's");
 });

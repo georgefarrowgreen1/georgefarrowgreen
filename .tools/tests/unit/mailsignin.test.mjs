@@ -1,9 +1,12 @@
 // Mail's copy of InFlite's way in (the inflite repo's email/public/app.css, where it's checked out beside this one): the
 // template's, as every app here has it (unit/iflsignin.test.mjs checks those), and InFlite's mark the same. Refreshed by
-// node .tools/signin.mjs ../inflite/email/public
+// node .tools/signin.mjs ../inflite/email/public. And Mail's own sign-in in InFlite's window (framed at the hub's /mail/):
+// its word kept as ever, the trip asked of the hub, the code back into the frame (below).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 import { START, END, block } from '../../signin.mjs';
 
 const PUB = new URL('../../../../inflite/email/public/', import.meta.url);
@@ -15,4 +18,82 @@ test('Mail’s copy of InFlite’s way in is the template’s, and its mark the 
   assert.ok(i >= 0 && j > i, 'Mail has no copy: run node .tools/signin.mjs ../inflite/email/public');
   assert.equal(css.slice(i, j + END.length), block(), 'Mail’s copy is out of date: run node .tools/signin.mjs ../inflite/email/public');
   assert.equal(readFileSync(new URL('inflite.svg', PUB), 'utf8'), readFileSync(new URL('.tools/inflite/inflite.svg', ROOT), 'utf8'), 'Mail’s inflite.svg differs');
+});
+
+// ---- Mail's Sign In in InFlite's window (Today First, spec §9.4): framed by the hub's /mail/ page, Mail keeps its word
+// where it always has (this tab's sessionStorage, inflite:signin-verifier) and asks the hub, with the word's hash, to
+// make the trip (the sign-in page is never framed); the code comes back into the frame's address, and Mail's own
+// hand-back finishes it there. With no hub answering in the frame, Mail on its own in a window of its own, to sign in
+// there. At its own address, the trip as before. (Skipped, not failed, where the inflite repo beside is from before
+// Today First: its live branch, as CI has it beside main while this repo goes live first, has no framed Mail yet.)
+const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+const APP = new URL('app.js', PUB);
+const app = tfSkip ? '' : readFileSync(APP, 'utf8');
+const fn = (name) => new RegExp(`\\n {2}(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n {2}\\}\\n`).exec(app)?.[0] || assert.fail(`app.js: ${name}`);
+const part = (re, what) => re.exec(app)?.[0] || assert.fail(`app.js: ${what}`);
+// (Mail's sign-in parts, at an address, in the frame or not, the hub there having answered its hello or not: what it
+// kept, said to the hub, went to, opened, handed back)
+function signIn({ embed, hash = '', heard = embed }) {
+  const kept = new Map(), told = [], went = [], handed = [], replaced = [], opened = [];
+  const ctx = {
+    EMBED: embed, hubHeard: heard, crypto: globalThis.crypto, TextEncoder, btoa, URLSearchParams,
+    window: { open: (...a) => (opened.push(a), null) },
+    sessionStorage: { setItem: (k, v) => kept.set(k, String(v)), getItem: (k) => kept.get(k) ?? null, removeItem: (k) => kept.delete(k) },
+    location: { origin: 'https://email.inflite.ai', pathname: '/', search: '', hash, assign: (u) => went.push(u) },
+    history: { state: null, replaceState: (s, t, u) => replaced.push(u) },
+    toHub: (m) => (told.push(JSON.parse(JSON.stringify(m))), true),
+    api: { handback: async (code, verifier) => (handed.push([code, verifier]), { access: 'ok' }) },
+  };
+  const code = `let accountOrigin = "https://account.inflite.ai";
+    ${part(/\n {2}const authOrigin = .+;\n/, 'authOrigin')}${part(/\n {2}const VERIFIER_KEY = .+;\n/, 'VERIFIER_KEY')}${part(/\n {2}const b64url = [\s\S]*?;\n/, 'b64url')}
+    ${fn('goToAccount')}${fn('finishSignIn')} ({ goToAccount, finishSignIn, VERIFIER_KEY })`;
+  return { ...vm.runInNewContext(code, ctx), kept, told, went, handed, replaced, opened };
+}
+const hashOf = (w) => createHash('sha256').update(w).digest('base64url');
+
+test('in the hub’s frame: Sign In keeps its word in this tab, as ever, and asks the hub to make the trip with its hash', { skip: tfSkip }, async () => {
+  const m = signIn({ embed: true });
+  assert.equal(m.VERIFIER_KEY, 'inflite:signin-verifier');
+  assert.equal(await m.goToAccount(), true);
+  const word = m.kept.get('inflite:signin-verifier');
+  assert.match(word, /^[A-Za-z0-9_-]{43}$/, 'the word, kept in sessionStorage');
+  assert.deepEqual(m.told, [{ ifl: 'signin', ask: hashOf(word) }], 'the hub asked, with the word’s hash alone');
+  assert.match(m.told[0].ask, /^[A-Za-z0-9_-]{16,64}$/, 'a hash the hub’s page takes');
+  assert.deepEqual(m.went, [], 'the frame goes nowhere itself: the sign-in page is never framed');
+  assert.deepEqual(m.opened, [], 'and nothing opened');
+});
+
+test('in a frame no hub has answered (not the hub’s, or it can’t be heard): Mail on its own, in a window of its own, to sign in there', { skip: tfSkip }, async () => {
+  const m = signIn({ embed: true, heard: false });
+  assert.equal(await m.goToAccount(), false, 'no trip asked of a hub');
+  assert.deepEqual(m.opened, [['https://email.inflite.ai/', '_blank', 'noopener']], 'Mail at its own address, as Open Mail on Its Own opens it');
+  assert.deepEqual(m.told, [], 'nothing said to a hub that hasn’t answered');
+  assert.deepEqual(m.went, [], 'the frame goes nowhere itself');
+  assert.equal(m.kept.size, 0, 'no word made: it couldn’t go with it');
+});
+
+test('at its own address: the trip to the sign-in page as before, back to Mail', { skip: tfSkip }, async () => {
+  const m = signIn({ embed: false });
+  assert.equal(await m.goToAccount(), true);
+  const word = m.kept.get('inflite:signin-verifier');
+  assert.deepEqual(m.told, []);
+  assert.deepEqual(m.opened, []);
+  assert.equal(m.went.length, 1);
+  const u = new URL(m.went[0]), p = new URLSearchParams(u.hash.slice(1));
+  assert.equal(u.origin, 'https://auth.inflite.ai');
+  assert.deepEqual([p.get('signin'), p.get('ask'), p.get('back')], ['mail', hashOf(word), 'https://email.inflite.ai/']);
+});
+
+test('the code handed into the frame’s address (by the hub’s /mail/ page): Mail’s own hand-back, with the word kept in this tab', { skip: tfSkip }, async () => {
+  const CODE = 'Qx7_Lm2-Rt9kVb3nWp5sYc8dZf1gHj4K';
+  const m = signIn({ embed: true, hash: `#signin=${CODE}` });
+  m.kept.set('inflite:signin-verifier', 'the-word-kept-before-the-trip');
+  assert.deepEqual(await m.finishSignIn(), { access: 'ok' });
+  assert.deepEqual(m.handed, [[CODE, 'the-word-kept-before-the-trip']]);
+  assert.equal(m.kept.has('inflite:signin-verifier'), false, 'the word used once');
+  assert.deepEqual(m.replaced, ['/'], 'the code out of the frame’s address');
+  // (no word here: nothing handed back)
+  const none = signIn({ embed: true, hash: `#signin=${CODE}` });
+  assert.equal(await none.finishSignIn(), null);
+  assert.deepEqual(none.handed, []);
 });
