@@ -18,6 +18,10 @@ const tfSkip = skip || (!existsSync(new URL('today/src/hub.js', IFL)) && 'the in
 // (One roof's worker, where the inflite repo beside has the roof rule (today/src/roof.js): its cases; and milestone 1's
 // where it hasn't, as its live branch beside main while this repo goes live first)
 const hasRoof = !tfSkip && existsSync(new URL('today/src/roof.js', IFL));
+// (stages 2–4's worker (s24-contracts §8): every module's page and files, one MODS list; its copy today-app-4)
+const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
+const SHELL_NOW = S24 ? 'today-app-4' : 'today-app-3';
+const MODPATH = S24 ? /^\/(weather|markets|fitness|mail)\// : /^\/weather\//;
 const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const m1Case = tfSkip || (hasRoof && 'the inflite repo beside has the roof (today/src/roof.js): its case is One roof’s, below');
 const ORIGIN = 'https://inflite.ai';
@@ -93,7 +97,7 @@ test('Today’s own files: from the network while there is one, kept as they com
   assert.equal(await w.send('fetch', { request: { method: 'GET', url: 'https://example.com/app.js', mode: 'cors' } }), null);
   assert.equal(await w.send('fetch', { request: { method: 'POST', url: `${ORIGIN}/`, mode: 'navigate' } }), null);
   // (another address of the site is its 404 page, or a page of the hub's, from the network: not Today's page kept)
-  for (const p of ['/nope', '/chats/', '/chats/?engine=1', '/markets/#s=TSCO', '/mail/', '/weather', '/weather/x.html']) assert.equal(await w.get(p, 'navigate'), null, p);
+  for (const p of ['/nope', '/chats/', '/chats/?engine=1', ...(S24 ? [] : ['/markets/#s=TSCO', '/mail/']), '/weather', '/weather/x.html', '/markets', '/mail/x.html']) assert.equal(await w.get(p, 'navigate'), null, p);
   for (const p of ['/chats/app.js', '/chats/sw.js', '/weather/sw.js', '/weather/version', '/weather/app.js?v=1']) assert.equal(await w.get(p), null, p);
   // (Weather's page and files at /weather/: the hub's, from the network, in milestone 1; One roof's cases below)
   if (!hasRoof) { assert.equal(await w.get('/weather/', 'navigate'), null); assert.equal(await w.get('/weather/app.js'), null); }
@@ -117,18 +121,18 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   const manifest = [...want].find((f) => f && /\.webmanifest$/.test(f));
   assert.ok(manifest, 'the page names its manifest');
   want.add(own(JSON.parse(read(manifest.slice(1))).start_url || '/', manifest));
-  for (const s of [...want].filter((f) => f?.endsWith('.js') && !f.startsWith('/weather/'))) {
+  for (const s of [...want].filter((f) => f?.endsWith('.js') && !MODPATH.test(f))) {
     const src = read(s.slice(1));
     for (const [, a, b] of src.matchAll(/^\s*import\b[^'"]*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm)) want.add(own(a || b, s));
     for (const [, u] of src.matchAll(/["'`](\/[\w./-]+\.(?:svg|png|css|js|json|webmanifest))["'`?]/g)) if (u !== '/sw.js') want.add(u);
   }
-  for (const s of [...want].filter((f) => f?.endsWith('.js') && !f.startsWith('/weather/'))) {
+  for (const s of [...want].filter((f) => f?.endsWith('.js') && !MODPATH.test(f))) {
     const src = read(s.slice(1));
     for (const [, a] of src.matchAll(/^\s*import\b[^'"]*["']([^"']+)["']/gm)) want.add(own(a, s));
   }
   want.delete(null);
   // (Weather's module files under the roof are the hub's, kept by the worker in roof-weather-*, not in FILES)
-  for (const f of [...want]) if (f.startsWith('/weather/')) want.delete(f);
+  for (const f of [...want]) if (MODPATH.test(f)) want.delete(f);
   // (the icons a phone asks for as Today's added to its Home Screen, never as it opens, needn't be kept)
   for (const f of ['/icon-512.png', '/icon-maskable-512.png', '/og.png']) want.delete(f);
   const missing = [...want].filter((f) => !FILES.includes(f));
@@ -147,9 +151,9 @@ test('its copy is today-app-2, with Today First’s files: the day, Apps, You an
   assert.match(readFileSync(new URL('app.js', SW), 'utf8'), /import\("\/day\.js"\)/);
 });
 
-test('One roof: its copy is today-app-3, with the framework’s files beside Today First’s', { skip: roofCase }, () => {
+test('One roof: its copy is today-app-3 (today-app-4 from stages 2–4), with the framework’s files beside Today First’s', { skip: roofCase }, () => {
   const src = readFileSync(SW, 'utf8');
-  assert.equal(/\nconst SHELL = "([^"]+)";/.exec(src)?.[1], 'today-app-3');
+  assert.equal(/\nconst SHELL = "([^"]+)";/.exec(src)?.[1], SHELL_NOW);
   const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(src)[1]);
   for (const f of ['/day.js', '/day.css', '/apps.js', '/you.js', '/mailhost.js']) assert.ok(FILES.includes(f), f);
   const roof = ['frame.js', 'router.js', 'header.js', 'tabs.js', 'sheet.js', 'toast.js', 'ui.js', 'search.js', 'send.js', 'modules.js', 'connectors.js', 'roof.css'].map((f) => `/roof/${f}`);
@@ -172,8 +176,8 @@ test('One roof: a document at /weather/ from the network, else the copy of / (ne
   for (const p of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2']) assert.equal(await (await w.get(p, 'navigate')).text(), `FRAMEWORK ${new URL(p, ORIGIN).pathname}`, p);
   mode = 'off';
   assert.equal(await (await w.get('/weather/', 'navigate')).text(), 'MILESTONE 1 WEATHER', 'the roof off: the hub’s page, as it sends it');
-  assert.equal(await (await w.stores.get('today-app-3').get('/').clone()).text(), 'TODAY /', 'never kept as /');
-  assert.deepEqual([...w.stores.get('today-app-3').keys()], ['/'], 'nor kept at all');
+  assert.equal(await (await w.stores.get(SHELL_NOW).get('/').clone()).text(), 'TODAY /', 'never kept as /');
+  assert.deepEqual([...w.stores.get(SHELL_NOW).keys()], ['/'], 'nor kept at all');
   for (const m of ['down', '5xx']) {
     mode = m;
     for (const p of ['/weather/', '/weather/index.html', '/weather/#radar']) assert.equal(await (await w.get(p, 'navigate')).text(), 'TODAY /', `${m} ${p}`);
@@ -216,13 +220,13 @@ test('One roof: the module’s files kept when the page asks, in roof-weather-<b
   await keepFrom(down, { ifl: 'keep', app: 'weather', build: '1.65', files: FILES12 });
   assert.ok(!down.stores.has('roof-weather-1.65'));
   // (whole: kept, and only then the build before let go; Today's own copy and Weather's old worker's caches never touched)
-  w.stores.set('today-app-3', new Map([['/', okFile('/')]]));
+  w.stores.set(SHELL_NOW, new Map([['/', okFile('/')]]));
   w.stores.set('wx-1.64', new Map());
   w.stores.set('roof-other-1.00', new Map());
   await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.65', files: FILES12 });
   assert.equal(w.stores.get('roof-weather-1.65').size, FILES12.length);
   assert.ok(!w.stores.has('roof-weather-1.64'), 'the build before, let go once the new one is whole');
-  for (const k of ['today-app-3', 'wx-1.64', 'roof-other-1.00']) assert.ok(w.stores.has(k), k);
+  for (const k of [SHELL_NOW, 'wx-1.64', 'roof-other-1.00']) assert.ok(w.stores.has(k), k);
 });
 
 test('One roof: a build kept whole stays whole: asked again with no network, a 404 or a 5xx, nothing fetched and nothing let go; one kept in part is filled', { skip: roofCase }, async () => {
@@ -346,4 +350,42 @@ test('One roof: Weather’s files from the network first; the kept copy only wit
   const off = await w.get('/weather/roof/weather.js');
   assert.equal(off.status, 404, 'the roof off: the hub’s 404, never the kept copy');
   for (const p of ['/weather/sw.js', '/weather/version', '/weather/roof/weather.js?retry=1']) assert.equal(await w.get(p), null, p);
+});
+
+// ---- stages 2–4 (s24-contracts §8): every module's page and files, by one MODS list ----
+const s24Case = roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4 (sw.js has no MODS)');
+test('stages 2–4: each module’s document (/markets/, /fitness/, /mail/) as /weather/’s: the network, else the copy of /, never kept as /', { skip: s24Case }, async () => {
+  let mode = 'up';
+  const w = worker((path) => {
+    if (mode === 'down') throw new TypeError('Load failed');
+    return Object.defineProperty(new Response(path === '/' ? 'TODAY /' : `PAGE ${path}`, { status: 200 }), 'type', { value: 'basic' });
+  });
+  assert.equal(await (await w.get('/', 'navigate')).text(), 'TODAY /');
+  for (const a of ['markets', 'fitness', 'mail']) for (const p of [`/${a}/`, `/${a}/index.html`, `/${a}/#x=1`]) assert.equal(await (await w.get(p, 'navigate')).text(), `PAGE /${a}/${p.includes('index') ? 'index.html' : ''}`, p);
+  assert.deepEqual([...w.stores.get(SHELL_NOW).keys()], ['/'], 'none kept as /');
+  mode = 'down';
+  for (const a of ['markets', 'fitness', 'mail']) assert.equal(await (await w.get(`/${a}/`, 'navigate')).text(), 'TODAY /', `${a} offline: the kept framework`);
+  for (const p of ['/markets', '/fitness/x.html', '/chats/']) assert.equal(await w.get(p, 'navigate'), null, p);
+});
+
+test('stages 2–4: Markets’ and Fitness’s files kept in roof-<app>-<build> (files ∪ lazy, ≤ 60, under the app’s path, never vendor/, its worker or version); each app’s kept copy only its own', { skip: s24Case }, async () => {
+  const w = worker((path) => okFile(path));
+  const mk = ['/markets/roof/markets.js', '/markets/roof/core.js', '/markets/charts.js', '/markets/roof/news.js', '/markets/roof/markets.css'];
+  await w.send('message', { data: { ifl: 'keep', app: 'markets', build: '1.96', files: mk }, source: { url: `${ORIGIN}/markets/` }, ports: [] });
+  assert.deepEqual([...w.stores.get('roof-markets-1.96').keys()].sort(), [...mk].sort());
+  for (const bad of [['/weather/roof/core.js'], ['/markets/sw.js'], ['/markets/version'], ['/weather/vendor/maplibre.js'], ['/fitness/vendor/x.js'], Array.from({ length: 61 }, (_, i) => `/fitness/roof/f${i}.js`)]) {
+    await w.send('message', { data: { ifl: 'keep', app: bad[0].split('/')[1] === 'weather' ? 'markets' : 'fitness', build: '1.68', files: bad }, source: { url: `${ORIGIN}/fitness/` }, ports: [] });
+  }
+  assert.ok(!w.stores.has('roof-fitness-1.68') && !w.stores.has('roof-markets-1.68'), 'another app’s path, a worker, a version, vendor/ or over 60: nothing kept');
+  const fx = Array.from({ length: 60 }, (_, i) => `/fitness/roof/f${i}.js`);
+  await w.send('message', { data: { ifl: 'keep', app: 'fitness', build: '1.68', files: fx }, source: { url: `${ORIGIN}/fitness/` }, ports: [] });
+  assert.equal(w.stores.get('roof-fitness-1.68').size, 60, '60: kept');
+  // (a module's file, its network failing: its own kept copy, never another app's)
+  const off = worker((path) => { throw new TypeError('Load failed'); });
+  off.stores.set('roof-markets-1.96', new Map([['/markets/roof/core.js', okFile('/markets/roof/core.js')]]));
+  off.stores.set('roof-fitness-1.68', new Map([['/fitness/roof/core.js', okFile('/fitness/roof/core.js')]]));
+  assert.equal(await (await off.get('/markets/roof/core.js')).text(), 'file /markets/roof/core.js');
+  await assert.rejects(off.get('/markets/roof/news.js'), 'not kept: no answer');
+  assert.equal(await (await off.get('/fitness/roof/core.js')).text(), 'file /fitness/roof/core.js');
+  for (const p of ['/markets/sw.js', '/fitness/version', '/markets/roof/core.js?retry=1']) assert.equal(await off.get(p), null, `${p}: not the worker’s`);
 });
