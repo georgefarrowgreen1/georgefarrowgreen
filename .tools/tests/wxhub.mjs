@@ -218,10 +218,10 @@ const dayOfMonth = (n) => String(new Date(now + n * D).getUTCDate());
   // ---- 4. Back: to Apps with nothing to go back to; to where you came from: Apps, Chats ----
   await Promise.all([p.waitForURL(`${HUB}/#apps`, { timeout: 15000 }), p.click('#hub-back')]);
   ok(at(p).pathname === '/' && at(p).hash === '#apps', 'Back, opened with nowhere to go back to: Apps', p.url());
-  const tile = await p.waitForSelector('.atile[data-app="weather"] a.atile-go', { timeout: 20000 }).then(() => true, () => false);
+  const tile = await p.waitForSelector('a.ifl-tile[data-app="weather"], .ifl-tile[data-app="weather"] > a.ifl-tile-main, .atile[data-app="weather"] a.atile-go', { timeout: 20000 }).then(() => true, () => false);
   ok(tile, 'Apps: Weather’s tile');
   if (tile) {
-    await Promise.all([p.waitForURL(`${HUB}/weather/`, { timeout: 15000 }), p.click('.atile[data-app="weather"] a.atile-go')]);
+    await Promise.all([p.waitForURL(`${HUB}/weather/`, { timeout: 15000 }), p.click('a.ifl-tile[data-app="weather"], .ifl-tile[data-app="weather"] > a.ifl-tile-main, .atile[data-app="weather"] a.atile-go')]);
     await drawn(p);
     await Promise.all([p.waitForURL(/\/#apps$/, { timeout: 15000 }), p.click('#hub-back')]);
     ok(at(p).hash === '#apps', 'opened from Apps: Back to Apps', p.url());

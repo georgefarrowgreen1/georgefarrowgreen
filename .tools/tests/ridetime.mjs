@@ -252,8 +252,8 @@ ok(pushAsks.length === 0, 'at the hub, Fitness never asked its push routes for a
 
 // ---- 6. Back: opened from Apps' tile, back to Apps ----
 await p.goto(HUB + '/#apps');
-const tile = await p.waitForSelector('.atile[data-app="fitness"] a.atile-go', { timeout: 20000 }).then(() => true, () => false);
-if (tile) await Promise.all([p.waitForURL((u) => u.pathname === '/fitness/', { timeout: 20000 }), p.click('.atile[data-app="fitness"] a.atile-go')]);
+const tile = await p.waitForSelector('a.ifl-tile[data-app="fitness"], .ifl-tile[data-app="fitness"] > a.ifl-tile-main, .atile[data-app="fitness"] a.atile-go', { timeout: 20000 }).then(() => true, () => false);
+if (tile) await Promise.all([p.waitForURL((u) => u.pathname === '/fitness/', { timeout: 20000 }), p.click('a.ifl-tile[data-app="fitness"], .ifl-tile[data-app="fitness"] > a.ifl-tile-main, .atile[data-app="fitness"] a.atile-go')]);
 else await p.evaluate(() => location.assign(window.IFL.hub.href('fitness')));
 await p.waitForSelector('.fhead .ifl-back', { timeout: 30000 }); await settle(p, 500);
 await Promise.all([p.waitForURL((u) => u.pathname === '/' && u.hash === '#apps', { timeout: 20000 }), p.click('.fhead .ifl-back')]);

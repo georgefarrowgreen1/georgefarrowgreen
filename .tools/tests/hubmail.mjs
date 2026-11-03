@@ -63,10 +63,10 @@ ok(delivered >= 200 && delivered < 300, 'a message comes to Mail', String(delive
 // ---- 1. Apps → Mail: the hub's /mail/, framing Mail at its own address, which knows it ----
 const mailErrs0 = errs.length;
 await p.goto(HUB + '/#apps');
-const tile = await p.waitForSelector('.atile[data-app=mail] .atile-go', { timeout: 30000 }).then(() => true, () => false);
-ok(tile && (await p.$eval('.atile[data-app=mail] .atile-go', (a) => a.getAttribute('href'))) === '/mail/', 'Apps: Mail’s tile for its admin, at /mail/');
+const tile = await p.waitForSelector('a.ifl-tile[data-app="mail"], .ifl-tile[data-app="mail"] > a.ifl-tile-main, .atile[data-app="mail"] a.atile-go', { timeout: 30000 }).then(() => true, () => false);
+ok(tile && (await p.$eval('a.ifl-tile[data-app="mail"], .ifl-tile[data-app="mail"] > a.ifl-tile-main, .atile[data-app="mail"] a.atile-go', (a) => a.getAttribute('href'))) === '/mail/', 'Apps: Mail’s tile for its admin, at /mail/');
 await p.screenshot({ path: `${out}/apps.png` });
-await p.click('.atile[data-app=mail] .atile-go');
+await p.click('a.ifl-tile[data-app="mail"], .ifl-tile[data-app="mail"] > a.ifl-tile-main, .atile[data-app="mail"] a.atile-go');
 await p.waitForURL(`${HUB}/mail/`, { timeout: 20000 });
 const fr = () => p.frame({ name: 'ifl-mail' });
 const listed = await p.waitForFunction(() => document.querySelector('iframe[name="ifl-mail"]')?.src, null, { timeout: 15000 }).then(() => true, () => false);
@@ -147,9 +147,9 @@ if (row) {
 }
 await p.click('.mh-back');
 await p.waitForURL(`${HUB}/#apps`, { timeout: 15000 }).catch(() => {});
-ok(p.url() === `${HUB}/#apps` && await p.waitForSelector('.atile[data-app=mail]', { timeout: 15000 }).then(() => true, () => false), 'Back to Apps (the bar’s): /#apps, after moving about inside Mail', p.url());
+ok(p.url() === `${HUB}/#apps` && await p.waitForSelector('.ifl-tile[data-app="mail"], .atile[data-app="mail"]', { timeout: 15000 }).then(() => true, () => false), 'Back to Apps (the bar’s): /#apps, after moving about inside Mail', p.url());
 // (and Back said from Mail's frame itself, { ifl: "back" }, as the spec lets Mail say it: the same)
-await p.click('.atile[data-app=mail] .atile-go');
+await p.click('a.ifl-tile[data-app="mail"], .ifl-tile[data-app="mail"] > a.ifl-tile-main, .atile[data-app="mail"] a.atile-go');
 await p.waitForURL(`${HUB}/mail/`, { timeout: 15000 });
 await fr()?.waitForSelector(LISTED, { timeout: 30000 }).catch(() => {});
 await fr()?.evaluate((h) => parent.postMessage({ ifl: 'back' }, h), HUB).catch(() => {});
@@ -235,7 +235,7 @@ const made = await hostCall('auth.ifl.test', '/api/account/signup', { name: 'Pat
 const [cname, cvalue] = (made.cookie || '=').split('=');
 const pat = await hubPhone('pat', null, { path: '/#apps', cookies: made.cookie ? { [cname]: cvalue } : {} });
 const patErrs0 = errs.length;
-const tiles = await pat.p.waitForSelector('.atile[data-app=weather]', { timeout: 30000 }).then(() => pat.p.$$eval('.atile', (ts) => ts.map((t) => t.dataset.app)), () => null);
+const tiles = await pat.p.waitForSelector('.ifl-tile[data-app="weather"], .atile[data-app="weather"]', { timeout: 30000 }).then(() => pat.p.$$eval('.ifl-tile[data-app], .atile', (ts) => ts.map((t) => t.dataset.app)), () => null);
 ok(made.s === 201 && JSON.stringify(tiles) === JSON.stringify(['weather', 'fitness', 'markets']), 'Pat, not the admin: no Mail tile', JSON.stringify(tiles));
 await pat.p.goto(`${HUB}/mail/`);
 const notAdmin = await pat.p.frame({ name: 'ifl-mail' })?.waitForSelector('.login[data-access=notadmin]', { timeout: 30000 }).then(() => true, () => false);
