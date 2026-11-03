@@ -7,6 +7,7 @@ import { weatherCard } from "./_todaywx.js";
 import { chatCard } from "./_todaychat.js";
 import { fitnessCard } from "./_todayfit.js";
 import { marketsCard } from "./_todaymkt.js";
+import { dayFor } from "./_todayday.js";
 import { db, logError } from "./_pigeon.js";
 import { photoOf } from "./_profile.js";
 import { todayLinks } from "./_sites.js";
@@ -49,6 +50,12 @@ export function withSend(card, send) {
   Object.defineProperty(card, "send", { value: send || null, enumerable: false, configurable: true, writable: true });
   return card;
 }
+// What a card has worked out for Today First's day (functions/_todayday.js) and doesn't say itself (tomorrow's weather,
+// the markets' hours, the holdings past their alerts): held apart as send is, never in the card's JSON
+export function withForDay(card, more) {
+  Object.defineProperty(card, "forDay", { value: more || null, enumerable: false, configurable: true, writable: true });
+  return card;
+}
 // a name's first word ("Sam" for "Sam Lee"), as Chat calls people
 export const firstWord = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
 // whether a zone's a real one (cardsFor uses London's where it isn't)
@@ -60,14 +67,19 @@ export const zoneOk = (tz) => { if (typeof tz !== "string" || !tz || tz.length >
 // Each ok card's card for Chat (send: pigeon/cards.js) goes to the page packed, as sendCard (null where there's none,
 // or it's too big), and not at all to the morning; keepSend: the card itself kept too (Chat's "How's yours?":
 // functions/_share.js my-card), and live: the account's paid forecasts counted as Chat's live looks are (liveMiss).
-// → { at, tz, cards }
-export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), request = null, purpose = "page", tz = "Europe/London", links, memo = null, keepSend = false, live = false } = {}) {
+// v: 2 for Today First's day with the cards (functions/_todayday.js dayFor: its phase, top cards, Waiting for You,
+// Coming Up, acts and ride, merged into the answer, and a few more fields on the cards); anything else, the answer as
+// it's always been, byte for byte.
+// → { at, tz, cards } (and with v: 2, { v: 2, phase, since, until, timeline, tops, waiting, upcoming, acts, ride, quiet,
+// apps, planning? } after them)
+export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), request = null, purpose = "page", tz = "Europe/London", links, memo = null, keepSend = false, live = false, v = 1 } = {}) {
   // (the cards' own functions, looked up here and not above: the card modules import this one back)
   const make = { weather: weatherCard, chat: chatCard, fitness: fitnessCard, markets: marketsCard };
   // (none asked for: none worked out; only left out: all four)
   const keys = CARD_KEYS.filter((k) => (Array.isArray(only) ? only : CARD_KEYS).includes(k));
   const zone = zoneOk(tz) ? tz : "Europe/London", ln = links || todayLinks(env, request), ms = cardMs(purpose);
-  const ctx = { only: keys, t, request, purpose: purpose === "morning" ? "morning" : "page", tz: zone, links: ln, memo, live: live ? u.id : null };
+  const v2 = v === 2 && purpose !== "morning";
+  const ctx = { only: keys, t, request, purpose: purpose === "morning" ? "morning" : "page", tz: zone, links: ln, memo, live: live ? u.id : null, ...(v2 ? { v: 2 } : {}) };
   const got = await Promise.all(keys.map((k) => withDeadline(Promise.resolve().then(() => make[k](env, u, ctx)), ms).catch(async (e) => {
     if (!(e instanceof Quiet)) await logError(env, `today ${k}`, e);
     return couldnt(k, ln);
@@ -84,7 +96,11 @@ export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), reque
     }
     cards[k] = c;
   });
-  return { at: t, tz: zone, cards };
+  if (!v2) return { at: t, tz: zone, cards };
+  // (the day that can't be worked out is no reason to lose the cards: the answer is version 1's, which the page draws)
+  let day = null;
+  try { day = await dayFor(env, u, t, cards, { request, tz: zone, links: ln }); } catch (e) { await logError(env, "today day", e); }
+  return day?.v === 2 ? { at: t, tz: zone, cards, ...day } : { at: t, tz: zone, cards };
 }
 
 // Each account's last whole answer, kept a minute in this copy of the server, so a change to the morning's settings
