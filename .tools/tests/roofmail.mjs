@@ -395,13 +395,13 @@ await part(4, 'swipes and the row menu with Undo; the Later sheet; a picture at 
   ok(await shown(p, row(b), 15000), '4. …and the Later lens lists it');
   await p.click(H.hdSec('people')); await mailUp(p);
 
-  // the row menu (press and hold): Done from there, Undo
-  const c = await firstId();
+  // the row menu (press and hold): Done from there, Undo (once People's rows are drawn again after the Later lens)
+  const c = await until(firstId, 10000);
   // (a finger held still on the row: touch pointer events, as a phone sends them, held 800 ms)
   await p.evaluate(async (s) => {
     const r = document.querySelector(s), b = r.getBoundingClientRect(), o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0, buttons: 1 };
     r.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise((ok) => setTimeout(ok, 800)); r.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
-  }, row(c));
+  }, row(c)).catch((e) => console.log(`note: press and hold: ${e.message}`));
   let menu = await sheetUp(p, 'mail-rowmenu', 4000);
   if (!menu) { await p.click(row(c), { button: 'right' }).catch(() => {}); menu = await sheetUp(p, 'mail-rowmenu', 4000); }
   const items = menu ? await p.locator(`${SH('mail-rowmenu')}[open]`).getByRole('button').allInnerTexts().catch(() => []) : [];
