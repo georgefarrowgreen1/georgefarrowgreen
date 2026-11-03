@@ -525,22 +525,30 @@ await part('kept', async () => {
 
 // ======================================================================= pages that cross-fade: at the hub only
 // (menu.css asks every page for the cross-fade, as an at-rule can't be kept to html.ifl-hub; menu.js lets it go on each
-// page off the hub as it's left and as it opens. Two pages of an app's own, stood in for with the real menu.css and
-// menu.js, off the hub and then with the hub's marker: off it, both transitions let go, quietly; at it, kept)
+// page off the hub as it's left and as it opens. Pages of an app's own, stood in for with the real menu.css and menu.js,
+// off the hub and then with the hub's marker: off it, both transitions let go, quietly; at it, kept between the hub's
+// own pages. And at it, never one called off out loud: one bound for a page that isn't the hub's (it doesn't ask for
+// the cross-fade, and would say so as an error there) is let go as it's left; one a page opens with is caught as it
+// starts, should that page stop asking for it before it's shown)
 await part('cross-fade at the hub only', async () => {
   const SITE = 'http://app.offhub.test';
-  // (/a and /b with menu.js; /c asks for the cross-fade but has no menu.js, and goes to /d, which has)
-  const PAGE = (marker, path) => `<!doctype html><html><head><meta charset="utf-8"><title>App</title>${marker ? '<meta name="ifl-hub" content="/">' : ''}<style>${cssBlock()}</style>
+  // (/a and /b with menu.js; /c asks for the cross-fade but has no menu.js, and goes to /d, which has. At the hub's own
+  // paths, /weather/ goes to /markets/; /fitness/ to /x, which isn't the hub's and doesn't ask for it; /chats/ to
+  // /mail/, which drops its stylesheet (and the asking) as it opens)
+  const LINK = { '/a': '/b', '/c': '/d', '/weather/': '/markets/', '/fitness/': '/x', '/chats/': '/mail/' };
+  const PAGE = (marker, path) => path === '/x' ? '<!doctype html><html><head><meta charset="utf-8"><title>Not the hub’s</title></head><body><p>Not the hub’s</p></body></html>'
+    : `<!doctype html><html><head><meta charset="utf-8"><title>App</title>${marker ? '<meta name="ifl-hub" content="/">' : ''}<style id="menucss">${cssBlock()}</style>
 <script>
   // (the transition each event brings, and whether it's let go: watched before menu.js's own listeners)
   const watch = (type, key) => addEventListener(type, (e) => { const t = e.viewTransition; sessionStorage.setItem(key, t ? 'kept' : 'none'); if (t) { const skip = t.skipTransition.bind(t); t.skipTransition = () => { sessionStorage.setItem(key, 'let go'); skip(); }; } });
   watch('pageswap', 'swap'); watch('pagereveal', 'reveal');
-</script>${path === '/c' ? '' : `<script>${jsBlock()}</script>`}</head><body><p>App</p><a id="next" href="${{ '/a': '/b', '/c': '/d' }[path] || '/a'}">Next</a></body></html>`;
+</script>${path === '/c' ? '' : `<script>${jsBlock()}</script>`}${path === '/mail/' ? '<script>document.getElementById("menucss").remove()</script>' : ''}</head><body><p>App</p><a id="next" href="${LINK[path] || '/a'}">Next</a></body></html>`;
+  // (→ what each event did, and the page errors seen: any is an error no page's own script could have caught)
   const go = async (marker, from, to) => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
     await ctx.route(`${SITE}/**`, (r) => r.fulfill({ contentType: 'text/html', body: PAGE(marker, new URL(r.request().url()).pathname) }));
-    const p = await ctx.newPage();
-    p.on('pageerror', (e) => errs.push(`pageerror (${marker ? 'at' : 'off'} the hub): ${e.message}`));
+    const p = await ctx.newPage(), mine = [];
+    p.on('pageerror', (e) => { mine.push(`${new URL(p.url()).pathname}: ${e.message}`); errs.push(`pageerror (${marker ? 'at' : 'off'} the hub): ${e.message}`); });
     p.on('console', (m) => { if (m.type() === 'error') errs.push(`${marker ? 'at' : 'off'} the hub: ${m.text()}`); });
     await p.goto(SITE + from);
     await p.evaluate(() => sessionStorage.clear());
@@ -549,9 +557,12 @@ await part('cross-fade at the hub only', async () => {
     await p.waitForTimeout(800);
     const got = await p.evaluate(() => ({ swap: sessionStorage.getItem('swap'), reveal: sessionStorage.getItem('reveal') }));
     await ctx.close();
-    return got;
+    return { ...got, errors: mine };
   };
-  same(await go(true, '/a', '/b'), { swap: 'kept', reveal: 'kept' }, 'at the hub: the pages cross-fade (left and opened, kept)');
+  same(await go(true, '/weather/', '/markets/'), { swap: 'kept', reveal: 'kept', errors: [] }, 'at the hub: the pages cross-fade (left and opened, kept)');
+  const away = await go(true, '/fitness/', '/x');
+  same([away.swap, away.errors], ['let go', []], 'at the hub: bound for a page that isn’t the hub’s, it’s let go as it’s left, and nothing says it was called off');
+  same((await go(true, '/chats/', '/mail/')).errors, [], 'at the hub: a page that stops asking for it as it opens catches the one it opened with, quietly');
   const off = await go(false, '/a', '/b');
   ok(off.swap === 'let go' && off.reveal !== 'kept', 'off the hub: the page left lets the cross-fade go, so none is drawn', JSON.stringify(off));
   same((await go(false, '/c', '/d')).reveal, 'let go', 'off the hub: a page opened from one without menu.js lets it go as it opens');

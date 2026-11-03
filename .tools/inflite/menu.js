@@ -648,7 +648,7 @@ const IFL = (() => {
   // (the hub's look: html.ifl-hub, and pages that cross-fade into each other, the tab bar staying put. menu.css asks for
   // it of every page (@view-transition, which can't be kept to html.ifl-hub there, and must be in a stylesheet to be
   // there as the next page's first shown): off the hub, every page lets it go as it's left, so nothing changes there; at
-  // the hub, one that can't be done is let go quietly)
+  // the hub, one that can't be done is let go quietly, before it can fail out loud: below)
   if (hub.on) document.documentElement?.classList.add("ifl-hub");
   // (the Home Screen icon's badge, as many notifications as are still showing: counted again by the root worker as a
   // page of the hub opens and each time it's back in sight, so those tapped or cleared meanwhile are gone from it)
@@ -657,7 +657,20 @@ const IFL = (() => {
     recount();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recount(); });
   }
-  const vt = (e) => { const t = e.viewTransition; if (!t) return; for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); if (!hub.on) t.skipTransition?.(); };
+  // A cross-fade that ends on a page that doesn't ask for it (one of this site's that isn't the hub's: an /api/ answer,
+  // a 404) is called off in that page, which then says so as an error no script of its own can catch ("Transition was
+  // aborted because of invalid state. ViewTransition opt-in disabled"). So a page of the hub lets go of one that's
+  // bound anywhere but the hub's own pages (Today, Chats, the apps and Mail's, whose stylesheets all ask for it), as
+  // it's left. And the one this page opened with is caught as it starts (document.activeViewTransition): called off
+  // before it's shown, it would say so out loud too.
+  const FADES = /^\/(?:index\.html)?$|^\/(?:chats|weather|fitness|markets|mail)\/(?:index\.html)?$/;
+  const fades = (to) => { try { const u = new URL(to, location.href); return u.origin === location.origin && FADES.test(u.pathname); } catch (_) { return false; } };
+  const hush = (t) => { if (t) for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); return t; };
+  const vt = (e) => {
+    const t = hush(e.viewTransition), to = e.type === "pageswap" ? e.activation?.entry?.url : null;
+    if (t && (!hub.on || (to && !fades(to)))) t.skipTransition?.();
+  };
+  try { hush(document.activeViewTransition); } catch (_) {}
   addEventListener("pageswap", vt);
   addEventListener("pagereveal", vt);
 
