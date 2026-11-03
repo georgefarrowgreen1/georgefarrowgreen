@@ -118,7 +118,8 @@ export async function mount(root, fw) {
       title: SECTIONS.find((s) => s[0] === shown)?.[1] || "Markets",
       compactTitle: T.o.length ? `Markets · ${core.pct(T.dayPct, 1)}` : "Markets",
       pick: null,
-      line: S.loading && !S.me ? "Getting your list…" : said.text,
+      // (fewer words where the screen is narrow, as app.js did: "London · 2h 5m left", so the time is never what's cut)
+      line: S.loading && !S.me ? "Getting your list…" : said.short && (fw.screenEl?.clientWidth || 999) < 400 ? said.short : said.text,
       acts: [{ icon: "plus", label: "Add a Stock", run: () => ctx.open.addStock() }],
       badges: { news },
     });

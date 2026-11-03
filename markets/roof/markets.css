@@ -12,7 +12,7 @@
   --tint: var(--acc-fill); --tint-ink: var(--on-acc); --tint-text: var(--acc-ink); --ift-tint: var(--acc-ink);
   --ctl: color-mix(in srgb, var(--text) 9%, transparent); --field: color-mix(in srgb, var(--text) 8%, transparent);
   --thumb: light-dark(#ffffff, color-mix(in srgb, var(--text) 17%, transparent));
-  --glass-strong: var(--solid, rgba(18, 26, 44, 0.88)); --sheet: transparent; --dim: rgba(0, 0, 0, 0.5); --sky-c: transparent;
+  --glass-strong: var(--solid, rgba(18, 26, 44, 0.88)); --sheet: transparent; --dim: rgba(0, 0, 0, 0.5); --sky-c: light-dark(#f6f8fb, #04060b);
   --m1: light-dark(#1f6feb, #4f9dff); --m2: light-dark(#6a55e0, #8e7cff); --m3: light-dark(#0d9c92, #3ed6c0); --m4: light-dark(#dd8300, #ffb340); --m5: light-dark(#e0446a, #ff6b8b); --m6: light-dark(#8a90a0, #8c93a3);
   --violet: light-dark(#6a55d8, #b6a8ff); --blue: light-dark(#2f6fd6, #7db8ff);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
@@ -56,7 +56,7 @@
   .m-markets .mk-view > * { break-inside: avoid; }
   .m-markets .mk-view > .label { break-after: avoid; }
   .m-markets .mk-view > .mk-desk { display: block; column-span: all; }
-  .m-markets .cards { --bleed: 0px; }
+  .m-markets .mk-view .cards { --bleed: 0px; }
 }
 
 /* ---- the page's own classes of the same names (app.css .seg, .glass, .foot, .slabel), undone here ---- */
