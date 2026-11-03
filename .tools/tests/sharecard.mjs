@@ -200,6 +200,15 @@ await G.p.fill('#msg', ''); if (await G.p.$('[data-act=cardrm]')) await G.p.clic
 await G.p.click('.chatnav .back'); await G.p.waitForTimeout(400);
 await openChat(G, ps.me.id);
 ok(!(await G.p.inputValue('#msg')).includes('Look at this rain'), '9b. and not waiting in the next chat opened', await G.p.inputValue('#msg'));
+// ---- 9d. the + off the hub, as it was: the photo picker (or Photo and GIF), never the hub's sheet of cards ----
+// (the picker isn't opened by the test: its file input's click is counted and stopped)
+await G.p.evaluate(() => { window.__picked = 0; document.getElementById('file-lib')?.addEventListener('click', (e) => { e.preventDefault(); window.__picked++; }, { capture: true }); });
+const plusLabel = await G.p.getAttribute('.compose .plus', 'aria-label');
+await G.p.click('.compose .plus'); await G.p.waitForTimeout(700);
+const plusOff = await G.p.evaluate(() => ({ fromapps: !!document.querySelector('.sheet .fromapps'), menu: [...document.querySelectorAll('.menu-pop [role=menuitem]')].map((b) => b.innerText.trim()), picked: window.__picked }));
+ok(plusLabel === 'Add a photo' && !plusOff.fromapps && (plusOff.picked === 1 || (plusOff.menu.length === 2 && /^Photo/.test(plusOff.menu[0]) && /^GIF/.test(plusOff.menu[1]))), '9d. off the hub the + is as it was: the photo picker, or Photo and GIF; no sheet of cards from the apps', JSON.stringify({ plusLabel, ...plusOff }));
+await G.p.keyboard.press('Escape'); await G.p.waitForTimeout(300);
+if (await G.p.$('.menu-scrim')) await G.p.click('.menu-scrim').catch(() => {});
 await G.p.click('.chatnav .back'); await G.p.waitForTimeout(400);
 
 // ---- 6. "With Their Morning": a friend in New York, 07:30 their time ----
