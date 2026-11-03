@@ -20,15 +20,19 @@ name: Turn One roof off or on (every module, or one)
 # inflite.ai, HUB_API_NEXT for next.inflite.ai, "1" or "0" (its gate opens before any page can load the module, and
 # closes before the page stops offering it); then the hub's. The settled check covers Mail's Worker too.
 #
+# Stage 3 (s3 spec §8): app chats puts ROOF_CHATS "1" (on) or "0" (off), as markets. Off, /chats/ is Chat's milestone-1
+# page of the hub again (which does sign-in itself), /chats/sw.js its own worker, /chats/roof/* not found. Never revert
+# MAIN while Chats is on at the hub: turn it off here first.
+#
 # Needs CLOUDFLARE_API_TOKEN with Account › Workers Scripts › Edit. CLOUDFLARE_ACCOUNT_ID only if the token can see more
 # than one account.
 on:
   workflow_dispatch:
     inputs:
       app:
-        description: "Which: all (every module: stage 1's switch), or one module: weather, markets, fitness, mail"
+        description: "Which: all (every module: stage 1's switch), or one module: weather, markets, fitness, mail, chats"
         type: choice
-        options: ["all", "weather", "markets", "fitness", "mail"]
+        options: ["all", "weather", "markets", "fitness", "mail", "chats"]
         default: all
       state:
         description: "off: the module's own page at its address (its milestone-1 page at the hub); on: the module in InFlite's one page"
@@ -76,7 +80,7 @@ jobs:
             exit 1
           fi
           case "$ROOF_STATE" in off|on) ;; *) echo "::error::No such state: \"$ROOF_STATE\" (off or on). Nothing was changed."; exit 1 ;; esac
-          case "${ROOF_APP:-all}" in all|weather|markets|fitness|mail) ;; *) echo "::error::No such module: \"$ROOF_APP\" (all, weather, markets, fitness or mail). Nothing was changed."; exit 1 ;; esac
+          case "${ROOF_APP:-all}" in all|weather|markets|fitness|mail|chats) ;; *) echo "::error::No such module: \"$ROOF_APP\" (all, weather, markets, fitness, mail or chats). Nothing was changed."; exit 1 ;; esac
           case "$ROOF_WHERE" in both|inflite.ai|next.inflite.ai) ;; *) echo "::error::No such hub: \"$ROOF_WHERE\" (both, inflite.ai or next.inflite.ai). Nothing was changed."; exit 1 ;; esac
       - uses: actions/setup-node@v4
         with:

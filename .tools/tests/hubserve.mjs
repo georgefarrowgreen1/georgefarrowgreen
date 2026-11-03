@@ -189,6 +189,22 @@ const anon = await p.evaluate(async () => (await fetch('/api/pigeon/sync')).stat
 ok(anon === 401, 'and without it, Chat’s own word: signed out', String(anon));
 await p.screenshot({ path: `${out}/chats.png` });
 
+// (stage 3, s3 spec §6.2, S3-D8: Chats' switch off, as here by default (ROOF_CHATS absent): /chats/ and its worker are
+// Chat's own as above, its module's files not found, never kept; and Chat's own page at /chats/in/ is its hub copy's
+// /_hub/in/, the same page, with its relative files (the brand's inflite.svg, its version) the hub copy's own)
+const s3 = await p.evaluate(async () => {
+  const get = async (u) => { const r = await fetch(u, { cache: 'no-store' }); const t = await r.text(); return { s: r.status, cc: r.headers.get('cache-control'), ct: r.headers.get('content-type'), t }; };
+  const [mod, inPage, svg, ver, ver0, eng, sw] = await Promise.all(['/chats/roof/chats.js', '/chats/in/', '/chats/in/inflite.svg', '/chats/in/version', '/chats/version', '/chats/?engine=1', '/chats/sw.js'].map(get));
+  return { mod: [mod.s, mod.cc], inPage: [inPage.s, /<meta name="ifl-hub" content="\/chats\/">/.test(inPage.t), /inflight-version/.test(inPage.t), /(?<![\w.-])\/pigeon\//.test(inPage.t)],
+    svg: [svg.s, svg.ct], ver: [ver.s, ver.t === ver0.t], eng: [eng.s, /inflight-version/.test(eng.t)], sw: [sw.s, sw.t] };
+});
+ok(s3.mod[0] === 404 && s3.mod[1] === 'no-store', 'Chats off: /chats/roof/* not found, never kept', JSON.stringify(s3.mod));
+ok(s3.inPage[0] === 200 && s3.inPage[1] && s3.inPage[2] && !s3.inPage[3], '/chats/in/: Chat’s own page from its hub copy, marked as the hub’s, no /pigeon/ path', JSON.stringify(s3.inPage));
+ok(s3.svg[0] === 200 && /svg/.test(s3.svg[1] || ''), '/chats/in/inflite.svg: the brand’s picture, as /chats/inflite.svg', JSON.stringify(s3.svg));
+ok(s3.ver[0] === 200 && s3.ver[1], '/chats/in/version: Chat’s version', JSON.stringify(s3.ver));
+ok(s3.eng[0] === 200 && s3.eng[1], '/chats/?engine=1: Chat’s page', JSON.stringify(s3.eng));
+ok(s3.sw[0] === 200 && !(R.retireSw && s3.sw[1] === R.retireSw('chats')) && /inflight-shell/.test(s3.sw[1]), '/chats/sw.js: Chat’s own worker, not the retiring one', String(s3.sw[1]).slice(0, 80));
+
 // (what reached each app's host: spoken as that app; the account's cookie alone, and only on its API; Chat's bearer to Chat alone; every one with the hub's key)
 const all = passed(), log = all.filter((r) => r.port !== 8791), today = all.filter((r) => r.port === 8791);
 const apiRows = log.filter((r) => r.path.startsWith('/api/')), fileRows = log.filter((r) => !r.path.startsWith('/api/'));

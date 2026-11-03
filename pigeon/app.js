@@ -821,6 +821,11 @@ function makeIFLChat(d) {
 // ==== end of the hub's rules ====
 const HUB = !!IFL.hub?.on;
 const ENGINE = engineRule(HUB, location.search, window, window.parent);
+// Chat's own page at InFlite's /chats/in/ (One roof stage 3, S3-D8: signing in, unlocking and keys, while Chats is a
+// module of InFlite's page at /chats/): no worker of its own registered there; signed in with nowhere asked to go back
+// to, back to /chats/; and found signed in with no sign-in under way, on to /chats/ with its link (never all of Chat in
+// that page). Written as /pigeon/in/ so each address says it as its own (functions/_app.js atRoot); nowhere else.
+const IN_PAGE = ["/pigeon/in/", "/pigeon/in/index.html"].includes(location.pathname), IN_AT = IN_PAGE ? location.hash : "";
 if (ENGINE) document.documentElement.classList.add("engine");
 // the site, as the hub's own address has it (its staging copy's next. taken off): for the account's page beside it
 const hubSite = () => location.host.replace(/^next\./, "");
@@ -2835,6 +2840,7 @@ async function signInBack(code) {
     // (asked from another page of the hub: back there, signed in for the whole of InFlite)
     const then = HUB && hubPath(k.then) ? k.then : null;
     if (then && then !== location.pathname) { location.replace(then); return; }
+    if (!then && IN_PAGE) { location.replace("/pigeon/"); return; }
     await afterSignIn();
     arrival?.in();                         // (in: the sky clears to Chat, signed in)
   } catch (err) {
@@ -12434,6 +12440,7 @@ async function start() {
     }
     // (signed in here already, and asked to sign in from another page of the hub: back there, nothing to do)
     if (startIn && thenTo && thenTo !== location.pathname) return location.replace(thenTo);
+    if (IN_PAGE && !signedBack && !startIn && !/^#(signin|verify=|invite=|reset=|account\b)/.test(IN_AT)) return location.replace("/pigeon/" + IN_AT);
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
@@ -12537,5 +12544,5 @@ function bootFail(err) {
 window.addEventListener("unhandledrejection", (e) => { if (S.view === "loading") bootFail(e.reason); });
 // the copy of the app kept for opening with no signal (and notifications) live in the service worker
 // (never the engine's: the page it's in has its own, and the hub's worker holds its notifications)
-if (!ENGINE && "serviceWorker" in navigator && document.documentElement.dataset.device !== "computer") navigator.serviceWorker.register("/pigeon/sw.js", { scope: "/pigeon/" }).catch(() => {});
+if (!ENGINE && "serviceWorker" in navigator && !IN_PAGE && document.documentElement.dataset.device !== "computer") navigator.serviceWorker.register("/pigeon/sw.js", { scope: "/pigeon/" }).catch(() => {});
 start().catch(bootFail);

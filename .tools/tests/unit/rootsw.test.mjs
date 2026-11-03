@@ -23,8 +23,10 @@ const hasRoof = !skip && existsSync(new URL('today/src/roof.js', IFL));
 const roofCase = skip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 // (stages 2–4: every module's page is the framework's too, s24-contracts §8)
 const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
-const FRAMEWORK = ['/', '/index.html', ...(S24 ? ['weather', 'markets', 'fitness', 'mail'] : ['weather']).flatMap((a) => [`/${a}/`, `/${a}/index.html`])];
-const kindAt = (url) => (hasRoof && FRAMEWORK.includes(new URL(url).pathname) ? 'route' : 'open');
+// (stage 3: Chats' page too, s3 spec §6.3, but never an engine's, ?engine)
+const S3 = S24 && /\bchats: \{ name: "Chats"/.test(readFileSync(SW, 'utf8'));
+const FRAMEWORK = ['/', '/index.html', ...(S3 ? ['weather', 'markets', 'fitness', 'mail', 'chats'] : S24 ? ['weather', 'markets', 'fitness', 'mail'] : ['weather']).flatMap((a) => [`/${a}/`, `/${a}/index.html`])];
+const kindAt = (url) => (hasRoof && FRAMEWORK.includes(new URL(url).pathname) && !(S3 && /^\/chats\//.test(new URL(url).pathname) && new URL(url).searchParams.has('engine')) ? 'route' : 'open');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
@@ -288,7 +290,7 @@ test('One roof: a window of the framework (/ or /weather/) is told to route in t
   }
   // (Chats, Fitness, Markets, Mail and the 404 page: told to open it, as before; from stages 2–4, Fitness, Markets and
   // Mail's pages are the framework's, told to route, below)
-  for (const at of ['/chats/', ...(S24 ? [] : ['/fitness/#today', '/markets/', '/mail/']), '/nowhere', '/weather/app.js']) {
+  for (const at of [...(S3 ? [] : ['/chats/']), '/chats/in/', '/chats/?engine=1', ...(S24 ? [] : ['/fitness/#today', '/markets/', '/mail/']), '/nowhere', '/weather/app.js']) {
     const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
     await w.tap({ app: 'weather', url: './#warnings' });
     assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/weather/#warnings' }], at);
@@ -399,4 +401,22 @@ test('stages 2–4: a Mail push shows its own words at once, then Mail’s (the 
   asked.length = 0;
   for (const tag of ['a/b', '../x', 'x'.repeat(65), undefined]) { w = worker(net); await w.push({ app: 'mail', title: 'Mail', body: 'New', tag }); }
   assert.deepEqual(asked, [], 'never asked for a tag that isn’t an id');
+});
+
+// ---- stage 3 (s3 spec §6.3): Chats' page is the framework's too, never an engine's or /chats/in/ ----
+const s3Case = roofCase || (!S3 && 'the inflite repo beside is from before stage 3 (sw.js MODS without chats)');
+test('stage 3: a Chat tap in a window at /chats/ routes there in the page; milestone 1’s page there (hearing only an open) is told to open it; /chats/in/ only ever told to open; Chat’s pushes still app "chat"', { skip: s3Case }, async () => {
+  for (const at of ['/chats/', '/chats/index.html', '/chats/#open=x9']) {
+    const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }], at);
+    assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}: routed in the page`);
+  }
+  let w = worker(undefined, { windows: [{ url: `${ORIGIN}/chats/`, focused: true, hears: 'open', controlled: false }] });
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }, { ifl: 'open', url: '/chats/#open=abc' }], 'milestone 1’s Chats: route asked, then open');
+  assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
+  w = worker(undefined, { windows: [{ url: `${ORIGIN}/chats/in/#account`, focused: true }] });
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/chats/#open=abc' }], '/chats/in/: never told to route');
 });

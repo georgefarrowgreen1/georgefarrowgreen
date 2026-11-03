@@ -106,9 +106,13 @@ export async function onRequest(ctx0) {
   if (url.pathname === "/version") return versionResponse(ctx, url, "chat");
   // Chat's copy for InFlite's hub (inflite.ai/chats/x is /_hub/x here, asked for by the hub with its key, above): the same
   // files, with /chats/ for /pigeon/, framed only by the hub's own pages
+  // (and Chat's own page at inflite.ai/chats/in/, /_hub/in/ here, where signing in, unlocking and keys stay once Chats is
+  // a module of InFlite's page, One roof stage 3, S3-D8: the same page as /_hub/'s, and every file under it /_hub/'s
+  // own, its relative ones included, the brand's inflite.svg and the updater's version)
   if (url.pathname.startsWith("/_hub/")) {
-    if (url.pathname === "/_hub/version") return versionResponse(ctx, url, "chat");
-    const x = url.pathname.slice(5);
+    let x = url.pathname.slice(5);
+    if (x.startsWith("/in/")) x = x.slice(3);
+    if (x === "/version") return versionResponse(ctx, url, "chat");
     if (/^\/handover(\.html)?$/.test(x)) return notFound();
     const path = "/pigeon" + (x === "/index.html" ? "/" : x);
     const res = await assets(ctx.env).fetch(new Request(new URL(path + url.search, url), ctx.request));

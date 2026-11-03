@@ -12,7 +12,8 @@
 //                                            ROOF_OFF_WEATHER "1" (Weather alone off); roof-<app> (roof-markets,
 //                                            roof-fitness, roof-mail, …): ROOF_<APP> "1", that module on (each is off by
 //                                            default); roof-mail also opens Mail's own gate for the test hub
-//                                            (HUB_API_TEST "1" on Mail's Worker).
+//                                            (HUB_API_TEST "1" on Mail's Worker); roof-off-chats: ROOF_CHATS "0" (Chats
+//                                            off, as by default, said outright).
 //   Mail's Worker is reached by the root Worker through a pass-through of its own (port 8807 → :8806, MAIL_VIA), so
 //   what passes is noted in hostpass.jsonl as the apps' requests are; MAIL_KEY is the key Mail's Worker and the account
 //   share (the account's is server.sh's).
@@ -27,6 +28,8 @@ const mail = want.includes('mail') || want.includes('roof-mail'), roofOff = want
 // (one rule for every module's switch: roof-<app> → ROOF_<APP> "1"; roof-off and roof-off-weather are the off switches)
 const ROOFS = Object.fromEntries(want.filter((w) => /^roof-[a-z]+$/.test(w) && !['roof-off'].includes(w)).map((w) => (w === 'roof-off-weather' ? ['ROOF_OFF_WEATHER', '1'] : [`ROOF_${w.slice(5).toUpperCase()}`, '1'])));
 if (want.includes('roof-off-weather')) ROOFS.ROOF_OFF_WEATHER = '1';
+// (stage 3: roof-off-chats, ROOF_CHATS "0" said outright: Chats off, as it is with no argument, for a test that says so)
+if (want.includes('roof-off-chats')) ROOFS.ROOF_CHATS = '0';
 if (!S) { console.error('usage: node hubstack.mjs <state dir> [mail] [roof-off] [roof-off-weather] [roof-<app>]…'); process.exit(2); }
 if (!existsSync(`${IFL}/today/src/hub.js`)) { console.error(`no inflite repo beside (${IFL})`); process.exit(3); }
 rmSync(`${S}/hubstack.up`, { force: true });

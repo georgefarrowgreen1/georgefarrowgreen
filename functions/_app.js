@@ -49,11 +49,11 @@ export const atRoot = (text, base = "/") => text.replace(/(?<![\w.-])\/pigeon\//
 const memo = new Map(), working = new WeakMap();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 // a file as it's sent: a module with its imports stamped, and (at the new address) its paths at the root, or the base
-async function asSent(ctx, path, body, chat, base = "/") {
-  if (path.endsWith(".js")) body = await stampImports(ctx, path, body, chat, base);
+async function asSent(ctx, path, body, chat, base = "/", chain = []) {
+  if (path.endsWith(".js")) body = await stampImports(ctx, path, body, chat, base, chain);
   return chat && /\.(js|css|html|webmanifest)$|\/$/.test(path) ? atRoot(body, base) : body;
 }
-async function fingerprint(ctx, path, chat, base = "/") {
+async function fingerprint(ctx, path, chat, base = "/", chain = []) {
   // worked out again each minute: just after a deploy the files can briefly be
   // last version's, and a fingerprint of those mustn't stick for as long as this copy runs
   // (each copy its own: as sent at the old address, the new one, and the hub's, which say their paths differently)
@@ -63,7 +63,7 @@ async function fingerprint(ctx, path, chat, base = "/") {
   if (!doing.has(k)) doing.set(k, (async () => {
     const r = await assets(ctx.env).fetch(new URL(path, ctx.request.url));
     if (!r.ok) return "";
-    const body = await asSent(ctx, path, await r.text(), chat, base);
+    const body = await asSent(ctx, path, await r.text(), chat, base, [...chain, path]);
     const v = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))).slice(0, 12);
     memo.set(k, { v, at: Date.now() });
     return v;
@@ -72,10 +72,29 @@ async function fingerprint(ctx, path, chat, base = "/") {
 }
 // import … from "./x.js"  →  "./x.js?v=…" (and import("./x.js"), loaded only when it's needed)
 const IMPORT_RE = /\b(from\s*|import\()"(\.\/[\w./-]+\.js)"/g;
-async function stampImports(ctx, path, js, chat, base = "/") {
+// (Chats' module, InFlite's One roof stage 3, S3-D1: files under /pigeon/roof/ alone also have Chat's own files they
+// share stamped, "../x.js", and their Worker's, new URL("./x.js", import.meta.url), so core.js is kept for good too.
+// Every other file is stamped exactly as before)
+const ROOF = /^\/pigeon\/roof\//;
+const ROOF_IMPORT_RE = /\b(from\s*|import\()"(\.\.?\/[\w./-]+\.js)"/g;
+const ROOF_URL_RE = /\b(new URL\(\s*)"(\.\.?\/[\w./-]+\.js)"(?=\s*,\s*import\.meta\.url\s*\))/g;
+async function stampImports(ctx, path, js, chat, base = "/", chain = []) {
   const dir = path.slice(0, path.lastIndexOf("/") + 1), seen = new Map();
+  if (ROOF.test(path)) return stampRoof(ctx, path, js, chat, base, chain);
   for (const [, , rel] of js.matchAll(IMPORT_RE)) if (!seen.has(rel)) seen.set(rel, await fingerprint(ctx, dir + rel.slice(2), chat, base));
   return js.replace(IMPORT_RE, (m, how, rel) => (seen.get(rel) ? `${how}"${rel}?v=${seen.get(rel)}"` : m));
+}
+// (a /roof/ file's: each address worked out as the browser will, from the file's own; only ever one of Chat's files;
+// one that imports a file importing it back, however far round, left unstamped there rather than waited for forever)
+async function stampRoof(ctx, path, js, chat, base, chain) {
+  const seen = new Map(), at = (rel) => new URL(rel, "https://x" + path).pathname;
+  for (const re of [ROOF_IMPORT_RE, ROOF_URL_RE]) for (const [, , rel] of js.matchAll(re)) {
+    if (seen.has(rel)) continue;
+    const to = at(rel);
+    seen.set(rel, to.startsWith("/pigeon/") && to !== path && !chain.includes(to) ? await fingerprint(ctx, to, chat, base, [...chain, path]) : "");
+  }
+  const stamp = (m, how, rel) => (seen.get(rel) ? `${how}"${rel}?v=${seen.get(rel)}"` : m);
+  return js.replace(ROOF_IMPORT_RE, stamp).replace(ROOF_URL_RE, stamp);
 }
 
 // The response for one of the app's files: `res` is the file as stored (at `path`, under /pigeon/). base: where the app
