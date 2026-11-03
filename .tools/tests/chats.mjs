@@ -99,6 +99,7 @@ ok(asks === 0, '1. nowhere to ask an app anything');
 const bars = await G.p.evaluate(() => ({ chatTabs: !!document.querySelector('.tabbar .tabs') && !document.querySelector('.tabbar').hidden, hub: [...document.querySelectorAll('nav.hubtabs.ifl-tabs a.ifl-tab')].map((a) => [a.dataset.tab, a.getAttribute('href'), a.getAttribute('aria-current')]) }));
 ok(!bars.chatTabs && bars.hub.length === 4 && bars.hub.map((x) => x[0]).join() === 'today,chats,apps,you' && bars.hub.find((x) => x[0] === 'chats')?.[2] === 'page', '1. the hub’s tab bar (Today · Chats · Apps · You, Chats chosen), not Chat’s own', js(bars));
 await shot(G, '1-chats');
+await M.p.goto(CHAT + '/'); await M.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
 const own = await M.p.evaluate(() => ({ tabs: !!document.querySelector('.tabbar .tabs') && !document.querySelector('.tabbar').hidden, hub: !!document.querySelector('nav.hubtabs') }));
 ok(own.tabs && !own.hub, '1. Chat at its own address keeps its own tab bar', js(own));
 await G.p.click('.hubpeople');
@@ -151,7 +152,7 @@ await G.p.click('.sheet [data-act=fromapp][data-id=there]');
 await G.p.waitForSelector('.compose .cardatt:not([hidden])', { timeout: 8000 }).catch(() => {});
 await G.p.fill('#msg', 'Looks wet up there'); await G.p.click('.send'); await wait(1200);
 await reload(M, '.tabs'); await K.openChat(M, GID);
-const where = await until(() => M.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.innerText.replace(/\s+/g, ' ')).find((t) => /Where you are/.test(t)) || null), 15000);
+const where = await until(() => M.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.textContent.replace(/\s+/g, ' ')).find((t) => /Where you are/i.test(t)) || null), 15000);
 ok(!!where, '3. on Mira’s phone the card says “Where you are”', where || await M.p.locator('.msgs').innerText().catch(() => ''));
 await K.openChat(G, GRP);
 const forGroup = await plusRows();
@@ -178,11 +179,11 @@ ok(raw && !/Call at|"when"/.test(raw), '4. the invite itself sealed: no time or 
 await G.p.goto('about:blank');
 let fromG = 0; const countG = (r) => { if (/\/api\//.test(r.url())) fromG++; }; G.ctx.on('request', countG);
 await reload(M, '.tabs'); await K.openChat(M, GID);
-await M.p.waitForSelector('.msgs [data-act=whenans][data-a=yes]', { timeout: 15000 }).catch(() => {});
+await M.p.waitForSelector('.msgs [data-act=whenans][data-a=yes]:not([data-t])', { timeout: 15000 }).catch(() => {});
 const inviteSaid = await M.p.locator('.msgs .cd-when').last().innerText().catch(() => '');
 ok(/Call at \d\d:\d\d\?|Call (today|tomorrow)/.test(inviteSaid.replace(/\s+/g, ' ')), '4. Mira: “Call at …?” with Yes · Another Time · No', inviteSaid.replace(/\s+/g, ' '));
 await shot(M, '4-when-invite');
-await M.p.locator('.msgs [data-act=whenans][data-a=yes]').last().click();
+await M.p.locator('.msgs [data-act=whenans][data-a=yes]:not([data-t])').last().click();
 const both = await until(() => { const r = one(`SELECT user_id, state, with_id, role FROM td_times WHERE id = '${mine?.id}' ORDER BY user_id`); return r.length === 2 && r.every((x) => x.state === 'yes') ? r : null; }, 15000);
 ok(!!both && both.find((x) => x.user_id === GID)?.with_id === M.id && both.find((x) => x.user_id === M.id)?.with_id === GID, '4. Mira’s Yes, from her phone alone: td_times yes for both, each with the other', js(both || one(`SELECT user_id, state, with_id FROM td_times WHERE id = '${mine?.id}'`)));
 ok(fromG === 0, '4. with George’s page shut (no request from it)', String(fromG));
@@ -192,7 +193,7 @@ ok(/In Today for you both|Yes, \d\d:\d\d works|Yes, .* works/.test(ans), '4. her
 
 // ---- 5. a ride planned with the send sheet, answered Yes with Mira's buttons: with_id on both sides ----
 await G.p.goto(`${HUB}/chats/`); await G.p.waitForSelector('.mlist .mrow', { timeout: 30000 }).catch(() => {});
-sql(`CREATE TABLE IF NOT EXISTS fx_offers (user_id TEXT NOT NULL, id TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL, wid TEXT NOT NULL, name TEXT NOT NULL, secs INTEGER NOT NULL, who TEXT NOT NULL, role TEXT NOT NULL, far INTEGER NOT NULL DEFAULT 0, dry INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'new', made INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (user_id, id))`);
+// (fx_offers is made by the server as the invite's own record is written: never here, so its columns are its own)
 const day = new Date().toISOString().slice(0, 10);
 const fcard = { v: 1, kind: 'fitness', from: 'fitness', at: Date.now() - 60e3, say: 'Today: Endurance 75.', snap: { day, tz: 'Europe/London', sport: 'ride', name: 'Endurance 75', kind: 'Endurance', wid: 'endurance-75', secs: 4500, tss: 62, best: null, done: null } };
 await G.p.evaluate((h) => { location.hash = h; }, chatHash(fcard.say, fcard));
