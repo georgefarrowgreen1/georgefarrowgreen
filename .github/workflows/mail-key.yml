@@ -1,0 +1,65 @@
+name: Give Mail and the account their shared key
+# Mail's Worker (inflite-email) and the account's server (the Pages project's functions: _todaymail.js, _mailapp.js)
+# trust each other server to server with one shared secret, MAIL_KEY: Today's Mail card asks Mail with it, and Mail tells
+# the account of new mail with it (Through InFlite notifications). Until both have the same key, Today shows no Mail card
+# and Mail's notices stay Mail's own; nothing else changes.
+#
+# Run by hand (Actions → Give Mail and the account their shared key → Run workflow) once Mail is on in InFlite. It makes a
+# new key, sets it on the Pages project (production) first and then, only if that worked, on Mail's Worker, then builds
+# the Pages project's live production deployment again (a Pages secret reaches only deployments made after it's set).
+# The key is never written down: masked at once and only ever piped to wrangler. Running it again swaps the key: the
+# card is missing for the few minutes until Pages has built.
+#
+# Needs CLOUDFLARE_API_TOKEN (Account › Cloudflare Pages › Edit and Account › Workers Scripts › Edit), as hub-key.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inflite-hub-key
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/hub
+      - name: Check the token's there
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::error::CLOUDFLARE_API_TOKEN isn't set. Nothing was changed."; exit 1; fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Find the Cloudflare account
+        run: |
+          . .github/hub/hub.sh
+          cf_account
+      - name: Make a new key, and give it to the Pages project, then Mail's Worker
+        working-directory: ${{ runner.temp }}
+        run: |
+          . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
+          key=$(openssl rand -hex 32)
+          echo "::add-mask::$key"
+          [ ${#key} -eq 64 ] || { fail "The key made wasn't 64 hex digits. Nothing was changed."; exit 1; }
+          printf '%s' "$key" | $WRANGLER pages secret put MAIL_KEY --project-name "$PROJECT" || { fail "Couldn't set the Pages project's MAIL_KEY. Nothing was changed."; exit 1; }
+          say "The Pages project's production secret MAIL_KEY is the new key."
+          printf '%s' "$key" | $WRANGLER secret put MAIL_KEY --name "$MAIL_WORKER" || { fail "Couldn't set $MAIL_WORKER's MAIL_KEY (the Pages project has the new one: run this again)."; exit 1; }
+          say "$MAIL_WORKER's MAIL_KEY is the same key."
+      - name: Build the Pages project's production again, so the site takes the key
+        timeout-minutes: 25
+        run: |
+          . .github/hub/hub.sh
+          pages_redeploy
