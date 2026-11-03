@@ -242,6 +242,9 @@ test("a session's look is gated with no letter named: a friend with a landed let
   void D;
 });
 
+// (an answer as text, to look for what it mustn't say: its moments (at, end: ms, whose digits can be anything) left out)
+const sayOf = (b) => JSON.stringify(b, (k, v) => (k === "at" || k === "end" ? 0 : v));
+
 // ================================ share-rank ================================
 test("share-rank: friends only, at most 3 cells, rain at each without their places, 10 an hour", async () => {
   cached.clear(); clearLimits(); asked.length = 0;
@@ -254,7 +257,7 @@ test("share-rank: friends only, at most 3 cells, rain at each without their plac
   assert.equal(r.body.rain.bo.now, false); assert.ok(r.body.rain.bo.at > now);
   assert.equal(r.body.rain.cy.now, true); assert.equal(r.body.rain.di, null);
   assert.equal(om(), 3);
-  for (const k of ["52.81", "1.41", "-1.5,", "50,", "-5"]) assert.ok(!JSON.stringify(r.body).includes(k), k);
+  for (const k of ["52.81", "1.41", "-1.5,", "50,", "-5"]) assert.ok(!sayOf(r.body).includes(k), k);
   for (let i = 0; i < 8; i++) await call("POST share-rank", "ann", { body: { kind: "weather", ids: ["bo"] } });
   assert.equal((await call("POST share-rank", "ann", { body: { kind: "weather", ids: ["bo"] } })).status, 429, "the eleventh in an hour");
 });
@@ -284,7 +287,7 @@ test("my-card: your own card of the kind, read from your own apps, with nothing 
   assert.ok(m2.body.card, JSON.stringify(m2.body));
   assert.deepEqual(Object.keys(m2.body.card.snap).sort(), ["day", "name", "pct", "sym"]);
   assert.equal(m2.body.card.snap.sym, null); assert.equal(m2.body.card.snap.pct, 1.21); assert.equal(m2.body.card.ref, undefined);
-  for (const k of ["Rolls", "RR.L", "1012", "100"]) assert.ok(!JSON.stringify(m2.body).includes(k), k);
+  for (const k of ["Rolls", "RR.L", "1012", "100"]) assert.ok(!sayOf(m2.body).includes(k), k);
   sql.exec("DELETE FROM mk_holdings WHERE user_id = 'ann'");
   const after = counts();
   assert.deepEqual(after, before, "no row written anywhere (the limit's own counter is a row already)");
@@ -329,7 +332,7 @@ test("my-card, a stock by its symbol: only one you hold, in percent only, with n
   assert.deepEqual({ ...r.body.card.snap, day: null }, { name: "Tesco", sym: "TSCO.L", pct: -0.4, day: null });
   assert.equal(r.body.card.kind, "markets"); assert.deepEqual(r.body.card.ref, { sym: "TSCO.L" });
   assert.equal(r.body.card.say, "Tesco is down 0.40% today.");
-  for (const k of ["398", "400", "50", "£", "qty"]) assert.ok(!JSON.stringify(r.body).includes(k), k);
+  for (const k of ["398", "400", "50", "£", "qty"]) assert.ok(!sayOf(r.body).includes(k), k);
   // one you only follow, one you don't have at all: not yours to send, nothing looked up
   asked.length = 0;
   for (const sym of ["RR.L", "AAPL"]) {

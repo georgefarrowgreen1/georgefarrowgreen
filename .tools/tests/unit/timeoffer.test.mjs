@@ -4,19 +4,23 @@
 // caller's own row with the friend's first name looked up here. The inviter's pending row (with its other times) made
 // agreed by the friend's Yes, from the friend's phone alone (the inviter's phone shut: nothing more from it after the
 // invite); a time not offered, another kind, or an answer from anyone else leaving it pending; the inviter's later call
-// changing nothing. POST fit-offer the same for rides (pending → new, and offerSoon's later call adding no second row),
-// a friend's id stored only for a friend. GET sync's times (agreed only), rides (with a friend, new or agreed) and hold
-// (a ride, else quiet hours, with when it ends), read in sync's own trip; ?quiet=1 leaving pg_users.seen_at alone.
+// changing nothing, and agreeing a pending row only at a time it offered; a Yes that comes before the pending row
+// agreeing it as that row comes. POST fit-offer the same for rides (pending → new, and offerSoon's later call adding no
+// second row), a friend's id stored only for a friend, with their first name as the server has it. GET sync's times
+// (agreed only), rides (with a friend, new or agreed) and hold (a ride at its do level, else quiet hours, with when it
+// ends), read in sync's own trip, and the rest of sync answered all the same were those reads ever to fail; ?quiet=1
+// leaving pg_users.seen_at alone.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { db, issueSession } from "../../../functions/_pigeon.js";
-import { onRequest, quietEnd } from "../../../functions/api/pigeon/[[path]].js";
+import { onRequest, quietEnd, holdOf } from "../../../functions/api/pigeon/[[path]].js";
 import { isQuiet, prefsOf } from "../../../functions/_notify.js";
 import { timesFor, addTime, promoteTime } from "../../../functions/_times.js";
 import { offersFor } from "../../../functions/_fitshare.js";
-import { busyNow } from "../../../functions/_busy.js";
+import * as busyMod from "../../../functions/_busy.js";
 import { setTime } from "../../../functions/_fittimes.js";
+import { tddb } from "../../../functions/_today.js";
 
 // ---- D1, as much of it as the server uses (as instant.test.mjs has it), every batch's statements noted ----
 const batches = [];
@@ -223,6 +227,58 @@ test("time-offer: an invite from an older Chat (no pending row): the inviter's l
   run("DELETE FROM td_times"); clearLimits();
 });
 
+test("time-offer: the inviter's own later call (the backstop) agrees a pending row only at a time it offered, of the same kind", async () => {
+  clearLimits();
+  const inv = call({ start: at(4), stop: at(4) + 30 * MIN }), o1 = [at(6), at(6) + 30 * MIN];
+  await api(george, "POST", "time-offer", { ...inv, with: mira.id, role: "asked", state: "pending", opts: [o1] });
+  const was = timeRow(george, inv.id);
+  for (const [x, why] of [[{ kind: "meet", start: at(9), stop: at(9) + 4 * H }, "a 4-hour meeting at a time nobody offered"], [{ start: at(9), stop: at(9) + 30 * MIN }, "a time not offered"],
+    [{ kind: "meet" }, "another kind"], [{ start: o1[0], stop: o1[1], kind: "meet" }, "another kind at another time offered"], [{ stop: inv.stop + Q }, "another length"]]) {
+    assert.equal((await api(george, "POST", "time-offer", { ...inv, with: mira.id, role: "asked", ...x })).status, 200, why);
+    assert.deepEqual(timeRow(george, inv.id), was, `still pending: ${why}`);
+  }
+  // at the other time it offered, as a call: agreed there
+  assert.equal((await api(george, "POST", "time-offer", { ...inv, start: o1[0], stop: o1[1], with: mira.id, role: "asked" })).status, 200);
+  const g = timeRow(george, inv.id);
+  assert.deepEqual([g.state, g.kind, g.start, g.stop, g.opts, g.until], ["yes", "call", o1[0], o1[1], null, o1[1] + 12 * H]);
+  run("DELETE FROM td_times");
+});
+
+test("time-offer: a Yes that comes before the inviter's pending row (the inviter's phone offline as the invite went) agrees that row as it comes, at the time chosen", async () => {
+  clearLimits();
+  const inv = call({ start: at(2), stop: at(2) + 30 * MIN }), o1 = [at(5), at(5) + 30 * MIN];
+  // Mira's Yes first, at the other time George's invite offers: her own row, nothing of George's yet
+  assert.equal((await api(mira, "POST", "time-offer", { id: inv.id, kind: "call", start: o1[0], stop: o1[1], tz: "Europe/Paris", with: george.id, role: "answered" })).status, 200);
+  assert.equal(timeRow(george, inv.id), undefined);
+  // then George's pending row, late: agreed at once, in the batch that writes it
+  batches.length = 0;
+  const r = await api(george, "POST", "time-offer", { ...inv, with: mira.id, role: "asked", state: "pending", opts: [o1] });
+  assert.deepEqual([r.status, r.body], [200, { ok: true }]);
+  const g = timeRow(george, inv.id);
+  assert.deepEqual([g.state, g.start, g.stop, g.until, g.opts, g.role, g.with_id, g.who], ["yes", o1[0], o1[1], o1[1] + 12 * H, null, "asked", mira.id, "Mira"]);
+  assert.ok(batches.some((b) => b.some((q) => /^\s*INSERT INTO td_times/.test(q)) && b.some((q) => /^\s*WITH a AS/.test(q))), "in one batch with the pending row's own write");
+  assert.deepEqual((await api(george, "GET", "sync")).body.times, [{ id: inv.id, with: mira.id, kind: "call", start: o1[0], stop: o1[1] }]);
+  run("DELETE FROM td_times");
+  // not where her Yes is at a time the invite doesn't offer, or of another kind
+  for (const [x, why] of [[{ start: at(2) + Q, stop: at(2) + Q + 30 * MIN }, "a time not offered"], [{ kind: "meet" }, "another kind"]]) {
+    const i = call({ start: at(2), stop: at(2) + 30 * MIN });
+    await api(mira, "POST", "time-offer", { id: i.id, kind: "call", start: i.start, stop: i.stop, tz: "Europe/Paris", with: george.id, role: "answered", ...x });
+    await api(george, "POST", "time-offer", { ...i, with: mira.id, role: "asked", state: "pending" });
+    assert.equal(timeRow(george, i.id).state, "pending", why);
+  }
+  // nor from another friend's answer under the invite's id (Pat's, to George's invite to Mira)
+  const i3 = call();
+  await api(pat, "POST", "time-offer", { id: i3.id, kind: "call", start: i3.start, stop: i3.stop, tz: "Europe/London", with: george.id, role: "answered" });
+  await api(george, "POST", "time-offer", { ...i3, with: mira.id, role: "asked", state: "pending" });
+  assert.equal(timeRow(george, i3.id).state, "pending", "another friend's answer");
+  // nor where her answered time has begun already (put straight in: the API wouldn't take it)
+  const i4 = call(), begun = Math.floor(Date.now() / Q) * Q;
+  put("td_times", { user_id: mira.id, id: i4.id, kind: "call", start: begun, stop: begun + 30 * MIN, tz: "Europe/Paris", with_id: george.id, who: "George", role: "answered", state: "yes", made: 0, until: begun + 13 * H });
+  await api(george, "POST", "time-offer", { ...i4, with: mira.id, role: "asked", state: "pending", opts: [[begun, begun + 30 * MIN]] });
+  assert.equal(timeRow(george, i4.id).state, "pending", "a time that's begun");
+  run("DELETE FROM td_times");
+});
+
 // ================================ fit-offer ================================
 const HOUR_AT = (h) => Math.ceil(Date.now() / H) * H + h * H;
 const ride = (x = {}) => ({ id: crypto.randomUUID(), start: HOUR_AT(24), stop: HOUR_AT(26), tz: "Europe/London", sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, far: false, dry: true, ...x });
@@ -301,6 +357,36 @@ test("fit-offer: a friend's id only for a friend; a time not offered, or a Yes f
   run("DELETE FROM fx_offers");
 });
 
+test("fit-offer: a Yes that comes before the inviter's pending row makes it a plan to add as it comes, at the time chosen; the friend's first name as the server has it", async () => {
+  clearLimits();
+  const inv = ride(), other = [HOUR_AT(48), HOUR_AT(50)], answer = crypto.randomUUID();
+  // Mira's Yes first (from a newer Chat: with George's id and the invite's), at the other time his invite offers
+  assert.equal((await api(mira, "POST", "fit-offer", { ...inv, id: answer, start: other[0], stop: other[1], role: "answered", with: george.id, re: inv.id })).status, 200);
+  assert.equal(offerRow(george, inv.id), undefined, "nothing of George's yet");
+  // then George's pending row, late (and whatever who his Chat sends, his friend's first name as the server has it)
+  assert.equal((await api(george, "POST", "fit-offer", { ...inv, who: "Mimi", role: "asked", with: mira.id, state: "pending", opts: [other] })).status, 200);
+  const g = offerRow(george, inv.id);
+  assert.deepEqual([g.state, g.start, g.stop, g.opts, g.with_id, g.who, g.role], ["new", other[0], other[1], null, mira.id, "Mira", "asked"], "a plan to add, at Mira's time");
+  assert.deepEqual((await offersFor(env, george.id)).map((o) => [o.id, o.state, o.start]), [[inv.id, "new", other[0]]], "in George's Fitness");
+  // an older Chat on George's phone drawing the Yes later (no with; Chat's own first name): the same ride, no second
+  await api(george, "POST", "fit-offer", { ...inv, id: answer, start: other[0], stop: other[1], who: "Mira", role: "asked" });
+  assert.equal(all("SELECT * FROM fx_offers WHERE user_id = ?", george.id).length, 1);
+  run("DELETE FROM fx_offers");
+  // not where her Yes is at a time the invite doesn't offer, nor from another friend's answer, nor from an older Chat's
+  // Yes (no with: Mira's plan isn't known to be with George)
+  const i2 = ride();
+  await api(mira, "POST", "fit-offer", { ...i2, id: crypto.randomUUID(), start: HOUR_AT(25), stop: HOUR_AT(27), role: "answered", with: george.id, re: i2.id });
+  await api(pat, "POST", "fit-offer", { ...i2, id: crypto.randomUUID(), role: "answered", with: george.id, re: i2.id });
+  await api(mira, "POST", "fit-offer", { ...i2, id: crypto.randomUUID(), who: "George", role: "answered" });
+  await api(george, "POST", "fit-offer", { ...i2, role: "asked", with: mira.id, state: "pending" });
+  assert.equal(offerRow(george, i2.id).state, "pending");
+  // with no friend checked, who as the Chat sent it
+  const n = ride({ start: HOUR_AT(52), stop: HOUR_AT(54) });
+  await api(george, "POST", "fit-offer", { ...n, who: "Mimi", role: "answered" });
+  assert.equal(offerRow(george, n.id).who, "Mimi");
+  run("DELETE FROM fx_offers");
+});
+
 // ================================ sync ================================
 test("sync: times (agreed only, to come), rides (with a friend, new or agreed, to come), read in sync's own trip", async () => {
   clearLimits();
@@ -352,14 +438,37 @@ test("sync?quiet=1 (Today's engine): what's delivered marked so, but pg_users.se
   run("DELETE FROM pg_msgs");
 });
 
-test("sync's hold: a ride holding friends (functions/_busy.js) first, else quiet hours, each with when it ends", async () => {
+test("sync: were its Today First reads ever to fail as the batch runs (a column gone), the rest is answered all the same, times and rides none, what's delivered still marked", async () => {
+  clearLimits();
+  await offersFor(env, george.id);   // (Fitness's offers table made, with its columns)
+  const m1 = crypto.randomUUID(), y = crypto.randomUUID();
+  put("pg_msgs", { id: m1, sender: mira.id, recipient: george.id, ct: "sealed", km: 0, sent_at: Date.now() - 60e3, deliver_at: Date.now() - 1000, instant: 1 });
+  put("td_times", { user_id: george.id, id: y, kind: "call", start: at(5), stop: at(5) + 30 * MIN, tz: "Europe/London", with_id: mira.id, who: "Mira", role: "asked", state: "yes", made: 0, until: at(5) + 13 * H });
+  run("DELETE FROM pg_errors");
+  // (fx_offers.with_id gone after its setup ran: an ALTER that failed unseen, say)
+  run("ALTER TABLE fx_offers DROP COLUMN with_id");
+  let s;
+  try { batches.length = 0; s = await api(george, "GET", "sync"); }
+  finally { run("ALTER TABLE fx_offers ADD COLUMN with_id TEXT"); }
+  assert.equal(s.status, 200, JSON.stringify(s.body));
+  assert.deepEqual([s.body.times, s.body.rides], [[], []]);
+  assert.ok(s.body.friends.some((f) => f.id === mira.id) && "hold" in s.body, "the rest of Chat's answer");
+  assert.ok(one("SELECT got_at FROM pg_msgs WHERE id = ?", m1).got_at > 0, "Mira's message marked delivered all the same");
+  assert.ok(one("SELECT 1 FROM pg_errors WHERE src = 'sync plans'"), "the error noted for the admin");
+  assert.equal(batches.filter((b) => b.some((q) => /FROM pg_links WHERE a = \?1 OR b = \?1/.test(q))).length, 2, "asked again without them, once");
+  // with the column back, as before: in the one batch
+  batches.length = 0;
+  assert.deepEqual((await api(george, "GET", "sync")).body.times.map((x) => x.id), [y]);
+  assert.equal(batches.filter((b) => b.some((q) => /FROM pg_links WHERE a = \?1 OR b = \?1/.test(q))).length, 1);
+  run("DELETE FROM pg_msgs"); run("DELETE FROM td_times");
+});
+
+test("sync's hold: quiet hours, with when they end (a zone off the hour too); none when they're off", async () => {
   clearLimits();
   const t = Date.now(), h = new Date(t).getUTCHours();
-  // quiet hours now (UTC): until they end, on the hour
+  // quiet hours now (UTC), and no ride: until they end, on the hour
   run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", JSON.stringify({ quiet: true, quietFrom: h, quietTo: (h + 2) % 24, tz: "UTC" }), pat.id);
-  const s = await api(pat, "GET", "sync");
-  const busy = await busyNow(env, pat.id, Date.now());
-  assert.deepEqual(s.body.hold, busy && (busy.level ?? "do") === "do" ? { why: "ride", until: busy.until } : { why: "quiet", until: Math.floor(t / H) * H + 2 * H });
+  assert.deepEqual((await api(pat, "GET", "sync")).body.hold, { why: "quiet", until: Math.floor(t / H) * H + 2 * H });
   // a zone half an hour off UTC: still the first quarter hour that isn't quiet
   const lh = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "numeric", hourCycle: "h23" }).format(t));
   const p = prefsOf({ notify_prefs: JSON.stringify({ quiet: true, quietFrom: lh, quietTo: (lh + 1) % 24, tz: "Asia/Kolkata" }) });
@@ -370,11 +479,49 @@ test("sync's hold: a ride holding friends (functions/_busy.js) first, else quiet
   // quiet hours off: no hold
   run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", JSON.stringify({ quiet: false }), pat.id);
   assert.equal((await api(pat, "GET", "sync")).body.hold, null);
-  // a ride now, set in Fitness (an explicit one): held for as long as functions/_busy.js says
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date(t - 5 * MIN));
-  await setTime(env, pat.id, { day, start: Math.floor((t - 5 * MIN) / (5 * MIN)) * 5 * MIN, stop: Math.floor((t - 5 * MIN) / (5 * MIN)) * 5 * MIN + 2 * H, tz: "Europe/London", source: "set" }, { t });
-  const ridden = await busyNow(env, pat.id, Date.now()), hold = (await api(pat, "GET", "sync")).body.hold;
-  assert.deepEqual(hold, ridden && (ridden.level ?? "do") === "do" ? { why: "ride", until: ridden.until } : null, "the ride's hold, as busyNow has it (B0's stub: never busy)");
+});
+
+test("holdOf: a ride holds friends' messages at its do level alone, until it ends; else quiet hours; else nothing", () => {
+  const t = Date.UTC(2026, 10, 3, 9, 7), off = prefsOf({ notify_prefs: JSON.stringify({ quiet: false }) });
+  const on = prefsOf({ notify_prefs: JSON.stringify({ quiet: true, quietFrom: 9, quietTo: 11, tz: "UTC" }) }), quiet = { why: "quiet", until: Date.UTC(2026, 10, 3, 11, 0) };
+  const busy = (level, until = t + 2 * H) => ({ until, level, rideStart: t - 5 * MIN });
+  assert.deepEqual(holdOf(busy("do"), off, t), { why: "ride", until: t + 2 * H }, "do: friends held, until the ride's cap");
+  assert.deepEqual(holdOf(busy("do"), on, t), { why: "ride", until: t + 2 * H }, "the ride first, in quiet hours too");
+  assert.equal(holdOf(busy("suggest"), off, t), null, "suggest: apps' notifications only, not friends'");
+  assert.equal(holdOf(busy("quiet"), off, t), null, "quiet: nothing held");
+  assert.deepEqual(holdOf(busy("suggest"), on, t), quiet, "suggest, in quiet hours: those");
+  assert.deepEqual(holdOf(busy("quiet"), on, t), quiet, "quiet, in quiet hours: those");
+  assert.equal(holdOf(busy("do", t), off, t), null, "a hold that's ended");
+  assert.equal(holdOf(busy(undefined), off, t), null, "no level (busyNow always gives one): not held");
+  assert.equal(holdOf(null, off, t), null);
+  assert.deepEqual(holdOf(null, on, t), quiet);
+  // (batch N's functions/_busy.js, once merged, has the rule as holdsFor(busy, "friends"): the two agree)
+  if (typeof busyMod.holdsFor === "function") for (const level of ["do", "suggest", "quiet"]) assert.equal(holdOf(busy(level), off, t) !== null, busyMod.holdsFor(busy(level), "friends"), level);
+});
+
+test("sync's hold, a ride set in Fitness: friends held at do (no rule, or do), until its cap; at suggest or quiet, quiet hours or nothing", async () => {
+  clearLimits();
+  // (B0's functions/_busy.js is a stub: nobody is ever busy. Batch N's, once merged, has holdsFor beside busyNow, and holds)
+  const t = Date.now(), real = typeof busyMod.holdsFor === "function";
+  const s5 = Math.floor((t - 5 * MIN) / (5 * MIN)) * 5 * MIN, day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date(s5));
+  await setTime(env, pat.id, { day, start: s5, stop: s5 + 2 * H, tz: "Europe/London", source: "set" }, { t });
+  await tddb(env);   // (Today's rules table made, as Today makes it)
+  const h = new Date(t).getUTCHours(), off = JSON.stringify({ quiet: false }), quietNow = JSON.stringify({ quiet: true, quietFrom: h, quietTo: (h + 2) % 24, tz: "UTC" });
+  // the ride's cap: its start and the longer of 2 hours and its length and half an hour; quiet hours: on the hour they end
+  const ride = { why: "ride", until: s5 + 2 * H + 30 * MIN }, quiet = { why: "quiet", until: Math.floor(t / H) * H + 2 * H };
+  const level = (l) => (l == null ? run("DELETE FROM td_rules WHERE user_id = ?", pat.id) : run("INSERT OR REPLACE INTO td_rules (user_id, rule, level) VALUES (?, 'holdRide', ?)", pat.id, l));
+  for (const [l, prefs, want, why] of [
+    [null, off, real ? ride : null, "no rule (do)"],
+    ["do", off, real ? ride : null, "do"],
+    ["do", quietNow, real ? ride : quiet, "do, in quiet hours: the ride first"],
+    ["suggest", off, null, "suggest: friends not held"],
+    ["suggest", quietNow, quiet, "suggest, in quiet hours: those"],
+    ["quiet", off, null, "quiet: nothing held"],
+  ]) {
+    level(l); run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", prefs, pat.id);
+    assert.deepEqual((await api(pat, "GET", "sync")).body.hold, want, why);
+  }
+  run("DELETE FROM td_rules WHERE user_id = ?", pat.id); run("DELETE FROM fx_times WHERE user_id = ?", pat.id); run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", off, pat.id);
 });
 
 test("quietEnd: on the hour quiet hours end, and on the nights the clocks change", () => {
