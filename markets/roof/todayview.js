@@ -5,18 +5,23 @@
 // onto mkui.js's helpers; itemRow, figOf and emptyView are Holdings' too.
 // view(el, ctx) → { draw(), patch(was), hide(), destroy() }: draw() draws it afresh from core.S; patch(was) takes new
 // prices in where they show (app.js refresh's part of the page: the total counted up, the day, the words, the line).
+// notIn() → what a section shows before your list is in (the framework's states, spec §2.1, §6): a skeleton while it's
+// on its way, else why it couldn't come (offline: "needs a connection") with Try Again; null once it's in. Every
+// section asks it first, so "Start with what you own" (emptyView) is only ever said to a list that's in and empty.
 import * as core from "./core.js";
 import { h, C, el as $el, M, go, toast, openStock, viz, keepFocus, afterDraw } from "./mkui.js";
 
 const { S, INDICES, INDEX_NAMES, PRANGES, fmt, money, signed, pct, tone, priceSaid, plainSym, plural, valueOf, dayOf, divsOf, paidFor, totals, leftOutSaid, income, insights, daySeries, rangeSeries } = core;
 
 function todayView() {
+  const wait = notIn();
+  if (wait) return wait;
   if (!S.list.length) return emptyView();
   const T = totals(), parts = [];
   if (T.o.length) {
     const [a, b] = fmt(T.value).split(".");
     parts.push(h("div.hero", { "data-k": "portfolio" },
-      h("div.mk-herohead", {}, h("span.eyebrow", { text: "Your portfolio" }), sendBtn()),
+      h("div.mk-herohead", {}, h("span.eyebrow", { text: "Your portfolio" }), core.portfolioSend() ? sendBtn() : null),
       h("span.big.num", { "data-el": "pv" }, `£${a}`, h("span.p", { text: "." + b })),
       h("span.delta.num", {}, h("span", { "data-el": "pd", class: tone(T.day), text: signed(T.day) }), h("span", { "data-el": "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { "data-el": "ps", text: "today" })),
       leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null));
@@ -133,9 +138,9 @@ function portfolioChart() {
   const { pts, baseY } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
   svg.innerHTML = `<defs><linearGradient id="mk-pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${up ? "#5fe0a6" : "#ff8a80"}" stop-opacity=".22"/><stop offset="1" stop-color="${up ? "#5fe0a6" : "#ff8a80"}" stop-opacity="0"/></linearGradient></defs>`;
   svg.append(C.el("line", { class: "base", x1: 0, x2: 390, y1: baseY, y2: baseY, "vector-effect": "non-scaling-stroke" }));
-  const fill = C.el("path", { d: C.area(pts, 150), fill: "url(#mk-pg)", style: "opacity:0;transition:opacity 1.4s .5s" }), line = C.el("path", { d: C.smooth(pts), fill: "none", stroke: col, "stroke-width": 2, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke", "data-draw": "0" });
+  const fill = C.el("path", { d: C.area(pts, 150), fill: "url(#mk-pg)", class: "pfill" }), line = C.el("path", { d: C.smooth(pts), fill: "none", stroke: col, "stroke-width": 2, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke", "data-draw": "0" });
   svg.append(fill, line);
-  requestAnimationFrame(() => { fill.style.opacity = "1"; });
+  requestAnimationFrame(() => fill.classList.add("on"));
   portfolioChart.pts = pts;
   return svg;
 }
@@ -163,6 +168,15 @@ function figOf(x) {
   const paid = paidFor(x), g = valueOf(x) - paid + (divsOf(x) || 0);
   return h("small", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) });
 }
+function notIn() {
+  if (S.me) return null;
+  const ui = M.fw.ui;
+  if (!S.err || S.loading) return [h("div.mk-wait", { "data-k": "loading" }, ui.skeleton("hero"), ui.skeleton("rows", 4))];
+  const again = [{ label: "Try Again", act: "retry", primary: true, run: () => core.retry() }];
+  return [ui.error(S.err.offline || globalThis.navigator?.onLine === false
+    ? { title: "Markets needs a connection", body: "Your list shows here once you’re back online.", acts: again }
+    : { title: "Markets didn’t open", body: S.err.words || "Couldn’t get your list just now.", acts: again })];
+}
 function emptyView() {
   const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
   return [h("div.empty", {}, h("h2.rise", { text: "Start with what you own" }),
@@ -182,7 +196,7 @@ function openInsight(c) {
   if (c.sym) openStock(c.sym);
 }
 // the portfolio's Send: its day in percent, never an amount (core.portfolioSend)
-const sendBtn = () => M.fw.ui.btn("Send", { icon: "send", act: "send", small: true, label: "Send your portfolio’s day to a friend", run: () => { const s = core.portfolioSend(); if (s) M.fw.send(s); else toast("Nothing priced to send just now.", true); } });
+const sendBtn = () => M.fw.ui.btn("Send", { icon: "send", act: "send", small: true, label: "Send your portfolio’s day to a friend", run: () => { const s = core.portfolioSend(); if (s) M.fw.send(s); else toast("Nothing you own has traded today yet.", true); } });
 
 export function view(el, ctx) {
   const sec = el;
@@ -217,4 +231,4 @@ export function view(el, ctx) {
 // (the total as it was, with the quotes before the new ones)
 function totalsWith(q) { const now = S.q; S.q = q; try { return totals(); } finally { S.q = now; } }
 
-export { todayView, daySaid, portfolioBox, portfolioChart, rangeSaid, itemRow, figOf, emptyView };
+export { todayView, daySaid, portfolioBox, portfolioChart, rangeSaid, itemRow, figOf, emptyView, notIn };

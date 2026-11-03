@@ -130,8 +130,10 @@ export async function mount(root, fw) {
     core.on("me", () => { others(); header(); draw(shown, true); }),
     core.on("list", () => { others(); header(); draw(); }),
     core.on("settings", () => { if (shown === "holdings") draw(); }),
-    core.on("loading", () => header()),
-    core.on("error", (e) => { header(); if (e && onScreen && !S.me) fw.toast(e); }),
+    // (before your list is in, each section shows where it's got to: on its way, or why it couldn't come, with Try Again:
+    // todayview.notIn)
+    core.on("loading", () => { header(); if (!S.me) { others(); draw(); } }),
+    core.on("error", () => { header(); if (!S.me) { others(); draw(); } }),
     core.on("news", () => { header(); if (shown === "news") draw(); else stale.add("news"); }),
     core.on("quotes", (d) => {
       header();

@@ -8,13 +8,16 @@
 //   me (the account: id, name, handle, photoAt) · list (your holdings and those you follow, in your order) · q (quotes by
 //   symbol) · fx (rates to pounds) · years (each one's year: hi/lo, dividends) · news · charts (Map, kept ten minutes) ·
 //   alertsOff · isa · wrap · vs · paid · prange · mix · fig · inc · imode · goal · add · reinvest · buyAmt · newsTopics ·
-//   nfilter · newsSince (app.js's S without tab and pushOn); and, as app.js adds them, yearsAt newsAt newsErr pricesAt.
+//   nfilter · newsSince (app.js's S without tab and pushOn); and, as app.js adds them, yearsAt newsAt newsErr pricesAt;
+//   loading (your list on its way) and err ({ words, offline }: why it couldn't come, while there's no list to show).
 // Events (frozen): on(evt, fn) → off; emit(evt, detail):
 //   "me" the account or the whole copy changed · "quotes" prices came in (detail { was: the quotes before }) ·
 //   "news" the stories changed · "list" what you hold or follow changed (app.js's render()) · "settings" a choice on
 //   this phone changed (the Income plan, a mix) · "loading" (detail boolean) · "error" (detail words or null).
-// Lifecycle: start(fw) · stop() · shown(on) (polling only between shown(true) and shown(false), and only while the
-//   page is visible, S2-D4) · at(section) (which section shows, for News' count) · busy() (S2-D21: !calm()).
+// Lifecycle: start(fw) · stop() · retry() (your list asked for again, after it couldn't come) · shown(on) (polling only
+//   between shown(true) and shown(false), and only while the page is visible, S2-D4) · at(section) (which section shows,
+//   for News' count) · busy() (S2-D21: !calm()) · flush() → { lost: 1 } while a reorder couldn't be kept · mine(gen):
+//   a write's answer is still this account's (gen = P.gen as it was asked: genNow()).
 // Kept copy (S2-D9): markets:last = { id, at, me, holdings, quotes, rates, isa }, drawn only when its id is
 //   fw.session.user.id. Storage keys are app.js's markets:* (no new key); nothing under today:*.
 // Amounts never leave the screen (S2-D6): stockSend/portfolioSend give name, sym, pct and day only, and nothing here
@@ -36,7 +39,7 @@ export function on(evt, fn) { const s = subs.get(evt); if (!s) throw new Error(`
 export function emit(evt, detail) { for (const fn of [...(subs.get(evt) || [])]) { try { fn(detail); } catch (e) { console.error(e); } } }
 
 // (what isn't for the views: the page's fw, timers, whether Markets shows and which section, the sheet and a reorder)
-const P = { fw: null, on: false, sec: "today", timer: 0, away: 0, offs: [], sheet: false, ordering: 0, orderQ: null, gen: 0 };
+const P = { fw: null, on: false, sec: "today", timer: 0, away: 0, offs: [], sheet: false, ordering: 0, orderQ: null, orderLost: false, gen: 0, stock: null };
 export const fwOf = () => P.fw;
 // which section shows (markets.js, on each show): News' count is none while News itself shows
 export function at(sec) { P.sec = sec; }
@@ -45,8 +48,32 @@ export const section = () => P.sec;
 // framework's reload waits (busy)
 export function sheetIs(v) { P.sheet = !!v; }
 export function ordering(n, q) { P.ordering = Math.max(0, P.ordering + n); if (q) P.orderQ = q; }
-// what isn't kept yet waited for (a reorder on its way): → { lost } (instance.flush, s24 contracts §4)
-export async function flush() { try { await P.orderQ; } catch (_) {} return { lost: 0 }; }
+// reorders still on their way (Change Order stays on while one is: holdings.js)
+export const orderingNow = () => P.ordering;
+// a reorder that couldn't be kept (true), or one kept since (false): what flush() answers until the next one's kept
+export function orderLost(v) { P.orderLost = !!v; }
+// what isn't kept yet waited for (a reorder on its way): → { lost } (instance.flush, s24 contracts §4): 1 while the
+// last reorder couldn't be kept with your account, so sign-out asks first
+export async function flush() { try { await P.orderQ; } catch (_) {} return { lost: P.orderLost ? 1 : 0 }; }
+// the account a write was asked for: genNow() as it's asked, mine(that) as its answer comes (false: stopped or another
+// account since, so the answer's dropped)
+export const genNow = () => P.gen;
+export const mine = (g) => g === P.gen && !!P.fw;
+// charts kept (S2-D22): each set drops what's older than ten minutes; a stock's own leave with its sheet (stockOpen)
+const CHART_KEEP = 600e3;
+export function chartSet(k, c) {
+  const now = Date.now();
+  for (const [key, v] of S.charts) if (now - v.at >= CHART_KEEP) S.charts.delete(key);
+  S.charts.set(k, { at: now, c });
+}
+// the stock whose sheet is open (null: none): the last one's charts let go, but those your portfolio's ranges use
+export function stockOpen(sym) {
+  const was = P.stock;
+  P.stock = sym || null;
+  if (!was || was === P.stock) return;
+  const held = owned().some((x) => x.symbol === was);
+  for (const key of [...S.charts.keys()]) if (key.startsWith(was + ":") && !(held && /:(5d|1mo|1y)$/.test(key))) S.charts.delete(key);
+}
 
 // ---- markets, numbers and your money (app.js 794-1134, as they are; insights' pictures and taps named, not drawn) ----
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
@@ -339,7 +366,7 @@ function insights() {
 // shut, at today's exchange rates. { T, vals, base, by: each holding's change over it, in pounds }
 async function rangeSeries(r) {
   const o = owned(), charts = {};
-  const get = async (sym) => { const k = `${sym}:${r}`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, r); S.charts.set(k, { at: Date.now(), c }); return c; };
+  const get = async (sym) => { const k = `${sym}:${r}`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, r); chartSet(k, c); return c; };
   for (let i = 0; i < o.length; i += 6) await Promise.all(o.slice(i, i + 6).map((x) => get(x.symbol).then((c) => { charts[x.symbol] = c; }, () => {})));
   const held = o.filter((x) => charts[x.symbol]?.c?.length > 1);
   if (!held.length) return null;
@@ -414,19 +441,23 @@ const recent = { get: () => store.get("recent", []), add(sym, name) { store.set(
 // following one in a tap: added with none owned → true once it's in (the caller says so); a throw says why not
 async function follow(sym, name) {
   if (S.list.some((x) => x.symbol === sym)) return false;
-  const r = await A.putHolding({ symbol: sym, name, qty: 0 });
+  const g = P.gen, r = await A.putHolding({ symbol: sym, name, qty: 0 });
+  if (!mine(g)) return false;
   S.list = r.holdings; S.news = null;
   changed();
   return true;
 }
 async function removeHolding(sym) {
-  const r = await A.dropHolding(sym);
+  const g = P.gen, r = await A.dropHolding(sym);
+  if (!mine(g)) return;
   S.list = r.holdings; S.news = null;
   changed();
 }
 // An alert set (p: how much a move in a day, 0 for none) → the words to say it with (InFlite's notifications, in You)
 async function alertSet(sym, p) {
-  const r = await A.setAlert(sym, !!p, p || 3), name = S.list.find((x) => x.symbol === sym)?.name || nameOf(sym);
+  const g = P.gen, r = await A.setAlert(sym, !!p, p || 3);
+  if (!mine(g)) return null;
+  const name = S.list.find((x) => x.symbol === sym)?.name || nameOf(sym);
   S.list = r.holdings;
   changed();
   if (!p) return "Alert off";
@@ -448,11 +479,16 @@ function stockSend(sym, name = nameOf(sym)) {
   const move = typeof q?.chgPct === "number" && Number.isFinite(q.chgPct) ? ` is ${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}% today` : "";
   return { words: `${name} (${plainSym(sym)})${move}.`, packed: packCard(stockSendCard(sym, name, q, Date.now())), what: name };
 }
+// a day, in a market's own zone (functions/_markets.js dayIn); and whether a quote's from today's trading there (crypto
+// always: functions/_todaymkt.js tradedToday)
+const dayIn = (tz, ms) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms)); } catch (_) { return null; } };
+const tradedToday = (q, now = Date.now()) => kindOf(q) === "crypto" || (!!q?.time && dayIn(q.tz, q.time * 1000) === dayIn(q.tz, now));
 // your portfolio's day: the card functions/_todaymkt.js makes ({ name: "Portfolio", sym: null, pct, day }; no ref, as
-// Chat keeps one only with a symbol) → { words, packed, what } or null while nothing you own is priced
+// Chat keeps one only with a symbol) → { words, packed, what }; null while nothing you own is priced, or nothing you own
+// has traded today (a weekend, before London opens: the last session's move isn't today's, as Today's own card has it)
 function portfolioSend(now = Date.now()) {
   const T = totals();
-  if (!T.o.length || !Number.isFinite(T.dayPct)) return null;
+  if (!T.o.length || !Number.isFinite(T.dayPct) || !T.o.some((x) => tradedToday(S.q[x.symbol], now))) return null;
   const pct = Math.round(T.dayPct * 100) / 100, p1 = Math.abs(pct).toFixed(1);
   const words = p1 === "0.0" ? "My portfolio is flat today." : `My portfolio is ${pct > 0 ? "up" : "down"} ${p1}% today.`;
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
@@ -529,7 +565,7 @@ function fresh() {
   Object.assign(S, { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
     inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null });
   S.charts = new Map();
-  for (const k of ["yearsAt", "newsAt", "newsErr", "pricesAt", "opening"]) delete S[k];
+  for (const k of ["yearsAt", "newsAt", "newsErr", "pricesAt", "opening", "loading", "err"]) delete S[k];
   loadIncome.failed = 0; loadIncome.busy = false; loadNews.busy = false; refresh.busy = false;
 }
 // this phone's copy, when it's this account's (its id, or the id of the me inside it, as app.js wrote it)
@@ -549,13 +585,19 @@ export function start(fw) {
     S.opening = Date.now() + 4000;
     emit("me");
   }
-  S.loading = true; emit("loading", true);
+  return loadMe(gen);
+}
+// your list from your account: drawn once it's in; one that couldn't come kept in S.err (with no list to show, the
+// views say so, with Try Again: retry)
+function loadMe(gen) {
+  S.loading = true; S.err = null; emit("loading", true);
+  const failed = (words, offline = false) => { S.err = { words, offline }; emit("error", words); };
   return A.me().then(async (m) => {
     if (gen !== P.gen) return;
-    if (!m?.signedIn) { S.loading = false; emit("loading", false); if (!(await lost())) emit("error", "Couldn’t get your list just now"); return; }
+    if (!m?.signedIn) { S.loading = false; emit("loading", false); if (!(await lost()) && gen === P.gen) failed("Couldn’t get your list just now"); return; }
     if (S.me && S.me.id !== m.id) fresh();
     take(m);
-    S.pricesAt = Date.now(); S.opening = 0; S.loading = false;
+    S.pricesAt = Date.now(); S.opening = 0; S.loading = false; S.err = null;
     keep();
     emit("loading", false); emit("error", null); emit("me");
     loadYears(); loadPaid();
@@ -564,13 +606,18 @@ export function start(fw) {
     if (gen !== P.gen) return;
     S.loading = false; S.opening = 0; emit("loading", false);
     if (e.status === 401 && (await lost())) return;
-    emit("error", e.message || "Couldn’t get your list just now");
+    if (gen === P.gen) failed(e.message || "Couldn’t get your list just now", !!e.offline && !e.slow);
   });
+}
+// Try Again, after your list couldn't come (the same account, the same start)
+export function retry() {
+  if (!P.fw || S.loading) return null;
+  return loadMe(P.gen);
 }
 export function stop() {
   shown(false);
   for (const f of P.offs.splice(0)) f();
-  P.gen++; P.fw = null; P.sheet = false; P.ordering = 0; P.sec = "today";
+  P.gen++; P.fw = null; P.sheet = false; P.ordering = 0; P.orderLost = false; P.orderQ = null; P.stock = null; P.sec = "today";
   fresh();
 }
 // Markets shown (true) or not: the half-minute prices only between, while the page is visible; on coming back after
@@ -601,4 +648,4 @@ export { A, INDICES, INDEX_NAMES, MARKET_OF, BENCHES, ACCOUNTS, ACCOUNT_NAME, PR
   priceSaid, chgSaid, priceIn, penceMeant, nameOf, plainSym, ago, plural, and2, rate, owned, valueOf, dayOf, divsOf, paidFor, unpriced, leftOutSaid, totals, byAccount, income, divHistory, gotAll,
   received, DIVIDEND_ALLOWANCE, taxMonths, growthOf, monthSaid, aroundDay, aroundMonth, isaYear, tracksIsa, daySeries, marketSaid, clock, oldSaid, lineSaid, pricesAtSaid, insights, rangeSeries, dayKey,
   TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, newsKey, aboutIt, sansStop, newsSeen, newsHidden, newsRead, newsGroups, newsNew, storyId, storyOf, leftNews, loadNews, recent, follow, removeHolding, alertSet,
-  changed, packCard, stockSend, portfolioSend, storySend, take, loadYears, loadPaid, loadIncome, calm, refresh, lost, markDivs, health, taxYearOf, yearDivs, yearOn };
+  changed, packCard, dayIn, tradedToday, stockSend, portfolioSend, storySend, take, loadYears, loadPaid, loadIncome, calm, refresh, lost, markDivs, health, taxYearOf, yearDivs, yearOn };

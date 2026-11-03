@@ -23,13 +23,13 @@ function incomeView() {
     onclick: () => { if (S.imode !== k) { S.imode = k; drawSheet(); } } })));
   const top = [h("div.shead", {}, h("small", { text: "Income" }), closeBtn()), sw];
   if (mode !== "coming" && !have) return [...top, loadIncome.failed && !loadIncome.busy
-    ? h("p.hint", { style: "margin-top:18px" }, "Couldn't count what's been paid just now. ", h("button.inline", { type: "button", "data-k": "inc:again", onclick: () => { loadIncome(true); drawSheet(); }, text: "Try Again" }))
-    : h("p.hint", { style: "margin-top:18px", text: "Counting what's been paid…" })];
+    ? h("p.hint.mk-mt18", {}, "Couldn't count what's been paid just now. ", h("button.inline", { type: "button", "data-k": "inc:again", onclick: () => { loadIncome(true); drawSheet(); }, text: "Try Again" }))
+    : h("p.hint.mk-mt18", { text: "Counting what's been paid…" })];
   const R = mode === "received" ? received() : null, T = have ? taxMonths(I) : null, M = mode === "coming" ? I : mode === "received" ? R : T;
   const total = mode === "coming" ? I.total : mode === "received" ? R.total : T.paid + T.coming;
   // (the month first shown: the next with anything coming; the last that paid; this one)
   let chosen = mode === "coming" ? Math.max(0, M.months.findIndex((m) => m.total > 0)) : mode === "received" ? Math.max(0, M.months.findLastIndex((m) => m.total > 0)) : Math.max(0, M.months.findIndex((m) => m.d.getMonth() === new Date().getMonth()));
-  const month = h("div", { "data-el": "imonth" }), say = h("p.why", { style: "margin-top:22px" });
+  const month = h("div", { "data-el": "imonth" }), say = h("p.why.mk-mt22", {});
   const dayMon = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const row = (e) => e.done || mode === "received"
     ? h("button.item.two.rise", { type: "button", onclick: () => pushSheet("stock", e.x.symbol) }, h("span", {}, h("b", { text: e.x.name }), h("small", { text: `Went ex-dividend ${dayMon(e.at)} · ${fmt(e.qty, e.qty % 1 ? 2 : 0)} ${e.qty === 1 ? "share" : "shares"}${e.special ? " · a one-off" : ""}` })), h("span.r", {}, h("b.num", { text: money(e.v) })))
@@ -53,8 +53,8 @@ function incomeView() {
     : mode === "received" ? (R.from ? `${money(R.since, "GBP", 0)} since ${new Date(R.from).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}, on the shares you had each time one went ex-dividend. In pounds at today's rate.` : "Say when you bought each holding (on its page) to count what it's paid you.")
     : `${T.name}, so far. About ${money(T.paid + T.coming, "GBP", 0)} by 5 April, with what's still to come outlined.`;
   return [...top,
-    h("div.sprice.num", { style: "margin-top:14px", text: head }),
-    h("p.hint", { style: "margin-top:8px", text: sub }),
+    h("div.sprice.num.mk-mt14", { text: head }),
+    h("p.hint.mk-mt8", { text: sub }),
     ...(total || mode !== "coming" ? [h("div.ichart", {}, bars), mode === "tax" ? h("div.ilegend", {}, h("span", {}, h("i"), "Paid"), h("span", {}, h("i.est"), "To come")) : null, say, month] : []),
     ...(I.total ? yieldPart(I) : []),
     ...(T ? allowancePart(T) : []),
@@ -77,7 +77,7 @@ function allowancePart(T) {
   const used = Math.min(1, T.outside / DIVIDEND_ALLOWANCE), soon = Math.min(1 - used, T.outsideComing / DIVIDEND_ALLOWANCE);
   return [h("h3.slabel", { text: `Dividend allowance, ${T.name}` }),
     h("div.irow", {}, h("b.num", { text: `${money(T.outside, "GBP", 0)} of ${money(DIVIDEND_ALLOWANCE, "GBP", 0)} used` }), h("small", { text: T.outsideComing >= 0.5 ? `about ${money(T.outside + T.outsideComing, "GBP", 0)} by 5 April` : `${money(Math.max(0, DIVIDEND_ALLOWANCE - T.outside), "GBP", 0)} left` })),
-    h("div.allow2", {}, h("i", { style: `width:${used * 100}%` }), h("i.soon", { style: `width:${soon * 100}%` })),
+    h("div.allow2", {}, h("i", { vars: { w: `${used * 100}%` } }), h("i.soon", { vars: { w: `${soon * 100}%` } })),
     h("p.ismall", { text: `Dividends outside an ISA or pension count towards it; in one they're tax-free${T.inside >= 0.5 ? ` (${money(T.inside, "GBP", 0)} so far)` : ""}. Counted by when each went ex-dividend: it's paid, and taxed, a few weeks after.` })];
 }
 // a payer, and how dependable it's been
@@ -181,18 +181,18 @@ function whatIf(q, y) {
 // Your year against the market: what you own now, as if held all year (at today's exchange rates), its value through
 // the year beside a market's, both from where they started; the market changed with a tap, the lines reshaping to it
 function vsView() {
-  const box = h("div.chartbox.vsbox.loading", { "data-el": "vsbox" }), say = h("p.why", { "data-el": "vssay" }, h("span", { style: "opacity:.35", text: "Working out your year…" }));
-  const big = h("div.sprice.num", { style: "margin-top:14px", text: "–" });
+  const box = h("div.chartbox.vsbox.loading", { "data-el": "vsbox" }), say = h("p.why", { "data-el": "vssay" }, h("span.mk-dim", { text: "Working out your year…" }));
+  const big = h("div.sprice.num.mk-mt14", { text: "–" });
   const seg = h("div.seg.thirds", { role: "group", "aria-label": "Against" }, h("span.sl"), BENCHES.map(([sym, name], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-b": sym, text: name === "the world" ? "World" : name })));
   const legend = h("div.vslegend", {}, h("span.you", {}, h("i"), "You"), h("span.mk", {}, h("i"), h("b", { "data-el": "vsname", text: BENCHES[0][1] })));
   requestAnimationFrame(() => { if (box.isConnected) vsDraw(box, seg, big, say); });
   return [h("div.shead", {}, h("small", { text: "Against the market · this year" }), closeBtn()), big,
-    h("div.sdelta", {}, h("span", { style: "color:var(--text-3)", text: "your year, on what you own now" })), box, legend, seg, say,
+    h("div.sdelta", {}, h("span.mk-t3", { text: "your year, on what you own now" })), box, legend, seg, say,
     h("p.hint", { text: "As if you'd held what you own now all year, at today's exchange rates, with the dividends it paid. Each market is followed through a fund that tracks it (iShares' FTSE 100, Vanguard's All-World, SPDR's S&P 500), with its dividends too." })];
 }
 async function vsDraw(box, seg, big, say) {
   const o = owned(), W = () => box.clientWidth || 390, H = 210, N = 120;
-  const get = async (sym) => { const k = `${sym}:1y`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, "1y"); S.charts.set(k, { at: Date.now(), c }); return c; };
+  const get = async (sym) => { const k = `${sym}:1y`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, "1y"); core.chartSet(k, c); return c; };
   const charts = {};
   try {
     const syms = [...o.map((x) => x.symbol), ...BENCHES.map((b) => b[0])];
@@ -259,17 +259,17 @@ function isaView() {
   const iy = isaYear() || { year: "", paid: 0, allowance: 20000, left: 20000, days: 0, used: 0 };
   const paid = h("input", { type: "text", inputmode: "decimal", id: "mk-isa", placeholder: "0", value: iy.paid ? String(iy.paid) : "", "aria-label": "Paid in this tax year" });
   const inIsa = owned().filter((x) => x.account === "isa"), worth = inIsa.reduce((a, x) => a + valueOf(x), 0);
-  const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-isa-save" }, "Save");
+  const save = h("button.btn.go.press.mk-save", { type: "button", id: "mk-isa-save" }, "Save");
   save.onclick = async () => {
     const v = paid.value.trim() === "" ? 0 : Number(paid.value.replace(/[,£\s]/g, ""));
     if (!Number.isFinite(v) || v < 0) return toast("What you've paid in should be a number.", true);
     save.disabled = true;
-    try { S.isa = (await A.setIsa(v)).isa; toast("Saved"); if (Sheet.stack.length > 1) backSheet(); else closeSheet(); core.changed(); }
+    try { const g = core.genNow(), r = await A.setIsa(v); if (!core.mine(g)) return; S.isa = r.isa; toast("Saved"); if (Sheet.stack.length > 1) backSheet(); else closeSheet(); core.changed(); }
     catch (e) { toast(e.message, true); save.disabled = false; }
   };
   return [h("div.shead", {}, backBtn(), h("small", { text: `ISA allowance · ${iy.year}` }), closeBtn()),
-    h("div.sprice.num", { style: "margin-top:14px", text: iy.left > 0 ? `${money(iy.left, "GBP", 0)} left` : "All used" }),
-    h("p.why", { style: "margin-top:6px" }, `Of your ${money(iy.allowance, "GBP", 0)} for this tax year, with ${plural(iy.days, "day")} to use it: it ends on 5 April, and what's left doesn't carry over.`),
+    h("div.sprice.num.mk-mt14", { text: iy.left > 0 ? `${money(iy.left, "GBP", 0)} left` : "All used" }),
+    h("p.why.mk-mt6", {}, `Of your ${money(iy.allowance, "GBP", 0)} for this tax year, with ${plural(iy.days, "day")} to use it: it ends on 5 April, and what's left doesn't carry over.`),
     allowBar(iy.used),
     inIsa.length ? h("div.facts", {}, h("div.fact", {}, h("span", { text: "In your ISA now" }), h("b.num", { text: money(worth) }), h("i", { text: plural(inIsa.length, "holding") }))) : null,
     h("div.form", {}, h("label", { for: "mk-isa", text: "Paid in so far this tax year" }), h("div.field", {}, h("span.unit", { text: "£" }), paid)),

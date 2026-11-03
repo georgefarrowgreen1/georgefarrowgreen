@@ -6,22 +6,29 @@
 // statsPart :1529, orderView :1612, accountsPart :1635, incomePart :1648, vsQuick/vsPart :1830-1843, accountView :1924;
 // the About words from settingsView :2766-2769). Loaded through fw.lazy on Holdings' first show (connector.lazy).
 // view(el, ctx) → { draw(), hide(), destroy() }; openAccount(ctx, name) → mk-account; openAbout(ctx) → mk-about.
+// Its parts in three blocks (div.mk-htop: the ring and how you've done; div.mk-hmain: your holdings and those you follow;
+// div.mk-hside: accounts, income, the year against the market), one after another on a phone; at 980 px and wider,
+// your holdings on the left and the rest on the right (markets.css .mk-hold).
 import * as core from "./core.js";
 import { h, C, el, M, toast, render, openSheet, pushSheet, closeBtn, incomeBars, allowBar, icon, keepFocus, afterDraw } from "./mkui.js";
-import { itemRow, figOf, emptyView } from "./todayview.js";
+import { itemRow, figOf, emptyView, notIn } from "./todayview.js";
 
 const { S, A, ACCOUNT_NAME, BENCHES, KINDS_SAID, fmt, money, signed, pct, tone, plainSym, plural, kindOf, valueOf, divsOf, paidFor, totals, leftOutSaid, byAccount, income, isaYear, tracksIsa, aroundMonth, owned, rate } = core;
-// (Markets on its own, where the desk is: its own address, not this one)
-const OWN = "https://finance.inflite.ai/";
+// (Markets on its own, where the desk is: its own address, finance. on this page's site, as Chat's links have it, and
+// never next.'s; read from the page's address through the module's root)
+function deskHref() {
+  try { const u = new URL(M.root.baseURI); return `${u.protocol}//finance.${u.host.replace(/^next\./, "")}/`; } catch (_) { return "https://finance.inflite.ai/"; }
+}
 
 // ---- the section ----
 // (Change Order: on while it's on, the live line saying where the last one moved went)
 const E = { on: false, said: "" };
 function holdingsView() {
+  const wait = notIn();
+  if (wait) return wait;
   if (!S.list.length) return emptyView();
-  const T = totals(), parts = [];
-  if (T.o.length) parts.push(...mixPart(T));
-  if (T.o.length) parts.push(...statsPart(T));
+  const T = totals(), top = [], parts = [], side = [];
+  if (T.o.length) top.push(...mixPart(T), ...statsPart(T));
   const own = S.list.filter((x) => x.qty > 0), fol = S.list.filter((x) => !(x.qty > 0));
   const editBtn = S.list.length > 1 ? h("button.mk-edit", { type: "button", "data-k": "edit", "aria-pressed": String(E.on), onclick: () => { E.on = !E.on; E.said = ""; redraw(); }, text: E.on ? "Done" : "Change Order" }) : null;
   if (own.length) {
@@ -37,10 +44,12 @@ function holdingsView() {
   }
   if (E.on) parts.push(h("p.vh", { "aria-live": "polite", "data-el": "order-say", tabindex: "-1", text: E.said }));
   parts.push(h("div.links", {}, h("button", { type: "button", onclick: () => M.open.addStock(), text: "Add a Stock" }), editBtn));
-  if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
-  parts.push(h("p.foot.mk-foot", {}, h("button.inline", { type: "button", "data-k": "about", onclick: () => M.open.about(), text: "About These Prices" })));
-  parts.push(h("p.foot.mk-desk", {}, "The desk view is in Markets on its own. ", h("a.inline", { href: OWN, target: "_blank", rel: "noopener", text: "Open Markets" })));
-  return parts;
+  if (T.o.length) side.push(...accountsPart(T), ...incomePart(), ...vsPart());
+  const out = [top.length ? h("div.mk-htop", {}, top) : null, h("div.mk-hmain", {}, parts), side.length ? h("div.mk-hside", {}, side) : null,
+    h("p.foot.mk-foot", {}, h("button.inline", { type: "button", "data-k": "about", onclick: () => M.open.about(), text: "About These Prices" })),
+    h("p.foot.mk-desk", {}, "The desk view is in Markets on its own. ", h("a.inline", { href: deskHref(), target: "_blank", rel: "noopener", text: "Open Markets" }))];
+  out.hold = true;
+  return out;
 }
 // Your list's order, a step at a time (S2-D19, app.js orderView :1612): each one's Move Up and Move Down; each change
 // kept with your account as it's made, in turn (the last one's answer taken as the list); one at the top or foot can't
@@ -56,10 +65,13 @@ function orderList(group, own, fol) {
     E.said = `${x.name}: ${j + 1} of ${group.length}`;
     redraw();
     M.root?.querySelector(`[data-k="move-${by < 0 ? "up" : "down"}"][data-sym="${String(x.symbol).replace(/["\\]/g, "\\$&")}"]`)?.focus({ preventScroll: true });
-    const n = ++ORDER.n, syms = S.list.map((y) => y.symbol);
+    // (each one kept in turn; one that couldn't be kept is what flush() says is lost until a later one's kept, which
+    // carries the whole order; an answer for an account that's gone since is dropped)
+    const n = ++ORDER.n, syms = S.list.map((y) => y.symbol), g = core.genNow();
     core.ordering(1);
-    ORDER.q = ORDER.q.then(() => A.order(syms)).then((r) => { if (n === ORDER.n) { S.list = r.holdings; core.changed(); } }, (e) => { toast(e.message, true); })
-      .finally(() => core.ordering(-1));
+    ORDER.q = ORDER.q.then(() => A.order(syms)).then((r) => { if (!core.mine(g)) return; core.orderLost(false); if (n === ORDER.n) { S.list = r.holdings; core.changed(); } },
+      (e) => { if (!core.mine(g)) return; core.orderLost(true); toast(e.message, true); })
+      .finally(() => { if (core.mine(g)) core.ordering(-1); });
     core.ordering(0, ORDER.q);
   };
   return h("div.list.mk-order", {}, group.map((x, i) => h("div.item.ord", {},
@@ -97,14 +109,14 @@ function mixRing(T, by) {
     a0 += span;
     const el = slices.length === 1 ? C.el("circle", { class: "arc", cx: 100, cy: 100, r: R, pathLength: 1 })
       : (() => { const [x0, y0] = P(s0), [x1, y1] = P(s1); return C.el("path", { class: "arc", d: `M${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 ${s1 - s0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`, pathLength: 1 }); })();
-    el.style.cssText = `--c:${sl.c};--i:${i}`;
+    el.style.setProperty("--c", sl.c); el.style.setProperty("--i", String(i));
     el.addEventListener("click", () => pick(i));
     svg.append(el);
     return el;
   });
   const big = h("b.num", { text: bigMoney(T.value) }), name = h("span", { text: plural(T.o.length, "holding") }), share = h("small.num");
   const centre = h("div.dialc", { "aria-live": "polite" }, name, big, share);
-  const keys = slices.map((sl, i) => h("button.mkey", { type: "button", "aria-pressed": "false", onclick: () => pick(i) }, h("i", { style: `background:${sl.c}` }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` })));
+  const keys = slices.map((sl, i) => h("button.mkey", { type: "button", "aria-pressed": "false", onclick: () => pick(i) }, h("i", { vars: { c: sl.c } }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` })));
   let on = -1;
   function pick(i) {
     on = on === i ? -1 : i;
@@ -123,9 +135,9 @@ function mixPart(T) {
   if (ways.length < 2) return [ring];
   // (a segmented control, its thumb sliding to the one chosen; data-mix, not data-k: data-k=account is an account's row)
   const at = ways.findIndex(([k]) => k === S.mix);
-  const seg = h("div.seg.ways", { role: "group", "aria-label": "Your mix, by", vars: { n: String(ways.length) } }, h("span.sl", { style: `transform:translateX(${at * 100}%)` }),
+  const seg = h("div.seg.ways", { role: "group", "aria-label": "Your mix, by", vars: { n: String(ways.length) } }, h("span.sl", { vars: { at: String(at) } }),
     ways.map(([k, label], i) => h("button", { type: "button", "data-mix": k, "aria-pressed": String(k === S.mix), text: label,
-      onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mix === k))); el("ring")?.replaceWith(mixRing(totals(), k)); } })));
+      onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.setProperty("--at", String(i)); seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mix === k))); el("ring")?.replaceWith(mixRing(totals(), k)); } })));
   return [h("div.mixrow", {}, seg), ring];
 }
 // How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
@@ -147,7 +159,7 @@ function statsPart(T) {
 // Your accounts: each one's worth and day; and the ISA's allowance, what's left of it this tax year
 function accountsPart(T) {
   const accts = byAccount(T.o), tagged = accts.some((a) => a.key), iy = isaYear();
-  if (!tagged && !tracksIsa()) return [h("p.foot", { class: "foot", style: "padding-top:22px" }, "Hold some in an ISA or a pension? Say which on each one's page (Edit Holding) to see each account's total. ",
+  if (!tagged && !tracksIsa()) return [h("p.foot", { class: "foot mk-pt22" }, "Hold some in an ISA or a pension? Say which on each one's page (Edit Holding) to see each account's total. ",
     h("button.inline", { type: "button", onclick: () => M.open.isa(), text: "Track your ISA allowance" }))];
   const rows = (tagged ? accts : []).map((a, i) => h("button.item.two.rise", { type: "button", vars: { i: String(i) }, "data-k": "account", "data-acct": a.key || "none", onclick: () => M.open.account(a.key) },
     h("span", {}, h("b", { text: a.name }), h("small", { text: `${plural(a.o.length, "holding")} · ${Math.round((a.value / T.value) * 100)}% of your money` })),
@@ -190,7 +202,7 @@ function accountView(key) {
   return [h("div.shead", {}, h("small", { text: key === "isa" ? "Stocks & Shares ISA" : key === "sipp" ? "Pension (SIPP)" : key === "gia" ? "General account" : "Your holdings" }), closeBtn()),
     h("div.sname", { text: a.name }),
     h("div.sprice.num", { text: money(a.value) }),
-    h("div.sdelta.num", {}, h("span", { class: tone(a.day), text: `${signed(a.day)} (${pct(a.value - a.day ? (a.day / (a.value - a.day)) * 100 : 0)})` }), h("span", { style: "color:var(--text-3)", text: "today" })),
+    h("div.sdelta.num", {}, h("span", { class: tone(a.day), text: `${signed(a.day)} (${pct(a.value - a.day ? (a.day / (a.value - a.day)) * 100 : 0)})` }), h("span.mk-t3", { text: "today" })),
     h("div.facts", {},
       costed.length ? h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(gain)}`, text: signed(gain) }), h("i.num", { text: `${pct(paid ? (gain / paid) * 100 : 0, 1)} on ${money(paid, "GBP", 0)}${divs >= 0.5 ? `, with ${money(divs, "GBP", 0)} of dividends` : ""}` })) : null,
       key === "isa" && iy ? h("button.fact.press", { type: "button", onclick: () => pushSheet("isa") }, h("span", { text: `Allowance, ${iy.year}` }), h("b.num", { text: `${money(iy.left, "GBP", 0)} left` }), h("i.num", { text: `of ${money(iy.allowance, "GBP", 0)}` }), allowBar(iy.used)) : null),
@@ -214,10 +226,11 @@ export function openAbout(ctx) { return openSheet(aboutView); }
 
 export function view(el, ctx) {
   const sec = el;
-  const draw = (animate = true) => { keepFocus(() => sec.replaceChildren(h("div.mk-view", {}, holdingsView()))); afterDraw(sec, animate); };
+  const draw = (animate = true) => { keepFocus(() => { const body = holdingsView(); sec.replaceChildren(h(body.hold ? "div.mk-view.mk-hold" : "div.mk-view", {}, body)); }); afterDraw(sec, animate); };
   return {
     draw(animate) { redraw = () => draw(false); core.loadPaid(); draw(animate); },
-    hide() { if (E.on && !ORDER.n) E.on = false; },
+    // (Change Order left on only while a move is still on its way to your account)
+    hide() { if (E.on && !core.orderingNow()) E.on = false; },
     destroy() { E.on = false; sec.replaceChildren(); redraw = () => {}; },
   };
 }

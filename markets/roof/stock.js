@@ -15,6 +15,7 @@ const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
 
 // A stock's page
 function stockView(sym, o = {}) {
+  core.stockOpen(sym);
   const held = S.list.find((x) => x.symbol === sym), q = S.q[sym];
   if (!q) {
     const head = [h("div.shead", {}, backBtn(), h("small", { text: plainSym(sym) }), closeBtn()), h("div.sname", { text: o.name || held?.name || sym })];
@@ -26,17 +27,17 @@ function stockView(sym, o = {}) {
     const here = () => Sheet.stack.at(-1)?.[1]?.[0] === sym;
     A.quotes([sym]).then((r) => { Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates); if (!r.quotes[sym]) stockView.failed.add(sym); if (here()) drawSheet(); },
       () => { stockView.failed.add(sym); if (here()) drawSheet(); });
-    return [...head, h("div.sprice", { style: "opacity:.3", text: "–" })];
+    return [...head, h("div.sprice.mk-faint", { text: "–" })];
   }
   const name = held?.name || INDEX_NAMES[sym] || o.name || q.name;
   const box = h("div.chartbox", { "data-el": "cb" });
   const seg = h("div.seg", { role: "group", "aria-label": "Chart range" }, h("span.sl"), RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: label })));
-  const why = h("p.why", { "data-el": "why" }, h("span", { style: "opacity:.35", text: "Finding out why…" }));
+  const why = h("p.why", { "data-el": "why" }, h("span.mk-dim", { text: "Finding out why…" }));
   const parts = [
     h("div.shead", {}, backBtn(), h("small", { text: [plainSym(sym), q.ex, ["trust", "fund"].includes(kindOf(q)) ? KIND_SAID[kindOf(q)] : null].filter(Boolean).join(" · ") }), closeBtn()),
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
-    h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, "data-el": "rpct", text: q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", "data-el": "rsaid", text: "today" })),
+    h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, "data-el": "rpct", text: q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span.mk-t3", { "data-el": "rsaid", text: "today" })),
     held?.qty > 0 && valueOf(held) != null ? yoursPart(sym, held, q) : null,
     box, seg, why, h("div", { "data-el": "snews" }), facts(sym, held, q),
     held ? h("div", { "data-el": "buys" }) : null,
@@ -90,8 +91,8 @@ async function drawBuys(sym) {
   if (!box.isConnected) return;
   const add = h("button", { type: "button", onclick: () => pushSheet(buyView, sym), text: held?.buys ? "Add a Buy or Sale" : held?.qty > 0 ? "Record Your Buys" : "Record a Buy" });
   // (ones that couldn't come: said, with Try Again, and one more can still be added)
-  if (failed) { box.replaceChildren(h("h3.slabel", {}, "Buys and sales"), h("p.hint", {}, "Couldn't get your buys and sales just now. ", h("button.inline", { type: "button", onclick: () => drawBuys(sym), text: "Try Again" })), h("div.links", { style: "margin-top:14px" }, add)); return; }
-  if (!b?.buys?.length) { box.replaceChildren(h("div.links", { style: "margin-top:20px" }, add)); return; }
+  if (failed) { box.replaceChildren(h("h3.slabel", {}, "Buys and sales"), h("p.hint", {}, "Couldn't get your buys and sales just now. ", h("button.inline", { type: "button", onclick: () => drawBuys(sym), text: "Try Again" })), h("div.links.mk-mt14", {}, add)); return; }
+  if (!b?.buys?.length) { box.replaceChildren(h("div.links.mk-mt20", {}, add)); return; }
   const when = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const row = (x, i) => {
     const del = h("button.del.press", { type: "button", "aria-label": "Delete" }, icon("x", 14, 2.6));
@@ -99,7 +100,7 @@ async function drawBuys(sym) {
       e.stopPropagation();
       if (!del.classList.contains("sure")) { del.classList.add("sure"); del.replaceChildren("Delete"); setTimeout(() => { if (del.isConnected) { del.classList.remove("sure"); del.replaceChildren(icon("x", 14, 2.6)); } }, 3000); return; }
       del.disabled = true;
-      try { const r = await A.dropBuy(x.id); S.list = r.holdings; toast(x.qty > 0 ? "Buy taken off" : "Sale taken off"); await refresh(true); drawSheet(); core.changed(); loadPaid(true); S.inc = null; }
+      try { const g = core.genNow(), r = await A.dropBuy(x.id); if (!core.mine(g)) return; S.list = r.holdings; toast(x.qty > 0 ? "Buy taken off" : "Sale taken off"); await refresh(true); drawSheet(); core.changed(); loadPaid(true); S.inc = null; }
       catch (err) { toast(err.message, true); del.disabled = false; }
     };
     return h("div.item.buy.rise", { vars: { i: String(i) } },
@@ -109,8 +110,8 @@ async function drawBuys(sym) {
   // (what's made on sales only once there's been one: replaceChildren writes a null out as the word, as h() doesn't)
   box.replaceChildren(...[h("h3.slabel", {}, "Buys and sales"),
     h("div.list.flush", {}, [...b.buys].reverse().map(row)),
-    b.made != null ? h("div.facts", { style: "margin-top:8px" }, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: rate(q.cur) != null ? signed(b.made * rate(q.cur)) : signed(b.made, q.cur) }), h("i", { text: "over what it cost you on average" }))) : null,
-    h("div.links", { style: "margin-top:14px" }, add)].filter(Boolean));
+    b.made != null ? h("div.facts.mk-mt8", {}, h("div.fact", {}, h("span", { text: "Made on what you've sold" }), h("b", { class: `num ${tone(b.made)}`, text: rate(q.cur) != null ? signed(b.made * rate(q.cur)) : signed(b.made, q.cur) }), h("i", { text: "over what it cost you on average" }))) : null,
+    h("div.links.mk-mt14", {}, add)].filter(Boolean));
 }
 // A buy or a sale: which, the day, how many and the price each (today's to start with)
 function buyView(sym) {
@@ -122,7 +123,7 @@ function buyView(sym) {
   const day = h("input", { type: "date", id: "mk-day", value: today, max: today, "aria-label": "The day" });
   const qty = h("input", { type: "text", inputmode: "decimal", id: "mk-bqty", placeholder: "0", "aria-label": "How many" });
   const price = h("input", { type: "text", inputmode: "decimal", id: "mk-bprice", value: q?.price != null ? String(+q.price.toFixed(q.price < 1 ? 4 : 2)) : "", "aria-label": "Price each" });
-  const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-bsave" }, "Save Buy");
+  const save = h("button.btn.go.press.mk-save", { type: "button", id: "mk-bsave" }, "Save Buy");
   // (a price in pence typed as pounds, by the look of it: asked about under it, and once more on saving)
   let sure = false;
   const echo = h("p.echo", { id: "mk-becho", "aria-live": "polite" });
@@ -141,7 +142,8 @@ function buyView(sym) {
     if (pp && !sure) { sure = true; return toast(`Did you mean ${pp}? Save again to keep ${money(p, q.cur)} a share.`, true); }
     save.disabled = true;
     try {
-      const r = await A.addBuy({ symbol: sym, qty: n, price: p, at, sold });
+      const g = core.genNow(), r = await A.addBuy({ symbol: sym, qty: n, price: p, at, sold });
+      if (!core.mine(g)) return;
       S.list = r.holdings;
       toast(sold ? "Sale saved" : "Buy saved");
       await refresh(true);
@@ -201,7 +203,7 @@ async function stockChart(sym, box, seg) {
     box.classList.add("loading");
     const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 60e3 : 600e3);
     let c = fresh ? kept.c : null;
-    if (!c) { try { c = await A.chart(sym, r); S.charts.set(key, { at: Date.now(), c }); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else return back(n, e.message); } }
+    if (!c) { try { c = await A.chart(sym, r); core.chartSet(key, c); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else return back(n, e.message); } }
     if (n !== seq || !box.isConnected) return;
     box.classList.remove("loading");
     if (!c.c.length) return back(n, shown ? "Nothing to draw for that just now." : null);
@@ -284,7 +286,7 @@ function alertView(sym) {
   const pick = async (p, btn) => {
     if (!(p === 0 || (Number.isFinite(p) && p >= 1 && p <= 50))) return toast("Say a move of 1% to 50%.", true);
     if (btn) btn.disabled = true;
-    try { toast(await core.alertSet(sym, p)); backSheet(); }
+    try { const said = await core.alertSet(sym, p); if (said) { toast(said); backSheet(); } }
     catch (e) { toast(e.message, true); if (btn) btn.disabled = false; }
   };
   const own = h("input", { type: "text", inputmode: "decimal", id: "mk-alert", "data-k": "alert", placeholder: "3", value: cur ? String(cur) : "", "aria-label": "A move of this many percent" });

@@ -37,8 +37,8 @@ export function h(sel, attrs = {}, ...kids) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
     if (k === "text") e.textContent = v;
-    // (styles set through the CSSOM, never as an attribute: the page's rules allow no inline ones)
-    else if (k === "style") e.style.cssText = v;
+    // (no style strings: classes in markets.css, and a figure a drawing needs as a custom property through vars)
+    else if (k === "style") throw new Error("h: never style");
     else if (k === "vars") for (const [n, x] of Object.entries(v)) e.style.setProperty("--" + n, x);
     else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
     else e.setAttribute(k, v === true ? "" : v);
@@ -75,6 +75,7 @@ function frame(view) {
       if (Sheet.handle !== hd) return;
       Sheet.stack = []; Sheet.handle = null; Sheet.body = null; Sheet.say = null;
       core.sheetIs(false);
+      core.stockOpen(null);
       core.emit("list");
     },
   });
@@ -181,16 +182,16 @@ export function paint(sym, up) {
 // ---- Markets' small pictures (app.js 999-1006, 1016, 1135-1145) ----
 const { pct, tone, money, priceSaid, valueOf, monthSaid } = core;
 export const vbars = (rows, say = (v) => pct(v), max = Math.max(...rows.map((r) => Math.abs(r[1])), 0.01)) =>
-  h("div.vbar", {}, rows.map(([k, v], i) => h("div", {}, h("span", { text: k }), h("s", { style: `width:${Math.max(4, (Math.abs(v) / max) * 100)}%;background:${v >= 0 ? "var(--up)" : "var(--down)"};animation-delay:${i * 0.12 + 0.2}s` }), h("b.num", { class: `num ${tone(v)}`, text: say(v) }))));
-export const range52 = (q, lo, hi, at) => [h("div.range52", { vars: { c: at > 0.5 ? "var(--up-soft)" : "var(--down-soft)" } }, h("i", { style: `left:${Math.max(0, Math.min(100, at * 100))}%` })), h("div.ends.num", {}, h("span", { text: priceSaid(q, lo) }), h("span", { text: priceSaid(q, hi) }))];
+  h("div.vbar", {}, rows.map(([k, v], i) => h("div", {}, h("span", { text: k }), h("s", { class: v >= 0 ? "up" : "down", vars: { w: `${Math.max(4, (Math.abs(v) / max) * 100)}%`, d: `${i * 0.12 + 0.2}s` } }), h("b.num", { class: `num ${tone(v)}`, text: say(v) }))));
+export const range52 = (q, lo, hi, at) => [h("div.range52", { vars: { c: at > 0.5 ? "var(--up-soft)" : "var(--down-soft)" } }, h("i", { vars: { at: `${Math.max(0, Math.min(100, at * 100))}%` } })), h("div.ends.num", {}, h("span", { text: priceSaid(q, lo) }), h("span", { text: priceSaid(q, hi) }))];
 export const MIXC = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)", "var(--m6)"];
-export const mixBar = (o) => h("div.mix", {}, [...o].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 6).map((x, i) => h("i", { style: `flex:${valueOf(x)};background:${MIXC[i]};animation-delay:${0.2 + i * 0.06}s` })));
+export const mixBar = (o) => h("div.mix", {}, [...o].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 6).map((x, i) => h("i", { vars: { f: String(valueOf(x)), c: MIXC[i], d: `${0.2 + i * 0.06}s` } })));
 export function sparkCard(sym) {
   const q = S.q[sym], s = C.el("svg", { viewBox: "0 0 300 44", preserveAspectRatio: "none", class: "mk-sparkline", "aria-hidden": "true" });
   const p = C.el("path", { d: C.spark(q.spark, 300, 44, q.prev), fill: "none", stroke: q.chgPct >= 0 ? "var(--up)" : "var(--down)", "stroke-width": 2, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" });
   s.append(p); requestAnimationFrame(() => C.drawIn(p, 0.3)); return s;
 }
-export const allowBar = (used) => h("div.allow", {}, h("i", { style: `width:${Math.max(used > 0 ? 2 : 0, used * 100)}%` }));
+export const allowBar = (used) => h("div.allow", {}, h("i", { vars: { w: `${Math.max(used > 0 ? 2 : 0, used * 100)}%` } }));
 // an insight's picture, as core.insights names it ([kind, …args])
 export function viz(v) {
   if (!Array.isArray(v)) return null;
@@ -204,10 +205,10 @@ export function viz(v) {
 }
 // a year of it, a bar a month (the chosen one bright). o: { add: twelve more, drawn on top apart, est (m) → still to come }
 export function incomeBars(I, chosen, onPick, tall = 120, o = {}) {
-  const max = Math.max(...I.months.map((m, i) => m.total + (o.add?.[i] || 0)), 0.01), bar = (v) => `height:${Math.max(3, Math.round((v / max) * tall))}px`;
+  const max = Math.max(...I.months.map((m, i) => m.total + (o.add?.[i] || 0)), 0.01), bar = (v) => ({ ht: `${Math.max(3, Math.round((v / max) * tall))}px` });
   return h("div.ibars", onPick ? { role: "group", "aria-label": "Dividends by month" } : { "aria-hidden": "true" }, I.months.map((m, i) => h(onPick ? "button.ib" : "span.ib", { ...(onPick ? { type: "button", "aria-pressed": String(i === chosen), onclick: () => onPick(i), "aria-label": `${monthSaid(m.d, true)}: ${money(m.total, "GBP", 0)}` } : {}), vars: { k: String(i) } },
-    o.add?.[i] ? h("i.add", { style: bar(o.add[i]) }) : null,
-    h("i", { class: m.total > 0 ? (o.est?.(m) ? "est" : null) : "none", style: bar(m.total) }), h("span", { text: monthSaid(m.d).slice(0, onPick ? 3 : 1) }))));
+    o.add?.[i] ? h("i.add", { vars: bar(o.add[i]) }) : null,
+    h("i", { class: m.total > 0 ? (o.est?.(m) ? "est" : null) : "none", vars: bar(m.total) }), h("span", { text: monthSaid(m.d).slice(0, onPick ? 3 : 1) }))));
 }
 
 // ---- a story: read in Markets (app.js readsIn, markRead) ----

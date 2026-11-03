@@ -47,6 +47,7 @@ export const connector = {
       out.push({ title: `Find “${typed}” in Markets`, sub: "Markets", icon: "markets", run: () => {
         Object.assign(want, { q: typed, at: Date.now() });
         if (want.open) return want.open();
+        // (not mounted, no fw: a link to /markets/ clicked, for the frame's link handler; no address set here, §5.1)
         const d = globalThis.document, a = d.createElement("a");
         a.href = "/markets/"; d.body.append(a); a.click(); a.remove();
       } });

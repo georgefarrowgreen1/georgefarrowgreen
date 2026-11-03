@@ -32,7 +32,7 @@ async function follow(sym, name, btn) {
   if (S.list.some((x) => x.symbol === sym)) return pushSheet("stock", sym, { name });
   btn.disabled = true;
   try {
-    await core.follow(sym, name);
+    if (!(await core.follow(sym, name))) return;
     btn.classList.add("on"); btn.replaceChildren(icon("check", 15, 2.8)); btn.setAttribute("aria-label", `${name} is in your list`);
     navigator.vibrate?.(8);
     toast(`Following ${name}`);
@@ -114,7 +114,7 @@ function editView(sym, o = {}) {
     const n = num(qty.value) ?? 0, c = priceIn(cost.value, q), p = meant();
     sure = false;
     echo.replaceChildren(c == null || !Number.isFinite(c) || !(n > 0) ? "" : per === "each" ? `${curMoney(c * n)} in all, for ${fmt(n, n % 1 ? 2 : 0)} shares` : `${curMoney(c / n)} each`,
-      p ? h("button.inline", { type: "button", style: "margin-left:6px", onclick: () => { cost.value = p; tell(); cost.focus(); }, text: `Did you mean ${p}?` }) : "");
+      p ? h("button.inline.mk-ml6", { type: "button", onclick: () => { cost.value = p; tell(); cost.focus(); }, text: `Did you mean ${p}?` }) : "");
   };
   const perSeg = h("div.per", { role: "group", "aria-label": "What you paid is" }, [["each", "Each"], ["total", "In total"]].map(([k, label]) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === per), text: label,
     onclick: () => {
@@ -132,7 +132,7 @@ function editView(sym, o = {}) {
   let acct = held?.account ?? null;
   const choice = h("div.choice", { role: "group", "aria-label": "Held in" }, ACCOUNTS.map(([k, n]) => h("button.press", { type: "button", "data-a": k, "aria-pressed": String(acct === k), text: n,
     onclick: (e) => { acct = acct === k ? null : k; choice.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.a === acct))); } })));
-  const save = h("button.btn.go.press", { type: "button", style: "width:100%;margin-top:26px", id: "mk-save" }, held ? "Save" : "Add to Your List");
+  const save = h("button.btn.go.press.mk-save", { type: "button", id: "mk-save" }, held ? "Save" : "Add to Your List");
   save.onclick = async () => {
     const n = num(qty.value) ?? 0, c0 = priceIn(cost.value, q), t = since.value ? Date.parse(since.value + "T12:00:00Z") : null;
     if (!Number.isFinite(n) || n < 0) return toast("How many you own should be a number.", true);
@@ -145,7 +145,9 @@ function editView(sym, o = {}) {
     if (t != null && (!Number.isFinite(t) || t > Date.now() + 864e5)) return toast("Choose the day you bought it, as on a calendar.", true);
     save.disabled = true;
     try {
-      const r = await A.putHolding({ symbol: sym, name, qty: n, cost: c, account: acct, ...(held?.buys ? {} : { since: t }) });
+      const g = core.genNow(), r = await A.putHolding({ symbol: sym, name, qty: n, cost: c, account: acct, ...(held?.buys ? {} : { since: t }) });
+      // (an answer for an account that's gone since: dropped)
+      if (!core.mine(g)) return;
       S.list = r.holdings; S.news = null;
       toast(held ? "Saved" : `${name} added`);
       const back = Sheet.stack.length > 1 && Sheet.stack.at(-2)[0].sheet === "stock";
