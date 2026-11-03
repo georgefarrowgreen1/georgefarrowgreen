@@ -84,11 +84,18 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   assert.ok(!/class="bsheet"|class="dimmer"/.test(html), 'none of the page’s old sheets');
 });
 
-test('under the roof, its sheets are InFlite’s sheet, in the frozen markup: Morning, Every App’s, Edit Today and Weather Notifications', { skip: roofOnly }, () => {
+test('under the roof, its sheets are InFlite’s sheet, in the frozen markup: Morning, Every App’s, Edit Today, Weather Notifications and (stage 4) Mail Notifications', { skip: roofOnly }, () => {
   const html = String(pub('index.html'));
   const dialogs = [...html.matchAll(/<dialog\b[^>]*>[\s\S]*?<\/dialog>/g)].map((m) => m[0]);
   const ids = dialogs.map((d) => /\sid="([^"]+)"/.exec(d)?.[1]);
-  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify'], 'the four, as dialogs');
+  // (stage 4's B0-b adds Mail Notifications with Mail's module, s4/spec §3.8; an inflite beside without Mail's module
+  // has the four)
+  const mail = existsSync(new URL('../../email/public/roof/mail.js', PUB));
+  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify', ...(mail ? ['sh-mailnotify'] : [])], mail ? 'the five, as dialogs' : 'the four, as dialogs');
+  if (mail) {
+    assert.match(html, /<h2 id="sh-mailnotify-t" tabindex="-1">Mail Notifications<\/h2>/);
+    assert.match(html, /<div class="ifs-body" id="mlnBody"><\/div><\/dialog>/, 'Mail Notifications’ body, drawn by mailnotify.js');
+  }
   for (const [i, d] of dialogs.entries()) {
     const id = ids[i];
     const head = new RegExp(`^<dialog class="ifl-sheet" id="${id}" aria-labelledby="${id}-t"><div class="ifs-grab" aria-hidden="true"></div><header class="ifs-head"><h2 id="${id}-t" tabindex="-1">[^<]+</h2><button class="ifs-btn" type="button" data-close aria-label="Close">✕</button></header><div class="ifs-body"[^>]*>`);
