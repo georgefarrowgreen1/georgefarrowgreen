@@ -53,8 +53,9 @@ function graphFrom(start) {
   assert.deepEqual(bad, [], 'static imports are ./<file>.js beside it');
   return [...seen].map((h) => '/mail/roof/' + h.slice(MOD.href.length));
 }
-const lazyOutside = (s0) => { const s = uncomment(s0), bad = []; for (const m of s.matchAll(/\bimport\s*\(/g)) if (!/fw\.lazy\(\s*(?:async\s*)?\(\s*\)\s*=>\s*(?:await\s+)?$/.test(s.slice(Math.max(0, m.index - 60), m.index))) bad.push(s.slice(Math.max(0, m.index - 40), m.index + 30)); return bad; };
-const lazyTargets = (s0) => [...uncomment(s0).matchAll(/fw\.lazy\(\s*(?:async\s*)?\(\s*\)\s*=>\s*(?:await\s+)?import\(\s*["']\.\/([\w.-]+)["']\s*\)/g)].map((m) => m[1]);
+// (every import( is the body of fw.lazy(: `fw.lazy((q) => import("./x.js" + q))` (s24-contracts §7) or `fw.lazy(() => import("./x.js"))`)
+const lazyOutside = (s0) => { const s = uncomment(s0), bad = []; for (const m of s.matchAll(/\bimport\s*\(/g)) if (!/fw\.lazy\(\s*(?:async\s*)?(?:\(\s*(?:[\w$]+\s*)?\)|[\w$]+)\s*=>\s*(?:await\s+)?$/.test(s.slice(Math.max(0, m.index - 60), m.index))) bad.push(s.slice(Math.max(0, m.index - 40), m.index + 30)); return bad; };
+const lazyTargets = (s0) => [...uncomment(s0).matchAll(/fw\.lazy\(\s*(?:async\s*)?(?:\(\s*(?:[\w$]+\s*)?\)|[\w$]+)\s*=>\s*(?:await\s+)?import\(\s*["']\.\/([\w.-]+)["']\s*(?:\+\s*[\w$]+\s*)?\)/g)].map((m) => m[1]);
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([;{},)\]])[ \t]*\/\/(?![^\n]*["'`])[^\n]*$/gm, '$1');
 const gz = (files) => gzipSync(files.map((f) => strip(read(f))).join('\n'), { level: 9 }).length;
 
@@ -84,7 +85,7 @@ test('mail.js exports CONTRACT 1, BUILD and NEWS equal to email/public/app.js’
     assert.equal(M.entry, '/mail/roof/mail.js');
     assert.equal(M.connector, '/mail/roof/connector.js');
     assert.deepEqual(M.css, CSS);
-    assert.deepEqual(M.keep, ['thread']);
+    assert.deepEqual(M.stay, ['thread'], 'the reader’s key stays in the address (s24-contracts §3: stay)');
     assert.equal(M.link, 'email');
   }
   // (every instance method, by name, in mount's answer)
@@ -200,6 +201,8 @@ test('connector.files is exactly the static import graph from mail.js and the th
 
 test('every dynamic import in the module sits inside fw.lazy( (D21)', { skip }, () => {
   assert.deepEqual(lazyOutside('fw.lazy(() => import("./compose.js"))'), []);
+  assert.deepEqual(lazyOutside('fw.lazy((q) => import("./compose.js" + q))'), []);
+  assert.deepEqual(lazyTargets('fw.lazy((q) => import("./compose.js" + q)); fw.lazy(() => import("./viewer.js"))'), ['compose.js', 'viewer.js']);
   assert.equal(lazyOutside('await import("./compose.js")').length, 1);
   for (const f of jsFiles()) assert.deepEqual(lazyOutside(src(f)), [], `email/public/roof/${f}`);
 });
