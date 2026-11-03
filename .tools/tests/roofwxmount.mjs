@@ -12,10 +12,13 @@
 //   a settings change sends PUT /api/weather/me with the body app.js would send, glass kept;
 //   a 401 from /api/weather/me while the session's still signed in: nobody signed out, "Couldn’t sync with your account";
 //   Radar, on a phone (hasTouch, isMobile): html.ifl-fill, a drag and a pinch move and zoom the map (its state()), a tap
-//   gives a reading, the window never scrolls; under data-theme="dark" on a light phone, the map's dark style;
+//   gives a reading, the window never scrolls; under data-theme="dark" on a light phone, the map's dark style, and set
+//   light while it shows, made again in the day style with its listeners not doubled; offline before the first Radar,
+//   "Radar needs a connection"; after 5 minutes out of sight (the page's clock stood in) the map let go, made afresh;
 //   unmount (the frame's destroy) leaves no window or document listener the module added (instrumented
-//   addEventListener/removeEventListener; the reused files' own listeners from their first import, charts.js's resize,
-//   data.js's storage and radarrain.js's visibilitychange, are theirs, not the mount's).
+//   addEventListener/removeEventListener; the reused files' own listeners from their first import, one each of
+//   charts.js's resize, data.js's storage and radarrain.js's visibilitychange, are theirs, not the mount's).
+//   (pull's { signedIn: false } and the PUT body against app.js's mine() are roofwxcore's unit cases.)
 // And two parts that run once their files are real (no STUB export), else say "part skipped: <file> is still B0's stub":
 //   the views part (WV: now.js, days.js, warnings.js, wxui.js): Now's hero, the warnings slot, the credits sheet; 16 Days
 //   with Days by and a day's sheet; Warnings and a warning's sheet, and both empty states; a detail sheet from a tile;
@@ -224,7 +227,8 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   const want = (await stored(p, 'wx:places')).filter((x) => !x.gps && !x.approx && !x.standin).map(({ name, region, lat, lon }) => ({ name, region: region || '', lat, lon }));
   ok(JSON.stringify(put.data?.places) === JSON.stringify(want), 'its places: yours, without My Location', JSON.stringify(put.data?.places));
   ok(put.data?.notify && 'briefAt' in put.data.notify && Number.isFinite(put.base), 'notify and the base version, as app.js sends them');
-  ok(!(await stored(p, 'wx:settings')).temp || (await stored(p, 'wx:settings')).glass === 'clear', 'wx:settings keeps glass');
+  ok((await stored(p, 'wx:settings'))?.glass === 'clear', 'wx:settings keeps glass', JSON.stringify(await stored(p, 'wx:settings')));
+  // (the PUT body key for key against app.js's own mine() is roofwxcore's unit case)
   if (!stubs.wxsettings) {
     // ===================== the settings part (WS) =====================
     for (const page of H.WX_PAGES) {
@@ -344,8 +348,17 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   note(`listeners from /weather/ files while mounted: ${during.length}`);
   await p.evaluate(() => window.kit.F.destroy());
   await p.waitForTimeout(300);
-  const left = await p.evaluate(() => window.__wxListeners.filter((x) => !/\/weather\/(charts|data|radarrain)\.js$/.test(x.from)).map((x) => `${x.who}:${x.type} ${x.at}`));
-  ok(left.length === 0, 'unmount leaves no window or document listener the module added (charts.js’s resize, data.js’s storage and radarrain.js’s visibilitychange, from their first import, are theirs)', left.join(' | '));
+  // (the reused files' own, from their first import, are theirs: exactly one each of charts.js's window resize, data.js's
+  // window storage and radarrain.js's document visibilitychange; any other, or a second, is the mount's)
+  const left = await p.evaluate(() => {
+    const first = { 'charts.js': 'window:resize', 'data.js': 'window:storage', 'radarrain.js': 'document:visibilitychange' }, had = new Set();
+    return window.__wxListeners.filter((x) => {
+      const f = x.from.split('/').pop(), sig = `${x.who}:${x.type}`;
+      if (x.from === `/weather/${f}` && first[f] === sig && !had.has(f)) { had.add(f); return false; }
+      return true;
+    }).map((x) => `${x.who}:${x.type} ${x.at}`);
+  });
+  ok(left.length === 0, 'unmount leaves no window or document listener the module added (only charts.js’s resize, data.js’s storage and radarrain.js’s visibilitychange, once each, from their first import)', left.join(' | '));
   ok(st.errors.length === 0, 'no page errors (radar)', st.errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -357,6 +370,18 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   ok(await p.evaluate(() => document.documentElement.dataset.theme) === 'dark', 'data-theme="dark" on a light phone');
   ok(await until(() => p.evaluate(() => !!document.querySelector('.wx-radar')?.radar), 20000) && !(await p.evaluate(() => document.querySelector('.wx-radar').classList.contains('light-map'))), 'the map in its dark style (fw.theme() first)');
   await shot(p, '9-radar-dark-on-light');
+  // the theme changed while Radar shows (fw.on("theme")): the radar made again in the day style, once, its listeners
+  // not doubled
+  const radarListeners = () => p.evaluate(() => window.__wxListeners.filter((x) => /\/weather\/(radar|mapgl|mapleaf)\.js$/.test(x.from)).map((x) => `${x.who}:${x.type}`).sort().join());
+  const had = await radarListeners();
+  ok(had.length > 0, 'the radar has window or document listeners to count', had);
+  await p.evaluate(() => { window.__oldRadar = document.querySelector('.wx-radar')?.radar; document.documentElement.dataset.theme = 'light'; });
+  ok(await until(() => p.evaluate(() => { const c = document.querySelector('.wx-radar'); return !!c?.radar && c.radar !== window.__oldRadar && c.classList.contains('light-map'); }), 20000), 'set light while Radar shows: the radar made again, in the day style');
+  ok(await p.locator('.wx-radar').count() === 1, 'one radar card, not two');
+  await until(async () => (await radarListeners()) === had, 4000);
+  ok((await radarListeners()) === had, 'the radar’s window and document listeners as they were, not doubled', `${had} → ${await radarListeners()}`);
+  await shot(p, '9b-radar-light-after-change');
+  ok(st.errors.length === 0, 'no page errors (theme change)', st.errors.slice(0, 3).join(' | '));
   await ctx.close();
   const l = await phone({ colorScheme: 'light' });
   await openWeather(l.p, '/weather/#radar');
@@ -364,6 +389,43 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   await shot(l.p, '10-radar-light');
   ok(st.errors.length === 0 && l.st.errors.length === 0, 'no page errors (themes)', [...st.errors, ...l.st.errors].slice(0, 3).join(' | '));
   await l.ctx.close();
+}
+
+// ===================== 5. offline before the first Radar; let go after 5 minutes out of sight =====================
+{
+  const { p, st, ctx } = await phone();
+  await openWeather(p);
+  await ctx.setOffline(true);
+  await p.locator(H.hdSec('radar')).click();
+  ok(await until(() => visible(p, H.wxSec('radar'))), 'Radar shows, offline');
+  ok(await until(async () => (await visible(p, '.wx-radar-off')) && /Radar needs a connection/.test(await text(p, '.wx-radar-off'))), 'offline with no map yet: “Radar needs a connection”', await text(p, '.wx-radar-off'));
+  ok(!(await p.evaluate(() => !!document.querySelector('.wx-radar')?.radar)), 'and no radar made');
+  await shot(p, '11-radar-offline');
+  await ctx.setOffline(false);
+  await p.locator(H.hdSec('now')).click();
+  await p.locator(H.hdSec('radar')).click();
+  ok(await until(() => p.evaluate(() => !!document.querySelector('.wx-radar')?.radar?.state()), 20000), 'back online, the next show makes it');
+  ok(!(await visible(p, '.wx-radar-off')), 'the offline line gone');
+  ok(st.errors.length === 0, 'no page errors (offline)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+{
+  // (the page's clock stood in from the start, so five minutes can pass at once)
+  const { p, st, ctx } = await phone();
+  await p.clock.install();
+  await openWeather(p, '/weather/#radar');
+  ok(await until(() => p.evaluate(() => !!document.querySelector('.wx-radar')?.radar?.state()), 20000), 'Radar made (the page’s clock stood in)');
+  await p.evaluate(() => { window.__firstRadar = document.querySelector('.wx-radar').radar; });
+  await p.locator(H.hdSec('now')).click();
+  await until(() => visible(p, H.wxSec('now')));
+  await p.clock.fastForward('04:30');
+  ok(await p.evaluate(() => document.querySelector('.wx-radar')?.radar === window.__firstRadar), 'out of sight under 5 minutes: kept');
+  await p.clock.fastForward('00:45');
+  ok(await until(() => p.evaluate(() => !document.querySelector('.wx-radar')), 4000), 'after 5 minutes out of sight: the map let go (its card gone)');
+  await p.locator(H.hdSec('radar')).click();
+  ok(await until(() => p.evaluate(() => { const c = document.querySelector('.wx-radar'); return !!c?.radar && c.radar !== window.__firstRadar; }), 20000), 'and made afresh on the next show');
+  ok(st.errors.length === 0, 'no page errors (5 minutes away)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
 }
 
 await b.close();
