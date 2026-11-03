@@ -1,0 +1,184 @@
+// Chat Settings under the roof (stage 3 spec §2.6, S3-D8): one framework sheet (data-sheet=chatsettings) with its pages
+// pushed onto it. Lazy, kept offline (connector.lazy). Frozen opener: openChatSettings(ctx, page?) → sheet Handle.
+//   ctx = { fw, svc, store, open }; page: null (the list) | "location" | "credits", opened straight at it (a pushed page
+//   whose container is [data-page=<page>]).
+// What it holds (vAccount, pigeon/app.js): Pigeons on/off and New Chats Start As; Your Loft (Your Pigeons, Flight Log,
+// Coots: flight.js's sheets, through ctx.open); Pigeon Death; Who Sees What (Share My News, Approximate Location, Live
+// Tracker: `me` settings); Location (a page); Privacy & Security, which is a plain link to Chat's own page at
+// /chats/in/#account (passkeys, sessions, blocked, app lock, encryption: S3-D8, never here); Map & Weather Data (a page).
+// Not here: Appearance (InFlite's own applies), Notifications (You's), Chat Has Moved.
+// Every save is `meta("me", { method: "PATCH", …the keys it edits })` through the core (no message words in any of it); every string from data goes
+// in through textContent (fw.ui's builders).
+import { PLACES, snapToMile, nearestPlace } from "../places.js";
+
+export const PAGES = Object.freeze(["location", "credits"]);
+export const ACCOUNT_HREF = "/chats/in/#account";
+// the `me` switches kept in this sheet: [key, label, sub, on unless the account says otherwise]
+export const PRIVACY = Object.freeze([
+  ["shareNews", "Share My News", "Ranks, streaks, new countries", true],
+  ["approxLocation", "Approximate Location", "About 10 km, not exact", false],
+  ["shareTracker", "Live Tracker", "On the public map, no names", true],
+]);
+// the patch each control saves (only the key it edits)
+export const PATCH = {
+  pigeons: (on) => ({ pigeons: !!on }),
+  newChats: (v) => (v === "instant" || v === "pigeon" ? { newChats: v } : null),
+  risky: (on) => ({ risky: !!on }),
+  privacy: (k, on) => (PRIVACY.some((p) => p[0] === k) ? { [k]: !!on } : null),
+  autoLocation: (on) => ({ autoLocation: !!on }),
+  city: (name) => { const p = PLACES.find((x) => x[0] === name); return p ? { lat: p[1], lon: p[2], place: p[0] } : null; },
+};
+
+// (Me's names are the boundary's: pigeons, startAs, death; Chat's own server words are read too, whichever is there)
+const pigeonsOn = (me) => (me?.pigeons ?? true) !== false;
+const startAs = (me) => ((me?.startAs ?? me?.newChats) === "instant" ? "instant" : "pigeon");
+const deathOn = (me) => !!(me?.death ?? me?.risky);
+const placeSay = (me) => String(me?.place || "Not set").replace(/, (the Moon|Mars)$/, "");
+const worldOf = (me) => (me?.moon ? (me.moon.body === "mars" ? "mars" : "moon") : "earth");
+
+const CREDITS = [
+  ["Weather", [["https://open-meteo.com/", "Open-Meteo", "Forecasts and the wind · CC BY 4.0"], ["https://api.met.no/", "MET Norway", "When Open-Meteo can’t answer · CC BY 4.0"]],
+    "Weather data by Open-Meteo.com and MET Norway, used under Creative Commons Attribution 4.0."],
+  ["The Earth", [["https://www.swpc.noaa.gov/products/planetary-k-index", "NOAA Space Weather", "Magnetic storms that put pigeons off course"], ["https://eonet.gsfc.nasa.gov/", "NASA EONET", "Volcanoes and wildfires to fly around"]],
+    "The planetary K index from NOAA’s Space Weather Prediction Center, and natural events from NASA’s Earth Observatory Natural Event Tracker: both US government data, free to use."],
+  ["Mountains", [["https://registry.opendata.aws/terrain-tiles/", "Terrain Tiles", "Heights for mountain passes · Mapzen and AWS"]],
+    "Terrain Tiles bring together ETOPO1 and GMTED2010 (US government, public domain), SRTM (NASA), EU-DEM (produced using Copernicus data and information funded by the European Union) and other national elevation data."],
+  ["Maps", [["https://www.naturalearthdata.com/", "Natural Earth", "Coastlines, countries and places · public domain"]], ""],
+  ["GIFs", [["https://giphy.com/", "GIPHY", "Search and trending GIFs"]],
+    "The maps and heights are kept on Chat’s own server, and it asks for the weather, the Earth’s news and GIFs itself, so none of these see who you are."],
+];
+
+let shown = null;
+
+export function openChatSettings(ctx, page = null) {
+  const { fw, svc, store, open = {} } = ctx, ui = fw.ui, el = ui.el;
+  if (page != null && !PAGES.includes(page)) page = null;
+  try { shown?.close(); } catch (_) {}
+  const meta = (name, args) => svc.call("meta", name, args);
+  const me = () => store?.get?.("me") || {};
+  const offs = [];
+  let h = null;
+
+  async function save(patch, undo) {
+    if (!patch) return;
+    try { await meta("me", { method: "PATCH", ...patch }); }       // (the core patches `me` from the answer)
+    catch (e) {
+      undo?.();
+      fw.toast(e?.why === "offline" ? "No signal. Try again when you’re back online." : "Couldn’t save that just now. Try again.");
+    }
+  }
+  const foot = (text) => el("p", { class: "chs-foot", text });
+  const lazyOpen = (name, ...a) => () => { try { open[name]?.(ctx, ...a); } catch (_) {} };
+
+  /* -- the list -- */
+  function list(box) {
+    box.replaceChildren();
+    const u = me(), on = pigeonsOn(u);
+    const pg = ui.row({ lead: { icon: "bird" }, title: "Pigeons", sub: "Letters that take real time to fly, with the map, birds and streaks", trail: "switch", checked: on,
+      onChange: (v) => { save(PATCH.pigeons(v)); } });
+    pg.dataset.key = "pigeons";
+    const rows = [pg];
+    if (on) {
+      const seg = ui.seg([["instant", "Instant"], ["pigeon", "By Pigeon"]], startAs(u), (v) => save(PATCH.newChats(v)), { label: "New chats start as" });
+      rows.push(el("div", { class: "chs-line", data: { key: "newChats" } }, el("span", { text: "New Chats Start As" }), seg));
+    }
+    box.append(ui.list(rows, { label: "Pigeons" }));
+    if (on) {
+      const birds = Array.isArray(u.birds) ? u.birds.map((b) => b?.name).filter(Boolean) : [];
+      box.append(ui.list([
+        ui.row({ lead: { icon: "bird" }, title: "Your Pigeons", sub: birds.length ? birds.join(", ") : "Name them, and they build careers", trail: "chevron", run: lazyOpen("openBirds") }),
+        ui.row({ lead: { icon: "map" }, title: "Flight Log", sub: "Miles, passport, badges and looks", trail: "chevron", run: lazyOpen("openFlightLog") }),
+        ui.row({ lead: { icon: "star" }, title: "Coots", sub: "Your Coots Coins, for the shop", value: Number.isFinite(+u.feathers) ? (+u.feathers).toLocaleString("en-GB") : "", trail: "chevron", run: lazyOpen("openFeathers") }),
+      ], { label: "Your Loft" }));
+      const death = ui.row({ lead: { icon: "warn" }, title: "Pigeon Death", trail: "switch", checked: deathOn(u), onChange: (v) => save(PATCH.risky(v)) });
+      death.dataset.key = "risky";
+      box.append(ui.list([death], { label: "Flying" }),
+        foot("Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again."));
+    }
+    box.append(ui.list(PRIVACY.map(([k, title, sub, dflt]) => {
+      const r = ui.row({ title, sub, trail: "switch", checked: u[k] == null ? dflt : u[k] !== false && !!u[k], onChange: (v) => save(PATCH.privacy(k, v)) });
+      r.dataset.key = k;
+      return r;
+    }), { label: "Who Sees What" }), foot("News works both ways: turn it off and you won’t see your friends’ either. Only your friends see where you are."));
+    const sec = ui.row({ lead: { icon: "lock" }, title: "Privacy & Security", sub: "Passkeys, signed-in phones, blocked, app lock and safety numbers, on Chat’s own page", trail: "chevron", href: ACCOUNT_HREF });
+    sec.dataset.act = "account";
+    const loc = ui.row({ lead: { icon: worldOf(u) === "earth" ? "locate" : "moon" }, title: "Location", value: placeSay(u), trail: "chevron", run: () => go("location") });
+    loc.dataset.go = "location";
+    box.append(ui.list([loc, sec], { label: "Settings" }));
+    const cr = ui.btn("Map & Weather Data", { small: true, act: "credits", run: () => go("credits") });
+    cr.dataset.go = "credits";
+    box.append(el("p", { class: "chs-credits" }, cr));
+  }
+
+  /* -- Location -- */
+  function location(box) {
+    box.replaceChildren();
+    const u = me(), w = worldOf(u);
+    const rows = [ui.row({ lead: { icon: w === "earth" ? "locate" : "moon" }, title: w === "earth" ? "Location" : `On ${w === "mars" ? "Mars" : "the Moon"}`, value: placeSay(u) })];
+    const here = ui.row({ lead: { icon: "locate" }, title: "Use Current Location", run: locate });
+    here.dataset.act = "locate";
+    rows.push(here);
+    const sel = el("select", { class: "chs-sel", "aria-label": "Choose a city", data: { act: "city" } }, el("option", { value: "", text: "Choose a City" }),
+      [...PLACES].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => { const o = el("option", { value: n, text: n }); if (n === u.place) o.selected = true; return o; }));
+    sel.addEventListener("change", () => { if (sel.value) save(PATCH.city(sel.value)); });
+    rows.push(el("label", { class: "chs-line" }, el("span", { text: "Choose a City" }), sel));
+    if (w === "earth") {
+      const auto = ui.row({ title: "Update Automatically", sub: "Every minute while Chats is open", trail: "switch", checked: !!u.autoLocation, onChange: (v) => save(PATCH.autoLocation(v)) });
+      auto.dataset.key = "autoLocation";
+      rows.push(auto);
+    }
+    for (const [b, title, sub] of [["moon", "Go to the Moon", "Only lunar pigeons fly there"], ["mars", "Go to Mars", "Only laser pigeons reach it, at the speed of light"]]) {
+      const r = ui.row({ lead: { icon: "moon" }, title: w === b ? `Move on ${b === "mars" ? "Mars" : "the Moon"}` : title, sub, trail: "chevron", run: lazyOpen("openMoonPick", b) });
+      r.dataset.act = "moonpick"; r.dataset.id = b;
+      rows.push(r);
+    }
+    box.append(ui.list(rows), foot(w === "earth"
+      ? "Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile."
+      : "Choosing somewhere on Earth brings you home. Your spot on Earth isn’t kept while you’re away."));
+  }
+  // where you are, in the page (the exact spot never leaves this phone: snapped to a mile here, as Chat does)
+  function locate() {
+    const g = globalThis.navigator?.geolocation;
+    if (!g) return fw.toast("This browser can’t share your location. Choose a city instead.");
+    g.getCurrentPosition((p) => {
+      const { lat, lon } = snapToMile(p.coords.latitude, p.coords.longitude);
+      save({ lat, lon, place: nearestPlace(lat, lon) });
+    }, () => fw.toast("Location is off for this site. Choose a city instead."), { maximumAge: 60e3, timeout: 15e3 });
+  }
+
+  /* -- Map & Weather Data -- */
+  function credits(box) {
+    for (const [head, links, note] of CREDITS) {
+      box.append(ui.list(links.map(([href, title, sub]) => {
+        const r = ui.row({ title, sub, href, trail: "chevron" });
+        r.target = "_blank"; r.rel = "noopener noreferrer";
+        return r;
+      }), { label: head }));
+      if (note) box.append(foot(note));
+    }
+  }
+
+  const DRAW = { location, credits };
+  const TITLES = { location: "Location", credits: "Map & Weather Data" };
+  let pageBox = null, pageName = null;
+  function go(p) {
+    if (!h || !DRAW[p]) return;
+    pageName = p;
+    h.push({ page: p, title: TITLES[p], body: (pg) => { pageBox = el("div", { class: "chs" }); pg.append(pageBox); DRAW[p](pageBox); } });
+  }
+  let listBox = null;
+  h = fw.sheet.open({
+    sheet: "chatsettings", title: "Chat Settings", app: "chats",
+    body: (body) => { listBox = el("div", { class: "chs" }); body.append(listBox); list(listBox); },
+    onClose: () => { for (const f of offs.splice(0)) f(); if (shown === h) shown = null; },
+  });
+  shown = h;
+  // the account's answer drawn again as it changes (the core's `me` patch)
+  if (store?.on) offs.push(store.on("me", () => {
+    if (h.closed) return;
+    if (listBox?.isConnected !== false) list(listBox);
+    if (pageName === "location" && pageBox && h.body.contains?.(pageBox)) location(pageBox);
+  }));
+  if (page) go(page);
+  return h;
+}
