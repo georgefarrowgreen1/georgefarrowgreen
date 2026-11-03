@@ -48,8 +48,11 @@ export function tappedOn(nav, getUA, getActive) {
   try { const ua = typeof getUA === "function" ? getUA.call(nav) : null; return !!(ua && typeof getActive === "function" && getActive.call(ua) === true); } catch (_) { return false; }
 }
 const tapped = () => tappedOn(globalThis.navigator, UA_GET, ACTIVE_GET);
-// (theme.js's device rule, as chats.js has it: Chat is for phones and iPads; the core never starts on a computer, S3-D13)
+// (theme.js's device rule, as chats.js has it: Chat is for phones and iPads; the core never starts on a computer, S3-D13.
+// Applied to browsers only: every one's user agent starts "Mozilla/"; anything else (node, for roofcontract) isn't a
+// computer this rule can say anything of)
 function deviceOf() {
+  if (!/^Mozilla\//.test(navigator.userAgent || "")) return "phone";
   var ua = navigator.userAgent || "";
   var touched = navigator.maxTouchPoints > 1;
   var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches);
