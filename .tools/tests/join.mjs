@@ -55,10 +55,16 @@ export async function onAccountPage(page, { email, password = PASSWORD }) {
   return fresh ? acct : null;
 }
 // Back in the app: past a passkey offered on the way, if there's one (Not now). → whether there was
+// (looked for from here, a look at a time, and no more once back: a waitForSelector raced against the way back would go
+// on asking the app's page for a minute after, and each of Playwright's asks counts as a tap on that page)
 export async function pastOffer(page) {
   const gone = (u) => !/^(account|auth)\./.test(u.hostname);
-  const offer = await Promise.race([page.waitForURL(gone, { timeout: 60000 }).then(() => false),
-    page.waitForSelector('main .signin.offer .link', { timeout: 60000 }).then(() => true)]).catch(() => false);
+  let offer = false;
+  for (const end = Date.now() + 60000; Date.now() < end;) {
+    if (gone(new URL(page.url()))) break;
+    if (await page.$('main .signin.offer .link').catch(() => null)) { offer = true; break; }
+    await new Promise((r) => setTimeout(r, 250));
+  }
   if (offer && !gone(new URL(page.url()))) await page.click('main .signin.offer .link');
   await page.waitForURL(gone, { timeout: 60000 });
   return offer;
