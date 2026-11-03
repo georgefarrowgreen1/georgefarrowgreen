@@ -185,7 +185,8 @@ export function setActs() {
   S.acts = [...S.own].sort((a, b) => b.start - a.start);
 }
 export const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v));
-export const runSpeed = () => 1000 / P().runPace, swimSpeed = () => 100 / P().css;
+export const runSpeed = () => 1000 / P().runPace;
+export const swimSpeed = () => 100 / P().css;
 export const paceFor = (sport) => (sport === "run" ? runSpeed() : sport === "swim" ? swimSpeed() : 4);
 export const allWorkouts = () => [...S.mine, ...WORKOUTS];
 export const wkById = (id) => S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
