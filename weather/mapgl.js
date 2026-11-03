@@ -12,7 +12,7 @@ let made = 0;
 
 export function preload() {
   if (ml) return ml;
-  const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "./vendor/maplibre-gl.css";
+  const css = document.createElement("link"); css.rel = "stylesheet"; css.href = new URL("./vendor/maplibre-gl.css", import.meta.url).href;
   const styled = new Promise((ok) => { css.onload = css.onerror = ok; });
   document.head.append(css);
   ml = Promise.all([import("./vendor/maplibre-gl.mjs"), styled]).then(([m]) => {
@@ -296,6 +296,8 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       yes ? map.scrollZoom.enable() : map.scrollZoom.disable();
     },
     resize() { map.resize(); },
+    // (let go of: its frames' drawers, and MapLibre's map, its canvas and listeners)
+    remove() { for (const id of layers) drawers.delete(id.slice(1)); layers = []; map.remove(); },
     // what's in sight: [[south, west], [north, east]]
     bounds() { const b = map.getBounds(); return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; },
     // where it is: its zoom (as Leaflet counts), the range, and how many metres a pixel spans at its middle
