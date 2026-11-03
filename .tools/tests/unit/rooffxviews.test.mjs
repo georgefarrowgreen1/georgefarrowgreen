@@ -32,18 +32,20 @@ globalThis.addEventListener ??= () => {};
 globalThis.removeEventListener ??= () => {};
 globalThis.requestAnimationFrame ??= (f) => setTimeout(f, 0);
 globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-const answers = new Map(), asked = [];
+const answers = new Map(), asked = [], STATUS = Symbol('status');
 globalThis.fetch = async (url, o = {}) => {
   const path = String(url).replace(/^.*\/api\/fitness\//, '');
   asked.push(`${o.method || 'GET'} ${path}`);
   const a = answers.get(path);
   if (!a) throw Object.assign(new Error('offline (test)'), { offline: true });
   const body = await a();
-  return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => body, text: async () => JSON.stringify(body) };
+  // (a case can answer an error: { [STATUS]: 401, error })
+  const status = body?.[STATUS] || 200;
+  return { ok: status < 300, status, headers: { get: () => 'application/json' }, json: async () => body, text: async () => JSON.stringify(body) };
 };
 // (no location write, ever: a write would land here and fail the case)
 const navigated = [];
-globalThis.location ??= { origin: 'https://inflite.ai', pathname: '/fitness/', search: '', hash: '', set href(v) { navigated.push(v); }, get href() { return 'https://inflite.ai/fitness/'; }, assign: (v) => navigated.push(v), replace: (v) => navigated.push(v) };
+globalThis.location ??= { origin: 'https://inflite.ai', protocol: 'https:', hostname: 'inflite.ai', port: '', pathname: '/fitness/', search: '', hash: '', set href(v) { navigated.push(v); }, get href() { return 'https://inflite.ai/fitness/'; }, assign: (v) => navigated.push(v), replace: (v) => navigated.push(v) };
 const flush = () => new Promise((r) => setTimeout(r, 0));
 // (fitness/ui.js draws its icons through a <template>: the stand-in DOM's is given a content, the markup kept raw)
 function docWithTemplates() {
@@ -179,8 +181,9 @@ test('Fitness Settings, driven: its pages open at [data-page], each control save
   globalThis.document = docWithTemplates();
   core.S.me = null;
   core.adopt(JSON.parse(JSON.stringify(RECORD)));
-  const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} }, patches = [];
-  const C = { ...core, saveSettings: (p) => { patches.push(JSON.parse(JSON.stringify(p))); return core.saveSettings(p); } };
+  const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} }, patches = [], numbers = [];
+  const C = { ...core, saveSettings: (p) => { patches.push(JSON.parse(JSON.stringify(p))); return core.saveSettings(p); },
+    setNumber: (k, v) => { numbers.push([k, v]); return core.setNumber(k, v); } };
   const ctx = { S: core.S, core: C, fw: fwFor(log), open: {} };
   const h = SET.openSettings(ctx, null), d = h.el;
   assert.equal(d.getAttribute('data-sheet'), 'fxsettings');
@@ -211,17 +214,29 @@ test('Fitness Settings, driven: its pages open at [data-page], each control save
   s = await one(() => nights.querySelector('[data-key=nights] button[data-value=apple]').click(), { prefs: { nights: 'apple' } });
   assert.equal(s.prefs.nights, 'apple');
   h.pop();
-  // Your Numbers: a step up in FTP, only the profile's keys
+  // Your Numbers: a step up in FTP, by core.setNumber (app.js's own rule), not a saveSettings patch
   const nums = page('numbers');
-  const ftp0 = core.P().ftp;
+  const ftp0 = core.P().ftp, heard = [], offHeard = core.on('settings', (x) => heard.push(x));
   const more = nums.querySelector('[data-key=ftp] [data-act=more]');
   const n = patches.length;
   more.click(); await flush();
-  assert.equal(patches.length, n + 1);
-  assert.deepEqual(Object.keys(patches.at(-1)), ['profile']);
-  assert.deepEqual(Object.keys(patches.at(-1).profile).sort(), ['ftp', 'ftpLog', 'set']);
+  assert.equal(patches.length, n, 'a number isn’t a saveSettings patch');
+  assert.deepEqual(numbers, [['ftp', ftp0 + 5]], 'one setNumber, with the number stepped');
   assert.equal(core.P().ftp, ftp0 + 5);
+  assert.ok(core.P().set.includes('ftp') && core.P().ftpLog.at(-1)[1] === ftp0 + 5, 'FTP set by you and logged');
+  assert.equal(heard.length, 1, 'core says “settings”, as a save does');
   assert.equal(nums.querySelector('[data-key=ftp] output').textContent, `${ftp0 + 5} W`, 'drawn again from what’s kept');
+  // Max heart rate, twice: threshold heart rate follows it each time and is never marked as set by you (app.js setNumber)
+  const max0 = core.P().maxHr, moreMax = nums.querySelector('[data-key=maxHr] [data-act=more]');
+  moreMax.click(); await flush();
+  assert.equal(core.P().maxHr, max0 + 1);
+  assert.equal(core.P().lthr, Math.round((max0 + 1) * 0.9), 'threshold follows max');
+  assert.ok(core.P().set.includes('maxHr') && !core.P().set.includes('lthr'), 'only max is yours');
+  moreMax.click(); await flush();
+  assert.equal(core.P().lthr, Math.round((max0 + 2) * 0.9), 'and follows it again on the next change');
+  assert.ok(!core.saved().profile.set.includes('lthr'), 'the record kept says so too');
+  assert.match(nums.querySelector('[data-key=lthr] .fxs-est').textContent, /From your rides|A starting guess/, 'threshold still said to be a guess');
+  offHeard();
   h.pop();
   // Notifications: You's, by the framework's nav, no navigation of the page
   const notify = d.querySelectorAll('a').find((a) => a.getAttribute('href') === '/#you=notify');
@@ -272,6 +287,99 @@ test('Strava (S2-D13, RI6): Devices asks POST strava/connect as it opens; the li
   const sp = d.querySelector('[data-page=strava]');
   assert.ok(sp.querySelector('a[data-k=strava]')?.getAttribute('href') === URL_);
   answers.delete('strava/connect');
+  h.close();
+});
+
+test('a number through FXA’s real core: Max HR 186 → 190 → 200 moves threshold each time and marks only max as yours (fitness/app.js setNumber, on the record kept)', { skip: skip || roofSkip }, async () => {
+  globalThis.document = docWithTemplates();
+  core.S.me = null;
+  core.adopt(JSON.parse(JSON.stringify(RECORD)));
+  const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} };
+  const h = SET.openSettings({ S: core.S, core: { ...core }, fw: fwFor(log), open: {} }, 'numbers');
+  // (the stepper's step is 1 bpm: walk max to 190, then to 200)
+  const moreMax = h.el.querySelector('[data-page=numbers] [data-key=maxHr] [data-act=more]');
+  for (let i = 186; i < 190; i++) moreMax.click();
+  await flush();
+  let p = core.saved().profile;
+  assert.equal(p.maxHr, 190); assert.equal(p.lthr, 171);
+  assert.deepEqual([...p.set].sort(), ['ftp', 'maxHr', 'weight'], 'lthr not among yours');
+  assert.deepEqual(p, appSetNumber(appSetNumber(appSetNumber(appSetNumber(RECORD.profile, 'maxHr', 187, core.TODAY), 'maxHr', 188, core.TODAY), 'maxHr', 189, core.TODAY), 'maxHr', 190, core.TODAY), 'what app.js’s setNumber leaves');
+  for (let i = 190; i < 200; i++) moreMax.click();
+  await flush();
+  p = core.saved().profile;
+  assert.equal(p.maxHr, 200); assert.equal(p.lthr, 180, 'still following max');
+  // (threshold set by you: max no longer moves it)
+  h.el.querySelector('[data-page=numbers] [data-key=lthr] [data-act=less]').click();
+  moreMax.click(); await flush();
+  p = core.saved().profile;
+  assert.equal(p.lthr, 179); assert.equal(p.maxHr, 201); assert.ok(p.set.includes('lthr'));
+  h.close();
+});
+
+test('Strava failing (offline, then signed out): asked once as Devices opens, never again from a redraw; a tap asks again; a 401 tells the frame once and stops', { skip: skip || roofSkip }, async () => {
+  for (const mode of ['offline', '401']) {
+    globalThis.document = docWithTemplates();
+    core.S.me = null;
+    core.adopt(JSON.parse(JSON.stringify(RECORD)));
+    core.S.strava = { on: false, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
+    if (mode === '401') answers.set('strava/connect', () => ({ [STATUS]: 401, error: 'Signed out' }));
+    else answers.delete('strava/connect');
+    asked.length = 0;
+    const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} };
+    const h = SET.openSettings({ S: core.S, core: { ...core }, fw: fwFor(log), open: {} }, 'devices'), d = h.el;
+    for (let i = 0; i < 20; i++) await flush();
+    const n = () => asked.filter((x) => x === 'POST strava/connect').length;
+    assert.equal(n(), 1, `${mode}: asked once, not again and again`);
+    assert.equal(log.lost, mode === '401' ? 1 : 0, `${mode}: lost() ${mode === '401' ? 'once' : 'never'}`);
+    let a = d.querySelector('a[data-k=strava]');
+    assert.equal(a.getAttribute('href'), null);
+    assert.equal(a.getAttribute('aria-disabled'), 'true');
+    assert.match(a.textContent, mode === '401' ? /Sign in/ : /tap to try again/);
+    // (a save, and Strava's own page: redraws, and still no asking)
+    core.emit('settings', { keys: ['prefs'] }); core.emit('me');
+    for (let i = 0; i < 5; i++) await flush();
+    assert.equal(n(), 1, `${mode}: a redraw doesn’t ask`);
+    // a tap on the waiting link: asked again (offline), or not at all (signed out)
+    a = d.querySelector('a[data-k=strava]');
+    const e = a.dispatch('click');
+    assert.equal(e.defaultPrevented, true, 'no address: the tap goes nowhere');
+    for (let i = 0; i < 20; i++) await flush();
+    assert.equal(n(), mode === '401' ? 1 : 2, `${mode}: ${mode === '401' ? 'signed out: not asked again' : 'the tap asks once more, and only once'}`);
+    assert.equal(log.lost, mode === '401' ? 1 : 0);
+    assert.deepEqual(navigated, []);
+    h.close();
+  }
+  answers.delete('strava/connect');
+});
+
+test('Apple Health’s address is Fitness’s own host, never the hub’s (the hub refuses a POST with no Origin; a Shortcut sends none)', { skip: skip || roofSkip }, async () => {
+  assert.equal(SET.fitnessOrigin({}, { hostname: 'inflite.ai', origin: 'https://inflite.ai', protocol: 'https:', port: '' }), 'https://fitness.inflite.ai');
+  assert.equal(SET.fitnessOrigin({}, { hostname: 'next.inflite.ai', origin: 'https://next.inflite.ai', protocol: 'https:', port: '' }), 'https://fitness.inflite.ai');
+  assert.equal(SET.fitnessOrigin({}, { hostname: 'fitness.inflite.ai', origin: 'https://fitness.inflite.ai', protocol: 'https:', port: '' }), 'https://fitness.inflite.ai');
+  assert.equal(SET.fitnessOrigin({}, { hostname: 'localhost', origin: 'http://localhost:8787', protocol: 'http:', port: '8787' }), 'http://fitness.localhost:8787', 'as the frame’s DEFAULT_LINKS makes it off the live site');
+  assert.equal(SET.fitnessOrigin({ session: { links: { fitness: 'https://fitness.example.test/' } } }, { hostname: 'inflite.ai' }), 'https://fitness.example.test', 'the frame’s link, when it gives one');
+  assert.equal(SET.fitnessOrigin({ session: { links: { fitness: 'javascript:alert(1)' } } }, { hostname: 'inflite.ai', origin: 'https://inflite.ai', protocol: 'https:', port: '' }), 'https://fitness.inflite.ai', 'never a link that isn’t http(s)');
+  // drawn: the key made, its address on Fitness's host
+  globalThis.document = docWithTemplates();
+  core.S.me = null;
+  core.adopt(JSON.parse(JSON.stringify(RECORD)));
+  core.S.strava = { on: true, ok: true, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
+  answers.set('health/key', () => ({ key: 'k123abc', on: true }));
+  const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} };
+  const h = SET.openSettings({ S: core.S, core: { ...core }, fw: fwFor(log), open: {} }, 'devices'), d = h.el;
+  d.querySelector('[data-page=devices] [data-go=health]').click();
+  const hp = d.querySelector('[data-page=health]');
+  assert.ok(hp, 'Apple Health’s page');
+  const make = hp.querySelector('[data-act=make]');
+  assert.ok(make, 'a button to make the key');
+  make.click();
+  for (let i = 0; i < 5; i++) await flush();
+  const code = d.querySelector('[data-page=health] code.hk-key');
+  assert.ok(code, 'the address drawn');
+  assert.equal(code.textContent, 'https://fitness.inflite.ai/api/fitness/health/k123abc');
+  assert.ok(!code.textContent.startsWith(location.origin), 'not the hub’s origin');
+  assert.ok(code.closest('.m-fitness'), 'inside .m-fitness, so fitness.css’s hk-box rules reach it');
+  answers.delete('health/key');
   h.close();
 });
 

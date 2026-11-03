@@ -187,6 +187,8 @@ for (const pg of ['numbers', 'units', 'nights', 'devices']) {
     const link = p.locator(H.FX_STRAVA).first();
     ok(await until(() => link.getAttribute('href').then((h) => h === STRAVA), 8000), 'Connect Strava: a real link to the address POST strava/connect gave', await link.getAttribute('href').catch(() => 'none'));
     ok(await link.getAttribute('target') === '_blank' && await link.getAttribute('rel') === 'noopener', 'target=_blank rel=noopener');
+    await p.waitForTimeout(400);
+    ok(st.strava === 1, 'POST strava/connect asked once as Devices opened, not again on each redraw', String(st.strava));
     await shot('settings-devices');
     const before = p.url();
     const [win] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), link.click()]);

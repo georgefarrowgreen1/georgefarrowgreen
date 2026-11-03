@@ -170,7 +170,11 @@ async function routes() {
       } catch (e) { if (e.status === 401) { lost(); break; } if (e.offline) break; none.add(a.id); }
     }
   } catch (_) {
-  } finally { routes.busy = false; store.set("noroute", [...none].slice(-2000)); }
+  } finally {
+    routes.busy = false;
+    // (kept only for the account it was read for: after a sign-out, fitness:* is cleared and stays so, S2-D10)
+    if (S.me?.id === me) store.set("noroute", [...none].slice(-2000));
+  }
 }
 // ---- an activity, opened ----
 // (the route maps drawn in a sheet: let go when it closes, S2-D22)

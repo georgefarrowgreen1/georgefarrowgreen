@@ -6,9 +6,11 @@
 // Frozen: openSettings(ctx, page = null) → sheet Handle | null: dialog.ifl-sheet[data-sheet=fxsettings]; page: null (the
 //   list of pages) or one of "numbers" | "units" | "nights" | "devices", opened straight at it (a pushed page whose
 //   container is [data-page=<page>]); on the list, a row per page [data-go=<page>] and a Notifications row
-//   a[href="/#you=notify"]; Devices' own pages [data-page=garmin|strava|health]. Saves go through
-//   ctx.core.saveSettings(patch) with only the keys edited (PATCH below: { prefs: {…} } or { profile: {…} }, the parts of
-//   the record fitness/app.js record() writes), the whole record kept and sent as keep() does (PUT /api/fitness/me).
+//   a[href="/#you=notify"]; Devices' own pages [data-page=garmin|strava|health]. Preferences save
+//   through ctx.core.saveSettings(patch) with only the keys edited (PATCH below: { prefs: {…} }, the part of the record
+//   fitness/app.js record() writes); a number through ctx.core.setNumber(k, v), app.js's own rule (only it marked as set
+//   by you, threshold heart rate following max), then "settings" said; either way the whole record kept and sent as
+//   keep() does (PUT /api/fitness/me). Apple Health's address is Fitness's own host, never the hub's (fitnessOrigin).
 // Strava (S2-D13): never a navigation of the page. The Devices page (and Strava's own) asks POST strava/connect as it
 //   opens and draws the answer as a real link, a[data-k=strava].ifl-btn target=_blank rel=noopener href=<url> ("Connect
 //   Strava"); till the address is in, the same link with no href, aria-disabled, "Getting Strava ready…"; asked again
@@ -32,6 +34,8 @@ export function numberPatch(profile, k, v, today = TODAY) {
   return out;
 }
 export const LIMITS = Object.freeze({ ftp: [5, 80, 500], weight: [0.5, 35, 150], lthr: [1, 100, 210], maxHr: [1, 120, 230], runPace: [5, 150, 600], css: [1, 50, 240] });
+// (number: what setNumber leaves, for the tests' comparison and its clamping; the sheet saves it by core.setNumber, never
+// by saveSettings, which would mark the threshold that only followed max as yours)
 export const PATCH = {
   number: (profile, k, v) => (LIMITS[k] ? { profile: numberPatch(profile, k, Math.max(LIMITS[k][1], Math.min(LIMITS[k][2], Math.round(v * 10) / 10))) } : null),
   units: (v) => (v === "metric" || v === "imperial" ? { prefs: { units: v } } : null),
@@ -61,6 +65,16 @@ export function summary(page, u = U) {
 const stopped = () => (S.garmin?.on && !S.garmin.ok ? "Garmin" : S.strava?.on && !S.strava.ok ? "Strava" : null);
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dayShort(t); };
 
+// Fitness's own address (Apple Health's Shortcut posts there), never the hub's: the hub refuses a POST that carries no
+// Origin of its own, and a Shortcut sends none. The frame's link when it gives one; else as the frame's DEFAULT_LINKS
+// makes it (https://fitness.inflite.ai live; fitness.<host> elsewhere); Fitness's own page keeps its own.
+export function fitnessOrigin(fw, loc = location) {
+  try { const l = fw?.session?.links?.fitness; if (l) { const u = new URL(l); if (/^https?:$/.test(u.protocol)) return u.origin; } } catch (_) {}
+  if (/^fitness\./.test(loc.hostname)) return loc.origin;
+  if (/(^|\.)inflite\.ai$/.test(loc.hostname)) return "https://fitness.inflite.ai";
+  return `${loc.protocol}//fitness.${loc.hostname}${loc.port ? ":" + loc.port : ""}`;
+}
+
 /* ---------- the sheet ---------- */
 let shown = null;
 
@@ -82,6 +96,16 @@ export function openSettings(ctx, page = null) {
     try { await core.saveSettings(patch); } catch (_) { toast("Couldn’t save that just now. Try again."); }
     if (alive) redraw();
   }
+  // a number of yours: core.setNumber, fitness/app.js's own rule (only that number set by you; threshold heart rate
+  // following max till you set it too), kept as keep() keeps it, then every page told as a save tells them. Not through
+  // saveSettings: that marks every number in its patch as yours, the threshold that only followed max with it.
+  function saveNumber(k, v) {
+    const patch = PATCH.number(P(), k, v);
+    if (!patch) return Promise.resolve();
+    try { core.setNumber(k, patch.profile[k]); core.emit?.("settings", { keys: ["profile"] }); } catch (_) { toast("Couldn’t save that just now. Try again."); }
+    if (alive) redraw();
+    return Promise.resolve();
+  }
   const foot = (text) => el("p", { class: "fxs-foot", text });
 
   /* -- the list -- */
@@ -99,7 +123,7 @@ export function openSettings(ctx, page = null) {
     h?.close();
     fw.nav.go("/#you=notify");
   });
-  const root = el("div", { class: "fxs fxs-root" },
+  const root = el("div", { class: "m-fitness fxs fxs-root" },
     ui.list(["numbers"].map(goRow), { label: "Training" }),
     ui.list(["units", "nights"].map(goRow), { label: "Preferences" }),
     ui.list(["devices"].map(goRow), { label: "Your rides" }),
@@ -109,7 +133,7 @@ export function openSettings(ctx, page = null) {
 
   /* -- Your Numbers: every zone, target and training stress follows them -- */
   function numbersPage() {
-    const box = el("div", { class: "fxs fxs-numbers" });
+    const box = el("div", { class: "m-fitness fxs fxs-numbers" });
     const said = (k) => {
       if (isSet(k)) return null;
       const e = core.estimates?.() || {};
@@ -125,7 +149,7 @@ export function openSettings(ctx, page = null) {
       // (− and + in words: the shared glyphs have no minus)
       const less = ui.btn("−", { small: true, label: `Less ${label}`, act: "less", run: () => change(-LIMITS[k][0]) });
       const more = ui.btn("+", { small: true, label: `More ${label}`, act: "more", run: () => change(LIMITS[k][0]) });
-      const change = (d) => save(PATCH.number(P(), k, (P()[k] || 0) + d));
+      const change = (d) => saveNumber(k, (P()[k] || 0) + d);
       const line = el("div", { class: "fxs-line fxs-step", data: { key: k } }, el("span", { class: "fxs-k" }, el("b", { text: label }), est), el("span", { class: "fxs-stepper", role: "group", "aria-label": label }, less, out, more));
       const draw = () => { out.textContent = show(P()[k]); const s = said(k); est.textContent = s || ""; est.hidden = !s; };
       draw();
@@ -137,7 +161,7 @@ export function openSettings(ctx, page = null) {
       // (your best 20 minutes of the last six weeks, offered only as a rise on an FTP you set: easy weeks never talk it down)
       const since = addDays(TODAY, -42), best20 = Math.max(0, ...S.acts.filter((a) => a.start >= since).map((a) => sumOf(a)?.curve?.[1200] || 0)), est = Math.round(best20 * 0.95);
       raise.replaceChildren(...(isSet("ftp") && est >= P().ftp + 5 ? [ui.card({ title: "From your rides", body: [el("p", { class: "fxs-foot", text: `Your best 20 minutes in the last six weeks: ${best20} W, an FTP of about ${est} W.` }),
-        ui.btn(`Raise FTP to ${est} W`, { small: true, primary: true, act: "raise", run: () => save(PATCH.number(P(), "ftp", est)).then(() => toast(`FTP raised to ${est} W`)) })] })] : []));
+        ui.btn(`Raise FTP to ${est} W`, { small: true, primary: true, act: "raise", run: () => saveNumber("ftp", est).then(() => toast(`FTP raised to ${est} W`)) })] })] : []));
     };
     const zones = el("div", { class: "fxs-zones" });
     const drawZones = () => { const ftp = P().ftp; zones.replaceChildren(ui.list(ZONES.map((z, i) => ui.row({ lead: el("span", { class: `zone-chip bg-${z.c}`, text: `Z${z.n}` }), title: z.name, value: `${i ? Math.round(ZONES[i - 1].top * ftp) : 0}${z.top < 9 ? `–${Math.round(z.top * ftp) - 1}` : "+"} W` })), { label: "Power zones" })); };
@@ -153,7 +177,7 @@ export function openSettings(ctx, page = null) {
   function unitsPage() {
     const units = ui.seg([["metric", "Kilometres"], ["imperial", "Miles"]], prefsNow().units, (v) => save(PATCH.units(v)), { label: "Distances" });
     const maps = ui.seg([["tap", "On Tap"], ["always", "Always"]], prefsNow().maps, (v) => save(PATCH.maps(v)), { label: "Ride maps" });
-    const box = el("div", { class: "fxs fxs-units" },
+    const box = el("div", { class: "m-fitness fxs fxs-units" },
       el("div", { class: "fxs-opt", data: { key: "units" } }, el("span", { class: "fxs-opt-k", text: "Distances" }), units),
       el("div", { class: "fxs-opt", data: { key: "maps" } }, el("span", { class: "fxs-opt-k", text: "Ride maps" }), maps),
       foot("A ride’s map comes from OpenFreeMap, which sees where it is. On Tap, Fitness draws each route itself until you ask for the map."));
@@ -165,7 +189,7 @@ export function openSettings(ctx, page = null) {
   function nightsPage() {
     const ask = ui.sw(prefsNow().ask, (v) => save(PATCH.ask(v)), { label: "Ask how I am each morning" });
     const from = ui.seg([["auto", "Either"], ["apple", "Apple Watch"], ["garmin", "Garmin"]], prefsNow().nights, (v) => save(PATCH.nights(v)), { label: "Nights from" });
-    const box = el("div", { class: "fxs fxs-nights" },
+    const box = el("div", { class: "m-fitness fxs fxs-nights" },
       el("div", { class: "fxs-line", data: { key: "ask" } }, el("span", { text: "Ask how I am each morning" }), ask),
       foot("On Today: how you slept and how your legs feel, and Rhythm eases the day when you need it."),
       el("div", { class: "fxs-opt", data: { key: "nights" } }, el("span", { class: "fxs-opt-k", text: "Nights from" }), from),
@@ -176,19 +200,21 @@ export function openSettings(ctx, page = null) {
 
   /* -- Devices: Garmin, Strava, Apple Health, and what your files came from -- */
   // Strava's address: asked as Devices (or Strava's page) opens, again after 5 minutes; the link drawn from it (S2-D13)
-  let stravaUrl = null, stravaAt = 0, stravaAsking = null, stravaGone = false;
+  // (an answer that failed (offline, the server's error) is asked again only by a tap on the link; signed out (401),
+  // the frame told once and not asked again: a redraw never asks after a failure)
+  let stravaUrl = null, stravaAt = 0, stravaAsking = null, stravaGone = false, stravaFailed = false, stravaOut = false;
   const askStrava = () => {
-    if (stravaAsking) return stravaAsking;
-    stravaAsking = A.stravaConnect().then((r) => { stravaUrl = typeof r?.url === "string" && /^https:\/\//.test(r.url) ? r.url : null; stravaAt = Date.now(); },
-      (e) => { stravaUrl = null; if (e?.status === 401) lost(); }).finally(() => { stravaAsking = null; if (alive) redraw(); });
+    if (stravaAsking || stravaOut) return stravaAsking;
+    stravaAsking = A.stravaConnect().then((r) => { stravaUrl = typeof r?.url === "string" && /^https:\/\//.test(r.url) ? r.url : null; stravaAt = Date.now(); stravaFailed = false; },
+      (e) => { stravaUrl = null; stravaAt = Date.now(); stravaFailed = true; if (e?.status === 401) { stravaOut = true; lost(); } }).finally(() => { stravaAsking = null; if (alive) redraw(); });
     return stravaAsking;
   };
   const stravaLink = (label) => {
     const a = el("a", { class: "ifl-btn primary fxs-strava", target: "_blank", rel: "noopener", data: { k: "strava" } }, el("span"));
     const draw = () => {
-      if (Date.now() - stravaAt > 5 * 60e3 && !stravaAsking) askStrava();
+      if (!stravaFailed && Date.now() - stravaAt > 5 * 60e3 && !stravaAsking) askStrava();
       if (stravaUrl) { a.setAttribute("href", stravaUrl); a.removeAttribute("aria-disabled"); a.querySelector("span").textContent = label(); }
-      else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.querySelector("span").textContent = stravaAsking ? "Getting Strava ready…" : "Strava isn’t answering: try again shortly"; }
+      else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.querySelector("span").textContent = stravaAsking ? "Getting Strava ready…" : stravaOut ? "Sign in to connect Strava" : "Strava isn’t answering: tap to try again"; }
     };
     // (tapped: Strava's page in a window of its own; back here, the account asked again on the next visible)
     a.addEventListener("click", (e) => { if (!stravaUrl) { e.preventDefault(); askStrava(); return; } stravaGone = true; });
@@ -225,7 +251,7 @@ export function openSettings(ctx, page = null) {
   const bring = (o) => { if (core.bringIn) core.bringIn(o).catch?.(() => {}); else core.pull?.(); };
 
   function garminPage() {
-    const box = el("div", { class: "fxs fxs-garmin" });
+    const box = el("div", { class: "m-fitness fxs fxs-garmin" });
     const draw = () => {
       const g = S.garmin;
       const field = ui.field({ type: "password", placeholder: "Personal API key", label: "Your Garmin Personal API key" });
@@ -273,7 +299,7 @@ export function openSettings(ctx, page = null) {
   }
 
   function stravaPage() {
-    const box = el("div", { class: "fxs fxs-strava-page" });
+    const box = el("div", { class: "m-fitness fxs fxs-strava-page" });
     const draw = () => {
       const g = S.strava;
       if (!g?.on) {
@@ -313,9 +339,9 @@ export function openSettings(ctx, page = null) {
 
   // Apple Health, by a Shortcut: a key of your own in the address the Shortcut sends to (functions/_health.js)
   let healthKey = null;
-  const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
+  const healthUrl = (key) => `${fitnessOrigin(fw)}/api/fitness/health/${key}`;
   function healthPage() {
-    const box = el("div", { class: "fxs fxs-health" });
+    const box = el("div", { class: "m-fitness fxs fxs-health" });
     const draw = () => {
       const x = S.health, key = healthKey;
       const make = async (b) => {
@@ -370,7 +396,7 @@ export function openSettings(ctx, page = null) {
   }
 
   function devicesPage() {
-    const box = el("div", { class: "fxs fxs-devices" });
+    const box = el("div", { class: "m-fitness fxs fxs-devices" });
     const draw = () => {
       const g = S.garmin, st = S.strava, x = S.health;
       const said = (c, off) => (!c?.on ? off : !c.ok ? "Stopped letting Fitness in: connect again" : c.last ? `Connected · checked ${ago(c.last)}` : "Connected");
