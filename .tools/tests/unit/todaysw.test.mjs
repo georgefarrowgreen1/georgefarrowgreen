@@ -21,7 +21,8 @@ const hasRoof = !tfSkip && existsSync(new URL('today/src/roof.js', IFL));
 // (stages 2–4's worker (s24-contracts §8): every module's page and files, one MODS list; its copy today-app-4)
 const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
 const SHELL_NOW = S24 ? 'today-app-4' : 'today-app-3';
-const MODPATH = S24 ? /^\/(weather|markets|fitness|mail)\// : /^\/weather\//;
+// (stage 3's B0: Chats' module files are the hub's too, kept in roof-chats-*, once REGISTRY names them)
+const MODPATH = S24 ? /^\/(weather|markets|fitness|mail|chats)\// : /^\/weather\//;
 const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const m1Case = tfSkip || (hasRoof && 'the inflite repo beside has the roof (today/src/roof.js): its case is One roof’s, below');
 const ORIGIN = 'https://inflite.ai';
