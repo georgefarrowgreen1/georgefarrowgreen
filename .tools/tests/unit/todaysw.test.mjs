@@ -1,9 +1,8 @@
-// Today's service worker (the inflite repo's today/public/sw.js, where it's checked out beside this one), run here with
-// what a browser gives it made up: a notification tapped opens only Today's own pages; one that comes to a device signed
-// out elsewhere says only that, stops them there, and tells any open Today to forget the day it kept; one whose sign-in
-// can't be checked in time still shows; the updater's renew is answered; Today's own files come from the network while
-// there is one, never the API; a renewed subscription moves the old one's place; and every file the page loads as it
-// opens is among those it keeps.
+// Today's service worker (the inflite repo's today/public/sw.js, where it's checked out beside this one: InFlite's root
+// worker), run here with what a browser gives it made up, for Today's own files: the updater's renew is answered;
+// Today's own files come from the network while there is one, never the API nor a page of the hub's; its copy is
+// today-app-2, with Today First's files; and every file the page loads as it opens is among those it keeps.
+// (Its notifications, taps, Chat's pulse and renewed subscriptions: rootsw.test.mjs.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -35,7 +34,7 @@ function worker(net, { windows = [] } = {}) {
     },
   };
   const caches = {
-    open: async () => ({ match: async (k) => kept.get(k)?.clone() || undefined, put: async (k, r) => kept.set(k, r), addAll: async () => {} }),
+    open: async () => ({ match: async (k) => kept.get(k)?.clone() || undefined, put: async (k, r) => kept.set(k, r), add: async () => {}, addAll: async () => {} }),
     keys: async () => [],
     delete: async () => true,
   };
@@ -59,63 +58,6 @@ function worker(net, { windows = [] } = {}) {
   const get = (path, mode = 'cors') => send('fetch', { request: { method: 'GET', url: `${ORIGIN}${path}`, mode } });
   return { send, get, kept, shown, asked, opened, posts, wins, subscribed: () => subscribed };
 }
-const session = (signedIn) => () => new Response(JSON.stringify({ signedIn }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-
-test('a notification tapped opens only Today’s own pages: the open window, told where, or a new one', { skip }, async () => {
-  const tap = (w, url) => w.send('notificationclick', { notification: { close: () => {}, data: url === undefined ? {} : { url } }, action: '' });
-  let w = worker(() => null);
-  for (const [url, want] of [['/#morning', `${ORIGIN}/#morning`], [undefined, `${ORIGIN}/`], ['https://evil.example/x', `${ORIGIN}/`], ['//evil.example/', `${ORIGIN}/`], ['javascript:alert(1)', `${ORIGIN}/`], ['https://inflite.ai.evil.example/', `${ORIGIN}/`]]) {
-    w = worker(() => null);
-    await tap(w, url);
-    assert.deepEqual(w.opened, [want], String(url));
-  }
-  // (Today open already, or another site's window open in this browser: Today's focused and told, the other left be)
-  w = worker(() => null, { windows: ['https://chat.inflite.ai/', `${ORIGIN}/`] });
-  await tap(w, '/#morning');
-  assert.deepEqual(w.opened, []);
-  assert.equal(w.wins[1].focused, true);
-  assert.deepEqual(plain(w.wins[1].messages), [{ open: `${ORIGIN}/#morning` }]);
-  assert.deepEqual(plain(w.wins[0].messages), []);
-});
-
-test('a notification for a device signed out elsewhere says only that, stops them there, and tells Today’s windows; one that can’t be checked still shows', { skip }, async () => {
-  const push = { title: 'London · 14° / 7°', body: 'Dry, sunny spells. 2 pigeons on their way', tag: 'today-morning', url: '/#morning' };
-  const data = { json: () => push, text: () => JSON.stringify(push) };
-
-  let w = worker((p) => (p === '/api/session' ? session(false)() : null), { windows: [`${ORIGIN}/`, 'https://email.inflite.ai/'] });
-  await w.send('push', { data });
-  assert.equal(w.shown.length, 1);
-  assert.equal(w.shown[0].title, 'Today');
-  assert.equal(w.shown[0].body, 'Signed out on this device, so notifications have stopped here.');
-  assert.ok(!JSON.stringify(w.shown).includes('pigeons') && !JSON.stringify(w.shown).includes('London'), 'nothing of the day');
-  assert.equal(w.subscribed(), false);
-  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'signedout' }]);
-  assert.deepEqual(plain(w.wins[1].messages), [], 'never another site’s window');
-
-  // (signed in: the notification as it came, Today's icon on it, where a tap takes you with it)
-  w = worker((p) => (p === '/api/session' ? session(true)() : null), { windows: [`${ORIGIN}/`] });
-  await w.send('push', { data });
-  assert.equal(w.shown[0].title, push.title);
-  assert.equal(w.shown[0].body, push.body);
-  assert.equal(w.shown[0].tag, push.tag);
-  assert.equal(w.shown[0].icon, '/icon-192.png');
-  assert.deepEqual(plain(w.shown[0].data), { url: '/#morning' });
-  assert.equal(w.subscribed(), true);
-  assert.deepEqual(plain(w.wins[0].messages), []);
-
-  // (no answer, the account failing, or an answer too slow to wait for: shown as it came, never held back)
-  for (const net of [() => { throw new TypeError('Load failed'); }, () => new Response('{}', { status: 502 }), () => new Promise(() => {}), () => new Response('{"error":"x"}', { status: 200 })]) {
-    w = worker((p) => (p === '/api/session' ? net() : null));
-    await w.send('push', { data });
-    assert.equal(w.shown.length, 1);
-    assert.equal(w.shown[0].body, push.body);
-    assert.equal(w.subscribed(), true);
-  }
-  // (a notification with nothing in it: still Today's)
-  w = worker((p) => (p === '/api/session' ? session(true)() : null));
-  await w.send('push', { data: null });
-  assert.equal(w.shown[0].title, 'Today');
-});
 
 test('the updater’s renew is answered', { skip }, async () => {
   const w = worker(() => null);
@@ -135,36 +77,18 @@ test('Today’s own files: from the network while there is one, kept as they com
   for (const p of ['/api/session', '/api/today?with=morning', '/api/avatar?id=x', '/app.js?v=2', '/version']) assert.equal(await w.get(p), null, p);
   assert.equal(await w.send('fetch', { request: { method: 'GET', url: 'https://example.com/app.js', mode: 'cors' } }), null);
   assert.equal(await w.send('fetch', { request: { method: 'POST', url: `${ORIGIN}/`, mode: 'navigate' } }), null);
-  // (another address of the site is its 404 page, from the network: not Today's page kept)
-  assert.equal(await w.get('/nope', 'navigate'), null);
+  // (another address of the site is its 404 page, or a page of the hub's, from the network: not Today's page kept)
+  for (const p of ['/nope', '/chats/', '/chats/?engine=1', '/weather/', '/markets/#s=TSCO', '/mail/']) assert.equal(await w.get(p, 'navigate'), null, p);
+  for (const p of ['/chats/app.js', '/weather/app.js', '/chats/sw.js']) assert.equal(await w.get(p), null, p);
   down = true;
   assert.equal(await (await w.get('/', 'navigate')).text(), 'fresh /');
   assert.equal(await (await w.get('/cards.js')).text(), 'fresh /cards.js');
   await assert.rejects(w.get('/app.css'));
 });
 
-test('a renewed subscription takes the old one’s place where the account has it, else is added, with X-Inflite', { skip }, async () => {
-  const sub = { endpoint: 'https://fcm.googleapis.com/fcm/send/new', toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/new', keys: { p256dh: 'p', auth: 'a' } }) };
-  let w = worker((p) => Response.json(p === '/api/push/move' ? { moved: true } : { ok: true }));
-  await w.send('pushsubscriptionchange', { newSubscription: sub, oldSubscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/old' } });
-  assert.deepEqual(w.posts.map((x) => x.path), ['/api/push/move']);
-  assert.deepEqual(w.posts[0].body, { sub: sub.toJSON(), was: 'https://fcm.googleapis.com/fcm/send/old' });
-  assert.equal(w.posts[0].headers['X-Inflite'], '1');
-  // (the old one not the account's, or taken: the new one added)
-  w = worker((p) => Response.json(p === '/api/push/move' ? { moved: false } : { ok: true }));
-  await w.send('pushsubscriptionchange', { newSubscription: sub, oldSubscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/old' } });
-  assert.deepEqual(w.posts.map((x) => x.path), ['/api/push/move', '/api/push']);
-  assert.deepEqual(w.posts[1].body, { sub: sub.toJSON() });
-  // (none given: made afresh with the account's key)
-  w = worker((p) => (p === '/api/push/key' ? Response.json({ key: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U' }) : Response.json({ ok: true })));
-  await w.send('pushsubscriptionchange', {});
-  assert.deepEqual(w.posts.map((x) => x.path), ['/api/push']);
-  assert.equal(w.posts[0].body.sub.endpoint, 'https://fcm.googleapis.com/fcm/send/new');
-});
-
 // (every file Today's page loads as it opens, its manifest's start, and what its scripts and stylesheet bring in: one
 // added and not to FILES, and Today wouldn't open offline. And every one in FILES there to be kept)
-test('every file Today’s page loads as it opens is one the worker keeps, and each of those is there', { skip }, () => {
+test('every file Today’s page loads as it opens is one the worker keeps, and each of those is there', { skip }, (t) => {
   const pub = new URL('./', SW), read = (f) => readFileSync(new URL(f, pub), 'utf8');
   const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(read('sw.js'))[1]);
   const own = (u, base = '/') => { const x = new URL(u, new URL(base, `${ORIGIN}/`)); return x.origin === ORIGIN ? x.pathname : null; };
@@ -190,5 +114,20 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   for (const f of ['/icon-512.png', '/icon-maskable-512.png', '/og.png']) want.delete(f);
   const missing = [...want].filter((f) => !FILES.includes(f));
   assert.deepEqual(missing, [], 'loaded as Today opens, not kept for offline');
-  for (const f of FILES) assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `${f} is in FILES but not there`);
+  // (day.css is batch TP's and mailhost.js batch M's, each made by its own batch: until it's merged, not there yet.
+  // Integration takes this list out once both are in)
+  const LATER = { '/day.css': 'TP', '/mailhost.js': 'M' };
+  for (const f of FILES) {
+    if (LATER[f] && !existsSync(new URL(f.slice(1), pub))) { t.diagnostic(`${f} isn't there yet (batch ${LATER[f]}'s)`); continue; }
+    assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `${f} is in FILES but not there`);
+  }
+});
+
+test('its copy is today-app-2, with Today First’s files: the day, Apps, You and Mail’s host page’s script', { skip }, () => {
+  const src = readFileSync(SW, 'utf8');
+  assert.equal(/\nconst SHELL = "([^"]+)";/.exec(src)?.[1], 'today-app-2');
+  const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(src)[1]);
+  for (const f of ['/day.js', '/day.css', '/apps.js', '/you.js', '/mailhost.js']) assert.ok(FILES.includes(f), f);
+  // (the page loads day.js by its own address, a plain import, so the check above covers it)
+  assert.match(readFileSync(new URL('app.js', SW), 'utf8'), /import\("\/day\.js"\)/);
 });
