@@ -50,3 +50,5 @@
 .ifl-sheet[data-app=weather] .wxs-btns { display: flex; justify-content: flex-start; padding-top: 4px; }
 @media (max-width: 359px) { .ifl-sheet[data-app=weather] .wxs-edit { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .ifl-sheet[data-app=weather] .wxs-card { transition: none; } }
+/* the app's hero tops the list only, not the pages pushed over it */
+.ifl-sheet[data-app=weather][data-sheet=wxsettings].pushed .ifs-hero { display: none; }
