@@ -19,6 +19,11 @@
 //   addEventListener/removeEventListener; the reused files' own listeners from their first import, one each of
 //   charts.js's resize, data.js's storage and radarrain.js's visibilitychange, are theirs, not the mount's).
 //   (pull's { signedIn: false } and the PUT body against app.js's mine() are roofwxcore's unit cases.)
+// Loading on open (stage 2 §4.5, part 1b): Now's first open fetches none of days, warnings, places, wxsettings and
+//   wxdetail; each is fetched once when first wanted; Weather Settings (a page, a Units change) through lazy wxsettings.js;
+//   a cold #settings address opens it too. A slow file: a skeleton (a section) or a skeleton sheet; two quick taps open one
+//   sheet; one closed while it waits, or asked for just before the person left Weather, never opens. A failing file: Try
+//   Again asks for it afresh (?retry=<n>, j0's frame), a sheet's toast, the next tap opens it.
 // And two parts that run once their files are real (no STUB export), else say "part skipped: <file> is still B0's stub":
 //   the views part (WV: now.js, days.js, warnings.js, wxui.js): Now's hero, the warnings slot, the credits sheet; 16 Days
 //   with Days by and a day's sheet; Warnings and a warning's sheet, and both empty states; a detail sheet from a tile;
@@ -26,7 +31,7 @@
 //   saved, glass kept in the PUT body, the Notifications row to You.
 //   node .tools/tests/roofwxmount.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
 import * as WXF from './mocks/wxappdata.mjs';
 
@@ -263,11 +268,164 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   await ctx.close();
 }
 
+// ===================== 1b. loading on open (stage 2 S2-D5, §4.5, C4) =====================
+// Now's first open fetches none of the lazy five (days, warnings, places, wxsettings, wxdetail); each is fetched once,
+// the first time it's wanted (16 Days, Warnings, the ▾'s Places, a Right now tile and then the credits line, Weather
+// Settings), and never again; the settings part opens through lazy wxsettings.js. (Nothing here imports a module file
+// itself: the counts are the module's own asks.)
+{
+  const { p, st, ctx } = await phone();
+  const LAZY = ['days', 'warnings', 'places', 'wxsettings', 'wxdetail'], asked = {};
+  p.on('request', (r) => { const m = /\/weather\/roof\/(\w+)\.js$/.exec(new URL(r.url()).pathname); if (m) asked[m[1]] = (asked[m[1]] || 0) + 1; });
+  const n = (f) => asked[f] || 0;
+  ok(await openWeather(p), 'Weather mounts (loading on open)');
+  ok(await until(() => visible(p, `${H.wxSec('now')} ${H.WX_HERO}`)), 'Now’s hero drawn');
+  await until(() => visible(p, H.DETAIL_TILE), 8000);
+  await p.waitForTimeout(1500);
+  ok(LAZY.every((f) => n(f) === 0), 'first open: none of days, warnings, places, wxsettings, wxdetail fetched', JSON.stringify(asked));
+  ok(['weather', 'now', 'wxui', 'wxwarn', 'core', 'radarview'].every((f) => n(f) === 1), 'the static graph once each (wxwarn.js among it)', JSON.stringify(asked));
+  // 16 Days: days.js once, its rows drawn; there and back, not again
+  await p.locator(H.hdSec('days')).click();
+  ok(await until(async () => (await p.locator(H.DAY_ROW).count()) >= 10), '16 Days drawn once its file is in', String(await p.locator(H.DAY_ROW).count()));
+  ok(n('days') === 1, 'days.js fetched once, on 16 Days’ first show', JSON.stringify(asked));
+  await p.locator(H.DAY_ROW).nth(1).click();
+  ok(await until(() => visible(p, `${H.DAY_SHEET}[open]`)), 'a day’s sheet (openDay through the same file)');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DAY_SHEET);
+  // Warnings: warnings.js once, a warning in full through it
+  await p.locator(H.hdSec('warnings')).click();
+  ok(await until(() => visible(p, H.warningRow(0))), 'Warnings drawn once its file is in (London’s in force)');
+  await p.locator(H.warningRow(0)).click();
+  ok(await until(() => visible(p, `${H.WARNING_SHEET}[open]`)), 'a warning opens in full');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.WARNING_SHEET);
+  ok(n('warnings') === 1, 'warnings.js fetched once', JSON.stringify(asked));
+  for (const id of ['now', 'days', 'warnings', 'now']) { await p.locator(H.hdSec(id)).click(); await until(() => visible(p, H.wxSec(id))); }
+  ok(n('days') === 1 && n('warnings') === 1, 'there and back again: neither fetched again', JSON.stringify(asked));
+  // Places: places.js on the ▾'s first tap, not the second
+  for (let k = 0; k < 2; k++) {
+    await p.locator(H.HD_PICK).click();
+    ok(await until(() => p.locator(H.PLACE_ROW).count().then((c) => c === 3)), `Places opens with your places (${k ? 'again' : 'first time'})`);
+    await p.keyboard.press('Escape'); await sheetClosed(p, H.PLACES_SHEET);
+  }
+  ok(n('places') === 1, 'places.js fetched once', JSON.stringify(asked));
+  // a Right now tile, then the credits line: wxdetail.js once for both
+  await p.locator(H.DETAIL_TILE).first().click();
+  ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1)), 'a Right now tile opens its detail sheet');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
+  await p.locator(H.WX_CREDITS).first().scrollIntoViewIfNeeded().catch(() => {});
+  await p.locator(H.WX_CREDITS).first().click();
+  ok(await until(() => p.locator(`${H.CREDITS_SHEET}[open] .wx-credits-sheet`).count().then((c) => c === 1)), 'the credits line opens the credits sheet');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.CREDITS_SHEET);
+  await p.locator(H.DETAIL_TILE).nth(1).click();
+  ok(await until(() => visible(p, `${H.DETAIL_SHEET}[open]`)), 'another tile’s sheet');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
+  ok(n('wxdetail') === 1, 'wxdetail.js fetched once, for the detail and the credits sheets', JSON.stringify(asked));
+  // Weather Settings, through lazy wxsettings.js: a page and a Units change saved
+  ok(n('wxsettings') === 0, 'wxsettings.js not fetched till Weather Settings is wanted', JSON.stringify(asked));
+  st.me = 'ok';
+  await p.locator(H.HD_SETTINGS).click();
+  ok(await until(() => visible(p, H.WXSETTINGS)), 'Weather Settings opens (its file through fw.lazy)');
+  await p.locator(H.wxGo('units')).click().catch(() => {});
+  ok(await until(() => visible(p, H.wxPage('units'))), 'its Units page');
+  const before = st.puts.length;
+  await p.locator(`${H.wxSetting('temp')} ${H.segValue('f')}`).click().catch(() => {});
+  ok(await until(() => st.puts.length > before, 6000), 'a Units change saved (PUT /api/weather/me)');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.WXSETTINGS);
+  await p.locator(H.HD_SETTINGS).click(); await until(() => visible(p, H.WXSETTINGS));
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.WXSETTINGS);
+  ok(n('wxsettings') === 1, 'wxsettings.js fetched once', JSON.stringify(asked));
+  ok(LAZY.every((f) => n(f) === 1), 'each of the lazy five fetched exactly once', JSON.stringify(asked));
+  await shot(p, '1b-lazy');
+  ok(st.errors.length === 0, 'no page errors (loading on open)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+// (a slow file: a section shows a skeleton till it's in; a sheet, a skeleton sheet of its name, swapped for the real one;
+// two quick taps, one sheet; one closed while it waits, or asked for just before the person left Weather, nothing opens)
+{
+  const { p, st, ctx } = await phone();
+  const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  for (const f of ['days', 'wxdetail', 'places', 'wxsettings']) await p.route(`${KIT}/weather/roof/${f}.js`, async (r) => { await sleep(1200); r.fallback(); });
+  await openWeather(p);
+  await until(() => visible(p, H.DETAIL_TILE), 8000);
+  await p.locator(H.hdSec('days')).click();
+  ok(await until(() => visible(p, `${H.wxSec('days')} .ifl-skeleton`), 1000), '16 Days, its file slow: a skeleton in the section');
+  ok(await until(async () => (await p.locator(H.DAY_ROW).count()) >= 10, 6000), 'then its rows, once it’s in');
+  ok(await p.locator(`${H.wxSec('days')} .ifl-skeleton`).count() === 0, 'the skeleton gone');
+  await p.locator(H.hdSec('now')).click(); await until(() => visible(p, H.wxSec('now')));
+  // (two taps on the tile before anything modal is up: the second gets the first's promise)
+  await p.evaluate((sel) => { const t = document.querySelector(sel); t.click(); t.click(); }, H.DETAIL_TILE);
+  ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .ifl-skeleton`).count().then((c) => c === 1), 1000), 'a tile tapped twice, wxdetail.js slow: one skeleton sheet (data-sheet=detail) at once');
+  ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1), 6000), 'swapped for the real sheet once it’s in');
+  await p.waitForTimeout(600);
+  ok(await p.locator(`${H.DETAIL_SHEET}[open]`).count() === 1, 'two quick taps: exactly one detail sheet open, not two', String(await p.locator(`${H.DETAIL_SHEET}[open]`).count()));
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
+  await p.locator(H.HD_PICK).click();
+  ok(await until(() => visible(p, `${H.PLACES_SHEET}[open]`), 1000), 'Places, places.js slow: its skeleton sheet');
+  await p.keyboard.press('Escape');
+  await sheetClosed(p, H.PLACES_SHEET);
+  await p.waitForTimeout(1800);
+  ok(!(await visible(p, `${H.PLACES_SHEET}[open]`)), 'closed while it waited: Places doesn’t open after all');
+  await p.locator(H.HD_PICK).click();
+  ok(await until(() => p.locator(H.PLACE_ROW).count().then((c) => c === 3)), 'the next tap: Places, at once');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.PLACES_SHEET);
+  // (Weather Settings asked for, then Today at once, before its skeleton sheet: it never opens over Today, nor on the way back)
+  await p.evaluate((sel) => { document.querySelector(sel).click(); window.kit.F.nav.go('/'); }, H.HD_SETTINGS);
+  await p.waitForTimeout(1800);
+  ok(!(await visible(p, `${H.WXSETTINGS}[open]`)), 'left Weather while wxsettings.js came: Weather Settings doesn’t open over Today');
+  await go(p, '/weather/'); await until(() => visible(p, H.wxSec('now')));
+  await p.waitForTimeout(400);
+  ok(!(await visible(p, `${H.WXSETTINGS}[open]`)), 'nor once back in Weather');
+  await p.locator(H.HD_SETTINGS).click();
+  ok(await until(() => visible(p, `${H.WXSETTINGS}[open]`), 3000), 'the next tap: Weather Settings, at once');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.WXSETTINGS);
+  ok(st.errors.length === 0, 'no page errors (slow files)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+// (a file that fails: the section says so with Try Again, which fetches it afresh (fw.lazy's ?retry=); a sheet's opener
+// says so in a toast, and the next tap opens it)
+{
+  const { p, st, ctx } = await phone();
+  const failing = new Set(['days', 'wxdetail']), urls = [];
+  // (fw.lazy's ?retry= is j0's frame's; stage 1's frame asks for the same address again)
+  const retries = /\?retry=/.test(readFileSync(`${IFL}today/public/roof/frame.js`, 'utf8'));
+  p.on('request', (r) => { const u = new URL(r.url()); if (u.pathname.startsWith('/weather/roof/')) urls.push(u.pathname + u.search); });
+  for (const f of failing) await p.route(new RegExp(`${KIT}/weather/roof/${f}\\.js(\\?.*)?$`), (r) => (failing.has(f) ? r.fulfill({ status: 503, body: '' }) : r.fallback()));
+  await openWeather(p);
+  await until(() => visible(p, H.DETAIL_TILE), 8000);
+  await p.locator(H.hdSec('days')).click();
+  ok(await until(() => visible(p, `${H.wxSec('days')} .ifl-error [data-act=retry]`), 6000), 'days.js failing: 16 Days says so, with Try Again');
+  failing.delete('days');
+  const at = urls.length;
+  await p.locator(`${H.wxSec('days')} .ifl-error [data-act=retry]`).click();
+  ok(await until(async () => (await p.locator(H.DAY_ROW).count()) >= 10, 8000), 'Try Again: the file fetched again and the days drawn');
+  const again = urls.slice(at).filter((u) => u.startsWith('/weather/roof/days.js'));
+  if (retries) ok(again.some((u) => /^\/weather\/roof\/days\.js\?retry=[1-9]\d*$/.test(u)), 'Try Again asked for days.js?retry=<n>, afresh (fw.lazy)', JSON.stringify(again));
+  else { ok(again.length >= 1, 'Try Again asked for days.js again', JSON.stringify(again)); note('stage 1’s frame: no ?retry= to check'); }
+  await p.locator(H.hdSec('now')).click(); await until(() => visible(p, H.wxSec('now')));
+  await p.locator(H.DETAIL_TILE).first().click();
+  ok(await until(async () => /didn’t open|needs a connection/.test(await p.locator(H.TOAST).allTextContents().then((a) => a.join(' ')).catch(() => '')), 6000), 'wxdetail.js failing: a tile says so in a toast');
+  ok(!(await visible(p, `${H.DETAIL_SHEET}[open]`)), 'and no sheet is left open');
+  failing.delete('wxdetail');
+  await p.locator(H.DETAIL_TILE).first().click();
+  ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1), 8000), 'the next tap: the detail sheet');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
+  // (the failed files' console errors are the module's own, said once each; nothing thrown)
+  ok(st.errors.every((e) => /Failed to fetch dynamically imported module|error loading dynamically imported module/.test(e)), 'no page errors but the failed fetches (failing files)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+// (the settings route: a cold #settings address opens Weather Settings once wxsettings.js is in)
+{
+  const { p, st, ctx } = await phone();
+  await openWeather(p, '/weather/#settings');
+  ok(await until(() => visible(p, `${H.WXSETTINGS}[open]`), 10000), 'a #settings address opens Weather Settings through its lazy file');
+  ok(st.errors.length === 0, 'no page errors (#settings)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
 // ===================== 2. the views part (WV) =====================
 {
   const { p, st, ctx } = await phone();
   await openWeather(p);
-  const stubs = await p.evaluate(async () => Object.fromEntries(await Promise.all(['now', 'days', 'warnings', 'wxui'].map(async (f) => [f, (await import(`/weather/roof/${f}.js`)).STUB === true]))));
+  const stubs = await p.evaluate(async () => Object.fromEntries(await Promise.all(['now', 'days', 'warnings', 'wxui', 'wxwarn', 'wxdetail'].map(async (f) => [f, (await import(`/weather/roof/${f}.js`)).STUB === true]))));
   const still = Object.entries(stubs).filter(([, v]) => v).map(([k]) => `weather/roof/${k}.js`);
   if (still.length) console.log(`NOTE  part skipped: ${still.join(', ')} ${still.length > 1 ? 'are' : 'is'} still B0’s stub`);
   else {

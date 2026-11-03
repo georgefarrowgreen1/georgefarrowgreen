@@ -21,8 +21,8 @@ import { zonesSay, zonesSpell, zoneSaid, ZONE_COLOURS } from "../solar.js";
 import { weatherSendCard, packCard } from "../send.js";
 import { fetchSolar, store, cell } from "../data.js";
 import { MIN_DAYS, TUNE_DAYS } from "../skill.js";
-import { skyClass, skyOk, isNight, openDetail, openCredits, h, setVar, icon, glyphEl, wxCard, strip, chartHost, hourChart, tilesEl, COLOR, TILES } from "./wxui.js";
-import { listFor, slotOf } from "./warnings.js";
+import { skyClass, skyOk, isNight, h, setVar, icon, glyphEl, wxCard, strip, chartHost, hourChart, tilesEl, COLOR, TILES } from "./wxui.js";
+import { listFor, slotOf } from "./wxwarn.js";
 
 // the cards Now draws, by layout id (app.js CARDS less "daily" and "radar", which are sections here)
 export const NOW_CARDS = ["nowcast", "solar", "hourly", "right-now", "insights-card", "windows", "accuracy", "climate"];
@@ -392,4 +392,4 @@ export function view(el, ctx) {
   };
 }
 
-export { codeInfo, inForce, colourOf, titleOf, openDetail, openCredits, icon };
+export { codeInfo, inForce, colourOf, titleOf, icon };

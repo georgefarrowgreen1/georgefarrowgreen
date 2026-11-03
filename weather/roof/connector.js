@@ -17,17 +17,17 @@ export const connector = {
   },
   sections: SECTIONS,
   aliases: { day: "days", settings: "now" },
-  // The module's static import graph from weather.js (11 own, 14 reused) and its 4 CSS. Never vendor/, the radar
-  // stack, rainmap.js or radarrain.js (fw.lazy only).
+  // files: weather.js's static import graph (8 own, 14 reused) and its 4 CSS; never vendor/, the radar stack or the
+  // rain files. lazy (C4): the fw.lazy(() => import()) closure less files and NET, kept only on the Home Screen.
   files: [
     "/weather/roof/weather.js", "/weather/roof/connector.js", "/weather/roof/core.js", "/weather/roof/sync.js",
-    "/weather/roof/places.js", "/weather/roof/radarview.js", "/weather/roof/now.js", "/weather/roof/days.js",
-    "/weather/roof/warnings.js", "/weather/roof/wxui.js", "/weather/roof/wxsettings.js",
+    "/weather/roof/radarview.js", "/weather/roof/now.js", "/weather/roof/wxui.js", "/weather/roof/wxwarn.js",
     "/weather/data.js", "/weather/insights.js", "/weather/format.js", "/weather/codes.js", "/weather/climate.js",
     "/weather/sky.js", "/weather/skill.js", "/weather/solar.js", "/weather/official.js", "/weather/agree.js",
     "/weather/account.js", "/weather/send.js", "/weather/charts.js", "/weather/icons.js",
     "/weather/roof/weather.css", "/weather/roof/wxcore.css", "/weather/roof/wxsettings.css", "/weather/roof/radar.css",
   ],
+  lazy: ["/weather/roof/days.js", "/weather/roof/warnings.js", "/weather/roof/places.js", "/weather/roof/wxsettings.js", "/weather/roof/wxdetail.js"],
   // mini(answer) → { kind: "num-bars", num, bars: [0..100 ×5], label } | null, from answer.cards.weather (functions/
   // _todaywx.js weatherCard), null unless state "ok": num = now.temp as it is (already "14°"); bars = hours.list[0..4].pop;
   // label from rain (v=2): "Raining now", "Rain from 15:00" (at, on the place's clock: offset s, clock "12"/"24"), else "".
