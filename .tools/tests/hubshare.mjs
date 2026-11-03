@@ -1,4 +1,4 @@
-// needs: hub
+// needs: hub roof-chats
 // Sending any card from the hub's pages (Today First, spec §8.2, §8.3, §14.3): George at the hub (ifl.test:8788), Pat and
 // Leo on Chat's own address (chat.ifl.test), one database. Each card goes through Chat's engine (/chats/?engine=1 in a
 // frame of the page): its send sheet over the page, in the same document (no navigation, one window), "Sent to Pat.
@@ -16,6 +16,13 @@
 //   - privacy: for each exact string sent (the words typed, the place on a card), a before/after diff of every table of
 //     the database finds it in no new or changed row outside a sealed ct, and no request body or URL recorded from any
 //     frame of any phone holds it.
+// Stage 3 (roof/s3/spec.md §10.2, batch Q): the test reads whether Chats is under the roof from the hub (/api/hub
+// apps.chats). Chats on (this file's first line, ROOF_CHATS "1"): there is no engine frame; every card goes through the
+// Chats module's Send sheet in a framework sheet (send.js, S3-D7), sealed in the core, and Today reads Waiting through
+// the facade (S3-D6). The steps that only exist on milestone 1's page (Write More in the Chat from the engine's sheet,
+// the engine forced to key, the card links in Chat's own page) say so as a note, and are proved for the module by
+// roofchats parts 3-4 and UI-B's roofchatsheetmount. Chats off: hubshareoff.mjs runs this same file with plain
+// `// needs: hub`, exactly as before (the switched-off path, s24 §1).
 import http from 'node:http';
 import { execSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
@@ -23,8 +30,17 @@ import { DatabaseSync } from 'node:sqlite';
 import { kit } from './lib.mjs';
 import { makeAccount, joinChat, onAccountPage } from './join.mjs';
 import { packCard } from '../../pigeon/cards.js';
+import * as RH from './roofhooks.mjs';
 
 const [,, S, out] = process.argv;
+// (Chats under the roof or not: the hub's own word, s24 §2; B0's Chats hooks for the module's Send sheet, a missing one
+// failing by name)
+const hubSays = await (await fetch('http://127.0.0.1:8787/api/hub', { headers: { Host: 'ifl.test:8788' } }).catch(() => null))?.json().catch(() => null);
+const CHATS_ON = hubSays?.apps?.chats === true;
+console.log(`Chats ${CHATS_ON ? 'under the roof (ROOF_CHATS "1")' : 'on its own page (switched off)'}`);
+const MISSING = new Set();
+const hk = (name, ...a) => { const v = RH[name]; if (v == null) { MISSING.add(name); return `[data-missing-hook="${name}"]`; } return typeof v === 'function' ? v(...a) : v; };
+const offOnly = (what, where) => console.log(`note: ${what}: milestone 1's page only (Chats is under the roof here); for the module: ${where}`);
 execSync(`${S}/restartkeep.sh`, { env: { ...process.env, PIGEONS: '0' }, stdio: 'ignore' });
 const K = await kit(S, out);
 const { ok, one, api, HUB, errs } = K;
@@ -133,7 +149,10 @@ const store = () => G.p.evaluate(async () => {
 
 // the engine on the page: its frame, and its state as the page sees it
 const F = () => G.p.frameLocator('iframe[name="ifl-chat"]');
-const engineState = () => G.p.evaluate(() => { try { return document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat?.state || null; } catch (_) { return null; } }).catch(() => null);
+const engineState = () => (CHATS_ON
+  // (under the roof: the facade's state, F.service("chats"), S3-D6)
+  ? G.p.evaluate(async () => { try { return (await window.IFL?.hub?.chat?.())?.state || null; } catch (_) { return null; } }).catch(() => null)
+  : G.p.evaluate(() => { try { return document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat?.state || null; } catch (_) { return null; } }).catch(() => null));
 const toastSaid = (re, ms = 10000) => until(() => G.p.evaluate((src) => [...document.querySelectorAll('.ifl-toast')].map((t) => t.innerText.replace(/\s+/g, ' ')).find((t) => new RegExp(src).test(t)) || null, re.source), ms);
 // (each new document the page loads. Not Playwright's framenavigated, which a history entry written within the same
 // document fires too: the framework stamps its entry with history.replaceState as it starts, the page staying as it is)
@@ -144,6 +163,20 @@ async function sendVia(key, to, typed, { name } = {}) {
   const d0 = docs.length, url0 = G.p.url();
   await G.p.evaluate(() => { window.__stay = 1; });
   await G.p.evaluate(({ w, pk }) => { window.__sent = null; window.IFL.hub.send(w, pk).then((r) => { window.__sent = r; }); }, { w: cards[key].say, pk: packed[key] });
+  // (the framework's pages with Chats under the roof: the module's Send sheet, a framework sheet over the page (send.js,
+  // S3-D7). A milestone-1 hub page (Markets with its own roof off) keeps Chat's engine and its sheet, S3-D6)
+  const framework = CHATS_ON && (await G.p.evaluate((sel) => !!document.querySelector(sel), RH.HTML_ROUTE).catch(() => false));
+  if (framework) {
+    const sh = `${RH.sheet('send')}[open]`;
+    await G.p.waitForSelector(hk('chSendRow', to), { timeout: 30000 }).catch(() => {});
+    const sheetText = ((await G.p.locator(sh).innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+    if (typed) await G.p.fill(hk('CH_SEND_WORDS'), typed).catch(() => {});
+    await G.p.click(hk('chSendRow', to)).catch(() => {});
+    await G.p.click(hk('CH_SEND_GO')).catch(() => {});
+    const said = await toastSaid(new RegExp(`Sent to ${name}`));
+    const res = await until(() => G.p.evaluate(() => window.__sent), 10000);
+    return { said, res, sheetText, stayed: navs.length === n0 && G.p.url() === url0 };
+  }
   const row = F().locator(`.sheet [data-act=sendpick][data-id="${to}"]`);
   await row.waitFor({ timeout: 30000 });
   const sheetText = (await F().locator('.sheet').innerText().catch(() => '')).replace(/\s+/g, ' ');
@@ -164,20 +197,22 @@ async function sendVia(key, to, typed, { name } = {}) {
 // way a page script can: an own userActivation on its navigator, UserActivation's isActive on the page's prototype and
 // on the engine frame's, all saying true. The engine reads its own getters, taken as it started, so it's still refused)
 const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
-await G.ctx.addInitScript(({ to, w, pk }) => {
+await G.ctx.addInitScript(({ to, w, pk, on }) => {
   if (location.pathname !== '/' || location.hash !== '#notap' || window.top !== window) return;
   const uaGet = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userActivation')?.get;
   const actGet = Object.getOwnPropertyDescriptor(UserActivation.prototype, 'isActive')?.get;
   const realActive = () => { try { return actGet.call(uaGet.call(navigator)); } catch (_) { return null; } };
   const t0 = Date.now(), seen = [];
   const go = () => {
-    let fw = null, c = null; try { fw = document.querySelector('iframe[name=ifl-chat]')?.contentWindow || null; c = fw?.IFLChat || null; } catch (_) {}
+    // (under the roof there's no frame: the facade itself, asked once, S3-D6)
+    if (on && !window.__fc && !window.__fcAsked) { window.__fcAsked = true; Promise.resolve(window.IFL?.hub?.chat?.()).then((x) => { window.__fc = x || null; }, () => {}); }
+    let fw = null, c = null; try { fw = document.querySelector('iframe[name=ifl-chat]')?.contentWindow || null; c = on ? window.__fc || null : fw?.IFLChat || null; } catch (_) {}
     const real = realActive(); if (seen.at(-1) !== real) seen.push(real);
     const done = (x) => console.log('notap ' + JSON.stringify({ ...x, seen }));
     if (c && c.state === 'ready' && real === false) {
       const undo = [];
       try { Object.defineProperty(navigator, 'userActivation', { configurable: true, value: { isActive: true, hasBeenActive: true } }); undo.push(() => delete navigator.userActivation); } catch (_) {}
-      for (const [where, P] of [['page', window.UserActivation?.prototype], ['engine', fw.UserActivation?.prototype]]) {
+      for (const [where, P] of [['page', window.UserActivation?.prototype], ['engine', fw?.UserActivation?.prototype]]) {
         const was = P && Object.getOwnPropertyDescriptor(P, 'isActive');
         try { Object.defineProperty(P, 'isActive', { configurable: true, get: () => true }); undo.push(() => Object.defineProperty(P, 'isActive', was)); } catch (_) { seen.push(`no ${where} prototype`); }
       }
@@ -189,14 +224,15 @@ await G.ctx.addInitScript(({ to, w, pk }) => {
     if (Date.now() - t0 < 50000) setTimeout(go, 400); else done({ err: c ? 'the page kept an activation' : 'no engine' });
   };
   setTimeout(go, 400);
-}, { to: P.id, w: cards.weather.say, pk: packed.weather });
+}, { to: P.id, w: cards.weather.say, pk: packed.weather, on: CHATS_ON });
 const notap = new Promise((ok) => { const on = (m) => { if (m.text().startsWith('notap ')) { G.p.off('console', on); ok(JSON.parse(m.text().slice(6))); } }; G.p.on('console', on); setTimeout(() => ok(null), 65000); });
 await G.p.goto(`${HUB}/#notap`);
 const nt = await notap;
 ok(nt?.r?.ok === false && nt.r.why === 'tap' && nt.claimed === true && nt.real === false, '1. IFLChat.sendTo from the page’s own script, no tap, the script claiming one (its navigator and both prototypes): refused', js(nt));
 ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0) === m0, '1. and nothing sent');
 const ready = await until(async () => (await engineState()) === 'ready', 40000);
-ok(!!ready, '1. Today: Chat’s engine in its frame, ready', String(await engineState()));
+ok(!!ready, CHATS_ON ? '1. Today: Chats’ facade ready (the core, no engine frame, S3-D6)' : '1. Today: Chat’s engine in its frame, ready', String(await engineState()));
+if (CHATS_ON) ok(!(await G.p.locator('iframe[name=ifl-chat]').count()), '1. no engine frame on the page with Chats under the roof (S3-D6)');
 
 const before = snapshot(), seen0 = seen.length;
 
@@ -263,6 +299,8 @@ ok(!inReq6.length, '6a. and none of her words in any request from George’s pho
 
 // ---- 6b. Write More in the Chat, from the engine's sheet: Chats in the page's place, Pat's chat open, the card waiting
 // above its box; the words typed in the sheet not carried, the hand-over gone from the tab's storage ----
+if (CHATS_ON) offOnly('6b. Write More in the Chat from the engine’s sheet', 'the module’s Send sheet (UI-B roofchatsheetmount)');
+else {
 await G.p.goto(`${HUB}/`); await until(async () => (await engineState()) === 'ready', 40000);
 await G.p.evaluate(({ w, pk }) => { window.IFL.hub.send(w, pk); }, { w: cards.weather.say, pk: packed.weather });
 const wrow = F().locator(`.sheet [data-act=sendpick][data-id="${P.id}"]`);
@@ -278,6 +316,7 @@ const wm = await G.p.evaluate(() => ({ who: document.querySelector('.chatnav .ch
 ok(wentChat && /Pat/.test(wm.who) && new RegExp(PLACE).test(wm.att), '6b. Write More in the Chat: Chats, Pat’s chat, the card waiting above its box', js(wm));
 ok(wm.msg !== null && !String(wm.msg).includes(TYPED.more) && wm.wait === null, '6b. the words typed in the sheet not carried, and the hand-over gone from the tab’s storage', js(wm));
 await G.p.click('[data-act=cardrm]').catch(() => {});
+}
 
 // ---- 7. from Weather's and Markets' pages: the same sheet ----
 for (const [path, key, typed, label] of [['/weather/', 'weather', TYPED.weatherApp, 'Weather'], ['/markets/', 'stock', TYPED.marketsApp, 'Markets']]) {
@@ -290,6 +329,8 @@ await shot(G, '7-from-markets');
 
 // ---- 8. the engine not ready: Chats' own sheet, by the back= navigation, and back with the toast ----
 // (the engine saying it hasn't Chat's key here yet, as one on a phone signed in to InFlite but not to Chats does)
+if (CHATS_ON) offOnly('8. the engine forced to key, Send by the back= navigation', 'roofchats part 3 (/chats/#share= → the Send sheet), part 8 (key), Send’s five states in roofchatsheetmount');
+else {
 await G.ctx.addInitScript(() => {
   if (location.pathname !== '/chats/' || !/[?&]engine/.test(location.search)) return;
   try { if (localStorage.getItem('t-forcekey') !== '1') return; } catch (_) { return; }
@@ -311,6 +352,7 @@ await G.p.waitForURL((u) => u.pathname === '/' && !u.hash, { timeout: 20000 }).c
 const backSaid = await toastSaid(/Sent to Pat/, 10000);
 ok(new URL(G.p.url()).pathname === '/' && /You’re still here/.test(backSaid || ''), '8. sent, and back on Today with the toast', js({ url: G.p.url(), backSaid }));
 await G.p.evaluate(() => localStorage.removeItem('t-forcekey'));
+}
 
 // ---- 9. on the friends' phones: When Sent and Now; percent only in the stock's payload as Pat's phone opens it ----
 await reloadChat(P); await K.openChat(P, GID);
@@ -340,6 +382,8 @@ const lc = await until(() => L.p.evaluate(() => [...document.querySelectorAll('.
 ok(!!lc && /When sent/i.test(lc) && /Done/.test(lc), '9. Leo: the finished ride, live in his chat', lc);
 
 // ---- 9b. the card's links at the hub: the hub's own pages, in the same window, the square only (no place by name) ----
+if (CHATS_ON) offOnly('9b. the card links in George’s own /chats/ page', 'the cards drawn by cardview.js in the module’s chat (UI-A roofchatmount)');
+else {
 await G.p.goto(`${HUB}/chats/`); await G.p.waitForSelector('.mlist .mrow', { timeout: 30000 }).catch(() => {});
 await K.openChat(G, P.id);
 await until(async () => (await G.p.locator('.msgs .cd-card a.cd-open').count()) >= 2, 15000);
@@ -355,6 +399,7 @@ const wxReq = await wxNav, wxAt = wxReq ? new URL(wxReq.url()) : null;
 await G.p.waitForURL((u) => u.pathname === '/weather/', { timeout: 20000 }).catch(() => {});
 ok(!!wxAt && G.pages.length === pages9 && new URL(G.p.url()).pathname === '/weather/' && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lat') || '') && /^-?\d+\.\d\d$/.test(wxAt.searchParams.get('lon') || '') && !wxAt.searchParams.has('name') && !new RegExp(PLACE).test(dec(wxReq.url())),
   '9b. tapped: Weather at the hub, in this window, asked for at that square (no name)', js({ asked: wxReq?.url(), now: G.p.url() }));
+}
 
 // ---- 10. privacy: the exact strings sent, in no new or changed row outside a sealed ct, and in no request ----
 const after = snapshot();
@@ -384,7 +429,7 @@ ok(lockState === 'locked', '10b. Chats locked here: the engine says locked', Str
 const away10 = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 30000 }).then(() => true, () => false);
 await G.p.evaluate(({ w, pk }) => { window.IFL.hub.send(w, pk); }, { w: cards.weather.say, pk: packed.weather });
 const wentLock = await away10;
-ok(wentLock && !!(await G.p.waitForSelector('[data-act=unlock]', { timeout: 20000 }).catch(() => null)), '10b. and Send goes the back= way, to Chats’ own lock', G.p.url());
+ok(wentLock && !!(await G.p.waitForSelector(CHATS_ON ? hk('CH_LOCK') : '[data-act=unlock]', { timeout: 20000 }).catch(() => null)), CHATS_ON ? '10b. and Send goes the back= way, to the Chats screen’s lock (S3-D7, S3-D14)' : '10b. and Send goes the back= way, to Chats’ own lock', G.p.url());
 await G.p.evaluate(() => localStorage.removeItem('inflight-lock')).catch(() => {});
 
 // ---- 11. the engine's key state for real: signed in to InFlite by the site's cookie, Chat's key not on this phone (its
@@ -408,6 +453,7 @@ const others = gErrs.filter((x) => !onChat(x) && !noise(x.e));
 if (others.length) console.log(`notes (page errors on other apps' pages, for their batches): ${js(others.map((x) => `${x.at}: ${x.e}`), 600)}`);
 const chatErrs = [...errs.filter((e) => /^(pat|leo):/.test(e) && !noise(e)), ...gErrs.filter((x) => onChat(x) && !noise(x.e)).map((x) => `george ${x.at}: ${x.e}`)];
 ok(!chatErrs.length, 'no page errors on Chat’s pages (George’s /chats/ and its engine, Pat’s and Leo’s Chat)', chatErrs.slice(0, 6).join(' | '));
+ok(!MISSING.size, 'every Chats hook used is in roofhooks.mjs (B0’s)', [...MISSING].join(', '));
 console.log(`FAILS ${K.fails()}`);
 await (await K.hubBrowser()).close();
 await K.b.close();
