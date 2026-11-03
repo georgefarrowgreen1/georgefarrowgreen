@@ -14,6 +14,9 @@ const SRC = new URL('../../../../inflite/today/src/index.js', import.meta.url);
 const APP = new URL('../../../../inflite/today/public/app.js', import.meta.url);
 const skip = !existsSync(SRC) && 'the inflite repo isn’t beside this one';
 const worker = skip ? null : (await import(SRC)).default;
+// (Today First's own cases: skipped, not failed, where the inflite repo beside has no hub yet: its live branch, as CI has
+// it beside main while this repo goes live first)
+const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
 
 const ACCOUNT = 'https://account.inflite.ai', SITE = 'https://inflite.ai';
 const TOKEN = 'Q2hhdFNlc3Npb25Ub2tlbjEyMzQ1Njc4';
@@ -124,7 +127,7 @@ test('no part of an address goes on but only, with, device, id and v: never a pu
   assert.equal(asked[1].url.search, '');
 });
 
-test('each route goes to its own place on the account, with its method; an unknown one goes nowhere', { skip }, async () => {
+test('each route goes to its own place on the account, with its method; an unknown one goes nowhere', { skip: tfSkip }, async () => {
   const asked = account(() => Response.json({ ok: true }));
   const ROUTES = [
     ['GET', '/api/session', 'today/me'], ['POST', '/api/auth/handback', 'today/handback'], ['POST', '/api/logout', 'today/signout'],
@@ -168,7 +171,7 @@ test('each route goes to its own place on the account, with its method; an unkno
 
 // (what each answers is the hub's and Mail's host page's own, today/src/hub.js and mailhost.js, each tested there; here,
 // only that the Worker answers them and the assets never see them)
-test('the hub’s paths and Mail’s are the Worker’s own, never the assets’', { skip }, async () => {
+test('the hub’s paths and Mail’s are the Worker’s own, never the assets’', { skip: tfSkip }, async () => {
   account();
   assets.length = 0;
   for (const p of ['/chats', '/chats/', '/chats/x', '/chats/sw.js', '/weather', '/weather/', '/weather/?lat=1', '/fitness/', '/markets/app.js', '/mail', '/mail/', '/mail/x']) {
@@ -181,7 +184,7 @@ test('the hub’s paths and Mail’s are the Worker’s own, never the assets’
   assert.deepEqual(assets, ['/apps/chat.svg', '/chatsy', '/mailbox', '/weathers/', '/']);
 });
 
-test('a test’s moment of the day (X-Today-At) goes on only where the Worker’s TEST_AT is "1", and only as one', { skip }, async () => {
+test('a test’s moment of the day (X-Today-At) goes on only where the Worker’s TEST_AT is "1", and only as one', { skip: tfSkip }, async () => {
   const asked = account(() => Response.json({ at: 1, tz: 'Europe/London', cards: {} }));
   const AT = '1793602800000';
   await call(req('/api/today?v=2', { headers: { 'X-Today-At': AT } }));
