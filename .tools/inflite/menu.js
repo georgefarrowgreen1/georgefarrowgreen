@@ -624,12 +624,14 @@ const IFL = (() => {
     if (leaving(d.url)) crumb();
     location.assign(d.url);
   });
-  // (the hub's look: html.ifl-hub, and pages that cross-fade into each other, its tab bar staying put. The rule's put in
-  // here, not in menu.css, as @view-transition can't be kept to html.ifl-hub there: off the hub, nothing changes)
-  if (hub.on) {
-    document.documentElement?.classList.add("ifl-hub");
-    try { for (const s of document.styleSheets || []) { try { s.insertRule("@view-transition { navigation: auto; }", s.cssRules.length); break; } catch (_) {} } } catch (_) {}
-  }
+  // (the hub's look: html.ifl-hub, and pages that cross-fade into each other, the tab bar staying put. menu.css asks for
+  // it of every page (@view-transition, which can't be kept to html.ifl-hub there, and must be in a stylesheet to be
+  // there as the next page's first shown): off the hub, every page lets it go as it's left, so nothing changes there; at
+  // the hub, one that can't be done is let go quietly)
+  if (hub.on) document.documentElement?.classList.add("ifl-hub");
+  const vt = (e) => { const t = e.viewTransition; if (!t) return; for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); if (!hub.on) t.skipTransition?.(); };
+  addEventListener("pageswap", vt);
+  addEventListener("pagereveal", vt);
 
   // the card for an old Home Screen icon: InFlite is one app now (as allow's sheet looks)
   function movedCard(app, off) {
