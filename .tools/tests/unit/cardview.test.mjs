@@ -230,10 +230,17 @@ test("a session done when sent that Fitness can't see now: \"Done ✓\" in both 
 const THERE = normCard({ kind: "weather", from: "chat", there: true, at: NOW - H, snap: { place: "Norwich", tz: LON, temp: 12, code: 61, isDay: true, rain: { now: true } }, ref: { cell: [52.63, 1.29], friend: "leo" } });
 const RIDE = normCard({ kind: "fitness", from: "today", at: NOW - H, snap: { day: "2026-11-05", tz: LON, sport: "ride", name: "Ride how you like", secs: 7200, best: { start: Date.UTC(2026, 10, 5, 10), end: Date.UTC(2026, 10, 5, 12), dry: true }, with: ["Leo", "Ade"] } });
 const UUID = "0b5c7c1e-6a43-4a8e-9a77-1f5e2f3a4b5c";
-test("the weather where a friend is: “Where Leo is” as you sent it, “Where you are” on theirs", () => {
+test("the weather where a friend is: “Where Leo is” as you sent it, “Where you are” on Leo's alone", () => {
   const mine = cardHtml(THERE, { mine: true, who: "Leo", viewAt: NOW, links, tz: LON });
   assert.match(mine, /<span class="cd-app">Where Leo is<\/span><span class="cd-what"> · Norwich/);
-  assert.match(cardHtml(THERE, { mine: false, who: "George", viewAt: NOW, tz: LON }), /<span class="cd-app">Where you are<\/span>/);
+  assert.match(cardHtml(THERE, { mine: false, who: "George", me: "leo", viewAt: NOW, tz: LON }), /<span class="cd-app">Where you are<\/span>/, "Leo's phone (me: his id)");
+  // anyone else who sees it (it never goes to them, but if it did) is told no more than "Weather"
+  for (const me of ["pat", "", undefined, 5]) {
+    const h = cardHtml(THERE, { mine: false, who: "George", me, viewAt: NOW, tz: LON });
+    assert.match(h, /<span class="cd-app">Weather<\/span><span class="cd-what"> · Norwich/, String(me));
+    assert.ok(!/Where /.test(h), String(me));
+  }
+  assert.ok(!/Where you are/.test(cardHtml(normCard({ ...THERE, ref: { cell: [52.6, 1.3] } }), { mine: false, me: "leo", viewAt: NOW, tz: LON })), "no friend in it: no one's");
   assert.match(cardHtml(THERE, { mine: true, viewAt: NOW, tz: LON }), /<span class="cd-app">Where they are<\/span>/, "no name given");
   assert.match(sheetCardHtml(THERE, { who: "Leo", viewAt: NOW, tz: LON }), /<span class="cd-app">Where Leo is<\/span>/, "in the sheet, as it would go");
   assert.match(mine, /Open in Weather/, "the square, as any weather card");
@@ -250,14 +257,30 @@ test("a ride with friends: “with Leo and Ade” on the ride card", () => {
   assert.ok(!/with /.test(cardHtml(F, { viewAt: NOW, tz: LON })), "none: nothing said");
 });
 const T0 = Date.parse("2026-11-03T09:00:00Z"), call = (o = {}) => normWhen({ kind: "call", start: Date.UTC(2026, 10, 3, 18, 30), mins: 30, tz: LON, opts: [Date.UTC(2026, 10, 3, 19), Date.UTC(2026, 10, 3, 19, 30)], ...o });
+// (each button and chip a time's invite draws: [act, a, label, data-t?], in order, and whether the other times are hidden)
+const acts = (h) => [...h.matchAll(/<button type="button" class="(cd-btn|cd-chip)[^"]*" data-act="(\w+)"(?: data-a="(\w+)")? data-id="w1"(?: data-t="(\d+)")?>([^<]+)</g)].map((m) => [m[2], m[3] || "", m[5], ...(m[4] ? [Number(m[4])] : [])]);
+const hidden = (h) => /class="cd-later" hidden>/.test(h);
 test("a time to talk: “Call at 18:30?” Yes · Another Time · No, the other times under Another Time", () => {
   const h = whenHtml(call(), { who: "Mira", id: "w1", canAnswer: true, tz: LON, viewAt: T0 });
   assert.match(h, /<span class="cd-app">Call at 18:30\?<\/span>/);
   assert.match(h, /18:30–19:00/); assert.match(h, /30 min/); assert.match(h, /Or 19:00 or 19:30/);
-  assert.deepEqual([...h.matchAll(/class="cd-btn[^"]*" data-act="whenans" data-a="(\w+)" data-id="w1">([^<]+)</g)].map((m) => [m[1], m[2]]), [["yes", "Yes"], ["later", "Another Time"], ["no", "No"]]);
-  assert.match(h, /class="cd-later" hidden><button type="button" class="cd-chip" data-act="whenans" data-a="yes" data-id="w1" data-t="\d+">19:00/);
-  assert.match(whenHtml(call(), { id: "w1", tz: LON, viewAt: T0, showLater: true }), /class="cd-later">/);
-  assert.ok(!/cd-later/.test(whenHtml(call({ opts: [] }), { id: "w1", tz: LON, viewAt: T0 })), "no other times: nothing under Another Time");
+  // other times ahead: Another Time only shows them (whenlater); each chip says yes to its own; None of These asks
+  const s19 = Date.UTC(2026, 10, 3, 19), s1930 = Date.UTC(2026, 10, 3, 19, 30);
+  assert.deepEqual(acts(h), [["whenans", "yes", "Yes"], ["whenlater", "", "Another Time"], ["whenans", "no", "No"],
+    ["whenans", "yes", "19:00", s19], ["whenans", "yes", "19:30", s1930], ["whenans", "later", "None of These"]]);
+  assert.ok(hidden(h), "until Another Time is tapped");
+  assert.match(h, /<div class="cd-acts">.*<\/div><div class="cd-later" hidden><button type="button" class="cd-chip"/s, "the chips under the buttons");
+  const open = whenHtml(call(), { id: "w1", tz: LON, viewAt: T0, showLater: true });
+  assert.ok(!hidden(open) && /class="cd-later">/.test(open), "shown");
+  assert.deepEqual(acts(open), acts(h), "the same buttons, Another Time still there to fold them away");
+  // no other times: Another Time asks at once, and there's nothing to show
+  const solo = whenHtml(call({ opts: [] }), { id: "w1", tz: LON, viewAt: T0 });
+  assert.deepEqual(acts(solo), [["whenans", "yes", "Yes"], ["whenans", "later", "Another Time"], ["whenans", "no", "No"]]);
+  assert.ok(!/cd-later|whenlater|None of These/.test(solo));
+  // the other times all passed, the first still ahead: as if there were none
+  const late = whenHtml(call({ start: Date.UTC(2026, 10, 3, 20), opts: [Date.UTC(2026, 10, 3, 18, 30)] }), { id: "w1", tz: LON, viewAt: Date.UTC(2026, 10, 3, 19) });
+  assert.deepEqual(acts(late), [["whenans", "yes", "Yes"], ["whenans", "later", "Another Time"], ["whenans", "no", "No"]]);
+  assert.ok(!/Or 18:30/.test(late), "and a time gone by isn't offered");
   // the words: meet, other days, an hour or more
   assert.match(whenHtml(call({ kind: "meet", mins: 60 }), { tz: LON, viewAt: T0 }), /Meet at 18:30\?<\/span>.*1 hour/s);
   assert.match(whenHtml(call({ start: Date.UTC(2026, 10, 4, 18, 30), mins: 90, opts: [] }), { tz: LON, viewAt: T0 }), /Call tomorrow at 18:30\?<\/span>.*Tomorrow 18:30–20:00.*1 h 30 min/s);
@@ -268,11 +291,23 @@ test("a time to talk: “Call at 18:30?” Yes · Another Time · No, the other 
   const mine = whenHtml(call(), { mine: true, who: "Mira", id: "w1", tz: LON, viewAt: T0 });
   assert.match(mine, /You asked Mira\./); assert.ok(!/whenans/.test(mine)); assert.match(mine, /cd-mine/);
   assert.ok(!/whenans/.test(whenHtml(call(), { who: "Mira", id: "w1", canAnswer: false, tz: LON, viewAt: T0 })), "once answered");
+  // the first time gone, others ahead: no Yes and no Another Time, the other times drawn open, with None of These
   const mid = whenHtml(call(), { id: "w1", tz: LON, viewAt: Date.UTC(2026, 10, 3, 18, 45) });
-  assert.ok(!/data-a="yes" data-id="w1">Yes/.test(mid), "the first time gone: no Yes to it");
-  assert.match(mid, /data-t="\d+">19:00/); assert.match(mid, /Another Time/);
+  assert.deepEqual(acts(mid), [["whenans", "no", "No"], ["whenans", "yes", "19:00", Date.UTC(2026, 10, 3, 19)], ["whenans", "yes", "19:30", Date.UTC(2026, 10, 3, 19, 30)], ["whenans", "later", "None of These"]]);
+  assert.ok(!hidden(mid) && /class="cd-later">/.test(mid), "open, with nothing to tap to show them");
+  assert.match(mid, /Or 19:00 or 19:30/);
+  // the second gone too: only the third left, and only it said
+  const later = whenHtml(call(), { id: "w1", tz: LON, viewAt: Date.UTC(2026, 10, 3, 19, 10), showLater: false });
+  assert.deepEqual(acts(later), [["whenans", "no", "No"], ["whenans", "yes", "19:30", Date.UTC(2026, 10, 3, 19, 30)], ["whenans", "later", "None of These"]]);
+  assert.match(later, /<span class="cd-line">Or 19:30<\/span>/); assert.ok(!/19:00</.test(later.replace(/18:30–19:00/, "")));
+  // yours, after the first time: only the times still ahead are said
+  const mineLater = whenHtml(call(), { mine: true, who: "Mira", id: "w1", tz: LON, viewAt: Date.UTC(2026, 10, 3, 19, 10) });
+  assert.match(mineLater, /<span class="cd-line">Or 19:30<\/span>/); assert.match(mineLater, /You asked Mira\./);
+  // (on another day, the times said with their day, and "or" between them)
+  assert.match(whenHtml(call({ start: Date.UTC(2026, 10, 4, 18, 30), opts: [Date.UTC(2026, 10, 4, 19), Date.UTC(2026, 10, 4, 19, 30)] }), { tz: LON, viewAt: T0 }), /Or Tomorrow 19:00 or Tomorrow 19:30/);
   const gone = whenHtml(call(), { id: "w1", tz: LON, viewAt: Date.UTC(2026, 10, 3, 19, 45) });
-  assert.match(gone, /This time has passed\./); assert.ok(!/whenans/.test(gone));
+  assert.match(gone, /This time has passed\./); assert.ok(!/whenans|whenlater/.test(gone));
+  assert.ok(!/<span class="cd-line">Or /.test(gone), "no other time said once they've all gone");
   noStyle(h);
   for (const junk of [null, 5, {}, { kind: "call" }, { kind: "ride", start: Date.UTC(2026, 10, 3, 18, 30), mins: 30 }]) assert.equal(whenHtml(junk), "");
 });
@@ -283,6 +318,7 @@ test("answers to a time: yes (in Today for you both), another time, no", () => {
   assert.match(answerHtml({ id: UUID, a: "yes", start: Date.UTC(2026, 10, 4, 19) }, { who: "Mira", tz: LON, viewAt: T0 }), /Mira: Yes, tomorrow 19:00 ✓/);
   assert.match(answerHtml({ id: UUID, a: "yes" }, { mine: true, tz: LON, viewAt: T0 }), /You: Yes ✓/);
   assert.match(answerHtml({ id: UUID, a: "later" }, { who: "Mira", tz: LON, viewAt: T0 }), /Mira: Another time</);
+  assert.match(answerHtml({ id: UUID, a: "later", start: s }, { who: "Mira", tz: LON, viewAt: T0 }), /Mira: Another time</, "never a time with it, as its words say none");
   const no = answerHtml({ id: UUID, a: "no" }, { who: "Mira", tz: LON, viewAt: T0 });
   assert.match(no, /Mira: Can’t make that time/); assert.ok(!/Fitness keeps your plan/.test(no), "never a ride's words");
   for (const h of [yes, no]) { assert.ok(!/<button/.test(h)); noStyle(h); }

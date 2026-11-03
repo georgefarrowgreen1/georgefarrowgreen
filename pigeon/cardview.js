@@ -4,8 +4,9 @@
 // Every function returns HTML, with everything in it escaped, and never throws on anything pigeon/cards.js's norm
 // functions let through (a bad zone falls back to the viewer's). Looks: pigeon/cards.css (classes cd-…).
 // data-act names here that Chat handles (data-id: the letter's id): askshow, asksend, askno, planans (+data-a),
-// planlater (+data-t), cardrm; and for a time to talk (Today First): whenans (+data-a, and data-t for another of its
-// times said yes to), whenlater.
+// planlater (+data-t), cardrm; and for a time to talk (Today First): whenans, which sends the answer (+data-a "yes" |
+// "later" | "no", and data-t for one of its other times said yes to), and whenlater, which only shows those other times
+// (Chat redraws with showLater, as planans "later" does for a ride's).
 import { normCard, normPlan, normAns, normWhen, compareNow, clockIn, dayWords, dayKeyWords, doneFigures, pctText, codeLabel, durWords, liveKey, bigOf, zoneOk, andList } from "./cards.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -49,13 +50,14 @@ function market(sym) {
   const m = /\.([A-Z]+)$/.exec(sym)?.[1];
   return { L: "London", AS: "Amsterdam", PA: "Paris", DE: "Frankfurt", F: "Frankfurt", MI: "Milan", MC: "Madrid", SW: "Zurich", TO: "Toronto", AX: "Sydney", HK: "Hong Kong", T: "Tokyo", IR: "Dublin", ST: "Stockholm", CO: "Copenhagen", OL: "Oslo", BR: "Brussels", LS: "Lisbon" }[m] || (m ? "" : "New York");
 }
-// (the weather where a friend is, made for them: "Where Leo is" on the phone that sent it, "Where you are" on theirs;
-// who: that friend's first name, as the chat has it)
-const thereTitle = ({ mine, who }) => (mine ? (who ? `Where ${who} is` : "Where they are") : "Where you are");
-function head(card, { viewAt, tz, mine = false, who = "" }) {
+// (the weather where a friend is, made for them: "Where Leo is" on the phone that sent it (who: that friend's first
+// name, as the chat has it), "Where you are" only on the phone of the friend it's about (me: the viewer's id, the
+// card's ref.friend); anyone else is told no more than "Weather")
+const thereTitle = (card, { mine, who, me }) => (mine ? (who ? `Where ${who} is` : "Where they are") : typeof me === "string" && me && card.ref?.friend === me ? "Where you are" : KIND_NAME.weather);
+function head(card, { viewAt, tz, mine = false, who = "", me = "" }) {
   const s = card.snap;
   const what = card.kind === "weather" ? s.place : card.kind === "fitness" ? (keyIn(viewAt, tzOr(s.tz, tz)) === s.day ? "Today" : dayKeyWords(s.day)) : card.kind === "markets" ? s.name : "Flight streak";
-  const app = card.kind === "weather" && card.there ? thereTitle({ mine, who }) : KIND_NAME[card.kind];
+  const app = card.kind === "weather" && card.there ? thereTitle(card, { mine, who, me }) : KIND_NAME[card.kind];
   return `<div class="cd-head"><i class="cd-dot" aria-hidden="true"></i><span class="cd-app">${esc(app)}</span><span class="cd-what"> · ${esc(what)}</span></div>`;
 }
 // (a ride planned with friends: "with Leo", "with Leo and Ade")
@@ -107,8 +109,9 @@ function footLink(card, links) {
 
 /* ---------- a card in a letter ---------- */
 // now: card-now's answer, null or "wait" (not in yet); live: isLive(); sentAt: the letter's time (if the card has none);
-// who: the friend's first name (for the weather where they are: "Where Leo is")
-export const cardHtml = safe(function cardHtml(raw, { now = null, viewAt = Date.now(), sentAt, live = false, mine = false, links, tz, who = "" } = {}) {
+// for the weather where a friend is: who, on yours, that friend's first name ("Where Leo is"), and me, the viewer's id
+// ("Where you are" only when it's theirs)
+export const cardHtml = safe(function cardHtml(raw, { now = null, viewAt = Date.now(), sentAt, live = false, mine = false, links, tz, who = "", me = "" } = {}) {
   const card = normCard(raw);              // (checked again here, so nothing unchecked is ever drawn)
   if (!card) return "";
   if (isObj(now) && now.gone) live = false;          // (a Fitness share past its time: "When sent" only)
@@ -125,7 +128,7 @@ export const cardHtml = safe(function cardHtml(raw, { now = null, viewAt = Date.
   const gone = !live && liveKey(card) && at != null ? `<span class="cd-sent">Sent ${esc(dateOf(at, tz))}</span>` : "";
   const link = footLink(card, links);
   const foot = link || gone ? `<div class="cd-foot">${gone}${link}</div>` : "";
-  return `<div class="cd-card cd-k-${card.kind}${mine ? " cd-mine" : ""}">${head(card, { viewAt, tz, mine, who })}${body}${after}${foot}</div>`;
+  return `<div class="cd-card cd-k-${card.kind}${mine ? " cd-mine" : ""}">${head(card, { viewAt, tz, mine, who, me })}${body}${after}${foot}</div>`;
 });
 
 // The card in the share sheet (and the "Send Yours Back?" sheet), as it would go: no "When sent" yet (who: the friend
@@ -234,31 +237,42 @@ export const answerHtml = safe(function answerHtml(raw, { mine = false, who = ""
 const verbWhen = (w) => (w.kind === "meet" ? "Meet" : "Call");
 const atOf = (ms, tz, viewAt) => { const d = dayWords(ms, tz, viewAt); return `${d === "Today" ? "" : d === "Tomorrow" ? "tomorrow " : /^[A-Z][a-z]+day$/.test(d) ? `${d} ` : `on ${d} `}at ${clockIn(ms, tz)}`; };
 const minsWords = (m) => (m % 60 ? durWords(m * 60) : `${m / 60} hour${m === 60 ? "" : "s"}`);
-// The invite: when (on the viewer's clock), how long, Yes · Another Time · No for the friend, the other times offered
-// as chips under Another Time (shown with showLater), "You asked Leo." on your own, and once every time has passed,
-// said so with nothing to answer. Yes goes to the first time while it's ahead; a chip says yes to its own (data-t).
+const orList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs.at(-1)}`);
+// The invite: when (on the viewer's clock), how long, the other times still ahead ("Or 19:00 or 19:30"), "You asked
+// Leo." on your own, and once every time has passed, said so with nothing to answer. For the friend: Yes (to the first
+// time, while it's ahead) · Another Time · No. With other times still ahead, Another Time only shows them (whenlater):
+// a chip for each, saying yes to its own (data-t), and None of These, which asks for another time (whenans "later");
+// once the first time has passed they're drawn open, with no Yes or Another Time above them. With none ahead, Another
+// Time asks at once (whenans "later").
 export const whenHtml = safe(function whenHtml(raw, { mine = false, who = "", id = "", canAnswer = true, tz, viewAt = Date.now(), showLater = false } = {}) {
   const w = normWhen(raw);
   if (!w) return "";
   const z = tzOr(tz, w.tz), ahead = w.opts.filter((o) => o >= viewAt), firstAhead = w.start >= viewAt;
-  const others = w.opts.length ? `<span class="cd-line">${esc(`Or ${andList(w.opts.map((o) => spanOf(o, o + w.mins * 60e3, z, viewAt).split("–")[0])).replace(/ and ([^ ]+)$/, " or $1")}`)}</span>` : "";
+  const clock = (o) => spanOf(o, o + w.mins * 60e3, z, viewAt).split("–")[0];
+  const others = ahead.length ? `<span class="cd-line">${esc(`Or ${orList(ahead.map(clock))}`)}</span>` : "";
   const body = `<div class="cd-head"><i class="cd-dot" aria-hidden="true"></i><span class="cd-app">${esc(`${verbWhen(w)} ${atOf(w.start, z, viewAt)}?`)}</span></div>
     <div class="cd-plan"><b class="cd-big cd-name">${esc(spanOf(w.start, w.start + w.mins * 60e3, z, viewAt))}</b><span class="cd-line">${esc(minsWords(w.mins))}</span>${others}</div>`;
   let tail = "";
   if (!firstAhead && !ahead.length) tail = `<p class="cd-said">This time has passed.</p>`;
   else if (mine) tail = who ? `<p class="cd-said">${esc(`You asked ${who}.`)}</p>` : "";
   else if (canAnswer) {
-    const btn = (a, label) => `<button type="button" class="cd-btn${a === "yes" ? " cd-pri" : ""}" data-act="whenans" data-a="${a}" data-id="${esc(id)}">${label}</button>`;
-    const chips = ahead.map((o) => `<button type="button" class="cd-chip" data-act="whenans" data-a="yes" data-id="${esc(id)}" data-t="${esc(o)}">${esc(spanOf(o, o + w.mins * 60e3, z, viewAt).split("–")[0])}</button>`).join("");
-    tail = `<div class="cd-acts">${firstAhead ? btn("yes", "Yes") : ""}${btn("later", "Another Time")}${btn("no", "No")}</div>${chips ? `<div class="cd-later"${showLater ? "" : " hidden"}>${chips}</div>` : ""}`;
+    const btn = (act, a, label, cls = "cd-btn") => `<button type="button" class="${cls}" data-act="${act}"${a ? ` data-a="${a}"` : ""} data-id="${esc(id)}">${label}</button>`;
+    const yes = btn("whenans", "yes", "Yes", "cd-btn cd-pri"), no = btn("whenans", "no", "No");
+    if (!ahead.length) tail = `<div class="cd-acts">${yes}${btn("whenans", "later", "Another Time")}${no}</div>`;      // (the first time is ahead here)
+    else {
+      const chips = ahead.map((o) => `<button type="button" class="cd-chip" data-act="whenans" data-a="yes" data-id="${esc(id)}" data-t="${esc(o)}">${esc(clock(o))}</button>`).join("");
+      const open = showLater || !firstAhead;
+      tail = `<div class="cd-acts">${firstAhead ? `${yes}${btn("whenlater", "", "Another Time")}` : ""}${no}</div><div class="cd-later"${open ? "" : " hidden"}>${chips}${btn("whenans", "later", "None of These", "cd-chip")}</div>`;
+    }
   }
   return `<div class="cd-card cd-invite cd-when cd-k-streak${mine ? " cd-mine" : ""}">${body}${tail}</div>`;
 });
-// An answer to one: "Leo: Yes, 18:30 ✓" (In Today for you both), "Leo: Another time", "Leo: Can’t make that time"
+// An answer to one: "Leo: Yes, 18:30 ✓" (In Today for you both), "Leo: Another time", "Leo: Can’t make that time" (a
+// time only with a yes: normAns keeps none for the others)
 const whenAnsHtml = (ans, { mine, who, tz, viewAt }) => {
   const name = mine ? "You" : who || "They";
-  const when = fin(ans.start) ? (() => { const d = dayWords(ans.start, tz, viewAt); return `${d === "Today" ? "" : `${d === "Tomorrow" ? "tomorrow" : d} `}${clockIn(ans.start, tz)}`; })() : "";
-  const title = ans.a === "yes" ? `${name}: Yes${when ? `, ${when}` : ""} ✓` : ans.a === "later" ? `${name}: Another time${when ? `, ${when}?` : ""}` : `${name}: Can’t make that time`;
+  const when = ans.a === "yes" && fin(ans.start) ? (() => { const d = dayWords(ans.start, tz, viewAt); return `${d === "Today" ? "" : `${d === "Tomorrow" ? "tomorrow" : d} `}${clockIn(ans.start, tz)}`; })() : "";
+  const title = ans.a === "yes" ? `${name}: Yes${when ? `, ${when}` : ""} ✓` : ans.a === "later" ? `${name}: Another time` : `${name}: Can’t make that time`;
   const said = ans.a === "yes" ? `<p class="cd-said">In Today for you both</p>` : "";
   return `<div class="cd-card cd-answer cd-when cd-k-streak${mine ? " cd-mine" : ""}"><div class="cd-head"><i class="cd-dot" aria-hidden="true"></i><span class="cd-app">${esc(title)}</span></div>${said}</div>`;
 };
