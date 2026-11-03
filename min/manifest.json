@@ -70,7 +70,7 @@
  "weather/account.js": "7d29093ec05f765d23bcec00a513c39cde75e1a9682bfe293745153b1c172d58",
  "weather/agree.js": "e8fed04798501bd421539a09482e4d65aa04e016792a195386e97c4d3f06708a",
  "weather/alerts.js": "ad4911d5e4cb5c43edcc24a2bce4cc2f0d018bd2f88625e4b99dc7be11509c6a",
- "weather/app.js": "a890fe766fa8310adfd89a24cb248bd639269225e2625ac3b4064afc74eb5ecf",
+ "weather/app.js": "ff7211d691bf4eeb35dba99c64f41c346fc953a042b7f3378ad580c2af782b93",
  "weather/boot.js": "10b29626359990d0a947b7f5e107355010fe5bfc267906ae3e14a5b03fec5ef8",
  "weather/charts.js": "8bc22519968140de745224b81a82c69f4b341da827369c6347ec11dcb8e72005",
  "weather/climate.js": "bef4b4e1397ebab050626cb9b0ec676cc540b2c7bc6de71def2ff8b25f771857",
@@ -90,10 +90,10 @@
  "weather/radarrain.js": "03b76b5c2f13daf21d262810a6f91e8d96c24999f86a1e7d674b387ff49fc840",
  "weather/radarwork.js": "c134abc2f21015e6952bed0984c2d834ccfaaa53a2bef7516b82bb09118ab63f",
  "weather/rainmap.js": "704c3326bf971572e93ce2b275232995ea8c8380fa57b65f759febdab47c813a",
- "weather/send.js": "3509458123eb3640411251ad86ac6012862a63448a58b8ddf76eb5cc5efa4f62",
- "weather/settings.js": "644c4781478f1712070b90371124dd2ed2144140f02de4bac416ed75a842771e",
+ "weather/send.js": "35150b655540f207d8e4d7516ad2344e7d04215d258f5a9ad293035b8eeb7606",
+ "weather/settings.js": "4b127db8a7ae1f2f4609b81481911816b4c0f67c1e59356ab19c6d69d56e38c2",
  "weather/skill.js": "54b19ce34d579cf3596f96a990dfd0f8441760e71b8c31fd8a0aa0661fa1d354",
  "weather/sky.js": "128215c544ac0acf2f86120988c8b2317b006430747d7f43baea5711735bd44e",
  "weather/solar.js": "ae7af6fecaf6f75dda1e05efce5c07c71571f4f48a7fdac889840cf46e860cfb",
- "weather/styles.css": "2d3380ac6dbaadde79553328afeb6ae1376bc3504918bc58c329e3dd2a92c7e0"
+ "weather/styles.css": "57bfa76cbfaa8a6f414906eaa01a355752372a78d5bcf59eb8bf020190325459"
 }
