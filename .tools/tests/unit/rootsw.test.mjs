@@ -12,7 +12,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const SW = new URL('../../../../inflite/today/public/sw.js', import.meta.url);
-const skip = !existsSync(SW) && 'the inflite repo isn’t beside this one';
+const skip = (!existsSync(SW) && 'the inflite repo isn’t beside this one') ||
+  (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 

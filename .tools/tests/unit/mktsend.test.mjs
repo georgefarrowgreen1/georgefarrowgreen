@@ -1,10 +1,12 @@
 // Markets' "Send in Chat" (markets/send.js): a stock's day as a card Chat keeps (pigeon/cards.js normCard), in percent
-// only (never a price, a value or any amount), and the address it goes to: Chat's own, with the words first.
+// only (never a price, a value or any amount), and the address it goes to: Chat's own, with the words first. At
+// InFlite's hub (markets/app.js sendInChat, IFL.hub.on), the same card packed for the hub's IFL.hub.send instead, the
+// words in percent too; off the hub, exactly as before.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { stockSendCard, chatHash } from "../../../markets/send.js";
-import { normCard, readShareHash, chatHash as chatsOwn, SYMBOL } from "../../../pigeon/cards.js";
+import { normCard, readShareHash, chatHash as chatsOwn, SYMBOL, packCard as chatsPack, unpackCard } from "../../../pigeon/cards.js";
 
 const NOW = Date.UTC(2026, 10, 2, 14, 5);
 // (a quote as the page has it in S.q: everything Markets knows of a stock's day, price and all)
@@ -77,4 +79,141 @@ test("the copies stay true: Chat's symbol rule, and send.js among the app's kept
   assert.match(readFileSync(new URL("../../../markets/sw.js", import.meta.url), "utf8"), /"send\.js"/);
   const app = readFileSync(new URL("../../../markets/app.js", import.meta.url), "utf8");
   assert.ok(app.includes("chat + chatHash(text, stockSendCard(sym, name, q, Date.now()))"), "Send in Chat sends the card");
+});
+
+// ---- at InFlite's hub: markets/app.js sendInChat, run with the hub on and off ----
+const APP = readFileSync(new URL("../../../markets/app.js", import.meta.url), "utf8");
+const fnOf = (name) => { const m = new RegExp(`\\nfunction ${name}\\(.*\\) \\{\\n[\\s\\S]*?\\n\\}\\n`).exec(APP); assert.ok(m, `markets/app.js ${name}()`); return m[0]; };
+// (sendInChat as the page has it, with the hub on or off: what it handed IFL.hub.send, and where it sent the page)
+function sender(on, q = quote()) {
+  const sent = [], went = [];
+  const IFL = { hub: { on, send: (...a) => { sent.push(a); return Promise.resolve(true); } } };
+  const A = { chatPage: () => "https://chat.x/" };
+  const make = new Function("S", "IFL", "A", "location", "navigator", "toast", "nameOf", "plainSym", "fmt", "priceSaid", "stockSendCard", "chatHash", "Date",
+    `${fnOf("packCard")}\n${fnOf("sendInChat")}\nreturn sendInChat;`);
+  const send = make({ q: q ? { "TSCO.L": q } : {} }, IFL, A, { assign: (u) => went.push(u) }, {}, () => {}, () => "Tesco", (s) => s.replace(/\.L$/, ""),
+    (v, d = 2) => v.toFixed(d), (x) => `${(x.price * 100).toFixed(1)}p`, stockSendCard, chatHash, { now: () => NOW });
+  return { send, sent, went };
+}
+
+test("at the hub: a stock goes to IFL.hub.send, with the card packed and nothing but name, sym, pct and day in it", () => {
+  const { send, sent, went } = sender(true);
+  send("TSCO.L", "Tesco");
+  assert.equal(went.length, 0, "never to Chat's own address");
+  assert.equal(sent.length, 1, "IFL.hub.send, once");
+  const [words, packed, opts] = sent[0];
+  assert.equal(words, "Tesco (TSCO) is up 1.2% today.", "the words in percent too");
+  for (const v of ["351", "3.51", "p.", "£", "GBP"]) assert.ok(!words.includes(v), `no ${v} in the words`);
+  assert.equal(opts, undefined, "no friend chosen for you");
+  assert.match(packed, /^[A-Za-z0-9_-]+$/);
+  const card = unpackCard(packed);
+  assert.ok(card, "Chat unpacks it");
+  assert.deepEqual(Object.keys(card.snap).sort(), ["day", "name", "pct", "sym"]);
+  assert.deepEqual(card.snap, { name: "Tesco", sym: "TSCO.L", pct: 1.21, day: "2026-11-02" });
+  assert.deepEqual(card.ref, { sym: "TSCO.L" });
+  const json = JSON.stringify(card);
+  for (const k of ["price", "prev", "value", "qty", "cost", "amount"]) assert.ok(!json.includes(k), `no ${k}`);
+  for (const v of ["3.512", "3.47", "£"]) assert.ok(!json.includes(v), `no ${v}`);
+  // (packed as Chat itself packs it)
+  const own = stockSendCard("TSCO.L", "Tesco", quote(), NOW);
+  assert.deepEqual(unpackCard(packed), unpackCard(chatsPack(own)));
+});
+
+test("at the hub with no move to send: the words alone, no card", () => {
+  const { send, sent } = sender(true, null);
+  send("TSCO.L", "Tesco");
+  assert.deepEqual(sent, [["Tesco (TSCO).", null]]);
+  const down = sender(true, quote({ chgPct: -0.404 }));
+  down.send("TSCO.L", "Tesco");
+  assert.equal(down.sent[0][0], "Tesco (TSCO) is down 0.4% today.");
+  assert.equal(unpackCard(down.sent[0][1]).snap.pct, -0.4);
+});
+
+test("off the hub: nothing handed to the hub, and Chat's own address exactly as before", () => {
+  const { send, sent, went } = sender(false);
+  send("TSCO.L", "Tesco");
+  assert.equal(sent.length, 0);
+  const text = "Tesco (TSCO) is up 1.2% today, at 351.2p.";
+  assert.deepEqual(went, ["https://chat.x/" + chatHash(text, stockSendCard("TSCO.L", "Tesco", quote(), NOW))]);
+  // (and the hub asked before Chat's address is even looked up)
+  const src = fnOf("sendInChat");
+  assert.ok(src.indexOf("IFL.hub.send(") > 0 && src.indexOf("IFL.hub.send(") < src.indexOf("A.chatPage()"), "IFL.hub.send before A.chatPage()");
+});
+
+test("a section asked for by the address: a tab, or a stock by a symbol Markets would take, else nothing", () => {
+  const consts = ["SECTIONS", "SYMBOL"].map((k) => new RegExp(`\\nconst ${k} = [^\\n]*\\n`).exec(APP)?.[0]).join("");
+  const sectionOf = new Function(`${consts}\n${fnOf("sectionOf")}\nreturn sectionOf;`)();
+  assert.deepEqual(sectionOf("#holdings"), { tab: "holdings" });
+  assert.deepEqual(sectionOf("#news"), { tab: "news" });
+  assert.deepEqual(sectionOf("today"), { tab: "today" });
+  assert.deepEqual(sectionOf("#s=TSCO.L"), { sym: "TSCO.L" });
+  assert.deepEqual(sectionOf("#s=%5EFTSE"), { sym: "^FTSE" });
+  assert.deepEqual(sectionOf("#s=tsco.l"), { sym: "TSCO.L" });
+  for (const bad of ["", "#", "#notify", "#signin=abc", "#s=", "#s=%E0%A4%A", "#s=%3Cb%3E", "#s=" + "A".repeat(30), "#holdingsx", "#apps"]) assert.equal(sectionOf(bad), null, bad);
+});
+
+test("the address's symbol rule in app.js is Chat's (and so the server's) exactly", () => {
+  const appSymbol = new Function(`${/\nconst SYMBOL = [^\n]*\n/.exec(APP)?.[0]}\nreturn SYMBOL;`)();
+  assert.equal(appSymbol.source, SYMBOL.source);
+  assert.equal(appSymbol.flags, SYMBOL.flags);
+  // (and the server's own, which checks every symbol Markets keeps: functions/_markets.js)
+  assert.ok(readFileSync(new URL("../../../functions/_markets.js", import.meta.url), "utf8").includes(`export const SYMBOL = ${appSymbol};`), "the server's symbol rule");
+});
+
+// (openTo as the page has it, with the hub on or off, signed in or not yet: what it did to the address and the page)
+function opener(on, me) {
+  const did = [], S = { me, tab: "today" };
+  const consts = ["SECTIONS", "SYMBOL"].map((k) => new RegExp(`\\nconst ${k} = [^\\n]*\\n`).exec(APP)?.[0]).join("");
+  const location = { pathname: "/markets/", search: "", hash: "" };
+  const history = { state: null, replaceState: (_s, _t, url) => did.push(`address ${url}`) };
+  const openTo = new Function("S", "IFL", "location", "history", "Sheet", "go", "openStock", "closeSheet",
+    `${consts}\n${fnOf("sectionOf")}\n${fnOf("addressSays")}\n${fnOf("openTo")}\nreturn openTo;`)(
+    S, { hub: { on } }, location, history, { stack: [] }, (t) => { did.push(`go ${t}`); S.tab = t; }, (sym) => did.push(`stock ${sym}`), () => did.push("close"));
+  return { openTo, did, S };
+}
+
+test("a stock asked for at the hub stays in the address until it's opened; a tab is said at once", () => {
+  // (at the hub, not signed in yet (or not known): the stock left in the address, for Sign in, Try Again or start)
+  let o = opener(true, null);
+  assert.equal(o.openTo("#s=TSCO.L"), true);
+  assert.deepEqual(o.did, [], "nothing rewritten, nothing opened");
+  o = opener(true, null);
+  o.openTo("#holdings");
+  assert.deepEqual(o.did, ["address /markets/#holdings"]);
+  assert.equal(o.S.tab, "holdings");
+  // (signed in: the address back to the tab first, so the stock's sheet's history entry carries the tab, then opened)
+  o = opener(true, { id: "u1" });
+  o.openTo("#s=RR.L");
+  assert.deepEqual(o.did, ["address /markets/#today", "stock RR.L"]);
+  o = opener(true, { id: "u1" });
+  o.openTo("#news");
+  assert.deepEqual(o.did, ["address /markets/#today", "go news"]);
+  // (off the hub, as ever: the address the page alone, at once)
+  o = opener(false, null);
+  o.openTo("#s=TSCO.L");
+  assert.deepEqual(o.did, ["address /markets/"]);
+  o = opener(false, { id: "u1" });
+  o.openTo("#s=%5EFTSE");
+  assert.deepEqual(o.did, ["address /markets/", "stock ^FTSE"]);
+  // (a hash that asks for nothing: left alone)
+  o = opener(true, { id: "u1" });
+  assert.equal(o.openTo("#notify"), false);
+  assert.deepEqual(o.did, []);
+});
+
+test("at the hub, this phone's copy is drawn at once only while InFlite's own kept sign-in is the same account's", () => {
+  const kept = new Map();
+  const localStorage = { getItem: (k) => (kept.has(k) ? kept.get(k) : null) };
+  const hubKeptIs = new Function("localStorage", `${/\nconst HUB_KEPT = [^\n]*\n/.exec(APP)?.[0]}\n${fnOf("hubKeptIs")}\nreturn hubKeptIs;`)(localStorage);
+  assert.equal(hubKeptIs("u1"), false, "nothing kept (signed out in You): wait for the account");
+  kept.set("today:session", JSON.stringify({ id: "u1", at: 1, view: {} }));
+  assert.equal(hubKeptIs("u1"), true);
+  assert.equal(hubKeptIs("u2"), false, "another account's");
+  assert.equal(hubKeptIs(null), false);
+  kept.set("today:session", "{not json");
+  assert.equal(hubKeptIs("u1"), false);
+  // (and start() draws the copy only so at the hub; whoever answers, another account's copy is let go)
+  const start = /\nasync function start\(\) \{\n[\s\S]*?\n\}\n/.exec(APP)?.[0] || "";
+  assert.ok(start.includes("if (last?.me && (!IFL.hub.on || hubKeptIs(last.me.id)))"), "the kept copy gated at the hub");
+  assert.ok(start.includes("(keptId != null && keptId !== m.id)) forget()"), "another account's copy let go, drawn or not");
 });
