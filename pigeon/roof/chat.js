@@ -11,7 +11,7 @@
 //     runs while shown and visible. The draft goes to the core as you type (a second after) and at once on `hidden`.
 //   hide(): all of that undone, the draft flushed, the messages out of the DOM.
 //   busy(): the composer has words in it, or a send is on its way.
-import { first, dayLabel, fmtTime, untilWords, tick, ticker, framed, patchList } from "./list.js";
+import { put, first, dayLabel, fmtTime, untilWords, tick, ticker, framed, patchList } from "./list.js";
 import { friendSub } from "./friends.js";
 import { cardHtml } from "../cardview.js";
 import { linkParts } from "../links.js";
@@ -31,7 +31,7 @@ function wordsEl(doc, text) {
   for (const part of linkParts(text)) {
     if (part.href) {
       const a = doc.createElement("a");
-      a.href = part.href; a.rel = "noopener noreferrer"; a.target = "_blank"; a.textContent = part.text;
+      a.setAttribute("href", part.href); a.setAttribute("rel", "noopener noreferrer"); a.setAttribute("target", "_blank"); a.textContent = part.text;
       p.append(a);
     } else p.append(doc.createTextNode(part.text));
   }
@@ -181,7 +181,7 @@ export function view(host, ctx) {
       msgs.replaceChildren(el("p", { class: "ch-hello" }, el("b", { text: "Say hello" }), el("span", { text: `Messages to ${w.kind === "group" ? w.name : first(w.name)} are end-to-end encrypted.` })));
     } else patchList(msgs, itemsOf(c), keyOf, itemEl);
     tick(msgs, now);
-    warn.replaceChildren(who().f?.keyChanged ? el("div", { class: "ch-warn", role: "note" },
+    put(warn, who().f?.keyChanged ? el("div", { class: "ch-warn", role: "note" },
       el("span", { text: `${first(who().name)}’s security key has changed. Check the safety number before you send anything.` }),
       ui.btn("Check", { small: true, act: "safety" })) : null);
     if (stick) toBottom();

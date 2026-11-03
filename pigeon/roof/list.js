@@ -54,20 +54,21 @@ export function tick(root, now = Date.now()) {
 export function patchList(box, items, keyOf, make) {
   const old = new Map();
   for (const n of [...box.children]) if (n.dataset.key) old.set(n.dataset.key, n);
-  let at = null;
+  const keep = new Set(items.map(keyOf));
+  for (const [k, n] of old) if (!keep.has(k)) n.remove();
+  let at = null, i = 0;
   for (const it of items) {
     const k = keyOf(it), was = old.get(k);
     let n = make(it);
     n.dataset.key = k;
     if (was && was.dataset.sig === n.dataset.sig) n = was;
-    else if (was) was.replaceWith(n);
-    old.delete(k);
-    const want = at ? at.nextElementSibling : box.firstElementChild;
-    if (want !== n) (at ? at.after(n) : box.prepend(n));
-    at = n;
+    else if (was) was.remove();
+    if (box.children[i] !== n) (at ? at.after(n) : box.prepend(n));
+    at = n; i++;
   }
-  for (const n of old.values()) n.remove();
 }
+// (box's children replaced by these, the null and false ones left out)
+export const put = (box, ...kids) => box.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 // (one requestAnimationFrame per view: draw() asked many times in a frame runs once)
 export function framed(fn) {
   let id = 0;
@@ -123,7 +124,7 @@ export function view(sec, ctx) {
   }
   const drawWarn = () => {
     const kw = store.get("keywarn"), req = store.get("requests") || [], inc = req.filter((q) => q.dir === "in");
-    warn.replaceChildren(
+    put(warn,
       kw?.mine ? el("div", { class: "ch-warn strong", role: "note" }, el("b", { text: "Your security key doesn’t match" }), el("span", { text: "Friends can’t read new messages from this phone until it’s fixed on Chat’s own page." }),
         el("a", { class: "ifl-btn small", href: "/chats/in/#account", text: "Open Privacy & Security" })) : null,
       inc.length ? el("button", { type: "button", class: "ch-req", data: { act: "requests" } },

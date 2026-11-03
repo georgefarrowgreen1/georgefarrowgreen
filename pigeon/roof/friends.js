@@ -6,7 +6,7 @@
 //   openRequests(ctx) → handle: Friend Requests (data-sheet requests): theirs to say yes or no to, yours waiting.
 //   openAddFriend(ctx, handle?) → handle: Add Friend (data-sheet addfriend): a handle, sent as a request
 //     (meta("friends", { handle })); handle from #add=<handle> filled in.
-import { first, patchList, framed, listTime } from "./list.js";
+import { put, first, patchList, framed, listTime } from "./list.js";
 
 // (under a friend's name: the place they share, else online / last seen)
 export function friendSub(f, now = Date.now()) {
@@ -45,7 +45,7 @@ export function view(sec, ctx) {
     const all = store.get("friends") || [], groups = store.get("groups") || [], req = store.get("requests") || [], me = store.get("me");
     const fr = all.filter((f) => !f.blocked).sort((a, b) => String(a.name).localeCompare(String(b.name)));
     const blocked = all.length - fr.length, inc = req.filter((q) => q.dir === "in"), out = req.length - inc.length;
-    top.replaceChildren(
+    put(top,
       ui.btn("Add Friend", { primary: true, act: "addfriend" }),
       req.length ? el("button", { type: "button", class: "ch-req", data: { act: "requests" } },
         el("span", { class: "ch-reqt", text: "Friend Requests" }),
@@ -57,7 +57,7 @@ export function view(sec, ctx) {
     patchList(fbox, fr, (f) => `f:${f.id}`, friendEl);
     ghead.hidden = !groups.length;
     patchList(gbox, [...groups].sort((a, b) => String(a.name).localeCompare(String(b.name))), (g) => `g:${g.id}`, groupEl);
-    foot.replaceChildren(
+    put(foot,
       !fr.length ? ui.empty({ title: "No friends yet", body: me?.handle ? `Add someone by their handle, or share yours: @${me.handle}.` : "Add someone by their handle." }) : null,
       fr.length && me?.handle ? el("p", { class: "ch-foot" }, "Your handle is ", el("b", { text: `@${me.handle}` }), ". Share it so friends can add you.") : null,
       blocked ? el("p", { class: "ch-foot", text: `${blocked} blocked. Manage them in Privacy & Security.` }) : null);
@@ -98,7 +98,7 @@ export function openRequests(ctx) {
   };
   const draw = () => {
     const req = store.get("requests") || [], inc = req.filter((q) => q.dir === "in"), out = req.filter((q) => q.dir !== "in");
-    body.replaceChildren(
+    put(body,
       inc.length ? ui.list(inc.map((q) => ui.row({ lead: { avatar: q.name }, title: q.name, sub: `@${q.handle}`,
         trail: el("span", { class: "ch-yesno" }, ui.btn("Accept", { small: true, primary: true, act: "accept", label: `Accept ${q.name}`, run: () => answer(q, true) }),
           ui.btn("Decline", { small: true, act: "decline", label: `Decline ${q.name}`, run: () => answer(q, false) })) })), { label: "Asking you" }) : null,
