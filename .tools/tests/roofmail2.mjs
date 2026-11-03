@@ -262,31 +262,35 @@ await part(11, 'the gate: Confirm It’s You round trip over CORS; Pat’s admin
   ok(gate && (await textOf(p, H.HD_TITLE)) === 'Mail', '11. a check older than 12 hours: Mail’s plain state, “Confirm It’s You”, the title Mail (S4-D12, §2.1)', await textOf(p, M_MAIL));
   await shot(p, '11-reauth');
   const navs = []; p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
+  // (whether the hub's page kept its verifier as it left for the sign-in page: noted on pagehide into the hub's own
+  // localStorage, read and dropped once back, since the page is at auth.ifl.test in between)
+  await p.evaluate(() => addEventListener('pagehide', () => { try { localStorage.setItem('t-verifier', sessionStorage.getItem('mail:signin-verifier') ? '1' : '0'); } catch (_) {} }, { once: true })).catch(() => {});
   await confirmBtn.click();
   const atAuth = await p.waitForURL((u) => u.host === 'auth.ifl.test:8788', { timeout: 20000 }).then(() => true, () => false);
   const trip = navs.find((u) => u.startsWith(`${AUTH}/`)) || '';
   const tp = new URLSearchParams(trip.split('#')[1] || '');
   ok(atAuth && tp.get('signin') === 'mail' && /^[A-Za-z0-9_-]{43}$/.test(tp.get('ask') || '') && tp.get('back') === `${HUB}/mail/`, '11. the whole window to the sign-in page, for Mail, its word’s hash, back to the hub’s /mail/ (S4-D12)', trip.slice(0, 200));
-  const verifierKept = await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier')).catch(() => null);
   // (the sign-in page, signed in there already: Sign In, the password asked to confirm it's him, past a passkey offer;
   // as hubmail.mjs goes through it)
   if (atAuth) {
     await p.waitForSelector('main .welcome .signin .btn', { timeout: 20000 }).catch(() => {});
     await wait(500);
     await p.click('main .welcome .signin .btn').catch(() => {});
-    const asked = await Promise.race([p.waitForSelector('#sheet[open] input[type=password]', { timeout: 15000 }).then(() => true), p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 15000 }).then(() => false)]).catch(() => false);
-    if (asked) { await p.fill('#sheet input[type=password]', PASSWORD); await p.click('#sheet form .btn'); }
+    const pw = await Promise.race([p.waitForSelector('#sheet[open] input[type=password]', { timeout: 15000 }).then(() => true), p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 15000 }).then(() => false)]).catch(() => false);
+    if (pw) { await p.fill('#sheet input[type=password]', PASSWORD); await p.click('#sheet form .btn'); }
     else if (await p.$('main .signin input[name=password]')) await onAccountPage(p, { email: 'george2@example.com' }).catch((e) => console.log('note: sign-in page', e.message));
     const offer = await Promise.race([p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 30000 }).then(() => false), p.waitForSelector('main .signin.offer .link', { timeout: 30000 }).then(() => true)]).catch(() => false);
     if (offer && new URL(p.url()).host !== 'ifl.test:8788') await p.click('main .signin.offer .link').catch(() => {});
   }
   await p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 30000 }).catch(() => {});
+  const verifierKept = await p.evaluate(() => { try { const v = localStorage.getItem('t-verifier'); localStorage.removeItem('t-verifier'); return v; } catch (_) { return null; } }).catch(() => null);
+  console.log(`note: the hub's page left for the sign-in page with its verifier kept: ${verifierKept}`);
   const back = navs.find((u) => u.startsWith(`${HUB}/mail/#signin=`)) || '';
   ok(/^http:\/\/ifl\.test:8788\/mail\/#signin=[A-Za-z0-9_-]{16,128}(&|$)/.test(back), '11. the code back at the hub’s /mail/#signin=<code> (S4-D12, §2.3)', back.slice(0, 80));
   const hb = asked.filter((r) => r.who === 'george' && r.url === `${MAIL}/api/auth/handback` && r.method === 'POST').at(-1);
   const inAgain = await mailUp(p);
   ok(!!hb && hb.main && inAgain, '11. the module swapped it at Mail’s /api/auth/handback over CORS, and Mail’s list is in (S4-D12)', js({ hb: !!hb, inAgain }));
-  ok((await at(p, '/mail/', 10000)) && !(await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier'))), '11. the address tidied to /mail/, the verifier used up (§2.3, S4-D16)', js({ url: here(p), verifierKept: !!verifierKept }));
+  ok((await at(p, '/mail/', 10000)) && !(await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier'))), '11. the address tidied to /mail/, the verifier used up (§2.3, S4-D16)', js({ url: here(p), verifierKeptWhenLeaving: verifierKept }));
   const fresh = Number(sql(`SELECT MAX(auth_at) AS t FROM pg_sessions WHERE user_id = '${GID}'`)[0]?.t || 0);
   ok(Date.now() - fresh < 5 * 60e3, '11. shown it’s him just now (the account took the hand-back from the hub, §6.3 fromMail)', String(fresh));
 
