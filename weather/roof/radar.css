@@ -24,9 +24,11 @@
 }
 
 /* ---- the section: the map fills the window between the header and the tab bar ---- */
-.m-weather .wx-sec[data-sec="radar"] { position: relative; }
-.m-weather .wx-radar { position: relative; display: block; box-sizing: border-box; width: 100%; margin: 0 auto;
-  height: calc(100dvh - var(--hd-h, 112px) - var(--tabs-h, 64px) - env(safe-area-inset-bottom)); min-height: 300px; overflow: hidden; color: var(--rd-ink); }
+.m-weather .wx-sec[data-sec="radar"] { position: relative; min-height: calc(100dvh - var(--hd-h, 112px) - var(--tabs-h, 64px) - env(safe-area-inset-bottom)); }
+/* (fixed to the window, so the screen's own padding never narrows it: from the foot of the header to the top of the tab
+   bar, edge to edge; html.ifl-fill keeps the root from scrolling under it) */
+.m-weather .wx-radar { position: fixed; z-index: 0; top: var(--hd-h, 112px); bottom: calc(var(--tabs-h, 64px) + env(safe-area-inset-bottom)); left: 0; right: 0;
+  display: block; box-sizing: border-box; margin: 0 auto; min-height: 240px; overflow: hidden; color: var(--rd-ink); }
 @media (min-width: 980px) { .m-weather .wx-radar { max-width: 1180px; } }
 .m-weather .wx-radar .wx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .m-weather .wx-radar .radar-note { display: none; }
@@ -34,7 +36,7 @@
 .m-weather .wx-radar .radar-map { isolation: isolate; height: 100%; border-radius: 0; overflow: hidden; background: var(--rd-map); }
 .m-weather .wx-radar .leaflet-container { background: var(--rd-map); font: inherit; }
 /* "what's said" of the rain about here, a glass line at the top (radar.js rainSaid) */
-.m-weather .wx-radar .wx-radar-said { position: absolute; z-index: 550; top: 10px; left: 10px; right: 60px; margin: 0; width: fit-content; max-width: min(520px, calc(100% - 70px)); padding: 7px 12px;
+.m-weather .wx-radar .wx-radar-said { position: absolute; z-index: 550; top: 10px; left: 10px; right: 60px; margin: 0; width: fit-content; max-width: min(520px, calc(100% - 120px)); padding: 7px 12px;
   border-radius: 14px; font-size: 13.5px; font-weight: 600; line-height: 1.3; color: var(--rd-ink); background-color: var(--rd-glass-3); -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur); pointer-events: none; }
 .m-weather .wx-radar .wx-radar-said:empty { display: none; }
 .m-weather .wx-radar .wx-radar-off { position: absolute; z-index: 560; inset: 50% 16px auto; transform: translateY(-50%); margin: 0 auto; width: fit-content; padding: 10px 16px; border-radius: 16px; text-align: center;
@@ -44,6 +46,7 @@
 /* ---- the overlay over the map's foot: legend and Send, then the dock ---- */
 .m-weather .wx-radar .wx-radar-over { position: absolute; z-index: 600; left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); bottom: 8px;
   display: flex; flex-direction: column; gap: 8px; margin: 0 auto; max-width: 560px; pointer-events: none; }
+.m-weather .wx-radar .wx-radar-over { bottom: 12px; }
 .m-weather .wx-radar .wx-radar-over > * { pointer-events: auto; }
 .m-weather .wx-radar .wx-radar-top { display: flex; align-items: flex-end; gap: 8px; pointer-events: none; }
 .m-weather .wx-radar .wx-radar-top > * { pointer-events: auto; }
@@ -155,16 +158,17 @@
 .m-weather .wx-radar .layer-menu button:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .m-weather .wx-radar .radar-dry { position: absolute; z-index: 500; top: 56px; left: 50%; transform: translateX(-50%); padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--rd-ink); background-color: var(--rd-glass); }
 .m-weather .wx-radar .radar-dry.off { display: none; }
-/* the scale and the credits, just over the overlay */
-.m-weather .wx-radar .map-scale { position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: 180px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: var(--rd-ink);
+/* the scale and the credits at the top of the map, clear of the overlay at its foot (whose height changes with what it
+   says): the scale under the line at the top, the © beside the map's controls, its names opening down */
+.m-weather .wx-radar .map-scale { position: absolute; left: max(10px, env(safe-area-inset-left)); top: 62px; bottom: auto; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: var(--rd-ink);
   border: 2px solid currentColor; border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 0 2px var(--rd-halo), 0 0 6px var(--rd-halo-2); transition: opacity 0.3s var(--ease-out) 0.3s; }
 .m-weather .wx-radar .radar-wrap:has(.radar-credit:not(.folded)) .map-scale.under { opacity: 0; transition-delay: 0s; }
-.m-weather .wx-radar .radar-credit { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: 180px; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; cursor: pointer;
+.m-weather .wx-radar .radar-credit { position: absolute; right: calc(max(10px, env(safe-area-inset-right)) + 54px); top: 19px; bottom: auto; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; cursor: pointer;
   color: var(--rd-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--rd-glass); transition: transform 0.42s var(--ease-spring), filter 0.25s; }
 .m-weather .wx-radar .radar-credit::after { content: ""; position: absolute; inset: -9px; }
 .m-weather .wx-radar .radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
-.m-weather .wx-radar .radar-credit .rc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
+.m-weather .wx-radar .radar-credit .rc-t { position: absolute; right: 0; top: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
   color: inherit; background-color: var(--rd-glass-3); -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur);
   clip-path: inset(0 round 13px); transition: clip-path 0.6s var(--ease-glide), opacity 0.3s 0.25s; pointer-events: none; }
 .m-weather .wx-radar .radar-credit.folded .rc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
@@ -231,7 +235,6 @@
   .m-weather .wx-radar .wx-radar-over { max-width: none; flex-direction: row; align-items: flex-end; }
   .m-weather .wx-radar .wx-radar-top { flex: 0 1 260px; }
   .m-weather .wx-radar .radar-dock { flex: 1; }
-  .m-weather .wx-radar :is(.map-scale, .radar-credit) { bottom: 120px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
