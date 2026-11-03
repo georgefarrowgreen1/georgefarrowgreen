@@ -19,11 +19,14 @@
 //     Then), only while the day's row is still just that
 //   dropTimeQ(env, userId, day, { expect }) → the same as one statement, for the caller's own D.batch
 //   timesReady(env) → the database, fx_times made in it (for a caller reading it with its own SQL)
+//   timesExport(env, userId) → [{ day, start, stop, tz, sport, source }]: every row of the account's, for its export
+//     (the table needn't be made yet: then none)
+//   dropTimes(env, userId) → nothing (the account's rows gone, with the account; the table needn't be made yet)
 //   EXPLICIT_OFFER: the SQL condition for an explicit offer, written against the alias o
 //   explicitRide(row) → whether an fx_times row (the one with source) or an fx_offers row is an explicit ride
-// (Made by B0, then batch F's, which adds timesExport and dropTimes; the names and arguments stay.)
+// (Made by B0, then batch F's; the names and arguments stay.)
 import { HttpError } from "./_http.js";
-import { tablesOnce } from "./_fitness.js";
+import { fitdb, tablesOnce } from "./_fitness.js";
 import { zoneOk } from "../pigeon/cards.js";
 
 export const EXPLICIT_OFFER = "o.state = 'yes' AND (o.role IN ('asked','answered') OR o.taken = 1)";
@@ -112,3 +115,16 @@ export async function dropTimeQ(env, userId, day, { expect } = {}) {
   return dropQ(await timesDb(env), userId, day, ex);
 }
 export const timesReady = (env) => timesDb(env);
+
+// ---- the account's export, and an account gone ----
+// (neither makes the table: an account that never set a time has nothing in it)
+export async function timesExport(env, userId) {
+  try {
+    const D = await fitdb(env);
+    return ((await D.prepare(`SELECT ${COLS} FROM fx_times WHERE user_id = ? ORDER BY day`).bind(userId).all()).results || []).map(rowOf);
+  } catch (_) { return []; }
+}
+export async function dropTimes(env, userId) {
+  const D = await fitdb(env);
+  await D.prepare("DELETE FROM fx_times WHERE user_id = ?").bind(userId).run().catch(() => {});
+}
