@@ -321,9 +321,13 @@ export function meter(p) {
     stop: () => p.off('response', on),
     async report() {
       await Promise.all(jobs);
-      const first = rows.filter((r) => !r.lazy);
+      // (each file once: the same address fetched again in one load (a Worker's own module graph, say) is the phone's
+      // HTTP cache's on a real phone, and Playwright turns that cache off for any context with routes; repeats are
+      // listed apart, as twice)
+      const all = rows.filter((r) => !r.lazy), keys = new Set();
+      const first = all.filter((r) => { const k = r.path + r.query; if (keys.has(k)) return false; keys.add(k); return true; });
       const sum = (k) => first.filter((r) => r.kind === k).reduce((a, r) => a + r.gz, 0);
-      const seen = new Map(); for (const r of first) seen.set(r.path, [...(seen.get(r.path) || []), r.query || '(no query)']);
+      const seen = new Map(); for (const r of all) seen.set(r.path, [...(seen.get(r.path) || []), r.query || '(no query)']);
       return { requests: first.length, js: sum('js'), css: sum('css'), lazy: rows.filter((r) => r.lazy).map((r) => r.path), radar: rows.filter((r) => RADAR_STACK.test(r.path)).map((r) => r.path),
         unminified: first.filter((r) => r.unminified).map((r) => r.path), twice: [...seen].filter(([, q]) => q.length > 1).map(([k, q]) => `${k} ×${q.length} (${[...new Set(q)].join(', ')})`), rows: first };
     },
