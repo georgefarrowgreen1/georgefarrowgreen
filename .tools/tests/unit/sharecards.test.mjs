@@ -20,6 +20,10 @@ const streak = () => ({ v: 1, kind: "streak", from: "today", at: NOW, snap: { wh
 const plan = (o = {}) => ({ sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, start: NOW + 3 * H, end: NOW + 5 * H, tz: LON,
   opts: [{ start: NOW + 6 * H, end: NOW + 8 * H }], dry: true, far: false, ...o });
 const UUID = "0b5c7c1e-6a43-4a8e-9a77-1f5e2f3a4b5c";
+// (Today First's: the weather where a friend is, a ride with friends, a time to talk)
+const there = () => ({ ...weather(), from: "chat", there: true, ref: { cell: [52.63, 1.29], friend: "leo" } });
+const withLeo = () => fitness({ snap: { with: ["Leo", "Ade"] } });
+const when = (o = {}) => ({ kind: "call", start: Math.ceil((NOW + 3 * H) / (15 * MIN)) * 15 * MIN, mins: 30, tz: LON, opts: [Math.ceil((NOW + 4 * H) / (15 * MIN)) * 15 * MIN], ...o });
 // an older Chat's check of a letter (pigeon/app.js shapeOK, as of Chat 1.63)
 const shapeOK = (kind, o) => !!o && typeof o === "object" && !Array.isArray(o) && (kind === "react" ? false : typeof o.t === "string" && !("r" in o) && !("k" in o));
 const OLD = ["r", "k", "p", "v", "bad", "unchecked", "ph"];
@@ -138,6 +142,7 @@ test("payloadParts never throws, and checks each part on its own", () => {
     const p = C.payloadParts(junk);
     assert.equal(typeof p.t, "string");
     assert.equal(p.card, null);
+    assert.equal(p.when, null);
   }
   const p = C.payloadParts({ t: "Hi", c: weather(), ask: { kind: "markets" }, re: { ask: "nope" }, plan: plan({ end: NOW + 3.5 * H }), ans: { re: UUID, a: "no" }, z: "   " });
   assert.equal(p.t, "Hi"); assert.ok(p.card); assert.equal(p.ask, null, "a request must be for the card's kind");
@@ -151,7 +156,12 @@ test("every payload built and padded passes an older Chat's check, with no old k
     C.buildPayload({ t: C.planWords(plan(), { tz: LON, now: NOW }), plan: plan() }),
     C.buildPayload({ t: "Yes, 10:00 works.", ans: { re: UUID, a: "yes", plan: plan() }, q: { id: UUID, from: "u1", t: "Ride together?" } }),
     C.buildPayload({ t: "Just words" }),
+    C.buildPayload({ t: "Call at 18:30?", when: when() }),
+    C.buildPayload({ t: "Yes, 18:30 works.", ans: { id: UUID, a: "yes", start: when().start } }),
+    C.buildPayload({ t: "Norwich today.", card: there() }),
+    C.buildPayload({ t: "Riding with Leo.", card: withLeo() }),
   ];
+  assert.ok(all.at(-4).when && all.at(-3).ans.id && all.at(-2).c.there && all.at(-1).c.snap.with, "each new part went in");
   for (const p of all) {
     for (const x of [p, C.padPayload(p)]) {
       assert.ok(shapeOK("msg", x), JSON.stringify(x).slice(0, 80));
@@ -199,6 +209,11 @@ test("canForward: yours of any kind; theirs only weather and one stock", () => {
   assert.equal(C.canForward(C.normCard(fitness()), { mine: false }), false);
   assert.equal(C.canForward(C.normCard(streak()), { mine: false }), false);
   assert.equal(C.canForward(null, { mine: true }), false);
+  // (Today First: the weather where a friend is goes to that friend alone, never on, never without a to)
+  const t = C.normCard(there());
+  assert.equal(C.canForward(t, { mine: true }), false);
+  assert.equal(C.canForward(t, { mine: true, to: "leo" }), true);
+  assert.equal(C.canForward(t, { mine: false, to: "pat" }), false);
 });
 test("live keys, items and how long a card stays live", () => {
   const w = C.normCard(weather()), m = C.normCard(markets()), f = C.normCard(fitness()), s = C.normCard(streak());
@@ -436,12 +451,13 @@ test("fuzz: 2000 seeded objects through the checks, and every survivor through e
     if (r() < 0.2) out[pickOne(["warn", "top", "evil", "__proto__", "constructor", "z"])] = vals();
     return out;
   };
-  let cards = 0, plans = 0, answers = 0;
+  let cards = 0, plans = 0, answers = 0, whens = 0;
   for (let i = 0; i < 2000; i++) {
-    const base = pickOne([weather(), fitness(), markets(), streak(), { kind: pickOne(C.KINDS), snap: {} }, vals()]);
+    const base = pickOne([weather(), fitness(), markets(), streak(), { kind: pickOne(C.KINDS), snap: {} }, vals(), there(), withLeo()]);
     const c = C.normCard(mutate(base), { from: r() < 0.3 ? "hash" : undefined });
     const p = C.normPlan(mutate(plan()));
-    const a = C.normAns(mutate({ re: UUID, a: pickOne(["yes", "later", "no"]), plan: plan() }));
+    const a = C.normAns(mutate(pickOne([{ re: UUID, a: pickOne(["yes", "later", "no"]), plan: plan() }, { id: UUID, a: pickOne(["yes", "later", "no"]), start: when().start }])));
+    const w = C.normWhen(mutate(when()));
     const nowAns = pickOne([null, "wait", { quiet: true }, { gone: true }, mutate({ temp: 3, code: 95, isDay: false, rain: { now: true, at: NOW }, at: NOW }), mutate({ done: true, secs: 100 }), mutate({ pct: -3, day: "2026-11-02", stale: true, at: NOW })]);
     const opts = { now: nowAns, viewAt: NOW + (r() - 0.5) * 100 * H, sentAt: NOW, live: r() < 0.5, mine: r() < 0.5, links: { weather: "https://weather.x", finance: pickOne(["https://finance.x", "javascript:alert(1)", null]) }, tz: pickOne([LON, "x", undefined, "Asia/Kolkata"]), who: "Leo" };
     if (c) {
@@ -461,8 +477,10 @@ test("fuzz: 2000 seeded objects through the checks, and every survivor through e
     }
     if (p) { plans++; const out = V.inviteHtml(p, opts); assert.equal(typeof out, "string"); assert.ok(out.includes("cd-card"), "an invite that passed draws"); assert.ok(!/<img/i.test(out)); assert.equal(typeof C.planWords(p, opts), "string"); }
     if (a) { answers++; const out = V.answerHtml(a, opts); assert.equal(typeof out, "string"); assert.ok(out.includes("cd-card"), "an answer that passed draws"); assert.ok(!/<img/i.test(out)); assert.equal(typeof C.answerWords(a, opts), "string"); }
+    if (w) { whens++; const out = V.whenHtml(w, opts); assert.ok(out.includes("cd-card"), "a time that passed draws"); assert.ok(!/<img/i.test(out)); assert.equal(typeof C.whenWords(w, opts), "string"); }
+    if (c?.there) assert.equal(C.canForward(c, { mine: true, to: "pat" }), false, "a there card never goes on to anyone else");
     C.clockIn(opts.viewAt, opts.tz); C.dayWords(opts.viewAt, opts.tz, NOW);
     V.stripHtml(mutate({ a: 1 }), { who: "<b>", start: NOW, end: NOW + H, tz: opts.tz });
   }
-  assert.ok(cards > 300 && plans > 100 && answers > 100, `survivors: ${cards} cards, ${plans} plans, ${answers} answers`);
+  assert.ok(cards > 300 && plans > 100 && answers > 100 && whens > 100, `survivors: ${cards} cards, ${plans} plans, ${answers} answers, ${whens} times`);
 });
