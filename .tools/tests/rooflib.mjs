@@ -296,11 +296,15 @@ export function minOf(path) {
   let min = null; if (fresh) try { min = readFileSync(`${ROOT}/min/${rel}`, 'utf8'); } catch (_) {}
   return { fresh: fresh && min != null, min, src: src.toString() };
 }
-export function meter(p) {
+// meter(p, app = "weather"): every JS/CSS file of the app's path the page fetches from the hub, as sent and as gzipped
+// (stages 2–4: any module, s24-contracts §13; the lazy marks are Weather's radar and rain files, Fitness's NET files)
+const NETS = { fitness: /^\/fitness\/(?:map|mapstyle|share|formats|fit|reader)\.js$|^\/weather\/vendor\// };
+export function meter(p, app = 'weather') {
   const rows = [], jobs = [];
+  const mine = new RegExp(`^/${app}/.*\\.(?:js|css)$`), lazyRe = app === 'weather' ? LAZY : NETS[app] || /^$/;
   const on = (res) => {
     let u; try { u = new URL(res.url()); } catch (_) { return; }
-    if (u.origin !== HUB || !/^\/weather\/.*\.(?:js|css)$/.test(u.pathname) || u.pathname === '/weather/sw.js') return;
+    if (u.origin !== HUB || !(mine.test(u.pathname) || (app === 'fitness' && /^\/weather\/vendor\//.test(u.pathname))) || u.pathname === `/${app}/sw.js`) return;
     jobs.push((async () => {
       const req = res.request(), body = await res.body().catch(() => null);
       const text = body ? body.toString() : '';
@@ -311,7 +315,7 @@ export function meter(p) {
         unminified = true;
         try { gz = gzipSync(Buffer.from(esbuild().transformSync(text, { loader: u.pathname.endsWith('.css') ? 'css' : 'js', minifyWhitespace: true, minifySyntax: true, legalComments: 'none', charset: 'utf8' }).code)).length; } catch (_) {}
       }
-      rows.push({ path: u.pathname, query: u.search, status: res.status(), kind: u.pathname.endsWith('.css') ? 'css' : 'js', gz, lazy: LAZY.test(u.pathname), minified: isMin, fresh: m.fresh, unminified,
+      rows.push({ path: u.pathname, query: u.search, status: res.status(), kind: u.pathname.endsWith('.css') ? 'css' : 'js', gz, lazy: lazyRe.test(u.pathname), minified: isMin, fresh: m.fresh, unminified,
         cookie: !!(await req.allHeaders().catch(() => ({})))?.cookie });
     })());
   };
@@ -334,13 +338,16 @@ export function meter(p) {
   };
 }
 
-// ---- Weather's own numbers, read from its files (connector.files, BUILD) ----
-export function connectorFiles() {
-  const src = readFileSync(`${ROOT}/weather/roof/connector.js`, 'utf8');
-  const m = /files:\s*\[([\s\S]*?)\]/.exec(src);
-  return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
-}
-export const moduleBuild = () => /^export const BUILD = "([^"]+)";/m.exec(readFileSync(`${ROOT}/weather/roof/weather.js`, 'utf8'))?.[1] || null;
+// ---- a module's own numbers, read from its files (connector.files and .lazy, BUILD); Weather's by default ----
+// (Mail's module is the inflite repo's, email/public/roof/; the others this repo's <app>/roof/)
+const modDir = (app) => (app === 'mail' ? `${IFL}/email/public/roof` : `${ROOT}/${app}/roof`);
+const listIn = (src, k) => { const m = new RegExp(`${k}:\\s*\\[([\\s\\S]*?)\\]`).exec(src); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
+export function connectorFiles(app = 'weather') { return listIn(readFileSync(`${modDir(app)}/connector.js`, 'utf8'), 'files'); }
+export function connectorLazy(app = 'weather') { return listIn(readFileSync(`${modDir(app)}/connector.js`, 'utf8'), 'lazy'); }
+export const moduleBuild = (app = 'weather') => /^export const BUILD = "([^"]+)";/m.exec(readFileSync(`${modDir(app)}/${app}.js`, 'utf8'))?.[1] || null;
+// staticGz(app) → { js, css, files, each } in KiB: the entry's static graph and REGISTRY's CSS, minified as minify.mjs does
+// and gzipped (unit/fixtures/budget.mjs), so a hub test can compare what it metered with what the files say
+export const staticGz = async (app) => (await import('./unit/fixtures/budget.mjs')).staticGz(app);
 
 // ---- Weather's third parties, stood in for in the browser (as wxhub.mjs does) ----
 // Places the stand-ins know: the geocoder's "Find a place" answers and the reverse lookup's names
