@@ -2,8 +2,12 @@
 // page (window, document, sessionStorage, location), as every app runs its copy. The marker, not the address, turns it
 // on; go() maps the apps' own addresses to the hub's paths and is the identity off the hub; href() names an app's
 // section; the breadcrumb is written as a page is left for another and read by back(), which never uses history's own
-// back; send() goes through Chats' own sheet while there's no engine; signIn() goes through Chats and comes back. Off
-// the hub (an app at its own address), none of them does anything: every app is as it was.
+// back; send() goes through Chats' own sheet while there's no engine, and through the engine's sheet once it's ready
+// (chat(): Chat's own page in a frame, made once, dropped after ten minutes out of sight); sent() and closed() put the
+// frame away; signIn() goes through Chats and comes back; a notification tapped while a page is open goes there (the
+// root worker's { ifl: "open" }, paths of this site's only); moved() shows its card once, on an old Home Screen icon
+// only; degrade() makes a page of the hub link the apps' own addresses. Off the hub (an app at its own address), none of
+// them does anything: every app is as it was.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -29,29 +33,52 @@ class Node {
   removeEventListener() {}
   closest(sel) { for (let n = this; n; n = n.parentNode) if (sel === "a[href]" && n.tagName === "A" && n.hasAttribute("href")) return n; return null; }
   insertAdjacentHTML() {}
-  focus() {}
+  focus() { let n = this; while (n.parentNode) n = n.parentNode; n.activeElement = this; }
+  // (a dialog's: shown modal, in the top layer, or shut, with its close word)
+  showModal() { if (!this.isConnected) throw new Error("InvalidStateError: not in the document"); this.open = true; this.modal = true; }
+  close() { if (!this.open) return; this.open = false; this.modal = false; for (const fn of this.listeners.close || []) fn({ type: "close" }); }
   dispatch(type) { const e = { type, target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; for (let n = this; n; n = n.parentNode) for (const fn of n.listeners[type] || []) fn(e); return e; }
 }
-function page(href, { marker = null, crumb } = {}) {
+const all = (n, out = []) => { for (const c of n.children) { out.push(c); all(c, out); } return out; };
+const textOf = (n) => n.textContent;
+function page(href, { marker = null, crumb, sent, standalone = false, kept = {}, before = null } = {}) {
   const doc = new Node("#document"), head = new Node("head"), body = new Node("body");
   doc.append(head, body);
   doc.body = body;
+  doc.documentElement = new Node("html");
+  doc.visibilityState = "visible";
   doc.createElement = (t) => new Node(t);
   const meta = marker == null ? null : Object.assign(new Node("meta"), { attrs: { name: "ifl-hub", content: marker } });
   doc.querySelector = (sel) => (sel === 'meta[name="ifl-hub"]' ? meta : null);
   doc.querySelectorAll = () => [];
-  const store = new Map(crumb === undefined ? [] : [["ifl-crumb", crumb]]);
+  const store = new Map([...(crumb === undefined ? [] : [["ifl-crumb", crumb]]), ...(sent === undefined ? [] : [["ifl-sent", sent]])]);
+  const local = new Map(Object.entries(kept));
+  const localStorage = { getItem: (k) => (local.has(k) ? local.get(k) : null), setItem: (k, v) => local.set(k, String(v)), removeItem: (k) => local.delete(k) };
+  // (the window's own listeners (ifl-chat-ready), the service worker's (its messages), and timers run when the test says)
+  const winL = {}, swL = {}, timers = [], badge = [];   // (badge: what the root worker's told, as plain data)
+  const fire = (map, type, e) => { for (const fn of [...(map[type] || [])]) fn(e); };
   const sessionStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
   const assigned = [], went = [];
   const at = new URL(href);
   const location = { href: at.href, origin: at.origin, host: at.host, hostname: at.hostname, protocol: at.protocol, pathname: at.pathname, search: at.search, hash: at.hash, assign: (u) => assigned.push(String(u)), replace: (u) => assigned.push(String(u)), reload() {} };
   const history = { back: () => went.push("back"), go: () => went.push("go"), replaceState() {}, pushState() {} };
-  const ctx = { document: doc, sessionStorage, location, history, URL, URLSearchParams, Blob, Promise, JSON, Math, Object, Array, String, Number, Set, Map, Date,
-    requestAnimationFrame: (fn) => fn(), setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, addEventListener() {}, navigator: {}, innerHeight: 800, innerWidth: 400 };
+  const ctx = { document: doc, sessionStorage, localStorage, location, history, URL, URLSearchParams, Blob, Promise, JSON, Math, Object, Array, String, Number, Set, Map, Date,
+    requestAnimationFrame: (fn) => fn(), setTimeout: (fn, ms) => timers.push({ fn, ms }), clearTimeout: (i) => { if (timers[i - 1]) timers[i - 1].fn = () => {}; }, setInterval: () => 0,
+    addEventListener: (t, fn) => (winL[t] ||= []).push(fn), removeEventListener: (t, fn) => { winL[t] = (winL[t] || []).filter((f) => f !== fn); },
+    navigator: { standalone, serviceWorker: { addEventListener: (t, fn) => (swL[t] ||= []).push(fn), getRegistration: (scope) => Promise.resolve({ scope, active: { postMessage: (m) => badge.push([scope, JSON.parse(JSON.stringify(m))]) } }) } },
+    matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400 };
   ctx.window = ctx;
+  before?.(ctx);
   const IFL = vm.runInNewContext(`${jsBlock()}\n;IFL`, ctx);
-  return { IFL, hub: IFL.hub, doc, store, assigned, went, location };
+  const run = (ms) => { for (const t of timers.splice(0)) if (ms == null || t.ms === ms) t.fn(); else timers.push(t); };
+  const visible = (v) => { doc.visibilityState = v ? "visible" : "hidden"; for (const fn of doc.listeners.visibilitychange || []) fn({ type: "visibilitychange" }); };
+  return { IFL, hub: IFL.hub, win: ctx, doc, store, local, assigned, went, location, badge, ready: () => fire(winL, "ifl-chat-ready", { type: "ifl-chat-ready" }),
+    message: (data, ports = []) => fire(swL, "message", { data, ports }), run, visible, winL, fire: (type, e) => fire(winL, type, { type, ...e }) };
 }
+// (the engine's frame, and whether it's showing: its dialog shown modal, and marked on)
+const frameOf = (p) => all(p.doc.body).find((n) => n.tagName === "IFRAME");
+const showing = (f) => f.parentNode?.open === true && f.parentNode.modal === true && f.parentNode.classList.contains("on");
+const putAway = (f) => !f.parentNode?.open && !f.parentNode?.classList.contains("on");
 
 test("its whole surface is there, with these names, on the hub and off it", () => {
   for (const p of [page("https://inflite.ai/weather/", { marker: "/weather/" }), page("https://weather.inflite.ai/")]) {
@@ -188,7 +215,9 @@ test("tabs(): Today · Chats · Apps · You as links, the one you're on marked, 
 
 test("send() goes through Chats' own sheet while there's no engine, and comes back here; signIn() through Chats too", async () => {
   const p = page("https://inflite.ai/weather/#radar", { marker: "/weather/" });
-  assert.equal(await p.hub.chat(), null, "no engine yet");
+  const wait = p.hub.chat();
+  p.run(15e3);
+  assert.equal(await wait, null, "no engine in 15 seconds");
   assert.equal(await p.hub.send("London today: rain from 15:00 & wind", "eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9"), true, "gone to Chats'");
   assert.equal(p.assigned[0], "/chats/#share=London%20today%3A%20rain%20from%2015%3A00%20%26%20wind&card=eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9&back=%2Fweather%2F%23radar");
   const h = new URLSearchParams(p.assigned[0].split("#")[1]);
@@ -205,10 +234,10 @@ test("send() goes through Chats' own sheet while there's no engine, and comes ba
   assert.deepEqual([...p.went, ...s.went], []);
 });
 
-test("sent() says it in a toast; closed() and moved() do nothing yet, and say nothing", () => {
+test("sent() says it in a toast; closed() says nothing; moved() does nothing at the hub", () => {
   const p = page("https://inflite.ai/", { marker: "/" });
   p.hub.closed();
-  p.hub.moved("chat", { off: () => assert.fail("off isn't called") });
+  assert.equal(p.hub.moved("chat", { off: () => assert.fail("off isn't called") }), false);
   const before = p.doc.body.children.length;
   p.hub.sent("Sent to Pat. You’re still here");
   const toast = p.doc.body.children.find((n) => n.className.includes("ifl-toast"));
@@ -234,4 +263,291 @@ test("off the hub, send, signIn, back, href and tabs do nothing: an app at its o
     assert.deepEqual(p.went, [], h);
     assert.equal(p.store.get("ifl-crumb"), "/chats/#open=abc", `${h}: the breadcrumb neither written nor taken`);
   }
+});
+
+test("the hub's look: html.ifl-hub at the hub only", () => {
+  assert.ok(page("https://inflite.ai/weather/", { marker: "/weather/" }).doc.documentElement.classList.contains("ifl-hub"));
+  assert.ok(!page("https://weather.inflite.ai/").doc.documentElement.classList.contains("ifl-hub"));
+});
+
+test("chat(): Chat's own page in a frame, made once, its IFLChat once it says it's ready; send() then opens its sheet over the page, and sent()/closed() put it away", async () => {
+  const p = page("https://inflite.ai/", { marker: "/" });
+  const asked = [];
+  const IFLChat = { state: "ready", share: async (...a) => { asked.push(a); return true; }, sendTo: async () => ({ ok: true, say: "Sent to Leo" }), waiting: async () => [], since: async () => null, refresh: async () => {}, signOut: async () => {} };
+  const one = p.hub.chat(), two = p.hub.chat();
+  const frames = all(p.doc.body).filter((n) => n.tagName === "IFRAME");
+  assert.equal(frames.length, 1, "one frame, however often it's asked for");
+  const f = frames[0], box = f.parentNode;
+  assert.deepEqual([f.name, f.className, f.src, box.tagName, box.className, box.parentNode === p.doc.body], ["ifl-chat", "ifl-engine", "/chats/?engine=1", "DIALOG", "ifl-engine-box", true],
+    "in a dialog of its own, at the foot of the page");
+  assert.ok(putAway(f), "unseen until it shows its sheet");
+  assert.ok(!f.hidden && !box.hidden && !("hidden" in f.attrs) && !("hidden" in box.attrs), "never [hidden] (a page's own [hidden] rule would take it out of the layout)");
+  f.contentWindow = { IFLChat };
+  p.ready();
+  const c = await one;
+  assert.equal(await two, c, "the same engine to both");
+  assert.equal(c.state, "ready");
+  // (send: through the engine's sheet, the frame shown for it; nowhere gone)
+  assert.equal(await p.hub.send("London today: rain from 15:00", "eyJ2IjoxfQ", { to: "4f6c8d2e-1a3b-4c5d-8e9f-0a1b2c3d4e5f" }), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(asked)), [["London today: rain from 15:00", "eyJ2IjoxfQ", { to: "4f6c8d2e-1a3b-4c5d-8e9f-0a1b2c3d4e5f" }]]);
+  assert.ok(showing(f), "shown for its sheet: its dialog modal, in the top layer");
+  assert.deepEqual(p.assigned, []);
+  p.hub.sent("Sent to Pat");
+  assert.ok(putAway(f), "put away once it's sent");
+  const toast = p.doc.body.children.find((n) => n.className.includes("ifl-toast"));
+  assert.equal(toast?.textContent, "Sent to Pat. You’re still here");
+  await p.hub.send("x", null);
+  assert.ok(showing(f));
+  p.hub.closed();
+  assert.ok(putAway(f), "put away when its sheet's shut");
+  // (shut some other way (Escape, with the page's focus): put away too)
+  await p.hub.send("x", null);
+  box.close();
+  assert.ok(putAway(f), "shut by Escape: put away");
+  // (sendTo's one tap: sent with no sheet, said, and the frame away; a card refused: away)
+  const r = await (await p.hub.chat()).sendTo("4f6c", "Done · 1:15", "eyJ2IjoxfQ");
+  assert.deepEqual(JSON.parse(JSON.stringify(r)), { ok: true, say: "Sent to Leo" });
+  assert.ok(putAway(f));
+  assert.equal(p.doc.body.children.find((n) => n.className.includes("ifl-toast"))?.textContent, "Sent to Leo. You’re still here");
+  IFLChat.share = async () => false;
+  await p.hub.send("x", "y");
+  assert.ok(putAway(f), "a card it refused: nothing showing");
+});
+
+test("chat() not ready (signed out of Chats, its key not here, locked) or no answer in 15 seconds: null, and send() goes through Chats' own sheet", async () => {
+  for (const state of ["signin", "key", "locked"]) {
+    const p = page("https://inflite.ai/weather/#radar", { marker: "/weather/" });
+    const wait = p.hub.chat();
+    all(p.doc.body).find((n) => n.tagName === "IFRAME").contentWindow = { IFLChat: { state, share: () => assert.fail("not ready: never its sheet") } };
+    p.ready();
+    assert.equal(await wait, null, state);
+    assert.equal(await p.hub.send("Hi", "eyJ2IjoxfQ"), true);
+    assert.deepEqual(p.assigned, ["/chats/#share=Hi&card=eyJ2IjoxfQ&back=%2Fweather%2F%23radar"], state);
+  }
+  // (no word from it in 15 seconds: null, the frame dropped, and made again when next asked for)
+  const p = page("https://inflite.ai/", { marker: "/" });
+  const wait = p.hub.chat();
+  p.run(15e3);
+  assert.equal(await wait, null);
+  assert.equal(all(p.doc.body).filter((n) => n.tagName === "IFRAME").length, 0, "dropped");
+  assert.equal(await p.hub.chat(), null, "for two minutes, none asked for: a Send goes through Chats' at once");
+  assert.equal(all(p.doc.body).filter((n) => n.tagName === "IFRAME").length, 0);
+  p.run(2 * 60e3);
+  p.hub.chat();
+  assert.equal(all(p.doc.body).filter((n) => n.tagName === "IFRAME").length, 1, "then made again");
+  // (off the hub, or degraded: never a frame)
+  for (const q of [page("https://weather.inflite.ai/"), (() => { const d = page("https://inflite.ai/", { marker: "/" }); d.hub.degrade(); return d; })()]) {
+    assert.equal(await q.hub.chat(), null);
+    assert.equal(all(q.doc.body).filter((n) => n.tagName === "IFRAME").length, 0);
+  }
+});
+
+test("the engine's let go after ten minutes out of sight, and made again when it's next wanted", async () => {
+  const p = page("https://inflite.ai/", { marker: "/" });
+  const wait = p.hub.chat();
+  const f = all(p.doc.body).find((n) => n.tagName === "IFRAME");
+  f.contentWindow = { IFLChat: { state: "ready" } };
+  p.ready();
+  await wait;
+  p.visible(false);
+  p.run(10 * 60e3);
+  assert.equal(f.parentNode.parentNode, null, "dropped, its dialog and all");
+  p.visible(true);
+  p.hub.chat();
+  assert.equal(all(p.doc.body).filter((n) => n.tagName === "IFRAME").length, 1);
+  // (back in sight before the ten minutes: kept)
+  const q = page("https://inflite.ai/", { marker: "/" });
+  q.hub.chat();
+  const g = all(q.doc.body).find((n) => n.tagName === "IFRAME");
+  q.visible(false); q.visible(true);
+  q.run(10 * 60e3);
+  assert.ok(g.parentNode.parentNode, "kept");
+});
+
+test("a notification tapped while a page is open: the root worker's { ifl: \"open\", url } goes there, a path of this site's only, leaving the breadcrumb", () => {
+  let p = page("https://inflite.ai/weather/#radar", { marker: "/weather/" });
+  p.message({ ifl: "open", url: "/chats/#open=abc" });
+  assert.deepEqual(p.assigned, ["/chats/#open=abc"]);
+  assert.equal(p.store.get("ifl-crumb"), "/weather/#radar");
+  // (within the same page: there, as a hash change, and no breadcrumb)
+  p = page("https://inflite.ai/markets/", { marker: "/markets/" });
+  p.message({ ifl: "open", url: "/markets/#s=TSCO" });
+  assert.deepEqual(p.assigned, ["/markets/#s=TSCO"]);
+  assert.equal(p.store.has("ifl-crumb"), false);
+  // (anything else: nowhere)
+  for (const data of [{ ifl: "open", url: "//evil.example/x" }, { ifl: "open", url: "https://evil.example/" }, { ifl: "open", url: "/x\\y" }, { ifl: "open", url: "/\n/evil.example" },
+    { ifl: "open", url: "javascript:alert(1)" }, { ifl: "open" }, { open: "/chats/" }, { inflight: "sync" }, null, "open"]) {
+    p = page("https://inflite.ai/", { marker: "/" });
+    p.message(data);
+    assert.deepEqual(p.assigned, [], JSON.stringify(data));
+  }
+  // (off the hub: Chat's and Markets' own listeners, not this one)
+  p = page("https://chat.inflite.ai/");
+  p.message({ ifl: "open", url: "/chats/#open=abc" });
+  assert.deepEqual(p.assigned, []);
+});
+
+test("sent from Chats' own sheet and back (sessionStorage ifl-sent): said once as the page opens, then gone", () => {
+  const p = page("https://inflite.ai/weather/#radar", { marker: "/weather/", sent: "Sent to Pat" });
+  assert.equal(p.doc.body.children.find((n) => n.className.includes("ifl-toast"))?.textContent, "Sent to Pat. You’re still here");
+  assert.equal(p.store.has("ifl-sent"), false);
+  const q = page("https://weather.inflite.ai/", { sent: "Sent to Pat" });
+  assert.equal(q.doc.body.children.find((n) => n.className.includes("ifl-toast")), undefined, "off the hub: not this layer's");
+});
+
+test("moved(): an old Home Screen icon (off the hub, standalone) shows its card once; never in a tab, never at the hub", async () => {
+  let off = 0;
+  const p = page("https://chat.inflite.ai/", { standalone: true });
+  assert.equal(p.hub.moved("chat", { off: async () => { off++; } }), true);
+  const card = p.doc.body.children.find((n) => n.className.includes("ifl-moved"));
+  assert.ok(card, "its card");
+  const words = textOf(card);
+  for (const w of ["InFlite is one app now", "Today, Chats and every app in one place. Add inflite.ai to your Home Screen.", "How to Add", "Turn Off Notifications Here", "Not Now"]) assert.ok(words.includes(w), w);
+  assert.ok(p.local.get("ifl-moved:chat"), "remembered");
+  const stop = all(card).find((n) => n.tagName === "BUTTON" && n.textContent === "Turn Off Notifications Here");
+  await stop.onclick();
+  assert.equal(off, 1, "Turn Off Notifications Here calls off");
+  assert.equal(p.hub.moved("chat", { off() {} }), false, "once");
+  // (its own once for each app; none without an off of its own to call has no Turn Off)
+  assert.equal(p.hub.moved("weather"), true);
+  assert.ok(!textOf(p.doc.body.children.filter((n) => n.className.includes("ifl-moved")).at(-1)).includes("Turn Off"));
+  // (once already, on an earlier day)
+  assert.equal(page("https://fitness.inflite.ai/", { standalone: true, kept: { "ifl-moved:fitness": "1" } }).hub.moved("fitness", { off() {} }), false);
+  // (a browser tab, or the hub: never)
+  assert.equal(page("https://chat.inflite.ai/").hub.moved("chat", { off() {} }), false);
+  assert.equal(page("https://inflite.ai/chats/", { marker: "/chats/", standalone: true }).hub.moved("chat", { off() {} }), false);
+});
+
+test("degrade(): a page of the hub whose Worker can't serve the apps yet links their own addresses, sends through chat.<site>, and has no engine", async () => {
+  const p = page("https://inflite.ai/", { marker: "/" });
+  assert.equal(p.hub.degrade({ chat: "https://chat.inflite.ai", weather: "https://weather.inflite.ai", fitness: "https://fitness.inflite.ai", finance: "https://finance.inflite.ai", email: "javascript:x" }), true);
+  assert.equal(p.hub.degraded, true);
+  assert.equal(p.hub.on, true);
+  const map = { "/weather/#radar": "https://weather.inflite.ai/#radar", "/fitness/#activities": "https://fitness.inflite.ai/#activities", "/markets/#s=TSCO": "https://finance.inflite.ai/#s=TSCO",
+    "/chats/#open=abc": "https://chat.inflite.ai/#open=abc", "/mail/": "https://email.inflite.ai/", "/weather/?lat=1&lon=2": "https://weather.inflite.ai/?lat=1&lon=2",
+    "https://weather.inflite.ai/#radar": "https://weather.inflite.ai/#radar", "/#apps": "/#apps", "/": "/", "https://account.inflite.ai/": "https://account.inflite.ai/" };
+  for (const [from, to] of Object.entries(map)) assert.equal(p.hub.go(from), to, from);
+  assert.equal(p.hub.href("weather", "radar"), "https://weather.inflite.ai/#radar");
+  assert.equal(p.hub.href("markets", "s=TSCO"), "https://finance.inflite.ai/#s=TSCO");
+  const nav = p.hub.tabs(p.doc.createElement("nav"), "today");
+  assert.deepEqual(nav.children.map((a) => a.getAttribute("href")), ["/", "https://chat.inflite.ai/", "/#apps", "/#you"]);
+  assert.equal(await p.hub.chat(), null);
+  assert.equal(await p.hub.send("London today: rain", "eyJ2IjoxfQ"), true);
+  assert.deepEqual(p.assigned, ["https://chat.inflite.ai/#share=London%20today%3A%20rain&card=eyJ2IjoxfQ"]);
+  assert.equal(p.hub.signIn(), false);
+  assert.equal(p.store.has("ifl-crumb"), false, "no breadcrumb for another site's page");
+  // (no links given: <app>.<site>, the staging hub's next. taken off, a test's site with its port)
+  assert.equal((() => { const q = page("http://ifl.test:8788/", { marker: "/" }); q.hub.degrade(); return q.hub.go("/weather/#radar"); })(), "http://weather.ifl.test:8788/#radar");
+  assert.equal((() => { const q = page("https://next.inflite.ai/", { marker: "/" }); q.hub.degrade(); return q.hub.href("chat"); })(), "https://chat.inflite.ai/");
+  // (off the hub: nothing to degrade)
+  assert.equal(page("https://weather.inflite.ai/").hub.degrade(), false);
+});
+
+test("at the hub, the page's IFL is its window's too, so Chat's engine (a frame of the page's) can say sent or closed: parent.IFL.hub.sent()", async () => {
+  const p = page("https://inflite.ai/", { marker: "/" });
+  assert.equal(p.win.IFL, p.IFL, "window.IFL, the page's own (a const in a module never is)");
+  assert.equal(Object.getOwnPropertyDescriptor(p.win, "IFL").configurable, true, "and can be taken back, so a page's own global IFL never clashes");
+  // (the engine shows its sheet for a Send, then, as §8.2 has it, ends it itself through its parent's window)
+  const asked = [];
+  const wait = p.hub.chat(), f = frameOf(p);
+  f.contentWindow = { IFLChat: { state: "ready", share: async (...a) => { asked.push(a); p.win.IFL.hub.sent("Sent to Pat"); return { ok: true }; }, sendTo: async () => ({ ok: true }), waiting: async () => [], since: async () => null, refresh: async () => {}, signOut: async () => {} } };
+  p.ready();
+  await wait;
+  await p.hub.send("London today: rain from 15:00", "eyJ2IjoxfQ");
+  assert.equal(asked.length, 1);
+  assert.ok(putAway(f), "the frame put away by the engine's own word: never left over the page");
+  assert.equal(p.doc.body.children.find((n) => n.className.includes("ifl-toast"))?.textContent, "Sent to Pat. You’re still here");
+  // (closed(), the same way)
+  f.contentWindow.IFLChat.share = async () => { p.win.IFL.hub.closed(); return undefined; };
+  await p.hub.send("x", null);
+  assert.ok(putAway(f), "and by its closed()");
+  // (off the hub: nothing on the window, the app's IFL its own as it always was)
+  assert.equal(page("https://weather.inflite.ai/").win.IFL, undefined);
+  // (a stand-in put on the window first, that can't be taken back: left as it is, and nothing thrown)
+  const stand = { hub: { on: true } };
+  const q = page("https://inflite.ai/", { marker: "/", before: (w) => Object.defineProperty(w, "IFL", { get: () => stand, configurable: false }) });
+  assert.equal(q.win.IFL, stand);
+  assert.equal(q.hub.on, true);
+});
+
+test("pages that cross-fade: off the hub every transition's let go as a page is left or opened (pageswap, pagereveal), at the hub never; none is ever left to fail out loud", () => {
+  const vt = () => {
+    const t = { skipped: 0, caught: [], skipTransition() { this.skipped++; } };
+    for (const k of ["ready", "finished", "updateCallbackDone"]) t[k] = { catch: (fn) => { t.caught.push(k); return Promise.resolve(); } };
+    return t;
+  };
+  for (const [h, marker, skips] of [["https://weather.inflite.ai/", null, 1], ["http://chat.localhost:8788/", null, 1], ["https://inflite.ai/weather/", "/weather/", 0], ["https://inflite.ai/", "/", 0]]) {
+    const p = page(h, { marker });
+    for (const type of ["pageswap", "pagereveal"]) {
+      const t = vt();
+      p.fire(type, { viewTransition: t });
+      assert.equal(t.skipped, skips, `${h} ${type}: ${skips ? "let go" : "kept"}`);
+      assert.deepEqual(t.caught, ["ready", "finished", "updateCallbackDone"], `${h} ${type}: each of its promises caught`);
+    }
+    // (a page left with no transition at all: nothing to do, nothing thrown)
+    p.fire("pageswap", { viewTransition: null });
+    p.fire("pagereveal", {});
+  }
+});
+
+test("a notification tapped while a page is open: heard, it says so on the worker's port; never for one it won't go to, nor off the hub", () => {
+  const port = () => { const got = []; return { got, postMessage: (m) => got.push(JSON.parse(JSON.stringify(m))) }; };
+  let p = page("https://inflite.ai/weather/", { marker: "/weather/" }), a = port();
+  p.message({ ifl: "open", url: "/chats/#open=abc" }, [a]);
+  assert.deepEqual(a.got, [{ ifl: "opened" }]);
+  assert.deepEqual(p.assigned, ["/chats/#open=abc"]);
+  // (degraded: the app's own address, and heard all the same)
+  p = page("https://inflite.ai/", { marker: "/" }); p.hub.degrade(); a = port();
+  p.message({ ifl: "open", url: "/chats/#open=abc" }, [a]);
+  assert.deepEqual(a.got, [{ ifl: "opened" }]);
+  assert.deepEqual(p.assigned, ["https://chat.inflite.ai/#open=abc"]);
+  // (another site's, or no word for this layer: no answer, so the worker goes its own way)
+  for (const data of [{ ifl: "open", url: "//evil.example/" }, { ifl: "open", url: "https://evil.example/" }, { inflight: "sync" }]) {
+    p = page("https://inflite.ai/", { marker: "/" }); a = port();
+    p.message(data, [a]);
+    assert.deepEqual(a.got, [], JSON.stringify(data));
+  }
+  p = page("https://chat.inflite.ai/"); a = port();
+  p.message({ ifl: "open", url: "/chats/#open=abc" }, [a]);
+  assert.deepEqual(a.got, [], "off the hub");
+  // (with no port to answer on (an older worker): it goes there all the same)
+  p = page("https://inflite.ai/", { marker: "/" });
+  p.message({ ifl: "open", url: "/#you" });
+  assert.deepEqual(p.assigned, ["/#you"]);
+});
+
+test("the Home Screen badge: at the hub, the root worker asked to count again as a page opens and each time it's back in sight; never off the hub", async () => {
+  const tick = () => new Promise((r) => setImmediate(r));
+  const p = page("https://inflite.ai/weather/", { marker: "/weather/" });
+  await tick();
+  assert.deepEqual(p.badge, [["/", { ifl: "badge" }]], "the root worker's (scope /), as the page opens");
+  p.visible(false); await tick();
+  assert.equal(p.badge.length, 1, "not as it goes out of sight");
+  p.visible(true); await tick();
+  assert.equal(p.badge.length, 2, "again back in sight");
+  const q = page("https://weather.inflite.ai/");
+  q.visible(true); await tick();
+  assert.deepEqual(q.badge, [], "off the hub: the app's own worker, as it always was");
+});
+
+test("moved()'s card keeps the keys to itself: Tab and Shift-Tab go round its buttons, Escape shuts it", () => {
+  const p = page("https://chat.inflite.ai/", { standalone: true });
+  p.hub.moved("chat", { off() {} });
+  const card = p.doc.body.children.find((n) => n.className.includes("ifl-moved"));
+  const btn = (t) => all(card).find((n) => n.tagName === "BUTTON" && n.textContent === t);
+  const key = (k, shift = false) => { const e = { key: k, shiftKey: shift, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; for (const fn of p.doc.listeners.keydown || []) fn(e); return e; };
+  assert.equal(p.doc.activeElement, btn("How to Add"), "How to Add first");
+  assert.ok(key("Tab").defaultPrevented);
+  assert.equal(p.doc.activeElement, btn("Turn Off Notifications Here"));
+  key("Tab");
+  assert.equal(p.doc.activeElement, btn("Not Now"));
+  key("Tab");
+  assert.equal(p.doc.activeElement, btn("How to Add"), "round again, never behind it");
+  key("Tab", true);
+  assert.equal(p.doc.activeElement, btn("Not Now"), "Shift-Tab, the other way round");
+  btn("Not Now").focus(); p.doc.activeElement = null;
+  key("Tab", true);
+  assert.equal(p.doc.activeElement, btn("Not Now"), "from outside it: back in, at its end");
+  key("Escape");
+  assert.ok(!card.classList.contains("on"), "Escape shuts it");
 });
