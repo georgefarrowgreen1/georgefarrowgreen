@@ -272,7 +272,11 @@ async function together({ request, env, waitUntil }) {
 // all). The inviter as the invite goes: state "pending" with its other times (opts), keyed by the invite letter's id.
 // The friend's Yes (role "answered", with, re: the invite's id): their own plan as before, and the inviter's pending row
 // for them alone, at its own time or one of its opts, becomes a plan to add in the inviter's Fitness (promoteOffer),
-// with the inviter's phone shut; that's made even where the answerer's own Fitness has no room for one more.
+// with the inviter's phone shut; that's made even where the answerer's own Fitness has no room for one more. A pending
+// row that comes after the friend's Yes did (the inviter's phone offline as the invite went) is made a plan at once
+// where their answered plan with the inviter is there at one of the times it offered (answeredFirst). With a friend,
+// who is always their first name as the server has it (as time-offer's is), so an older Chat's later call, which
+// sends no with, still finds the same ride by it.
 async function fitOffer({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, `fitoffer:${u.id}`, 30, HOUR);
@@ -281,7 +285,7 @@ async function fitOffer({ request, env }) {
   if (x.re != null && (typeof x.re !== "string" || !UUID_RE.test(x.re.toLowerCase()))) throw new HttpError(400, "Bad request.");
   const name = x.with != null ? await friendName(await db(env), u.id, x.with) : null, withId = name ? x.with : null, pending = x.state === "pending";
   if (pending && !withId) throw new HttpError(403, FLOCK);
-  const o = { id: x.id, start: x.start, stop: x.stop, tz: x.tz, sport: x.sport, wid: x.wid, name: x.name, secs: x.secs, who: x.who ?? name ?? undefined,
+  const o = { id: x.id, start: x.start, stop: x.stop, tz: x.tz, sport: x.sport, wid: x.wid, name: x.name, secs: x.secs, who: withId ? name : x.who,
     role: x.role, far: x.far, dry: x.dry, ...(withId ? { withId } : {}), ...(pending ? { state: "pending", opts: x.opts } : {}) };
   const promote = x.role === "answered" && withId && x.re != null;
   let held = null;
@@ -289,7 +293,21 @@ async function fitOffer({ request, env }) {
   catch (e) { if (!promote || !(e instanceof HttpError) || e.status !== 409) throw e; held = e; }
   if (promote) await promoteOffer(env, withId, x.re.toLowerCase(), u.id, Number(x.start), Number(x.stop), { t });
   if (held) throw held;
+  if (pending) await answeredFirst(env, u.id, withId, x, t).catch((e) => logError(env, "fit-offer answered first", e));
   return json({ ok: true });
+}
+// (the invite's own pending row, just written, where the friend's Yes came first: their answered plan with the inviter
+// (with_id) at one of the times the invite offered, new or added, still to come → promoteOffer at that time, as the
+// Yes would have. Asked after the row's written, so a Yes coming in between is found by one or the other. Nothing said
+// either way)
+async function answeredFirst(env, me, withId, x, t) {
+  const times = [[x.start, x.stop], ...(Array.isArray(x.opts) ? x.opts : []).map((w) => (Array.isArray(w) ? w : [w?.start, w?.stop ?? w?.end]))]
+    .filter(([s, e]) => Number.isSafeInteger(s) && Number.isSafeInteger(e)).slice(0, 4);
+  if (typeof x.id !== "string" || !times.length) return;
+  const a = await (await db(env)).prepare(`SELECT start, stop FROM fx_offers WHERE user_id = ? AND with_id = ? AND role = 'answered' AND state IN ('new', 'yes')
+      AND until > ? AND stop > ? AND (${times.map(() => "(start = ? AND stop = ?)").join(" OR ")}) ORDER BY start LIMIT 1`)
+    .bind(withId, me, t, t, ...times.flat()).first();
+  if (a) await promoteOffer(env, me, x.id.toLowerCase(), withId, a.start, a.stop, { t });
 }
 
 // ---- a time to talk (Today First, spec §6.3, §8.4) ----
