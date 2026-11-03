@@ -14,23 +14,28 @@ const skip = !existsSync(SW) && 'the inflite repo isn’t beside this one';
 
 // (the worker, with a network (net: path → a Response, or a throw for no answer), a cache, and what it showed)
 function worker(net) {
-  const on = {}, kept = new Map(), shown = [], asked = [];
+  const on = {}, kept = new Map(), shown = [], asked = [], wins = [], opened = [];
   let subscribed = true;
   const self = {
     location: { origin: 'https://email.inflite.ai' },
     addEventListener: (k, f) => (on[k] = f),
     skipWaiting: () => {},
-    clients: { claim: async () => {} },
+    clients: {
+      claim: async () => {},
+      matchAll: async () => wins,
+      openWindow: async (url) => opened.push(url),
+    },
     navigator: { setAppBadge: async () => {}, clearAppBadge: async () => {} },
     registration: {
       showNotification: async (title, o) => shown.push({ title, ...o }),
       pushManager: { getSubscription: async () => (subscribed ? { unsubscribe: async () => (subscribed = false) } : null) },
     },
   };
+  const names = new Set(['mail-app-1', 'other-cache']);
   const caches = {
-    open: async () => ({ match: async (k) => kept.get(k)?.clone() || undefined, put: async (k, r) => kept.set(k, r), addAll: async () => {} }),
-    keys: async () => [],
-    delete: async () => true,
+    open: async (n) => (names.add(n), { match: async (k) => kept.get(k)?.clone() || undefined, put: async (k, r) => kept.set(k, r), addAll: async () => {} }),
+    keys: async () => [...names],
+    delete: async (n) => names.delete(n),
   };
   const fetch = async (r) => {
     const path = new URL(typeof r === 'string' ? r : r.url, self.location.origin).pathname;
@@ -50,7 +55,7 @@ function worker(net) {
     return res;
   };
   const get = (path, mode = 'cors') => send('fetch', { request: { method: 'GET', url: `https://email.inflite.ai${path}`, mode } });
-  return { send, get, kept, shown, asked, subscribed: () => subscribed };
+  return { send, get, kept, shown, asked, wins, opened, names, subscribed: () => subscribed };
 }
 
 test('Mail’s own files: from the network while there is one, kept as they come; what was kept only with no answer, or Mail’s host failing', { skip }, async () => {
@@ -67,9 +72,10 @@ test('Mail’s own files: from the network while there is one, kept as they come
   for (const p of ['/api/threads', '/api/attachments/x', '/app.js?v=2']) assert.equal(await w.get(p), null, p);
   assert.equal(await w.send('fetch', { request: { method: 'GET', url: 'https://example.com/app.js', mode: 'cors' } }), null);
   assert.equal(await w.send('fetch', { request: { method: 'POST', url: 'https://email.inflite.ai/', mode: 'navigate' } }), null);
-  // (offline: any page of Mail's opens as its one page, and its files with it)
+  // (offline: Mail's page, at either of its addresses, opens as its one page, and its files with it)
   down = true;
-  assert.equal(await (await w.get('/somewhere#thread=t1', 'navigate')).text(), 'fresh /');
+  assert.equal(await (await w.get('/#thread=t1', 'navigate')).text(), 'fresh /');
+  assert.equal(await (await w.get('/index.html', 'navigate')).text(), 'fresh /');
   assert.equal(await (await w.get('/app.js')).text(), 'fresh /app.js');
   // (nothing kept of it: no answer, as without the worker)
   await assert.rejects(w.get('/app.css'));
@@ -152,4 +158,60 @@ test('every file Mail’s page loads as it opens is one the worker keeps for ope
   for (const f of ['/app.js', '/app.css', '/theme.js', '/manifest.webmanifest', '/icon.svg', '/icon-180.png', '/inflite.svg']) assert.ok(want.has(f), `found ${f}`);
   assert.deepEqual([...want].filter((f) => f && !FILES.includes(f)), [], 'loaded as Mail opens, but not kept for opening offline (sw.js FILES)');
   for (const f of FILES) assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `sw.js FILES: ${f} isn’t there`);
+});
+
+// One roof, stage 4 (spec §7; RB1, RB2): a message's frame at /body/ on InFlite's page is a page of Mail's address too,
+// so Mail's worker sees it. Never kept as Mail's page, never answered with it; and a notice tapped goes to a window of
+// Mail's own, never to such a frame (which doesn't listen), or to a new window.
+test('a message frame at /body/ (or any page but Mail’s own) is left to the network: never kept as Mail’s page, never answered with it', { skip }, async () => {
+  let down = false;
+  const w = worker((path) => {
+    if (down) throw new TypeError('Load failed');
+    return Object.defineProperty(new Response(`fresh ${path}`, { status: 200 }), 'type', { value: 'basic' });
+  });
+  assert.equal(await (await w.get('/', 'navigate')).text(), 'fresh /');
+  for (const p of ['/body/', '/body/#m=abc&t=light&img=0&p=https%3A%2F%2Finflite.ai', '/api/attachments/x', '/api/messages/x/raw', '/somewhere', '/body/body.js?v=1.49'])
+    for (const mode of ['navigate', 'cors', 'no-cors']) if (mode === 'navigate' || p.startsWith('/body/')) assert.equal(await w.get(p, mode), null, `${mode} ${p}`);
+  assert.deepEqual([...w.kept.keys()], ['/'], 'only Mail’s own page kept');
+  assert.equal(await w.kept.get('/').clone().text(), 'fresh /');
+  // (offline, a frame gets the browser's own error, not Mail's whole page)
+  down = true;
+  assert.equal(await w.get('/body/', 'navigate'), null);
+  assert.equal(await (await w.get('/', 'navigate')).text(), 'fresh /');
+});
+
+test('Mail’s kept files are mail-app-2: the copies kept before (which a frame may have taken the place of) go as it takes over', { skip }, async () => {
+  const w = worker(() => new Response('x'));
+  assert.match(readFileSync(SW, 'utf8'), /\nconst SHELL = "mail-app-2";/);
+  await w.send('activate', {});
+  assert.deepEqual([...w.names].sort(), ['other-cache'], 'mail-app-1 dropped, another’s cache left alone');
+});
+
+test('a notice tapped: a window of Mail’s own, never a frame inside another page; with none, a new window', { skip }, async () => {
+  const tap = (w, data = { url: '/#thread=t1', thread: 't1' }, action = '') =>
+    w.send('notificationclick', { notification: { data, close() {} }, action });
+  const client = (url, frameType) => {
+    const c = { url, frameType, focused: false, said: [], focus: async () => (c.focused = true), postMessage: (m) => c.said.push(m) };
+    return c;
+  };
+  // (InFlite's page, a conversation open: its message frames are Mail's address too, nested)
+  let w = worker(() => new Response('x'));
+  const frames = [client('https://email.inflite.ai/body/#m=a', 'nested'), client('https://email.inflite.ai/body/#m=b', 'nested')];
+  w.wins.push(...frames);
+  await tap(w);
+  assert.deepEqual(w.opened, ['https://email.inflite.ai/#thread=t1'], 'a new window of Mail’s');
+  assert.ok(frames.every((f) => !f.focused && f.said.length === 0), 'no frame told');
+  // (Mail open in a window of its own, beside them: that one)
+  w = worker(() => new Response('x'));
+  const own = client('https://email.inflite.ai/', 'top-level');
+  w.wins.push(client('https://email.inflite.ai/body/#m=a', 'nested'), own);
+  await tap(w, { url: '/#thread=t2', thread: 't2' }, 'reply');
+  assert.deepEqual(w.opened, []);
+  assert.equal(own.focused, true);
+  assert.equal(JSON.stringify(own.said), JSON.stringify([{ open: 'https://email.inflite.ai/#thread=t2&reply=1' }]));
+  // (another site's window: never)
+  w = worker(() => new Response('x'));
+  w.wins.push(client('https://inflite.ai/mail/', 'top-level'));
+  await tap(w);
+  assert.deepEqual(w.opened, ['https://email.inflite.ai/#thread=t1']);
 });
