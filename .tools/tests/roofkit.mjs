@@ -20,7 +20,10 @@
 // sections: false, fw.nav.go with { replace }, fw.nav.depth(), a stay key (Mail's thread) left in the address; fw.lazy
 // while stale and busy imports with no reload, while stale and idle reloads at the route; a lazy file that fails: the
 // same build out, Try Again's ?retry=1, a new build out, the reload at the route; a provider per app (Weather's places
-// found while Markets' module provides its own; the connector's search given { userId }).
+// found while Markets' module provides its own; the connector's search given { userId }); the connector sheet's acts and
+// hero line per switch; Back or Forward to a module switched off since (Today; offline or something unsaved: no reload;
+// else a real load once saved); a Markets card's zoom with no hint; a module switched off while busy and then left: no
+// bounce, no reload.
 //   node .tools/tests/roofkit.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
@@ -505,11 +508,15 @@ try {
     await p.evaluate(() => { kitMods.markets.busy = true; kit.set({ apps: { weather: false, markets: false } }); kit.F.setRoof(false, { weather: false, markets: false }); });
     await settle(p, 2600);
     same(await p.evaluate(() => [window.stay1, kitMods.markets.flushes >= 1, sessionStorage.getItem('ifl-roof-bounce')]), [1, true, null], 'Markets switched off while it shows with something unsaved: flushed, and no reload while busy');
+    await clean(k, 'a switch per app, before the bounce');
     const nav = p.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
     await p.evaluate(() => { kitMods.markets.busy = false; });
     await nav; await settle(p, 400);
     same([new URL(p.url()).pathname, await p.evaluate(() => [window.stay1 ?? null, sessionStorage.getItem('ifl-roof-bounce')])], ['/markets/', [null, '1']], 'once nothing is unsaved: the bounce, the page loaded again at /markets/ (the hub’s page with Markets off), the marker kept');
     ok(loads >= 1, 'a real load');
+    await p.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
+    await clean(k, 'a switch per app, after the bounce');
+    await k.ctx.close();
 
     // b. C9: sections: false; fw.nav.go with { replace }; stay keys left in the address (Mail's thread)
     const k2 = await kit({ path: '/?apps=weather,mail' }), p2 = k2.p;
@@ -530,6 +537,7 @@ try {
     await p2.evaluate(() => kit.F.nav.go('/mail/#settings')); await settle(p2, 600);
     same((await at(p2)).url, '/mail/', 'a key that isn’t one: tidied to the section’s own address');
     await clean(k2, 'C9');
+    await k2.ctx.close();
 
     // c. C7: fw.lazy while stale and busy imports with no reload; while stale and idle, the reload at the route
     const k3 = await kit(), p3 = k3.p;
@@ -538,10 +546,13 @@ try {
     const got = await p3.evaluate(() => kitMod.lazy().then((m) => m.LAZY ?? 'in', () => 'refused'));
     await settle(p3, 1500);
     same([got !== 'refused', await p3.evaluate(() => [window.stay3, kitMod.lazyRan])], [true, [1, 1]], 'stale and busy: fw.lazy imports as normal, and no reload (nothing unsaved lost)');
+    await clean(k3, 'lazy while stale, before the reload');
     const nav3 = p3.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
     await p3.evaluate(() => { kitMod.busy = false; kitMod.lazy(); });
     await nav3; await p3.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
     same([new URL(p3.url()).pathname + new URL(p3.url()).hash, await p3.evaluate(() => window.stay3 ?? null)], ['/weather/#days', null], 'stale and nothing unsaved: fw.lazy reloads the page at the route');
+    await clean(k3, 'lazy while stale, after the reload');
+    await k3.ctx.close();
 
     // d. C7: a lazy file that fails with a new build out: the reload at the route; with none, Try Again's ?retry=1
     const k4 = await kit(), p4 = k4.p;
@@ -556,15 +567,18 @@ try {
     same(await p4.evaluate(() => [window.stay4, kit.F.stale]), [1, false], 'the same build out: no reload, not stale');
     await p4.evaluate(() => kitMod.lazy('/kit/gone.js').catch(() => {})); await settle(p4, 400);
     same(asked4, ['', '?retry=1'], 'Try Again asks for it afresh (?retry=1, a new module record)');
+    await clean(k4, 'a lazy file that fails, before the reload');
     build = '10.00';
     const nav4 = p4.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
     await p4.evaluate(() => kitMod.lazy('/kit/gone.js').catch(() => {}));
     await nav4; await p4.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
     same([new URL(p4.url()).pathname + new URL(p4.url()).hash, await p4.evaluate(() => window.stay4 ?? null)], ['/weather/#radar', null], 'it fails with a new build out: the page reloads at the route (a new release, not an error)');
+    await clean(k4, 'a lazy file that fails, after the reload');
+    await k4.ctx.close();
 
     // e. a provider per app: a module's own provider replaces only its own app's; Weather's places stay in Search
     const k5 = await kit({ path: '/?apps=weather,markets' }), p5 = k5.p;
-    await fake(p5, 'markets');
+    await fake(p5, 'markets'); await fake(p5, 'fitness');
     await p5.evaluate(() => kit.F.nav.go('/markets/')); await mounted(p5, 'markets');
     await p5.evaluate(() => { kitMods.markets.fw.search.provide({ id: 'mine', group: 'Markets', order: 30, search: () => [{ title: 'From Markets’ module', href: '/markets/#news' }] }); window.kitSearch = []; });
     await settle(p5, 1500);
@@ -573,7 +587,72 @@ try {
     same(await p5.evaluate(() => [...new Set(kitSearch.map((s) => `${s.app}:${s.userId}`))]), ['weather:u-kit-0001'], 'a connector’s search is given the user ({ userId }); Markets’ connector not asked while its module provides');
     await p5.fill(H.SEARCH_INPUT, 'stand'); await settle(p5, 1100);
     ok(!(await p5.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.textContent))).some((t) => /Markets stand-in/.test(t)), 'Markets’ connector provider replaced by its module’s');
-    await clean(k5, 'a provider per app');
+    // the connector sheet per switch: its acts (label, href) and its hero's line
+    const conn = (app, apps) => p5.evaluate(async ([app, apps]) => {
+      const c = await import('/roof/connectors.js');
+      const F = Object.create(kit.F, { session: { get: () => ({ ...kit.F.session, apps }) } });
+      await c.openConnector(F, app);
+      await new Promise((ok) => setTimeout(ok, 400));
+      const d = document.querySelector('dialog.ifl-sheet[data-sheet=connector][open]');
+      const out = d && { acts: [...d.querySelectorAll('.ifs-acts [data-act]')].map((b) => [b.dataset.act, b.textContent.trim(), b.getAttribute('href')]), line: d.querySelector('.ifs-hero span')?.textContent ?? null };
+      kit.F.sheet.closeAll();
+      await new Promise((ok) => setTimeout(ok, 400));
+      return out;
+    }, [app, apps]);
+    const ON = { weather: true, markets: true, fitness: true, mail: false }, OFF = { weather: true, markets: false, fitness: false, mail: false };
+    same(await conn('markets', ON), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'Its own module, under one roof' }, 'Markets on: Open Markets, Markets Notifications (/#you=notify); its own module');
+    same(await conn('markets', OFF), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'An app beside InFlite' }, 'Markets off: Markets Notifications still (You’s, which works with it off); an app beside InFlite');
+    same(await conn('fitness', ON), { acts: [['open', 'Open Fitness', '/fitness/'], ['settings', 'Fitness Settings', '/fitness/#settings']], line: 'Its own module, under one roof' }, 'Fitness on: Fitness Settings (/fitness/#settings); its own module');
+    same(await conn('fitness', OFF), { acts: [['open', 'Open Fitness', '/fitness/']], line: 'An app beside InFlite' }, 'Fitness off: no Fitness Settings; an app beside InFlite');
+    same((await conn('weather', OFF)).line, 'Its own module, under one roof', 'Weather’s hero line unchanged');
+    await clean(k5, 'a provider per app; the connector sheet');
+    await k5.ctx.close();
+
+    // f. Back or Forward to a module switched off since (s24 C7): Today drawn; offline, no reload; something that couldn't
+    // be saved, no reload; else, once saved, a real load at its address (the server's page for it now)
+    const k6 = await kit({ path: '/?apps=weather,markets' }), p6 = k6.p;
+    await fake(p6, 'markets');
+    await p6.evaluate(() => kit.F.nav.go('/weather/')); await mounted(p6, 'weather');
+    await p6.evaluate(() => kit.F.nav.go('/markets/')); await mounted(p6, 'markets'); await settle(p6);
+    await p6.goBack(); await settle(p6, 600);
+    let loads6 = 0; p6.on('load', () => { loads6++; });
+    await p6.evaluate(() => { window.stay6 = 1; kit.set({ apps: { weather: true, markets: false } }); kit.F.setRoof(true, { weather: true, markets: false }); });
+    await settle(p6, 400);
+    same(await p6.evaluate(() => [location.pathname, !!document.querySelector('main#m-markets'), kitMods.markets.unmounts, window.stay6]), ['/weather/', false, 1, 1], 'Markets switched off while Weather shows: Markets let go of, Weather stays, no reload');
+    const today6 = () => p6.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay6 ?? null]);
+    await k6.ctx.setOffline(true);
+    await p6.goForward(); await settle(p6, 2500);
+    same([await today6(), loads6], [['/markets/', true, 1], 0], 'offline, Forward to /markets/ (off since): Today drawn there, no reload');
+    await k6.ctx.setOffline(false);
+    await p6.goBack(); await mounted(p6, 'weather'); await settle(p6, 600);
+    const fl = await p6.evaluate(() => { kitMods.weather.lost = 1; return kitMods.weather.flushes; });
+    await p6.goForward(); await settle(p6, 2500);
+    same([await today6(), loads6, await p6.evaluate((n) => kitMods.weather.flushes > n, fl)], [['/markets/', true, 1], 0, true], 'online, something that couldn’t be saved (flush says lost): flushed, Today drawn, no reload');
+    await p6.goBack(); await settle(p6, 600);
+    await clean(k6, 'Back to a module off since, before the reload');
+    await p6.evaluate(() => { kitMods.weather.lost = 0; });
+    const nav6 = p6.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
+    await p6.goForward();
+    await nav6; await p6.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
+    same([new URL(p6.url()).pathname, await p6.evaluate(() => window.stay6 ?? null), loads6], ['/markets/', null, 1], 'online, all saved: a real load at /markets/ (the page as the server has it now)');
+    await clean(k6, 'Back to a module off since, after the reload');
+    await k6.ctx.close();
+
+    // g. a zoom from another app's card carries no hint (Weather's alone, S2-D17); then a module switched off while busy,
+    // and left (Back to Today) before it's saved: let go of there, no bounce, no reload
+    const k7 = await kit({ path: '/?apps=weather,markets' }), p7 = k7.p;
+    await fake(p7, 'markets');
+    await p7.evaluate(() => { const c = kit.ui.el('article', { class: 'tcard glass', data: { app: 'markets', state: 'ok' }, 'aria-label': 'Markets' }, kit.ui.el('a', { class: 'kit-mk', href: '/markets/', text: 'Markets' })); document.getElementById('today').prepend(c); });
+    await p7.click('#today .kit-mk'); await mounted(p7, 'markets'); await settle(p7);
+    same(await p7.evaluate(() => [location.pathname, kitMods.markets.shows[0].hint]), ['/markets/', null], 'a Markets card on Today opens Markets with hint null (the hint is Weather’s only)');
+    let loads7 = 0; p7.on('load', () => { loads7++; });
+    await p7.evaluate(() => { window.stay7 = 1; kitMods.markets.busy = true; kit.set({ apps: { weather: true, markets: false } }); kit.F.setRoof(true, { weather: true, markets: false }); });
+    await settle(p7, 600);
+    ok(await p7.evaluate(() => !!document.querySelector('main#m-markets') && window.stay7 === 1), 'switched off while busy: still there, waiting to save');
+    await p7.goBack(); await settle(p7, 2600);
+    same([loads7, await p7.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay7 ?? null, sessionStorage.getItem('ifl-roof-bounce'), !!document.querySelector('main#m-markets'), kitMods.markets.unmounts])], [0, ['/', true, 1, null, false, 1]], 'Back to Today while it waited: Markets flushed and let go of there; no reload, no bounce marker');
+    await clean(k7, 'a module switched off while busy, then left');
+    await k7.ctx.close();
   }
 
   // ---------------------------------------------------------------- 10. widths and themes; long titles
