@@ -14,8 +14,10 @@
 // }
 // The hub gate's refusals are kept, so a module that slips is caught (403 { error }): a write without X-Inflite: 1,
 // GET /api/messages/<id> and /raw by fetch (bodies never reach the page, §3.1), a q in GET /api/threads or /api/contacts,
-// an attachment that isn't a raster picture (S4-D17) unless it's a navigation, address create/delete/default, logout and
-// push. Navigations (the new tab at Mail's address) get a plain page. Every answer carries CORS for the page's origin.
+// an attachment that isn't a raster picture (S4-D17) unless it's a navigation, the address check, address
+// create/delete/default, logout and push. Navigations (the new tab at Mail's address) get a plain page. The gate is the
+// exact origin (§3.5): CORS (Allow-Origin, Allow-Credentials, Vary) only for `origin`; a request from any other Origin is
+// answered 403 with no CORS headers, so the browser refuses it as Mail's Worker would leave it unreadable.
 export const MAIL_KIT = 'http://email.kit.test';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
@@ -242,12 +244,8 @@ export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date
       if (method === 'PATCH') { const { addresses, ...rest } = body || {}; Object.assign(settings, rest); }
       if (method === 'GET' || method === 'PATCH') return json(JSON.parse(JSON.stringify(settings)));
     }
-    if (path === '/api/addresses/check' && method === 'GET') {
-      const l = String(u.searchParams.get('local') || '').toLowerCase();
-      const bad = !/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(l) ? 'Use letters, numbers, dots, dashes or underscores, starting and ending with a letter or number.' : null;
-      const taken = !bad && settings.addresses.some((a) => a.email === `${l}@inflite.ai`);
-      return json({ ok: !bad && !taken, problem: bad || (taken ? 'That’s already one of your addresses.' : null) });
-    }
+    // (the address check puts what was typed into a URL, and the module makes no addresses: refused, B0-b review I6)
+    if (path === '/api/addresses/check') return no(403, 'New addresses are made in Mail on its own.');
     if (path === '/api/addresses') return no(403, 'New addresses are made in Mail on its own.');
     if ((m = /^\/api\/addresses\/([^/]+)$/.exec(path))) {
       if (method !== 'PATCH' || body?.isDefault !== undefined) return no(403, 'That’s done in Mail on its own.');
@@ -323,6 +321,9 @@ export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date
     try { body = req.postData() ? JSON.parse(req.postData()) : null; } catch { body = null; }
     log.push({ method, path: u.pathname, query: u.search, body, origin: from, inflite: h['x-inflite'] === '1', navigate });
     if (state.offline) return route.abort('internetdisconnected');
+    // (only the page's exact origin is a hub; any other Origin: 403 and no CORS headers. No Origin at all is a navigation
+    // or Mail's own page: answered, with no CORS headers)
+    if (from && from !== origin) return route.fulfill({ status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', vary: 'Origin' }, body: JSON.stringify({ error: 'Not allowed.' }) });
     const cors = from ? { 'access-control-allow-origin': from, 'access-control-allow-credentials': 'true', vary: 'Origin' } : {};
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { ...cors, 'access-control-allow-methods': 'GET, POST, PATCH, DELETE', 'access-control-allow-headers': 'Content-Type, X-Inflite', 'access-control-max-age': '7200' } });
     let [status, out, type] = [500, { error: 'Something went wrong. Try again.' }];

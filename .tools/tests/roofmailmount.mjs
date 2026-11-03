@@ -12,7 +12,9 @@
 //   Undo", POST /api/send { draftId, key } after 6 s, Undo before then sending nothing; search: Mail's provider finds a
 //   loaded conversation, "Search Mail for …" is a POST with the query in its body and in no URL, history entry or
 //   storage key; a phone row tap pushes /mail/#thread=<id> with the switcher hidden, Back returns; an iPad tap shows the
-//   pane with no address change; the gate (reauth) says so with Confirm It's You; offline says Mail needs a connection;
+//   pane with no address change; Done on the open conversation leaves it (a phone: back to the list; an iPad: the next
+//   row in the pane); the gate (reauth) says so with Confirm It's You; access "signin" asks fw.session.lost() and says
+//   Sign In to Mail; offline says Mail needs a connection;
 //   the static bytes of the module's first open, and its same-origin requests ≤ files + 2. Reader parts are MR's
 //   (roofmailmount2).
 //   node .tools/tests/roofmailmount.mjs [state dir] [screenshots dir]      (run.sh does this)
@@ -58,6 +60,10 @@ async function open({ width = 390, height = 844, touch = true, access = 'ok', in
 }
 const go = (page, path) => page.evaluate((p) => window.kit.F.nav.go(p), path);
 const rowsText = (page) => page.$$eval(ROW, (rs) => rs.map((r) => r.getAttribute('aria-label')));
+// (a route change settled: the frame's View Transition over (html[data-vt] goes once it has finished), so show() has
+// run; the address changes at popstate, before the transition's update callback, which a busy machine can hold back
+// for a while: asserting on the address alone reads the screen before the module has been shown again)
+const settled = (page) => page.waitForFunction(() => !document.documentElement.dataset.vt, null, { timeout: 8000 }).catch(() => {});
 const batches = (mail) => mail.log.filter((x) => x.method === 'POST' && x.path === '/api/threads/batch').map((x) => x.body);
 // (a finger dragged along a row, from x0 by dx, as touch pointer events)
 async function swipe(page, sel, x0, dx) {
@@ -233,13 +239,15 @@ async function swipe(page, sel, x0, dx) {
   const id = await page.$eval(ROW, (r) => r.dataset.thread);
   await page.click(`${ROW}[data-thread="${id}"]`);
   await page.waitForFunction((i) => location.hash === `#thread=${i}`, id, { timeout: 5000 }).catch(() => {});
+  await settled(page);
   ok(await page.evaluate(() => location.hash) === `#thread=${id}`, 'a row tap pushes /mail/#thread=<id> (S4-D6)');
-  ok(await page.$eval(H.HD_TABLIST, (t) => t.closest('[hidden]') !== null || t.hidden).catch(() => true), 'the switcher hidden on the reader (sections: false)');
+  ok(await page.evaluate((s) => { const t = document.querySelector(s); return !t || t.hidden || !!t.closest('[hidden]') || getComputedStyle(t).display === 'none'; }, H.HD_TABLIST), 'the switcher not shown on the reader (sections: false)');
   ok(await page.$eval(H.HD_BACK, (b) => b.getAttribute('aria-label')) === 'Back to Mail', 'Back says “Back to Mail”');
   const acts2 = await page.$$eval('#hd [data-act]', (bs) => bs.map((b) => b.dataset.act));
   ok(acts2.includes('done') && acts2.includes('later'), 'the reader’s acts: Done and Later', acts2.join(','));
   await page.click(H.HD_BACK);
   await page.waitForFunction(() => !location.hash, null, { timeout: 5000 }).catch(() => {});
+  await settled(page);
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'Back returns to the list');
   ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'and the header is the lens’s again, no subject left');
 
@@ -248,6 +256,22 @@ async function swipe(page, sel, x0, dx) {
   await page.keyboard.press('j');
   const focused = await page.evaluate(() => document.activeElement?.dataset?.thread || null);
   ok(!!focused, 'j focuses a row (S4-D23)', await page.evaluate(() => `${document.activeElement?.tagName}.${document.activeElement?.className} rows=${document.querySelectorAll('.ml-row').length}`));
+
+  // (the reader's Done, from its header: the conversation left, the list back without it, as app.js's leaveThread)
+  await page.evaluate(() => document.activeElement?.blur());
+  const doneId = await page.$eval(ROW, (r) => r.dataset.thread);
+  await page.click(`${ROW}[data-thread="${doneId}"]`);
+  await page.waitForFunction((i) => location.hash === `#thread=${i}`, doneId, { timeout: 5000 }).catch(() => {});
+  await settled(page);
+  await page.waitForSelector('#hd [data-act="done"]', { timeout: 5000 }).catch(() => {});
+  await page.click('#hd [data-act="done"]');
+  await page.waitForFunction(() => !location.hash, null, { timeout: 5000 }).catch(() => {});
+  await settled(page);
+  await page.waitForFunction((s) => !document.querySelector(s), `${ROW}[data-thread="${doneId}"]`, { timeout: 5000 }).catch(() => {});
+  ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'Done on the open conversation goes back to the list (phone)', await page.evaluate(() => location.href));
+  ok(!(await page.$(`${ROW}[data-thread="${doneId}"]`)) && await page.$eval(`${M_MAIL} .ml-list`, (l) => !l.hidden && !l.closest('[inert]')), 'the list shown, without it');
+  ok(batches(mail).some((x) => x.action === 'done' && x.ids?.[0] === doneId), 'and Done sent for it');
+  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'the header the lens’s');
 
   // the static bytes of the first open, and the requests
   const own = urls.filter((u) => u.startsWith(`${KIT}/mail/roof/`)).map((u) => new URL(u).pathname);
@@ -273,8 +297,17 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'an iPad tap writes no address (S4-D6)');
   ok(await page.$(`${ROW}[data-thread="${id}"].selected`), 'the row is selected, the pane beside it');
   ok(await page.$eval(`${M_MAIL} .ml-reader`, (r) => !r.hidden), 'the reader’s pane shows');
+  // (e, Done, on the open one: the pane goes on to the next row, the list no longer has it)
+  const ids = await page.$$eval(ROW, (rs) => rs.map((r) => r.dataset.thread));
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('e');
+  await page.waitForFunction((s) => !document.querySelector(s), `${ROW}[data-thread="${id}"]`, { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector(`${ROW}.selected`, { timeout: 5000 }).catch(() => {});
+  const sel = await page.$eval(`${ROW}.selected`, (r) => r.dataset.thread).catch(() => null);
+  ok(!(await page.$(`${ROW}[data-thread="${id}"]`)) && sel === ids[ids.indexOf(id) + 1], 'Done on the open one: the pane opens the next row (iPad)', `${id} → ${sel} of ${ids.join(',')}`);
+  ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'still no address change');
   // (a cold #thread= on an iPad: list and pane, the address tidied to the lens's)
-  await go(page, `/mail/#thread=${id}`);
+  await go(page, `/mail/#thread=${sel || id}`);
   await page.waitForFunction(() => !location.hash, null, { timeout: 5000 }).catch(() => {});
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'a #thread= on an iPad is tidied to the lens’s address');
   ok(!errors.length, 'no page errors (iPad)', errors.slice(0, 3).join(' | '));
@@ -290,6 +323,18 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.$(`${M_MAIL} [data-act="signin"]`), 'Mail’s own gate (reauth): Confirm It’s You (S4-D12)');
   ok(!mail.log.some((x) => x.path === '/api/threads'), 'no list asked for behind the gate');
   await ctx.close();
+  // (Mail with no session: InFlite asked whether its own is gone, fw.session.lost(), S4-D12 / D3; still signed in, so
+  // Mail alone is signed in to)
+  {
+    const g = await open({ access: 'signin' });
+    await go(g.page, '/mail/');
+    await g.page.waitForSelector(`${M_MAIL} [data-act="signin"]`, { timeout: 10000 }).catch(() => {});
+    await g.page.waitForFunction(() => window.kit.state.checks > 0, null, { timeout: 5000 }).catch(() => {});
+    ok(await g.page.evaluate(() => window.kit.state.checks) > 0, 'access “signin”: fw.session.lost() asks InFlite’s session (S4-D12)');
+    ok(/signed out of Mail/.test(await g.page.$eval(M_MAIL, (m) => m.textContent).catch(() => '')) && /Sign In to Mail/.test(await g.page.$eval(`${M_MAIL} [data-act="signin"]`, (b) => b.textContent).catch(() => '')), 'and the gate says so: Sign In to Mail');
+    ok(!g.mail.log.some((x) => x.path === '/api/threads'), 'no list asked for');
+    await g.ctx.close();
+  }
   // (the module's files in first, as the root worker keeps them; then no connection at all)
   const o = await open();
   await o.page.evaluate(async () => { const c = await import('/mail/roof/connector.js'); await Promise.all(c.connector.files.filter((f) => f.endsWith('.js')).map((f) => import(f))); });

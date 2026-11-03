@@ -218,9 +218,16 @@ test('outbox: Undo before the send keeps the draft and opens it again in compose
   const reopened = calls.find((c) => c[0] === 'compose')[1];
   assert.equal(reopened.draftId, 'dr1', 'the saved draft, to change');
   assert.equal(reopened.text, 'Yes!');
+  assert.ok(!('files' in reopened), 'no files key: never files: [] over a draft');
   assert.deepEqual(store.get().outbox, []);
   assert.equal(ob.undo(r.key), false);
   ob.destroy();
+  // (one with files: { draftId } alone, so compose asks Mail for the draft and keeps its files)
+  const b = outboxSetup();
+  const r2 = await b.ob.send(DRAFT, [{ ref: 'att-1', filename: 'menu.pdf', type: 'application/pdf', size: 9 }]);
+  assert.equal(b.ob.undo(r2.key), true);
+  assert.deepEqual(b.calls.find((c) => c[0] === 'compose')[1], { draftId: 'dr1' }, 'with files: the draft by its id alone');
+  b.ob.destroy();
 });
 
 test('outbox: no answer → Try Again asks /api/sends first; Mail refusing it → “It’s in Drafts”', { skip }, async (t) => {
@@ -293,11 +300,25 @@ test('outbox: flush sends what waits out its Undo now, saves queued ones and an 
   mem.clear(); online = true;
   const { calls, ob } = outboxSetup();
   await ob.send(DRAFT, []);
-  const off = ob.track(() => ({ ...DRAFT, subject: 'Open compose', text: 'half written' }));
+  const got = [];
+  let words = 'half written';
+  const off = ob.track(() => ({ ...DRAFT, subject: 'Open compose', text: words, files: [{ ref: 'att-9' }] }), (id) => got.push(id));
   const res = await ob.flush({ keepalive: true });
   assert.deepEqual(res, { lost: 0 });
   assert.ok(calls.some((c) => c[0] === 'send' && c[3]?.keepalive), 'the waiting send went at once, keepalive');
-  assert.ok(calls.some((c) => c[0] === 'save' && c[1].subject === 'Open compose' && c[2]?.keepalive), 'the open compose saved as a draft');
+  const saves = () => calls.filter((c) => c[0] === 'save' && c[1].subject === 'Open compose');
+  assert.equal(saves().length, 1, 'the open compose saved as a draft');
+  assert.ok(saves()[0][2]?.keepalive && !('id' in saves()[0][1]), 'keepalive, a new draft');
+  assert.deepEqual(saves()[0][1].attachments, [{ ref: 'att-9' }], 'its files listed, so Mail keeps them');
+  assert.deepEqual(got, ['dr2'], 'the id handed back to compose (onSaved)');
+  // (a second flush, as unmount's after sign-out: nothing changed, nothing asked)
+  await ob.flush({ keepalive: true });
+  assert.equal(saves().length, 1, 'unchanged since: not saved again');
+  // (changed since, compose not having taken the id: saved again into the same draft)
+  words = 'more written';
+  await ob.flush();
+  assert.equal(saves().length, 2);
+  assert.equal(saves()[1][1].id, 'dr2', 'the same draft, by the id the first flush got');
   off();
   ob.destroy();
   // (Mail not answering: what couldn't be saved is counted)
