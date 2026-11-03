@@ -22,6 +22,7 @@
 // mk_cache:    the markets' data, as last fetched, with when.
 import { HttpError, db, fromB64url, b64url, safeEqual, serverSecret } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
+import { busyMap, holdsFor, heldMark, heldAdd } from "./_busy.js";
 import { yearDivs, marked } from "../markets/income.js";
 
 const MIN = 60e3, HOUR = 60 * MIN;
@@ -54,6 +55,9 @@ export async function mkdb(env) {
     // (and the phones' sign-ins and failures, added to a list kept from before them)
     await D.prepare("ALTER TABLE mk_push ADD COLUMN session TEXT").run().catch(() => {});
     await D.prepare("ALTER TABLE mk_push ADD COLUMN fails INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+    // (and, for a phone InFlite's one device route added (functions/_devices.js), via: "hub", so a rollback can take
+    // back exactly those)
+    await D.prepare("ALTER TABLE mk_push ADD COLUMN via TEXT").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
   await ready;
   return D;
@@ -705,18 +709,21 @@ async function keysOk(sub) {
 }
 // A phone to tell, with the sign-in it's turned on with (u: the signed-in user, with its session's hash). A push address
 // another account here is still signed in with stays theirs, so one that's somehow learnt can't be taken over; and an
-// account keeps its ten newest
-export async function addPhone(env, u, sub) {
+// account keeps its ten newest. (POST push's, and InFlite's one device route's, with via: "hub", functions/_devices.js)
+// → { on: true, kept: whether it's this account's now }
+export async function keepPush(env, u, sub, { via = null } = {}) {
   const keys = await keysOk(sub);
   if (!sub || !pushEndpointOk(sub.endpoint) || sub.endpoint.length > 1000 || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
-  const D = await mkdb(env);
-  await D.prepare(`INSERT INTO mk_push (endpoint, user_id, p256dh, auth, added, session, fails) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)
-    ON CONFLICT (endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, added = ?5, session = ?6, fails = 0
+  const D = await mkdb(env), v = via == null ? null : String(via).slice(0, 16);
+  const w = await D.prepare(`INSERT INTO mk_push (endpoint, user_id, p256dh, auth, added, session, fails, via) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)
+    ON CONFLICT (endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, added = ?5, session = ?6, fails = 0${v == null ? "" : ", via = ?7"}
     WHERE mk_push.user_id = ?2 OR mk_push.session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = mk_push.session)`)
-    .bind(sub.endpoint, u.id, keys.p256dh, keys.auth, Date.now(), u.sessionHash || null).run();
+    .bind(sub.endpoint, u.id, keys.p256dh, keys.auth, Date.now(), u.sessionHash || null, v).run();
   await D.prepare("DELETE FROM mk_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM mk_push WHERE user_id = ?1 ORDER BY added DESC LIMIT 10)").bind(u.id).run();
-  return { on: true };
+  return { on: true, kept: !!w.meta?.changes };
 }
+// (its name from before; what POST push answers, as it always has)
+export const addPhone = async (env, u, sub) => { await keepPush(env, u, sub); return { on: true }; };
 export async function dropPhone(env, userId, endpoint) {
   const D = await mkdb(env);
   await D.prepare("DELETE FROM mk_push WHERE endpoint = ? AND user_id = ?").bind(String(endpoint || ""), userId).run();
@@ -734,7 +741,8 @@ export async function movePhone(env, u, b) {
 const MAX_FAILS = 5;
 async function tell(env, D, userId, note) {
   const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth, fails FROM mk_push WHERE user_id = ? AND (session IS NULL OR session IN (SELECT hash FROM pg_sessions))").bind(userId).all();
-  const outs = await Promise.all(phones.map((p) => pushToSub(env, p, note).catch(() => "error")));
+  // (each says it's Markets', sealed inside it, so a phone getting every app's through InFlite opens Markets for it)
+  const outs = await Promise.all(phones.map((p) => pushToSub(env, p, { ...note, app: "markets" }).catch(() => "error")));
   const later = [];
   outs.forEach((out, i) => {
     const p = phones[i];
@@ -759,7 +767,9 @@ const money = (v, cur) => `${{ GBP: "£", USD: "$", EUR: "€" }[cur] || ""}${v.
 export { money as moneySaid };
 // The scheduler's turn (workers/ticker, every five minutes): each alert whose holding has moved as far as asked today
 // (from yesterday's close), said once that day, on every phone of the account's; held through its Quiet Hours, and said
-// after them if it's still that far
+// after them if it's still that far; and the same through a ride the account planned, where its rule holds apps'
+// notifications (functions/_busy.js: at do or suggest), marked as held (fired: "held:<day>@<when>", still not that
+// day's) the first time, so each is counted once in the rule's record and Today can say how many wait
 export async function alertTick(env, t = Date.now()) {
   const D = await mkdb(env);
   await tidy(D, t);
@@ -774,6 +784,12 @@ export async function alertTick(env, t = Date.now()) {
     if (!x || x.chgPct == null || Math.abs(x.chgPct) < r.pct || !x.time || t / 1000 - x.time > 6 * 3600) return false;
     return r.fired !== dayIn(x.tz, x.time * 1000) && !isQuiet(prefsOf({ notify_prefs: r.notify_prefs }), t);
   });
+  const riding = await heldBack(env, D, due, t, (r) => {
+    const day = dayIn(q[r.symbol].tz, q[r.symbol].time * 1000);
+    return D.prepare("UPDATE mk_alerts SET fired = ?3 WHERE user_id = ?1 AND symbol = ?2 AND (fired IS NULL OR (fired != ?4 AND fired NOT LIKE ?5))")
+      .bind(r.user_id, r.symbol, heldMark(day, t), day, `held:${day}@%`);
+  });
+  if (riding.size) due.splice(0, due.length, ...due.filter((r) => !riding.has(r.user_id)));
   // (why, where a story from the last day says: the newest about each, asked for once a symbol, six at a time, before
   // any's claimed, so no claim waits on a story)
   const whys = new Map(), syms = [...new Set(due.map((r) => r.symbol))];
@@ -795,6 +811,20 @@ export async function alertTick(env, t = Date.now()) {
   return { alerts: results.length, sent };
 }
 
+// Those of due ([{ user_id }]) riding now with apps' notifications held (functions/_busy.js): each one's mark(r) run (a
+// statement that marks it held, changing nothing where it's marked already), and those that marked counted in the
+// account's hold rule's record. → the Set of the accounts riding
+async function heldBack(env, D, due, t, mark) {
+  if (!due.length) return new Set();
+  const busy = await busyMap(D, due.map((r) => r.user_id), t).catch(() => new Map());
+  const riding = new Set(due.filter((r) => holdsFor(busy.get(r.user_id), "apps")).map((r) => r.user_id));
+  if (!riding.size) return riding;
+  const held = due.filter((r) => riding.has(r.user_id)), got = await D.batch(held.map(mark)).catch(() => []);
+  const n = new Map();
+  held.forEach((r, i) => { if (got[i]?.meta?.changes) n.set(r.user_id, (n.get(r.user_id) || 0) + 1); });
+  for (const [uid, k] of n) await heldAdd(env, uid, k);
+  return riding;
+}
 // The evening wrap: once a weekday, when every market you hold that traded today has closed, how your day went: up or
 // down, by how much, and what did most of it. Once a day, on every phone of the account's; held through its Quiet Hours
 // (and not sent at all if they last till the day's over)
@@ -816,6 +846,9 @@ export async function wrapTick(env, t = Date.now()) {
     // (what traded today, by its own market's day; crypto never closes, so isn't waited for)
     const traded = held.filter((r) => r.x.kind !== "crypto" && r.x.time && dayIn(r.x.tz, r.x.time * 1000) === dayIn(r.x.tz, t));
     if (!traded.length || traded.some((r) => r.x.open && r.x.open.end > t / 1000) || isQuiet(prefsOf({ notify_prefs: u.prefs }), t)) continue;
+    // (held through a ride, as through quiet hours, and said after: marked the first time, so it's counted once)
+    if ((await heldBack(env, D, [{ user_id: userId }], t, () => D.prepare(`INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2
+      WHERE mk_wrap.sent IS NULL OR (mk_wrap.sent != ?3 AND mk_wrap.sent NOT LIKE ?4)`).bind(userId, heldMark(today, t), today, `held:${today}@%`))).size) continue;
     const { value, total, pct: pctDay, top, low, shut, day } = wrapFigures(held, fx, t);
     const claim = await D.prepare("INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2 WHERE mk_wrap.sent IS NULL OR mk_wrap.sent != ?2").bind(userId, today).run();
     if (!claim.meta?.changes) continue;
