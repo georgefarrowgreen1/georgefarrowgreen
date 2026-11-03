@@ -6,6 +6,8 @@
 // notifications). Signed in to InFlite, your saved places, settings and notification choices are kept with the account,
 // in step on every device, versioned (wx:acct: the version last in step and what was kept then, snap), so a change made
 // meanwhile, here or on another device, is put together with the other's rather than either being lost.
+// The module unmounted (stop(), on sign-out say) raises gen: an answer from the account still on its way then writes
+// nothing (Today's forgetApps has cleared wx:* by the time it comes; under the roof the page stays).
 import * as A from "../account.js";
 import { store } from "../data.js";
 import * as core from "./core.js";
@@ -38,11 +40,12 @@ export function combine(theirs, now, snap, first = false) {
 // taken up here: the places (My Location first, as ever, and the one on show still on show), settings and notifications
 export function takeUp(d) {
   const { S } = core;
-  const here = core.place(), looking = core.looking(), gps = S.places.find((p) => p.gps);
+  // (a link's place only looked at isn't in places: the saved one shown before it is what stays current)
+  const looking = core.looking(), here = looking ? S.places[S.cur] || null : core.place(), gps = S.places.find((p) => p.gps);
   // (the account's places are chosen ones: one this device had as a stand-in is a stand-in no longer)
   const list = d.places.map((p) => { const { approx, standin, ...was } = S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}; return { ...was, ...p }; });
   if (gps || list.length) S.places = gps ? [gps, ...list] : list;
-  const at = looking ? -1 : S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
+  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
   S.cur = Math.max(0, at);
   store.set("wx:places", S.places); store.set("wx:cur", S.cur);
   const n = S.settings.notify;
@@ -55,16 +58,19 @@ export function takeUp(d) {
 }
 // Sending what's changed here (one at a time; a change while one's going goes after it), and if the account's moved on
 // meanwhile, putting the two together and sending that
-let stepping = null, stepAgain = false, stepTimer = 0;
+let stepping = null, stepAgain = false, stepTimer = 0, gen = 0;
 export const busy = () => !!stepping;
 export function inStepSoon() { if (!core.S.acct) return; clearTimeout(stepTimer); stepTimer = setTimeout(() => keepInStep().catch(() => {}), 1200); }
 export function keepInStep() {
   if (stepping) { stepAgain = true; return stepping; }
-  stepping = (async () => { try { do { stepAgain = false; await stepOnce(); } while (stepAgain); } finally { stepping = null; } })();
-  return stepping;
+  const g = gen;
+  let run = null;
+  run = stepping = (async () => { try { do { stepAgain = false; await stepOnce(g); } while (stepAgain && g === gen); } finally { if (stepping === run) stepping = null; } })();
+  return run;
 }
-export async function stepOnce() {
+export async function stepOnce(g = gen) {
   for (let tries = 0; tries < 3; tries++) {
+    if (g !== gen) return;
     const k = store.get("wx:acct");
     if (!k || !core.S.acct) return;
     const now = mine();
@@ -72,7 +78,8 @@ export async function stepOnce() {
     inStep("saving");
     let r;
     try { r = await A.save(k.ver, now); }
-    catch (e) { if (e.status === 401) await lost(); else inStep(e.offline ? "waiting" : "error"); throw e; }
+    catch (e) { if (g !== gen) return; if (e.status === 401) await lost(g); else inStep(e.offline ? "waiting" : "error"); throw e; }
+    if (g !== gen) return;
     if (!r.conflict) { store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) }); inStep("ok"); return; }
     takeUp(combine(r.data, now, k.snap));
     store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) });
@@ -80,7 +87,7 @@ export async function stepOnce() {
 }
 function inStep(state) {
   const a = core.S.acct;
-  if (state === "ok" && core.S.error === core.SYNC_ERROR) core.setError(null);
+  if (state === "ok") core.syncError(false);
   if (!a || a.state === state) return;
   a.state = state;
   core.emit("acct", a);
@@ -88,41 +95,46 @@ function inStep(state) {
 // The account as the server has it (on first showing, and again on coming back after a minute): signed out, or
 // changed on another device
 export async function pull() {
+  const g = gen;
   let r;
   try { r = await A.me(); }
   catch (e) {
-    if (e.status === 401) { await lost(); return; }
+    if (g !== gen) return;
+    if (e.status === 401) { await lost(g); return; }
     // (no account here at all: a preview of the site, say)
     if (e.status === 404) { signedOut(); return; }
     if (core.S.acct && core.S.acct.state === "ok") inStep("waiting");
     return;
   }
-  if (!r.signedIn) { await lost(); return; }
-  await adopt(r);
+  if (g !== gen) return;
+  if (!r.signedIn) { await lost(g); return; }
+  await adopt(r, false, g);
 }
 // A 401 or { signedIn: false }: asked of InFlite first (fw.session.lost checks the session before anyone's signed out,
 // D3): signed out after all → this page's copy of the account let go (the framework signs the page out); still signed
 // in → said, nothing let go
-async function lost() {
+async function lost(g = gen) {
   const fw = core.fwOf();
   let out = false;
   try { out = await fw?.session?.lost?.(); } catch (_) {}
+  if (g !== gen) return false;
   if (out === true) { core.S.ask = null; core.emit("ask", null); signedOut(); return true; }
-  core.setError(core.SYNC_ERROR);
+  core.syncError(true);
   fw?.toast?.(core.SYNC_ERROR);
   return false;
 }
 // here: "keep them" answered on this page just now (so this device's places are meant for the account)
-export async function adopt(r, here = false) {
+export async function adopt(r, here = false, g = gen) {
   const { S } = core;
+  if (g !== gen) return;
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
   // (Weather's first open at InFlite, signed in already: the place it opened on as a stand-in is no reason to ask, nor is
   // one the account has already; asked only for a place of this device's own the account hasn't)
   const hubFirst = fresh && !here, own = mine(), theirs = new Set((r.data?.places || []).map(A.keyOf));
   if (fresh && !here && (hubFirst ? own.places.some((p) => !theirs.has(A.keyOf(p))) : own.places.length) && !core.declined(r)) {
     // (the account this device was in step with till now let go of before it's asked, so nothing here goes to the one
-    // signed in now till it's answered)
-    if (S.acct || k) signedOutElsewhere();
+    // signed in now till it's answered; its notifications are You's, so nothing is unsubscribed here)
+    if (S.acct || k) signedOut();
     S.ask = r; core.emit("ask", r);
     return;
   }
@@ -132,16 +144,12 @@ export async function adopt(r, here = false) {
   if (fresh) takeUp(combine(r.data, own, snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
   store.set("wx:acct", { ...profileOf(r), devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
-  if (S.error === core.SYNC_ERROR) core.setError(null);
+  core.syncError(false);
   core.emit("acct", S.acct);
   try { await keepInStep(); } catch (_) {}
 }
 // who, as the account has them: name, handle, email, the photo's time (and the account's own id, to know it again)
 export const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", emailOk: !!r.emailOk, photoAt: r.photoAt || null });
-function signedOutElsewhere() {
-  const n = core.S.settings.notify;
-  if (n.endpoint && n.devId) A.leave(n.endpoint).catch(() => {});
-  signedOut();
-}
 export function signedOut() { store.del("wx:acct"); core.S.acct = null; core.emit("acct", null); }
-export function stop() { clearTimeout(stepTimer); stepTimer = 0; stepAgain = false; }
+// (unmounted: the timer cleared, and whatever's still on its way to or from the account let go of, gen)
+export function stop() { clearTimeout(stepTimer); stepTimer = 0; stepAgain = false; stepping = null; gen++; }

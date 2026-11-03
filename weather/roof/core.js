@@ -52,7 +52,7 @@
 //   answerAsk(keep) → Promise    the "ask" card: true keeps this device's places with the account (app.js adopt(r, true));
 //                                false leaves them on this device and clears S.ask (not asked again this page)
 // Added by WX (for weather.js, places.js and the views): shown(on), busy(), glanceAll(), look(p), headerLine(),
-//   SYNC_ERROR, FORECAST_BUSY, FORECAST_FAILED, pinHue(temp), skyOf(code, isDay).
+//   SYNC_ERROR, FORECAST_BUSY, FORECAST_FAILED, pinHue(temp), skyOf(code, isDay); setError(v), syncError(on) (sync.js).
 import { load, due, nameOf, store, keepSafe, peek as peekKept, cell, hasKept } from "../data.js";
 import { makeFormat, nowWall, keyOf, HOUR, DAY } from "../format.js";
 import * as I from "../insights.js";
@@ -78,7 +78,7 @@ export function emit(evt, detail) { for (const fn of [...(subs.get(evt) || [])])
 
 // (what isn't for the views: the forecast as it came, the radar's say, timers, the page's fw)
 const P = { fw: null, base: null, rain: null, rains: new Map(), seq: 0, tries: 0, again: 0, paintT: 0, painted: 0, tick: 0, shown: false, booted: false,
-  look: null, offs: [], checkedAt: 0, pulledAt: 0, glancedAt: 0, glances: new Map(), rainLib: null, locating: false, declined: null, toldFull: false, heroKept: "", heroAt: 0 };
+  look: null, fcErr: null, syncErr: false, offs: [], checkedAt: 0, pulledAt: 0, glancedAt: 0, glances: new Map(), rainLib: null, locating: false, declined: null, toldFull: false, heroKept: "", heroAt: 0 };
 export const fwOf = () => P.fw;
 
 /* ---------- settings (app.js 817-884) ---------- */
@@ -192,9 +192,10 @@ export const looking = () => !!P.look;
 export function removePlace(i) {
   const p = S.places[i];
   if (!p || S.places.length < 2) return;
-  const was = place(), n = S.settings.notify, k = A.nkeyOf(p);
+  // (the saved one current, and the one on show: the same, unless a link's place is only being looked at)
+  const saved = S.places[S.cur], was = place(), n = S.settings.notify, k = A.nkeyOf(p);
   S.places.splice(i, 1);
-  S.cur = Math.max(0, S.places.indexOf(was));
+  S.cur = Math.max(0, S.places.indexOf(saved));
   savePlaces();
   if (n.places.some((e) => A.nkeyOf(e) === k) || (n.brief && A.nkeyOf(n.brief) === k)) {
     saveSettings({ notify: { ...storedSettings().notify, ...n, places: n.places.filter((e) => A.nkeyOf(e) !== k), brief: n.brief && A.nkeyOf(n.brief) === k ? null : n.brief } });
@@ -215,13 +216,18 @@ export function movePlace(i, by) {
 /* ---------- loading (app.js 993-1167) ---------- */
 const words = (e) => (e && (e.status === 429 || e.status >= 500) ? FORECAST_BUSY : FORECAST_FAILED);
 function setLoading(v) { if (S.loading !== v) { S.loading = v; emit("loading", v); } }
-export function setError(v) { if (S.error !== v) { S.error = v; emit("error", v); } }
+// S.error is one value: the forecast's error while it lasts (setError: FORECAST_BUSY / FORECAST_FAILED, or null once
+// it's in), else SYNC_ERROR while the account's sync is failing (syncError(on), from sync.js; setError(SYNC_ERROR) is
+// the same as syncError(true)), so neither hides or clears the other
+function showError() { const v = P.fcErr || (P.syncErr ? SYNC_ERROR : null); if (S.error !== v) { S.error = v; emit("error", v); } }
+export function setError(v) { if (v === SYNC_ERROR) P.syncErr = true; else P.fcErr = v || null; showError(); }
+export function syncError(on) { P.syncErr = !!on; showError(); }
 const runOut = (wx) => I.hoursFrom(wx, nowWall(wx.place.offset), 6).length < 6;
 export async function go(force = false) {
   const p = place(); if (!p) return;
   const my = ++P.seq;
   setLoading(true);
-  if (S.error !== SYNC_ERROR) setError(null);
+  setError(null);
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   if (moved) { P.base = null; S.wx = null; S.updatedAt = null; S.stale = false; P.rain = rainOf(cell(p.lat, p.lon)); clearTimeout(P.paintT); P.painted = 0; emit("wx", null); }
   try {
@@ -555,7 +561,7 @@ export function start(fw) {
   // your account: signed in, as it was last time, till the server says
   const k = store.get("wx:acct");
   S.acct = k?.handle ? { ...sync.profileOf(k), devices: k.devices || [], state: "ok" } : null;
-  S.ask = null; S.wx = null; S.error = null; S.stale = false; S.loading = false; S.updatedAt = null; S.now = Date.now();
+  S.ask = null; S.wx = null; S.error = null; P.fcErr = null; P.syncErr = false; S.stale = false; S.loading = false; S.updatedAt = null; S.now = Date.now();
   P.offs.push(fw.on?.("visible", opened) || (() => {}), fw.on?.("hidden", tickOff) || (() => {}));
 }
 export function stop() {
@@ -564,5 +570,5 @@ export function stop() {
   for (const off of P.offs.splice(0)) { try { off(); } catch (_) {} }
   sync.stop();
   P.seq++;
-  Object.assign(P, { fw: null, base: null, shown: false, booted: false, look: null, painted: 0, tries: 0, again: 0, paintT: 0, locating: false });
+  Object.assign(P, { fw: null, base: null, shown: false, booted: false, look: null, fcErr: null, syncErr: false, painted: 0, tries: 0, again: 0, paintT: 0, locating: false });
 }

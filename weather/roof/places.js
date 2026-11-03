@@ -70,7 +70,7 @@ export function openPlaces(ctx) {
     const tools = editing ? h(doc, "span", { class: "wx-place-tools" },
       h(doc, "button", { class: "ifl-icon-btn", type: "button", data: { act: "up" }, "aria-label": `Move ${nameOf(p)} up`, disabled: i === 0, on: { click: () => moved(-1) } }, "↑"),
       h(doc, "button", { class: "ifl-icon-btn", type: "button", data: { act: "down" }, "aria-label": `Move ${nameOf(p)} down`, disabled: i === S.places.length - 1, on: { click: () => moved(1) } }, "↓"),
-      S.places.length > 1 ? h(doc, "button", { class: "ifl-icon-btn wx-del", type: "button", data: { act: "delete" }, "aria-label": `Remove ${nameOf(p)}`, on: { click: () => {
+      S.places.length > 1 ? h(doc, "button", { class: "ifl-icon-btn wx-del", type: "button", data: { act: "delete" }, "aria-label": `Delete ${nameOf(p)}`, on: { click: () => {
         const name = nameOf(p);
         core.removePlace(i);
         draw();

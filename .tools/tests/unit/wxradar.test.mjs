@@ -600,9 +600,54 @@ test("radar.js destroy(): every window and document listener, observer, media li
   assert.deepEqual(tally(), before, "listeners all removed");
   assert.ok(obs().every((o) => !o.on), "observers all disconnected");
   assert.ok(map.removed, "the map removed");
-  assert.ok(fake.workersMade.every((w) => w.terminated), "workers terminated");
+  // (no frames come on this stand-in, so no worker or blender is made here: the next case has them)
   r.destroy();     // (twice is no trouble)
   card.remove();
+});
+
+test("radar.js destroy() with its frames in: the workers made for its tiles terminated, the graphics chip's blender dropped and its context lost", async () => {
+  fake.media["(pointer: coarse)"] = false;
+  // RainViewer's list of frames (the last three ten-minute frames), its tiles as pictures that come at once, and a
+  // stand-in WebGL context for radarmix.js's blender: its textures and its context counted
+  const was = { fetch: globalThis.fetch, Image: globalThis.Image, getContext: fake.El.prototype.getContext };
+  const step = Math.floor(Date.now() / 600e3) * 600;
+  globalThis.fetch = async (url) => {
+    if (String(url).startsWith("https://api.rainviewer.com/")) return { ok: true, json: async () => ({ host: "https://tiles.test", radar: { past: [2, 1, 0].map((k) => ({ time: step - k * 600, path: `/v2/radar/${step - k * 600}` })) } }) };
+    throw new Error("offline (test)");
+  };
+  const tilesAsked = [];
+  globalThis.Image = class { set src(u) { tilesAsked.push(u); setTimeout(() => this.onload?.(), 0); } };
+  const chip = { made: 0, textures: 0, deleted: 0, lost: 0 };
+  fake.El.prototype.getContext = function (kind, o) {
+    if (kind !== "webgl") return was.getContext.call(this, kind, o);
+    if (this._gl) return this._gl;
+    chip.made++;
+    const own = { getProgramParameter: () => true, getParameter: () => 4096, createTexture: () => ({ n: ++chip.textures }), deleteTexture: () => { chip.deleted++; },
+      getExtension: (n) => (n === "WEBGL_lose_context" ? { loseContext: () => { chip.lost++; } } : null) };
+    return (this._gl = new Proxy(own, { get: (o, k) => (k in o ? o[k] : typeof k === "string" && /^[A-Z_0-9]+$/.test(k) ? 1 : () => ({})) }));
+  };
+  const before = fake.workersMade.length;
+  const card = cardOf(false);
+  let r, canvas;
+  try {
+    ({ r } = await shown(card, { full: false, explore: true }));
+    for (let k = 0; k < 80 && (fake.workersMade.length === before || !chip.made); k++) await wait(25);
+    const made = fake.workersMade.slice(before);
+    assert.ok(tilesAsked.length > 0, "the radar's tiles asked for");
+    assert.ok(made.length > 0, "workers made for its tiles");
+    assert.equal(chip.made, 1, "the graphics chip's blender made");
+    assert.ok(made.every((w) => !w.terminated), "and working, till it's let go");
+    r.destroy();
+    assert.ok(made.every((w) => w.terminated), "every worker terminated (the last radar on the page)");
+    // (drop() comes first on the same line: its context lost means it ran)
+    assert.equal(chip.lost, 1, "the blender's context lost");
+    assert.ok(chip.deleted >= chip.textures - 1, "its textures let go (all but the colours, which go with the context)");
+    r.destroy();
+    assert.equal(chip.lost, 1, "(twice is no trouble)");
+  } finally {
+    globalThis.fetch = was.fetch; globalThis.Image = was.Image; fake.El.prototype.getContext = was.getContext;
+    r?.destroy(); card.remove();
+  }
 });
 
 test("radar.js with no options: Weather's own page as it was (full screen, Tap to explore, its Escape)", async () => {

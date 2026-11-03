@@ -92,7 +92,8 @@ export function view(el, ctx) {
     if (off) off.hidden = online || !!lib;
     if (!online && !lib) return;
     const my = card;
-    starting = (async () => {
+    let run = null;
+    run = starting = (async () => {
       lib ||= await fw.lazy(() => import("../radar.js"));
       if (dead || my !== card || r) return;
       if (off) off.hidden = true;
@@ -103,7 +104,7 @@ export function view(el, ctx) {
     })().catch((e) => {
       console.error(e);
       if (my === card && off) { off.textContent = globalThis.navigator?.onLine === false ? "Radar needs a connection" : "The radar isn’t available right now."; off.hidden = false; }
-    }).finally(() => { starting = null; });
+    }).finally(() => { if (starting === run) starting = null; });
   }
   // the place, its bubble, the other saved places (a tap goes to one) and the warnings' areas (app.js pinOnMap)
   function feed(force = false) {

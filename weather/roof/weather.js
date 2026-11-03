@@ -87,8 +87,9 @@ export async function mount(root, fw) {
     core.on("settings", () => { header(); draw(); }),
     core.on("loading", () => { header(); draw(); }),
     core.on("error", () => { header(); draw(); }),
-    core.on("ask", () => draw("now")),
-    core.on("acct", () => draw("now")),
+    // (only the section on show is drawn, §7.3: Now's account card when Now shows)
+    core.on("ask", () => { if (shown === "now") draw("now"); }),
+    core.on("acct", () => { if (shown === "now") draw("now"); }),
   ];
   // your saved places, on this device (connector.search, the same words), with their temperature now
   const unprovide = fw.search?.provide?.({

@@ -265,3 +265,163 @@ test("sectionOf and peek", () => {
   assert.equal(core.peek({ lat: 10, lon: 10 }), null);
   core.stop();
 });
+
+// ---- the account's sync under the roof: answers after unmount, no subscription calls, a look kept apart, the sync
+// error kept apart from the forecast's ----
+// (a network that answers as asked: each request noted, its answer held till the test lets it go)
+function heldNet() {
+  const asks = [];
+  globalThis.fetch = (url, o = {}) => new Promise((ok) => {
+    asks.push({ url: String(url), method: o.method || "GET", body: o.body ? JSON.parse(o.body) : null,
+      answer: (status, j) => ok({ ok: status >= 200 && status < 300, status, json: async () => j }) });
+  });
+  return asks;
+}
+const offline = () => { globalThis.fetch = async () => { throw Object.assign(new Error("offline (test)"), { offline: true }); }; };
+const tick = (ms = 0) => new Promise((ok) => setTimeout(ok, ms));
+const ACCT = { id: "u1", name: "Ann", handle: "ann", email: "ann@example.com", emailOk: true, photoAt: null, devices: [], ver: 3,
+  snap: { places: ["53.80,-1.55"], settings: "null", notify: null } };
+
+test("an account answer that comes after unmount (sign-out) writes nothing: not wx:acct, wx:places or wx:settings", async () => {
+  try {
+    // a PUT on its way (a place added here), then core.stop() as the sign-out unmounts the module, then Today's
+    // forgetApps clears wx:*; the PUT's answer then comes, a conflict with another device's places and settings
+    reset({ "wx:places": [{ name: "Leeds", lat: 53.8, lon: -1.55 }], "wx:settings": { temp: "c" }, "wx:acct": ACCT });
+    const asks = heldNet();
+    core.start(fw());
+    core.addPlace({ name: "Bath", lat: 51.38, lon: -2.36 });
+    const step = sync.keepInStep().catch(() => {});
+    await tick();
+    const put = asks.find((a) => a.method === "PUT");
+    assert.ok(put, "the change on its way to the account");
+    core.stop();
+    mem.clear();
+    put.answer(409, { conflict: true, ver: 9, data: { places: [{ name: "York", lat: 53.96, lon: -1.08 }], settings: { temp: "f" }, notify: { places: [], brief: null } } });
+    await step; await tick(5);
+    assert.deepEqual([...mem.keys()], [], "nothing written after the sign-out");
+    assert.equal(asks.filter((a) => a.method === "PUT").length, 1, "and nothing sent again");
+
+    // the same for a GET /api/weather/me on its way (the account shown first, or after a minute away)
+    reset({ "wx:places": [{ name: "Leeds", lat: 53.8, lon: -1.55 }], "wx:acct": ACCT });
+    const asks2 = heldNet();
+    core.start(fw());
+    const pulled = sync.pull();
+    await tick();
+    const get = asks2.find((a) => a.method === "GET" && a.url.endsWith("/me"));
+    assert.ok(get, "the account asked for");
+    const had = core.S.acct;
+    core.stop();
+    mem.clear();
+    get.answer(200, { signedIn: true, id: "u1", name: "Ann", handle: "ann", email: "ann@example.com", ver: 10, devices: [],
+      data: { places: [{ name: "York", lat: 53.96, lon: -1.08 }], settings: { temp: "f" }, notify: { places: [], brief: null } } });
+    await pulled; await tick(5);
+    assert.deepEqual([...mem.keys()], [], "nothing written from an answer that came after the sign-out");
+    assert.equal(core.S.acct, had, "nor the account's answer taken up");
+  } finally { offline(); core.stop(); }
+});
+
+test("a different account signed in, with places of this device's own to ask about: the old one let go with no subscription call", async () => {
+  try {
+    reset({ "wx:places": [{ name: "Bath", lat: 51.38, lon: -2.36 }], "wx:acct": ACCT, "wx:settings": { notify: { places: [], endpoint: "https://push.example/sub", devId: "dv1" } } });
+    const asks = heldNet();
+    core.start(fw());
+    const asked = [];
+    const off = core.on("ask", (r) => asked.push(r));
+    const pulled = sync.pull();
+    await tick();
+    asks.find((a) => a.url.endsWith("/me")).answer(200, { signedIn: true, id: "u2", name: "Bob", handle: "bob", ver: 1, devices: [],
+      data: { places: [{ name: "York", lat: 53.96, lon: -1.08 }], settings: {}, notify: { places: [], brief: null } } });
+    await pulled; await tick(5);
+    assert.equal(asked.at(-1)?.handle, "bob", "asked whether to keep this device's places with Bob's account");
+    assert.equal(core.S.acct, null, "Ann's let go");
+    assert.equal(mem.get("wx:acct"), undefined);
+    assert.deepEqual(asks.filter((a) => /\/leave$/.test(a.url)), [], "no /api/weather/leave (You owns notifications)");
+    assert.deepEqual(asks.map((a) => `${a.method} ${a.url.replace(/^.*\/api\/weather\//, "")}`), ["GET me"], "nothing asked but the account");
+    off();
+  } finally { offline(); core.stop(); }
+});
+
+test("{ signedIn: false } from the account goes through fw.session.lost: signed out after all, or still in (the sync error said)", async () => {
+  try {
+    for (const out of [true, false]) {
+      reset({ "wx:places": [{ name: "Leeds", lat: 53.8, lon: -1.55 }], "wx:acct": ACCT });
+      const asks = heldNet();
+      let lostAsked = 0, toast = null;
+      core.start({ ...fw(), toast: (t) => { toast = t; }, session: { lost: async () => { lostAsked++; return out; } } });
+      const pulled = sync.pull();
+      await tick();
+      asks.find((a) => a.url.endsWith("/me")).answer(200, { signedIn: false });
+      await pulled;
+      assert.equal(lostAsked, 1, `fw.session.lost asked (${out})`);
+      if (out) { assert.equal(core.S.acct, null); assert.equal(mem.get("wx:acct"), undefined, "this page's copy let go"); assert.equal(core.S.error, null); }
+      else { assert.equal(core.S.acct?.handle, "ann", "still in: nothing let go"); assert.ok(mem.get("wx:acct")); assert.equal(core.S.error, core.SYNC_ERROR); assert.equal(toast, core.SYNC_ERROR); }
+      core.stop();
+    }
+  } finally { offline(); core.stop(); }
+});
+
+test("a link's place only looked at: a sync, or a place deleted, keeps the saved place that was current", async () => {
+  const places = [{ name: "Leeds", lat: 53.8, lon: -1.55 }, { name: "Bath", lat: 51.38, lon: -2.36 }, { name: "York", lat: 53.96, lon: -1.08 }];
+  // takeUp while looking at Madrid: Bath stays current (the account's list in another order)
+  reset({ "wx:places": places, "wx:cur": 1 });
+  core.start(fw());
+  core.look({ name: "Madrid", lat: 40.4, lon: -3.7 });
+  sync.takeUp({ places: [places[2], places[0], places[1]], settings: {}, notify: { places: [], brief: null } });
+  assert.ok(core.looking(), "still looking");
+  assert.equal(core.place().name, "Madrid");
+  assert.equal(core.S.places[core.S.cur].name, "Bath", "Bath still the saved one current");
+  assert.equal(JSON.parse(mem.get("wx:cur")), 2);
+  core.stop();
+  // a place deleted while looking: the saved current one still current, found where it is now
+  reset({ "wx:places": places, "wx:cur": 2 });
+  core.start(fw());
+  core.look({ name: "Madrid", lat: 40.4, lon: -3.7 });
+  core.removePlace(0);
+  assert.equal(core.place().name, "Madrid");
+  assert.equal(core.S.places[core.S.cur].name, "York");
+  assert.equal(JSON.parse(mem.get("wx:cur")), 1);
+  core.stop();
+});
+
+test("the sync error and the forecast's kept apart: a forecast error over it, then the sync error back once the forecast's in", () => {
+  reset({});
+  core.start(fw());
+  const seen = [];
+  const off = core.on("error", (e) => seen.push(e));
+  core.syncError(true);
+  assert.equal(core.S.error, core.SYNC_ERROR);
+  core.setError(core.FORECAST_BUSY);
+  assert.equal(core.S.error, core.FORECAST_BUSY, "the forecast's error shown while it lasts");
+  core.setError(null);
+  assert.equal(core.S.error, core.SYNC_ERROR, "the sync still failing: said again once the forecast's in");
+  core.syncError(false);
+  assert.equal(core.S.error, null);
+  // and a sync that goes through doesn't clear the forecast's
+  core.setError(core.FORECAST_FAILED); core.syncError(true); core.syncError(false);
+  assert.equal(core.S.error, core.FORECAST_FAILED);
+  assert.deepEqual(seen, [core.SYNC_ERROR, core.FORECAST_BUSY, core.SYNC_ERROR, null, core.FORECAST_FAILED]);
+  off(); core.stop();
+});
+
+test("a change sends the same PUT body app.js's mine() would, from the same stored wx:*", async () => {
+  try {
+    const settings = { temp: "f", wind: "kn", glass: "clear", odd: 1, commute: { on: true, am: "07:10", pm: "18:00" }, layout: { order: ["radar", "daily"], off: ["climate"] },
+      notify: { places: [{ lat: 53.8, lon: -1.55, name: "Leeds", rain: true, warn: false }], brief: { lat: 53.8, lon: -1.55, name: "Leeds" }, briefAt: "06:45", email: { warn: true, brief: false }, endpoint: "https://push.example/s", devId: "dv" } };
+    const places = [{ name: "My Location", lat: 51.501, lon: -0.142, gps: true }, { name: "London", lat: 51.5072, lon: -0.1276, standin: true }, { name: "Leeds", region: "England", lat: 53.8, lon: -1.55, extra: 1 }];
+    reset({ "wx:places": places, "wx:cur": 2, "wx:settings": settings, "wx:acct": ACCT });
+    const asks = heldNet();
+    core.start(fw());
+    await core.saveSettings({ temp: "c", clock: "12" });
+    const step = sync.keepInStep().catch(() => {});
+    await tick();
+    const put = asks.find((a) => a.method === "PUT");
+    assert.ok(put, "sent");
+    // app.js's own mine(), from what's stored now
+    const app = appOwn();
+    app.loadSettings(); app.S.places = JSON.parse(mem.get("wx:places")); app.S.cur = JSON.parse(mem.get("wx:cur"));
+    assert.deepEqual(put.body, { base: 3, data: app.mine() });
+    assert.equal(sync.canon(put.body.data), sync.canon(app.mine()), "key for key");
+    put.answer(200, { ver: 4, data: put.body.data });
+    await step;
+  } finally { offline(); core.stop(); }
+});

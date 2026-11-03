@@ -1393,6 +1393,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     // (the wind's flow kept to the map as it moves: once a frame)
     let flowAt = 0;
     map.on("move", () => { if (kind === "wind") flowAt ||= requestAnimationFrame(() => { flowAt = 0; flowMoved(); }); });
+    undo.push(() => { cancelAnimationFrame(flowAt); flowAt = 0; });
     // the names step aside from all that's over the map (as from the place's dot), measured again once any of it, or
     // the map, has changed size (a little room round each; not every frame of the © folding away)
     const over = [top, menu, ruler, credit, hint, chip];
@@ -1428,6 +1429,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       // which draws them anyway)
       let moving = 0;
       map.on("move", () => { if (!playing && frames.length && !moving) moving = requestAnimationFrame(() => { moving = 0; show(at); placeReading(); }); });
+      undo.push(() => { cancelAnimationFrame(moving); moving = 0; });
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
       // (full screen, or with a mouse, a tap reads the weather there)
       // (a screen of its own, exploring: a tap reads the weather there, never grows it)
@@ -1560,6 +1562,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       if (card.classList.contains("radar-big")) try { big(false); } catch (_) {}
       for (const fn of undo.splice(0)) { try { fn(); } catch (_) {} }
       try { map?.remove?.(); } catch (_) {}
+      // (the graphics chip's blender: its textures let go and its context lost now, not left for the browser to
+      // collect, so a page that makes radars again and again never nears the browser's cap on live contexts)
+      try { const c = gl?.canvas; gl?.drop?.(); c?.getContext("webgl")?.getExtension?.("WEBGL_lose_context")?.loseContext(); if (c) c.width = c.height = 1; } catch (_) {}
+      gl = null;
       map = null; starting = null;
       if (--alive <= 0) { alive = 0; jobs.length = 0; for (const w of pool.splice(0)) { try { w.terminate(); } catch (_) {} } pooled = false; letGo(); }
     },
