@@ -5,10 +5,10 @@
 // Signatures: view(el, ctx) → { draw(), hide(), destroy() }; openX(ctx, …) as the ctx.open table of §4.7.
 import * as X from "./x.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
-export function openAct() { throw new Error("not yet: openAct"); }
-export function openActMap() { throw new Error("not yet: openActMap"); }
-export function openActShare() { throw new Error("not yet: openActShare"); }
-export function openRename() { throw new Error("not yet: openRename"); }
-export function openForm() { throw new Error("not yet: openForm"); }
-export function openUpload() { throw new Error("not yet: openUpload"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
+export function openAct(ctx, ...a) { throw new Error("not yet: openAct"); }
+export function openActMap(ctx, ...a) { throw new Error("not yet: openActMap"); }
+export function openActShare(ctx, ...a) { throw new Error("not yet: openActShare"); }
+export function openRename(ctx, ...a) { throw new Error("not yet: openRename"); }
+export function openForm(ctx, ...a) { throw new Error("not yet: openForm"); }
+export function openUpload(ctx, ...a) { throw new Error("not yet: openUpload"); }

@@ -8,7 +8,9 @@
   <!-- FW's kit page (One roof, spec §9.4 FW): InFlite's framework from the inflite repo's today/public/ (served from
        disk at http://kit.test by roofkit/serve.mjs), the real shared block (cut from today/public/app.js between its
        marks: /kit/shared.js), a signed-in session with hub and roof on, three stand-in tab screens, and a fake module
-       with four sections at Weather's address; ?module=/weather/roof/weather.js mounts MAIN's real Weather module. -->
+       with four sections at Weather's address; ?module=/weather/roof/weather.js mounts MAIN's real Weather module.
+       Stages 2–4: ?apps=weather,markets gives the session those apps on, and ?module=/<app>/roof/<app>.js loads that
+       app's real module from disk (Markets' and Fitness's from MAIN, Mail's from the inflite repo's email/public/roof/). -->
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/day.css">

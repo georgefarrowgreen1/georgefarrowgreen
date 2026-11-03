@@ -7,6 +7,6 @@ import * as core from "./core.js";
 import * as ui from "./mkui.js";
 import * as inc from "../income.js";
 export const STUB = true;
-export function openIncome() { throw new Error("not yet: openIncome"); }
-export function openVs() { throw new Error("not yet: openVs"); }
-export function openIsa() { throw new Error("not yet: openIsa"); }
+export function openIncome(ctx, ...a) { throw new Error("not yet: openIncome"); }
+export function openVs(ctx, ...a) { throw new Error("not yet: openVs"); }
+export function openIsa(ctx, ...a) { throw new Error("not yet: openIsa"); }
