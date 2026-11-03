@@ -1,10 +1,11 @@
 // needs: hub mail
 // Mail in InFlite's window (Today First, spec §9.4, §14.3): the site's admin opens Apps → Mail, and /mail/ (the hub's
 // own small page, the inflite repo's today/src/mailhost.js) frames Mail at its own address (email.ifl.test, Mail's
-// Worker), which knows it's framed (html.embed) and says hello to the hub; Mail's page has one Content-Security-Policy,
-// framed by the hub alone; Mail's Sign In goes the whole window to the sign-in page and the code comes back into the
-// frame; a message from another frame or another address, or a Sign In whose word could carry another part of an
-// address, is ignored; Back to Apps lands on /#apps after moving about inside Mail (never history's back); someone not
+// Worker), which knows it's framed (html.embed) and says hello to the hub; one Back to Apps, the hub's bar's (nothing in
+// Mail's own in your photo's place); Mail's page has one Content-Security-Policy, framed by the hubs alone; Mail's Sign
+// In goes the whole window to the sign-in page and the code comes back into the frame, where Mail's own hand-back is
+// taken by the account; a message from another frame or another address, or a Sign In whose word could carry another
+// part of an address, is ignored; Back to Apps lands on /#apps after moving about inside Mail (never history's back); someone not
 // the admin has no Mail tile (and Mail itself, in the frame, doesn't let them in); Mail at its own address is as it
 // was; and a page at another address can't frame Mail at all. One window throughout, no CSP violation, and no error on
 // Mail's pages.
@@ -69,11 +70,22 @@ await p.click('.atile[data-app=mail] .atile-go');
 await p.waitForURL(`${HUB}/mail/`, { timeout: 20000 });
 const fr = () => p.frame({ name: 'ifl-mail' });
 const listed = await p.waitForFunction(() => document.querySelector('iframe[name="ifl-mail"]')?.src, null, { timeout: 15000 }).then(() => true, () => false);
-const inMail = listed && await fr()?.waitForSelector('.pane.list .gbtn.hub-back', { timeout: 30000 }).then(() => true, () => false);
-const seen = inMail ? await fr().evaluate(() => ({ embed: document.documentElement.classList.contains('embed'), at: location.href, back: document.querySelector('.gbtn.hub-back')?.getAttribute('aria-label'),
-  photo: !!document.querySelector('.pane.list .gbtn.profile'), heard: (window.__msgs || []).filter((m) => m.data?.ifl) })) : null;
+// (Mail's list, open in the frame: its bar, with New Message)
+const LISTED = '.pane.list .navbar .gbtn[aria-label="New Message"]';
+const inMail = listed && await fr()?.waitForSelector(LISTED, { timeout: 30000 }).then(() => true, () => false);
+const seen = inMail ? await fr().evaluate(() => ({ embed: document.documentElement.classList.contains('embed'), at: location.href,
+  nav: [...document.querySelector('.pane.list .navbar').children].map((c) => c.getAttribute('aria-label') || c.className), photo: !!document.querySelector('.pane.list .gbtn.profile'),
+  back: [...document.querySelectorAll('button, a')].filter((b) => /\bapps\b/i.test(`${b.getAttribute('aria-label') || ''} ${b.textContent}`)).length, heard: (window.__msgs || []).filter((m) => m.data?.ifl) })) : null;
 ok(seen?.at === `${MAIL}/` && seen.embed === true, '/mail/ frames Mail at its own address, and Mail knows it’s framed (html.embed)', JSON.stringify(seen));
-ok(seen?.back === 'Back to Apps' && !seen.photo, 'in the frame, Back to Apps in your photo’s place', JSON.stringify(seen));
+ok(seen && !seen.photo && seen.back === 0 && JSON.stringify(seen.nav) === JSON.stringify(['large-title', 'spacer', 'New Message']),
+  'in the frame, nothing in your photo’s place and no second Back to Apps (the hub’s bar has the one)', JSON.stringify(seen));
+// (the line under the lens's name lined up with the name, where your photo isn't)
+// (where each one's words start: its first text, as drawn)
+const lined = inMail ? await fr().evaluate(() => { const at = (s) => { const e = document.querySelector(s); if (!e || e.hidden) return null;
+  const t = document.createTreeWalker(e, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.textContent.trim() ? 1 : 3) }).nextNode(); if (!t) return null;
+  const r = document.createRange(); r.selectNodeContents(t); return { x: Math.round(r.getBoundingClientRect().left), text: t.textContent.trim() }; };
+  return { title: at('.pane.list .navbar .large-title'), sub: at('.pane.list .subtitle') }; }) : null;
+ok(lined?.title && lined.sub && Math.abs(lined.title.x - lined.sub.x) <= 3, 'and the line under its name (“1 unread”) lined up with the name', JSON.stringify(lined));
 ok(JSON.stringify(seen?.heard) === JSON.stringify([{ data: { ifl: 'hello', v: 1 }, origin: HUB }]), 'the hub answered Mail’s hello, from the hub’s address', JSON.stringify(seen?.heard));
 const host = await p.evaluate(() => ({ heard: (window.__msgs || []).filter((m) => m.data?.ifl), own: document.querySelector('.mh-own') && [document.querySelector('.mh-own').href, document.querySelector('.mh-own').target, document.querySelector('.mh-own').rel],
   back: document.querySelector('.mh-back')?.getAttribute('aria-label'), title: document.title, hub: document.querySelector('meta[name="ifl-hub"]')?.content ?? null }));
@@ -136,13 +148,13 @@ if (row) {
 await p.click('.mh-back');
 await p.waitForURL(`${HUB}/#apps`, { timeout: 15000 }).catch(() => {});
 ok(p.url() === `${HUB}/#apps` && await p.waitForSelector('.atile[data-app=mail]', { timeout: 15000 }).then(() => true, () => false), 'Back to Apps (the bar’s): /#apps, after moving about inside Mail', p.url());
-// (and Mail's own Back, in the frame: the same)
+// (and Back said from Mail's frame itself, { ifl: "back" }, as the spec lets Mail say it: the same)
 await p.click('.atile[data-app=mail] .atile-go');
 await p.waitForURL(`${HUB}/mail/`, { timeout: 15000 });
-await fr()?.waitForSelector('.pane.list .gbtn.hub-back', { timeout: 30000 }).catch(() => {});
-await fr()?.click('.pane.list .gbtn.hub-back').catch(() => {});
+await fr()?.waitForSelector(LISTED, { timeout: 30000 }).catch(() => {});
+await fr()?.evaluate((h) => parent.postMessage({ ifl: 'back' }, h), HUB).catch(() => {});
 await p.waitForURL(`${HUB}/#apps`, { timeout: 15000 }).catch(() => {});
-ok(p.url() === `${HUB}/#apps`, 'Mail’s own Back to Apps, from the frame: /#apps', p.url());
+ok(p.url() === `${HUB}/#apps`, 'Back said from Mail’s frame: /#apps', p.url());
 
 // ---- 5. Mail's Sign In: the whole window to the sign-in page, the code back into the frame ----
 // (shown it's him 13 hours ago: Mail asks him to confirm it; Mail's Worker keeps a yes for 10 seconds)
@@ -174,7 +186,7 @@ if (atAuth) {
 }
 const back = navs.slice(navs0).find((u) => u.startsWith(`${HUB}/mail/#signin=`)) || '';
 ok(/^http:\/\/ifl\.test:8788\/mail\/#signin=[A-Za-z0-9_-]{16,128}(&|$)/.test(back), 'the sign-in page sent the code back to the hub’s /mail/', back.slice(0, 80));
-const inAgain = await fr()?.waitForSelector('.pane.list .gbtn.hub-back', { timeout: 30000 }).then(() => true, () => false);
+const inAgain = await fr()?.waitForSelector(LISTED, { timeout: 30000 }).then(() => true, () => false);
 const after = inAgain ? await fr().evaluate(() => ({ at: location.href, gate: !!document.querySelector('.login'), kept: sessionStorage.getItem('inflite:signin-verifier') })) : null;
 // (Mail's own hand-back, in the frame: the code that came back, and the word it kept in this tab before the trip, whose
 // hash is what went to the sign-in page)
@@ -183,13 +195,14 @@ const hashOf = (w) => createHash('sha256').update(String(w)).digest('base64url')
 ok(handbacks.length === 1 && hb.frame === 'ifl-mail' && hb.body?.code === code && hashOf(hb.body?.verifier) === tp.get('ask'),
   'in the frame, Mail’s own hand-back: the code that came back, with the word it kept in this tab through the trip (its hash the one sent)', JSON.stringify(handbacks.map((h) => ({ frame: h.frame, code: h.body?.code === code, word: hashOf(h.body?.verifier) === tp.get('ask'), status: h.status }))));
 ok(inAgain && after?.at === `${MAIL}/` && !after.gate && after.kept === null, 'Mail open in the frame, the word used up', JSON.stringify(after));
-// (the account takes a hand-back only from Mail's own page, by the Origin Mail's Worker passes on. wrangler dev, as the
-// kit runs Mail's Worker, puts its first route's address (email.inflite.ai) in the place of the browser's unless it's told
-// to act as email.ifl.test (--local-upstream): then it can't be Mail's here, and the account rightly refuses it; Mail is
-// let in all the same by the site's sign-in the sign-in page has just made fresh, as it would be at the hub)
+// (the account takes a hand-back only from Mail's own page, by the Origin Mail's Worker passes on: Mail's own, as the
+// browser sent it. The kit must start Mail's Worker acting as email.ifl.test (hubstack.mjs: --local-upstream
+// email.ifl.test:8788), or wrangler dev puts its first route's address, email.inflite.ai, in the browser's place, and the
+// account rightly refuses it; then this fails, and says so, as Mail open just now would prove nothing of the hand-back:
+// the sign-in page has just made the site's sign-in fresh)
 const fwd = readFileSync(`${S}/hostpass.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.path === '/api/account/mail/handback').at(-1);
-if (fwd?.origin === MAIL) ok(hb?.status === 200, 'and the account took it, from Mail’s own page', `${hb?.status}`);
-else console.log(`NOTE  the account refused Mail’s hand-back (${hb?.status}): the kit’s Mail Worker spoke as ${fwd?.origin}, not ${MAIL} (hubstack.mjs starts it without --local-upstream email.ifl.test:8788)`);
+ok(fwd?.origin === MAIL && hb?.status === 200, 'and the account took it, from Mail’s own page',
+  `${hb?.status}, Mail’s Worker spoke as ${fwd?.origin}${fwd?.origin === MAIL ? '' : ` (not ${MAIL}: hubstack.mjs must start it with --local-upstream email.ifl.test:8788)`}`);
 ok(frameNavs.some((u) => /^http:\/\/email\.ifl\.test:8788\/#signin=[A-Za-z0-9_-]{16,128}$/.test(u)), 'the frame opened at Mail with the code (and nothing else) in its address', JSON.stringify(frameNavs.slice(-3).map((u) => u.slice(0, 60))));
 ok(p.url() === `${HUB}/mail/`, 'and the code out of the hub’s address', p.url());
 const fresh = Number(one(`SELECT MAX(auth_at) AS t FROM pg_sessions WHERE user_id = '${gid}'`)[0]?.t || 0);
