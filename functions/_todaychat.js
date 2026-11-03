@@ -122,8 +122,8 @@ export async function waitingFor(env, u, t) {
   const me = u.id, D = await db(env), since = t - WAIT_MS;
   const [unread, read, mine, gTheirs, gMine] = (await Promise.all([
     // theirs to me, landed in the last day, from friends: not read yet, and read since
-    theirsQ(D, me, since, t, false).all(),
-    theirsQ(D, me, since, t, true).all(),
+    theirsQ(D, me, since, t, false, false, "m.sender, m.deliver_at, m.sent_at, u.name").all(),
+    theirsQ(D, me, since, t, true, false, "m.sender, m.deliver_at, m.sent_at, u.name").all(),
     // mine to each friend, sent since the longest flight before the day began (one that will be lost later still counts
     // as an answer: it's secret till then)
     D.prepare(`SELECT m.recipient, m.sent_at, m.deliver_at FROM pg_links l CROSS JOIN pg_msgs m ON m.sender = ?1 AND m.recipient = l.b AND m.sent_at <= ?2 AND m.sent_at > ?3
@@ -139,12 +139,14 @@ export async function waitingFor(env, u, t) {
   const out = [];
   // one-to-one: their newest landed is the chat's newest landed, and nothing of mine sent since it
   const byFriend = new Map();
-  for (const r of [...unread, ...read]) { const f = byFriend.get(r.sender) || byFriend.set(r.sender, { name: r.name, at: [] }).get(r.sender); f.at.push(r.deliver_at); }
+  for (const r of [...unread, ...read]) { const f = byFriend.get(r.sender) || byFriend.set(r.sender, { name: r.name, at: [], wrote: -Infinity }).get(r.sender); f.at.push(r.deliver_at); f.wrote = Math.max(f.wrote, Number(r.sent_at) || -Infinity); }
   const mineTo = new Map();
   for (const r of mine) (mineTo.get(r.recipient) || mineTo.set(r.recipient, []).get(r.recipient)).push(r);
   for (const [id, f] of byFriend) {
     const last = Math.max(...f.at), m = mineTo.get(id) || [];
-    if (m.some((x) => x.sent_at >= last || (x.deliver_at > last && x.deliver_at <= t))) continue;
+    // (answered: anything of mine written after their newest was, even while theirs was still in the air, as the chat
+    // shows them; or landed after theirs did)
+    if (m.some((x) => x.sent_at >= last || x.sent_at >= f.wrote || (x.deliver_at > last && x.deliver_at <= t))) continue;
     const answered = Math.max(-Infinity, ...m.map((x) => x.sent_at));
     out.push({ id, first: firstWord(f.name), at: last, n: f.at.filter((x) => x > answered).length });
   }
