@@ -708,20 +708,48 @@ stage_verdict() {
   return $bad
 }
 
-# ---- One roof's off switch (roof.yml; stage 1, spec §8.5, §11.2): ROOF_OFF on the hub's Workers ----
-# A Worker secret's change makes a new version of the code that's deployed and deploys it: seconds, no build. Cloudflare
-# makes it only while the Worker's newest version is the deployed one (a push to another branch of the inflite repo
-# uploads a newer one that isn't); so that's checked first, and where it isn't so, nothing is changed and the words say
-# what to do. Never `wrangler versions secret put`: that builds on the newest version, which may be another branch's.
+# ---- One roof's switches (roof.yml; stage 1, spec §8.5, §11.2; stages 2–4, roof/s24-contracts.md §12) ----
+# One switch per module on the hub's Workers, and ROOF_OFF over them all. A Worker secret's change makes a new version of
+# the code that's deployed and deploys it: seconds, no build. Cloudflare makes it only while the Worker's newest version is
+# the deployed one (a push to another branch of the inflite repo uploads a newer one that isn't); so that's checked first,
+# and where it isn't so, nothing is changed and the words say what to do. Never `wrangler versions secret put`: that
+# builds on the newest version, which may be another branch's.
+#   app all (stage 1's): ROOF_OFF "1" put (off: every module off) or deleted (on)
+#   app weather: ROOF_OFF_WEATHER "1" (off) or "0" (on)
+#   app markets | fitness | mail (stage 3: chats): ROOF_<APP> "1" (on) or "0" (off): opt-in, so a Worker without it is off;
+#     on refused while ROOF_OFF is set (every module off: turn them all on first). For mail, Mail's own Worker
+#     (inflite-email) first, both ways: HUB_API (inflite.ai) or HUB_API_NEXT (next.inflite.ai) "1" or "0".
+MAIL_WORKER=inflite-email
+MAIL_SITE=https://email.inflite.ai
+ROOF_APPS="weather markets fitness mail"
 
 # (rollback level 2's words, for when the switch can't be used)
-ROOF_LEVEL2="rollback level 2: revert the One roof merge on the inflite repo's claude/inflite and dist7t and push (Workers Builds deploys Today 1.09 in minutes; golive.md)"
+ROOF_LEVEL2="rollback level 2: revert the One roof merge on the inflite repo's claude/inflite and dist7t and push (Workers Builds deploys the Today before it in minutes; golive.md)"
+
+# (each module's name, and what it is with its switch off and on, for the words)
+roof_name() { case "$1" in all) echo "Every module" ;; weather) echo Weather ;; markets) echo Markets ;; fitness) echo Fitness ;; mail) echo Mail ;; chats) echo Chats ;; *) echo "$1" ;; esac; }
+roof_off_words() { case "$1" in all) echo "every module is the hub's milestone-1 page again (Weather at /weather/, and the others), its files not found" ;; mail) echo "Mail is back to its framed page at /mail/, its module's files not found" ;; *) echo "$(roof_name "$1") is back to its own page at /$1/, its module's files not found" ;; esac; }
+roof_on_words() { case "$1" in all) echo "each module as its own switch says (Weather in InFlite's one page)" ;; *) echo "$(roof_name "$1") opens in InFlite's one page at /$1/" ;; esac; }
+
+# roof_secret APP STATE → "NAME VALUE" on stdout, VALUE "-" for a delete: the one table of the switches' names (§12)
+roof_secret() {
+  local app=${1:-} state=${2:-}
+  case "$state" in off|on) ;; *) fail "No such state: \"$state\" (off or on). Nothing was changed."; return 1 ;; esac
+  case "$app" in
+    all) [ "$state" = off ] && echo "ROOF_OFF 1" || echo "ROOF_OFF -" ;;
+    weather) [ "$state" = off ] && echo "ROOF_OFF_WEATHER 1" || echo "ROOF_OFF_WEATHER 0" ;;
+    markets|fitness|mail|chats) echo "ROOF_$(tr '[:lower:]' '[:upper:]' <<<"$app") $([ "$state" = on ] && echo 1 || echo 0)" ;;
+    *) fail "No such module: \"$app\" (all, $ROOF_APPS). Nothing was changed."; return 1 ;;
+  esac
+}
+# mail_gate W → the name of Mail's own switch on inflite-email for that hub's Worker: HUB_API (inflite.ai), HUB_API_NEXT
+mail_gate() { case "$1" in "$WORKER") echo HUB_API ;; "$STAGING") echo HUB_API_NEXT ;; *) fail "No hub Worker \"$1\" for Mail's switch. Nothing was changed."; return 1 ;; esac; }
 
 # worker_settled W → 0 when the Worker's newest uploaded version is the one its active deployment serves, alone (all of
-# its traffic); else fails with what to do, having changed nothing
+# its traffic); else fails with what to do, having changed nothing. W: a hub's Worker, or Mail's (inflite-email)
 worker_settled() {
   local w=${1:-$WORKER} deployed newest dep
-  case "$w" in "$WORKER"|"$STAGING") ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER or $STAGING). Nothing was changed."; return 1 ;; esac
+  case "$w" in "$WORKER"|"$STAGING"|"$MAIL_WORKER") ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER, $STAGING or $MAIL_WORKER). Nothing was changed."; return 1 ;; esac
   need_account || return 1
   if ! cf GET "/accounts/$ACCOUNT/workers/scripts/$w/deployments"; then
     if [ "$CF_CODE" = 404 ]; then fail "There's no Worker $w on this account$([ "$w" = "$STAGING" ] && echo " (the staging hub: run \"Put InFlite's staging hub up\" first, or choose inflite.ai)"). Nothing was changed."
@@ -747,68 +775,115 @@ worker_settled() {
   say "The Worker $w is settled: its newest version (${newest:0:8}) is the one deployed."
 }
 
-# roof_set W off|on → ROOF_OFF "1" put on the Worker (off: Weather's milestone-1 page at /weather/, the module's files not
-# found) or deleted (on: the framework at /weather/; a Worker without it is on already). After worker_settled.
+# roof_refused APP STATE W → fails (with the words) when an app's on is asked while every module is off on that Worker
+# (ROOF_OFF set: its name is in the Worker's secrets; only ever put as "1"). Reads names only, never a value.
+roof_refused() {
+  local app=${1:-} state=${2:-} w=${3:-} rc=0
+  case "$app" in all|weather) return 0 ;; esac
+  [ "$state" = on ] || return 0
+  worker_secrets "$w" || rc=$?
+  if [ "$rc" != 0 ]; then fail "Couldn't read the Worker's secrets ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; return 1; fi
+  if jq -e 'any(.[]?; .name == "ROOF_OFF")' <<<"$CF_OUT" >/dev/null; then
+    fail "Every module is off (ROOF_OFF). Turn them all on first. ($w: nothing was changed.)"; return 1
+  fi
+  return 0
+}
+
+# roof_set W NAME VALUE → the Worker's secret NAME put as VALUE ("1", "0"), or deleted for "-" (where it's there at all).
+# After worker_settled. (Stage 1's form, roof_set W off|on, is ROOF_OFF's.)
 roof_set() {
-  local w=${1:-} state=${2:-} rc=0 site
-  case "$state" in off|on) ;; *) fail "No such state: \"$state\" (off or on). Nothing was changed."; return 1 ;; esac
-  case "$w" in "$WORKER") site=$SITE ;; "$STAGING") site=$STAGING_SITE ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER or $STAGING). Nothing was changed."; return 1 ;; esac
+  local w=${1:-} name=${2:-} value=${3:-} rc=0 site
+  case "$name" in off|on) [ -z "$value" ] && { set -- "$w" $(roof_secret all "$name") || return 1; name=$2; value=$3; } ;; esac
+  case "$name" in ROOF_OFF|ROOF_OFF_WEATHER|ROOF_MARKETS|ROOF_FITNESS|ROOF_MAIL|ROOF_CHATS|HUB_API|HUB_API_NEXT) ;; *) fail "No such switch: \"$name\". Nothing was changed."; return 1 ;; esac
+  case "$value" in 1|0|-) ;; *) fail "No such value for $name: \"$value\" (1, 0, or - to delete). Nothing was changed."; return 1 ;; esac
+  case "$w" in "$WORKER") site=$SITE ;; "$STAGING") site=$STAGING_SITE ;; "$MAIL_WORKER") site=$MAIL_SITE ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER, $STAGING or $MAIL_WORKER). Nothing was changed."; return 1 ;; esac
   worker_settled "$w" || return 1
-  if [ "$state" = off ]; then
-    if ! printf '1' | $WRANGLER secret put ROOF_OFF --name "$w"; then
-      fail "Couldn't set the Worker's ROOF_OFF ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM. Or use $ROOF_LEVEL2."
+  if [ "$value" != "-" ]; then
+    if ! printf '%s' "$value" | $WRANGLER secret put "$name" --name "$w"; then
+      fail "Couldn't set the Worker's $name ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM. Or use $ROOF_LEVEL2."
       return 1
     fi
-    say "The Worker $w's secret ROOF_OFF is \"1\" (live at once): $site/weather/ is Weather's milestone-1 page again, and its module's files are not found."
+    say "The Worker $w's secret $name is \"$value\" (live at once, $site)."
   else
     worker_secrets "$w" || rc=$?
     if [ "$rc" != 0 ]; then fail "Couldn't read the Worker's secrets ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; return 1; fi
-    if ! jq -e 'any(.[]?; .name == "ROOF_OFF")' <<<"$CF_OUT" >/dev/null; then say "The Worker $w has no ROOF_OFF: the roof is on there already."; return 0; fi
+    if ! jq -e --arg n "$name" 'any(.[]?; .name == $n)' <<<"$CF_OUT" >/dev/null; then say "The Worker $w has no $name: $([ "$name" = ROOF_OFF ] && echo "the roof is on there already" || echo "nothing to delete")."; return 0; fi
     # (no prompt where nothing can answer one: wrangler asks only in a terminal, and has no --force for this)
-    if ! $WRANGLER secret delete ROOF_OFF --name "$w" </dev/null; then
-      fail "Couldn't delete the Worker's ROOF_OFF ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM."
+    if ! $WRANGLER secret delete "$name" --name "$w" </dev/null; then
+      fail "Couldn't delete the Worker's $name ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM."
       return 1
     fi
-    say "The Worker $w's ROOF_OFF is deleted (live at once): $site/weather/ is the framework's page again, Weather in InFlite's one page."
+    say "The Worker $w's $name is deleted (live at once, $site)."
   fi
 }
 
-# wait_roof SITE true|false [seconds] → the hub's /api/hub asked until its roof says so. A Worker from before the roof
-# (no roof in its answer, or no /api/hub at all) has Weather's milestone-1 page: that's off, never on.
+# roof_now SITE APP → ROOF_SAID: what the hub's /api/hub says of that app now: true, false, none (a Worker from before
+# the roof, or before stages 2–4 for an app it doesn't name: off) or ? (no answer worth reading); ROOF_CODE, ROOF_BODY.
+# For all: true when roof is (ROOF_OFF gone), false when roof and every module in apps are off.
+roof_now() {
+  local site=$1 app=$2 body
+  body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" -w '\n%{http_code}' "$site/api/hub" 2>/dev/null) || body=$'\n000'
+  ROOF_CODE=${body##*$'\n'}; ROOF_BODY=${body%$'\n'*}
+  ROOF_SAID=$(jq -r --arg a "$app" '
+    if type != "object" then "?"
+    elif $a == "all" then (if has("roof") then (if .roof == false and ((.apps // {}) | all(. == false)) then "false" elif .roof == true then "true" else "?" end) elif has("ready") then "none" else "?" end)
+    elif $a == "weather" then (if (.apps // {}) | has("weather") then (.apps.weather | tostring) elif has("roof") then (.roof | tostring) elif has("ready") then "none" else "?" end)
+    else (if (.apps // {}) | has($a) then (.apps[$a] | tostring) elif has("ready") then "none" else "?" end) end' <<<"$ROOF_BODY" 2>/dev/null) || ROOF_SAID='?'
+  ROOF_SAID=${ROOF_SAID:-?}
+  if [ "$ROOF_CODE" = 404 ]; then ROOF_SAID=none; fi
+  return 0
+}
+
+# mail_now SITE WANT → 0 when Mail's own Worker says the same for that hub: a preflight from the hub's origin answered
+# with its Access-Control-Allow-Origin (on) or without (off); on, /body/ 200 as well (off, it may still answer the other
+# hub, whose switch is its own)
+mail_now() {
+  local site=$1 want=$2 acao body
+  acao=$(curl -sS --max-time 20 -o /dev/null -X OPTIONS -H "Origin: $site" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type,x-inflite" -w '%header{access-control-allow-origin}' "$MAIL_SITE/api/session" 2>/dev/null) || acao=""
+  body=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' "$MAIL_SITE/body/" 2>/dev/null) || body=000
+  if [ "$want" = true ]; then [ "$acao" = "$site" ] && [ "$body" = 200 ]; else [ -z "$acao" ]; fi
+}
+
+# wait_roof SITE [APP] true|false [seconds] → the hub's /api/hub asked until it says so of that app (stage 1's form,
+# wait_roof SITE true|false [seconds], is all's). A Worker from before (none) is off, never on. For mail, Mail's own
+# Worker is asked too (mail_now).
 wait_roof() {
-  local site=${1:-$SITE} want=${2:-true} limit=${3:-120} start=$SECONDS waited=0 el roof body code
+  local site=${1:-$SITE} app=all want limit start=$SECONDS waited=0 el mailok
+  case "${2:-}" in true|false) want=$2; limit=${3:-120} ;; *) app=${2:-all}; want=${3:-true}; limit=${4:-120} ;; esac
   while :; do
-    body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" -w '\n%{http_code}' "$site/api/hub" 2>/dev/null) || body=$'\n000'
-    code=${body##*$'\n'}; body=${body%$'\n'*}
-    roof=$(jq -r 'if type == "object" and has("roof") then (.roof | tostring) elif type == "object" and has("ready") then "none" else "?" end' <<<"$body" 2>/dev/null) || roof='?'
-    roof=${roof:-?}
-    if [ "$code" = 404 ]; then roof=none; fi
+    roof_now "$site" "$app"
+    mailok=yes; if [ "$app" = mail ] && ! mail_now "$site" "$want"; then mailok=no; fi
     el=$((SECONDS - start)); if (( waited > el )); then el=$waited; fi
-    if [ "$roof" = "$want" ] || { [ "$want" = false ] && [ "$roof" = none ]; }; then
-      if [ "$roof" = none ]; then say "$site/api/hub has no roof (a Worker from before it): Weather there is milestone 1's page, so the roof is off (after $el s)."
-      else say "$site/api/hub says roof: $roof (after $el s)."; fi
+    if { [ "$ROOF_SAID" = "$want" ] || { [ "$want" = false ] && [ "$ROOF_SAID" = none ]; }; } && [ "$mailok" = yes ]; then
+      if [ "$ROOF_SAID" = none ] && [ "$app" = all ]; then say "$site/api/hub has no roof (a Worker from before it): Weather there is milestone 1's page, so the roof is off (after $el s)."
+      elif [ "$ROOF_SAID" = none ]; then say "$site/api/hub has no switch for $(roof_name "$app") (a Worker from before it): there it's the hub's page, so off (after $el s)."
+      elif [ "$app" = all ]; then say "$site/api/hub says roof: $ROOF_SAID (after $el s)."
+      else say "$site/api/hub says $app: $ROOF_SAID$([ "$app" = mail ] && echo ", and Mail's own Worker agrees") (after $el s)."; fi
       return 0
     fi
     if (( el >= limit )); then
-      fail "$site/api/hub still says roof: $roof after $limit s (last answer: HTTP $code, $(printf '%.160s' "$body" | tr -d '\r\n')). Each copy of the Worker takes a secret's change within seconds; check by hand: curl -s $site/api/hub"
+      fail "$site/api/hub still says $([ "$app" = all ] && echo roof || echo "$app"): $ROOF_SAID$([ "$mailok" = no ] && echo " (Mail's own Worker doesn't agree yet)") after $limit s (last answer: HTTP $ROOF_CODE, $(printf '%.160s' "$ROOF_BODY" | tr -d '\r\n')). Each copy of the Worker takes a secret's change within seconds; check by hand: curl -s $site/api/hub"
       return 1
     fi
-    echo "  $el s: roof is $roof (HTTP $code); asking again in $EVERY s"
+    echo "  $el s: $([ "$app" = all ] && echo roof || echo "$app") is $ROOF_SAID (HTTP $ROOF_CODE); asking again in $EVERY s"
     sleep "$EVERY"; waited=$((waited + EVERY))
   done
 }
 
-# roof.yml's last step: what's live now. Reads each step's outcome (OUT_*), the inputs (ROOF_STATE, ROOF_WHERE); fails the
-# run if anything did, naming rollback level 2 where the switch was refused.
+# roof.yml's last step: what's live now. Reads each step's outcome (OUT_*), the inputs (ROOF_APP, ROOF_STATE,
+# ROOF_WHERE); fails the run if anything did, naming rollback level 2 where the switch was refused.
 roof_verdict() {
-  local state=${ROOF_STATE:-?} where=${ROOF_WHERE:-both} sites workers bad=0 what
+  local app=${ROOF_APP:-all} state=${ROOF_STATE:-?} where=${ROOF_WHERE:-both} sites workers bad=0 what name pair
   sites=$(hub_sites "$where" 2>/dev/null) || sites=$SITE
   workers=$(hub_workers "$where" 2>/dev/null) || workers=$WORKER
-  what=$([ "$state" = off ] && echo "Weather's milestone-1 page at /weather/ (its module's files not found)" || echo "the framework at /weather/, Weather in InFlite's one page")
+  pair=$(roof_secret "$app" "$state" 2>/dev/null) || pair="ROOF_OFF ?"
+  name=${pair% *}
+  what=$([ "$state" = off ] && roof_off_words "$app" || roof_on_words "$app")
   heading "What's live now"
-  say "Asked: the roof $state at $where, by ${GITHUB_ACTOR:-someone} at $(date -u '+%Y-%m-%d %H:%M UTC')."
+  if [ "$app" = all ]; then say "Asked: the roof $state at $where, by ${GITHUB_ACTOR:-someone} at $(date -u '+%Y-%m-%d %H:%M UTC')."
+  else say "Asked: $(roof_name "$app") $state at $where, by ${GITHUB_ACTOR:-someone} at $(date -u '+%Y-%m-%d %H:%M UTC')."; fi
   if [ "${OUT_ACCOUNT:-}" != success ]; then
-    say "Nothing was changed: the roof is as it was (the step that failed says why)."; return 1
+    say "Nothing was changed: $([ "$app" = all ] && echo "the roof is" || echo "$(roof_name "$app") is") as it was (the step that failed says why)."; return 1
   fi
   case "${OUT_SETTLED:-}" in
     success) ;;
@@ -819,14 +894,19 @@ roof_verdict() {
        fi
        return 1 ;;
   esac
+  case "${OUT_ALLOWED:-success}" in
+    success) ;;
+    *) say "Refused, nothing changed: every module is off (ROOF_OFF) on $workers. Turn them all on first (this with app all, state on), then $(roof_name "$app")."; return 1 ;;
+  esac
   case "${OUT_SET:-}" in
     success)
-      if [ "${OUT_WAIT:-}" = success ]; then say "The roof is $state at $sites: $what."
-      else bad=1; say "ROOF_OFF is $([ "$state" = off ] && echo set || echo deleted) on $workers, but not every hub said so in time (the wait step says which): check by hand, curl -s <site>/api/hub."; fi ;;
-    *) bad=1; say "ROOF_OFF wasn't changed on every Worker (the step says which; one before it may have been). Run this again once the cause is fixed, or use $ROOF_LEVEL2." ;;
+      if [ "${OUT_WAIT:-}" = success ]; then
+        if [ "$app" = all ]; then say "The roof is $state at $sites: $what."; else say "$(roof_name "$app") is $state at $sites: $what."; fi
+      else bad=1; say "$name is $([ "$app" = all ] && [ "$state" = on ] && echo deleted || echo set) on $workers$([ "$app" = mail ] && echo " (and Mail's own switch on $MAIL_WORKER)"), but not every hub said so in time (the wait step says which): check by hand, curl -s <site>/api/hub."; fi ;;
+    *) bad=1; say "$name wasn't changed on every Worker (the step says which; one before it may have been). Run this again once the cause is fixed, or use $ROOF_LEVEL2." ;;
   esac
   if [ "$bad" = 0 ]; then
-    if [ "$state" = off ]; then say "Pages open at Weather learn it the next time they come back in sight (within five minutes) and go to its milestone-1 page. To undo: this again with state on."
+    if [ "$state" = off ]; then say "Pages open at $([ "$app" = all ] && echo "a module" || roof_name "$app") learn it the next time they come back in sight (within five minutes) and go to its own page once nothing is unsaved. To undo: this again with state on."
     else say "Pages open learn it the next time they come back in sight (within five minutes). To turn it off again: this with state off."; fi
   fi
   return $bad
