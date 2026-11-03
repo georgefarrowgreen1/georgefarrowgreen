@@ -77,7 +77,10 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
   parent.dispatchEvent(new Event("ifl-chat-ready"));
 </script></body></html>`;
 // open({ hub: { ready, roof } | "late" | { late: ms, json } | null (as the Worker says), module: "connector" | "missing", … })
-async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null } = {}) {
+// fakes: apps whose module and connector are the kit's stand-ins (roofkit/fake-module.js, fake-connector.js), their CSS
+// empty and their /<app>/version 9.99, and whose document (/<app>/) is the framework's page (stage 2 FW)
+const FAKE_MOD = readFileSync(`${HERE}roofkit/fake-module.js`, 'utf8'), FAKE_CONN = readFileSync(`${HERE}roofkit/fake-connector.js`, 'utf8');
+async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null, fakes = [] } = {}) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
@@ -110,6 +113,17 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, ro
     // hub takes an app's own address to its path only on its own site)
     try { const res = await r.fetch(), a = JSON.parse((await res.text()).replace(/https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/g, 'http://$1.localhost:8787')); if (a?.cards?.weather) a.cards.weather.warning = warning; await r.fulfill({ response: res, json: a }); } catch {}
   });
+  for (const app of fakes) {
+    await ctx.route((u) => new URL(u).pathname.startsWith(`/${app}/roof/`) || new URL(u).pathname === `/${app}/version`, (r) => {
+      const q = new URL(r.request().url()).pathname;
+      if (q === `/${app}/version`) return r.fulfill({ json: { build: '9.99' }, headers: { 'Cache-Control': 'no-store' } });
+      if (q === `/${app}/roof/connector.js`) return r.fulfill({ contentType: 'text/javascript', body: FAKE_CONN });
+      if (/\.css$/.test(q)) return r.fulfill({ contentType: 'text/css', body: '/* a stand-in */' });
+      if (/^\/\w+\/roof\/\w+\.js$/.test(q) && q === `/${app}/roof/${app}.js`) return r.fulfill({ contentType: 'text/javascript', body: FAKE_MOD });
+      return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    });
+    if (app !== 'weather') await ctx.route((u) => new URL(u).pathname === `/${app}/` || new URL(u).pathname === `/${app}/index.html`, (r) => r.fulfill({ contentType: 'text/html', body: PAGE, headers: { 'Cache-Control': 'no-cache' } }));
+  }
   await setup?.(ctx);
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
@@ -510,6 +524,76 @@ await part('module error state', async () => {
   await p.click(`${H.M_WEATHER} ${H.ERROR_RETRY}`);
   await p.waitForSelector(`${H.M_WEATHER} ${H.ERROR_RELOAD}`, { timeout: 20000 });
   ok(true, 'a second failure: Reload');
+  await ctx.close();
+});
+
+// ======================================================================= stage 2: a switch per module
+// (/api/hub's apps, one on and one off: the one on opens in the page, the one off is a page load of the hub's page; the
+// map kept as ifl-roof-apps, app names and booleans only)
+const APPS_ON = { weather: true, markets: true, fitness: false, mail: false };
+await part('apps per module', async () => {
+  await mode({ phase: 'midday' });
+  const HUBPAGE = '<!doctype html><title>Fitness</title><style>@view-transition { navigation: auto; }</style><p>FITNESS HUB PAGE</p>';
+  const { ctx, p, loads } = await open({ hub: { ready: true, roof: true, apps: APPS_ON }, path: '/#apps', fakes: ['markets'],
+    setup: (c) => c.route((u) => /^\/fitness\/(index\.html)?$/.test(new URL(u).pathname), (r) => r.fulfill({ contentType: 'text/html', body: HUBPAGE })) });
+  await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  same(await p.evaluate(() => JSON.parse(sessionStorage.getItem('ifl-roof-apps') || 'null')), APPS_ON, 'the apps map kept as ifl-roof-apps, as /api/hub said it');
+  await p.locator(H.appTile('markets')).locator('a[href="/markets/"]').first().click();
+  await p.waitForSelector(`${H.M_MARKETS}:not([hidden]) .kit-sec`, { timeout: 15000 });
+  same([new URL(p.url()).pathname, loads(), await p.evaluate(() => document.documentElement.dataset.app)], ['/markets/', 1, 'markets'], 'Markets on: its tile opens it in the page (one document)');
+  ok(!(await p.$(H.M_WEATHER)), 'Weather, not opened, isn’t mounted for it');
+  await p.goBack();
+  await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  await p.locator(H.appTile('fitness')).locator('a[href="/fitness/"]').first().click();
+  await p.waitForSelector('text=FITNESS HUB PAGE', { timeout: 10000 });
+  same([new URL(p.url()).pathname, loads()], ['/fitness/', 2], 'Fitness off: its tile is a page load of the hub’s Fitness page');
+  await ctx.close();
+});
+
+// (signed out, as the page finds out (a 401 the account confirms): every app's copy of you at this address goes too,
+// markets:* and the fitness store among them; offline, nothing goes)
+await part('signed out elsewhere', async () => {
+  await mode({ phase: 'midday' });
+  const { ctx, p } = await open({ path: '/' });
+  await p.waitForSelector(`${H.TODAY}[data-phase="midday"]`, { timeout: 10000 });
+  await p.evaluate(async () => {
+    for (const k of ['markets:last', 'markets:recent', 'fitness:meAt', 'fitness:sums', 'wx:acct', 'wx:places']) localStorage.setItem(k, '{"t":1}');
+    await new Promise((ok, no) => { const r = indexedDB.open('fitness', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onerror = no; r.onsuccess = () => { const tx = r.result.transaction('files', 'readwrite'); tx.objectStore('files').put({ a: 1 }, 'one'); tx.oncomplete = () => { r.result.close(); ok(); }; }; });
+  });
+  const kept = () => p.evaluate(async () => ({
+    keys: ['markets:last', 'markets:recent', 'fitness:meAt', 'fitness:sums', 'wx:acct', 'wx:places'].filter((k) => localStorage.getItem(k) != null),
+    files: await new Promise((ok) => { const r = indexedDB.open('fitness'); r.onsuccess = () => { try { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => { ok(q.result); r.result.close(); }; } catch { ok(-1); } }; r.onerror = () => ok(-1); }),
+  }));
+  await ctx.setOffline(true);
+  await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await p.waitForTimeout(1500);
+  await ctx.setOffline(false);
+  same(await kept(), { keys: ['markets:last', 'markets:recent', 'fitness:meAt', 'fitness:sums', 'wx:acct', 'wx:places'], files: 1 }, 'offline: nobody signed out, every app’s copy kept');
+  await mode({ mode: 'out' });
+  await p.click(H.tab('you'));
+  await p.waitForSelector('#out:not([hidden]) #signin', { timeout: 10000 });
+  await p.waitForTimeout(800);
+  same(await kept(), { keys: ['wx:places'], files: 0 }, 'signed out elsewhere (a 401, confirmed): markets:*, fitness:* and wx:acct gone, the fitness store emptied; Weather’s places stay (the phone’s)');
+  await ctx.close();
+});
+
+// (Today's cards asked for again on its next show after a module said it changed something (fw.changed); not otherwise)
+await part('cards after a change', async () => {
+  await mode({ phase: 'midday' });
+  const { ctx, p } = await open({ path: '/#apps', fakes: ['weather'] });
+  await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  await p.waitForTimeout(800);
+  const toWx = async () => { await p.click(H.tab('apps')); await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`); await p.locator(H.appTile('weather')).locator('a[href="/weather/"]').first().click(); await p.waitForFunction(() => window.kitMods?.weather?.shows?.length > 0, null, { timeout: 15000 }); };
+  const cards = async () => (await sent('GET', 'cards')).length;
+  await toWx();
+  await reset();
+  await p.click(H.tab('today')); await p.waitForFunction(() => !document.getElementById('today').hidden); await p.waitForTimeout(1500);
+  same(await cards(), 0, 'back to Today with nothing changed: the cards not asked for again');
+  await toWx();
+  await p.evaluate(() => window.kitMods.weather.fw.changed());
+  await p.click(H.tab('today')); await p.waitForFunction(() => !document.getElementById('today').hidden);
+  await p.waitForTimeout(1500);
+  same(await cards(), 1, 'after fw.changed(): Today asks for its cards again on its next show, once');
   await ctx.close();
 });
 
