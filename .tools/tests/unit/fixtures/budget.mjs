@@ -28,7 +28,7 @@ export const NET = Object.freeze({
   markets: [], mail: [],
   // (stage 3, spec §5.3: Chats' flight sheets and their geodata, the QR scan and its decoder: "Needs a connection")
   // (and crypto.js's own Argon2, which runs only on Chat's own page, never under the roof: S3-D8)
-  chats: [/^\/chats\/roof\/(flight|scan)\.js$/, /^\/chats\/(moon|space|land|placegrid|places|countries|shapes|jsqr|argon2|argon2w)\.js$/],
+  chats: [/^\/chats\/(roof\/flight|roof\/scan|moon|space|land|placegrid|places|countries|shapes|jsqr|argon2|argon2w)\.js$/],
 });
 export const isNet = (app, p) => (NET[app] || []).some((r) => r.test(p));
 // (the static specifiers of one file's text)

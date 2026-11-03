@@ -406,17 +406,25 @@ test('stages 2–4: a Mail push shows its own words at once, then Mail’s (the 
 // ---- stage 3 (s3 spec §6.3): Chats' page is the framework's too, never an engine's or /chats/in/ ----
 const s3Case = roofCase || (!S3 && 'the inflite repo beside is from before stage 3 (sw.js MODS without chats)');
 test('stage 3: a Chat tap in a window at /chats/ routes there in the page; milestone 1’s page there (hearing only an open) is told to open it; /chats/in/ only ever told to open; Chat’s pushes still app "chat"', { skip: s3Case }, async () => {
+  // (with the stage 2–4 rule (routes): told to route first only where the hub says Chats is on; dark, open at once)
+  const on = ROUTES ? (p) => (p === '/api/hub' ? Response.json({ ready: true, roof: true, apps: { weather: true, chats: true } }) : Response.json({ ok: true })) : undefined;
   for (const at of ['/chats/', '/chats/index.html', '/chats/#open=x9']) {
-    const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    const w = worker(on, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
     await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
     assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }], at);
     assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}: routed in the page`);
   }
-  let w = worker(undefined, { windows: [{ url: `${ORIGIN}/chats/`, focused: true, hears: 'open', controlled: false }] });
+  let w = worker(on, { windows: [{ url: `${ORIGIN}/chats/`, focused: true, hears: 'open', controlled: false }] });
   await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
-  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }, { ifl: 'open', url: '/chats/#open=abc' }], 'milestone 1’s Chats: route asked, then open');
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/chats/#open=abc' }, { ifl: 'open', url: '/chats/#open=abc' }], 'Chats on, milestone 1’s page still there (its old worker not yet retired): route asked, then open');
   assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
-  w = worker(undefined, { windows: [{ url: `${ORIGIN}/chats/in/#account`, focused: true }] });
+  if (ROUTES) {
+    // (Chats dark, as it ships: milestone 1's page, told to open at once)
+    w = worker((p) => (p === '/api/hub' ? Response.json({ ready: true, roof: true, apps: { weather: true, chats: false } }) : Response.json({ ok: true })), { windows: [{ url: `${ORIGIN}/chats/`, focused: true, hears: 'open', controlled: false }] });
+    await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/chats/#open=abc' }], 'Chats off: milestone 1’s page told to open, no route first');
+  }
+  w = worker(on, { windows: [{ url: `${ORIGIN}/chats/in/#account`, focused: true }] });
   await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
   assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/chats/#open=abc' }], '/chats/in/: never told to route');
 });

@@ -277,7 +277,7 @@ test('stage 3, app.js: the core let go of on every way out (sign-out ends it bef
   assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut \}\);/, 'Chat’s store cleared here too with Chats in the page');
   assert.match(js, /if \(was\) \{ you\?\.forgetYou\?\.\(\); F\?\.releaseService\("chats", \{ terminate: true \}\); \}/, 'another account: let go of');
   assert.match(js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn(')), /unframe\(\);/, 'signed out: the frame destroyed (which ends its services)');
-  assert.match(js, /retired: retiredSoon\(\), serviceState,/);
+  assert.match(js, /retired: (retiredSoon\(\)|\{ then: \(ok, no\) => retiredSoon\(\)\.then\(ok, no\) \}), serviceState,/, "opts.retired: retireOld’s promise, read when the frame first asks (a thenable)");
   assert.match(js, /retiring = Promise\.all\(\[retiring, gone\]\);/);
   assert.match(js, /return r\.unregister\(\)\.catch\(\(\) => \{\}\);/);
   const ss = js.slice(js.indexOf('function serviceState('), js.indexOf('function frame('));
