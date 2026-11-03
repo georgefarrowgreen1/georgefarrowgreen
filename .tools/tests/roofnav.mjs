@@ -41,9 +41,8 @@ const seeded = await weatherAccount(p, { places: [London], settings: { temp: 'c'
 ok(seeded.s === 200, 'Noor’s Weather place in the account (London)', js(seeded));
 
 // ======================================================================================================================
-await part(1, 'a notification tapped with the framework open: in the page, sheets closed first', '§3.2, §8.2 openIn, D10, D22');
+await part(1, 'a notification tapped with the framework open: in the page, sheets closed first', '§3.2, §8.2 openIn, D10, D22', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}/`);
   await todayUp(p);
   const sw = await rootWorker(N.ctx, 30000);
@@ -60,23 +59,21 @@ await part(1, 'a notification tapped with the framework open: in the page, sheet
   ok((await life.same()) && docs.n() === 0 && hs.some((x) => x.kind === 'push'), '1. …in the same page, pushed (no document fetched, §3.2)', js({ docs: docs.list, hs: hs.map((x) => x.kind) }));
   ok(N.pages.length === 1, '1. one window', String(N.pages.length));
   docs.stop();
-}
+});
 
 // ======================================================================================================================
-await part(2, 'a notification tapped with Chats open: Chats navigates as now', '§8.2 openIn, D8');
+await part(2, 'a notification tapped with Chats open: Chats navigates as now', '§8.2 openIn, D8', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}/chats/`);
   await hubPageUp(p, '/chats/'); await wait(1500);
   const r = await tapNotification(N.ctx, { app: 'weather', url: '/weather/#radar' });
   const went = (await at(p, '/weather/#radar', 30000)) && (await shown(p, H.wxSec('radar'), 30000));
   ok(r === 'done' && went && N.pages.length === 1, '2. tapped with Chats open: Chats goes there itself ({ ifl: "open" }, as in milestone 1), Weather’s Radar under the roof, one window', js({ r, url: here(p), pages: N.pages.length }));
-}
+});
 
 // ======================================================================================================================
-await part(3, 'a notification tapped with no window open: the framework at /weather/?lat…', '§8.2 openIn, D6');
+await part(3, 'a notification tapped with no window open: the framework at /weather/?lat…', '§8.2 openIn, D6', async () => {
 // ======================================================================================================================
-{
   const keep = await N.ctx.newPage();     // (not a page of the site's: the context stays, with no window of its own)
   await keep.goto('about:blank');
   for (const pg of N.ctx.pages()) if (pg !== keep) await pg.close();
@@ -88,12 +85,11 @@ await part(3, 'a notification tapped with no window open: the framework at /weat
   ok(w && (await at(w, '/weather/')), '3. …the address tidied (D6)', w ? here(w) : '');
   N.p = w || (await N.ctx.newPage());
   await keep.close();
-}
+});
 
 // ======================================================================================================================
-await part(4, 'round trips: Weather → Chats → Back to /weather/#days with its scroll; /weather/#radar; warm tap → paint', 'D8, D20, UI7, §7.3');
+await part(4, 'round trips: Weather → Chats → Back to /weather/#days with its scroll; /weather/#radar; warm tap → paint', 'D8, D20, UI7, §7.3', async () => {
 // ======================================================================================================================
-{
   const q = N.p;
   await q.goto(`${HUB}/weather/#days`);
   await weatherUp(q); await shown(q, H.wxSec('days'));
@@ -122,12 +118,11 @@ await part(4, 'round trips: Weather → Chats → Back to /weather/#days with it
   await q.evaluate((s) => { window.__t0 = performance.now(); document.querySelector(s).click(); }, H.TODAY_WX_OPEN);
   const dt = await q.waitForFunction((s) => { const e = document.querySelector(s); return e && e.getClientRects().length && !e.closest('[hidden]') ? performance.now() - window.__t0 : false; }, `${H.M_WEATHER} ${H.WX_HERO}`, { timeout: 15000, polling: 'raf' }).then((h) => h.jsonValue(), () => null);
   ok(dt != null && dt <= 1200, `4. warm, Today’s card tapped → Weather’s hero painted in ${dt == null ? 'never' : Math.round(dt) + ' ms'} (≤ 1200, §7.3)`);
-}
+});
 
 // ======================================================================================================================
-await part(5, 'Apps → Markets → its Back → /#apps; Fitness from a Today row → its Back → Today; Mail’s Back → /#apps', 'D8, UI7');
+await part(5, 'Apps → Markets → its Back → /#apps; Fitness from a Today row → its Back → Today; Mail’s Back → /#apps', 'D8, UI7', async () => {
 // ======================================================================================================================
-{
   const q = N.p;
   await q.goto(`${HUB}/#apps`);
   await shown(q, H.APPS); await shown(q, H.appTile('markets'), 20000);
@@ -151,12 +146,11 @@ await part(5, 'Apps → Markets → its Back → /#apps; Fitness from a Today ro
   await N.ctx.route(/^http:\/\/email\.ifl\.test:8788\/(#.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Mail</title><p>Mail</p><script>setTimeout(() => parent.postMessage({ ifl: "back" }, "*"), 800)</script>' }));
   await q.goto(`${HUB}/mail/`);
   ok((await at(q, '/#apps', 20000)) && (await shown(q, H.APPS, 30000)), '5. Mail’s host page, Mail saying { ifl: "back" }: Apps (/#apps), the framework (D8)', here(q));
-}
+});
 
 // ======================================================================================================================
-await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same bar on both, light and dark', 'D8, D18, UI2, §3.6');
+await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same bar on both, light and dark', 'D8, D18, UI2, §3.6', async () => {
 // ======================================================================================================================
-{
   const q = N.p;
   await q.goto(`${HUB}/markets/`);
   await hubPageUp(q, '/markets/');
@@ -191,12 +185,11 @@ await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same 
     }
     await T.ctx.close();
   }
-}
+});
 
 // ======================================================================================================================
-await part(7, 'browser back with a sheet open', 'D22, RI3, UB5');
+await part(7, 'browser back with a sheet open', 'D22, RI3, UB5', async () => {
 // ======================================================================================================================
-{
   const q = N.p;
   await q.goto(`${HUB}/#apps`);
   await shown(q, H.appTile('weather'), 20000);
@@ -207,12 +200,11 @@ await part(7, 'browser back with a sheet open', 'D22, RI3, UB5');
   await shown(q, H.APPS, 15000); await wait(500);
   const route = await attrOf(q, H.HTML_ROUTE, 'data-route'), loc = await q.evaluate(() => location.pathname + location.hash);
   ok(up && !(await count(q, 'dialog[open]')) && route === loc && loc === '/#apps', '7. the Places sheet up, browser back: no sheet left open, the route shown is the address (/#apps, D22)', js({ up, route, loc }));
-}
+});
 
 // ======================================================================================================================
-await part(8, 'the roof turned off mid-session (the client’s side): a shown Weather bounces once; a stale page’s import fails into the error state', 'D14, RB6b, RI7, RI9, RI13');
+await part(8, 'the roof turned off mid-session (the client’s side): a shown Weather bounces once; a stale page’s import fails into the error state', 'D14, RB6b, RI7, RI9, RI13', async () => {
 // ======================================================================================================================
-{
   // (stood in with routes, as roof.yml state=off would leave the Worker: /api/hub roof false, the module's files 404,
   // /weather/ milestone 1's Weather page. No service worker, so the routes reach the page)
   const offOn = async (ph) => {
@@ -258,7 +250,7 @@ await part(8, 'the roof turned off mid-session (the client’s side): a shown We
   await R2.p.click(H.ERROR_RETRY);
   ok(await shown(R2.p, H.ERROR_RELOAD, 20000), '8. Try Again failing too: Reload offered, the real recovery (RI13)');
   await R.ctx.close(); await R2.ctx.close();
-}
+});
 
 const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/MILESTONE|noor-(off|stale).*(404|Failed to fetch dynamically imported module|Importing a module script failed)/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (§8.3)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));

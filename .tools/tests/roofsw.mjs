@@ -54,9 +54,8 @@ ok(!!acct.cookies, 'an account made at the tests’ sign-in page, its cookie on 
 const everyone = [];
 
 // ======================================================================================================================
-await part('a', 'opening / unregisters Weather’s old worker, signed out too; /weather/ is then the framework', 'D10, RI10, §8.4');
+await part('a', 'opening / unregisters Weather’s old worker, signed out too; /weather/ is then the framework', 'D10, RI10, §8.4', async () => {
 // ======================================================================================================================
-{
   const A = await phone('ola-out'); everyone.push(A);
   const st = await oldWorker(A);
   ok(st === '/weather/ activated', 'a. Weather’s old worker (stood in) active at scope /weather/', st);
@@ -68,12 +67,11 @@ await part('a', 'opening / unregisters Weather’s old worker, signed out too; /
   ok(await framework(A.p), 'a. /weather/ then: the framework’s page, not the old one (D7, D10)', (await textOf(A.p, 'body'))?.slice(0, 120));
   ok(await shown(A.p, 'a[href*="#signin-start&then="]', 20000), 'a. …signed out, InFlite’s way in (D12)');
   await A.ctx.close();
-}
+});
 
 // ======================================================================================================================
-await part('b', 'the old worker serves its page once; the update check installs the retiring worker, which sends the page to the framework', '§8.4, D10');
+await part('b', 'the old worker serves its page once; the update check installs the retiring worker, which sends the page to the framework', '§8.4, D10', async () => {
 // ======================================================================================================================
-{
   const B = await phone('ola-old'); everyone.push(B);
   const st = await oldWorker(B);
   ok(st === '/weather/ activated', 'b. a fresh context, the old worker (stood in) active, its route gone', st);
@@ -90,12 +88,11 @@ await part('b', 'the old worker serves its page once; the update check installs 
   const left = await until(async () => { const c = await cacheNames(B.p); const r = await regs(B.p); return c && r && !c.some((k) => k.startsWith('wx-')) && !r.includes('/weather/') ? { c, r } : null; }, 8000);
   ok(!!left, 'b. every wx-* cache deleted and the /weather/ registration gone (RETIRE_SW)', js({ caches: await cacheNames(B.p), regs: await regs(B.p) }));
   await B.ctx.close();
-}
+});
 
 // ======================================================================================================================
-await part('c', 'offline from the Home Screen: Weather from the kept session, the module from roof-weather-*, the forecast from wx:<cell>', 'D11, D23, RB1, §8.2');
+await part('c', 'offline from the Home Screen: Weather from the kept session, the module from roof-weather-*, the forecast from wx:<cell>', 'D11, D23, RB1, §8.2', async () => {
 // ======================================================================================================================
-{
   const dir = `${S}/roofsw-profile`;
   rmSync(dir, { recursive: true, force: true });
   // online once: Today, then Weather on 16 Days (the root worker keeps / and the module's files; Weather keeps its forecast)
@@ -142,7 +139,7 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
   ok((await shown(p, H.TODAY, 30000)) && (await shown(p, H.HD_TITLE, 10000)), 'c. Today offline, standalone: from the kept session, as before (D11)');
   ok(!guard.hits.length && !(await guard.opened()).length, 'c. no navigation or request to Weather’s own address ever started (D23)', js(guard.hits));
   await ctx.close();
-}
+});
 
 const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/OLD WEATHER/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (§8.3)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));

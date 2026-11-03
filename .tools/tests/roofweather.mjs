@@ -73,9 +73,8 @@ const seeded = await weatherAccount(p, { places: [London, Bristol], settings: SE
 ok(seeded.s === 200, 'Wren’s Weather places in the account (London, Bristol), glass "clear" among its settings', js(seeded));
 
 // ======================================================================================================================
-await part(1, 'open Weather from Today’s card and from Apps’ tile: one page, the header, the switcher', '§2.3, §3.5, §3.7, D2, D4, D6, D18');
+await part(1, 'open Weather from Today’s card and from Apps’ tile: one page, the header, the switcher', '§2.3, §3.5, §3.7, D2, D4, D6, D18', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}/`);
   const up = (await todayUp(p)) && (await shown(p, H.TODAY_WX_OPEN, 40000));
   ok(up, '1. Today, signed in by the cookie, its weather card drawn (§4)', await textOf(p, 'body').then((t) => t?.slice(0, 200)));
@@ -144,12 +143,11 @@ await part(1, 'open Weather from Today’s card and from Apps’ tile: one page,
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Apps', '1. Back says “Back to Apps” now (UI3)', await attrOf(p, H.HD_BACK, 'aria-label'));
   ok((await life.same()) && docs.n() === 0, '1. still the one page throughout (Today → Weather → Today → Apps → Weather)', js(docs.list));
   docs.stop();
-}
+});
 
 // ======================================================================================================================
-await part(2, 'sections by replaceState; Back to Apps and Today with the scroll kept; Apps tab from inside Weather', '§3.4, §3.6, D6, D20');
+await part(2, 'sections by replaceState; Back to Apps and Today with the scroll kept; Apps tab from inside Weather', '§3.4, §3.6, D6, D20', async () => {
 // ======================================================================================================================
-{
   const life = await alive(p);
   const len0 = await p.evaluate(() => history.length);
   for (const [id, url] of [['days', '/weather/#days'], ['radar', '/weather/#radar'], ['warnings', '/weather/#warnings'], ['now', '/weather/']]) {
@@ -207,12 +205,11 @@ await part(2, 'sections by replaceState; Back to Apps and Today with the scroll 
   ok(await shown(p, H.wxSec('now')), '2. …so forward is Weather again', here(p));
   await p.click(H.HD_BACK); await shown(p, H.APPS);
   ok(await life.same(), '2. one page throughout');
-}
+});
 
 // ======================================================================================================================
-await part(3, 'cold deep links, the address tidied after show; Today’s warning chip → that place’s Warnings', '§3.3, D6, RB5d, UB5b, UI5, UI14');
+await part(3, 'cold deep links, the address tidied after show; Today’s warning chip → that place’s Warnings', '§3.3, D6, RB5d, UB5b, UI5, UI14', async () => {
 // ======================================================================================================================
-{
   const day = dayKey(2);
   await p.goto(`${HUB}/weather/#day=${day}`);
   const d = (await weatherUp(p)) && (await shown(p, H.wxSec('days'))) && (await sheetOpen(p, H.DAY_SHEET));
@@ -258,12 +255,11 @@ await part(3, 'cold deep links, the address tidied after show; Today’s warning
   const life = await alive(p);
   await tapEl(p, H.TODAY_WX_WARN);
   ok((await shown(p, H.wxSec('warnings'), 20000)) && (await titleIs(p, 'London')) && (await at(p, '/weather/#warnings')) && (await life.same()), '3. tapped: London’s Warnings, in the page, the address /weather/#warnings (UB2, UI14)', `${await title(p)} ${here(p)}`);
-}
+});
 
 // ======================================================================================================================
-await part(4, 'the Places sheet: one-tap rows, switch, Find a Place, delete, Use My Location', '§7.1 places.js, D19, UI8, UI10');
+await part(4, 'the Places sheet: one-tap rows, switch, Find a Place, delete, Use My Location', '§7.1 places.js, D19, UI8, UI10', async () => {
 // ======================================================================================================================
-{
   await p.click(H.hdSec('now')); await shown(p, H.wxSec('now'));
   await p.click(H.HD_PICK);
   ok(await sheetOpen(p, H.PLACES_SHEET), '4. the title’s ▾: the Places sheet');
@@ -301,12 +297,11 @@ await part(4, 'the Places sheet: one-tap rows, switch, Find a Place, delete, Use
   ok(leeds, '4. Use My Location (a granted location in Leeds): on Leeds, kept as your location (gps)', `${await title(p)} ${js(await stored(p, 'wx:places'))}`);
   await closeSheets(p);
   await shot(p, '4-places');
-}
+});
 
 // ======================================================================================================================
-await part(5, 'Send from Now → Chat’s engine through IFL.hub.send, its toast', '§3.11, D17');
+await part(5, 'Send from Now → Chat’s engine through IFL.hub.send, its toast', '§3.11, D17', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}${link(London)}`);
   await weatherUp(p); await titleIs(p, 'London');
   const life = await alive(p);
@@ -327,12 +322,11 @@ await part(5, 'Send from Now → Chat’s engine through IFL.hub.send, its toast
   const toast = await until(async () => (await said(p)).find((t) => /Sent to Pat\. You’re still here/.test(t)), 8000);
   ok(!!toast, '5. the toast: “Sent to Pat. You’re still here” (IFL.hub.sent, §3.9)', js(await said(p)));
   ok((await life.same()) && here(p) === '/weather/', '5. still on Weather, the one page', here(p));
-}
+});
 
 // ======================================================================================================================
-await part(6, 'Weather Settings: every page; a save synced, glass kept; Notifications → You’s Weather Notifications', '§7.1 wxsettings.js, §7.4, RI6, UB3');
+await part(6, 'Weather Settings: every page; a save synced, glass kept; Notifications → You’s Weather Notifications', '§7.1 wxsettings.js, §7.4, RI6, UB3', async () => {
 // ======================================================================================================================
-{
   const puts = [], onReq = (r) => { if (r.method() === 'PUT' && new URL(r.url()).pathname === '/api/weather/me') { try { puts.push(JSON.parse(r.postData() || 'null')); } catch (_) { puts.push(null); } } };
   p.on('request', onReq);
   const t0 = Date.now();
@@ -361,13 +355,12 @@ await part(6, 'Weather Settings: every page; a save synced, glass kept; Notifica
   ok((await shown(p, H.YOU, 15000)) && (await sheetOpen(p, H.SH_WXNOTIFY, 15000)), '6. Notifications in Weather Settings: You, its Weather Notifications sheet open (UB3, §4.3)', here(p));
   await shot(p, '6-wxnotify');
   await closeSheets(p);
-}
+});
 
 // ======================================================================================================================
-await part(7, 'the module’s files from Weather’s host through the hub: minified where current, no cookie; “Weather updated” once', '§6.2, §8.1, D1, D15');
+await part(7, 'the module’s files from Weather’s host through the hub: minified where current, no cookie; “Weather updated” once', '§6.2, §8.1, D1, D15', async () => {
 // ======================================================================================================================
 let B = null;
-{
   const hp = passed(S).filter((x) => x.port === WEATHER_PORT && /^\/weather\/roof\//.test(x.path));
   ok(hp.length >= FILES.filter((f) => f.startsWith('/weather/roof/')).length - 1 && hp.every((x) => !x.cookie && !x.auth), '7. the module’s files fetched from Weather’s host by the hub, each without a cookie or a bearer (§8.1, D1)', js({ n: hp.length, withCookie: hp.filter((x) => x.cookie || x.auth).map((x) => x.path) }));
   const rep = await meterA.report();
@@ -392,12 +385,11 @@ let B = null;
   ok((await said(B.p)).filter((t) => /Weather updated/.test(t)).length === 1, '7. opened again in the page: not said again (mounted once, kept)');
   await B.p.reload(); await weatherUp(B.p); await wait(2000);
   ok(!(await said(B.p)).some((t) => /Weather updated/.test(t)), '7. a new page of the same build: not said');
-}
+});
 
 // ======================================================================================================================
-await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5');
+await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5', async () => {
 // ======================================================================================================================
-{
   const most = FILES.length + 2;
   // (B's first open, in a fresh browser profile: everything fetched from the page's load to Weather drawn)
   const r1 = await B.meter.report();
@@ -421,12 +413,11 @@ await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5'
   ok(r2.requests <= most && r2.js <= 90 * 1024 && r2.css <= 14 * 1024, `8. cold deep link: ${r2.requests} requests, ${Math.round(r2.js / 1024)} KB JS, ${Math.round(r2.css / 1024)} KB CSS gzip, the radar stack apart (§7.3)`, js(r2.rows.map((r) => `${r.path} ${r.gz}`)));
   ok(r2.lazy.some((x) => /\/weather\/radar\.js$/.test(x)), '8. …the radar stack loaded for Radar, lazily (fw.lazy, D2)', js(r2.lazy));
   await C.ctx.close();
-}
+});
 
 // ======================================================================================================================
-await part(9, 'storage: only Weather’s own keys; no today:* change; search typing leaves nothing', '§7.2, D16, §3.10');
+await part(9, 'storage: only Weather’s own keys; no today:* change; search typing leaves nothing', '§7.2, D16, §3.10', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}/`);
   await todayUp(p); await wait(1500);
   const s0 = await storage(p);
@@ -463,12 +454,11 @@ await part(9, 'storage: only Weather’s own keys; no today:* change; search typ
   ok(!leakStore.length && js(changed(st0, st1).added.filter((k) => !/^local:today:cards:/.test(k))) === '[]', '9. …nor in storage', js({ leakStore, added: changed(st0, st1).added }));
   ok(here(p) === u0 && !/Brist|Qzxv/.test(stHist || ''), '9. …nor in the address or history.state', `${here(p)} ${stHist}`);
   await closeSheets(p);
-}
+});
 
 // ======================================================================================================================
-await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; signed out: the way in', 'D3, D12, RI4, RI15');
+await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; signed out: the way in', 'D3, D12, RI4, RI15', async () => {
 // ======================================================================================================================
-{
   await A.ctx.route(/\/api\/weather\/me(\?|$)/, (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{"signedIn":false}' }));
   await p.goto(`${HUB}/weather/`);
   await weatherUp(p);
@@ -487,12 +477,11 @@ await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; si
   ok(way && href === `/chats/#signin-start&then=${encodeURIComponent('/weather/#radar')}`, '10. signed out at /weather/#radar: InFlite’s way in, its Sign In back to /weather/#radar (D12, RI15)', href);
   ok(!(await shown(D.p, H.M_WEATHER, 1000)) && !g.hits.length, '10. …no Weather drawn signed out, nothing sent to Weather’s own address (D12, D23)', js(g.hits));
   await D.ctx.close();
-}
+});
 
 // ======================================================================================================================
-await part(11, 'a new Weather build mid-session: no reload in use, no lazy file joins the old module, reload at a boundary', 'D21, RB2, UI13, D15');
+await part(11, 'a new Weather build mid-session: no reload in use, no lazy file joins the old module, reload at a boundary', 'D21, RB2, UI13, D15', async () => {
 // ======================================================================================================================
-{
   // (no service worker here, so the release below reaches the page: a page's routes don't see what a worker answers)
   const E = await open('wren-e', { sw: 'block', clock: true });
   let release = null;
@@ -556,12 +545,11 @@ await part(11, 'a new Weather build mid-session: no reload in use, no lazy file 
   await wait(1500);
   ok((await said(q)).filter((t) => /Weather updated/.test(t)).length === 1, '11. …and “Weather updated” once', js(await said(q)));
   await E.ctx.close();
-}
+});
 
 // ======================================================================================================================
-await part(12, 'warnings on Now (banner, single card), the empty states, the credits sheet', '§7.1 now.js, warnings.js, wxui.js, UB2, UB6');
+await part(12, 'warnings on Now (banner, single card), the empty states, the credits sheet', '§7.1 now.js, warnings.js, wxui.js, UB2, UB6', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}${link(London)}`);
   await weatherUp(p); await titleIs(p, 'London');
   const slot = `${H.wxSec('now')} ${H.WX_ALERTS}`;
@@ -602,12 +590,11 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
   ok(/wrong/i.test((await textOf(p, `${H.CREDITS_SHEET}[open]`)) || ''), '12. …with the note that forecasts can be wrong');
   await shot(p, '12-credits');
   await closeSheets(p);
-}
+});
 
 // ======================================================================================================================
-await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, §3.15, §8.3, UI8, UI12');
+await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, §3.15, §8.3, UI8, UI12', async () => {
 // ======================================================================================================================
-{
   await p.goto(`${HUB}${link(London)}`);
   await weatherUp(p); await titleIs(p, 'London');
   for (const id of ['now', 'days', 'warnings']) {
@@ -646,7 +633,7 @@ await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, �
   ok(!all.some((e) => /CSP violation|Refused to/.test(e)), '13. no CSP violation on any page (§8.3: no inline style, no inline handler, only the origins allowed)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
   ok(!all.length, '13. no page error and no console error on any page', js(all.slice(0, 8)));
   ok(!guard.hits.length && !(await guard.opened()).length, '13. nothing of all this went to Weather’s own address (D23)', js(guard.hits.slice(0, 4)));
-}
+});
 
 await closeAll();
 console.log(`FAILS ${fails()}`);
