@@ -5,7 +5,10 @@
 // preference is on, and never a word of any letter). It comes whatever the Quiet Hours. Sent by the site's scheduler
 // (workers/ticker, every 5 minutes: functions/api/today), with the site's Web Push (functions/_notify.js), to the
 // devices Today's page turned it on on (functions/_today.js td_push). Each day's is claimed only once it's composed,
-// so a tick cut off part way leaves it for the next.
+// so a tick cut off part way leaves it for the next. Since Today First (spec §7.5), each account's day is planned just
+// before its morning's composed (functions/_todayacts.js planDay: a clash moved, a ride from habit added, each with
+// Undo), so the notification can say what Today did, in the Fitness line, naming a friend only where Chat's own "Names
+// on the Lock Screen" is on.
 
 import { HttpError } from "./_pigeon.js";
 import { prefsOf, pushToSub } from "./_notify.js";
@@ -13,6 +16,7 @@ import { todayLinks } from "./_sites.js";
 import { CARDS, tddb, todayPrefs, morningTz, todayDevices, deviceOk, deviceGone, deviceFailed, tidyDevices, morningCandidates, claimMorning, releaseMorning, keepLast } from "./_today.js";
 import { cardsFor, cardsMemo, Quiet } from "./_todaycards.js";
 import { moneySaid, andSaid } from "./_markets.js";
+import { planDay, actsFor, pushLine } from "./_todayacts.js";
 
 // how long a tick goes on beginning things (an account composed, claimed and sent), from its start: the scheduler gives
 // it 55 seconds, and a compose (9) and a push (8) begun just before this still finish inside them. The due accounts a
@@ -157,12 +161,16 @@ function marketsLine(c) {
 
 // The notification's words, from the cards ({ weather, chat, fitness, markets }, each as functions/_todaycards.js gives
 // it): { title, lines, out (apps whose line is on with nothing to say) }. names: Chat's names preference; tz: the
-// account's zone; lines: { weather: false, … }, false turning one off
-export function morningLines(cards, { names, tz, t, lines }) {
+// account's zone; lines: { weather: false, … }, false turning one off; acts: what Today did or offers this morning, a
+// sentence each (functions/_todayacts.js pushLine), said in the Fitness line, after the session (and said even where
+// that line's off: it's Today's own doing, with an Undo that doesn't wait)
+export function morningLines(cards, { names, tz, t, lines, acts = [] }) {
   const on = (k) => (lines || {})[k] !== false, c = cards && typeof cards === "object" ? cards : {};
   const said = { weather: weatherLine(c.weather), fitness: fitnessLine(c.fitness), chat: chatLine(c.chat, !!names, tz, t), markets: marketsLine(c.markets) };
+  const doing = (Array.isArray(acts) ? acts : []).filter((x) => typeof x === "string" && x).join(" ");
+  if (doing) said.fitness = [on("fitness") ? said.fitness : null, doing].filter(Boolean).join(". ");
   const out = [], got = [];
-  for (const k of LINES) if (on(k)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
+  for (const k of LINES) if (on(k) || (k === "fitness" && doing)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
   const brief = on("weather") && ok(c.weather) ? text(c.weather.brief?.title) : "";
   return { title: brief || `Your ${localNow(tz, t).weekday}`, lines: got, out };
 }
@@ -177,10 +185,22 @@ export async function composeMorning(env, u, row, t, { memo, cards, purpose = "m
   // (the page's own answer, or its cards alone)
   const have = cards && typeof cards === "object" ? (cards.cards && typeof cards.cards === "object" ? cards.cards : cards) : null;
   const got = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: purpose === "page" ? "page" : "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
-  const m = morningLines(got, { names: !!prefsOf(u).names, tz, t, lines });
-  // (cut at a character, never through one)
-  const body = [...m.lines.join("\n")].slice(0, BODY_MAX).join("");
-  return { title: m.title, body, lines: m.lines, out: m.out, tag: "today-morning", url: "/", ttl: TTL };
+  const names = !!prefsOf(u).names, today = localNow(tz, t).day;
+  // (what Today did or offers this morning: the day's acts, as planned just before; none to be had, none said)
+  const acts = (await actsFor(env, u.id, today).catch(() => [])).filter((a) => a.day === today).map((a) => pushLine(a, { names, tz, today })).filter(Boolean);
+  const m = morningLines(got, { names, tz, t, lines, acts });
+  return { title: m.title, body: bodyOf(m.lines, acts.join(" ")), lines: m.lines, out: m.out, tag: "today-morning", url: "/", ttl: TTL, app: "today" };
+}
+// The body: the lines, cut at BODY_MAX (at a character, never through one), but never through what Today did: where
+// that would be cut, the lines before it are cut shorter instead (to an ellipsis), so its Undo is always said
+function bodyOf(lines, doing) {
+  const cut = (s, n) => [...s].slice(0, Math.max(0, n)).join("");
+  const body = cut(lines.join("\n"), BODY_MAX);
+  if (!doing || body.includes(doing)) return body;
+  const i = lines.findIndex((l) => l.includes(doing));
+  if (i < 0) return body;
+  const rest = lines.slice(i).join("\n"), room = BODY_MAX - [...rest].length - 1, head = lines.slice(0, i).join("\n");
+  return cut(room > 1 ? `${cut(head, room - 1)}…\n${rest}` : rest, BODY_MAX);
 }
 // whether a notification has anything to say: some line, or Weather's title (with none, and Weather's line off or not
 // to be had, there's nothing to send)
@@ -223,8 +243,9 @@ export async function sendMorningNow(env, u, { endpoint }) {
   return { sent: r === "sent" ? 1 : 0 };
 }
 
-// Tests only: what a tick composes each account's with, in place of composeMorning (one that fails, or runs late)
-export const tickTest = { compose: null };
+// Tests only: what a tick composes each account's with, in place of composeMorning (one that fails, or runs late); and
+// what it plans each account's day with, in place of planDay
+export const tickTest = { compose: null, plan: null };
 // The database, each statement counted as it's sent (a batch, each of those in it): on(n) is told of each n before it's
 // sent, and where it says no, that's refused (a Quiet error, so a card that meets it isn't logged as failing) and not sent
 export function countedDb(D, on) {
@@ -281,7 +302,13 @@ async function tick(env, t, used) {
       box.n += n;
     }) };
     flying.push(box);
-    const note = await (tickTest.compose || composeMorning)(use, u, row, t, { memo })
+    const note = await (async () => {
+      // the day's plan first (Today's acts: functions/_todayacts.js), so the notification can say what Today did; its
+      // statements the compose's, counted with them. One that fails gives its day back (a later turn, or Today's page,
+      // plans it), and the morning's composed all the same
+      await (tickTest.plan || planDay)(use, u, t).catch((e) => { if (!box.refused) console.error("today tick: plan", e && e.message); });
+      return (tickTest.compose || composeMorning)(use, u, row, t, { memo });
+    })()
       .catch((e) => { if (!box.refused) console.error("today tick: compose", e && e.message); return null; })
       .finally(() => flying.splice(flying.indexOf(box), 1));
     if (out.composes) out.composes.push(box.n);
