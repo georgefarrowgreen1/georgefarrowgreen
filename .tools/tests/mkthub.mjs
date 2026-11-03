@@ -106,6 +106,21 @@ for (const [hash, tab, title] of [['holdings', 'holdings', 'Holdings'], ['news',
   await p.screenshot({ path: `${out}/3-${hash}.png` });
 }
 
+// ---- 3b. a narrow phone, 320 wide: the header's title whole, Back its chevron alone (still named Back) ----
+await p.setViewportSize({ width: 320, height: 640 });
+await fresh(`${HUB}/markets/#holdings`);
+await p.waitForSelector('.tab[data-tab="holdings"][aria-current="page"]', { timeout: 30000 }); await settle(p, 700);
+const fit = await p.evaluate(() => {
+  const h1 = document.querySelector('.mhead .ifh-name'), acts = document.querySelector('.mhead .ifh-acts'), back = document.querySelector('.mhead .ifl-back'), r = document.createRange();
+  r.selectNodeContents(h1); const t = r.getBoundingClientRect(), a = acts.getBoundingClientRect(), b = back.getBoundingClientRect();
+  return { title: h1.textContent, textLeft: Math.round(t.left), textRight: Math.round(t.right), actsLeft: Math.round(a.left), backLeft: Math.round(b.left), backRight: Math.round(b.right), backW: Math.round(b.width), backH: Math.round(b.height), label: back.getAttribute('aria-label'), wide: document.documentElement.scrollWidth };
+});
+await p.screenshot({ path: `${out}/3b-320.png` });
+ok(fit.title === 'Holdings' && fit.textLeft >= fit.backRight && fit.textRight <= fit.actsLeft && fit.wide <= 320, '320 wide at the hub: Holdings whole, between Back and Find and Settings', JSON.stringify(fit));
+ok(fit.label === 'Back' && await p.getByRole('button', { name: 'Back', exact: true }).count() === 1 && fit.backW >= 44 && fit.backW <= 48 && fit.backH >= 40 && fit.backLeft >= 12,
+  'there Back is its chevron alone, full size, still named Back', JSON.stringify(fit));
+await p.setViewportSize({ width: 390, height: 844 });
+
 // ---- 4. told again while it's open: hashchange, in the same document ----
 await p.evaluate(() => { window.__same = 'yes'; });
 await p.evaluate(() => { location.hash = 'holdings'; });
@@ -138,13 +153,14 @@ ok(/In You/.test(await text(p, '#sheet .rows .srow:has-text("Notifications")')) 
 const wrapWas = await p.getAttribute('#mk-wrap', 'aria-checked');
 await p.click('#mk-wrap'); await p.waitForFunction((w) => document.querySelector('#mk-wrap')?.getAttribute('aria-checked') !== w && !document.querySelector('#mk-wrap').disabled, wrapWas); await settle(p, 400);
 if (wrapWas === 'true') { await p.click('#mk-wrap'); await p.waitForFunction(() => document.querySelector('#mk-wrap')?.getAttribute('aria-checked') === 'true' && !document.querySelector('#mk-wrap').disabled); await settle(p, 400); }
-ok(/once your markets close/.test(await text(p, '#toast')) && !/off on this phone/.test(await text(p, '#toast')), 'Evening Wrap on at the hub: said, with no word of this phone’s notifications', await text(p, '#toast'));
+ok(/once your markets close \(notifications for every app are in You\)$/.test(await text(p, '#toast')) && !/off on this phone/.test(await text(p, '#toast')),
+  'Evening Wrap on at the hub: said, with where notifications are turned on (You), never this phone’s', await text(p, '#toast'));
 await p.keyboard.press('Escape'); await settle(p, 700);
 await p.evaluate(() => { location.hash = 's=TSCO.L'; });
 await p.waitForSelector('#sheet #alert'); await settle(p, 600);
 await p.click('#sheet #alert'); await p.waitForSelector('#sheet .choice.amt'); await p.click('#sheet .choice.amt button:has-text("3%")');
 await p.waitForFunction(() => /You'll hear when/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
-ok(/You'll hear when Tesco moves 3% in a day$/.test(await text(p, '#toast')), 'an alert set at the hub, said plainly', await text(p, '#toast'));
+ok(/^You'll hear when Tesco moves 3% in a day \(notifications for every app are in You\)$/.test(await text(p, '#toast')), 'an alert set at the hub, said with where notifications are turned on', await text(p, '#toast'));
 const pushRows = (() => { try { return Number(one('SELECT COUNT(*) AS n FROM mk_push')[0]?.n ?? 0); } catch (_) { return 0; } })();
 ok(!pushAsks.length && pushRows === 0, 'Markets asked nothing of its push routes at the hub, and keeps no subscription', JSON.stringify({ pushAsks, pushRows }));
 ok(await p.evaluate(() => !!localStorage.getItem('fakesub')), 'and the hub’s subscription is still there (never let go from Markets)');
@@ -162,6 +178,30 @@ await p.waitForSelector('.tab[data-tab="holdings"][aria-current="page"]', { time
 await p.screenshot({ path: `${out}/7-back.png` });
 await Promise.all([p.waitForURL((u) => u.pathname === '/', { timeout: 20000 }), p.click('.mhead .ifl-back')]);
 ok(pathOf(p.url()) === fromAt, 'opened from Today: Back goes back to Today, where it was left', `${p.url()} (left from ${fromAt})`);
+
+// ---- 7b. this phone's copy at the hub: drawn at once only while InFlite's own kept sign-in (Today's) is George's ----
+// (Markets' answer held back three seconds, so what's drawn before it is seen)
+const kept = await p.evaluate(() => ({ last: JSON.parse(localStorage.getItem('markets:last') || 'null'), session: localStorage.getItem('today:session') }));
+ok(kept.last?.me?.id && (kept.last.holdings || []).some((x) => x.symbol === 'TSCO.L'), 'Markets keeps its copy at the hub (to open at once, and offline)', JSON.stringify(Object.keys(kept.last || {})));
+let meHeld = 0, meAnswered = 0;
+await p.route('**/api/markets/me', async (r) => { meHeld++; await new Promise((go) => setTimeout(go, 3000)); meAnswered++; await r.continue().catch(() => {}); });
+const hasKept = () => p.evaluate(() => /Tesco|Rolls-Royce/.test(document.querySelector('main')?.innerText || ''));
+// (as after signing out in You: InFlite's kept sign-in gone, Markets' copy still here)
+await p.evaluate(() => localStorage.removeItem('today:session'));
+await fresh(`${HUB}/markets/#holdings`);
+await p.waitForSelector('.tab[data-tab="holdings"]', { timeout: 30000 }); await settle(p, 900);
+const before = { meHeld, meAnswered, drawn: await hasKept() };
+ok(before.meHeld >= 1 && before.meAnswered === 0 && !before.drawn, 'with no kept sign-in of InFlite’s: nothing of the copy drawn while Markets’ answer is awaited', JSON.stringify(before));
+await p.waitForFunction(() => /Tesco/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(meAnswered >= 1 && await hasKept(), 'and George’s holdings, once the account says it’s him', String(meAnswered));
+// (InFlite's kept sign-in George's, as Today keeps it: the copy drawn at once)
+await p.evaluate((v) => localStorage.setItem('today:session', v), kept.session || JSON.stringify({ id: kept.last.me.id, at: Date.now(), view: {} }));
+meHeld = 0; meAnswered = 0;
+await fresh(`${HUB}/markets/#holdings`);
+const atOnce = await p.waitForFunction(() => /Tesco/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 2800 }).then(() => true, () => false);
+ok(atOnce && meAnswered === 0, 'with InFlite’s kept sign-in George’s: his copy drawn at once, before Markets answers', JSON.stringify({ atOnce, meHeld, meAnswered }));
+await p.waitForTimeout(3300);
+await p.unroute('**/api/markets/me');
 
 // ---- 8. one window throughout ----
 ok(pages.length === 1, 'one window throughout: nothing opened beside it', String(pages.length));
@@ -193,6 +233,15 @@ if (moved) {
 }
 await p.keyboard.press('Escape').catch(() => {});
 await p.screenshot({ path: `${out}/9-own.png` });
+// (a notification tapped while Markets is open at its own address: its worker's markets:open, read by openTo)
+for (const [hash, name] of [['#s=RR.L', 'Rolls-Royce'], ['#s=%5EFTSE', 'FTSE 100']]) {
+  await p.evaluate((h) => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { type: 'markets:open', url: `${location.origin}/${h}` } })), hash);
+  await p.waitForSelector(`#sheet .sname:has-text("${name}")`, { timeout: 15000 }).catch(() => {});
+  await settle(p, 700);
+  ok((await text(p, '#sheet .sname')) === name && await p.evaluate(() => location.hash) === '' && new URL(p.url()).host === 'finance.ifl.test:8788',
+    `finance.ifl.test: markets:open for ${hash} while open: ${name}’s page, the address left bare`, `${await text(p, '#sheet .sname')} ${p.url()}`);
+  await p.keyboard.press('Escape'); await settle(p, 700);
+}
 await ctx.close();
 
 // ---- 10. signed out at the hub: the hub's Sign In, through Chats, and back to this page ----
@@ -207,6 +256,22 @@ await Promise.all([so.waitForURL((u) => u.pathname === '/chats/', { timeout: 200
 const toChats = soNavs.find((u) => new URL(u).pathname === '/chats/') || so.url();
 ok(pathOf(toChats) === `/chats/#signin-start&then=${encodeURIComponent('/markets/')}`, 'Sign in goes to the hub’s: Chats’ sign-in, then back to /markets/', toChats);
 ok(out2.pages.length === 1 && soNavs.every((u) => new URL(u).host === 'ifl.test:8788'), 'in the same window, at the hub', JSON.stringify(soNavs));
+// (a stock asked for, signed out, on a phone George signed out of in You: his copy of Markets still here, InFlite's own
+// kept sign-in gone. Nothing of it drawn, ever; it's let go; and the stock kept through Sign in)
+await so.evaluate((v) => { localStorage.setItem('markets:last', v); localStorage.removeItem('today:session'); }, JSON.stringify(kept.last));
+await out2.ctx.addInitScript(() => {
+  window.__sawKept = false;
+  new MutationObserver(() => { if (!window.__sawKept && /Tesco|Rolls-Royce/.test(document.body?.innerText || '')) window.__sawKept = true; }).observe(document, { subtree: true, childList: true, characterData: true });
+});
+await so.goto('about:blank'); await so.goto(HUB + '/markets/#s=TSCO.L');
+await so.waitForSelector('.welcome #sign-in', { timeout: 30000 }); await settle(so, 1500);
+const leftover = await so.evaluate(() => ({ saw: window.__sawKept, kept: localStorage.getItem('markets:last'), hash: location.hash }));
+ok(leftover.saw === false && leftover.kept === null, 'signed out at the hub with another’s copy of Markets left here: none of it drawn, and it’s let go', JSON.stringify({ saw: leftover.saw, kept: !!leftover.kept }));
+ok(leftover.hash === '#s=TSCO.L', 'the stock asked for stays in the address while signed out', leftover.hash);
+soNavs.length = 0;
+await Promise.all([so.waitForURL((u) => u.pathname === '/chats/', { timeout: 20000 }), so.click('#sign-in')]);
+const toChats2 = soNavs.find((u) => new URL(u).pathname === '/chats/') || so.url();
+ok(pathOf(toChats2) === `/chats/#signin-start&then=${encodeURIComponent('/markets/#s=TSCO.L')}`, 'Sign in comes back to that stock: then=/markets/#s=TSCO.L', toChats2);
 await out2.ctx.close();
 
 // ---- what's left: no page or console error on Markets' pages ----

@@ -151,3 +151,67 @@ test("a section asked for by the address: a tab, or a stock by a symbol Markets 
   assert.deepEqual(sectionOf("#s=tsco.l"), { sym: "TSCO.L" });
   for (const bad of ["", "#", "#notify", "#signin=abc", "#s=", "#s=%E0%A4%A", "#s=%3Cb%3E", "#s=" + "A".repeat(30), "#holdingsx", "#apps"]) assert.equal(sectionOf(bad), null, bad);
 });
+
+test("the address's symbol rule in app.js is Chat's (and so the server's) exactly", () => {
+  const appSymbol = new Function(`${/\nconst SYMBOL = [^\n]*\n/.exec(APP)?.[0]}\nreturn SYMBOL;`)();
+  assert.equal(appSymbol.source, SYMBOL.source);
+  assert.equal(appSymbol.flags, SYMBOL.flags);
+});
+
+// (openTo as the page has it, with the hub on or off, signed in or not yet: what it did to the address and the page)
+function opener(on, me) {
+  const did = [], S = { me, tab: "today" };
+  const consts = ["SECTIONS", "SYMBOL"].map((k) => new RegExp(`\\nconst ${k} = [^\\n]*\\n`).exec(APP)?.[0]).join("");
+  const location = { pathname: "/markets/", search: "", hash: "" };
+  const history = { state: null, replaceState: (_s, _t, url) => did.push(`address ${url}`) };
+  const openTo = new Function("S", "IFL", "location", "history", "Sheet", "go", "openStock", "closeSheet",
+    `${consts}\n${fnOf("sectionOf")}\n${fnOf("addressSays")}\n${fnOf("openTo")}\nreturn openTo;`)(
+    S, { hub: { on } }, location, history, { stack: [] }, (t) => { did.push(`go ${t}`); S.tab = t; }, (sym) => did.push(`stock ${sym}`), () => did.push("close"));
+  return { openTo, did, S };
+}
+
+test("a stock asked for at the hub stays in the address until it's opened; a tab is said at once", () => {
+  // (at the hub, not signed in yet (or not known): the stock left in the address, for Sign in, Try Again or start)
+  let o = opener(true, null);
+  assert.equal(o.openTo("#s=TSCO.L"), true);
+  assert.deepEqual(o.did, [], "nothing rewritten, nothing opened");
+  o = opener(true, null);
+  o.openTo("#holdings");
+  assert.deepEqual(o.did, ["address /markets/#holdings"]);
+  assert.equal(o.S.tab, "holdings");
+  // (signed in: the address back to the tab first, so the stock's sheet's history entry carries the tab, then opened)
+  o = opener(true, { id: "u1" });
+  o.openTo("#s=RR.L");
+  assert.deepEqual(o.did, ["address /markets/#today", "stock RR.L"]);
+  o = opener(true, { id: "u1" });
+  o.openTo("#news");
+  assert.deepEqual(o.did, ["address /markets/#today", "go news"]);
+  // (off the hub, as ever: the address the page alone, at once)
+  o = opener(false, null);
+  o.openTo("#s=TSCO.L");
+  assert.deepEqual(o.did, ["address /markets/"]);
+  o = opener(false, { id: "u1" });
+  o.openTo("#s=%5EFTSE");
+  assert.deepEqual(o.did, ["address /markets/", "stock ^FTSE"]);
+  // (a hash that asks for nothing: left alone)
+  o = opener(true, { id: "u1" });
+  assert.equal(o.openTo("#notify"), false);
+  assert.deepEqual(o.did, []);
+});
+
+test("at the hub, this phone's copy is drawn at once only while InFlite's own kept sign-in is the same account's", () => {
+  const kept = new Map();
+  const localStorage = { getItem: (k) => (kept.has(k) ? kept.get(k) : null) };
+  const hubKeptIs = new Function("localStorage", `${/\nconst HUB_KEPT = [^\n]*\n/.exec(APP)?.[0]}\n${fnOf("hubKeptIs")}\nreturn hubKeptIs;`)(localStorage);
+  assert.equal(hubKeptIs("u1"), false, "nothing kept (signed out in You): wait for the account");
+  kept.set("today:session", JSON.stringify({ id: "u1", at: 1, view: {} }));
+  assert.equal(hubKeptIs("u1"), true);
+  assert.equal(hubKeptIs("u2"), false, "another account's");
+  assert.equal(hubKeptIs(null), false);
+  kept.set("today:session", "{not json");
+  assert.equal(hubKeptIs("u1"), false);
+  // (and start() draws the copy only so at the hub; whoever answers, another account's copy is let go)
+  const start = /\nasync function start\(\) \{\n[\s\S]*?\n\}\n/.exec(APP)?.[0] || "";
+  assert.ok(start.includes("if (last?.me && (!IFL.hub.on || hubKeptIs(last.me.id)))"), "the kept copy gated at the hub");
+  assert.ok(start.includes("(keptId != null && keptId !== m.id)) forget()"), "another account's copy let go, drawn or not");
+});
