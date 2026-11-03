@@ -6,6 +6,11 @@
   if (t !== "dark" && t !== "auto") t = "light";
   var root = document.documentElement;
   root.setAttribute("data-theme", t);
+  // InFlite's hub: Chat as its engine, in a frame of another of the hub's own pages (app.js ENGINE), is see-through from
+  // the first frame, with nothing of its own on show but its send sheet (styles.css html.engine)
+  try {
+    if (document.querySelector('meta[name="ifl-hub"]') && /[?&]engine(?:[=&]|$)/.test(location.search) && window.parent !== window && window.parent.location.origin === location.origin) root.classList.add("engine");
+  } catch (e) { /* framed by another site: never the engine */ }
   // the browser bar matches the page
   var dark = t === "dark" || (t === "auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
   var m = document.querySelector('meta[name="theme-color"]');
