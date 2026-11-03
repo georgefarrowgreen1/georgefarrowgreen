@@ -18,7 +18,7 @@ import { offersReady } from "../../../functions/_fitshare.js";
 import { timesReady } from "../../../functions/_fittimes.js";
 import { timesFor } from "../../../functions/_times.js";
 import { cardsFor, localDay, shareCut, couldnt, withDeadline, Quiet, CARD_KEYS } from "../../../functions/_todaycards.js";
-import { weatherCard, skyFor } from "../../../functions/_todaywx.js";
+import { weatherCard, skyFor, heaviestOf } from "../../../functions/_todaywx.js";
 import { fitnessCard } from "../../../functions/_todayfit.js";
 import { marketsCard } from "../../../functions/_todaymkt.js";
 import { forecast as omForecast } from "../mocks/wxappdata.mjs";
@@ -59,7 +59,7 @@ const ctxAt = (t, x = {}) => ({ only: CARD_KEYS, t, request: null, purpose: "pag
 
 // what's asked for, and how each stand-in answers
 const asked = [];
-let warnFeed = { warnings: [] }, ride = "fine", omAt = MON, omDown = false, omLondon = false;
+let warnFeed = { warnings: [] }, ride = "fine", omAt = MON, omDown = false, omLondon = false, omScene = {};
 const Y = {};
 const slow = new Map();
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
@@ -100,7 +100,7 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, init) => {
   const url = new URL(String(u)), k = url.host;
   asked.push(String(u));
-  if (k === "om.test" && url.pathname === "/v1/forecast") return url.searchParams.get("timeformat") === "unixtime" ? json(rideJson(omAt)) : omDown ? json({ error: true }, 503) : json(omLondon ? inLondon(omForecast(omAt, {}), omAt) : omForecast(omAt, {}));
+  if (k === "om.test" && url.pathname === "/v1/forecast") return url.searchParams.get("timeformat") === "unixtime" ? json(rideJson(omAt)) : omDown ? json({ error: true }, 503) : json(omLondon ? inLondon(omForecast(omAt, omScene), omAt) : omForecast(omAt, omScene));
   if (k === "ma.test") return url.pathname.endsWith("feeds-united-kingdom") ? json(warnFeed) : json({ warnings: [] });
   if (k === "yahoo.test") {
     const m = /^\/v8\/finance\/chart\/([^/]+)$/.exec(url.pathname), sym = m && decodeURIComponent(m[1]);
@@ -750,4 +750,39 @@ test("v=2 when the day can't be worked out: the cards still come, as version 1's
   assert.equal(a.cards.weather.state, "ok");
   assert.ok(sql.prepare("SELECT src FROM pg_errors").all().some((r) => r.src === "today day"), "logged");
   await settle();
+});
+
+test("v=2, Weather: the rain on the card (when, until, its heaviest hour), and tomorrow's 07:00 held apart for the day", async () => {
+  omAt = MON; omLondon = false; warnFeed = { warnings: [] }; setBucket(OM_KEEP, MON); omScene = { rainIn: 180 };
+  try {
+    const c = await weatherCard(env, { id: "wx1" }, ctxAt(MON, { v: 2 })), v1 = await weatherCard(env, { id: "wx1" }, ctxAt(MON));
+    assert.equal(c.state, "ok");
+    assert.ok(!("rain" in v1), "version 1's card: no rain field");
+    const r = c.rain;
+    assert.deepEqual(Object.keys(r).sort(), ["at", "end", "now", "peak"]);
+    assert.equal(r.now, false);
+    assert.ok(r.at >= MON + 2.5 * H && r.at <= MON + 3 * H + 15 * 60e3, `from about 11:10: ${new Date(r.at).toISOString()}`);
+    assert.ok(r.peak >= r.at && r.peak < r.at + 2 * H && (r.end === null || (r.end > r.at && r.peak < r.end)), `its heaviest hour within it (its end, where known): ${JSON.stringify(r)}`);
+    // (tomorrow's 07:00, held apart: in the day's cards, never the card's JSON)
+    const tw = c.forDay?.tomorrow;
+    assert.equal(tw.at, Date.UTC(2026, 10, 3, 7)); assert.equal(tw.day, "2026-11-03");
+    assert.ok(/^(dry|rain|rain likely|a \d+% chance of rain) and (still|a light breeze|breezy|windy)$/.test(tw.said), tw.said);
+    assert.ok([null, "ride", "run"].includes(tw.good));
+    assert.equal(typeof c.forDay.deg, "function"); assert.equal(c.forDay.deg(11.4), "11°");
+    assert.ok(!JSON.stringify(c).includes("forDay") && !JSON.stringify(c).includes("tomorrow"), "nothing held apart is in the JSON");
+    // (in the small hours, the next 07:00 is this morning's)
+    omAt = Date.UTC(2026, 10, 3, 3); setBucket(OM_KEEP, omAt);
+    const early = await weatherCard(env, { id: "wx1" }, ctxAt(omAt, { v: 2 }));
+    assert.equal(early.forDay?.tomorrow?.at, Date.UTC(2026, 10, 3, 7));
+  } finally { omScene = {}; omAt = MON; }
+  await settle();
+});
+
+test("heaviestOf: the wettest hour between two times on the place's clock, the soonest of equals; none when none is wet", () => {
+  const h = (hr, precip, pop = 90, code = 63) => ({ t: Date.UTC(2026, 10, 2, hr), precip, pop, code });
+  const wx = { hourly: [h(14, 0, 10, 2), h(15, 0.4), h(16, 1.2), h(17, 2.5), h(18, 2.5), h(19, 0.3), h(20, 0, 10, 2)] };
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 14), Date.UTC(2026, 10, 2, 21)), Date.UTC(2026, 10, 2, 17));
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 14), Date.UTC(2026, 10, 2, 17)), Date.UTC(2026, 10, 2, 16), "only within the times");
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 20), Date.UTC(2026, 10, 2, 23)), null);
+  assert.equal(heaviestOf({}, 0, 1), null);
 });

@@ -184,11 +184,12 @@ function rainCard(wx, now, offset) {
   const to = Number.isFinite(r.end) ? wall(r.end) : from + 12 * HOUR, peak = heaviestOf(wx, from, to);
   return { now: !!r.now, at: Number.isFinite(r.at) ? r.at : null, end: Number.isFinite(r.end) ? r.end : null, peak: peak == null ? null : Math.max(peak, from) - offset * 1000 };
 }
-// Tomorrow at 07:00 where the place is (the evening's "Tomorrow first"): its weather, raw (°C, km/h, real ms), in a few
-// words ("dry and still"), and whether it's a good morning for a ride or a run (fitness/besttime.js hourScore, Good or
-// better). → { at, day, temp, feels, code, label, pop, rain, wind, wet, said, good } or null
+// The next 07:00 where the place is (the evening's "Tomorrow first": tomorrow's, or in the small hours this morning's):
+// its weather, raw (°C, km/h, real ms), in a few words ("dry and still"), and whether it's a good morning for a ride or a
+// run (fitness/besttime.js hourScore, Good or better). → { at, day, temp, feels, code, label, pop, rain, wind, wet, said,
+// good } or null
 function tomorrowOf(wx, now, tz, offset) {
-  const w = dayStart(now) + DAY + 7 * HOUR, h = hourAt(wx, w);
+  const seven = dayStart(now) + 7 * HOUR, w = seven > now ? seven : seven + DAY, h = hourAt(wx, w);
   if (!h || Math.abs(h.t - w) >= HOUR) return null;
   const prev = hourAt(wx, h.t - HOUR), as = (x) => x && { temp: x.temp, feels: x.feels, wind: x.wind, gust: x.gust, rain: x.precip ?? 0, code: x.code };
   const score = (sport) => hourScore(as(h), prev && prev.t < h.t ? as(prev) : null, LIMITS[sport]);
