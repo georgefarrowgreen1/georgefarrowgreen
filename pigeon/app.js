@@ -440,8 +440,9 @@ const IFL = (() => {
   //                      here" said) or that its sheet's shut (put away)
   //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
   //                      nothing done: false
-  //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen): once, the card
-  //                      saying InFlite is one app now, with How to Add and Turn Off Notifications Here (off). → true if shown
+  //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
+  //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
+  //                      InFlite is one app now, with How to Add and Turn Off Notifications Here (off). → true if shown
   //   degrade(links)     this page of the hub runs as the apps did before it (its Worker can't serve them yet: Today's
   //                      /api/hub says not ready): go, href and the tabs give the apps' own addresses (links: { chat,
   //                      weather, fitness, finance, email }, each an origin; else <app>.<site>), send goes to
@@ -471,6 +472,25 @@ const IFL = (() => {
   const cameFrom = (() => { try { const c = store()?.getItem(CRUMB); return ownPath(c) ? c : null; } catch (_) { return null; } })();
   const leaving = (p) => ownPath(p) && pageOf(p) !== location.pathname;
   const standalone = () => { try { return navigator.standalone === true || !!matchMedia?.("(display-mode: standalone)").matches; } catch (_) { return false; } };
+  // (the app's own Home Screen icon, filling the screen: not iOS's small browser, which a link from another Home Screen
+  // app opens it in, "standalone" too but under its own bars and short of the screen, where moved()'s card would cover
+  // the page. On an iPhone or iPad (navigator.standalone): filling the screen from top to bottom (upright, its height; on
+  // its side, its short side: the small browser's bars leave it short either way), or running up behind the status bar
+  // (a top inset: every app's page is viewport-fit=cover); elsewhere, standalone is enough)
+  const ownIcon = () => {
+    if (navigator.standalone !== true) return true;
+    try {
+      const w = window.screen?.width || 0, h = window.screen?.height || 0;
+      const tall = matchMedia("(orientation: portrait)").matches ? h : (w && h ? Math.min(w, h) : w || h);
+      if (tall && innerHeight >= tall - 2) return true;
+      const p = document.createElement("div");
+      p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none";
+      document.body.append(p);
+      const inset = p.offsetHeight;
+      p.remove();
+      return inset > 0;
+    } catch (_) { return true; }
+  };
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
@@ -547,7 +567,7 @@ const IFL = (() => {
       return true;
     },
     moved(app, { off } = {}) {
-      if (hub.on || !standalone() || !document.body || !NAME[app]) return false;
+      if (hub.on || !standalone() || !document.body || !NAME[app] || !ownIcon()) return false;
       const k = `ifl-moved:${app}`;
       try { if (localStorage.getItem(k)) return false; localStorage.setItem(k, String(Date.now())); } catch (_) { return false; }
       movedCard(app, typeof off === "function" ? off : null);
@@ -664,7 +684,7 @@ const IFL = (() => {
   // (the hub's look: html.ifl-hub, and pages that cross-fade into each other, the tab bar staying put. menu.css asks for
   // it of every page (@view-transition, which can't be kept to html.ifl-hub there, and must be in a stylesheet to be
   // there as the next page's first shown): off the hub, every page lets it go as it's left, so nothing changes there; at
-  // the hub, one that can't be done is let go quietly)
+  // the hub, one that can't be done is let go quietly, before it can fail out loud: below)
   if (hub.on) document.documentElement?.classList.add("ifl-hub");
   // (the Home Screen icon's badge, as many notifications as are still showing: counted again by the root worker as a
   // page of the hub opens and each time it's back in sight, so those tapped or cleared meanwhile are gone from it)
@@ -673,7 +693,22 @@ const IFL = (() => {
     recount();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recount(); });
   }
-  const vt = (e) => { const t = e.viewTransition; if (!t) return; for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); if (!hub.on) t.skipTransition?.(); };
+  // A cross-fade that ends on a page that doesn't ask for it (one of this site's that isn't the hub's: an /api/ answer,
+  // a 404) is called off in that page, which then says so as an error no script of its own can catch ("Transition was
+  // aborted because of invalid state. ViewTransition opt-in disabled"). So a page of the hub lets go of one that's
+  // bound anywhere but the hub's own pages (Today, Chats, the apps and Mail's, whose stylesheets all ask for it), as
+  // it's left. And the one this page opened with is caught as it starts (document.activeViewTransition): called off
+  // before it's shown, it would say so out loud too. This runs from the page's module, which a slow load can bring in
+  // after that's happened: Today's page catches it first, as its head is read (the inflite repo's today/public/fade.js),
+  // and any page of the hub that loads that script before its module does the same.
+  const FADES = /^\/(?:index\.html)?$|^\/(?:chats|weather|fitness|markets|mail)\/(?:index\.html)?$/;
+  const fades = (to) => { try { const u = new URL(to, location.href); return u.origin === location.origin && FADES.test(u.pathname); } catch (_) { return false; } };
+  const hush = (t) => { if (t) for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); return t; };
+  const vt = (e) => {
+    const t = hush(e.viewTransition), to = e.type === "pageswap" ? e.activation?.entry?.url : null;
+    if (t && (!hub.on || (to && !fades(to)))) t.skipTransition?.();
+  };
+  try { hush(document.activeViewTransition); } catch (_) {}
   addEventListener("pageswap", vt);
   addEventListener("pagereveal", vt);
 
