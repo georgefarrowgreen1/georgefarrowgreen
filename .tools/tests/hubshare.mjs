@@ -10,8 +10,8 @@
 //     group's, nothing marked read or kept; Write More in the Chat from the engine's sheet (the card handed over alone);
 //   - from Weather's and Markets' pages at the hub: the same sheet;
 //   - a group as a target;
-//   - the engine not ready: Chats' own sheet by the back= navigation, and back on Today with the toast; and the key state
-//     for real (signed in to InFlite, no Chat key on the phone): Send goes the back= way;
+//   - the engine not ready: Chats' own sheet by the back= navigation, and back on Today with the toast; Chats locked,
+//     and the key state for real (signed in to InFlite, no Chat key on the phone): Send goes the back= way;
 //   - the card's links at the hub: /weather/?lat&lon (no place by name) and /markets/#s=, in the same window;
 //   - privacy: for each exact string sent (the words typed, the place on a card), a before/after diff of every table of
 //     the database finds it in no new or changed row outside a sealed ct, and no request body or URL recorded from any
@@ -360,6 +360,19 @@ const asked = seen.slice(seen0), inReq = [];
 // (each URL decoded as a server reads it, + as a space, and each of its query's values; each body as sent and decoded)
 for (const r of asked) for (const s of strings) { if (r.body.includes(s) || dec(r.body).includes(s) || r.url.includes(s) || dec(r.url).includes(s) || params(r.url).some((v) => v.includes(s))) inReq.push(`${r.who} ${r.url.slice(0, 80)}: ${s}`); }
 ok(asked.length > 50 && !inReq.length, `10. nor any of the ${asked.length} requests from every frame of every phone (URL or body)`, js(inReq, 400));
+
+// ---- 10b. Chats locked on this phone: the engine says locked, and Send goes the back= way, to Chats' own lock (its
+// unlock is a passkey's, not run here) ----
+await G.p.goto(`${HUB}/`);
+await G.p.evaluate((uid) => localStorage.setItem('inflight-lock', JSON.stringify({ on: true, uid, after: 0 })), GID);
+await G.p.goto(`${HUB}/`);
+const lockState = await until(async () => { const s = await engineState(); return s && s !== 'ready' ? s : null; }, 40000);
+ok(lockState === 'locked', '10b. Chats locked here: the engine says locked', String(lockState));
+const away10 = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 30000 }).then(() => true, () => false);
+await G.p.evaluate(({ w, pk }) => { window.IFL.hub.send(w, pk); }, { w: cards.weather.say, pk: packed.weather });
+const wentLock = await away10;
+ok(wentLock && !!(await G.p.waitForSelector('[data-act=unlock]', { timeout: 20000 }).catch(() => null)), '10b. and Send goes the back= way, to Chats’ own lock', G.p.url());
+await G.p.evaluate(() => localStorage.removeItem('inflight-lock')).catch(() => {});
 
 // ---- 11. the engine's key state for real: signed in to InFlite by the site's cookie, Chat's key not on this phone (its
 // sign-in here taken away, as Sign In Without Chats leaves none); Send goes the back= way to Chats ----
