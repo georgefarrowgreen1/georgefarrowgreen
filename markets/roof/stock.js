@@ -6,4 +6,4 @@
 import * as core from "./core.js";
 import * as ui from "./mkui.js";
 export const STUB = true;
-export function openStock() { throw new Error("not yet: openStock"); }
+export function openStock(ctx, ...a) { throw new Error("not yet: openStock"); }
