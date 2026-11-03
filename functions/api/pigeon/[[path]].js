@@ -43,7 +43,7 @@ import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet } from "../../_notify.js";
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";
 import { repointSession } from "../../_sessions.js";
@@ -1669,14 +1669,9 @@ async function pushSubscribe({ request, env }) {
   const b = await body(request), endpoint = String(b.endpoint || ""), p256dh = String(b.keys?.p256dh || ""), auth = String(b.keys?.auth || "");
   if (!pushEndpointOk(endpoint) || endpoint.length > 1000) throw new HttpError(400, "This browser’s push service isn’t supported.");
   if (fromB64url(p256dh).length !== 65 || fromB64url(auth).length !== 16) throw new HttpError(400, "That push subscription was malformed.");
-  const D = await db(env);
-  await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ?").bind(u.id, u.sessionHash, endpoint).run();
-  // (a push address another account here is still signed in with stays theirs: one that's somehow learnt can't be taken over)
-  await D.prepare(`INSERT INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, session = ?3, p256dh = ?4, auth = ?5, created_at = ?6
-    WHERE pg_push.user_id = ?2 OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = pg_push.session)`)
-    .bind(endpoint, u.id, u.sessionHash, p256dh, auth, Date.now()).run();
-  await D.prepare("DELETE FROM pg_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM pg_push WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 10)").bind(u.id).run();
+  // (one row for this sign-in, ten for the person at most; a push address another account here is still signed in with
+  // stays theirs, so one that's somehow learnt can't be taken over: _notify.js keepSub, which the hub's device route uses too)
+  await keepSub(await db(env), u.id, u.sessionHash, { endpoint, keys: { p256dh, auth } });
   return json({ ok: true });
 }
 async function pushUnsubscribe({ request, env }) {
