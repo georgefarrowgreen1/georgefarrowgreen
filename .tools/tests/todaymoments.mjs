@@ -691,6 +691,12 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
 step(6, 'evening: the day closed, Tesco past its alert, tomorrow first; quiet hours, a message with no push', '§4.1, §7.3, §8.1, §14.3');
 {
   await marketsMode({ bump: { 'TSCO.L': 3.4 } });
+  // (this test's day is minutes long: the ride's activity came in moments ago, and an after card holds 90 minutes from
+  // then, outranking the evening (_todayphase.js RANK). A real evening is hours after the ride, so the ride, its activity
+  // and its waiting row are moved three hours back first; else the evening would show only when the zone moved below
+  // happened to change the date)
+  const back = 180 * MIN;
+  run(`UPDATE fx_times SET start = start - ${back}, stop = stop - ${back} WHERE user_id = '${GID}' AND start = ${RIDE4.start}; UPDATE fx_acts SET start = start - ${back}, added = added - ${back} WHERE user_id = '${GID}' AND id = 'garmin-g-ride-1'; UPDATE fx_garmin_new SET start = start - ${back}, added = added - ${back} WHERE user_id = '${GID}' AND id = 'g-ride-1'`);
   const { tz } = await moment(21, 3, { quiet: true });
   const n = await hubCall('GET', '/api/notify');
   ok(n.j?.quiet?.on === true && n.j.quiet.from === 21 && n.j.quiet.to === 6, 'quiet hours on, 21:00 to 06:00 (You’s route)', JSON.stringify(n.j?.quiet));
