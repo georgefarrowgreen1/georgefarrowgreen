@@ -617,3 +617,28 @@ test('stages 2–4: Markets and Fitness are modules only by their own switch: th
   }
   H.forgetProbe();
 });
+
+// (batch sv's review fix I-2: every off module's files checked on every read; j0's hub.js, from before it, checked only the prefix's app)
+const everyOff = hasApps && /for \(const x of ROOF_APPS\)/.test(readFileSync(SRC, 'utf8'));
+test('stages 2–4: a switched-off module’s files not found when written under another app’s prefix either (/fitness/..%2Fweather/roof/…), as stage 1 checked Weather’s for every read; an on module’s there go on as before', { skip: appsCase || (!everyOff && 'the inflite repo beside predates the hub’s every-module check (batch sv)') }, async () => {
+  H.forgetProbe();
+  const asked = apps(() => new Response('file', { headers: { 'Content-Type': 'text/plain' } }));
+  const cases = [
+    [{ ROOF_OFF_WEATHER: '1', ROOF_MARKETS: '1', ROOF_FITNESS: '1' }, ['/fitness/..%2Fweather/roof/weather.js', '/markets/..%2Fweather/roof/weather.js', '/fitness/x/..%2F..%2Fweather/roof/core.js', '/markets/%2e%2e%2Fweather%2Froof%2Fconnector.js']],
+    [{ ROOF_OFF: '1' }, ['/fitness/..%2Fweather/roof/weather.js', '/weather/..%2Fmarkets/roof/markets.js', '/markets/..%2Ffitness/roof/fitness.js']],
+    [{}, ['/weather/..%2Fmarkets/roof/markets.js', '/fitness/..%2Fmarkets/roof/core.js', '/weather/..%2Ffitness/roof/fitness.js', '/markets/..%2Ffitness/roof/fitness.js']],
+    [{ ROOF_MARKETS: '1' }, ['/markets/..%2Ffitness/roof/fitness.js', '/weather/x/..%2F..%2Ffitness/roof/core.js']],
+  ];
+  for (const [o, paths] of cases) for (const p of paths) for (const method of ['GET', 'HEAD']) {
+    const r = await worker.fetch(req(p, { method }), env(o), {});
+    assert.equal(r.status, 404, `${JSON.stringify(o)} ${method} ${p}`);
+    assert.equal(r.headers.get('cache-control'), 'no-store', `${p}: never kept`);
+  }
+  assert.deepEqual(asked, [], 'none of them asked of any app’s host');
+  // (the module they name on: passed on to the prefix's host as before, whose own middleware sends it to its plain form)
+  for (const [o, p] of [[{}, '/fitness/..%2Fweather/roof/weather.js'], [{ ROOF_MARKETS: '1' }, '/weather/..%2Fmarkets/roof/markets.js']]) {
+    assert.equal((await call(req(p), env(o))).res.status, 200, `${JSON.stringify(o)} ${p}`);
+  }
+  assert.equal(asked.length, 2);
+  H.forgetProbe();
+});

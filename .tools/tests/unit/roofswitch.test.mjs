@@ -144,3 +144,113 @@ test('roof_verdict: names the module and what it is now; refusals and failures s
   assert.notEqual(r.status, 0); assert.match(r.stdout, /Refused, nothing changed: not every Worker/);
   s.done();
 });
+
+// ---- roof.yml's own steps (stage 2's SV, s2 spec §7, RI5a): each step's script read out of the workflow and run as a
+// runner would (bash -eo pipefail, its env), in the same sandbox, for every app × state × where ----
+const YML = join(MAIN_DIR, '.github/workflows/roof.yml');
+// (the run: block of the step with that id, its indentation taken off)
+const stepOf = (id) => {
+  const lines = readFileSync(YML, 'utf8').split('\n'), at = lines.findIndex((l) => new RegExp(`^\\s+id: ${id}\\s*$`).test(l));
+  assert.ok(at > 0, `roof.yml has a step ${id}`);
+  const run = lines.findIndex((l, i) => i > at && /^\s+run: \|\s*$/.test(l)), pad = /^\s*/.exec(lines[run + 1])[0].length;
+  const out = [];
+  for (let i = run + 1; i < lines.length && (lines[i].trim() === '' || /^\s*/.exec(lines[i])[0].length >= pad); i++) out.push(lines[i].slice(pad));
+  return out.join('\n');
+};
+const ymlSkip = skip || (!existsSync(YML) && 'no roof.yml') || (!/\bROOF_APP\b/.test(readFileSync(YML, 'utf8')) && 'roof.yml from before stages 2–4 (no app input)');
+const WHERE = { both: ['inflite-next', 'inflite'], 'inflite.ai': ['inflite'], 'next.inflite.ai': ['inflite-next'] };
+const SITES = { both: ['https://inflite.ai', 'https://next.inflite.ai'], 'inflite.ai': ['https://inflite.ai'], 'next.inflite.ai': ['https://next.inflite.ai'] };
+const GATE = { inflite: 'HUB_API', 'inflite-next': 'HUB_API_NEXT' };
+const NAME = { all: 'Every module', weather: 'Weather', markets: 'Markets', fitness: 'Fitness', mail: 'Mail' };
+function runStep(s, id, env) {
+  return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', stepOf(id)], { cwd: MAIN_DIR, encoding: 'utf8',
+    env: { PATH: `${join(s.T, 'bin')}:${process.env.PATH}`, HOME: s.T, HUB_ACCOUNT: 'acc1', CLOUDFLARE_API_TOKEN: 'tok', EVERY: '1', GITHUB_WORKSPACE: MAIN_DIR, ...env } });
+}
+
+test('roof.yml’s set step, for every app × state × where: exactly these secrets, by name, put (or deleted for all on), staging first; for mail, Mail’s own switch first, both ways', { skip: ymlSkip }, () => {
+  for (const where of Object.keys(WHERE)) for (const app of ['all', 'weather', 'markets', 'fitness', 'mail']) for (const state of ['on', 'off']) {
+    const s = sandbox();
+    // (ROOF_OFF there on each Worker, for all on to delete)
+    for (const w of WHERE[where]) s.names(w, ['HUB_KEY', 'ROOF_OFF']);
+    const r = runStep(s, 'set', { ROOF_APP: app, ROOF_STATE: state, ROOF_WHERE: where });
+    const k = `${app} ${state} at ${where}`;
+    assert.equal(r.status, 0, `${k}: ${r.stdout}${r.stderr}`);
+    const v = { markets: state === 'on' ? '1' : '0', fitness: state === 'on' ? '1' : '0', mail: state === 'on' ? '1' : '0', weather: state === 'on' ? '0' : '1' }[app];
+    const want = app === 'all' ? WHERE[where].map((w) => (state === 'off' ? `put ${w} ROOF_OFF=1` : `delete ${w} ROOF_OFF`))
+      : [...(app === 'mail' ? WHERE[where].map((w) => `put inflite-email ${GATE[w]}=${v}`) : []),
+        ...WHERE[where].map((w) => `put ${w} ${app === 'weather' ? 'ROOF_OFF_WEATHER' : `ROOF_${app.toUpperCase()}`}=${v}`)];
+    assert.deepEqual(s.calls(), want, k);
+    s.done();
+  }
+});
+
+test('roof.yml’s allowed step: a module’s on, Weather’s included, refused while ROOF_OFF is set on any Worker named (nothing set after it); its off and all never; the settled step checks Mail’s own Worker for mail alone', { skip: ymlSkip }, () => {
+  const s = sandbox();
+  s.names('inflite', ['HUB_KEY', 'ROOF_OFF']); s.names('inflite-next', ['HUB_KEY']);
+  for (const app of ['weather', 'markets', 'fitness', 'mail']) {
+    let r = runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'both' });
+    assert.notEqual(r.status, 0, `${app} on, both`); assert.match(r.stdout, /Every module is off \(ROOF_OFF\)\. Turn them all on first\./);
+    r = runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'next.inflite.ai' });
+    assert.equal(r.status, 0, `${app} on at next.inflite.ai, where ROOF_OFF isn’t: allowed`);
+    assert.equal(runStep(s, 'allowed', { ROOF_APP: app, ROOF_STATE: 'off', ROOF_WHERE: 'both' }).status, 0, `${app} off`);
+  }
+  for (const state of ['on', 'off']) assert.equal(runStep(s, 'allowed', { ROOF_APP: 'all', ROOF_STATE: state, ROOF_WHERE: 'both' }).status, 0, `all ${state}`);
+  assert.deepEqual(s.calls(), [], 'the check changes nothing');
+  const env = (app) => ({ ROOF_APP: app, ROOF_STATE: 'on', ROOF_WHERE: 'inflite.ai', GITHUB_ENV: join(s.T, 'genv') });
+  let r = runStep(s, 'settled', env('mail'));
+  assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /The Worker inflite-email is settled/); assert.match(r.stdout, /The Worker inflite is settled/);
+  r = runStep(s, 'settled', env('markets'));
+  assert.equal(r.status, 0); assert.doesNotMatch(r.stdout, /inflite-email/); assert.match(r.stdout, /The Worker inflite is settled/);
+  s.done();
+});
+
+test('roof.yml’s wait step reads each app’s own flag: on and off for every module, both hubs; never confirmed by another module’s flag', { skip: ymlSkip }, () => {
+  const s = sandbox();
+  const apps = (o) => ({ weather: true, markets: false, fitness: false, mail: false, ...o });
+  for (const app of ['weather', 'markets', 'fitness']) for (const state of ['on', 'off']) {
+    const on = state === 'on';
+    for (const h of ['inflite.ai', 'next.inflite.ai']) s.hub(h, { ready: true, roof: app === 'weather' ? on : true, apps: apps({ [app]: on }) });
+    let r = runStep(s, 'wait', { ROOF_APP: app, ROOF_STATE: state, ROOF_WHERE: 'both' });
+    assert.equal(r.status, 0, `${app} ${state}: ${r.stdout}`); assert.match(r.stdout, new RegExp(`next\\.inflite\\.ai/api/hub says ${app}: ${on}`));
+    // (the hubs saying the opposite of this app, every other flag as asked: red)
+    const other = Object.fromEntries(Object.keys(apps()).filter((a) => a !== app).map((a) => [a, on]));
+    for (const h of ['inflite.ai', 'next.inflite.ai']) s.hub(h, { ready: true, roof: true, apps: apps({ ...other, [app]: !on }) });
+    r = runStep(s, 'wait', { ROOF_APP: app, ROOF_STATE: state, ROOF_WHERE: 'inflite.ai' });
+    assert.notEqual(r.status, 0, `${app} ${state}, the hub saying otherwise`);
+  }
+  // (all: off only once roof and every module say off; on once roof does)
+  s.hub('inflite.ai', { ready: true, roof: false, apps: apps({ weather: false, markets: true }) });
+  assert.notEqual(runStep(s, 'wait', { ROOF_APP: 'all', ROOF_STATE: 'off', ROOF_WHERE: 'inflite.ai' }).status, 0, 'all off with Markets still on: red');
+  s.hub('inflite.ai', { ready: true, roof: false, apps: apps({ weather: false }) });
+  assert.equal(runStep(s, 'wait', { ROOF_APP: 'all', ROOF_STATE: 'off', ROOF_WHERE: 'inflite.ai' }).status, 0);
+  s.done();
+});
+
+test('roof_verdict’s words for every app × state, green: names the module, the hubs and what it is now; asked by whom', { skip }, () => {
+  const s = sandbox();
+  const v = (app, state, where = 'both') => s.run('roof_verdict', { OUT_ACCOUNT: 'success', OUT_SETTLED: 'success', OUT_ALLOWED: 'success', OUT_SET: 'success', OUT_WAIT: 'success', ROOF_APP: app, ROOF_STATE: state, ROOF_WHERE: where, GITHUB_ACTOR: 'george' });
+  const words = {
+    'all off': 'The roof is off at https://inflite.ai https://next.inflite.ai: every module is the hub\'s milestone-1 page again (Weather at /weather/, and the others), its files not found.',
+    'all on': 'The roof is on at https://inflite.ai https://next.inflite.ai: each module as its own switch says (Weather in InFlite\'s one page).',
+    'weather off': 'Weather is off at https://inflite.ai https://next.inflite.ai: Weather is back to its own page at /weather/, its module\'s files not found.',
+    'weather on': 'Weather is on at https://inflite.ai https://next.inflite.ai: Weather opens in InFlite\'s one page at /weather/.',
+    'markets off': 'Markets is off at https://inflite.ai https://next.inflite.ai: Markets is back to its own page at /markets/, its module\'s files not found.',
+    'markets on': 'Markets is on at https://inflite.ai https://next.inflite.ai: Markets opens in InFlite\'s one page at /markets/.',
+    'fitness off': 'Fitness is off at https://inflite.ai https://next.inflite.ai: Fitness is back to its own page at /fitness/, its module\'s files not found.',
+    'fitness on': 'Fitness is on at https://inflite.ai https://next.inflite.ai: Fitness opens in InFlite\'s one page at /fitness/.',
+    'mail off': 'Mail is off at https://inflite.ai https://next.inflite.ai: Mail is back to its framed page at /mail/, its module\'s files not found.',
+    'mail on': 'Mail is on at https://inflite.ai https://next.inflite.ai: Mail opens in InFlite\'s one page at /mail/.',
+  };
+  for (const [k, line] of Object.entries(words)) {
+    const [app, state] = k.split(' '), r = v(app, state);
+    assert.equal(r.status, 0, k);
+    assert.ok(r.stdout.split('\n').includes(line), `${k}: ${r.stdout}`);
+    assert.match(r.stdout, app === 'all' ? new RegExp(`Asked: the roof ${state} at both, by george`) : new RegExp(`Asked: ${NAME[app]} ${state} at both, by george`), k);
+  }
+  // (the set step failing part way: the switch's own name, red, level 2 named)
+  for (const [app, name] of [['markets', 'ROOF_MARKETS'], ['fitness', 'ROOF_FITNESS'], ['weather', 'ROOF_OFF_WEATHER'], ['all', 'ROOF_OFF']]) {
+    const r = s.run('roof_verdict', { OUT_ACCOUNT: 'success', OUT_SETTLED: 'success', OUT_ALLOWED: 'success', OUT_SET: 'failure', OUT_WAIT: 'skipped', ROOF_APP: app, ROOF_STATE: 'off', ROOF_WHERE: 'inflite.ai' });
+    assert.notEqual(r.status, 0, app); assert.match(r.stdout, new RegExp(`${name} wasn't changed on every Worker`)); assert.match(r.stdout, /rollback level 2/);
+  }
+  s.done();
+});

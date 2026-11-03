@@ -324,16 +324,61 @@ test('One roof: a window of the framework (/ or /weather/) is told to route in t
   assert.deepEqual(w.opened, [`${ORIGIN}/weather/?lat=1&lon=2&name=Here`]);
 });
 
-test('stages 2–4: a window at a module’s page (/markets/, /fitness/, /mail/) is told to route; one that only opens (that app’s hub page, its switch off) is then told to open', { skip: roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4') }, async () => {
+// (stages 2–4 after SV's review (I-3): a module's page told to route first only where the hub says that module is on;
+// j0's worker, from before it, told every one of them to route first)
+const ROUTES = S24 && /\nasync function routes\(/.test(readFileSync(SW, 'utf8'));
+test('stages 2–4: a window at a module’s page (/markets/, /fitness/, /mail/) is told to route where the hub says that module is on, then to open if it only opens; dark, or no word from the hub, told to open at once (no second’s wait), then to route', { skip: roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4') }, async () => {
+  const hub = (apps) => (p) => (p === '/api/hub' ? Response.json({ ready: true, roof: true, apps }) : Response.json({ ok: true }));
+  const noWord = (p) => { if (p === '/api/hub') throw new TypeError('Load failed'); return Response.json({ ok: true }); };
+  const to = '/weather/#warnings';
   for (const at of ['/fitness/#today', '/markets/', '/mail/', '/mail/index.html']) {
-    let w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    const app = at.split('/')[1];
+    if (!ROUTES) {
+      // (j0's worker: route first, whatever the hub says)
+      let w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+      await w.tap({ app: 'weather', url: './#warnings' });
+      assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }], at);
+      w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open' }] });
+      await w.tap({ app: 'weather', url: './#warnings' });
+      assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }, { ifl: 'open', url: to }], `${at}: only opens`);
+      assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
+      continue;
+    }
+    // (the module on: the framework's page, routed; one that only opens (its old worker not yet retired), then opened)
+    let w = worker(hub({ weather: true, [app]: true }), { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
     await w.tap({ app: 'weather', url: './#warnings' });
-    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }], at);
-    w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open' }] });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }], `${at}, on`);
+    w = worker(hub({ weather: true, [app]: true }), { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open' }] });
     await w.tap({ app: 'weather', url: './#warnings' });
-    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }, { ifl: 'open', url: '/weather/#warnings' }], `${at}: only opens`);
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }, { ifl: 'open', url: to }], `${at}, on: only opens`);
     assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
+    // (dark, as it ships, or no word from the hub: the app's milestone-1 page, told to open at once, as milestone 1 did)
+    for (const [k, net] of [['dark', hub({ weather: true, markets: false, fitness: false, mail: false })], ['no word', noWord], ['an older hub (no apps)', hub(undefined)]]) {
+      w = worker(net, { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open', controlled: false }] });
+      const t0 = Date.now();
+      await w.tap({ app: 'weather', url: './#warnings' });
+      assert.ok(Date.now() - t0 < 700, `${at}, ${k}: no second’s wait (${Date.now() - t0} ms)`);
+      assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: to }], `${at}, ${k}`);
+      assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}, ${k}: opened in that window`);
+    }
+    // (dark by the hub's word, though the page there is the framework's, which doesn't say it's heard an open: then routed)
+    w = worker(hub({ [app]: false }), { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: false }] });
+    await w.tap({ app: 'weather', url: './#warnings' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: to }, { ifl: 'route', url: to }], `${at}, said off: open, then route`);
   }
+  if (!ROUTES) return;
+  // (Weather's page as stage 1: told to route first, the hub never asked for it; but where the hub's last word had
+  // Weather off, told to open first)
+  const w = worker(hub({ weather: false, markets: false }), { windows: [{ url: `${ORIGIN}/weather/`, focused: true, hears: 'open', controlled: false }] });
+  await w.tap({ app: 'weather', url: './#warnings' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: to }, { ifl: 'open', url: to }], '/weather/, nothing heard from the hub yet: route first, as stage 1');
+  assert.ok(!w.posts.some((p) => p.path === '/api/hub'), 'the hub not asked for Weather’s page');
+  w.wins[0].url = `${ORIGIN}/markets/`; w.wins[0].messages.length = 0;
+  await w.tap({ app: 'weather', url: './#warnings' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: to }], '/markets/, dark: open');
+  w.wins[0].url = `${ORIGIN}/weather/`; w.wins[0].messages.length = 0;
+  await w.tap({ app: 'weather', url: './#warnings' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: to }], '/weather/, the hub’s last word Weather off: open first');
 });
 
 test('stages 2–4: a Mail push shows its own words at once, then Mail’s (the sender and subject), silently in the same place; none fetched for a tag that isn’t an id, nor shown when Mail’s answer is odd', { skip: roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4') }, async () => {
