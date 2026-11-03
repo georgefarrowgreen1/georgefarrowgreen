@@ -9,6 +9,7 @@ export const connector = {
   name: "Fitness",
   shares: {
     cards: "Today’s session or the ride you’ve done",
+    search: "Your activities and sessions, on this phone",
     notifications: "Your session, in the morning notification",
     actions: "Open Today, Activities or Progress; send a session",
     screens: "Today · Activities · Progress",
@@ -27,8 +28,8 @@ export const connector = {
   lazy: [],
   // mini(answer) → { kind: "num", num, label: "Fitness" } from answer.cards.fitness.ctl, else null
   mini(a) { const c = a?.cards?.fitness; return c && Number.isFinite(Number(c.ctl)) ? { kind: "num", num: String(Math.round(Number(c.ctl))), label: "Fitness" } : null; },
-  // search(q) → Fitness Settings, Your Numbers, the devices page: on this phone, q never leaves it (D16)
-  search(q) {
+  // search(q, { userId }) → Fitness Settings, Your Numbers, the devices page: on this phone, q never leaves it (D16)
+  search(q, { userId = null } = {}) {
     const s = String(q ?? "").toLowerCase().trim();
     if (!s) return [];
     return ENTRIES.filter(([t, , k]) => t.toLowerCase().includes(s) || k.includes(s)).map(([title, at]) => ({ title, sub: "Fitness", icon: "fitness", href: `/fitness/#settings${at}` }));

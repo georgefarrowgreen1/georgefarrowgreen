@@ -4,7 +4,7 @@
    root, keyframes named fx-*. Buttons and links take Fitness's accent (the framework's --acc set) where the app had the
    site's blue; zones, sports and the lines of fitness, fatigue and form keep Fitness's own colours. fxviews.css (FXB)
    builds on these tokens. Rules generated from fitness/styles.css 168-331, 443-512, 538-561, 614-853, 1066-1288,
-   1410-1576, 1995-2005. */
+   1410-1576, 1808-1830 (the week grid), 1995-2005. */
 
 /* ---- tokens: dark first, light in both light cases ---- */
 .m-fitness, .ifl-sheet[data-app="fitness"] {
@@ -201,7 +201,7 @@
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .row .when small{display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-3); margin-top: 3px;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .row.today .when small{color: var(--tint-text);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .btn{display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
-  color: var(--on-tint); background: linear-gradient(180deg, #5aa2ff, var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
+  color: var(--on-tint); background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 26px -12px var(--tint-deep);
   transition: transform var(--dur-release) var(--ease-spring), filter var(--dur-fast);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .btn:active{transform: scale(0.97); transition-duration: var(--dur-press);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .btn.quiet{color: var(--text); background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 0 0 0.5px var(--line);}
@@ -303,7 +303,7 @@
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .v{font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track{position: relative; width: 100%; height: 210px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); touch-action: none; cursor: ns-resize; display: flex; align-items: flex-end;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track:focus-visible{outline: 2px solid var(--tint); outline-offset: 2px;}
-:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track i{display: block; width: 100%; height: var(--h, 30%); border-radius: 12px; background: linear-gradient(180deg, #5aa2ff, var(--tint)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); transition: height 0.12s var(--ease-out);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track i{display: block; width: 100%; height: var(--h, 30%); border-radius: 12px; background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); transition: height 0.12s var(--ease-out);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track i::before{content: ""; display: block; width: 16px; height: 3px; margin: 6px auto 0; border-radius: 2px; background: rgba(255, 255, 255, 0.75);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track i.rest{background: none; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 25%, transparent); border-radius: 6px; min-height: 10px;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .rh-day .track i.rest::before{display: none;}
@@ -883,6 +883,29 @@
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .ev-when{animation: none;}
 }
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .ph-vs:not(.up):not(.down){color: var(--tint-text); background: color-mix(in srgb, var(--tint) 13%, transparent);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .t-today .cols{grid-template-columns: minmax(0, 1fr) 360px;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .wgrid{display: grid; gap: 14px; padding: 14px 16px 16px; margin-bottom: 18px; border-radius: var(--r-group);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .wg-week h3{display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .wg-week .aside{text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text-2);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .wg-days{display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday{position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; min-height: 92px; padding: 10px 11px; border: 0; border-radius: 16px; background: var(--glass-ctl);
+    color: var(--text); text-align: left; font: inherit; transition: transform var(--dur-release) var(--ease-spring), background-color var(--dur-fast), box-shadow var(--dur-fast);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday small{font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday b{font-size: 14px; font-weight: 650; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday em{font-style: normal; font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday .mini{display: block; margin-top: auto; padding-top: 4px; height: 24px;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday .mini svg{display: block; width: 100%; height: 20px;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday .g-ok{position: absolute; top: 9px; right: 9px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--good);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.rest b{color: var(--text-2); font-weight: 600;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.past:not(.on){opacity: 0.72;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.missed em{color: var(--warn, #d9822b);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.today small{color: var(--tint-text);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.did{box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--good) 55%, transparent);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.on{background: color-mix(in srgb, var(--tint) 12%, var(--glass-ctl)); box-shadow: inset 0 0 0 2px var(--tint);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday:active{transform: scale(0.97); transition-duration: var(--dur-press);}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday[draggable="true"]{cursor: grab;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.dragging{opacity: 0.4;}
+:is(.m-fitness,.ifl-sheet[data-app="fitness"]) .gday.drop-on{background: color-mix(in srgb, var(--tint) 16%, transparent); outline: 2px dashed var(--tint); outline-offset: -2px;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .ride-at{display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, #000 18%, transparent);}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .ride-at .ic{flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;}
 :is(.m-fitness,.ifl-sheet[data-app="fitness"]) .ride-at .tx{flex: 1; min-width: 0; display: grid; gap: 1px;}

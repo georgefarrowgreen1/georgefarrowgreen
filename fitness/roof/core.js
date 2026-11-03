@@ -17,6 +17,7 @@
 // F and M (formats.js, map.js) are NET files (C4), never imported statically: F is filled by needF() (fw.lazy), M's
 // able/lost/sweep answer at once and routeMap loads map.js through fw.lazy.
 import { U, dur } from "../ui.js";
+export { U, clock, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distNum, dur, hm, pace, pct, plural, speed, stepLen, timeOf, weight } from "../ui.js";
 import { WORKOUTS, PLANS, measure, layOut, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
 import { summarise, fitness, rescale, tssOf, stayingOf } from "../load.js";
 import * as A from "../account.js";
@@ -30,7 +31,7 @@ import * as I from "./idb.js";
 import { effortFigs } from "./fxcalc.js";
 
 export { A, BT, C, E, G, R };
-export { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, measure, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
+export { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
 export { summarise, fitness, formSaid, perSecond, rescale, tssOf, stayingOf } from "../load.js";
 export const EVENTS = Object.freeze(["me", "acts", "plan", "feel", "offers", "times", "settings", "loading", "error"]);
 
@@ -38,7 +39,7 @@ const subs = new Map(EVENTS.map((e) => [e, new Set()]));
 export function on(evt, fn) { const s = subs.get(evt); if (!s) throw new Error(`no event ${evt}`); s.add(fn); return () => s.delete(fn); }
 export function emit(evt, detail) { for (const fn of [...(subs.get(evt) || [])]) { try { fn(detail); } catch (e) { console.error(e); } } }
 // (app.js's redraw(): the named event; none, "me")
-export const redraw = (part = "me") => emit(EVENTS.includes(part) ? part : "me");
+const redraw = (part = "me") => emit(EVENTS.includes(part) ? part : "me");
 
 // ---- kept in this browser (fitness:*, as app.js 817) ----
 export const store = {
@@ -349,6 +350,20 @@ export const M = {
     return (await Q.M).routeMap(el, o);
   },
 };
+// a repeatable random number, from a seed (sample.js rng: the module never imports the demo's file)
+export function rng(seed) {
+  let x = 0;
+  for (const ch of String(seed)) x = (x * 31 + ch.charCodeAt(0)) | 0;
+  return () => { x |= 0; x = (x + 0x6d2b79f5) | 0; let t = Math.imul(x ^ (x >>> 15), 1 | x); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// the points along a route (a few thousand at most), each its stretch's colour, from the module's own colours (app.js routeOf)
+export function routeOf(s, zoneAt) {
+  const idx = []; for (let i = 0; i < s.t.length; i++) if (s.lat[i] != null && s.lon[i] != null) idx.push(i);
+  const step = Math.max(1, Math.ceil(idx.length / 3000)), use = idx.filter((_, j) => j % step === 0 || j === idx.length - 1);
+  const el = Q.fw?.screenEl, css = el ? getComputedStyle(el) : null, col = {};
+  const colourOf = (z) => (col[z] ??= css?.getPropertyValue("--" + z).trim() || "#0a84ff");
+  return { coords: use.map((i) => [s.lon[i], s.lat[i]]), colours: zoneAt ? use.map((i) => colourOf(zoneAt(i))) : null };
+}
 export const lightNow = () => (Q.fw?.theme?.() || "light") === "light";
 
 // ---- a file saved: a link to it on a blob, clicked (fitness/app.js saveFile, off the claude.ai viewer) ----
@@ -708,7 +723,6 @@ function forgetFiles() {
 // ---- the module's life ----
 // (the framework's toast: one at a time, announced; a bad one says so in its words, as app.js's do)
 const toast = (text, bad = false, ms) => { Q.fw?.toast?.(text); };
-export { toast };
 const timers = new Set();
 const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); if (Q.fw) fn(); }, ms); timers.add(t); return t; };
 // (the check-in, asked once a day as Fitness opens or comes back: todayview.js hands it in)
