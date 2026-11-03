@@ -5,4 +5,4 @@
 // Signatures: view(el, ctx) → { draw(), hide(), destroy() }; openX(ctx, …) as the ctx.open table of §4.7.
 import * as X from "./x.js";
 export const STUB = true;
-export function openSettings() { throw new Error("not yet: openSettings"); }
+export function openSettings(ctx, ...a) { throw new Error("not yet: openSettings"); }

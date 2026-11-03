@@ -11,4 +11,4 @@ import * as EFF from "../efforts.js";
 import * as CH from "../charts.js";
 import { sessionSendCard, packCard } from "../send.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
