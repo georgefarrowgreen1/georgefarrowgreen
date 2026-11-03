@@ -136,8 +136,10 @@ await G.ctx.addInitScript(({ to, w, pk }) => {
   const go = () => {
     let c = null; try { c = document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat || null; } catch (_) {}
     // (and only once the page has no activation of any tap: a script, on its own; checked in the same turn as the call)
-    if (c && c.state === 'ready' && navigator.userActivation?.isActive === false) return Promise.resolve(c.sendTo(to, w, pk)).then((r) => console.log('notap ' + JSON.stringify({ r, active: navigator.userActivation?.isActive })), (e) => console.log('notap ' + JSON.stringify({ err: String(e) })));
-    if (Date.now() - t0 < 45000) setTimeout(go, 400); else console.log('notap ' + JSON.stringify({ err: 'no engine' }));
+    // (the page's own activation back as it is once that's asked: step 5's real tap is read from it)
+    const done = (x) => { try { delete navigator.userActivation; } catch (_) {} console.log('notap ' + JSON.stringify(x)); };
+    if (c && c.state === 'ready' && navigator.userActivation?.isActive === false) return Promise.resolve(c.sendTo(to, w, pk)).then((r) => done({ r, active: false }), (e) => done({ err: String(e) }));
+    if (Date.now() - t0 < 45000) setTimeout(go, 400); else done({ err: 'no engine' });
   };
   setTimeout(go, 400);
 }, { to: P.id, w: cards.weather.say, pk: packed.weather });

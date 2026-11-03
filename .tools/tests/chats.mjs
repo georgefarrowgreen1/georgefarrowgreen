@@ -192,12 +192,12 @@ const ans = await M.p.locator('.msgs').innerText().catch(() => '');
 ok(/In Today for you both|Yes, \d\d:\d\d works|Yes, .* works/.test(ans), '4. her answer drawn: “Yes, … works”', ans.slice(-200).replace(/\s+/g, ' '));
 
 // ---- 5. a ride planned with the send sheet, answered Yes with Mira's buttons: with_id on both sides ----
-await G.p.goto(`${HUB}/chats/`); await G.p.waitForSelector('.mlist .mrow', { timeout: 30000 }).catch(() => {});
 // (fx_offers is made by the server as the invite's own record is written: never here, so its columns are its own)
 const day = new Date().toISOString().slice(0, 10);
 const fcard = { v: 1, kind: 'fitness', from: 'fitness', at: Date.now() - 60e3, say: 'Today: Endurance 75.', snap: { day, tz: 'Europe/London', sport: 'ride', name: 'Endurance 75', kind: 'Endurance', wid: 'endurance-75', secs: 4500, tss: 62, best: null, done: null } };
-await G.p.evaluate((h) => { location.hash = h; }, chatHash(fcard.say, fcard));
-await G.p.waitForSelector(`.sheet [data-act=sendpick][data-id="${M.id}"]`, { timeout: 15000 });
+// (the card link opened as an app opens it: Chats' address with the card in its #)
+await G.p.goto(`${HUB}/chats/${chatHash(fcard.say, fcard)}`);
+await G.p.waitForSelector(`.sheet [data-act=sendpick][data-id="${M.id}"]`, { timeout: 30000 });
 await G.p.click(`.sheet [data-act=sendpick][data-id="${M.id}"]`);
 await G.p.click('.sheet [data-act=sendplan]');
 await G.p.waitForSelector('.sheet .planbox', { timeout: 20000 }).catch(() => {});
