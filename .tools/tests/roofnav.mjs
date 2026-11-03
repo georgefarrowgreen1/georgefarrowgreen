@@ -36,7 +36,8 @@ const tapTile = (p, app = 'weather') => p.evaluate((s) => { const a = document.q
 // (Weather's own address stood in for: a page there, so a way out to it is seen and goes nowhere real)
 const OWN_AT = /^https?:\/\/weather\.(?:ifl\.test:8788|inflite\.ai)\//;
 const ownPage = (ctx) => route(ctx, OWN_AT, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Weather</title><h1>WEATHER ON ITS OWN</h1>' }));
-const leaving = (p, ms = 20000) => p.waitForRequest((r) => r.isNavigationRequest() && r.frame() === p.mainFrame() && OWN_AT.test(r.url()), { timeout: ms }).catch(() => null);
+// (→ the address the page landed on there, its hash included: a navigation request's own URL never carries the hash)
+const leaving = (p, ms = 20000) => p.waitForURL((u) => OWN_AT.test(u.href), { timeout: ms }).then(() => p.url(), () => null);
 // (a hub page's own Back: the shared block's IFL.hub.back(), what its Back button calls)
 const hubBack = (p) => p.evaluate(() => window.IFL?.hub?.back?.() ?? 'none').catch(() => 'navigated');
 const hubPageUp = (p, path) => p.waitForFunction((x) => location.pathname === x && !!window.IFL?.hub?.on, path, { timeout: 30000 }).then(() => true, () => false);
@@ -176,10 +177,16 @@ await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same 
   }
 
   // (the bar alone on each page: everything else made invisible through the page's own styles object, which the page's
-  // CSP allows; the tabs that aren't current on either compared, and the bar's place and size)
+  // CSP allows, and what's behind the bar (the page's own background, which the bar's glass lets through: Chats' is dark
+  // whatever the phone says) made one plain grey on both, so only the bar itself is compared; the tabs that aren't
+  // current on either compared, and the bar's place and size)
   const alone = (pg, bar) => pg.evaluate((bar) => {
     const nav = document.querySelector(bar); if (!nav) return null;
     for (const e of document.body.querySelectorAll('*')) if (!e.contains(nav) && !nav.contains(e)) e.style.visibility = 'hidden';
+    for (let e = nav.parentElement; e; e = e.parentElement) {
+      for (const [k, v] of [['background', '#808080'], ['background-image', 'none'], ['backdrop-filter', 'none'], ['-webkit-backdrop-filter', 'none'], ['box-shadow', 'none']]) e.style.setProperty(k, v, 'important');
+    }
+    try { const st = new CSSStyleSheet(); st.replaceSync('html::before, html::after, body::before, body::after { display: none !important; }'); document.adoptedStyleSheets = [...document.adoptedStyleSheets, st]; } catch (_) {}
     const r = nav.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
   }, bar);
   for (const scheme of ['light', 'dark']) {
@@ -265,9 +272,9 @@ await part(8, 'the roof turned off mid-session (the client’s side): a shown We
   await ownPage(R2.ctx);
   const from = here(R2.p), went = leaving(R2.p, 15000);
   await R2.p.click(H.ERROR_OWN).catch(() => {});
-  const req = await went;
-  let u = null; try { u = new URL(req.url()); } catch (_) {}
-  ok(!!u && u.origin === OWN && u.pathname + u.search + u.hash === from.replace(/^\/weather/, ''), `8. …Open Weather on Its Own tapped: off to Weather’s own address, the same path and hash (${OWN}${from.replace(/^\/weather/, '')}, §3.12)`, req?.url() || 'no navigation');
+  const landed = await went;
+  let u = null; try { u = new URL(landed); } catch (_) {}
+  ok(!!u && u.origin === OWN && u.pathname + u.search + u.hash === from.replace(/^\/weather/, ''), `8. …Open Weather on Its Own tapped: off to Weather’s own address, the same path and hash (${OWN}${from.replace(/^\/weather/, '')}, §3.12)`, landed || 'no navigation');
   await R.ctx.close(); await R2.ctx.close();
 
   // a framework page that boots at /weather/ with roof:false (D14): with the marker set, straight to Weather's own
@@ -279,11 +286,11 @@ await part(8, 'the roof turned off mid-session (the client’s side): a shown We
   for (const [hash, marked, hubDocs] of [['#days', true, 1], ['#warnings', false, 2]]) {
     const pg = await R3.ctx.newPage(), d = loads(pg), off = leaving(pg, 20000);
     await pg.goto(`${HUB}/weather/${hash}`).catch(() => {});
-    const req3 = await off;
+    const to = await off;
     await wait(500);
-    let v = null; try { v = new URL(req3.url()); } catch (_) {}
+    let v = null; try { v = new URL(to); } catch (_) {}
     const atHub = d.list.filter((x) => x.startsWith(HUB));
-    ok(!!v && v.pathname + v.search + v.hash === `/${hash}` && atHub.length === hubDocs, `8. booting at /weather/${hash} with roof:false, ${marked ? 'the marker (ifl-roof-bounce) set: straight' : 'no marker: the marker set, the location replaced once, then'} to Weather’s own address, the same hash, no loop (${hubDocs} document${hubDocs > 1 ? 's' : ''} at the hub, D14)`, js({ to: req3?.url() || null, docs: d.list }));
+    ok(!!v && v.pathname + v.search + v.hash === `/${hash}` && atHub.length === hubDocs, `8. booting at /weather/${hash} with roof:false, ${marked ? 'the marker (ifl-roof-bounce) set: straight' : 'no marker: the marker set, the location replaced once, then'} to Weather’s own address, the same hash, no loop (${hubDocs} document${hubDocs > 1 ? 's' : ''} at the hub, D14)`, js({ to, docs: d.list }));
     if (v && v.origin !== OWN) console.log(`note: D14's way out went to ${v.origin}, not the stack's ${OWN} (the session's links weren't in yet)`);
     d.stop();
   }

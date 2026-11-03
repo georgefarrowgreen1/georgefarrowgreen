@@ -323,9 +323,9 @@ export function meter(p) {
       await Promise.all(jobs);
       const first = rows.filter((r) => !r.lazy);
       const sum = (k) => first.filter((r) => r.kind === k).reduce((a, r) => a + r.gz, 0);
-      const seen = new Map(); for (const r of first) seen.set(r.path, (seen.get(r.path) || 0) + 1);
+      const seen = new Map(); for (const r of first) seen.set(r.path, [...(seen.get(r.path) || []), r.query || '(no query)']);
       return { requests: first.length, js: sum('js'), css: sum('css'), lazy: rows.filter((r) => r.lazy).map((r) => r.path), radar: rows.filter((r) => RADAR_STACK.test(r.path)).map((r) => r.path),
-        unminified: first.filter((r) => r.unminified).map((r) => r.path), twice: [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} ×${n}`), rows: first };
+        unminified: first.filter((r) => r.unminified).map((r) => r.path), twice: [...seen].filter(([, q]) => q.length > 1).map(([k, q]) => `${k} ×${q.length} (${[...new Set(q)].join(', ')})`), rows: first };
     },
   };
 }
