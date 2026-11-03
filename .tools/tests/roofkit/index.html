@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="ifl-hub" content="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>One roof: the framework's kit</title>
+  <!-- FW's kit page (One roof, spec §9.4 FW): InFlite's framework from the inflite repo's today/public/ (served from
+       disk at http://kit.test by roofkit/serve.mjs), the real shared block (cut from today/public/app.js between its
+       marks: /kit/shared.js), a signed-in session with hub and roof on, three stand-in tab screens, and a fake module
+       with four sections at Weather's address; ?module=/weather/roof/weather.js mounts MAIN's real Weather module. -->
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/day.css">
+  <link rel="stylesheet" href="/roof/roof.css">
+  <script src="/kit/shared.js"></script>
+  <script type="module" src="/kit/kit.js"></script>
+</head>
+<body>
+<div class="sky" aria-hidden="true"><div class="aura a1"></div><div class="aura a2"></div><div class="aura a3"></div></div>
+<div class="today-in" id="in">
+  <div id="hd"></div>
+  <div id="views">
+    <main id="today" class="view" aria-label="Today"></main>
+    <main id="apps" class="view" aria-label="Apps" hidden></main>
+    <main id="you" class="view" aria-label="You" hidden></main>
+  </div>
+  <nav class="ifl-tabs" id="tabs" aria-label="InFlite"></nav>
+</div>
+<dialog class="ifl-sheet" id="morning" aria-labelledby="morning-t"><div class="ifs-grab" aria-hidden="true"></div><header class="ifs-head"><h2 id="morning-t" tabindex="-1">Morning Notification</h2><button class="ifs-btn" type="button" data-close aria-label="Close">✕</button></header><div class="ifs-body"><p class="ifl-sub">One notification, instead of one from each app.</p><button class="ifl-btn" type="button" id="mFirst">First</button> <button class="ifl-btn" type="button" id="mLast">Last</button></div><footer class="ifs-acts"><button class="ifl-btn primary" type="button" data-close>Done</button></footer></dialog>
+</body>
+</html>
