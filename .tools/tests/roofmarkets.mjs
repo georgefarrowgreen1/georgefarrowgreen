@@ -353,10 +353,8 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
   ok(Object.keys((await storage(q)).local).some((k) => k.startsWith('markets:')), '8. …Markets’ kept copy left alone');
   await closeSheets(q);
   // signed out for real: the cookie gone from this phone, then Markets' next ask refused
+  // (in the page, no reload: a sign-out the page finds out about, signedOutNow, not a signed-out boot)
   await E.ctx.clearCookies();
-  await q.click(H.hdSec('today')).catch(() => {});
-  await q.goto(`${HUB}/markets/#holdings`).catch(() => {});
-  await wait(1500);
   await tapEl(q, `${H.M_MARKETS} ${H.mkRow('TSCO.L')}`);
   const goneKeys = await until(async () => { const l = (await storage(q)).local; return !Object.keys(l).some((k) => k.startsWith('markets:')) ? 'gone' : null; }, 20000);
   ok(!!goneKeys, '8b. signed out (confirmed): no markets:* key left on this phone (signedOutNow → forgetApps, RB1)', js(Object.keys((await storage(q)).local)));
@@ -516,6 +514,8 @@ await part(14, 'axe, 320/390 light and dark, the 1280 layout', '§2.1, S2-D8, S2
     ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, `14. 390 light, ${id}: no sideways scroll`);
     await shot(p, `14-390-light-${id}`);
   }
+  await p.click(H.hdSec('holdings')); await shown(p, SEC('holdings'));
+  await p.locator(H.MK_ABOUT).scrollIntoViewIfNeeded().catch(() => {});
   await p.click(H.MK_ABOUT).catch(() => {});
   ok(await sheetOpen(p, 'mk-about'), '14. Holdings’ foot “About these prices”: the About sheet (S2-D7)');
   await closeSheets(p);
