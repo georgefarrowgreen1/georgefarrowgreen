@@ -2,6 +2,7 @@
 import http from 'http';
 import { appendFileSync } from 'fs';
 const [,, log] = process.argv;
+let past = null;   // past: the weather of the days gone by, as Fitness's pastWet asks it (past_days ≥ 28, hourly precipitation and weather codes): null or 'dry' (every hour dry), 'wet' (every hour wet), or { wet: ['YYYY-MM-DD' or a weekday, 0 Sunday to 6, …], hours: [from, to] (UTC hours; all day if not given) }
 let kp = 2, eonet = [], earthDown = false, ens = null, shower = null;   // shower: { cell: [lat, lon, r°], quarters } heavy rain in the 15-minute forecast only, for its first quarters   // ens: { sd } km/h of disagreement between the ensemble's members (null: no ensemble)   // the Earth's stand-ins: NOAA's Kp (every 3 hours), NASA EONET's open events
 let speed = 40, from = 270, down = false, pattern = '', clearAfter = null, cell = null, lane = null, startAfter = null, aloft = 1, metDown = false, cellWx = null, aloft80 = null, aloft180 = null, jet = null;   // jet: { sp, from } the wind 250 hPa up (the jet stream)   // the wind 80 and 180 m up, as multiples of the ground's (default: as 120 m)
    // cellWx: { code, cape, rain } inside the cells instead of a thunderstorm
@@ -11,7 +12,7 @@ let speed = 40, from = 270, down = false, pattern = '', clearAfter = null, cell 
    // cell: [lat, lon, radius°] of thunderstorms (pattern 'cell')   // clearAfter: hours until the pattern's weather clears (hourly forecasts)
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
-  if (u.pathname === '/mode') { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => { const m = JSON.parse(Buffer.concat(c).toString() || '{}'); ({ speed = speed, from = from, down = down, pattern = pattern } = m); clearAfter = m.clearAfter ?? null; cell = m.cell ?? null; lane = m.lane ?? null; startAfter = m.startAfter ?? null; aloft = 'aloft' in m ? m.aloft : 1; metDown = !!m.metDown; cellWx = m.cellWx ?? null; aloft80 = m.aloft80 ?? null; aloft180 = m.aloft180 ?? null; jet = m.jet ?? null; kp = m.kp ?? 2; eonet = m.eonet ?? []; earthDown = !!m.earthDown; ens = m.ens ?? null; shower = m.shower ?? null; res.end('ok'); }); return; }
+  if (u.pathname === '/mode') { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => { const m = JSON.parse(Buffer.concat(c).toString() || '{}'); ({ speed = speed, from = from, down = down, pattern = pattern } = m); clearAfter = m.clearAfter ?? null; cell = m.cell ?? null; lane = m.lane ?? null; startAfter = m.startAfter ?? null; aloft = 'aloft' in m ? m.aloft : 1; metDown = !!m.metDown; cellWx = m.cellWx ?? null; aloft80 = m.aloft80 ?? null; aloft180 = m.aloft180 ?? null; jet = m.jet ?? null; kp = m.kp ?? 2; eonet = m.eonet ?? []; earthDown = !!m.earthDown; ens = m.ens ?? null; shower = m.shower ?? null; past = m.past ?? null; res.end('ok'); }); return; }
   appendFileSync(log, JSON.stringify({ path: u.pathname, q: Object.fromEntries(u.searchParams), headers: req.headers }) + '\n');
   if (u.pathname === '/products/noaa-planetary-k-index-forecast.json') {
     if (earthDown) { res.writeHead(500); return res.end(); }
@@ -34,6 +35,11 @@ http.createServer((req, res) => {
   const met = u.pathname.startsWith('/weatherapi/');                 // MET Norway's locationforecast (one point)
   if (met ? metDown : down) { res.writeHead(500); return res.end(); }
   const lats = (u.searchParams.get('latitude') || u.searchParams.get('lat') || '').split(','), lons = (u.searchParams.get('longitude') || u.searchParams.get('lon') || '').split(',');
+  // (the days gone by, for Fitness's pastWet: past_days=56 with hourly precipitation and weather codes, each hour wet or dry
+  // by the pattern POST /mode { past } set; the zone GMT)
+  if (!met && !pattern.startsWith('share-') && Number(u.searchParams.get('past_days')) >= 28 && /precipitation|weather_code/.test(u.searchParams.get('hourly') || '')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(lats.length === 1 ? pastOne(u, 0, lats, lons) : lats.map((_, i) => pastOne(u, i, lats, lons))));
+  }
   // (Send to a Friend's patterns, 'share-…': a whole forecast of their own, shareOne below)
   if (!met && pattern.startsWith('share-')) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(lats.length === 1 ? shareOne(u, 0, lats, lons) : lats.map((_, i) => shareOne(u, i, lats, lons)))); }
   // pattern 'swirl': wind that varies from place to place, for the wind map
@@ -71,6 +77,22 @@ http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(lats.length === 1 ? one(0) : lats.map((_, i) => one(i))));
 }).listen(8796, '127.0.0.1').keepAliveTimeout = 120e3;   // (longer than tests leave a connection idle)
+
+// The days gone by (Fitness's pastWet, for Today's habit rule): every hour from midnight GMT past_days ago to the end of
+// forecast_days, each wet or dry by the past pattern (/mode { past }), in the forecast's own form
+function pastOne(u, i, lats, lons) {
+  const q = u.searchParams, H = 3600e3, D = 864e5, n = (Number(q.get('past_days')) + Number(q.get('forecast_days') || 7)) * 24;
+  const h0 = Math.floor(Date.now() / D) * D - Number(q.get('past_days')) * D, unix = q.get('timeformat') === 'unixtime';
+  const wetAt = (ms) => {
+    if (past === 'wet') return true;
+    if (!past || past === 'dry' || typeof past !== 'object') return false;
+    const d = new Date(ms), day = d.toISOString().slice(0, 10), hr = d.getUTCHours(), [from, to] = Array.isArray(past.hours) ? past.hours : [0, 24];
+    return (past.wet || []).some((w) => w === day || w === d.getUTCDay()) && hr >= from && hr < to;
+  };
+  const ts = Array.from({ length: n }, (_, h) => h0 + h * H), out = { latitude: +lats[i], longitude: +lons[i], timezone: 'GMT', timezone_abbreviation: 'GMT', utc_offset_seconds: 0, hourly: { time: ts.map((ms) => (unix ? ms / 1000 : new Date(ms).toISOString().slice(0, 16))) } };
+  for (const k of String(q.get('hourly') || '').split(',').filter(Boolean)) out.hourly[k] = ts.map((ms) => (k === 'precipitation' ? (wetAt(ms) ? 1.5 : 0) : k === 'weather_code' ? (wetAt(ms) ? 63 : 1) : k === 'is_day' ? 1 : /^temperature|^apparent/.test(k) ? 14 : 0));
+  return out;
+}
 
 // Send to a Friend (sharecard, shareask, shareplan): the same weather at every place, in the forecast's own form (each
 // variable asked for, hourly, daily, now and by the quarter hour; times in UTC, the zone it says it's in).

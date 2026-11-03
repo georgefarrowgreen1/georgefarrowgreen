@@ -66,9 +66,19 @@ export function sessionSendCard({ day, tz, w = null, done = null, best = null, a
 // ---- to Chat: the same four lines in every app (pigeon/cards.js chatHash), the words first, so an older Chat, which
 // reads only those, puts them in its message box as ever ----
 const b64url = (s) => { let b = ""; for (const x of new TextEncoder().encode(s)) b += String.fromCharCode(x); return btoa(b).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+// the card as it goes in an address (base64url of its JSON), or "" where there's none or it's too long to
+export const packCard = (card) => { const p = card ? b64url(JSON.stringify(card)) : ""; return p.length <= 6000 ? p : ""; };
 export function chatHash(words, card) {
-  const packed = card ? b64url(JSON.stringify(card)) : "";
-  return `#${new URLSearchParams(packed && packed.length <= 6000 ? { share: words, card: packed } : { share: words })}`;
+  const packed = packCard(card);
+  return `#${new URLSearchParams(packed ? { share: words, card: packed } : { share: words })}`;
 }
 // Chat, beside Fitness (fitness. → chat.), ending in "/", for chatPage() + chatHash(…); elsewhere none
 export const chatPage = (loc = globalThis.location) => (loc?.hostname?.startsWith("fitness.") ? `${loc.origin.replace("//fitness.", "//chat.")}/` : null);
+// Where a card goes, as Send's tapped: at InFlite's hub (hub.on), to Chats' sheet over this page (hub.send, with the card
+// packed: InFlite's menu, IFL.hub), never leaving it → { hub: what hub.send promises }; off the hub, as ever, to Chat
+// beside Fitness → { url } (chatPage() + chatHash(…)); with neither, null (the phone's own sharing, app.js's)
+export function sendWay(words, card, { hub = null, loc = globalThis.location } = {}) {
+  if (hub?.on) return { hub: hub.send(words, packCard(card)) };
+  const chat = chatPage(loc);
+  return chat ? { url: chat + chatHash(words, card) } : null;
+}

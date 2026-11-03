@@ -3,13 +3,13 @@
 
 import * as TC from "./todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
-import { dayChanges, dlFor, download, moveView, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
+import { dayChanges, dayStamp, dlFor, download, moveView, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
 import { mapsAlways, wide } from "./app.js";
 import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
 import * as X from "./app.js";
-import { offerCards, withOffer, withLine } from "./invites.js";
-import { sessionSendCard, chatHash, chatPage } from "./send.js";
+import { offerCards, withOffer, withLine, withChip, undoToday } from "./invites.js";
+import { sessionSendCard, sendWay } from "./send.js";
 
 // ---- Today ----
 // Today, and every day around it (the Plan's days too): the day strip, the day you're looking at, what Rhythm's
@@ -173,7 +173,7 @@ function dayCard(day) {
     h("p.about", { text: rhythmOn() ? "Not ridden: Rhythm has taken it in, and the days after follow what you did." : "Not ridden." }));
   const changes = dayChanges(day);
   return h("div.card.hero.glass.session.ahead", {},
-    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mateOn(day) ? ` · with ${mateOn(day).who}` : S.swaps[day] !== undefined ? " · changed" : ""}`), w.name, null),
+    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mateOn(day) ? withChip(mateOn(day)) : S.swaps[day] !== undefined ? " · changed" : ""}`), w.name, null),
     mateOn(day) && h("p.with-mate", { text: withLine(mateOn(day)) }),
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
@@ -309,24 +309,24 @@ function sessionCard(w, id, done, day = TODAY) {
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day");
   if (!w && rd) {
     const next = [1, 2, 3].map((n) => rhDay(addDays(TODAY, n))).find((x) => x?.id), nw = next && wkById(next.id);
-    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), nw && nextUp(next.date, nw));
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), rideAtRow(null), nw && nextUp(next.date, nw));
   }
   if (!w && myPlan() && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
     return h("div.card.hero.glass.session.rest", {},
       heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "New plan"), `${plan().name} starts ${planStart() - TODAY < 7 * DAY ? dayName(planStart()) : dayShort(planStart())}`),
-      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }), fw && nextUp(first.date, fw));
+      h("p.about", { text: "Until then, ride as you like: easy miles are never wasted." }), rideAtRow(null), fw && nextUp(first.date, fw));
   }
   if (!w) {
     const next = [1, 2, 3].map((n) => addDays(TODAY, n)).find((d) => plannedOn(d));
     const nw = next && plannedOn(next) !== "event" ? wkById(plannedOn(next)) : null;
     return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"),
-      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), nw && nextUp(next, nw));
+      h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), rideAtRow(null), nw && nextUp(next, nw));
   }
   const m = measure(w, paceFor(w.sport)), swapped = S.swaps[TODAY] !== undefined;
   const fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
   return h("div.card.hero.glass.session.go", {},
-    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mate ? ` · with ${mate.who}` : swapped ? " · swapped" : ""}`), w.name),
+    heroTop(h("span.sport", {}, h("i.s-" + w.sport, {}, sportIcon(w.sport, 14)), `${SPORTS[w.sport].name} · ${w.kind}${mate ? withChip(mate) : swapped ? " · swapped" : ""}`), w.name),
     mate && h("p.with-mate", { text: withLine(mate) }),
     h("div.hero-figs", {}, fig("Time", hmOf(m.secs)), w.sport !== "strength" && fig("Stress", String(Math.round(m.tss))), w.sport === "ride" && fig("Intensity", m.iF.toFixed(2))),
     h("div.profile", {}, C.profile(w, { ftp: w.sport === "ride" ? P().ftp : null, pace: paceFor(w.sport), label: `${w.name}, step by step`, W: cardW(true) })),
@@ -336,10 +336,14 @@ function sessionCard(w, id, done, day = TODAY) {
       rd.strength && h("button.link.small", { type: "button", onclick: () => openWorkout(workoutById("strength-heavy")) }, icon("strength", 14, 2.2), "Then heavy strength, 20 minutes")),
     // (the best time to ride: from the weather where you ride)
     (w.sport === "ride" || w.sport === "run") && bestTime(w),
+    // (Ride At: the time of day you'll ride, for InFlite Today)
+    rideAtRow(w),
     h("div.acts", {},
       w.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(w) }, icon("download", 17, 2.2), "Download"),
       h("button.pill", { type: "button", onclick: () => (rd ? openSheet(() => sessionView(TODAY), { tall: true }) : openWorkout(w)) }, "Details"),
-      swapped && h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap"),
+      // (a ride Today added: undone, so it isn't put back; any other swap: back to the plan's)
+      swapped && (mate?.role === "today" ? h("button.pill", { type: "button", onclick: () => undoToday(X, mate) }, "Undo")
+        : h("button.pill", { type: "button", onclick: () => { delete S.swaps[TODAY]; keep("swaps"); redraw(); } }, "Undo swap")),
       h("button.pill", { type: "button", onclick: () => sendToFriend(w, null) }, sendIcon(), "Send to a friend")),
     w.sport !== "strength" && dlFor(w, TODAY));
 }
@@ -356,11 +360,66 @@ function sendToFriend(w, a) {
     w: w && { id: w.id, sport: w.sport, name: w.name, kind: w.kind, secs: m.secs, tss: w.sport !== "strength" ? m.tss : null },
     done: a && { sport: a.sport, name: a.name, secs: s?.moving ?? s?.secs ?? null, dist: s?.dist ?? null, tss: s?.tss ?? null },
     best: !a && w ? bestOf(w) : null });
-  const words = card?.say || (w ? `Today: ${w.name}.` : "Trained today."), chat = chatPage();
-  // (to Chat, beside Fitness, the words first and the card after them; else the words, by the phone's own sharing, or copied)
-  if (chat) { location.assign(chat + chatHash(words, card)); return; }
+  const words = card?.say || (w ? `Today: ${w.name}.` : "Trained today."), way = sendWay(words, card, { hub: X.HUB });
+  // (at InFlite's hub, Chats' sheet over this page; else to Chat, beside Fitness, the words first and the card after
+  // them; else the words, by the phone's own sharing, or copied)
+  if (way?.hub) return;
+  if (way?.url) { location.assign(way.url); return; }
   if (navigator.share) { navigator.share({ text: words }).catch(() => {}); return; }
   navigator.clipboard?.writeText(words).then(() => toast("Copied, to paste in Chat"), () => toast(words));
+}
+// ---- Ride At: the time of day you'll ride today, kept with your account (functions/_fittimes.js: PUT and DELETE
+// /api/fitness/time), so InFlite Today plans the day around it (the weather you'll ride in, your calls, messages held
+// while you ride). One Today set (Ride Then, or moved clear of a call) says so; one set here replaces it ----
+const pad2 = (n) => String(n).padStart(2, "0");
+const hhmm = (t) => { const d = new Date(t); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const phoneTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (_) { return "UTC"; } };
+// (a day's ride time, as the account has it: GET me's times, by this phone's day key), or null
+const rideTimeOn = (day) => (S.times || []).find((x) => x.day === dayStamp(day)) || null;
+// The row on today's session: the time set, and who set it; or the way to set one (a ride's, or a time Today set: on a
+// run's day or a rest day too, where Today set one, so it can be seen, changed or cleared here; w: null for a rest day)
+function rideAtRow(w) {
+  const t = rideTimeOn(TODAY);
+  if (!t && w?.sport !== "ride") return null;
+  return h("div.ride-at", {}, h("span.ic.blue", {}, icon("today", 16, 2.2)),
+    h("span.tx", {}, h("b", { text: t ? `Ride at ${hhmm(t.start)}${t.source !== "set" ? " · from Today" : ""}` : "Ride at a time" }),
+      h("small", { text: t ? `Till ${hhmm(t.stop)}. Today plans your day around it.` : "Set one, and Today plans your day around it." })),
+    h("button.pill.small", { type: "button", onclick: () => openSheet(() => rideAtView(w)) }, t ? "Change" : "Ride At"));
+}
+// (the next five minutes on the clock, at or after a moment)
+const nextFive = (t) => Math.ceil(t / 300e3) * 300e3;
+function rideAtView(w) {
+  const t = rideTimeOn(TODAY), secs = w ? measure(w, paceFor(w.sport)).secs : t ? (t.stop - t.start) / 1000 : 3600;
+  const best = !t && w ? bestOf(w) : null, first = t ? t.start : best && best.start > Date.now() ? best.start : nextFive(Date.now() + 3600e3);
+  const input = h("input.field.ride-at-time", { type: "time", step: 300, value: hhmm(first), "aria-label": "Starting at" });
+  const set = async (btn) => {
+    const [hh, mm] = String(input.value).split(":").map(Number);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return toast("Choose a time.", true);
+    const d = new Date(TODAY), start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, Math.round(mm / 5) * 5).getTime();
+    const len = Math.min(6 * 3600e3, Math.max(15 * 60e3, Math.round(secs / 300) * 300e3));
+    btn.disabled = true;
+    try {
+      const r = await A.setTime({ day: dayStamp(TODAY), start, stop: start + len, tz: phoneTz() });
+      S.times = [...(S.times || []).filter((x) => x.day !== r.time.day), r.time];
+      closeSheet(); toast(`Ride at ${hhmm(start)}`); redraw();
+    } catch (e) { btn.disabled = false; if (e.status === 401) return X.signedOutHere(); toast(e.message, true); }
+  };
+  const clear = async (btn) => {
+    btn.disabled = true;
+    try {
+      await A.dropTime(dayStamp(TODAY));
+      S.times = (S.times || []).filter((x) => x.day !== dayStamp(TODAY));
+      closeSheet(); toast("No set time today"); redraw();
+    } catch (e) { btn.disabled = false; if (e.status === 401) return X.signedOutHere(); toast(e.message, true); }
+  };
+  const setBtn = h("button.btn.ride-at-set", { type: "button", onclick: () => set(setBtn) }, t ? "Change the Time" : "Set the Time");
+  const clearBtn = t && h("button.btn.quiet.ride-at-clear", { type: "button", onclick: () => clear(clearBtn) }, "No Set Time");
+  return { title: "Ride At", body: [
+    h("div.sheet-top", {}, h("h1", { text: "Ride At" }), h("div.sub", { text: w ? `${w.name} · ${dur(secs)}` : "Today’s ride" })),
+    section(null, h("div.group", {}, h("label.row.plain", {}, h("span.tx", {}, h("b", { text: "Starting at" }), t && t.source !== "set" ? h("small", { text: "Set by Today" }) : null), input))),
+    best && h("p.foot", { text: `Best time today: ${hhmm(best.start)} to ${hhmm(best.end)}.` }),
+    h("p.foot", { text: "InFlite Today plans your day around it: the weather you’ll ride in, your calls, and messages held while you ride." }),
+    setBtn, clearBtn] };
 }
 // the best time to go today, as the card shows it (bestTime): { start, end, dry } in real ms, or null (none good, or
 // the made-up examples' day). From the ride weather already here, however old: sending asks nothing of the account
@@ -710,4 +769,4 @@ function askToday() {
   setTimeout(() => { if (!sheetEl.open && !S.feel[TODAY]) openCheckIn(); }, 700);
 }
 
-export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, nightsView, stepDay, todayView };
+export { askToday, effortFigs, effortsCard, effortsOf, effortsSeen, lookAt, nightsView, stepDay, todayView };

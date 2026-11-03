@@ -103,18 +103,23 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 // or made before the waiting rows' figures were added to them: then the narrower select, as before them)
 const WINDOW = " WHERE user_id = ?1 AND start >= ?2 AND start < ?3 ORDER BY start DESC LIMIT 5";
 const WAITING = [
-  ["SELECT id, start, name, sport, secs, dist FROM fx_garmin_new", "SELECT id, start, name FROM fx_garmin_new"],
-  ["SELECT id, start, name, sport, secs, dist FROM fx_strava_new", "SELECT id, start, name, sport FROM fx_strava_new"],
+  ["SELECT id, start, name, sport, secs, dist, added FROM fx_garmin_new", "SELECT id, start, name, added FROM fx_garmin_new"],
+  ["SELECT id, start, name, sport, secs, dist, added FROM fx_strava_new", "SELECT id, start, name, sport, added FROM fx_strava_new"],
 ];
 const doneQs = (D, userId, start, end, narrow = false) => [
-  D.prepare("SELECT id, start, sport, name, sum FROM fx_acts" + WINDOW).bind(userId, start, end),
+  D.prepare("SELECT id, start, sport, name, sum, added FROM fx_acts" + WINDOW).bind(userId, start, end),
   ...WAITING.map((w) => D.prepare(w[narrow ? 1 : 0] + WINDOW).bind(userId, start, end)),
 ];
-const rowsOf = ([acts, garmin, strava]) => [
-  ...(acts || []).map((a) => { const s = sumOf(a.sum); return { name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: num(s.secs), dist: num(s.dist), tss: num(s.tss), from: "fitness" }; }),
-  ...(garmin || []).map((g) => ({ name: g.name || "Activity", sport: g.sport || null, start: g.start, secs: num(g.secs), dist: num(g.dist), tss: null, from: "garmin" })),
-  ...(strava || []).map((a) => ({ name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: num(a.secs), dist: num(a.dist), tss: null, from: "strava" })),
-].sort((a, b) => b.start - a.start);
+// (withAdded: each row's added too, when it came in, here or to the waiting row: InFlite Today's after phase starts then,
+// for a ride in late)
+const rowsOf = ([acts, garmin, strava], withAdded = false) => {
+  const at = (r) => (withAdded ? { added: num(r.added) } : {});
+  return [
+    ...(acts || []).map((a) => { const s = sumOf(a.sum); return { name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: num(s.secs), dist: num(s.dist), tss: num(s.tss), from: "fitness", ...at(a) }; }),
+    ...(garmin || []).map((g) => ({ name: g.name || "Activity", sport: g.sport || null, start: g.start, secs: num(g.secs), dist: num(g.dist), tss: null, from: "garmin", ...at(g) })),
+    ...(strava || []).map((a) => ({ name: a.name || "Activity", sport: a.sport || null, start: a.start, secs: num(a.secs), dist: num(a.dist), tss: null, from: "strava", ...at(a) })),
+  ].sort((a, b) => b.start - a.start);
+};
 // Several windows' queries in one trip (a friend's look at several sessions); where Garmin's or Strava's table isn't made
 // yet (or hasn't its figures yet), Fitness's own in one, and the others each where it is. → for each window, [acts,
 // garmin, strava] rows
@@ -137,18 +142,20 @@ async function doneMany(D, wins) {
 }
 // Everything done in a window, newest first: { name, sport, start, secs, dist, tss, from } (null where not known), as
 // InFlite Today's Fitness card shows it (functions/_todayfit.js); a row waiting from Garmin or Strava with the sport,
-// time and distance it came with, where it did
-export async function donesIn(env, userId, start, end) {
+// time and distance it came with, where it did. { added: true }: each with added too, when it came in (InFlite Today's
+// day, functions/_todayday.js, for its after phase; asked for, so a caller's rows keep their shape till it asks)
+export async function donesIn(env, userId, start, end, { added = false } = {}) {
   const D = await fitdb(env), [acts, ...wide] = doneQs(D, userId, start, end), [, ...narrow] = doneQs(D, userId, start, end, true);
   const rows = (q) => q.all().then((r) => r.results || []);
   const waiting = (i) => rows(wide[i]).catch(() => rows(narrow[i])).catch(() => []);
-  return rowsOf(await Promise.all([rows(acts), waiting(0), waiting(1)]));
+  return rowsOf(await Promise.all([rows(acts), waiting(0), waiting(1)]), added === true);
 }
 // The one that says a session's done: without a sport, the newest of any (Today's card); with one, the newest of that
-// sport, and only where none of that sport is there, one waiting from Garmin (which says no sport, and may be it)
+// sport (Garmin's waiting rows say theirs now), and only where none of that sport is there, one waiting from Garmin that
+// says no sport (one kept before they did), which may be it
 function pick(rows, sport) {
   if (!sport) return rows[0] || null;
-  return rows.find((r) => r.from !== "garmin" && r.sport === sport) || rows.find((r) => r.from === "garmin") || null;
+  return rows.find((r) => r.sport === sport) || rows.find((r) => r.from === "garmin" && r.sport == null) || null;
 }
 const figures = (r) => { const o = {}; for (const k of ["secs", "dist", "tss"]) if (r[k] != null) o[k] = r[k]; return o; };
 // → { secs?, dist?, tss?, sport, start } (each figure only when known) or null
@@ -223,16 +230,22 @@ const SAME = "start = ? AND stop = ? AND state IN ('new', 'yes') AND (with_id = 
 // (the moment a write or a read for Today is at: passed in by its route, never the clock read down here; one left out
 // fails at once, rather than quietly being another moment: a test's fixed day, or X-Today-At's)
 const need = (t, what) => { if (!Number.isFinite(t)) throw new TypeError(`${what}: pass { t }, the route's time`); return t; };
-// (Undo's check, expect: { start, stop } (or [start, stop]), and state where it's given: the row only while it's just
-// that; null without one)
+// (Undo's check, expect: { start, stop } (or [start, stop]), and state and taken (0 or 1: whether a tap in Fitness kept
+// it) where they're given: the row only while it's just that; null without one)
 function expectOf(expect) {
   if (expect == null) return null;
-  const ex = Array.isArray(expect) ? { start: expect[0], stop: expect[1] } : { start: expect.start, stop: expect.stop ?? expect.end, state: expect.state };
-  if (!Number.isSafeInteger(ex.start) || !Number.isSafeInteger(ex.stop) || (ex.state != null && !["new", "yes", "no"].includes(ex.state))) throw new HttpError(400, "Bad request.");
+  const ex = Array.isArray(expect) ? { start: expect[0], stop: expect[1] } : { start: expect.start, stop: expect.stop ?? expect.end, state: expect.state, taken: expect.taken == null ? null : expect.taken === true ? 1 : expect.taken === false ? 0 : expect.taken };
+  if (!Number.isSafeInteger(ex.start) || !Number.isSafeInteger(ex.stop) || (ex.state != null && !["new", "yes", "no"].includes(ex.state)) || (ex.taken != null && ex.taken !== 0 && ex.taken !== 1)) throw new HttpError(400, "Bad request.");
   return ex;
 }
-const expectSql = (ex, n) => (ex ? ` AND start = ?${n} AND stop = ?${n + 1}${ex.state != null ? ` AND state = ?${n + 2}` : ""}` : "");
-const expectArgs = (ex) => (ex ? [ex.start, ex.stop, ...(ex.state != null ? [ex.state] : [])] : []);
+const expectSql = (ex, n) => {
+  if (!ex) return "";
+  let sql = ` AND start = ?${n} AND stop = ?${n + 1}`, i = n + 2;
+  if (ex.state != null) sql += ` AND state = ?${i++}`;
+  if (ex.taken != null) sql += ` AND taken = ?${i++}`;
+  return sql;
+};
+const expectArgs = (ex) => (ex ? [ex.start, ex.stop, ...(ex.state != null ? [ex.state] : []), ...(ex.taken != null ? [ex.taken] : [])] : []);
 // An offer put in the account's own Fitness, as its Chat sends it: { id, start, stop, tz, sport, wid, name, secs, who,
 // role, far, dry }, checked as an invite's plan is (functions/_share.js POST fit-offer), and since Today First, only from
 // a caller that says so ({ checked: true }: it built these from fields it checked itself; a raw request's are ignored, as
@@ -340,15 +353,19 @@ const offerView = (r) => ({ id: r.id, start: r.start, stop: r.stop, sport: r.spo
 const offerViewToday = (r) => ({ ...offerView(r), taken: !!r.taken, withId: r.with_id ?? null });
 // The account's offers for Fitness to show: waiting (new) and agreed (yes), not past their time, never one pending, each
 // exactly as Fitness has always had them. With today: true (Today's reads, and Fitness's ?today=1), Today's own (role
-// "today") too, each with taken and withId; then { t } is needed. Read only (nothing's deleted on a read)
-export async function offersFor(env, userId, { today = false, t } = {}) {
+// "today") too, each with taken and withId; then { t } is needed. Read only (nothing's deleted on a read).
+// undone (with today; Fitness's own read): Today's own said no to as well, till they're past their time, so Fitness can
+// tell one undone (its swap taken out) from one simply gone by (its swap left as it is). strict: a read that fails throws,
+// rather than answering none (Fitness then knows it doesn't know)
+export async function offersFor(env, userId, { today = false, t, undone = false, strict = false } = {}) {
   const at = today ? need(t, "offersFor") : Number.isFinite(t) ? t : Date.now();
+  const states = today && undone ? "(state IN ('new', 'yes') OR (role = 'today' AND state = 'no'))" : "state IN ('new', 'yes')";
   try {
     const D = await offersDb(env);
     const { results } = await D.prepare(`SELECT id, start, stop, sport, wid, name, secs, who, role, far, dry, state, taken, with_id FROM fx_offers
-      WHERE user_id = ? AND until > ? AND state IN ('new', 'yes')${today ? "" : " AND role != 'today'"} ORDER BY start, id LIMIT 50`).bind(userId, at).all();
+      WHERE user_id = ? AND until > ? AND ${states}${today ? "" : " AND role != 'today'"} ORDER BY start, id LIMIT 50`).bind(userId, at).all();
     return (results || []).map(today ? offerViewToday : offerView);
-  } catch (_) { return []; }
+  } catch (e) { if (strict) throw e; return []; }
 }
 // (an answer's UPDATE: only a plan still waiting is answered (the same answer again changes nothing): a no never comes
 // back as a yes, and a yes is a no only for one of Today's own (Undo, in Fitness); a pending row is never answered here;
@@ -359,7 +376,7 @@ function answerSql(D, userId, id, answer, t, ex) {
     .bind(answer, userId, id, t, ...expectArgs(ex));
 }
 const answerOk = (id, answer) => { if (!["yes", "no"].includes(answer) || typeof id !== "string" || !UUID_RE.test(id)) throw new HttpError(400, "Bad request."); };
-// Fitness's answer to one: "yes" (added to the plan there, a tap: taken) or "no"; with expect ({ start, stop, state }),
+// Fitness's answer to one: "yes" (added to the plan there, a tap: taken) or "no"; with expect ({ start, stop, state, taken }),
 // only while the row is still just that (Today's Undo of a ride it added: changed in Fitness since, it isn't touched).
 // → whether it was there (and changed)
 export async function answerOffer(env, userId, id, answer, { t = Date.now(), expect } = {}) {

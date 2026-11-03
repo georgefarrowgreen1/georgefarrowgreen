@@ -207,8 +207,12 @@ export async function ruleLevel(env, userId, rule) {
 }
 // (what the target is now, as SQL, for the guarded writes: an fx_times row or an offer just as an act left it; ?n on)
 function targetIs(uid, x, n) {
-  if (x?.offer) return { sql: `EXISTS (SELECT 1 FROM fx_offers WHERE user_id = ?${n} AND id = ?${n + 1} AND start = ?${n + 2} AND stop = ?${n + 3} AND state = ?${n + 4})`,
-    args: [uid, x.offer, x.start, x.stop, x.state] };
+  if (x?.offer) {
+    // (and, where given, taken (0 or 1): whether Keep's tap, in Fitness or here, has kept it)
+    const tk = x.taken === 0 || x.taken === 1;
+    return { sql: `EXISTS (SELECT 1 FROM fx_offers WHERE user_id = ?${n} AND id = ?${n + 1} AND start = ?${n + 2} AND stop = ?${n + 3} AND state = ?${n + 4}${tk ? ` AND taken = ?${n + 5}` : ""})`,
+      args: [uid, x.offer, x.start, x.stop, x.state, ...(tk ? [x.taken] : [])] };
+  }
   if (x?.source) return { sql: `EXISTS (SELECT 1 FROM fx_times WHERE user_id = ?${n} AND day = ?${n + 1} AND start = ?${n + 2} AND stop = ?${n + 3} AND source = ?${n + 4})`,
     args: [uid, x.day, x.start, x.stop, x.source] };
   return null;
@@ -650,9 +654,12 @@ export async function actUndo(env, u, b, { t } = {}) {
   if (a.state === "undone") return { act: a, rule: await ruleFor(D, uid, a), said: "That’s undone already." };
   if (!["done", "taken", "kept"].includes(a.state) || !a.now) throw new HttpError(409, "There’s nothing to undo.");
   if (a.undoUntil <= t) throw new HttpError(409, "It’s too late to undo that now.");
-  const now = a.now, was = a.was;
+  const was = a.was;
+  // (an added ride Keep was tapped on in Fitness since (taken 1) has changed by hand, as one moved there has; one kept or
+  // taken here was taken by that tap itself. Checked in each statement below, as the times and state are)
+  const now = a.rule === "addRide" && a.now.offer ? { ...a.now, taken: a.state === "done" ? 0 : 1 } : a.now;
   let restore;
-  if (a.rule === "addRide") restore = await answerOfferQ(env, uid, now.offer, "no", { t, expect: { start: now.start, stop: now.stop, state: now.state } });
+  if (a.rule === "addRide") restore = await answerOfferQ(env, uid, now.offer, "no", { t, expect: { start: now.start, stop: now.stop, state: now.state, taken: now.taken } });
   else if (a.rule === "rideThen") restore = await dropTimeQ(env, uid, now.day, { expect: { start: now.start, stop: now.stop, source: now.source } });
   else if (now.offer) restore = await setOfferTimesQ(env, uid, now.offer, was.start, was.stop, { t, expect: { start: now.start, stop: now.stop, state: now.state } });
   else restore = await setTimeQ(env, uid, timeRowOf(was), { t, expect: { start: now.start, stop: now.stop, source: now.source } });

@@ -400,6 +400,15 @@ test("Keep on an added ride: taken (a tap), the act kept and counted; Undo turns
   assert.equal(back.said, "You’ve changed it since, so nothing was undone.");
   assert.equal(back.act.state, "done");
   assert.equal(rule(w, "addRide").level, "do");
+  // (kept in Fitness since, its Keep tapped there (taken 1, still agreed): changed by hand too, so left as it is)
+  const f = await habitual(6);
+  await A.planDay(env, f, T, deps(week()));
+  [x] = acts(f);
+  assert.equal(await takeOffer(env, f.id, x.now.offer, { t: T + H }), true);
+  const kept = await A.actUndo(env, f, { id: x.id }, { t: T + 2 * H });
+  assert.equal(kept.said, "You’ve changed it since, so nothing was undone.");
+  assert.equal(offer(x.now.offer).state, "yes");
+  assert.equal(rule(f, "addRide").level, "do");
 });
 
 test("the next day's plan tallies: an act past its Undo is kept (counted, and toward climbing), an offer left past it ignored", async () => {
