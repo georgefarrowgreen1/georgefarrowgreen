@@ -1,7 +1,9 @@
 // Today's phase engine (functions/_todayphase.js phaseOf, Today First spec §7.1), pure: the demo's day in London, each
-// phase at its minute, the after phase on an activity's arrival (early, on time, or none by the cap), two rides, a ride
-// with no time, an auto-added habit ride not kept, no morning set, quiet hours starting early, the clocks changing, far
-// zones; and everywhere, until and the timeline agree with phaseOf asked again at those moments. It never reads the clock.
+// phase at its minute, the after phase on an activity's arrival (when its row came in, or its end; early, on time, late,
+// or none by the cap), which activity is the ride's (its sport first; never a walk to the start), two rides, a ride with
+// no time, an auto-added habit ride not kept, no morning set, quiet hours starting early, an after past midnight, the
+// clocks changing, far zones; and everywhere, until and the timeline agree with phaseOf asked again at those moments. It
+// never reads the clock.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { phaseOf, ridesWithDones, wallAt, capOf } from "../../../functions/_todayphase.js";
@@ -85,6 +87,61 @@ test("after: on the activity's arrival, an early one, a late one, and none by th
   // (an activity with no length: in at its start and the ride's planned length)
   r = phaseOf(at(18, 10), LON, { ...DAY_IN, dones: [{ start: at(16, 50), secs: null, from: "garmin" }] });
   assert.equal(r.phase, "after"); assert.equal(r.since, at(18, 5));
+});
+
+test("after from when the activity came in (its row's added), however late; riding until then or the cap, whichever's sooner", () => {
+  // (in at 18:02, a minute after its end: after from then)
+  let r = agrees(at(18, 5), LON, { ...DAY_IN, dones: [{ ...GARMIN, added: at(18, 2) }] });
+  assert.equal(r.phase, "after"); assert.equal(r.since, at(18, 2)); assert.equal(r.until, at(19, 32));
+  assert.equal(line(LON, r), "after@18:02 evening@19:32 morning@06:00");
+  assert.equal(phaseOf(at(18, 1, 2), LON, { ...DAY_IN, dones: [{ ...GARMIN, added: at(18, 2) }] }).phase, "riding", "riding until it came in");
+  // (uploaded at 21:00, three hours after the ride: the after card still gets its 90 minutes, from then)
+  const late = { ...GARMIN, added: at(21) };
+  r = agrees(at(21, 5), LON, { ...DAY_IN, dones: [late] });
+  assert.equal(r.phase, "after"); assert.equal(r.since, at(21)); assert.equal(r.until, at(22, 30));
+  assert.equal(line(LON, r), "after@21:00 evening@22:30 morning@06:00");
+  // (and riding stopped at the cap meanwhile, the clock's phase between)
+  assert.equal(phaseOf(at(18, 50), LON, { ...DAY_IN, dones: [late] }).phase, "midday");
+  assert.equal(phaseOf(at(18, 50), LON, { ...DAY_IN, dones: [late] }).since, at(18, 45));
+  assert.deepEqual(ridesWithDones(DAY_IN.rides, [late]).map((m) => [m.arrival, m.end]), [[at(21), at(18, 1)]], "arrival when it came in; end its start and length");
+  // (a row's added before its start, a clock gone wrong: in at its start at the soonest)
+  assert.equal(ridesWithDones(DAY_IN.rides, [{ ...GARMIN, added: at(12) }])[0].arrival, GARMIN.start);
+  // (no added: its end, as before)
+  assert.equal(ridesWithDones(DAY_IN.rides, [GARMIN])[0].arrival, at(18, 1));
+});
+
+test("which activity is the ride's: its own sport first, then one that says no sport, then another sport begun once the ride was due; never a walk to the start", () => {
+  const walk = { start: at(16, 15), secs: 1200, from: "strava", sport: "walk", added: at(16, 40) };
+  // (a 20-minute walk from 16:15, in at 16:40: not the ride, which is still to come)
+  let r = agrees(at(16, 40), LON, { ...DAY_IN, dones: [walk] });
+  assert.equal(r.phase, "preride"); assert.equal(r.until, at(16, 45));
+  assert.equal(phaseOf(at(16, 50), LON, { ...DAY_IN, dones: [walk] }).phase, "riding");
+  // (and with the ride's own activity in too, from Garmin as "cycling": that one)
+  const ride = { ...GARMIN, sport: "cycling", added: at(18, 2) };
+  r = agrees(at(18, 5), LON, { ...DAY_IN, dones: [walk, ride] });
+  assert.equal(r.phase, "after"); assert.equal(r.since, at(18, 2));
+  assert.equal(ridesWithDones(DAY_IN.rides, [walk, ride])[0].done, ride);
+  // (Fitness's and Strava's "ride", Garmin's "road_biking": each the ride's; one that says no sport is taken over another sport)
+  for (const sport of ["ride", "road_biking", "gravel_cycling", "virtual_ride"]) assert.equal(ridesWithDones(DAY_IN.rides, [{ ...GARMIN, sport }])[0].done?.sport, sport);
+  const run = { start: at(16, 46), secs: 2400, from: "strava", sport: "run" }, none = { start: at(16, 50), secs: 4200, from: "garmin", sport: null };
+  assert.equal(ridesWithDones(DAY_IN.rides, [run, none])[0].done, none);
+  // (a run instead of the ride, begun once it was due: what was done instead, so it's the ride's)
+  assert.equal(ridesWithDones(DAY_IN.rides, [run])[0].done, run);
+  r = agrees(at(17, 30), LON, { ...DAY_IN, dones: [run] });
+  assert.equal(r.phase, "after"); assert.equal(r.since, at(17, 26));
+});
+
+test("an after past midnight, and the small hours: still the evening of the day before, until the day's start", () => {
+  // (a ride at 22:30 on Monday, in at 23:50: at 00:30 on Tuesday it's after, with Monday's rides and activities)
+  const night = { start: at(22, 30), stop: at(23, 30), secs: 3600, sport: "ride", source: "set", hold: true };
+  const inp = { dayStart: 6 * 60, eveningAt: 19 * 60, rides: [night], dones: [{ start: at(22, 31), secs: 4740, from: "garmin", sport: "cycling" }] };
+  let r = agrees(at(0, 30, 3), LON, inp);
+  assert.equal(r.phase, "after"); assert.equal(r.since, at(23, 50)); assert.equal(r.until, at(1, 20, 3));
+  assert.equal(line(LON, r), "after@23:50 evening@01:20 morning@06:00");
+  // (the demo's day, at 00:30: the evening from the after's end, 19:31, as at 23:50)
+  r = agrees(at(0, 30, 3), LON, { ...DAY_IN, dones: [GARMIN] });
+  assert.equal(r.phase, "evening"); assert.equal(r.since, at(19, 31)); assert.equal(r.until, at(6, 0, 3));
+  assert.deepEqual(phaseOf(at(23, 50), LON, { ...DAY_IN, dones: [GARMIN] }), r, "the same either side of midnight");
 });
 
 test("two rides in a day: each its own preride, riding and after; one activity a ride", () => {

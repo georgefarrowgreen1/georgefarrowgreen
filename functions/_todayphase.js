@@ -5,17 +5,23 @@
 // arrives, or its cap), preride (40 minutes before a ride), after (90 minutes from an activity's arrival), evening
 // (from eveningAt to the next dayStart), morning (dayStart to 11:00), midday (11:00 to eveningAt).
 //   phaseOf(t, tz, { dayStart, eveningAt, rides: [{ start, stop, secs, sport, source, withId, who, hold }],
-//     dones: [{ start, secs, dist, tss, from }] })
+//     dones: [{ start, secs, dist, tss, from, sport?, added? }] })
 //   → { phase: "morning" | "midday" | "preride" | "riding" | "after" | "evening", since, until (the next boundary
 //       known now; null while riding), timeline: [{ phase, at }] }
 // dayStart and eveningAt are walls: minutes after midnight on the account's clock (06:00 is 360), the same each day.
 // rides are today's explicit rides (functions/_fittimes.js explicitRide: a row that isn't one is left out, so an
 // auto-added habit ride not yet kept has no preride); dones are what's come in today, newest or oldest first.
 // The timeline is the current phase (at its since), each later one today, and the next dayStart's morning.
-// Each ride is matched to the first activity that started at or after 40 minutes before it and before its cap (one
-// activity a ride); it arrives at its end (its start and length; with no length, the ride's planned length). A ride
-// with no activity by its cap gives way to the clock's phase then, with no after.
-//   ridesWithDones(rides, dones) → [{ ride, done, arrival, cap }], soonest first (done and arrival null where none)
+// Each ride is matched to an activity that started at or after 40 minutes before it and before its cap (one activity a
+// ride): the first of the ride's own sport (a ride's "ride", "cycling", "gravel_cycling", …), else the first whose sport
+// isn't known (Garmin's rows may say none), else the first of another sport that started once the ride was due (what
+// you did instead), never one of another sport that started in the 40 minutes before it (a walk to the start isn't the
+// ride). It arrives when it came in (its added: the row's own time, where the dones carry it, never before it started),
+// else at its end (its start and length; with no length, the ride's planned length). Riding lasts until it arrives or
+// the cap, whichever is sooner; after, 90 minutes from its arrival, however late. A ride with no activity by its cap
+// gives way to the clock's phase then, with no after until one comes in.
+//   ridesWithDones(rides, dones) → [{ ride, done, arrival, end, cap }], soonest first (done, arrival and end null where
+//     none; end: the activity's own end, its start and length)
 //   wallAt(tz, day, mins) → the real moment a day's wall time is in tz (the first, where the clocks go back over it)
 import { localDay, offsetAt, dayAfter, zoneOk } from "./_todaycards.js";
 import { explicitRide } from "./_fittimes.js";
@@ -44,17 +50,35 @@ const secsOf = (r) => (Number.isFinite(r.secs) && r.secs > 0 ? r.secs : (r.stop 
 export const capOf = (r) => r.start + Math.max(CAP_MS, secsOf(r) * 1000 + CAP_MORE_MS);
 const fine = (r) => r && Number.isFinite(r.start) && Number.isFinite(r.stop) && r.stop > r.start;
 
+// (whether an activity's sport is a ride's: 0 its own sport, 1 not known, 2 another; the apps' names for each sport,
+// Fitness's and Strava's "ride", Garmin's "cycling", "road_biking", "gravel_cycling", "virtual_ride", …)
+const FAMILY = { ride: /ride|cycl|bik/i, run: /run/i, swim: /swim/i, walk: /walk|hik/i, row: /row/i, strength: /strength|weight|workout/i };
+const fitOf = (d, sport) => {
+  const s = typeof d.sport === "string" ? d.sport.trim() : "";
+  if (!s) return 1;
+  const want = typeof sport === "string" && sport ? sport : "ride";
+  return s.toLowerCase() === want.toLowerCase() || FAMILY[want]?.test(s) ? 0 : 2;
+};
+
 export function ridesWithDones(rides, dones) {
   // (an offer's row that isn't explicit is left out; a plain ride, with no offer's fields, is one)
   const list = (Array.isArray(rides) ? rides : []).filter((r) => fine(r) && ((r.state == null && r.role == null) || explicitRide(r)))
     .sort((a, b) => a.start - b.start);
   const ins = (Array.isArray(dones) ? dones : []).filter((d) => d && Number.isFinite(d.start)).sort((a, b) => a.start - b.start), used = new Set();
   return list.map((ride) => {
-    const cap = capOf(ride), i = ins.findIndex((d, k) => !used.has(k) && d.start >= ride.start - PRERIDE_MS && d.start < cap);
-    if (i < 0) return { ride, done: null, arrival: null, cap };
+    const cap = capOf(ride);
+    let i = -1, best = 3;
+    ins.forEach((d, k) => {
+      if (used.has(k) || d.start < ride.start - PRERIDE_MS || d.start >= cap) return;
+      const fit = fitOf(d, ride.sport);
+      // (another sport only once the ride was due: what you did instead of it)
+      if (fit === 2 && d.start < ride.start) return;
+      if (fit < best) { best = fit; i = k; }
+    });
+    if (i < 0) return { ride, done: null, arrival: null, end: null, cap };
     used.add(i);
-    const d = ins[i], secs = Number.isFinite(d.secs) && d.secs > 0 ? d.secs : secsOf(ride);
-    return { ride, done: d, arrival: d.start + secs * 1000, cap };
+    const d = ins[i], secs = Number.isFinite(d.secs) && d.secs > 0 ? d.secs : secsOf(ride), end = d.start + secs * 1000;
+    return { ride, done: d, arrival: Number.isFinite(d.added) ? Math.max(d.added, d.start) : end, end, cap };
   });
 }
 
@@ -81,7 +105,8 @@ export function phaseOf(t, tz, inputs) {
       continue;
     }
     iv.push({ phase: "preride", from: ride.start - PRERIDE_MS, to: Math.min(ride.start, arrival) });
-    if (arrival > ride.start) iv.push({ phase: "riding", from: ride.start, to: arrival });
+    // (riding until it came in, or the cap where it came in later than that: the clock's phase between)
+    if (arrival > ride.start) iv.push({ phase: "riding", from: ride.start, to: Math.min(arrival, cap) });
     iv.push({ phase: "after", from: arrival, to: arrival + AFTER_MS });
   }
   const lo = ev_1, hi = iv[4].to;
