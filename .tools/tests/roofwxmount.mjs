@@ -14,8 +14,8 @@
 //   Radar, on a phone (hasTouch, isMobile): html.ifl-fill, a drag and a pinch move and zoom the map (its state()), a tap
 //   gives a reading, the window never scrolls; under data-theme="dark" on a light phone, the map's dark style;
 //   unmount (the frame's destroy) leaves no window or document listener the module added (instrumented
-//   addEventListener/removeEventListener; the reused files' own listeners from their first import, charts.js's resize
-//   and data.js's storage, are theirs, not the mount's).
+//   addEventListener/removeEventListener; the reused files' own listeners from their first import, charts.js's resize,
+//   data.js's storage and radarrain.js's visibilitychange, are theirs, not the mount's).
 // And two parts that run once their files are real (no STUB export), else say "part skipped: <file> is still B0's stub":
 //   the views part (WV: now.js, days.js, warnings.js, wxui.js): Now's hero, the warnings slot, the credits sheet; 16 Days
 //   with Days by and a day's sheet; Warnings and a warning's sheet, and both empty states; a detail sheet from a tile;
@@ -48,12 +48,15 @@ const PLACES = [{ name: 'London', region: 'England, United Kingdom', lat: 51.507
 const WARNING = (lat, lon) => ({ id: 'mo-1', src: 'meteoalarm', via: 'MeteoAlarm', issuer: 'Met Office', level: 2, type: 1, event: 'Yellow wind warning', headline: 'Strong winds', description: 'Gusts of 50 to 60 mph.',
   onset: new Date(now - 3600e3).toISOString(), expires: new Date(now + 20 * 3600e3).toISOString(), areas: [[lat - 0.5, lon - 0.5, lat - 0.5, lon + 0.5, lat + 0.5, lon + 0.5, lat + 0.5, lon - 0.5, lat - 0.5, lon - 0.5]] });
 
-const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--unsafely-treat-insecure-origin-as-secure=${KIT}`] });
+// (kit.test counted as secure, as inflite.ai is: My Location's position is only given to a secure page)
 
 // ---- a phone at the kit: Weather's third parties and API stood in, its listeners counted ----
 async function phone({ colorScheme = 'dark', theme = null, geo = { latitude: 55.953, longitude: -3.188 } } = {}) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme, permissions: ['geolocation'], geolocation: geo, locale: 'en-GB', timezoneId: 'Europe/London' });
-  const st = { puts: [], me: 'ok', ver: 1, errors: [], geocode: 0 };
+  // (me: 'down' till the links are done, so the account's copy in wx:acct keeps York, as an account would that has it;
+  // then 'ok'; '401' for the sign-in that's gone at Weather's end)
+  const st = { puts: [], me: 'down', ver: 1, errors: [], geocode: 0 };
   await ctx.addInitScript(({ places, theme }) => {
     try {
       if (!localStorage.getItem('wx:places')) {
@@ -114,6 +117,7 @@ async function phone({ colorScheme = 'dark', theme = null, geo = { latitude: 55.
     }
     if (p === '/api/weather/me') {
       if (st.me === '401') return j(r, { error: 'Sign in first.' }, 401);
+      if (st.me === 'down') return j(r, { error: 'Try again later.' }, 503);
       const data = { places: PLACES.concat([{ name: 'York', region: 'England', lat: 53.96, lon: -1.08 }]).map(({ name, region, lat, lon }) => ({ name, region, lat, lon })), settings: {}, notify: { places: [], brief: null, briefAt: '07:00', email: { warn: false, brief: false } } };
       if (req.method() === 'PUT') { const body = JSON.parse(req.postData() || '{}'); st.puts.push(body); st.ver++; return j(r, { ver: st.ver, data: body.data }); }
       return j(r, { signedIn: true, id: 'u-kit-0001', name: 'Sam Taylor', handle: 'sam', ver: st.ver, data: st.lastData || data, devices: [] });
@@ -148,14 +152,12 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   note(`B0 stubs still in: ${Object.entries(stubs).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none'}`);
   ok(await until(async () => (await text(p, H.HD_TITLE)).trim() === 'London'), 'the header’s title is the place', await text(p, H.HD_TITLE));
   ok(await until(async () => /\d+°/.test(await text(p, H.HD_LINE))), 'the header’s line: the temperature and what it’s doing', await text(p, H.HD_LINE));
-  // (its compact title, "London · 14°", once the screen has scrolled)
-  await p.evaluate(() => window.scrollTo(0, 2000)); await p.waitForTimeout(400);
-  ok(await until(async () => /London · -?\d+°/.test(await p.evaluate(() => document.querySelector('#hd').textContent + ' ' + [...document.querySelectorAll('#hd [aria-label]')].map((e) => e.getAttribute('aria-label')).join(' ')))), 'the compact title, London · 14°, in the header');
-  await p.evaluate(() => window.scrollTo(0, 0));
   for (const id of ['days', 'radar', 'warnings', 'now']) {
     await p.locator(H.hdSec(id)).click();
     ok(await until(() => visible(p, H.wxSec(id))), `section ${id} shows`);
     ok(await until(async () => (await p.evaluate(() => location.pathname + location.hash)) === (id === 'now' ? '/weather/' : `/weather/#${id}`)), `the address follows: ${id}`);
+    // (Radar holds the header compact: its compact title, "London · 14°")
+    if (id === 'radar') ok(await until(async () => /^London · -?\d+°$/.test((await text(p, H.HD_TITLE)).trim())), 'the compact title: London · 14°', await text(p, H.HD_TITLE));
   }
   await shot(p, '1-now');
 
@@ -212,6 +214,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   ok(await until(async () => (await text(p, H.HD_TITLE)).trim() === 'Oslo') && (await stored(p, 'wx:places')).some((x) => x.name === 'Oslo'), 'Add: Oslo shows and is kept');
 
   // ---- settings: the PUT app.js would send, glass kept ----
+  st.me = 'ok';
   const before = st.puts.length;
   await p.evaluate(async () => (await import('/weather/roof/core.js')).saveSettings({ temp: 'f' }));
   ok(await until(() => st.puts.length > before, 6000), 'a settings change sends PUT /api/weather/me');
@@ -341,8 +344,8 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   note(`listeners from /weather/ files while mounted: ${during.length}`);
   await p.evaluate(() => window.kit.F.destroy());
   await p.waitForTimeout(300);
-  const left = await p.evaluate(() => window.__wxListeners.filter((x) => !/\/weather\/(charts|data)\.js$/.test(x.from)).map((x) => `${x.who}:${x.type} ${x.at}`));
-  ok(left.length === 0, 'unmount leaves no window or document listener the module added (charts.js’s resize and data.js’s storage, from their first import, are theirs)', left.join(' | '));
+  const left = await p.evaluate(() => window.__wxListeners.filter((x) => !/\/weather\/(charts|data|radarrain)\.js$/.test(x.from)).map((x) => `${x.who}:${x.type} ${x.at}`));
+  ok(left.length === 0, 'unmount leaves no window or document listener the module added (charts.js’s resize, data.js’s storage and radarrain.js’s visibilitychange, from their first import, are theirs)', left.join(' | '));
   ok(st.errors.length === 0, 'no page errors (radar)', st.errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
