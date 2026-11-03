@@ -2,7 +2,7 @@
 // every RPC of pigeon/roof/core.js's table from the fixtures (unit/fixtures/chats.mjs, served at /kit/fixtures/chats.mjs),
 // served by roofkit/serve.mjs in place of /chats/roof/core.js when the kit page is opened with ?service=stub (the
 // cookie kit-service=stub). ?state=ready|signin|key|locked|device|offline|ended (the cookie kit-chat-state; default
-// ready) is the state it starts in; serve.mjs writes it in for __KIT_STATE__. What UI-A, UI-B, HOST and Q build against:
+// ready) is the state it starts in (locked holds through start until lock(false)); serve.mjs writes it in for __KIT_STATE__. What UI-A, UI-B, HOST and Q build against:
 // the same wire, the same shapes, the same why words as the real core; nothing kept, nothing fetched.
 //   Reading methods answer only while ready (offline: from the fixtures too); otherwise { ok: false, why: <the state> }.
 //   rows' lines only through rows(from, to), and only while ready; chat:<id> only after open(id), null on leave() and
@@ -31,7 +31,8 @@ const need = () => { if (!reading()) throw new No(state === "ready" ? "no" : sta
 
 const M = {
   hello: () => ({ protocol: PROTOCOL }),
-  start: (o = {}) => { if (state === "ready" && o.locked === true) state = "locked"; if (state === "locked" && o.locked === false) state = base; all(); return { state }; },
+  // (?state=locked holds through start, so the kit shows the lock screen whatever the page keeps; lock(false) lets it go)
+  start: (o = {}) => { if (state === "ready" && o.locked === true) state = "locked"; if (state === "locked" && o.locked === false && START !== "locked") state = base; all(); return { state }; },
   state: () => ({ state }),
   lock: (on) => { if (on && reading()) { state = "locked"; drop(); patch("rows", noLines(W.rows)); } else if (!on && state === "locked") state = base; patch("state", { state }); return { state }; },
   signOut: () => { drop(); state = base = "signin"; patch("state", { state }); return { ok: true }; },

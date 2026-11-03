@@ -674,10 +674,19 @@ try {
     const svc = await p.evaluate(async () => {
       const f = await kit.F.service('chats'), s = await kit.F.forModule('chats').service(), again = await kit.F.service('chats');
       return { keys: Object.keys(f), frozen: Object.isFrozen(f), call: 'call' in f, state: f.state, same: f === again && s.facade === f, full: ['protocol', 'state', 'call', 'on', 'facade', 'release'].every((x) => x in s),
-        rows: (await s.call('rows', 0, 40)).length, waiting: (await f.waiting({ ids: [] })).length, tap: await f.sendTo('x', 'w', null), states: kit.state.serviceStates };
+        rows: (await s.call('rows', 0, 40)).length, waiting: (await f.waiting({ ids: [] })).length, states: kit.state.serviceStates };
     });
-    same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, tap: { ok: false, why: 'tap' }, states: ['chats:ready'] },
-      'F.service: the frozen seven-key facade, no call; fw.service: the full service, the same one; the stub core answers; sendTo with no tap refused; opts.serviceState heard ready');
+    same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, states: ['chats:ready'] },
+      'F.service: the frozen seven-key facade, no call; fw.service: the full service, the same one; the stub core answers; opts.serviceState heard ready');
+    // (a tap (evaluate runs with one): sendTo gives the Send sheet; closed, it says so. No tap: roofcontract's unit case)
+    const tapped = await p.evaluate(async () => {
+      const f = await kit.F.service('chats'), r = f.sendTo('6c0f6f1e-0000-4000-8000-0000000000a1', 'A stand-in', null);
+      await new Promise((ok) => setTimeout(ok, 400));
+      const open = !!document.querySelector('dialog.ifl-sheet[data-sheet=send][open]');
+      kit.F.sheet.closeAll();
+      return [open, await Promise.race([r, new Promise((ok) => setTimeout(() => ok('waiting'), 3000))])];
+    });
+    same(tapped, [true, { ok: false, why: 'no' }], 'facade.sendTo on a tap: the Send sheet (the stub’s); closed, { ok: false, why: "no" }');
     same(k.log.filter((x) => x.startsWith('/chats/roof/core.js')).length, 1, 'one Worker for the page (its script asked for once)');
     // (one stub sheet per opener file: each opens its data-sheet and closes)
     const OPENERS = [['list.js', 'openNewChat', 'newmsg'], ['friends.js', 'openRequests', 'requests'], ['sheets.js', 'openFriendInfo', 'friendinfo'], ['flight.js', 'openFlightLog', 'flightlog'],
