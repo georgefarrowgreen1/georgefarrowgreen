@@ -10,7 +10,7 @@
 
 import { HttpError } from "./_http.js";
 import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
-import { siteOf, homeSite, appOrigin } from "./_sites.js";
+import { siteOf, homeSite, appOrigin, hubOrigins, cfOf } from "./_sites.js";
 export { HttpError };
 
 export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -604,8 +604,9 @@ export function deviceOf(request) {
 export function regionOf(cc) { try { return cc && cc !== "XX" && cc !== "T1" ? new Intl.DisplayNames(["en-GB"], { type: "region" }).of(cc) || "" : ""; } catch (_) { return ""; } }
 // Roughly where a sign-in came from: the city and country Cloudflare puts its address in (often the nearest big
 // town, never closer), kept with that sign-in only so you'd know one that wasn't you, and gone when it's signed out
+// (the browser's, where InFlite's hub asked on its behalf: functions/_sites.js cfOf)
 export function placeOf(request) {
-  const cf = request?.cf || {}, country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
+  const cf = cfOf(request), country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
   return [city, country].filter(Boolean).join(", ") || null;
 }
 // Which app a request's for, by its API: "inflight", "weather", "fitness", "markets", "mail" or "account" (the account's
@@ -615,8 +616,15 @@ export function appKey(request) {
   return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/fitness/") ? "fitness" : p.startsWith("/api/markets/") ? "markets"
     : p.startsWith("/api/account/mail/") ? "mail" : p.startsWith("/api/account/today/") ? "today" : p.startsWith("/api/account/") ? "account" : null;
 }
-// The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null
-const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? appKey(request) : null);
+// The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null; and InFlite, one
+// app, for any of the apps used in InFlite's window (the hub asked, with its key: X-Hub-Ok, functions/_middleware.js),
+// so the sign-in is named by that, not by whichever app's API it used last. Today's own Home Screen app is InFlite too
+// (from Today 1.09 its install is InFlite's, spec §3.2), so a sign-in used by Today and the apps beside it in that one
+// window keeps the one name, and its row isn't written again at each move between them
+export const homeOf = (request) => {
+  const hs = request?.headers.get("X-Home-Screen") === "1", app = hs ? appKey(request) : null;
+  return request?.headers.get("X-Hub-Ok") === "1" || app === "today" ? "inflite" : app;
+};
 // The sign-ins other than this one's own, in SQL (with othersOf's four): not itself, nor the app's sign-in it was
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
@@ -885,8 +893,10 @@ export function rpIdFor(request, env) {
   // (PASSKEY_SITE: tests, over plain http, which can't be told about related sites, so their passkeys are the apps' site's)
   return siteOf(h, env) ? env?.PASSKEY_SITE || homeSite(env) : h;
 }
-function originOk(origin, request, env) {
+// (and InFlite's hub's origins, exactly: Chat's pages there are this site's too, functions/_sites.js hubOrigins)
+export function originOk(origin, request, env) {
   try {
+    if (typeof origin === "string" && hubOrigins(env, request).includes(origin)) return true;
     const o = new URL(origin), here = new URL(request.url);
     if (/(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1") return here.hostname === o.hostname;   // local testing
     if (env?.ACCOUNT_SITE && o.host === here.host) return true;                                                    // (and the tests' site)

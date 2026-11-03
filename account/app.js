@@ -892,12 +892,14 @@ const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/s
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
 // chat.<site>/, weather.<site>/, fitness.<site>/, finance.<site>/ (Markets), email.<site>/ (Mail), <site>/ itself (InFlite
 // Today), or the home page (beside this page's account.<site>, on the same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
+// (And InFlite in one window, <site> and its staging copy next.<site>: Chat at /chats/, Mail at /mail/, Today at /.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^(account|auth)\./, ""), home = new URL(siteUrl("")).hostname;
     // (and Chat at /pigeon/, where the home page and the apps are one: locally)
-    const ok = { inflight: [`chat.${site}/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`], mail: [`email.${site}/`], today: [`${site}/`], home: [`${home}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, `${site}/chats/`, `next.${site}/chats/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`],
+      mail: [`email.${site}/`, `${site}/mail/`, `next.${site}/mail/`], today: [`${site}/`, `next.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }

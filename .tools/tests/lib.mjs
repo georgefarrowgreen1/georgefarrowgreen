@@ -66,6 +66,65 @@ async function phone(name, keys) {
   await p.goto(URL);
   return { p, ctx, name };
 }
+// ---- InFlite's hub (Today First; the stack is hubstack.mjs, run by run.sh for a test whose first line is `// needs: hub`) ----
+// A browser of its own, which finds the hub's address on the tests' site (ifl.test:8788, the Worker on :8787), the
+// apps' own addresses (the site on :8788), Mail's Worker (:8806) and the home page's site, each treated as https
+let hubB = null;
+const HUB = 'http://ifl.test:8788';
+const SECURE = ['', 'auth.', 'account.', 'chat.', 'email.', 'weather.', 'fitness.', 'finance.'].map((h) => `http://${h}ifl.test:8788`).join(',');
+const hubBrowser = () => (hubB ||= chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: [
+  '--host-resolver-rules=MAP ifl.test:8788 127.0.0.1:8787, MAP email.ifl.test:8788 127.0.0.1:8806, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1, MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1',
+  `--unsafely-treat-insecure-origin-as-secure=${SECURE}`] }));
+// A phone with InFlite on its Home Screen: an iPhone, standalone (navigator.standalone and display-mode, as homelink.mjs),
+// phone()'s push stand-in with keys the test holds, every window.open noted (window.__opened), opened at the hub.
+// zone: its time zone; path: where it opens; cookies: { name: value } on the whole tests' site (ifl.test), as signing
+// in leaves the account's. Returns { p, ctx, name, pages } (pages: every page the context opened, the first included).
+async function hubPhone(name, keys, { zone = 'Europe/London', path = '/', cookies = {} } = {}) {
+  const ctx = await (await hubBrowser()).newContext({ viewport: { width: 390, height: 844 }, screen: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+    timezoneId: zone, locale: 'en-GB', serviceWorkers: 'allow',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' });
+  await ctx.grantPermissions(['notifications'], { origin: HUB });
+  // (for the whole site, as the account sets its own: Domain=ifl.test, so its renewals replace it)
+  const jar = Object.entries(cookies).map(([k, v]) => ({ name: k, value: String(v), domain: '.ifl.test', path: '/', httpOnly: k === 'account', sameSite: 'Lax' }));
+  if (jar.length) await ctx.addCookies(jar);
+  await ctx.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });
+    const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q) ? { matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false } : mm(q));
+    window.__opened = []; const open = window.open;
+    window.open = function (...a) { window.__opened.push(String(a[0] ?? '')); return open.apply(window, a); };
+  });
+  if (keys) await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
+    const make = (key) => ({ endpoint, options: { applicationServerKey: key }, toJSON: () => ({ endpoint, keys: { p256dh, auth } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
+    const toB = (u8) => btoa(String.fromCharCode(...u8)), fromB = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
+    PushManager.prototype.getSubscription = async function () { const k = localStorage.getItem('fakesub'); return k ? make(fromB(k)) : null; };
+    PushManager.prototype.subscribe = async function (o) { const k = new Uint8Array(o.applicationServerKey.buffer || o.applicationServerKey); localStorage.setItem('fakesub', toB(k)); return make(k.buffer); };
+  }, { endpoint: `https://fcm.googleapis.com/fcm/send/${name}-device`, p256dh: b64u(keys.pub), auth: b64u(keys.auth) });
+  const pages = []; ctx.on('page', (pg) => pages.push(pg));
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errs.push(`${name}: ${e}`));
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
+  await p.goto(HUB + path);
+  return { p, ctx, name, pages };
+}
+// A request to any of the tests' addresses as a browser would make it there, with Node's http and that Host (Playwright's
+// own requests don't use the browser's resolver rules): the hub (ifl.test:8788) at its Worker, Mail's at its Worker,
+// every other address at the site. opts: method, headers, cookie, origin, body (an object is sent as JSON), ip (as
+// Cloudflare would say it: CF-Connecting-IP). → { status, headers, text, json, cookies (each Set-Cookie) }
+function hostAsk(host, path, { method = 'GET', headers = {}, cookie, origin, body, ip } = {}) {
+  const port = host === 'ifl.test:8788' ? 8787 : host === 'email.ifl.test:8788' ? 8806 : Number(host.split(':')[1] || 80);
+  const data = body === undefined ? null : typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+  const h = { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(origin ? { Origin: origin } : {}), ...(ip ? { 'CF-Connecting-IP': ip } : {}),
+    ...(data != null ? { 'Content-Type': typeof body === 'object' && !Buffer.isBuffer(body) ? 'application/json' : 'text/plain', 'Content-Length': Buffer.byteLength(data) } : {}), ...headers };
+  return new Promise((done, no) => {
+    const q = http.request({ host: '127.0.0.1', port, path, method, agent: false, headers: h }, (res) => {
+      const parts = []; res.on('data', (c) => parts.push(c));
+      res.on('end', () => { const text = Buffer.concat(parts).toString(); let json = null; try { json = JSON.parse(text); } catch (_) {}
+        const sc = res.headers['set-cookie']; done({ status: res.statusCode, headers: res.headers, text, json, cookies: Array.isArray(sc) ? sc : sc ? [sc] : [] }); });
+    });
+    q.on('error', no); q.end(data ?? undefined);
+  });
+}
 const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace(/\s+/g, ' ');
 // (made on the account's own page, then Chat signed in to: join.mjs)
 // (opts.pigeons: true or false sets Chat's Pigeons switch once in; left out, as test accounts start: pigeons on)
@@ -144,5 +203,6 @@ const pick = async (ph, kind) => {
 const say = async (ph, kind, text) => { await pick(ph, kind); await ph.p.fill('#msg', text); await ph.p.click('.send'); await ph.p.waitForTimeout(1500); };
 // every push to one phone since a moment, opened
 const allPushes = async (keys, name, since = 0) => Promise.all(pushes().filter((x) => x.at > since && (x.headers['x-endpoint'] || '').includes(`/${name}-device`)).map(async (x) => ({ at: x.at, ...(await decrypt(keys, x.body).catch(() => ({}))) })));
-return { b, errs, ok, sql, one, admin, pushes, allPushes, makeKeys, decrypt, phone, signup, setPigeons, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE };
+return { b, errs, ok, sql, one, admin, pushes, allPushes, makeKeys, decrypt, phone, signup, setPigeons, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE,
+  hubPhone, hostAsk, hubBrowser, HUB };
 }

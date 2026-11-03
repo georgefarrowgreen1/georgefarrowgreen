@@ -1,7 +1,10 @@
 // Make it a plan (Chat 1.64): a ride card sent as an invite, with a window dry for both (none before it lands, plus
 // half an hour); the timed landings off while it's a plan; Yes puts it in both people's Fitness to add (and changes
 // no one's plan), Later offers the other times and the inviter answers Yes or No, No adds nothing; an invite whose time
-// has passed can't be answered.
+// has passed can't be answered. Today First (spec §8.4): the inviter's own row made as the invite goes (pending), and
+// the friend's Yes, from the friend's phone alone, making it a plan to add in the inviter's Fitness, with the friend's
+// id on both (and the same for a call: td_times), with the inviter's page shut; the inviter's later backstop adding no
+// second row. (Sent as §8.4's table has Chat send them; Chat's own client sends them from batch C on.)
 // (Open-Meteo for the server (WXAPP_URL, :8794) is handed to the weather stand-in (:8796): 'share-dry-window', dry
 // 10:00–12:00 every day at every place.)
 import http from 'http';
@@ -173,6 +176,42 @@ land(`id = '${past.id}'`);
 await reload(M); await openChat(M, gs.me.id); await M.p.waitForTimeout(1500);
 const pastCard = await M.p.locator(`.msgs [data-mid="${past.id}"]`).textContent().catch(() => '');
 ok(/This time has passed\./.test(pastCard) && !(await M.p.$(`.msgs [data-mid="${past.id}"] [data-act=planans]`)), 'a passed invite: “This time has passed.”, no buttons', pastCard);
+
+// ---- Today First: the inviter's row made as the invite goes; the friend's Yes makes it a plan, the inviter's page shut ----
+{
+  const hourAt = (h) => Math.ceil(Date.now() / H) * H + h * H, q15 = (h) => Math.ceil(Date.now() / 9e5) * 9e5 + h * H;
+  const plan = { tz: 'Europe/London', sport: 'ride', wid: 'free-ride', name: 'Ride how you like', secs: 7200, far: false, dry: true };
+  const inv = crypto.randomUUID(), call = crypto.randomUUID(), [s1, s2] = [hourAt(30), hourAt(54)], [c1, c2] = [q15(3), q15(5)];
+  // George's Chat, as it sends the invite: his own pending rows (a ride and a call), with the other times offered
+  const [a1] = await api(gs.token, 'fit-offer', { ...plan, id: inv, start: s1, stop: s1 + 2 * H, opts: [[s2, s2 + 2 * H]], who: 'Mira', role: 'asked', with: ms.me.id, state: 'pending' });
+  const [a2] = await api(gs.token, 'time-offer', { id: call, kind: 'call', start: c1, stop: c1 + 30 * 60e3, tz: 'Europe/London', opts: [[c2, c2 + 30 * 60e3]], with: ms.me.id, role: 'asked', state: 'pending' });
+  ok(a1 === 200 && a2 === 200, 'George’s invites: his own pending rows as they go', `${a1} ${a2}`);
+  ok(one(`SELECT state FROM fx_offers WHERE user_id = '${gs.me.id}' AND id = '${inv}'`)[0]?.state === 'pending', 'a pending ride, not yet in his Fitness');
+  // George's Chat shut from here on: nothing more from his page (counted once it's gone, so a sync or pulse his page
+  // began just before can't count)
+  await G.p.goto('about:blank');
+  let fromG = 0;
+  G.p.on('request', (r) => { if (r.url().includes('/api/')) fromG++; });
+  // Mira's Yes, from her phone alone, at the other times George offered
+  const answer = crypto.randomUUID();
+  const [y1] = await api(ms.token, 'fit-offer', { ...plan, id: answer, start: s2, stop: s2 + 2 * H, who: 'George', role: 'answered', with: gs.me.id, re: inv });
+  const [y2] = await api(ms.token, 'time-offer', { id: call, kind: 'call', start: c2, stop: c2 + 30 * 60e3, tz: 'Europe/London', with: gs.me.id, role: 'answered' });
+  ok(y1 === 200 && y2 === 200, 'Mira’s Yes to both', `${y1} ${y2}`);
+  const g = one(`SELECT state, start, with_id, role FROM fx_offers WHERE user_id = '${gs.me.id}' AND id = '${inv}'`)[0] || {};
+  ok(g.state === 'new' && g.start === s2 && g.with_id === ms.me.id && g.role === 'asked', 'the ride in George’s Fitness to add, at Mira’s time, with her id, his page shut', JSON.stringify(g));
+  const m = one(`SELECT with_id, role FROM fx_offers WHERE user_id = '${ms.me.id}' AND id = '${answer}'`)[0] || {};
+  ok(m.with_id === gs.me.id && m.role === 'answered', 'with_id on Mira’s Yes: George’s id on her plan', JSON.stringify(m));
+  const tt = one(`SELECT user_id, state, start, with_id FROM td_times WHERE id = '${call}' ORDER BY user_id = '${gs.me.id}' DESC`);
+  ok(tt.length === 2 && tt.every((x) => x.state === 'yes' && x.start === c2) && tt[0].with_id === ms.me.id && tt[1].with_id === gs.me.id, 'the call agreed for both, George’s page shut', JSON.stringify(tt));
+  ok(fromG === 0, 'and not one request from George’s page since the invite', String(fromG));
+  // George's Chat, next time it draws the Yes (offerSoon, as an older Chat sends it): no second plan; his sync says both
+  const n0 = Number(one(`SELECT COUNT(*) AS n FROM fx_offers WHERE user_id = '${gs.me.id}'`)[0]?.n);
+  await api(gs.token, 'fit-offer', { ...plan, id: answer, start: s2, stop: s2 + 2 * H, who: 'Mira', role: 'asked' });
+  ok(Number(one(`SELECT COUNT(*) AS n FROM fx_offers WHERE user_id = '${gs.me.id}'`)[0]?.n) === n0, 'offerSoon’s later call adds no second plan');
+  const [, sy] = await api(gs.token, 'sync?quiet=1');
+  ok((sy.rides || []).some((r) => r.id === inv && r.with === ms.me.id && r.state === 'new') && (sy.times || []).some((x) => x.id === call && x.with === ms.me.id && x.start === c2),
+    'George’s sync: the ride and the call with Mira', JSON.stringify({ rides: sy.rides, times: sy.times }));
+}
 
 const errs = K.errs.filter((e) => !/Failed to load|net::|404|429|navigator\.vibrate/.test(e));     // (a landing's haptic on a page not tapped since it reloaded: the browser's rule, not an error of ours)
 ok(!errs.length, 'no errors on any page', errs.join(' | '));
