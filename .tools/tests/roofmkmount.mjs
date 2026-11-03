@@ -176,12 +176,17 @@ for (const [width, height] of [[320, 640], [390, 844], [1280, 860]]) for (const 
   ok(await p.evaluate((sel) => document.querySelector(sel)?.childElementCount > 0, `${H.M_MARKETS} ${H.mkSec('today')}`), 'out of sight under five minutes: kept');
   await p.clock.fastForward('01:00');
   ok(await until(() => p.evaluate((sel) => document.querySelector(sel)?.childElementCount === 0, `${H.M_MARKETS} ${H.mkSec('today')}`), 4000), 'after five minutes out of sight: its DOM let go (S2-D22)');
+  const quotes = () => st.log.filter((c) => c.path === 'quotes').length, q0 = quotes();
   await go(p, '/markets/');
   ok(await until(() => visible(p, H.MK_HERO), 8000), 'drawn afresh on the next show');
-  await p.waitForTimeout(1500);     // (the one refresh on coming back, after five minutes away, in first)
-  const before = st.log.filter((c) => c.path === 'quotes').length;
+  // (the one refresh on coming back after half a minute or more away: waited for, however slow the machine, so none
+  // is still on its way when Markets is left)
+  ok(await until(() => quotes() > q0, 10000), 'back after five minutes: prices asked for again at once (S2-D4)');
+  await p.waitForTimeout(800);
+  const before = quotes();
   await go(p, '/');
   await p.clock.fastForward('02:00');
+  await p.waitForTimeout(800);
   ok(st.log.filter((c) => c.path === 'quotes').length === before, 'no prices asked for while Markets isn’t shown (S2-D4)');
   ok(st.errors.length === 0, 'no page errors (five minutes away)', st.errors.slice(0, 3).join(' | '));
   await ctx.close();
