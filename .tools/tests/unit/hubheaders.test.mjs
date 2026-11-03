@@ -4,21 +4,29 @@
 // answer; X-Robots-Tag: noindex on pages (not the API); the hub's marker in pages alone, first in <head>; the manifest and
 // touch icon InFlite's; no outside origin in script-src; pages no-cache, private, with no ETag or length. (HTMLRewriter
 // is Cloudflare's runtime's, not Node's: a stand-in here that does what the hub asks of it on the pages as they are.
-// The real one, in wrangler dev, is hubserve.mjs's.)
+// The real one, in wrangler dev, is hubserve.mjs's.) These are the hub's pages as milestone 1 has them, which is Weather's
+// too with the roof off (ROOF_OFF "1"); One roof's own (stage 1, spec §8.1): with the roof on, a document at /weather/ is
+// the framework's page with the page's headers, /weather/sw.js the retiring worker, each with the hub's nosniff and
+// noindex; with it off, the module's files not found, never kept.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { IFL, roofSkip } from './fixtures/roof.mjs';
 
 const ROOT = new URL('../../../', import.meta.url);
-const SRC = new URL('../../../../inflite/today/src/hub.js', import.meta.url);
-const skip = !existsSync(SRC) && 'the inflite repo isn’t beside this one';
+const SRC = IFL && new URL('today/src/hub.js', IFL);
+const skip = (!IFL || !existsSync(SRC)) && 'the inflite repo isn’t beside this one';
 const H = skip ? null : await import(SRC);
+const ROOFJS = IFL && new URL('today/src/roof.js', IFL);
+const hasRoof = !skip && existsSync(ROOFJS);
+const R = hasRoof ? await import(ROOFJS) : null;
+const roofCase = skip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const { onRequest } = await import('../../../functions/_middleware.js');
 
 const SITE = 'https://inflite.ai', KEY = 'hub-key-0123456789abcdef';
 const BEACON = `<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" data-cf-beacon='{"token": "x"}'></script>`;
 const ENV = { HUB_KEY: KEY, CHAT_ORIGIN: 'https://chat.inflite.ai', WEATHER_ORIGIN: 'https://weather.inflite.ai', FITNESS_ORIGIN: 'https://fitness.inflite.ai',
-  MARKETS_ORIGIN: 'https://finance.inflite.ai', MAIL_ORIGIN: 'https://email.inflite.ai', AUTH_ORIGIN: 'https://auth.inflite.ai' };
+  MARKETS_ORIGIN: 'https://finance.inflite.ai', MAIL_ORIGIN: 'https://email.inflite.ai', AUTH_ORIGIN: 'https://auth.inflite.ai', ROOF_OFF: '1' };
 const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', webmanifest: 'application/manifest+json', png: 'image/png', svg: 'image/svg+xml', json: 'application/json' };
 
 // The site's files, as Pages' store has them
@@ -41,9 +49,9 @@ function hosts() {
     return new Response((await res.text()).replace('</body>', `${BEACON}</body>`), res);
   };
 }
-const ask = async (path, init = {}) => {
+const ask = async (path, init = {}, env = ENV) => {
   const r = new Request(SITE + path, { headers: { 'Sec-Fetch-Site': 'same-origin', 'CF-Connecting-IP': '203.0.113.9', ...(init.headers || {}) }, method: init.method || 'GET' });
-  const res = await H.hub(r, ENV, {});
+  const res = await H.hub(r, env, {});
   return { res, text: init.method === 'HEAD' ? '' : await res.text() };
 };
 
@@ -162,4 +170,37 @@ test('the hub’s source asks HTMLRewriter for exactly these, and sets the marke
   for (const s of [`'script[src*="cloudflareinsights"]'`, `"head"`, `'link[rel="manifest"]'`, `'link[rel="apple-touch-icon"]'`]) assert.ok(src.includes(`.on(${s}`), s);
   assert.match(src, /<meta name="ifl-hub" content="\$\{base\}">/);
   assert.match(src, /base: Object\.keys\(PAGES\)\.find\(/);
+});
+
+test('One roof: with the roof on, /weather/ is the framework’s page with the page’s headers (no hub marker of Weather’s, no beacon), /weather/sw.js the retiring worker; the files the hub’s as ever; with it off, the module’s files not found', { skip: roofCase }, async () => {
+  hosts();
+  // (Today's page, as the inflite repo's assets have it, with its own headers)
+  const page = readFileSync(new URL('today/public/index.html', IFL));
+  const ON = { ...ENV, ROOF_OFF: undefined, ASSETS: { fetch: async (r) => new Response(r.method === 'HEAD' ? null : page, { headers: { 'Content-Type': 'text/html; charset=utf-8', ETag: '"p"', 'Content-Security-Policy': "default-src 'self'" } }) } };
+  for (const p of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2']) {
+    const { res, text } = await ask(p, {}, ON);
+    assert.equal(res.status, 200, p);
+    assert.match(text, /<meta name="ifl-hub" content="\/">/, `${p}: the framework’s marker`);
+    assert.doesNotMatch(text, /ifl-hub" content="\/weather\//, `${p}: never the hub’s marker for Weather’s page`);
+    assert.doesNotMatch(text, /cloudflareinsights/);
+    for (const [k, v] of Object.entries(R.PAGE_HEADERS)) assert.equal(res.headers.get(k), v, `${p}: ${k}`);
+    assert.equal(res.headers.get('etag'), null);
+    assert.deepEqual(res.headers.getSetCookie(), []);
+    assert.ok(scriptSrc(res.headers.get('content-security-policy')).every((t) => t === "'self'"), 'script-src its own alone');
+  }
+  const sw = await ask('/weather/sw.js', {}, ON);
+  assert.equal(sw.res.headers.get('x-content-type-options'), 'nosniff'); assert.equal(sw.res.headers.get('x-robots-tag'), 'noindex');
+  assert.equal(sw.res.headers.get('service-worker-allowed'), null, 'never a worker over the whole site');
+  assert.match(sw.text, /registration\.unregister\(\)/);
+  for (const f of ['app.js', 'styles.css', 'icon-180.png', 'version']) {
+    const { res, text } = await ask('/weather/' + f, {}, ON);
+    assert.equal(res.status, 200, f); assert.equal(res.headers.get('x-robots-tag'), 'noindex', f); assert.equal(res.headers.get('x-content-type-options'), 'nosniff', f);
+    assert.doesNotMatch(res.headers.get('content-security-policy') || '', /cloudflareinsights/, f);
+    assert.doesNotMatch(text, /ifl-hub" content=/, f);
+  }
+  // (off: Weather's page the hub's again, as above; the module's files not found, never kept, never sniffed)
+  for (const p of ['/weather/roof/weather.js', '/weather/roof/wxcore.css']) {
+    const { res } = await ask(p);
+    assert.equal(res.status, 404, p); assert.equal(res.headers.get('cache-control'), 'no-store', p); assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p);
+  }
 });
