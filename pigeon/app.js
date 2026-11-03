@@ -5255,6 +5255,11 @@ const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else 
 // yet), else a tip: pigeons are still here (off), or how to use them (just turned on, on this phone). Inline, never over anything
 function noteCard() {
   if (!S.me) return "";
+  // (Chats at the hub for the first time on this phone (spec §11.2): what came with the sign-in and what didn't, said
+  // plainly, and the lock offered once, as it doesn't come across)
+  if (HUB && lsGet("inflight-hubnote") !== "done") return `<div class="notecard" data-key="hubnote" role="note"><div class="tt"><i aria-hidden="true">${I.lock}</i><b>Chats is part of InFlite now</b></div>
+    <p>Your friends and every message are here. Drafts, anything still waiting to send and Chat’s lock stay with Chat on its own.${passkeysSupported() ? ` Lock Chats with ${isIOS() ? "Face ID" : "a passkey"}?` : ""}</p>
+    <div class="tfoot">${passkeysSupported() ? `<button type="button" class="btn small" data-act="hubnotelock">Lock Chats</button>` : ""}<button type="button" class="btn small plain" data-act="hubnoteok">${passkeysSupported() ? "Not Now" : "Got It"}</button></div></div>`;
   const tip = (key, title, text, btns) => `<div class="pgtip" data-key="${key}" role="note"><div class="tt"><i aria-hidden="true">${I.bird}</i><b>${title}</b></div><p>${text}</p><div class="tfoot">${btns}</div></div>`;
   if (S.me.noted === false && pigeonsOn()) return `<div class="notecard" data-key="note" role="note"><div class="tt"><i aria-hidden="true">${I.bolt}</i><b>Messages can be instant now</b></div>
     <p>Messages can arrive as soon as you send them, with typing and read ticks. Your chats go by pigeon until you change them, and you can send any one message either way.</p>
@@ -9939,6 +9944,8 @@ async function onClick1(e, t) {
     }
     case "pigeons": case "pgtipon": return setPigeons(t.dataset.act === "pgtipon" ? true : !pigeonsOn());
     case "pgtipoff": lsSet("inflight-pgtip", "off"); haptic("tick"); return render();
+    case "hubnoteok": lsSet("inflight-hubnote", "done"); haptic("tick"); return render();
+    case "hubnotelock": lsSet("inflight-hubnote", "done"); render(); return doAct("applock");
     case "pgtipok": lsSet("inflight-pgtipon", null); haptic("tick"); return render();
     case "newchats": return setNewChats(id);
     case "noteinstant": case "notekeep": return noteAnswer(t.dataset.act === "noteinstant");

@@ -124,13 +124,26 @@ async function sendVia(key, to, typed, { name } = {}) {
 }
 
 // ---- 1. Today: the engine there, ready; a script's sendTo with no tap refused ----
-await G.p.goto(`${HUB}/`);
+// (the script is the page's own, run as it opens, never tapped: Playwright's own evaluate counts as a tap, so nothing of
+// the test touches the page until the script has said what it got, on the console)
+const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
+await G.ctx.addInitScript(({ to, w, pk }) => {
+  if (location.pathname !== '/' || location.hash !== '#notap' || window.top !== window) return;
+  const t0 = Date.now();
+  const go = () => {
+    let c = null; try { c = document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat || null; } catch (_) {}
+    if (c && c.state === 'ready') return Promise.resolve(c.sendTo(to, w, pk)).then((r) => console.log('notap ' + JSON.stringify({ r, active: navigator.userActivation?.isActive })), (e) => console.log('notap ' + JSON.stringify({ err: String(e) })));
+    if (Date.now() - t0 < 45000) setTimeout(go, 400); else console.log('notap ' + JSON.stringify({ err: 'no engine' }));
+  };
+  setTimeout(go, 400);
+}, { to: P.id, w: cards.weather.say, pk: packed.weather });
+const notap = new Promise((ok) => { const on = (m) => { if (m.text().startsWith('notap ')) { G.p.off('console', on); ok(JSON.parse(m.text().slice(6))); } }; G.p.on('console', on); setTimeout(() => ok(null), 60000); });
+await G.p.goto(`${HUB}/#notap`);
+const nt = await notap;
+ok(nt?.r?.ok === false && nt.r.why === 'tap' && nt.active === false, '1. IFLChat.sendTo from the page’s own script, with no tap: refused', js(nt));
+ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0) === m0, '1. and nothing sent');
 const ready = await until(async () => (await engineState()) === 'ready', 40000);
 ok(!!ready, '1. Today: Chat’s engine in its frame, ready', String(await engineState()));
-const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
-const refused = await G.p.evaluate(({ to, w, pk }) => document.querySelector('iframe[name=ifl-chat]').contentWindow.IFLChat.sendTo(to, w, pk), { to: P.id, w: cards.weather.say, pk: packed.weather });
-ok(refused?.ok === false && refused.why === 'tap', '1. IFLChat.sendTo from a script, with no tap: refused', js(refused));
-ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0) === m0, '1. and nothing sent');
 
 const before = snapshot(), seen0 = seen.length;
 
@@ -177,7 +190,12 @@ for (const [path, key, typed, label] of [['/weather/', 'weather', TYPED.weatherA
 await shot(G, '7-from-markets');
 
 // ---- 8. the engine not ready: Chats' own sheet, by the back= navigation, and back with the toast ----
-await G.ctx.route(/\/chats\/\?engine=1/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>not ready</title>' }));
+// (the engine saying it hasn't Chat's key here yet, as one on a phone signed in to InFlite but not to Chats does)
+await G.ctx.addInitScript(() => {
+  if (location.pathname !== '/chats/' || !/[?&]engine/.test(location.search)) return;
+  let real = null;
+  Object.defineProperty(window, 'IFLChat', { configurable: true, get: () => (real ? { state: 'key', share: real.share, sendTo: real.sendTo, waiting: real.waiting, since: real.since, refresh: real.refresh, signOut: real.signOut } : undefined), set: (v) => { real = v; } });
+});
 await G.p.goto(`${HUB}/`);
 await G.p.waitForTimeout(1500);
 const away = G.p.waitForURL((u) => u.pathname === '/chats/', { timeout: 40000 }).then(() => true, () => false);
@@ -191,15 +209,14 @@ await pick.click(); await G.p.click('.sheet [data-act=sendgo]');
 await G.p.waitForURL((u) => u.pathname === '/' && !u.hash, { timeout: 20000 }).catch(() => {});
 const backSaid = await toastSaid(/Sent to Pat/, 10000);
 ok(new URL(G.p.url()).pathname === '/' && /You’re still here/.test(backSaid || ''), '8. sent, and back on Today with the toast', js({ url: G.p.url(), backSaid }));
-await G.ctx.unroute(/\/chats\/\?engine=1/);
 
 // ---- 9. on the friends' phones: When Sent and Now; percent only in the stock's payload as Pat's phone opens it ----
 await reloadChat(P); await K.openChat(P, GID);
 await P.p.waitForSelector('.msgs .cd-card', { timeout: 15000 }).catch(() => {});
 await until(async () => (await P.p.locator('.msgs .cd-card').count()) >= 5, 15000);
-const pc = await P.p.$$eval('.msgs .cd-card', (cs) => cs.map((c) => c.innerText.replace(/\s+/g, ' ')));
+const pc = await P.p.$$eval('.msgs .cd-card', (cs) => cs.map((c) => c.textContent.replace(/\s+/g, ' ')));
 ok(pc.length >= 5 && pc.every((t) => /When sent/i.test(t)), '9. Pat: each card drawn, with When Sent', js(pc.map((t) => t.slice(0, 60)), 600));
-ok(pc.some((t) => new RegExp(PLACE).test(t) && /\bNow\b/.test(t)), '9. the weather with Now beside When Sent', js(pc.find((t) => /Cley/.test(t))));
+ok(pc.some((t) => new RegExp(PLACE).test(t) && /Now · \d\d:\d\d/.test(t)), '9. the weather with Now beside When Sent', js(pc.find((t) => /Cley/.test(t))));
 ok(pc.some((t) => /with Leo/.test(t)), '9. the ride: “with Leo”', js(pc.filter((t) => /Endurance/.test(t))));
 const stockTexts = pc.filter((t) => /Tesco/.test(t));
 ok(stockTexts.length >= 2 && stockTexts.every((t) => !/[£$€]/.test(t)), '9. Tesco on Pat’s phone: no amount in any word', js(stockTexts));
@@ -217,7 +234,7 @@ const opened = await P.p.evaluate(async ({ from }) => {
 ok(opened.length >= 2 && opened.every((o) => JSON.stringify(Object.keys(o.c.snap).sort()) === '["day","name","pct","sym"]' && !/[£$€]/.test(JSON.stringify(o))),
   '9. the stock’s payload, opened on Pat’s phone: name, sym, pct and day, and no amount anywhere in it', js(opened, 400));
 await reloadChat(L); await K.openChat(L, GID);
-const lc = await until(() => L.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.innerText.replace(/\s+/g, ' ')).find((t) => /Endurance/.test(t)) || null), 15000);
+const lc = await until(() => L.p.evaluate(() => [...document.querySelectorAll('.msgs .cd-card')].map((c) => c.textContent.replace(/\s+/g, ' ')).find((t) => /Done/.test(t)) || null), 15000);
 ok(!!lc && /When sent/i.test(lc) && /Done/.test(lc), '9. Leo: the finished ride, live in his chat', lc);
 
 // ---- 10. privacy: the exact strings sent, in no new or changed row outside a sealed ct, and in no request ----
