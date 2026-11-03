@@ -9,8 +9,9 @@ import { createFrame } from "/roof/frame.js";
 import * as ui from "/roof/ui.js";
 
 // (which Weather this page gets: the fake one, or MAIN's real module with ?module=; roofkit/serve.mjs reads the cookie)
-const real = new URLSearchParams(location.search).has("module");
-document.cookie = `kit-module=${real ? "real" : "fake"}; path=/; SameSite=Strict`;
+// (kept for the page's life in this browser, so a reload at a tidied address keeps the same Weather)
+if (new URLSearchParams(location.search).has("module")) document.cookie = "kit-module=real; path=/; SameSite=Strict";
+else if (!/kit-module=/.test(document.cookie)) document.cookie = "kit-module=fake; path=/; SameSite=Strict";
 
 const state = { signedIn: true, hub: true, roof: true, lost: 0, checks: 0, hubAgain: 0, shows: [], hides: [], me: 0, edit: 0, csp: [] };
 document.addEventListener("securitypolicyviolation", (e) => state.csp.push(`${e.violatedDirective} ${e.blockedURI}`));

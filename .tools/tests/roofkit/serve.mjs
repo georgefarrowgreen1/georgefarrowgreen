@@ -38,7 +38,7 @@ export async function serveKit(context, { main = new URL('../../../', import.met
     const req = route.request(), u = new URL(req.url()), p = decodeURIComponent(u.pathname);
     log.push(p + u.search);
     const real = /(?:^|;\s*)kit-module=real/.test(req.headers().cookie || '');
-    if (p === '/' || p === '/index.html') return page(route, readFileSync(`${HERE}index.html`, 'utf8'));
+    if (p === '/' || p === '/index.html' || p === '/weather/' || p === '/weather/index.html') return page(route, readFileSync(`${HERE}index.html`, 'utf8'));
     if (p === '/kit/shared.js') return send(route, shared, 'text/javascript');
     if (p.startsWith('/kit/')) { const f = HERE + p.slice(5); return fileOk(f) && !f.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
     if (!real && p === '/weather/roof/weather.js') return send(route, readFileSync(`${HERE}fake-module.js`), 'text/javascript');
