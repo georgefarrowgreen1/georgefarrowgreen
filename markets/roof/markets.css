@@ -46,6 +46,8 @@
 .m-markets .mk-order .mv { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--ctl); }
 .m-markets .mk-order .mv[aria-disabled="true"] { opacity: 0.35; }
 .m-markets .mk-desk { display: none; }
+/* (a control brought into view by the keys comes to rest clear of the header and the tab bar) */
+.m-markets a[href], .m-markets button, .m-markets input, .m-markets summary { scroll-margin: calc(var(--hd-h, 140px) + 12px) 0 calc(var(--tabs-h, 64px) + 40px); }
 @media (prefers-reduced-motion: reduce) { .m-markets .rise, .ifl-sheet[data-app=markets] .rise, .ifl-sheet[data-app=markets] .mk-sheet > * { animation: none; } }
 
 /* ---- two columns at 980 px and wider (S2-D8): Today's cards and lists beside the portfolio; the desk's row ---- */

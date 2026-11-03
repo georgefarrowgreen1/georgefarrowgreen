@@ -116,6 +116,7 @@ ok(await until(() => st.log.some((c) => c.path === 'order')), 'kept: PUT /api/ma
 ok(await until(async () => /Tesco: 2 of \d/.test(await p.locator(`${H.M_MARKETS} [data-el="order-say"]`).textContent())), 'said in the live line');
 ok(await p.evaluate((sel) => document.activeElement?.matches(sel), H.mkMove('TSCO.L', 'down')), 'the keyboard stays on the one moved');
 await p.locator(H.MK_EDIT).click();
+await p.locator(`${H.MK_ACCOUNT_ROW}:visible`).first().evaluate((e) => e.scrollIntoView({ block: 'center' }));
 await p.locator(`${H.MK_ACCOUNT_ROW}:visible`).first().click();
 ok(await until(() => visible(p, openSheet('mk-account'))), 'an account’s row opens mk-account');
 await closeSheet(p);
@@ -177,6 +178,7 @@ for (const [width, height] of [[320, 640], [390, 844], [1280, 860]]) for (const 
   ok(await until(() => p.evaluate((sel) => document.querySelector(sel)?.childElementCount === 0, `${H.M_MARKETS} ${H.mkSec('today')}`), 4000), 'after five minutes out of sight: its DOM let go (S2-D22)');
   await go(p, '/markets/');
   ok(await until(() => visible(p, H.MK_HERO), 8000), 'drawn afresh on the next show');
+  await p.waitForTimeout(1500);     // (the one refresh on coming back, after five minutes away, in first)
   const before = st.log.filter((c) => c.path === 'quotes').length;
   await go(p, '/');
   await p.clock.fastForward('02:00');
