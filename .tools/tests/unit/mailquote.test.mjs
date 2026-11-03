@@ -1,9 +1,12 @@
 // Replies and forwards quoted by Mail's server (One roof, stage 4, S4-D4; the inflite repo's email/, beside this one):
 // email/src/quote.js's header for a reply, a reply to all and a forward (fmtQuoteDate's words, in London); the "> " text;
-// the <blockquote type="cite">; Mail's inline pictures left out; the same words and HTML as the page's own buildPayload
-// (taken from email/public/app.js) makes from the same quote; a hostile original without what could run. And, through
-// Mail's Worker (node:sqlite as D1, R2 in memory, the account and Email Sending standing in): a forwarded file by { ref },
-// copied from Mail's own; a draft sent by its id with its stored fields, files and quote, once however often asked.
+// the <blockquote type="cite">; Mail's inline pictures left out; the same wrapping as the page's own buildPayload (taken
+// from email/public/app.js) makes round the same quote; a hostile original without what could run, however it's hidden,
+// against fixed output (what the page's DOMParser reading makes, written down from a browser, less what could run). And,
+// through Mail's Worker (node:sqlite as D1, R2 in memory, the account and Email Sending standing in): a forwarded file by
+// { ref }, copied from Mail's own, its sizes and number checked before any is read; a draft sent by its id with its
+// stored fields, files and quote, once however often asked; a draft opened in Mail on its own with its forwarded files
+// at Mail's address; a re-save that names no quote keeping the one it has; a forwarded file Mail has since lost.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -21,9 +24,10 @@ const st = (q, a = []) => ({ bind: (...b) => st(q, b), first: async () => sql.pr
   all: async () => ({ results: sql.prepare(q).all(...val(a)), meta: {} }), run: async () => ({ meta: { changes: Number(sql.prepare(q).run(...val(a)).changes) } }) });
 const DB = { prepare: (q) => st(q), batch: async (list) => { const out = []; for (const s of list) out.push(await s.all()); return out; } };
 const r2 = new Map();
+const reads = [];
 const R2 = {
   put: async (k, v) => { r2.set(k, typeof v === 'string' ? new TextEncoder().encode(v) : new Uint8Array(v)); },
-  get: async (k) => (r2.has(k) ? { body: r2.get(k), arrayBuffer: async () => r2.get(k).buffer.slice(0), json: async () => JSON.parse(new TextDecoder().decode(r2.get(k))) } : null),
+  get: async (k) => (reads.push(k), r2.has(k) ? { body: r2.get(k), arrayBuffer: async () => r2.get(k).buffer.slice(0), json: async () => JSON.parse(new TextDecoder().decode(r2.get(k))) } : null),
   delete: async (k) => { for (const x of [].concat(k)) r2.delete(x); },
 };
 const sent = [];
@@ -67,7 +71,8 @@ async function seed() {
 }
 
 // The page's own buildPayload (email/public/app.js), run with the page's textToHtml and the server's htmlToText and
-// bodyInner (the page's use a DOM, which a Worker has none of)
+// bodyInner (the page's use a DOM, which a Worker has none of): it checks the wrapping only. What the server's two make
+// of an original is checked against fixed output below.
 const page = (q) => {
   const src = readFileSync(new URL('public/app.js', MAIL), 'utf8');
   const fn = (name, pre = '') => new RegExp(`\\n {2}${pre}function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n {2}\\}\\n`).exec(src)?.[0] || assert.fail(`app.js: ${name}`);
@@ -116,7 +121,7 @@ test('the words: "> " for a reply, as they are for a forward; the blockquote; Ma
   assert.equal(q.withQuote('Only this', null).text, 'Only this', 'no quote: the words alone');
 });
 
-test('the same words and HTML as the page’s own buildPayload makes from the same quote', { skip }, async () => {
+test('the same wrapping round the quote as the page’s own buildPayload makes', { skip }, async () => {
   await seed();
   const q = await load('src/quote.js');
   const buildPayload = page(q);
@@ -197,4 +202,120 @@ test('a draft sent by its id: its stored fields, files, refs and quote, quoted b
   await settle();
   assert.equal(sent.at(-1).text, 'Hello');
   assert.doesNotMatch(sent.at(-1).html, /blockquote/);
+});
+
+// (what the page's DOMParser reading makes of each, as a browser gave it, is noted where Mail's server differs: its
+// entities as they were written, no <tbody> put in, and less: no on…= handler, no javascript: address, no tag cut short)
+test('a hostile original: what could run left out however it’s hidden, against fixed output', { skip }, async () => {
+  const q = await load('src/quote.js');
+  const cases = [
+    // (an ordinary message: DOMParser gives the same, but for "—", "’" and <tbody>)
+    ['<div class=x style="color:#333">Dear Pat,<br/>See <a href="https://example.com/?a=1&amp;b=2" target=_blank>this</a> &mdash; it&rsquo;s 5 &lt; 6.</div><table><tr><td>A</td><td>B</td></tr></table><ul><li>one</li><li>two</li></ul>',
+      '<div class="x" style="color:#333">Dear Pat,<br>See <a href="https://example.com/?a=1&amp;b=2" target="_blank">this</a> &mdash; it&rsquo;s 5 &lt; 6.</div><table><tr><td>A</td><td>B</td></tr></table><ul><li>one</li><li>two</li></ul>',
+      'Dear Pat,\nSee this — it’s 5 < 6.\nAB\none\ntwo'],
+    // (DOMParser keeps onerror="alert(2)")
+    [HOSTILE, '<p>Hello <b>George</b> &amp; all</p><img src="x"><img src="cid:logo1"><blockquote>older</blockquote>', 'Hello George & all\nolder'],
+    // (a strip done once would rebuild these: <script src=//evil.example/x.js></script>, <iframe src=//evil>)
+    ['<scr<script>ipt src=//evil.example/x.js></scr<script>ipt>', '', ''],
+    ['<ifr<iframe>ame src=//evil>', '', 'ame src=//evil>'],
+    ['<p>a</p><scr<script>ipt>alert(1)</scr</script>ipt><SCRIPT >b</SCRIPT ><p>c</p>', '<p>a</p>ipt&gt;<p>c</p>', 'a\nipt>c'],
+    // (these two: DOMParser's words exactly; its HTML keeps the tags cut short, <ob<object>, <for<form>, as tags of no kind)
+    ['<<script>script>alert(1)<</script>/script>', '&lt;/script&gt;', '</script>'],
+    ['<ob<object>ject data=x></ob</object>ject><for<form>m action=//evil>', 'ject&gt;', 'ject data=x>ject>m action=//evil>'],
+    // (javascript: however it's spelt; on…= however it's written; SVG's ways of setting an address)
+    ['<a href="javascript:alert(1)">a</a><a href=" JaVa&#x0A;Script:alert(1)">b</a><a href="&#106;avascript:alert(1)">c</a><a href="java&Tab;script&colon;alert(1)">d</a>' +
+      '<svg><a xlink:href="javascript:alert(1)">e</a><animate attributeName="href" values="javascript:alert(1)"/><set attributeName=href to=javascript:alert(1) /></svg>' +
+      '<div ONMOUSEOVER=x onfocus = "y" style="width:expression(alert(1))" title="a\'b">f</div><img src=x onerror=alert(1)//>',
+      '<a>a</a><a>b</a><a>c</a><a>d</a><svg><a>e</a></svg><div title="a\'b">f</div><img src="x">', 'abcdef'],
+    // (a tag inside an SVG style, which a reader takes as a tag: only ever text here)
+    ['<svg><style><img src=x onerror=alert(1)></style></svg><p title="x"><b>ok</b></p><!-- <script>x</script> -->', '<svg><style>&lt;img src=x onerror=alert(1)></style></svg><p title="x"><b>ok</b></p>', 'ok'],
+  ];
+  for (const [html, inner, text] of cases) {
+    assert.equal(q.bodyInner(html), inner, `bodyInner ${html}`);
+    assert.equal(q.htmlToText(html), text, `htmlToText ${html}`);
+  }
+  // (and through withQuote, as it's sent: the nested script and frame never come back)
+  const sentHtml = q.withQuote('Yes', { header: 'On …', html: cases[2][0] + cases[3][0] + '<p>hi</p>', text: '', forward: false }).html;
+  assert.doesNotMatch(sentHtml, /<script|<iframe|evil/i);
+  // (a long message of tags cut short is read once, not again and again)
+  const t0 = Date.now();
+  q.bodyInner('<a'.repeat(200000));
+  q.htmlToText('<a "'.repeat(100000));
+  assert.ok(Date.now() - t0 < 2000, 'read in one pass');
+});
+
+test('a draft from InFlite opened in Mail on its own: a forwarded file at Mail’s own address, fetched to send or save it', { skip }, async () => {
+  await seed();
+  const saved = await call('/api/drafts', { to: ['sam@example.com'], subject: 'Fwd: Lunch', text: 'Menu attached', quote: { of: 'm1', mode: 'forward' },
+    attachments: [{ filename: 'note.txt', type: 'text/plain', size: 3, content: 'YWJj' }, { ref: 'menu' }] });
+  assert.equal(saved.status, 200);
+  const own = await call(`/api/messages/${saved.data.id}`, undefined, { method: 'GET', origin: null });
+  assert.equal(own.status, 200);
+  const [mine, fwd] = own.data.compose.attachments;
+  assert.equal(mine.content, 'YWJj', 'its own file as it was');
+  assert.equal(mine.url, undefined);
+  assert.deepEqual(fwd, { ref: 'menu', filename: 'menu.pdf', type: 'application/pdf', size: 4, url: '/api/attachments/menu' });
+  // (which Mail on its own fetches, at its own address)
+  const { default: worker } = await load('src/index.js');
+  const file = await worker.fetch(new Request(`https://email.inflite.ai${fwd.url}`, { headers: { Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'Sec-Fetch-Site': 'same-origin' } }), env, ctx);
+  assert.equal(file.status, 200);
+  assert.deepEqual([...new Uint8Array(await file.arrayBuffer())], [37, 80, 68, 70]);
+});
+
+test('a re-save that names no quote keeps the one the draft has (quoteOld: Mail on its own’s, sent from there); quote: null takes it off', { skip }, async () => {
+  await seed();
+  const whole = { header: 'On 1 Oct 2026 at 09:00, Old Friend <old@example.com> wrote:', html: '<p>long ago</p>', text: 'long ago', forward: false };
+  const saved = await call('/api/drafts', { to: ['old@example.com'], subject: 'Re: Then', text: 'Hi', inReplyTo: 'gone@example.com', quote: whole, attachments: [] }, { origin: null });
+  const id = saved.data.id;
+  const d = await call(`/api/drafts/${id}`, undefined, { method: 'GET' });
+  assert.equal(d.data.quoteOld, true);
+  assert.equal(d.data.compose.quote, null);
+  // (closed in InFlite with its words changed: no quote key)
+  const again = await call('/api/drafts', { id, to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', inReplyTo: 'gone@example.com', attachments: [] });
+  assert.equal(again.status, 200);
+  let kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  assert.equal(kept.text, 'Hi again');
+  assert.deepEqual(kept.quote, whole, 'its quote kept, to go when it’s sent from Mail on its own');
+  // (sent without it, as "Send Without the Quoted Text?" asks: quote: null)
+  await call('/api/drafts', { id, to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', quote: null, attachments: [] });
+  kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  assert.equal(kept.quote, null);
+});
+
+test('forwarded files: their number and sizes checked from Mail’s rows before any is read', { skip }, async () => {
+  await seed();
+  sql.prepare(`INSERT INTO attachments (id, message_id, filename, type, size, content_id, disposition) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('huge', 'm2', 'huge.mov', 'video/quicktime', 20 * 1024 * 1024, null, 'attachment');
+  r2.set('att/huge', new Uint8Array(8));
+  const msg = { to: ['sam@example.com'], subject: 'x', text: 'x', html: 'x' };
+  reads.length = 0;
+  const many = await call('/api/send', { ...msg, attachments: Array.from({ length: 21 }, () => ({ ref: 'menu' })), key: 'refs-key-0001' }, { origin: null });
+  assert.equal(many.status, 413);
+  assert.match(many.data.error, /20 files/);
+  const big = await call('/api/send', { ...msg, attachments: [{ ref: 'huge' }, { ref: 'huge' }], key: 'refs-key-0002' }, { origin: null });
+  assert.equal(big.status, 413);
+  assert.match(big.data.error, /25 MB/);
+  assert.deepEqual(reads.filter((k) => k.startsWith('att/')), [], 'no file read');
+});
+
+test('a draft whose forwarded file Mail has since lost: still saved, its words kept; sending it says the file’s gone', { skip }, async () => {
+  await seed();
+  sql.prepare(`INSERT INTO attachments (id, message_id, filename, type, size, content_id, disposition) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('brief', 'm2', 'brief.pdf', 'application/pdf', 4, null, 'attachment');
+  r2.set('att/brief', new Uint8Array([1, 2, 3, 4]));
+  const saved = await call('/api/drafts', { to: ['sam@example.com'], subject: 'Fwd: Plain', text: 'First', attachments: [{ ref: 'brief' }] });
+  const id = saved.data.id;
+  sql.prepare(`DELETE FROM attachments WHERE id = 'brief'`).run();
+  r2.delete('att/brief');
+  const again = await call('/api/drafts', { id, to: ['sam@example.com'], subject: 'Fwd: Plain', text: 'Second', attachments: [{ ref: 'brief' }] });
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  const kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  assert.equal(kept.text, 'Second');
+  assert.deepEqual(kept.attachments, [{ ref: 'brief', filename: 'brief.pdf', type: 'application/pdf', size: 4 }]);
+  // (but not one it never had)
+  const fresh = await call('/api/drafts', { to: ['sam@example.com'], subject: 'x', text: 'x', attachments: [{ ref: 'brief', filename: 'brief.pdf' }] });
+  assert.equal(fresh.status, 400);
+  const before = sent.length;
+  const r = await call('/api/send', { draftId: id, key: 'lost-key-0001' });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /brief\.pdf/);
+  assert.equal(sent.length, before, 'not sent without it');
 });

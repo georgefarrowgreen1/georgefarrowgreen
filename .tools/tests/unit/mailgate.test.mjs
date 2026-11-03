@@ -224,12 +224,14 @@ test('/meta and /api/drafts/<id>: never a body; drafts only for drafts; the old 
   assert.equal((await ask('/api/drafts/nope')).status, 404);
 });
 
-test('Vary: Origin on every answer for a file, to anyone, found or not', { skip }, async () => {
+test('Vary: Origin on every answer for a file, to anyone, found or not, once', { skip }, async () => {
   await seed();
   for (const [path, o] of [['/api/attachments/a-png', {}], ['/api/attachments/a-svg', {}], ['/api/attachments/nope', {}], ['/api/attachments/a-png', { origin: null, site: 'same-origin' }],
     ['/api/attachments/a-png', { origin: null, site: null }], ['/api/attachments/a-png', { origin: 'https://evil.example', site: 'cross-site' }]]) {
     const r = await ask(path, o);
     assert.match(r.headers.get('vary') || '', /(^|,\s*)Origin(\s*,|$)/, `${path} ${JSON.stringify(o)}: ${r.status}`);
+    // (added to what's there, never twice, as a hub's own Vary and the file's both say it)
+    assert.equal((r.headers.get('vary').match(/origin/gi) || []).length, 1, `${path} ${JSON.stringify(o)}: once`);
   }
 });
 
