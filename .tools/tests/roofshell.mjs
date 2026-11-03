@@ -19,7 +19,11 @@
 // page load of the hub's Weather page); the hub ready but the module's files missing: the error state, Try Again and
 // Open Weather on Its Own, then Reload; Weather's old worker at /weather/ unregistered while signed out; Today's warning
 // chip at that place's Warnings; the time to Today's first card (logged, not gated); and at 320, 390, 768 and 1280, light
-// and dark: no sideways scroll, axe clean, no CSP violation or console error.
+// and dark: no sideways scroll, axe clean, no CSP violation or console error. And (review I1–I7): a late roof off at a
+// /weather/ boot bounces once and stays on inflite.ai; a kept roof off with roof on now is asked afresh; degraded, none
+// of Weather's module files asked for (D13); Weather Notifications with no places (Open Weather), the solar line, Email
+// the Briefing, an account from before, the focus after a PATCH; the page's sheets reopened while they shut, their close
+// button the framework's cross; Edit Today from the menu on Today pushing no twin; Sign in's href after a move in the page.
 //   node .tools/tests/roofshell.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -72,16 +76,16 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
   window.IFLChat = { state: "ready", share: async () => true, sendTo: async () => ({ ok: true }), waiting: async () => [], since: async () => null, refresh: async () => {}, signOut: async () => {} };
   parent.dispatchEvent(new Event("ifl-chat-ready"));
 </script></body></html>`;
-// open({ hub: { ready, roof } | "late" | null (as the Worker says), module: "connector" | "missing", … })
-async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null } = {}) {
+// open({ hub: { ready, roof } | "late" | { late: ms, json } | null (as the Worker says), module: "connector" | "missing", … })
+async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null } = {}) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
   const hubAsked = [];
   if (hub) await ctx.route((u) => new URL(u).pathname === '/api/hub', async (r) => {
     hubAsked.push(Date.now());
-    const j = hub === 'late' ? { ready: true, roof: true } : hub;
-    if (hub === 'late') await new Promise((go) => setTimeout(go, 3000));
+    const late = hub === 'late' ? 3000 : hub.late || 0, j = hub === 'late' ? { ready: true, roof: true } : hub.late ? hub.json : hub;
+    if (late) await new Promise((go) => setTimeout(go, late));
     await r.fulfill({ json: j, headers: { 'Cache-Control': 'no-store' } }).catch(() => {});
   });
   await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => {
@@ -111,7 +115,7 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, ro
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
   p.on('response', (r) => { if (r.status() >= 500) errs.push(`${r.status()} from ${new URL(r.url()).pathname}`); });
   // (the module's files missing, as a part asks: the frame's own word of it is expected, nothing else)
-  const expected = (t) => module === 'missing' && /Failed to fetch dynamically imported module: \S+\/weather\/roof\/weather\.js/.test(t);
+  const expected = (t) => (module === 'missing' && /Failed to fetch dynamically imported module: \S+\/weather\/roof\/weather\.js/.test(t)) || !!expect?.test(t);
   p.on('console', (m) => { if (m.type() === 'error' && !expected(m.text()) && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
   await p.clock.setFixedTime(new Date(MIDDAY.at));
   // (documents loaded in the tab: a pushState or a hash is never one)
@@ -233,6 +237,7 @@ await part('weather notifications', async () => {
   await p.click(`${H.SH_WXNOTIFY} [data-wxn="rain"]`);
   await p.waitForFunction(() => document.querySelector('#sh-wxnotify [data-wxn="rain"]')?.getAttribute('aria-pressed') === 'false' && !document.querySelector('#sh-wxnotify [data-wxn="rain"]').disabled);
   same((await sent('PATCH', 'notify')).at(-1), { weather: { place: { lat: 51.5072, lon: -0.1276, name: 'London', rain: false, warn: true } } }, 'Rain off: PATCH { weather: { place: { lat, lon, name, rain, warn } } }');
+  same(await p.evaluate(() => !!document.activeElement?.matches('#sh-wxnotify [data-wxn="rain"][data-i="0"]')), true, 'the focus kept on Rain, drawn again after the PATCH');
   await p.selectOption('#wxnBrief', '0');
   await p.waitForSelector('#wxnAt', { timeout: 5000 });
   same((await sent('PATCH', 'notify')).at(-1), { weather: { brief: { lat: 51.5072, lon: -0.1276, name: 'London' }, briefAt: NOTIFY.weather.briefAt } }, 'Morning Briefing for London: PATCH { weather: { brief, briefAt } }');
@@ -242,6 +247,12 @@ await part('weather notifications', async () => {
   await p.click('#wxnMailWarn');
   await p.waitForTimeout(500);
   same((await sent('PATCH', 'notify')).at(-1), { weather: { email: { warn: true, brief: false } } }, 'Email Warnings: PATCH { weather: { email: { warn, brief } } }');
+  has(await text(p, `${H.SH_WXNOTIFY} [data-wxn-place]`), 'London', 'its place by name');
+  has(await text(p, H.SH_WXNOTIFY), 'Email the Briefing', 'Email the Briefing, where the account can email');
+  await p.click('#wxnMailBrief');
+  await p.waitForTimeout(500);
+  same((await sent('PATCH', 'notify')).at(-1), { weather: { email: { warn: true, brief: true } } }, 'Email the Briefing: PATCH { weather: { email: { warn, brief: true } } }');
+  ok(!(await p.$(`${H.SH_WXNOTIFY} .wxn-solar`)), 'no solar line where no solar alert’s set');
   await p.screenshot({ path: `${OUT}/wxnotify-390-dark.png` });
   await p.keyboard.press('Escape');
   await p.waitForFunction((s) => !document.querySelector(s), `${H.SH_WXNOTIFY}[open]`);
@@ -251,6 +262,26 @@ await part('weather notifications', async () => {
   await p.waitForSelector(`${H.SH_WXNOTIFY}[open] [data-wxn]`, { timeout: 10000 });
   same(await shown(p), ['you'], '/#you=notify-weather: You, with Weather Notifications open');
   await p.screenshot({ path: `${OUT}/wxnotify-390-light.png` });
+  await ctx.close();
+  // (no places yet, a solar alert set: what to do, Weather a tap away, and where the solar alert lives)
+  const notifyAs = (edit) => (c) => c.route((u) => new URL(u).pathname === '/api/notify', async (r) => {
+    if (r.request().method() !== 'GET') return r.fallback();
+    if (edit === 404) return r.fulfill({ status: 404, json: { error: 'Not found.' } });
+    const res = await r.fetch(), j = await res.json();
+    edit(j);
+    return r.fulfill({ response: res, json: j });
+  });
+  ({ ctx, p } = await open({ path: '/#you=notify-weather', setup: notifyAs((j) => { j.weather.places = []; j.weather.solar = { alert: true, zones: 1 }; }) }));
+  await p.waitForSelector(`${H.SH_WXNOTIFY}[open] .wxn-none`, { timeout: 10000 });
+  has(await text(p, `${H.SH_WXNOTIFY} .wxn-none`), 'Add a place in Weather to choose its rain alerts', 'no places: what to do');
+  same(await p.$eval(`${H.SH_WXNOTIFY} [data-wxn-open]`, (a) => [a.textContent, a.getAttribute('href')]), ['Open Weather', '/weather/'], 'and Open Weather, at the hub’s /weather/');
+  ok(!(await p.$(`${H.SH_WXNOTIFY} [data-wxn]`)) && !(await p.$('#wxnBrief')) && !(await p.$('#wxnMailWarn')), 'no chips, no briefing, no email without a place');
+  has(await text(p, `${H.SH_WXNOTIFY} .wxn-solar`), 'Sunshine for your panels: in Weather Settings, Solar', 'the solar alert: where it lives');
+  await ctx.close();
+  // (an account side from before Weather's notifications were the account's: said so, nothing to change)
+  ({ ctx, p } = await open({ path: '/#you=notify-weather', setup: notifyAs(404) }));
+  await p.waitForFunction(() => /set in Weather on this account/.test(document.querySelector('dialog#sh-wxnotify[open]')?.textContent || ''), null, { timeout: 10000 });
+  ok(!(await p.$(`${H.SH_WXNOTIFY} [data-wxn]`)), 'an account from before: “Weather’s notifications are set in Weather on this account”, no controls');
   await ctx.close();
 });
 
@@ -293,16 +324,42 @@ await part('sheets and toasts', async () => {
   await p.click(H.HD_EDIT);
   await p.waitForSelector('dialog#sh-edit[open]');
   same(await p.evaluate(() => [document.querySelector('dialog#sh-edit').matches(':modal'), document.body.classList.contains('sheet-up')]), [true, true], 'Edit: a modal dialog, body.sheet-up');
+  ok(await p.$('dialog#sh-edit .ifs-btn[data-close] svg'), 'its close button: the framework’s cross (an svg), as every sheet it builds');
   await p.click('#edReset');
   await p.waitForSelector(`${H.TOAST}.on`, { timeout: 5000 });
   has(await text(p, H.TOAST), 'Back in the day’s order', 'a toast: the framework’s');
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.querySelector('dialog#sh-edit[open]'));
   ok(true, 'Escape shuts it');
+  // (Edit again within its close (340 ms): opens afresh, not the closing one)
+  await p.click(H.HD_EDIT);
+  await p.waitForSelector('dialog#sh-edit[open]');
+  await p.waitForTimeout(400);
+  await p.evaluate((s) => { document.querySelector('dialog#sh-edit [data-close]').click(); setTimeout(() => document.querySelector(s).click(), 100); }, H.HD_EDIT);
+  await p.waitForTimeout(900);
+  ok(await p.$('dialog#sh-edit[open]:not(.closing)'), 'Edit tapped again while it shuts: open, not shut with the closing one');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('dialog#sh-edit[open]'));
+  // (Edit Today from the menu, on Today: the sheet, no second entry of Today, so Back goes to You)
+  await p.click(H.HD_ME); await p.waitForSelector('.ifm-pop.open');
+  await p.click('.ifm-pop [data-k=edit]');
+  await p.waitForSelector('dialog#sh-edit[open]');
+  ok(true, 'Edit Today from the menu: the sheet');
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.querySelector('dialog#sh-edit[open]'));
+  await p.goBack();
+  await p.waitForFunction(() => !document.getElementById('you').hidden, null, { timeout: 5000 }).catch(() => {});
+  same(await shown(p), ['you'], 'then Back: You, the entry before Today (no twin of Today)');
+  await p.click(H.tab('today'));
+  await p.waitForFunction(() => !document.getElementById('today').hidden);
   await p.click(H.HD_ME); await p.waitForSelector('.ifm-pop.open');
   await p.click('.ifm-pop [data-k=morning]');
   await p.waitForSelector('dialog#morning[open]');
   ok(await p.evaluate(() => document.querySelector('dialog#morning').matches(':modal')), 'Morning: a modal dialog');
+  await p.waitForTimeout(400);
+  await p.evaluate(() => { location.hash = 'morning'; });
+  await p.waitForTimeout(900);
+  ok(await p.$('dialog#morning[open]:not(.closing)'), '#morning while Morning’s open: still open');
   await p.click('dialog#morning[open] [data-close]');
   await p.waitForFunction(() => !document.querySelector('dialog#morning[open]'));
   await p.click(H.tab('you'));
@@ -353,8 +410,15 @@ await part('old weather worker', async () => {
 // ======================================================================= the hub explicitly not ready: degraded
 await part('degraded', async () => {
   await mode({ phase: 'midday' });
-  let { ctx, p } = await open({ hub: { ready: false, roof: true }, path: '/#apps' });
+  const wxAsked = [];
+  let { ctx, p } = await open({ hub: { ready: false, roof: true }, path: '/#apps', setup: (c) => c.on('request', (r) => { if (/^\/weather\/(roof\/)?[\w-]+\.(js|css)$/.test(new URL(r.url()).pathname)) wxAsked.push(new URL(r.url()).pathname); }) });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  await p.click(H.tab('you'));
+  await p.waitForSelector('#youRules .rule');
+  await p.click(H.tab('apps'));
+  await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  await p.waitForTimeout(1500);
+  same(wxAsked, [], 'degraded: none of Weather’s module files (/weather/roof/*, its scripts or styles) ever asked for (D13)');
   const tileHref = await p.$eval(H.appTile('weather'), (t) => (t.matches('a') ? t : t.querySelector('a[href]')).getAttribute('href'));
   same(tileHref, 'https://weather.inflite.ai/', 'not ready: the Weather tile at Weather’s own address');
   await ctx.close();
@@ -373,6 +437,47 @@ await part('slow hub', async () => {
   same(new URL(p.url()).origin, BASE, '/api/hub answering after 3 s at /weather/#radar: nothing left inflite.ai');
   same(loads(), 1, 'no navigation away');
   same(await p.evaluate(() => document.documentElement.dataset.app), 'weather', 'Weather’s screen opened (unknown counts as ready, roof on, D23)');
+  await ctx.close();
+  // (a late { ready: true, roof: false } at a /weather/ deep link: the D14 bounce, once, to its path and hash, where the
+  // hub, roof off, sends milestone 1's Weather page; nothing leaves inflite.ai. With a query, as the frame's bounce is a
+  // replace to path and hash, which at an address with none would only move to its hash: reported to FW)
+  const M1 = '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style><p>MILESTONE 1 WEATHER</p>';
+  let docs = 0;
+  // (the frame's own word that the module's load was refused as roof went off under it: expected, nothing else)
+  const late = await open({ hub: { late: 2500, json: { ready: true, roof: false } }, path: '/weather/?lat=51.5&lon=-0.12&name=London#radar', wait: false, module: 'missing', expect: /^Error: the hub or the roof is off/,
+    setup: (c) => c.route((u) => /^\/weather\/(index\.html)?$/.test(new URL(u).pathname), (r) => r.fulfill({ contentType: 'text/html', body: docs++ ? M1 : PAGE, headers: { 'Cache-Control': 'no-cache' } })) });
+  await late.p.waitForSelector('text=MILESTONE 1 WEATHER', { timeout: 15000 });
+  same([new URL(late.p.url()).origin, new URL(late.p.url()).pathname, new URL(late.p.url()).hash], [BASE, '/weather/', '#radar'], 'a late roof off at a /weather/ deep link: its path and hash again, still inflite.ai');
+  same(await late.p.evaluate(() => [sessionStorage.getItem('ifl-roof-bounce'), sessionStorage.getItem('ifl-roof')]), ['1', '0'], 'the bounce marker set once, roof kept off');
+  same(late.loads(), 2, 'one bounce: two documents');
+  await late.ctx.close();
+  // (a roof kept off from before (rolled back, then on again) while the Worker serves the framework at /weather/#radar,
+  // and /api/hub says roof's on: asked afresh, Weather's screen, nothing leaves)
+  const kept = await open({ hub: { ready: true, roof: true }, path: '/weather/#radar', wait: false, module: 'missing',
+    setup: (c) => c.addInitScript(() => { try { if (location.pathname.startsWith('/weather/') && !sessionStorage.getItem('t-kept')) { sessionStorage.setItem('t-kept', '1'); sessionStorage.setItem('ifl-hub-ready', '1'); sessionStorage.setItem('ifl-roof', '0'); } } catch {} }) });
+  await kept.p.waitForSelector(`${H.M_WEATHER}:not([hidden])`, { timeout: 15000 });
+  await kept.p.waitForTimeout(1500);
+  same([new URL(kept.p.url()).origin, new URL(kept.p.url()).pathname], [BASE, '/weather/'], 'a kept roof off, roof on now: still at /weather/ on inflite.ai');
+  same(kept.loads(), 1, 'no bounce, no navigation away');
+  same(await kept.p.evaluate(() => [document.documentElement.dataset.app, sessionStorage.getItem('ifl-roof'), sessionStorage.getItem('ifl-roof-bounce')]), ['weather', '1', null], 'Weather’s screen, roof kept on now, no bounce marker');
+  ok(kept.hubAsked.length >= 1, '/api/hub asked afresh, not the kept roof off trusted');
+  await kept.ctx.close();
+});
+
+// ======================================================================= signed out after a move in the page
+await part('signed out after a move', async () => {
+  await mode({ phase: 'midday' });
+  const { ctx, p } = await open({ path: '/#apps', module: 'missing' });
+  await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/chats/#signin-start&then=${encodeURIComponent('/#apps')}`, 'at boot: Sign in back to /#apps');
+  await p.locator(H.appTile('weather')).locator('a[href="/weather/"]').first().click();
+  await p.waitForSelector(`${H.M_WEATHER}:not([hidden])`, { timeout: 15000 });
+  await mode({ mode: 'out' });
+  await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await p.waitForSelector('#out:not([hidden]) #signin', { timeout: 10000 });
+  const at = await p.evaluate(() => location.pathname + location.hash);
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/chats/#signin-start&then=${encodeURIComponent(at)}`, `the session lost at ${at}: Sign in’s href back to there, not the boot’s /#apps`);
+  ok(at.startsWith('/weather/'), 'still at Weather’s address', at);
   await ctx.close();
 });
 

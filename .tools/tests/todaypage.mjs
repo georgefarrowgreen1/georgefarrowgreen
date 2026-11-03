@@ -529,6 +529,10 @@ await part('edit', async () => {
   same(puts.length, 1, 'Edit: the changes sent once, after the last');
   same(JSON.parse(puts.at(-1)?.body || '{}'), { order: ['chat', 'weather', 'fitness', 'markets'], hidden: ['markets'] }, 'Edit: the PUT body');
   await p.screenshot({ path: `${OUT}/edit-390-dark.png` });
+  // (and a real tap, the sheet settled: its controls can be tapped as they are, not only clicked by script)
+  await p.click('#edList [data-k=weather] [data-mv="1"]');
+  await p.waitForTimeout(200);
+  same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'fitness', 'weather'], 'Edit: a real tap on Move Down moves Weather');
   await p.click('#edReset');
   await p.waitForTimeout(900);
   puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
