@@ -3,11 +3,12 @@
 // Only from what Chat already has: friends' places, zones, streaks and flight times, the letters on this phone (read
 // in memory, never kept), and for a forecast, the rain at friends' places (POST share-rank). Nothing new is collected.
 // Pure: Chat (pigeon/app.js) passes everything in.
-// Today First (spec §8.3) adds four reasons, each built on the phone and passed in beside seen: there ("Where Leo is",
-// 100, the card's own friend only, and no one else can have it), asked ("Asked about Tesco this morning", 95: the stock
-// in what they said, from pigeon/digest.js's topics), planned ("Riding with you Thursday", 90 on fitness and weather
-// cards: rides agreed or waiting in sync.rides and invites in your letters) and calls ("Calling at 18:30", 85: sync.times).
-import { payloadParts, clockIn, durShort, dayWords } from "./cards.js";
+// Today First (spec §8.3) adds four reasons: there ("Where Leo is", 100: from the card itself, its own ref.friend, and
+// no one else can have it, by canForward's own rule), and three built on the phone and passed in beside seen: asked
+// ("Asked about Tesco this morning", 95: the stock in what they said, from pigeon/digest.js's topics), planned ("Riding
+// with you Thursday", 90 on fitness and weather cards: rides agreed or waiting in sync.rides and invites in your
+// letters) and calls ("Calling at 18:30", 85: sync.times).
+import { payloadParts, canForward, clockIn, durShort, dayWords } from "./cards.js";
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const DOWL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -94,15 +95,17 @@ function soonest(rows, now) {
 }
 
 // Each friend's best (score, reason) for the card; picks that can't go (canFly's words) at the foot.
-// Today First's opts: there (for a card of where a friend is, whom it's for; by default its own ref.friend),
-// asked (pigeon/digest.js waitingDigest's items [{ id, topics }], or a Map id → topics), planned (rides and invites
-// [{ with, start, stop | end, sport?, state? }], or a Map friend id → rows), calls (sync.times [{ with, kind, start,
-// stop }], or a Map).
+// Today First: a card of where a friend is (there) is for its own ref.friend alone, as canForward says: that friend
+// gets "Where Leo is" and everyone else "Only for Leo". (An option named there is not read: whom it's for is never
+// anything but the card's own friend, so the sheet and the send can't disagree.) Opts: asked (pigeon/digest.js
+// waitingDigest's items [{ id, topics }], or a Map id → topics), planned (rides and invites [{ with, start, stop | end,
+// sport?, state? }], or a Map friend id → rows), calls (sync.times [{ with, kind, start, stop }], or a Map).
 // → [{ id, score, reason, best, lands, can, why }]
-export function rankFriends(card, { friends, me, now = Date.now(), rain, seen, landsIn, streakRisk, lastAt, canFly, there, asked, planned, calls } = {}) {
+export function rankFriends(card, { friends, me, now = Date.now(), rain, seen, landsIn, streakRisk, lastAt, canFly, asked, planned, calls } = {}) {
   const myTz = me?.tz;
-  // (only for a card of where a friend is: whom it's for, else no one at all, so it never goes to the wrong friend)
-  const thereId = card?.there !== true ? null : typeof there === "string" && there ? there : typeof card.ref?.friend === "string" ? card.ref.friend : "";
+  // (only for a card of where a friend is: its own friend, else no one at all, so it never goes to the wrong friend)
+  const isThere = card?.there === true;
+  const thereId = isThere && card.kind === "weather" && typeof card.ref?.friend === "string" ? card.ref.friend : "";
   const thereName = thereId ? first((friends || []).find((x) => x?.id === thereId)?.name) : "";
   const askedBy = asked instanceof Map ? asked : new Map((Array.isArray(asked) ? asked : []).filter((x) => x && typeof x.id === "string").map((x) => [x.id, x.topics]));
   const plans = byFriend(planned, withOfRow), talks = byFriend(calls, withOfRow);
@@ -139,7 +142,7 @@ export function rankFriends(card, { friends, me, now = Date.now(), rain, seen, l
       else if (s.gotMarkets) c.push([50, "Sends you Markets cards too"]);
     }
     // the weather where this friend is, made for them
-    if (thereId != null && thereId === f.id) c.push([100, `Where ${first(f.name) || "they are"}${first(f.name) ? " is" : ""}`]);
+    if (thereId && thereId === f.id) c.push([100, `Where ${first(f.name) || "they are"}${first(f.name) ? " is" : ""}`]);
     // the stock they asked about (or sent, or mentioned): in what they said, on this phone
     const sym = card?.kind === "markets" && typeof card.snap?.sym === "string" ? card.snap.sym.toUpperCase() : null;
     if (sym) {
@@ -169,7 +172,7 @@ export function rankFriends(card, { friends, me, now = Date.now(), rain, seen, l
     }
     if (score == null) { score = lands != null ? 10 - lands / 60e3 / 60 : 0; reason = lands != null ? `Lands in ${durShort(lands)}` : ""; }
     // (a card of where a friend is goes to that friend alone)
-    const why = (canFly ? canFly(f) : null) || (thereId != null && thereId !== f.id ? (thereName ? `Only for ${thereName}` : "Only for the friend it’s about") : null);
+    const why = (canFly ? canFly(f) : null) || (isThere && !canForward(card, { mine: true, to: f.id }) ? (thereName ? `Only for ${thereName}` : "Only for the friend it’s about") : null);
     return { id: f.id, score, reason, best: false, lands, can: !why, why: why || null, _last: last ?? 0, _name: first(f.name) };
   });
   rows.sort((a, b) => (a.can !== b.can ? (a.can ? -1 : 1) : b.score - a.score || b._last - a._last || a._name.localeCompare(b._name, "en-GB")));

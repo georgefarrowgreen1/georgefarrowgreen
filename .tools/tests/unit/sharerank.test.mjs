@@ -2,7 +2,7 @@
 // more, and friends who can't be sent to at the foot with why.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normCard } from "../../../pigeon/cards.js";
+import { normCard, canForward } from "../../../pigeon/cards.js";
 import { rankFriends, seenFrom, rainAsk } from "../../../pigeon/rank.js";
 
 const H = 3600e3, MIN = 60e3, LON = "Europe/London";
@@ -136,10 +136,20 @@ test("there: “Where Leo is” at 100, Leo only, and no one else can have the c
   assert.equal(r.find((x) => x.id === "pat").reason, "Raining in Pat Leeton now", "their own reasons still said, greyed");
   // canFly's words first, where it has any
   assert.equal(rankFriends(THERE, { friends, me, now: NOW, canFly: (x) => (x.id === "leo" ? "Check the new safety number first" : null) })[0].can, false);
-  // whom it's for: the opt, else the card's own; no friend in it at all: no one
-  assert.equal(rankFriends(THERE, { friends, me, now: NOW, there: "mira" }).find((x) => x.can).id, "mira");
+  // whom it's for: the card's own friend, never anyone an option names (so the sheet and canForward always agree)
+  for (const there of ["mira", "pat", "leo", "", 5]) {
+    const r2 = rankFriends(THERE, { friends, me, now: NOW, there });
+    assert.deepEqual(r2.filter((x) => x.can).map((x) => [x.id, x.reason]), [["leo", "Where Leo is"]], `there: ${there}`);
+    for (const x of r2) assert.equal(x.can, canForward(THERE, { mine: true, to: x.id }), x.id);
+  }
+  // no friend in it at all: no one, whatever an option says
   const nobody = normCard({ ...THERE, ref: { cell: [52.6, 1.3] } });
-  assert.ok(rankFriends(nobody, { friends, me, now: NOW }).every((x) => !x.can && x.why === "Only for the friend it’s about"));
+  for (const there of [undefined, "leo"]) assert.ok(rankFriends(nobody, { friends, me, now: NOW, there }).every((x) => !x.can && x.why === "Only for the friend it’s about" && x.score < 100));
+  // whom it's for not among your friends: no one either, said plainly
+  const stranger = normCard({ ...THERE, ref: { cell: [52.6, 1.3], friend: "zed" } });
+  assert.ok(rankFriends(stranger, { friends, me, now: NOW }).every((x) => !x.can && x.why === "Only for the friend it’s about"));
+  // (an unchecked card claiming there on another kind: canForward has it go to no one, and so does the sheet)
+  assert.ok(rankFriends({ ...ride, there: true, ref: { friend: "leo" } }, { friends, me, now: NOW }).every((x) => !x.can));
   // (a card that isn't one: there says nothing)
   assert.ok(rankFriends(W, { friends, me, now: NOW, there: "leo" }).every((x) => x.can && x.reason !== "Where Leo is"));
 });
