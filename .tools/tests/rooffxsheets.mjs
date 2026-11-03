@@ -1,5 +1,5 @@
 // Fitness's sheets on InFlite's framework, before Today is on it (One roof stage 2, spec §9.2 FXB, S2-D7, S2-D13, S2-D22):
-// the kit page (roofkit/serve.mjs) at http://kit.test/fitness/ with ?module=/fitness/roof/fitness.js&apps=weather,fitness,
+// the kit page (roofkit/serve.mjs) with ?module=/fitness/roof/fitness.js&apps=weather,fitness, then /fitness/ through the frame,
 // MAIN's fitness/ and the inflite repo's today/public/ from disk, Fitness's API (/api/fitness/*) stood in here with one
 // ride as a GPX file (fitness/sample.js's, written by formats.js), Strava's page and OpenFreeMap's tiles stood in.
 // Selectors from roofhooks.mjs (and, inside FXB's own sheets, FXB's own markup: data-k, data-go, data-page). Checked:
@@ -87,7 +87,10 @@ const visible = (sel) => p.locator(sel).first().isVisible();
 const sheet = (name) => `dialog.ifl-sheet[open][data-sheet=${name}]`;
 const closeSheets = async () => { for (let i = 0; i < 4 && await p.locator('dialog.ifl-sheet[open]').count(); i++) { await p.keyboard.press('Escape'); await p.waitForTimeout(400); } };
 
-await p.goto(`${KIT}/fitness/?module=/fitness/roof/fitness.js&apps=weather,fitness`);
+// (the kit page with Fitness's real module and its switch on, then Fitness's address through the framework, as a tap would)
+await p.goto(`${KIT}/?module=/fitness/roof/fitness.js&apps=weather,fitness`);
+await until(() => p.evaluate(() => !!window.kit?.ready), 10000);
+await p.evaluate(() => window.kit.F.nav.go('/fitness/'));
 ok(await until(() => visible(`${H.M_FITNESS} ${H.fxSec('today')}`), 20000), 'Fitness mounted on the kit page, Today showing', st.errors.slice(0, 3).join(' | '));
 await shot('today');
 
