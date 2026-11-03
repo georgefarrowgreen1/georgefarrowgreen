@@ -96,7 +96,8 @@ sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${GID}'`);
 ok(!!GID, 'George the site’s admin, a passkey on his account, signed in just now');
 
 // ---- the mail: 24 conversations from people (the list scrolls), a long one, three Updates, pictures, a designed one, and
-// one whose only rare word is beyond its snippet (found only by asking Mail) ----
+// one whose only rare word is in an attachment's file name (Mail's server search matches file names, the module's
+// provider only what it has loaded: subject, snippet, people; so it's found only by asking Mail) ----
 const PEOPLE = ['Pat Smith', 'Rowan Ash', 'Kit Lee', 'Noor Haddad', 'Isla Moor', 'Sam Reed', 'Jo Hart', 'Alex Park'];
 const sent = [];
 for (let i = 0; i < 24; i++) {
@@ -114,7 +115,7 @@ sent.push(await deliver({ from: 'Kit Lee <kit@example.com>', subject: 'Photos fr
 const FIGURES = 'Kestrelwick figures';
 sent.push(await deliver({ from: 'Jo Hart <jo@example.com>', subject: 'Quarterly figures', text: `${FIGURES}: up four per cent.`, html: `<html><body><table><tr><td style="font-family:Georgia"><h1>${FIGURES}</h1><p>Up four per cent on last quarter.</p></td></tr></table></body></html>` }));
 const RARE = 'Ptarmiganroost';
-sent.push(await deliver({ from: 'Sam Reed <sam@example.com>', subject: 'Odds and ends', text: `${'Nothing much to say here, just a long preamble about the week. '.repeat(8)}And one last thing: ${RARE}.` }));
+sent.push(await deliver({ from: 'Sam Reed <sam@example.com>', subject: 'Odds and ends', text: 'Nothing much to say here, just the schedule attached.', files: [{ name: `${RARE}-schedule.pdf`, type: 'application/pdf', data: Buffer.from('%PDF-1.4\n% roof schedule\n%%EOF\n') }] }));
 ok(sent.every((x) => x.status >= 200 && x.status < 300), `${sent.length} messages came to Mail (its email handler)`, js(sent.filter((x) => !(x.status >= 200 && x.status < 300)).length));
 
 // (each conversation's id, by its subject, as Mail on its own lists them)
@@ -178,8 +179,12 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
   await p.goto(`${HUB}/#apps`);
   ok((await shown(p, H.APPS, 30000)) && (await shown(p, H.appTile('mail'), 30000)), '1. Apps: Mail’s tile for its admin (§2.5)');
   ok((await attrOf(p, EXCEPT.tileLink('mail'), 'href')) === '/mail/', '1. …its link /mail/ (§2.3)', await attrOf(p, EXCEPT.tileLink('mail'), 'href'));
+  // (a shorter phone, so Apps scrolls: 560 points tall, less where Apps is short, never under 420)
+  const tall = await p.evaluate(() => document.documentElement.scrollHeight);
+  await p.setViewportSize({ width: 390, height: Math.max(420, Math.min(560, tall - 160)) }); await wait(400);
   const yApps = await p.evaluate(() => { scrollTo(0, Math.min(240, document.documentElement.scrollHeight - innerHeight)); return Math.round(scrollY); });
   await wait(300);
+  ok(yApps > 50, `1. Apps scrolled down ${yApps}px before the tile is tapped (so Back can be seen to keep it, D20)`, js({ tall, h: await p.evaluate(() => innerHeight) }));
   const life = await alive(p), docs = loads(p);
   await tapTile(p);
   const up = await mailUp(p);
@@ -226,14 +231,15 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
   await p.click(H.HD_BACK);
   const back = (await shown(p, H.APPS)) && (await at(p, '/#apps'));
   const y1 = await until(async () => { const y = await p.evaluate(() => Math.round(scrollY)); return Math.abs(y - yApps) <= 6 ? String(y) : null; }, 6000);
-  ok(back && y1 != null && (await life.same()), `1. Back to Apps: /#apps, its scroll as it was (${yApps}px), the same document (D20)`, js({ url: here(p), y: await p.evaluate(() => scrollY) }));
-  if (yApps < 50) console.log(`note: Apps is short here (scrolled ${yApps}px only)`);
+  ok(back && yApps > 50 && y1 != null && (await life.same()), `1. Back to Apps: /#apps, its scroll as it was (${yApps}px), the same document (D20)`, js({ url: here(p), y: await p.evaluate(() => scrollY) }));
   docs.stop();
+  await p.setViewportSize({ width: 390, height: 844 });
 });
 
 // ======================================================================================================================
 await part(2, 'the phone’s reader: pushed and kept, “Back to Mail” with scroll and focus, back/forward, reload, a cold reader, no false “Couldn’t show”', 'S4-D6, S4-D7, C5, C6, C7, RI10, §3.2', async () => {
 // ======================================================================================================================
+  await p.setViewportSize({ width: 390, height: 844 });
   await p.goto(`${HUB}/mail/`);
   await mailUp(p); await wait(1200);
   const life = await alive(p);
@@ -459,7 +465,8 @@ await part(5, 'Send with Undo and the outbox; a reply Mail quotes itself; a forw
   await fill(p, { to: 'kit@example.com', subject: 'Roof sent offline', text: 'Written on the train.' });
   await sendNow(p); await wait(1500);
   const box = await p.evaluate(() => { try { return JSON.parse(localStorage.getItem('mail:outbox') || '[]'); } catch (_) { return null; } });
-  ok(Array.isArray(box) && box.some((x) => x.subject === 'Roof sent offline') && !/"content"|base64/.test(JSON.stringify(box)), '5. offline: Send keeps it in mail:outbox, text only (S4-D16, S4-D18)', js(box, 400));
+  // (S4-D16 fixes the key, not the entry's shape: the words found anywhere in it, and no file's bytes)
+  ok(Array.isArray(box) && box.length >= 1 && JSON.stringify(box).includes('Roof sent offline') && !/"content"|base64/.test(JSON.stringify(box)), '5. offline: Send keeps it in mail:outbox, text only (S4-D16, S4-D18)', js(box, 400));
   await G.ctx.setOffline(false);
   const flown = await until(async () => (await folderOf('sent')).find((m) => m.subject === 'Roof sent offline'), 25000);
   const empty = await until(() => p.evaluate(() => { try { return !JSON.parse(localStorage.getItem('mail:outbox') || '[]').length; } catch (_) { return false; } }), 10000);
@@ -509,22 +516,30 @@ await part(5, 'Send with Undo and the outbox; a reply Mail quotes itself; a forw
   ok(r === 'done' && routed && (/Roof words kept/.test(unsent) || !!asDraft), '5. words typed, then a notification tapped: the reader, compose closed, the words kept (mail:unsent or Drafts, S4-D18, RI2)', js({ r, routed, unsent: !!unsent, draft: !!asDraft }));
   ok(!!asDraft, '5. …and saved to Mail as a draft (“Draft saved”, S4-D18)', js(await said(p)));
 
-  // words typed, then signed out: Mail has them as a draft, the phone keeps none of Mail's
+  // words typed, compose closed, then Sign Out at once: the closed compose's save reaches Mail before any mail:* key
+  // goes (the sign-out's flush, C10). (The sheets are modal: the page behind is inert until compose is closed.)
   await p.goto(`${HUB}/mail/`);
   await mailUp(p);
   await write(p);
   await fill(p, { to: 'jo@example.com', subject: 'Roof before sign out', text: 'Unfinished business' });
+  const pre = (await mailAsk('/api/session', { cookie })).json?.access;
+  await closeSheets(p);
+  const shut = !(await count(p, H.SHEET_OPEN));
   await p.click(H.tab('you'));
-  await shown(p, H.YOU, 15000);
-  // (Sign Out in InFlite's menu, your photo's: the button by its name)
-  await p.click(H.HD_ME).catch(() => {});
-  await p.getByRole('button', { name: 'Sign Out' }).first().click().catch(() => {});
-  if (await shown(p, `${H.SIGNOUT_ANYWAY}[open]`, 3000)) await p.locator(`${H.SIGNOUT_ANYWAY}[open]`).getByRole('button', { name: 'Sign Out' }).click().catch(() => {});
-  await p.waitForURL((u) => u.host !== 'ifl.test:8788' || u.hash.includes('signout'), { timeout: 20000 }).catch(() => {});
-  await wait(2500);
+  const you = await shown(p, H.YOU, 15000);
+  // (Sign Out in InFlite's menu, your photo's (the shared menu, .ifm-pop as roofshell opens it): the button by its name)
+  await p.click(H.HD_ME);
+  const menu = await shown(p, '.ifm-pop.open', 5000);
+  await p.locator('.ifm-pop.open').getByRole('button', { name: 'Sign Out' }).first().click({ timeout: 10000 }).catch(() => {});
+  const anyway = await shown(p, `${H.SIGNOUT_ANYWAY}[open]`, 3000);
+  if (anyway) await p.locator(`${H.SIGNOUT_ANYWAY}[open]`).getByRole('button', { name: 'Sign Out' }).click().catch(() => {});
+  const landed = await p.waitForURL((u) => u.host === 'auth.ifl.test:8788' && new URLSearchParams(u.hash.slice(1)).get('signout') === 'today', { timeout: 20000 }).then(() => true, () => false);
+  // (the old sign-in ended: Mail, asked with its cookie, says sign in; its Worker keeps a yes for 10 seconds)
+  const post = await until(async () => { const a = (await mailAsk('/api/session', { cookie })).json?.access; return a === 'signin' ? a : null; }, 20000);
+  ok(pre === 'ok' && shut && you && menu && landed && post === 'signin', '5. compose closed, then You, InFlite’s menu, Sign Out: signed out (the sign-in page says so; Mail, asked with the old cookie, says sign in, C10)', js({ pre, shut, you, menu, anyway, landed, url: p.url().split('#')[0], post }));
   const c2 = freshCookie(GID);
   const saved = await until(async () => (await folderOf('drafts', c2)).find((m) => m.subject === 'Roof before sign out'), 10000);
-  ok(!!saved, '5. words typed, then Sign Out: Mail has them as a draft (flushed before sign-out, C10, RI1)', js(saved?.subject));
+  ok(!!saved, '5. …and Mail has the words as a draft (the closed compose’s save flushed before the sign-out, C10, RI1)', js(saved?.subject));
   await p.goto(`${HUB}/robots.txt`);
   const left = await p.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage)].filter((k) => k.startsWith('mail:')));
   ok(!left.length, '5. …and no mail:* key left on the phone (S4-D16, C10)', js(left));
@@ -548,13 +563,13 @@ await part(6, 'search: the provider’s hit; “Search Mail for …” a POST, t
   await p.fill(H.SEARCH_INPUT, '');
   await p.keyboard.type(RARE, { delay: 30 });
   const offer = await until(async () => { const all = await p.$$eval(H.SEARCH_RESULT, (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim())); return all.length && /^Search Mail for “/.test(all.at(-1)) && all.at(-1).includes(RARE) ? all : null; }, 8000);
-  ok(!!offer && offer.at(-1).includes(RARE), `6. “${RARE}” (only in a message’s words, past its snippet): “Search Mail for “${RARE}”” offered, last (S4-D9)`, js(offer));
+  ok(!!offer && offer.at(-1).includes(RARE), `6. “${RARE}” (only in an attachment’s file name, which the module never loads): “Search Mail for “${RARE}”” offered, last (S4-D9)`, js(offer));
   const before = asked.slice(s0).filter((r) => (r.url + r.post).includes(RARE.slice(0, 6)));
   ok(!before.length, '6. typed but not asked: nothing has left the phone (D16)', js(before.map((r) => r.url)));
   await p.locator(H.SEARCH_RESULT).last().click();
   const closed = await gone(p, `${H.SEARCH_SHEET}[open]`, 8000);
   const found = await shown(p, row(idOf('Odds and ends')), 15000);
-  ok(closed && found, '6. tapped: the search sheet closed, Mail’s answer in the list (the conversation with that word, S4-D9)');
+  ok(closed && found, '6. tapped: the search sheet closed, Mail’s answer in the list (the conversation with that file, S4-D9)', js({ closed, found, rows: await count(p, ROW) }));
   await shot(p, '6-search');
   const sent6 = asked.slice(s0).filter((r) => (r.url + ' ' + r.post).includes(RARE));
   ok(sent6.length >= 1 && sent6.every((r) => r.method === 'POST' && r.url === `${MAIL}/api/threads/search` && !r.url.includes(RARE)), '6. the words went once, to Mail only, in a POST body to /api/threads/search, never in an address (S4-D9)', js(sent6.map((r) => `${r.method} ${r.url}`)));
@@ -572,7 +587,9 @@ await part(6, 'search: the provider’s hit; “Search Mail for …” a POST, t
 // ---- across the run ----
 // (the test's own init scripts, which Playwright puts into every frame, refused in a message's script-less inner frame:
 // Chromium says so as an error; the refusal is the sandbox working, roofmailbody's to prove)
-const SANDBOXED = /Blocked script execution in 'about:srcdoc'/;
+// (and part 4's own visit to the PNG at Mail's address: Mail serves an attachment under a sandbox CSP, so the same
+// scripts are refused there too)
+const SANDBOXED = /Blocked script execution in '(about:srcdoc|http:\/\/email\.ifl\.test:8788\/api\/attachments\/[\w-]+)'/;
 const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !SANDBOXED.test(e) && !/Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED/.test(e));
 ok(!errs.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (C13)', js(errs.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!errs.length, 'no page error and no console error on any page (the offline outbox’s failed fetches aside)', js(errs.slice(0, 8)));
