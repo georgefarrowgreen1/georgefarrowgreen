@@ -3,6 +3,8 @@
 // "Now". The old #share= link still works as before; old and broken letters still draw; nothing about a card reaches a
 // notification or the server in the clear; only public cards of a friend's can be sent on; and a send that fails
 // keeps who it failed for, takes back a share id no letter carries, and is never sent twice.
+// Today First (spec §8.3): a group as a target (now only, sealed once for them all); and a link's back= is nothing off
+// the hub (Chat stays where it is; the hub's round trip is hubshare.mjs's).
 // (Open-Meteo for the server's live "Now" (WXAPP_URL, :8794) is handed to the weather stand-in (:8796), so its
 // 'share-…' patterns answer both.)
 import http from 'http';
@@ -276,6 +278,47 @@ ok(!(await G.p.$('.sheet h2:text-is("Send to a Friend")')) && /^Sent · /.test(t
 ok(/Mira(,|$)/.test(t10c) && !/Mira in /.test(t10c), '10c. (Mira’s, gone already, with no made-up landing time)', t10c);
 ok(sentTo(ms.me.id) === m1 + 1 && sentTo(ps.me.id) === p0 + 1, '10c. one letter to Mira, not two (and Pat’s went)', `${sentTo(ms.me.id) - m1}, ${sentTo(ps.me.id) - p0}`);
 await G.ctx.unroute(msgsUrl).catch(() => {});
+
+// ---- 11. a group as a target (Today First, spec §8.3): the card to everyone in it, now, sealed once for them all ----
+const grpAns = await api(gs.token, 'groups', { name: 'Ride Club', members: [ms.me.id, ps.me.id] });
+const GRP = grpAns[1]?.group?.id;
+ok(grpAns[0] === 200 && !!GRP, '11. a group of the three: Ride Club', JSON.stringify(grpAns).slice(0, 160));
+lofts(gs.me.id, 9); await reload(G);
+await hashTo(G, chatHash('Dry in Norwich for now.', wcard()));
+await G.p.waitForSelector(`.sheet [data-act=sendpick][data-id="${GRP}"]`, { timeout: 10000 }).catch(() => {});
+const gRow = rowOf(GRP);
+ok(/Ride Club/.test(await gRow.innerText().catch(() => '')), '11. the group in Send To', await G.p.locator('.sheet .group').first().innerText().catch(() => ''));
+// (by pigeon, a group can't have it: only now)
+await G.p.click('.sheet [data-act=sendwhen][data-id=asap]').catch(() => {}); await G.p.waitForTimeout(300);
+ok(await gRow.isDisabled() && /For a group, only Now/.test(await gRow.innerText()), '11. By Pigeon: the group greyed, “For a group, only Now”', await gRow.innerText());
+await G.p.click('.sheet [data-act=sendwhen][data-id=now]'); await G.p.waitForTimeout(300);
+await gRow.click(); await G.p.waitForTimeout(300);
+ok(/Send to Ride Club/.test(await G.p.locator('.sheet [data-act=sendgo]').innerText()), '11. Now: picked, “Send to Ride Club”', await G.p.locator('.sheet [data-act=sendgo]').innerText());
+const gm0 = Number(one(`SELECT COUNT(*) AS n FROM pg_gmsgs WHERE group_id = '${GRP}'`)[0]?.n || 0);
+await G.p.fill('#f-sendwords', 'For the whole club');
+await G.p.click('.sheet [data-act=sendgo]'); await G.p.waitForSelector('.sheet', { state: 'detached', timeout: 20000 }).catch(() => {});
+const gSaid = await toastText(G);
+ok(Number(one(`SELECT COUNT(*) AS n FROM pg_gmsgs WHERE group_id = '${GRP}'`)[0]?.n || 0) === gm0 + 1 && /Sent to Ride Club/.test(gSaid), '11. one group letter, “Sent to Ride Club”', gSaid);
+const gRaw = sql(`SELECT * FROM pg_gmsgs WHERE group_id = '${GRP}'`) + sql(`SELECT * FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE group_id = '${GRP}')`);
+ok(!/Norwich|For the whole club|"kind"/.test(gRaw), '11. nothing of the card or its words in the clear');
+await reload(M); await openChat(M, GRP);
+const mg = await M.p.waitForFunction(() => [...document.querySelectorAll('.msgs .cd-card')].some((c) => /Weather · Norwich/.test(c.textContent.replace(/\s+/g, ' '))), null, { timeout: 15000 }).then(() => true, () => false);
+ok(mg && /For the whole club/.test(await M.p.locator('.msgs').innerText()), '11. Mira, in the group: the card and the words', (await M.p.locator('.msgs').innerText().catch(() => '')).slice(-200));
+await M.p.click('.chatnav .back').catch(() => {});
+
+// ---- 12. back= off the hub (spec §8.2, §3.5): only the hub's pages go back to where a card came from; here, a link's
+// back= is nothing, and Chat stays where it is, as before (the hub's round trip: hubshare.mjs) ----
+lofts(gs.me.id, 9); await reload(G);
+await hashTo(G, chatHash('Dry in Norwich for now.', wcard()) + '&back=' + encodeURIComponent('/weather/'));
+await G.p.waitForSelector(`.sheet [data-act=sendpick][data-id="${ps.me.id}"]`, { timeout: 10000 });
+ok(!/back where you were/.test(await G.p.locator('.sheet').innerText()), '12. no word of going back');
+await G.p.click('.sheet [data-act=sendwhen][data-id=now]').catch(() => {});
+await rowOf(ps.me.id).click(); await G.p.click('.sheet [data-act=sendgo]');
+await G.p.waitForSelector('.sheet', { state: 'detached', timeout: 20000 }).catch(() => {});
+await G.p.waitForTimeout(800);
+const here = new URL(G.p.url());
+ok(here.pathname === '/pigeon/' && /Sent to Pat|^Sent/.test(await toastText(G)), '12. sent, and still in Chat (no going to /weather/)', `${here.pathname} ${await toastText(G)}`);
+ok(!(await G.p.evaluate(() => sessionStorage.getItem('ifl-sent'))), '12. nothing left for another page to say');
 
 const errs = K.errs.filter((e) => !/Failed to load|net::|404|429|navigator\.vibrate/.test(e));     // (a landing's haptic on a page not tapped since it reloaded: the browser's rule, not an error of ours)
 ok(!errs.length, 'no errors on any page', errs.join(' | '));
