@@ -139,6 +139,8 @@ const write = await hostAsk('ifl.test:8788', '/api/weather/me', { method: 'PUT',
 ok(write.status === 403, 'a write with another Origin: refused at the hub', String(write.status));
 const tick = await hostAsk('ifl.test:8788', '/api/pigeon/notify-tick', { method: 'POST', origin: HUB, headers: { Authorization: 'Bearer tick-test-secret', 'Sec-Fetch-Site': 'same-origin' } });
 ok(tick.status === 404, 'Chat’s scheduler, through the hub: not found', String(tick.status));
+const viaPage = await hostAsk('ifl.test:8788', '/weather/api/weather/me', { cookie, headers: { 'Sec-Fetch-Site': 'cross-site' } });
+ok(viaPage.status === 404 && !viaPage.cookies.length, 'an app’s API by way of a page’s path, with the cookie: not found at the hub', `${viaPage.status} ${viaPage.text.slice(0, 80)}`);
 const slash = await hostAsk('ifl.test:8788', '/weather?lat=1');
 ok(slash.status === 301 && slash.headers.location === `${HUB}/weather/?lat=1`, '/weather goes to /weather/', `${slash.status} ${slash.headers.location}`);
 const ready = await hostAsk('ifl.test:8788', '/api/hub');

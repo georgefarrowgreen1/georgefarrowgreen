@@ -66,29 +66,34 @@ async function served(mod, files, { host = 'https://chat.inflite.ai', chat = tru
 }
 const FILES = ['', 'index.html', 'tracker.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon-192.png', 'nothing-here.js'];
 
+const fresh = () => import(`../../../functions/_app.js?${Math.random()}`);
+// (Chat's file before the hub, from this checkout's history: its last change before, 3afb0b3. Where that isn't here
+// (a shallow clone), the check against it is skipped, and said to be, never passed)
+const OLD = (() => { try { return execFileSync('git', ['-C', ROOT.pathname, 'show', '3afb0b3:functions/_app.js'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (_) { return null; } })();
+
 test('serveApp without options sends what it always sent, at either address', async () => {
-  const fresh = () => import(`../../../functions/_app.js?${Math.random()}`);
-  // (Chat's file before the hub, where this checkout has its history: its last change before, 3afb0b3)
-  let before = null, dir = null;
+  for (const chat of [true, false]) {
+    const host = chat ? 'https://chat.inflite.ai' : 'http://localhost:8788/pigeon';
+    const now = await served(await fresh(), FILES, { host, chat });
+    assert.deepEqual(await served(await fresh(), FILES, { host, chat, opts: {} }), now, `chat ${chat}: {} is no options`);
+    assert.deepEqual(await served(await fresh(), FILES, { host, chat, opts: { base: '/', security: SECURITY } }), now, `chat ${chat}: the defaults are no options`);
+    const page = now.find((x) => x.f === '');
+    assert.equal(page.status, 200); assert.match(page.body, /<meta name="inflight-version" content="[0-9a-f]{12}"/);
+    assert.equal(new Map(page.headers).get('cache-control'), 'no-store');
+    if (chat) assert.doesNotMatch(page.body, /(?<![\w.-])\/pigeon\//);
+  }
+});
+
+test('serveApp without options is byte for byte what it sent before the hub (functions/_app.js at 3afb0b3)', { skip: !OLD && 'no 3afb0b3 in this checkout (a shallow clone): not proved here' }, async () => {
+  const dir = mkdtempSync(`${tmpdir()}/hubchat-`);
   try {
-    const old = execFileSync('git', ['-C', ROOT.pathname, 'show', '3afb0b3:functions/_app.js'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    dir = mkdtempSync(`${tmpdir()}/hubchat-`);
-    writeFileSync(`${dir}/app.mjs`, old.replace('"./_sites.js"', JSON.stringify(new URL('functions/_sites.js', ROOT).href)).replace('"./_min.js"', JSON.stringify(new URL('functions/_min.js', ROOT).href)));
-    before = () => import(pathToFileURL(`${dir}/app.mjs`).href + `?${Math.random()}`);
-  } catch (_) { /* (a shallow checkout: the defaults checked against themselves below) */ }
-  try {
+    writeFileSync(`${dir}/app.mjs`, OLD.replace('"./_sites.js"', JSON.stringify(new URL('functions/_sites.js', ROOT).href)).replace('"./_min.js"', JSON.stringify(new URL('functions/_min.js', ROOT).href)));
+    const before = () => import(pathToFileURL(`${dir}/app.mjs`).href + `?${Math.random()}`);
     for (const chat of [true, false]) {
       const host = chat ? 'https://chat.inflite.ai' : 'http://localhost:8788/pigeon';
-      const now = await served(await fresh(), FILES, { host, chat });
-      assert.deepEqual(await served(await fresh(), FILES, { host, chat, opts: {} }), now, `chat ${chat}: {} is no options`);
-      assert.deepEqual(await served(await fresh(), FILES, { host, chat, opts: { base: '/', security: SECURITY } }), now, `chat ${chat}: the defaults are no options`);
-      if (before) assert.deepEqual(await served(await before(), FILES, { host, chat }), now, `chat ${chat}: byte for byte as before the hub`);
-      const page = now.find((x) => x.f === '');
-      assert.equal(page.status, 200); assert.match(page.body, /<meta name="inflight-version" content="[0-9a-f]{12}"/);
-      assert.equal(new Map(page.headers).get('cache-control'), 'no-store');
-      if (chat) assert.doesNotMatch(page.body, /(?<![\w.-])\/pigeon\//);
+      assert.deepEqual(await served(await before(), FILES, { host, chat }), await served(await fresh(), FILES, { host, chat }), `chat ${chat}: byte for byte as before the hub`);
     }
-  } finally { if (dir) rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('one copy of the server, serving the same file as the old address, the new one and the hub’s, gives each its own ?v=, each its own file', async () => {

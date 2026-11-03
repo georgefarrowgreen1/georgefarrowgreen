@@ -3,8 +3,11 @@
 // host, spoken as the app (its Origin) only once the hub's own checks have passed; an API write only from the hub's own
 // page; only the account's cookie on, and Chat's bearer to Chat alone; pages with neither; the account's Set-Cookie back
 // from an API alone; redirects to an app's host turned into the hub's paths; the hub's key and what it knows of the
-// browser sent with each; where it connects apart from who it speaks as; the apps' server-to-server routes never; no
-// more of a body than the app takes; each app's version; and nothing at all until its key is set (spec §3.3, addendum A1).
+// browser sent with each; where it connects apart from who it speaks as; the apps' server-to-server routes never, nor a
+// path that climbs out of its app's API; an app's API never by way of a page's path; no more of a body than the app
+// takes; each app's version; nothing at all until its key is set; /api/hub ready only once Chat's host takes that key
+// (its /_hub/version, asked as the hub asks), kept five minutes after a yes and one after a no; and nothing served while
+// Chat's host says it doesn't know the key (spec §3.3, addendum A1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -45,6 +48,8 @@ const req = (path, { method = 'GET', headers = {}, body, cf } = {}) => {
 };
 const call = async (r, e = env()) => { const res = await H.hub(r, e, {}); let data = null; try { data = await res.clone().json(); } catch {} return { res, data }; };
 const geo = (h) => JSON.parse(Buffer.from(h.get('x-hub-geo'), 'base64url').toString('utf8'));
+// (what /api/hub says, through Today's Worker: always 200, never kept)
+const hubSaid = async (e, headers = {}) => { const r = await worker.fetch(new Request(SITE + '/api/hub', { headers }), e, {}); assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store'); return r.json(); };
 
 test('the hub’s paths, each prefix to its app, and Today’s own paths left to Today', { skip }, async () => {
   assert.deepEqual(H.PAGES, { '/chats/': { app: 'CHAT', under: '/_hub/' }, '/weather/': { app: 'WEATHER' }, '/fitness/': { app: 'FITNESS' }, '/markets/': { app: 'MARKETS' } });
@@ -203,16 +208,22 @@ test('a redirect to an app’s host comes back as the hub’s path; account., au
 test('the apps’ server-to-server routes are never the hub’s, however they’re written', { skip }, async () => {
   const asked = apps();
   for (const p of ['/api/pigeon/notify-tick', '/api/pigeon/notify-tick/x', '/api/pigeon/%6eotify-tick', '/api/weather/tick', '/api/weather/%74ick', '/api/fitness/garmin-tick', '/api/fitness/strava/hook',
-    '/api/fitness/strava//hook', '/api/markets/tick']) {
+    '/api/fitness/strava//hook', '/api/markets/tick', '/api/pigeon/x/..%2Fnotify-tick', '/api/pigeon/x/..%2fnotify-tick', '/api/pigeon/x/%2e%2e%2Fnotify-tick', '/api/pigeon/x%2F..%2F..%2Fpigeon%2Fnotify-tick',
+    '/api/fitness/strava/x%2F..%2Fhook', '/api/pigeon/%23%2F..%2Fnotify-tick', '/api/pigeon/x/..%5Cnotify-tick', '/api/markets/x/..%252Ftick']) {
     for (const method of ['GET', 'POST']) {
       const { res } = await call(req(p, { method, body: method === 'POST' ? {} : undefined, headers: { Authorization: 'Bearer tick-secret' } }));
       assert.equal(res.status, 404, `${method} ${p}`);
     }
   }
   assert.equal(asked.length, 0);
-  // (names that only start the same are the app's to answer)
-  await call(req('/api/pigeon/notify-ticks')); await call(req('/api/weather/ticker'));
-  assert.equal(asked.length, 2);
+  // (nor, read as the app's host reads it, anything outside the app's own API)
+  for (const p of ['/api/weather/..%2Ffitness%2Fme', '/api/weather/x/..%2F..%2Fpigeon/sync', '/api/pigeon/..%2F..%2Fapi/account/me', '/api/fitness/x/%2e%2e%2F%2e%2e%2F%2e%2e%2Fversion'])
+    assert.equal((await call(req(p, { headers: { Cookie: `__Secure-account=${TOKEN}` } }))).res.status, 404, p);
+  assert.equal(asked.length, 0);
+  // (names that only start the same are the app's to answer; and a path whose dots stay inside it)
+  await call(req('/api/pigeon/notify-ticks')); await call(req('/api/weather/ticker')); await call(req('/api/weather/a/..%2Fme'));
+  assert.equal(asked.length, 3);
+  assert.equal(asked[2].url.pathname, '/api/weather/a/..%2Fme', 'sent on as it came');
 });
 
 test('no more of a body than the app takes: by what the browser says, and counted where it doesn’t say', { skip }, async () => {
@@ -250,22 +261,146 @@ test('each app’s version, as its updater asks it (Chat’s from its hub copy)'
   assert.equal((await today.json()).build, '1.09');
 });
 
-test('until its key is set, every hub path answers 503 and /api/hub says it isn’t ready; once it is, ready', { skip }, async () => {
+test('until its key is set, every hub path answers 503, and /api/hub says it isn’t ready without asking any app', { skip }, async () => {
+  H.forgetProbe();
   const asked = apps();
   const none = env({ HUB_KEY: undefined });
   for (const p of ['/chats', '/chats/', '/weather/', '/fitness/app.js', '/markets/version', '/api/pigeon/sync', '/api/weather/where']) {
     const { res, data } = await call(req(p), none);
     assert.equal(res.status, 503, p); assert.match(data.error, /InFlite isn’t ready here yet/, p);
   }
-  assert.equal(asked.length, 0);
-  const said = async (e) => { const r = await worker.fetch(new Request(SITE + '/api/hub'), e, {}); assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store'); return r.json(); };
-  assert.deepEqual(await said(none), { ready: false });
-  assert.deepEqual(await said(env({ HUB_KEY: '' })), { ready: false });
-  assert.deepEqual(await said(env({ CHAT_ORIGIN: undefined })), { ready: false }, 'nor without every app’s address');
-  assert.deepEqual(await said(env()), { ready: true });
-  assert.deepEqual(await said({ ...env(), HUB_KEY: KEY }), { ready: true }, 'no cookie needed');
+  assert.deepEqual(await hubSaid(none), { ready: false });
+  assert.deepEqual(await hubSaid(env({ HUB_KEY: '' })), { ready: false });
+  assert.deepEqual(await hubSaid(env({ CHAT_ORIGIN: undefined })), { ready: false }, 'nor without every app’s address');
+  assert.deepEqual(await hubSaid(env({ MARKETS_ORIGIN: '' })), { ready: false });
+  assert.equal(asked.length, 0, 'without the key, no app is asked');
   assert.equal((await worker.fetch(new Request(SITE + '/api/hub', { method: 'POST', headers: { Origin: SITE, 'Sec-Fetch-Site': 'same-origin' } }), env(), {})).status, 405);
-  assert.equal(asked.length, 0, 'asking asks no app');
+  assert.equal(asked.length, 0);
+});
+
+test('with its key, /api/hub is ready only once Chat’s host takes that key: /_hub/version, asked as the hub asks', { skip }, async () => {
+  // (MAIN without the key, or with another: /_hub/ is not found there)
+  H.forgetProbe();
+  let asked = apps(() => new Response('Not found', { status: 404 }));
+  assert.deepEqual(await hubSaid(env(), { 'CF-Connecting-IP': '203.0.113.9', Cookie: `__Secure-account=${TOKEN}` }), { ready: false }, 'MAIN said not found: not ready');
+  assert.equal(asked.length, 1);
+  // (MAIN with it)
+  H.forgetProbe();
+  asked = apps((u) => (u.pathname === '/_hub/version' ? Response.json({ app: 'chat', build: '1.70', min: null }) : new Response('no', { status: 500 })));
+  assert.deepEqual(await hubSaid(env(), { 'CF-Connecting-IP': '203.0.113.9', Cookie: `__Secure-account=${TOKEN}` }), { ready: true }, 'MAIN said 200: ready');
+  assert.equal(asked.length, 1);
+  const [probe] = asked;
+  assert.equal(probe.url.href, 'https://chat.inflite.ai/_hub/version');
+  assert.equal(probe.method, 'GET'); assert.equal(probe.redirect, 'manual');
+  assert.equal(probe.headers.get('x-hub-key'), KEY, 'with the hub’s key');
+  assert.equal(probe.headers.get('x-hub-ip'), '203.0.113.9');
+  assert.deepEqual(geo(probe.headers), {});
+  assert.equal(probe.headers.get('origin'), 'https://chat.inflite.ai');
+  assert.equal(probe.headers.get('cookie'), null, 'no cookie, none needed'); assert.equal(probe.headers.get('authorization'), null);
+  // (where it connects, in a test: Chat's pass-through)
+  H.forgetProbe();
+  asked = apps(() => Response.json({ build: '1.70' }));
+  assert.deepEqual(await hubSaid(env({ CHAT_ORIGIN: 'http://chat.ifl.test:8788', CHAT_VIA: 'http://127.0.0.1:8792' })), { ready: true });
+  assert.equal(asked[0].url.href, 'http://127.0.0.1:8792/_hub/version'); assert.equal(asked[0].headers.get('origin'), 'http://chat.ifl.test:8788');
+  // (no answer at all, a redirect, a 5xx: not ready either)
+  for (const answer of [() => { throw new TypeError('connect ECONNREFUSED'); }, () => new Response(null, { status: 302, headers: { Location: 'https://chat.inflite.ai/' } }), () => new Response('down', { status: 503 })]) {
+    H.forgetProbe(); apps(answer);
+    assert.deepEqual(await hubSaid(env()), { ready: false });
+  }
+  H.forgetProbe();
+});
+
+test('what /api/hub found is kept five minutes after a yes and one after a no, then asked again', { skip }, async () => {
+  const now = Date.now;
+  let t = 1_800_000_000_000;
+  Date.now = () => t;
+  try {
+    H.forgetProbe();
+    let status = 200;
+    const asked = apps(() => new Response('{}', { status }));
+    assert.deepEqual(await hubSaid(env()), { ready: true });
+    t += 299_000;
+    assert.deepEqual(await hubSaid(env()), { ready: true });
+    assert.equal(asked.length, 1, 'within five minutes of a yes: kept, no app asked');
+    status = 404;
+    t += 2_000;
+    assert.deepEqual(await hubSaid(env()), { ready: false }, 'after five minutes: asked again');
+    assert.equal(asked.length, 2);
+    status = 200;
+    t += 59_000;
+    assert.deepEqual(await hubSaid(env()), { ready: false });
+    assert.equal(asked.length, 2, 'within a minute of a no: kept');
+    t += 2_000;
+    assert.deepEqual(await hubSaid(env()), { ready: true }, 'after a minute: asked again');
+    assert.equal(asked.length, 3);
+    // (kept for that key and that address of Chat's alone)
+    assert.deepEqual(await hubSaid(env({ HUB_KEY: 'another-key-0123456789ab' })), { ready: true });
+    assert.equal(asked.length, 4, 'another key: asked afresh');
+    assert.equal(asked[3].headers.get('x-hub-key'), 'another-key-0123456789ab');
+  } finally { Date.now = now; H.forgetProbe(); }
+});
+
+test('while Chat’s host has said it doesn’t know the key, every hub path but /api/hub answers 503; a moment’s trouble there never closes it', { skip }, async () => {
+  const paths = ['/chats', '/chats/', '/weather/', '/fitness/app.js', '/markets/version', '/api/pigeon/sync', '/api/weather/where'];
+  try {
+    H.forgetProbe();
+    let asked = apps(() => new Response('Not found', { status: 404 }));
+    assert.deepEqual(await hubSaid(env()), { ready: false });
+    for (const p of paths) {
+      const { res, data } = await call(req(p));
+      assert.equal(res.status, 503, p); assert.match(data.error, /InFlite isn’t ready here yet/, p);
+    }
+    assert.equal(asked.length, 1, 'none went on');
+    assert.deepEqual(await hubSaid(env()), { ready: false }, '/api/hub still answers');
+    // (no answer, or a 5xx: the hub goes on serving, and /api/hub says not ready)
+    for (const answer of [() => { throw new TypeError('connect ECONNREFUSED'); }, () => new Response('down', { status: 502 })]) {
+      H.forgetProbe();
+      apps(answer);
+      assert.deepEqual(await hubSaid(env()), { ready: false });
+      asked = apps();
+      assert.equal((await call(req('/weather/'))).res.status, 200, 'still served');
+      assert.equal((await call(req('/api/weather/me'))).res.status, 200);
+      assert.equal(asked.length, 2);
+    }
+    // (with nothing known: served, and Chat's host asked beside it, once, for the next request)
+    H.forgetProbe();
+    let answered; const gate = new Promise((r) => { answered = r; });
+    asked = apps(async (u) => (u.pathname === '/_hub/version' ? (await gate, new Response('Not found', { status: 404 })) : Response.json({ ok: true })));
+    const later = [], ctx = { waitUntil: (pr) => later.push(pr) };
+    assert.equal((await H.hub(req('/weather/'), env(), ctx)).status, 200, 'nothing known yet: served');
+    assert.equal((await H.hub(req('/fitness/'), env(), ctx)).status, 200, 'and while it’s being asked');
+    assert.equal(later.length, 1, 'asked once, beside them');
+    answered(); await Promise.all(later);
+    assert.deepEqual(asked.map((a) => a.url.pathname).sort(), ['/', '/', '/_hub/version']);
+    assert.equal((await H.hub(req('/weather/'), env(), ctx)).status, 503, 'and the next one has its answer');
+    assert.equal(later.length, 1);
+  } finally { H.forgetProbe(); }
+});
+
+test('a page’s path never reaches an app’s API: no cookie, no bearer, no checks skipped', { skip }, async () => {
+  H.forgetProbe();
+  const asked = apps(() => { const h = new Headers({ 'Content-Type': 'application/json' }); h.append('Set-Cookie', `__Secure-account=${TOKEN}; Path=/`); return new Response('{}', { headers: h }); });
+  const headers = { Cookie: `__Secure-account=${TOKEN}`, Authorization: BEARER, 'Sec-Fetch-Site': 'cross-site' };
+  for (const p of ['/weather/api/weather/me', '/fitness/api/fitness/me', '/markets/api/markets/tick', '/fitness/api/fitness/strava/hook', '/weather/%61pi/weather/me', '/weather/%2561pi/weather/me',
+    '/weather//api/weather/me', '/weather/x/..%2Fapi/weather/me', '/weather/API/weather/me', '/weather/api', '/chats/api/pigeon/sync', '/chats/..%2Fapi/pigeon/sync']) {
+    for (const site of ['cross-site', 'same-origin']) {
+      const { res, data } = await call(req(p, { headers: { ...headers, 'Sec-Fetch-Site': site } }));
+      assert.equal(res.status, 404, `${site} ${p}`); assert.equal(data.error, 'Not found.', p);
+      assert.deepEqual(res.headers.getSetCookie(), [], p);
+    }
+  }
+  assert.equal(asked.length, 0, 'none went on');
+  // (names that only start the same, and an api further in, are the app's pages: without a cookie or bearer)
+  for (const p of ['/weather/apis.js', '/weather/x/api/y', '/fitness/api-docs']) await call(req(p, { headers }));
+  assert.deepEqual(asked.map((a) => a.url.pathname), ['/apis.js', '/x/api/y', '/api-docs']);
+  for (const a of asked) { assert.equal(a.headers.get('cookie'), null, a.url.pathname); assert.equal(a.headers.get('authorization'), null); }
+  // (and forward() itself sends neither, nor gives the account's cookie back, unless the API's branch says it's an API)
+  const res = await H.forward(env(), req('/x', { headers }), { app: 'WEATHER', path: '/api/weather/me' });
+  assert.equal(asked.at(-1).url.pathname, '/api/weather/me');
+  assert.equal(asked.at(-1).headers.get('cookie'), null); assert.equal(asked.at(-1).headers.get('authorization'), null);
+  assert.deepEqual(res.headers.getSetCookie(), []); assert.equal(res.headers.get('x-robots-tag'), 'noindex');
+  // (the API itself, from another site: refused, as ever)
+  assert.equal((await call(req('/api/fitness/me', { headers }))).res.status, 403);
 });
 
 test('an app that can’t be reached is said in fixed words; the hub’s own answers are never kept or framed', { skip }, async () => {
@@ -276,12 +411,16 @@ test('an app that can’t be reached is said in fixed words; the hub’s own ans
   assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
 });
 
-test('the hub never asks Today’s assets, and its source never reads the clock or keeps anything', { skip }, async () => {
+test('the hub never asks Today’s assets, and its source keeps nothing but what /api/hub found (by the clock, for a while)', { skip }, async () => {
+  H.forgetProbe();
   apps();
   assets.length = 0;
   for (const p of ['/chats/', '/weather/', '/api/hub', '/api/pigeon/sync', '/markets']) await worker.fetch(req(p), env(), {});
   assert.deepEqual(assets, []);
+  H.forgetProbe();
   const src = readFileSync(SRC, 'utf8');
-  assert.doesNotMatch(src, /env\.ASSETS|Date\.now\(\)|caches\.|localStorage/);
+  assert.doesNotMatch(src, /env\.ASSETS|caches\.|localStorage/);
+  assert.equal(src.match(/Date\.now\(\)/g).length, 2, 'the clock read twice: for /api/hub, and to see whether what it found is still fresh');
+  assert.equal(src.match(/^let /gm).length, 1, 'one thing kept in the isolate: what the probe found (and whether it’s being asked)');
   assert.match(src, /import \{ accountCookie \} from "\.\/account\.js";/, 'the account’s cookie as Today picks it out');
 });
