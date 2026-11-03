@@ -16,6 +16,9 @@
 import { readShareHash, normCard, cardWords, ASK_KINDS } from "../cards.js";
 import { sheetCardHtml } from "../cardview.js";
 
+// markup made here or by cardview.js/qr.js (escaped there) → nodes ("template" content in a browser)
+const frag = (near, html) => { const t = near.ownerDocument.createElement("template"); t.innerHTML = html; return t.content || t; };
+
 export const SIGN_IN = "/chats/in/#signin-start&then=%2Fchats%2F";
 // the why a sheet put away unsent gives (Chat's engine's word for it; not one of the core's refusals)
 export const CLOSED = "closed";
@@ -81,7 +84,7 @@ export function openSend(ui, svc, { card, words = "", to = null, back = null } =
       let html = "";
       try { html = sheetCardHtml(x.card, { viewAt: Date.now() }); } catch (_) {}
       const box = el("div", { class: "chsend-card" });
-      if (html) { const t = box.ownerDocument.createElement("template"); t.innerHTML = html; box.append(t.content); }
+      if (html) { box.append(frag(box, html)); }
       else box.append(el("p", { class: "chsend-say", text: x.card.say || cardWords(x.card) || "" }));
       return box;
     }

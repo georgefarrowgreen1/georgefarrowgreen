@@ -18,6 +18,9 @@
 import { cardHtml } from "../cardview.js";
 import { qrSvg } from "../qr.js";
 
+// markup made here or by cardview.js/qr.js (escaped there) → nodes ("template" content in a browser)
+const frag = (near, html) => { const t = near.ownerDocument.createElement("template"); t.innerHTML = html; return t.content || t; };
+
 export const GROUP_MAX = 12;
 export const REACTIONS = Object.freeze(["❤️", "👍", "😂", "😮", "😢", "🙏"]);
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -219,7 +222,7 @@ export function openSafety(ctx, id) {
         el("div", { class: "chs-acts" }, ui.btn("Clear Verification", { destructive: true, act: "unverify", run: () => act(() => k.svc.call("verify", id, false), "Verification cleared.") })));
     } else {
       const qr = el("div", { class: "chs-qr" });
-      try { const t = box.ownerDocument.createElement("template"); t.innerHTML = qrSvg(safetyCode(s.digits), { title: `Your safety number with ${name}, as a QR code` }); qr.append(t.content); } catch (_) {}
+      try { qr.append(frag(box, qrSvg(safetyCode(s.digits), { title: `Your safety number with ${name}, as a QR code` }))); } catch (_) {}
       box.append(el("h3", { class: "ifl-label", text: "1. Scan each other’s code" }), k.foot("Hold your phones up together, or on a video call."), qr,
         el("div", { class: "chs-acts" }, ui.btn(`Scan ${name}’s Code`, { act: "scan", run: k.go("openScan", { id, digits: digitsOf(s.digits) }) })),
         el("h3", { class: "ifl-label", text: "2. Or compare these 60 digits" }), k.foot("Read them out to each other. They’re the same on both phones."), digits(),
@@ -420,7 +423,7 @@ export function openHold(ctx, target = {}) {
       box.append(rr);
       // (a card in it, as the chat draws it: cardview.js escapes everything it's given)
       let card = ""; try { card = m.card ? cardHtml(m.card, { viewAt: Date.now() }) : ""; } catch (_) {}
-      if (card) { const t = box.ownerDocument.createElement("template"); t.innerHTML = card; box.append(el("div", { class: "chs-card" }, t.content)); }
+      if (card) { box.append(el("div", { class: "chs-card" }, frag(box, card))); }
       if (Number.isFinite(m.at)) box.append(el("p", { class: "chs-foot", text: `Sent ${fmtShort(m.at)}` }));
     }
     box.append(ui.list(items.map((it) => {

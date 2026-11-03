@@ -20,6 +20,9 @@ import { COUNTRIES } from "../countries.js";
 import { SHAPES } from "../shapes.js";
 import { earthKm } from "../space.js";
 
+// markup made here or by cardview.js/qr.js (escaped there) → nodes ("template" content in a browser)
+const frag = (near, html) => { const t = near.ownerDocument.createElement("template"); t.innerHTML = html; return t.content || t; };
+
 export const NEEDS_NET = "Needs a connection";
 export const BIRDS_MAX = 5;
 export const RANKS = Object.freeze([["Fledgling", 0], ["Courier", 500], ["Navigator", 2000], ["Veteran", 8000], ["Ace", 20000], ["Legend", 40075]]);
@@ -112,7 +115,7 @@ export function openPassport(ctx, log = null) {
     box.append(el("div", { class: "chp-stamps" }, list.map((p) => {
       const s = el("div", { class: `chp-stamp${p.sea ? " sea" : ""}`, data: { name: p.name } });
       const path = !p.sea && SHAPES[String(p.name || "").replace(/^the /, "")];
-      if (path) { const t = s.ownerDocument.createElement("template"); t.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true" class="chp-shape"><path d="${String(path).replace(/[^MmLlHhVvZz0-9 .,-]/g, "")}"/></svg>`; s.append(t.content); }
+      if (path) { s.append(frag(s, `<svg viewBox="0 0 100 100" aria-hidden="true" class="chp-shape"><path d="${String(path).replace(/[^MmLlHhVvZz0-9 .,-]/g, "")}"/></svg>`)); }
       s.append(el("b", { text: String(p.name || "").replace(/^the /, "") }), el("small", { text: p.at ? fmtDate(p.at) : "" }));
       return s;
     })));
@@ -129,8 +132,8 @@ export function drawWorld(cv, pins = []) {
   const w = cv.width = cv.clientWidth * (globalThis.devicePixelRatio || 1) || 640, hh = cv.height = Math.round(w / 2);
   const X = (lon) => ((lon + 180) / 360) * w, Y = (lat) => ((90 - lat) / 180) * hh;
   const css = getComputedStyle(cv);
-  g.fillStyle = css.getPropertyValue("--chf-sea") || "#cfe3f5"; g.fillRect(0, 0, w, hh);
-  g.fillStyle = css.getPropertyValue("--chf-land") || "#e9e3d3";
+  g.fillStyle = css.getPropertyValue("--chf-sea").trim() || "#cfe3f5"; g.fillRect(0, 0, w, hh);
+  g.fillStyle = css.getPropertyValue("--chf-land").trim() || "#e9e3d3";
   for (const ring of LAND.split(";")) {
     const v = ring.split(",").map(Number);
     g.beginPath();
