@@ -397,4 +397,38 @@ test("a save in flight: inStep() hands back that save (flush waits for it); one 
   answer = async () => { throw new TypeError("offline (test)"); };
 });
 
+test("back after a minute, the account answers 401: the framework is asked (fw.session.lost), as Weather's sync does; signed out only when it's sure", async () => {
+  answer = async (url) => (url.includes("/api/fitness/me") ? json(200, FX.me("u-a")) : Promise.reject(new TypeError("offline (test)")));
+  let asked = 0, sure = false;
+  core.start(fw({ session: { user: { id: "u-a" }, lost: async () => { asked++; return sure; } } }));
+  try {
+  core.shown(true);
+  for (let i = 0; i < 100 && !core.S.me; i++) await settle(5);
+  assert.ok(core.S.me, "in");
+  core.shown(false);
+  answer = async (url) => (url.includes("/api/fitness/me") ? json(401, { error: "Sign in" }) : Promise.reject(new TypeError("offline (test)")));
+  NOW += 90e3;
+  core.shown(true);
+  for (let i = 0; i < 100 && !asked; i++) await settle(5);
+  assert.equal(asked, 1, "a 401 from pull() handed to fw.session.lost()");
+  assert.equal(core.S.me?.id, "u-a", "the session alive: still in, nothing dropped");
+  // (an offline pull asks nothing of the framework)
+  answer = async () => { throw new TypeError("offline (test)"); };
+  core.shown(false); NOW += 90e3; core.shown(true);
+  await settle(30);
+  assert.equal(asked, 1, "offline: not taken for a sign-out");
+  // (and when the framework is sure: stopped, the account's fields gone)
+  answer = async (url) => (url.includes("/api/fitness/me") ? json(401, { error: "Sign in" }) : Promise.reject(new TypeError("offline (test)")));
+  sure = true;
+  core.shown(false); NOW += 90e3; core.shown(true);
+  for (let i = 0; i < 100 && core.S.me; i++) await settle(5);
+  assert.equal(asked, 2);
+  assert.equal(core.S.me, null, "signed out: stopped");
+  } finally {
+    core.shown(false); core.stop();
+    NOW = FX.TODAY + 12 * 3600e3;
+    answer = async () => { throw new TypeError("offline (test)"); };
+  }
+});
+
 test.after(() => { Date.now = realNow; });

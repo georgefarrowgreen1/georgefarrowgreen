@@ -508,7 +508,10 @@ export async function pull() {
     if (!still(t)) return;
     if (!m.signedIn || m.id !== S.me.id) return signedOutHere();
     takeUp(m);
-  } catch (_) {} finally { pull.busy = false; }
+  } catch (e) {
+    // (a 401 is the framework's to confirm, as Weather's sync does: fw.session.lost(); an offline or a 5xx waits for next time)
+    if (e?.status === 401 && still(t)) { pull.busy = false; await signedOutHere(); }
+  } finally { pull.busy = false; }
 }
 // A new day (the page left open past midnight, or brought back the next morning): today moves on, everything that goes
 // by it worked out afresh, the views drawn again (RI2). → whether it was
