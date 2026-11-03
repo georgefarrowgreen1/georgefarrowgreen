@@ -1,7 +1,13 @@
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
-//                                    (?since=<ms>: only those changed since, and every one's id)
+//                                    (?since=<ms>: only those changed since, and every one's id); your rides' times of day
+//                                    (times: today and the next 7 days; ?tz=<zone>: the phone's, for which days those are);
+//                                    and, only with ?today=1 (sent by this build of Fitness on), InFlite Today's own rides
+//                                    among the plans waiting (offers), each with whether a tap kept it
+//   PUT    /api/fitness/time          a ride's time of day, set in Fitness (Ride At): { day, start, stop, tz } (functions/
+//                                    _fittimes.js) → { time: { day, start, stop, source: "set" } }
+//   DELETE /api/fitness/time          and cleared: { day } → { ok: true }
 //   PUT    /api/fitness/me            a change to your record, from the version it was made from (409, with the record now,
 //                                    where another device has changed it since)
 //   POST   /api/fitness/acts          an activity: its figures (meta, as the phone worked them out) and its file, as imported
@@ -31,7 +37,8 @@
 //   POST   /api/fitness/today        the coming days as this phone has them planned, for InFlite Today: { tz, units, days }
 //                                    (functions/_fittoday.js), sent by the app as it opens
 //   POST   /api/fitness/offers/<id>  a plan from Chat (GET me's offers: functions/_fitshare.js) answered: { answer: "yes" }
-//                                    as it's added to your plan here, or "no"
+//                                    as it's added to your plan here, or "no"; and one of Today's own rides: "yes" as it's
+//                                    added or kept here, "no" as it's undone (from added, too)
 //   POST   /api/fitness/garmin-tick   the site's scheduler's turn (workers/ticker), with its secret: Garmin's look for
 //                                    what's new, and the morning notifications that are due
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
@@ -50,16 +57,32 @@ import { rideWeather } from "../../_fitwx.js";
 import { setSnapshot } from "../../_fittoday.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick, stravaShare } from "../../_strava.js";
 import { offersFor, answerOffer } from "../../_fitshare.js";
+import { timesOf, setTime, dropTime } from "../../_fittimes.js";
+import { zoneOk } from "../../../pigeon/cards.js";
 import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
 
+// (a day's key, "YYYY-MM-DD", on a zone's clock; and the days a phone's today and next 7 are, in its zone, or wherever
+// they could be on Earth's clocks where it didn't say: twelve hours behind to fourteen ahead)
+// (one formatter kept per zone, at most 500 of them: a zone's name may be written any number of ways)
+const DAYKEYS = new Map();
+const fmtOf = (tz) => { let f = DAYKEYS.get(tz); if (!f) { if (DAYKEYS.size >= 500) DAYKEYS.clear(); f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); DAYKEYS.set(tz, f); } return f; };
+const dayIn = (tz, t) => fmtOf(tz).format(new Date(t));
+const WEEK = 7 * 86400e3;
+const weekOf = (tz, t) => (zoneOk(tz) ? [dayIn(tz, t), dayIn(tz, t + WEEK)] : [dayIn("UTC", t - 12 * 3600e3), dayIn("UTC", t + 14 * 3600e3 + WEEK)]);
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 // (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
 // for next time, a moment early so nothing changing as it's read is missed; offers: plans agreed in Chat, waiting to be
-// added here or added, read without changing anything)
-async function view(env, u, since = null) {
-  const at = Date.now() - 2000;
-  const [k, got, garmin, health, strava, offers] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false })), offersFor(env, u.id).catch(() => [])]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava, offers,
+// added here or added, read without changing anything, and, with today, InFlite Today's own rides too, those undone
+// (said no to) among them till they're past their time; offersToday: true only then, and only where they were read (one
+// that failed answers none, without it, so Fitness changes nothing by them); times: the rides' times of day, today's and
+// the next 7 days' (tz: the phone's zone, which says which days those are); t: the route's time)
+async function view(env, u, since = null, { today = false, tz = null, t = Date.now() } = {}) {
+  const at = t - 2000, [from, to] = weekOf(tz, t);
+  const [k, got, garmin, health, strava, offers, times] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false })),
+    (today ? offersFor(env, u.id, { today: true, t, undone: true, strict: true }) : offersFor(env, u.id)).catch(() => null),
+    timesOf(env, u.id, from, to).then((rows) => rows.map((r) => ({ day: r.day, start: r.start, stop: r.stop, source: r.source })), () => [])]);
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava,
+    offers: offers || [], ...(today && offers ? { offersToday: true } : {}), times,
     // (the look, as the account has it: its page's Appearance)
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
@@ -69,8 +92,8 @@ const ROUTES = {
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false });
-    const since = Number(new URL(request.url).searchParams.get("since"));
-    return withCookie(json(await view(env, u, Number.isFinite(since) && since > 0 ? since : null)), request, env, u.token);
+    const q = new URL(request.url).searchParams, since = Number(q.get("since")), t = Date.now();
+    return withCookie(json(await view(env, u, Number.isFinite(since) && since > 0 ? since : null, { today: q.get("today") === "1", tz: q.get("tz"), t })), request, env, u.token);
   },
   // (the rest of your activities, older than one the phone has: a page at a time, after the newest came with me)
   "GET me/older": async ({ request, env }) => {
@@ -269,12 +292,34 @@ const ROUTES = {
     await limit(env, `fxtoday:${u.id}`, 120, 3600e3);
     return json(await setSnapshot(env, u.id, await body(request, 32 * 1024)));
   },
-  // (a plan from Chat: added to your plan here, so yes, or not wanted, no; the plan itself is the phone's to change)
+  // (a plan from Chat: added to your plan here, so yes, or not wanted, no; the plan itself is the phone's to change. And
+  // one of Today's own rides: yes as it's added or kept here (a tap, so it's taken), no as it's undone, from added too)
   "POST offers/:id": async ({ request, env, id }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 4 * 1024);
+    const u = await signedIn(request, env), b = await body(request, 4 * 1024), t = Date.now();
     await limit(env, `fxoffer:${u.id}`, 120, 3600e3);
-    if (!(await answerOffer(env, u.id, id, b.answer))) throw new HttpError(404, "That plan isn’t there any more.");
+    if (!(await answerOffer(env, u.id, id, b.answer, { t }))) throw new HttpError(404, "That plan isn’t there any more.");
+    return json({ ok: true });
+  },
+  // (a ride's time of day, set here: Ride At on today's session, or any of the coming week's; one a day, in place of
+  // any other that day, Today's included; and cleared. functions/_fittimes.js checks the time: five-minute steps, 15
+  // minutes to 6 hours, on the day it says in the zone it says)
+  "PUT time": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024), t = Date.now();
+    await limit(env, `fxtime:${u.id}`, 120, 3600e3);
+    const row = { day: b?.day, start: b?.start, stop: b?.stop, tz: b?.tz, sport: "ride", source: "set" };
+    if (Number.isSafeInteger(row.stop) && row.stop <= t) throw new HttpError(409, "That time has passed.");
+    if (Number.isSafeInteger(row.start) && row.start > t + WEEK + 86400e3) throw new HttpError(400, "Choose a time in the coming week.");
+    const x = await setTime(env, u.id, row, { t });
+    return json({ time: { day: x.day, start: x.start, stop: x.stop, source: x.source } });
+  },
+  "DELETE time": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024);
+    await limit(env, `fxtime:${u.id}`, 120, 3600e3);
+    if (typeof b?.day !== "string" || !/^\d{4}-\d\d-\d\d$/.test(b.day)) throw new HttpError(400, "Bad request.");
+    await dropTime(env, u.id, b.day);
     return json({ ok: true });
   },
   "POST garmin-tick": async ({ request, env }) => {
@@ -288,13 +333,15 @@ const ROUTES = {
   // word Fitness kept for it; where the browser shares the site's sign-in, it's the one the page just made, and that's
   // all; where it doesn't (a Home Screen app, or a test server's separate addresses), Fitness's own, given to the browser
   // and no fresher than the page's
+  // (answered as GET me is: with today: 1 and tz, InFlite Today's own rides and the week's times, by the phone's zone)
   "POST handback": async ({ request, env }) => {
     sameOrigin(request);
-    const { row, u, authAt } = await takeHandback(env, request, "fitness", await body(request));
+    const b = await body(request), t = Date.now(), how = { today: b?.today === 1 || b?.today === true, tz: typeof b?.tz === "string" ? b.tz : null, t };
+    const { row, u, authAt } = await takeHandback(env, request, "fitness", b);
     const c = await cookieUser(request, env).catch(() => null);
-    if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c)), request, env, c.token);
+    if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c, null, how)), request, env, c.token);
     const token = await issueSession(env, u.id, request, authAt);
-    return withSession(json(await view(env, u)), request, env, hex(await sha256(token)), true);
+    return withSession(json(await view(env, u, null, how)), request, env, hex(await sha256(token)), true);
   },
   // The account's own page, opened signed in as you (Fitness's account card): a code good once, for a minute, for this
   // sign-in, which the page swaps for one of its own, in whichever browser it opens in

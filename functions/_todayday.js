@@ -89,7 +89,7 @@ async function gather(env, u, t, zone, cards) {
     soft(env, "times", timesOf(env, u.id, prev.day, C), []),
     soft(env, "offers", offersFor(env, u.id, { today: true, t }), []),
     soft(env, "agreed", timesFor(env, u.id, prev.start, Math.max(cal.end, t + DAY), { t }), []),
-    soft(env, "dones", donesIn(env, u.id, prev.start, t + 1), []),
+    soft(env, "dones", donesIn(env, u.id, prev.start, t + 1, { added: true }), []),
     // (rides hold nothing anywhere while the off switch is set, RIDE_HOLD "0": as if the rule were Quiet, so no ride
     // holds and nothing says messages are held)
     rideHoldOn(env) ? soft(env, "hold", ruleLevel(env, u.id, "holdRide"), "do") : "quiet",

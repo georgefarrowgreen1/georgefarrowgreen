@@ -52,6 +52,7 @@ import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today
 import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
 import { sharesOf, offersOf } from "../../_fitshare.js";
+import { timesExport as fitnessTimes } from "../../_fittimes.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
 import { connect as garminConnect, disconnect as garminOff, garminOf, allHistory as garminAll } from "../../_garmin.js";
 import { connectUrl as stravaUrl, disconnectStrava, stravaOf, stravaAll } from "../../_strava.js";
@@ -973,7 +974,9 @@ const ROUTES = {
       fitness: { ...(fxKept.data || {}), activities: fxActs.map((a) => ({ name: a.name, sport: a.sport, startedAt: iso(a.start), device: a.device, file: a.file, figures: a.sum })), nights: fxNights,
         upcoming: upcoming ? { updatedAt: iso(upcoming.at ?? upcoming.updatedAt), timeZone: upcoming.tz ?? upcoming.timeZone ?? null, units: upcoming.units ?? null, days: upcoming.days || {} } : null,
         sentToFriends: fxShares.map((x) => ({ day: x.day, sport: x.sport, until: iso(x.until) })),
-        plansWaiting: fxOffers.map((x) => ({ start: iso(x.start), name: x.name, who: x.who, state: x.state })) },
+        plansWaiting: fxOffers.map((x) => ({ start: iso(x.start), name: x.name, who: x.who, state: x.state })),
+        // (each day's ride time, set in Fitness (Ride At) or by Today)
+        rideTimes: (await fitnessTimes(env, u.id)).map((x) => ({ day: x.day, start: iso(x.start), stop: iso(x.stop), timeZone: x.tz, sport: x.sport, setBy: x.source })) },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {
         holdings: mkList.map((x) => ({ symbol: x.symbol, name: x.name, shares: x.qty, averageCost: x.cost, account: x.account, boughtOn: x.since ? iso(x.since).slice(0, 10) : null, addedAt: iso(x.added), alertAt: x.alert ? `${x.alert}%` : null,

@@ -40,7 +40,9 @@ const kids = [];
 const start = (cmd, args, cwd, name) => { const k = spawn(cmd, args, { cwd, detached: true, stdio: ['ignore', log(name), log(name)], env }); kids.push(k); return k; };
 start(process.execPath, [`${HERE}mocks/hostpass.mjs`, `${S}/hostpass.jsonl`, ...Object.entries(PASS).map(([p, h]) => `${p}=${h}`)], HERE, 'hostpass');
 start(wrangler, ['dev', '-c', 'wrangler.toml', '--port', '8787', '--inspector-port', '9231', '--show-interactive-dev-session=false', '--persist-to', `${S}/iflstate`, ...vars(VARS)], IFL, 'ifl');
-if (mail) start(wrangler, ['dev', '-c', 'wrangler.jsonc', '--port', '8806', '--inspector-port', '9232', '--show-interactive-dev-session=false', '--persist-to', `${S}/mailstate`,
+// (--local-upstream: wrangler dev otherwise puts its first route's host in place of the browser's Origin, and the account
+// refuses Mail's hand-back from the frame)
+if (mail) start(wrangler, ['dev', '-c', 'wrangler.jsonc', '--port', '8806', '--inspector-port', '9232', '--show-interactive-dev-session=false', '--local-upstream', 'email.ifl.test:8788', '--persist-to', `${S}/mailstate`,
   ...vars({ ACCOUNT_ORIGIN: 'http://127.0.0.1:8791', HUB_ORIGIN: 'http://ifl.test:8788' })], `${IFL}/email`, 'mail');
 
 let stopping = false;

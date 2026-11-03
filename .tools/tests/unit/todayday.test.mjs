@@ -253,9 +253,9 @@ test("18:05, after, from a Garmin row only: the honest card (no Stress, once Fit
   put("fx_garmin_new", { user_id: ME, id: "g1", start: at(16, 46), name: "Evening Ride", added: at(18, 2), size: 1, sport: "cycling", secs: 4500, dist: 36050 });
   const d = await day("after", at(18, 5));
   sameShape(d, V2("after"), "after");
-  // (after from the activity's arrival: its row's added, 18:02, where functions/_fitshare.js donesIn gives it; until it
-  // does, its end, 16:46 and 75 minutes)
-  const added = (await donesIn(env, ME, at(0), at(18, 5)))[0]?.added, arrived = Number.isFinite(added) ? at(18, 2) : at(18, 1);
+  // (after from the activity's arrival: its row's added, 18:02, as functions/_fitshare.js donesIn gives it when asked)
+  assert.equal((await donesIn(env, ME, at(0), at(18, 5), { added: true }))[0]?.added, at(18, 2));
+  const arrived = at(18, 2);
   assert.equal(d.phase, "after"); assert.equal(d.since, arrived); assert.equal(d.until, arrived + 90 * MIN);
   assert.deepEqual(Object.keys(d.tops), ["after", "evening"], "the evening's settled: the ride's in and London's closed");
   const a = d.tops.after;
@@ -279,9 +279,10 @@ test("18:05, after, from a Garmin row only: the honest card (no Stress, once Fit
 test("18:05, after, with the ride in Fitness: Stress, and Fitness (CTL) up against yesterday's; no Open Fitness", async () => {
   // (as Fitness's import does: the ride into fx_acts, the waiting row gone; and eight weeks before it)
   sql.prepare("DELETE FROM fx_garmin_new WHERE user_id = ?").run(ME);
-  const act = (aid, start, tss, extra = {}) => put("fx_acts", { user_id: ME, id: aid, start, sport: "ride", indoor: 0, name: "Ride", type: "fit", size: 1, sum: JSON.stringify({ tss, secs: 3600, dist: 30000, route: [[1, 2]], ...extra }), added: start });
+  // (each in Fitness a little after it ended, as an import puts it there; today's at 18:02, when its Garmin row came)
+  const act = (aid, start, tss, extra = {}, added = start + ((extra.secs || 3600) + 120) * 1000) => put("fx_acts", { user_id: ME, id: aid, start, sport: "ride", indoor: 0, name: "Ride", type: "fit", size: 1, sum: JSON.stringify({ tss, secs: 3600, dist: 30000, route: [[1, 2]], ...extra }), added });
   for (let n = 56; n >= 1; n--) act(`h${n}`, at(17) - n * DAY, 50);
-  act("today", at(16, 46), 68, { secs: 4500, dist: 36050 });
+  act("today", at(16, 46), 68, { secs: 4500, dist: 36050 }, at(18, 2));
   asked.length = 0;
   const d = await day("after-fit", at(18, 5));
   sameShape(d, V2("after-fit"), "after-fit");
@@ -301,7 +302,7 @@ test("18:05, after, with the ride in Fitness: Stress, and Fitness (CTL) up again
 test("21:00, evening: the day closed: Tesco past its alert, the ride and its fitness, tomorrow first, quiet hours", async () => {
   const d = await day("evening", at(21));
   sameShape(d, V2("evening"), "evening");
-  assert.equal(d.phase, "evening"); assert.equal(d.since, at(19, 31)); assert.equal(d.until, at(6, 0, 3));
+  assert.equal(d.phase, "evening"); assert.equal(d.since, at(19, 32)); assert.equal(d.until, at(6, 0, 3));
   const e = d.tops.evening;
   assert.equal(e.kind, "closed"); assert.equal(e.chip, "The day closed"); assert.equal(e.title, "Up 0.4%, 22 miles, and Mira’s call");
   assert.equal(e.lines[0], "Markets: Tesco finished +3.4%, past your 3% alert");
@@ -314,7 +315,7 @@ test("21:00, evening: the day closed: Tesco past its alert, the ride and its fit
   assert.deepEqual(stock.snap, { name: "Tesco", sym: "TSCO.L", pct: 3.4, day: "2026-11-02" }); assert.deepEqual(stock.ref, { sym: "TSCO.L" });
   assert.deepEqual(d.upcoming[0], { at: at(7, 0, 3), app: "weather", title: "Dry and still", sub: "A good morning for a run", href: "/weather/#day=2026-11-03", id: "tomorrow" });
   assert.match(d.apps.fitness, /^1:15, stress 68$/);
-  assert.equal(d.ride.doneAt, at(18, 1));
+  assert.equal(d.ride.doneAt, at(18, 2), "in at 18:02");
   // (and every Markets card in the cards themselves too: the portfolio's, each holding's)
   assert.ok(privacy({ ...d, cards: cardsAt("evening") }) >= 4);
 });
@@ -328,7 +329,7 @@ test("the small hours: at 00:30 it's still Monday's evening (until Tuesday's 06:
   tue.fitness = { ...tue.fitness, day: "2026-11-03", kind: "session", session: { ...tue.fitness.session, id: "rh:recovery:45", name: "Recovery 45" }, done: null, next: null };
   const late = await day("evening", at(23, 50)), small = await dayFor(env, U, at(0, 30, 3), tue, { tz: LON });
   for (const d of [late, small]) {
-    assert.equal(d.phase, "evening"); assert.equal(d.since, at(19, 31), "the evening from the after's end"); assert.equal(d.until, at(6, 0, 3));
+    assert.equal(d.phase, "evening"); assert.equal(d.since, at(19, 32), "the evening from the after’s end (the ride in at 18:02, and 90 minutes)"); assert.equal(d.until, at(6, 0, 3));
     assert.equal(d.tops.evening.title, "Up 0.4%, 22 miles, and Mira’s call");
     assert.match(d.tops.evening.lines[1], /^Fitness: 1:15, stress 68, fitness up to \d+$/);
   }

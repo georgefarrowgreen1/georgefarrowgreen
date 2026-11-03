@@ -377,6 +377,7 @@ ok(JSON.stringify(json.fitness?.sentToFriends?.map((x) => [x.day, x.sport])) ===
   'and in it, the sessions you sent to friends (yours only: day, sport and how long kept, nothing more)', JSON.stringify(json.fitness?.sentToFriends));
 ok(JSON.stringify(json.fitness?.plansWaiting?.map((x) => [x.name, x.who, x.state])) === JSON.stringify([['Easy run 40', 'Cal', 'new'], ['Ride how you like', 'Ada', 'new'], ['Easy run 40', 'Ben', 'yes']]),
   'and the plans from Chat', JSON.stringify(json.fitness?.plansWaiting));
+ok(Array.isArray(json.fitness?.rideTimes), 'and each day’s ride time (Ride At, or set by Today)', JSON.stringify(json.fitness?.rideTimes));
 await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');

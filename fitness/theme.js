@@ -32,7 +32,9 @@ try {
     const k = JSON.parse(localStorage.getItem("fitness:meAt") || "null"), since = k && Number.isFinite(k.at) ? Math.round(k.at) : null;
     // (given up on after 20 seconds: one that hangs mustn't hold up every later sync this session)
     const stop = new AbortController(); setTimeout(() => stop.abort(), 20000);
-    window.fxEarly = { since, got: fetch(`/api/fitness/${since ? `me?since=${since}` : "me"}`, { credentials: "same-origin", signal: stop.signal }) };
+    // (as account.js meQuery asks it: InFlite Today's own rides among the plans, and the rides' times by this phone's days)
+    let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+    window.fxEarly = { since, today: true, got: fetch(`/api/fitness/me?${since ? `since=${since}&` : ""}today=1${tz ? `&tz=${encodeURIComponent(tz)}` : ""}`, { credentials: "same-origin", signal: stop.signal }) };
     window.fxEarly.got.catch(() => {});   // (offline, or not taken up: no matter, it's asked again)
   }
 } catch (_) {}

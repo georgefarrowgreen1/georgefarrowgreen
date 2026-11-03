@@ -1,10 +1,13 @@
 // Fitness's "Send to a friend" (fitness/send.js) and plans made in Chat (fitness/invites.js): the session as a card
 // Chat keeps (pigeon/cards.js normCard), with no share id (Chat makes that as the letter goes), the address it goes to,
-// and the rule for who a day's session is with.
+// and the rule for who a day's session is with. Since Today First: at InFlite's hub, Send goes to Chats' sheet over the
+// page (IFL.hub.send, with the card packed) and never to an address; off the hub, exactly the address it always went to
+// (InFlite's menu, the real template, is the identity there); and InFlite Today's own rides (drawn with Keep and Undo, or
+// Add to My Plan; put in their day as a swap once, and taken out again when undone only while the day still holds them).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sessionSendCard, chatHash, chatPage, durWords } from "../../../fitness/send.js";
-import { withOf, withOffer, waiting, offerWords, dayWord, withLine, addWords } from "../../../fitness/invites.js";
+import { sessionSendCard, chatHash, chatPage, durWords, packCard, sendWay } from "../../../fitness/send.js";
+import { withOf, withOffer, waiting, offerWords, dayWord, withLine, addWords, withChip, fromToday, todayWords, todaySwaps } from "../../../fitness/invites.js";
 import { startOfDay, addDays } from "../../../fitness/workouts.js";
 import { normCard, readShareHash } from "../../../pigeon/cards.js";
 
@@ -117,4 +120,108 @@ test("adding a plan: what it does to its day, by what's planned there", () => {
   // (nothing planned yet: past Rhythm's days, or no plan at all; not a rest day)
   assert.equal(addWords({ ...base, was: undefined, ww: null }), "Saturday isn't planned yet: Ride how you like with Leo goes in.");
   assert.equal(addWords({ ...base, was: "event", ww: null }), "Saturday is your event day: Ride how you like with Leo goes in its place.");
+});
+
+// ---------- Today First ----------
+test("Send at InFlite's hub: to Chats' sheet over the page, the card packed as Chats reads it, and no address", async () => {
+  const c = sessionSendCard({ day: TODAY, tz: "Europe/London", w: ride });
+  const sent = [], hub = { on: true, send: (words, packed) => { sent.push([words, packed]); return Promise.resolve({ ok: true }); } };
+  const way = sendWay(c.say, c, { hub, loc: { hostname: "inflite.ai", origin: "https://inflite.ai" } });
+  assert.ok(way.hub && !way.url, "the hub's, never an address");
+  assert.deepEqual(await way.hub, { ok: true });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0], c.say);
+  assert.match(sent[0][1], /^[A-Za-z0-9_-]+$/, "packed as the hub's send takes it");
+  // (Chats reads it back exactly as it reads one from an address: the same packing, the same checks, no share id)
+  const back = readShareHash(`#share=${encodeURIComponent(c.say)}&card=${sent[0][1]}`);
+  assert.deepEqual(back.card, normCard(c));
+  assert.ok(!back.card.ref);
+  assert.equal(packCard(c), new URLSearchParams(chatHash(c.say, c).slice(1)).get("card"), "the same packing as the address's");
+  assert.equal(packCard(null), "");
+  assert.equal(packCard({ say: "x".repeat(7000) }), "", "too long to go: none");
+});
+
+test("Send off the hub: exactly the address it always went to (InFlite's menu's IFL.hub, off the hub, changes nothing)", async () => {
+  const c = sessionSendCard({ day: TODAY, tz: "Europe/London", w: ride }), loc = { hostname: "fitness.inflite.ai", origin: "https://fitness.inflite.ai" };
+  // (the real template's IFL.hub, in a page with no marker: off the hub)
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../inflite/menu.js", import.meta.url), "utf8");
+  const doc = { querySelector: () => null, documentElement: { classList: { add() {} } }, addEventListener() {}, createElement: () => ({ style: {}, classList: { add() {} }, append() {}, setAttribute() {} }), body: null };
+  const win = { document: doc, location: { href: "https://fitness.inflite.ai/", origin: "https://fitness.inflite.ai", host: "fitness.inflite.ai", hostname: "fitness.inflite.ai", pathname: "/", hash: "", protocol: "https:" },
+    navigator: {}, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} }, localStorage: { getItem: () => null, setItem() {} }, matchMedia: () => ({ matches: false, addEventListener() {} }), addEventListener() {}, setTimeout, clearTimeout };
+  const IFL = new Function(...Object.keys(win), "window", `${src}\nreturn IFL;`)(...Object.values(win), win);
+  assert.equal(IFL.hub.on, false);
+  const way = sendWay(c.say, c, { hub: IFL.hub, loc });
+  assert.deepEqual(way, { url: chatPage(loc) + chatHash(c.say, c) }, "as before Today First");
+  assert.ok(way.url.startsWith("https://chat.inflite.ai/#share="));
+  assert.equal(IFL.hub.go(way.url), way.url, "go: the identity off the hub");
+  assert.equal(sendWay(c.say, c, { hub: null, loc: { hostname: "localhost", origin: "http://localhost:8788" } }), null, "nowhere beside: the phone's own sharing");
+});
+
+test("Today's own rides: Keep and Undo while added and not kept, Add to My Plan while suggested; in Today's words", () => {
+  const now = TODAY + 8 * H, at = (d, h) => addDays(TODAY, d) + h * H;
+  const t = (id, d, state, extra = {}) => ({ id, start: at(d, 10), stop: at(d, 12), sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, who: "", role: "today", far: false, dry: true, state, taken: false, ...extra });
+  const leo = { ...t("leo", 1, "new"), who: "Leo", role: "asked" };
+  const list = [t("a", 2, "yes"), t("b", 1, "new"), t("c", 3, "yes", { taken: true }), t("d", -1, "yes"), t("e", 2, "no"), leo];
+  assert.deepEqual(fromToday(list, { now }).map((x) => x.id).sort(), ["a", "b"], "added not kept, and suggested; not one kept, past, said no to, or a friend's");
+  assert.deepEqual(fromToday(list, { now, hidden: new Set(["b"]) }).map((x) => x.id), ["a"]);
+  const thu = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date(at(2, 10)).getDay()];
+  const w = todayWords(t("a", 2, "yes"), now);
+  assert.equal(w.chip, "From Today");
+  assert.equal(w.title, `Ride ${thu} 10:00`);
+  assert.equal(w.when, "10:00–12:00 · Ride how you like");
+  assert.match(w.line, /^Today added this ride: you often ride then\. It looks dry\. Keep it, or undo it\.$/);
+  assert.match(todayWords(t("b", 1, "new", { dry: false }), now).line, /^Today suggests this ride: you often ride then\. Add it to your plan\?$/);
+  assert.equal(todayWords(t("b", 1, "new"), now).title, "Ride Tomorrow 10:00");
+  // (once in its day: from Today, not "with" anyone)
+  const day = addDays(TODAY, 2), yes = t("a", 2, "yes");
+  assert.equal(withOffer(day, { [day]: "free-ride" }, [yes]), yes);
+  assert.equal(withOf(day, { [day]: "free-ride" }, [yes]), null, "nobody's");
+  assert.equal(withChip(yes), " · from Today"); assert.equal(withChip(leo), " · with Leo");
+  assert.equal(withLine(yes), "Added by Today, 10:00–12:00.");
+  assert.equal(addWords({ word: "Thursday", was: null, ww: null, wid: "free-ride", name: "Ride how you like", who: null, span: "10:00–12:00" }), "Thursday is a rest day: Ride how you like goes in its place.");
+  assert.equal(addWords({ word: "Thursday", was: "free-ride", ww: { id: "free-ride", name: "Ride how you like" }, wid: "free-ride", name: "Ride how you like", who: null, span: "10:00–12:00" }), "Thursday: Ride how you like, 10:00–12:00.");
+  assert.ok(!waiting([t("b", 1, "new")], { now }).some((o) => o.who), "a suggested one waits too (drawn as Today's, not a friend's)");
+});
+
+test("Today's own rides as swaps: put in once, never over a day changed by hand; taken out when undone only while the day still holds them", () => {
+  const at = (d, h) => addDays(TODAY, d) + h * H, d2 = addDays(TODAY, 2), d3 = addDays(TODAY, 3), d1 = addDays(TODAY, -1);
+  const t = (id, d, state, extra = {}) => ({ id, start: at(d, 10), stop: at(d, 12), sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, who: "", role: "today", far: false, dry: true, state, ...extra });
+  // (first seen: put in its day; one still new, or a friend's agreed plan, isn't Today's to put in)
+  let r = todaySwaps([t("a", 2, "yes"), t("b", 3, "new"), { ...t("f", 3, "yes"), role: "asked", who: "Leo" }], {}, {}, TODAY);
+  assert.deepEqual(r.set, [[d2, "free-ride"]]); assert.deepEqual(r.drop, []);
+  assert.deepEqual(r.applied, { a: { day: d2, wid: "free-ride" } });
+  // (seen again, already in: nothing more, even if the day's been changed by hand since)
+  r = todaySwaps([t("a", 2, "yes")], { [d2]: "endurance-90" }, r.applied, TODAY);
+  assert.deepEqual([r.set, r.drop], [[], []]); assert.ok(r.applied.a);
+  // (a day changed by hand before it was first seen: left as it is, but remembered)
+  r = todaySwaps([t("c", 3, "yes")], { [d3]: "endurance-90" }, {}, TODAY);
+  assert.deepEqual([r.set, r.drop], [[], []]); assert.ok(r.applied.c);
+  // (undone, on Today or here: said no to (GET me?today=1 lists those till they're past their time), so taken out, while
+  // its day still holds its workout)
+  r = todaySwaps([t("a", 2, "no")], { [d2]: "free-ride" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [d2], {}]);
+  // (but not where the day's been changed since, nor a day gone by)
+  r = todaySwaps([t("a", 2, "no")], { [d2]: "endurance-90" }, { a: { day: d2, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}]);
+  r = todaySwaps([t("a", -1, "no")], { [d1]: "free-ride" }, { a: { day: d1, wid: "free-ride" } }, TODAY);
+  assert.deepEqual(r.drop, [], "a day gone by stays as it was");
+  // (one simply not there any more: past its time (a ride today, 12 hours after it ended), or a list that came back
+  // short: forgotten, its swap left in its day, kept or not)
+  const d0 = TODAY;
+  r = todaySwaps([], { [d0]: "free-ride" }, { a: { day: d0, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}], "gone by on its own day: the ride stays in it");
+  r = todaySwaps([t("x", 3, "yes")], { [d2]: "free-ride", [d3]: "free-ride" }, { a: { day: d2, wid: "free-ride" }, x: { day: d3, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, Object.keys(r.applied)], [[], [], ["x"]], "absent isn't undone");
+  // (a friend's no, or a no never put in here: nothing to take out)
+  r = todaySwaps([{ ...t("f", 2, "no"), role: "asked", who: "Leo" }, t("z", 2, "no")], { [d2]: "free-ride" }, { f: { day: d2, wid: "free-ride" } }, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[], [], {}]);
+  // (agreed, but first seen once its day had gone by (a ride last night, Fitness opened this morning): not put in a day
+  // gone by, nor remembered; one today, first seen today, is)
+  r = todaySwaps([t("y", -1, "yes"), t("w", 0, "yes")], {}, {}, TODAY);
+  assert.deepEqual([r.set, r.drop, r.applied], [[[d0, "free-ride"]], [], { w: { day: d0, wid: "free-ride" } }]);
+  // (kept with a tap: still agreed, still in; and nothing odd taken as remembered)
+  r = todaySwaps([t("a", 2, "yes", { taken: true })], { [d2]: "free-ride" }, { a: { day: d2, wid: "free-ride" }, junk: null }, TODAY);
+  assert.deepEqual([r.set, r.drop, Object.keys(r.applied)], [[], [], ["a"]]);
+  assert.deepEqual(todaySwaps(null, null, null, TODAY), { set: [], drop: [], applied: {} });
 });
