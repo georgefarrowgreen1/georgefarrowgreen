@@ -95,8 +95,8 @@ export function summary(page, s, f, cards = []) {
     }
     case "best": { const on = (s.activities || []).filter((a) => a.on !== false).map((a) => a.name); return on.length ? on.join(", ") : "Off"; }
     case "commute": return s.commute?.on ? `${atText(f, s.commute.am)}, ${atText(f, s.commute.pm)}` : "Off";
-    case "solar": { const z = s.solar?.zones || []; return !s.solar?.on ? "Off" : z.length > 1 ? `${z.length} zones` : `${facesName(z[0].faces)}, ${z[0].pitch ? `${z[0].pitch}°` : "flat"}`; }
-    case "forecast": return s.tune !== false ? "Tuned" : "Not tuned";
+    case "solar": { const z = s.solar?.zones || []; return !s.solar?.on ? "Off" : z.length > 1 ? `${z.length} zones` : `${facesName(z[0].faces)}, ${z[0].pitch}°`; }
+    case "forecast": return s.tune !== false ? "Tuned" : "Off";
   }
   return "";
 }
@@ -113,8 +113,12 @@ export function openSettings(ctx, page = null) {
   const st = () => S.settings || core.loadSettings();
   const offs = [];
   let h = null, alive = true, heard = 0;
-  const redraws = new Set();
-  const redraw = () => { for (const fn of redraws) { try { fn(); } catch (_) {} } };
+  // each page's redraw with the page it draws: once the sheet has popped that page (it's no longer in the sheet's body),
+  // it's dropped, before the next redraw and before the next page is pushed
+  const redraws = new Map();
+  const track = (node, fn) => redraws.set(fn, node);
+  const prune = () => { const body = h?.body; if (body) for (const [fn, node] of redraws) if (!body.contains(node)) redraws.delete(fn); };
+  const redraw = () => { prune(); for (const fn of redraws.keys()) { try { fn(); } catch (_) {} } };
 
   // a save: the patch through core (wx:settings + the account), then every open page drawn from what's kept
   async function save(patch) {
@@ -147,7 +151,7 @@ export function openSettings(ctx, page = null) {
     ui.list(["best", "commute", "solar", "forecast"].map(goRow), { label: "Highlights" }),
     ui.list([notifyRow], { label: "Notifications" }),
     el("p", { class: "wxs-foot", text: "Notifications for Weather are in You, with every app’s." }));
-  redraws.add(() => { const s = st(), f = fmt(); for (const [p, r] of rows) { const v = r.querySelector(".ifl-val"); if (v) v.textContent = summary(p, s, f, cards()); } });
+  track(root, () => { const s = st(), f = fmt(); for (const [p, r] of rows) { const v = r.querySelector(".ifl-val"); if (v) v.textContent = summary(p, s, f, cards()); } });
 
   /* -- Units -- */
   function unitsPage() {
@@ -158,7 +162,7 @@ export function openSettings(ctx, page = null) {
       segs[key] = seg;
       box.append(el("div", { class: "wxs-opt", data: { key } }, el("span", { class: "wxs-opt-k", aria: { hidden: "true" }, text: name }), seg));
     }
-    redraws.add(() => { const s = st(); for (const k in segs) segs[k].set?.(s[k]); });
+    track(box, () => { const s = st(); for (const k in segs) segs[k].set?.(s[k]); });
     return box;
   }
 
@@ -197,7 +201,7 @@ export function openSettings(ctx, page = null) {
       save(PATCH.arrange(st(), L));
     }
     draw();
-    redraws.add(draw);
+    track(wrap, draw);
     return wrap;
   }
 
@@ -227,7 +231,7 @@ export function openSettings(ctx, page = null) {
         el("option", { value: "custom", text: "Something else…" }));
     });
     draw();
-    redraws.add(draw);
+    track(wrap, draw);
     return wrap;
   }
   // one activity's limits, in your units; each change kept as it's made
@@ -270,6 +274,7 @@ export function openSettings(ctx, page = null) {
       if (a.to <= a.from) a.to = Math.min(24, a.from + a.hours);
       save(PATCH.best(st(), acts));
     });
+    prune();
     h.push({ page: "activity", title: a0.name, body: form });
   }
 
@@ -297,7 +302,7 @@ export function openSettings(ctx, page = null) {
       el("label", { class: "wxs-line" }, el("span", { text: "Leave" }), am),
       el("label", { class: "wxs-line" }, el("span", { text: "Return" }), pm),
       el("p", { class: "wxs-foot", text: "The weather for your journeys there and back, in Highlights." }));
-    redraws.add(() => { const v = c(); setSw(on, !!v.on); am.fill(v.am || "08:00"); pm.fill(v.pm || "17:30"); });
+    track(wrap, () => { const v = c(); setSw(on, !!v.on); am.fill(v.am || "08:00"); pm.fill(v.pm || "17:30"); });
     return wrap;
   }
 
@@ -338,14 +343,15 @@ export function openSettings(ctx, page = null) {
       here.hidden = s.zones.length >= MAX_ZONES || places.some((p) => !p.gps);
     });
     draw();
-    redraws.add(draw);
+    track(wrap, draw);
     return wrap;
   }
   function zonePage(zid) {
     const z0 = sol0().zones.find((z) => z.id === zid);
     if (!z0) return;
     const spots = (S.places || []).filter((p) => !p.gps).map((p) => ({ name: p.name, lat: p.lat, lon: p.lon }));
-    if (!spots.some((p) => nkeyOf(p) === nkeyOf(z0))) spots.unshift({ name: z0.place || "Your place", lat: z0.lat, lon: z0.lon });
+    // (where no saved place is, e.g. a zone at My Location: a stand-in spot that keeps the zone's own place, "" included)
+    if (!spots.some((p) => nkeyOf(p) === nkeyOf(z0))) spots.unshift({ name: z0.place || "Your place", lat: z0.lat, lon: z0.lon, stand: true });
     const sel = (name, text, opts, v) => el("label", { class: "wxs-fld" }, el("span", { text }),
       el("select", { name, class: "wxs-sel" }, ...opts.map(([k, t]) => { const o = el("option", { value: String(k), text: t }); o.selected = String(k) === String(v); return o; })));
     const form = el("div", { class: "wxs wxs-edit", data: { key: "solar" } },
@@ -368,10 +374,11 @@ export function openSettings(ctx, page = null) {
       const zs = clone(sol0().zones), z = zs.find((x) => x.id === zid);
       if (!z) return;
       const p = spots.find((x) => nkeyOf(x) === val("zwhere")) || z;
-      Object.assign(z, { name: val("zname").trim().slice(0, 24) || z.name, lat: p.lat, lon: p.lon, place: String(p.name || z.place || "").slice(0, 60),
+      Object.assign(z, { name: val("zname").trim().slice(0, 24) || z.name, lat: p.lat, lon: p.lon, place: p === z || p.stand ? z.place : String(p.name || "").slice(0, 60),
         faces: val("zfaces"), pitch: Number(val("zpitch")), kw: val("zkw") ? Number(val("zkw")) : null });
       save(PATCH.solar(st(), { zones: zs }));
     });
+    prune();
     h.push({ page: "zone", title: z0.name, body: form });
   }
   const sol0 = () => st().solar || { on: false, alert: true, zones: [] };
@@ -385,19 +392,22 @@ export function openSettings(ctx, page = null) {
       el("p", { class: "wxs-foot", text: "Highs, lows and wind put right by how far the forecast has been out here lately." }),
       ui.label("Also look out for"),
       el("div", { class: "wxs-group", data: { key: "extras" } }, ...xs.map(([k, s, name]) => el("div", { class: "wxs-line", data: { extra: k } }, el("span", { text: name }), s))));
-    redraws.add(() => { const s = st(); setSw(tune, s.tune !== false); for (const [k, sw] of xs) setSw(sw, s.extras?.[k] !== false); });
+    track(wrap, () => { const s = st(); setSw(tune, s.tune !== false); for (const [k, sw] of xs) setSw(sw, s.extras?.[k] !== false); });
     return wrap;
   }
 
   const BUILD = { units: unitsPage, arrange: arrangePage, best: bestPage, commute: commutePage, solar: solarPage, forecast: forecastPage };
-  function go(p) { h.push({ page: p, title: TITLES[p], body: BUILD[p]() }); }
+  function go(p) { prune(); h.push({ page: p, title: TITLES[p], body: BUILD[p]() }); }
 
-  const hero = { app: "weather", name: "Weather", line: S.acct ? "Your places and settings are kept with your account." : "Settings and places stay on this device." };
+  // (signed in under the roof as a rule: fw.session.user.id; else whatever Weather's sync knows, put right on "acct")
+  const heroLine = () => (fw.session?.user?.id || S.acct ? "Your places and settings are kept with your account." : "Settings and places stay on this device.");
+  const hero = { app: "weather", name: "Weather", line: heroLine() };
   h = fw.sheet.open({ sheet: "wxsettings", title: "Weather Settings", hero, body: root, app: "weather",
     onClose: () => { alive = false; redraws.clear(); for (const off of offs) off(); if (shown === h) shown = null; } });
   if (!h) return null;
   shown = h;
   offs.push(core.on("settings", () => { heard++; if (alive) redraw(); }));
+  offs.push(core.on("acct", () => { const t = h.el?.querySelector?.(".ifs-hero span"); if (alive && t) t.textContent = heroLine(); }));
   redraw();
   if (page) go(page);
   return h;
