@@ -424,8 +424,9 @@ const IFL = (() => {
   //                      here" said) or that its sheet's shut (put away)
   //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
   //                      nothing done: false
-  //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen): once, the card
-  //                      saying InFlite is one app now, with How to Add and Turn Off Notifications Here (off). → true if shown
+  //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
+  //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
+  //                      InFlite is one app now, with How to Add and Turn Off Notifications Here (off). → true if shown
   //   degrade(links)     this page of the hub runs as the apps did before it (its Worker can't serve them yet: Today's
   //                      /api/hub says not ready): go, href and the tabs give the apps' own addresses (links: { chat,
   //                      weather, fitness, finance, email }, each an origin; else <app>.<site>), send goes to
@@ -455,6 +456,24 @@ const IFL = (() => {
   const cameFrom = (() => { try { const c = store()?.getItem(CRUMB); return ownPath(c) ? c : null; } catch (_) { return null; } })();
   const leaving = (p) => ownPath(p) && pageOf(p) !== location.pathname;
   const standalone = () => { try { return navigator.standalone === true || !!matchMedia?.("(display-mode: standalone)").matches; } catch (_) { return false; } };
+  // (the app's own Home Screen icon, filling the screen: not iOS's small browser, which a link from another Home Screen
+  // app opens it in, "standalone" too but under its own bars and short of the screen, where moved()'s card would cover
+  // the page. On an iPhone or iPad (navigator.standalone): on its side, filling the screen, or running up behind the
+  // status bar (a top inset: every app's page is viewport-fit=cover); elsewhere, standalone is enough)
+  const ownIcon = () => {
+    if (navigator.standalone !== true) return true;
+    try {
+      if (!matchMedia("(orientation: portrait)").matches) return true;
+      const tall = window.screen?.height || 0;
+      if (tall && innerHeight >= tall - 2) return true;
+      const p = document.createElement("div");
+      p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none";
+      document.body.append(p);
+      const inset = p.offsetHeight;
+      p.remove();
+      return inset > 0;
+    } catch (_) { return true; }
+  };
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
@@ -531,7 +550,7 @@ const IFL = (() => {
       return true;
     },
     moved(app, { off } = {}) {
-      if (hub.on || !standalone() || !document.body || !NAME[app]) return false;
+      if (hub.on || !standalone() || !document.body || !NAME[app] || !ownIcon()) return false;
       const k = `ifl-moved:${app}`;
       try { if (localStorage.getItem(k)) return false; localStorage.setItem(k, String(Date.now())); } catch (_) { return false; }
       movedCard(app, typeof off === "function" ? off : null);

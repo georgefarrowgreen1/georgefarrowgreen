@@ -528,6 +528,39 @@ test("pages that cross-fade, at the hub: one bound for a page that isn't the hub
   assert.doesNotThrow(() => page("https://inflite.ai/", { marker: "/", before: (w) => { w.document.activeViewTransition = null; } }));
 });
 
+test("moved(): only on the app's own icon, filling the screen: never in iOS's small browser (standalone too, opened from another Home Screen app's link, short of the screen and under its bars), where the card would cover the page", () => {
+  // (an iPhone, standalone: upright or on its side; the window's height against the screen's; the top inset a probe at
+  // env(safe-area-inset-top) measures: running up behind the status bar, as a Home Screen icon's page does)
+  const phone = ({ portrait = true, inner = 844, tall = 844, inset = 0 } = {}) => (w) => {
+    w.matchMedia = (q) => ({ matches: /orientation:\s*portrait/.test(q) ? portrait : false });
+    w.innerHeight = inner; w.screen = { height: tall };
+    const make = w.document.createElement;
+    w.document.createElement = (t) => { const n = make(t); Object.defineProperty(n, "offsetHeight", { get: () => (/safe-area-inset-top/.test(n.style.cssText || "") ? inset : 0) }); return n; };
+  };
+  const at = (look) => page("https://finance.inflite.ai/", { standalone: true, before: phone(look) });
+  const shown = (p) => !!p.doc.body.children.find((n) => n.className.includes("ifl-moved"));
+  for (const [look, yes, why] of [
+    [{ inner: 844, tall: 844 }, true, "filling the screen"],
+    [{ inner: 797, tall: 844, inset: 47 }, true, "short of it by iOS's slip, but behind the status bar"],
+    [{ portrait: false, inner: 390, tall: 844 }, true, "on its side"],
+    [{ inner: 760, tall: 844, inset: 0 }, false, "iOS's small browser: short of the screen, no inset"],
+  ]) {
+    const p = at(look);
+    assert.equal(p.hub.moved("markets", { off() {} }), yes, why);
+    assert.equal(shown(p), yes, `${why}: the card ${yes ? "shown" : "not shown"}`);
+    assert.equal(!!p.local.get("ifl-moved:markets"), yes, `${why}: ${yes ? "remembered" : "not remembered, so the icon itself still shows it, later"}`);
+    assert.ok(!p.doc.body.children.some((n) => n.tagName === "DIV" && /safe-area/.test(n.style.cssText || "")), `${why}: the probe taken away`);
+  }
+  // (the small browser first, then the icon itself: shown then, once)
+  const kept = {};
+  const small = page("https://finance.inflite.ai/", { standalone: true, kept, before: phone({ inner: 760, tall: 844 }) });
+  assert.equal(small.hub.moved("markets"), false);
+  assert.equal(page("https://finance.inflite.ai/", { standalone: true, kept: Object.fromEntries(small.local), before: phone() }).hub.moved("markets"), true, "the icon itself, afterwards: shown");
+  // (not an iPhone or iPad: no navigator.standalone, the display mode standalone: shown, as before)
+  const desk = page("https://finance.inflite.ai/", { before: (w) => { w.matchMedia = (q) => ({ matches: /display-mode:\s*standalone/.test(q) }); w.innerHeight = 500; w.screen = { height: 1200 }; } });
+  assert.equal(desk.hub.moved("markets"), true, "an installed app elsewhere: shown");
+});
+
 test("a notification tapped while a page is open: heard, it says so on the worker's port; never for one it won't go to, nor off the hub", () => {
   const port = () => { const got = []; return { got, postMessage: (m) => got.push(JSON.parse(JSON.stringify(m))) }; };
   let p = page("https://inflite.ai/weather/", { marker: "/weather/" }), a = port();
