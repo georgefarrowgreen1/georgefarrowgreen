@@ -4,7 +4,8 @@
 // names (never a push endpoint); the account's Set-Cookie comes back only from signing in and out; an account that can't
 // be reached is said in fixed words; /version reads app.js's BUILD and carries no CORS; a picture is only ever a picture.
 // And Today First's: its routes (acts, rules, notifications, devices), the hub's paths and Mail's answered by the Worker,
-// never the assets, and a test's moment of the day passed on only where the Worker's TEST_AT says so.
+// never the assets, and a test's moment of the day passed on only where the Worker's TEST_AT says so. And the staging
+// hub's: at another address standing in for the site (TODAY_AS), the account spoken to as that site.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -63,6 +64,32 @@ test('only the account’s cookie goes on, with Today’s own origin as Origin, 
   // (a foreign Origin on a GET isn't passed on: Today's own is)
   await call(req('/api/today', { headers: { Origin: 'https://evil.example' } }));
   assert.equal(asked[3].headers.get('origin'), SITE);
+});
+
+// (the staging hub, spec §15.2: the same Worker at next.inflite.ai, standing in for the site, TODAY_AS)
+const SRC_ACCOUNT = new URL('../../../../inflite/today/src/account.js', import.meta.url);
+const skipAs = skip || (!readFileSync(SRC_ACCOUNT, 'utf8').includes('TODAY_AS') && 'the inflite repo beside is from before TODAY_AS');
+test('at another address standing in for the site (TODAY_AS), Today speaks to the account as that site; its writes still only from its own page there', { skip: skipAs }, async () => {
+  const asked = account(() => Response.json({ signedIn: false, links: {} }));
+  const NEXT = 'https://next.inflite.ai';
+  const at = (path, { method = 'GET', origin = NEXT } = {}) => new Request(NEXT + path, { method,
+    headers: { 'Sec-Fetch-Site': 'same-origin', ...(method === 'GET' ? {} : { 'X-Inflite': '1', Origin: origin, 'Content-Type': 'application/json' }) }, body: method === 'GET' ? undefined : '{}' });
+  await call(at('/api/session'), env({ TODAY_AS: SITE }));
+  assert.equal(asked.at(-1).headers.get('origin'), SITE, 'as the site it stands in for');
+  assert.equal((await call(at('/api/prefs', { method: 'PUT' }), env({ TODAY_AS: SITE }))).res.status, 200);
+  assert.equal(asked.at(-1).headers.get('origin'), SITE, 'a write from its own page there, too');
+  const n = asked.length;
+  assert.equal((await call(at('/api/prefs', { method: 'PUT', origin: SITE }), env({ TODAY_AS: SITE }))).res.status, 403, 'a write from the site itself is another page’s here');
+  assert.equal(asked.length, n, 'and never reached the account');
+  await call(at('/api/session'), env({ TODAY_AS: SITE + '/x?y' }));
+  assert.equal(asked.at(-1).headers.get('origin'), SITE, 'its origin only');
+  // (without it, or with one that isn't an address: its own address, as ever)
+  await call(at('/api/session'));
+  assert.equal(asked.at(-1).headers.get('origin'), NEXT);
+  await call(at('/api/session'), env({ TODAY_AS: 'not an address' }));
+  assert.equal(asked.at(-1).headers.get('origin'), NEXT);
+  await call(req('/api/session'), env({ TODAY_AS: SITE }));
+  assert.equal(asked.at(-1).headers.get('origin'), SITE, 'and at the site itself, the same');
 });
 
 test('a write needs X-Inflite, Today’s own Origin and Sec-Fetch-Site same-origin; a GET may come from nowhere (none), never another site', { skip }, async () => {
