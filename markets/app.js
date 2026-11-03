@@ -2995,7 +2995,7 @@ async function start() {
   if (asked?.sym) openStock(asked.sym);
   // (off the hub, opened from an old Home Screen icon: once, that InFlite is one app now, with a way to turn
   // Markets' notifications off here)
-  else if (!IFL.hub.on && !askNotify && !code) IFL.hub.moved("markets", { off: turnOffHere });
+  else if (!IFL.hub.on && !askNotify && !code && ownIcon()) IFL.hub.moved("markets", { off: turnOffHere });
   if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
   live();
 }
@@ -3023,6 +3023,10 @@ function live() {
 // app opens Markets in iOS's own small browser, still "standalone" but under its bar, with no status bar inset. Its
 // window is short of the screen by that bar, not by iOS's slip, and taking that back put a sheet's foot off the screen)
 const behindBar = () => { if (!matchMedia("(orientation: portrait)").matches) return true; const p = document.createElement("div"); p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none"; document.body.appendChild(p); const t = p.offsetHeight; p.remove(); return t > 0; };
+// (Markets' own Home Screen icon, filling the screen: not iOS's small browser, opened from another Home Screen app's link,
+// which says it's "standalone" too but sits under its own bars, short of the screen. Elsewhere (no navigator.standalone:
+// not an iPhone or iPad), IFL.hub.moved decides by itself)
+const ownIcon = () => navigator.standalone !== true || behindBar() || innerHeight >= screen.height - 2;
 function fitScreen() {
   if (navigator.standalone !== true || !screen.width || !screen.height || !behindBar()) return;
   const doc = document.documentElement;
