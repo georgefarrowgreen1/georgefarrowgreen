@@ -231,9 +231,10 @@ const dayOfMonth = (n) => String(new Date(now + n * D).getUTCDate());
   const ph = await phone('caches', { signedIn: false });
   const { p } = ph;
   await p.goto(`${HUB}/`);
-  // (Today's own worker and its copy, at /, and the other apps' as they'd be there: Today's, Chats', an older Weather's)
-  await p.waitForFunction(() => navigator.serviceWorker.getRegistration('/').then((r) => !!r?.active), null, { timeout: 20000, polling: 500 }).catch(() => {});
-  await p.evaluate(async () => { for (const k of ['today-app-1', 'inflight-shell-1.67', 'fx-shell-1.40', 'wx-1.00']) await (await caches.open(k)).put(`/__${k}`, new Response(k)); });
+  // (Today's own worker and its copy, at /, once it's settled (it lets go of Today's own older ones itself), and the
+  // other apps' as they'd be there: Chats', Fitness's, Markets', and an older Weather's)
+  await p.waitForFunction(() => navigator.serviceWorker.getRegistration('/').then((r) => r?.active?.state === 'activated') && caches.keys().then((ks) => ks.some((k) => /^today-app-/.test(k))), null, { timeout: 20000, polling: 500 }).catch(() => {});
+  await p.evaluate(async () => { for (const k of ['inflight-shell-1.67', 'fx-shell-1.40', 'mk-1.61', 'wx-1.00']) await (await caches.open(k)).put(`/__${k}`, new Response(k)); });
   const before = await p.evaluate(() => caches.keys());
   await p.goto(`${HUB}/weather/`);
   await drawn(p, { signedIn: false });
@@ -242,8 +243,8 @@ const dayOfMonth = (n) => String(new Date(now + n * D).getUTCDate());
   const after = await p.evaluate(() => caches.keys());
   ok(active, 'Weather’s worker at the hub: /weather/ its scope, started');
   ok(after.includes(CACHE) && !after.includes('wx-1.00'), `its own copy (${CACHE}) kept, its older one let go`, JSON.stringify(after));
-  const theirs = before.filter((k) => /^(today-app-|inflight-shell-|fx-)/.test(k));
-  ok(theirs.length >= 3 && theirs.every((k) => after.includes(k)) && after.some((k) => /^today-app-/.test(k)) && after.includes('inflight-shell-1.67'), 'every other app’s copies at the address left alone (Today’s, Chats’, Fitness’s)', JSON.stringify({ before, after }));
+  const theirs = before.filter((k) => /^(today-app-|inflight-shell-|fx-|mk-)/.test(k));
+  ok(theirs.length >= 4 && theirs.some((k) => /^today-app-/.test(k)) && theirs.every((k) => after.includes(k)), 'every other app’s copies at the address left alone (Today’s, Chats’, Fitness’s, Markets’)', JSON.stringify({ before, after }));
   // (and nothing of the hub's own answered by it: the manifest, Today's page, the hub's readiness)
   const ctl = await p.evaluate(async (c) => (await (await caches.open(c)).keys()).map((q) => new URL(q.url).pathname), CACHE);
   ok(ctl.length && ctl.every((x) => x.startsWith('/weather/')), 'its copy holds only Weather’s own', JSON.stringify(ctl.filter((x) => !x.startsWith('/weather/')).slice(0, 4)));
