@@ -15,7 +15,7 @@
 //     now was held, "while you rode")
 // The tables it reads may not all be made yet (Fitness's waiting rows, its ride times, Today's rules): the whole statement
 // is tried first, and where it fails, the tables and columns there are looked up and the statement made without the rest
-// (as functions/_fitshare.js doneMany does), that shape kept a while. Time is always passed in, never read here.
+// (as functions/_fitshare.js doneMany does). Time is always passed in, never read here.
 import { EXPLICIT_OFFER } from "./_fittimes.js";
 import { tddb } from "./_today.js";
 
@@ -59,22 +59,16 @@ async function shapeOf(D) {
   return { times: has(0, "user_id", "start", "stop"), offers: has(1, "user_id", "start", "stop", "secs", "state", "role", "taken"), acts: has(2, "user_id", "start"),
     garmin: has(3, "user_id", "start"), strava: has(4, "user_id", "start"), rules: has(5, "user_id", "rule", "level") };
 }
-// (the shape last found, where it wasn't the whole: kept ten minutes, then the whole statement's tried again)
-let kept = null;
-const KEEP = 10 * MIN;
+// (the whole statement first; where it fails, the tables there looked up and the statement made of those: so a table made
+// since, Fitness's first ride time, say, is read from the next time on)
 async function ridesOf(D, ids, t, back) {
   const out = [];
   for (let i = 0; i < ids.length; i += PER) {
     const part = ids.slice(i, i + PER);
     const run = (have) => { const sql = holdSql(part.length, have, back); return sql ? D.prepare(sql).bind(t, ...part).all().then((r) => r.results || []) : Promise.resolve([]); };
-    const fresh = kept && Date.now() - kept.at < KEEP;
     let rows;
-    try { rows = await run(fresh ? kept.have : FULL); }
-    catch (e) {
-      const have = await shapeOf(D);
-      kept = { have, at: Date.now() };
-      rows = await run(have);
-    }
+    try { rows = await run(FULL); }
+    catch (e) { rows = await run(await shapeOf(D)); }
     out.push(...rows);
   }
   return out.map((r) => ({ uid: r.uid, start: Number(r.start), cap: Number(r.cap), level: LEVELS.includes(r.level) ? r.level : "do", done: !!r.done }));
