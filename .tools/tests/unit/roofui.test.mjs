@@ -260,7 +260,7 @@ async function boot3(path, { apps = { weather: true, chats: true }, retired } = 
     load: async (app, F) => { const inst = { fw: F.forModule(app), shows: 0, show() { this.shows++; }, hide() {}, unmount() {} }; H3.inst[app] = inst; return { instance: inst, m: { BUILD: '1.00' } }; },
     loadService: async (app, F) => {
       const n = ++H3.svcMade, subs = {};
-      const s = { n, ui: F.forModule(app), facade: Object.freeze({ n }), on(t, fn) { (subs[t] ||= []).push(fn); return () => {}; }, call: async () => [], release(o) { H3.released.push([n, !!o?.terminate]); }, emit(t, d) { for (const f of subs[t] || []) f(d); } };
+      const s = { n, state: H3.state0 || 'ready', ui: F.forModule(app), facade: Object.freeze({ n }), on(t, fn) { (subs[t] ||= []).push(fn); return () => {}; }, call: async () => [], release(o) { H3.released.push([n, !!o?.terminate]); }, emit(t, d) { for (const f of subs[t] || []) f(d); } };
       H3.svc = s;
       return s;
     },
@@ -329,6 +329,7 @@ test('stage 3, frame: no window scroll kept or put back for a stay route (a chat
 
 test('stage 3, frame: F.service after opts.retired, one per app; the facade to the host, the full service only by fw.service(); each state to opts.serviceState; the search while signed in and unlocked; let go of (terminate) by releaseService, the switch, sign-out', { skip: chats3 }, async () => {
   let done;
+  H3.state0 = 'locked';
   let { F } = await boot3('/', { retired: new Promise((ok) => (done = ok)) });
   const a = F.service('chats'), b = F.service('chats');
   await settle3();
@@ -337,8 +338,11 @@ test('stage 3, frame: F.service after opts.retired, one per app; the facade to t
   assert.equal(H3.svcMade, 1, 'one service for the page'); assert.equal(fa, fb); assert.equal(fa, H3.svc.facade, 'the host gets the facade');
   assert.equal(await F.forModule('chats').service(), H3.svc, 'the module gets the full service');
   assert.equal(H3.svc.ui, F.forModule('chats'), 'its ui is the Chats fw');
+  await settle3();
+  assert.deepEqual(H3.states, [['chats', 'locked']], 'the state it started in, at once (its patch came before F.service resolved)'); assert.equal(H3.finds.length, 0);
+  H3.state0 = null;
   H3.svc.emit('state', { state: 'ready' }); await settle3();
-  assert.deepEqual(H3.states, [['chats', 'ready']]); assert.equal(H3.finds.length, 1, 'People and Messages while ready');
+  assert.deepEqual(H3.states.at(-1), ['chats', 'ready']); assert.equal(H3.finds.length, 1, 'People and Messages while ready');
   H3.svc.emit('state', { state: 'ready' }); await settle3();
   assert.equal(H3.finds.length, 1, 'once');
   H3.svc.emit('state', { state: 'locked' }); await settle3();
@@ -415,4 +419,29 @@ test('stage 3, tabs.js: with Chats on, Chats is a tab screen (in-page, a tab mov
   assert.ok(!tap(nav, 'chats').defaultPrevented, 'a normal navigation'); assert.deepEqual(gone, []);
   t.destroy();
   delete globalThis.IFL;
+});
+
+test('stage 3, connectors.js chatsProvider: People (friends and groups by name, never the blocked) and Messages (the service’s search, the query cut to 100), each opening its chat; first while Chats shows; gone when let go of', { skip: chats3 }, async () => {
+  const { chatsProvider } = await import(new URL('connectors.js', ROOF));
+  const provs = new Set(), calls = [];
+  let star = null;
+  const F = { route: { kind: 'tab', tab: 'today' }, search: { provide(p) { provs.add(p); return () => provs.delete(p); } } };
+  const svc = { on(t, fn) { assert.equal(t, '*', 'caught up through "*"'); star = fn; return () => { star = null; }; },
+    call: async (m, q) => { calls.push([m, q]); return [{ token: 't1', chatId: 'pat_1', title: 'Pat', sub: '…the pigeon landed…', at: 1 }, { chatId: '../x', title: 'bad' }]; } };
+  const off = chatsProvider(F, svc);
+  star({ topic: 'friends', data: [{ id: 'pat_1', name: 'Pat Lee' }, { id: 'sam_2', name: 'Sam', blocked: true }] });
+  star({ topic: 'groups', data: [{ id: 'g_1', name: 'Pat’s Ride' }] });
+  star({ topic: 'rows', data: [{ id: 'zz', name: 'Pat' }] });
+  const [people, msgs] = [...provs].sort((a, b) => a.order - b.order);
+  assert.deepEqual([people.id, people.group, people.order, msgs.id, msgs.group, msgs.order], ['people', 'People', 15, 'messages', 'Messages', 16]);
+  F.route = { kind: 'app', app: 'chats', section: 'chats', key: 'chats' };
+  assert.deepEqual([people.order, msgs.order], [5, 6], 'first on the Chats screen (Apps is 10)');
+  assert.deepEqual(people.search(' pat '), [{ title: 'Pat Lee', sub: 'Chats', avatar: 'Pat Lee', href: '/chats/#open=pat_1' }, { title: 'Pat’s Ride', sub: 'Chats', avatar: 'Pat’s Ride', href: '/chats/#open=g_1' }]);
+  assert.deepEqual(people.search('sam'), [], 'never the blocked');
+  assert.deepEqual(people.search(''), []);
+  assert.deepEqual(await msgs.search('landed'), [{ title: 'Pat', sub: '…the pigeon landed…', avatar: 'Pat', href: '/chats/#open=pat_1' }], 'its chat; never a bad id');
+  await msgs.search('x'.repeat(300)); await msgs.search('   ');
+  assert.deepEqual(calls.map(([m, q]) => [m, q.length]), [['search', 6], ['search', 100]], 'the query to the core only, at most 100, none for blank');
+  off();
+  assert.equal(provs.size, 0); assert.equal(star, null);
 });
