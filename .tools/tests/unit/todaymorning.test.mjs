@@ -7,7 +7,9 @@
 // went; a device gone forgotten, and one failing five times in a row; and "Show it on this phone", which never counts
 // as the day's. And since Today First: the day planned just before its morning's composed (functions/_todayacts.js
 // planDay), so what Today did is said in the Fitness line, naming a friend only with Chat's names on, kept whole inside
-// the 400 characters; and every note says it's Today's (app: "today").
+// the 400 characters; only for an account whose Today has planned a day itself before, and not while TODAY_ACTS is "0";
+// a plan the tick's share of the database stops part way leaves no ride of Today's own without its act; and every note
+// says it's Today's (app: "today").
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -19,6 +21,9 @@ import { forecast } from "../mocks/wxappdata.mjs";
 import { morningLines, composeMorning, previewMorning, sendMorningNow, morningTick, nextAt, isDue, tickTest, countedDb, PER_TICK, AT_ONCE, LEASE, DB_BUDGET, DB_MOST } from "../../../functions/_todaymorning.js";
 import { Quiet, cardsMemo } from "../../../functions/_todaycards.js";
 import { planDay } from "../../../functions/_todayacts.js";
+import { fitdb } from "../../../functions/_fitness.js";
+import { offersFor } from "../../../functions/_fitshare.js";
+import { setSnapshot } from "../../../functions/_fittoday.js";
 
 const fixture = (f) => JSON.parse(readFileSync(new URL(`../mocks/today/${f}`, import.meta.url), "utf8"));
 const CARDS = fixture("cards.json"), QUIET = fixture("cards.quiet.json"), MORNING = fixture("morning.json");
@@ -595,6 +600,8 @@ const ACT = (uid, o = {}) => {
 const ADD = (uid, o = {}) => ACT(uid, { rule: "addRide", target: "day:2026-11-05", kind: "add", was: { planned: "rest" },
   now: { offer: crypto.randomUUID(), day: "2026-11-05", start: Date.UTC(2026, 10, 5, 10), stop: Date.UTC(2026, 10, 5, 12), state: "yes", secs: 7200 }, said: "Added: a ride on Thursday at 10:00", ...o });
 const ROW = { m_on: 1, m_at: 420, m_tz: null, m_lines: {}, m_sent: null, m_last: null, cards: {} };
+// (an account whose Today has planned a day itself before, Sunday's: the tick plans only for these)
+const seen = (uid) => run("INSERT OR IGNORE INTO td_plans (user_id, day, at) VALUES (?, '2026-11-01', ?)", uid, MON7 - 86400e3);
 
 test("the act in the Fitness line: Chat's names off, the friend not named; on, named; what Today offers said too; never another day's, nor one undone", async () => {
   const a = await account(), b = await account({ prefs: { names: true } });
@@ -641,6 +648,7 @@ test("the act said whole inside the 400 characters (the lines before it cut inst
 test("the tick plans each account's day before composing its morning, so the push says what Today did; a plan that fails leaves the morning to be sent", async () => {
   pushes = []; answer = () => 201;
   const order = [], a = await account();
+  seen(a.id);
   tickTest.plan = async (env2, u, t) => { order.push(`plan ${u.id}`); ACT(u.id); };
   tickTest.compose = async (...x) => { order.push(`compose ${x[1].id}`); return fromCards()(...x); };
   try {
@@ -651,6 +659,7 @@ test("the tick plans each account's day before composing its morning, so the pus
     assert.equal(note.body.split("\n")[1], "Tempo 2 × 15 · best 10:00–11:00. Moved your ride to 16:45 to clear your 18:30 call. Undo on Today.");
     done(); pushes = [];
     const b = await account();
+    seen(b.id);
     tickTest.plan = async () => { throw new Error("the forecast's not answering"); };
     const r2 = await morningTick(env, MON7);
     assert.equal(r2.sent, 1, "the morning went all the same");
@@ -658,10 +667,94 @@ test("the tick plans each account's day before composing its morning, so the pus
   } finally { tickTest.plan = null; tickTest.compose = null; }
   // (the real plan: run once for the account's day, the day claimed)
   const c = await account();
+  seen(c.id);
   tickTest.compose = fromCards();
   try { await morningTick(env, MON7); } finally { tickTest.compose = null; }
-  assert.deepEqual(q("SELECT day FROM td_plans WHERE user_id = ?", c.id).map((x) => x.day), ["2026-11-02"]);
+  assert.deepEqual(q("SELECT day FROM td_plans WHERE user_id = ? ORDER BY day", c.id).map((x) => x.day), ["2026-11-01", "2026-11-02"]);
   assert.deepEqual(q("SELECT rule FROM td_rules WHERE user_id = ? ORDER BY rule", c.id).map((x) => x.rule), ["addRide", "holdRide", "moveRide"]);
   assert.deepEqual((await planDay(env, c, MON7 + 60e3)).acts, [], "planned already: the page's read does nothing more");
+  done();
+});
+
+test("the tick acts only for an account whose Today has planned a day itself (Today 1.08 has no Undo), and for none while TODAY_ACTS is \"0\", whose morning then says no act", async () => {
+  pushes = []; answer = () => 201;
+  const planned = [];
+  tickTest.plan = async (env2, u, t) => { planned.push(u.id); };
+  tickTest.compose = fromCards();
+  try {
+    const a = await account(), b = await account();
+    seen(b.id);
+    const r = await morningTick(env, MON7);
+    assert.equal(r.sent, 2, "both mornings go");
+    assert.deepEqual(planned, [b.id], "only the one whose Today has planned a day");
+    done(); planned.length = 0;
+    const c = await account();
+    seen(c.id);
+    const off = await morningTick({ ...env, TODAY_ACTS: "0" }, MON7);
+    assert.equal(off.sent, 1);
+    assert.deepEqual(planned, [], "TODAY_ACTS 0: nothing planned");
+    done();
+  } finally { tickTest.plan = null; tickTest.compose = null; }
+  // (and no act in the morning's words, though one was done earlier today)
+  const d = await account();
+  ACT(d.id);
+  const note = await composeMorning({ ...env, TODAY_ACTS: "0" }, { id: d.id, notify_prefs: null }, ROW, MON7, { cards: CARDS.cards });
+  assert.equal(note.lines[1], "Tempo 2 × 15 · best 10:00–11:00");
+  done();
+});
+
+// (the week where you ride, stood in for: light from 07:00 to 17:00, dry)
+const WEEK = { offset: 0, hours: Array.from({ length: 7 * 24 }, (_, i) => {
+  const t = Date.UTC(2026, 10, 2) + i * 3600e3, h = new Date(t).getUTCHours();
+  return { t, temp: 12, feels: 11, pop: 5, rain: 0, code: 2, wind: 10, gust: 20, dir: 250, day: h >= 7 && h < 17 };
+}) };
+// (the database with a hook: on(sql) told of each batch's statements once they've run)
+function hooked(D, on) {
+  const wrap = (st, sql) => ({ ...st, sql, inner: st, bind: (...a) => wrap(st.bind(...a), sql) });
+  return { ...D, prepare: (sql) => wrap(D.prepare(sql), sql), async batch(list) { const r = await D.batch(list.map((x) => x.inner || x)); for (const x of list) if (x.sql) on(x.sql); return r; } };
+}
+
+test("a plan the tick's share of the database stops between the ride it adds and its act: the day given back, the ride answered no (no ride Today can't undo); the next turn adds it with its act", async () => {
+  pushes = []; answer = () => 201;
+  await fitdb(env); await offersFor(env, "nobody");
+  // (A, begun first, with nothing to plan; B with a habit: Thursdays at 10:00, six of the last eight, Thursday a rest day)
+  const a = await account(), b = await account();
+  seen(a.id); seen(b.id);
+  run("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?, ?, 1, ?)", b.id, JSON.stringify({ places: [{ name: "London", lat: 51.51, lon: -0.13 }], settings: {}, notify: {} }), MON7);
+  ["2026-09-10", "2026-09-17", "2026-09-24", "2026-10-01", "2026-10-08", "2026-10-15"].forEach((day, i) =>
+    run("INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) VALUES (?, ?, ?, 'ride', 0, 'Ride', 'fit', 1, ?, ?)", b.id, `h${i}`, Date.parse(`${day}T09:00:00Z`), JSON.stringify({ secs: 7200 }), MON7));
+  await setSnapshot(env, b.id, { tz: "Europe/London", units: "metric", days: { "2026-11-02": { state: "none" }, "2026-11-03": { state: "none" }, "2026-11-04": { state: "none" }, "2026-11-05": { state: "rest" } } });
+  // (the moment B's ride is made, A sends the tick past its share: so B, not the one begun first, is stopped, at its act)
+  let release, ready;
+  const gate = new Promise((ok) => { release = ok; }), aReady = new Promise((ok) => { ready = ok; });
+  const hookedEnv = { ...env, DB: hooked(env.DB, (sql) => { if (/'today', 0, \?10/.test(sql)) release(); }) };
+  tickTest.deps = { hoursAt: async () => { await aReady; return WEEK; }, pastWet: async () => null };
+  tickTest.compose = async (env2, u, row, t, o) => {
+    if (u.id === a.id) { ready(); await gate; await env2.DB.batch(Array.from({ length: DB_MOST }, () => env2.DB.prepare("SELECT 1"))); }
+    return fromCards()(env2, u, row, t, o);
+  };
+  const random = Math.random;
+  Math.random = () => 0.99;                      // (the tick's order as the accounts were made: A first)
+  try {
+    const r = await morningTick(hookedEnv, MON7);
+    assert.deepEqual({ due: r.due, sent: r.sent, left: r.left }, { due: 2, sent: 1, left: 1 }, "A sent; B stopped and left for the next turn");
+    const made = q("SELECT id, state, taken FROM fx_offers WHERE user_id = ? AND role = 'today'", b.id);
+    assert.equal(made.length, 1, "B's ride was made before it was stopped");
+    assert.deepEqual({ state: made[0].state, taken: made[0].taken }, { state: "no", taken: 0 }, "and answered no, as it has no act");
+    assert.deepEqual(q("SELECT id FROM td_acts WHERE user_id = ?", b.id), []);
+    assert.deepEqual(q("SELECT day FROM td_plans WHERE user_id = ? ORDER BY day", b.id).map((x) => x.day), ["2026-11-01"], "B's day given back");
+    assert.equal(prefs(b.id).m_sent, null);
+    // (the next turn: B planned again, its ride added with its act, and said)
+    pushes = [];
+    tickTest.compose = fromCards();
+    const r2 = await morningTick(env, MON7 + 5 * 60e3);
+    assert.equal(r2.sent, 1);
+    const acts = q("SELECT state, now FROM td_acts WHERE user_id = ? AND rule = 'addRide'", b.id);
+    assert.equal(acts.length, 1);
+    assert.equal(acts[0].state, "done");
+    assert.deepEqual(q("SELECT id, state FROM fx_offers WHERE user_id = ? AND role = 'today' AND state != 'no'", b.id).map((x) => [x.id, x.state]), [[JSON.parse(acts[0].now).offer, "yes"]], "one live ride, the act's");
+    const note = await opened(b.phones[0], pushes[0].body);
+    assert.ok(note.body.includes("Added a ride on Thursday at 10:00. Undo on Today."), note.body);
+  } finally { Math.random = random; tickTest.deps = null; tickTest.compose = null; }
   done();
 });
