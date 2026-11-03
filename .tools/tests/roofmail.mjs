@@ -179,9 +179,14 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
   await p.goto(`${HUB}/#apps`);
   ok((await shown(p, H.APPS, 30000)) && (await shown(p, H.appTile('mail'), 30000)), '1. Apps: Mail’s tile for its admin (§2.5)');
   ok((await attrOf(p, EXCEPT.tileLink('mail'), 'href')) === '/mail/', '1. …its link /mail/ (§2.3)', await attrOf(p, EXCEPT.tileLink('mail'), 'href'));
-  // (a shorter phone, so Apps scrolls: 560 points tall, less where Apps is short, never under 420)
-  const tall = await p.evaluate(() => document.documentElement.scrollHeight);
-  await p.setViewportSize({ width: 390, height: Math.max(420, Math.min(560, tall - 160)) }); await wait(400);
+  // (a shorter phone, so Apps scrolls: 560 points tall, then shorter while Apps has under 120 points to scroll, never
+  // under 420; measured at each height, since the page's own height can follow the screen's)
+  let tall = 0;
+  for (const h of [560, 500, 460, 420]) {
+    await p.setViewportSize({ width: 390, height: h }); await wait(400);
+    tall = await p.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+    if (tall >= 120) break;
+  }
   const yApps = await p.evaluate(() => { scrollTo(0, Math.min(240, document.documentElement.scrollHeight - innerHeight)); return Math.round(scrollY); });
   await wait(300);
   ok(yApps > 50, `1. Apps scrolled down ${yApps}px before the tile is tapped (so Back can be seen to keep it, D20)`, js({ tall, h: await p.evaluate(() => innerHeight) }));
