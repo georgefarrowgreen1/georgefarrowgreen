@@ -803,22 +803,34 @@ function firstUse() {
 export function view(el, ctx) {
   use(ctx);
   const doc = el.ownerDocument, win = doc.defaultView;
-  // (should a drag end without saying so, the next click or key ends it; back online, a ride's map tried again)
+  // (should a drag end without saying so, the next click or key ends it; back online, a ride's map tried again):
+  // listened for only while the section shows, added in draw() and taken off in hide() and destroy() (§4.1, S2-D4)
   const endDrag = () => { if (scr()?.classList.contains("day-drag")) dragDone(); };
-  const online = () => { if (todayMap?.failed) { todayMap = null; if (S.me) redraw(); } };
-  win.addEventListener("pointerdown", endDrag, true); win.addEventListener("keydown", endDrag, true); win.addEventListener("online", online);
+  const online = () => { if (todayMap?.failed) { todayMap = null; if (S.me && on) redraw(); } };
+  let on = false, listening = false;
+  const listen = () => {
+    if (listening) return;
+    listening = true;
+    win.addEventListener("pointerdown", endDrag, true); win.addEventListener("keydown", endDrag, true); win.addEventListener("online", online);
+  };
+  const unlisten = () => {
+    if (!listening) return;
+    listening = false;
+    win.removeEventListener("pointerdown", endDrag, true); win.removeEventListener("keydown", endDrag, true); win.removeEventListener("online", online);
+  };
   setAsk(() => askToday());
-  let on = false;
   return {
     draw() {
-      on = true;
+      // (shown again: a map that failed, maybe while offline and hidden, is tried again once)
+      if (!on && todayMap?.failed) todayMap = null;
+      on = true; listen();
       if (scr()?.classList.contains("day-drag")) { redraw.later = true; return; }
       const fu = firstUse();
       el.replaceChildren(h("div.screen.t-today", {}, fu, todayView()));
     },
-    hide() { on = false; dragDone(); },
+    hide() { on = false; unlisten(); dragDone(); },
     destroy() {
-      win.removeEventListener("pointerdown", endDrag, true); win.removeEventListener("keydown", endDrag, true); win.removeEventListener("online", online);
+      unlisten();
       setAsk(null); todayMap?.g?.remove?.(); todayMap = null; effortsSeen.clear(); el.replaceChildren(); use(null); on = false;
     },
   };
