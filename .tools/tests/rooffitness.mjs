@@ -60,6 +60,14 @@ const one = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*
 // ---- days as London has them (the phones' zone) ----
 const ZONE = 'Europe/London';
 const keyOf = (k) => new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now() + k * 864e5);
+// (London's date and hour now, and an hour of a day k days on there, as ridetime.mjs's hourAt: the offers seeded at a
+// fixed hour of their day, never "now + n minutes", which near midnight falls on tomorrow)
+const NOW = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  .formatToParts(Date.now()).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)]));
+const OFF_MS = Date.UTC(NOW.year, NOW.month - 1, NOW.day, NOW.hour, NOW.minute) - Math.floor(Date.now() / 60e3) * 60e3;
+const hourAt = (k, h) => Date.UTC(NOW.year, NOW.month - 1, NOW.day + k, h) - OFF_MS;
+// (within an hour of London's midnight the day turns during the run: Today's offer can't be proved as today's then)
+const NEAR_MIDNIGHT = NOW.hour >= 23;
 
 // ---- a ride as a file (a GPX, as fitness.mjs makes one), two days ago, and another for the drop ----
 const D = demo(Date.now()), ride = samples(D.history.find((x) => x.workout === 'endurance-90' && !x.indoor));
@@ -111,10 +119,14 @@ sql(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40
 const offer = (startAt, state, name = 'Ride how you like') => { const id = randomUUID(), s = startAt, e = s + 2 * 3600e3;
   one(`INSERT INTO fx_offers (user_id, id, start, stop, tz, sport, wid, name, secs, who, role, far, dry, state, made, until, taken) VALUES ('${uid}', '${id}', ${s}, ${e}, '${ZONE}', 'ride', 'free-ride', '${name}', 7200, '', 'today', 0, 1, '${state}', ${Date.now()}, ${e + 12 * 3600e3}, 0)`);
   return id; };
-const KEEP = offer(Date.now() + 30 * 60e3, 'yes'), SUGGEST = offer(Date.now() + 2 * 864e5, 'new', 'Ride with the sun');
+const KEEP = offer(hourAt(0, Math.min(Math.max(NOW.hour, 6), 20)), 'yes'), SUGGEST = offer(hourAt(2, 10), 'new', 'Ride with the sun');
 await p.goto(`${HUB}/`);
 await todayUp(p);
+// (the baseline once Today has kept its own copy, today:cards:<id> and today:session (today/public/app.js keepSession),
+// so the host's own writes aren't taken for the module's)
+await until(async () => (Object.keys((await storage(p)).local).some((k) => k.startsWith('today:cards:')) ? 'kept' : null), 20000);
 const before = await storage(p);
+const HOST_KEYS = /^local:today:(session$|cards:)/;
 const snaps = apiLog(p, /\/api\/fitness\/today$/);
 
 // ======================================================================================================================
@@ -186,13 +198,17 @@ await part(2, 'sections by replaceState; Back with the scroll kept', '§2.2, D6,
 // ======================================================================================================================
 await part(3, 'cold links: #act= (older fetched first), #day= near and far, #offer=, #settings=numbers, #plan', '§2.6, S2-D15, D6', async () => {
 // ======================================================================================================================
-  const api = apiLog(p, /\/api\/fitness\/me\/older/);
-  let d = await cold(p, '/fitness/#act=old405');
-  const act = (await fitnessUp(p, 'activities')) && (await sheetOpen(p, 'act', 40000));
-  ok(act && d.n() === 1 && api.n() > 0, '3. /fitness/#act=old405 cold: Activities and that ride’s sheet, the older rides fetched first (GET me/older, §2.6)', js({ older: api.n(), at: here(p) }));
-  ok(/Old ride 405/.test((await textOf(p, `${H.sheet('act')}[open]`)) || ''), '3. …the sheet is “Old ride 405”', (await textOf(p, H.SHEET_TITLE))?.slice(0, 80));
-  ok(await until(() => (new URL(p.url()).hash === '#activities' ? 'y' : null), 10000), '3. …the address tidied to /fitness/#activities (D6)', here(p));
-  await closeSheets(p); d.stop(); api.stop();
+  // (#act= on a phone with no kept copy of Fitness: the part 2 phone has listed Activities already, so its older rides
+  // are kept there and "fetched first" couldn't be shown on it)
+  const C = await open('tamsin-cold', { sw: 'block' });
+  const api = apiLog(C.p, /\/api\/fitness\/me\/older/);
+  let d = await cold(C.p, '/fitness/#act=old405');
+  const act = (await fitnessUp(C.p, 'activities')) && (await sheetOpen(C.p, 'act', 40000));
+  ok(act && d.n() === 1 && api.n() > 0, '3. /fitness/#act=old405 cold, a fresh phone: Activities and that ride’s sheet, the older rides fetched first (GET me/older, §2.6)', js({ older: api.n(), at: here(C.p) }));
+  ok(/Old ride 405/.test((await textOf(C.p, `${H.sheet('act')}[open]`)) || ''), '3. …the sheet is “Old ride 405”', (await textOf(C.p, `${H.sheet('act')}[open]`))?.slice(0, 80));
+  ok(await until(() => (new URL(C.p.url()).hash === '#activities' ? 'y' : null), 10000), '3. …the address tidied to /fitness/#activities (D6)', here(C.p));
+  d.stop(); api.stop();
+  await C.ctx.close();
 
   const near = keyOf(1), far = keyOf(20);
   d = await cold(p, `/fitness/#day=${near}`);
@@ -231,6 +247,7 @@ await part(5, 'Keep an offer: Today’s cards asked for again on return, the rid
   const cards = []; const onC = (r) => { if (/\/api\/today(\?|$)/.test(r.url())) cards.push(r.url()); }; p.on('request', onC);
   const api = apiLog(p, /\/api\/fitness\/offers\//);
   await tapEl(p, H.TODAY_FX_OPEN); await fitnessUp(p);
+  if (NEAR_MIDNIGHT) ok(false, `5. SKIPPED: the run began within an hour of London’s midnight (${NOW.hour}:${String(NOW.minute).padStart(2, '0')}), so today’s offer can’t be proved as today’s; run again after midnight`);
   const keep = `${H.M_FITNESS} ${H.fxOffer(KEEP, 'keep')}`;
   ok(await shown(p, keep, 20000), '5. Today’s offer on Fitness’s Today at first paint, with Keep (offers.js, BI2)');
   await p.click(keep);
@@ -271,9 +288,9 @@ await part(7, 'storage: no new key, no today:* change', 'S2-D10, §5.1', async (
   await p.goto(`${HUB}/`); await todayUp(p);
   const after = await storage(p), ch = changed(before, after);
   const allowed = (k) => /^local:(fitness:|me:last$|ifl-build:fitness$)/.test(k) || /^session:ifl-/.test(k) || /^local:(wx:|ifl-build:weather|ifl-here)/.test(k);
-  const odd = [...ch.added, ...ch.changed].filter((k) => !allowed(k));
-  ok(!odd.length, '7. after Fitness in use: only Fitness’s own keys (fitness:*, me:last) and the framework’s ifl-* added or changed (no new key)', js(ch));
-  ok(![...ch.added, ...ch.changed, ...ch.removed].some((k) => /today:/.test(k)), '7. no today:* key added, changed or removed (§5.1)', js(ch));
+  const odd = [...ch.added, ...ch.changed].filter((k) => !allowed(k) && !HOST_KEYS.test(k));
+  ok(!odd.length, '7. after Fitness in use: only Fitness’s own keys (fitness:*, me:last), the framework’s ifl-* and Today’s own today:session / today:cards:* added or changed (no new key)', js(ch));
+  ok(![...ch.added, ...ch.changed].some((k) => /today:/.test(k) && !HOST_KEYS.test(k)) && !ch.removed.some((k) => /today:/.test(k)), '7. no today:* key added or changed beyond Today’s own, none removed (§5.1)', js(ch));
   const dbs = await p.evaluate(async () => (indexedDB.databases ? (await indexedDB.databases()).map((d) => d.name) : null)).catch(() => null);
   ok(!dbs || dbs.filter((n) => /fit|files|market|roof/i.test(n)).every((n) => n === 'fitness'), '7. IndexedDB: only the databases there were (Fitness’s own “fitness”, C5)', js(dbs));
 });
