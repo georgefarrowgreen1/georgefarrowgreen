@@ -1,10 +1,14 @@
 // Today's day on the page (the inflite repo's today/public/day.js, Today First: spec §7.3, §7.4, §7.7, §14.2), its
 // parts that need no browser: the phase at a moment, from the answer alone (phaseAt), against every fixture of the demo's
-// day; the rows still to come (comingAt) and tickDay taking passed ones away and drawing the next phase at its minute
-// with no request; the merge of the engine's words (only beside a row the server named, and only when the engine's
-// message is as new as the server's); the header's line for each phase; and cards.js: safe()'s rule for a path of this
-// site's, Send as a button at the hub and a link off it, the hub's paths for links. Nothing drawn has an inline style, an
-// inline handler or a box to type in. (The page itself, in Chromium against the stand-in account: todayphases.mjs.)
+// day; the rows still to come (comingAt: in the evening, tonight's and tomorrow's first) and tickDay taking passed ones
+// away and drawing the next phase at its minute with no request; a ride's phase with no top card of its own (the day's
+// second ride) never blank; day.js's own timer stopping once the page takes the day back (signed out, its own four cards)
+// or says stopDay; a planning answer asked again 5 s on only without the page's refresh(); Chat's engine asked at idle
+// and only in sight; Undo's 401 told to the page; Send to Leo refused as { why }; the merge of the engine's words (only
+// beside a row the server named, and only when the engine's message is as new as the server's); the header's line for
+// each phase; and cards.js: safe()'s rule for a path of this site's, safeOrigin for an account's link, Send as a button at
+// the hub and a link off it, the hub's paths for links, the page's own IFL.hub first. Nothing drawn has an inline style,
+// an inline handler or a box to type in. (The page itself, in Chromium against the stand-in account: todayphases.mjs.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -99,7 +103,7 @@ test("phaseAt: the answer's own phase before its timeline, without one, or witho
   assert.equal(day.phaseAt(shuffled, a.at), "midday");
 });
 
-test("comingAt: the rows still to come, soonest first; in the evening, tomorrow's first thing alone", { skip }, () => {
+test("comingAt: the rows still to come, soonest first; in the evening, what's left of tonight and tomorrow's first thing", { skip }, () => {
   const a = FIX("midday"), rows = day.comingAt(a.upcoming, a.at, "midday");
   assert.deepEqual(rows.map((r) => r.title), a.upcoming.map((r) => r.title));
   const at = a.upcoming[0].at;
@@ -107,6 +111,17 @@ test("comingAt: the rows still to come, soonest first; in the evening, tomorrow'
   assert.equal(day.comingAt([...a.upcoming].reverse(), a.at, "midday")[0].title, "Rain reaches London", "sorted");
   const e = FIX("evening");
   assert.deepEqual(day.comingAt(e.upcoming, e.at, "evening").map((r) => r.title), ["Dry and still"]);
+  // (the evening: what's left of tonight, then tomorrow's first thing, and nothing after it)
+  const call = { id: "time:9c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d6", at: Date.UTC(2026, 10, 2, 21, 30), title: "Call with Mira", app: "chat" };
+  const early = { id: "time:9c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d7", at: Date.UTC(2026, 10, 3, 6, 30), title: "Call with Leo", app: "chat" };
+  const dawn = e.timeline.find((x) => x.phase === "morning").at;
+  assert.deepEqual(day.comingAt([...e.upcoming, call], e.at, "evening", { dawn }).map((r) => r.title), ["Call with Mira", "Dry and still"], "tonight’s call, then tomorrow’s first");
+  assert.deepEqual(day.comingAt([...e.upcoming, call, early], e.at, "evening", { dawn }).map((r) => r.title), ["Call with Mira", "Call with Leo"], "tomorrow’s first, whatever it is");
+  assert.deepEqual(day.comingAt([...e.upcoming, call], e.at, "evening", { tz: e.tz }).map((r) => r.title), ["Call with Mira", "Dry and still"], "without a timeline: tomorrow from midnight where the answer is");
+  assert.deepEqual(day.comingAt([call], e.at, "evening", { dawn }).map((r) => r.title), ["Call with Mira"], "nothing tomorrow yet: tonight’s");
+  const ev = drawn({ ...e, upcoming: [...e.upcoming, call] }, e.at);
+  assert.equal(ev.sec("coming").rows.length, 2, "drawn: tonight’s call and tomorrow’s first");
+  assert.ok(ev.sec("coming").innerHTML.indexOf("Call with Mira") < ev.sec("coming").innerHTML.indexOf("Dry and still"));
   assert.deepEqual(day.comingAt([{ at: "x", title: "Bad" }, { at: e.at + 1 }, null], e.at, "midday"), []);
 });
 
@@ -213,21 +228,223 @@ test("drawDay: off the hub every link is the app's own address and Send is Chat'
   assert.doesNotMatch(rest, /(?<![\w-])href="https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/, "no card link leaves the hub (Chat's own link kept only as the Send button's fallback)");
 });
 
-test("drawDay: the page's ctx: line(text) for the phase (null in the morning, the page's own date), Edit's prefs, and no request of its own beside refresh()", { skip }, async () => {
+test("drawDay: the page's ctx: line(text) for the phase (null in the morning, the page's own date), and Edit's prefs", { skip }, () => {
   const lines = [], m = FIX("midday");
   drawn(m, m.at, { line: (t) => lines.push(t) });
   drawn(FIX("morning"), FIX("morning").at, { line: (t) => lines.push(t) });
   assert.deepEqual(lines, ["12:30 · what’s next", null]);
   const rest = drawn(m, m.at, { prefs: { order: ["markets", "weather", "chat", "fitness"], hidden: ["chat"] } }).sec("rest").innerHTML;
   assert.deepEqual([...rest.matchAll(/data-app="(\w+)"/g)].map((x) => x[1]), ["markets", "weather", "fitness"], "Edit's order, without what's hidden");
-  // (a planning answer, with the page's own refresh(): the page asks again itself (§7.7), so nothing's timed or asked here)
+});
+
+test("drawDay: a planning answer asked again once, 5 s on, by day.js only where the page hands in no refresh() (the page asks itself, §7.7)", { skip }, (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const m = FIX("midday");
   asked.length = 0;
   let refreshed = 0;
-  const root = new El("div");
-  day.drawDay(root, { ...m, planning: true }, { now: m.at, links: LINKS, refresh: () => refreshed++ });
-  await new Promise((r) => setTimeout(r, 50));
-  assert.equal(refreshed, 0);
-  assert.deepEqual(asked, []);
+  day.drawDay(new El("div"), { ...m, planning: true }, { now: m.at, links: LINKS, refresh: () => refreshed++ });
+  t.mock.timers.tick(6000);
+  assert.equal(refreshed, 0, "with the page's refresh(): nothing timed here (the page asks again itself)");
+  assert.deepEqual(asked, [], "and nothing fetched here");
+  day.drawDay(new El("div"), { ...m, planning: true }, { now: m.at, links: LINKS });
+  t.mock.timers.tick(4900);
+  assert.deepEqual(asked, [], "without it: not before 5 s");
+  t.mock.timers.tick(200);
+  assert.deepEqual(asked, ["/api/today?v=2"], "then the day asked for once, version 2");
+  t.mock.timers.tick(30000);
+  assert.deepEqual(asked, ["/api/today?v=2"], "and once only");
+});
+
+test("drawDay's own timer stops once the page takes root back (its phase taken off: its own four cards drawn, or signed out), and with stopDay", { skip }, (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const m = FIX("midday");
+  let now = m.until - 30e3;
+  const lines = [];
+  const page = () => { const root = new El("div"); day.drawDay(root, m, { now: () => now, links: LINKS, line: (x) => lines.push(x) }); return root; };
+  // (as app.js's signedOutNow and drawFour do: the sections emptied, the phase taken off, the same root kept)
+  const takeBack = (root) => { for (const k of ["top", "waiting", "coming", "rest"]) root.querySelector(`#${k}`).replaceChildren(); delete root.dataset.phase; };
+  const a = page();
+  assert.equal(a.dataset.phase, "midday");
+  assert.equal(lines.length, 1);
+  takeBack(a);
+  now = m.until + 1e3;
+  t.mock.timers.tick(90e3);
+  assert.equal(a.dataset.phase, undefined, "the ride's phase not drawn into a page that's let the day go");
+  assert.equal(a.querySelector("#top").innerHTML, "", "nothing drawn at the boundary");
+  assert.equal(a.querySelector("#rest").innerHTML, "", "nor the four cards");
+  assert.equal(lines.length, 1, "nothing said in the header");
+  // (tickDay from the page, after it's taken root back: nothing either, and the timer gone with it)
+  lines.length = 0;
+  now = m.until - 30e3;
+  const b = page();
+  takeBack(b);
+  day.tickDay(b, m, m.until + 1e3);
+  now = m.until + 1e3;
+  t.mock.timers.tick(90e3);
+  assert.equal(b.dataset.phase, undefined, "tickDay: nothing drawn");
+  assert.equal(lines.length, 1, "tickDay: nothing said");
+  // (stopDay: the page saying so itself)
+  lines.length = 0;
+  now = m.until - 30e3;
+  const c = page();
+  day.stopDay(c);
+  now = m.until + 1e3;
+  t.mock.timers.tick(90e3);
+  assert.equal(c.dataset.phase, "midday", "stopDay: nothing more drawn from here");
+  assert.equal(lines.length, 1);
+  day.stopDay(new El("div"));
+  day.stopDay(null);
+  // (a day that's still the page's goes on at its minute)
+  now = m.until - 30e3;
+  const d = page();
+  now = m.until + 1e3;
+  t.mock.timers.tick(31e3);
+  assert.equal(d.dataset.phase, "preride", "a day still the page's: the ride's phase at its minute");
+});
+
+test("drawDay: a ride's phase with no top card of its own (the day's second ride, or a top left out) shows what's coming and the rest, never nothing", { skip }, () => {
+  const m = FIX("midday"), at = (h, mi = 0) => Date.UTC(2026, 10, 2, h, mi);
+  // (two rides: 10:00 and 16:45. The answer's tops are the first time each phase comes: the 10:00 ride's)
+  const two = { ...m, at: at(9), since: at(6), until: at(9, 20), phase: "morning", timeline: [
+    { phase: "morning", at: at(6) }, { phase: "preride", at: at(9, 20) }, { phase: "riding", at: at(10) }, { phase: "after", at: at(11, 20) },
+    { phase: "midday", at: at(12, 50) }, { phase: "preride", at: at(16, 5) }, { phase: "riding", at: at(16, 45) }, { phase: "midday", at: at(18, 45) }, { phase: "evening", at: at(19) }] };
+  const first = drawn(two, at(9, 30));
+  assert.equal(first.root.dataset.phase, "preride");
+  assert.ok(!first.sec("top").hidden, "the first ride: its card");
+  assert.ok(first.sec("coming").hidden && first.sec("rest").hidden, "and the ride alone");
+  for (const [when, phase] of [[at(16, 10), "preride"], [at(16, 50), "riding"]]) {
+    const d = drawn(two, when);
+    assert.equal(d.root.dataset.phase, phase, `the second ride's ${phase}`);
+    assert.ok(d.sec("top").hidden, `${phase}: no card the answer didn't give`);
+    assert.ok(!d.sec("coming").hidden, `${phase}: Coming Up shown`);
+    assert.ok(!d.sec("rest").hidden, `${phase}: The Rest of Today shown`);
+    assert.ok(d.sec("waiting").hidden);
+  }
+  assert.match(drawn(two, at(16, 10)).sec("coming").innerHTML, /Ride: Endurance 75/, "the second ride's own row among what's coming");
+  // (tickDay to the second ride's minute, from the first's day: the same)
+  const tk = drawn(two, at(12, 55));
+  day.tickDay(tk.root, two, at(16, 5));
+  assert.equal(tk.root.dataset.phase, "preride");
+  assert.ok(tk.sec("top").hidden && !tk.sec("coming").hidden && !tk.sec("rest").hidden, "ticked into the second ride: Coming Up and the rest");
+  // (a riding answer whose top the server left out)
+  const r = FIX("riding"), bare = drawn({ ...r, tops: {} }, r.at);
+  assert.equal(bare.root.dataset.phase, "riding");
+  assert.ok(!bare.sec("coming").hidden && !bare.sec("rest").hidden, "riding with no top: what's coming and the rest");
+});
+
+// (a click on a drawn button: root's own listener, as the page's would call it)
+const clickOn = (root, dataset) => { const el = { dataset, disabled: false }; el.closest = () => el; root.listeners.click[0]({ target: el, preventDefault() {} }); return el; };
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+test("Chat's engine asked at idle once the day's drawn, never in drawDay's own moment, and not while the page is out of sight", { skip }, async () => {
+  const m = FIX("midday"), idles = [], docOn = {};
+  let asks = 0, k = 0;
+  const hub = { ...hubAt(), chat: () => { asks++; return Promise.resolve({ state: "ready", waiting: async () => [] }); } };
+  // (a Waiting row the engine hasn't been asked about yet, each time)
+  const answer = () => ({ ...m, waiting: [{ ...m.waiting[0], at: m.waiting[0].at + ++k }] });
+  const doc = { add: document.addEventListener, remove: document.removeEventListener };
+  globalThis.requestIdleCallback = (fn, o) => { idles.push([fn, o]); return idles.length; };
+  document.addEventListener = (type, fn) => (docOn[type] ||= []).push(fn);
+  document.removeEventListener = (type, fn) => { docOn[type] = (docOn[type] || []).filter((f) => f !== fn); };
+  try {
+    day.drawDay(new El("div"), answer(), { now: m.at, links: LINKS, timers: false, hub });
+    assert.equal(asks, 0, "not in the same moment as the day's drawing");
+    assert.equal(idles.length, 1, "asked for at idle");
+    assert.ok(idles[0][1]?.timeout > 0 && idles[0][1].timeout <= 3000, "within a few seconds at most");
+    idles.shift()[0]();
+    assert.equal(asks, 1, "then the engine asked");
+    // (out of sight: nothing made until it's seen again)
+    document.visibilityState = "hidden";
+    const root = new El("div");
+    day.drawDay(root, answer(), { now: m.at, links: LINKS, timers: false, hub });
+    assert.equal(idles.length, 0, "out of sight: not even at idle");
+    assert.equal(asks, 1);
+    assert.equal(docOn.visibilitychange?.length, 1, "waiting to be seen");
+    document.visibilityState = "visible";
+    for (const f of [...docOn.visibilitychange]) f();
+    assert.equal(docOn.visibilitychange.length, 0, "and no longer waiting once seen");
+    assert.equal(idles.length, 1);
+    idles.shift()[0]();
+    assert.equal(asks, 2, "seen: the engine asked, at idle");
+    // (a day drawn again while one's waiting to be seen: only the newest asks)
+    document.visibilityState = "hidden";
+    day.drawDay(root, answer(), { now: m.at, links: LINKS, timers: false, hub });
+    day.drawDay(root, answer(), { now: m.at, links: LINKS, timers: false, hub });
+    assert.equal(docOn.visibilitychange.length, 1, "the older day's wait dropped");
+    document.visibilityState = "visible";
+    for (const f of [...docOn.visibilitychange]) f();
+    for (const [f] of idles.splice(0)) f();
+    assert.equal(asks, 3);
+    await settle();
+  } finally {
+    delete globalThis.requestIdleCallback;
+    delete document.visibilityState;
+    document.addEventListener = doc.add;
+    document.removeEventListener = doc.remove;
+  }
+});
+
+test("Undo, Take or Keep answered 401: the page told at once (refresh), so its own way out of a 401 runs; another refusal asks nothing", { skip }, async () => {
+  const m = FIX("morning");
+  for (const [status, want] of [[401, 1], [403, 0]]) {
+    let refreshed = 0;
+    const toasts = [], root = new El("div");
+    day.drawDay(root, m, { now: m.at, links: LINKS, timers: false, toast: (x) => toasts.push(x), refresh: () => { refreshed++; },
+      call: async () => { throw Object.assign(new Error("Sign in again."), { status }); } });
+    clickOn(root, { do: "undo", id: m.acts[1].id });
+    await settle();
+    assert.equal(refreshed, want, `${status}: refresh() ${want ? "called" : "not called"}`);
+    assert.deepEqual(toasts, ["Sign in again."], `${status}: the account's words said`);
+  }
+});
+
+test("Send to Leo: an engine that refuses (false, { ok: false }, or { why } alone) or says nothing opens Chat's sheet with Leo chosen; sent, or its own sheet, nothing more", { skip }, async () => {
+  const a = FIX("after"), top = a.tops.after, id = top.sendTo.id;
+  const cases = [[{ why: "tap" }, true], [{ ok: false, why: "tap" }, true], [{ ok: false }, true], [false, true], [null, true], [undefined, true], ["throws", true],
+    [{ ok: true, say: "Sent to Leo. You’re still here" }, false], [true, false]];
+  for (const [r, sheet] of cases) {
+    const calls = [];
+    const engine = { state: "ready", sendTo: async () => { if (r === "throws") throw new Error("no"); return r; } };
+    const hub = { ...hubAt(calls), chat: () => Promise.resolve(engine), sent: (say) => calls.push(["sent", say]) };
+    const root = new El("div");
+    day.drawDay(root, a, { now: a.at, links: LINKS, timers: false, hub });
+    clickOn(root, { do: "sendto", to: id });
+    await settle();
+    const sends = calls.filter((c) => c[0] === "send"), sent = calls.filter((c) => c[0] === "sent");
+    assert.deepEqual(sends, sheet ? [["send", top.share, top.sendCard, { to: id }]] : [], `${JSON.stringify(r)}: ${sheet ? "Chat's sheet, Leo chosen" : "no sheet from here"}`);
+    assert.equal(sent.length, r?.ok === true ? 1 : 0, `${JSON.stringify(r)}: its word said only when sent`);
+  }
+});
+
+test("links: a row with nowhere to go isn't a link; a hub path of Mail's goes to Mail's own address off the hub; an account's link used as an origin only", { skip }, () => {
+  const m = FIX("midday"), rows = [{ id: "x1", at: m.at + 3600e3, title: "No address", app: "weather" }, { id: "x2", at: m.at + 7200e3, title: "A letter", app: "chat", href: "/mail/#open=abc" }];
+  const coming = drawn({ ...m, upcoming: rows }, m.at).sec("coming").innerHTML;
+  assert.match(coming, /<div class="row dc-main"><span class="dc-tm">13:30/, "no address: a row to read, not a link");
+  assert.doesNotMatch(coming, /href="#"/, "never a link to nowhere");
+  assert.match(coming, /<a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#open=abc">/, "Mail's hub path: Mail's own address, off the hub");
+  // (an account's link that isn't an address (a path): Chat's #share= never made from it, nor an app's row's address)
+  const bad = { ...LINKS, chat: "/", weather: "/x" };
+  assert.equal(cards.sendButton({ share: "Hi" }, { links: bad }), "", "Chat's link a path: no Send link rather than “//#share=”");
+  const top = drawn(FIX("after"), FIX("after").at, { links: { ...LINKS, chat: "/" } }).sec("top").innerHTML;
+  assert.doesNotMatch(top, /href="\/\//, "no protocol-relative address anywhere");
+  assert.equal(cards.safeOrigin("https://chat.inflite.ai"), "https://chat.inflite.ai");
+  for (const h of ["/", "/x", "//evil.example", "javascript:alert(1)", "http://chat.inflite.ai", null]) assert.equal(cards.safeOrigin(h), null, JSON.stringify(h));
+  assert.equal(cards.safe("/weather/#radar"), "/weather/#radar", "safe() still keeps this site's paths, for the answer's own addresses");
+});
+
+test("the hub: the page's own (window.IFL.hub) first, else ctx.hub; with neither, off the hub", { skip }, () => {
+  const a = FIX("after"), calls = [];
+  globalThis.IFL = { hub: hubAt(calls) };
+  try {
+    const top = drawn(a, a.at).sec("top").innerHTML;
+    assert.match(top, /href="\/fitness\/#activities" data-do="open"/, "window.IFL.hub: the hub's path");
+    assert.match(top, /<button class="pill" type="button" data-send/, "and Send a button");
+    const both = drawn(a, a.at, { hub: { ...hubAt(), degraded: true } }).sec("top").innerHTML;
+    assert.match(both, /href="\/fitness\/#activities"/, "the page's own hub before one handed in");
+  } finally {
+    delete globalThis.IFL;
+  }
+  assert.match(drawn(a, a.at).sec("top").innerHTML, /href="https:\/\/fitness\.inflite\.ai\/#activities"/, "neither: off the hub");
 });
 
 test("mergeWaiting: words only beside a row the server named, and only when the engine's message is as new as the server's", { skip }, () => {
