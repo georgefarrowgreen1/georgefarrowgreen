@@ -1,1 +1,156 @@
-/* Chats: its sheets, scoped under .ifl-sheet[data-app=chats] (UI-B; B0 left it empty). */
+/* Chats' sheets under the roof (stage 3 spec §3.1, UI-B): Send, Chat Settings, friend and group info, safety numbers,
+   hold menus, photos, voice, GIFs, scan, and the pigeons' sheets (flight log, passport, map, Moon, birds, loft, Coots),
+   drawn inside the framework's sheet (dialog.ifl-sheet[data-app=chats][data-sheet=…]). Ported from Chat's
+   styles.css 918-1596 and 2269-2564, re-tokenised: only app.css's and roof.css's tokens (--text*, --line, --glass,
+   --press, --danger, --good-text, --warn, --acc*, --r-*, --dur-*, --ease-*); the rows, lists, switches, segments, chips,
+   fields and buttons are roof.css's own. Nothing on :root, html or body; no inline styles (a drawing's figures are
+   custom properties set by script: --h, --w, --ar, --lap). */
+
+/* ---- shared ---- */
+.ifl-sheet[data-app=chats] .chs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ifl-sheet[data-app=chats] .chs-foot { margin: 0 4px; color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.ifl-sheet[data-app=chats] .chs-ask { margin: 4px; line-height: 1.45; }
+.ifl-sheet[data-app=chats] .chs-acts { display: flex; flex-direction: column; gap: 8px; }
+.ifl-sheet[data-app=chats] .chs-acts > .ifl-btn { width: 100%; justify-content: center; }
+.ifl-sheet[data-app=chats] .chs-danger b, .ifl-sheet[data-app=chats] .chs-danger { color: var(--danger); }
+.ifl-sheet[data-app=chats] .chs-warn {
+  margin: 0; padding: 10px 14px; border-radius: var(--r-well, 16px); border: 1px solid var(--warn); color: var(--text); line-height: 1.4;
+}
+.ifl-sheet[data-app=chats] .ifl-row.dim { opacity: 0.5; }
+.ifl-sheet[data-app=chats] .ifl-row[aria-checked=true] { box-shadow: inset 0 0 0 2px var(--acc); }
+.ifl-sheet[data-app=chats] .chs-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* a person or a group at the top */
+.ifl-sheet[data-app=chats] .chs-head { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0 4px; text-align: center; }
+.ifl-sheet[data-app=chats] .chs-head .ifl-avatar { width: 72px; height: 72px; font-size: 28px; }
+.ifl-sheet[data-app=chats] .chs-name { font-size: 22px; font-weight: 700; overflow-wrap: anywhere; }
+.ifl-sheet[data-app=chats] .chs-sub { color: var(--text-2); font-size: 14px; }
+
+/* a line: words on the left, a choice on the right */
+.ifl-sheet[data-app=chats] .chs-line {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px;
+  padding: 6px 14px; border-radius: var(--r-well, 16px); background: var(--glass, transparent); border: 1px solid var(--line);
+}
+.ifl-sheet[data-app=chats] .chs-line > span:first-child { flex: 1 1 auto; min-width: 0; }
+.ifl-sheet[data-app=chats] .chs-sel, .ifl-sheet[data-app=chats] .chs-dt {
+  min-height: 44px; max-width: 60%; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--press, transparent); color: inherit; font: inherit;
+}
+.ifl-sheet[data-app=chats] .chs-credits { margin: 0; text-align: center; }
+
+/* ---- Send ---- */
+.ifl-sheet[data-app=chats] .chsend { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ifl-sheet[data-app=chats] .chsend-card { min-width: 0; }
+.ifl-sheet[data-app=chats] .chsend-say { margin: 0; padding: 12px 14px; border-radius: var(--r-well, 16px); border: 1px solid var(--line); }
+.ifl-sheet[data-app=chats] .chsend-note { margin: 0 4px; color: var(--text-2); font-size: 13px; }
+.ifl-sheet[data-app=chats] .chsend-row { position: relative; }
+.ifl-sheet[data-app=chats] .chsend-tag {
+  flex: none; padding: 2px 8px; border-radius: var(--r-pill, 999px); background: var(--acc-wash, var(--press)); color: var(--acc-ink); font-size: 12px; font-weight: 600;
+}
+.ifl-sheet[data-app=chats] .chsend-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ifl-sheet[data-app=chats] .chsend-chip {
+  min-height: 44px; padding: 0 14px; border-radius: var(--r-pill, 999px); border: 1px solid var(--line);
+  background: var(--glass, transparent); color: inherit; font: inherit; font-size: 15px; cursor: pointer;
+  transition: background var(--dur-fast, .2s) var(--ease-out, ease);
+}
+.ifl-sheet[data-app=chats] .chsend-chip[aria-checked=true] { background: var(--acc-fill); border-color: var(--acc-fill); color: var(--on-acc); }
+.ifl-sheet[data-app=chats] .chsend-chip:disabled { opacity: 0.5; }
+.ifl-sheet[data-app=chats] .chsend-go { display: flex; flex-direction: column; gap: 8px; }
+.ifl-sheet[data-app=chats] .chsend-go > .ifl-btn { width: 100%; justify-content: center; }
+.ifl-sheet[data-app=chats] .chsend-foot { margin: 0; color: var(--text-2); font-size: 13px; text-align: center; }
+.ifl-sheet[data-app=chats] .chsend-err { margin: 0; color: var(--danger); font-size: 14px; text-align: center; }
+
+/* ---- safety numbers ---- */
+.ifl-sheet[data-app=chats] .chs-safety[data-state=ok] .chs-sub { color: var(--good-text); }
+.ifl-sheet[data-app=chats] .chs-safety[data-state=warn] .chs-sub { color: var(--warn); }
+.ifl-sheet[data-app=chats] .chs-safedig { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-radius: var(--r-well, 16px); border: 1px solid var(--line); }
+.ifl-sheet[data-app=chats] .chs-digits {
+  display: grid; grid-template-columns: repeat(4, auto); gap: 6px 14px; justify-content: center;
+  font: 600 17px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+}
+.ifl-sheet[data-app=chats] .chs-qr { display: flex; justify-content: center; }
+.ifl-sheet[data-app=chats] .chs-qr svg { width: min(220px, 70vw); height: auto; padding: 10px; border-radius: 12px; background: #fff; }
+
+/* ---- hold menus ---- */
+.ifl-sheet[data-app=chats] .chs-react { display: flex; justify-content: space-between; gap: 4px; }
+.ifl-sheet[data-app=chats] .chs-emoji {
+  flex: 1 1 0; min-width: 44px; min-height: 48px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--glass, transparent); font-size: 24px; cursor: pointer;
+}
+.ifl-sheet[data-app=chats] .chs-emoji[aria-pressed=true] { background: var(--acc-wash, var(--press)); border-color: var(--acc); }
+.ifl-sheet[data-app=chats] .chs-card { min-width: 0; }
+
+/* ---- a photo ---- */
+.ifl-sheet[data-app=chats] .chs-view { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ifl-sheet[data-app=chats] .chs-photo { max-width: 100%; max-height: 70vh; border-radius: var(--r-well, 16px); object-fit: contain; }
+
+/* ---- voice ---- */
+.ifl-sheet[data-app=chats] .chv { align-items: center; }
+.ifl-sheet[data-app=chats] .chv-time { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ifl-sheet[data-app=chats] .chv-wave { display: flex; align-items: center; justify-content: flex-end; gap: 2px; width: 100%; height: 56px; overflow: hidden; }
+.ifl-sheet[data-app=chats] .chv-wave i { flex: none; width: 3px; height: calc(var(--h, 0.12) * 100%); border-radius: 2px; background: var(--acc); }
+
+/* ---- GIFs ---- */
+.ifl-sheet[data-app=chats] .chg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: start; min-height: 120px; }
+.ifl-sheet[data-app=chats] .chg-grid > .chs-foot { grid-column: 1 / -1; text-align: center; padding: 24px 0; }
+.ifl-sheet[data-app=chats] .chg-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ifl-sheet[data-app=chats] .chg-tile {
+  position: relative; display: block; width: 100%; aspect-ratio: var(--ar, 1); padding: 0; overflow: hidden;
+  border: 0; border-radius: 10px; background: var(--press, var(--line)); cursor: pointer;
+}
+.ifl-sheet[data-app=chats] .chg-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ifl-sheet[data-app=chats] .chg-tile.busy { opacity: 0.5; }
+
+/* ---- scan ---- */
+.ifl-sheet[data-app=chats] .chsc-box { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: var(--r-well, 16px); background: #000; }
+.ifl-sheet[data-app=chats] .chsc-video { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-base, .35s) var(--ease-out, ease); }
+.ifl-sheet[data-app=chats] .chsc-video.on { opacity: 1; }
+.ifl-sheet[data-app=chats] .chsc-frame { position: absolute; inset: 18%; border: 3px solid rgba(255, 255, 255, 0.9); border-radius: 18px; }
+
+/* ---- the pigeons' sheets ---- */
+.ifl-sheet[data-app=chats] .chf-hero { display: flex; align-items: center; gap: 16px; }
+.ifl-sheet[data-app=chats] .chf-hero b { display: block; font-size: 26px; }
+.ifl-sheet[data-app=chats] .chf-hero span, .ifl-sheet[data-app=chats] .chf-hero small { display: block; color: var(--text-2); }
+.ifl-sheet[data-app=chats] .chf-globe {
+  flex: none; width: 72px; height: 72px; border-radius: 50%;
+  background: conic-gradient(var(--acc) calc(var(--lap, 0) * 360deg), var(--line) 0);
+}
+.ifl-sheet[data-app=chats] .chf-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ifl-sheet[data-app=chats] .chf-stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-well, 16px);
+  background: var(--glass, transparent); border: 1px solid var(--line); min-width: 0;
+}
+.ifl-sheet[data-app=chats] .chf-stat b { font-size: 20px; overflow-wrap: anywhere; }
+.ifl-sheet[data-app=chats] .chf-stat span { color: var(--text-2); font-size: 13px; }
+.ifl-sheet[data-app=chats] .chf-stat small { color: var(--text-3, var(--text-2)); font-size: 12px; }
+.ifl-sheet[data-app=chats] .chf-bar {
+  display: block; width: 100%; height: 4px; margin-top: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--acc) calc(var(--w, 0) * 100%), var(--line) 0);
+}
+.ifl-sheet[data-app=chats] .chf-badges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ifl-sheet[data-app=chats] .chf-badge { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-well, 16px); border: 1px solid var(--line); opacity: 0.6; }
+.ifl-sheet[data-app=chats] .chf-badge.earned { opacity: 1; border-color: var(--acc); }
+.ifl-sheet[data-app=chats] .chf-badge small { color: var(--text-2); font-size: 12px; }
+.ifl-sheet[data-app=chats] .chp-stamps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ifl-sheet[data-app=chats] .chp-stamp {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; text-align: center;
+  border: 2px dashed var(--acc); border-radius: 12px; color: var(--acc-ink); min-width: 0;
+}
+.ifl-sheet[data-app=chats] .chp-stamp.sea { border-style: dotted; }
+.ifl-sheet[data-app=chats] .chp-stamp b { font-size: 13px; overflow-wrap: anywhere; }
+.ifl-sheet[data-app=chats] .chp-stamp small { color: var(--text-2); font-size: 11px; }
+.ifl-sheet[data-app=chats] .chp-shape { width: 40px; height: 40px; fill: currentColor; opacity: 0.8; }
+.ifl-sheet[data-app=chats] .chm-map {
+  --chf-sea: #cfe3f5; --chf-land: #e9e3d3;
+  display: block; width: 100%; aspect-ratio: 2; border-radius: var(--r-well, 16px); background: var(--press, var(--line));
+}
+.ifl-sheet[data-app=chats] .chmo-map { display: block; width: 100%; aspect-ratio: 1; border-radius: var(--r-well, 16px); background: #000; cursor: crosshair; }
+.ifl-sheet[data-app=chats] .chb-bird { font-size: 48px; line-height: 1; }
+.ifl-sheet[data-app=chats] .chb-emo { font-size: 24px; }
+
+@media (prefers-color-scheme: dark) {
+  .ifl-sheet[data-app=chats] .chm-map { --chf-sea: #1d2a3a; --chf-land: #3a3f4a; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ifl-sheet[data-app=chats] .chsend-chip, .ifl-sheet[data-app=chats] .chsc-video { transition: none; }
+}
