@@ -28,6 +28,8 @@ globalThis.document ??= { createElement: (t) => new Node(t) };
 const MOD = new URL("../../../weather/roof/", import.meta.url);
 const read = (p) => readFileSync(new URL(p, new URL("../../../", import.meta.url)), "utf8");
 const UI = await import(new URL("wxui.js", MOD));
+const DETAIL = await import(new URL("wxdetail.js", MOD));
+const WXWARN = await import(new URL("wxwarn.js", MOD));
 const WARN = await import(new URL("warnings.js", MOD));
 const DAYS = await import(new URL("days.js", MOD));
 const NOW = await import(new URL("now.js", MOD));
@@ -102,8 +104,8 @@ test("the detail sheet's words are weather/detail.js's, and the tiles weather/ap
   const wx = { marine: { km: 7 } };
   for (const units of [{ temp: "c", wind: "mph", precip: "mm", pressure: "hpa" }, { temp: "f", wind: "kmh", precip: "in", pressure: "inhg" }]) {
     const f = makeFormat(units);
-    assert.deepEqual(Object.keys(UI.ABOUT), Object.keys(ABOUT));
-    for (const k of Object.keys(ABOUT)) assert.equal(UI.ABOUT[k](f, wx), ABOUT[k](f, wx), k);
+    assert.deepEqual(Object.keys(DETAIL.ABOUT), Object.keys(ABOUT));
+    for (const k of Object.keys(ABOUT)) assert.equal(DETAIL.ABOUT[k](f, wx), ABOUT[k](f, wx), k);
   }
   const TILES = new Function(`return ${extract(app, "const TILES = [").replace(/^const TILES = /, "")};`)();
   assert.deepEqual(UI.TILES, TILES);
@@ -173,7 +175,7 @@ test("Right now's sheets say what weather/app.js tiles() and weather/detail.js o
       got = null;
       open(k);
       assert.ok(got, `${k}: detail.js drew its sheet`);
-      assert.deepEqual(words(UI.detailBody(wx, NOON, f, k).kids), words(got), `${k}: the sheet's words (${units.temp})`);
+      assert.deepEqual(words(DETAIL.detailBody(wx, NOON, f, k).kids), words(got), `${k}: the sheet's words (${units.temp})`);
     }
   }
 });
@@ -225,6 +227,29 @@ test("the warnings slot: nothing, one warning as its card, or one banner for mor
   assert.equal(over.length, 0);
 });
 
+// (stage 2 §4.5: what Now needs of the warnings is static in wxwarn.js; the section and its sheet, warnings.js, are lazy;
+// the detail and credits sheets moved out of wxui.js into lazy wxdetail.js, wxui.js keeping what draws the tiles)
+test("loading on open: wxwarn.js has the warnings' helpers and warnings.js re-exports the same; the detail and credits sheets are wxdetail.js's, not wxui.js's; Now imports neither lazy file", () => {
+  for (const k of ["warningsOf", "nameOf", "slotOf", "emptyOf", "emptyWords", "paras", "listFor"]) {
+    assert.equal(typeof WXWARN[k], "function", `wxwarn.js exports ${k}`);
+    assert.equal(WARN[k], WXWARN[k], `warnings.js re-exports wxwarn.js's ${k}`);
+  }
+  for (const k of ["view", "openWarning"]) assert.equal(typeof WARN[k], "function", `warnings.js keeps ${k}`);
+  for (const k of ["view", "openWarning"]) assert.ok(!(k in WXWARN), `${k} isn't in static wxwarn.js`);
+  for (const k of ["openDetail", "openCredits", "detailBody", "CREDITS", "creditsText", "ABOUT"]) {
+    assert.ok(k in DETAIL, `wxdetail.js exports ${k}`);
+    assert.ok(!(k in UI), `wxui.js no longer has ${k}`);
+  }
+  for (const k of ["tileSays", "tilesEl", "h", "chartHost", "hourChart", "nightsOf", "COLOR", "TILES", "skyClass"]) assert.ok(k in UI, `wxui.js keeps ${k}`);
+  for (const k of ["openDetail", "openCredits"]) assert.ok(!(k in NOW), `now.js no longer re-exports ${k}`);
+  const imports = (f) => [...read(`weather/roof/${f}`).matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1]);
+  for (const f of ["now.js", "wxui.js", "wxwarn.js", "weather.js"]) {
+    const has = imports(f);
+    for (const lazy of ["./days.js", "./warnings.js", "./places.js", "./wxsettings.js", "./wxdetail.js"]) assert.ok(!has.includes(lazy), `${f} doesn't import ${lazy} statically`);
+  }
+  assert.ok(imports("now.js").includes("./wxwarn.js"), "Now's warnings slot from wxwarn.js");
+});
+
 test("Warnings' empty states: none in force ([]) or no official feed for the place (null), in the spec's words", () => {
   assert.equal(WARN.emptyOf({ official: [] }), "none");
   assert.equal(WARN.emptyOf({ official: null }), "unavailable");
@@ -238,10 +263,10 @@ test("the credits: every provider, link, licence and the closing note of weather
   const html = read("weather/index.html");
   const i = html.indexOf('id="credits"'), sheet = html.slice(i, html.indexOf("</dialog>", i));
   const plain = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-  const text = UI.creditsText(), year = String(new Date().getFullYear());
+  const text = DETAIL.creditsText(), year = String(new Date().getFullYear());
   const items = [...sheet.matchAll(/<li><a href="([^"]+)"[^>]*><span><b>([\s\S]*?)<\/b><small>([\s\S]*?)<\/small><\/span><\/a><\/li>/g)];
   assert.ok(items.length >= 19, `read ${items.length} providers`);
-  const mine = UI.CREDITS.groups.flatMap((g) => g.items);
+  const mine = DETAIL.CREDITS.groups.flatMap((g) => g.items);
   assert.equal(mine.length, items.length);
   items.forEach(([, href, name, small], k) => {
     const m = mine[k], said = typeof m.small === "function" ? m.small() : m.small;
@@ -250,13 +275,13 @@ test("the credits: every provider, link, licence and the closing note of weather
     assert.equal(said, plain(small.replace(/<span class="this-year">\d+<\/span>/, year)), plain(name));
   });
   for (const lic of ["CC BY 4.0", "CC BY-SA 4.0", "ODbL", "BSD-3-Clause", "BSD-2-Clause", "Open Government Licence", "public domain"]) assert.ok(text.includes(lic), lic);
-  assert.deepEqual(UI.CREDITS.groups.map((g) => g.title), [...sheet.matchAll(/<h3 class="sheet-sub"[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1]));
+  assert.deepEqual(DETAIL.CREDITS.groups.map((g) => g.title), [...sheet.matchAll(/<h3 class="sheet-sub"[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1]));
   const note = plain(/<p class="credits-note">([\s\S]*?)<\/p>/.exec(sheet)[1]);
-  assert.equal(UI.CREDITS.note, note);
+  assert.equal(DETAIL.CREDITS.note, note);
   assert.ok(note.includes("Forecasts can be wrong"));
   const lead = /<p class="credits-lead">([\s\S]*?)<\/p>/.exec(sheet)[1];
-  assert.equal(plain(lead), `${UI.CREDITS.lead.text} (${UI.CREDITS.lead.licence}).`);
-  assert.ok(lead.includes(UI.CREDITS.lead.href) && lead.includes(UI.CREDITS.lead.licenceHref));
+  assert.equal(plain(lead), `${DETAIL.CREDITS.lead.text} (${DETAIL.CREDITS.lead.licence}).`);
+  assert.ok(lead.includes(DETAIL.CREDITS.lead.href) && lead.includes(DETAIL.CREDITS.lead.licenceHref));
 });
 
 test("Now: the cards in your order, those you've switched off left off, the 16 days and the radar never (they're sections)", () => {

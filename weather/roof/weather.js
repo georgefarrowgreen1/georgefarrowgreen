@@ -18,6 +18,13 @@
 //   open.detail(kind) = openDetail(ctx, kind), open.warning(w) = openWarning(ctx, w), open.credits(which) =
 //   openCredits(ctx, which), open.settings(page) = openSettings(ctx, page);
 //   hint: show()'s hint (null otherwise), set before the Now view's draw().
+// Loading on open (stage 2 S2-D5, §4.5, C4): the static graph is Now, Radar and what every section needs. days.js,
+// warnings.js (sections), places.js, wxsettings.js and wxdetail.js (sheets) load through fw.lazy(() => import("…")) the
+// first time they're wanted, once each, and are listed in connector.lazy. Till its file is in, a section shows a
+// skeleton (a lazy stub view: the real view made and drawn once it loads, if its section still shows) and a sheet, if
+// its file takes over LOADING_MS, a skeleton sheet of the same name, swapped for the real one (or, closed meanwhile, the
+// opener does nothing). So an opener answers its Handle (file in) or a Promise of it (null if closed or failed);
+// open.confirm always a Promise of "add" | "look" | null.
 // A view's draw() runs when its section shows and on core's events while it shows; hide() when it's left; destroy() on
 // unmount. The header (fw.header.set, while the screen shows): title = the place, pick { label: "Places", run: () =>
 // open.places() } (the ▾), line "14° · Rain from 15:00" (core.headerLine), compactTitle "London · 14°", acts: Weather
@@ -27,12 +34,7 @@
 import * as core from "./core.js";
 import { connector } from "./connector.js";
 import { view as nowView } from "./now.js";
-import { view as daysView, openDay } from "./days.js";
 import { view as radarView } from "./radarview.js";
-import { view as warningsView, openWarning } from "./warnings.js";
-import { openPlaces, confirmPlace } from "./places.js";
-import { openDetail, openCredits } from "./wxui.js";
-import { openSettings } from "./wxsettings.js";
 import { weatherSendCard, packCard } from "../send.js";
 import { nowWall } from "../format.js";
 import * as I from "../insights.js";
@@ -42,18 +44,80 @@ export const BUILD = "1.65";
 export const NEWS = "Weather now opens inside InFlite: no page load, the same header and sheets, and Radar on a screen of its own";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
-const VIEWS = { now: nowView, days: daysView, radar: radarView, warnings: warningsView };
+// (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
+const LOADING_MS = 150;
+
+// A section whose file loads on its first show: a skeleton till then; its real view made once the file is in, and drawn
+// if the section still shows. load() → Promise<module with view(el, ctx)>.
+function lazyView(load) {
+  return (el, ctx) => {
+    let real = null, on = false, dead = false, asked = null;
+    const get = () => (asked ||= load().then((m) => { if (!dead) real = m.view(el, ctx); return real; }, (e) => { asked = null; throw e; }));
+    const v = {
+      draw() {
+        on = true;
+        if (real) return real.draw();
+        if (!el.firstChild || el.dataset.failed) { delete el.dataset.failed; el.replaceChildren(ctx.fw.ui.skeleton("rows", 3)); }
+        get().then((rv) => { if (rv && on && !dead) rv.draw(); }).catch((e) => {
+          console.error(e);
+          if (dead || real) return;
+          el.dataset.failed = "1";
+          el.replaceChildren(ctx.fw.ui.error({ title: "This didn’t load.", body: globalThis.navigator?.onLine === false ? "It needs a connection the first time." : "Try again in a moment.",
+            acts: [{ label: "Try Again", act: "retry", run: () => { if (on && !dead) v.draw(); } }] }));
+        });
+      },
+      hide() { on = false; real?.hide(); },
+      destroy() { dead = true; on = false; real?.destroy(); el.replaceChildren(); },
+    };
+    return v;
+  };
+}
 
 // (the place's name as the header shows it)
 const titleOf = (p) => (p ? (p.gps && p.name === "My Location" ? "My Location" : p.name) : "Weather");
 
 export async function mount(root, fw) {
   const ctx = { S: core.S, core, fw, open: {}, hint: null };
+  let alive = true;
+  // the lazy files (C4: each a literal, for connector.lazy's test), asked for once; a failure lets the next ask try again
+  // (fw.lazy's q: "" at first, "?retry=<n>" after a failed import, so Try Again fetches afresh: joint contracts §7;
+  // none from a frame older than that)
+  const LAZY = {
+    days: () => fw.lazy((q) => import("./days.js" + (q || ""))),
+    warnings: () => fw.lazy((q) => import("./warnings.js" + (q || ""))),
+    places: () => fw.lazy((q) => import("./places.js" + (q || ""))),
+    wxsettings: () => fw.lazy((q) => import("./wxsettings.js" + (q || ""))),
+    wxdetail: () => fw.lazy((q) => import("./wxdetail.js" + (q || ""))),
+  };
+  const mods = {}, asked = {};
+  const load = (f) => (asked[f] ||= LAZY[f]().then((m) => (mods[f] = m), (e) => { delete asked[f]; throw e; }));
+  // an opener from a lazy file: at once once it's in; else, past LOADING_MS, a skeleton sheet of its name till it is
+  const opener = (f, sheet, run) => (...a) => {
+    if (mods[f]) return run(mods[f], ...a);
+    let ph = null;
+    const t = setTimeout(() => { if (alive) ph = fw.sheet.open({ sheet, label: "Loading", body: fw.ui.skeleton("rows", 3), app: "weather" }); }, LOADING_MS);
+    return load(f).then((m) => {
+      clearTimeout(t);
+      if (ph) { if (ph.closed) return null; ph.now(); }
+      return alive ? run(m, ...a) : null;
+    }, (e) => {
+      clearTimeout(t);
+      ph?.now?.();
+      console.error(e);
+      if (alive) fw.toast(globalThis.navigator?.onLine === false ? "That needs a connection the first time." : "That didn’t open. Try again in a moment.");
+      return null;
+    });
+  };
   Object.assign(ctx.open, {
-    places: () => openPlaces(ctx), confirm: (p) => confirmPlace(ctx, p), day: (key) => openDay(ctx, key),
-    detail: (kind) => openDetail(ctx, kind), warning: (w) => openWarning(ctx, w), credits: (which) => openCredits(ctx, which),
-    settings: (page) => openSettings(ctx, page),
+    places: opener("places", "places", (m) => m.openPlaces(ctx)),
+    confirm: opener("places", "confirm-place", (m, p) => m.confirmPlace(ctx, p)),
+    day: opener("days", "day", (m, key) => m.openDay(ctx, key)),
+    detail: opener("wxdetail", "detail", (m, kind) => m.openDetail(ctx, kind)),
+    warning: opener("warnings", "warning", (m, w) => m.openWarning(ctx, w)),
+    credits: opener("wxdetail", "credits", (m, which) => m.openCredits(ctx, which)),
+    settings: opener("wxsettings", "wxsettings", (m, page) => m.openSettings(ctx, page)),
   });
+  const VIEWS = { now: nowView, days: lazyView(() => load("days")), radar: radarView, warnings: lazyView(() => load("warnings")) };
   core.start(fw);
   const doc = root.ownerDocument;
   const secs = new Map(), views = new Map();
@@ -142,6 +206,7 @@ export async function mount(root, fw) {
       return words ? { words, packed: packCard(card), what: "the forecast" } : null;
     },
     unmount() {
+      alive = false;
       opening++;
       onScreen = false;
       for (const off of offs) off();
