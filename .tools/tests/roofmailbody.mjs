@@ -111,6 +111,12 @@ const set = await p.evaluate(async () => {
   window.BF = BF;
   window.said = { remote: [], mailto: [], touched: [] };
   window.frames_ = {};
+  // (every height each frame of the module's said, as the page heard it: what "heard" means, whatever the number)
+  window.heardH = {};
+  addEventListener('message', (e) => {
+    if (!Number.isInteger(e.data?.h)) return;
+    for (const [k, f] of Object.entries(frames_)) if (f.el.contentWindow === e.source) (heardH[k] ||= []).push(e.data.h);
+  });
   window.off = BF.listenFrames({ remote: (id, on) => said.remote.push([id, on]), mailto: (h) => said.mailto.push(h), touched: (id) => said.touched.push(id) });
   // (a list of its own over the page, as the reader's would be: CSSOM only, as the page's policy allows)
   const list = document.createElement('div');
@@ -127,10 +133,16 @@ const srcs = {};
 for (const s of ['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']) srcs[s] = await p.evaluate(([k, m, eager]) => window.add(k, m, { theme: 'light', eager }), [s, msg(s), true]);
 ok(srcs.Hostile === `${MAIL}/body/#m=${ids.Hostile.id}&t=light&img=0&p=${encodeURIComponent(HUB)}`, 'the frame’s address: Mail’s shell, the message, the theme, no pictures, the parent', srcs.Hostile);
 const heights = async () => p.evaluate(() => Object.fromEntries(Object.entries(frames_).map(([k, f]) => [k, Number(f.el.getAttribute('height'))])));
-const heard = async (keys) => { for (let i = 0; i < 60; i++) { const h = await heights(); if (keys.every((k) => h[k] !== 120)) return h; await wait(250); } return heights(); };
-const h1 = await heard(['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']);
+// (the frames' heights and what each said, read together)
+const heardOf = async () => p.evaluate(() => ({ h: Object.fromEntries(Object.entries(frames_).map(([k, f]) => [k, Number(f.el.getAttribute('height'))])), said: JSON.parse(JSON.stringify(window.heardH)) }));
+let seen = await heardOf();
+for (let i = 0; i < 60 && !['Hostile', 'Other', 'Wide', 'Quoted', 'Plain'].every((k) => seen.said[k]?.length); i++) { await wait(250); seen = await heardOf(); }
+await wait(1500);
+seen = await heardOf();
+const { h: h1, said: said1 } = seen;
 // (a real height, the message's own: never a shell's first empty layout (40), which would stop the page's 6 s rule)
-ok(Object.values(h1).every((h) => h >= 40 && h !== 120) && ['Hostile', 'Quoted', 'Wide'].every((k) => h1[k] > 64), 'every frame said its height, its message’s own (Hostile, Quoted and Wide taller than 64)', JSON.stringify({ h1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
+ok(Object.keys(h1).every((k) => said1[k]?.length && h1[k] >= 40 && h1[k] === said1[k].at(-1) && !said1[k].includes(40)) && ['Hostile', 'Quoted', 'Wide'].every((k) => h1[k] > 64),
+  'every frame said its height, its message’s own (never an empty 40; Hostile, Quoted and Wide taller than 64)', JSON.stringify({ h1, said1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
 await p.screenshot({ path: `${out}/frames.png`, fullPage: true });
 
 // (the shell drew the message: its inner frame, from the shell's own document, as Playwright can see it)
@@ -235,8 +247,8 @@ const offDrawn = offFrame ? await offFrame.evaluate(() => !!document.querySelect
 const offCover = await p.evaluate(() => !!frames_.Offline.el.nextElementSibling?.classList.contains('mail-body-cover'));
 // (and nothing heard from it: its height still the page's own 120, so it's the offline rule that holds the cover back,
 // not a height the shell said, kept or not)
-const offH = await p.evaluate(() => Number(frames_.Offline.el.getAttribute('height')));
-ok(!offDrawn && !offCover && offH === 120, 'offline: the frame is the browser’s error, not Mail’s whole page; nothing heard (still 120); and no “Couldn’t show” (the module’s offline state covers it)', JSON.stringify({ offDrawn, offCover, offH }));
+const offH = await p.evaluate(() => [Number(frames_.Offline.el.getAttribute('height')), window.heardH.Offline || []]);
+ok(!offDrawn && !offCover && offH[0] === 120 && !offH[1].length, 'offline: the frame is the browser’s error, not Mail’s whole page; nothing heard (still 120); and no “Couldn’t show” (the module’s offline state covers it)', JSON.stringify({ offDrawn, offCover, offH }));
 await ctx.setOffline(false);
 const kept2 = await keptPage();
 ok(kept2 === null || !/body\/body\.js/.test(kept2), 'and Mail’s kept page still Mail’s after', kept2?.slice(0, 80));
@@ -253,12 +265,12 @@ const goneAt = Date.now();
 await p.evaluate((m) => window.add('Gone', m, { theme: 'light', eager: true }), { ...msg('Other'), id: 'nosuchmessage' });
 let gone = null;
 for (let i = 0; i < 40; i++) {
-  gone = await p.evaluate(() => { const f = frames_.Gone.el, c = f.nextElementSibling; return { h: Number(f.getAttribute('height')), hidden: f.hidden, cover: c?.classList.contains('mail-body-cover') ? c.textContent : null, href: c?.querySelector('a')?.href || null }; });
+  gone = await p.evaluate(() => { const f = frames_.Gone.el, c = f.nextElementSibling; return { h: Number(f.getAttribute('height')), said: window.heardH.Gone || [], hidden: f.hidden, cover: c?.classList.contains('mail-body-cover') ? c.textContent : null, href: c?.querySelector('a')?.href || null }; });
   if (gone.cover) break;
   await wait(250);
 }
 const goneMs = Date.now() - goneAt;
-ok(gone?.cover === 'Couldn’t show this message · Open in Mail' && gone.href === `${MAIL}/#thread=${ids.Other.threadId}` && gone.hidden && gone.h === 120 && goneMs < 9500,
+ok(gone?.cover === 'Couldn’t show this message · Open in Mail' && gone.href === `${MAIL}/#thread=${ids.Other.threadId}` && gone.hidden && gone.h === 120 && !gone.said.length && goneMs < 9500,
   'online, a message Mail hasn’t got: nothing heard, and the frame covered within about 7 s, with Open in Mail', JSON.stringify({ gone, goneMs }));
 
 // ---- Part B: through the reader at /mail/ (after MM, MR and MT are merged) ----
