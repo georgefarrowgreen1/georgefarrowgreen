@@ -8,8 +8,8 @@ let loading = null;
 function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   if (!loading) loading = new Promise((ok, no) => {
-    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "./vendor/leaflet.css"; document.head.append(css);
-    const s = document.createElement("script"); s.src = "./vendor/leaflet.js"; s.onload = () => ok(window.L); s.onerror = () => { loading = null; no(new Error("map")); };
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = new URL("./vendor/leaflet.css", import.meta.url).href; document.head.append(css);
+    const s = document.createElement("script"); s.src = new URL("./vendor/leaflet.js", import.meta.url).href; s.onload = () => ok(window.L); s.onerror = () => { loading = null; no(new Error("map")); };
     document.head.append(s);
   });
   return loading;
@@ -131,6 +131,8 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
     },
     // (measured, then drawn to its new edges: measured mid-way through growing, it can leave gaps)
     resize() { map.invalidateSize({ animate: false }); map.fire("moveend"); },
+    // (let go of: Leaflet's map, its layers and listeners)
+    remove() { map.remove(); },
     state() {
       const z = map.getZoom(), c = map.getCenter();
       return { zoom: z, min, max, mpp: (40075016.686 * Math.cos((c.lat * Math.PI) / 180)) / (256 * 2 ** z) };

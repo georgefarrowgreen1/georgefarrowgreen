@@ -351,3 +351,277 @@ test("the rain about a place in words: nearest, how heavy, which way, and when i
   // too faint to count (under 15 dBZ): as if dry
   assert.equal(rainSaid(patch(0, 0, 10), seen, 51.5), "No rain within about 290 km.");
 });
+
+/* ---------- the radar's options for a screen of its own (One roof, spec §7.1 radar.js, §9.4 WX) ---------- */
+// weather/radar.js on a small stand-in page: elements, the window's and the document's listeners counted, observers and
+// workers watched, Leaflet stood in (no WebGL 2 here, so mapleaf.js draws the map). full: false (no full-screen button:
+// no throw, no Escape listener), explore: true (explored at creation and on every resize, no "Tap to explore", a tap
+// reads the weather, a tap on another place goes there), light, destroy() (every listener, observer, worker and the map
+// let go), and every option left out keeps Weather's own page as it was.
+const fake = (() => {
+  const counts = { window: new Map(), document: new Map() };
+  const bump = (who, type, fn, by) => { const m = counts[who]; const s = m.get(type) || new Set(); if (by > 0) s.add(fn); else s.delete(fn); m.set(type, s); };
+  const live = (who) => [...counts[who].entries()].flatMap(([t, s]) => [...s].map(() => t));
+  const VOID = new Set(["path", "circle", "rect", "br", "img", "input", "line", "polyline", "ellipse"]);
+  const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+  class Text { constructor(t) { this.nodeType = 3; this.data = String(t); this.parentElement = null; } get textContent() { return this.data; } set textContent(v) { this.data = String(v); }
+    remove() { this.parentElement?._drop(this); } replaceWith(n) { const p = this.parentElement; if (p) { p._insertAt(p.childNodes.indexOf(this), n); p._drop(this); } } }
+  const anim = () => ({ finished: Promise.resolve(), ready: Promise.resolve(), cancel() {}, finish() {}, currentTime: 0 });
+  function parseSel(sel) {
+    return sel.split(",").map((one) => one.trim().replace(/\s*>\s*/g, " ").split(/\s+/).map((c) => {
+      const out = { tag: null, id: null, cls: [], attrs: [] };
+      for (const m of c.matchAll(/^([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:="?([^"\]]*)"?)?\]/g)) {
+        if (m[1]) out.tag = m[1].toUpperCase(); else if (m[2]) out.id = m[2]; else if (m[3]) out.cls.push(m[3]); else out.attrs.push([m[4], m[5]]);
+      }
+      return out;
+    }));
+  }
+  const one = (el, c) => (!c.tag || el.tagName === c.tag) && (!c.id || el.getAttribute("id") === c.id) && c.cls.every((k) => el.classList.contains(k))
+    && c.attrs.every(([a, v]) => (a === "hidden" ? el.hidden : el.hasAttribute(a)) && (v === undefined || el.getAttribute(a) === v));
+  const matches = (el, sel) => parseSel(sel).some((chain) => {
+    if (!one(el, chain[chain.length - 1])) return false;
+    let at = el.parentElement;
+    for (let k = chain.length - 2; k >= 0; k--) { while (at && !one(at, chain[k])) at = at.parentElement; if (!at) return false; at = at.parentElement; }
+    return true;
+  });
+  class El {
+    constructor(tag) {
+      this.tagName = tag.toUpperCase(); this.nodeType = 1; this.childNodes = []; this.parentElement = null; this._a = new Map(); this._ev = new Map(); this.hidden = false; this.inert = false;
+      const self = this;
+      this.style = { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; }, getPropertyValue(k) { return this[k] ?? ""; } };
+      this.dataset = new Proxy({}, { get: (_, k) => self.getAttribute(`data-${kebab(String(k))}`) ?? undefined, set: (_, k, v) => { self.setAttribute(`data-${kebab(String(k))}`, v); return true; },
+        deleteProperty: (_, k) => { self.removeAttribute(`data-${kebab(String(k))}`); return true; } });
+      this.classList = { _l: () => (self.getAttribute("class") || "").split(/\s+/).filter(Boolean), contains: (k) => self.classList._l().includes(k),
+        add: (...ks) => self.setAttribute("class", [...new Set([...self.classList._l(), ...ks])].join(" ")), remove: (...ks) => self.setAttribute("class", self.classList._l().filter((k) => !ks.includes(k)).join(" ")),
+        toggle: (k, on) => { const has = self.classList.contains(k), want = on === undefined ? !has : !!on; if (want) self.classList.add(k); else self.classList.remove(k); return want; } };
+      if (this.tagName === "CANVAS") { this.width = 300; this.height = 150; }
+    }
+    get children() { return this.childNodes.filter((n) => n.nodeType === 1); }
+    get firstElementChild() { return this.children[0] || null; } get lastElementChild() { return this.children.at(-1) || null; }
+    get firstChild() { return this.childNodes[0] || null; } get lastChild() { return this.childNodes.at(-1) || null; }
+    get nextElementSibling() { const s = this.parentElement?.children || []; return s[s.indexOf(this) + 1] || null; }
+    get previousElementSibling() { const s = this.parentElement?.children || []; return s[s.indexOf(this) - 1] || null; }
+    get className() { return this.getAttribute("class") || ""; } set className(v) { this.setAttribute("class", v); }
+    get id() { return this.getAttribute("id") || ""; } set id(v) { this.setAttribute("id", v); }
+    get isConnected() { let n = this; while (n.parentElement) n = n.parentElement; return n === doc.documentElement; }
+    get textContent() { return this.childNodes.map((n) => n.textContent).join(""); }
+    set textContent(v) { this.replaceChildren(...(String(v ?? "") ? [String(v)] : [])); }
+    set innerHTML(html) { this.replaceChildren(); parseInto(this, String(html)); } get innerHTML() { return ""; }
+    get offsetWidth() { return 0; } get offsetHeight() { return 0; } get offsetLeft() { return 0; } get offsetTop() { return 0; }
+    get clientWidth() { return 300; } get clientHeight() { return 300; }
+    getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 }; }
+    setAttribute(k, v) { this._a.set(k, String(v)); if (k === "hidden") this.hidden = true; } getAttribute(k) { return this._a.has(k) ? this._a.get(k) : null; }
+    hasAttribute(k) { return this._a.has(k); } removeAttribute(k) { this._a.delete(k); if (k === "hidden") this.hidden = false; }
+    _wrap(n) { return typeof n === "string" || typeof n === "number" ? new Text(n) : n; }
+    _drop(n) { const i = this.childNodes.indexOf(n); if (i >= 0) this.childNodes.splice(i, 1); n.parentElement = null; }
+    _insertAt(i, n) { n = this._wrap(n); n.parentElement?._drop(n); this.childNodes.splice(i, 0, n); n.parentElement = this; }
+    append(...ns) { for (const n of ns) this._insertAt(this.childNodes.length, n); } prepend(...ns) { ns.reverse().forEach((n) => this._insertAt(0, n)); }
+    appendChild(n) { this.append(n); return n; } removeChild(n) { this._drop(n); return n; }
+    after(...ns) { const p = this.parentElement; if (!p) return; let i = p.childNodes.indexOf(this) + 1; for (const n of ns) p._insertAt(i++, n); }
+    before(...ns) { const p = this.parentElement; if (!p) return; let i = p.childNodes.indexOf(this); for (const n of ns) p._insertAt(i++, n); }
+    remove() { this.parentElement?._drop(this); } replaceChildren(...ns) { for (const n of [...this.childNodes]) this._drop(n); this.append(...ns); }
+    replaceWith(n) { const p = this.parentElement; if (p) { p._insertAt(p.childNodes.indexOf(this), n); p._drop(this); } }
+    contains(n) { for (; n; n = n.parentElement) if (n === this) return true; return false; }
+    matches(sel) { return matches(this, sel); } closest(sel) { for (let n = this; n; n = n.parentElement) if (n.nodeType === 1 && n.matches(sel)) return n; return null; }
+    querySelectorAll(sel) { const out = []; const walk = (n) => { for (const c of n.children) { if (matches(c, sel)) out.push(c); walk(c); } }; walk(this); return out; }
+    querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+    addEventListener(t, fn) { const s = this._ev.get(t) || new Set(); s.add(fn); this._ev.set(t, s); } removeEventListener(t, fn) { this._ev.get(t)?.delete(fn); }
+    dispatchEvent(e) { e.target ??= this; let stop = false; e.stopPropagation = () => { stop = true; }; e.preventDefault ??= () => {};
+      for (let n = this; n && !stop; n = n.parentElement) for (const fn of [...(n._ev.get(e.type) || [])]) fn.call(n, e);
+      if (!stop) for (const fn of [...(doc._ev.get(e.type) || [])]) fn(e); return true; }
+    click() { if (!this.disabled) this.dispatchEvent({ type: "click" }); }
+    focus() { doc.activeElement = this; } blur() { if (doc.activeElement === this) doc.activeElement = doc.body; }
+    animate() { return anim(); } getAnimations() { return []; }
+    getContext(kind) { if (kind !== "2d") return null; const t = { canvas: this, createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }), getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }), measureText: () => ({ width: 0 }) };
+      return new Proxy(t, { get: (o, k) => (k in o ? o[k] : () => {}), set: (o, k, v) => { o[k] = v; return true; } }); }
+    toDataURL() { return ""; }
+  }
+  function parseInto(root, html) {
+    let at = root;
+    for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*?)(\/?)>|([^<]+)/g)) {
+      if (m[5] != null) { at.append(m[5]); continue; }
+      if (m[1]) { at = at.parentElement || root; continue; }
+      const el = new El(m[2]);
+      for (const a of m[3].matchAll(/([\w:-]+)(?:="([^"]*)")?/g)) el.setAttribute(a[1], a[2] ?? "");
+      at.append(el);
+      if (!m[4] && !VOID.has(m[2].toLowerCase())) at = el;
+    }
+  }
+  const doc = new El("#document");
+  doc.documentElement = new El("html"); doc.body = new El("body"); doc.head = new El("head");
+  doc.documentElement.append(doc.head, doc.body); doc.activeElement = doc.body; doc.visibilityState = "visible";
+  doc.createElement = (t) => new El(t);
+  doc.querySelector = (s) => doc.documentElement.querySelector(s); doc.querySelectorAll = (s) => doc.documentElement.querySelectorAll(s);
+  const docAdd = El.prototype.addEventListener, docRemove = El.prototype.removeEventListener;
+  doc.addEventListener = (t, fn, o) => { docAdd.call(doc, t, fn, o); bump("document", t, fn, 1); };
+  doc.removeEventListener = (t, fn) => { docRemove.call(doc, t, fn); bump("document", t, fn, -1); };
+  // the window
+  const winEv = new Map();
+  const observers = [];
+  class Obs { constructor(cb, kind) { this.cb = cb; this.kind = kind; this.els = []; this.on = true; observers.push(this); } observe(el) { this.els.push(el); this.on = true; } unobserve(el) { this.els = this.els.filter((x) => x !== el); } disconnect() { this.on = false; this.els = []; } }
+  const mqls = [];
+  const media = { "(pointer: coarse)": false, "(prefers-color-scheme: light)": false, "(prefers-reduced-motion: reduce)": true };
+  const workersMade = [];
+  Object.assign(globalThis, {
+    window: globalThis, document: doc, devicePixelRatio: 1, self: globalThis,
+    addEventListener: (t, fn) => { const s = winEv.get(t) || new Set(); s.add(fn); winEv.set(t, s); bump("window", t, fn, 1); },
+    removeEventListener: (t, fn) => { winEv.get(t)?.delete(fn); bump("window", t, fn, -1); },
+    matchMedia: (q) => { const l = new Set(); const m = { media: q, get matches() { return !!media[q]; }, addEventListener: (t, fn) => l.add(fn), removeEventListener: (t, fn) => l.delete(fn), listeners: l }; mqls.push(m); return m; },
+    IntersectionObserver: class extends Obs { constructor(cb) { super(cb, "io"); } },
+    ResizeObserver: class extends Obs { constructor(cb) { super(cb, "ro"); } },
+    requestAnimationFrame: (fn) => setTimeout(() => fn(performance.now()), 16), cancelAnimationFrame: (id) => clearTimeout(id),
+    requestIdleCallback: (fn) => setTimeout(fn, 0),
+    ImageData: class { constructor(w, h) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); } },
+    createImageBitmap: async () => ({ close() {} }),
+    Worker: class { constructor() { this.terminated = false; workersMade.push(this); } postMessage() {} terminate() { this.terminated = true; } },
+    getComputedStyle: () => ({ opacity: "1", transform: "none" }),
+    fetch: async () => { throw new Error("offline (test)"); },
+  });
+  if (!globalThis.localStorage) { const m = new Map(); globalThis.localStorage = { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } }; }
+  Object.defineProperty(globalThis, "navigator", { value: { hardwareConcurrency: 2, onLine: true }, configurable: true });
+  // Leaflet, stood in: enough for mapleaf.js
+  const maps = [], markers = [];
+  const handler = (on) => ({ on, enable() { this.on = true; }, disable() { this.on = false; }, enabled() { return this.on; } });
+  const chain = () => { const c = { on: () => c, addTo: () => c, setStyle: () => c, setOpacity() {}, bringToFront() {}, setLatLng() {}, remove() {} }; return c; };
+  const layer = () => class { constructor(o) { this.options = o || {}; } addTo() { return this; } setOpacity() {} bringToFront() {} on() { return this; } };
+  globalThis.L = {
+    map(el, o) {
+      const m = { el, o, ev: new Map(), z: 0, center: [0, 0], sized: 0, removed: false, dragging: handler(o.dragging !== false), scrollWheelZoom: handler(!!o.scrollWheelZoom), touchZoom: handler(true),
+        setView(ll, z) { this.center = ll; if (z != null) this.z = z; return this; }, createPane() { return { style: {} }; },
+        on(t, fn) { const l = this.ev.get(t) || []; l.push(fn); this.ev.set(t, l); return this; }, fire(t, e) { for (const fn of this.ev.get(t) || []) fn(e); return this; },
+        invalidateSize() { this.sized++; }, getZoom() { return this.z; }, getCenter() { return { lat: this.center[0], lng: this.center[1] }; }, setZoom(z) { this.z = z; this.fire("move"); },
+        zoomIn() { this.z++; this.fire("move"); }, zoomOut() { this.z--; this.fire("move"); }, removeLayer() {}, addLayer() {}, remove() { this.removed = true; },
+        getBounds() { return { getSouth: () => 0, getWest: () => 0, getNorth: () => 1, getEast: () => 1 }; } };
+      maps.push(m); return m;
+    },
+    tileLayer: chain, layerGroup: chain, polygon: chain, rectangle: chain,
+    marker(ll, o) { const mk = { ll, o, removed: false, addTo() { return mk; }, setLatLng(x) { mk.ll = x; }, remove() { mk.removed = true; } }; markers.push(mk); return mk; },
+    divIcon: (o) => o, GridLayer: { extend: layer }, ImageOverlay: { extend: layer }, DomUtil: { addClass() {} }, Util: { falseFn() {} }, DomEvent: { disableClickPropagation() {} },
+  };
+  return { doc, El, live, observers, mqls, media, workersMade, maps, markers };
+})();
+
+// a radar card as Weather's own page has it (index.html), with or without its full-screen button
+function cardOf(withFull = true) {
+  const host = fake.doc.createElement("div");
+  host.innerHTML = `<section class="card radar" id="radar"><div class="card-head"><h2 class="card-title">Rain radar</h2>${withFull ? '<button class="icon-btn small radar-full" type="button" aria-label="Full screen" data-on="0"></button>' : ""}</div>`
+    + '<p class="radar-note"><span></span></p><div class="radar-wrap"><div class="radar-map"></div><p class="sr-only" id="radar-said"></p><span class="radar-chip" data-kind="radar"></span><span class="radar-hint" hidden>Tap to explore</span></div>'
+    + '<div class="radar-dock"><div class="radar-bar"><button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button><div class="radar-track"><input class="radar-slider" type="range"><div class="radar-scale"></div></div></div><p class="radar-time"></p></div>'
+    + '<div class="radar-legend"></div><p class="chart-note radar-status"><span></span></p></section>';
+  const card = host.firstElementChild;
+  fake.doc.body.append(card);
+  return card;
+}
+const { radar } = await import("../../../weather/radar.js");
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const OPTS = { lat: 51.5, lon: -0.12, time: (t) => String(t) };
+// (made, then the card comes into sight: the map's made as the page comes to rest, as on Weather's page)
+async function shown(card, opts) {
+  const mapsBefore = fake.maps.length, obsBefore = fake.observers.length;
+  const r = radar(card, { ...OPTS, ...opts });
+  const io = fake.observers.slice(obsBefore).filter((o) => o.kind === "io" && o.on && o.els.includes(card)).at(-1);
+  io.cb([{ isIntersecting: true, target: card }]);
+  for (let k = 0; k < 40 && fake.maps.length === mapsBefore; k++) await wait(25);
+  await wait(30);
+  return { r, map: fake.maps.at(-1), made: fake.maps.length > mapsBefore, obs: () => fake.observers.slice(obsBefore) };
+}
+const tally = () => ({ window: fake.live("window").sort(), document: fake.live("document").sort(), mql: fake.mqls.reduce((n, m) => n + m.listeners.size, 0) });
+
+test("radar.js, full: false: markup with no full-screen button is no trouble, and no Escape listener is added", async () => {
+  fake.media["(pointer: coarse)"] = true;
+  const before = tally();
+  const card = cardOf(false);
+  const { r, map, made } = await shown(card, { full: false });
+  assert.ok(made, "the map is made");
+  assert.ok(!tally().document.includes("keydown"), "no document keydown listener");
+  // a tap on the map, in the card with a finger: never grown (there's no full screen to grow to); a reading instead
+  const marks = fake.markers.length;
+  map.fire("click", { latlng: { lat: 51.4, lng: -0.1 } });
+  assert.ok(!card.classList.contains("radar-big"));
+  assert.ok(fake.markers.length > marks && fake.markers.at(-1).o.icon.html.classList.contains("map-read"), "a reading at the spot");
+  r.destroy();
+  assert.deepEqual(tally(), before, "everything it added let go");
+  card.remove();
+});
+
+test("radar.js, explore: true: explored as it's made and on every resize, no Tap to explore, a tap reads, a bubble goes", async () => {
+  fake.media["(pointer: coarse)"] = true;
+  const card = cardOf(false), hint = card.querySelector(".radar-hint");
+  const { r, map, obs } = await shown(card, { full: false, explore: true });
+  assert.ok(map.dragging.enabled() && map.scrollWheelZoom.enabled(), "dragged and zoomed where it is, with a finger");
+  assert.equal(map.o.dragging, false, "(Leaflet made for a finger: it's explore that turns dragging on)");
+  assert.ok(hint.hidden, "no Tap to explore");
+  // a resize: measured again and still explored
+  map.dragging.disable();
+  const ro = obs().find((o) => o.kind === "ro" && o.on && o.els.includes(card.querySelector(".radar-map")));
+  const sized = map.sized;
+  ro.cb([]);
+  assert.ok(map.dragging.enabled() && map.sized > sized, "explored and measured again on a resize");
+  // a tap on the map: a reading there, never grown
+  const marks = fake.markers.length;
+  map.fire("click", { latlng: { lat: 51.6, lng: -0.2 } });
+  assert.ok(!card.classList.contains("radar-big"));
+  assert.ok(fake.markers.slice(marks).some((m) => m.o.icon.html.classList.contains("map-read")));
+  // another saved place: its bubble goes there
+  let went = 0;
+  r.others([{ name: "Leeds", lat: 53.8, lon: -1.55, temp: "9°", colour: null, go: () => went++ }]);
+  const bubble = fake.markers.map((m) => m.o.icon.html).find((b) => b.classList.contains("map-other"));
+  bubble.click();
+  assert.equal(went, 1, "the bubble's place shown");
+  assert.ok(!card.classList.contains("radar-big"));
+  await wait(20);
+  assert.ok(hint.hidden, "still no hint");
+  r.destroy();
+  card.remove();
+});
+
+test("radar.js, light: the map's day or night style as asked, else as the phone has it", async () => {
+  fake.media["(prefers-color-scheme: light)"] = true;
+  for (const [light, want] of [[true, true], [false, false], [undefined, true]]) {
+    const card = cardOf(false), r = radar(card, { ...OPTS, full: false, ...(light === undefined ? {} : { light }) });
+    assert.equal(card.classList.contains("light-map"), want, `light: ${light}`);
+    r.destroy(); card.remove();
+  }
+  fake.media["(prefers-color-scheme: light)"] = false;
+  const card = cardOf(false), r = radar(card, { ...OPTS, full: false });
+  assert.ok(!card.classList.contains("light-map"), "left out, the phone's dark");
+  r.destroy(); card.remove();
+});
+
+test("radar.js destroy(): every window and document listener, observer, media listener, worker and the map let go", async () => {
+  fake.media["(pointer: coarse)"] = false;
+  const before = tally();
+  const card = cardOf(true);
+  const { r, map, obs } = await shown(card, {});
+  const during = tally();
+  assert.ok(during.document.includes("keydown") && during.document.includes("visibilitychange") && during.document.includes("click"), JSON.stringify(during));
+  assert.ok(during.mql > before.mql, "the pointer's media query listened to");
+  r.destroy();
+  assert.deepEqual(tally(), before, "listeners all removed");
+  assert.ok(obs().every((o) => !o.on), "observers all disconnected");
+  assert.ok(map.removed, "the map removed");
+  assert.ok(fake.workersMade.every((w) => w.terminated), "workers terminated");
+  r.destroy();     // (twice is no trouble)
+  card.remove();
+});
+
+test("radar.js with no options: Weather's own page as it was (full screen, Tap to explore, its Escape)", async () => {
+  fake.media["(pointer: coarse)"] = true;
+  const card = cardOf(true);
+  const { r, map } = await shown(card, {});
+  assert.ok(!map.dragging.enabled(), "in the card with a finger, the page scrolls past the map");
+  assert.ok(tally().document.includes("keydown"), "Escape closes full screen");
+  // a tap on the map with a finger: full screen, explored there
+  map.fire("click", { latlng: { lat: 51.4, lng: -0.1 } });
+  assert.ok(card.classList.contains("radar-big"), "grown to full screen");
+  assert.ok(map.dragging.enabled(), "explored full screen");
+  card.querySelector(".radar-full").click();
+  assert.ok(!card.classList.contains("radar-big") && !map.dragging.enabled(), "and back");
+  // a bubble with a finger in the card: full screen first, as anywhere on it
+  let went = 0;
+  r.others([{ name: "Leeds", lat: 53.8, lon: -1.55, temp: "9°", colour: null, go: () => went++ }]);
+  fake.markers.map((m) => m.o.icon.html).filter((b) => b.classList.contains("map-other")).at(-1).click();
+  assert.ok(card.classList.contains("radar-big") && went === 0);
+  r.destroy();
+  card.remove();
+});
