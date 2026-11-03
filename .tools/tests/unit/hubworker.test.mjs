@@ -66,7 +66,10 @@ const call = async (r, e = env()) => { const res = await H.hub(r, e, {}); let da
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const geo = (h) => JSON.parse(Buffer.from(h.get('x-hub-geo'), 'base64url').toString('utf8'));
 // (what /api/hub says, through Today's Worker: always 200, never kept)
-const hubSaid = async (e, headers = {}) => { const r = await worker.fetch(new Request(SITE + '/api/hub', { headers }), e, {}); assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store'); return r.json(); };
+// (/api/hub's answer without its apps, each module's switch (stages 2–4, s24-contracts §2): the stage-1 cases compare
+// the rest as they did; appsSaid(env) gives the apps alone, for the cases of the switches)
+const hubAll = async (e, headers = {}) => { const r = await worker.fetch(new Request(SITE + '/api/hub', { headers }), e, {}); assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store'); return r.json(); };
+const hubSaid = async (e, headers = {}) => { const { apps: _, ...j } = await hubAll(e, headers); return j; };
 
 test('the hub’s paths, each prefix to its app, and Today’s own paths left to Today', { skip }, async () => {
   assert.deepEqual(H.PAGES, { '/chats/': { app: 'CHAT', under: '/_hub/' }, '/weather/': { app: 'WEATHER' }, '/fitness/': { app: 'FITNESS' }, '/markets/': { app: 'MARKETS' } });
@@ -551,5 +554,66 @@ test('One roof off (ROOF_OFF "1"): Weather’s milestone-1 page and worker are t
   assert.deepEqual(await hubSaid(off()), { ready: true, roof: false });
   assert.deepEqual(await hubSaid(env({ ROOF_OFF: '0' })), { ready: true, roof: true }, 'only "1" turns it off');
   assert.deepEqual(await hubSaid(env()), { ready: true, roof: true });
+  H.forgetProbe();
+});
+
+// ---- stages 2–4 (s24-contracts §1, §2): one switch per module; opt-in for the new ones, opt-out for Weather ----
+const hasApps = hasRoof && typeof R?.appsOn === 'function';
+const appsCase = roofCase || (!hasApps && 'the inflite repo beside has no per-app switch yet (roof.js appsOn)');
+test('stages 2–4: /api/hub says each module’s switch: Weather on unless ROOF_OFF or ROOF_OFF_WEATHER is "1"; Markets, Fitness and Mail only with ROOF_<APP> "1"', { skip: appsCase }, async () => {
+  H.forgetProbe(); apps(() => new Response('{}'));
+  const A = async (o) => (await hubAll(env(o))).apps;
+  assert.deepEqual(await A({}), { weather: true, markets: false, fitness: false, mail: false }, 'absent: only Weather');
+  assert.deepEqual(await A({ ROOF_MARKETS: '1' }), { weather: true, markets: true, fitness: false, mail: false });
+  assert.deepEqual(await A({ ROOF_FITNESS: '1', ROOF_MAIL: '1' }), { weather: true, markets: false, fitness: true, mail: true });
+  for (const v of ['0', 'true', 'yes', '', ' 1']) assert.equal((await A({ ROOF_MARKETS: v })).markets, false, `ROOF_MARKETS ${JSON.stringify(v)}: off`);
+  assert.deepEqual(await A({ ROOF_OFF_WEATHER: '1', ROOF_MARKETS: '1' }), { weather: false, markets: true, fitness: false, mail: false }, 'Weather alone off');
+  assert.equal((await hubAll(env({ ROOF_OFF_WEATHER: '1' }))).roof, false, 'roof is Weather’s');
+  assert.equal((await A({ ROOF_OFF_WEATHER: '0' })).weather, true, 'only "1" turns Weather off');
+  assert.deepEqual(await A({ ROOF_OFF: '1', ROOF_MARKETS: '1', ROOF_FITNESS: '1', ROOF_MAIL: '1' }), { weather: false, markets: false, fitness: false, mail: false }, 'ROOF_OFF: every module off');
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail']);
+  H.forgetProbe();
+});
+
+test('stages 2–4: Markets and Fitness are modules only by their own switch: their documents, retiring workers, 301 and files; Weather unchanged by theirs', { skip: appsCase }, async () => {
+  H.forgetProbe();
+  for (const [app, prefix] of [['markets', 'markets-app-'], ['fitness', 'fitness-app-']]) {
+    const on = (o = {}) => env({ asset: assetsPage, [`ROOF_${app.toUpperCase()}`]: '1', ...o });
+    // (on: the framework's page, before the key; the retiring worker deletes only this app's caches; /<app> → /<app>/)
+    for (const e of [on(), on({ HUB_KEY: undefined })]) {
+      for (const p of [`/${app}/`, `/${app}/index.html`, `/${app}/?x=1`]) {
+        assets.length = 0;
+        const r = await worker.fetch(req(p), e, {});
+        assert.equal(r.status, 200, `${app} on: ${p}`);
+        assert.equal(await r.text(), PAGE, `${app} on: ${p} is the framework`);
+        assert.equal(r.headers.get('content-security-policy'), R.PAGE_HEADERS['Content-Security-Policy']);
+      }
+      const sw = await worker.fetch(req(`/${app}/sw.js`), e, {});
+      assert.equal(sw.status, 200);
+      const js = await sw.text();
+      assert.match(js, new RegExp(`startsWith\\("${prefix}"\\)`), `${app}: its own caches`);
+      assert.doesNotMatch(js, /"wx-"/, `${app}: never Weather's`);
+      assert.match(js, new RegExp(`startsWith\\("/${app}/"\\)`));
+      const go = await worker.fetch(req(`/${app}?a=1`), e, {});
+      assert.equal(go.status, 301); assert.equal(go.headers.get('location'), `${SITE}/${app}/?a=1`);
+    }
+    // (off, the default: the hub's milestone-1 page; its module's files not found, however written)
+    const asked = apps((u) => new Response(u.pathname === '/' ? 'app page' : 'file', { headers: { 'Content-Type': 'text/plain' } }));
+    assets.length = 0;
+    for (const o of [{}, { [`ROOF_${app.toUpperCase()}`]: '0' }, { ROOF_OFF: '1', [`ROOF_${app.toUpperCase()}`]: '1' }]) {
+      assert.equal((await call(req(`/${app}/`), env(o))).res.status, 200, `${app} off ${JSON.stringify(o)}: the hub's page`);
+      for (const p of [`/${app}/roof/${app}.js`, `/${app}/%72oof/core.js`, `/${app}//roof/core.js`]) {
+        const r = await worker.fetch(req(p), env(o), {});
+        assert.equal(r.status, 404, `${app} off: ${p}`); assert.equal(r.headers.get('cache-control'), 'no-store');
+      }
+    }
+    assert.deepEqual(assets, [], `${app} off: never the assets`);
+    assert.ok(asked.length > 0);
+    // (Weather is untouched by this app's switch, and this app by Weather's)
+    assets.length = 0;
+    assert.equal(await (await worker.fetch(req('/weather/'), env({ asset: assetsPage, [`ROOF_${app.toUpperCase()}`]: '0' }), {})).text(), PAGE);
+    assert.equal(await (await worker.fetch(req(`/${app}/`), env({ asset: assetsPage, ROOF_OFF_WEATHER: '1', [`ROOF_${app.toUpperCase()}`]: '1' }), {})).text(), PAGE);
+    assert.equal((await worker.fetch(req('/weather/roof/weather.js'), env({ ROOF_OFF_WEATHER: '1' }), {})).status, 404, 'Weather off alone: its files not found');
+  }
   H.forgetProbe();
 });

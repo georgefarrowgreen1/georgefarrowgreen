@@ -2,7 +2,9 @@
 // address of the framework read into its Route and written back, tab targets (/#you=<id>), a place and a section
 // together, format's calls with no kind or a key of another section, and what's never the framework's: another origin,
 // //x, a \ or a control character, a long path or hash (a long query is only dropped), and Weather's addresses with the
-// roof off. Frozen by B0.
+// roof off. Frozen by B0. Stages 2–4 (s24-contracts §3): Markets, Fitness and Mail's entries, link/stay/idb, the wider
+// arg (one decodeURIComponent; TSCO.L, ^GSPC, GBPUSD=X), and roof as false, true or a map per app; Weather's cases as
+// they were (with the IFL beside from before stage 2, only Weather's).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ROOF, roofSkip } from './fixtures/roof.mjs';
@@ -13,13 +15,18 @@ const ORIGIN = 'https://inflite.ai';
 const on = { roof: true, origin: ORIGIN }, off = { roof: false, origin: ORIGIN };
 const tab = (t, arg = null) => ({ kind: 'tab', tab: t, arg });
 const app = (section, key = section, arg = null, query = '') => ({ kind: 'app', app: 'weather', section, key, arg, query });
+// (the IFL beside has stages 2–4's REGISTRY: j0's router)
+const S24 = !!R?.REGISTRY?.markets;
+const s24 = skip || (!S24 && 'the inflite repo beside has no stage 2–4 REGISTRY yet (router.js before j0)');
+const WEATHER = {
+  app: 'weather', name: 'Weather', path: '/weather/', entry: '/weather/roof/weather.js', connector: '/weather/roof/connector.js',
+  css: ['/weather/roof/weather.css', '/weather/roof/wxcore.css', '/weather/roof/wxsettings.css', '/weather/roof/radar.css'],
+  sections: [['now', 'Now'], ['days', '16 Days'], ['radar', 'Radar'], ['warnings', 'Warnings']],
+  aliases: { day: 'days', settings: 'now' } };
 
 test('the registry and the tab bar: Weather’s paths, files, sections and aliases; the four tabs as the shared block has them', { skip }, () => {
-  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY)), { weather: {
-    app: 'weather', name: 'Weather', path: '/weather/', entry: '/weather/roof/weather.js', connector: '/weather/roof/connector.js',
-    css: ['/weather/roof/weather.css', '/weather/roof/wxcore.css', '/weather/roof/wxsettings.css', '/weather/roof/radar.css'],
-    sections: [['now', 'Now'], ['days', '16 Days'], ['radar', 'Radar'], ['warnings', 'Warnings']],
-    aliases: { day: 'days', settings: 'now' } } });
+  if (S24) assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.weather)), WEATHER, 'Weather’s entry as stage 1 had it');
+  else assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY)), { weather: WEATHER });
   assert.deepEqual(JSON.parse(JSON.stringify(R.TABS)), { today: ['Today', '/', 'sun'], chats: ['Chats', '/chats/', 'bubble'], apps: ['Apps', '/#apps', 'grid'], you: ['You', '/#you', 'person'] });
   assert.ok(Object.isFrozen(R.REGISTRY) && Object.isFrozen(R.REGISTRY.weather) && Object.isFrozen(R.TABS), 'nobody changes them at run time');
 });
@@ -138,7 +145,7 @@ test('with the roof off (or the hub not ready) Weather’s addresses aren’t th
     assert.equal(R.parse(href, { origin: ORIGIN }), null, `${href}: roof defaults to off`);
     assert.equal(R.owns(href, on), true, href);
   }
-  for (const href of ['/weather', '/weather/radar', '/weather/app.js', '/weather/roof/weather.js', '/Weather/', '/chats/', '/chats/#open=1', '/fitness/', '/markets/', '/mail/', '/api/hub', '/x/']) {
+  for (const href of ['/weather', '/weather/radar', '/weather/app.js', '/weather/roof/weather.js', '/Weather/', '/chats/', '/chats/#open=1', ...(S24 ? [] : ['/fitness/', '/markets/', '/mail/']), '/api/hub', '/x/']) {
     assert.equal(R.parse(href, on), null, href);
     assert.equal(R.owns(href, on), false, href);
   }
@@ -153,4 +160,78 @@ test('the router is pure: no DOM, no storage, no history, no network', { skip },
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('router.js', ROOF), 'utf8').replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
   for (const bad of [/\bdocument\b/, /\bwindow\b/, /localStorage|sessionStorage|indexedDB/, /\bhistory\b/, /\bfetch\(/, /\bimport\b/, /addEventListener/]) assert.ok(!bad.test(src), String(bad));
+});
+
+// ---- stages 2–4 (s24-contracts §3) ----
+test('stages 2–4: REGISTRY’s Markets, Fitness and Mail exactly; link, stay and idb only where named; all frozen', { skip: s24 }, () => {
+  assert.deepEqual(Object.keys(R.REGISTRY), ['weather', 'markets', 'fitness', 'mail']);
+  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.markets)), { app: 'markets', name: 'Markets', path: '/markets/', link: 'finance',
+    entry: '/markets/roof/markets.js', connector: '/markets/roof/connector.js', css: ['/markets/roof/markets.css'],
+    sections: [['today', 'Today'], ['holdings', 'Holdings'], ['news', 'News']],
+    aliases: { s: 'today', income: 'holdings', isa: 'holdings', vs: 'holdings', about: 'holdings' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.fitness)), { app: 'fitness', name: 'Fitness', path: '/fitness/', idb: 'fitness',
+    entry: '/fitness/roof/fitness.js', connector: '/fitness/roof/connector.js', css: ['/fitness/roof/fitness.css', '/fitness/roof/fxviews.css'],
+    sections: [['today', 'Today'], ['activities', 'Activities'], ['progress', 'Progress']],
+    aliases: { plan: 'today', day: 'today', offer: 'today', settings: 'today', act: 'activities' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.mail)), { app: 'mail', name: 'Mail', path: '/mail/', link: 'email',
+    entry: '/mail/roof/mail.js', connector: '/mail/roof/connector.js', css: ['/mail/roof/mail.css', '/mail/roof/reader.css', '/mail/roof/mailsheets.css'],
+    sections: [['people', 'People'], ['updates', 'Updates'], ['later', 'Later'], ['done', 'Done']],
+    aliases: { thread: 'people', settings: 'people', signin: 'people' }, stay: ['thread'] });
+  for (const r of Object.values(R.REGISTRY)) {
+    assert.ok(Object.isFrozen(r) && Object.isFrozen(r.css) && Object.isFrozen(r.sections) && Object.isFrozen(r.aliases) && r.sections.every(Object.isFrozen), r.app);
+    if (r.stay) assert.ok(Object.isFrozen(r.stay));
+    for (const k of Object.keys(r)) assert.ok(['app', 'name', 'path', 'entry', 'connector', 'css', 'sections', 'aliases', 'link', 'stay', 'idb'].includes(k), `${r.app}.${k}: a known field`);
+    assert.equal(r.path, `/${r.app}/`); assert.ok(r.entry.startsWith(`${r.path}roof/`) && r.connector.startsWith(`${r.path}roof/`));
+  }
+});
+
+test('stages 2–4: roof as false, true or a map: an app’s routes are ours only where its flag is true; tabs always', { skip: s24 }, () => {
+  const paths = { weather: '/weather/#radar', markets: '/markets/#news', fitness: '/fitness/#progress', mail: '/mail/#later' };
+  for (const [a, p] of Object.entries(paths)) {
+    assert.equal(R.parse(p, { roof: true })?.app, a, `${a}: roof true`);
+    assert.equal(R.parse(p, { roof: false }), null, `${a}: roof false`);
+    assert.equal(R.parse(p, { roof: { [a]: true } })?.app, a, `${a}: its own flag`);
+    assert.equal(R.parse(p, { roof: { [a]: false } }), null, `${a}: its flag false`);
+    assert.equal(R.owns(p, { roof: Object.fromEntries(Object.keys(paths).map((k) => [k, k !== a])) }), false, `${a}: every other flag on, its own off`);
+    for (const v of ['1', 1, 'true', {}]) assert.equal(R.parse(p, { roof: { [a]: v } }), null, `${a}: only true is on (${JSON.stringify(v)})`);
+  }
+  assert.deepEqual(R.parse('/#apps', { roof: { weather: false } }), tab('apps'));
+  assert.deepEqual(R.parse('/', { roof: {} }), tab('today'));
+  assert.deepEqual(R.parse('/weather/#days', { roof: { weather: true, markets: false } }), app('days'), 'Weather as with roof true');
+});
+
+test('stages 2–4: the wider arg, after one decodeURIComponent: TSCO.L, ^GSPC, GBPUSD=X; a bad % or anything else is null; format writes it back', { skip: s24 }, () => {
+  const mk = (key, arg, section = 'today') => ({ kind: 'app', app: 'markets', section, key, arg, query: '' });
+  const cases = [
+    ['/markets/#s=TSCO.L', mk('s', 'TSCO.L'), '/markets/#s=TSCO.L'],
+    ['/markets/#s=%5EGSPC', mk('s', '^GSPC'), '/markets/#s=^GSPC'],
+    ['/markets/#s=^GSPC', mk('s', '^GSPC'), '/markets/#s=^GSPC'],
+    ['/markets/#s=GBPUSD%3DX', mk('s', 'GBPUSD=X'), '/markets/#s=GBPUSD=X'],
+    ['/markets/#s=GBPUSD=X', mk('s', 'GBPUSD=X'), '/markets/#s=GBPUSD=X'],
+    ['/markets/#s=%E0%A4', mk('s', null), '/markets/#s'],
+    ['/markets/#s=%0A', mk('s', null), '/markets/#s'],
+    ['/markets/#s=a%20b', mk('s', null), '/markets/#s'],
+    ['/markets/#s=%2F', mk('s', null), '/markets/#s'],
+    ['/markets/#s=' + 'A'.repeat(41), mk('s', null), '/markets/#s'],
+    ['/markets/#income', mk('income', null, 'holdings'), '/markets/#income'],
+    ['/markets/', mk('today', null), '/markets/'],
+    ['/fitness/#act=12345', { kind: 'app', app: 'fitness', section: 'activities', key: 'act', arg: '12345', query: '' }, '/fitness/#act=12345'],
+    ['/fitness/#settings=numbers', { kind: 'app', app: 'fitness', section: 'today', key: 'settings', arg: 'numbers', query: '' }, '/fitness/#settings=numbers'],
+    ['/mail/#thread=0b8f6a2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b', { kind: 'app', app: 'mail', section: 'people', key: 'thread', arg: '0b8f6a2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b', query: '' }, '/mail/#thread=0b8f6a2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b'],
+    ['/mail/#people', { kind: 'app', app: 'mail', section: 'people', key: 'people', arg: null, query: '' }, '/mail/'],
+  ];
+  for (const [href, route, back] of cases) {
+    assert.deepEqual(R.parse(href, on), route, href);
+    assert.equal(R.format(route), back, `${href} → ${back}`);
+    const again = R.parse(back, on);
+    assert.equal(again.arg, route.arg, `${back} re-parses to the same arg`);
+  }
+  // (Weather's args stay as they were: a day, a settings page)
+  assert.deepEqual(R.parse('/weather/#day=2026-11-03', on), app('days', 'day', '2026-11-03'));
+  // (You's arg as stage 1: [\w-] only)
+  assert.deepEqual(R.parse('/#you=a.b', on), tab('you')); assert.equal(R.format(tab('you', 'a.b')), '/#you');
+  // (the D6 tidy's call for Mail's People and a spread reader route whose section changed)
+  assert.equal(R.format({ app: 'mail', section: 'people' }), '/mail/');
+  assert.equal(R.format({ kind: 'app', app: 'mail', section: 'later', key: 'thread', arg: 'x' }), '/mail/#later');
+  assert.equal(R.format({ app: 'markets', key: 's', arg: 'TSCO.L' }), '/markets/#s=TSCO.L');
 });
