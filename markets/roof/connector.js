@@ -1,11 +1,15 @@
-// Markets's connector (owner MK; s2/spec.md §4.2; s24-contracts §5): what Markets shares with InFlite, read
-// by the framework without loading the module. ≤ 4096 bytes raw, no imports. shares' words frozen by B0 (j0).
-// files = the entry's static import graph + REGISTRY's css; lazy = the closure of every literal fw.lazy import, less files,
-// less NET (roofcontract.test checks both). search(q, { userId }) → [] unless the kept copy's id is userId; entries carry
-// names and symbols only, never an amount; "Find … in Markets" has run, never an href with q (§2.5, RB1).
+// Markets' connector (One roof stage 2, §2.5, §4.2, C4, C6): read without loading the module. ≤ 4 KB, no imports.
 export const CONNECTOR = 1;
-export const STUB = true;
+
 const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
+const KIND = { ETF: "Fund", MUTUALFUND: "Fund", INDEX: "Index", CRYPTOCURRENCY: "Crypto", CURRENCY: "Currency" };
+const SAID = { share: "Shares", trust: "Investment trust", fund: "Fund", crypto: "Crypto" };
+const low = (s) => String(s ?? "").toLowerCase();
+const plain = (s) => String(s).replace(/\.L$/, "").replace(/^\^/, "");
+// (a search's Find, when Markets isn't on the screen: q kept here, never in an address; markets.js takes it)
+export const want = { q: null, at: 0, open: null };
+const SHEETS = [["Income", "income"], ["ISA", "isa"], ["Against the Market", "vs"], ["About these prices", "about"]];
+
 export const connector = {
   app: "markets",
   name: "Markets",
@@ -19,28 +23,35 @@ export const connector = {
   sections: SECTIONS,
   aliases: { s: "today", income: "holdings", isa: "holdings", vs: "holdings", about: "holdings" },
   files: [
-    "/markets/roof/markets.js",
-    "/markets/roof/core.js",
-    "/markets/roof/mkui.js",
-    "/markets/roof/connector.js",
-    "/markets/roof/todayview.js",
-    "/markets/account.js",
-    "/markets/charts.js",
-    "/markets/send.js",
-    "/markets/roof/markets.css",
+    "/markets/roof/markets.js", "/markets/roof/connector.js", "/markets/roof/core.js", "/markets/roof/mkui.js", "/markets/roof/todayview.js",
+    "/markets/account.js", "/markets/income.js", "/markets/send.js", "/markets/charts.js", "/markets/roof/markets.css",
   ],
-  lazy: [
-    "/markets/roof/holdings.js",
-    "/markets/roof/news.js",
-    "/markets/roof/stock.js",
-    "/markets/roof/edit.js",
-    "/markets/roof/money.js",
-    "/markets/stories.js",
-    "/markets/income.js",
-  ],
-  mini: (a) => {
+  lazy: ["/markets/roof/holdings.js", "/markets/roof/news.js", "/markets/roof/stock.js", "/markets/roof/edit.js", "/markets/roof/money.js", "/markets/stories.js"],
+  // mini(answer): the day's percent and its shape, never an amount (as roof/connectors.js's fallback)
+  mini(a) {
     const c = a?.cards?.markets, p = Number(c?.pct), v = (c?.spark?.vals || []).map(Number).filter(Number.isFinite), lo = Math.min(...v), d = Math.max(...v) - lo || 1;
     return c?.traded && Number.isFinite(p) ? { kind: "pct-spark", pct: p, spark: v.length > 1 ? v.map((x) => (x - lo) / d) : null } : null;
   },
-  search(q, { userId = null } = {}) { return []; },
+  // search(q, { userId }): nothing unless this phone's copy (markets:last) is userId's; then your holdings and follows by
+  // name or symbol (≤ 8, never a value), Markets' sheets, and Find "q" in Markets (q leaves the phone only when tapped)
+  search(q, { userId, kept } = {}) {
+    const s = low(q).trim();
+    let k = kept;
+    if (!k) { try { k = JSON.parse(globalThis.localStorage?.getItem("markets:last") || "null"); } catch (_) {} }
+    if (!s || userId == null || !k || (k.id ?? k.me?.id) !== userId) return [];
+    const quotes = k.quotes || {}, out = (Array.isArray(k.holdings) ? k.holdings : []).filter((x) => x && typeof x.symbol === "string" && (low(x.name).includes(s) || low(plain(x.symbol)).startsWith(s))).slice(0, 8)
+      .map((x) => { const t = quotes[x.symbol]; return { title: String(x.name || x.symbol), sub: [plain(x.symbol), SAID[t?.kind] || KIND[t?.type] || "Shares"].join(" · "), icon: "markets", href: `/markets/#s=${encodeURIComponent(x.symbol)}` }; });
+    for (const [t, h] of SHEETS) if (low(t).includes(s) || low("markets " + t).includes(s)) out.push({ title: `Markets · ${t}`, sub: "Markets", icon: "markets", href: `/markets/#${h}` });
+    if (s.length >= 2) {
+      const typed = String(q).trim().slice(0, 40);
+      out.push({ title: `Find “${typed}” in Markets`, sub: "Markets", icon: "markets", run: () => {
+        Object.assign(want, { q: typed, at: Date.now() });
+        if (want.open) return want.open();
+        // (not mounted, no fw: a link to /markets/ clicked, for the frame's link handler; no address set here, §5.1)
+        const d = globalThis.document, a = d.createElement("a");
+        a.href = "/markets/"; d.body.append(a); a.click(); a.remove();
+      } });
+    }
+    return out;
+  },
 };
