@@ -205,7 +205,7 @@ test('stage 2, app.js: a confirmed sign-out found out about (401, the account’
   // (the callers of signedOutNow: a 401, the account saying signed out, the worker's word, the frame's confirmed lost())
   const calls = [...js.matchAll(/^.*signedOutNow\(\).*$/gm)].map((m) => m[0].trim()).filter((l) => !/^\/\/|^function signedOutNow/.test(l));
   for (const l of calls) assert.match(l, /status === 401|!view\?\.signedIn|!view\?\.user\?\.id|d\.ifl === "signedout"/, `signedOutNow only once it’s confirmed: ${l}`);
-  assert.match(js, /lost: signedOutNow,/, 'and the frame’s lost(), which calls it only on a confirmed “signed out” (D3)');
+  assert.match(js, /lost: (?:signedOutNow|\(\) => signedOutNow\(true\)),/, 'and the frame’s lost(), which calls it only on a confirmed “signed out” (D3)');
   // (offline: the load's catch keeps the copy or shows the way in with the message, never signedOutNow)
   const ld = js.slice(js.indexOf('async function load()'), js.indexOf('const save = '));
   const offline = ld.slice(ld.indexOf('const ks = e.status === 0'), ld.indexOf('if (view?.links)'));
