@@ -286,7 +286,8 @@ await part('cards: ok', async () => {
   const mk = await p.$$eval('.tcard[data-app=markets] a', (as) => as.map((a) => a.getAttribute('href')));
   const m = CARDS.cards.markets;
   ok([m.top.href, m.low.href, m.dividend.href, m.href].every((x) => mk.includes(x)), 'Markets: top, low and the dividend link to #s=, the value to Markets');
-  ok(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')) === CARDS.cards.weather.href, 'Weather: the warning links to Weather');
+  // (One roof §4.4: the warning chip opens that place's Warnings, #warnings after its address)
+  same(await p.$eval('.tcard[data-app=weather] .wx-warn', (a) => a.getAttribute('href')), CARDS.cards.weather.href + (ROOF ? '#warnings' : ''), 'Weather: the warning links to Weather (its Warnings)');
   // (a name in Markets' sentence: tapped on its words, or a finger's width beyond them, and never taken by the other name)
   const reach = await p.$$eval('.tcard[data-app=markets] a.mk-name', (as) => as.map((a, i) => {
     a.scrollIntoView({ block: 'center' });
@@ -519,8 +520,9 @@ await part('edit', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.click(EDIT);
   await p.waitForSelector(OPEN('sh-edit'));
-  await p.click('#edList [data-k=chat] [data-mv="-1"]');
-  await p.click('#edList [data-k=markets] [data-show]');
+  // (the two changes made within the 400 ms the page waits for more, as a quick hand makes them: the sheet's own motion
+  // never lets a click wait past it)
+  await p.evaluate(() => { document.querySelector('#edList [data-k=chat] [data-mv="-1"]').click(); document.querySelector('#edList [data-k=markets] [data-show]').click(); });
   await p.waitForTimeout(900);
   same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'weather', 'fitness'], 'Edit: moved and hidden on the page at once');
   let puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
@@ -632,7 +634,7 @@ await part('menu and sign out', async () => {
   await p.click('#hd .ifh-me');
   await p.waitForSelector('.ifm-pop.open');
   const rows = await p.$$eval('.ifm-rows .ifm-row', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
-  same(rows, ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows');
+  same(rows, ROOF ? ['Notifications', 'Morning Notification 07:00', 'Connected Apps', 'Edit Today'] : ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows (Connected Apps under the roof, D24)');
   has(await text(p, '.ifm-pop .ifm-who'), 'Alex Morgan', 'the menu: you');
   has(await text(p, '.ifm-foot'), `Today ${BUILD}`, 'the menu’s foot: Today and its version');
   ok(await p.$eval('.ifm-foot-ic', (i) => i.complete && i.naturalWidth > 0), 'and Today’s icon beside it');

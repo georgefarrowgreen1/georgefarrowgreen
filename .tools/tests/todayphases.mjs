@@ -87,9 +87,13 @@ function standInHub(o) {
     sent(say) { log.push(['sent', say]); },
     closed() {},
   } };
+  // (the page's own IFL, as it sets it on window, kept behind the stand-in: everything but these parts of its hub is the
+  // page's, so its framework (which reads window.IFL: the header, the tab bar) works as ever)
+  let real = null, merged = null;
+  const view = () => { if (!real) return IFL; if (!merged) merged = { ...real, hub: Object.assign(Object.create(real.hub), IFL.hub) }; return merged; };
   const define = Object.defineProperty;
-  define(window, 'IFL', { get: () => IFL, set() {}, enumerable: true, configurable: false });
-  Object.defineProperty = function (obj, key, desc) { return obj === window && key === 'IFL' ? obj : define.call(Object, obj, key, desc); };
+  define(window, 'IFL', { get: view, set() {}, enumerable: true, configurable: false });
+  Object.defineProperty = function (obj, key, desc) { if (obj === window && key === 'IFL') { real = desc?.value || null; merged = null; return obj; } return define.call(Object, obj, key, desc); };
 }
 const hubLog = (p, kind) => p.evaluate((k) => (window.__hub || []).filter((x) => !k || x[0] === k), kind);
 
@@ -250,7 +254,7 @@ await part('undo', async () => {
   const sent = [];
   p.on('request', (r) => { if (r.method() === 'POST' && new URL(r.url()).pathname.startsWith('/api/act')) sent.push([new URL(r.url()).pathname, r.headers()['x-inflite'], r.postData()]); });
   await p.click(`${DAY} #top button[data-do="undo"][data-id="${MOVE}"]`);
-  await p.waitForFunction(() => /Undone\. Moves are suggested now, not made/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction((s) => /Undone\. Moves are suggested now, not made/.test(document.querySelector(s)?.textContent || ''), TOAST_ON, { timeout: 5000 });
   ok(true, 'Undo: the account’s word, said');
   const u = (await reqs()).find((e) => e.method === 'POST' && e.path.endsWith('/today/act/undo'));
   same(u && JSON.parse(u.body), { id: MOVE }, 'Undo: POST /api/act/undo { id }');
@@ -268,7 +272,7 @@ await part('keep', async () => {
   const { ctx, p } = await open('morning', { patch: keep });
   await reset();
   await p.click(`${DAY} #top button[data-do="keep"]`);
-  await p.waitForFunction(() => /Kept/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction((s) => /Kept/.test(document.querySelector(s)?.textContent || ''), TOAST_ON, { timeout: 5000 });
   const k = (await reqs()).find((e) => e.method === 'POST' && e.path.endsWith('/today/act'));
   same(k && JSON.parse(k.body), { id: ADD }, 'Keep: POST /api/act { id }');
   await p.waitForSelector(`${DAY} #top button[data-do="keep"]`, { state: 'detached', timeout: 5000 });
@@ -289,7 +293,7 @@ await part('take', async () => {
   });
   same(await text(p, `${DAY} #top button[data-do="take"]`), 'Move It to 16:45', 'the suggestion’s one button');
   await p.click(`${DAY} #top button[data-do="take"]`);
-  await p.waitForFunction(() => /Moved your ride to 16:45/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction((s) => /Moved your ride to 16:45/.test(document.querySelector(s)?.textContent || ''), TOAST_ON, { timeout: 5000 });
   same(bodies, [['1', JSON.stringify({ id: OFFER })]], 'Take: POST /api/act { id }, with X-Inflite');
   await p.waitForSelector(`${DAY} #top button[data-do="take"]`, { state: 'detached', timeout: 5000 });
   ok(true, 'Take: taken, and offered no more');
@@ -300,7 +304,7 @@ await part('acts not built yet', async () => {
   const { ctx, p } = await open('morning');
   await p.route('**/api/act/undo', (r) => r.fulfill({ status: 501, json: { error: 'Not built yet.' } }));
   await p.click(`${DAY} #top button[data-do="undo"][data-id="${MOVE}"]`);
-  await p.waitForFunction(() => /can’t do that just yet/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction((s) => /can’t do that just yet/.test(document.querySelector(s)?.textContent || ''), TOAST_ON, { timeout: 5000 });
   same(await p.$$eval(`${DAY} #top [data-do="undo"], ${DAY} #top [data-do="take"], ${DAY} #top [data-do="keep"]`, (xs) => xs.length), 0, 'an account side without acts (501): their buttons gone');
   ok(await p.$(`${DAY} #top [data-send]`), 'and the card otherwise as it was');
   await ctx.close();
@@ -365,7 +369,7 @@ await part('at the hub, under the roof: Radar in the page', async () => {
   const setup = async (p) => {
     await p.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: true, roof: true }, headers: { 'Cache-Control': 'no-store' } }));
     await p.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ body: '<!doctype html><title>Chats</title>', contentType: 'text/html' }));
-    await p.route((u) => new URL(u).pathname.startsWith('/weather/roof/'), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
+    await p.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
   };
   const { ctx, p } = await open('midday', { hub: {}, setup });
   let loads = 0;
@@ -383,6 +387,8 @@ await part('at the hub, under the roof: Radar in the page', async () => {
   await p.waitForFunction(() => !document.getElementById('today').hidden, null, { timeout: 5000 });
   ok(await p.evaluate(() => window.__same === 1) && new URL(p.url()).pathname === '/', 'Back: Today again, in the same document');
   await ctx.close();
+  // (the frame's own word of the module it couldn't load, expected here and nowhere else)
+  for (let i = errs.length - 1; i >= 0; i--) if (/Failed to fetch dynamically imported module: \S+\/weather\/roof\/weather\.js/.test(errs[i])) errs.splice(i, 1);
 });
 
 await part('at the hub: Waiting for You’s words', async () => {

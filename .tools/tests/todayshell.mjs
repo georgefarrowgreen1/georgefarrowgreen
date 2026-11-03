@@ -33,6 +33,7 @@ import { jsBlock, cssBlock } from '../iflmenu.mjs';
 // (requests a service worker makes are routed too: Today's root worker fetches its own files)
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 const HERE = new URL('./', import.meta.url).pathname;
+const MAIN = new URL('../../', import.meta.url).pathname;
 const IFL = process.env.IFL_ROOT || new URL('../../../inflite/', import.meta.url).pathname;
 const OUT = process.argv[3] || `${tmpdir()}/todayshell`;
 mkdirSync(OUT, { recursive: true });
@@ -107,6 +108,13 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = fals
     const u = new URL(r.request().url());
     if (u.pathname === '/chats/__signed-out') { chatOut.push(Date.now()); return r.fulfill({ status: 204, body: '' }); }
     return r.fulfill({ contentType: 'text/html', body: u.searchParams.has('engine') ? ENGINE : '<!doctype html><title>Chats</title><style>@view-transition { navigation: auto; }</style><p>Chats</p>' });
+  });
+  // (Weather's files, as the hub would forward them: from this repo, the module's own (weather/roof/) among them, so the
+  // framework's idle work for Weather (its connector, for search and the minis) finds them; anything else of Weather's, 404)
+  await ctx.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => {
+    const f = new URL(r.request().url()).pathname.slice('/weather/'.length);
+    if (!/^[\w-]+(\/[\w-]+)?\.(js|css)$/.test(f) || !existsSync(`${MAIN}weather/${f}`)) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    return r.fulfill({ contentType: f.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}weather/${f}`, 'utf8') });
   });
   await setup?.(ctx);
   if (NO_DAY_CSS) await ctx.route((u) => new URL(u).pathname === '/day.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
