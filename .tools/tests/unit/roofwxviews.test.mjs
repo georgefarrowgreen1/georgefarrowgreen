@@ -236,10 +236,12 @@ test("loading on open: wxwarn.js has the warnings' helpers and warnings.js re-ex
   }
   for (const k of ["view", "openWarning"]) assert.equal(typeof WARN[k], "function", `warnings.js keeps ${k}`);
   for (const k of ["view", "openWarning"]) assert.ok(!(k in WXWARN), `${k} isn't in static wxwarn.js`);
-  for (const k of ["openDetail", "openCredits", "detailBody", "CREDITS", "creditsText", "ABOUT"]) {
-    assert.ok(k in DETAIL, `wxdetail.js exports ${k}`);
-    assert.ok(!(k in UI), `wxui.js no longer has ${k}`);
-  }
+  for (const k of ["openDetail", "openCredits", "detailBody", "CREDITS", "creditsText", "ABOUT"]) assert.ok(k in DETAIL, `wxdetail.js exports ${k}`);
+  for (const k of ["detailBody", "CREDITS", "creditsText", "ABOUT"]) assert.ok(!(k in UI), `wxui.js no longer has ${k}`);
+  // (wxui.js keeps stage 1's openDetail/openCredits names, going through weather.js's lazy openers)
+  const asked = [], ctx = { open: { detail: (k) => (asked.push(["detail", k]), "d"), credits: (w) => (asked.push(["credits", w]), "c") } };
+  assert.equal(UI.openDetail(ctx, "wind"), "d"); assert.equal(UI.openCredits(ctx, "map"), "c");
+  assert.deepEqual(asked, [["detail", "wind"], ["credits", "map"]]);
   for (const k of ["tileSays", "tilesEl", "h", "chartHost", "hourChart", "nightsOf", "COLOR", "TILES", "skyClass"]) assert.ok(k in UI, `wxui.js keeps ${k}`);
   for (const k of ["openDetail", "openCredits"]) assert.ok(!(k in NOW), `now.js no longer re-exports ${k}`);
   const imports = (f) => [...read(`weather/roof/${f}`).matchAll(/^import[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1]);

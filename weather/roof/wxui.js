@@ -3,7 +3,8 @@
 // and the credits sheet are wxdetail.js's (lazy, stage 2 §4.5); what draws the tiles stays here, as Now draws them.
 // Frozen (used by other files): skyClass(wx, now) → one of the 14 "wx-sk-*" classes (Today's .tcard.wx skies);
 //   tileSays, tilesEl (Now's Right now card; a tile [data-detail=<kind>] → ctx.open.detail(kind)); for wxdetail.js:
-//   h, chartHost, hourChart, nightsOf, COLOR, TILES, uvName, airName, T, keyFor.
+//   h, chartHost, hourChart, nightsOf, COLOR, TILES, uvName, airName, T, keyFor; openDetail(ctx, kind) and
+//   openCredits(ctx, which), stage 1's names, now ctx.open.detail / ctx.open.credits (wxdetail.js's, loaded once).
 // ctx = { S, core, fw, open, hint } (weather.js makes it; see there).
 // Pure helpers (no page): skyName, skyClass, nightsOf, daysScale, rangeBar, uvName, airName, seaName, TILES. Everything
 // else builds elements, every word from data through textContent; no style attribute ever (a figure a drawing needs is
@@ -350,6 +351,12 @@ export function tilesEl(ctx, wx, now, f) {
   }
   return grid;
 }
+
+// ---------------------------------------------------------------- the sheets, by their stage-1 names
+// The detail and credits sheets are wxdetail.js's (lazy); these keep stage 1's frozen names here, each going through
+// weather.js's opener (which loads wxdetail.js once): → sheet Handle | Promise of one | null.
+export function openDetail(ctx, kind) { return ctx.open.detail(kind); }
+export function openCredits(ctx, which) { return ctx.open.credits(which); }
 
 // ---------------------------------------------------------------- small helpers the views share
 export const dayKey = keyOf;
