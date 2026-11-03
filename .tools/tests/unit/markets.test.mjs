@@ -298,3 +298,57 @@ test("a currency's rate never had before isn't left out where the prices took al
     assert.equal(fx.ZZZ, 0.5); assert.equal(asked, 0, "once kept (if old): given at once, without asking, as a price is");
   } finally { globalThis.fetch = was; await Promise.all(later); }
 });
+
+// ---- a phone to tell (Today First, spec §11.3): keepPush, carved from POST push, which calls it, its answer unchanged;
+// InFlite's one device route keeps the same row with via "hub" (functions/_devices.js) ----
+import { DatabaseSync } from "node:sqlite";
+import { keepPush, addPhone } from "../../../functions/_markets.js";
+function d1() {
+  const s = new DatabaseSync(":memory:");
+  const val = (a) => a.map((v) => (v === undefined ? null : typeof v === "boolean" ? Number(v) : v));
+  const exec = (sql, args) => {
+    const p = s.prepare(sql);
+    if (p.columns().length) return { results: p.all(...val(args)), success: true, meta: { changes: 0 } };
+    const r = p.run(...val(args));
+    return { results: [], success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
+  };
+  const st = (sql, args = []) => ({
+    bind: (...a) => st(sql, a),
+    first: async (col) => { const row = s.prepare(sql).get(...val(args)) ?? null; return col && row ? row[col] ?? null : row; },
+    all: async () => exec(sql, args), run: async () => exec(sql, args),
+    raw: async () => s.prepare(sql).all(...val(args)).map((r) => Object.values(r)),
+    now: () => exec(sql, args),
+  });
+  return { sql: s, prepare: (q) => st(q), async batch(list) { s.exec("BEGIN"); try { const r = list.map((x) => x.now()); s.exec("COMMIT"); return r; } catch (e) { s.exec("ROLLBACK"); throw e; } } };
+}
+
+test("keepPush: a phone kept with its sign-in (via, for InFlite's), ten an account, another account's live one never taken; POST push's answer as it was", async () => {
+  const env = { DB: d1() };
+  const run = (q, ...a) => env.DB.sql.prepare(q).run(...a), all = (q, ...a) => env.DB.sql.prepare(q).all(...a).map((r) => ({ ...r })), t = Date.now();
+  // (the tables as their setups make them: this file's other cases have had Markets' setup run already, on a stand-in)
+  run("CREATE TABLE pg_sessions (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL)");
+  run("CREATE TABLE mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0, via TEXT)");
+  for (const h of ["s-ana", "s-ana2", "s-ben"]) run("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at) VALUES (?, ?, ?, ?)", h, h.startsWith("s-ana") ? "ana" : "ben", t, t);
+  const sub = async (name) => { const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    return { endpoint: `https://fcm.googleapis.com/fcm/send/mk-${name}`, keys: { p256dh: Buffer.from(await crypto.subtle.exportKey("raw", k.publicKey)).toString("base64url"), auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url") } }; };
+  const ana = { id: "ana", sessionHash: "s-ana" }, ben = { id: "ben", sessionHash: "s-ben" }, a = await sub("a"), h = await sub("hub");
+  assert.deepEqual(await addPhone(env, ana, a), { on: true }, "POST push's answer, as ever");
+  assert.deepEqual(await keepPush(env, { id: "ana", sessionHash: "s-ana2" }, h, { via: "hub" }), { on: true, kept: true });
+  const row = (e) => all("SELECT user_id, session, via FROM mk_push WHERE endpoint = ?", e)[0] || null;
+  assert.deepEqual([row(a.endpoint), row(h.endpoint)], [{ user_id: "ana", session: "s-ana", via: null }, { user_id: "ana", session: "s-ana2", via: "hub" }]);
+  // kept again by Markets' own POST push: its via left as it was
+  await addPhone(env, { id: "ana", sessionHash: "s-ana2" }, h);
+  assert.equal(row(h.endpoint).via, "hub");
+  // another account's, while it's signed in there: not taken
+  assert.deepEqual(await keepPush(env, ben, a, { via: "hub" }), { on: true, kept: false });
+  assert.deepEqual(row(a.endpoint), { user_id: "ana", session: "s-ana", via: null });
+  // its sign-in gone: then it can be
+  run("DELETE FROM pg_sessions WHERE hash = 's-ana'");
+  assert.equal((await keepPush(env, ben, a)).kept, true);
+  assert.equal(row(a.endpoint).user_id, "ben");
+  // ten an account: the oldest goes
+  for (let i = 0; i < 11; i++) await keepPush(env, ben, await sub(`ben-${i}`));
+  assert.equal(all("SELECT COUNT(*) AS n FROM mk_push WHERE user_id = 'ben'")[0].n, 10);
+  assert.deepEqual(row(a.endpoint), null, "the oldest of Ben's went");
+  await assert.rejects(keepPush(env, ben, { endpoint: "https://evil.example/x", keys: a.keys }), /push subscription/);
+});

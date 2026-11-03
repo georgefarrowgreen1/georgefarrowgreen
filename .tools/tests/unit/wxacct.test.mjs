@@ -110,3 +110,67 @@ test("the app turns notifications on for no more places than the server takes", 
   // (one more would be refused on every save after, the account's places and settings with it)
   assert.equal(MAX_NOTIFY, MAX_PLACES);
 });
+
+// ---- a device InFlite made one of the account's (Today First, spec §11.3: functions/_devices.js, _wxpush.js deviceFor)
+import { DatabaseSync } from "node:sqlite";
+import { db } from "../../../functions/_pigeon.js";
+import { wxdb, deviceFor, devicesOf, applyAccount, subscribe } from "../../../functions/_wxpush.js";
+function d1() {
+  const s = new DatabaseSync(":memory:");
+  const val = (a) => a.map((v) => (v === undefined ? null : typeof v === "boolean" ? Number(v) : v));
+  const exec = (sql, args) => {
+    const p = s.prepare(sql);
+    if (p.columns().length) return { results: p.all(...val(args)), success: true, meta: { changes: 0 } };
+    const r = p.run(...val(args));
+    return { results: [], success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
+  };
+  const st = (sql, args = []) => ({
+    bind: (...a) => st(sql, a),
+    first: async (col) => { const row = s.prepare(sql).get(...val(args)) ?? null; return col && row ? row[col] ?? null : row; },
+    all: async () => exec(sql, args), run: async () => exec(sql, args),
+    raw: async () => s.prepare(sql).all(...val(args)).map((r) => Object.values(r)),
+    now: () => exec(sql, args),
+  });
+  return { sql: s, prepare: (q) => st(q), async batch(list) { s.exec("BEGIN"); try { const r = list.map((x) => x.now()); s.exec("COMMIT"); return r; } catch (e) { s.exec("ROLLBACK"); throw e; } } };
+}
+
+test("a device InFlite made: the account's places, no welcome, never another account's; deleted with its places once its sign-in ends, where Weather's own is only unlinked", async () => {
+  const PUSH = "http://push.test/push", pushed = [], real = globalThis.fetch;
+  globalThis.fetch = async (url, o = {}) => { if (String(url) === PUSH) { pushed.push(o.headers["X-Endpoint"]); return new Response("", { status: 201 }); } return new Response("{}", { status: 404 }); };
+  try {
+    const env = { DB: d1(), PIGEON_PUSH_URL: PUSH };
+    await db(env); await wxdb(env);
+    const run = (q, ...a) => env.DB.sql.prepare(q).run(...a), all = (q, ...a) => env.DB.sql.prepare(q).all(...a).map((r) => ({ ...r })), t = Date.now();
+    for (const [id, hash] of [["kay", "s-hub"], ["kay", "s-wx"], ["lou", "s-lou"]]) {
+      run("INSERT OR IGNORE INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?1, ?1, ?1, ?1 || '@example.com', '{}', 's', 'p', 'v', 3, 0, 0)", id);
+      run("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, label) VALUES (?, ?, ?, ?, 'iPhone · Safari')", hash, id, t, t);
+    }
+    const notify = { places: [{ ...london, rain: true, warn: true }, { ...leeds, warn: true }], brief: york, briefAt: "07:00" };
+    run("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('kay', ?, 1, ?)", JSON.stringify({ places: [london, leeds, york], notify, settings: { temp: "f" } }), t);
+    const key = async (name) => { const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      return { endpoint: `https://fcm.googleapis.com/fcm/send/wxacct-${name}`, keys: { p256dh: Buffer.from(await crypto.subtle.exportKey("raw", k.publicKey)).toString("base64url"), auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url") } }; };
+    const hub = await key("hub"), own = await key("own");
+    assert.equal(await deviceFor(env, "kay", hub, { sess: "s-hub", via: "hub" }), true);
+    assert.deepEqual(pushed, [], "no 'Notifications on': InFlite's own note says so");
+    const rowsOf = (endpoint) => all("SELECT s.name, s.rain, s.warn, s.brief, s.units FROM wx_subs s JOIN wx_devs d ON d.dev = s.dev WHERE d.endpoint = ? ORDER BY s.name", endpoint);
+    assert.deepEqual(rowsOf(hub.endpoint).map((r) => [r.name, r.rain, r.warn, r.brief]), [["Leeds", 0, 1, 0], ["London", 1, 1, 0], ["York", 0, 0, 1]], "a place for each the account has on, its briefing too");
+    assert.match(rowsOf(hub.endpoint)[0].units, /"temp":"f"/, "in the account's units");
+    assert.deepEqual(all("SELECT user_id, sess, via, label FROM wx_devs WHERE endpoint = ?", hub.endpoint), [{ user_id: "kay", sess: "s-hub", via: "hub", label: "iPhone · Safari" }]);
+    // (another account, still signed in, can't take it)
+    assert.equal(await deviceFor(env, "lou", hub, { sess: "s-lou", via: "hub" }), false);
+    assert.equal(all("SELECT user_id FROM wx_devs WHERE endpoint = ?", hub.endpoint)[0].user_id, "kay");
+    // the account's choices change: the hub's device follows, as any of the account's does
+    await applyAccount(env, "kay", { places: [{ ...leeds, rain: true }], brief: null, briefAt: "07:00" }, { temp: "f" });
+    assert.deepEqual(rowsOf(hub.endpoint).map((r) => [r.name, r.rain]), [["Leeds", 1]]);
+    // Weather's own device, on another sign-in; both listed
+    await subscribe(env, { sub: own, units: {} }, { id: "kay", sessionHash: "s-wx" }, { places: [{ ...leeds, rain: true }], brief: null, briefAt: "07:00" }, "iPad · Safari");
+    assert.equal((await devicesOf(env, "kay")).length, 2);
+    // both sign-ins end: the hub's device goes, with its places; Weather's own is its own now, and keeps them
+    run("DELETE FROM pg_sessions WHERE hash IN ('s-hub', 's-wx')");
+    assert.deepEqual(await devicesOf(env, "kay"), []);
+    assert.deepEqual(all("SELECT 1 FROM wx_devs WHERE endpoint = ?", hub.endpoint), []);
+    assert.deepEqual(rowsOf(hub.endpoint), []);
+    assert.deepEqual(all("SELECT user_id, sess FROM wx_devs WHERE endpoint = ?", own.endpoint), [{ user_id: null, sess: null }]);
+    assert.equal(rowsOf(own.endpoint).length, 1);
+  } finally { globalThis.fetch = real; }
+});

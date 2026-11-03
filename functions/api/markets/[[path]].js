@@ -32,7 +32,7 @@ import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
-import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, addPhone, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../_markets.js";
+import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, keepPush, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../_markets.js";
 
 // (prices for a request that's waiting: by eight seconds, what's kept given for any the source is slow with, so a slow
 // source is never taken for no connection)
@@ -186,7 +186,9 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     await limit(env, `mkpush:${u.id}`, 60, 3600e3);
-    return json(await addPhone(env, u, (await body(request)).sub));
+    // (as InFlite's one device route keeps one too: functions/_devices.js; the answer as it always was)
+    await keepPush(env, u, (await body(request)).sub);
+    return json({ on: true });
   },
   "POST push-move": async ({ request, env }) => {
     sameOrigin(request);
