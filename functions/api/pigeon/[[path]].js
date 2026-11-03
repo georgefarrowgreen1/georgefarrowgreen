@@ -779,11 +779,11 @@ export function quietEnd(p, t) {
   return null;
 }
 async function sync({ request, env }) {
-  const u = await requireUser(request, env);
-  const D = await db(env), t = Date.now();
   // (?quiet=1: Today's copy of Chat, its engine, asking: what's delivered is still marked so, but you aren't shown to your
-  // friends as just seen, as Today being open isn't you using Chat)
+  // friends as just seen, nor is the day noted as one you used Chat on, as Today being open isn't you using Chat)
   const quiet = new URL(request.url).searchParams.get("quiet") === "1";
+  const u = await requireUser(request, env, { inflight: !quiet });
+  const D = await db(env), t = Date.now();
   await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
   const plans = await plansQs(env, D, u.id, t), busyP = busyNow(env, u.id, t).catch((e) => { logError(env, "sync hold", e); return null; });
   // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate

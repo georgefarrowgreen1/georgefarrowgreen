@@ -10,6 +10,7 @@ import vm from 'node:vm';
 
 const SW = new URL('../../../../inflite/today/public/sw.js', import.meta.url);
 const skip = !existsSync(SW) && 'the inflite repo isn’t beside this one';
+const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
 const ORIGIN = 'https://inflite.ai';
 // (what the worker made, in its own context: compared as plain data)
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -123,7 +124,7 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   }
 });
 
-test('its copy is today-app-2, with Today First’s files: the day, Apps, You and Mail’s host page’s script', { skip }, () => {
+test('its copy is today-app-2, with Today First’s files: the day, Apps, You and Mail’s host page’s script', { skip: tfSkip }, () => {
   const src = readFileSync(SW, 'utf8');
   assert.equal(/\nconst SHELL = "([^"]+)";/.exec(src)?.[1], 'today-app-2');
   const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(src)[1]);
