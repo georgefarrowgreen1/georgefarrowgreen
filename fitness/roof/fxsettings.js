@@ -186,7 +186,7 @@ export function openSettings(ctx, page = null) {
     const a = el("a", { class: "ifl-btn primary fxs-strava", target: "_blank", rel: "noopener", data: { k: "strava" } }, el("span"));
     const draw = () => {
       if (Date.now() - stravaAt > 5 * 60e3 && !stravaAsking) askStrava();
-      if (stravaUrl) { a.href = stravaUrl; a.removeAttribute("aria-disabled"); a.querySelector("span").textContent = label(); }
+      if (stravaUrl) { a.setAttribute("href", stravaUrl); a.removeAttribute("aria-disabled"); a.querySelector("span").textContent = label(); }
       else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.querySelector("span").textContent = stravaAsking ? "Getting Strava ready…" : "Strava isn’t answering: try again shortly"; }
     };
     // (tapped: Strava's page in a window of its own; back here, the account asked again on the next visible)
