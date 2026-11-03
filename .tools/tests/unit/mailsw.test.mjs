@@ -187,7 +187,7 @@ test('Mail’s kept files are mail-app-2: the copies kept before (which a frame 
   assert.deepEqual([...w.names].sort(), ['other-cache'], 'mail-app-1 dropped, another’s cache left alone');
 });
 
-test('a notice tapped: a window of Mail’s own, never a frame inside another page; with none, a new window', { skip }, async () => {
+test('a notice tapped: a window of Mail’s own (or Mail framed at InFlite’s /mail/), never a message frame at /body/; with none, a new window', { skip }, async () => {
   const tap = (w, data = { url: '/#thread=t1', thread: 't1' }, action = '') =>
     w.send('notificationclick', { notification: { data, close() {} }, action });
   const client = (url, frameType) => {
@@ -214,4 +214,21 @@ test('a notice tapped: a window of Mail’s own, never a frame inside another pa
   w.wins.push(client('https://inflite.ai/mail/', 'top-level'));
   await tap(w);
   assert.deepEqual(w.opened, ['https://email.inflite.ai/#thread=t1']);
+  // (Mail's whole page framed at InFlite's /mail/, milestone 1, live while Mail's switch is off: Mail's own, and it
+  // listens, so told as before, never a new window; the message frames beside it still never)
+  w = worker(() => new Response('x'));
+  const framedMail = client('https://email.inflite.ai/', 'nested');
+  const bodies = [client('https://email.inflite.ai/body/#m=a', 'nested'), client('https://email.inflite.ai/body/#m=b', 'nested')];
+  w.wins.push(bodies[0], framedMail, bodies[1]);
+  await tap(w, { url: '/#thread=t3', thread: 't3' });
+  assert.deepEqual(w.opened, []);
+  assert.equal(framedMail.focused, true);
+  assert.equal(JSON.stringify(framedMail.said), JSON.stringify([{ open: 'https://email.inflite.ai/#thread=t3' }]));
+  assert.ok(bodies.every((f) => !f.focused && f.said.length === 0), 'no message frame told');
+  // (and with Mail in a window of its own as well: that one first)
+  w = worker(() => new Response('x'));
+  const framed2 = client('https://email.inflite.ai/', 'nested'), top = client('https://email.inflite.ai/', 'top-level');
+  w.wins.push(framed2, top);
+  await tap(w);
+  assert.ok(top.focused && top.said.length === 1 && !framed2.focused && framed2.said.length === 0, 'Mail’s own window before the framed one');
 });

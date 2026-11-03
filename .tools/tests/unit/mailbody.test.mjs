@@ -33,17 +33,26 @@ const gate = skip ? null : await import(new URL('src/hubgate.js', EMAIL).href);
 const gateReal = !skip && (await gate.hubOrigins({ HUB_ORIGIN: 'https://inflite.ai https://next.inflite.ai', HUB_API: '1' })).includes('https://inflite.ai');
 const gateSkip = skip || (!gateReal && 'hubgate.js is still B0’s stub (hubOrigins answers none until MW’s gate is merged)');
 
-// (Mail's files, as the Worker's ASSETS binding answers them: index.html for a folder, as Cloudflare's assets do)
-function assets() {
+// (Mail's files, as the Worker's ASSETS binding answers them: index.html for a folder, each with its type, as Cloudflare's
+// assets do. missing: paths taken as left out of the deploy; spa: a missing file answered 200 with Mail's own index.html,
+// as wrangler.jsonc's not_found_handling "single-page-application" does; fail: paths whose fetch throws; type: a type
+// to give a path instead of its own)
+const TYPES = { html: 'text/html; charset=utf-8', js: 'application/javascript', css: 'text/css; charset=utf-8' };
+function assets({ missing = [], spa = false, fail = [], type = {} } = {}) {
   const asked = [];
   return {
     asked,
     fetch: async (req) => {
       const path = new URL(req.url).pathname;
       asked.push(`${req.method} ${path}`);
-      const file = path.endsWith('/') ? `${path.slice(1)}index.html` : path.slice(1);
-      if (!existsSync(new URL(file, PUB))) return new Response('Not found', { status: 404 });
-      return new Response(readFileSync(new URL(file, PUB)), { headers: { 'Content-Type': 'text/plain', 'Content-Security-Policy': "frame-ancestors 'none'", ETag: '"x"' } });
+      if (fail.includes(path)) throw new Error('assets down');
+      let file = path.endsWith('/') ? `${path.slice(1)}index.html` : path.slice(1);
+      if (missing.includes(path) || !existsSync(new URL(file, PUB))) {
+        if (!spa) return new Response('Not found', { status: 404 });
+        file = 'index.html';
+      }
+      const headers = { 'Content-Type': path in type ? type[path] : TYPES[file.split('.').pop()] || 'text/plain', 'Content-Security-Policy': "frame-ancestors 'none'", ETag: '"x"' };
+      return new Response(readFileSync(new URL(file, PUB)), { headers });
     },
   };
 }
@@ -110,6 +119,61 @@ test('/body, /body/index.html, /body/x, a file without ?v=, any other method: 40
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(await res.text(), read(`body/${file}`));
   }
+});
+
+test('a shell file left out of the deploy is never Mail’s own page under the shell’s name (single-page-application): 404', { skip }, async () => {
+  const mailPage = read('index.html');
+  assert.ok(!/data-parents=""/.test(mailPage), 'Mail’s own page has no shell mark');
+  const gone = { missing: ['/body/', '/body/body.js', '/body/body.css'], spa: true };
+  for (const path of ['/body/', `/body/body.js?v=${BUILD}`, `/body/body.css?v=${BUILD}`]) {
+    const ASSETS = assets(gone);
+    const res = await route.serveBody(req(path), { ASSETS }, HUBS);
+    assert.equal(res.status, 404, path);
+    assert.ok(!(await res.text()).includes('app.js'), `${path}: none of Mail’s page`);
+    // (the fake really answered Mail's page: what the Worker refused)
+    assert.equal((await ASSETS.fetch(req(new URL(path, 'https://x').pathname))).headers.get('content-type'), TYPES.html);
+  }
+  // (a file that comes back as HTML, or as the wrong kind, is refused too; JavaScript under either of its names is fine)
+  for (const [path, type, status] of [['/body/body.js', 'text/html', 404], ['/body/body.js', 'text/css', 404], ['/body/body.css', 'text/javascript', 404], ['/body/body.css', 'text/html; charset=utf-8', 404],
+    ['/body/body.js', '', 404], ['/body/body.js', 'text/javascript; charset=utf-8', 200], ['/body/body.js', 'application/javascript', 200], ['/body/body.css', 'text/css', 200]]) {
+    const res = await route.serveBody(req(`${path}?v=${BUILD}`), { ASSETS: assets({ type: { [path]: type } }) }, HUBS);
+    assert.equal(res.status, status, `${path} as ${type || 'nothing'}`);
+  }
+});
+
+test('Mail’s build unread (assets failing for /app.js): never ?v=0 and never kept; the deployment’s id stands in, read again next time', { skip }, async () => {
+  const BODY_ID = 'b0d1e5a7-3f0e-4c2b-9a1d-6e5f4c3b2a10';
+  for (const env of [{ BUILD_ID: 'deploy-7f3a' }, { CF_VERSION_METADATA: { id: BODY_ID } }]) {
+    const down = assets({ fail: ['/app.js'] });
+    const res = await route.serveBody(req('/body/'), { ...env, ASSETS: down }, HUBS);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    const v = /src="\/body\/body\.js\?v=([^"]+)"/.exec(html)?.[1];
+    assert.ok(v && v !== '0' && !html.includes('?v=0') && v !== BUILD, `the stand-in: ${v}`);
+    assert.ok(v.includes(String(env.BUILD_ID || BODY_ID).replace(/-/g, '').slice(0, 20)), `the deployment's id: ${v}`);
+    assert.ok(html.includes(`href="/body/body.css?v=${v}"`));
+    // (an address the files answer at, kept a year: this deployment's alone)
+    assert.equal((await route.serveBody(req(`/body/body.js?v=${v}`), { ASSETS: assets() }, HUBS)).status, 200, v);
+    // (the next asks again, and then keeps what it read)
+    const up = assets();
+    const again = await (await route.serveBody(req('/body/'), { ...env, ASSETS: up }, HUBS)).text();
+    assert.ok(again.includes(`src="/body/body.js?v=${BUILD}"`) && up.asked.includes('GET /app.js'), 'read again once it can be');
+    const kept = assets();
+    await route.serveBody(req('/body/'), { ...env, ASSETS: kept }, HUBS);
+    assert.deepEqual(kept.asked, ['GET /body/'], 'then kept for the deployment');
+  }
+  // (an app.js without its BUILD line is the same as none)
+  const odd = { fetch: async (q) => (new URL(q.url).pathname === '/app.js' ? new Response('// no build', { headers: { 'Content-Type': TYPES.js } }) : assets().fetch(q)) };
+  const oddHtml = await (await route.serveBody(req('/body/'), { BUILD_ID: 'deploy-odd', ASSETS: odd }, HUBS)).text();
+  assert.ok(!oddHtml.includes('?v=0') && oddHtml.includes('?v=ddeployodd'), 'no BUILD line: the deployment’s id');
+  // (no deployment id at all, as under wrangler dev with nothing kept yet: an address used once, each time)
+  const fresh = await import(`${new URL('src/body.js', EMAIL).href}?unread=${Date.now()}`);
+  const vs = [];
+  for (let i = 0; i < 2; i++) {
+    const html = await (await fresh.serveBody(req('/body/'), { ASSETS: assets({ fail: ['/app.js'] }) }, HUBS)).text();
+    vs.push(/src="\/body\/body\.js\?v=([^"]+)"/.exec(html)?.[1]);
+  }
+  assert.ok(vs.every((v) => v && v !== '0' && /^[\w.-]{1,32}$/.test(v)) && vs[0] !== vs[1], JSON.stringify(vs));
 });
 
 test('through Mail’s Worker: every /body path goes to body.js, and /body/ is 404 while no hub switch is on', { skip }, async () => {
@@ -190,7 +254,7 @@ function el(tag, doc) {
 const COLOURS = { light: { '--mail-text': '#0d1020', '--mail-link': '#1f63d6', '--mail-quote': 'rgba(20, 24, 44, 0.62)', '--mail-rule': 'rgba(20, 24, 44, 0.22)' },
   dark: { '--mail-text': '#f5f6fb', '--mail-link': '#8cc2ff', '--mail-quote': 'rgba(235, 238, 250, 0.62)', '--mail-rule': 'rgba(235, 238, 250, 0.28)' } };
 async function shell({ hash, parents = 'https://inflite.ai http://ifl.test:8788', answer = { status: 200, body: { text: 'Hello\n\nOn Mon, Pat wrote:\n> Hi', html: '' } }, framed = true }) {
-  const posts = [], fetched = [], winOn = {};
+  const posts = [], fetched = [], winOn = {}, observers = [];
   let reloads = 0;
   const root = el('html');
   root.setAttribute('data-parents', parents);
@@ -206,8 +270,14 @@ async function shell({ hash, parents = 'https://inflite.ai http://ifl.test:8788'
     parent: framed ? parent : win, document: doc, location,
     addEventListener: (t, f) => ((winOn[t] ||= []).push(f)),
     getComputedStyle: () => ({ getPropertyValue: (n) => COLOURS[root.getAttribute('data-t') || 'light'][n] || '' }),
-    fetch: async (u) => { fetched.push(u); return new Response(JSON.stringify(answer.body ?? {}), { status: answer.status }); },
-    ResizeObserver: class { observe() {} disconnect() {} },
+    fetch: async (u) => { fetched.push(u); if (answer.throws) throw new TypeError('Failed to fetch'); return new Response(answer.raw ?? JSON.stringify(answer.body ?? {}), { status: answer.status }); },
+    // (as a browser's: its first callback comes as soon as it observes, whatever is there yet)
+    ResizeObserver: class {
+      constructor(cb) { this.cb = cb; this.on = []; observers.push(this); }
+      observe(t) { this.on.push(t); queueMicrotask(() => this.fire()); }
+      fire() { if (this.on.length) this.cb(this.on.map((target) => ({ target })), this); }
+      disconnect() { this.on = []; }
+    },
     URLSearchParams, Date, Math, JSON, String, Object, Array, Number, parseFloat, encodeURIComponent, Promise, Set,
   });
   win.window = win;
@@ -215,7 +285,9 @@ async function shell({ hash, parents = 'https://inflite.ai http://ifl.test:8788'
   await new Promise((r) => setTimeout(r, 10));
   const say = (data, { source = parent, origin = 'https://inflite.ai' } = {}) => { for (const f of winOn.message || []) f({ data, source, origin }); };
   const frame = () => b.kids.find((k) => k.tag === 'iframe');
-  return { posts, fetched, b, root, say, frame, parent, win, location, reloads: () => reloads, hashchange: () => (winOn.hashchange || []).forEach((f) => f()) };
+  // (a layout: every observer told its targets' sizes again)
+  const relayout = () => observers.forEach((o) => o.fire());
+  return { posts, fetched, b, root, say, frame, parent, win, location, relayout, reloads: () => reloads, hashchange: () => (winOn.hashchange || []).forEach((f) => f()) };
 }
 const H = (o) => new URLSearchParams(o).toString();
 const GOOD = { m: 'msg-1', t: 'light', img: '0', p: 'https://inflite.ai' };
@@ -316,10 +388,33 @@ test('signed out of Mail: the shell says “Open Mail to read this” in 64 px, 
   assert.deepEqual(s.posts, [{ data: { ifl: 'mailbody', v: 1, id: 'msg-1', h: 64 }, target: 'https://inflite.ai' }]);
   assert.equal(s.b.kids[0].textContent, 'Open Mail to read this');
   assert.equal(s.frame(), undefined);
-  for (const status of [403, 404, 500]) {
-    const t = await shell({ hash: `#${H(GOOD)}`, answer: { status, body: {} } });
-    assert.deepEqual([t.posts, t.b.kids], [[], []], String(status));
+  for (const answer of [{ status: 403, body: {} }, { status: 404, body: {} }, { status: 500, body: {} }, { status: 200, raw: 'not json' }, { throws: true }]) {
+    const t = await shell({ hash: `#${H(GOOD)}`, answer });
+    t.relayout();
+    await new Promise((r) => setTimeout(r, 5));
+    t.relayout();
+    assert.deepEqual([t.posts, t.b.kids], [[], []], JSON.stringify(answer));
   }
+});
+
+test('the shell says no height before it has drawn something: its first layout, empty, is not one (the page’s 6 s rule stands)', { skip }, async () => {
+  // (a theme from the page before the message has come: still nothing drawn, nothing said)
+  const s = await shell({ hash: `#${H(GOOD)}`, answer: { status: 404, body: {} } });
+  s.say({ ifl: 'mailbody', v: 1, t: 'dark' });
+  s.relayout();
+  assert.deepEqual(s.posts, []);
+  assert.equal(s.root.getAttribute('data-t'), 'dark');
+  // (drawn: from then on, a layout says the height)
+  const d = await shell({ hash: `#${H(GOOD)}` });
+  assert.ok(d.frame(), 'drawn');
+  assert.ok(!d.posts.some((p) => 'h' in p.data), 'nothing said of a height before the frame is there, or by its first empty layout');
+  d.frame().style.height = '300px';
+  d.relayout();
+  assert.deepEqual(d.posts.filter((p) => 'h' in p.data).map((p) => p.data.h), [300]);
+  // (the note, signed out: drawn too, so its own layout may say its size)
+  const n = await shell({ hash: `#${H(GOOD)}`, answer: { status: 401, body: {} } });
+  n.relayout();
+  assert.deepEqual(n.posts.map((p) => p.data.h), [64]);
 });
 
 // (Mail's own text path, app.js's messageBody, run with a stand-in h(), beside the shell's textParts)

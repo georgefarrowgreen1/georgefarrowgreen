@@ -129,7 +129,8 @@ ok(srcs.Hostile === `${MAIL}/body/#m=${ids.Hostile.id}&t=light&img=0&p=${encodeU
 const heights = async () => p.evaluate(() => Object.fromEntries(Object.entries(frames_).map(([k, f]) => [k, Number(f.el.getAttribute('height'))])));
 const heard = async (keys) => { for (let i = 0; i < 60; i++) { const h = await heights(); if (keys.every((k) => h[k] !== 120)) return h; await wait(250); } return heights(); };
 const h1 = await heard(['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']);
-ok(Object.values(h1).every((h) => h >= 40 && h !== 120), 'every frame said its height', JSON.stringify({ h1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
+// (a real height, the message's own: never a shell's first empty layout (40), which would stop the page's 6 s rule)
+ok(Object.values(h1).every((h) => h >= 40 && h !== 120) && ['Hostile', 'Quoted', 'Wide'].every((k) => h1[k] > 64), 'every frame said its height, its message’s own (Hostile, Quoted and Wide taller than 64)', JSON.stringify({ h1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
 await p.screenshot({ path: `${out}/frames.png`, fullPage: true });
 
 // (the shell drew the message: its inner frame, from the shell's own document, as Playwright can see it)
@@ -232,7 +233,10 @@ await wait(7000);
 const offFrame = p.frames().find((f) => f.url().includes(`m=${ids.Other.id}&t=dark`));
 const offDrawn = offFrame ? await offFrame.evaluate(() => !!document.querySelector('script[src="/app.js"], .pane, #app')).catch(() => false) : false;
 const offCover = await p.evaluate(() => !!frames_.Offline.el.nextElementSibling?.classList.contains('mail-body-cover'));
-ok(!offDrawn && !offCover, 'offline: the frame is the browser’s error, not Mail’s whole page; and no “Couldn’t show” (the module’s offline state covers it)', JSON.stringify({ offDrawn, offCover }));
+// (and nothing heard from it: its height still the page's own 120, so it's the offline rule that holds the cover back,
+// not a height the shell said, kept or not)
+const offH = await p.evaluate(() => Number(frames_.Offline.el.getAttribute('height')));
+ok(!offDrawn && !offCover && offH === 120, 'offline: the frame is the browser’s error, not Mail’s whole page; nothing heard (still 120); and no “Couldn’t show” (the module’s offline state covers it)', JSON.stringify({ offDrawn, offCover, offH }));
 await ctx.setOffline(false);
 const kept2 = await keptPage();
 ok(kept2 === null || !/body\/body\.js/.test(kept2), 'and Mail’s kept page still Mail’s after', kept2?.slice(0, 80));
@@ -242,6 +246,20 @@ const refusal = /violates the following Content Security Policy directive|becaus
 const otherErrs = errs.slice(pageErrs0).filter((e) => !refusal.test(e) && !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|Load failed/i.test(e));
 ok(otherErrs.length === 0, 'no error on the page (the browser’s refusals of the hostile mail aside)', JSON.stringify(otherErrs));
 ok(errs.slice(pageErrs0).some((e) => /Blocked script execution in 'about:srcdoc'/.test(e)) && errs.slice(pageErrs0).some((e) => /Blocked form submission/.test(e)), 'and the refusals were the sandbox’s: the mail’s script and form refused');
+
+// (online, a message Mail hasn't got (deleted, say): the shell loads but has nothing to draw, so says nothing, and the
+// page covers the frame in about 6 s: "Couldn't show this message · Open in Mail", to that conversation in Mail)
+const goneAt = Date.now();
+await p.evaluate((m) => window.add('Gone', m, { theme: 'light', eager: true }), { ...msg('Other'), id: 'nosuchmessage' });
+let gone = null;
+for (let i = 0; i < 40; i++) {
+  gone = await p.evaluate(() => { const f = frames_.Gone.el, c = f.nextElementSibling; return { h: Number(f.getAttribute('height')), hidden: f.hidden, cover: c?.classList.contains('mail-body-cover') ? c.textContent : null, href: c?.querySelector('a')?.href || null }; });
+  if (gone.cover) break;
+  await wait(250);
+}
+const goneMs = Date.now() - goneAt;
+ok(gone?.cover === 'Couldn’t show this message · Open in Mail' && gone.href === `${MAIL}/#thread=${ids.Other.threadId}` && gone.hidden && gone.h === 120 && goneMs < 9500,
+  'online, a message Mail hasn’t got: nothing heard, and the frame covered within about 7 s, with Open in Mail', JSON.stringify({ gone, goneMs }));
 
 // ---- Part B: through the reader at /mail/ (after MM, MR and MT are merged) ----
 const readerStub = !existsSync(new URL('reader.js', ROOFDIR)) || /export const STUB = true/.test(readFileSync(new URL('reader.js', ROOFDIR), 'utf8'));
