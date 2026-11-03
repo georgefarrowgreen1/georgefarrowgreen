@@ -95,17 +95,26 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, ro
     if (module === 'connector' && p === '/weather/roof/connector.js') return r.fulfill({ contentType: 'text/javascript', body: CONNECTOR });
     return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
   });
+  // (Weather's own files, as the hub forwards them: from this repo, unminified)
+  await ctx.route((u) => { const p = new URL(u).pathname; return /^\/weather\/[\w-]+\.(js|css)$/.test(p) && existsSync(`${MAIN}weather/${p.slice(9)}`); }, (r) => {
+    const p = new URL(r.request().url()).pathname;
+    return r.fulfill({ contentType: p.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}weather/${p.slice(9)}`, 'utf8') });
+  });
   await ctx.route((u) => /^(weather|chat|fitness|finance)\./.test(new URL(u).hostname), (r) => r.fulfill({ contentType: 'text/html', body: `<!doctype html><title>Own</title><p>OWN ${new URL(r.request().url()).hostname}</p>` }));
   if (warning) await ctx.route((u) => new URL(u).pathname === '/api/today', async (r) => {
-    try { const res = await r.fetch(), a = await res.json(); if (a?.cards?.weather) a.cards.weather.warning = warning; await r.fulfill({ response: res, json: a }); } catch {}
+    // (with the answer's links to the apps put on this site's, weather.localhost:8787, as weather.inflite.ai is live: the
+    // hub takes an app's own address to its path only on its own site)
+    try { const res = await r.fetch(), a = JSON.parse((await res.text()).replace(/https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/g, 'http://$1.localhost:8787')); if (a?.cards?.weather) a.cards.weather.warning = warning; await r.fulfill({ response: res, json: a }); } catch {}
   });
   await setup?.(ctx);
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
+  p.on('response', (r) => { if (r.status() >= 500) errs.push(`${r.status()} from ${new URL(r.url()).pathname}`); });
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
   await p.clock.setFixedTime(new Date(MIDDAY.at));
+  // (documents loaded in the tab: a pushState or a hash is never one)
   let loads = 0;
-  p.on('framenavigated', (f) => { if (f === p.mainFrame()) loads++; });
+  p.on('load', () => { loads++; });
   const t0 = Date.now();
   await p.goto(BASE + path);
   if (wait) await (signedIn ? p.waitForSelector(`#in:not([hidden]) ${H.TAB}`) : p.waitForSelector('#out:not([hidden]) #signin'));
@@ -129,7 +138,7 @@ await part('header and tabs', async () => {
   same(await text(p, H.HD_LINE), '12:30 · what’s next', 'its line: the phase’s (day.js)');
   ok(await p.$(H.HD_EDIT), 'Edit, an act of Today’s');
   ok(await p.$(H.HD_SEARCH), 'Search, always');
-  ok(await p.$(H.HD_ME) && !(await p.$(H.HD_BACK)), 'your photo leads, no Back on a tab screen');
+  ok(await p.isVisible(H.HD_ME) && !(await p.isVisible(H.HD_BACK)), 'your photo leads, no Back on a tab screen');
   same(await p.$eval('nav#tabs', (n) => n.classList.contains('has-pill')), true, 'the tab bar has its sliding pill');
   same(await p.$$eval(H.TAB, (as) => as.map((a) => [a.dataset.tab, a.getAttribute('aria-current')])), [['today', 'page'], ['chats', null], ['apps', null], ['you', null]], 'Today current (aria-current="page")');
   await p.evaluate(() => { window.__same = 1; });
@@ -155,7 +164,7 @@ await part('header and tabs', async () => {
   await p.click('.ifm-pop [data-k=apps]');
   await p.waitForSelector(`${H.YOU}:not([hidden]) ${H.YOU_APP_ROW}`, { timeout: 10000 });
   same(new URL(p.url()).hash, '#you=apps', 'Connected Apps: /#you=apps');
-  ok(await p.$eval(H.YOU_APPS, (s) => { const r = s.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), 'scrolled to Connected Apps');
+  ok(await p.waitForFunction((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return r.top < innerHeight * 0.6 && r.bottom > 0 && scrollY > 0; }, H.YOU_APPS, { timeout: 4000 }).then(() => true, () => false), 'scrolled to Connected Apps');
   await p.screenshot({ path: `${OUT}/you-apps-390-dark.png` });
   // (#morning, then Back: the sheet opened and the address tidied; Back shuts it, still in the page)
   await p.click(H.tab('today'));
@@ -276,7 +285,7 @@ await part('search', async () => {
 await part('sheets and toasts', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you' });
-  await p.waitForSelector(`${H.TODAY}, #youRules .rule`);
+  await p.waitForSelector('#youRules .rule');
   await p.click(H.tab('today'));
   await p.waitForFunction(() => !document.getElementById('today').hidden);
   await p.click(H.HD_EDIT);
@@ -371,8 +380,7 @@ await part('no roof', async () => {
   const { ctx, p, loads } = await open({ hub: { ready: true }, path: '/#apps', weatherPage: '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style><p>MILESTONE 1 WEATHER</p>' });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
   same(await p.evaluate(() => sessionStorage.getItem('ifl-roof')), '0', 'a missing roof: off, kept as ifl-roof "0"');
-  const a = await p.$(H.appTile('weather')).then((t) => t.evaluateHandle((t) => (t.matches('a') ? t : t.querySelector('a[href]'))));
-  await a.click();
+  await p.locator(H.appTile('weather')).locator('a[href="/weather/"]').first().click();
   await p.waitForSelector('text=MILESTONE 1 WEATHER', { timeout: 10000 });
   same(new URL(p.url()).pathname, '/weather/', 'the tile: a page load of the hub’s Weather page');
   same(loads(), 2, 'a main-frame navigation, not the framework’s');
@@ -384,8 +392,7 @@ await part('module error state', async () => {
   await mode({ phase: 'midday' });
   const { ctx, p, loads } = await open({ path: '/#apps', module: 'missing' });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
-  const a = await p.$(H.appTile('weather')).then((t) => t.evaluateHandle((t) => (t.matches('a') ? t : t.querySelector('a[href]'))));
-  await a.click();
+  await p.locator(H.appTile('weather')).locator('a[href="/weather/"]').first().click();
   await p.waitForSelector(`${H.M_WEATHER}:not([hidden]) ${H.ERROR_RETRY}`, { timeout: 20000 });
   same(new URL(p.url()).pathname, '/weather/', 'Weather in the page, at /weather/');
   same(loads(), 1, 'in the same document');
