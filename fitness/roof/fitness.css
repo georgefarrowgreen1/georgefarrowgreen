@@ -729,11 +729,11 @@
 .m-fitness .mv-week .line-said{margin: 0;}
 @media (prefers-color-scheme: light){
 .m-fitness .sday.on{background: var(--tint-deep); color: #fff;}
-.m-fitness .sday.on small{color: rgba(255, 255, 255, 0.8);}
+.m-fitness .sday.on small{color: rgba(255, 255, 255, 0.92);}
 .m-fitness .sday.on .r-rest{fill: rgba(255, 255, 255, 0.5);}
 }
 [data-app="fitness"][data-theme="light"] .m-fitness .sday.on{background: var(--tint-deep); color: #fff;}
-[data-app="fitness"][data-theme="light"] .m-fitness .sday.on small{color: rgba(255, 255, 255, 0.8);}
+[data-app="fitness"][data-theme="light"] .m-fitness .sday.on small{color: rgba(255, 255, 255, 0.92);}
 [data-app="fitness"][data-theme="light"] .m-fitness .sday.on .r-rest{fill: rgba(255, 255, 255, 0.5);}
 .m-fitness .r-later{fill: none; stroke: color-mix(in srgb, var(--text) 18%, transparent); stroke-width: 1.5; stroke-dasharray: 1 3;}
 .m-fitness .ag-row.later .tx b{color: var(--text-2); font-weight: 500;}
