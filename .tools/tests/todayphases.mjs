@@ -10,7 +10,10 @@
 // IFL.hub.go, Send through IFL.hub.send with the card's words and card, Send to Leo in one tap through Chat's engine,
 // and Waiting for You's words from the engine only beside a message the server named and only when as new as the
 // server's. And once Today's page is the hub's (its marker, batch S), the page's own IFL.hub with no stand-in: the
-// hub's paths and Send a button, with /api/hub saying ready. No CSP violation, console error or sideways scroll anywhere.
+// hub's paths and Send a button, with /api/hub saying ready. Under One roof (the framework beside: roof/router.js), the
+// header's line is the phase's (the date above the title, in the crumb), the page's toasts are the framework's, and
+// Radar opens in the page at /weather/#radar (one document), its screen Weather's, here its error state with both ways
+// on (the module's files not served by this stub stack). No CSP violation, console error or sideways scroll anywhere.
 //   node .tools/tests/todayphases.mjs [state dir] [screenshots dir]     (or ./run.sh todayphases)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -121,7 +124,11 @@ const text = (p, s) => p.$eval(s, (e) => e.innerText.replace(/\s+/g, ' ').trim()
 const shown = (p, s) => p.$eval(s, (e) => !e.hidden && e.getClientRects().length > 0).catch(() => false);
 const ONLY = process.env.ONLY?.split(',');
 async function part(name, fn) { if (ONLY && !ONLY.some((o) => name.includes(o))) return; try { await fn(); } catch (e) { ok(false, name, e.stack?.split('\n').slice(0, 3).join(' | ')); } }
-const LINES = { morning: 'Monday 2 November · London', midday: '12:30 · what’s next', preride: '16:05 · your ride', riding: '16:50 · riding', after: '18:05 · ride done', 'after-fit': '18:05 · ride done', evening: '21:00 · closed' };
+// (One roof: the date is the header's crumb, above the title, and the line the phase's own, or where the weather is in
+// the morning; before it, the line was the date and the place)
+const ROOF = existsSync(`${IFL}today/public/roof/router.js`);
+const TOAST_ON = ROOF ? '.ifl-toast.on' : '.toast.on';
+const LINES = { morning: ROOF ? 'London' : 'Monday 2 November · London', midday: '12:30 · what’s next', preride: '16:05 · your ride', riding: '16:50 · riding', after: '18:05 · ride done', 'after-fit': '18:05 · ride done', evening: '21:00 · closed' };
 const SHOWS = { morning: 'wcr', midday: 'wcr', preride: '', riding: '', after: 'cr', 'after-fit': 'cr', evening: 'cr' };
 
 // ======================================================================= each moment of the day, off the hub
@@ -136,6 +143,7 @@ await part('each phase', async () => {
     same(await p.$$eval(`${sel} #top .dt-lines p`, (ps) => ps.map((x) => x.textContent)), top.lines, `${ph}: its lines`);
     same(await p.$$eval(`${sel} #top .dt-stats > div`, (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])), top.stats.map((s) => [s.label, s.value]), `${ph}: its figures`);
     same(await text(p, '#hd .ifh-line'), LINES[ph], `${ph}: the header’s line`);
+    if (ROOF) same(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', `${ph}: the date above the title (the crumb)`);
     const want = SHOWS[ph], hasWaiting = want.includes('w') && a.waiting.length > 0;
     same(await shown(p, `${sel} #waiting`), hasWaiting, `${ph}: Waiting for You ${hasWaiting ? 'shown' : 'not shown'}`);
     same(await shown(p, `${sel} #coming`), want.includes('c'), `${ph}: Coming Up ${want.includes('c') ? 'shown' : 'not shown'}`);
@@ -242,7 +250,7 @@ await part('undo', async () => {
   const sent = [];
   p.on('request', (r) => { if (r.method() === 'POST' && new URL(r.url()).pathname.startsWith('/api/act')) sent.push([new URL(r.url()).pathname, r.headers()['x-inflite'], r.postData()]); });
   await p.click(`${DAY} #top button[data-do="undo"][data-id="${MOVE}"]`);
-  await p.waitForFunction(() => /Undone\. Moves are suggested now, not made/.test(document.querySelector('.toast.on')?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction(() => /Undone\. Moves are suggested now, not made/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
   ok(true, 'Undo: the account’s word, said');
   const u = (await reqs()).find((e) => e.method === 'POST' && e.path.endsWith('/today/act/undo'));
   same(u && JSON.parse(u.body), { id: MOVE }, 'Undo: POST /api/act/undo { id }');
@@ -260,7 +268,7 @@ await part('keep', async () => {
   const { ctx, p } = await open('morning', { patch: keep });
   await reset();
   await p.click(`${DAY} #top button[data-do="keep"]`);
-  await p.waitForFunction(() => /Kept/.test(document.querySelector('.toast.on')?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction(() => /Kept/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
   const k = (await reqs()).find((e) => e.method === 'POST' && e.path.endsWith('/today/act'));
   same(k && JSON.parse(k.body), { id: ADD }, 'Keep: POST /api/act { id }');
   await p.waitForSelector(`${DAY} #top button[data-do="keep"]`, { state: 'detached', timeout: 5000 });
@@ -281,7 +289,7 @@ await part('take', async () => {
   });
   same(await text(p, `${DAY} #top button[data-do="take"]`), 'Move It to 16:45', 'the suggestion’s one button');
   await p.click(`${DAY} #top button[data-do="take"]`);
-  await p.waitForFunction(() => /Moved your ride to 16:45/.test(document.querySelector('.toast.on')?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction(() => /Moved your ride to 16:45/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
   same(bodies, [['1', JSON.stringify({ id: OFFER })]], 'Take: POST /api/act { id }, with X-Inflite');
   await p.waitForSelector(`${DAY} #top button[data-do="take"]`, { state: 'detached', timeout: 5000 });
   ok(true, 'Take: taken, and offered no more');
@@ -292,7 +300,7 @@ await part('acts not built yet', async () => {
   const { ctx, p } = await open('morning');
   await p.route('**/api/act/undo', (r) => r.fulfill({ status: 501, json: { error: 'Not built yet.' } }));
   await p.click(`${DAY} #top button[data-do="undo"][data-id="${MOVE}"]`);
-  await p.waitForFunction(() => /can’t do that just yet/.test(document.querySelector('.toast.on')?.textContent || ''), null, { timeout: 5000 });
+  await p.waitForFunction(() => /can’t do that just yet/.test(document.querySelector(TOAST_ON)?.textContent || ''), null, { timeout: 5000 });
   same(await p.$$eval(`${DAY} #top [data-do="undo"], ${DAY} #top [data-do="take"], ${DAY} #top [data-do="keep"]`, (xs) => xs.length), 0, 'an account side without acts (501): their buttons gone');
   ok(await p.$(`${DAY} #top [data-send]`), 'and the card otherwise as it was');
   await ctx.close();
@@ -338,12 +346,42 @@ await part('at the hub: links and Send', async () => {
   same((await hubLog(p, 'send')).at(-1), ['send', a.cards.markets.share, a.cards.markets.sendCard, {}], 'the Markets card: the same, percent only');
   ok(!/[£$€]/.test(JSON.stringify(await hubLog(p, 'send'))), 'no amount in anything sent');
   same(new URL(p.url()).pathname, '/', 'still on Today');
-  // (a stand-in Weather page, which asks for the hub's cross-fade as every hub page does (InFlite's menu.css:
-  // @view-transition): one that didn't would have the browser give up the cross-fade from Today with an error)
-  await p.route('**/weather/**', (r) => r.fulfill({ body: '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style>', contentType: 'text/html' }));
+  if (!ROOF) {
+    // (a stand-in Weather page, which asks for the hub's cross-fade as every hub page does (InFlite's menu.css:
+    // @view-transition): one that didn't would have the browser give up the cross-fade from Today with an error)
+    await p.route('**/weather/**', (r) => r.fulfill({ body: '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style>', contentType: 'text/html' }));
+    await p.click(`${DAY} #top a[data-do="open"]`);
+    await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
+    ok(true, 'Radar opens /weather/#radar in the same window');
+  }
+  await ctx.close();
+});
+
+// (One roof: with the hub ready and roof on (/api/hub stood in for), Radar is the framework's, in this same document: the
+// address /weather/#radar by pushState, Weather's screen shown, and, the module's files not served by this stub stack
+// (stood in for as missing, 404), its error state with Try Again and Open Weather on Its Own, never a load of a page)
+await part('at the hub, under the roof: Radar in the page', async () => {
+  if (!ROOF) { console.log('SKIP  Radar in the page: the inflite repo beside has no roof yet'); return; }
+  const setup = async (p) => {
+    await p.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: true, roof: true }, headers: { 'Cache-Control': 'no-store' } }));
+    await p.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ body: '<!doctype html><title>Chats</title>', contentType: 'text/html' }));
+    await p.route((u) => new URL(u).pathname.startsWith('/weather/roof/'), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
+  };
+  const { ctx, p } = await open('midday', { hub: {}, setup });
+  let loads = 0;
+  p.on('framenavigated', (f) => { if (f === p.mainFrame()) loads++; });
+  await p.evaluate(() => { window.__same = 1; });
   await p.click(`${DAY} #top a[data-do="open"]`);
   await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
-  ok(true, 'Radar opens /weather/#radar in the same window');
+  await p.waitForSelector('main#m-weather:not([hidden]) .ifl-error [data-act=retry]', { timeout: 20000 });
+  ok(await p.evaluate(() => window.__same === 1), 'Radar: /weather/#radar in the same document (pushState), never a page load');
+  same(loads, 0, 'no main-frame navigation');
+  same(await p.evaluate(() => [document.documentElement.dataset.app, document.getElementById('today').hidden]), ['weather', true], 'Weather’s screen shown, Today’s hidden');
+  ok(await p.$('main#m-weather .ifl-error [data-act=own]'), 'the error state offers Open Weather on Its Own beside Try Again');
+  await p.screenshot({ path: `${OUT}/hub-radar-error.png` });
+  await p.goBack();
+  await p.waitForFunction(() => !document.getElementById('today').hidden, null, { timeout: 5000 });
+  ok(await p.evaluate(() => window.__same === 1) && new URL(p.url()).pathname === '/', 'Back: Today again, in the same document');
   await ctx.close();
 });
 

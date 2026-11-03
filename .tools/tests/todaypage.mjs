@@ -9,6 +9,8 @@
 // hand-back; no one's day drawn once signed out, at any moment; the hostile names as text; each card in each state (The
 // Rest of Today, #rest), its links, Try Again; the requests the page makes; Edit; the morning with a stand-in push
 // service (through the device route); the menu and Sign Out; and no CSP violation, console error or sideways scroll.
+// Under One roof (the framework beside: roof/router.js) the header is the framework's (the date above the title, the
+// place as its line, Edit an act: #hd [data-act=edit]) and the page's sheets are InFlite's sheet (dialog[open]).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
@@ -27,6 +29,8 @@ const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c
 const same = (a, b, l) => ok(JSON.stringify(a) === JSON.stringify(b), l, `got ${JSON.stringify(a)?.slice(0, 400)}, wanted ${JSON.stringify(b)?.slice(0, 400)}`);
 if (!existsSync(`${IFL}today/public/index.html`)) { console.log('SKIP  the inflite repo isn’t beside this one'); console.log('FAILS 0'); process.exit(0); }
 
+const ROOF = existsSync(`${IFL}today/public/roof/router.js`);
+const EDIT = ROOF ? '#hd [data-act=edit]' : '#edit', OPEN = (id) => (ROOF ? `#${id}[open]` : `#${id}.on`);
 const FIX = (f) => JSON.parse(readFileSync(new URL(`./mocks/today/${f}`, import.meta.url), 'utf8'));
 const CARDS = FIX('cards.json'), EMPTY = FIX('cards.empty.json'), QUIET = FIX('cards.quiet.json'), SESSION = FIX('session.json');
 const T0 = CARDS.at, TQ = QUIET.at, ME = SESSION.user.id, KEYS = ['weather', 'chat', 'fitness', 'markets'];
@@ -296,7 +300,10 @@ await part('cards: ok', async () => {
     'Tempo 2 × 15', 'Why today:', 'Best 10:00 to 11:00', '11°, dry, a light westerly · London',
     'London open · closes in 8h 20m', '+£61.20', '+0.29%', 'Rolls-Royce did most of the work, adding £48.10.', 'Tesco gave back £12.40.', 'Dividend, around 6 Nov', 'Tesco: about £43.20', '£12,000 of your ISA allowance left', '£8,000 of £20,000 used · till 5 April'])
     has(words, w, `ok: “${w}”`);
-  has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
+  if (ROOF) {
+    has(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', 'the header’s crumb: the day');
+    has(await text(p, '#hd .ifh-line'), 'London', 'the header’s line: the Weather place');
+  } else has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
   const av = (await reqs()).find((e) => e.path.endsWith('/avatar'));
   ok(av && av.query.id, 'the header’s photo is today/avatar');
   await ctx.close();
@@ -510,8 +517,8 @@ await part('edit', async () => {
   await mode('ok'); await reset();
   const { ctx, p } = await open();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
-  await p.click('#edit');
-  await p.waitForSelector('#sh-edit.on');
+  await p.click(EDIT);
+  await p.waitForSelector(OPEN('sh-edit'));
   await p.click('#edList [data-k=chat] [data-mv="-1"]');
   await p.click('#edList [data-k=markets] [data-show]');
   await p.waitForTimeout(900);
@@ -526,7 +533,7 @@ await part('edit', async () => {
   same(JSON.parse(puts.at(-1)?.body || '{}'), { order: KEYS, hidden: [] }, 'Back to the day’s order sends the default');
   await p.keyboard.press('Escape');
   await p.waitForTimeout(400);
-  ok(!(await p.$('#sh-edit.on')), 'Escape closes Edit');
+  ok(!(await p.$(OPEN('sh-edit'))), 'Escape closes Edit');
   await ctx.close();
 });
 await part('edit: a change made while the last is on its way', async () => {
@@ -539,8 +546,8 @@ await part('edit: a change made while the last is on its way', async () => {
     await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
     await p.route('**/api/prefs', async (r) => { await new Promise((y) => setTimeout(y, 700)); await r.continue(); });
     await reset();
-    await p.click('#edit');
-    await p.waitForSelector('#sh-edit.on');
+    await p.click(EDIT);
+    await p.waitForSelector(OPEN('sh-edit'));
     await p.click('#edList [data-k=markets] [data-mv="-1"]');
     await p.waitForTimeout(gap);
     await p.click('#edList [data-k=markets] [data-mv="-1"]');
@@ -562,7 +569,7 @@ await part('morning', async () => {
   // (its settings: in a sheet from the menu, under your photo, not on the page)
   const openMorning = async () => {
     await p.click('#hd .ifh-me'); await p.waitForSelector('.ifm-pop.open');
-    await p.click('.ifm-pop [data-k=morning]'); await p.waitForSelector('#morning.on'); await p.waitForTimeout(700);
+    await p.click('.ifm-pop [data-k=morning]'); await p.waitForSelector(OPEN('morning')); await p.waitForTimeout(700);
   };
   ok(!(await p.isVisible('#mOn')) && !(await p.$('#day #morning')), 'morning: not on the page, only in the menu');
   await openMorning();
