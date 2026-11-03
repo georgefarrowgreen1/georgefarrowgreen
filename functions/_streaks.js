@@ -7,6 +7,7 @@
 
 import { DAY, HOUR } from "./_pigeon.js";
 import { pushTo, prefsOf, isQuiet } from "./_notify.js";
+import { busyMap, holdsFor } from "./_busy.js";
 import { ensureFeathers, earn, STREAK_FEATHERS } from "./_feathers.js";
 
 export const STREAK_MIN = 3;            // a flame from three days in a row
@@ -67,7 +68,8 @@ export async function streakBetween(D, x, y, t) {
   return streakView(await D.prepare("SELECT * FROM pg_streaks WHERE a = ? AND b = ?").bind(a, b).first(), t);
 }
 
-// Three hours before a streak of three or more ends with nothing sent today: tell you both, once
+// Three hours before a streak of three or more ends with nothing sent today: tell you both, once (not one of you in quiet
+// hours, nor on a ride that holds Chat's notifications: functions/_busy.js)
 export async function streakTick(env, D, t) {
   await ensure(D);
   const today = dayOf(t);
@@ -76,6 +78,7 @@ export async function streakTick(env, D, t) {
   const { results } = await D.prepare(`SELECT s.*, ua.name AS a_name, ua.notify_prefs AS a_prefs, ua.pigeons AS a_pigeons, ub.name AS b_name, ub.notify_prefs AS b_prefs, ub.pigeons AS b_pigeons
     FROM pg_streaks s JOIN pg_users ua ON ua.id = s.a JOIN pg_users ub ON ub.id = s.b
     WHERE s.last = ?1 AND s.last - s.start + 1 >= ?2 AND COALESCE(s.warned, -1) < s.last LIMIT 200`).bind(today - 1, STREAK_MIN).all();
+  const busy = results.length ? await busyMap(env.DB || D, results.flatMap((r) => [r.a, r.b]), t).catch(() => new Map()) : new Map();
   for (const r of results) {
     const claimed = await D.prepare("UPDATE pg_streaks SET warned = ?1 WHERE a = ?2 AND b = ?3 AND COALESCE(warned, -1) < ?1").bind(r.last, r.a, r.b).run();
     if (!claimed.meta.changes) continue;
@@ -84,7 +87,7 @@ export async function streakTick(env, D, t) {
     const n = r.last - r.start + 1, hrs = Math.max(1, Math.round(((today + 1) * DAY - t) / HOUR));
     // (only to whoever has pigeons on: streaks are theirs)
     for (const [me, them, themName, prefs, on] of [[r.a, r.b, r.b_name, r.a_prefs, r.a_pigeons], [r.b, r.a, r.a_name, r.b_prefs, r.b_pigeons]]) {
-      const p = prefsOf({ notify_prefs: prefs }); if (on === 0 || !p.streaks || isQuiet(p, t)) continue;
+      const p = prefsOf({ notify_prefs: prefs }); if (on === 0 || !p.streaks || isQuiet(p, t) || holdsFor(busy.get(me), "friends")) continue;
       pushes += await pushTo(env, me, { title: "Keep your streak going",
         body: p.names ? `Your ${n}-day streak with ${firstName(themName)} ends in ${hrs} hour${hrs === 1 ? "" : "s"}. Send a pigeon to keep it alive.` : `One of your ${n}-day streaks ends in ${hrs} hour${hrs === 1 ? "" : "s"}. Send a pigeon to keep it alive.`,
         tag: "streak-" + them, url: `/pigeon/#open=${them}` });
