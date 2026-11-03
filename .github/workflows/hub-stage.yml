@@ -114,6 +114,17 @@ jobs:
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           stage_push
+      # (a Pages secret reaches the site only with a deployment: the live one built again, as hub-key.yml's retry does)
+      - name: Build the Pages project's production again, so HUB_PUSH counts
+        id: pushdeploy
+        if: ${{ !cancelled() && steps.push.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          . .github/hub/hub.sh
+          pages_redeploy
       - name: Fetch the inflite repo at the ref given, and check its staging Worker
         id: clone
         if: ${{ !cancelled() && steps.account.outcome == 'success' }}
