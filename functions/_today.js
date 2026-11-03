@@ -14,8 +14,13 @@ import { HttpError, sha256, b64url, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk } from "./_notify.js";
 import { timesExport, dropTimes } from "./_times.js";
 
-// the cards, in the order a new account has them
-export const CARDS = ["weather", "chat", "fitness", "markets"];
+// the cards a saved order may name (Mail's: the site's admin's alone, whose card is drawn only for them)
+export const CARDS = ["weather", "chat", "fitness", "markets", "mail"];
+// the four every account has, in the order a new account has them, and the morning notification's lines: the cards but
+// Mail's, which is never a line of the morning (One roof stage 4, BI14) and never added to a saved order (Mail's card is
+// in one only where the admin's Edit saved it: the account's page and data say the four, as before; Today's page adds a
+// card missing from the order at its end)
+export const LINES = ["weather", "chat", "fitness", "markets"];
 // devices an account keeps (an eleventh drops the oldest), and the failures in a row that drop one
 const DEVICES = 10, FAILS = 5;
 
@@ -79,10 +84,10 @@ const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${Stri
 // (the cards in the account's order, those it doesn't know left out and any missing put at the end; and those it hid)
 function cardsOf(c) {
   const order = [...new Set((Array.isArray(c?.order) ? c.order : []).filter((k) => CARDS.includes(k)))];
-  return { order: [...order, ...CARDS.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
+  return { order: [...order, ...LINES.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
 }
 // (the lines turned off: false for each, nothing for one that's on)
-const linesOf = (l) => Object.fromEntries(CARDS.filter((k) => l?.[k] === false).map((k) => [k, false]));
+const linesOf = (l) => Object.fromEntries(LINES.filter((k) => l?.[k] === false).map((k) => [k, false]));
 const COLS = "cards, m_on, m_at, m_tz, m_lines, m_sent, m_last, updated";
 // (updated: when it was last changed; null for an account that's never changed anything here)
 const rowOf = (r) => ({
@@ -130,7 +135,7 @@ export async function saveMorning(env, userId, { on, at, lines, tz }) {
   const patch = {};
   if (lines !== undefined) {
     if (!lines || typeof lines !== "object" || Array.isArray(lines)) throw new HttpError(400, "Choose on or off.");
-    for (const k of CARDS) if (lines[k] !== undefined) { if (typeof lines[k] !== "boolean") throw new HttpError(400, "Choose on or off."); patch[k] = lines[k] ? null : false; }
+    for (const k of LINES) if (lines[k] !== undefined) { if (typeof lines[k] !== "boolean") throw new HttpError(400, "Choose on or off."); patch[k] = lines[k] ? null : false; }
   }
   const D = await tddb(env);
   await D.prepare(`INSERT INTO td_prefs (user_id, m_on, m_at, m_tz, m_lines, updated) VALUES (?1, COALESCE(?2, 0), COALESCE(?3, 420), ?4, json_patch('{}', ?5), ?6)
@@ -288,7 +293,7 @@ export async function todayExport(env, userId) {
   return {
     cards: row.cards,
     morning: { on: !!row.m_on, at: hhmm(row.m_at), timeZone: morningTz({ id: userId, notify_prefs: u?.notify_prefs }, row),
-      lines: Object.fromEntries(CARDS.map((k) => [k, row.m_lines[k] !== false])), lastSent: row.m_sent || null },
+      lines: Object.fromEntries(LINES.map((k) => [k, row.m_lines[k] !== false])), lastSent: row.m_sent || null },
     devices: devs.length,
     acts: acts.map(actOut),
     rules: rules.map(ruleOut),

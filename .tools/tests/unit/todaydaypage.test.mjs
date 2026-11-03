@@ -553,3 +553,40 @@ test("day.js and cards.js write no inline style, no inline handler and no box to
   const css = readFileSync(new URL("day.css", PUB), "utf8");
   assert.ok(!/@import|url\(\s*["']?https?:/i.test(css), "day.css loads nothing from elsewhere");
 });
+
+// ---- Mail's card (One roof stage 4, s4/spec §2.5: the inflite repo's today/public/mailcard.js, which cards.js draws for
+// key "mail"): numbers only; "3 from people" or "All caught up"; what's back from Later today, else Updates' unread; its
+// links Mail's own address off the hub and the hub's /mail/ on it; nothing of the answer drawn but its numbers ----
+const mailSkip = skip || (!existsSync(new URL("mailcard.js", PUB)) && "the inflite repo beside has no Mail card yet (today/public/mailcard.js)");
+const mc = mailSkip ? {} : await import(new URL("mailcard.js", PUB).href);
+const MAIL_AT = Date.UTC(2026, 10, 2, 10, 0), OWN = "https://email.inflite.ai";
+const mailHub = { on: true, base: "/", go: (u) => (u.startsWith(`${OWN}/`) ? `/mail/${u.slice(OWN.length + 1)}` : u), send: () => Promise.resolve(true), chat: () => Promise.resolve(null) };
+const mcard = (x = {}) => ({ state: "ok", href: `${OWN}/`, people: 3, updates: 5, later: { n: 2, next: MAIL_AT + 4 * 3600e3, href: `${OWN}/#later` }, ...x });
+
+test("Mail's card: its words from the numbers alone, what's back from Later today first, else Updates, else nothing", { skip: mailSkip }, () => {
+  const ctx = { now: MAIL_AT, tz: "Europe/London", links: LINKS };
+  assert.deepEqual(mc.mailWords(mcard(), ctx), { big: "3 from people", line: "1 back from Later at 14:00", later: true });
+  assert.deepEqual(mc.mailWords(mcard({ people: 0, later: { n: 0, next: null } }), ctx), { big: "All caught up", line: "Updates: 5 unread", later: false });
+  assert.deepEqual(mc.mailWords(mcard({ updates: 0, later: { n: 1, next: MAIL_AT + 20 * 3600e3 } }), ctx), { big: "3 from people", line: "", later: false }, "Later's next tomorrow: not said");
+  assert.deepEqual(mc.mailWords(mcard({ later: { n: 1, next: MAIL_AT - 60e3 } }), ctx).later, false, "one gone by: not said");
+  for (const people of [-1, 1.5, "3", null, undefined, NaN]) assert.equal(mc.mailWords(mcard({ people }), ctx), null, String(people));
+  assert.equal(mc.mailCard(mcard({ people: "3<b>" }), ctx), "", "nothing drawn from what isn't a number");
+});
+
+test("Mail's card: Mail's own address off the hub, the hub's /mail/ on it, anything else no link; no style, handler or box", { skip: mailSkip }, () => {
+  const off = mc.mailCard(mcard(), { now: MAIL_AT, tz: "Europe/London", links: LINKS });
+  assert.match(off, /^<a class="tc-head" href="https:\/\/email\.inflite\.ai\/" aria-label="Open Mail"><img src="\/apps\/mail\.svg" alt=""><span class="tc-app">Mail<\/span>/);
+  assert.match(off, /<h3 class="tc-h">3 from people<\/h3>/);
+  assert.match(off, /<a href="https:\/\/email\.inflite\.ai\/#later">.*1 back from Later at 14:00<\/a>/);
+  const on = mc.mailCard(mcard(), { now: MAIL_AT, tz: "Europe/London", links: LINKS, hub: mailHub });
+  assert.match(on, /class="tc-head" href="\/mail\/"/);
+  assert.match(on, /<a href="\/mail\/#later">/);
+  const bad = mc.mailCard(mcard({ href: "javascript:alert(1)", later: { n: 1, next: MAIL_AT + 3600e3, href: "//evil.test/" } }), { now: MAIL_AT, tz: "Europe/London", links: LINKS });
+  assert.doesNotMatch(bad, /javascript:|evil\.test/);
+  assert.equal((bad.match(/href="#"/g) || []).length, 2);
+  // (Updates' line: words, not a link)
+  assert.match(mc.mailCard(mcard({ later: { n: 0, next: null } }), { now: MAIL_AT, tz: "Europe/London" }), /<p class="tc-p ml-updates">Updates: 5 unread<\/p>$/);
+  const js = readFileSync(new URL("mailcard.js", PUB), "utf8");
+  assert.ok(!/style=\\?["']|setAttribute\(\s*["']style|\son[a-z]+=\\?["']|<input|<textarea|localStorage|sessionStorage|indexedDB/i.test(js), "mailcard.js: no style, handler, box or storage");
+  assert.ok(!/subject|sender|snippet/i.test(js.replace(/^\s*\/\/.*$/gm, "")), "nothing of a message's words read");
+});

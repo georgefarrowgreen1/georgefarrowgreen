@@ -1,17 +1,20 @@
-// needs: hub
+// needs: hub roof-markets roof-fitness
 // Getting about under the roof (One roof, spec §10.2): notification taps delivered into the open framework page
 // (the root worker's { ifl: "route" }), into Chats' page as before, and into a new window when none is open; round trips
 // to the pages that aren't modules yet (Chats, Markets, Fitness, Mail) and back, with route and scroll (ifl-roof-y); the
 // hub pages' tab bar into the framework and the bar itself the same bar on both (UI2); browser back with a sheet open;
 // and the roof turned off while a page is open (the client's side, stood in with routes: /api/hub roof:false, the
-// module's files 404, /weather/ milestone 1's page) [RB6b]. In real Chromium against the hub stack (hubstack.mjs).
+// module's files 404, /weather/ milestone 1's page) [RB6b]. Stage 2 (its spec §9.2): Markets and Fitness are modules
+// here (hubstack's roof-markets, roof-fitness), so Apps → Markets and a Today row → Fitness open in the page; one module
+// turned off (/api/hub apps.markets false) bounces a shown Markets while Weather stays in the page; and a framework page
+// served at an off module's path (the worker's kept / stood in) doesn't loop (RI4). In real Chromium against the hub stack.
 // Every check's line names the spec section it proves; every selector of the framework's is roofhooks.mjs's (§3.14),
 // save rooflib's declared exceptions (EXCEPT: a tile's link, a hub page's tab bar, the shared block's IFL.hub.tabs, which
 // stage 1 doesn't change; only Chats draws it at the hub).
 import * as H from './roofhooks.mjs';
 import {
   HUB, OWN, EXCEPT, checker, phone, account, wxServer, weatherAccount, alive, loads, history, here, shown, gone, textOf, attrOf, count, hide, show, route,
-  tapNotification, rootWorker, alike, PLACES, wait, until, js, closeAll,
+  tapNotification, rootWorker, hostCall, alike, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -133,27 +136,30 @@ await part(4, 'round trips: Weather → Chats → Back to /weather/#days with it
 });
 
 // ======================================================================================================================
-await part(5, 'Apps → Markets → its Back → /#apps; Fitness from a Today row → its Back → Today; Mail’s Back → /#apps', 'D8, UI7', async () => {
+await part(5, 'Apps → Markets in the page → Back → Apps; a Today row → Fitness in the page → Back → Today; Mail’s Back → /#apps', 'stage 2 §2.4, D8, UI7', async () => {
 // ======================================================================================================================
   const q = N.p;
   await q.goto(`${HUB}/#apps`);
   await shown(q, H.APPS); await shown(q, H.appTile('markets'), 20000);
-  await Promise.all([q.waitForURL((u) => u.pathname === '/markets/', { timeout: 20000 }).catch(() => {}), tapTile(q, 'markets')]);
-  const mk = new URL(q.url()).pathname === '/markets/';
-  ok(mk, '5. Apps’ Markets tile: Markets’ own page', q.url());
-  if (mk) { await hubPageUp(q, '/markets/'); await hubBack(q); }
-  ok(mk && (await at(q, '/#apps', 20000)) && (await shown(q, H.APPS, 30000)), '5. Markets’ Back: Apps (/#apps), drawn by the framework (D8)', here(q));
+  const life = await alive(q), docs = loads(q);
+  await tapTile(q, 'markets');
+  const mk = (await shown(q, H.M_MARKETS, 30000)) && (await at(q, '/markets/', 20000));
+  ok(mk && docs.n() === 0 && (await life.same()), '5. Apps’ Markets tile: Markets in the page (its module, no document fetched; stage 2 §2.4)', js({ at: here(q), docs: docs.list }));
+  ok((await attrOf(q, H.HD_BACK, 'aria-label')) === 'Back to Apps', '5. …Back says “Back to Apps”', await attrOf(q, H.HD_BACK, 'aria-label'));
+  await q.click(H.HD_BACK);
+  ok((await at(q, '/#apps', 20000)) && (await shown(q, H.APPS, 30000)) && (await life.same()) && docs.n() === 0, '5. Markets’ Back: Apps (/#apps), the same page (§3.4)', here(q));
 
-  await q.goto(`${HUB}/`);
-  await todayUp(q);
+  await q.click(H.tab('today')); await todayUp(q);
   // (a link to /fitness/#today put into Today's screen by the test, standing in for a Today row: Today's rows are such
-  // links, D8; what's proved is the crumb and Back for a link from Today, not a real row's markup)
+  // links, D8; what's proved is that a link from Today opens Fitness in the page and Back comes back, not a row's markup)
   await q.evaluate((s) => { const a = document.createElement('a'); a.href = '/fitness/#today'; a.id = 't-fit'; a.textContent = 'The Session'; document.querySelector(s).append(a); }, H.TODAY);
-  await Promise.all([q.waitForURL((u) => u.pathname === '/fitness/', { timeout: 20000 }).catch(() => {}), q.evaluate(() => document.getElementById('t-fit').click())]);
-  const fx = new URL(q.url()).pathname === '/fitness/';
-  ok(fx, '5. a link in Today to Fitness (the test’s, standing in for a Today row): Fitness’ own page', q.url());
-  if (fx) { await hubPageUp(q, '/fitness/'); await hubBack(q); }
-  ok(fx && (await at(q, '/', 20000)) && (await todayUp(q)), '5. …Fitness’ Back: Today (D8)', here(q));
+  await q.evaluate(() => document.getElementById('t-fit').click());
+  const fx = (await shown(q, H.M_FITNESS, 30000)) && (await at(q, '/fitness/', 20000));
+  ok(fx && docs.n() === 0 && (await life.same()), '5. a link in Today to /fitness/#today (the test’s, for a Today row): Fitness in the page, tidied to /fitness/', js({ at: here(q), docs: docs.list }));
+  ok((await attrOf(q, H.HD_BACK, 'aria-label')) === 'Back to Today', '5. …Back says “Back to Today”', await attrOf(q, H.HD_BACK, 'aria-label'));
+  await q.click(H.HD_BACK);
+  ok((await at(q, '/', 20000)) && (await todayUp(q)) && (await life.same()), '5. …Fitness’ Back: Today, the same page (§3.4)', here(q));
+  docs.stop();
 
   // Mail's frame stood in for (Mail's own Worker isn't part of this stack): it says { ifl: "back" } as Mail's Back does
   await route(N.ctx, /^http:\/\/email\.ifl\.test:8788\/(#.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Mail</title><p>Mail</p><script>setTimeout(() => parent.postMessage({ ifl: "back" }, "*"), 800)</script>' }));
@@ -297,8 +303,94 @@ await part(8, 'the roof turned off mid-session (the client’s side): a shown We
   await R3.ctx.close();
 });
 
+// ======================================================================================================================
+await part(9, 'one module turned off mid-session: a shown Markets bounces once; Weather stays in the page', 'stage 2 C3, C7, §7, D14', async () => {
+// ======================================================================================================================
+  // (stood in with routes, as roof.yml app=markets state=off would leave the Worker: /api/hub apps.markets false, Markets'
+  // roof files 404, /markets/ Markets' milestone-1 page; Weather and Fitness untouched. No service worker)
+  const offMk = async (ph) => {
+    ph.off = false;
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/api\/hub(\?|$)/, async (r) => {
+      if (!ph.off) return r.continue();
+      const res = await hostCall('ifl.test:8788', '/api/hub', undefined, { cookie: Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ') }).catch(() => null);
+      const j = { ready: true, roof: true, ...(res?.json || {}) }; j.apps = { weather: true, fitness: true, ...(j.apps || {}), markets: false };
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify(j) });
+    });
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/markets\/roof\//, (r) => (ph.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found' }) : r.continue()));
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/markets\/(index\.html)?(\?[^#]*)?$/, (r) => (ph.off && r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Markets</title><h1>MILESTONE 1 MARKETS</h1>' }) : r.continue()));
+  };
+  // a shown Markets: bounced once, by replace, to /markets/ (the hub's page), with the marker
+  const R = await open('noor-mk-off', { sw: 'block', clock: true });
+  await offMk(R);
+  const q = R.p, docs = loads(q);
+  const hubAsks = []; q.on('request', (r) => { if (/\/api\/hub(\?|$)/.test(r.url())) hubAsks.push(Date.now()); });
+  await q.goto(`${HUB}/#apps`); await shown(q, H.appTile('markets'), 30000);
+  await tapTile(q, 'markets'); await shown(q, H.M_MARKETS, 30000); await wait(1500);
+  docs.reset();
+  R.off = true;
+  const a0 = hubAsks.length;
+  await hide(q); await R.ctx.clock.fastForward('06:00'); await show(q);
+  const asked = await until(() => hubAsks.length > a0, 10000);
+  const bounced = await q.waitForFunction(() => /MILESTONE 1 MARKETS/.test(document.body?.textContent || ''), null, { timeout: 25000 }).then(() => true, () => false);
+  await wait(2000);
+  ok(asked && bounced, '9. back after 5 minutes away, /api/hub says apps.markets false: the shown Markets goes to the hub’s own Markets page (C3, D14)', js({ asked, at: here(q) }));
+  ok(docs.n() === 1 && new URL(docs.list[0] || 'http://x/').pathname === '/markets/' && !new URL(docs.list[0] || 'http://x/').search, '9. …once, to /markets/ (path and hash only)', js(docs.list));
+  ok((await q.evaluate(() => sessionStorage.getItem('ifl-roof-bounce')).catch(() => null)) === '1', '9. …with ifl-roof-bounce "1" as its marker');
+  await shot(q, '9-markets-bounced');
+  docs.stop();
+  await R.ctx.close();
+
+  // Weather shown when Markets turns off: untouched, no reload (an app that stays on is left alone, C3)
+  const W = await open('noor-mk-off-wx', { sw: 'block', clock: true });
+  await offMk(W);
+  const w = W.p, wd = loads(w);
+  const asks = []; w.on('request', (r) => { if (/\/api\/hub(\?|$)/.test(r.url())) asks.push(Date.now()); });
+  await w.goto(`${HUB}/#apps`); await shown(w, H.appTile('markets'), 30000);
+  await tapTile(w, 'markets'); await shown(w, H.M_MARKETS, 30000);
+  await w.click(H.tab('apps')); await shown(w, H.APPS); await tapTile(w, 'weather'); await weatherUp(w); await wait(1000);
+  const life = await alive(w); wd.reset();
+  W.off = true;
+  const b0 = asks.length;
+  await hide(w); await W.ctx.clock.fastForward('06:00'); await show(w);
+  await until(() => asks.length > b0, 10000); await wait(4000);
+  ok((await life.same()) && wd.n() === 0 && (await shown(w, `${H.M_WEATHER} ${H.WX_HERO}`, 5000)), '9. Weather shown as Markets turns off: still Weather, the same page, no reload (C3: apps that stay on are untouched)', js(wd.list));
+  ok(!(await w.$(H.M_MARKETS).then((e) => e && e.evaluate((x) => !!x.querySelector('*'))).catch(() => false)), '9. …and Markets unmounted from the page (its screen emptied, C3)');
+  // tapping Markets now: the hub's own Markets page, a normal navigation
+  await w.click(H.tab('apps')); await shown(w, H.APPS);
+  await Promise.all([w.waitForURL((u) => u.pathname === '/markets/', { timeout: 20000 }).catch(() => {}), tapTile(w, 'markets')]);
+  ok(await w.waitForFunction(() => /MILESTONE 1 MARKETS/.test(document.body?.textContent || ''), null, { timeout: 20000 }).then(() => true, () => false), '9. …Apps’ Markets tile then: the hub’s own Markets page (off = milestone 1, §7)', here(w));
+  wd.stop();
+  await W.ctx.close();
+});
+
+// ======================================================================================================================
+await part(10, 'a framework page served at an off module’s path doesn’t loop', 'stage 2 RI4, §5.2, D14', async () => {
+// ======================================================================================================================
+  // (the root worker's kept / answering /markets/ while Markets is off, stood in: every /markets/ document is the
+  // framework's own page, fetched from the hub's /; /api/hub says apps.markets false; Markets' own address stood in)
+  const page = await hostCall('ifl.test:8788', '/', undefined, { cookie: Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ') });
+  const R = await open('noor-ri4', { sw: 'block' });
+  await route(R.ctx, /^http:\/\/ifl\.test:8788\/api\/hub(\?|$)/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ ready: true, roof: true, apps: { weather: true, markets: false, fitness: true } }) }));
+  await route(R.ctx, /^http:\/\/ifl\.test:8788\/markets\/(index\.html)?(\?[^#]*)?$/, (r) => (r.request().isNavigationRequest() ? r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', headers: { 'Content-Security-Policy': page.headers['content-security-policy'] || '' }, body: page.text }) : r.continue()));
+  const OWN_MK = /^https?:\/\/finance\.(?:ifl\.test:8788|inflite\.ai)\//;
+  await route(R.ctx, OWN_MK, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Markets</title><h1>MARKETS ON ITS OWN</h1>' }));
+  const pg = R.p, d = loads(pg);
+  const off = pg.waitForURL((u) => OWN_MK.test(u.href), { timeout: 25000 }).then(() => pg.url(), () => null);
+  await pg.goto(`${HUB}/markets/#holdings`).catch(() => {});
+  const to = await off;
+  await wait(1500);
+  const atHub = d.list.filter((x) => x.startsWith(HUB) && new URL(x).pathname === '/markets/');
+  let v = null; try { v = new URL(to); } catch (_) {}
+  ok(page.status === 200 && !!v && v.hash === '#holdings', '10. the framework booting at /markets/#holdings with Markets off: off to Markets’ own address, the same hash (bootGone, links.finance, §5.2)', js({ to, docs: d.list }));
+  ok(atHub.length >= 1 && atHub.length <= 2, `10. …${atHub.length} document${atHub.length > 1 ? 's' : ''} at /markets/, no loop (the bounce marker kept for an off boot app, RI4)`, js(d.list));
+  d.stop();
+  await R.ctx.close();
+});
+
 // (the framework's pages only: Chats', Fitness', Markets' and Mail's own pages are theirs, unchanged in stage 1, D8)
-const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/^\S+ \/(chats|fitness|markets|mail)\//.test(e) && !/MILESTONE|noor-(off|stale).*(404|Failed to fetch dynamically imported module|Importing a module script failed)/.test(e));
+// (stage 2: Markets and Fitness are the framework's now, so their pages are checked too; the milestone-1 stand-ins and
+// the refused module files of parts 8 and 9 aside)
+const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/^\S+ \/(chats|mail)\//.test(e) && !/MILESTONE|MARKETS ON ITS OWN|noor-(off|stale|mk-off|mk-off-wx|ri4).*(404|Failed to fetch dynamically imported module|Importing a module script failed)/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (§8.3)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!all.length, 'no page error and no console error on any page (the refused module of part 8 aside)', js(all.slice(0, 8)));
 await closeAll();

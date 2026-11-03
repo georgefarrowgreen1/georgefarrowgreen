@@ -4,6 +4,10 @@
 // never fetched from the files; the code coming back from signing in handed into the frame only when it's a code, and
 // taken out of the page's address; what Mail says heard only from the frame, at Mail's address, and only Back and Sign In
 // (whose word's hash can't carry another part of an address); and Back to Apps going to /#apps, never history's back.
+// One roof stage 4 (s4/spec §2.3, §6.2): the root Worker asks today/src/mailroof.js first, so with Mail's switch on
+// (ROOF_MAIL "1") /mail/ is the framework's page, and off (as it ships) this page exactly; and this page now passes a
+// notification's conversation (#thread=<id>) and Mail's settings (#settings) into the frame, and opens a notification
+// for itself, tapped while it's open, in a fresh frame (RI5), the hub serving the apps' pages or not.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -13,6 +17,9 @@ const SRC = new URL('../../../../inflite/today/src/mailhost.js', import.meta.url
 const PAGE_JS = new URL('../../../../inflite/today/public/mailhost.js', import.meta.url);
 const skip = !existsSync(SRC) && 'the inflite repo isn’t beside this one';
 const { mailPage, HOST_CSS } = skip ? {} : await import(SRC);
+const ROOF = new URL('../../../../inflite/today/src/roof.js', import.meta.url);
+const roofed = skip || (!existsSync(new URL('../../../../inflite/today/src/mailroof.js', import.meta.url)) && 'the inflite repo beside has no Mail roof (today/src/mailroof.js)')
+  || (typeof (await import(ROOF)).appsOn !== 'function' && 'the inflite repo beside predates the per-app switch (today/src/roof.js appsOn)');
 
 const SITE = 'https://inflite.ai', MAIL = 'https://email.inflite.ai', AUTH = 'https://auth.inflite.ai';
 // (the files, which the page must never be fetched from: a Worker answer's headers are its own)
@@ -106,14 +113,20 @@ test('without Mail’s address and the sign-in page’s (or with something that 
 // ---- the page's script, in a page made up for it ----
 // (hash: the page's own #; kept: this tab's sessionStorage as the page opens (null: none to be had); answers what was
 // done: the frame's address, addresses gone to, replaced, posted to the frame, said to the root worker, kept)
-function page({ hash = '', mail = MAIL, auth = AUTH, kept = {} } = {}) {
-  const did = { assigned: [], replaced: [], backs: 0, posted: [], listeners: {}, sw: {}, clicks: [], worker: [], docListeners: {} };
+function page({ hash = '', mail = MAIL, auth = AUTH, kept = {}, cloneable = false } = {}) {
+  const did = { assigned: [], replaced: [], backs: 0, posted: [], listeners: {}, sw: {}, clicks: [], worker: [], docListeners: {}, frames: [] };
   const store = kept === null ? null : new Map(Object.entries(kept));
   const sessionStorage = store && { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
   const doc = { readyState: 'complete', visibilityState: 'visible' };
   // (what the page posts, made of this realm's objects, so it compares as plain data)
   const plain = (x) => JSON.parse(JSON.stringify(x));
-  const frame = { src: '', contentWindow: { postMessage: (m, o) => did.posted.push([plain(m), o]) } };
+  // (a frame; cloneable: one that can be copied and put in its place, as a page's can, each copy kept in did.frames)
+  const make = () => {
+    const f = { src: '', contentWindow: { postMessage: (m, o) => did.posted.push([plain(m), o]) } };
+    if (cloneable) Object.assign(f, { cloneNode: () => { const c = make(); did.frames.push(c); return c; }, replaceWith: (c) => { f.replacedBy = c; } });
+    return f;
+  };
+  const frame = make();
   const back = { addEventListener: (t, f) => did.clicks.push(f) };
   const location = { origin: SITE, pathname: '/mail/', search: '', hash, assign: (u) => did.assigned.push(u) };
   // (the root worker's registration, as getRegistration("/") gives it: what it's told)
@@ -135,7 +148,7 @@ function page({ hash = '', mail = MAIL, auth = AUTH, kept = {} } = {}) {
   did.seen = (state) => { doc.visibilityState = state; for (const f of did.docListeners.visibilitychange || []) f(); };
   // (a message to the page, as from a window at an address)
   const hear = (data, { source = frame.contentWindow, origin = mail } = {}) => { for (const f of did.listeners.message || []) f({ data, source, origin }); };
-  return { did, frame, hear, click: () => did.clicks.forEach((f) => f()), sw: (data) => { const port = []; did.sw.message?.({ data, ports: [{ postMessage: (m) => port.push(JSON.parse(JSON.stringify(m))) }] }); return port; } };
+  return { did, frame, hear, now: () => did.frames.at(-1) || frame, click: () => did.clicks.forEach((f) => f()), sw: (data) => { const port = []; did.sw.message?.({ data, ports: [{ postMessage: (m) => port.push(JSON.parse(JSON.stringify(m))) }] }); return port; } };
 }
 const CODE = 'Qx7_Lm2-Rt9kVb3nWp5sYc8dZf1gHj4K';
 
@@ -148,7 +161,7 @@ test('the code coming back from signing in: into the frame’s address when it�
   assert.equal(plain.frame.src, `${MAIL}/`, 'none: Mail as it is');
   assert.deepEqual(plain.did.replaced, []);
   for (const hash of ['#signin=short', `#signin=${'a'.repeat(129)}`, '#signin=abc%26back%3Dhttps%3A%2F%2Fevil.example%2F1234567', `#signin=${CODE.slice(0, 20)}<b>x`,
-    `#signin=${CODE.slice(0, 20)}%20x`, `#thread=${CODE}`, '#signin=', `#x=1&signin=${CODE}#2`]) {
+    `#signin=${CODE.slice(0, 20)}%20x`, '#signin=', `#x=1&signin=${CODE}#2`]) {
     const p = page({ hash });
     assert.equal(p.frame.src, `${MAIL}/`, `${hash}: no code handed in`);
     assert.deepEqual(p.did.replaced, ['/mail/'], `${hash}: taken out all the same`);
@@ -259,5 +272,77 @@ test('the hub’s cross-fade into the page and out of it: one that can’t be do
     p.did.listeners[type][0]({ viewTransition: { ready: no(), finished: no(), updateCallbackDone: no() } });
     assert.equal(caught, 3, type);
     p.did.listeners[type][0]({});
+  }
+});
+
+test('a conversation and Mail’s settings: into the frame’s address as Mail reads them, out of the page’s at once', { skip }, () => {
+  const ID = '0b5e2c1a-6f7d-4e3b-9a8c-1d2e3f4a5b6c';
+  let p = page({ hash: `#thread=${ID}` });
+  assert.equal(p.frame.src, `${MAIL}/#thread=${ID}`);
+  assert.deepEqual(p.did.replaced, ['/mail/']);
+  assert.equal(page({ hash: `#thread=${CODE}` }).frame.src, `${MAIL}/#thread=${CODE}`);
+  assert.equal(page({ hash: `#thread=${'a'.repeat(64)}` }).frame.src, `${MAIL}/#thread=${'a'.repeat(64)}`, '64 characters at most');
+  for (const hash of [`#thread=${'a'.repeat(65)}`, '#thread=', '#thread=a%26signin%3Dx', '#thread=a b', '#thread=<x>', '#thread=a/b', '#thread=a#settings']) {
+    p = page({ hash });
+    assert.ok(p.frame.src === `${MAIL}/` || p.frame.src === `${MAIL}/#settings`, `${hash}: ${p.frame.src}`);
+    assert.doesNotMatch(p.frame.src, /thread/, `${hash}: no conversation handed in`);
+  }
+  // (Mail's settings: #settings, and #settings=<page> as #settings, which is all Mail's start reads)
+  assert.equal(page({ hash: '#settings' }).frame.src, `${MAIL}/#settings`);
+  assert.equal(page({ hash: '#settings=addresses' }).frame.src, `${MAIL}/#settings`);
+  assert.equal(page({ hash: '#settings=<script>' }).frame.src, `${MAIL}/#settings`);
+  // (the sign-in's code first, then a conversation, then the settings)
+  assert.equal(page({ hash: `#thread=${ID}&signin=${CODE}` }).frame.src, `${MAIL}/#signin=${CODE}`);
+  assert.equal(page({ hash: `#settings&thread=${ID}` }).frame.src, `${MAIL}/#thread=${ID}`);
+  // (anything else: Mail as it is)
+  for (const hash of ['#people', '#later', '#x=1', '#']) assert.equal(page({ hash }).frame.src, `${MAIL}/`, hash);
+});
+
+test('a notification for this page tapped while it’s open: Mail opened at it in a fresh frame, said heard, the hub serving the apps or not', { skip }, () => {
+  const ID = '0b5e2c1a-6f7d-4e3b-9a8c-1d2e3f4a5b6c';
+  for (const kept of [{ 'ifl-crumb': '/#apps', 'ifl-hub-ready': '1' }, { 'ifl-crumb': '/#apps', 'ifl-hub-ready': '0' }, null]) {
+    const p = page({ kept, cloneable: true });
+    assert.equal(p.frame.src, `${MAIL}/`);
+    assert.deepEqual(p.sw({ ifl: 'open', url: `/mail/#thread=${ID}` }), [{ ifl: 'opened' }], JSON.stringify(kept));
+    assert.deepEqual(p.did.assigned, [], 'never this page’s own # changed, which would move nothing');
+    assert.equal(p.did.frames.length, 1, 'a fresh frame');
+    assert.equal(p.frame.replacedBy, p.now(), 'in the old one’s place');
+    assert.equal(p.now().src, `${MAIL}/#thread=${ID}`);
+    if (kept) assert.equal(p.did.kept.get('ifl-crumb'), '/#apps', 'no breadcrumb of itself');
+    // (what Mail says is heard from the frame it's in now, and only from that one)
+    p.hear({ ifl: 'back' }, { source: p.frame.contentWindow });
+    assert.deepEqual(p.did.assigned, [], 'the old frame: not heard');
+    p.hear({ ifl: 'back' }, { source: p.now().contentWindow });
+    assert.deepEqual(p.did.assigned, ['/#apps']);
+  }
+  // (Mail's settings; and a page with no frame that can be copied: its address set)
+  let p = page({ cloneable: true });
+  p.sw({ ifl: 'open', url: '/mail/#settings' });
+  assert.equal(p.now().src, `${MAIL}/#settings`);
+  p = page();
+  assert.deepEqual(p.sw({ ifl: 'open', url: `/mail/#thread=${ID}` }), [{ ifl: 'opened' }]);
+  assert.equal(p.frame.src, `${MAIL}/#thread=${ID}`);
+  // (an id that isn't one: Mail as it is, never anything else in its address)
+  p = page({ cloneable: true });
+  p.sw({ ifl: 'open', url: '/mail/#thread=a%26b' });
+  assert.equal(p.now().src, `${MAIL}/`);
+  // (another page: as before, gone to, this page its breadcrumb)
+  p = page({ kept: { 'ifl-hub-ready': '1' }, cloneable: true });
+  p.sw({ ifl: 'open', url: '/chats/#open=abc' });
+  assert.deepEqual(p.did.assigned, ['/chats/#open=abc']);
+  assert.equal(p.did.frames.length, 0);
+});
+
+test('the roof branch: with Mail’s switch on the framework’s page, off this page; the module’s files not found while off', { skip: roofed }, async () => {
+  const framework = '<!doctype html><title>InFlite Today</title>';
+  const on = env({ ROOF_MAIL: '1', ASSETS: { fetch: async () => new Response(framework, { headers: { 'Content-Type': 'text/html' } }) } });
+  assert.equal(await (await get('/mail/', {}, on)).text(), framework);
+  assert.equal(await (await get('/mail/index.html', {}, on)).text(), framework);
+  const off = await get('/mail/');
+  assert.match(await off.text(), /<iframe class="mh-frame" name="ifl-mail"/);
+  for (const p of ['/mail/roof/mail.js', '/mail/version']) {
+    const r = await get(p);
+    assert.equal(r.status, 404, p);
+    assert.equal(r.headers.get('cache-control'), 'no-store');
   }
 });
