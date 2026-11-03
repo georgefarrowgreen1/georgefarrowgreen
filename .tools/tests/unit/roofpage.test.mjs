@@ -167,8 +167,14 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
   assert.match(so, /if \(fl\?\.lost > 0 && !\(await anyway\(\)\)\) return;/, 'lost > 0: asked; Cancel signs nobody out');
   assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
-  const out = js.slice(js.indexOf('function signedOutNow()'), js.indexOf('function signedIn('));
-  assert.match(out, /forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere: the apps’ copies (Chat’s engine signs itself out)');
+  const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
+  assert.ok(out.length > 0, 'signedOutNow');
+  assert.match(out, /if \(sure === true\) forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere, the account said so: the apps’ copies (Chat’s engine signs itself out)');
+  assert.match(out, /sessionCheck = null; checkSession\(\)\.then\(\(inn\) => inn === false && forgetApps\(\{ chat: false \}\)\)/, 'any other 401 or word: the account asked afresh first (review I-8)');
+  // (sure only from the account's own answer, or the frame's lost(), which asks it first)
+  assert.match(js, /lost: \(\) => signedOutNow\(true\)/);
+  assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \(!view\?\.signedIn\) return signedOutNow\(true\);/);
+  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\(\);/, 'a 401 from any other call: not sure');
   assert.match(js, /const APP_SESSION_KEPT = \["mail:signin-verifier"\];/);
   assert.match(js, /for \(const k of APP_SESSION_KEPT\) sessionStorage\.removeItem\(k\)/);
   for (const k of ['mail:replies', 'mail:unsent', 'mail:outbox', 'mail:remote-images', 'mail:lens']) assert.ok(js.includes(`"${k}"`), `APP_KEPT: ${k}`);

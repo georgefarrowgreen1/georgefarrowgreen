@@ -80,15 +80,16 @@ test('roof_set: puts the value it’s given by name on the Worker named (stdin, 
   s.done();
 });
 
-test('roof_refused: a module’s on while ROOF_OFF is set is refused with the words; its off, all and weather never are', { skip }, () => {
+test('roof_refused: a module’s on (Weather’s too) while ROOF_OFF is set is refused with the words; its off and all never are', { skip }, () => {
   const s = sandbox();
   s.names('inflite', ['HUB_KEY', 'ROOF_OFF']);
-  for (const app of ['markets', 'fitness', 'mail']) {
+  for (const app of ['weather', 'markets', 'fitness', 'mail']) {
     const r = s.run(`roof_refused ${app} on inflite`);
     assert.notEqual(r.status, 0, app); assert.match(r.stdout, /Every module is off \(ROOF_OFF\)\. Turn them all on first\./);
     assert.equal(s.run(`roof_refused ${app} off inflite`).status, 0, `${app} off`);
   }
-  for (const app of ['all', 'weather']) assert.equal(s.run(`roof_refused ${app} on inflite`).status, 0, app);
+  assert.equal(s.run('roof_refused all on inflite').status, 0, 'all');
+  assert.equal(s.run('roof_refused all off inflite').status, 0, 'all off');
   s.names('inflite', ['HUB_KEY', 'ROOF_MARKETS']);
   assert.equal(s.run('roof_refused markets on inflite').status, 0, 'no ROOF_OFF: allowed');
   s.done();
@@ -108,6 +109,17 @@ test('wait_roof: reads the app’s own flag in apps (roof for all; a Worker from
   assert.equal(s.run('wait_roof https://inflite.ai markets false 2').status, 0, 'a stage-1 Worker: Markets off');
   assert.notEqual(s.run('wait_roof https://inflite.ai markets true 2').status, 0, 'and never on');
   assert.equal(s.run('wait_roof https://inflite.ai weather true 2').status, 0, 'Weather from roof');
+  // (all on with Weather off by its own switch: ROOF_OFF is gone, so that's on, naming what's still off by its own switch)
+  s.hub('inflite.ai', { ready: true, roof: false, apps: { weather: false, markets: true, fitness: false, mail: false } });
+  let r = s.run('wait_roof https://inflite.ai all true 2');
+  assert.equal(r.status, 0, r.stdout); assert.match(r.stdout, /says roof: true .*Off by their own switches still: Weather, Fitness, Mail\./);
+  s.hub('inflite.ai', { ready: true, roof: true, apps: { weather: true, markets: false, fitness: false, mail: false } });
+  r = s.run('wait_roof https://inflite.ai all true 2');
+  assert.equal(r.status, 0); assert.match(r.stdout, /Off by their own switches still: Markets, Fitness, Mail\./);
+  // (every module off, each by its own switch: reads as ROOF_OFF; the words say where to look)
+  s.hub('inflite.ai', { ready: true, roof: false, apps: { weather: false, markets: false, fitness: false, mail: false } });
+  r = s.run('wait_roof https://inflite.ai all true 2');
+  assert.notEqual(r.status, 0); assert.match(r.stdout, /by its own switch, ROOF_OFF_WEATHER and ROOF_<APP>/);
   s.done();
 });
 

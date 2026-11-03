@@ -775,12 +775,11 @@ worker_settled() {
   say "The Worker $w is settled: its newest version (${newest:0:8}) is the one deployed."
 }
 
-# roof_refused APP STATE W → fails (with the words) when an app's on is asked while every module is off on that Worker
-# (ROOF_OFF set: its name is in the Worker's secrets; only ever put as "1"). Reads names only, never a value.
+# roof_refused APP STATE W → fails (with the words) when an app's on (Weather's too) is asked while every module is off on
+# that Worker (ROOF_OFF set: its name is in the Worker's secrets; only ever put as "1"). Reads names only, never a value.
 roof_refused() {
   local app=${1:-} state=${2:-} w=${3:-} rc=0
-  case "$app" in all|weather) return 0 ;; esac
-  [ "$state" = on ] || return 0
+  [ "$app" != all ] && [ "$state" = on ] || return 0
   worker_secrets "$w" || rc=$?
   if [ "$rc" != 0 ]; then fail "Couldn't read the Worker's secrets ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; return 1; fi
   if jq -e 'any(.[]?; .name == "ROOF_OFF")' <<<"$CF_OUT" >/dev/null; then
@@ -819,17 +818,19 @@ roof_set() {
 
 # roof_now SITE APP → ROOF_SAID: what the hub's /api/hub says of that app now: true, false, none (a Worker from before
 # the roof, or before stages 2–4 for an app it doesn't name: off) or ? (no answer worth reading); ROOF_CODE, ROOF_BODY.
-# For all: true when roof is (ROOF_OFF gone), false when roof and every module in apps are off.
+# For all: true when roof or any module in apps is (ROOF_OFF gone: Weather may be off by its own switch), false when roof
+# and every module in apps are off; ROOF_STILL_OFF: the modules apps says are off (by their own switches, once true).
 roof_now() {
   local site=$1 app=$2 body
   body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" -w '\n%{http_code}' "$site/api/hub" 2>/dev/null) || body=$'\n000'
   ROOF_CODE=${body##*$'\n'}; ROOF_BODY=${body%$'\n'*}
   ROOF_SAID=$(jq -r --arg a "$app" '
     if type != "object" then "?"
-    elif $a == "all" then (if has("roof") then (if .roof == false and ((.apps // {}) | all(. == false)) then "false" elif .roof == true then "true" else "?" end) elif has("ready") then "none" else "?" end)
+    elif $a == "all" then (if has("roof") then (if .roof == true or ((.apps // {}) | any(. == true)) then "true" elif .roof == false and ((.apps // {}) | all(. == false)) then "false" else "?" end) elif has("ready") then "none" else "?" end)
     elif $a == "weather" then (if (.apps // {}) | has("weather") then (.apps.weather | tostring) elif has("roof") then (.roof | tostring) elif has("ready") then "none" else "?" end)
     else (if (.apps // {}) | has($a) then (.apps[$a] | tostring) elif has("ready") then "none" else "?" end) end' <<<"$ROOF_BODY" 2>/dev/null) || ROOF_SAID='?'
   ROOF_SAID=${ROOF_SAID:-?}
+  ROOF_STILL_OFF=$(jq -r 'if type == "object" then [(.apps // {}) | to_entries[] | select(.value == false) | .key] | join(" ") else "" end' <<<"$ROOF_BODY" 2>/dev/null) || ROOF_STILL_OFF=""
   if [ "$ROOF_CODE" = 404 ]; then ROOF_SAID=none; fi
   return 0
 }
@@ -857,12 +858,14 @@ wait_roof() {
     if { [ "$ROOF_SAID" = "$want" ] || { [ "$want" = false ] && [ "$ROOF_SAID" = none ]; }; } && [ "$mailok" = yes ]; then
       if [ "$ROOF_SAID" = none ] && [ "$app" = all ]; then say "$site/api/hub has no roof (a Worker from before it): Weather there is milestone 1's page, so the roof is off (after $el s)."
       elif [ "$ROOF_SAID" = none ]; then say "$site/api/hub has no switch for $(roof_name "$app") (a Worker from before it): there it's the hub's page, so off (after $el s)."
-      elif [ "$app" = all ]; then say "$site/api/hub says roof: $ROOF_SAID (after $el s)."
+      elif [ "$app" = all ]; then
+        local still="" a; for a in $ROOF_STILL_OFF; do still="$still${still:+, }$(roof_name "$a")"; done
+        say "$site/api/hub says roof: $ROOF_SAID (after $el s).$([ "$want" = true ] && [ -n "$still" ] && echo " Off by their own switches still: $still.")"
       else say "$site/api/hub says $app: $ROOF_SAID$([ "$app" = mail ] && echo ", and Mail's own Worker agrees") (after $el s)."; fi
       return 0
     fi
     if (( el >= limit )); then
-      fail "$site/api/hub still says $([ "$app" = all ] && echo roof || echo "$app"): $ROOF_SAID$([ "$mailok" = no ] && echo " (Mail's own Worker doesn't agree yet)") after $limit s (last answer: HTTP $ROOF_CODE, $(printf '%.160s' "$ROOF_BODY" | tr -d '\r\n')). Each copy of the Worker takes a secret's change within seconds; check by hand: curl -s $site/api/hub"
+      fail "$site/api/hub still says $([ "$app" = all ] && echo roof || echo "$app"): $ROOF_SAID$([ "$mailok" = no ] && echo " (Mail's own Worker doesn't agree yet)") after $limit s (last answer: HTTP $ROOF_CODE, $(printf '%.160s' "$ROOF_BODY" | tr -d '\r\n')). Each copy of the Worker takes a secret's change within seconds; check by hand: curl -s $site/api/hub$([ "$app" = all ] && [ "$want" = true ] && echo " (every module off there by its own switch, ROOF_OFF_WEATHER and ROOF_<APP>, reads the same as ROOF_OFF: see the Worker's secrets)")"
       return 1
     fi
     echo "  $el s: $([ "$app" = all ] && echo roof || echo "$app") is $ROOF_SAID (HTTP $ROOF_CODE); asking again in $EVERY s"
