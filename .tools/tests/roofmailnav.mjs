@@ -138,8 +138,9 @@ await part('A', 'notices: no words in the push; the words from Mail on the phone
   const told = passed(S, t0).filter((x) => x.path === '/api/account/mail/notice');
   ok(told.length >= 1 && told.every((x) => x.method === 'POST' && x.auth && !x.cookie), 'A. Mail told the account with its key, no cookie (POST /api/account/mail/notice, §6.1)', js(told.map((x) => ({ m: x.method, auth: x.auth, cookie: x.cookie }))));
   await wait(6000);
+  // (checked below, once Mail's own push has been seen reaching the stand-in at all: until then its absence proves
+  // nothing, as with no PUSH_URL for Mail's Worker in the stack)
   const own = await pushesTo('georgemail', t0);
-  ok(!own.length, 'A. …and Mail didn’t push through its own subscription: one delivery (S4-D8)', js(own.length));
 
   // the push on the phone: shown at once with its own words, then Mail's words in its place (same tag, silent)
   const handed = await deliverPush(G, payload);
@@ -190,15 +191,26 @@ await part('A', 'notices: no words in the push; the words from Mail on the phone
   await wait(4000);
   const hubs = (await pushesTo('georgenav', t2)).filter((x) => x.app === 'mail');
   ok(off.s === 200 && !!mine?.length && !hubs.length, 'A. Through InFlite off: Mail’s own push (its own subscription), none to his InFlite device: one delivery (S4-D8)', js({ off: off.s, mine: mine?.length, hubs: hubs.length }));
+  const mailPushes = !!mine?.length;
+  const unseen = 'Mail’s own push never reached the stand-in (Mail’s Worker needs PUSH_URL in hubstack.mjs), so its absence proves nothing';
+  ok(mailPushes && !own.length, 'A. with Through InFlite on, Mail didn’t push through its own subscription: one delivery (S4-D8)', mailPushes ? js(own.length) : unseen);
 
-  // held (Quiet Hours now): neither
+  // held (Quiet Hours now): neither. Once with Through InFlite on (the account would push) and once with it off (Mail
+  // would push through its own subscription): each held
   await pageCall(q, 'PATCH', '/api/notify', { mail: { inflite: true } });
   const qr = await quiet(true);
   const t3 = Date.now();
   await deliver({ from: 'Sam Reed <sam@example.com>', subject: 'Late note about the shed', text: 'No rush.' });
   await wait(12000);
   const any = [...(await pushesTo('georgenav', t3)), ...(await pushesTo('georgemail', t3))].filter((x) => !x.undecrypted);
-  ok(qr.s === 200 && !any.length, 'A. in Quiet Hours: held, neither the account nor Mail pushes (S4-D8, §2.6)', js({ qr: qr.s, any: any.map((x) => x.title) }));
+  ok(qr.s === 200 && !any.length, 'A. in Quiet Hours, Through InFlite on: held, the account doesn’t push (nor Mail) (S4-D8, §2.6)', js({ qr: qr.s, any: any.map((x) => x.title) }));
+  const off2 = await pageCall(q, 'PATCH', '/api/notify', { mail: { inflite: false } });
+  const t4 = Date.now();
+  await deliver({ from: 'Jo Hart <jo@example.com>', subject: 'Late note about the gate', text: 'Also no rush.' });
+  await wait(12000);
+  const any2 = [...(await pushesTo('georgenav', t4)), ...(await pushesTo('georgemail', t4))].filter((x) => !x.undecrypted);
+  ok(off2.s === 200 && !any2.length && mailPushes, 'A. in Quiet Hours, Through InFlite off: held, Mail doesn’t push through its own subscription (nor the account) (S4-D8, §2.6)', mailPushes ? js({ any: any2.map((x) => x.title) }) : unseen);
+  await pageCall(q, 'PATCH', '/api/notify', { mail: { inflite: true } });
   await quiet(false);
 });
 
@@ -221,6 +233,33 @@ await part('B', 'every address of §2.3 with the switch on', '§2.3, S4-D5, S4-D
   ok((await readerUp(q)) && (await at(q, `/mail/#thread=${T1}`)), 'B. /mail/#thread=<id>: the reader, the address kept (phone, S4-D6)', here(q));
   await cold('/mail/#settings');
   ok((await shown(q, M_MAIL, 30000)) && (await sheetUp(q, 'mail-settings', 15000)), 'B. /mail/#settings: People and Mail Settings (§2.3)', here(q));
+  await cold('/mail/#settings=signature');
+  ok((await shown(q, M_MAIL, 30000)) && (await sheetUp(q, 'mail-settings', 15000)) && (await shown(q, `${SH('mail-settings')}[open] textarea[aria-label="Signature"]`, 15000)), 'B. /mail/#settings=signature: People and Mail Settings at its Signature page (§2.3, RI14)', here(q));
+  // (the root worker's #go= for a tap it took while the hub wasn't ready: Today, then there, the hub's way now it's ready)
+  await cold(`/#go=${encodeURIComponent(`/mail/#thread=${T1}`)}`);
+  ok((await readerUp(q)) && (await at(q, `/mail/#thread=${T1}`)), 'B. /#go=/mail/#thread=<id>: gone there from Today (goFromHash, the hub ready: the framework’s reader, §2.3)', here(q));
+  // (Apps' search: "Mail · Later", from the Apps provider's entries for the admin, §2.4)
+  await cold('/#apps');
+  await shown(q, H.APPS, 30000);
+  const lifeS = await alive(q);
+  await q.click(H.HD_SEARCH);
+  await shown(q, `${H.SEARCH_SHEET}[open]`);
+  await q.keyboard.type('Later', { delay: 40 });
+  const entry = await until(async () => ((await q.$$eval(H.SEARCH_RESULT, (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim())).catch(() => [])).find((t) => /Mail · Later/.test(t))), 8000);
+  if (entry) await q.locator(H.SEARCH_RESULT).filter({ hasText: 'Mail · Later' }).first().click().catch(() => {});
+  const viaSearch = (await at(q, '/mail/#later')) && (await q.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', H.hdSec('later'), { timeout: 10000 }).then(() => true, () => false));
+  ok(!!entry && viaSearch && (await lifeS.same()), 'B. Apps’ search, “Mail · Later”: /mail/#later, the Later lens, in the page (§2.3, §2.4)', js({ entry, url: here(q) }));
+  // (You's Connected Apps: Mail's row, its connector sheet's Open Mail)
+  await cold('/');
+  await todayUp(q);
+  await q.click(H.tab('you'));
+  await shown(q, H.YOU, 30000);
+  const lifeC = await alive(q);
+  await q.click(`${H.YOU_APP_ROW}[data-app="mail"]`).catch(() => {});
+  const csheet = await shown(q, `${H.CONNECTOR_SHEET}[open]`, 10000);
+  await q.click(`${H.CONNECTOR_SHEET}[open] [data-act=open]`).catch(() => {});
+  const viaSheet = (await mailUp(q)) && (await at(q, '/mail/'));
+  ok(csheet && viaSheet && (await lifeC.same()), 'B. the connector sheet’s “Open Mail”: Mail at /mail/, in the page (§2.3)', js({ csheet, url: here(q) }));
   await cold('/#you=notify-mail');
   ok((await shown(q, H.YOU, 30000)) && (await shown(q, `${H.SH_MAILNOTIFY}[open]`, 15000)), 'B. /#you=notify-mail: You, the Mail Notifications sheet (§2.3)', here(q));
   const css = await hostCall('ifl.test:8788', '/mail/host.css');
@@ -234,6 +273,16 @@ await part('B', 'every address of §2.3 with the switch on', '§2.3, S4-D5, S4-D
   // Mail on its own: unchanged
   const own = await mailAsk('/');
   ok(own.status === 200 && /frame-ancestors/.test(own.headers['content-security-policy'] || ''), 'B. email.inflite.ai/: Mail on its own, as it was (§2.3)', String(own.status));
+  // (and its own addresses opened there, as its notifications and the account page open them: the conversation, Settings)
+  const M = await G.ctx.newPage();
+  await M.goto(`${MAIL}/#thread=${T1}`).catch(() => {});
+  const ownThread = await M.waitForFunction((w) => [...document.querySelectorAll('.conv-head')].some((e) => e.textContent.includes(w)), 'Harbour lantern plan', { timeout: 30000 }).then(() => true, () => false);
+  ok(ownThread && new URL(M.url()).origin === MAIL, 'B. email.inflite.ai/#thread=<id>: Mail on its own opens that conversation, as it did (§2.3)', M.url());
+  await M.goto(`${MAIL}/robots.txt`).catch(() => {});
+  await M.goto(`${MAIL}/#settings`).catch(() => {});
+  const ownSettings = await M.waitForSelector('[role=dialog][aria-label="Mail Settings"]', { state: 'visible', timeout: 30000 }).then(() => true, () => false);
+  ok(ownSettings && new URL(M.url()).origin === MAIL, 'B. email.inflite.ai/#settings: Mail on its own opens its Settings, as it did (§2.3)', M.url());
+  await M.close();
 });
 
 // ======================================================================================================================
@@ -351,6 +400,8 @@ await part('E', 'offline on the Home Screen after one online open: Mail’s offl
   await ctx.close();
   ctx = await persistent(dir);
   await dress(ctx, 'george-home-offline', { standalone: true });
+  // (every window.open the page asks for, noted: rooflib's dress doesn't, so it's put in here)
+  await ctx.addInitScript(() => { window.__opened = []; const o = window.open; window.open = function (...a) { window.__opened.push(String(a[0] ?? '')); return o.apply(this, a); }; });
   const navs = [], wins = [];
   ctx.on('page', (pg) => { wins.push(pg); pg.on('framenavigated', (f) => { if (f === pg.mainFrame()) navs.push(f.url()); }); });
   for (const pg of ctx.pages()) pg.on('framenavigated', (f) => { if (f === pg.mainFrame()) navs.push(f.url()); });
@@ -365,7 +416,7 @@ await part('E', 'offline on the Home Screen after one online open: Mail’s offl
   await shot(q, 'E-offline-compose');
   const away = navs.filter((u) => { try { return new URL(u).origin === MAIL; } catch (_) { return false; } });
   const opened = await q.evaluate(() => window.__opened?.length || 0).catch(() => 0);
-  ok(!away.length && !opened && new URL(q.url()).origin === HUB, 'E. …and never a navigation to Mail’s own address (D23’s rule at /mail/, §7)', js({ away, opened, url: q.url() }));
+  ok(!away.length && !opened && !wins.filter((w) => w !== q).length && new URL(q.url()).origin === HUB, 'E. …and never a navigation to Mail’s own address, nor a window opened (D23’s rule at /mail/, §7)', js({ away, opened, wins: wins.filter((w) => w !== q).map((w) => w.url()), url: q.url() }));
   await ctx.close();
 });
 
