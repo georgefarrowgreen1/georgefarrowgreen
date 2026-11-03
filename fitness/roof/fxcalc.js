@@ -6,8 +6,8 @@
 // rollAvg (activities.js).
 import * as W from "../workouts.js";
 export const STUB = true;
-export function rhythmSaid() { throw new Error("not yet: rhythmSaid"); }
-export function dayStamp() { throw new Error("not yet: dayStamp"); }
-export function dayChanges() { throw new Error("not yet: dayChanges"); }
-export function progActs() { throw new Error("not yet: progActs"); }
-export function rollAvg() { throw new Error("not yet: rollAvg"); }
+export function rhythmSaid(...a) { throw new Error("not yet: rhythmSaid"); }
+export function dayStamp(...a) { throw new Error("not yet: dayStamp"); }
+export function dayChanges(...a) { throw new Error("not yet: dayChanges"); }
+export function progActs(...a) { throw new Error("not yet: progActs"); }
+export function rollAvg(...a) { throw new Error("not yet: rollAvg"); }

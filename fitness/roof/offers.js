@@ -6,7 +6,7 @@
 import * as X from "./x.js";
 import * as INV from "../invites.js";
 export const STUB = true;
-export function offerCards() { throw new Error("not yet: offerCards"); }
-export function undoToday() { throw new Error("not yet: undoToday"); }
-export function openOffer() { throw new Error("not yet: openOffer"); }
-export function addView() { throw new Error("not yet: addView"); }
+export function offerCards(...a) { throw new Error("not yet: offerCards"); }
+export function undoToday(...a) { throw new Error("not yet: undoToday"); }
+export function openOffer(ctx, ...a) { throw new Error("not yet: openOffer"); }
+export function addView(...a) { throw new Error("not yet: addView"); }
