@@ -30,7 +30,7 @@
 
 PROJECT=georgefarrowgreen      # the Pages project (this repo's wrangler.toml name)
 WORKER=inflite                 # the Worker at inflite.ai (the inflite repo's wrangler.toml name)
-STAGING=inflite-next           # the staging hub at next.inflite.ai (the inflite repo's [env.next], deployed by hand)
+STAGING=inflite-next           # the staging hub at next.inflite.ai (the inflite repo's [env.next]: hub-stage.yml deploys it)
 DATABASE=bio-db                # the D1 database (this repo's wrangler.toml, binding DB)
 SITE=https://inflite.ai
 STAGING_SITE=https://next.inflite.ai
@@ -147,7 +147,7 @@ give_key() {
   for w in $workers; do
     rc=0; worker_secrets "$w" || rc=$?
     if [ "$rc" = 2 ]; then
-      if [ "$w" = "$STAGING" ]; then fail "There's no Worker $STAGING (the staging hub): deploy it first from the inflite repo's Today First branch (npx wrangler deploy --env next), then run this again. Nothing was changed."
+      if [ "$w" = "$STAGING" ]; then fail "There's no Worker $STAGING (the staging hub): run \"Put InFlite's staging hub up\" (hub-stage.yml) first, then this again. Nothing was changed."
       else fail "There's no Worker $w on this account. Nothing was changed."; fi
       return 1
     fi
