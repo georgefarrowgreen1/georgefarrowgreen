@@ -35,8 +35,8 @@ const how = () => {
 export function view(el, ctx) {
   const { fw, svc } = ctx, ui = fw.ui;
   let busy = false;
-  const btn = ui.btn("Unlock", { primary: true, act: "unlock" });
-  const box = ui.el("div", { class: "ch-lock", role: "region", aria: { label: "Chats is locked" }, hidden: true },
+  const btn = ui.btn("Unlock", { primary: true, act: "unlock-lock" });
+  const box = ui.el("div", { class: "ch-lock", data: { state: "locked" }, role: "region", aria: { label: "Chats is locked" }, hidden: true },
     ui.el("h2", { text: "Chats is locked" }), ui.el("p", { text: `Unlock with ${how()}.` }), btn);
   el.append(box);
   const unlock = async () => {
@@ -49,7 +49,7 @@ export function view(el, ctx) {
     } catch (_) { fw.toast("Couldn’t unlock. Try again."); }
     finally { busy = false; btn.disabled = false; }
   };
-  const onClick = (e) => { if (e.target.closest?.("[data-act=unlock]")) unlock(); };
+  const onClick = (e) => { if (e.target.closest?.("[data-act=unlock-lock]")) unlock(); };
   box.addEventListener("click", onClick);
   return {
     show() { box.hidden = false; },

@@ -52,13 +52,13 @@ function build(host, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el, doc = host.ownerDocument;
   const warn = el("div", { class: "ch-cwarn" });
   const msgs = el("div", { class: "ch-msgs", role: "log", aria: { live: "polite", label: "Messages" } });
-  const typing = el("div", { class: "ch-typing", hidden: true, text: "typing…" });
-  const scroller = el("div", { class: "ch-scroller", tabindex: "0" }, warn, msgs, typing);
+  const typing = el("div", { class: "ch-typing", data: { k: "typing" }, hidden: true, text: "typing…" });
+  const scroller = el("div", { class: "ch-scroller", data: { k: "scroller" }, tabindex: "0", aria: { label: "Messages" } }, warn, msgs, typing);
   const input = el("textarea", { class: "ch-input", rows: "1", maxlength: String(MAX_TEXT), placeholder: "Message", aria: { label: "Message" }, autocomplete: "off" });
   const sendBtn = el("button", { type: "button", class: "ch-send", data: { act: "send" }, aria: { label: "Send" }, disabled: true }, ui.icon("up"));
   const attach = el("button", { type: "button", class: "ch-attach", data: { act: "photo" }, aria: { label: "Send a photo" } }, ui.icon("plus"));
   const voice = el("button", { type: "button", class: "ch-voice", data: { act: "voice" }, aria: { label: "Record a voice pigeon" } }, ui.icon("mic"));
-  const composer = el("form", { class: "ch-composer", aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input), voice, sendBtn);
+  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input), voice, sendBtn);
   const box = el("div", { class: "ch-chat", hidden: true }, scroller, composer);
   host.append(box);
 
@@ -92,7 +92,7 @@ function build(host, ctx) {
   function bubbleEl(m) {
     const mine = m.from === "me", fl = m.flight, w = who(), group = w.kind === "group";
     const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0].join("|");
-    const row = el("div", { class: `ch-m${mine ? " me" : " them"}`, data: { mid: m.id, sig } });
+    const row = el("div", { class: `ch-m${mine ? " me" : " them"}`, data: { k: "msg", id: m.id, from: m.from, mid: m.id, sig } });
     if (m.kind === "system" || m.recalled) {
       row.className = "ch-m sys";
       row.append(el("p", { class: "ch-sys", text: m.recalled ? (mine ? "You called this message back." : `${nameOf(m.from)} called their message back.`) : String(m.text || "") }));

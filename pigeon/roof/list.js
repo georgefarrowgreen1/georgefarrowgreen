@@ -87,6 +87,8 @@ export function ticker(fw, fn) {
     stop() { on = false; clearInterval(t); t = 0; for (const f of off || []) f?.(); off = null; },
   };
 }
+// (a row's unread count, data-k=unread)
+export const unreadBadge = (ui, n) => { const b = ui.badge(n, { label: `${n} unread` }); b.dataset.k = "unread"; return b; };
 // (a row's sort: pinned first, then newest)
 export const byPinAt = (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.at || 0) - (a.at || 0);
 
@@ -97,7 +99,7 @@ export function view(el, ctx) { return build(el, ctx); }
 function build(sec, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el;
   const warn = el("div", { class: "ch-warns" });
-  const air = el("div", { class: "ch-air", hidden: true, aria: { label: "In the air" }, role: "region" });
+  const air = el("div", { class: "ch-air", data: { k: "air" }, hidden: true, aria: { label: "In the air" }, role: "region" });
   const box = el("div", { class: "ch-list", role: "list", aria: { label: "Chats" } });
   const empty = el("div", { class: "ch-empty" });
   sec.append(warn, air, box, empty);
@@ -107,7 +109,7 @@ function build(sec, ctx) {
   function rowEl(r) {
     const name = r.name || "", line = r.line == null ? "" : String(r.line);
     const n = el("a", { class: `ch-row${r.unread ? " unread" : ""}${r.kind === "group" ? " group" : ""}`, href: fw.nav.href("open", r.id), role: "listitem",
-      data: { act: "open", id: r.id, sig: [r.name, r.avatar, r.unread, r.flying, r.pinned, r.at, r.keyChanged, line].join("|") } },
+      data: { k: "row", act: "open", id: r.id, sig: [r.name, r.avatar, r.unread, r.flying, r.pinned, r.at, r.keyChanged, line].join("|") } },
       ui.avatar(name, {}),
       el("span", { class: "ch-rtext" },
         el("span", { class: "ch-rtop" },
@@ -116,11 +118,11 @@ function build(sec, ctx) {
           el("time", { class: "ch-rtime", data: { tick: `list:${r.at || 0}` }, text: listTime(r.at) })),
         el("span", { class: "ch-rbot" },
           el("span", { class: "ch-rline", text: r.keyChanged ? "Security key changed" : r.flying ? (line || "A pigeon’s on its way") : line }),
-          r.unread ? ui.badge(r.unread, { label: `${r.unread} unread` }) : null)));
+          r.unread ? unreadBadge(ui, r.unread) : null)));
     return n;
   }
   function airEl(a) {
-    return el("button", { type: "button", class: "ch-airp", data: { act: "air", id: a.chatId, msg: a.id, sig: `${a.landsAt}|${a.from}|${a.to}` },
+    return el("button", { type: "button", class: "ch-airp", data: { act: "air", id: a.id, chat: a.chatId, sig: `${a.landsAt}|${a.from}|${a.to}` },
       aria: { label: `A pigeon from ${who(a.from)} to ${who(a.to)}, lands in ${untilWords(a.landsAt)}` } },
       el("span", { class: "ch-airwho", text: `${who(a.from)} → ${who(a.to)}` }),
       el("span", { class: "ch-airt", data: { tick: `until:${a.landsAt}` }, text: untilWords(a.landsAt) }));
@@ -128,9 +130,9 @@ function build(sec, ctx) {
   const drawWarn = () => {
     const kw = store.get("keywarn"), req = store.get("requests") || [], inc = req.filter((q) => q.dir === "in");
     put(warn,
-      kw?.mine ? el("div", { class: "ch-warn strong", role: "note" }, el("b", { text: "Your security key doesn’t match" }), el("span", { text: "Friends can’t read new messages from this phone until it’s fixed on Chat’s own page." }),
+      kw?.mine ? el("div", { class: "ch-warn strong", role: "note", data: { k: "keywarn" } }, el("b", { text: "Your security key doesn’t match" }), el("span", { text: "Friends can’t read new messages from this phone until it’s fixed on Chat’s own page." }),
         el("a", { class: "ifl-btn small", href: "/chats/in/#account", text: "Open Privacy & Security" })) : null,
-      inc.length ? el("button", { type: "button", class: "ch-req", data: { act: "requests" } },
+      inc.length ? el("button", { type: "button", class: "ch-req", data: { k: "requests", act: "requests" } },
         el("span", { class: "ch-reqt", text: "Friend Requests" }),
         el("span", { class: "ch-reqs", text: inc.length === 1 ? `${inc[0].name} wants to be friends` : `${inc[0].name} and ${inc.length - 1} other${inc.length === 2 ? "" : "s"}` }),
         ui.badge(inc.length, { label: `${inc.length} requests` })) : null);
@@ -169,7 +171,7 @@ function build(sec, ctx) {
     if (!a || !sec.contains(a)) return;
     switch (a.dataset.act) {
       case "open": if (e.metaKey || e.ctrlKey) return; e.preventDefault(); fw.nav.go(fw.nav.href("open", a.dataset.id), { kind: "push" }); break;
-      case "air": fw.nav.go(fw.nav.href("open", a.dataset.id), { kind: "push" }); break;
+      case "air": fw.nav.go(fw.nav.href("open", a.dataset.chat), { kind: "push" }); break;
       case "requests": ctx.open.requests(); break;
       case "addfriend": ctx.open.addFriend(); break;
     }

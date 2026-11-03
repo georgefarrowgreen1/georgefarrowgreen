@@ -30,13 +30,13 @@ function build(sec, ctx) {
   let offs = [];
 
   const friendEl = (f) => el("a", { class: "ch-row ch-friend", href: fw.nav.href("open", f.id), role: "listitem",
-    data: { act: "open", id: f.id, sig: [f.name, f.avatar, f.online, f.lastSeen, f.place, f.keyChanged, f.verified].join("|") } },
+    data: { k: "friend", act: "open", id: f.id, sig: [f.name, f.avatar, f.online, f.lastSeen, f.place, f.keyChanged, f.verified].join("|") } },
     ui.avatar(f.name),
     el("span", { class: "ch-rtext" },
       el("span", { class: "ch-rtop" }, el("span", { class: "ch-rname", text: first(f.name) }), f.verified ? el("span", { class: "ch-ver", text: "Verified" }) : null),
       el("span", { class: "ch-rbot" }, el("span", { class: "ch-rline", text: f.keyChanged ? "Security key changed" : friendSub(f) }))));
   const groupEl = (g) => el("a", { class: "ch-row ch-group", href: fw.nav.href("open", g.id), role: "listitem",
-    data: { act: "open", id: g.id, sig: [g.name, g.muted, (g.members || []).map((m) => m.name).join(",")].join("|") } },
+    data: { k: "row", act: "open", id: g.id, sig: [g.name, g.muted, (g.members || []).map((m) => m.name).join(",")].join("|") } },
     ui.avatar(g.name),
     el("span", { class: "ch-rtext" },
       el("span", { class: "ch-rtop" }, el("span", { class: "ch-rname", text: g.name }), g.muted ? el("span", { class: "ch-pin", text: "Muted" }) : null),
@@ -48,7 +48,7 @@ function build(sec, ctx) {
     const blocked = all.length - fr.length, inc = req.filter((q) => q.dir === "in"), out = req.length - inc.length;
     put(top,
       ui.btn("Add Friend", { primary: true, act: "addfriend" }),
-      req.length ? el("button", { type: "button", class: "ch-req", data: { act: "requests" } },
+      req.length ? el("button", { type: "button", class: "ch-req", data: { k: "requests", act: "requests" } },
         el("span", { class: "ch-reqt", text: "Friend Requests" }),
         el("span", { class: "ch-reqs", text: inc.length ? (inc.length === 1 ? `${inc[0].name} wants to be friends` : `${inc[0].name} and ${inc.length - 1} other${inc.length === 2 ? "" : "s"}`) : `${out} sent, waiting for a reply` }),
         inc.length ? ui.badge(inc.length, { label: `${inc.length} requests` }) : null) : null,

@@ -119,20 +119,20 @@ export async function mount(root, fw) {
   function drawPanel() {
     panel.replaceChildren();
     if (failed) {
-      panel.append(ui.error({ title: "Chats couldn’t open", body: "Something went wrong starting Chats on this phone.",
+      panel.append(el("div", { data: { state: "error" } }, ui.error({ title: "Chats couldn’t open", body: "Something went wrong starting Chats on this phone.",
         acts: [{ label: "Try Again", primary: true, act: "retry", run: () => { failed = false; svcP = null; svc = null; connect(); paint(); } },
-          { label: "Open Chats on Its Own", act: "own", href: `${fw.session?.links?.chat || "https://chat.inflite.ai"}/` }] }));
+          { label: "Open Chats on Its Own", act: "own", href: `${fw.session?.links?.chat || "https://chat.inflite.ai"}/` }] })));
       return;
     }
     // (before the core's first answer: placeholder rows, not an empty screen)
     if (stateNow == null) { panel.append(ui.skeleton("rows", 4)); return; }
     const w = STATE_WORDS[stateNow];
     if (!w) return;
-    if (stateNow === "offline") { panel.append(ui.empty({ title: "No signal", body: "Your chats will show when you’re back online." })); return; }
-    const box = el("div", { class: `ch-st ch-st-${stateNow}` }, el("h2", { text: w.title }), el("p", { text: w.body }));
-    if (w.href) box.append(ui.btn(w.act, { primary: true, href: w.href, act: stateNow === "key" ? "unlock-chats" : "signin" }));
+    if (stateNow === "offline") { panel.append(el("div", { data: { state: "offline" } }, ui.empty({ title: "No signal", body: "Your chats will show when you’re back online." }))); return; }
+    const box = el("div", { class: `ch-st ch-st-${stateNow}`, data: { state: stateNow } }, el("h2", { text: w.title }), el("p", { text: w.body }));
+    if (w.href) box.append(ui.btn(w.act, { primary: true, href: w.href, act: stateNow === "key" ? "unlock" : "signin" }));
     if (stateNow === "device") {
-      const code = el("div", { class: "ch-qr", aria: { label: "A code to scan" } });
+      const code = el("div", { class: "ch-qr", data: { k: "qr" }, aria: { label: "A code to scan" } });
       box.append(code);
       // (the code for this link, drawn by Chat's qr.js: an SVG it writes with everything in it its own)
       fw.lazy((q) => import("../qr.js" + q)).then((m) => {
