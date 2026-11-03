@@ -32,7 +32,15 @@ export function view(el, ctx) {
       return;
     }
     const f = fmt(ctx), now = nowWall(wx.place.offset), list = listFor(ctx, now);
-    const s = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, wx.official == null, list.map((x) => (x.kind === "official" ? [x.w.id, titleOf(x.w), spanOf(x.w, now, f, wx.place.offset)] : [x.c.title, x.c.text])), placeName(ctx)]);
+    // (the warnings still on their way with the forecast in: rows to come, not yet an empty state that says they aren't
+    // available, since wx.official is null till they're in; drawn again when the loading ends)
+    if (!list.length && wx.official == null && S.loading) {
+      if (sig === "wait") return;
+      sig = "wait";
+      el.replaceChildren(ctx.fw.ui.skeleton("rows", 3));
+      return;
+    }
+    const s = JSON.stringify([wx.place.lat, wx.place.lon, wx.fetchedAt, wx.official == null, !!wx.noOfficial, list.map((x) => (x.kind === "official" ? [x.w.id, titleOf(x.w), spanOf(x.w, now, f, wx.place.offset)] : [x.c.title, x.c.text])), placeName(ctx)]);
     if (s === sig) return;
     sig = s;
     if (!list.length) {

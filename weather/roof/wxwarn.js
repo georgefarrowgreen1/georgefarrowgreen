@@ -33,8 +33,9 @@ export function slotOf(list) {
   const line = list.map((x) => (x.kind === "official" ? nameOf(x.w) : x.c.title)).join(", ");
   return { n, kind: "banner", text: `${n} warnings · ${line}`, line, colour, level };
 }
-// with nothing in force: which empty state (wx.official null: no official feed covers the place)
-export const emptyOf = (wx) => (wx && wx.official == null ? "unavailable" : "none");
+// with nothing in force: which empty state ("unavailable": no official service covers the place, the server's uncovered,
+// data.js wx.noOfficial; or none could be asked, wx.official null)
+export const emptyOf = (wx) => (wx && (wx.official == null || wx.noOfficial) ? "unavailable" : "none");
 export const emptyWords = (which, place) => (which === "unavailable"
   ? { title: `Official warnings aren’t available for ${place}.`, body: "Check your national weather service." }
   : { title: `No warnings for ${place}.`, body: "You’ll hear about any here, and on Today." });

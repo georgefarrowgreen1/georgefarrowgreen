@@ -368,6 +368,8 @@ function buildWx(raw, place) {
   wx.marine = raw.marine ? shapeMarine(raw.marine.j, place) : null;
   if (wx.marine) { const sea = new Map(wx.marine.hourly.map((x) => [x.t, x])); wx.hourly = wx.hourly.map((x) => { const m = sea.get(x.t); return m ? { ...x, sst: m.sst, wave: m.wave, waveDir: m.waveDir, tide: m.tide } : x; }); }
   wx.official = Array.isArray(raw.warnings?.j?.warnings) ? raw.warnings.j.warnings : null;
+  // (and whether no official service covers the place at all: the server's uncovered, as against none in force)
+  wx.noOfficial = raw.warnings?.j?.uncovered === true;
   wx.climate = climateFigures(place, wx.daily);
   wx.skill = skillKept(place);
   return wx;

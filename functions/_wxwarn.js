@@ -256,8 +256,8 @@ async function shapedNow(url, shape, ttl) {
 // { warnings: [...] } for a place, worst first, then soonest (each with its areas, made light, where it has them: for the
 // map; and the source it came from, src). If every source it asked failed, an error (502), so a phone keeps the warnings
 // it had rather than being told there are none; if some did, which (missing), so it keeps those it had from them
-// (weather/data.js), and the rest are as they are now. asking: a Map shared by the calls of one request (a tick's), so
-// a feed several of its places are in is asked for once (shaped)
+// (weather/data.js), and the rest are as they are now; where none of them covers the place, uncovered: true. asking: a
+// Map shared by the calls of one request (a tick's), so a feed several of its places are in is asked for once (shaped)
 export async function warningsAt(env, lat, lon, now = Date.now(), asking = null) {
   const ma = env.METEOALARM_URL || "https://feeds.meteoalarm.org", nws = env.NWS_URL || "https://api.weather.gov";
   const ttl = env.WARN_TTL != null && env.WARN_TTL !== "" ? Number(env.WARN_TTL) : TTL;
@@ -271,6 +271,8 @@ export async function warningsAt(env, lat, lon, now = Date.now(), asking = null)
       .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; })]);
   }
   if (inBox(lat, lon, EA_BOX)) asks.push(["floods", floodsAt(env, lat, lon, asking).catch((e) => { console.error("weather warnings: floods", e && e.message); return null; })]);
+  // (none of them covers the place: no service to say, which isn't the same as none in force; Weather says so, UB2)
+  if (!asks.length) return { warnings: [], uncovered: true };
   const got = await Promise.all(asks.map(([, p]) => p));
   if (got.length && got.every((x) => x === null)) throw new HttpError(502, "Warnings aren't available right now.");
   const missing = asks.filter((_, i) => got[i] === null).map(([src]) => src);

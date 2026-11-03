@@ -373,12 +373,15 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
   const q = E.p;
   let refuse = 0;
   await route(E.ctx, /\/api\/markets\/quotes(\?|$)/, (r) => (refuse > 0 ? (refuse--, r.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"Sign in"}' })) : r.continue()));
-  const sessAsks = []; q.on('request', (r) => { if (/\/api\/session(\?|$)/.test(r.url())) sessAsks.push(Date.now()); });
+  // (counted as answered, not as asked: the account's answer can renew the session's cookie (Set-Cookie through the hub's
+  // /api/session), so the cookie is cleared below only once the check of 8 has come back, never under it)
+  const sessAsks = []; q.on('response', (r) => { if (/\/api\/session(\?|$)/.test(r.url())) sessAsks.push(Date.now()); });
   await q.goto(`${HUB}/markets/`); await marketsUp(q); await wait(1500);
   const s0 = sessAsks.length;
   refuse = 2;
   await E.ctx.clock.fastForward('00:40');
   await until(() => sessAsks.length > s0, 8000);
+  await wait(1000);
   ok(sessAsks.length > s0, '8. the half-minute prices refused 401: the framework asks /api/session (fw.session.lost, D3)', js({ before: s0, after: sessAsks.length, refusedLeft: refuse }));
   // (the way in is in the page's markup at all times, in index.html's hidden #signin: counted only when on screen)
   const still = { shown: await shown(q, H.M_MARKETS, 3000), wayIn: await visible(q, EXCEPT.SIGNIN) };

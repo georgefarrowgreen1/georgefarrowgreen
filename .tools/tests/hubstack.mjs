@@ -60,7 +60,7 @@ start(wrangler, ['dev', '-c', 'wrangler.toml', '--port', '8787', '--inspector-po
 // (--local-upstream: wrangler dev otherwise puts its first route's host in place of the browser's Origin, and the account
 // refuses Mail's hand-back from the frame)
 if (mail) start(wrangler, ['dev', '-c', 'wrangler.jsonc', '--port', '8806', '--inspector-port', '9232', '--show-interactive-dev-session=false', '--local-upstream', 'email.ifl.test:8788', '--persist-to', `${S}/mailstate`,
-  ...vars({ ACCOUNT_ORIGIN: 'http://127.0.0.1:8791', HUB_ORIGIN: 'http://ifl.test:8788', MAIL_KEY: 'mail-test-key', ...(want.includes('roof-mail') ? { HUB_API_TEST: '1' } : {}) })], `${IFL}/email`, 'mail');
+  ...vars({ ACCOUNT_ORIGIN: 'http://127.0.0.1:8791', HUB_ORIGIN: 'http://ifl.test:8788', MAIL_KEY: 'mail-test-key', PUSH_URL: 'http://127.0.0.1:8798/push', ...(want.includes('roof-mail') ? { HUB_API_TEST: '1' } : {}) })], `${IFL}/email`, 'mail');
 
 let stopping = false;
 const stop = (code = 0) => {
