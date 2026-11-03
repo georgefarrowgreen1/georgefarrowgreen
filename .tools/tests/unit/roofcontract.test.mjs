@@ -404,7 +404,9 @@ for (const app of APPS2) {
     if (SHARES[app]) assert.deepEqual(c.shares, SHARES[app]);
     // (Markets' and Fitness's connectors search on the phone (s2 §2.5); Mail's has none: its provider is the mounted
     // module's, S4-D9)
-    if (app !== 'mail') { assert.equal(typeof c.search, 'function'); assert.equal(typeof c.mini, 'function'); }
+    // (Mail's connector has a mini but no search: s4 S4-D9, s24 §5)
+    assert.equal(typeof c.mini, 'function');
+    if (app !== 'mail') assert.equal(typeof c.search, 'function');
     if (typeof c.search === 'function') assert.ok(Array.isArray(await c.search('', { userId: 'someone' })), 'search gives a list');
   });
 
