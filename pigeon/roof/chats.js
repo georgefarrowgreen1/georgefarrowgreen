@@ -18,6 +18,7 @@
 // the air", the switcher Chats · Friends, acts New Chat and Chat Settings (none while locked or not ready); a chat:
 // chat.js's (Back "Back to Chats", no switcher, Info). The Chats tab's badge: the unread count (fw.tabs.badge).
 // While shown and visible: start({ visible, screen: true }) on show, a sync every 15 s (S3-D10); hidden, none.
+import { connector } from "./connector.js";
 import { createStore } from "./store.js";
 import { view as listView, openNewChat, openNewGroup } from "./list.js";
 import { view as friendsView, openRequests, openAddFriend } from "./friends.js";
@@ -32,15 +33,15 @@ export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
 const SYNC_MS = 15e3;
-const TOPICS = ["state", "me", "rows", "friends", "groups", "requests", "air", "outbox", "send", "keywarn", "unread"];
+void connector;   // (the connector is part of the entry's graph: connector.files keeps it offline with the rest)
 
-// Chat is for phones and iPads (pigeon/theme.js's rule, copied as it is: roofcontract pins it). A computer is shown
-// "Chats is on your phone" with a code, and the core never starts (S3-D13).
-export function isComputer(navigator = globalThis.navigator, matchMedia = globalThis.matchMedia) {
+// (theme.js's rule, as it has it: Chat is for phones and iPads; anything else is a computer, shown "Chats is on your
+// phone" with a code, and the core never starts there, S3-D13; roofcontract pins the copy)
+export function deviceOf() {
   var ua = navigator.userAgent || "";
   var touched = navigator.maxTouchPoints > 1;
   var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches);
-  return !mobile;
+  return mobile ? "phone" : "computer";
 }
 
 // (the words of each state, and its one action: §2.1)
@@ -99,7 +100,7 @@ export async function mount(root, fw) {
   const lock = lockView(lockBox, ctx);
   const unwatch = lockWatch(ctx, root);
 
-  let shown = null, onScreen = false, route = null, stateNow = isComputer() ? "device" : null, failed = false, syncT = 0, opening = 0;
+  let shown = null, onScreen = false, route = null, stateNow = deviceOf() === "computer" ? "device" : null, failed = false, syncT = 0, opening = 0;
   const offs = [];
 
   // ---- the header ----
@@ -149,7 +150,7 @@ export async function mount(root, fw) {
     const want = ready && route ? (route.key === "open" && route.arg ? "chat" : sectionOf(route)) : null;
     for (const [id, s] of secs) s.hidden = want !== id;
     if (onScreen) {
-      for (const [id, v] of views) { if (want === id) v.show(); else v.hide(); }
+      for (const [id, v] of views) { if (want === id) v.show(route); else v.hide(); }
       if (want !== "chat" && chat.id) leaveChat();
     }
     header();
@@ -178,8 +179,8 @@ export async function mount(root, fw) {
     if (stateNow === "device" || svcP) return svcP;
     svcP = fw.service().then((s) => {
       svc = s;
-      for (const t of TOPICS) offs.push(s.on(t, (d) => store.apply(t, d)));
-      offs.push(s.on("chat:", (d, topic) => store.apply(topic, d)), s.on("typing:", (d, topic) => store.apply(topic, d)));
+      // (every patch into the store; "*" first replays the last value of each topic but chat:* and typing:*)
+      offs.push(s.on("*", (p) => store.apply(p)));
       offs.push(store.on("state", onState), store.on("unread", (n) => fw.tabs?.badge?.(Number(n) || 0)),
         ...["unread", "air"].map((k) => store.on(k, header)));
       return s;
@@ -195,7 +196,7 @@ export async function mount(root, fw) {
     if (r.key === "open" && r.arg) {
       for (const v of views.values()) v.hide();
       for (const s of secs.values()) s.hidden = true;
-      const ok = await chat.show(r.arg);
+      const ok = await chat.show(r);
       if (my !== opening) return;
       if (!ok) {
         chat.hide();
@@ -266,8 +267,8 @@ export async function mount(root, fw) {
       store.clear("typing:");
       const rows = store.get("rows");
       if (rows) store.apply("rows", rows.map(({ line, ...x }) => x));
-      chat.destroy(); lock.destroy();
-      for (const v of views.values()) v.destroy();
+      chat.unmount(); lock.unmount();
+      for (const v of views.values()) v.unmount();
       root.replaceChildren();
       root.classList.remove("m-chats");
     },

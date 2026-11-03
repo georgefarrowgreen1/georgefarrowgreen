@@ -6,7 +6,7 @@
 //   LOCK_KEY = "inflight-lock" (Chat's own key, read only here: { on, after, uid })
 //   lockPrefs(uid) → { on, after } | null
 //   lockCheck() → Promise<true> (rejects when the passkey check fails or isn't user-verified)
-//   view(el, ctx) → { show(), hide(), destroy() }: "Chats is locked" + Unlock, in the Chats screen; Unlock → lockCheck,
+//   view(el, ctx) → { show(route), hide(), busy(), unmount() }: "Chats is locked" + Unlock, in the Chats screen; Unlock → lockCheck,
 //     then svc.call("lock", false).
 //   watch(ctx, root) → off: while the lock is on, root is veiled while the page is hidden (.ch-veiled), and the core is
 //     locked again (svc.call("lock", true)) when it comes back after the lock's time.
@@ -54,7 +54,8 @@ export function view(el, ctx) {
   return {
     show() { box.hidden = false; },
     hide() { box.hidden = true; },
-    destroy() { box.removeEventListener("click", onClick); box.remove(); },
+    busy: () => false,
+    unmount() { box.removeEventListener("click", onClick); box.remove(); },
   };
 }
 

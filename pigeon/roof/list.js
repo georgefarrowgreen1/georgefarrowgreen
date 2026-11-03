@@ -3,7 +3,7 @@
 // first-run card. No search field of its own (§2.4: the frame's Search finds everything). Rows come from the core's
 // `rows` topic (Row: { id, kind, name, avatar, unread, flying, pinned, at, keyChanged, line? }); their last lines only
 // for the rows this view asked for (`rows(from, to)`), drawn with textContent.
-//   view(sectionEl, ctx) → { show(), hide(), destroy() }; ctx = { fw, svc, store, open } (chats.js).
+//   view(sectionEl, ctx) → { show(route), hide(), busy(), unmount() }; ctx = { fw, svc, store, open } (chats.js).
 //   show(): subscribes to rows, air, requests, keywarn, me, friends; asks the core for the lines of the rows in sight;
 //   the 1 s ticker for relative times and landing countdowns, while shown and visible. hide(): all of it let go.
 //   openNewChat(ctx), openNewGroup(ctx): the New Chat / New Group sheets (data-sheet newmsg, newgroup) → the handle.
@@ -91,7 +91,8 @@ export const byPinAt = (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.a
 // ---- the Chats section ----
 const LINES = 30;   // the rows whose last line the list asks for (the first screenful and a little more)
 
-export function view(sec, ctx) {
+export function view(el, ctx) { return build(el, ctx); }
+function build(sec, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el;
   const warn = el("div", { class: "ch-warns" });
   const air = el("div", { class: "ch-air", hidden: true, aria: { label: "In the air" }, role: "region" });
@@ -181,7 +182,8 @@ export function view(sec, ctx) {
       t.start();
     },
     hide() { for (const f of offs) f(); offs = []; t.stop(); draw.cancel(); },
-    destroy() { this.hide(); sec.removeEventListener("click", onClick); sec.replaceChildren(); },
+    busy: () => false,
+    unmount() { this.hide(); sec.removeEventListener("click", onClick); sec.replaceChildren(); },
   };
 }
 

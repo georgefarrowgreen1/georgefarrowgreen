@@ -4,8 +4,8 @@
 // null and typing:<id> = null on leave(), on locked and when it drops plaintext, and clear(prefix) does the same here
 // (on locked and on unmount), so the page holds at most the chat on screen.
 //   createStore() → { get(topic), on(topic, fn) → off, apply(patch), clear(prefix), topics() }
-//     on(topic, fn): fn(data, topic) in a microtask after each change (a run of changes to one topic calls it once,
-//       with the last value); topic "*" hears every topic. off() lets go.
+//     on(topic, fn): fn(data) in a microtask after each change (a run of changes to one topic calls it once, with the
+//       last value); topic "*": fn({ topic, data }) for every topic. off() lets go.
 //     apply({ topic, data }) (or apply(topic, data)): keeps it, null/undefined deletes it.
 //     clear(prefix): every topic starting with prefix deleted (its subscribers told null).
 export function createStore() {
@@ -17,7 +17,8 @@ export function createStore() {
     due.clear();
     for (const t of ts) {
       const v = vals.has(t) ? vals.get(t) : null;
-      for (const fn of [...(subs.get(t) || []), ...(subs.get("*") || [])]) { try { fn(v, t); } catch (e) { console.error(e); } }
+      for (const fn of [...(subs.get(t) || [])]) { try { fn(v); } catch (e) { console.error(e); } }
+      for (const fn of [...(subs.get("*") || [])]) { try { fn({ topic: t, data: v }); } catch (e) { console.error(e); } }
     }
   };
   const tell = (t) => { due.add(t); if (!queued) { queued = true; queueMicrotask(flush); } };

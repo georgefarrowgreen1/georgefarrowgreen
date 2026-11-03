@@ -51,7 +51,10 @@ const chatOf = (id) => ({ id, kind: id.startsWith("g-") ? "group" : "friend", ol
 function fakeService(state = "ready") {
   const subs = new Map(), calls = [];
   const emit = (topic, data) => {
-    for (const [k, fns] of subs) if (k === topic || (k.endsWith(":") && topic.startsWith(k))) for (const f of [...fns]) f(data, topic);
+    for (const [k, fns] of subs) {
+      if (k === topic) for (const f of [...fns]) f(data);
+      else if (k === "*" || (k.endsWith(":") && topic.startsWith(k))) for (const f of [...fns]) f({ topic, data });
+    }
   };
   const svc = {
     calls, emit,

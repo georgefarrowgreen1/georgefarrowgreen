@@ -2,7 +2,7 @@
 // friends' news (a lazy sheet), your friends by name with where they are or when they were last seen, your groups, the
 // blocked count, and Add Friend. From the core's `friends`, `groups`, `requests` and `me` topics; every word through
 // textContent.
-//   view(sectionEl, ctx) → { show(), hide(), destroy() }; ctx = { fw, svc, store, open } (chats.js).
+//   view(sectionEl, ctx) → { show(route), hide(), busy(), unmount() }; ctx = { fw, svc, store, open } (chats.js).
 //   openRequests(ctx) → handle: Friend Requests (data-sheet requests): theirs to say yes or no to, yours waiting.
 //   openAddFriend(ctx, handle?) → handle: Add Friend (data-sheet addfriend): a handle, sent as a request
 //     (meta("friends", { handle })); handle from #add=<handle> filled in.
@@ -17,7 +17,8 @@ export function friendSub(f, now = Date.now()) {
   return `@${f.handle}`;
 }
 
-export function view(sec, ctx) {
+export function view(el, ctx) { return build(el, ctx); }
+function build(sec, ctx) {
   const { fw, store } = ctx, ui = fw.ui, el = ui.el;
   const top = el("div", { class: "ch-ftop" });
   const fhead = el("h2", { class: "ifl-label ch-fhead" });
@@ -79,7 +80,8 @@ export function view(sec, ctx) {
       draw.now();
     },
     hide() { for (const f of offs) f(); offs = []; draw.cancel(); },
-    destroy() { this.hide(); sec.removeEventListener("click", onClick); sec.replaceChildren(); },
+    busy: () => false,
+    unmount() { this.hide(); sec.removeEventListener("click", onClick); sec.replaceChildren(); },
   };
 }
 

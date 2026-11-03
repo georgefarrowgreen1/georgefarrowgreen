@@ -2,8 +2,8 @@
 // messages), with the composer under it. The words of the chat on screen are in this view's DOM while you read it, and
 // nowhere else in the page: on hide() the messages are taken out of the DOM, the store's chat:<id> is let go of (the
 // core sends null on leave), and only the id of the message at the top is kept (module memory) to come back to it.
-//   view(hostEl, ctx) → { show(id), hide(), destroy(), busy(), back() }; ctx = { fw, svc, store, open } (chats.js).
-//   show(id): fw.fill(true) (compact header, no window scroll), the tab bar away (the composer is up), the header (Back
+//   view(hostEl, ctx) → { show(route), hide(), busy(), unmount(), back(), id }; ctx = { fw, svc, store, open } (chats.js).
+//   show(route): route.arg (or an id) is the chat; fw.fill(true) (compact header, no window scroll), the tab bar away (the composer is up), the header (Back
 //     "Back to Chats", the name, online / last seen / "lands in 12m", no switcher, Info), svc.call("open", id); an id
 //     that isn't a chat on this phone → the list and a toast. The scroller is sized from visualViewport (resize listener
 //     removed on hide); it starts at the bottom, sticks there while you're there, anchors when older() adds above, and
@@ -47,7 +47,8 @@ function cardEl(doc, card, o) {
 }
 const reactWords = (r) => Object.entries(r || {}).filter(([, n]) => n > 0);
 
-export function view(host, ctx) {
+export function view(el, ctx) { return build(el, ctx); }
+function build(host, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el, doc = host.ownerDocument;
   const warn = el("div", { class: "ch-cwarn" });
   const msgs = el("div", { class: "ch-msgs", role: "log", aria: { live: "polite", label: "Messages" } });
@@ -287,7 +288,9 @@ export function view(host, ctx) {
     box.hidden = true;
   }
   return {
-    async show(cid) {
+    async show(route) {
+      const cid = typeof route === "string" ? route : route?.arg;
+      if (!cid) return false;
       if (id && id !== cid) leave();
       if (id === cid) { header(); return true; }
       id = cid; stick = true; lastFirst = null;
@@ -329,7 +332,7 @@ export function view(host, ctx) {
     busy: () => !!(id && (words().trim() || sending)),
     back: () => false,
     get id() { return id; },
-    destroy() {
+    unmount() {
       this.hide();
       box.removeEventListener("click", onClick);
       composer.removeEventListener("submit", onSubmit);
