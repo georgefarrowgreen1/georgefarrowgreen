@@ -2264,3 +2264,20 @@ html { touch-action: pan-x pan-y; }
 .wx-ifh .ifh-acts .icon-btn:has(+ .icon-btn:not([hidden]))::after { right: 0; left: -6px; }
 .wx-ifh .ifh-acts .icon-btn:not([hidden]) + .icon-btn::after { left: 0; right: -6px; }
 .wx-ifh .ifh-acts .icon-btn svg { width: 22px; height: 22px; }
+
+/* At InFlite's hub (Weather a page of inflite.ai: app.js hubTop), Back where your photo goes, in the same glass as the
+   outline that signs in; its word dropped on a narrow phone with that outline beside it, the chevron saying it */
+.wx-ifh .ifl-back { position: relative; flex: none; display: inline-flex; align-items: center; gap: 1px; box-sizing: border-box; min-width: 44px;
+  height: calc(42px - 8px * var(--p)); margin: 0; padding: 0 14px 0 8px; border: 0; border-radius: 999px; cursor: pointer;
+  color: var(--ifh-tint, #fff); background: var(--ifh-glass, rgba(255, 255, 255, 0.16)); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -0.1px;
+  -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.wx-ifh .ifl-back svg { flex: none; width: 22px; height: 22px; stroke-width: 2.4; }
+.wx-ifh .ifl-back:active { transform: scale(0.94); }
+.wx-ifh .ifl-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* (a 44px target however compact the bar's become) */
+.wx-ifh .ifl-back::after { content: ""; position: absolute; inset: -4px 0; }
+@media (max-width: 360px) { .wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) { padding: 0 8px; } .wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) .ifl-back-l { display: none; } }
+@media (prefers-reduced-motion: reduce) { .wx-ifh .ifl-back { transition: none; } }
+/* (a section opened from the address, #radar or #warnings, scrolled to clear of the bar held at the top: app.js openTo) */
+#radar, #alerts { scroll-margin-top: calc(68px + env(safe-area-inset-top, 0px)); }
