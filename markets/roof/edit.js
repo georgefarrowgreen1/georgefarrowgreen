@@ -168,4 +168,6 @@ function editView(sym, o = {}) {
 }
 editView.sheet = "holding";
 export function openHolding(ctx, sym, o = {}) { return (Sheet.stack.length ? pushSheet : openSheet)(editView, sym, o); }
+// (B0's stub name, kept: searchView fills the add-stock sheet markets.js makes)
+export const searchView = fill;
 export { BROWSE, marked, follow, addBtn, dayOfQ, fill, editView };

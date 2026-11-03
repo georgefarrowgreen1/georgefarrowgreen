@@ -17,7 +17,7 @@ export const connector = {
     cards: "How your holdings are doing today",
     search: "Your holdings, on this phone",
     notifications: "Price alerts and the evening wrap",
-    actions: "Open a stock or a section; send a stock's day in percent",
+    actions: "Open a stock or a section; send a stock’s day in percent",
     screens: "Today · Holdings · News",
   },
   sections: SECTIONS,

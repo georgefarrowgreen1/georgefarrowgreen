@@ -74,9 +74,11 @@ test('its headers: HSTS without preload, a CSP with nothing inline and no other 
   assert.ok(!/unsafe-inline|unsafe-eval/.test(csp), csp);
   // (no other site at all in milestone 1; with the roof, Weather's alone, in connect-src and img-src: below)
   if (!hasRoof) assert.ok(!/https?:/.test(csp), csp);
-  else assert.ok(!/https?:/.test(csp.split(';').filter((d) => !/^\s*(connect|img)-src /.test(d)).join(';')), csp);
+  else assert.ok(!/https?:/.test(csp.split(';').filter((d) => !/^\s*(connect|img|frame)-src /.test(d)).join(';')), csp);
   // (frame-src 'self': Chat's engine, its own page in a frame over Today's)
-  for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-src 'self'", "frame-ancestors 'none'", "object-src 'none'"]) assert.ok(csp.includes(d), d);
+  // (stages 2–4: Mail's Worker beside it, for Mail's module's bodies, s24-contracts §11)
+  for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'", "object-src 'none'"]) assert.ok(csp.includes(d), d);
+  assert.ok(/(^|; )frame-src 'self'(;| https:\/\/email\.inflite\.ai http:\/\/email\.ifl\.test:8788;)/.test(csp), "frame-src 'self' (and Mail's Worker)");
   for (const f of ['/sw.js', '/', '/app.js', '/cards.js', '/day.js', '/day.css', '/apps.js', '/you.js', '/wxicons.js', '/app.css', '/theme.js']) assert.match(h, new RegExp(`^${f.replace(/[.*/]/g, '\\$&')}\\n  Cache-Control: no-cache$`, 'm'), f);
 });
 
@@ -92,13 +94,15 @@ test('One roof: the CSP is the Worker’s PAGE_HEADERS’ and names exactly Weat
   const wx = String(here('functions/_wxapp.js'));
   const list = (n) => [...new RegExp(`const ${n} = \\[([\\s\\S]*?)\\];`).exec(wx)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const dir = (d) => (new RegExp(`(?:^|;)\\s*${d} ([^;]*)`).exec(csp) || [])[1].trim().split(/\s+/);
-  assert.deepEqual(dir('connect-src'), ["'self'", ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);
+  const mail = dir('connect-src').includes('https://email.inflite.ai') ? ['https://email.inflite.ai', 'http://email.ifl.test:8788'] : [];
+  assert.deepEqual(dir('connect-src'), ["'self'", ...mail, ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);
   assert.deepEqual(dir('img-src'), ["'self'", 'data:', 'blob:', ...list('IMAGES')]);
-  assert.equal((csp.match(/https:/g) || []).length, list('CONNECT').length - 1 + list('IMAGES').length, 'no other site');
+  assert.deepEqual(dir('frame-src'), ["'self'", ...mail], 'frame-src: this site and Mail’s Worker alone');
+  assert.equal((csp.match(/https:/g) || []).length, list('CONNECT').length - 1 + list('IMAGES').length + (mail.length ? 2 : 0), 'no other site');
   assert.match(h, /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(self\)\n/);
   assert.match(h, /^\/roof\/\*\n  Cache-Control: no-cache$/m, 'the framework’s files never kept stale');
   const sw = String(pub('sw.js'));
-  assert.equal(/\nconst SHELL = "([^"]+)";/.exec(sw)?.[1], 'today-app-3');
+  assert.ok(['today-app-3', 'today-app-4'].includes(/\nconst SHELL = "([^"]+)";/.exec(sw)?.[1]), 'today-app-3 (4 from stages 2–4)');
   const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(sw)[1]);
   for (const f of readdirSync(new URL('roof/', PUB)).filter((f) => /\.(js|css)$/.test(f))) assert.ok(FILES.includes(`/roof/${f}`), `/roof/${f} kept by the worker`);
 });

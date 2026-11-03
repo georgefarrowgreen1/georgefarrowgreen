@@ -155,9 +155,57 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
   }
 });
 
-test('roof/*.js together: at most 20 KB gzipped, comments stripped', { skip: roofSkip }, () => {
+// (stage 1 left roof/*.js at 20,452 of 20,480 B; stages 2–4 raise the cap to 24 KB once, for the per-app switch, the
+// reload rules, flush, the stay keys and the connector providers they all need (s24-contracts §13; s4 spec §5): j0's
+// share ≤ 1.5 KB plus stage 2's framework work, stage 3's ≤ 1.3 KB after)
+test('roof/*.js together: at most 24 KB gzipped, comments stripped', { skip: roofSkip }, () => {
   const all = files().map((f) => strip(read(f))).join('\n');
   const gz = gzipSync(all).length;
-  assert.ok(gz <= 20 * 1024, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 20480`);
+  assert.ok(gz <= 24 * 1024, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 24576`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
+});
+
+// ---- stages 2–4's additions to fw and F (s24-contracts §4–§7), where the inflite repo beside has them ----
+const s24 = roofSkip || (!/fw\.nav\.depth|depth: \(\) => curDepth\(\)/.test(read('frame.js')) && 'the inflite repo beside is from before stages 2–4 (frame.js has no nav.depth)');
+test('stages 2–4, frame.js: sections false hides the switcher, back: { label } from the module, nav.go with replace and kind, nav.depth, stay keys left by the tidy, fw.changed, session.hubAgain', { skip: s24 }, () => {
+  const f = strip(read('frame.js'));
+  assert.match(f, /sections: h\.sections === false \|\| h\.sections === null \? null : R\.sections/, 'false (and null) hide it; anything else shows it');
+  assert.match(f, /back: \{ label: h\.back\?\.label \|\| \(to \? `Back to \$\{to\}` : "Back"\) \}/, 'the module’s label, the action always F.nav.back');
+  assert.match(f, /go: \(path, o\) => F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: o\?\.kind \}\)/);
+  assert.match(f, /depth: \(\) => curDepth\(\)/);
+  assert.match(f, /function tidy\(r\) \{\n\s*if \(REGISTRY\[r\.app\]\?\.stay\?\.includes\(r\.key\)\) return;/, 'a stay key stays in the address');
+  assert.match(f, /changed: \(\) => \{ T\(\(\) => opts\.changed\?\.\(app\)\); \}/);
+  assert.match(f, /hubAgain: \(\) => F\.hubAgain\(\)/);
+  assert.ok(!/roofOn\(\)/.test(f), 'no single flag for every app: roofs() gives parse the map');
+  assert.match(f, /const roofs = \(\) => \{ const s = sess\(\); return s\.hub \? s\.apps : false; \};/);
+});
+
+test('stages 2–4, frame.js: F.flush caps each module at 2 s and sums lost; reloads the frame starts itself wait while busy; the bounce flushes first; fw.lazy asks the version and retries with ?retry=<n>', { skip: s24 }, () => {
+  const f = strip(read('frame.js'));
+  assert.match(f, /flush\(\) \{\n\s*return Promise\.all\(Object\.values\(mods\)\.map\(\(m\) => Promise\.race\(\[Promise\.resolve\(\)\.then\(\(\) => m\.instance\?\.flush\?\.\(\)\)\.catch\(\(\) => null\), new Promise\(\(ok\) => setTimeout\(ok, 2000\)\)\]\)\)\)/);
+  assert.match(f, /lost: a\.reduce\(\(n, x\) => n \+ \(Number\(x\?\.lost\) \|\| 0\), 0\)/);
+  assert.match(f, /if \(bounce\) F\.flush\(\)\.then\(\(\) => safely\(/, 'the bounce: flushed, then once nothing is unsaved');
+  assert.match(f, /if \(!F\.busy\(\)\) \{ clearInterval\(later\); return go\(\); \}/);
+  assert.match(f, /if \(r\.kind === "app" && stale && prev && !same && !F\.busy\(\)\) return reloadStale\(\);/);
+  assert.match(f, /if \(stale && away >= 60e3 && !F\.busy\(\)\) return reloadStale\(\);/);
+  assert.match(f, /if \(stale && !F\.busy\(\)\) \{ reloadStale\(\); return new Promise\(\(\) => \{\}\); \}/, 'stale and busy: the import goes ahead');
+  assert.match(f, /fn\(fails\[app\] \? `\?retry=\$\{fails\[app\]\}` : ""\)/);
+  assert.match(f, /Date\.now\(\) - \(lazyAt\[app\] \|\| 0\) > 60e3/, 'the version asked at most once a minute per app');
+});
+
+test('stages 2–4: toast() gives { close() }; connectors.js has a provider per app, given the user’s id; modules.js gates on apps[app] and opens the app’s own address by link', { skip: s24 }, async () => {
+  assert.match(strip(read('toast.js')), /return \{ close: \(\) => \{ if \(cur\?\.t === t\) gone\(\); \} \};\n\}/);
+  const c = strip(read('connectors.js'));
+  assert.match(c, /export function connectorProvider\(F, app\)/);
+  assert.match(c, /c\.search\(q, \{ userId: F\.session\?\.view\?\.user\?\.id \?\? null \}\)/);
+  assert.match(c, /export const placesProvider = \(F\) => connectorProvider\(F, "weather"\);/);
+  const { connectorOf, STATIC } = await import(new URL('connectors.js', ROOF));
+  const F = (apps) => ({ session: { hub: true, apps } });
+  assert.equal(await connectorOf('markets', F({ markets: false })), STATIC.markets, 'off: the words of its hub page');
+  assert.equal(await connectorOf('mail', F({})), STATIC.mail);
+  assert.equal(await connectorOf('chats', F({})), STATIC.chats);
+  const m = strip(read('modules.js'));
+  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error/);
+  assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
+  assert.match(m, /keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\]\)\), 10e3\)/, 'lazy kept only on the Home Screen, 10 s on');
 });

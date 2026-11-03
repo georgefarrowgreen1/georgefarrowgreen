@@ -6,7 +6,7 @@
 // openIncome(ctx), openIsa(ctx), openVs(ctx); whatIf(q, y) for stock.js.
 import * as core from "./core.js";
 import { project, csv } from "../income.js";
-import { h, C, el, M, toast, render, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, incomeBars, allowBar, topView, Sheet } from "./mkui.js";
+import { h, C, el, M, ring, toast, render, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, incomeBars, allowBar, topView, Sheet } from "./mkui.js";
 
 const { S, A, ACCOUNT_NAME, BENCHES, DIVIDEND_ALLOWANCE, fmt, money, pct, tone, plural, and2, rate, owned, valueOf, paidFor, totals, income, received, taxMonths, growthOf, gotAll, divHistory,
   monthSaid, aroundDay, isaYear, store, loadYears, loadIncome, markDivs, health, taxYearOf, yearDivs, yearOn } = core;
@@ -117,11 +117,7 @@ function planCard(I) {
     knob("igoal", "Your goal", goalSaid, "goal", 25, 1000, 25), knob("iadd", "Adding each month", addSaid, "add", 0, 1500, 50),
     h("div.knob.inline", {}, h("span", { text: "Dividends" }), sw), chart, out, note);
 }
-const ringSvg = (f) => {
-  const c = 2 * Math.PI * 22, s = C.el("svg", { viewBox: "0 0 56 56", width: 56, height: 56, "aria-hidden": "true" });
-  s.append(C.el("circle", { class: "rbg", cx: 28, cy: 28, r: 22 }), C.el("circle", { class: "rfg", cx: 28, cy: 28, r: 22, "stroke-dasharray": c.toFixed(1), "stroke-dashoffset": (c * (1 - Math.max(0, Math.min(1, f)))).toFixed(1), transform: "rotate(-90 28 28)" }));
-  return s;
-};
+const ringSvg = (f) => ring(f);
 // twenty years of a year's income, drawn to scale, with the goal across it
 function projSvg(P, goal, year0) {
   const W = 320, H = 150, l = 40, r = 8, t = 14, b = 22, top = Math.max(...P.income, goal) * 1.08;

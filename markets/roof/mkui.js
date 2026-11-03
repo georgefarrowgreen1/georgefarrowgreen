@@ -17,8 +17,17 @@ import * as core from "./core.js";
 
 const { S } = core;
 export { C };
+// (B0's stub names, kept: CHARTS = charts.js, bind = init, chart = a chart read with a finger, ring = a goal's ring)
+export const CHARTS = C;
 export const M = { fw: null, root: null, open: {}, views: {} };
 export function init(fw, root, open, views) { Object.assign(M, { fw, root, open, views }); }
+export const bind = (...a) => init(...a);
+export const chart = (box, at) => C.scrubber(box, at);
+export function ring(f) {
+  const c = 2 * Math.PI * 22, s = C.el("svg", { viewBox: "0 0 56 56", width: 56, height: 56, "aria-hidden": "true" });
+  s.append(C.el("circle", { class: "rbg", cx: 28, cy: 28, r: 22 }), C.el("circle", { class: "rfg", cx: 28, cy: 28, r: 22, "stroke-dasharray": c.toFixed(1), "stroke-dashoffset": (c * (1 - Math.max(0, Math.min(1, f)))).toFixed(1), transform: "rotate(-90 28 28)" }));
+  return s;
+}
 export function release() { Object.assign(M, { fw: null, root: null, open: {}, views: {} }); Sheet.stack = []; Sheet.handle = null; Sheet.body = null; Sheet.say = null; }
 
 // ---- building (app.js 821-838) ----

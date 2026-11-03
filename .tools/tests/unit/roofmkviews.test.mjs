@@ -135,7 +135,7 @@ test("the connector: ≤ 4 KB, no imports, its words, sections and aliases as RE
   const src = readFileSync(new URL("roof/connector.js", MK), "utf8");
   assert.ok(Buffer.byteLength(src) <= 4096, `${Buffer.byteLength(src)} bytes`);
   assert.ok(!/^\s*import\b/m.test(src));
-  assert.deepEqual(connector.shares, { cards: "How your holdings are doing today", search: "Your holdings, on this phone", notifications: "Price alerts and the evening wrap", actions: "Open a stock or a section; send a stock's day in percent", screens: "Today · Holdings · News" });
+  assert.deepEqual(connector.shares, { cards: "How your holdings are doing today", search: "Your holdings, on this phone", notifications: "Price alerts and the evening wrap", actions: "Open a stock or a section; send a stock’s day in percent", screens: "Today · Holdings · News" });
   assert.deepEqual(connector.sections, [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]]);
   assert.deepEqual(connector.aliases, { s: "today", income: "holdings", isa: "holdings", vs: "holdings", about: "holdings" });
   assert.equal(connector.files.filter((f) => connector.lazy.includes(f)).length, 0);

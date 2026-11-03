@@ -595,6 +595,8 @@ export function shown(v) {
 }
 export const live = () => P.on && !!P.timer;
 
+// (B0's stub names, kept: API = account.js's calls)
+export const API = A;
 export { A, INDICES, INDEX_NAMES, MARKET_OF, BENCHES, ACCOUNTS, ACCOUNT_NAME, PRANGES, RANGES, SYM, fmt, money, signed, pct, tone, isIndex, kindOf, KIND_SAID, KINDS_SAID, TRUST_PICKS, digits,
   priceSaid, chgSaid, priceIn, penceMeant, nameOf, plainSym, ago, plural, and2, rate, owned, valueOf, dayOf, divsOf, paidFor, unpriced, leftOutSaid, totals, byAccount, income, divHistory, gotAll,
   received, DIVIDEND_ALLOWANCE, taxMonths, growthOf, monthSaid, aroundDay, aroundMonth, isaYear, tracksIsa, daySeries, marketSaid, clock, oldSaid, lineSaid, pricesAtSaid, insights, rangeSeries, dayKey,
