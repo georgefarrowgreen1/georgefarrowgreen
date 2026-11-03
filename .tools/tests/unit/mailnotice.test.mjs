@@ -315,7 +315,7 @@ test("Mail Notifications: Through InFlite from Today's own /api/notify, each add
       return new Response("{}", { status: 404 });
     };
     const F = { ui: fakeUi(), toast: (t) => toasts.push(t), session: { hub: true, apps: { mail: true } }, sheet: { openEl: (d) => { d.open = true; return { close() { d.open = false; } }; } } };
-    const st = await mn.openMailNotify(F, { fetch: f });
+    const st = (mn.notifyTest.fetch = f, await mn.openMailNotify(F));
     assert.equal(sheet.open, true);
     assert.deepEqual(st.mine, { inflite: false, devices: 0 });
     assert.deepEqual(st.mail, [{ email: "hello@inflite.ai", name: "Hello", notify: true }], "only real addresses");
@@ -335,15 +335,15 @@ test("Mail Notifications: Through InFlite from Today's own /api/notify, each add
     assert.equal(addr.box.checked, false);
     // (Mail's switch off here: Mail never asked; the words that send you to Mail Settings, and Open Mail)
     sheet.open = false; seen.length = 0;
-    const off = await mn.openMailNotify({ ...F, session: { hub: true, apps: { mail: false } } }, { fetch: f });
+    const off = (mn.notifyTest.fetch = f, await mn.openMailNotify({ ...F, session: { hub: true, apps: { mail: false } } }));
     assert.deepEqual(seen.map((s) => s.url), ["/api/notify"]);
     assert.equal(off.mail, null);
     assert.ok(texts(body).includes("Choose which addresses notify you in Mail Settings."));
     assert.ok(body.kids.flatMap(flat).some((n) => n.tag === "btn" && n.text === "Open Mail"));
     // (anyone but the admin: said so, nothing to switch)
     sheet.open = false;
-    await mn.openMailNotify(F, { fetch: async (url) => (url === "/api/notify" ? Response.json({ mail: null }) : new Response("{}", { status: 401 })) });
+    (mn.notifyTest.fetch = async (url) => (url === "/api/notify" ? Response.json({ mail: null }) : new Response("{}", { status: 401 })), await mn.openMailNotify(F));
     assert.ok(texts(body).includes(mn.WORDS.notAdmin));
     assert.deepEqual(toasts, []);
-  } finally { globalThis.location = was; delete globalThis.document; }
+  } finally { globalThis.location = was; delete globalThis.document; mn.notifyTest.fetch = null; }
 });
