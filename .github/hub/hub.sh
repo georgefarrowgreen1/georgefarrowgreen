@@ -27,6 +27,13 @@
 #   stage_check         → next.inflite.ai/version says that build, and its /api/hub answers as the hub; and, for the
 #                         record only, what inflite.ai says (its Today, its hub on or off: live_said)
 #   stage_verdict       → hub-stage.yml's last step
+# And One roof's off switch (roof.yml; stage 1, spec §8.5, §11.2 level 1): Weather back to milestone 1's page at /weather/
+# by a Worker secret, seconds, no build:
+#   worker_settled W    → the Worker's newest version is the one deployed (else Cloudflare won't change its secrets:
+#                         refused, saying what to do, nothing changed)
+#   roof_set W off|on   → after worker_settled: ROOF_OFF "1" put (off), or deleted (on; none there is on already)
+#   wait_roof SITE true|false [seconds] → a hub's /api/hub asked until its roof says so
+#   roof_verdict        → roof.yml's last step
 # Cloudflare's API is asked with CLOUDFLARE_API_TOKEN, which never goes on a command line (curl reads its header from a
 # pipe) nor into the log; a key made here is masked before anything else and only ever piped to wrangler. What's
 # printed of an answer from Cloudflare is its error codes and messages, never the request.
@@ -698,5 +705,125 @@ stage_verdict() {
   say "The Worker $WORKER (inflite.ai) and the Pages project's HUB_KEY weren't touched: this workflow never changes them."
   if [ "$bad" = 0 ] && [ "${HUB_STAGE_READY:-}" != true ]; then say "Next: \"Give InFlite's hub its key\" (hub-key.yml) with hub next.inflite.ai, which gives the staging hub its key and deploys Pages again."; fi
   if [ "$bad" != 0 ]; then say "Don't go on to \"Give InFlite's hub its key\" until this run is green: fix what's said above and run this again."; fi
+  return $bad
+}
+
+# ---- One roof's off switch (roof.yml; stage 1, spec §8.5, §11.2): ROOF_OFF on the hub's Workers ----
+# A Worker secret's change makes a new version of the code that's deployed and deploys it: seconds, no build. Cloudflare
+# makes it only while the Worker's newest version is the deployed one (a push to another branch of the inflite repo
+# uploads a newer one that isn't); so that's checked first, and where it isn't so, nothing is changed and the words say
+# what to do. Never `wrangler versions secret put`: that builds on the newest version, which may be another branch's.
+
+# (rollback level 2's words, for when the switch can't be used)
+ROOF_LEVEL2="rollback level 2: revert the One roof merge on the inflite repo's claude/inflite and dist7t and push (Workers Builds deploys Today 1.09 in minutes; golive.md)"
+
+# worker_settled W → 0 when the Worker's newest uploaded version is the one its active deployment serves, alone (all of
+# its traffic); else fails with what to do, having changed nothing
+worker_settled() {
+  local w=${1:-$WORKER} deployed newest dep
+  case "$w" in "$WORKER"|"$STAGING") ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER or $STAGING). Nothing was changed."; return 1 ;; esac
+  need_account || return 1
+  if ! cf GET "/accounts/$ACCOUNT/workers/scripts/$w/deployments"; then
+    if [ "$CF_CODE" = 404 ]; then fail "There's no Worker $w on this account$([ "$w" = "$STAGING" ] && echo " (the staging hub: run \"Put InFlite's staging hub up\" first, or choose inflite.ai)"). Nothing was changed."
+    else fail "Couldn't read the Worker's deployments ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; fi
+    return 1
+  fi
+  dep=$(jq -c '(.deployments // [])[0] // empty' <<<"$CF_OUT")
+  [ -n "$dep" ] || { fail "The Worker $w has no deployment. Nothing was changed."; return 1; }
+  deployed=$(jq -r 'if ((.versions // []) | length) == 1 and (.versions[0].percentage // 0) == 100 then .versions[0].version_id else "" end' <<<"$dep")
+  if [ -z "$deployed" ]; then
+    fail "The Worker $w is part way through a gradual deployment (two versions sharing its traffic): Cloudflare won't change this Worker's secrets until one version has all of it (Workers & Pages → $w → Deployments). Or use $ROOF_LEVEL2. Nothing was changed."
+    return 1
+  fi
+  if ! cf GET "/accounts/$ACCOUNT/workers/scripts/$w/versions"; then
+    fail "Couldn't read the Worker's versions ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; return 1
+  fi
+  newest=$(jq -r '(.items // []) | max_by(.number // 0) | .id // empty' <<<"$CF_OUT")
+  [ -n "$newest" ] || { fail "The Worker $w has no versions listed. Nothing was changed."; return 1; }
+  if [ "$newest" != "$deployed" ]; then
+    fail "The Worker $w's newest version (${newest:0:8}) isn't the one deployed (${deployed:0:8}): a push to another branch of the inflite repo uploads one, and Cloudflare won't change this Worker's secrets until its production branch is deployed again (Workers & Pages → $w → Deployments; never deploy that other version). Or use $ROOF_LEVEL2. Nothing was changed."
+    return 1
+  fi
+  say "The Worker $w is settled: its newest version (${newest:0:8}) is the one deployed."
+}
+
+# roof_set W off|on → ROOF_OFF "1" put on the Worker (off: Weather's milestone-1 page at /weather/, the module's files not
+# found) or deleted (on: the framework at /weather/; a Worker without it is on already). After worker_settled.
+roof_set() {
+  local w=${1:-} state=${2:-} rc=0 site
+  case "$state" in off|on) ;; *) fail "No such state: \"$state\" (off or on). Nothing was changed."; return 1 ;; esac
+  case "$w" in "$WORKER") site=$SITE ;; "$STAGING") site=$STAGING_SITE ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER or $STAGING). Nothing was changed."; return 1 ;; esac
+  worker_settled "$w" || return 1
+  if [ "$state" = off ]; then
+    if ! printf '1' | $WRANGLER secret put ROOF_OFF --name "$w"; then
+      fail "Couldn't set the Worker's ROOF_OFF ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM. Or use $ROOF_LEVEL2."
+      return 1
+    fi
+    say "The Worker $w's secret ROOF_OFF is \"1\" (live at once): $site/weather/ is Weather's milestone-1 page again, and its module's files are not found."
+  else
+    worker_secrets "$w" || rc=$?
+    if [ "$rc" != 0 ]; then fail "Couldn't read the Worker's secrets ($w: $CF_ERR). $(lacks "$WORKER_PERM") Nothing was changed."; return 1; fi
+    if ! jq -e 'any(.[]?; .name == "ROOF_OFF")' <<<"$CF_OUT" >/dev/null; then say "The Worker $w has no ROOF_OFF: the roof is on there already."; return 0; fi
+    # (no prompt where nothing can answer one: wrangler asks only in a terminal, and has no --force for this)
+    if ! $WRANGLER secret delete ROOF_OFF --name "$w" </dev/null; then
+      fail "Couldn't delete the Worker's ROOF_OFF ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM."
+      return 1
+    fi
+    say "The Worker $w's ROOF_OFF is deleted (live at once): $site/weather/ is the framework's page again, Weather in InFlite's one page."
+  fi
+}
+
+# wait_roof SITE true|false [seconds] → the hub's /api/hub asked until its roof says so. A Worker from before the roof
+# (no roof in its answer, or no /api/hub at all) has Weather's milestone-1 page: that's off, never on.
+wait_roof() {
+  local site=${1:-$SITE} want=${2:-true} limit=${3:-120} start=$SECONDS waited=0 el roof body code
+  while :; do
+    body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" -w '\n%{http_code}' "$site/api/hub" 2>/dev/null) || body=$'\n000'
+    code=${body##*$'\n'}; body=${body%$'\n'*}
+    roof=$(jq -r 'if type == "object" and has("roof") then (.roof | tostring) elif type == "object" and has("ready") then "none" else "?" end' <<<"$body" 2>/dev/null) || roof='?'
+    roof=${roof:-?}
+    if [ "$code" = 404 ]; then roof=none; fi
+    el=$((SECONDS - start)); if (( waited > el )); then el=$waited; fi
+    if [ "$roof" = "$want" ] || { [ "$want" = false ] && [ "$roof" = none ]; }; then
+      if [ "$roof" = none ]; then say "$site/api/hub has no roof (a Worker from before it): Weather there is milestone 1's page, so the roof is off (after $el s)."
+      else say "$site/api/hub says roof: $roof (after $el s)."; fi
+      return 0
+    fi
+    if (( el >= limit )); then
+      fail "$site/api/hub still says roof: $roof after $limit s (last answer: HTTP $code, $(printf '%.160s' "$body" | tr -d '\r\n')). Each copy of the Worker takes a secret's change within seconds; check by hand: curl -s $site/api/hub"
+      return 1
+    fi
+    echo "  $el s: roof is $roof (HTTP $code); asking again in $EVERY s"
+    sleep "$EVERY"; waited=$((waited + EVERY))
+  done
+}
+
+# roof.yml's last step: what's live now. Reads each step's outcome (OUT_*), the inputs (ROOF_STATE, ROOF_WHERE); fails the
+# run if anything did, naming rollback level 2 where the switch was refused.
+roof_verdict() {
+  local state=${ROOF_STATE:-?} where=${ROOF_WHERE:-both} sites workers bad=0 what
+  sites=$(hub_sites "$where" 2>/dev/null) || sites=$SITE
+  workers=$(hub_workers "$where" 2>/dev/null) || workers=$WORKER
+  what=$([ "$state" = off ] && echo "Weather's milestone-1 page at /weather/ (its module's files not found)" || echo "the framework at /weather/, Weather in InFlite's one page")
+  heading "What's live now"
+  say "Asked: the roof $state at $where, by ${GITHUB_ACTOR:-someone} at $(date -u '+%Y-%m-%d %H:%M UTC')."
+  if [ "${OUT_ACCOUNT:-}" != success ]; then
+    say "Nothing was changed: the roof is as it was (the step that failed says why)."; return 1
+  fi
+  case "${OUT_SETTLED:-}" in
+    success) ;;
+    *) say "Refused, nothing changed: not every Worker ($workers) is settled (its newest version isn't the one deployed, or it couldn't be read; the step says which). Deploy its production branch again and run this again, or use $ROOF_LEVEL2."
+       return 1 ;;
+  esac
+  case "${OUT_SET:-}" in
+    success)
+      if [ "${OUT_WAIT:-}" = success ]; then say "The roof is $state at $sites: $what."
+      else bad=1; say "ROOF_OFF is $([ "$state" = off ] && echo set || echo deleted) on $workers, but not every hub said so in time (the wait step says which): check by hand, curl -s <site>/api/hub."; fi ;;
+    *) bad=1; say "ROOF_OFF wasn't changed on every Worker (the step says which; one before it may have been). Run this again once the cause is fixed, or use $ROOF_LEVEL2." ;;
+  esac
+  if [ "$bad" = 0 ]; then
+    if [ "$state" = off ]; then say "Pages open at Weather learn it the next time they come back in sight (within five minutes) and go to its milestone-1 page. To undo: this again with state on."
+    else say "Pages open learn it the next time they come back in sight (within five minutes). To turn it off again: this with state off."; fi
+  fi
   return $bad
 }
