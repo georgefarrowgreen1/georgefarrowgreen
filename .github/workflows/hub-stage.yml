@@ -11,12 +11,17 @@ name: Put InFlite's staging hub up
 # 1. makes sure the Pages project's HUB_ORIGINS lists https://inflite.ai and https://next.inflite.ai (Chat and WebAuthn
 #    take the hubs' origins as their own: functions/_sites.js hubOrigins), setting it as a production secret only where
 #    it isn't set or lacks one; a Pages secret counts once Pages is deployed again, which hub-key.yml's retry does;
-# 2. fetches the inflite repo at the ref given into the runner's temporary folder, checks its [env.next] is the Worker
-#    inflite-next at next.inflite.ai alone, and deploys it there (npx wrangler deploy --env next);
+#    With hub_push (only once George has said yes: golive.md), it sets the Pages project's HUB_PUSH to "1" too, so his
+#    check K1 can use Get Every App's Notifications Here at the staging hub;
+# 2. fetches the inflite repo at the ref given (one of its own branches or tags, or a commit on one: never a pull
+#    request's or a fork's) into the runner's temporary folder, checks its wrangler.toml (its [env.next] the Worker
+#    inflite-next at next.inflite.ai alone, nothing run as it's built, no other config or .env of wrangler's), and
+#    deploys it there (npx wrangler deploy --env next, told exactly which file to read, run from outside the clone);
 # 3. checks https://next.inflite.ai/version says that build's Today, and /api/hub answers ({"ready": false} until
 #    hub-key.yml gives the staging hub its key).
 # It never touches the Worker inflite (inflite.ai) or the Pages project's HUB_KEY. Safe to run again: each run deploys
-# the ref given, and the staging Worker keeps its secrets.
+# the ref given, and the staging Worker keeps its secrets. The token is given only to the steps that ask Cloudflare,
+# never to the fetch or the checks. Go on to hub-key.yml only when this run is green.
 #
 # Needs CLOUDFLARE_API_TOKEN: a Cloudflare API token with Account › Cloudflare Pages › Edit and Account › Workers
 # Scripts › Edit, and for the custom domain Zone › Workers Routes › Edit on inflite.ai (with Zone › Zone › Read).
@@ -28,12 +33,17 @@ on:
         description: "The inflite repo's branch, tag or commit to stage at next.inflite.ai (claude/inflite: its live branch)"
         type: string
         default: claude/inflite
+      hub_push:
+        description: "Also set the Pages project's HUB_PUSH to 1 (Get Every App's Notifications Here, for George's check K1): only once he's said yes"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 # (one change to the hub at a time, with hub-key.yml and hub-off.yml: this one waits its turn, and the off switch takes
-# over from it)
+# over from it. GitHub keeps one waiting run per group: dispatch one at a time, as a second waiting one replaces the
+# first)
 concurrency:
   group: inflite-hub-key
   cancel-in-progress: false
@@ -46,18 +56,23 @@ jobs:
   stage:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # (CLOUDFLARE_API_TOKEN only in the steps that ask Cloudflare: never in the fetch of the inflite repo, nor the checks)
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
       IFL_REF: ${{ inputs.inflite_ref }}
+      HUB_PUSH_ON: ${{ inputs.hub_push }}
     steps:
-      # (.github/hub, and the top-level files with it: stage_origins reads wrangler.toml for HUB_ORIGINS)
+      # (.github/hub, and the top-level files with it: stage_origins and stage_push read wrangler.toml; no credentials
+      # kept in the checkout)
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/hub
+          persist-credentials: false
       - name: Check the token's there
         id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Cloudflare Pages › Edit, Account › Workers Scripts › Edit and Zone › Workers Routes › Edit on inflite.ai. Nothing was changed."
@@ -69,6 +84,8 @@ jobs:
       # (and leaves it for the steps after as HUB_ACCOUNT: each step is a shell of its own)
       - name: Find the Cloudflare account
         id: account
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           . .github/hub/hub.sh
           cf_account
@@ -80,9 +97,23 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
         working-directory: ${{ runner.temp }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           stage_origins
+      # (only when asked: George's check K1 needs it, and he says whether it comes forward)
+      - name: Set the Pages project's HUB_PUSH to 1 (asked for)
+        id: push
+        if: ${{ !cancelled() && steps.account.outcome == 'success' && inputs.hub_push }}
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: ${{ runner.temp }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
+          stage_push
       - name: Fetch the inflite repo at the ref given, and check its staging Worker
         id: clone
         if: ${{ !cancelled() && steps.account.outcome == 'success' }}
@@ -91,13 +122,16 @@ jobs:
         run: |
           . .github/hub/hub.sh
           stage_clone "$IFL_REF"
-      # (from the inflite repo's folder, whose wrangler.toml [env.next] is the staging Worker)
+      # (from the runner's temporary folder, outside the clone: wrangler's told to read the clone's wrangler.toml, whose
+      # [env.next] is the staging Worker, and no .env; npx reads no .npmrc of the clone's)
       - name: Deploy it to the staging Worker (inflite-next, at next.inflite.ai)
         id: deploy
         if: ${{ !cancelled() && steps.clone.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
-        working-directory: ${{ runner.temp }}/inflite
+        working-directory: ${{ runner.temp }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           stage_deploy
@@ -115,6 +149,7 @@ jobs:
           OUT_TOKEN: ${{ steps.token.outcome }}
           OUT_ACCOUNT: ${{ steps.account.outcome }}
           OUT_ORIGINS: ${{ steps.origins.outcome }}
+          OUT_PUSH: ${{ steps.push.outcome }}
           OUT_CLONE: ${{ steps.clone.outcome }}
           OUT_DEPLOY: ${{ steps.deploy.outcome }}
           OUT_CHECK: ${{ steps.check.outcome }}
