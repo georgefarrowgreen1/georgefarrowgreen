@@ -87,7 +87,8 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
       else if (k === "*" || (k.endsWith(":") && topic.startsWith(k))) for (const f of [...l]) { try { f({ topic, data }); } catch (_) {} }
     }
   };
-  const setState = (s) => { if (typeof s !== "string" || s === state) return; state = s; last.set("state", { state: s }); tell("state", { state: s }); };
+  // (the first state said is kept and told even when it's the one it starts as, signin: a store made later must hear it)
+  const setState = (s) => { if (typeof s !== "string" || (s === state && last.has("state"))) return; state = s; last.set("state", { state: s }); tell("state", { state: s }); };
   const onMsg = (e) => {
     const d = e.data;
     if (!d || typeof d !== "object") return;

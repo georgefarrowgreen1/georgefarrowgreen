@@ -215,8 +215,10 @@ export async function mount(root, fw) {
       case "add": ctx.open.addFriend(r.arg || ""); break;
       case "share": {
         // (the raw hash, read once: the words leave the address as the frame tidies it, S3-D7)
-        const { words, card } = readShareHash(r.hash || "");
-        const back = new URLSearchParams(String(r.hash || "").replace(/^#/, "")).get("back");
+        // (route.hash is the hash less its "#"; cards.js reads "#share=…")
+        const h = String(r.hash || "").replace(/^#?/, "#");
+        const { words, card } = readShareHash(h);
+        const back = new URLSearchParams(h.slice(1)).get("back");
         ctx.open.send({ card, words, to: null }).then((res) => { if (res && back && /^\/[\w/-]*$/.test(back) && !back.startsWith("//")) fw.nav.go(back, { replace: true }); });
         break;
       }
