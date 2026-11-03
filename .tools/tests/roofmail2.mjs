@@ -19,7 +19,7 @@ import {
   HUB, EXCEPT, AXE, checker, phone, account, hostCall, pageCall, alive, loads, history, here, shown, gone, textOf, attrOf, count, visible,
   storage, changed, said, passed, meter, connectorFiles, moduleBuild, wait, until, js, closeAll,
 } from './rooflib.mjs';
-import { makeAccount, onAccountPage } from './join.mjs';
+import { makeAccount, onAccountPage, PASSWORD } from './join.mjs';
 
 const [,, S, out] = process.argv;
 const { ok, part, fails } = checker();
@@ -96,10 +96,15 @@ await part(7, 'Mail Settings: a change saved at Mail; New Address at Mail’s ow
 // ======================================================================================================================
   await p.goto(`${HUB}/mail/`);
   await mailUp(p);
-  await p.click(H.HD_PICK);
-  await sheetUp(p, 'mail-views');
-  await p.locator(`${SH('mail-views')}[open]`).getByRole('button', { name: /Mail Settings/ }).last().click();
-  const up = await sheetUp(p, 'mail-settings');
+  const openSettings = async () => {
+    await p.click(H.HD_PICK);
+    await sheetUp(p, 'mail-views');
+    await p.locator(`${SH('mail-views')}[open]`).getByRole('button', { name: /Mail Settings/ }).last().click();
+    const up = await sheetUp(p, 'mail-settings');
+    // (its first page drawn once Mail's settings are in)
+    return up && (await p.waitForFunction((s) => /Signature/.test(document.querySelector(s)?.textContent || ''), `${SH('mail-settings')}[open]`, { timeout: 15000 }).then(() => true, () => false));
+  };
+  const up = await openSettings();
   const words = up ? (await textOf(p, `${SH('mail-settings')}[open]`)) || '' : '';
   ok(up && ['Signature', 'Unknown Addresses', 'Remote Images', 'Notifications'].every((w) => words.includes(w)), '7. ▾ → Mail Settings: the sheet (mail-settings) with Signature, Unknown Addresses, Remote Images, Notifications (§2.2)', words.slice(0, 300));
   ok(!/Delete Address|Send From\b(?! open)/.test(words.replace(/New Address, Delete or Send From.*/, '')), '7. …no Delete Address or Send From of its own (S4-D11)', words.slice(0, 300));
@@ -112,6 +117,8 @@ await part(7, 'Mail Settings: a change saved at Mail; New Address at Mail’s ow
   await p.locator(`${SH('mail-settings')}[open]`).getByRole('button', { name: /^(Save|Done)$/ }).first().click({ timeout: 2000 }).catch(() => {});
   const saved = await until(async () => ((await mailAsk('/api/settings', { cookie })).json?.signature === 'George · sent from under the roof'), 10000);
   ok(!!saved, '7. the signature changed: saved at Mail (PATCH from the hub, S4-D11)', js((await mailAsk('/api/settings', { cookie })).json?.signature));
+  await closeSheets(p);
+  await openSettings();
   // New Address, Delete or Send From: Mail Settings at Mail's own address, in a tab of its own
   const popped = ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null);
   await p.locator(`${SH('mail-settings')}[open]`).getByRole('link', { name: /Open Mail Settings at Mail.s own address/ }).first().click().catch(() =>
@@ -219,12 +226,13 @@ await part(10, 'the module’s files through InFlite’s Worker, from Mail’s, 
   await tapTile(B.p); await mailUp(B.p); await wait(1500);
   ok((await said(B.p)).filter((x) => /Mail updated/.test(x)).length === 1, '10. opened again in the page: not said again');
   // through the root Worker: each of the files fetched from Mail's Worker as /roof/<file>, no cookie, no bearer
-  const hops = passed(S, t0).filter((x) => x.port === MAIL_PASS);
+  // (the pass-through is shared: the account asks Mail's card through it too, with its key and no cookie, §6.3)
+  const through = passed(S, t0).filter((x) => x.port === MAIL_PASS), hops = through.filter((x) => x.path.startsWith('/roof/'));
   const want = FILES.map((f) => f.replace(/^\/mail/, '')), gotP = new Set(hops.map((x) => x.path.split('?')[0]));
   const missing = want.filter((f) => !gotP.has(f)), withCookie = hops.filter((x) => x.cookie || x.auth).map((x) => x.path);
   ok(!missing.length && !withCookie.length, `10. all ${want.length} files fetched by InFlite’s Worker from Mail’s as /roof/<file>, none with a cookie or a bearer (§6.2)`, js({ missing, withCookie, n: hops.length }));
-  const onlyCode = hops.filter((x) => !/^\/roof\/([\w.-]+\.(js|css)|version)(\?|$)/.test(x.path));
-  ok(!onlyCode.length, '10. …and nothing else of Mail’s through InFlite’s Worker: code and /roof/version only, never an API call (§9, S4-D2)', js(onlyCode.map((x) => x.path).slice(0, 5)));
+  const onlyCode = through.filter((x) => !/^\/roof\/([\w.-]+\.(js|css)|version)(\?|$)/.test(x.path) && !(x.path === '/api/connector/card' && x.auth && !x.cookie));
+  ok(!onlyCode.length, '10. …and nothing else of Mail’s through it: code and /roof/version (the account’s card ask aside, keyed, no cookie), never an API call of the page’s (§9, S4-D2)', js(onlyCode.map((x) => `${x.method} ${x.path} cookie:${x.cookie}`).slice(0, 5)));
   const ver = await hostCall('ifl.test:8788', '/mail/version');
   ok(ver.status === 200 && ver.json?.build === BUILD && /no-store/.test(ver.headers['cache-control'] || ''), `10. /mail/version: { build: ${BUILD} }, no-store (§6.2)`, js({ s: ver.status, j: ver.json, cc: ver.headers['cache-control'] }));
   const f1 = await hostCall('ifl.test:8788', '/mail/roof/mail.js', undefined, { cookie });
@@ -260,7 +268,18 @@ await part(11, 'the gate: Confirm It’s You round trip over CORS; Pat’s admin
   const tp = new URLSearchParams(trip.split('#')[1] || '');
   ok(atAuth && tp.get('signin') === 'mail' && /^[A-Za-z0-9_-]{43}$/.test(tp.get('ask') || '') && tp.get('back') === `${HUB}/mail/`, '11. the whole window to the sign-in page, for Mail, its word’s hash, back to the hub’s /mail/ (S4-D12)', trip.slice(0, 200));
   const verifierKept = await p.evaluate(() => sessionStorage.getItem('mail:signin-verifier')).catch(() => null);
-  if (atAuth) await onAccountPage(p, { email: 'george2@example.com' }).catch((e) => console.log('note: sign-in page', e.message));
+  // (the sign-in page, signed in there already: Sign In, the password asked to confirm it's him, past a passkey offer;
+  // as hubmail.mjs goes through it)
+  if (atAuth) {
+    await p.waitForSelector('main .welcome .signin .btn', { timeout: 20000 }).catch(() => {});
+    await wait(500);
+    await p.click('main .welcome .signin .btn').catch(() => {});
+    const asked = await Promise.race([p.waitForSelector('#sheet[open] input[type=password]', { timeout: 15000 }).then(() => true), p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 15000 }).then(() => false)]).catch(() => false);
+    if (asked) { await p.fill('#sheet input[type=password]', PASSWORD); await p.click('#sheet form .btn'); }
+    else if (await p.$('main .signin input[name=password]')) await onAccountPage(p, { email: 'george2@example.com' }).catch((e) => console.log('note: sign-in page', e.message));
+    const offer = await Promise.race([p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 30000 }).then(() => false), p.waitForSelector('main .signin.offer .link', { timeout: 30000 }).then(() => true)]).catch(() => false);
+    if (offer && new URL(p.url()).host !== 'ifl.test:8788') await p.click('main .signin.offer .link').catch(() => {});
+  }
   await p.waitForURL((u) => u.host === 'ifl.test:8788', { timeout: 30000 }).catch(() => {});
   const back = navs.find((u) => u.startsWith(`${HUB}/mail/#signin=`)) || '';
   ok(/^http:\/\/ifl\.test:8788\/mail\/#signin=[A-Za-z0-9_-]{16,128}(&|$)/.test(back), '11. the code back at the hub’s /mail/#signin=<code> (S4-D12, §2.3)', back.slice(0, 80));
@@ -275,7 +294,7 @@ await part(11, 'the gate: Confirm It’s You round trip over CORS; Pat’s admin
   const pa = await account('Pat Reed', 'patroofmail2');
   const P = watch(await phone('pat2', { cookies: pa.cookies || {} }));
   await P.p.goto(`${HUB}/mail/`);
-  const said11 = await P.p.waitForFunction((s) => /admin/i.test(document.querySelector(s)?.textContent || ''), M_MAIL, { timeout: 30000 }).then(() => true, () => false);
+  const said11 = await P.p.waitForFunction((s) => /only for/i.test(document.querySelector(s)?.textContent || ''), M_MAIL, { timeout: 30000 }).then(() => true, () => false);
   await wait(2500);
   const calls = asked.filter((r) => r.who === 'pat2' && r.url.startsWith(`${MAIL}/api/`) && r.method !== 'OPTIONS');
   ok(said11 && calls.length === 1 && calls[0].url === `${MAIL}/api/session`, '11. Pat at /mail/: Mail’s admin-only state, after one call (/api/session, S4-D21)', js({ text: await textOf(P.p, M_MAIL), calls: calls.map((r) => r.url) }));
@@ -286,6 +305,8 @@ await part(11, 'the gate: Confirm It’s You round trip over CORS; Pat’s admin
 // ======================================================================================================================
 await part(12, 'CSP clean, axe, 390 light and dark, 1024', '§2.1, C13, §4.3', async () => {
 // ======================================================================================================================
+  // (his sign-in confirmed now, whatever part 11 left)
+  sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${GID}'`);
   for (const scheme of ['light', 'dark']) {
     const D = watch(await phone(`george-${scheme}`, { scheme, cookies: jar() }));
     await D.p.goto(`${HUB}/mail/`);

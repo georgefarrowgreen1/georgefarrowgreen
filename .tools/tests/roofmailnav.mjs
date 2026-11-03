@@ -95,11 +95,11 @@ const open = async (name, o = {}) => { const ph = await phone(name, { cookies, .
 const G = await open('george');
 const { p } = G;
 await p.goto(`${HUB}/robots.txt`);
-const prefOn = async (on) => pageCall(p, 'PATCH', '/api/notify', { mail: { inflite: on } });
+const prefOn = async (on) => pageCall(G.p, 'PATCH', '/api/notify', { mail: { inflite: on } });
 // (the account's Quiet Hours: on for the hour now in London, or off; Mail keeps them from its next look at the account)
 const quiet = async (on) => {
   const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
-  const r = await pageCall(p, 'PATCH', '/api/notify', { quiet: { on, from: h, to: (h + 2) % 24, tz: 'Europe/London' } });
+  const r = await pageCall(G.p, 'PATCH', '/api/notify', { quiet: { on, from: h, to: (h + 2) % 24, tz: 'Europe/London' } });
   await wait(11000); await mailAsk('/api/session', { cookie }); await mailAsk('/api/me', { cookie });
   return r;
 };
@@ -132,7 +132,8 @@ await part('A', 'notices: no words in the push; the words from Mail on the phone
   T1 = await until(() => threadId('Harbour lantern plan'), 10000);
   const push = await until(async () => (await pushesTo('georgenav', t0)).find((x) => x.app === 'mail'), 20000);
   const { at: _a, ...payload } = push || {};
-  ok(!!push && js(payload) === js({ app: 'mail', title: 'Mail', body: 'New mail from people', tag: T1, url: `/mail/#thread=${T1}` }), 'A. the account’s push to his InFlite device: { app: "mail", title: "Mail", body: "New mail from people", tag: <thread>, url: "/mail/#thread=<thread>" } (S4-D8, §2.6)', js(payload));
+  const sorted = (o) => js(Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))));
+  ok(!!push && sorted(payload) === sorted({ app: 'mail', title: 'Mail', body: 'New mail from people', tag: T1, url: `/mail/#thread=${T1}` }), 'A. the account’s push to his InFlite device: { app: "mail", title: "Mail", body: "New mail from people", tag: <thread>, url: "/mail/#thread=<thread>" } (S4-D8, §2.6)', js(payload));
   ok(!!push && !WORDS.some((w) => JSON.stringify(payload).includes(w)), 'A. …none of the subject’s, the sender’s or the message’s words in it (§9)', js(payload));
   const told = passed(S, t0).filter((x) => x.path === '/api/account/mail/notice');
   ok(told.length >= 1 && told.every((x) => x.method === 'POST' && x.auth && !x.cookie), 'A. Mail told the account with its key, no cookie (POST /api/account/mail/notice, §6.1)', js(told.map((x) => ({ m: x.method, auth: x.auth, cookie: x.cookie }))));
@@ -246,7 +247,8 @@ await part('C', 'the switch off: a shown Mail bounces once, not while composing;
     ph.off = start;
     await route(ph.ctx, /^http:\/\/ifl\.test:8788\/api\/hub(\?|$)/, (r) => (ph.off ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ ready: true, roof: true, apps: { weather: true, markets: false, fitness: false, mail: false } }) }) : r.continue()));
     await route(ph.ctx, /^http:\/\/ifl\.test:8788\/mail\/(roof\/|version)/, (r) => (ph.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found.' }) : r.continue()));
-    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/mail\/(index\.html)?([?#].*)?$/, (r) => (ph.off && r.request().resourceType() === 'document' && FRAMED ? r.fulfill({ status: 200, headers: FRAMED.headers, body: FRAMED.html }) : r.continue()));
+    // (a page load of /mail/, from the page or through the root worker's own fetch for it: a GET asking for HTML)
+    await route(ph.ctx, /^http:\/\/ifl\.test:8788\/mail\/(index\.html)?([?#].*)?$/, (r) => (ph.off && FRAMED && r.request().method() === 'GET' && (r.request().resourceType() === 'document' || /text\/html/.test(r.request().headers().accept || '')) ? r.fulfill({ status: 200, headers: FRAMED.headers, body: FRAMED.html }) : r.continue()));
     // (Mail's API to the hub's origin: refused, no CORS headers, as HUB_API "0" leaves it)
     await route(ph.ctx, /^http:\/\/email\.ifl\.test:8788\/(api\/|body\/)/, (r) => (ph.off && (r.request().headers().origin === HUB || /\/body\//.test(r.request().url())) ? r.fulfill({ status: r.request().url().includes('/body/') ? 404 : 403, contentType: 'application/json', body: '{"error":"no"}' }) : r.continue()));
   };
