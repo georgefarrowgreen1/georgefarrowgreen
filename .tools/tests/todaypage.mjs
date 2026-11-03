@@ -1,17 +1,22 @@
-// Today's page (the inflite repo's today/: its Worker and public files), end to end in real Chromium: its Worker run by
-// wrangler dev on :8787 against a stand-in for the account (mocks/todaystub.mjs on :8789, answering from
-// mocks/today/*.json), both started here and stopped by PID at the end. Run on its own, under the e2e lock:
-//   flock <scratch>/today-real/e2e.lock node .tools/tests/todaypage.mjs [state dir] [screenshots dir]
+// Today's page (the inflite repo's today/: its Worker and public files; since Today First, InFlite's one page: Today,
+// Apps and You), end to end in real Chromium: its Worker run by wrangler dev on :8787 against a stand-in for the account
+// (mocks/todaystub.mjs on :8789, answering from mocks/today/*.json in its version 1 modes), both started here and stopped
+// by PID at the end. The Worker here has no hub key, so the page runs as Today did before the hub (degraded: the apps at
+// their own addresses; todayshell.mjs has the hub's). Run by run.sh, or on its own:
+//   node .tools/tests/todaypage.mjs [state dir] [screenshots dir]
 // Checked: the way in (InFlite's shared one, its words for search engines, the apps between the name and Sign in never
-// over either, the hand-back's address); signing in by hand-back; no one's day drawn once signed out, at any moment; the
-// hostile names as text; each card in each state, its links, Try Again; the requests the page makes; Edit; the morning
-// with a stand-in push service; the menu and Sign Out; and no CSP violation, console error or sideways scroll anywhere.
+// over either, the hand-back's address, Sign in as Today's own trip while the hub isn't ready); signing in by
+// hand-back; no one's day drawn once signed out, at any moment; the hostile names as text; each card in each state (The
+// Rest of Today, #rest), its links, Try Again; the requests the page makes; Edit; the morning with a stand-in push
+// service (through the device route); the menu and Sign Out; and no CSP violation, console error or sideways scroll.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 
+// (requests a service worker makes are routed too: Today's root worker fetches its own files)
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 const HERE = new URL('./', import.meta.url).pathname;
 const IFL = process.env.IFL_ROOT || new URL('../../../inflite/', import.meta.url).pathname;
 const OUT = process.argv[3] || `${tmpdir()}/todaypage`;
@@ -28,6 +33,8 @@ const T0 = CARDS.at, TQ = QUIET.at, ME = SESSION.user.id, KEYS = ['weather', 'ch
 const BUILD = /const BUILD = "([\d.]+)"/.exec(readFileSync(`${IFL}today/public/app.js`, 'utf8'))[1];
 const SESSION_COOKIE = 'account=stubsession0123456789abcdefABCDEF';
 const FAKE_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/today-phone';
+// (day.css is batch TP's: until it's in, stood in for, empty, so the page's link to it isn't a broken one)
+const NO_DAY_CSS = !existsSync(`${IFL}today/public/day.css`);
 
 // ---- the stand-in account and Today's Worker ----
 const stub = spawn(process.execPath, [`${HERE}mocks/todaystub.mjs`, '8789'], { stdio: ['ignore', 'ignore', 'inherit'] });
@@ -55,6 +62,7 @@ async function open({ w = 390, h = 844, scheme = 'dark', time = T0, push = false
   // (other cookies of the site's, which never go on to the account)
   await ctx.addCookies([{ name: 'theme', value: 'dark', url: BASE }, { name: 'known-device', value: 'abc123', url: BASE }, ...(signedIn ? [{ name: 'account', value: SESSION_COOKIE.split('=')[1], url: BASE }] : [])]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
+  if (NO_DAY_CSS) await ctx.route((u) => new URL(u).pathname === '/day.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
   if (watch) await ctx.addInitScript(() => {
     // (any of the day's words, drawn at any moment from the first script on)
     const WORDS = ['Biscuit', 'Tempo 2 × 15', '20,862', 'pigeons on their way', 'Partly Cloudy', 'Rolls-Royce', 'Alex'];
@@ -102,6 +110,7 @@ await part('signed out', async () => {
   ok(apps.every((a) => /^\w+: /.test(a[2])), 'each app says what it is');
   const asked = await reqs();
   same(asked.map((e) => `${e.method} ${e.path}`), ['GET /api/account/today/me'], 'the way in costs the account one request');
+  ok(!(await p.isVisible('#signinToday')), 'the hub not ready here (no key): no second way in, Sign in is Today’s own trip');
   await p.screenshot({ path: `${OUT}/out-390-dark.png` });
   // (Sign in: to the sign-in page with the hash of a word kept in this tab, and the way back)
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
@@ -142,7 +151,7 @@ await part('the apps between the name and Sign in', async () => {
 });
 
 await part('robots, sitemap, 404', async () => {
-  same(await (await fetch(`${BASE}/robots.txt`)).text(), 'User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://inflite.ai/sitemap.xml\n', 'robots.txt');
+  same(await (await fetch(`${BASE}/robots.txt`)).text(), 'User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /chats/\nDisallow: /weather/\nDisallow: /fitness/\nDisallow: /markets/\nDisallow: /mail/\nSitemap: https://inflite.ai/sitemap.xml\n', 'robots.txt');
   ok((await (await fetch(`${BASE}/sitemap.xml`)).text()).includes('<loc>https://inflite.ai/</loc>'), 'sitemap.xml');
   const { ctx, p } = await open({ signedIn: false, wait: false, path: '/nope' });
   const r = await p.goto(`${BASE}/nope`);
@@ -201,7 +210,7 @@ await part('signed out after signed in', async () => {
   await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
   await p.reload();
   await p.waitForSelector('#in:not([hidden]) .tcard[data-state="ok"]');
-  has(await text(p, '#cards'), 'Tempo 2 × 15', 'no network, on the Home Screen: the copy kept here is drawn');
+  has(await text(p, '#rest'), 'Tempo 2 × 15', 'no network, on the Home Screen: the copy kept here is drawn');
   same(await text(p, '#kept'), 'Updated 08:10', 'and marked when it’s from');
   // (the account answering with an error, on the Home Screen: no one's day either)
   await ctx.unroute('**/api/**');
@@ -221,7 +230,7 @@ await part('signed out after signed in', async () => {
 
 // ======================================================================= the hostile names, as text
 await part('hostile names', async () => {
-  const sig = (p) => p.evaluate(() => [...document.querySelectorAll('#cards *')].map((e) => `${e.tagName}[${[...e.attributes].map((a) => a.name).sort().join(',')}]`).join('|'));
+  const sig = (p) => p.evaluate(() => [...document.querySelectorAll('#rest *')].map((e) => `${e.tagName}[${[...e.attributes].map((a) => a.name).sort().join(',')}]`).join('|'));
   await mode('clean');
   let { ctx, p } = await open();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
@@ -234,7 +243,7 @@ await part('hostile names', async () => {
   const chat = await p.$eval('.tcard[data-app=chat]', (e) => e.textContent);
   has(chat, "O'Brien, Courier", "O'Brien, as text");
   has(chat, 'to <b>x</b>', '<b>x</b>, as text');
-  ok(!(await p.$$eval('#cards b', (bs) => bs.some((x) => x.textContent === 'x'))), 'no <b> made of it');
+  ok(!(await p.$$eval('#rest b', (bs) => bs.some((x) => x.textContent === 'x'))), 'no <b> made of it');
   ok((await sig(p)) === clean, 'no element or attribute more than the clean fixture gives');
   await ctx.close();
 });
@@ -246,18 +255,23 @@ await part('cards: ok', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   const heads = await p.$$eval('.tcard', (cs) => cs.map((c) => [c.dataset.app, c.querySelector('.tc-head').getAttribute('href')]));
   same(heads, KEYS.map((k) => [k, CARDS.cards[k].href]), 'each card’s head links to its app at the fixture’s href');
+  same(await p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')])), [['Today', '/'], ['Chats', 'https://chat.inflite.ai/'], ['Apps', '/#apps'], ['You', '/#you']], 'InFlite’s tab bar under the day (Chats at its own address while the hub isn’t ready)');
+  ok(await p.evaluate(() => !document.getElementById('today').hidden && document.getElementById('apps').hidden && document.getElementById('you').hidden), 'opened on Today');
   // (the fixture: weather has a packed card, fitness a null one, chat none, and markets one with characters outside
   // base64url: only weather's goes in the link, after the words)
+  // (Send: a link to Chat's #share=, or, where cards.js sends through IFL.hub, a button whose way there when the hub can't
+  // take it (data-href) is the same address. Either way, it must be there)
+  const sendTo = (k) => p.$eval(`.tcard[data-app=${k}] [data-send]`, (n) => (n.tagName === 'BUTTON' ? n.dataset.href || '' : n.getAttribute('href'))).catch(() => null);
   for (const k of KEYS) {
-    const send = await p.$eval(`.tcard[data-app=${k}] a[data-send]`, (a) => a.href).catch(() => null), sc = CARDS.cards[k].sendCard;
+    const send = await sendTo(k), sc = CARDS.cards[k].sendCard;
     const card = typeof sc === 'string' && /^[A-Za-z0-9_-]{1,6000}$/.test(sc) ? `&card=${sc}` : '';
     same(send, `https://chat.inflite.ai/#share=${encodeURIComponent(CARDS.cards[k].share)}${card}`, `${k}: Send to a friend goes to Chat’s #share= with its line${card ? ', and the card after it' : ', and no card'}`);
   }
   ok(/^[A-Za-z0-9_-]+$/.test(CARDS.cards.weather.sendCard) && /[^A-Za-z0-9_-]/.test(CARDS.cards.markets.sendCard), 'the fixture has a good sendCard and a bad one');
-  const wsend = await p.$eval('.tcard[data-app=weather] a[data-send]', (a) => a.getAttribute('href'));
+  const wsend = String(await sendTo('weather'));
   ok(/^https:\/\/chat\.inflite\.ai\/#share=[^&]+&card=[A-Za-z0-9_-]+$/.test(wsend), 'weather: #share= first, then &card=', wsend);
-  const msend = await p.$eval('.tcard[data-app=markets] a[data-send]', (a) => a.getAttribute('href'));
-  ok(!msend.includes('card=') && !msend.includes('<'), 'markets: a sendCard outside base64url is left out of the link', msend);
+  const msend = await sendTo('markets');
+  ok(typeof msend === 'string' && msend.startsWith('https://chat.inflite.ai/#share=') && !msend.includes('card=') && !msend.includes('<'), 'markets: a sendCard outside base64url is left out of the link', String(msend));
   const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
   same(fit.slice(0, 2), [['Details', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Details and Change, in Fitness’s words, to Fitness’s #today');
   ok(await p.$eval('.tcard[data-app=fitness] .tc-foot .pill.primary', (a) => a.textContent === 'Details' && !a.querySelector('svg')), 'Fitness: no play glyph, as nothing starts a session');
@@ -276,7 +290,7 @@ await part('cards: ok', async () => {
     return [at(r.top + 2), at(r.bottom - 2), i === 0 ? at(r.top - 11) : at(r.bottom + 11)];
   }));
   same(reach, [[true, true, true], [true, true, true]], 'Markets: each name tapped on its words or a finger’s width beyond them, never taken by the other');
-  const words = await text(p, '#cards');
+  const words = await text(p, '#rest');
   for (const w of ['2 pigeons on their way to you', 'Sam’s pigeon lands about 11:05', 'Mum’s pigeon lands about 16:20', 'A mystery pigeon', 'Leo’s pigeon landed at 07:30', 'Not read yet', 'To Leo · lands tomorrow about 01:40', '12-day flight streak with Mum', 'Send a pigeon in the next 15h 50m to keep it',
     'Yellow wind warning today 18:00 to tomorrow 03:00', 'Dry, sunny spells until about 15:00', 'NEXT FOUR HOURS', 'Feels like 7°',
     'Tempo 2 × 15', 'Why today:', 'Best 10:00 to 11:00', '11°, dry, a light westerly · London',
@@ -317,11 +331,11 @@ await part('cards: quiet', async () => {
   await mode('quiet');
   const { ctx, p } = await open({ time: TQ, scheme: 'light' });
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
-  const words = await text(p, '#cards');
+  const words = await text(p, '#rest');
   for (const w of ['No pigeons on their way to you', 'No session planned today', 'Next · Monday', 'London and New York are shut today', 'Your holdings are as they closed.', 'TOMORROW IN LONDON', 'Dry and partly cloudy tonight.'])
     has(words, w, `quiet: “${w}”`);
   ok(!words.includes('No change today yet'), 'quiet: no “yet” on a day the markets are shut');
-  same(await p.$$eval('a[data-send]', (as) => as.map((a) => a.closest('.tcard').dataset.app)), ['weather', 'chat'], 'quiet: no Send to a friend where there’s nothing to say');
+  same(await p.$$eval('[data-send]', (as) => as.map((a) => a.closest('.tcard').dataset.app)), ['weather', 'chat'], 'quiet: no Send to a friend where there’s nothing to say');
   await p.screenshot({ path: `${OUT}/quiet-390-light.png`, fullPage: true });
   await ctx.close();
 });
@@ -398,7 +412,7 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
   const offBox = await p.evaluate(async ([card, now]) => {
     const { cardHTML } = await import('/cards.js'), box = document.createElement('div');
     box.innerHTML = cardHTML('chat', card, { links: { chat: 'https://chat.inflite.ai' }, tz: 'Europe/London', now });
-    return { track: !!box.querySelector('.pg-track'), bird: !!box.querySelector('.bird-ic, .pg-bird'), pill: !!box.querySelector('a[data-send] svg'), pigeons: box.querySelector('[data-pgtitle]')?.dataset.pigeons, words: box.textContent };
+    return { track: !!box.querySelector('.pg-track'), bird: !!box.querySelector('.bird-ic, .pg-bird'), pill: !!box.querySelector('[data-send] svg'), pigeons: box.querySelector('[data-pgtitle]')?.dataset.pigeons, words: box.textContent };
   }, [off([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 3 * 3600e3 }], [], []), T0]);
   ok(!offBox.track && !offBox.bird && offBox.pill && offBox.pigeons === '0' && !/pigeon|Biscuit|swift|mi from/i.test(offBox.words.replace(/Send to a friend/, '')), 'Chat, pigeons off: no track, no bird (Send to a friend with a plain arrow), no kind, no pigeon words', JSON.stringify({ ...offBox, words: offBox.words.replace(/\s+/g, ' ').slice(0, 160) }));
   c5 = await parts('chat', off([], [{ ...leo, n: 1, messages: 1 }]), T0);
@@ -437,7 +451,7 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
     const { cardHTML } = await import('/cards.js');
     const box = document.createElement('div');
     box.innerHTML = cardHTML('markets', card, { links: {}, tz: 'Europe/London', now: Date.now() });
-    document.querySelector('#cards').prepend(box);
+    document.querySelector('#rest').prepend(box);
     const a = box.querySelector('a.mk-name');
     a.scrollIntoView({ block: 'center' });
     const r = a.getBoundingClientRect(), x = r.left + r.width / 2, at = (y) => document.elementFromPoint(x, y)?.closest('a.mk-name') === a;
@@ -501,7 +515,7 @@ await part('edit', async () => {
   await p.click('#edList [data-k=chat] [data-mv="-1"]');
   await p.click('#edList [data-k=markets] [data-show]');
   await p.waitForTimeout(900);
-  same(await p.$$eval('#cards .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'weather', 'fitness'], 'Edit: moved and hidden on the page at once');
+  same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['chat', 'weather', 'fitness'], 'Edit: moved and hidden on the page at once');
   let puts = (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs'));
   same(puts.length, 1, 'Edit: the changes sent once, after the last');
   same(JSON.parse(puts.at(-1)?.body || '{}'), { order: ['chat', 'weather', 'fitness', 'markets'], hidden: ['markets'] }, 'Edit: the PUT body');
@@ -517,7 +531,7 @@ await part('edit', async () => {
 });
 await part('edit: a change made while the last is on its way', async () => {
   // (the account answering each PUT 700 ms late; a second move made after the first PUT's gone, before its answer)
-  const order = (p) => p.$$eval('#cards .tcard', (cs) => cs.map((c) => c.dataset.app).join(','));
+  const order = (p) => p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app).join(','));
   const putOrders = async () => (await reqs()).filter((e) => e.method === 'PUT' && e.path.endsWith('/prefs')).map((e) => JSON.parse(e.body).order.join(','));
   for (const gap of [900, 550]) {
     await mode('ok');
@@ -558,8 +572,9 @@ await part('morning', async () => {
   await p.click('#mOn');
   await p.waitForFunction(() => document.querySelector('#mOn').checked && !document.querySelector('#mOn').disabled);
   await p.waitForTimeout(300);
-  const all = await reqs(), i = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/push')), j = all.findIndex((e) => e.method === 'PUT' && e.path.endsWith('/today/morning'));
-  ok(i >= 0 && j > i, 'turning it on: POST /api/push, then PUT /api/morning');
+  const all = await reqs(), i = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/device')), j = all.findIndex((e) => e.method === 'PUT' && e.path.endsWith('/today/morning'));
+  ok(i >= 0 && j > i, 'turning it on: POST /api/device (Today’s morning, never every app’s), then PUT /api/morning');
+  same(JSON.parse(all[i]?.body || '{}').fan, undefined, 'never fan from the morning’s switch');
   same(JSON.parse(all[i]?.body || '{}').sub?.endpoint, FAKE_ENDPOINT, 'the subscription sent in the body');
   const put = JSON.parse(all[j]?.body || '{}');
   same([put.on, put.tz], [true, 'Europe/London'], 'PUT /api/morning {on: true, tz}');
@@ -591,13 +606,12 @@ await part('morning', async () => {
   const chatLine = () => p.$eval('#lines input[data-line=chat]', (i) => i.closest('label').querySelector('small').textContent);
   same(await chatLine(), 'Pigeons on their way to you', 'morning: Chat’s line, pigeons on');
   const offCards = (r) => r.fetch().then(async (res) => { const a = await res.json(); if (a.cards?.chat) a.cards.chat.pigeons = false; return r.fulfill({ response: res, json: a }); });
-  await p.route((u) => new URL(u).pathname.endsWith('/today/cards'), offCards);
+  await p.route((u) => new URL(u).pathname === '/api/today', offCards);
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
   await openMorning();
   same(await chatLine(), 'Letters on their way to you', 'morning: Chat’s line, pigeons off: letters, as its morning line says');
-  await p.unroute((u) => new URL(u).pathname.endsWith('/today/cards'));
   await ctx.close();
 });
 
@@ -623,9 +637,9 @@ await part('menu and sign out', async () => {
   await p.waitForURL(/auth\.inflite\.ai/);
   const h = new URLSearchParams(new URL(p.url()).hash.slice(1));
   same([h.get('signout'), h.get('back')], ['today', `${BASE}/`], 'Sign Out ends at the sign-in page’s #signout=today&back=…');
-  const all = await reqs(), del = all.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/push')), out = all.findIndex((e) => e.path.endsWith('/signout'));
-  ok(del >= 0 && out > del, 'Sign Out: this device’s notifications stopped first (DELETE push), then signed out');
-  same(JSON.parse(all[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE push names the endpoint in its body');
+  const all = await reqs(), del = all.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), out = all.findIndex((e) => e.path.endsWith('/signout'));
+  ok(del >= 0 && out > del, 'Sign Out: this device’s notifications stopped first, in every app’s table (DELETE /api/device), then signed out');
+  same(JSON.parse(all[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device names the endpoint in its body');
   await p.goto(`${BASE}/robots.txt`);
   same(await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('today:'))), [], 'Sign Out: nothing of the day kept');
   await ctx.close();

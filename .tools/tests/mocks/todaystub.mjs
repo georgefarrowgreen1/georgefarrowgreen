@@ -19,6 +19,14 @@
 //     acts then say so); GET/PUT today/rules (rules.json); GET/PATCH today/notify (notify.json, merged a part at a
 //     time); POST/DELETE today/device; GET/DELETE today/devices (devices.json)
 //   POST /__log/reset: the log emptied (as /__reset)
+//   with a phase, GET today/me also says what Today First's account side does (quiet, apps.mail, hubPush): { admin: true }
+//     in the same /mode call makes the account Mail's (apps.mail), { hubPush: false } says the fan-out isn't on
+//   POST /mode { v1: true } (with or without a phase): an account side from before Today First, where only Today's own
+//     routes answer (act, rules, notify, device and devices 404), GET today/cards has no v (asked ?v=2 or not), and
+//     today/me says nothing of Today First's
+//   this phone, as the account has it: once a device is added or dropped in this mode (POST/DELETE today/device or
+//     today/push), the morning's thisDevice says so (until then, morning.json's), and devices' here, asked with a
+//     device, is the tables it's in
 //   node todaystub.mjs [port] [log file]     (port 8789)
 import { createServer } from 'node:http';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -35,8 +43,8 @@ const HOSTILE = [['Sam "Q" & O\'Neil', 'Sam Quinn'], ["O'Brien", 'Obrien'], ['<b
 let mode = 'ok', morningPatch = {}, log = [];
 // Today First's: the moment answered (null: none), and You's state, afresh with each mode
 const PHASES = ['morning', 'midday', 'preride', 'riding', 'after', 'after-fit', 'evening'];
-let phase = null, you = null;
-const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json') });
+let phase = null, you = null, v1 = false, admin = false, hubPush = true;
+const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json'), pushed: null });
 you = fresh();
 const LEVELS = ['do', 'suggest', 'quiet'];
 const NAMES = { moveRide: ['Moved', 'Moves are suggested now, not made'], addRide: ['Added', 'Rides are suggested now, not added'], holdRide: ['Held', 'Only app notices are held now'] };
@@ -49,9 +57,15 @@ function dayAnswer(v2) {
   a.acts = (a.acts || []).map((x) => ({ ...x, ...(you.acts.get(x.id) || {}) }));
   return a;
 }
-const session = () => read('session.json');
+const session = () => {
+  const s = read('session.json');
+  if (!phase || v1) return s;
+  const a = read(`cards.${phase}.json`);
+  return { ...s, quiet: a.quiet || { on: false, from: 22, to: 7 }, apps: { mail: admin }, hubPush };
+};
 const morning = () => {
   const m = { ...read('morning.json'), ...morningPatch };
+  if (you.pushed != null) m.thisDevice = you.pushed;
   return m;
 };
 function cards(only) {
@@ -94,7 +108,8 @@ createServer(async (req, res) => {
     if (url.pathname === '/__mode' || url.pathname === '/mode') {
       if (b.phase != null && !PHASES.includes(b.phase)) return json(res, { error: `No such phase: ${b.phase}` }, 400);
       mode = b.mode || 'ok'; phase = b.phase || null; morningPatch = {}; you = fresh();
-      return json(res, { mode, phase });
+      v1 = b.v1 === true; admin = b.admin === true; hubPush = b.hubPush !== false;
+      return json(res, { mode, phase, v1 });
     }
     if (url.pathname === '/__morning') { morningPatch = { ...morningPatch, ...b }; return json(res, { morning: morning() }); }
     if (url.pathname === '/__log') return json(res, log);
@@ -123,7 +138,7 @@ createServer(async (req, res) => {
   if (out) return json(res, { error: 'Sign in to see your day.', field: 'session' }, 401);
   if (key === 'GET cards') {
     const only = url.searchParams.get('only')?.split(',').filter(Boolean) || null;
-    const a = phase ? dayAnswer(url.searchParams.get('v') === '2' && !only) : cards(only);
+    const a = phase ? dayAnswer(url.searchParams.get('v') === '2' && !only && !v1) : cards(only);
     if (phase && only) a.cards = Object.fromEntries(Object.entries(a.cards).filter(([k]) => only.includes(k)));
     if (url.searchParams.get('with') === 'morning' && !only) a.morning = morning();
     if (mode === 'slow') await new Promise((ok) => setTimeout(ok, 3000));
@@ -145,11 +160,12 @@ createServer(async (req, res) => {
     return json(res, { prefs: { order, hidden: (b?.hidden || []).filter((k) => K.includes(k)) } });
   }
   if (key === 'POST morning/try') return b?.endpoint ? json(res, { sent: 1 }) : json(res, { error: 'Turn the morning notification on on this device first.' }, 400);
-  if (key === 'POST push') return b?.sub?.endpoint ? json(res, { ok: true, devices: 1 }) : json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400);
+  if (key === 'POST push') { if (!b?.sub?.endpoint) return json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400); you.pushed = true; return json(res, { ok: true, devices: 1 }); }
   if (key === 'POST push-move') return json(res, { moved: true });
-  if (key === 'DELETE push') return json(res, { ok: true, devices: 0 });
+  if (key === 'DELETE push') { you.pushed = false; return json(res, { ok: true, devices: 0 }); }
   if (key === 'POST account-link') return json(res, { code: 'stubhandoffcode' });
-  // ---- Today First's (spec §6.1) ----
+  // ---- Today First's (spec §6.1): none of them on an account side from before it (v1) ----
+  if (v1 && /^(act|rules|notify|device|devices)(\/|$)/.test(route)) return json(res, { error: 'Not found.' }, 404);
   if (key === 'POST act' || key === 'POST act/undo') {
     const act = phase ? dayAnswer(true).acts.find((x) => x.id === b?.id) : null;
     if (!act) return json(res, { error: 'Not found.' }, 404);
@@ -183,9 +199,10 @@ createServer(async (req, res) => {
     if (!/^https:\/\//.test(b?.sub?.endpoint || '')) return json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400);
     const tables = b.fan === true && you.devices.fan && !b.was ? ['td_push', 'pg_push', 'mk_push', 'wx_devs'] : ['td_push'];
     you.devices.here = [...new Set([...(you.devices.here || []), ...tables])];
+    you.pushed = true;
     return json(res, { ok: true, tables });
   }
-  if (key === 'DELETE device') { you.devices.here = []; return json(res, { ok: true }); }
+  if (key === 'DELETE device') { you.devices.here = []; you.pushed = false; return json(res, { ok: true }); }
   if (key === 'GET devices') return json(res, { ...you.devices, here: url.searchParams.get('device') ? you.devices.here : [] });
   if (key === 'DELETE devices') {
     const n = you.devices.devices.length;
