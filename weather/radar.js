@@ -144,7 +144,7 @@ const LOOK = LOOKS.both;
 // the map keeps moving under a finger while it's done; on it, a few tiles at a time, where it can't. Each job's made
 // ready here (prep: its codes stitched, or done with if it's dry or no longer wanted), its rain worked out there
 const jobs = [], pool = [];
-let working = false, pooled = false;
+let working = false, pooled = false, alive = 0;
 const blank = () => new Uint8ClampedArray(256 * 256 * 4);
 function workers() {
   if (pooled) return pool;
@@ -215,11 +215,14 @@ function stitch(from, x0, y0, span) {
 // (its tiles come first). (The next two hours carried on from the radar are the minutes between's: below)
 // Heavy work (the map's code, read in, and the map itself, made) once the page has come to rest: not in the middle of
 // a flick, where it would hold the scrolling up for a moment
+// (→ a function that calls it off: radar's destroy)
 function whenStill(fn) {
-  let t = 0;
-  const go = () => { removeEventListener("scroll", on); if (typeof requestIdleCallback === "function") requestIdleCallback(fn, { timeout: 500 }); else setTimeout(fn, 0); };
+  let t = 0, off = false;
+  const run = () => { if (!off) fn(); };
+  const go = () => { removeEventListener("scroll", on); if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 500 }); else setTimeout(run, 0); };
   const on = () => { clearTimeout(t); t = setTimeout(go, 180); };
   addEventListener("scroll", on, { passive: true }); on();
+  return () => { off = true; clearTimeout(t); removeEventListener("scroll", on); };
 }
 const GONE = Symbol("gone");
 function radarTile(base, c, shown, gone) {
@@ -320,12 +323,26 @@ const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; ret
  * bounds }]), show(k, opacity), box(bounds | null | undefined, opacity), dot(lat, lon), clear([{ x, y, w, h }]), view(lat, lon, smooth),
  * zoomBy(±1), explore(on, touch), resize(), state() → { zoom, min, max, mpp }, on("move" | "tap", fn), and credit (its
  * sources' names). Zooms are 256-pixel tiles' (as Leaflet counts them).
+ *
+ * Options for a page where the radar is a screen of its own (InFlite's Weather, weather/roof/radarview.js), each
+ * leaving Weather's own page as it was when left out: full: false (no full-screen button in the markup, never grown,
+ * no Escape listener); explore: true (the map always explores, dragged and pinched where it is: no "Tap to explore", a
+ * tap reads the weather there, a tap on another place goes to it); light: true or false (the map's day or night
+ * style; left out, the phone's). And destroy(), in what it returns: every listener, observer, timer, worker and the
+ * map itself let go.
  */
-export function radar(card, { lat, lon, time, day = () => "", miles = () => false, credits = null, rainSoon = () => true, temp = (c) => `${Math.round(c)}°`, tempUnit = () => "°C", windNum = (k) => Math.round(k), windUnit = () => "km/h" }) {
+export function radar(card, { lat, lon, time, day = () => "", miles = () => false, credits = null, rainSoon = () => true, temp = (c) => `${Math.round(c)}°`, tempUnit = () => "°C", windNum = (k) => Math.round(k), windUnit = () => "km/h",
+  full: fullScreen = true, explore = false, light: lightAs }) {
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), said = q("#radar-said"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
   let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null, loads = 0;
+  // (what destroy() lets go of: listeners, observers, timers; dead once it has)
+  const undo = [];
+  let dead = false;
+  const grows = fullScreen !== false && !!full;
+  // (exploring: always, as a screen of its own; else only while it fills the screen)
+  const exploring = () => explore === true || card.classList.contains("radar-big");
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
   // (a finger or a mouse, as the browser says now, and followed as it changes: fingers)
   const finger = matchMedia("(pointer: coarse)");
@@ -345,7 +362,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     p._off = setTimeout(() => { s.textContent = ""; p.classList.remove("off"); }, 400);
   };
   // the map light or dark as the phone is (as Apple's Weather map is), its controls to match (styles.css)
-  const light = matchMedia("(prefers-color-scheme: light)").matches;
+  const light = typeof lightAs === "boolean" ? lightAs : matchMedia("(prefers-color-scheme: light)").matches;
   card.classList.toggle("light-map", light);
   // the place on the map: its temperature in a bubble over it, and its name under it (mark: once the page has them)
   const pin = document.createElement("div"); pin.className = "map-pin"; pin.setAttribute("aria-hidden", "true");
@@ -406,7 +423,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       ws.classList.toggle("spread", done);
     }
   };
-  if (typeof ResizeObserver === "function") new ResizeObserver(spread).observe(legend);
+  if (typeof ResizeObserver === "function") { const ro = new ResizeObserver(spread); ro.observe(legend); undo.push(() => ro.disconnect()); }
   // (round numbers in the units chosen: °C or °F; mph, km/h, m/s or knots, as Apple's has 0 to 75 mph)
   const drawLegend = () => {
     const title = Object.assign(document.createElement("b"), { className: "rl-title", textContent: kind === "rain" ? KINDS.rain : kind === "aq" ? "Air quality (European index)" : kind === "uv" ? "UV index" : `${named()} (${kind === "temp" ? tempUnit() : windUnit()})` });
@@ -734,7 +751,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       const b = document.createElement("button"); b.type = "button"; b.className = "map-other";
       b.innerHTML = '<span class="mo-b"><span class="mo-d"></span><b class="mo-v"></b></span><span class="mo-dot"></span><span class="mo-n"></span>';
       b.querySelector(".mo-n").textContent = o.name;
-      b.addEventListener("click", (e) => { e.stopPropagation(); if (touch && !card.classList.contains("radar-big")) grow(true); else o.go(); });
+      b.addEventListener("click", (e) => { e.stopPropagation(); if (touch && !exploring() && grows) grow(true); else o.go(); });
       return { o, b, mark: map.marker(b, o.lat, o.lon) };
     });
     sayOthers();
@@ -1165,7 +1182,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // under the slider: where the radar ends and the forecast begins
   // (drawn again as its width changes: the half hours, and what's too near Now, go by it)
   let scaleW = 0;
-  if (typeof ResizeObserver === "function") new ResizeObserver(() => { const w = scale.clientWidth; if (Math.abs(w - scaleW) > 8 && frames.length) drawScale(); }).observe(scale);
+  if (typeof ResizeObserver === "function") { const ro = new ResizeObserver(() => { const w = scale.clientWidth; if (Math.abs(w - scaleW) > 8 && frames.length) drawScale(); }); ro.observe(scale); undo.push(() => ro.disconnect()); }
   function drawScale() {
     scaleW = scale.clientWidth;
     scale.replaceChildren();
@@ -1320,7 +1337,9 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       menu.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
     };
     layersBtn.addEventListener("click", (e) => { e.stopPropagation(); if (menu.hidden || closing) open(); else shut(); });
-    document.addEventListener("click", (e) => { if (!menu.hidden && !closing && !menu.contains(e.target)) shut(); });
+    const menuAway = (e) => { if (!menu.hidden && !closing && !menu.contains(e.target)) shut(); };
+    document.addEventListener("click", menuAway);
+    undo.push(() => document.removeEventListener("click", menuAway));
     menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); shut(); layersBtn.focus(); } });
     const ruler = document.createElement("div"); ruler.className = "map-scale"; ruler.setAttribute("aria-hidden", "true");
     credit = button("radar-credit", "Map data", '<span class="rc-c" aria-hidden="true">©</span><span class="rc-t" aria-hidden="true"></span>');
@@ -1349,7 +1368,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
         names: { l: cx - words.offsetWidth, r: cx, top: cy - words.offsetHeight, bottom: cy } };
     };
     const moved = () => {
-      const s = map.state(), f = foot, hinted = f && hintW && touch && !card.classList.contains("radar-big");
+      const s = map.state(), f = foot, hinted = f && hintW && touch && !exploring();
       // (and where the names, open, are along the foot beside it, what's left short of them: a step shorter, so both are
       // there as the map appears, rather than the scale out of their way till they fold. Not where that leaves too little
       // for one (the narrowest), which steps aside instead: under, below)
@@ -1374,6 +1393,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     // (the wind's flow kept to the map as it moves: once a frame)
     let flowAt = 0;
     map.on("move", () => { if (kind === "wind") flowAt ||= requestAnimationFrame(() => { flowAt = 0; flowMoved(); }); });
+    undo.push(() => { cancelAnimationFrame(flowAt); flowAt = 0; });
     // the names step aside from all that's over the map (as from the place's dot), measured again once any of it, or
     // the map, has changed size (a little room round each; not every frame of the © folding away)
     const over = [top, menu, ruler, credit, hint, chip];
@@ -1386,16 +1406,22 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     };
     const sizes = new ResizeObserver(() => { clearTimeout(settle); settle = setTimeout(clear, 100); });
     for (const x of [el, ...over, words]) sizes.observe(x);
+    undo.push(() => { sizes.disconnect(); clearTimeout(settle); });
     // (folded, the names may have the space its words had again)
-    setTimeout(() => { credit.classList.add("folded"); told = true; hint.hidden = !touch || card.classList.contains("radar-big"); setTimeout(clear, 650); }, 5000);
+    let clearT = 0;
+    const folding = setTimeout(() => { credit.classList.add("folded"); told = true; hint.hidden = !touch || exploring(); clearT = setTimeout(clear, 650); }, 5000);
+    undo.push(() => { clearTimeout(folding); clearTimeout(clearT); });
   }
   async function start() {
     try {
       const from = here;
-      map = await mapIn(el, { lat: from.lat, lon: from.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm, light, pin });
+      const gotMap = await mapIn(el, { lat: from.lat, lon: from.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm, light, pin });
+      // (let go of while its code came: the map let go of too)
+      if (dead) { gotMap.remove?.(); return; }
+      map = gotMap;
       if (here !== from) { map.view(here.lat, here.lon); map.dot(here.lat, here.lon); }
       // (opened full screen while its code came, or a finger come or gone meanwhile: dragged, or not, as it is now)
-      map.explore(card.classList.contains("radar-big"), touch);
+      map.explore(exploring(), touch);
       controls();
       fitRoom();
       drawOthers(); drawAreas(at, true);
@@ -1403,9 +1429,11 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       // which draws them anyway)
       let moving = 0;
       map.on("move", () => { if (!playing && frames.length && !moving) moving = requestAnimationFrame(() => { moving = 0; show(at); placeReading(); }); });
+      undo.push(() => { cancelAnimationFrame(moving); moving = 0; });
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
       // (full screen, or with a mouse, a tap reads the weather there)
-      map.on("tap", (pt) => { if (touch && !card.classList.contains("radar-big")) grow(true); else if (pt) readAt(pt); });
+      // (a screen of its own, exploring: a tap reads the weather there, never grows it)
+      map.on("tap", (pt) => { if (touch && !exploring() && grows) grow(true); else if (pt) readAt(pt); });
       await load();
       if (!calm) run();
     } catch (e) {
@@ -1434,14 +1462,14 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     } else if (!on) { for (const s of behind) s.inert = false; behind = []; }
     card.classList.toggle("radar-big", on);
     document.body.classList.toggle("no-scroll", on);
-    full.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
-    full.dataset.on = on ? "1" : "0";
-    hint.hidden = on || !touch || !told;
-    if (map) { map.resize(); map.explore(on, touch); flowRestart(); }
+    full?.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
+    if (full) full.dataset.on = on ? "1" : "0";
+    hint.hidden = on || exploring() || !touch || !told;
+    if (map) { map.resize(); map.explore(exploring(), touch); flowRestart(); }
     // (the timeline's clock times again for its new width)
     if (frames.length) drawScale();
     // (opened by a tap, the × is where a screen reader starts; closed, focus isn't left on something hidden)
-    if (on || card.contains(document.activeElement) || document.activeElement === document.body) full.focus({ preventScroll: true });
+    if (on || card.contains(document.activeElement) || document.activeElement === document.body) full?.focus({ preventScroll: true });
   }
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
   // can morph one into the other (a view transition); at once otherwise, or with reduced motion
@@ -1458,11 +1486,20 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   // explore" is said under it; with a mouse, the map's dragged in the card itself, and its zoom buttons are there (styles.css)
   const fingers = () => {
     touch = finger.matches;
-    const on = card.classList.contains("radar-big");
-    hint.hidden = on || !touch || !told;
-    map?.explore(on, touch);
+    hint.hidden = exploring() || !touch || !told;
+    map?.explore(exploring(), touch);
   };
   finger.addEventListener("change", fingers);
+  undo.push(() => finger.removeEventListener("change", fingers));
+  // (exploring always: never "Tap to explore"; and the map measured again and still explored as its screen changes size)
+  if (explore === true) {
+    hint.hidden = true;
+    if (typeof ResizeObserver === "function") {
+      const ro = new ResizeObserver(() => { if (map) { map.resize(); map.explore(true, touch); } });
+      ro.observe(el);
+      undo.push(() => ro.disconnect());
+    }
+  }
   play.addEventListener("click", () => (playing ? stop() : run()));
   slider.addEventListener("input", () => { stop(); show(tOf(Number(slider.value))); });
   // (a minute an arrow key; Page Up and Page Down to the next and the last of the real frames)
@@ -1473,18 +1510,24 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const to = e.key === "PageUp" ? real.find((t) => t > at + 30e3) ?? tEnd : [...real].reverse().find((t) => t < at - 30e3) ?? t0;
     jump(); show(Math.round((to - t0) / 60e3) * 60e3 + t0, true);
   });
-  full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
-  // (Escape in a sheet opened from it, the credits say, closes the sheet, not this)
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big") && !document.querySelector("dialog[open]")) grow(false); });
+  // (Escape in a sheet opened from it, the credits say, closes the sheet, not this; with no full screen, nothing)
+  if (grows) {
+    full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
+    const escape = (e) => { if (e.key === "Escape" && card.classList.contains("radar-big") && !document.querySelector("dialog[open]")) grow(false); };
+    document.addEventListener("keydown", escape);
+    undo.push(() => document.removeEventListener("keydown", escape));
+  }
   // the vector map's code fetched as the page is scrolled towards it, half a screen ahead: not as the page opens, where
   // it would only hold up the forecast (in sight as it opens, a wide screen say, it's fetched as the map's made); the
   // radar started once it's on screen, and paused while it's off it
   const near = new IntersectionObserver((es) => {
     if (!es.some((x) => x.isIntersecting)) return;
     near.disconnect();
-    whenStill(() => vectorLib().then((v) => v.able() && v.preload()).catch(() => {}));
+    undo.push(whenStill(() => vectorLib().then((v) => v.able() && v.preload()).catch(() => {})));
   }, { rootMargin: "50% 0px" });
-  addEventListener("scroll", () => near.observe(card), { once: true, passive: true });
+  const nearing = () => near.observe(card);
+  addEventListener("scroll", nearing, { once: true, passive: true });
+  undo.push(() => { near.disconnect(); removeEventListener("scroll", nearing); });
   // (in sight, as the page comes to rest: the map made then; scrolled on past it meanwhile, it waits to be seen again)
   let inView = false;
   // (put away, the app in the background or the card out of sight for a minute: what's kept of the radar let go, letGo,
@@ -1493,18 +1536,39 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   let awayT = 0, away = false;
   const putAway = () => { clearTimeout(awayT); letGo(); gl?.drop?.(); warmed = ""; away = true; };
   const back = () => { if (away && inView && map && !playing) { away = false; show(at); } };
-  document.addEventListener("visibilitychange", () => (document.visibilityState === "hidden" ? putAway() : back()));
+  const onSeen = () => (document.visibilityState === "hidden" ? putAway() : back());
+  document.addEventListener("visibilitychange", onSeen);
+  undo.push(() => { document.removeEventListener("visibilitychange", onSeen); clearTimeout(awayT); });
   const io = new IntersectionObserver((es) => {
     const vis = es.some((x) => x.isIntersecting);
     inView = vis; inSight = vis;
     clearTimeout(awayT); if (!vis) awayT = setTimeout(putAway, 60e3); else back();
     if (vis && kind === "wind") flowRestart();
-    if (vis && !starting) starting = new Promise((ok) => whenStill(() => { if (inView) ok(start()); else { starting = null; ok(); } }));
+    if (vis && !starting) starting = new Promise((ok) => undo.push(whenStill(() => { if (inView && !dead) ok(start()); else { starting = null; ok(); } })));
     else if (vis && map && Date.now() - fetched > 10 * 60e3) load().catch(() => {});
     if (!vis && playing) stop();
   }, { rootMargin: "120px" });
   io.observe(card);
+  undo.push(() => io.disconnect());
+  alive++;
   return {
+    // everything let go: listeners on the window and the document, observers, timers, playing, the wind's flow, the
+    // workers (the last radar on the page), the tiles kept, and the map itself
+    destroy() {
+      if (dead) return;
+      dead = true;
+      try { stop(); } catch (_) {}
+      cancelAnimationFrame(flowRaf); clearTimeout(flowRest); flowRaf = flowRest = 0;
+      if (card.classList.contains("radar-big")) try { big(false); } catch (_) {}
+      for (const fn of undo.splice(0)) { try { fn(); } catch (_) {} }
+      try { map?.remove?.(); } catch (_) {}
+      // (the graphics chip's blender: its textures let go and its context lost now, not left for the browser to
+      // collect, so a page that makes radars again and again never nears the browser's cap on live contexts)
+      try { const c = gl?.canvas; gl?.drop?.(); c?.getContext("webgl")?.getExtension?.("WEBGL_lose_context")?.loseContext(); if (c) c.width = c.height = 1; } catch (_) {}
+      gl = null;
+      map = null; starting = null;
+      if (--alive <= 0) { alive = 0; jobs.length = 0; for (const w of pool.splice(0)) { try { w.terminate(); } catch (_) {} } pooled = false; letGo(); }
+    },
     place(lat2, lon2) {
       // (the same place, its forecast refreshed: the map left where it's been moved to)
       if (lat2 === here.lat && lon2 === here.lon) return;
@@ -1532,6 +1596,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       }
     },
     note(text) { line(q(".radar-note"), text || ""); },
+    // where the map is: its zoom (as Leaflet counts), range and metres a pixel, and its centre; null before it's made
+    state() {
+      if (!map) return null;
+      const s = map.state(), b = map.bounds?.();
+      return { ...s, centre: b ? { lat: (b[0][0] + b[1][0]) / 2, lon: (b[0][1] + b[1][1]) / 2 } : null };
+    },
     // a picture of the map as it is (a data URL), where its map can give one; else null. had: there's one already, so
     // not while it's moving by itself, playing or the wind flowing (it's drawn afresh every frame, so it'd be taken
     // again each time asked, for a picture that's only a moment of it anyway)
