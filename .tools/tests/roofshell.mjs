@@ -25,7 +25,8 @@
 // the Briefing, an account from before, the focus after a PATCH; the page's sheets reopened while they shut, their close
 // button the framework's cross; Edit Today from the menu on Today pushing no twin; Sign in's href after a move in the page.
 // And stage 2 (s2 §9.1, §9.2 FW): /api/hub's apps with Markets on and Fitness off (Markets' stand-in module in the page,
-// Fitness a page load, the map kept as ifl-roof-apps); signed out elsewhere (a confirmed 401): markets:*, fitness:*,
+// Fitness a page load, the map kept as ifl-roof-apps); You per module (Fitness Settings only with Fitness on; the
+// Evening Wrap switch back when its save fails; a 401 from it leaves You empty); signed out elsewhere (a confirmed 401): markets:*, fitness:*,
 // wx:acct and the fitness store gone, Weather's places kept, and offline nothing gone; Today's cards asked again on its
 // next show after fw.changed().
 //   node .tools/tests/roofshell.mjs [state dir] [screenshots dir]      (run.sh does this)
@@ -551,6 +552,36 @@ await part('apps per module', async () => {
   await p.locator(H.appTile('fitness')).locator('a[href="/fitness/"]').first().click();
   await p.waitForSelector('text=FITNESS HUB PAGE', { timeout: 10000 });
   same([new URL(p.url()).pathname, loads()], ['/fitness/', 2], 'Fitness off: its tile is a page load of the hub’s Fitness page');
+  await ctx.close();
+});
+
+// (You's Notifications by App per switch: Fitness Settings › only while Fitness is a module here, else stage 1's row;
+// the Evening Wrap switch back as it was when its save fails; a sign-out found by that save leaves You empty)
+await part('You per module', async () => {
+  await mode({ phase: 'midday' });
+  const FIT = `${H.YOU_NOTIFY} [data-k=fitness]`;
+  const fitRow = (p) => p.$eval(FIT, (r) => [r.tagName.toLowerCase(), r.getAttribute('href'), r.querySelector('.val')?.textContent ?? null, r.querySelector('small')?.textContent ?? null]);
+  let { ctx, p } = await open({ hub: { ready: true, roof: true, apps: APPS_ON }, path: '/#you', fakes: ['markets'] });
+  await p.waitForSelector(`${H.YOU}:not([hidden]) ${H.YOU_MK_WRAP}`, { timeout: 10000 });
+  same(await fitRow(p), ['div', null, null, 'In Today’s morning'], 'Fitness off: stage 1’s Fitness row, no Fitness Settings link');
+  // (the wrap's save fails: the switch goes back, still enabled and focused)
+  const was = await p.$eval(H.YOU_MK_WRAP, (x) => x.checked);
+  let save = 'fail';
+  await ctx.route((u) => new URL(u).pathname === '/api/notify', (r) => (r.request().method() !== 'PATCH' ? r.fallback() : save === 'fail' ? r.abort('internetdisconnected') : r.fulfill({ status: 401, json: { error: 'Sign in again.' } })));
+  await p.click(H.YOU_MK_WRAP);
+  await p.waitForTimeout(800);
+  same(await p.$eval(H.YOU_MK_WRAP, (x) => [x.checked, x.disabled, document.activeElement === x]), [was, false, true], 'the Evening Wrap’s save fails: the switch back as it was, enabled, focus kept');
+  // (the save answered 401: signed out; You stays empty, nothing of the account drawn back into it)
+  save = '401';
+  await p.evaluate((s) => document.querySelector(s).click(), H.YOU_MK_WRAP);
+  await p.waitForSelector('#out:not([hidden]) #signin', { timeout: 10000 });
+  await p.waitForTimeout(800);
+  same(await p.evaluate(() => [document.getElementById('you').childElementCount, /Sam|Your account|Evening Wrap/.test(document.getElementById('you').textContent)]), [0, false], 'a 401 from the wrap’s save: You emptied and left so (no account repainted under the sign-in)');
+  await ctx.close();
+  // (Fitness on: Fitness Settings ›, at the hub’s /fitness/#settings)
+  ({ ctx, p } = await open({ hub: { ready: true, roof: true, apps: { ...APPS_ON, fitness: true } }, path: '/#you', fakes: ['markets', 'fitness'] }));
+  await p.waitForSelector(`${H.YOU}:not([hidden]) ${FIT}`, { timeout: 10000 });
+  same(await fitRow(p), ['a', '/fitness/#settings', 'Fitness Settings', 'In Today’s morning'], 'Fitness on: Fitness Settings ›, at /fitness/#settings');
   await ctx.close();
 });
 
