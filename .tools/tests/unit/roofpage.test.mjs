@@ -191,7 +191,7 @@ test('stages 2–4, app.js: fw.changed() marks Today’s cards, which are asked 
   const js = own();
   assert.match(js, /changed: \(\) => \{ cardsStale = true; \}/);
   assert.match(js, /onShow\(\) \{ drawLine\(true\); if \(cardsStale\) \{ cardsStale = false; refresh\(\); \} \}/);
-  assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt" \};/);
+  assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt"(?:, chats: "ifl-build:chat")? \};/, "(stage 3 adds Chats, used here once Chat said its build here)");
   assert.doesNotMatch(js, /preloadWeather/);
 });
 
