@@ -2305,7 +2305,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .wx-ifh .ifh-acts .icon-btn svg { width: 22px; height: 22px; }
 
 /* At InFlite's hub (Weather a page of inflite.ai: app.js hubTop), Back where your photo goes, in the same glass as the
-   outline that signs in; its word dropped on a narrow phone with that outline beside it, the chevron saying it */
+   outline that signs in; its word dropped whenever that outline's beside it, and on the narrowest phones, the chevron
+   saying it, so the place's name keeps its room */
 .wx-ifh .ifl-back { position: relative; flex: none; display: inline-flex; align-items: center; gap: 1px; box-sizing: border-box; min-width: 44px;
   height: calc(42px - 8px * var(--p)); margin: 0; padding: 0 14px 0 8px; border: 0; border-radius: 999px; cursor: pointer;
   color: var(--ifh-tint, #fff); background: var(--ifh-glass, rgba(255, 255, 255, 0.16)); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
@@ -2316,7 +2317,22 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .wx-ifh .ifl-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* (a 44px target however compact the bar's become) */
 .wx-ifh .ifl-back::after { content: ""; position: absolute; inset: -4px 0; }
-@media (max-width: 360px) { .wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) { padding: 0 8px; } .wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) .ifl-back-l { display: none; } }
+.wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) { padding: 0 8px; }
+.wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) .ifl-back-l { display: none; }
+/* (and on the narrowest phones in any case, as Markets has it) */
+@media (max-width: 359px) { .wx-ifh .ifl-back { padding: 0 8px; } .wx-ifh .ifl-back-l { display: none; } }
+/* (signed out there on the narrowest phones, Back, the outline that signs in, the place and its two buttons are more
+   than one bar holds: the bar's gaps closer, the place's name a little smaller, and Use My Location left to Places
+   (the place's name, tapped), where it's the first row; so a name like London still reads in full) */
+@media (max-width: 359px) {
+  .wx-ifh:has(> .ifl-back + .me-btn:not([hidden])) { gap: 8px; }
+  .wx-ifh:has(> .ifl-back + .me-btn:not([hidden])) .place-name { font-size: calc(28px - 8px * var(--p)); }
+  .wx-ifh:has(> .ifl-back + .me-btn:not([hidden])) #locate-btn { display: none; }
+  .wx-ifh:has(> .ifl-back + .me-btn:not([hidden])) #settings-btn::after { inset: -3px; }
+}
 @media (prefers-reduced-motion: reduce) { .wx-ifh .ifl-back { transition: none; } }
+/* (and signing out is InFlite's there, in You, for every app at once: Settings has no Sign Out of its own. app.js
+   signOutHere) */
+html.ifl-hub #out-grp { display: none; }
 /* (a section opened from the address, #radar or #warnings, scrolled to clear of the bar held at the top: app.js openTo) */
 #radar, #alerts { scroll-margin-top: calc(68px + env(safe-area-inset-top, 0px)); }
