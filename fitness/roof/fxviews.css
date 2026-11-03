@@ -1,66 +1,51 @@
 /* Fitness's views under InFlite's roof (One roof stage 2, spec §4.3 FXB, BB7): Activities, Progress, charts, zones,
-   routes, share, the plan sheets and Fitness Settings, as fitness/styles.css has them, re-tokenised: scoped under the
-   module's screen (.m-fitness) and its sheets (.ifl-sheet[data-app=fitness]); the site blue of Fitness's buttons is the
-   framework's accent here (--acc, --acc-ink, --acc-fill, --on-acc: Fitness's coral); zones are app.css's --ft-z1…7;
-   the lines and sport tiles Fitness alone draws are --fx-* below. The cards, rows, groups, segments and buttons these
-   sit in are fitness.css's (FXA). Loaded with fitness.css before the module mounts (REGISTRY css), so no view waits. */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) {
-  --fx-fit: #4aa3ff; --fx-fat: #ff6fae; --fx-form-up: #3fd08f; --fx-form-down: #ffb340;
-  --fx-hr: #ff5a7a; --fx-pwr: #ffb340; --fx-ele: rgba(160, 175, 210, 0.32); --fx-spd: #4fd2ff;
-  --fx-s-run: linear-gradient(160deg, #4fdc8e, #1fa75a); --fx-s-swim: linear-gradient(160deg, #5ad8f0, #1b8fc0); --fx-s-strength: linear-gradient(160deg, #8a86ff, #5a4fe0);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) :is(.m-fitness, .ifl-sheet[data-app=fitness]) {
-    --fx-fit: #2f86f0; --fx-fat: #e0447f; --fx-form-up: #1fae6b; --fx-form-down: #e88a10;
-    --fx-hr: #e5395f; --fx-pwr: #f08a10; --fx-ele: rgba(90, 100, 140, 0.2); --fx-spd: #1aa3d6;
-  }
-}
-:root[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) {
-  --fx-fit: #2f86f0; --fx-fat: #e0447f; --fx-form-up: #1fae6b; --fx-form-down: #e88a10;
-  --fx-hr: #e5395f; --fx-pwr: #f08a10; --fx-ele: rgba(90, 100, 140, 0.2); --fx-spd: #1aa3d6;
-}
-
+   routes, the ride's map, share and Fitness Settings, as fitness/styles.css has them (352-442, 562-613, 854-1035,
+   1040-1065, 1577-1589), re-tokenised, not restyled (S2-D1): every rule under the module's screen (.m-fitness) or its
+   sheets (.ifl-sheet[data-app=fitness]), nothing on the page's root, keyframes named fx-*. It builds on fitness.css
+   (FXA): its token block (--tint as Fitness's accent, the zones --z1…7, the lines --fit --fat --hr --pwr …, the sports
+   --s-*) and its cards, rows, groups, segments, buttons, Rhythm's setup, the session and moving a day. Both load before
+   the module mounts (REGISTRY css), so no view waits. */
 /* ---- charts ---- */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart { display: block; width: 100%; height: auto; overflow: visible; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart text { fill: var(--text-3); font: 500 11px/1 var(--font); font-variant-numeric: tabular-nums; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart .grid { stroke: var(--line); stroke-width: 1; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .chart .ftp { stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .z1 { fill: var(--ft-z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z2 { fill: var(--ft-z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z3 { fill: var(--ft-z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z4 { fill: var(--ft-z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z5 { fill: var(--ft-z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z6 { fill: var(--ft-z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z7 { fill: var(--ft-z7); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z1 { background: var(--ft-z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z2 { background: var(--ft-z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z3 { background: var(--ft-z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z4 { background: var(--ft-z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z5 { background: var(--ft-z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z6 { background: var(--ft-z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z7 { background: var(--ft-z7); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .z1 { fill: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z2 { fill: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z3 { fill: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z4 { fill: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z5 { fill: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z6 { fill: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .z7 { fill: var(--z7); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z1 { background: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z2 { background: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z3 { background: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z4 { background: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z5 { background: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z6 { background: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bg-z7 { background: var(--z7); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .profile svg rect, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mini svg rect, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .profile svg path.blk { shape-rendering: geometricPrecision; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fit { fill: none; stroke: var(--fx-fit); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fat { fill: none; stroke: var(--fx-fat); stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-up { fill: var(--fx-form-up); opacity: 0.55; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-down { fill: var(--fx-form-down); opacity: 0.55; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-fit { fill: color-mix(in srgb, var(--fx-fit) 16%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .end-dot { fill: var(--fx-fit); stroke: var(--solid); stroke-width: 2; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-pwr { fill: none; stroke: var(--fx-pwr); stroke-width: 1.4; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-pwr { fill: color-mix(in srgb, var(--fx-pwr) 14%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-hr { fill: none; stroke: var(--fx-hr); stroke-width: 1.6; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-spd { fill: none; stroke: var(--fx-spd); stroke-width: 1.4; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-ele { fill: var(--fx-ele); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fit { fill: none; stroke: var(--fit); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l-fat { fill: none; stroke: var(--fat); stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linecap: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-up { fill: var(--form-up); opacity: 0.55; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .b-down { fill: var(--form-down); opacity: 0.55; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-fit { fill: color-mix(in srgb, var(--fit) 16%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .end-dot { fill: var(--fit); stroke: var(--sky-c); stroke-width: 2; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-pwr { fill: none; stroke: var(--pwr); stroke-width: 1.4; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-pwr { fill: color-mix(in srgb, var(--pwr) 14%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-hr { fill: none; stroke: var(--hr); stroke-width: 1.6; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .s-spd { fill: none; stroke: var(--spd); stroke-width: 1.4; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .a-ele { fill: var(--ele); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .cursor { stroke: var(--text); stroke-width: 1; opacity: 0.7; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-b { fill: color-mix(in srgb, var(--ft-z2) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-u { fill: color-mix(in srgb, var(--ft-z4) 80%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-p { fill: color-mix(in srgb, var(--ft-z5) 80%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-t { fill: color-mix(in srgb, var(--ft-z3) 80%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-done { fill: var(--acc); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-plan { fill: var(--glass-ctl); stroke: color-mix(in srgb, var(--text) 22%, transparent); stroke-width: 1; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-b { fill: color-mix(in srgb, var(--z2) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-u { fill: color-mix(in srgb, var(--z4) 80%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-p { fill: color-mix(in srgb, var(--z5) 80%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-t { fill: color-mix(in srgb, var(--z3) 80%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-done { fill: var(--tint); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-plan { fill: var(--glass-ctl); stroke: color-mix(in srgb, var(--text) 22%, transparent); stroke-width: 1; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .wk-now { fill: none; stroke: var(--text); stroke-width: 1.5; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .route { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .route-under { fill: none; stroke: color-mix(in srgb, var(--solid) 70%, transparent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .route-under { fill: none; stroke: color-mix(in srgb, var(--sky-c) 70%, transparent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-start { fill: var(--good); stroke: #fff; stroke-width: 2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-end { fill: var(--danger); stroke: #fff; stroke-width: 2; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-here { fill: #fff; stroke: var(--acc-fill); stroke-width: 3; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z1 { stroke: var(--ft-z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z2 { stroke: var(--ft-z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z3 { stroke: var(--ft-z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z4 { stroke: var(--ft-z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z5 { stroke: var(--ft-z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z6 { stroke: var(--ft-z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z7 { stroke: var(--ft-z7); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve { fill: none; stroke: var(--acc); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-a { fill: color-mix(in srgb, var(--acc) 15%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-dot { fill: var(--acc); stroke: var(--solid); stroke-width: 1.5; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pin-here { fill: #fff; stroke: var(--tint-deep); stroke-width: 3; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z1 { stroke: var(--z1); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z2 { stroke: var(--z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z3 { stroke: var(--z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z4 { stroke: var(--z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z5 { stroke: var(--z5); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z6 { stroke: var(--z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .st-z7 { stroke: var(--z7); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve { fill: none; stroke: var(--tint); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-a { fill: color-mix(in srgb, var(--tint) 15%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .curve-dot { fill: var(--tint); stroke: var(--sky-c); stroke-width: 1.5; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fit { background: var(--fx-fit); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fat { background: var(--fx-fat); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-form { background: var(--fx-form-up); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-pwr { background: var(--fx-pwr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-hr { background: var(--fx-hr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-ele { background: color-mix(in srgb, var(--text) 30%, transparent); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-spd { background: var(--fx-spd); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fit { background: var(--fit); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-fat { background: var(--fat); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-form { background: var(--form-up); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-pwr { background: var(--pwr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-hr { background: var(--hr); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-ele { background: color-mix(in srgb, var(--text) 30%, transparent); height: 8px !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .lg-spd { background: var(--spd); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .readout { min-height: 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .readout b { color: var(--text); font-weight: 600; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .scrub { touch-action: pan-y; cursor: crosshair; }
 
 /* the route, on its own pane (a map behind it is for later) */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map { border-radius: 22px; overflow: hidden; max-width: 100%;
-  background: radial-gradient(120% 100% at 30% 0%, color-mix(in srgb, var(--ft-z2) 12%, transparent), transparent 70%), var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
+  background: radial-gradient(120% 100% at 30% 0%, color-mix(in srgb, var(--z2) 12%, transparent), transparent 70%), var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map svg { display: block; width: 100%; height: auto; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map .gridline { stroke: var(--line); stroke-width: 1; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map .scale-t { fill: var(--text-2); font: 600 11px/1 var(--font); }
@@ -68,7 +53,7 @@
 /* figures in a grid (an activity's, a workout's) */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat small { display: block; font-size: 12.5px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--ft-font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stat b u { text-decoration: none; font: 500 13px/1 var(--font); color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
 @media (max-width: 360px) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -91,7 +76,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .step .v { max-width: 12em; text-align: right; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .step .v b { color: var(--text); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat { margin: 6px 0; padding: 4px 12px; border-radius: 16px; background: var(--glass-ctl); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--acc-ink); letter-spacing: 0.3px; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--tint-text); letter-spacing: 0.3px; }
 
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
@@ -99,7 +84,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper output { min-width: 88px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .stepper label { display: none; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .field:focus { outline: 2px solid var(--acc); outline-offset: 0; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .field:focus { outline: 2px solid var(--tint); outline-offset: 0; }
 
 /* the plan */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phases { display: flex; gap: 3px; height: 10px; margin: 14px 0 8px; }
@@ -108,7 +93,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-names span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .phase-names span.now { color: var(--text); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown b { font: 700 40px/1 var(--ft-font-r); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown b { font: 700 40px/1 var(--font-r); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .countdown span { color: var(--text-2); font-size: 15px; }
 
 /* ---- Activities, before the first: one button, and where the files are ---- */
@@ -118,16 +103,16 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .first p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
 /* the two ways in: Garmin, ringed as the one to pick, and files */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px; border: 0; border-radius: 20px; text-align: left; color: inherit; background: var(--glass-strong); box-shadow: var(--edge); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice.best { box-shadow: 0 0 0 2px var(--acc), 0 12px 26px -18px var(--acc-fill); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice.best { box-shadow: 0 0 0 2px var(--tint), 0 12px 26px -18px var(--tint-deep); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice:active { transform: scale(0.985); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx { flex: 1; min-width: 0; display: grid; gap: 3px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx > b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .tx > small { color: var(--text-2); font-size: 14px; line-height: 1.35; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .chev { color: var(--text-3); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .choice .big { flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .badge { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc-ink); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .badge { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tint) 14%, transparent); color: var(--tint-text); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .ic.soft { box-shadow: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.red { background: rgba(238, 75, 47, 0.14); color: #d6402a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.blue { background: rgba(47, 122, 240, 0.14); color: var(--acc-ink); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.red { background: rgba(238, 75, 47, 0.14); color: #d6402a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.blue { background: rgba(47, 122, 240, 0.14); color: var(--tint-text); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.soft.green { background: rgba(31, 167, 90, 0.14); color: var(--good-text); }
 /* Garmin's six months, coming in */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .card.bringing { display: grid; gap: 12px; padding: 16px; }
@@ -135,14 +120,14 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top .tx { display: grid; gap: 2px; min-width: 0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top b { font-size: 16px; font-weight: 600; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing-top small { color: var(--text-3); font-size: 13px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--acc), var(--acc-fill)); animation: fx-bring 1.6s var(--ease-spring, ease-in-out) infinite; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar i { display: block; width: 40%; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--tint), var(--tint-deep)); animation: fx-bring 1.6s var(--ease-spring, ease-in-out) infinite; }
 @keyframes fx-bring { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .bringing .bar i { animation: none; width: 100%; opacity: 0.5; } }
 /* Upload files: the files chosen, and where each app keeps them */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone { display: grid; justify-items: center; gap: 12px; margin-top: 8px; padding: 22px 16px; border-radius: 22px; border: 1.5px dashed color-mix(in srgb, var(--acc) 50%, transparent); background: color-mix(in srgb, var(--acc) 6%, transparent); text-align: center; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone { display: grid; justify-items: center; gap: 12px; margin-top: 8px; padding: 22px 16px; border-radius: 22px; border: 1.5px dashed color-mix(in srgb, var(--tint) 50%, transparent); background: color-mix(in srgb, var(--tint) 6%, transparent); text-align: center; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone .big { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; color: #fff; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .drop-zone p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; text-wrap: pretty; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--acc) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .note-garmin .link { font: inherit; font-weight: 600; padding: 0; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .foot.none { text-align: center; padding: 28px 0; }
@@ -162,127 +147,6 @@
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) :is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .tx small.said { color: #a85f00; } }
 :root[data-theme="light"] :is(.m-fitness, .ifl-sheet[data-app=fitness]) .row.up.guess .tx small.said { color: #a85f00; }
 
-/* ---- Rhythm, before it starts: the Plan tab's card, and the four steps ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rhythm-intro { display: grid; gap: 14px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rhythm-intro h2 { margin: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rhythm-intro .btn { margin-top: 4px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-brand { display: flex; align-items: center; gap: 10px; font: 700 13px/1 var(--font); letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-brand .tile { width: 34px; height: 34px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-example { display: grid; gap: 8px; padding: 14px; border-radius: 20px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-head { display: flex; justify-content: space-between; font: 600 12px/1 var(--font); letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; height: 84px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-bars > div { display: grid; justify-items: center; gap: 4px; align-content: end; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-bars i { width: 100%; height: var(--h); border-radius: 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-bars i.rest { opacity: 0.35; border-radius: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-bars small, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day small { font-size: 11px; color: var(--text-3); font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-key { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-key span { display: inline-flex; align-items: center; gap: 5px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ex-key i { width: 8px; height: 8px; border-radius: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-feat { display: flex; gap: 12px; align-items: flex-start; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-feat .ic { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-feat b { display: block; font-size: 15px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-feat span { display: block; font-size: 14px; line-height: 1.35; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-note { margin: -4px 0 0; text-align: center; font-size: 13px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-dots { display: flex; justify-content: center; gap: 6px; margin: 2px 0 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-dots i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 18%, transparent); transition: width var(--dur-base) var(--ease-out); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-dots i.done { background: var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-dots i.now { width: 22px; background: var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-next { margin-top: 8px; }
-/* when you ride: a bar a day */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-days { padding: 16px 14px 12px; display: grid; gap: 10px; background: var(--glass-strong); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-sum { display: flex; justify-content: space-between; align-items: baseline; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-sum b { font: 700 22px/1.1 var(--font-d); letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-sum span { font-size: 14px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day { display: grid; justify-items: center; gap: 6px; min-width: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .v { font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track { position: relative; width: 100%; height: 210px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); touch-action: none; cursor: ns-resize; display: flex; align-items: flex-end; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track i { display: block; width: 100%; height: var(--h, 30%); border-radius: 12px; background: linear-gradient(180deg, #5aa2ff, var(--acc)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); transition: height 0.12s var(--ease-out); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track i::before { content: ""; display: block; width: 16px; height: 3px; margin: 6px auto 0; border-radius: 2px; background: rgba(255, 255, 255, 0.75); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track i.rest { background: none; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 25%, transparent); border-radius: 6px; min-height: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track i.rest::before { display: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-presets { display: flex; flex-wrap: wrap; gap: 8px; }
-/* how you like to ride */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choices, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goals { display: grid; gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choice, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal { display: flex; gap: 14px; align-items: center; text-align: left; padding: 14px; border: 0; border-radius: 22px; background: var(--glass-strong); box-shadow: inset 0 0 0 0.5px var(--line); color: var(--text); font: inherit; cursor: pointer; transition: box-shadow var(--dur-fast); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choice.on, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal.on { box-shadow: inset 0 0 0 2px var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choice .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choice b, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal b { font-size: 17px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-choice small, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal small { font-size: 14px; line-height: 1.35; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tick { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #fff; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 25%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .on > .tick, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .on .rh-goal-top .tick { background: var(--acc); box-shadow: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-pic { flex: none; width: 64px; height: 40px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; align-items: end; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-pic i { height: var(--h); border-radius: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile { display: grid; justify-items: start; gap: 8px; padding: 14px; border: 0; border-radius: 20px; background: var(--glass-strong); box-shadow: inset 0 0 0 0.5px var(--line); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--text-3); background: var(--glass-ctl); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile b { font-size: 16px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile small { font-size: 13px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on.run { box-shadow: inset 0 0 0 2px #1fa75a; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on.swim { box-shadow: inset 0 0 0 2px #1b8fc0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on .ic { color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on.run .ic { background: var(--fx-s-run); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on.swim .ic { background: var(--fx-s-swim); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-tile.on small { color: var(--text); font-weight: 600; }
-/* build or hold */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal { flex-direction: column; align-items: stretch; gap: 10px; padding: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal-top { display: flex; justify-content: space-between; align-items: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal-top b { font-size: 19px; font-weight: 700; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-goal svg { width: 100%; height: 64px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-axis { stroke: var(--line); stroke-width: 1; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-line { fill: none; stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-line.up { stroke: var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-line.level { stroke: color-mix(in srgb, var(--text) 45%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ftp { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--acc) 10%, transparent); font-size: 14px; line-height: 1.4; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ftp svg { flex: none; color: var(--acc-ink); margin-top: 1px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-ftp b { color: var(--text); }
-/* the first week */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-stats > div { padding: 10px 12px; border-radius: 16px; background: var(--glass-strong); box-shadow: inset 0 0 0 0.5px var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-stats small { display: block; font: 600 11px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-stats b { font-size: 18px; font-variant-numeric: tabular-nums; }
-
-/* ---- a session in full ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-steps { padding: 6px 14px; display: grid; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-step { display: grid; grid-template-columns: 36px 6px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-step + .ss-step { border-top: 0.5px solid var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-at { font: 600 12px/1.6 var(--font); color: var(--text-3); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-step > i { align-self: stretch; border-radius: 3px; min-height: 30px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-tx { display: grid; gap: 2px; min-width: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-tx b { font-size: 15px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-tx small { font-size: 13px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-tx small.cue { color: var(--text-3); line-height: 1.35; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-w { font: 600 14px/1.6 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-fuel { display: grid; gap: 12px; padding: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-fuel p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-fuel p b { color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-feeds { display: flex; flex-wrap: wrap; gap: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-feeds span { display: grid; gap: 1px; padding: 8px 12px; border-radius: 14px; background: var(--glass-ctl); font-size: 13px; color: var(--text-2); text-align: center; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-feeds b { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
-
-/* your numbers: worked out from your rides, or a starting guess, till you set them */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .tx small.est { color: var(--acc-ink); font-weight: 600; }
-/* Download: which device it's for; then saved, and how to get it on */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .dl-for { margin: 10px 0 0; font-size: 13px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .dl-for .link.small { font-size: 13px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .saved { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--good) 14%, transparent); font-size: 15px; line-height: 1.35; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .saved .ok { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--good); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .ic.num { width: 26px; height: 26px; border-radius: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .ic.num > b { font-size: 13px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .row .tx b.light { font-weight: 500; font-size: 15px; line-height: 1.4; }
-/* Rhythm's days: the tapped day, a quarter hour at a time */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-day .track.sel { box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 40%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-daystep { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 10px 14px; border-radius: 18px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-daystep > b { flex: 1; font-size: 16px; font-weight: 600; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-daystep .stepper button { width: 40px; height: 40px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .rh-daystep .stepper output { min-width: 72px; font-size: 15px; }
-/* a row's route, drawn small */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route { background: color-mix(in srgb, var(--ft-ride-solid, #ee4b2f) 12%, transparent); box-shadow: none; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route.s-run { background: color-mix(in srgb, #1fa75a 12%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route svg { width: 100%; height: 100%; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route path { fill: none; stroke: #ee4b2f; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route.s-run path { stroke: #1fa75a; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route.s-swim path { stroke: #1b8fc0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route.s-walk path, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .tile.route.s-other path { stroke: #6b7389; }
 /* ---- Progress ---- */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-range { display: grid; width: 100%; margin: 0 0 16px; box-sizing: border-box; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 22px 22px; text-align: center; }
@@ -311,7 +175,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > small i { width: 8px; height: 8px; border-radius: 50%; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > b { font: 700 26px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-tile > b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-spark { display: block; height: 30px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-spark svg { width: 100%; height: 30px; display: block; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-ftp { color: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-ftp { background: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wkg { color: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wkg { background: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wk { color: var(--acc); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wk { background: var(--acc); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-ftp { color: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-ftp { background: #e3a20f; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wkg { color: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wkg { background: #7c5cf0; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .c-wk { color: var(--tint); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) i.c-wk { background: var(--tint); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars { display: flex; align-items: flex-end; gap: 3px; height: 30px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars i { flex: 1; height: var(--h); border-radius: 2px; background: currentColor; opacity: 0.5; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-bars i.now { opacity: 1; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta { font-size: 12px; font-weight: 700; color: var(--text-3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta.up { color: var(--good-text); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-delta.down { color: var(--warn); }
@@ -349,8 +213,8 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid { display: grid; grid-template-columns: repeat(var(--n, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: 3px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid i, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key i { display: block; aspect-ratio: 1; border-radius: 2px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key i { width: 9px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l0 { background: color-mix(in srgb, var(--acc) 9%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l1 { background: color-mix(in srgb, var(--acc) 25%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l2 { background: color-mix(in srgb, var(--acc) 45%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l3 { background: color-mix(in srgb, var(--acc) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l4 { background: var(--acc-fill); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid i.future { background: none; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l0 { background: color-mix(in srgb, var(--tint) 9%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l1 { background: color-mix(in srgb, var(--tint) 25%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l2 { background: color-mix(in srgb, var(--tint) 45%, transparent); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .l3 { background: color-mix(in srgb, var(--tint) 70%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .l4 { background: var(--tint-deep); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-grid i.future { background: none; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 11px; color: var(--text-3); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-months { position: relative; flex: 1; height: 14px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-months span { position: absolute; left: calc(var(--c) / var(--n, 26) * 100%); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-cal-key { display: inline-flex; align-items: center; gap: 3px; }
@@ -365,11 +229,11 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff { display: block; margin: 8px 0 4px; overflow: visible; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .ftp { stroke: #e3a20f; stroke-dasharray: 4 4; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .ftpl { font-size: 10px; fill: #b07a00; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .was { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 3 4; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .now { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .cross { stroke: var(--text); stroke-opacity: 0.25; stroke-dasharray: 2 3; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .halo { fill: var(--acc); opacity: 0.2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .pt { fill: #fff; stroke: var(--acc); stroke-width: 3; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .cross { stroke: var(--text); stroke-opacity: 0.25; stroke-dasharray: 2 3; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .halo { fill: var(--tint); opacity: 0.2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .pt { fill: #fff; stroke: var(--tint); stroke-width: 3; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-curve .lab, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftp .lab, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-eff .lab { font-size: 10px; fill: var(--text-3); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens button { min-height: 36px; border: 0; border-radius: 12px; background: var(--glass-ctl); color: var(--text-2); font: 600 13px/1 var(--font); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens button.on { background: var(--acc); color: #fff; box-shadow: 0 6px 14px -8px var(--acc); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-lens button.on { background: var(--tint); color: #fff; box-shadow: 0 6px 14px -8px var(--tint); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend span { display: inline-flex; align-items: center; gap: 6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i { width: 12px; height: 10px; border-radius: 3px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.now { height: 3px; width: 16px; background: linear-gradient(90deg, #7c5cf0, #1fa7c8); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-legend i.was { height: 0; width: 16px; border-top: 2px dashed var(--text-3); border-radius: 0; }
@@ -391,7 +255,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-new { position: absolute; top: 12px; right: 12px; padding: 2px 8px; border-radius: 999px; background: #1fa75a; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider { display: flex; align-items: center; gap: 14px; padding: 16px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider .tx { display: grid; gap: 6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider b { font: 700 20px/1.2 var(--font-d); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-rider span { font-size: 14px; line-height: 1.45; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar { flex: none; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .grid { fill: none; stroke: var(--line); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .shape { stroke: var(--acc); stroke-width: 2.5; stroke-linejoin: round; }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar { flex: none; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .grid { fill: none; stroke: var(--line); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar .shape { stroke: var(--tint); stroke-width: 2.5; stroke-linejoin: round; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-radar text { font-size: 10px; font-weight: 700; fill: var(--text-2); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head b { display: block; font: 700 28px/1.1 var(--font-d); letter-spacing: -0.6px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-train-head b u { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
@@ -439,8 +303,8 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month { display: grid; gap: 2px; padding: 14px; border-radius: 20px; background: var(--sheen), var(--glass); box-shadow: var(--edge); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month small { font-size: 12px; color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month small:first-child { font-weight: 700; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month b { font-size: 20px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--acc) 0 var(--w), var(--glass-ctl) var(--w)); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now { box-shadow: var(--edge), 0 0 0 2px color-mix(in srgb, var(--acc) 35%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now small:first-child { color: var(--acc-ink); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month i { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--tint) 0 var(--w), var(--glass-ctl) var(--w)); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now { box-shadow: var(--edge), 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-month.now small:first-child { color: var(--tint-text); }
 /* (FTP's card: in Progress's indigo, as new records are, by night and by day) */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-ftpcard { display: grid; gap: 4px; padding: 20px; border-radius: 28px; color: var(--text);
   background: linear-gradient(165deg, rgba(94, 92, 230, 0.34) 0%, rgba(120, 86, 220, 0.16) 100%), var(--glass); box-shadow: inset 0 0 0 0.5px rgba(160, 150, 255, 0.35), 0 18px 36px -28px rgba(94, 92, 230, 0.6); }
@@ -463,7 +327,7 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials:has(> div:only-child) { grid-template-columns: minmax(0, 1fr); }   /* (one dial alone: in the middle, not off to one side) */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials > div { display: grid; justify-items: center; gap: 2px; text-align: center; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials b { font-size: 22px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-dials small { font-size: 12px; line-height: 1.35; color: var(--text-2); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gauge .needle { stroke: var(--text); stroke-width: 3.5; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-gauge .hub { fill: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg { stroke: var(--glass-ctl); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { stroke: var(--acc); }
+:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { fill: none; stroke-width: 12; stroke-linecap: round; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .bg { stroke: var(--glass-ctl); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc .fg { stroke: var(--tint); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-arc text { font-size: 20px; font-weight: 800; fill: var(--text); }
 /* a route on a real map (map.js): rounded like a card, its credit in a corner; the whole sheet, to explore */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-gl { position: relative; width: 100%; aspect-ratio: 1 / 0.66; border-radius: 22px; overflow: hidden; cursor: pointer; background: color-mix(in srgb, var(--text) 6%, transparent);
@@ -491,89 +355,6 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .map-open { position: absolute; z-index: 2; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--text);
   background: color-mix(in srgb, var(--glass-strong) 80%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: var(--edge); pointer-events: none; }
 
-/* moving a day */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-days { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 4px 0 14px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-day { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 70px; padding: 10px 0; border: 0; border-radius: 14px; background: var(--glass-ctl); color: var(--text); font: inherit; cursor: pointer; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-day small { font-size: 11px; font-weight: 600; color: var(--text-3); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-day b { font: 600 18px/1 var(--ft-font-r); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-day.best small.w { color: var(--good-text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-day.on { background: color-mix(in srgb, var(--acc) 22%, transparent); box-shadow: inset 0 0 0 1.5px var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-week { display: grid; gap: 8px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-week > small { font-size: 12px; font-weight: 600; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; height: 84px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars > div { display: flex; flex-direction: column; align-items: center; gap: 4px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars small { font-size: 10px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i { display: block; width: 100%; border-radius: 4px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars .moved small { color: var(--acc-ink); font-weight: 700; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.rest { background: color-mix(in srgb, var(--text) 15%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.z2 { background: var(--ft-z2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.z3 { background: var(--ft-z3); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.z4 { background: var(--ft-z4); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.z6 { background: var(--ft-z6); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-bars i.tint { background: var(--acc); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .mv-week .line-said { margin: 0; }
-/* (a run of the same steps, said once: how many, and the step or two each time) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .repeat > .rh .rh-len { margin-left: auto; font-weight: 600; color: var(--text-3); letter-spacing: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pattern { display: grid; gap: 8px; padding: 10px 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .step + .pattern, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pattern + .step { border-top: 0.5px solid var(--line); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-head { display: flex; align-items: baseline; justify-content: space-between; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-head b { font: 700 20px/1 var(--ft-font-r); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-head small { font-size: 13px; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-part { display: flex; gap: 10px; align-items: stretch; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--text) 5%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-part > i { width: 5px; flex: none; border-radius: 3px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-part span { display: grid; gap: 2px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-part b { font-size: 15px; font-weight: 600; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pt-part small { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-/* (Step by step: in phases, the times as a range, the watts large with their share of FTP, the zone a chip) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-phase { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 14px 0 6px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-phase:first-child { padding-top: 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-phase b { font-size: 13px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-phase small { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-phase + .ss-step { border-top: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-step + .ss-phase { border-top: 0.5px solid var(--line); margin-top: 2px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-step { grid-template-columns: 40px 6px minmax(0, 1fr) auto; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-when { display: grid; gap: 1px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-end { font: 500 11px/1.3 var(--font); color: var(--text-3); font-variant-numeric: tabular-nums; opacity: 0.75; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zchip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px 0 6px; border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--glass-ctl); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .zchip i { width: 8px; height: 8px; border-radius: 50%; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-w { display: grid; justify-items: end; gap: 1px; text-align: right; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-w b { font: 700 16px/1.25 var(--ft-font-r); font-variant-numeric: tabular-nums; white-space: nowrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-w small { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ss-pat .ss-tx b { font-size: 15px; }
-/* Apple Health: its tile, and the key and address to copy */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ic.brand.health { background: linear-gradient(160deg, #ff5a6e, #ff2d55); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .hk-box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--field); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .hk-key { flex: 1; min-width: 0; font: 500 13px/1.35 ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; -webkit-touch-callout: default; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .section > .hk-box + .foot { margin-top: 8px; }
-
-/* (Fitness and form, from Progress's Form tile: the band and the two tiles, above the chart) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .form-now { display: grid; gap: 6px; }
-
-/* ---- your history on Progress: this year against last, all-time bests, each year's peak; a year in review ---- */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-history { display: grid; gap: 10px; width: 100%; padding: 16px 16px 12px; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-history:active { transform: scale(0.985); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-top small { display: block; font-size: 13px; font-weight: 600; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-top b { font: 700 30px/1.1 var(--font-d); letter-spacing: -0.5px; font-variant-numeric: tabular-nums; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-top b u { text-decoration: none; font-size: 15px; color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-vs { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 13px; font-weight: 650; white-space: nowrap; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-vs.up { color: var(--good-text); background: color-mix(in srgb, var(--good) 15%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-vs.down { color: var(--warn); background: color-mix(in srgb, #ffb547 16%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart .y-prev { fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-dasharray: 4 4; opacity: 0.6; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart .y-cur { fill: none; stroke: var(--acc); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart .y-area { fill: color-mix(in srgb, var(--acc) 14%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart .y-now { fill: var(--acc); stroke: var(--glass-strong); stroke-width: 2; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart .y-then { fill: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .n-key .k-cur { background: var(--acc); height: 3px; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .n-key .k-prev { height: 0; border-top: 2px dashed var(--text-3); border-radius: 0; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-more { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--acc-ink); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-bests .row { min-height: 56px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-len { flex: none; width: 52px; font: 700 14px/1 var(--font-d); color: var(--text-2); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-yr { font-size: 13px; color: var(--text-2); white-space: nowrap; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-yr.best { color: var(--good-text); font-weight: 650; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-peaks { display: grid; gap: 10px; padding: 16px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px 32px; align-items: center; gap: 10px; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row small { font-size: 13px; font-weight: 600; color: var(--text-2); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row b { font: 700 15px/1 var(--font-d); text-align: right; font-variant-numeric: tabular-nums; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row .pk-when { font-weight: 500; color: var(--text-3); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-bar { height: 10px; border-radius: 5px; background: var(--field); overflow: hidden; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-bar i { display: block; height: 100%; border-radius: 5px; background: color-mix(in srgb, var(--fx-fit) 55%, transparent); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row.now .pk-bar i { background: var(--fx-fit); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-row.now small:first-child { color: var(--text); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .month-bars .mb { fill: color-mix(in srgb, var(--acc) 45%, transparent); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .month-bars .mb.top { fill: var(--acc); }
-@media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .years-chart *, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .pk-bar i, :is(.m-fitness, .ifl-sheet[data-app=fitness]) .month-bars * { animation: none !important; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .p-history:active { transform: none; } }
-
-/* (Rhythm's setup: riding towards an event, its kind, then its day and name) */
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-ic { flex: none; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: #fff; }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-ic.none { background: linear-gradient(160deg, #9aa3b8, #6b7389); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-ic.sportive { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-ic.race { background: linear-gradient(160deg, #ff8a7a, #e8453a); } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-ic.tt { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-when { display: grid; gap: 10px; margin-top: 14px; animation: fx-rise 0.45s var(--ease-out); }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-when input[type="date"] { min-height: 48px; }
-@media (prefers-reduced-motion: reduce) { :is(.m-fitness, .ifl-sheet[data-app=fitness]) .ev-when { animation: none; } }
-:is(.m-fitness, .ifl-sheet[data-app=fitness]) .ph-vs:not(.up):not(.down) { color: var(--acc-ink); background: color-mix(in srgb, var(--acc) 13%, transparent); }
-
 /* ---- a picture to share: drawn, then shown, then shared ---- */
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame { display: grid; place-items: center; aspect-ratio: 4 / 5; margin-bottom: 16px; border-radius: 26px; overflow: hidden; background: linear-gradient(160deg, #1b1840, #0b0d20); box-shadow: var(--edge), 0 18px 50px rgba(0, 0, 0, 0.25); }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(0.97); transition: opacity 0.5s var(--ease-out), transform 0.6s var(--ease-spring, var(--ease-out)); }
@@ -581,7 +362,6 @@
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame:has(.share-img:not(.in))::after { content: ""; width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: fx-spin 0.8s linear infinite; grid-area: 1 / 1; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-frame .share-img { grid-area: 1 / 1; }
 @keyframes fx-spin { to { transform: rotate(360deg); } }
-@keyframes fx-rise { from { opacity: 0; transform: translateY(18px) scale(0.985); } }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .share-said { text-align: center; margin-top: 10px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .btn svg { vertical-align: -3px; margin-right: 8px; }
 :is(.m-fitness, .ifl-sheet[data-app=fitness]) .act-links { display: flex; gap: 18px; align-items: center; } :is(.m-fitness, .ifl-sheet[data-app=fitness]) .act-links .link svg { vertical-align: -2px; margin-right: 4px; }
@@ -615,7 +395,7 @@
 .ifl-sheet[data-app=fitness] .fxs-stepper .ifl-icon-btn { min-width: 44px; min-height: 44px; }
 .ifl-sheet[data-app=fitness] .fxs-n { min-width: 84px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ifl-sheet[data-app=fitness] .fxs-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--on-acc); background: var(--acc-fill); font-size: 14px; }
-.ifl-sheet[data-app=fitness] .fxs-key, .ifl-sheet[data-app=fitness] .fxs-connect, .ifl-sheet[data-app=fitness] .fxs-leave, .ifl-sheet[data-app=fitness] .fxs-sure { display: grid; gap: 10px; }
+.ifl-sheet[data-app=fitness] :is(.fxs-key, .fxs-connect, .fxs-leave, .fxs-sure) { display: grid; gap: 10px; }
 .ifl-sheet[data-app=fitness] .fxs-sure[hidden] { display: none; }
 .ifl-sheet[data-app=fitness] .fxs-strava { justify-content: center; text-decoration: none; }
 .ifl-sheet[data-app=fitness] .fxs-strava[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
