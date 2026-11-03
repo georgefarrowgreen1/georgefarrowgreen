@@ -1,0 +1,105 @@
+name: Turn InFlite's hub off
+
+# The off switch for InFlite's hub (spec §15.4's rollback; addendum A1). Deletes the Worker's HUB_KEY first: with no
+# key, every hub path (inflite.ai/chats/, /weather/, ...) answers 503 and inflite.ai/api/hub says {"ready": false}
+# without asking any app (the inflite repo's today/src/hub.js), so Today links to each app's own address at once, as
+# Today 1.08 did. Then deletes the Pages project's HUB_KEY and builds its live production deployment again, so Chat's
+# hub copy (/_hub/) is not found to anyone at all. Nothing else changes: the apps at their own addresses, their
+# notifications and everyone's data stay as they are.
+#
+# Only when asked (the input below, off by default), it also takes back the push rows the hub fanned out (spec §15.4):
+# the Pages var HUB_PUSH deleted before that deployment, so no more are made, then in D1 (bio-db) the rows marked
+# via = 'hub' in pg_push and mk_push, and wx_devs with their wx_subs. td_push is Today's own and stays; the old app
+# icons' own rows were never touched. Do this before rolling the inflite repo's Worker back to Today 1.08, whose
+# service worker can't open the apps' notifications.
+#
+# To turn it on again: "Give InFlite's hub its key" (hub-key.yml), which makes a new key.
+# Needs CLOUDFLARE_API_TOKEN with Account › Workers Scripts › Edit and Account › Cloudflare Pages › Edit (and
+# Account › D1 › Edit to take back the push rows). CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account.
+on:
+  workflow_dispatch:
+    inputs:
+      take_back_pushes:
+        description: "Also take back the push rows the hub fanned out (D1 rows with via = 'hub'), and delete HUB_PUSH"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# (one change to the hub's key at a time: this and hub-key.yml share it)
+concurrency:
+  group: inflite-hub-key
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  turn-off:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+      PUSHES: ${{ inputs.take_back_pushes && '1' || '0' }}
+    steps:
+      - name: Check the token's there
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit and Account › Cloudflare Pages › Edit. Nothing was changed: to turn the hub off by hand, delete HUB_KEY from the Worker inflite (Workers & Pages → inflite → Settings → Variables and Secrets)."
+            exit 1
+          fi
+      # (.github/hub, and the top-level files with it: take_key_pages reads wrangler.toml for HUB_PUSH)
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/hub
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Find the Cloudflare account
+        run: |
+          . .github/hub/hub.sh
+          cf_account
+          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT" >> "$GITHUB_ENV"
+      # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Worker and the Pages project
+      # by the names given)
+      - name: Delete the Worker's HUB_KEY (the hub is off at once)
+        working-directory: ${{ runner.temp }}
+        run: |
+          . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
+          take_key_worker
+      - name: Wait for inflite.ai/api/hub to say it isn't ready
+        run: |
+          . .github/hub/hub.sh
+          wait_hub false 180
+      - name: Delete the Pages project's HUB_KEY${{ inputs.take_back_pushes && ' and HUB_PUSH' || '' }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
+          take_key_pages "$PUSHES"
+      - name: Build the Pages project's production again, so the site lets go of them
+        run: |
+          . .github/hub/hub.sh
+          pages_redeploy
+      - name: Check Chat's hub copy is not found to anyone without the key
+        run: |
+          . .github/hub/hub.sh
+          door_shut
+      - name: Take back the push rows the hub fanned out (D1)
+        if: inputs.take_back_pushes
+        working-directory: ${{ runner.temp }}
+        run: |
+          . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
+          take_back_pushes
+      - name: If it went wrong
+        if: failure()
+        run: |
+          {
+            echo "### What to do"
+            echo "- The step that failed says why, and which permission the token likely lacks (Workers Scripts: Edit; Cloudflare Pages: Edit; D1: Edit)."
+            echo "- If the Worker's HUB_KEY step failed, the hub is still on: delete HUB_KEY by hand (Workers & Pages → inflite → Settings → Variables and Secrets)."
+            echo "- Once the Worker's key is gone, the hub is off whatever else failed: Today links to each app's own address. Running this again is safe."
+          } >> "$GITHUB_STEP_SUMMARY"
