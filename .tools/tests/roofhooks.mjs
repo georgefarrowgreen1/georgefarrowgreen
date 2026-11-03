@@ -114,3 +114,80 @@ export const wxGo = (page) => `dialog.ifl-sheet[data-sheet=wxsettings] [data-go=
 export const wxSetting = (key) => `dialog.ifl-sheet[data-sheet=wxsettings] [data-key="${key}"]`; // WS: a wx:settings key's control
 export const segValue = (v) => `[role=radio][data-value="${v}"]`; // FW (ui.seg): an option of a segmented control
 export const WX_NOTIFY_ROW = 'dialog.ifl-sheet[data-sheet=wxsettings] a[href="/#you=notify-weather"]'; // WS
+
+// ==== Stages 2–4 (batch j0: s2/handoff.md B0 step 4, s4/spec.md §10.2; roof/s24-contracts.md). Gain only. ====
+
+// ---- the modules' screens (FW makes each main#m-<app>; the module mounts in it) ----
+export const M_MARKETS = 'main#m-markets';                // FW makes it, MK mounts in it
+export const M_FITNESS = 'main#m-fitness';                // FW makes it, FXA mounts in it
+export const M_MAIL = 'main#m-mail';                      // FW makes it, MM mounts in it
+export const mScreen = (app) => `main#m-${app}`;          // FW
+export const FX_DROP = M_FITNESS;                         // FXA: Fitness's drop target (S2-D12)
+// header acts (FW's buttons, data-act = the icon)
+export const HD_PLUS = hdAct('plus');                     // MK: Add a Stock
+export const HD_UPLOAD = hdAct('upload');                 // FXA: Add Files
+export const HD_COMPOSE = hdAct('compose');               // MM: Mail's Write (S4-D26)
+//   (Fitness Settings is HD_SETTINGS, as Weather Settings is)
+
+// ---- Markets (MK) ----
+export const MK_SEC = 'section.mk-sec[data-sec]';         // MK
+export const mkSec = (id) => `section.mk-sec[data-sec="${id}"]`; // MK: today, holdings, news
+export const mkRow = (sym) => `.m-markets [data-k=holding][data-sym="${sym}"]`; // MK: a holding's row
+export const MK_EDIT = '.m-markets [data-k=edit]';        // MK: Holdings' Edit (reorder, S2-D19)
+export const mkMove = (sym, dir) => `.m-markets [data-k="move-${dir}"][data-sym="${sym}"]`; // MK: dir up | down
+export const MK_HERO = '.m-markets [data-k=portfolio]';   // MK: Today's portfolio card
+export const MK_PORTFOLIO_SEND = '.m-markets [data-k=portfolio] [data-act=send]'; // MK (fw.sendButton's button)
+export const MK_STOCK_SEND = 'dialog.ifl-sheet[data-sheet=stock] [data-act=send]'; // MK
+export const MK_STOCK_REMOVE = 'dialog.ifl-sheet[data-sheet=stock] [data-k=remove]'; // MK
+export const MK_ALERT = 'dialog.ifl-sheet[data-sheet=stock] input[data-k=alert]'; // MK: the price alert's percent
+export const MK_ADD_INPUT = 'dialog.ifl-sheet[data-sheet=add-stock] input[data-k=find]'; // MK: focused in the tap (RI9)
+export const MK_ADD_RESULT = 'dialog.ifl-sheet[data-sheet=add-stock] [data-k=result][data-sym]'; // MK
+export const MK_ABOUT = '.m-markets [data-k=about]';      // MK: opens mk-about
+export const mkStory = (id) => `.m-markets [data-k=story][data-id="${id}"]`; // MK: a News story's row
+export const MK_ACCOUNT_ROW = '.m-markets [data-k=account]'; // MK: an account's row (→ mk-account)
+//   Markets' sheets (fw.sheet.open({ sheet })): stock, add-stock, holding, income, isa, vs, story, mk-account, mk-about
+
+// ---- Fitness (FXA: core and Today) ----
+export const FX_SEC = 'section.fx-sec[data-sec]';         // FXA
+export const fxSec = (id) => `section.fx-sec[data-sec="${id}"]`; // FXA: today, activities, progress
+export const fxDay = (day) => `.m-fitness [data-k=day][data-day="${day}"]`; // FXA: day YYYY-MM-DD (the strip)
+export const FX_GRID_DAY = '.m-fitness .gday[draggable]'; // FXA: a week grid's day (drag to swap)
+export const FX_DAYCARD = '.m-fitness [data-k=daycard]';  // FXA: Today's day card
+export const FX_FILES = '.m-fitness input[type=file][data-k=files]'; // FXA: Add Files' picker
+export const fxOffer = (id, act) => `.m-fitness [data-offer="${id}"] [data-k="${act}"]`; // FXA: act keep | undo
+export const FX_SESSION_SEND = '.m-fitness [data-k=daycard] [data-act=send]'; // FXA
+// ---- Fitness (FXB: the sheets) ----
+export const fxAct = (id) => `.m-fitness [data-k=act][data-id="${id}"]`; // FXB: an activity's row
+export const fxSettingsPage = (id) => `dialog.ifl-sheet[data-sheet=fxsettings] [data-page="${id}"]`; // FXB
+export const FX_STRAVA = 'dialog.ifl-sheet[data-sheet=fxsettings] a[data-k=strava]'; // FXB: a real link (S2-D13)
+export const FX_ACT_MAP = 'dialog.ifl-sheet[data-sheet=act] [data-k=map]'; // FXB
+export const FX_ACT_SHARE = 'dialog.ifl-sheet[data-sheet=act] [data-k=share]'; // FXB
+//   Fitness's sheets: act, act-map, act-share, form, upload, session, workout, fx-day, move, workouts, rhythm-setup,
+//   send-device, power, training, engine, year, offer, fxsettings
+
+// ---- Today, Apps and You (TD's markup, unchanged; FW for You's switch) ----
+export const TODAY_MK_CARD = 'main#today .tcard[data-app="markets"]'; // TD
+export const TODAY_MK_OPEN = 'main#today .tcard[data-app="markets"] a.tc-head'; // TD
+export const TODAY_FX_CARD = 'main#today .tcard[data-app="fitness"]'; // TD
+export const TODAY_FX_OPEN = 'main#today .tcard[data-app="fitness"] a.tc-head'; // TD
+export const TODAY_MAIL_CARD = 'main#today .tcard[data-app="mail"]'; // MT (Mail's card, once its drawer's in)
+export const YOU_MK_WRAP = '#youNotify [data-app=markets] [data-k=wrap]'; // FW: Markets' Evening Wrap switch
+export const SH_MAILNOTIFY = 'dialog#sh-mailnotify';      // B0-b (markup), MT (its logic): Mail Notifications
+
+// ---- Mail (stage 4: MM the list, MR the reader and sheets, MB the body frame) ----
+export const MAIL_THREAD = '.m-mail [data-thread]';       // MM: a row, data-thread = the thread's id
+export const mailThread = (id) => `.m-mail [data-thread="${id}"]`; // MM
+export const MAIL_BODY = '.m-mail iframe.mail-body';      // MB: a message's body, framed from Mail's own address
+export const mailAct = (act) => `.m-mail [data-act="${act}"]`; // MM/MR: done, later, reply, send, undo, compose
+export const MAIL_DONE = '.m-mail [data-act=done]';       // MM
+export const MAIL_LATER = '.m-mail [data-act=later]';     // MM
+export const MAIL_REPLY = '.m-mail [data-act=reply]';     // MR
+export const MAIL_SEND = '[data-act=send]';               // MR: in mail-compose (sheet(MAIL_SHEETS.compose) + ' ' + MAIL_SEND)
+export const MAIL_UNDO = '[data-act=undo]';               // MM: in the toast or the row
+export const MAIL_SHEETS = Object.freeze({                // MM/MR: Mail's sheets, by name (data-sheet)
+  views: 'mail-views', later: 'mail-later', compose: 'mail-compose', rowmenu: 'mail-rowmenu', unsub: 'mail-unsub',
+  viewer: 'mail-viewer', settings: 'mail-settings', confirm: 'mail-confirm',
+});
+export const mailSheet = (k) => `dialog.ifl-sheet[data-sheet="${MAIL_SHEETS[k] || k}"]`; // MM/MR
+// ---- the framework's own sheet of stages 2–4 ----
+export const SIGNOUT_ANYWAY = 'dialog.ifl-sheet[data-sheet=confirm]'; // FW (j0): "Sign Out Anyway?" (C10)

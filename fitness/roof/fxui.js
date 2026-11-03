@@ -1,7 +1,7 @@
 // Fitness's adapter under the roof (One roof stage 2, §4.1, BB2): fitness/app.js's helper names over the framework's fw,
 // so a view moves across with `from "./app.js"` → `from "./x.js"` and little else.
 //   elements: h svg icon sportIcon card row section stat wait sportTile face head (null: the framework's header is the
-//     title) zoneBars mapCredit routeOf stepper; the ui.js formatters (U dur hm clock … pct), re-exported
+//     title) zoneBars mapCredit stepper height measure (the formatters are core.js's re-exports of ui.js)
 //   sheets: openSheet(view, { sheet, tall }) pushSheet(view) sheetBack() drawSheet() closeSheet() → Promise, Sheet
 //     (Sheet.redraw()), sheetEl ({ open }): a view is app.js's, () → { title, body, right?, sheet? }, drawn into
 //     fw.sheet.open({ sheet, app: "fitness" }) (data-sheet = the view's sheet, else openSheet's, else "fitness"); a pushed
@@ -12,11 +12,15 @@
 //     mainW() partW(part) cardW(hero, part) sheetW(); mapsAlways()
 //   chooseFiles() the picker fitness.js made, opened in the tap; calendar(wks) a week or two as an .ics file
 //   attach(root, fw) / detach()   fitness.js, at mount and unmount
-import { h, svg, icon, sportIcon, U, dur, hm, clock, stepLen, dist, distNum, height, speed, pace, paceOf, weight, dayLong, dayShort, dayName, dayLetter, dateShort, timeOf, plural, pct } from "../ui.js";
+import { h, svg, icon, sportIcon, dur, stepLen, height, paceOf, pct, plural } from "../ui.js";
 import { SPORTS, flatten, measure } from "../workouts.js";
-import { S, P, setNumber, resum, isSet, redraw, toast, M, needF, saveFile, paceFor, wkById, estimates } from "./core.js";
+import { S, P, setNumber, resum, isSet, M, needF, saveFile, paceFor, wkById, estimates, emit, EVENTS, fwOf } from "./core.js";
+// (app.js's redraw(part): core's named event, none "me"; its toast: the framework's, one at a time and announced)
+export const redraw = (part = "me") => emit(EVENTS.includes(part) ? part : "me");
+export const toast = (text, bad = false, ms) => { fwOf()?.toast?.(text); };
 
-export { h, svg, svg as svgOf, icon, sportIcon, U, dur, hm, clock, stepLen, dist, distNum, height, speed, pace, paceOf, weight, dayLong, dayShort, dayName, dayLetter, dateShort, timeOf, plural, pct, redraw, toast };
+export { h, svg, svg as svgOf, icon, sportIcon, height, paceOf };
+export { measure } from "../workouts.js";
 
 const Q = { root: null, fw: null, ro: null, w: 0, pick: null };
 export const fwUi = () => Q.fw;
@@ -42,6 +46,9 @@ export function detach() {
   Q.root = null; Q.fw = null; Q.pick = null;
 }
 export const setPicker = (fn) => { Q.pick = fn; };
+// (B0's names: bind(ctx, root) once from mount, unbind() at unmount)
+export const bind = (ctx, root) => attach(root, ctx.fw);
+export const unbind = () => detach();
 
 // ---- elements (app.js 1286-1305) ----
 export const section = (title, ...kids) => h("section.section", {}, title && h("h3", {}, title), ...kids);
@@ -75,13 +82,6 @@ export function mapCredit() {
   h("span.mc-c", { "aria-hidden": "true", text: "©" }), h("span.mc-t", { "aria-hidden": "true", text: " OpenStreetMap, OpenFreeMap" }));
   b.addEventListener("keydown", (e) => e.stopPropagation());
   return b;
-}
-export function routeOf(s, zoneAt) {
-  const idx = []; for (let i = 0; i < s.t.length; i++) if (s.lat[i] != null && s.lon[i] != null) idx.push(i);
-  const step = Math.max(1, Math.ceil(idx.length / 3000)), use = idx.filter((_, j) => j % step === 0 || j === idx.length - 1);
-  const css = Q.root ? getComputedStyle(Q.root) : null, col = {};
-  const colourOf = (z) => (col[z] ??= css?.getPropertyValue("--" + z).trim() || "#0a84ff");
-  return { coords: use.map((i) => [s.lon[i], s.lat[i]]), colours: zoneAt ? use.map((i) => colourOf(zoneAt(i))) : null };
 }
 export function numberSaid(k) {
   if (isSet(k)) return null;

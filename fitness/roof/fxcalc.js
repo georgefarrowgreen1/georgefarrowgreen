@@ -8,7 +8,8 @@ import { flatten, measure, startOfDay } from "../workouts.js";
 import { perSecond } from "../load.js";
 import * as R from "../rhythm.js";
 import * as E from "../efforts.js";
-import { S, TODAY, P, rh, rhDay, rhythmOn, wkById, keep, paceFor, sumOf, once, plannedOn, toast, redraw } from "./core.js";
+import { S, TODAY, P, rh, rhDay, rhythmOn, wkById, keep, paceFor, sumOf, once, plannedOn } from "./core.js";
+import { toast, redraw } from "./fxui.js";
 
 export const rhythmSaid = () => {
   const r = rh(), b = r.block, ev = r.event;
