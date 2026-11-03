@@ -535,7 +535,8 @@ await part('module error state', async () => {
 // ======================================================================= stage 2: a switch per module
 // (/api/hub's apps, one on and one off: the one on opens in the page, the one off is a page load of the hub's page; the
 // map kept as ifl-roof-apps, app names and booleans only)
-const APPS_ON = { weather: true, markets: true, fitness: false, mail: false };
+// (stage 3's B0: REGISTRY.chats, so the map the page keeps names Chats too, off)
+const APPS_ON = { weather: true, markets: true, fitness: false, mail: false, chats: false };
 await part('apps per module', async () => {
   await mode({ phase: 'midday' });
   const HUBPAGE = '<!doctype html><title>Fitness</title><style>@view-transition { navigation: auto; }</style><p>FITNESS HUB PAGE</p>';

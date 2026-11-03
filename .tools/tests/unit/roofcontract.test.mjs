@@ -485,3 +485,264 @@ test('markets: the connector’s search answers only for the account whose copy 
   const mine = await c.search('tes', { userId: 'u1' });
   assert.ok(!/3456|345[67]/.test(JSON.stringify(mine)), 'no amount');
 });
+
+// ==== Stage 3 (Chats; roof/s3/spec.md §3.1, §5.2 S3-C2, S3-C3, §5.3, §5.4, S3-D13, S3-D15; frozen by stage 3's B0) ====
+// MAIN's pigeon/roof/ (served at /chats/roof/), with the IFL beside from stage 3's B0 on (REGISTRY.chats). Two grep
+// sets: the page's (every pigeon/roof/*.js but the core's graph) and the Worker's (core.js, idb.js). A file that still
+// exports STUB is B0's: its names, graph and greps are checked all the same.
+import { chatsSkip, CHATS_ROOF } from './fixtures/roof.mjs';
+const CH = CHATS_ROOF;
+const chRead = (f) => read(new URL(f, CH));
+const chFiles = () => existsSync(CH) ? readdirSync(CH).filter((f) => f.endsWith('.js')) : [];
+const WORKER_FILES = ['core.js', 'idb.js'];
+const PIGEON_APP = read(new URL('pigeon/app.js', MAIN));
+// (the frozen names of each file, spec §2.2, §3.1, §5.4; the openers' first parameter: ctx, or (ui, svc) for openSend)
+const CH_FROZEN = {
+  'chats.js': ['CONTRACT', 'BUILD', 'NEWS', 'PROTOCOL', 'SECTIONS', 'mount', 'deviceOf'],
+  'connector.js': ['CONNECTOR', 'connector'],
+  'store.js': ['createStore'],
+  'list.js': ['view', 'openNewChat', 'openNewGroup'],
+  'friends.js': ['view', 'openRequests', 'openAddFriend'],
+  'chat.js': ['view'], 'lock.js': ['view'],
+  'send.js': ['openSend'],
+  'sheets.js': ['openFriendInfo', 'openGroupInfo', 'openGroupAdd', 'openGroupRename', 'openSafety', 'openWhoHas', 'openView', 'openSchedule', 'openTimeTalk', 'openFromApps', 'openHold'],
+  'flight.js': ['openFlightLog', 'openPassport', 'openMap', 'openSkies', 'openLookUp', 'openWay', 'openMoonPick', 'openBirds', 'openBird', 'openBirdName', 'openLoft', 'openFeathers', 'openNews'],
+  'media.js': ['openGifs', 'recordVoice', 'pickPhoto'],
+  'scan.js': ['openScan'],
+  'settings.js': ['openChatSettings'],
+  'service.js': ['PROTOCOL', 'startService'],
+  'core.js': ['PROTOCOL', 'STATES', 'WHY', 'TOPICS', 'RPC', 'META'],
+  'idb.js': ['NAME', 'STORE', 'get', 'set', 'del', 'locked', 'gone', 'isGone'],
+};
+// (the connector's words, frozen: spec §5.3)
+const CH_SHARES = { cards: 'Who’s waiting for you, and letters on their way', search: 'Your friends and your messages, on this phone only',
+  notifications: 'New messages and letters as they land, never their words', actions: 'Open a chat; send a card to a friend', screens: 'Chats · Friends' };
+
+test('chats: chats.js exports CONTRACT 1, BUILD and NEWS = pigeon/app.js’s APP_VERSION and APP_NEWS, PROTOCOL equal in chats.js, service.js and core.js, SECTIONS = REGISTRY = connector; every frozen name, every opener taking ctx', { skip: chatsSkip }, async () => {
+  const E = chRead('chats.js');
+  assert.equal(literalOf(E, 'CONTRACT'), 1);
+  assert.equal(literalOf(E, 'BUILD'), constOf(PIGEON_APP, 'APP_VERSION'), 'BUILD = APP_VERSION (I raises both together)');
+  assert.equal(literalOf(E, 'NEWS'), constOf(PIGEON_APP, 'APP_NEWS'), 'NEWS = APP_NEWS');
+  const p = ['chats.js', 'service.js', 'core.js'].map((f) => literalOf(chRead(f), 'PROTOCOL'));
+  assert.ok(Number.isInteger(p[0]) && p.every((x) => x === p[0]), `PROTOCOL ×3: ${p}`);
+  assert.match(uncomment(E), /\bexport\s+async\s+function\s+mount\s*\(\s*root\s*,\s*fw\s*\)/);
+  const SECTIONS = [['chats', 'Chats'], ['friends', 'Friends']];
+  assert.deepEqual(literalOf(E, 'SECTIONS'), SECTIONS);
+  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.chats.sections)), SECTIONS);
+  const { connector: c } = await import(new URL('connector.js', CH));
+  assert.deepEqual(c.sections, SECTIONS);
+  assert.deepEqual({ ...c.aliases }, { ...R.REGISTRY.chats.aliases });
+  for (const [f, names] of Object.entries(CH_FROZEN)) {
+    const has = exportsOf(chRead(f));
+    for (const n of names) assert.ok(has.has(n), `pigeon/roof/${f} exports ${n}`);
+  }
+  for (const f of ['list.js', 'friends.js', 'chat.js', 'lock.js']) assert.match(uncomment(chRead(f)), /\bexport\s+function\s+view\s*\(\s*el\s*,\s*ctx\s*\)/, `${f}: view(el, ctx)`);
+  for (const f of ['list.js', 'friends.js', 'sheets.js', 'flight.js', 'media.js', 'scan.js', 'settings.js']) {
+    for (const m of uncomment(chRead(f)).matchAll(/\bexport\s+(?:async\s+)?function\s+(open\w+|recordVoice|pickPhoto)\s*\(([^)]*)\)/g)) assert.match(m[2], /^\s*ctx\b/, `${f}: ${m[1]}(ctx, …)`);
+  }
+  assert.match(uncomment(chRead('send.js')), /\bexport\s+(?:async\s+)?function\s+openSend\s*\(\s*ui\s*,\s*svc\s*,\s*\{\s*card\b[^)]*\bwords\b[^)]*\bto\b/, 'openSend(ui, svc, { card, words, to })');
+  assert.match(uncomment(chRead('service.js')), /\bexport\s+(?:async\s+)?function\s+startService\s*\(\s*\{\s*path\b[^)]*\bui\b[^)]*\bonStale\b/, 'startService({ path, ui, onStale })');
+  assert.match(uncomment(chRead('store.js')), /\bexport\s+function\s+createStore\s*\(\s*\)/);
+});
+
+test('chats: deviceOf is theme.js’s device rule, line for line (S3-D13; theme.js stays untouched)', { skip: chatsSkip }, () => {
+  const theme = read(new URL('pigeon/theme.js', MAIN)), mine = chRead('chats.js');
+  const lines = (s) => ['var ua =', 'var touched =', 'var mobile ='].map((k) => s.split('\n').map((l) => l.trim()).filter((l) => l.startsWith(k)));
+  const want = lines(theme), got = lines(mine);
+  for (const [i, k] of ['ua', 'touched', 'mobile'].entries()) {
+    assert.equal(want[i].length, 1, `theme.js has one var ${k}`);
+    assert.deepEqual(got[i], want[i], `chats.js's var ${k} is theme.js's`);
+  }
+  assert.match(uncomment(mine), /export\s+function\s+deviceOf\s*\(\s*\)\s*\{[\s\S]*?return\s+mobile\s*\?\s*"phone"\s*:\s*"computer"/);
+});
+
+test('chats: the connector: no imports, ≤ 4 KB, its words, no search, mini from Today’s chat card, preload the entry and itself only', { skip: chatsSkip }, async () => {
+  const src = chRead('connector.js');
+  assert.ok(!/\bimport\b/.test(uncomment(src)), 'no imports');
+  assert.ok(Buffer.byteLength(src) <= 4096, `${Buffer.byteLength(src)} bytes`);
+  const { connector: c, CONNECTOR: v } = await import(new URL('connector.js', CH));
+  assert.equal(v, 1);
+  assert.equal(c.app, 'chats'); assert.equal(c.name, R.REGISTRY.chats.name);
+  assert.deepEqual(c.shares, CH_SHARES);
+  assert.equal(c.search, undefined, 'no search: the frame’s provider over the core (§2.4)');
+  assert.deepEqual(c.preload, [R.REGISTRY.chats.entry, R.REGISTRY.chats.connector]);
+  assert.equal(c.mini(null), null);
+  assert.equal(c.mini({ cards: { chat: { state: 'empty' } } }), null);
+  assert.deepEqual(c.mini({ cards: { chat: { unread: [{ n: 2 }, { n: 3 }] } } }), { kind: 'num', num: '5', label: 'Unread' });
+});
+
+test('chats: connector.files = the static graphs of chats.js, service.js and core.js + REGISTRY’s CSS, exactly; lazy = the closure of the lazy imports less files and NET; none in both; ≤ 60; never Argon2, never rank.js in files', { skip: chatsSkip }, async () => {
+  const { connector: c } = await import(new URL('connector.js', CH));
+  const files = c.files, lazy = c.lazy || [];
+  assert.ok(Array.isArray(files) && new Set(files).size === files.length, 'files: a list, no repeats');
+  assert.ok(Array.isArray(lazy) && new Set(lazy).size === lazy.length, 'lazy: a list, no repeats');
+  for (const f of [...files, ...lazy]) {
+    assert.match(f, /^\/chats\//, f);
+    assert.ok(fileOf(f) && existsSync(fileOf(f)), `${f} exists`);
+    assert.ok(!isNet('chats', f), `${f}: never a network-only file`);
+  }
+  const R3 = R.REGISTRY.chats;
+  const graph = [...new Set([...await staticGraph('chats'), ...await staticGraph('chats', R3.service), ...await staticGraph('chats', '/chats/roof/core.js')])];
+  assert.deepEqual([...files].sort(), [...graph, ...R3.css].sort(), 'files: the three graphs and the CSS, no more, no less');
+  assert.deepEqual([...lazy].sort(), (await lazyClosure('chats', graph)).sort(), 'lazy: the closure, less files and NET');
+  assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
+  assert.ok(files.length + lazy.length <= 60, `${files.length + lazy.length} ≤ 60`);
+  assert.ok(!files.includes('/chats/rank.js'), 'rank.js only through the core’s one import (build I1)');
+  for (const f of [...files, ...lazy]) assert.ok(!/argon2/.test(f) && !/\/app\.js$/.test(f), `${f}: never Argon2 or app.js`);
+  for (const f of ['chats.js', 'connector.js', 'store.js', 'list.js', 'friends.js', 'chat.js', 'lock.js', 'service.js', 'core.js', 'idb.js']) assert.ok(files.includes(`/chats/roof/${f}`), `${f} in files`);
+  for (const f of ['send.js', 'sheets.js', 'settings.js', 'media.js']) assert.ok(lazy.includes(`/chats/roof/${f}`), `${f} in lazy (kept offline, build I9)`);
+});
+
+// (the page's rules (S1 §5.1, S3-C2) and the Worker's)
+const CH_PAGE_RULES = [
+  [/serviceWorker/, 'registers no service worker'],
+  [/(?:\b(?:window|globalThis)\s*\.\s*|(?<![.\w$]))history\s*\./, 'no history.*'],
+  [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes'],
+  [/(?<![.\w$]|function\s+)(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert()'],
+  [/\bIFL\b/, 'no IFL'],
+  [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document-wide lookups'],
+  [/["'`]today:/, 'no today:* key'],
+  [/\bindexedDB\b/, 'no indexedDB (only the core’s idb.js)'],
+  [/(?<![.\w$])parent\s*\./, 'no parent.'],
+  [/["'`]#(?:hd|tabs)\b|ifl-tabs|\.ifh-/, 'never the header’s or the tab bar’s DOM'],
+  [/\bfrom\s*["']\.\/service\.js["']|\bimport\s*\(\s*["']\.\/service\.js/, 'never imports service.js (only the frame loads it, risk B2)'],
+  [/\bfrom\s*["']\.\/(?:core|idb)\.js["']/, 'never imports the core’s graph'],
+];
+const CH_WORKER_RULES = [
+  [/\bdocument\b/, 'no document'], [/\bwindow\b/, 'no window'], [/\blocalStorage\b|\bsessionStorage\b/, 'no localStorage'],
+  [/\bfw\b/, 'no fw'], [/\blocation\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location writes'],
+  [/serviceWorker/, 'no serviceWorker'], [/\bunlock\s*\(|\bvaultWith\b|argon2/i, 'no unlock(, vaultWith or Argon2 (S3-D8)'],
+  [/\bsecretJwk\b|exportKey\s*\(\s*["']jwk/, 'no JWK'], [/\bIFL\b/, 'no IFL'],
+  [/\bcreateObjectURL\b/, 'no object URLs (made only in the page, S3-D3)'],
+];
+
+test('chats: the page’s files keep S1 §5.1’s rules and S3-C2’s (no service.js import); every import( inside fw.lazy( with its literal; a Worker only in service.js, made once from new URL("./core.js", import.meta.url); listeners removed; no style attribute, no inline handler', { skip: chatsSkip }, () => {
+  const page = chFiles().filter((f) => !WORKER_FILES.includes(f));
+  assert.ok(page.includes('chats.js') && page.includes('service.js'), 'the page’s files');
+  for (const f of page) {
+    const s = uncomment(chRead(f));
+    // (service.js reaches send.js through ui.lazy: ui is the Chats fw, S3-D7)
+    const lz = f === 'service.js' ? s.replace(/\bui\.lazy\(/g, 'fw.lazy(') : s;
+    assert.deepEqual(lazyOutside(lz), [], `pigeon/roof/${f}: import( outside fw.lazy(`);
+    for (const [re, why] of CH_PAGE_RULES) assert.ok(!re.test(s), `pigeon/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
+    const workers = [...s.matchAll(/\bnew\s+Worker\s*\(/g)];
+    if (f === 'service.js') {
+      assert.equal(workers.length, 1, 'service.js makes one Worker');
+      assert.match(s, /new\s+Worker\s*\(\s*new\s+URL\(\s*["']\.\/core\.js["']\s*,\s*import\.meta\.url\s*\)\s*,\s*\{[^}]*type\s*:\s*["']module["']/, 'new Worker(new URL("./core.js", import.meta.url), { type: "module", … })');
+    } else assert.equal(workers.length, 0, `pigeon/roof/${f}: a Worker only in service.js (S3-C2)`);
+    for (const [who, type] of globalListeners(s)) assert.ok(globalRemoves(s).some(([w, t]) => t === type && sameGlobal(w, who)), `pigeon/roof/${f}: ${who}'s "${type}" listener removed`);
+    assert.ok(!/style=\\?["']/.test(s) && !/setAttribute\(\s*["'`]style["'`]/.test(s), `pigeon/roof/${f}: no style attribute`);
+    assert.ok(!/\son[a-z]+=\\?["']/.test(s), `pigeon/roof/${f}: no inline handler`);
+  }
+  // (the rules bite)
+  assert.ok(CH_PAGE_RULES[10][0].test('import { startService } from "./service.js";') && CH_PAGE_RULES[10][0].test('fw.lazy(() => import("./service.js"))') && !CH_PAGE_RULES[10][0].test('// service.js is the frame’s'));
+});
+
+test('chats: the Worker’s graph (core.js, idb.js) keeps its own rules (S3-C2): no document, window, localStorage, fw, location writes, serviceWorker, Argon2 or JWK; its one dynamic import ../rank.js; indexedDB only in idb.js, opening "inflight"', { skip: chatsSkip }, () => {
+  for (const f of WORKER_FILES) {
+    const s = uncomment(chRead(f));
+    for (const [re, why] of CH_WORKER_RULES) assert.ok(!re.test(s), `pigeon/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
+    const dyn = [...s.matchAll(/\bimport\s*\(\s*([^)]*)\)/g)].map((m) => m[1].trim());
+    assert.ok(dyn.every((d) => /^["']\.\.\/rank\.js["']$/.test(d)), `pigeon/roof/${f}: dynamic import only of ../rank.js (${dyn})`);
+    if (f !== 'idb.js') assert.ok(!/\bindexedDB\b/.test(s), `pigeon/roof/${f}: indexedDB only in idb.js`);
+    for (const m of s.matchAll(/indexedDB\s*\.\s*open\(\s*([^,)]+)/g)) assert.ok(/^["']inflight["']$|^NAME$/.test(m[1].trim()), `idb.js opens only "inflight" (${m[1]})`);
+    assert.ok(!/\bnew\s+Worker\s*\(/.test(s), `pigeon/roof/${f}: no Worker of its own`);
+  }
+  assert.equal(literalOf(chRead('idb.js'), 'NAME'), R.REGISTRY.chats.idb);
+  assert.equal(literalOf(chRead('idb.js'), 'STORE'), 'kv');
+  const core = uncomment(chRead('core.js'));
+  for (const f of ['./idb.js', '../crypto.js', '../cards.js', '../digest.js', '../links.js']) assert.match(core, new RegExp(String.raw`^\s*import\b[^;]*from\s*["']${f.replace(/\./g, '\\.')}["']`, 'm'), `core.js imports ${f}`);
+  // (the rules bite)
+  assert.ok(CH_WORKER_RULES[6][0].test('await vaultWith(pw)') && CH_WORKER_RULES[6][0].test('import("../argon2.js")') && !CH_WORKER_RULES[6][0].test('const unlocked = 1'));
+});
+
+test('chats: the core’s RPC table and META are spec §5.4’s: every method there and no other, args and patches given; META carries no message words; WHY, STATES and TOPICS', { skip: chatsSkip }, async () => {
+  const core = await import(new URL('core.js', CH));
+  assert.deepEqual(Object.keys(core.RPC).sort(), ['hello', 'start', 'state', 'lock', 'signOut', 'forget', 'sync', 'open', 'leave', 'older', 'rows', 'search', 'waiting', 'since', 'photo',
+    'sendText', 'sendBlob', 'note', 'react', 'recall', 'read', 'draft', 'share', 'rank', 'sendRun', 'safety', 'verify', 'trust', 'meta'].sort());
+  for (const [m, d] of Object.entries(core.RPC)) {
+    assert.ok(Object.isFrozen(d) && Array.isArray(d.args) && typeof d.v === 'string' && Array.isArray(d.patches), m);
+    for (const t of d.patches) assert.ok(core.TOPICS.includes(t), `${m}: patch ${t} is a topic`);
+  }
+  assert.ok(Object.isFrozen(core.RPC) && Object.isFrozen(core.META));
+  assert.deepEqual([...core.WHY], ['signin', 'key', 'locked', 'device', 'offline', 'ended', 'tap', 'card', 'trust', 'failed', 'no']);
+  assert.deepEqual([...core.STATES], ['ready', 'signin', 'key', 'locked', 'device', 'offline', 'ended']);
+  assert.deepEqual([...core.TOPICS], ['state', 'me', 'rows', 'friends', 'groups', 'requests', 'air', 'chat:', 'typing:', 'outbox', 'send', 'keywarn', 'unread']);
+  const SPEC = ['me', 'friends', 'friends-respond', 'friend-status', 'block', 'mutuals', 'groups', 'group-add', 'group-name', 'group-leave', 'group-mute', 'flight-log', 'loft',
+    'feathers', 'feathers-buy', 'bird-wear', 'bird-retire', 'skies', 'wind-grid', 'route-plan', 'wx-plan', 'way', 'wave', 'news', 'gif-search', 'time-offer', 'together', 'fit-offer', 'fit-share', 'card-now', 'my-card', 'share-rank'];
+  assert.deepEqual(Object.keys(core.META).sort(), [...SPEC, 'avatar', 'gif'].sort(), 'spec §5.4’s names, and the two raw images (avatar, gif)');
+  const NEVER = /^(messages|group-messages|read|group-read|react|stopover-note|pins|salt|resume|reauth|sessions|sessions-end|logout|vault|passkey.*|handback|push-.*|account-link|confirm-.*)$/;
+  for (const [name, d] of Object.entries(core.META)) {
+    assert.ok(!NEVER.test(name) && !NEVER.test(d.path.split(/[/?]/)[0]), `${name}: not a META endpoint`);
+    for (const [method, k] of Object.entries(d.methods)) {
+      assert.ok(['GET', 'POST', 'PATCH', 'DELETE'].includes(method), `${name} ${method}`);
+      for (const key of [...k.q, ...k.b]) assert.ok(!/^(ct|iv|text|body|pins?|vault|passkey|salt|token|jwk|d|kty|secret|password)$/i.test(key), `${name}: ${key} isn’t a word, a key or a secret`);
+      if (method === 'GET') assert.equal(k.b.length, 0, `${name}: a GET has no body`);
+    }
+    // (an endpoint pigeon/app.js really calls, by that name)
+    assert.ok(PIGEON_APP.includes(`api("${d.path.split('/')[0].replace(/<\w+>/, '')}`) || PIGEON_APP.includes(`api(\`${d.path.split('/')[0].replace(/<\w+>/, '')}`), `${name}: pigeon/app.js calls ${d.path}`);
+  }
+});
+
+test('chats: the service’s facade has exactly makeIFLChat’s seven keys, frozen, no call; startService gives protocol, state, call, on, facade, release; hello first, the lock read before start', { skip: chatsSkip }, async () => {
+  const keys = [...PIGEON_APP.slice(PIGEON_APP.indexOf('function makeIFLChat(')).split('\n// ==== end of the hub')[0].matchAll(/^\s{4}(?:get\s+)?(\w+)\s*\(/gm)].map((m) => m[1]);
+  assert.deepEqual(keys, ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], 'makeIFLChat’s keys, as pigeon/app.js has them');
+  // (a stand-in Worker answering hello and start; localStorage holding a lock)
+  const posted = [];
+  class FakeWorker {
+    constructor(url, o) { this.url = String(url); this.o = o; this.l = []; FakeWorker.made.push(this); }
+    addEventListener(t, f) { if (t === 'message') this.l.push(f); }
+    removeEventListener() {}
+    postMessage(d) {
+      posted.push(d);
+      const v = d.m === 'hello' ? { protocol: d.a[0] } : d.m === 'start' ? { state: 'ready' } : undefined;
+      queueMicrotask(() => { for (const f of this.l) f({ data: v === undefined ? { id: d.id, ok: false, why: 'no' } : { id: d.id, ok: true, v } }); });
+    }
+    terminate() { this.dead = true; }
+  }
+  FakeWorker.made = [];
+  const keep = {};
+  for (const k of ['Worker', 'localStorage', 'document']) keep[k] = Object.getOwnPropertyDescriptor(globalThis, k);
+  const set = (k, v) => Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true });
+  set('Worker', FakeWorker);
+  set('localStorage', { getItem: (k) => (k === 'inflight-lock' ? JSON.stringify({ on: true, uid: 'u1', after: 0 }) : null), setItem() {}, removeItem() {} });
+  set('document', { visibilityState: 'visible' });
+  try {
+    const { startService } = await import(new URL('service.js', CH));
+    let stale = 0;
+    const ui = { lazy: (f) => f(''), on: () => () => {}, toast() {}, sheet: { open() {} }, ui: {} };
+    const svc = await startService({ path: '/chats/', ui, onStale: () => { stale++; } });
+    assert.equal(FakeWorker.made.length, 1, 'one Worker');
+    assert.match(FakeWorker.made[0].url, /\/pigeon\/roof\/core\.js$/);
+    assert.equal(FakeWorker.made[0].o?.type, 'module');
+    for (const k of ['protocol', 'state', 'call', 'on', 'facade', 'release']) assert.ok(k in svc, `svc.${k}`);
+    assert.equal(posted[0].m, 'hello', 'hello first');
+    const start = posted.find((d) => d.m === 'start');
+    assert.ok(start, 'start called');
+    assert.equal(start.a[0].locked, true, 'the kept lock said before the first start (S3-D14)');
+    const f = svc.facade;
+    assert.ok(Object.isFrozen(f), 'frozen');
+    assert.deepEqual(Object.keys(f).sort(), [...keys].sort(), 'exactly the seven keys');
+    assert.equal(f.call, undefined, 'no call on the facade (risk I1)');
+    assert.equal(stale, 0);
+    assert.deepEqual(await f.sendTo('x', 'w', null), { ok: false, why: 'tap' }, 'sendTo with no tap: refused, why tap');
+    svc.release({ terminate: true });
+  } finally {
+    for (const [k, d] of Object.entries(keep)) { if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; }
+  }
+});
+
+test('chats: the CSS is scoped: chats.css under .m-chats, chsheets.css under .ifl-sheet[data-app=chats]; nothing on :root, html or body', { skip: chatsSkip }, () => {
+  for (const [f, pre] of [['chats.css', ['.m-chats', '[data-app="chats"]', '[data-app=chats]']], ['chsheets.css', ['.ifl-sheet[data-app=chats]', '.ifl-sheet[data-app="chats"]']]]) {
+    const css = chRead(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/([^{}]+)\{/g)) {
+      const sel = m[1].trim();
+      if (sel.startsWith('@') || /^(from|to|\d+%)(\s*,\s*(from|to|\d+%))*$/.test(sel)) continue;
+      for (const one of sel.split(',').map((x) => x.trim())) {
+        assert.ok(!/(^|[\s,>+~(])(?::root|html|body)(?![\w-])/.test(one), `pigeon/roof/${f}: ${one}`);
+        assert.ok(pre.some((p) => one.startsWith(p)), `pigeon/roof/${f}: ${one} isn’t scoped`);
+      }
+    }
+  }
+  assert.ok(existsSync(new URL('pigeon/cards.css', MAIN)), '../cards.css, reused');
+});
