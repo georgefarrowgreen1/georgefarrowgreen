@@ -140,7 +140,7 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
   await q.goto(`${HUB}/chats/#open=${P.id}`); await shown(q, hk('CH_COMPOSER'), 30000);
   const n0 = lettersTo(G.id, P.id);
   R.fail = true;
-  await q.fill(hk('CH_COMPOSER'), QUEUED); await q.click(hk('CH_SEND_BTN'));
+  await q.fill(hk('CH_INPUT'), QUEUED); await q.click(hk('CH_SEND_BTN'));
   await wait(3000);
   ok(lettersTo(G.id, P.id) === n0, '2b. the network failing: nothing reached the server (queued in the core’s sealed outbox)');
   const docs2 = loads(q);

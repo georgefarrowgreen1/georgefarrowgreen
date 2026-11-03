@@ -164,11 +164,11 @@ async function sendVia(key, to, typed, { name } = {}) {
   const framework = CHATS_ON && (await G.p.evaluate((sel) => !!document.querySelector(sel), RH.HTML_ROUTE).catch(() => false));
   if (framework) {
     const sh = `${RH.sheet('send')}[open]`;
-    await G.p.waitForSelector(`${sh} ${hk('chSendRow', to)}`, { timeout: 30000 }).catch(() => {});
+    await G.p.waitForSelector(hk('chSendRow', to), { timeout: 30000 }).catch(() => {});
     const sheetText = ((await G.p.locator(sh).innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
-    if (typed) await G.p.fill(`${sh} ${hk('CH_SEND_WORDS')}`, typed).catch(() => {});
-    await G.p.click(`${sh} ${hk('chSendRow', to)}`).catch(() => {});
-    await G.p.click(`${sh} ${hk('CH_SEND_GO')}`).catch(() => {});
+    if (typed) await G.p.fill(hk('CH_SEND_WORDS'), typed).catch(() => {});
+    await G.p.click(hk('chSendRow', to)).catch(() => {});
+    await G.p.click(hk('CH_SEND_GO')).catch(() => {});
     const said = await toastSaid(new RegExp(`Sent to ${name}`));
     const res = await until(() => G.p.evaluate(() => window.__sent), 10000);
     return { said, res, sheetText, stayed: navs.length === n0 && G.p.url() === url0 };

@@ -47,8 +47,8 @@ const chatsUp = async (p, ms = 30000) => (await shown(p, hk('M_CHATS'), ms)) && 
 const todayUp = async (p, ms = 30000) => (await shown(p, H.TODAY, ms)) && (await shown(p, H.HD_TITLE, ms));
 const facade = (p) => p.evaluate(async () => { try { const c = await window.IFL?.hub?.chat?.(); return c ? { keys: Object.keys(c).sort(), state: c.state, frozen: Object.isFrozen(c), call: 'call' in c, on: 'on' in c } : null; } catch (e) { return { err: String(e) }; } }).catch(() => null);
 const engines = (p) => count(p, EXCEPT.CHAT_ENGINE);
-// (the tab bar out of the way: none of its tabs on screen, S3-C4 .away; read off the tabs' boxes, no class of our own)
-const tabsAway = (p) => p.evaluate((s) => [...document.querySelectorAll(s)].every((t) => { const r = t.getBoundingClientRect(); const cs = getComputedStyle(t); return !r.height || r.top >= innerHeight - 1 || cs.visibility === 'hidden' || Number(cs.opacity) === 0 || !!t.closest('[hidden],[inert]'); }), H.TAB).catch(() => false);
+// (the tab bar out of the way, S3-C4: HOST's TABS_AWAY, and none of its tabs left on screen)
+const tabsAway = async (p) => (await count(p, hk('TABS_AWAY'))) === 1 && (await p.evaluate((s) => [...document.querySelectorAll(s)].every((t) => { const r = t.getBoundingClientRect(); const cs = getComputedStyle(t); return !r.height || r.top >= innerHeight - 1 || cs.visibility === 'hidden' || Number(cs.opacity) === 0 || !!t.closest('[hidden],[inert]'); }), H.TAB).catch(() => false));
 const toastSaid = (p, re, ms = 12000) => until(async () => (await said(p)).find((t) => re.test(t)) || null, ms);
 // (Pat's own page at Chat's own address: a chat opened as the standalone tests do)
 const patOpen = async (ph, id) => {
@@ -131,7 +131,7 @@ await part(2, 'a chat: opened, the composer, sent from the hub → Pat reads it;
   ok(!(await visible(p, H.HD_TABLIST)), '2. no switcher in a chat (sections: false, S4 C3)');
   ok(await tabsAway(p), '2. the tab bar away while the composer is up (S3-C4, §2.1 d)');
   ok((await visible(p, hk('CH_SCROLLER'))) === 1, '2. the chat’s one scroller (S3-D17)');
-  await p.fill(hk('CH_COMPOSER'), SENT.hub);
+  await p.fill(hk('CH_INPUT'), SENT.hub);
   await p.click(hk('CH_SEND_BTN'));
   const mine = await p.waitForFunction(([b, t]) => [...document.querySelectorAll(b)].some((x) => x.textContent.includes(t)), [hk('CH_BUBBLE'), SENT.hub], { timeout: 20000 }).then(() => true, () => false);
   ok(mine, '2. sent: George’s bubble in the chat (sealed in the core, S3-D3)');
@@ -246,6 +246,8 @@ await part(5, 'Today’s Waiting for You: Pat’s words with no iframe, quiet=1,
   await p.goto(`${HUB}/`); await todayUp(p);
   const words = await p.waitForFunction(([s, t]) => [...document.querySelectorAll(s)].some((x) => x.textContent.includes(t)), [SAID, SENT.pat2], { timeout: 40000 }).then(() => true, () => false);
   ok(words, '5. Today’s Waiting for You shows Pat’s words (the facade’s waiting/since, §2.5)', await textOf(p, H.TODAY));
+  const badge = await until(() => textOf(p, hk('TAB_BADGE')), 20000);
+  ok(/^\d+$/.test(badge || '') && Number(badge) >= 1, '5. the Chats tab’s badge: the unread count, a number only (fw.tabs.badge, §2.5)', String(badge));
   ok(!(await engines(p)), '5. …with no engine frame on the page (S3-D6)');
   const wt = await p.evaluate((ids) => window.IFL.hub.chat().then((c) => c.waiting({ ids })), [P.id]).catch((e) => String(e));
   const pw = Array.isArray(wt) ? wt.find((x) => x.id === P.id) : null;
@@ -300,9 +302,9 @@ await part(7, 'privacy: the sentences, the query and the token in no request, lo
   await p.goto(`${HUB}/chats/`); await chatsUp(p);
   // (a sentence typed and not sent: its draft is the core's, under the lock in Chat's own store, S3-D4)
   await p.click(hk('chRow', P.id)); await shown(p, hk('CH_COMPOSER'));
-  await p.fill(hk('CH_COMPOSER'), SENT.typed); await wait(1200);
+  await p.fill(hk('CH_INPUT'), SENT.typed); await wait(1200);
   await hide(p); await wait(800); await show(p);
-  await p.fill(hk('CH_COMPOSER'), ''); await p.click(H.HD_BACK).catch(() => {});
+  await p.fill(hk('CH_INPUT'), ''); await p.click(H.HD_BACK).catch(() => {});
   const found = await hunt([...ALL, 'Marmalade sandw'], { S, seen: everyone.flatMap((x) => x.seen), phones: [G] });
   ok(!found.length, '7. no sentence sent or typed in any request URL or body (any frame, any Worker, every phone), the hub’s request log, any log of the stack, or George’s storage outside Chat’s sealed store', js(found.slice(0, 6), 900));
   const tod1 = await storage(p), d = changed(tod0, tod1);
@@ -338,7 +340,7 @@ await part(8, 'key: signed in to InFlite, no key on this phone → Unlock Chats 
   const navs = []; N.p.on('framenavigated', (f) => { if (f === N.p.mainFrame()) navs.push(f.url()); });
   const k = await shown(N.p, hk('CH_UNLOCK'), 30000);
   if (!k) console.log('note: no Unlock Chats; this phone may not be signed in to InFlite (part 8 then proves the signin state only)');
-  const signinish = k || (await N.p.evaluate((s) => /Sign in to Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
+  const signinish = k || (await shown(N.p, hk('chState', 'signin'), 5000));
   ok(signinish, '8. Chats on a phone with no key here: “Unlock Chats on this phone” (key) or “Sign in to Chats” (signin) (§2.1)', await textOf(N.p, hk('M_CHATS')));
   ok(workers(N.p).core <= 1 && !(await engines(N.p)), '8. no engine frame, at most one Worker', js(workers(N.p)));
   if (k) {
@@ -439,17 +441,17 @@ await part(11, 'a new Chat build mid-session: stale, never reloaded over typed t
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: 'chat', build: '99.99', min: null }) });
   });
   await p.click(hk('chRow', P.id)); await shown(p, hk('CH_COMPOSER'));
-  await p.fill(hk('CH_COMPOSER'), SENT.typed);
+  await p.fill(hk('CH_INPUT'), SENT.typed);
   const life = await alive(p), docs = loads(p);
   newer = true;
   // (a lazy sheet asks /chats/version beside its import: Friend Info, from the chat's Info act)
-  await p.click(H.hdAct('info')).catch(() => {});
+  await p.click(hk('HD_INFO')).catch(() => {});
   await shown(p, H.SHEET_OPEN, 15000);
   await p.keyboard.press('Escape'); await gone(p, H.SHEET_OPEN);
   await hide(p); await wait(1500); await show(p); await wait(3000);
-  const kept1 = await p.$eval(hk('CH_COMPOSER'), (e) => e.value ?? e.textContent).catch(() => null);
+  const kept1 = await p.$eval(hk('CH_INPUT'), (e) => e.value ?? e.textContent).catch(() => null);
   ok((await life.same()) && docs.n() === 0 && kept1 === SENT.typed, '11. a newer build heard while text is typed: no reload, the text still there (busy(), S3-C7, risk I10)', js({ docs: docs.list, kept1 }));
-  await p.fill(hk('CH_COMPOSER'), '');
+  await p.fill(hk('CH_INPUT'), '');
   await p.click(H.HD_BACK);
   const reloaded = await until(() => docs.n() >= 1, 15000);
   ok(!!reloaded && docs.n() === 1 && (await chatsUp(p)) && (await at(p, '/chats/')), '11. nothing typed, the next route change: one reload at the route (S1 D21)', js(docs.list));
@@ -503,7 +505,7 @@ await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Wo
   ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
   // (the next sync while shown: 15 s; a hide and show asks sooner)
   await hide(p); await wait(500); await show(p);
-  const ended = await p.waitForFunction((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS'), { timeout: 40000 }).then(() => true, () => false);
+  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
   ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
   const none = await until(() => workers(p).core === 0, 15000);
   ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
