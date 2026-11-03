@@ -41,6 +41,8 @@ async function kit({ state = 'ready', scheme = 'light' } = {}) {
   // stub's header comment first, so it always starts ready; reported to B0. Routed here, after serveKit, so this wins)
   const stub = readFileSync(`${HERE}roofkit/chatcore-stub.js`, 'utf8').replaceAll('__KIT_STATE__', state);
   await ctx.route(`${KIT}/chats/roof/core.js`, (r) => r.fulfill({ status: 200, body: stub, headers: { 'content-type': 'text/javascript', 'cache-control': 'no-store' } }));
+  // (locked: the app lock saved on this phone, as Chat's own page saves it; the service reads it before starting the core)
+  if (state === 'locked') await ctx.addInitScript(() => { try { localStorage.setItem('inflight-lock', JSON.stringify({ on: true, uid: '6c0f6f1e-0000-4000-8000-000000000001' })); } catch (_) {} });
   const p = await ctx.newPage();
   const errs = [], urls = [];
   p.on('pageerror', (e) => errs.push(`pageerror ${e.message}`));
@@ -57,7 +59,7 @@ async function kit({ state = 'ready', scheme = 'light' } = {}) {
     const open = {};
     for (const f of ['sheets', 'flight', 'media', 'scan', 'settings']) Object.assign(open, await import(`/chats/roof/${f}.js`));
     window.kitCtx = { fw, svc, store, open, chat: '6c0f6f1e-0000-4000-8000-0000000000a1' };
-    if (svc.state === 'ready') await svc.call('open', '6c0f6f1e-0000-4000-8000-0000000000a1');
+    if (svc.state === 'ready') await svc.call('open', '6c0f6f1e-0000-4000-8000-0000000000a1').catch(() => {});
     await new Promise((r) => setTimeout(r, 50));
   });
   return { ctx, p, errs, urls, log: served.log };

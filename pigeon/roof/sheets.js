@@ -18,6 +18,18 @@
 import { cardHtml } from "../cardview.js";
 import { qrSvg } from "../qr.js";
 
+// (a sheet of another of these files, opened straight from its own file through fw.lazy: never through ctx.open, whose
+// names are the view's)
+const LAZY = {
+  sheets: (fw) => fw.lazy((q) => import("./sheets.js" + q)),
+  flight: (fw) => fw.lazy((q) => import("./flight.js" + q)),
+  media: (fw) => fw.lazy((q) => import("./media.js" + q)),
+  scan: (fw) => fw.lazy((q) => import("./scan.js" + q)),
+};
+const FILE_OF = { openLoft: "flight", openMap: "flight", openBirds: "flight", openFlightLog: "flight", openFeathers: "flight", openMoonPick: "flight",
+  openScan: "scan", openGifs: "media", pickPhoto: "media", recordVoice: "media", openSafety: "sheets" };
+const hop = (ctx, name, ...a) => LAZY[FILE_OF[name]](ctx.fw).then((m) => m[name](ctx, ...a), () => ctx.fw.toast("That needs a connection. Try again when you’re back online."));
+
 // markup made here or by cardview.js/qr.js (escaped there) → nodes ("template" content in a browser)
 const frag = (near, html) => { const t = near.ownerDocument.createElement("template"); t.innerHTML = html; return t.content || t; };
 
@@ -67,7 +79,7 @@ function kit(ctx) {
   const say = (e, what = "Couldn’t do that just now. Try again.") => fw.toast(e?.why === "offline" ? "No signal. Try again when you’re back online." : what);
   const foot = (text) => el("p", { class: "chs-foot", text });
   const head = (name, sub, lead) => el("div", { class: "chs-head" }, lead || ui.avatar(name), el("b", { class: "chs-name", text: name }), sub ? el("span", { class: "chs-sub", text: sub }) : null);
-  const go = (name, ...a) => () => { try { open[name]?.(ctx, ...a); } catch (_) {} };
+  const go = (name, ...a) => () => { hop(ctx, name, ...a); };
   const row = (o, data = {}) => { const r = ui.row(o); for (const [k, v] of Object.entries(data)) if (v != null) r.dataset[k] = v; return r; };
   // a destructive step asked on a page of its own, with the one button that does it
   const confirm = (h, { title, body, label, run }) => h.push({ page: "confirm", title, body: (pg) => {

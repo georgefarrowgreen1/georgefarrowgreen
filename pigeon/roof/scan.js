@@ -7,6 +7,18 @@
 //   A changed key is never trusted from here: that friend's Safety Number opens instead.
 import jsQR from "../jsqr.js";
 
+// (a sheet of another of these files, opened straight from its own file through fw.lazy: never through ctx.open, whose
+// names are the view's)
+const LAZY = {
+  sheets: (fw) => fw.lazy((q) => import("./sheets.js" + q)),
+  flight: (fw) => fw.lazy((q) => import("./flight.js" + q)),
+  media: (fw) => fw.lazy((q) => import("./media.js" + q)),
+  scan: (fw) => fw.lazy((q) => import("./scan.js" + q)),
+};
+const FILE_OF = { openLoft: "flight", openMap: "flight", openBirds: "flight", openFlightLog: "flight", openFeathers: "flight", openMoonPick: "flight",
+  openScan: "scan", openGifs: "media", pickPhoto: "media", recordVoice: "media", openSafety: "sheets" };
+const hop = (ctx, name, ...a) => LAZY[FILE_OF[name]](ctx.fw).then((m) => m[name](ctx, ...a), () => ctx.fw.toast("That needs a connection. Try again when you’re back online."));
+
 export const PREFIX = "inflight-safety:";
 const codeOf = (d) => `inflight-safety:1:${(Array.isArray(d) ? d.join("") : String(d || "")).replace(/\D/g, "")}`;
 const first = (n) => String(n || "").trim().split(/\s+/)[0] || "";
@@ -20,7 +32,7 @@ export function matchCode(text, want) {
 }
 
 export function openScan(ctx, one = null) {
-  const { fw, svc, store, open = {} } = ctx, ui = fw.ui, el = ui.el;
+  const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el;
   const friends = () => store?.get?.("friends") || [];
   const nameOf = (id) => first(friends().find((f) => f.id === id)?.name || "your friend");
   const want = new Map();
@@ -69,11 +81,11 @@ export function openScan(ctx, one = null) {
       return;
     }
     const f = friends().find((x) => x.id === r.hit);
-    if (f?.keyChanged) { h.close(); open.openSafety?.(ctx, r.hit); return; }
+    if (f?.keyChanged) { h.close(); hop(ctx, "openSafety", r.hit); return; }
     try { await svc.call("verify", r.hit, true); fw.toast(`Verified. Your safety numbers match, so only you and ${nameOf(r.hit)} can read your messages.`); }
     catch (e) { fw.toast(e?.why === "offline" ? "No signal. Try again when you’re back online." : "Couldn’t mark it verified. Try again."); }
     h.close();
-    if (!one) open.openSafety?.(ctx, r.hit);
+    if (!one) hop(ctx, "openSafety", r.hit);
   }
   codes().then(start);
   return h;

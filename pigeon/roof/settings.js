@@ -12,6 +12,18 @@
 // Every save is `meta("me", { method: "PATCH", …the keys it edits })` through the core (no message words in any of it); every string from data goes
 // in through textContent (fw.ui's builders).
 
+
+// (a sheet of another of these files, opened straight from its own file through fw.lazy: never through ctx.open, whose
+// names are the view's)
+const LAZY = {
+  sheets: (fw) => fw.lazy((q) => import("./sheets.js" + q)),
+  flight: (fw) => fw.lazy((q) => import("./flight.js" + q)),
+  media: (fw) => fw.lazy((q) => import("./media.js" + q)),
+  scan: (fw) => fw.lazy((q) => import("./scan.js" + q)),
+};
+const FILE_OF = { openLoft: "flight", openMap: "flight", openBirds: "flight", openFlightLog: "flight", openFeathers: "flight", openMoonPick: "flight",
+  openScan: "scan", openGifs: "media", pickPhoto: "media", recordVoice: "media", openSafety: "sheets" };
+const hop = (ctx, name, ...a) => LAZY[FILE_OF[name]](ctx.fw).then((m) => m[name](ctx, ...a), () => ctx.fw.toast("That needs a connection. Try again when you’re back online."));
 export const PAGES = Object.freeze(["location", "credits"]);
 export const ACCOUNT_HREF = "/chats/in/#account";
 // the `me` switches kept in this sheet: [key, label, sub, on unless the account says otherwise]
@@ -52,7 +64,7 @@ const CREDITS = [
 let shown = null;
 
 export function openChatSettings(ctx, page = null) {
-  const { fw, svc, store, open = {} } = ctx, ui = fw.ui, el = ui.el;
+  const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el;
   if (page != null && !PAGES.includes(page)) page = null;
   try { shown?.close(); } catch (_) {}
   const meta = (name, args) => svc.call("meta", name, args);
@@ -69,7 +81,7 @@ export function openChatSettings(ctx, page = null) {
     }
   }
   const foot = (text) => el("p", { class: "chs-foot", text });
-  const lazyOpen = (name, ...a) => () => { try { open[name]?.(ctx, ...a); } catch (_) {} };
+  const lazyOpen = (name, ...a) => () => { hop(ctx, name, ...a); };
 
   /* -- the list -- */
   function list(box) {
