@@ -123,3 +123,82 @@ test("seenFrom reads only checked cards, and rainAsk the nearest within 300 km",
   assert.deepEqual(rainAsk(W, friends, 1), ["near"]);
   assert.deepEqual(rainAsk(M, friends), []);
 });
+
+// ---------- Today First's reasons (spec §8.3): built on the phone, passed in beside seen ----------
+const T = normCard({ kind: "markets", at: NOW, snap: { name: "Tesco", sym: "TSCO.L", pct: 3.4 }, ref: { sym: "TSCO.L" } });
+const THERE = normCard({ kind: "weather", from: "chat", there: true, at: NOW, snap: { place: "Norwich", tz: LON, temp: 12 }, ref: { cell: [52.63, 1.29], friend: "leo" } });
+const at = (iso) => Date.parse(iso);
+test("there: “Where Leo is” at 100, Leo only, and no one else can have the card", () => {
+  const friends = [f("pat", "Pat Lee"), f("leo", "Leo Smith"), f("mira", "Mira")];
+  const r = rankFriends(THERE, { friends, me, now: NOW, landsIn: () => 8 * MIN, rain: { pat: { now: true } }, lastAt: () => NOW - H });
+  assert.deepEqual([r[0].id, r[0].score, r[0].reason, r[0].best, r[0].can], ["leo", 110, "Where Leo is", true, true], "and a letter this week adds its 10");
+  for (const x of r.slice(1)) { assert.equal(x.can, false); assert.equal(x.why, "Only for Leo"); assert.equal(x.best, false); }
+  assert.equal(r.find((x) => x.id === "pat").reason, "Raining in Pat Leeton now", "their own reasons still said, greyed");
+  // canFly's words first, where it has any
+  assert.equal(rankFriends(THERE, { friends, me, now: NOW, canFly: (x) => (x.id === "leo" ? "Check the new safety number first" : null) })[0].can, false);
+  // whom it's for: the opt, else the card's own; no friend in it at all: no one
+  assert.equal(rankFriends(THERE, { friends, me, now: NOW, there: "mira" }).find((x) => x.can).id, "mira");
+  const nobody = normCard({ ...THERE, ref: { cell: [52.6, 1.3] } });
+  assert.ok(rankFriends(nobody, { friends, me, now: NOW }).every((x) => !x.can && x.why === "Only for the friend it’s about"));
+  // (a card that isn't one: there says nothing)
+  assert.ok(rankFriends(W, { friends, me, now: NOW, there: "leo" }).every((x) => x.can && x.reason !== "Where Leo is"));
+});
+test("asked: the stock in what they said, at 95, with when they said it", () => {
+  const pat = f("pat", "Pat");
+  const tp = (o) => [{ id: "pat", topics: [{ kind: "markets", sym: "TSCO.L", name: "Tesco PLC", at: NOW - H, asked: true, via: "words", ...o }] }];
+  let r = one(T, pat, { asked: tp() });
+  assert.deepEqual([r.score, r.reason], [95, "Asked about Tesco this morning"], "the card's own name");
+  assert.equal(one(T, pat, { asked: tp({ at: at("2026-11-05T13:10:00Z") }), now: at("2026-11-05T15:00:00Z") }).reason, "Asked about Tesco this afternoon");
+  assert.equal(one(T, pat, { asked: tp({ at: at("2026-11-05T19:10:00Z") }), now: at("2026-11-05T21:00:00Z") }).reason, "Asked about Tesco this evening");
+  assert.equal(one(T, pat, { asked: tp({ at: NOW - 24 * H }) }).reason, "Asked about Tesco yesterday");
+  assert.equal(one(T, pat, { asked: tp({ at: at("2026-11-02T12:00:00Z") }) }).reason, "Asked about Tesco on Monday");
+  assert.equal(one(T, pat, { asked: tp({ at: undefined }) }).reason, "Asked about Tesco");
+  assert.equal(one(T, pat, { asked: tp({ asked: false }) }).reason, "Mentioned Tesco this morning");
+  assert.equal(one(T, pat, { asked: tp({ asked: false, via: "card" }) }).reason, "Sent you Tesco this morning");
+  assert.equal(one(T, pat, { asked: new Map([["pat", tp()[0].topics]]) }).reason, "Asked about Tesco this morning", "a Map does as well");
+  assert.equal(one(M, pat, { asked: tp(), landsIn: () => null }).reason, "", "another stock: nothing");
+  assert.equal(one(W, pat, { asked: tp(), landsIn: () => null }).reason, "", "nor any other card");
+  assert.equal(one(T, f("leo", "Leo"), { asked: tp(), landsIn: () => null }).reason, "", "nor anyone else");
+});
+test("planned: a ride with them, at 90, on fitness and weather cards", () => {
+  const leo = f("leo", "Leo", { lat: 51.5, lon: -0.12 });        // (in London: too far for "Near enough to join")
+  const thu10 = at("2026-11-05T14:00:00Z"), plan = (o) => ({ planned: [{ with: "leo", start: thu10, stop: thu10 + 2 * H, sport: "ride", ...o }], landsIn: () => null });
+  assert.deepEqual([one(ride, leo, plan()).score, one(ride, leo, plan()).reason], [90, "Riding with you today"]);
+  assert.equal(one(W, leo, plan()).reason, "Riding with you today", "the weather, for the ride");
+  assert.equal(one(M, leo, plan()).reason, "", "not a stock");
+  assert.equal(one(ride, leo, plan({ start: at("2026-11-06T10:00:00Z"), stop: at("2026-11-06T12:00:00Z") })).reason, "Riding with you tomorrow");
+  assert.equal(one(ride, leo, plan({ start: at("2026-11-08T10:00:00Z"), stop: at("2026-11-08T12:00:00Z") })).reason, "Riding with you Sunday");
+  assert.equal(one(ride, leo, plan({ start: at("2026-11-12T09:00:00Z"), stop: at("2026-11-12T11:00:00Z") })).reason, "Riding with you on Thu 12 Nov", "a week on, the date");
+  assert.equal(one(ride, leo, plan({ start: at("2026-11-13T09:00:00Z"), stop: at("2026-11-13T11:00:00Z") })).reason, "", "further off: nothing");
+  assert.equal(one(ride, leo, plan({ sport: "run" })).reason, "Running with you today");
+  assert.equal(one(ride, leo, plan({ state: "yes" })).reason, "Riding with you today", "agreed");
+  for (const state of ["no", "pending"]) assert.equal(one(ride, leo, plan({ state })).reason, "", state);
+  assert.equal(one(ride, leo, plan({ start: NOW - 3 * H, stop: NOW - H })).reason, "", "over already");
+  assert.equal(one(ride, leo, plan({ start: NOW - H, stop: NOW + H, sport: undefined })).reason, "Riding with you today", "under way still counts");
+  assert.equal(one(ride, leo, { planned: [{ withId: "leo", start: thu10, end: thu10 + 2 * H }] }).reason, "Riding with you today", "an invite from the letters (withId, end)");
+  assert.equal(one(ride, leo, { planned: [{ with: "leo", start: at("2026-11-07T10:00:00Z") }, { with: "leo", start: at("2026-11-06T10:00:00Z") }, { with: "pat", start: thu10 }] }).reason, "Riding with you tomorrow", "the soonest of Leo's");
+  // a reason already higher stays (rain reaching them in the hour)
+  const r = one(W, leo, { ...plan(), rain: { leo: { now: false, at: NOW + 30 * MIN } } });
+  assert.equal(r.score, 94); assert.match(r.reason, /^The rain reaches/);
+});
+test("calls: a time agreed, at 85, whatever the card", () => {
+  const nia = f("nia", "Nia");
+  const call = (o) => ({ calls: [{ id: "x", with: "nia", kind: "call", start: at("2026-11-05T18:30:00Z"), stop: at("2026-11-05T19:00:00Z"), ...o }], landsIn: () => null });
+  for (const card of [W, ride, M, T]) assert.deepEqual([one(card, nia, call()).score, one(card, nia, call()).reason], [85, "Calling at 18:30"], card.kind);
+  assert.equal(one(W, nia, call({ kind: "meet" })).reason, "Meeting at 18:30");
+  assert.equal(one(W, nia, call({ start: at("2026-11-06T18:30:00Z"), stop: at("2026-11-06T19:00:00Z") })).reason, "Calling tomorrow at 18:30");
+  assert.equal(one(W, nia, call({ start: at("2026-11-07T10:00:00Z"), stop: at("2026-11-07T10:30:00Z") })).reason, "Calling Saturday at 10:00");
+  assert.equal(one(W, f("ny", "Al", { tz: "America/New_York" }), { ...call({ with: "ny" }), me: { ...me, tz: "America/New_York" } }).reason, "Calling at 13:30", "on your own clock");
+  assert.equal(one(W, nia, call({ start: NOW - 2 * H, stop: NOW - H })).reason, "", "over already");
+  assert.equal(one(W, nia, { calls: new Map([["nia", { kind: "call", start: at("2026-11-05T18:30:00Z") }]]) }).reason, "Calling at 18:30", "a Map, one row");
+  // (beside the others: there 100 > asked 95 > planned 90 > calls 85)
+  const r = rankFriends(T, { friends: [f("nia", "Nia"), f("pat", "Pat")], me, now: NOW, landsIn: () => null, ...call(), asked: [{ id: "pat", topics: [{ sym: "TSCO.L", at: NOW - H, asked: true }] }] });
+  assert.deepEqual(r.map((x) => [x.id, x.score]), [["pat", 95], ["nia", 85]]);
+});
+test("junk in the new options never throws, and changes nothing", () => {
+  const leo = f("leo", "Leo", { lat: 51.5, lon: -0.12 });
+  for (const junk of [null, 5, "x", {}, [null, 5, "x", {}], [{ with: 5, start: "x" }], new Map([["leo", null]]), new Map([["leo", [null, { start: NaN }]]])]) {
+    const r = one(ride, leo, { asked: junk, planned: junk, calls: junk, there: junk });
+    assert.equal(r.reason, "Lands in 8m", String(junk));
+  }
+});
