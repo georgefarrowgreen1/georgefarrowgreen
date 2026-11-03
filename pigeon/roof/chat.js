@@ -1,0 +1,342 @@
+// Chats' chat (One roof, stage 3, spec §2.1, §3.1, S3-D10, S3-D17): a chat or a group (Chat's vChat, vGroupChat and its
+// messages), with the composer under it. The words of the chat on screen are in this view's DOM while you read it, and
+// nowhere else in the page: on hide() the messages are taken out of the DOM, the store's chat:<id> is let go of (the
+// core sends null on leave), and only the id of the message at the top is kept (module memory) to come back to it.
+//   view(hostEl, ctx) → { show(id), hide(), destroy(), busy(), back() }; ctx = { fw, svc, store, open } (chats.js).
+//   show(id): fw.fill(true) (compact header, no window scroll), the tab bar away (the composer is up), the header (Back
+//     "Back to Chats", the name, online / last seen / "lands in 12m", no switcher, Info), svc.call("open", id); an id
+//     that isn't a chat on this phone → the list and a toast. The scroller is sized from visualViewport (resize listener
+//     removed on hide); it starts at the bottom, sticks there while you're there, anchors when older() adds above, and
+//     comes back to the message that was at its top the last time this chat showed. The 1 s ticker (landing countdowns)
+//     runs while shown and visible. The draft goes to the core as you type (a second after) and at once on `hidden`.
+//   hide(): all of that undone, the draft flushed, the messages out of the DOM.
+//   busy(): the composer has words in it, or a send is on its way.
+import { first, dayLabel, fmtTime, untilWords, tick, ticker, framed, patchList } from "./list.js";
+import { friendSub } from "./friends.js";
+import { cardHtml } from "../cardview.js";
+import { linkParts } from "../links.js";
+
+const STICK_PX = 64;          // this near the bottom counts as at the bottom
+const OLDER_PX = 240;         // this near the top asks for older messages
+const GAP = 3600e3;           // a stamp over each stretch an hour apart (as Chat's TIME_GAP)
+const DRAFT_MS = 1000;
+const MAX_TEXT = 4000;
+// (per chat, in module memory: the message at the top when it was left, and how far below the scroller's top it sat)
+const anchors = new Map();
+
+// (the words of a message, with its web addresses as links; a Text node per part, never markup)
+function wordsEl(doc, text) {
+  const p = doc.createElement("span");
+  p.className = "ch-words";
+  for (const part of linkParts(text)) {
+    if (part.href) {
+      const a = doc.createElement("a");
+      a.href = part.href; a.rel = "noopener noreferrer"; a.target = "_blank"; a.textContent = part.text;
+      p.append(a);
+    } else p.append(doc.createTextNode(part.text));
+  }
+  return p;
+}
+// (a card drawn by cardview.js, whose HTML has everything in it escaped, parsed in an inert template)
+function cardEl(doc, card, o) {
+  const html = cardHtml(card, o);
+  if (!html) return null;
+  const t = doc.createElement("template");
+  t.innerHTML = html;
+  return t.content;
+}
+const reactWords = (r) => Object.entries(r || {}).filter(([, n]) => n > 0);
+
+export function view(host, ctx) {
+  const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el, doc = host.ownerDocument;
+  const warn = el("div", { class: "ch-cwarn" });
+  const msgs = el("div", { class: "ch-msgs", role: "log", aria: { live: "polite", label: "Messages" } });
+  const typing = el("div", { class: "ch-typing", hidden: true, text: "typing…" });
+  const scroller = el("div", { class: "ch-scroller", tabindex: "0" }, warn, msgs, typing);
+  const input = el("textarea", { class: "ch-input", rows: "1", maxlength: String(MAX_TEXT), placeholder: "Message", aria: { label: "Message" }, autocomplete: "off" });
+  const sendBtn = el("button", { type: "button", class: "ch-send", data: { act: "send" }, aria: { label: "Send" }, disabled: true }, ui.icon("up"));
+  const attach = el("button", { type: "button", class: "ch-attach", data: { act: "photo" }, aria: { label: "Send a photo" } }, ui.icon("plus"));
+  const voice = el("button", { type: "button", class: "ch-voice", data: { act: "voice" }, aria: { label: "Record a voice pigeon" } }, ui.icon("mic"));
+  const composer = el("form", { class: "ch-composer", aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input), voice, sendBtn);
+  const box = el("div", { class: "ch-chat", hidden: true }, scroller, composer);
+  host.append(box);
+
+  let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
+  const vv = globalThis.visualViewport;
+  const t = ticker(fw, () => { tick(msgs); header(); });
+
+  // ---- the header ----
+  const who = () => {
+    const g = (store.get("groups") || []).find((x) => x.id === id);
+    if (g) return { kind: "group", g, name: g.name };
+    const f = (store.get("friends") || []).find((x) => x.id === id);
+    const c = store.get(`chat:${id}`);
+    return { kind: c?.kind === "group" ? "group" : "friend", f, name: f?.name || (store.get("rows") || []).find((r) => r.id === id)?.name || "" };
+  };
+  function header() {
+    if (!id) return;
+    const w = who(), c = store.get(`chat:${id}`), flying = (c?.msgs || []).filter((m) => m.flight?.flying && m.flight.landsAt).sort((a, b) => a.flight.landsAt - b.flight.landsAt)[0];
+    const line = flying ? `lands in ${untilWords(flying.flight.landsAt)}` : w.g ? (w.g.members || []).map((m) => first(m.name)).join(", ") : w.f ? friendSub(w.f) : "";
+    fw.header.set({ title: w.kind === "group" ? w.name : first(w.name) || "Chat", compactTitle: w.kind === "group" ? w.name : first(w.name) || "Chat", line, pick: null, sections: false, back: { label: "Back to Chats" },
+      acts: [{ icon: "info", label: w.kind === "group" ? "Group Info" : "Info", run: () => (w.kind === "group" ? ctx.open.groupInfo(id) : ctx.open.friendInfo(id)) }] });
+  }
+
+  // ---- a message ----
+  const nameOf = (from) => {
+    if (from === "me") return "You";
+    if (from === "them") return first(who().name);
+    const g = who().g, m = g?.members?.find((x) => x.id === from);
+    return first(m?.name || "Someone");
+  };
+  function bubbleEl(m) {
+    const mine = m.from === "me", fl = m.flight, w = who(), group = w.kind === "group";
+    const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0].join("|");
+    const row = el("div", { class: `ch-m${mine ? " me" : " them"}`, data: { mid: m.id, sig } });
+    if (m.kind === "system" || m.recalled) {
+      row.className = "ch-m sys";
+      row.append(el("p", { class: "ch-sys", text: m.recalled ? (mine ? "You called this message back." : `${nameOf(m.from)} called their message back.`) : String(m.text || "") }));
+      return row;
+    }
+    // theirs still in the air: sealed until it lands
+    if (!mine && fl && fl.flying) {
+      row.append(el("button", { type: "button", class: "ch-b ch-bubble sealed", data: { act: "map", id: m.id },
+        aria: { label: `A pigeon from ${nameOf(m.from)}, sealed until it lands in ${untilWords(fl.landsAt)}. Watch it on the map.` } },
+        el("span", { class: "ch-sealed", text: "Sealed · lands in " }), el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })));
+      return row;
+    }
+    if (fl && fl.lost) {
+      row.className = "ch-m sys";
+      row.append(el("p", { class: "ch-sys", text: mine ? "Your pigeon was lost on the way." : `${nameOf(m.from)}’s pigeon was lost on the way.` }));
+      return row;
+    }
+    const b = el("div", { class: `ch-b ch-bubble k-${m.kind}${fl?.flying ? " up" : ""}`, role: "button", tabindex: "0", data: { act: fl?.flying && mine ? "map" : "hold", id: m.id }, aria: { haspopup: "dialog" } });
+    b.append(el("span", { class: "sr", text: `${mine ? "You" : nameOf(m.from)}: ` }));
+    if (group && !mine) b.append(el("span", { class: "ch-from", text: nameOf(m.from) }));
+    if (m.replyTo) b.append(el("span", { class: "ch-quote", text: "Reply" }));
+    switch (m.kind) {
+      case "photo": case "viewonce":
+        b.append(el("button", { type: "button", class: "ch-photo", data: { act: "view", id: m.id }, text: m.kind === "viewonce" ? (mine ? "Photo · view once" : "View photo, once") : "Photo" }));
+        break;
+      case "voice":
+        b.append(el("button", { type: "button", class: "ch-vn", data: { act: "play", id: m.id }, text: `Voice pigeon${m.media?.secs ? ` · ${Math.floor(m.media.secs / 60)}:${String(Math.round(m.media.secs % 60)).padStart(2, "0")}` : ""}` }));
+        break;
+      case "card": case "ask": case "plan": case "answer": case "when": {
+        const c = m.card ? cardEl(doc, m.card, { mine, sentAt: m.at, viewAt: Date.now(), who: nameOf(m.from) }) : null;
+        if (c) b.append(el("div", { class: "ch-card" }, c));
+        break;
+      }
+    }
+    if (m.text) b.append(wordsEl(doc, m.text));
+    // yours in the air: when it lands
+    if (mine && fl?.flying) b.append(el("span", { class: "ch-ft" }, fl.waiting ? "sends at " : "lands in ", el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })));
+    row.append(b);
+    const rx = reactWords(m.reactions);
+    if (rx.length) row.append(el("div", { class: "ch-rx", aria: { label: "Reactions" } }, rx.map(([e, n]) => el("span", { class: `ch-r${m.mine === e ? " mine" : ""}`, text: n > 1 ? `${e} ${n}` : e }))));
+    if (m.expires) row.append(el("div", { class: "ch-meta", text: "Disappears soon" }));
+    return row;
+  }
+  // (the stretch stamps between messages, and the read line under your latest)
+  function itemsOf(c) {
+    const out = [];
+    let last = 0;
+    const list = c?.msgs || [];
+    const lastMine = [...list].reverse().find((m) => m.from === "me" && !m.flight?.flying && !m.recalled);
+    for (const m of list) {
+      if (!last || m.at - last > GAP || dayLabel(m.at) !== dayLabel(last)) out.push({ stamp: m.at });
+      last = m.at;
+      out.push({ m });
+      if (lastMine && m.id === lastMine.id && who().kind !== "group") out.push({ status: m.read ? "Read" : m.delivered ? "Delivered" : "Sent", at: m.id });
+    }
+    return out;
+  }
+  const itemEl = (it) => {
+    if (it.stamp) return el("div", { class: "ch-stamp", data: { sig: it.stamp } }, el("b", { text: dayLabel(it.stamp) }), ` ${fmtTime(it.stamp)}`);
+    if (it.status) return el("div", { class: "ch-status", data: { sig: it.status }, text: it.status });
+    return bubbleEl(it.m);
+  };
+  const keyOf = (it) => (it.stamp ? `s:${it.stamp}` : it.status ? `st:${it.at}` : `m:${it.m.id}`);
+
+  // ---- the scroller ----
+  const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < STICK_PX;
+  const toBottom = () => { scroller.scrollTop = scroller.scrollHeight; };
+  const topMsg = () => {
+    const top = scroller.getBoundingClientRect?.().top ?? 0;
+    for (const n of msgs.querySelectorAll("[data-mid]")) { const r = n.getBoundingClientRect?.(); if (r && r.bottom > top) return { mid: n.dataset.mid, off: r.top - top }; }
+    return null;
+  };
+  const restore = (a) => {
+    const n = a && msgs.querySelector(`[data-mid="${CSS?.escape ? CSS.escape(a.mid) : a.mid}"]`);
+    if (!n) return false;
+    scroller.scrollTop += (n.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - a.off;
+    return true;
+  };
+  const draw = framed(() => {
+    if (!id) return;
+    const c = store.get(`chat:${id}`), hold = !stick && msgs.children.length ? topMsg() : null;
+    const now = Date.now();
+    if (!c) { msgs.replaceChildren(el("p", { class: "ch-opening", text: "Opening your messages…" })); return; }
+    if (msgs.firstElementChild?.classList.contains("ch-opening") || msgs.firstElementChild?.classList.contains("ch-hello")) msgs.replaceChildren();
+    if (!c.msgs?.length) {
+      const w = who();
+      msgs.replaceChildren(el("p", { class: "ch-hello" }, el("b", { text: "Say hello" }), el("span", { text: `Messages to ${w.kind === "group" ? w.name : first(w.name)} are end-to-end encrypted.` })));
+    } else patchList(msgs, itemsOf(c), keyOf, itemEl);
+    tick(msgs, now);
+    warn.replaceChildren(who().f?.keyChanged ? el("div", { class: "ch-warn", role: "note" },
+      el("span", { text: `${first(who().name)}’s security key has changed. Check the safety number before you send anything.` }),
+      ui.btn("Check", { small: true, act: "safety" })) : null);
+    if (stick) toBottom();
+    else if (hold) restore(hold);
+    lastFirst = c.msgs?.[0]?.id || null;
+    header();
+  });
+  const onScroll = () => {
+    stick = atBottom();
+    const c = id && store.get(`chat:${id}`);
+    if (c?.older && !asking && scroller.scrollTop < OLDER_PX && c.msgs?.length) {
+      asking = true;
+      const was = topMsg();
+      svc.call("older", id, c.msgs[0].id).then(() => { draw.now(); restore(was); }).catch(() => {}).finally(() => { asking = false; });
+    }
+  };
+  const fit = () => {
+    const h = vv ? vv.height : globalThis.innerHeight;
+    box.style.setProperty("--ch-vvh", `${Math.round(h)}px`);
+    if (vv) box.style.setProperty("--ch-vvtop", `${Math.round(vv.offsetTop || 0)}px`);
+    if (stick) toBottom();
+  };
+
+  // ---- the composer ----
+  const sizeInput = () => { input.style.setProperty("--ch-rows", String(Math.min(6, Math.max(1, input.value.split("\n").length)))); };
+  const words = () => input.value.replace(/\s+$/, "");
+  const flushDraft = () => {
+    clearTimeout(draftT); draftT = 0;
+    if (!id) return;
+    const v = input.value;
+    if (v === draftSent) return;
+    draftSent = v;
+    svc.call("draft", id, v).catch(() => {});
+  };
+  const onInput = () => {
+    sendBtn.disabled = !words().trim();
+    sizeInput();
+    clearTimeout(draftT);
+    draftT = setTimeout(flushDraft, DRAFT_MS);
+  };
+  async function send() {
+    const text = words();
+    if (!text.trim() || !id) return;
+    if (text.length > MAX_TEXT) { fw.toast("That’s too long to send in one message."); return; }
+    sending++;
+    const was = text;
+    input.value = ""; draftSent = ""; onInput(); clearTimeout(draftT);
+    stick = true;
+    try {
+      const r = await svc.call("sendText", id, was, {});
+      if (!r || r.ok === false || r.err) throw r;
+      svc.call("draft", id, "").catch(() => {});
+    } catch (e) {
+      const why = e?.why || e?.err;
+      if (!input.value) { input.value = was; onInput(); }
+      fw.toast(why === "trust" ? "Check the safety number first: their key has changed." : why === "offline" ? "No signal. It’ll go when you’re back online." : why === "locked" ? "Chats is locked." : "Couldn’t send that. Try again.");
+    } finally { sending--; }
+  }
+  const onKey = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } };
+  const onSubmit = (e) => { e.preventDefault(); send(); };
+
+  // ---- taps ----
+  const onClick = (e) => {
+    const a = e.target.closest?.("[data-act]");
+    if (!a || !box.contains(a) || e.target.closest?.(".ch-words a[href]")) return;
+    const mid = a.dataset.id;
+    switch (a.dataset.act) {
+      case "send": e.preventDefault(); send(); break;
+      case "photo": ctx.open.photo(id); break;
+      case "voice": ctx.open.voice(id); break;
+      case "view": e.stopPropagation(); ctx.open.view(mid); break;
+      case "play": e.stopPropagation(); ctx.open.view(mid); break;
+      case "map": ctx.open.map(mid); break;
+      case "hold": ctx.open.hold({ chatId: id, msgId: mid }); break;
+      case "safety": ctx.open.safety(id); break;
+    }
+  };
+  const onHidden = () => flushDraft();
+  box.addEventListener("click", onClick);
+  composer.addEventListener("submit", onSubmit);
+  input.addEventListener("input", onInput);
+  input.addEventListener("keydown", onKey);
+  scroller.addEventListener("scroll", onScroll, { passive: true });
+
+  let hiddenOff = null;
+  function leave() {
+    if (!id) return;
+    flushDraft();
+    const a = topMsg();
+    if (a && !stick) anchors.set(id, a); else anchors.delete(id);
+    for (const f of offs) f();
+    offs = [];
+    t.stop();
+    hiddenOff?.(); hiddenOff = null;
+    vv?.removeEventListener("resize", fit);
+    vv?.removeEventListener("scroll", fit);
+    draw.cancel();
+    // (the words leave the page with you: the DOM emptied, the store's copy let go of)
+    msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = "";
+    store.apply(`chat:${id}`, null);
+    store.apply(`typing:${id}`, null);
+    id = null;
+    box.hidden = true;
+  }
+  return {
+    async show(cid) {
+      if (id && id !== cid) leave();
+      if (id === cid) { header(); return true; }
+      id = cid; stick = true; lastFirst = null;
+      box.hidden = false;
+      fw.fill(true);
+      fw.tabs?.away?.(true);
+      msgs.replaceChildren(el("p", { class: "ch-opening", text: "Opening your messages…" }));
+      offs = [
+        store.on(`chat:${cid}`, draw),
+        store.on(`typing:${cid}`, (v) => { typing.hidden = !v?.on; if (stick) toBottom(); }),
+        store.on("friends", header), store.on("groups", header),
+      ];
+      vv?.addEventListener("resize", fit);
+      vv?.addEventListener("scroll", fit);
+      hiddenOff = fw.on("hidden", onHidden);
+      fit();
+      header();
+      t.start();
+      const r = await svc.call("open", cid).catch((e) => ({ err: e?.why || "failed" }));
+      if (id !== cid) return false;
+      if (!r || r.err || r.ok === false) {
+        const why = r?.err || r?.why;
+        if (why === "no" || why === "failed" || why == null) return false;     // (chats.js says it and goes to the list)
+        msgs.replaceChildren(el("p", { class: "ch-opening", text: why === "offline" ? "No signal. This chat will open when you’re back online." : "This chat couldn’t open just now." }));
+        return true;
+      }
+      if (r.id === cid && Array.isArray(r.msgs)) store.apply(`chat:${cid}`, r);
+      const a = anchors.get(cid);
+      draw.now();
+      if (a && restore(a)) stick = atBottom(); else { stick = true; toBottom(); }
+      return true;
+    },
+    hide() {
+      if (!id) return;
+      leave();
+      fw.tabs?.away?.(false);
+      fw.fill(false);
+    },
+    busy: () => !!(id && (words().trim() || sending)),
+    back: () => false,
+    get id() { return id; },
+    destroy() {
+      this.hide();
+      box.removeEventListener("click", onClick);
+      composer.removeEventListener("submit", onSubmit);
+      input.removeEventListener("input", onInput);
+      input.removeEventListener("keydown", onKey);
+      scroller.removeEventListener("scroll", onScroll);
+      box.remove();
+    },
+  };
+}
