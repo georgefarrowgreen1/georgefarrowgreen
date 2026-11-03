@@ -653,10 +653,12 @@ export function londonOffset(t) {
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(t / MIN) * MIN;
 }
 export const londonDay = (t) => Math.floor((t + londonOffset(t)) / DAY);
-export async function requireUser(request, env) {
+// (inflight: false for a request that isn't you using Chat, so no day of it is noted for its Insights: Today's copy of
+// Chat, its engine, syncing in the background, sync?quiet=1)
+export async function requireUser(request, env, { inflight = true } = {}) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
-  const u = await sessionUser(env, m[1], true, false, request);
+  const u = await sessionUser(env, m[1], inflight, false, request);
   // (an account being deleted is signed in only on its own page, to keep it: functions/api/account)
   if (u.delete_at) throw new HttpError(401, "This account is being deleted. To keep it, sign in at account.inflite.ai.", "session");
   return u;
