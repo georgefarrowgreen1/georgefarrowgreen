@@ -35,8 +35,8 @@ on:
 permissions:
   contents: read
 
-# (one change to the hub's key at a time: this and hub-off.yml share it. This one waits its turn; the off switch takes
-# over from it)
+# (one change to the hub at a time: this, hub-off.yml and hub-stage.yml share it. This one waits its turn; the off switch
+# takes over from it)
 concurrency:
   group: inflite-hub-key
   cancel-in-progress: false
