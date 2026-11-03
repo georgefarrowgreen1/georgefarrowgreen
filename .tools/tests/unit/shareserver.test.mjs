@@ -4,7 +4,9 @@
 // (a forecast had already costing nothing, and over either allowance nothing fetched at all); a friend's look at a
 // session gated with no letter named; rain at friends' places without their places; your own card read and nothing
 // written; share ids and plans in your own rows only; the best times for two; every route's limit; and every answer
-// holding only the keys its list allows (never a place, a price, an amount, or when a session was started).
+// holding only the keys its list allows (never a place, a price, an amount, or when a session was started). Since Today
+// First: a stock you hold by its symbol (percent only); times to talk and plans with a friend's id stored only for a
+// friend, the inviter's pending row agreed by the friend's Yes; sync's hold, times and rides, ids and times only.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -14,7 +16,8 @@ import { fitdb } from "../../../functions/_fitness.js";
 import { mkdb } from "../../../functions/_markets.js";
 import { snapshotOf } from "../../../functions/_fittoday.js";
 import { onRequest as fitnessApi } from "../../../functions/api/fitness/[[path]].js";
-import { SHARE_ROUTES, liveMiss, workoutFor } from "../../../functions/_share.js";
+import { SHARE_ROUTES, TIME_ROUTES, liveMiss, workoutFor } from "../../../functions/_share.js";
+import { onRequest as pigeonApi } from "../../../functions/api/pigeon/[[path]].js";
 import { fitNowMany, fitNow, shareFor, addOffer, offersFor, daySpan, OFFER_KEEP } from "../../../functions/_fitshare.js";
 import { Quiet } from "../../../functions/_todaycards.js";
 import { normCard } from "../../../pigeon/cards.js";
@@ -90,7 +93,7 @@ for (const id of ["ann", "bo", "cy", "zed"]) tokens[id] = await issueSession(env
 const call = async (route, who, { body, query = "" } = {}) => {
   const [method, path] = route.split(" ");
   const request = new Request(`http://chat.localhost/api/pigeon/${path}${query}`, { method, headers: { Authorization: `Bearer ${tokens[who]}`, "Content-Type": "application/json" }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
-  try { const r = await SHARE_ROUTES[route]({ request, env, waitUntil: env.waitUntil }); return { status: r.status, body: await r.json() }; }
+  try { const r = await ({ ...SHARE_ROUTES, ...TIME_ROUTES })[route]({ request, env, waitUntil: env.waitUntil }); return { status: r.status, body: await r.json() }; }
   catch (e) { if (e.status) return { status: e.status, body: { error: e.message } }; throw e; }
 };
 
@@ -109,8 +112,12 @@ const LISTS = {
     weather: { card: { v: 1, kind: 1, from: 1, at: 1, say: 1, snap: { place: 1, tz: 1, temp: 1, feels: 1, hi: 1, lo: 1, code: 1, isDay: 1, lead: 1, rain: { now: 1, at: 1, end: 1 }, spell: { act: 1, start: 1, end: 1, rating: 1 } }, ref: { cell: 1 } }, said: 1, href: 1 },
     fitness: { card: { v: 1, kind: 1, from: 1, at: 1, say: 1, snap: { day: 1, tz: 1, sport: 1, name: 1, kind: 1, wid: 1, secs: 1, tss: 1, best: { start: 1, end: 1, dry: 1 }, done: { secs: 1, dist: 1, tss: 1 } } }, said: 1, href: 1 },
     markets: { card: { v: 1, kind: 1, from: 1, at: 1, say: 1, snap: { name: 1, sym: 1, pct: 1, day: 1 } }, said: 1, href: 1 },
+    // (one stock you hold, by its symbol: its symbol to look up again, as Markets' own Send has it; still percent only)
+    stock: { card: { v: 1, kind: 1, from: 1, at: 1, say: 1, snap: { name: 1, sym: 1, pct: 1, day: 1 }, ref: { sym: 1 } }, said: 1, href: 1 },
   },
   ok: { ok: 1 },
+  // (sync's Today First parts: ids and times only, never a name, a place or a zone)
+  sync: { hold: { why: 1, until: 1 }, times: [{ id: 1, with: 1, kind: 1, start: 1, stop: 1 }], rides: [{ id: 1, with: 1, start: 1, stop: 1, sport: 1, state: 1 }] },
 };
 const NEVER = ["lat", "lon", "price", "value", "change", "start", "place", "user_id", "made", "until", "km"];
 function within(v, list, at, never = NEVER) {
@@ -309,6 +316,35 @@ test("my-card, fitness: today's session as Fitness sent it, then what's done, ne
   sql.exec("DELETE FROM fx_today WHERE user_id = 'cy'");
 });
 
+test("my-card, a stock by its symbol: only one you hold, in percent only, with nothing written", async () => {
+  cached.clear(); clearLimits();
+  put("mk_holdings", { user_id: "ann", symbol: "TSCO.L", name: "Tesco", qty: 50, ord: 0, added: 0 });
+  put("mk_holdings", { user_id: "ann", symbol: "RR.L", name: "Rolls-Royce", qty: 0, ord: 1, added: 0 });
+  await call("GET my-card", "ann", { query: "?kind=markets&sym=TSCO.L" });
+  const before = counts();
+  const r = await call("GET my-card", "ann", { query: "?kind=markets&sym=tsco.l&tz=Europe/London" });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  within(r.body, LISTS.myCard.stock, "my-card stock", CARD_NEVER);
+  assert.ok(normCard(r.body.card), JSON.stringify(r.body));
+  assert.deepEqual({ ...r.body.card.snap, day: null }, { name: "Tesco", sym: "TSCO.L", pct: -0.4, day: null });
+  assert.equal(r.body.card.kind, "markets"); assert.deepEqual(r.body.card.ref, { sym: "TSCO.L" });
+  assert.equal(r.body.card.say, "Tesco is down 0.40% today.");
+  for (const k of ["398", "400", "50", "£", "qty"]) assert.ok(!JSON.stringify(r.body).includes(k), k);
+  // one you only follow, one you don't have at all: not yours to send, nothing looked up
+  asked.length = 0;
+  for (const sym of ["RR.L", "AAPL"]) {
+    const x = await call("GET my-card", "ann", { query: `?kind=markets&sym=${sym}` });
+    assert.deepEqual([x.status, x.body.card, x.body.said], [200, null, "That isn’t one of your holdings in Markets."], sym);
+    within(x.body, LISTS.myCard.stock, `my-card ${sym}`, CARD_NEVER);
+  }
+  assert.equal(asked.filter((u) => u.startsWith("http://yahoo.test")).length, 0, "no price asked for");
+  assert.equal((await call("GET my-card", "ann", { query: "?kind=markets&sym=not a symbol" })).status, 400);
+  assert.equal((await call("GET my-card", "ann", { query: "?kind=weather&sym=TSCO.L" })).status, 400, "a symbol for a stock only");
+  assert.deepEqual(counts(), before, "no row written (the limit's own counter is a row already)");
+  assert.equal((await call("GET my-card", "bo", { query: "?kind=markets&sym=TSCO.L" })).body.card, null, "Ann's holding is Ann's");
+  sql.exec("DELETE FROM mk_holdings WHERE user_id = 'ann'");
+});
+
 // ================================ fit-share ================================
 test("fit-share: one row of only whose, day, zone, sport, made and until; { drop } takes back only your own", async () => {
   clearLimits();
@@ -343,6 +379,40 @@ test("fit-offer: only the asker's own row, the same again changing nothing; Fitn
   await addOffer(env, "bo", { ...body, who: "Ann", role: "asked" });
   assert.equal((await offersFor(env, "ann")).length, 1, "bo's is bo's");
   assert.equal(limitOf("fitoffer:ann"), 3);
+});
+
+test("fit-offer, Today First: a friend's id only for a friend; the inviter's pending row made a plan by the friend's Yes", async () => {
+  clearLimits();
+  const start = Math.ceil(now / H) * H + 36 * H, plan = (x = {}) => ({ id: crypto.randomUUID(), start, stop: start + 2 * H, tz: "Europe/London", sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, far: false, dry: true, ...x });
+  const inv = plan({ who: "Bo", role: "asked", with: "bo", state: "pending", opts: [[start + 24 * H, start + 26 * H]] });
+  assert.deepEqual((await call("POST fit-offer", "ann", { body: inv })).body, { ok: true });
+  const row = () => sql.prepare("SELECT state, start, with_id, opts FROM fx_offers WHERE user_id = 'ann' AND id = ?").get(inv.id);
+  assert.deepEqual({ ...row() }, { state: "pending", start, with_id: "bo", opts: JSON.stringify([[start + 24 * H, start + 26 * H]]) });
+  assert.ok(!(await offersFor(env, "ann")).some((o) => o.id === inv.id), "never shown in Fitness while pending");
+  const yes = await call("POST fit-offer", "bo", { body: plan({ start: start + 24 * H, stop: start + 26 * H, who: "Ann", role: "answered", with: "ann", re: inv.id }) });
+  within(yes.body, LISTS.ok, "fit-offer");
+  assert.deepEqual({ ...row() }, { state: "new", start: start + 24 * H, with_id: "bo", opts: null }, "a plan to add in Ann's Fitness, at Bo's time");
+  // with a non-friend (asked, not yet): no friend's id, and no pending row
+  const z = plan({ start: start + 4 * H, stop: start + 6 * H, who: "Zed", role: "answered", with: "zed" });
+  assert.deepEqual((await call("POST fit-offer", "ann", { body: z })).body, { ok: true });
+  assert.equal(sql.prepare("SELECT with_id FROM fx_offers WHERE user_id = 'ann' AND id = ?").get(z.id).with_id, null);
+  assert.equal((await call("POST fit-offer", "ann", { body: plan({ who: "Zed", role: "asked", with: "zed", state: "pending" }) })).status, 403);
+  sql.exec("DELETE FROM fx_offers WHERE user_id IN ('ann', 'bo')");
+});
+
+// ================================ time-offer ================================
+test("time-offer: friends only, your own row, the inviter's pending row agreed by the friend's Yes; says only ok", async () => {
+  clearLimits();
+  const start = Math.ceil(now / (15 * MIN)) * 15 * MIN + 5 * H, id = crypto.randomUUID();
+  const r = await call("POST time-offer", "ann", { body: { id, kind: "call", start, stop: start + 30 * MIN, tz: "Europe/London", with: "bo", role: "asked", state: "pending", opts: [[start + H, start + H + 30 * MIN]] } });
+  assert.equal(r.status, 200, JSON.stringify(r.body)); within(r.body, LISTS.ok, "time-offer");
+  const yes = await call("POST time-offer", "bo", { body: { id, kind: "call", start: start + H, stop: start + H + 30 * MIN, tz: "Europe/London", with: "ann", role: "answered" } });
+  within(yes.body, LISTS.ok, "time-offer");
+  assert.deepEqual(sql.prepare("SELECT user_id, state, start, who, with_id FROM td_times WHERE id = ? ORDER BY user_id").all(id).map((x) => ({ ...x })), [
+    { user_id: "ann", state: "yes", start: start + H, who: "Bo", with_id: "bo" }, { user_id: "bo", state: "yes", start: start + H, who: "Ann", with_id: "ann" }]);
+  assert.equal((await call("POST time-offer", "ann", { body: { id: crypto.randomUUID(), kind: "call", start, stop: start + 30 * MIN, tz: "Europe/London", with: "zed", role: "asked" } })).status, 403, "asked, not yet a friend");
+  assert.equal(limitOf("timeoffer:ann"), 2); assert.equal(limitOf("timeoffer:bo"), 1);
+  sql.exec("DELETE FROM td_times");
 });
 
 // ================================ Fitness's own: GET me's offers, and answering one ================================
@@ -433,11 +503,34 @@ test("every route counts against its own limit for the account", async () => {
   await call("POST fit-share", "cy", { body: { day: "2026-11-02", tz: "Europe/London", sport: "ride" } });
   await call("GET together", "cy", { query: "?with=ann&sport=ride" });
   await call("POST fit-offer", "cy", { body: {} });
+  await call("POST time-offer", "cy", { body: {} });
   const keys = sql.prepare("SELECT key FROM pg_limits").all().map((r) => r.key);
-  for (const k of ["cardnow:cy", "sharerank:cy", "mycard:cy", "fitshare:cy", "together:cy", "fitoffer:cy"]) assert.ok(keys.includes(k), k);
+  for (const k of ["cardnow:cy", "sharerank:cy", "mycard:cy", "fitshare:cy", "together:cy", "fitoffer:cy", "timeoffer:cy"]) assert.ok(keys.includes(k), k);
   assert.equal((await call("POST card-now", "zed", { body: { items: [] } })).status, 200, "signed in is enough to look up nothing");
   const anon = await SHARE_ROUTES["POST card-now"]({ request: new Request("http://chat.localhost/api/pigeon/card-now", { method: "POST", body: "{}" }), env }).catch((e) => e);
   assert.equal(anon.status, 401, "not signed in");
+});
+
+// ================================ sync's Today First parts ================================
+test("sync: hold, times and rides hold only ids and times; with ?quiet=1 the same, seen_at left alone", async () => {
+  clearLimits();
+  // (the traffic's ticks held off: only what's asked for)
+  put("pg_meta", { k: "tick", v: "99999999999999" }); env.WX_TRAFFIC_TICK = "0";
+  const start = Math.ceil(now / (15 * MIN)) * 15 * MIN + 3 * H, id = crypto.randomUUID(), ride = crypto.randomUUID();
+  put("td_times", { user_id: "ann", id, kind: "meet", start, stop: start + H, tz: "Europe/London", with_id: "bo", who: "Bo", role: "asked", state: "yes", made: 0, until: start + 13 * H });
+  put("fx_offers", { user_id: "ann", id: ride, start: start + 24 * H, stop: start + 26 * H, tz: "Europe/London", sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, who: "Bo", role: "asked", state: "yes", made: 0, until: start + 38 * H, with_id: "bo" });
+  sql.prepare("UPDATE pg_users SET notify_prefs = ?, seen_at = 0 WHERE id = 'ann'").run(JSON.stringify({ quiet: true, quietFrom: new Date(now).getUTCHours(), quietTo: (new Date(now).getUTCHours() + 1) % 24, tz: "UTC" }));
+  const sync = (q = "") => pigeonApi({ env, params: {}, waitUntil: () => {}, request: new Request(`http://chat.localhost/api/pigeon/sync${q}`, { headers: { Authorization: `Bearer ${tokens.ann}` } }) }).then((r) => r.json());
+  for (const q of ["?quiet=1", ""]) {
+    const b = await sync(q), part = { hold: b.hold, times: b.times, rides: b.rides };
+    within(part, LISTS.sync, `sync${q}`, NEVER.filter((k) => k !== "start" && k !== "until"));
+    assert.deepEqual(part.times, [{ id, with: "bo", kind: "meet", start, stop: start + H }]);
+    assert.deepEqual(part.rides, [{ id: ride, with: "bo", start: start + 24 * H, stop: start + 26 * H, sport: "ride", state: "yes" }]);
+    assert.equal(part.hold?.why, "quiet");
+    for (const k of ["Bo", "London", "Ride how you like"]) assert.ok(!JSON.stringify(part).includes(k), k);
+    assert.equal(sql.prepare("SELECT seen_at FROM pg_users WHERE id = 'ann'").get().seen_at > 0, q === "", q ? "?quiet=1: seen_at left alone" : "an ordinary sync notes it");
+  }
+  sql.prepare("UPDATE pg_users SET notify_prefs = NULL WHERE id = 'ann'").run(); sql.exec("DELETE FROM td_times; DELETE FROM fx_offers WHERE user_id = 'ann'");
 });
 
 test("the allow-lists catch what they're for", () => {
@@ -446,4 +539,6 @@ test("the allow-lists catch what they're for", () => {
   assert.throws(() => within({ done: true, start: 1 }, LISTS.fitness, "x"));
   assert.throws(() => within({ rain: { bo: { now: false, lon: 1 } } }, LISTS.shareRank, "x"));
   assert.doesNotThrow(() => within({ rain: { bo: null, cy: { now: true } } }, LISTS.shareRank, "x"));
+  assert.throws(() => within({ times: [{ id: "x", who: "Bo" }] }, LISTS.sync, "x"));
+  assert.throws(() => within({ card: { snap: { pct: 1, value: 2 } } }, LISTS.myCard.stock, "x"));
 });
