@@ -8,7 +8,8 @@ name: Chat checks
 # The tests that read the inflite repo look for it beside this one (../inflite), and skip where it isn't, so both are
 # checked out side by side in the workspace: this repo in georgefarrowgreen/, the inflite repo (public: no token) in
 # inflite/, at the branch of the same name as this push's where it has one, else its live branch (claude/inflite). This
-# repo goes live before the inflite repo does, so a test whose inflite file isn't on that branch yet skips.
+# repo goes live before the inflite repo does, so a test whose inflite file isn't on that branch yet skips (Today
+# First's: where the inflite repo beside has no today/src/hub.js).
 on:
   push:
   pull_request:
@@ -36,9 +37,6 @@ jobs:
           if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
           git clone --quiet --depth 1 --branch "$B" "$R" inflite
           echo "The inflite repo beside: $B at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
-          # (whether it's this branch's own twin: where it's the live branch instead, a test comparing its copies with
-          # this repo's templates may skip, as they follow when it goes live)
-          if [ "$B" = "$BRANCH" ]; then echo "INFLITE_TWIN=1" >> "$GITHUB_ENV"; else echo "INFLITE_TWIN=0" >> "$GITHUB_ENV"; fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
