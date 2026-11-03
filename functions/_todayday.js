@@ -4,7 +4,8 @@
 //     eveningAt, rides (today's explicit rides only: functions/_fittimes.js explicitRide), dones (functions/_fitshare.js
 //     donesIn) }
 //   dayFor(env, u, t, cards, { request, tz, deps }) → { v: 2, phase, since, until, timeline, tops, waiting, upcoming,
-//     acts, planning?, ride, quiet, apps }, merged into the answer, and, held apart (not one of its keys), fitnessCard:
+//     acts, planning?, ride, quiet, apps }, merged into the answer (and Mail's card put among the cards given, cards.mail,
+//     where Mail answered for its admin: functions/_todaymail.js), and, held apart (not one of its keys), fitnessCard:
 //     the Fitness card as the acts leave it, where they change it (an add undone), for the answer's cards. Never words
 //     of a message (waiting names who and when); never an amount (Markets' cards carry percents). The day's plan
 //     (functions/_todayacts.js planDay; deps.planDay: a stand-in, for tests) runs inside env.waitUntil on the first read
@@ -44,6 +45,7 @@ import { offersFor, donesIn } from "./_fitshare.js";
 import { timesFor } from "./_times.js";
 import { heldCount, rideHoldOn } from "./_busy.js";
 import { todayPrefs } from "./_today.js";
+import { mailCard } from "./_todaymail.js";
 import { prefsOf } from "./_notify.js";
 import { logError } from "./_pigeon.js";
 import { packCard } from "../pigeon/cards.js";
@@ -190,14 +192,20 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   // what the cards need besides: each ride's weather, who's waiting, the held count, who wrote, Fitness's figures
   const doneToday = afterOf?.done || last?.done || dones[0] || null;
   const wantCtl = doneToday && doneToday.from === "fitness" && Number.isFinite(doneToday.tss);
-  const [wxs, waiting, held, wrote, load] = await Promise.all([
+  // (and Mail's card, the admin's alone: numbers asked of Mail, 700 ms at most from here, who the admin is included,
+  // functions/_todaymail.js; none, no card; and not asked at all where the account's Edit hid it)
+  const mailHidden = Array.isArray(g.row?.cards?.hidden) && g.row.cards.hidden.includes("mail");
+  const [wxs, waiting, held, wrote, load, mail] = await Promise.all([
     Promise.all(matched.map((x) => (over(x) ? null : withDeadline(rideWx(env, u, x.ride, t), WX_MS).catch(() => null)))),
     soft(env, "waiting", waitingFor(env, u, t), []),
     ph.phase === "riding" && next ? soft(env, "held", heldCount(env, u.id, next.ride.start - HOLD_EARLY, { t }), 0) : 0,
     // (who wrote while you rode: from the ride's start to the activity's end)
     afterOf ? soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), []) : [],
     wantCtl ? soft(env, "load", loadOf(env, u.id, t), []) : [],
+    mailHidden ? null : soft(env, "mail", mailCard(env, u, opts.request || null), null),
   ]);
+  // (Mail's card among the answer's cards, as the other four are: only where Mail answered)
+  if (mail && cards && typeof cards === "object") cards.mail = mail;
   // (Fitness (CTL) as of the day's end at the latest: in the small hours, the day before's, as it was at 23:59)
   const ctl = wantCtl ? ctlOf(load, Math.min(t, today.end - 1), { start: doneToday.start }) : null;
   const wxOf = (x) => (x ? wxs[matched.indexOf(x)] || null : null);
@@ -497,5 +505,8 @@ function appsOf(x) {
     else if (m.market?.shut?.length) markets = `${andList(m.market.shut)} shut today`;
     else markets = "No change yet";
   }
-  return { weather, fitness, markets, mail: false };
+  // (Mail's: its count from people, the admin's alone and only where Mail answered; else false, as before)
+  const mc = cards?.mail?.state === "ok" ? cards.mail : null;
+  const mail = mc && Number.isInteger(mc.people) ? (mc.people > 0 ? `${mc.people} from people` : "All caught up") : false;
+  return { weather, fitness, markets, mail };
 }

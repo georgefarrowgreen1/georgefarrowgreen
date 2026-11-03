@@ -54,7 +54,7 @@ const SHARED = {
   "functions/_sites.js": { todayOrigin: "env, request", todayLinks: "env, request", cfOf: "request" },
   "functions/_handback.js": { takeHandback: "env, request, app, b, { limitKey, max = 30 } = {}" },
   "functions/_today.js": {
-    tddb: "env", CARDS: isList(["weather", "chat", "fitness", "markets"]),
+    tddb: "env", CARDS: isList(["weather", "chat", "fitness", "markets", "mail"]), LINES: isList(["weather", "chat", "fitness", "markets"]),
     todayPrefs: "env, userId", savePrefs: "env, userId, { order, hidden }", saveMorning: "env, userId, { on, at, lines, tz }", morningTz: "u, row",
     deviceHash: "endpoint", todayDevices: "env, userId", addDevice: "env, u, sub", moveDevice: "env, u, { sub, was }", removeDevice: "env, userId, endpoint",
     deviceOk: "env, endpoint", deviceGone: "env, endpoint", deviceFailed: "env, endpoint", tidyDevices: "env",
