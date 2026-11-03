@@ -185,6 +185,9 @@ for (const [width, height] of [[320, 640], [390, 844], [1280, 860]]) for (const 
   await p.waitForTimeout(800);
   const before = quotes();
   await go(p, '/');
+  // (the frame hides the module in its view change, after nav.go returns: the clock moved on only once it has)
+  await until(async () => (await visible(p, H.TODAY)) && !(await visible(p, `${H.M_MARKETS} ${H.MK_SEC}:not([hidden])`)), 8000);
+  await p.waitForTimeout(300);
   await p.clock.fastForward('02:00');
   await p.waitForTimeout(800);
   ok(st.log.filter((c) => c.path === 'quotes').length === before, 'no prices asked for while Markets isn’t shown (S2-D4)');
