@@ -70,7 +70,9 @@ export async function mount(root, fw) {
   let batches = 0;
   const take = async (files) => {
     files = [...(files || [])];
-    if (!files.length || !S.me) return;
+    if (!files.length) return;
+    // (picked or dropped before the account's in: said, not lost without a word)
+    if (!S.me) { fw.toast(S.error && !S.loading ? "Fitness didn’t open, so those files weren’t read. Try again, then add them." : "Fitness is still opening. Add your files in a moment."); return; }
     batches++;
     fw.toast(`Reading ${files.length === 1 ? "1 file" : `${files.length} files`}…`);
     try {
@@ -244,7 +246,12 @@ export async function mount(root, fw) {
     },
     back: () => false,
     busy: () => core.busy() || batches > 0 || !!loaded.acts?.busy?.(),
-    async flush() { if (core.S.dirty.size) await core.inStep(); return { lost: core.S.dirty.size ? 1 : 0 }; },
+    // (the save in flight waited for, then what's still unsaved sent; whatever's left after that is what Sign Out loses:
+    // F.flush gives this 2 s)
+    async flush() {
+      for (let i = 0; i < 2 && (core.S.dirty.size || core.inStep.p); i++) await core.inStep().catch(() => {});
+      return { lost: core.S.dirty.size ? 1 : 0 };
+    },
     sendable() { try { return shown === "today" || !shown ? sendableToday() : null; } catch (e) { console.error(e); return null; } },
     unmount() {
       mounted = false; onScreen = false; opening++;

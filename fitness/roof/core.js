@@ -50,8 +50,12 @@ export const idb = I.idb;
 export { keepFile, dropFile, tidyFiles } from "./idb.js";
 
 // (what isn't for the views: the page's fw, timers, the reader Worker, holds)
-const Q = { fw: null, booted: false, shownOn: false, minute: 0, offs: [], awayAt: 0, holds: new Set(), reading: 0, F: null, M: null, ask: null };
+const Q = { gen: 0, fw: null, booted: false, shownOn: false, minute: 0, offs: [], awayAt: 0, holds: new Set(), reading: 0, F: null, M: null, ask: null };
 export const fwOf = () => Q.fw;
+// (still the account and the session an await began in: stop() bumps Q.gen, so nothing late from a signed-out account,
+// or from before a stop and start, lands in S or IndexedDB)
+const mark = () => ({ me: S.me?.id ?? null, g: Q.gen });
+const still = (t) => !!Q.fw && Q.gen === t.g && (S.me?.id ?? null) === t.me;
 
 // today: moved on as a new day comes (newDay)
 export let TODAY = startOfDay(Date.now());
@@ -150,31 +154,39 @@ export function saveSettings(patch = {}) {
 let saveT = null;
 const notSaved = (e) => (e?.slow ? "Fitness is slow to answer: your changes will be saved in a moment" : "You’re offline: your changes will be saved when you’re back");
 export function keep(...parts) { changed(); if (!S.me) return; for (const x of parts) S.dirty.add(x); inStep.said = false; clearTimeout(saveT); saveT = setTimeout(inStep, 700); todayRefresh(); }
-export async function inStep() {
+// (→ a promise: the save in flight, if one is (inStep.p, which flush() waits for), else this one, else nothing to do)
+export function inStep() {
   clearTimeout(saveT); saveT = null;
-  if (!S.me || !S.dirty.size || inStep.busy) return;
+  if (inStep.p) return inStep.p;
+  if (!S.me || !S.dirty.size) return Promise.resolve();
   if (!Q.booted) {
     if (S.offline && !inStep.said) { inStep.said = true; toast(notSaved(S.offline), true); }
-    saveT = setTimeout(inStep, 700); return;
+    saveT = setTimeout(inStep, 700); return Promise.resolve();
   }
+  const p = saveNow();
+  inStep.p = p;
+  p.finally(() => { if (inStep.p === p) inStep.p = null; }).catch(() => {});
+  return p;
+}
+async function saveNow() {
   inStep.busy = true;
   const dirty = new Set(S.dirty); S.dirty.clear();
   let again = 700;
-  const me = S.me.id;
+  const t = mark();
   try {
     let mine = saved(), r = await A.save(S.ver, mine), merged = false;
-    for (let i = 0; r.conflict && i < 3; i++) {
+    for (let i = 0; r.conflict && i < 3 && still(t); i++) {
       mine = A.merge(r.data, mine, dirty, S.inStepWorkouts); S.inStepWorkouts = A.workoutIds(r.data);
       adopt(mine); merged = true; r = await A.save(r.ver, mine);
     }
-    if (S.me?.id !== me) return;
+    if (!still(t)) return;
     if (r.conflict) throw new Error("Your changes didn’t save. Try again.");
     S.ver = r.ver; S.inStepWorkouts = A.workoutIds(r.data || mine);
     if (merged) redraw();
   } catch (e) {
-    if (S.me?.id !== me) return;
+    if (!still(t)) return;
     for (const x of dirty) S.dirty.add(x);
-    if (e.status === 401) { inStep.busy = false; return signedOutHere(); }
+    if (e.status === 401) { inStep.busy = false; signedOutHere(); return; }
     toast(e.offline ? notSaved(e) : e.message, true);
     again = e.offline ? 15000 : 30000;
   } finally { inStep.busy = false; }
@@ -286,7 +298,7 @@ export async function readOff(name, bytes) {
     const id = ++readerN, u8 = new Uint8Array(bytes).slice();
     return await new Promise((ok, no) => { readerWait.set(id, { ok, no }); w.postMessage({ id, name, bytes: u8, profile: P() }, [u8.buffer]); })
       .catch(async (e) => (e.worker ? (await needF()).readAny(name, bytes) : Promise.reject(e)));
-  } finally { Q.reading--; }
+  } finally { Q.reading = Math.max(0, Q.reading - 1); }
 }
 // Files picked or dropped (fitness.js): each read, its activities and workouts sorted out as app.js importFiles does,
 // the Worker ended after the batch. → { acts, workouts, skipped, dupes }, the batch Upload shows
@@ -306,14 +318,15 @@ export async function importFiles(files) {
         got.skipped.push(...(r.skipped || []));
       } catch (e) { got.skipped.push(`${f.name}: ${e.message}`); }
     }
-  } finally { Q.reading--; endReader(); }
+  } finally { Q.reading = Math.max(0, Q.reading - 1); endReader(); }
   got.acts.sort((a, b) => b.start - a.start);
   return got;
 }
 export async function load(a, kept = true) {
   if (full(a)) return full(a);
-  const here = await idb.get(fileKey(a)).catch(() => null), bytes = here || await A.fileOf(a.id);
-  if (kept) I.keepFile(fileKey(a), here ? null : bytes);
+  const t = mark(), key = fileKey(a);
+  const here = await idb.get(key).catch(() => null), bytes = here || await A.fileOf(a.id);
+  if (kept && still(t)) I.keepFile(key, here ? null : bytes);
   const r = await readOff(a.file || `activity.${a.type}`, bytes);
   const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
   if (!x) throw new Error("That file has no activity in it any more.");
@@ -392,25 +405,26 @@ export async function weekZip(wk) {
 export function older() {
   if (older.p) return older.p;
   if (!S.me?.more) return Promise.resolve();
-  const p = olderIn(S.me.id);
+  const p = olderIn(mark());
   older.p = p;
   p.finally(() => { if (older.p === p) older.p = null; });
   return p;
 }
-async function olderIn(me) {
+async function olderIn(t) {
+  const me = t.me;
   try {
     for (;;) {
       const last = S.own.reduce((o, a) => (!o || a.start < o.start || (a.start === o.start && a.id < o.id) ? a : o), null);
       if (!last) break;
       const got = await A.older(last.start, last.id);
-      if (S.me?.id !== me) return;
+      if (!still(t)) return;
       const have = new Set(S.own.map((a) => a.id)), add = got.acts.filter((a) => !have.has(a.id));
       for (const a of add) { S.own.push({ ...a, sample: false }); S.sums.set(a.id, rescale(a.sum, P(), a.sport)); }
       if (meBase?.id === me) lastMe.put({ ...meBase, acts: [...(meBase.acts || []), ...add], more: got.more });
       // (the batch in hand finished; no other started while Fitness is hidden, S2-D4)
       if (!got.more || !add.length || !Q.shownOn) break;
     }
-    if (S.me?.id !== me) return;
+    if (!still(t)) return;
     if (Q.shownOn) { S.me.more = false; if (meBase?.id === me) lastMe.put({ ...meBase, more: false }); }
     S.own.sort((a, b) => b.start - a.start); setActs(); redraw("acts");
   } catch (_) {}
@@ -420,7 +434,8 @@ export const lastMe = {
   get: async () => { try { const t = await idb.get("me:last"); return typeof t === "string" ? JSON.parse(t) : null; } catch (_) { return null; } },
   put: (m) => { meBase = m; idb.put("me:last", JSON.stringify(m)).then(() => store.set("meAt", { at: m.at }), () => {}); },
 };
-export async function fetchMe(base = meBase) {
+export async function fetchMe(base = meBase, expect = null) {
+  const g = Q.gen, fw = Q.fw;
   let m = await A.me(base?.id && base.at ? base.at : null);
   if (m.signedIn && m.ids) {
     if (base?.id !== m.id) m = await A.me();
@@ -430,7 +445,7 @@ export async function fetchMe(base = meBase) {
       m = { ...m, acts: [...byId.values()].sort((a, b) => b.start - a.start), ids: undefined, more: !!base.more || m.ids.length > byId.size };
     }
   }
-  if (m.signedIn) lastMe.put(m);
+  if (m.signedIn && fw && Q.fw === fw && Q.gen === g && (expect == null || m.id === expect)) lastMe.put(m);
   return m;
 }
 // (kept: the copy on this phone, drawn at once, only when it's the framework's user's (S2-D9); nothing's done for it,
@@ -487,10 +502,10 @@ export function takeUp(m) {
 export async function pull() {
   if (!S.me || pull.busy) return;
   pull.busy = true;
-  const me = S.me.id;
+  const t = mark(), me = t.me;
   try {
-    const m = await fetchMe();
-    if (S.me?.id !== me) return;
+    const m = await fetchMe(meBase, me);
+    if (!still(t)) return;
     if (!m.signedIn || m.id !== S.me.id) return signedOutHere();
     takeUp(m);
   } catch (_) {} finally { pull.busy = false; }
@@ -584,12 +599,12 @@ export function keptFile(a, sum, parts = 1) {
 // What follows (the sheet closed, Activities shown, the one ride opened) is the caller's: then({ done, failed }).
 export async function upload(got, btn, then = null) {
   btn.disabled = true;
-  const done = [], failed = [], me = S.me?.id;
+  const done = [], failed = [], t = mark();
   Q.reading++;
   try {
     await needF();
     for (const [i, a] of got.acts.entries()) {
-      if (S.me?.id !== me) return;
+      if (!still(t)) return;
       btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
       if (near(a.start)) continue;
       let sum, k, meta;
@@ -598,8 +613,10 @@ export async function upload(got, btn, then = null) {
         sum = figuresOf(a); k = keptFile(a, sum, a.parts || 1);
         meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
         const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
+        if (!still(t)) return;
         if (r.already) continue;
       } catch (e) {
+        if (!still(t)) return;
         if (e.status === 401) return signedOutHere();
         failed.push({ a, said: `${a.name}: ${e.message}` }); continue;
       } finally { upping.delete(a.start); }
@@ -609,7 +626,8 @@ export async function upload(got, btn, then = null) {
       I.keepFile(fileKey(entry), k.bytes);
     }
   } catch (e) { failed.push(...got.acts.filter((a) => !done.some((d) => d.start === a.start)).map((a) => ({ a, said: `${a.name}: ${e.message || "It didn’t upload"}` }))); }
-  finally { Q.reading--; }
+  finally { Q.reading = Math.max(0, Q.reading - 1); }
+  if (!still(t)) return;
   if (got.workouts?.length) { S.mine.unshift(...got.workouts); keep("workouts"); }
   setActs(); estimate();
   if (failed.length) { btn.disabled = false; btn.lastChild.textContent = "Try again"; got.acts = failed.map((f) => f.a); toast(failed[0].said, true, 6000); redraw("acts"); then?.({ done, failed }); return; }
@@ -627,15 +645,16 @@ export async function fromSource(src, { quiet = false } = {}) {
     return 0;
   }
   fromSource[src] = true;
-  const added = [], left = [], me = S.me?.id;
+  const added = [], left = [], t = mark();
   Q.reading++;
   try {
     await needF();
     for (const w of waiting) {
-      if (S.me?.id !== me) break;
+      if (!still(t)) break;
       let acts;
       try { acts = await c.read(w, await c.file(w.id)); }
-      catch (e) { if (e.status === 401) return signedOutHere(); if (e.offline || e.status >= 500) break; acts = []; }
+      catch (e) { if (!still(t)) break; if (e.status === 401) return signedOutHere(); if (e.offline || e.status >= 500) break; acts = []; }
+      if (!still(t)) break;
       let kept = 0;
       for (const [k, a] of acts.entries()) {
         if (near(a.start)) continue;
@@ -647,10 +666,12 @@ export async function fromSource(src, { quiet = false } = {}) {
           meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
           r = await A.upload(meta, f.name, await A.gzip(f.bytes));
         } catch (e) {
+          if (!still(t)) { kept = -1; break; }
           if (e.status === 401) return signedOutHere();
           if (e.status === 400 || (!e.status && !e.offline)) { left.push(`${a.name}, from ${c.label}: ${e.message}`); continue; }
           kept = -1; break;
         } finally { upping.delete(a.start); }
+        if (!still(t)) { kept = -1; break; }
         if (r.already) continue;
         const entry = { ...meta, gz: A.canGzip(), sample: false };
         S.own.push(entry); S.sums.set(entry.id, sum); added.push(entry); kept++;
@@ -659,10 +680,12 @@ export async function fromSource(src, { quiet = false } = {}) {
       }
       if (kept < 0) break;
       if (!kept) await c.done(w.id).catch(() => {});
+      if (!still(t)) break;
       c.state().waiting = c.state().waiting.filter((x) => x.id !== w.id);
       if (!Q.shownOn) break;
     }
-  } catch (_) {} finally { fromSource[src] = false; Q.reading--; endReader(); }
+  } catch (_) {} finally { if (Q.gen === t.g) { fromSource[src] = false; Q.reading = Math.max(0, Q.reading - 1); endReader(); } }
+  if (!still(t)) return 0;
   if (added.length) { setActs(); estimate(); redraw("acts"); if (!quiet) toast(added.length === 1 ? `${added[0].name}, from ${c.label}` : `${added.length} activities from ${c.label}`); }
   else if (left.length) toast(left[0], true, 6000);
   return added.length;
@@ -707,10 +730,11 @@ export const stopped = () => (S.garmin?.on && !S.garmin.ok ? "Garmin" : S.strava
 // ---- signing out (found out: a 401 the framework confirms) and this phone's copies ----
 export async function signedOutHere() {
   const fw = Q.fw;
-  if (!fw) return;
+  if (!fw) return false;
   let out = false;
   try { out = await fw.session.lost(); } catch (_) {}
   if (out && Q.fw === fw) stop();
+  return out;
 }
 export function forgetCopies() {
   for (const k of ["meAt", "files", "hk", "today-sent", "today-swaps"]) store.set(k, null);
@@ -736,33 +760,39 @@ export function setError(v) { if (S.error !== v) { S.error = v; emit("error", v)
 export function start(fw) {
   if (Q.fw) stop();
   Q.fw = fw;
+  I.reopen();
   TODAY = startOfDay(Date.now());
   Q.offs.push(fw.on?.("visible", () => { if (Q.shownOn) opened(); }) || (() => {}));
 }
 // (the first show: the kept copy (the framework's user's only), then the account)
 async function boot() {
-  const fw = Q.fw, uid = fw.session?.user?.id ?? null;
+  const fw = Q.fw, g = Q.gen, gone = () => Q.fw !== fw || Q.gen !== g, uid = fw.session?.user?.id ?? null;
   setLoading(true);
   let kept = null, early = false;
   try {
     kept = await lastMe.get();
-    if (Q.fw !== fw) return;
-    const now = fetchMe(kept);
-    now.catch(() => {});
+    if (gone()) return;
+    const ask = fetchMe(kept);
+    ask.catch(() => {});
     if (kept?.signedIn && Array.isArray(kept.acts) && uid != null && kept.id === uid) { early = true; meBase = kept; arrive(kept, true); }
-    const m = await now;
-    if (Q.fw !== fw) return;
+    const m = await ask;
+    if (gone()) return;
     if (!early && kept?.signedIn && !m.signedIn) forgetCopies();
     else if (!early && kept?.signedIn && kept.id !== m.id) forgetFiles();
-    if (!m.signedIn) { setLoading(false); return signedOutHere(); }
+    if (!m.signedIn) {
+      setLoading(false);
+      const out = await signedOutHere();
+      if (!out && !gone() && !S.me) setError("Fitness couldn’t check you’re signed in. Try again in a moment.");
+      return;
+    }
     if (early && m.id !== kept.id) { stopData(); arrive(m); }
     else if (early) takeUp(m); else arrive(m);
     setError(null);
   } catch (e) {
-    if (Q.fw !== fw) return;
+    if (gone()) return;
     if (early) { S.offline = e.offline ? e : null; if (S.offline) toast(notSaved(e), true, 5000); }
     else setError(e.slow ? "Fitness is taking too long to answer. Try again in a moment." : e.offline ? "You’re offline. Fitness will be here when you’re back online." : e.message || "Fitness didn’t answer");
-  } finally { if (Q.fw === fw) setLoading(false); }
+  } finally { if (!gone()) setLoading(false); }
 }
 // (Try Again from the error state)
 export function retry() { if (!Q.fw) return; if (S.me) return pull(); Q.booted = false; boot(); }
@@ -801,6 +831,7 @@ function stopData() {
   Q.booted = false;
 }
 export function stop() {
+  Q.gen++;
   for (const t of timers) clearTimeout(t);
   timers.clear();
   clearInterval(Q.minute); Q.minute = 0;
@@ -808,5 +839,5 @@ export function stop() {
   stopData();
   I.close();
   Q.fw = null; Q.shownOn = false; Q.started = false; Q.holds.clear(); Q.reading = 0; Q.F = null; Q.M = null; Q.ask = null;
-  inStep.busy = false; pull.busy = false; bringIn.busy = false; fromSource.garmin = fromSource.strava = false;
+  inStep.busy = false; inStep.p = null; pull.busy = false; bringIn.busy = false; fromSource.garmin = fromSource.strava = false;
 }
