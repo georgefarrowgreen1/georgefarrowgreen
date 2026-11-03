@@ -104,24 +104,35 @@ test('without Mail’s address and the sign-in page’s (or with something that 
 });
 
 // ---- the page's script, in a page made up for it ----
-// (hash: the page's own #; answers what was done: the frame's address, addresses gone to, replaced, posted to the frame)
-function page({ hash = '', mail = MAIL, auth = AUTH } = {}) {
-  const did = { assigned: [], replaced: [], backs: 0, posted: [], listeners: {}, sw: {}, clicks: [] };
+// (hash: the page's own #; kept: this tab's sessionStorage as the page opens (null: none to be had); answers what was
+// done: the frame's address, addresses gone to, replaced, posted to the frame, said to the root worker, kept)
+function page({ hash = '', mail = MAIL, auth = AUTH, kept = {} } = {}) {
+  const did = { assigned: [], replaced: [], backs: 0, posted: [], listeners: {}, sw: {}, clicks: [], worker: [], docListeners: {} };
+  const store = kept === null ? null : new Map(Object.entries(kept));
+  const sessionStorage = store && { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  const doc = { readyState: 'complete', visibilityState: 'visible' };
   // (what the page posts, made of this realm's objects, so it compares as plain data)
   const plain = (x) => JSON.parse(JSON.stringify(x));
   const frame = { src: '', contentWindow: { postMessage: (m, o) => did.posted.push([plain(m), o]) } };
   const back = { addEventListener: (t, f) => did.clicks.push(f) };
   const location = { origin: SITE, pathname: '/mail/', search: '', hash, assign: (u) => did.assigned.push(u) };
+  // (the root worker's registration, as getRegistration("/") gives it: what it's told)
+  const reg = { active: { postMessage: (m) => did.worker.push(plain(m)) } };
   const ctx = {
-    document: { readyState: 'complete', documentElement: { dataset: { mail, auth } },
-      querySelector: (s) => (s === 'iframe[name="ifl-mail"]' ? frame : s === '.mh-back' ? back : null), addEventListener() {} },
+    document: Object.assign(doc, { documentElement: { dataset: { mail, auth } },
+      querySelector: (s) => (s === 'iframe[name="ifl-mail"]' ? frame : s === '.mh-back' ? back : null), addEventListener: (t, f) => { (did.docListeners[t] ||= []).push(f); } }),
     location,
     history: { state: null, replaceState: (s, t, u) => { did.replaced.push(u); location.hash = ''; }, back: () => did.backs++, go: () => did.backs++ },
-    navigator: { serviceWorker: { addEventListener: (t, f) => { did.sw[t] = f; } } },
+    navigator: { serviceWorker: { addEventListener: (t, f) => { did.sw[t] = f; }, getRegistration: (scope) => (did.scope = scope, { then: (ok) => ok(reg) }) } },
     addEventListener: (t, f) => { (did.listeners[t] ||= []).push(f); },
-    URLSearchParams,
+    URLSearchParams, URL,
   };
+  if (store) ctx.sessionStorage = sessionStorage;
+  else Object.defineProperty(ctx, 'sessionStorage', { get() { throw new Error('denied'); } });
   vm.runInNewContext(readFileSync(PAGE_JS, 'utf8'), ctx);
+  did.kept = store;
+  // (the page hidden, then back in sight)
+  did.seen = (state) => { doc.visibilityState = state; for (const f of did.docListeners.visibilitychange || []) f(); };
   // (a message to the page, as from a window at an address)
   const hear = (data, { source = frame.contentWindow, origin = mail } = {}) => { for (const f of did.listeners.message || []) f({ data, source, origin }); };
   return { did, frame, hear, click: () => did.clicks.forEach((f) => f()), sw: (data) => { const port = []; did.sw.message?.({ data, ports: [{ postMessage: (m) => port.push(JSON.parse(JSON.stringify(m))) }] }); return port; } };
@@ -189,7 +200,23 @@ test('Back to Apps: /#apps, never history’s own back (Mail keeps history of it
 });
 
 test('a notification tapped while Mail’s page is open: gone to in this window, a path of this site’s only, and said heard', { skip }, () => {
-  let p = page();
+  let p = page({ kept: { 'ifl-crumb': '/#apps', 'ifl-hub-ready': '1' } });
+  assert.deepEqual(p.sw({ ifl: 'open', url: '/chats/#open=abc' }), [{ ifl: 'opened' }]);
+  assert.deepEqual(p.did.assigned, ['/chats/#open=abc']);
+  // (this page the breadcrumb, so the chat it opens comes Back here, not to where this page was opened from)
+  assert.equal(p.did.kept.get('ifl-crumb'), '/mail/', 'the breadcrumb: this page');
+  for (const kept of [{}, { 'ifl-hub-ready': '1' }]) {
+    p = page({ kept });
+    assert.deepEqual(p.sw({ ifl: 'open', url: '/weather/#radar' }), [{ ifl: 'opened' }], JSON.stringify(kept));
+    assert.deepEqual(p.did.assigned, ['/weather/#radar']);
+    assert.equal(p.did.kept.get('ifl-crumb'), '/mail/');
+  }
+  // (this same page: no breadcrumb of itself)
+  p = page({ kept: { 'ifl-crumb': '/#apps' } });
+  assert.deepEqual(p.sw({ ifl: 'open', url: '/mail/' }), [{ ifl: 'opened' }]);
+  assert.equal(p.did.kept.get('ifl-crumb'), '/#apps');
+  // (no sessionStorage to be had: gone to all the same)
+  p = page({ kept: null });
   assert.deepEqual(p.sw({ ifl: 'open', url: '/chats/#open=abc' }), [{ ifl: 'opened' }]);
   assert.deepEqual(p.did.assigned, ['/chats/#open=abc']);
   for (const url of ['//evil.example/', 'https://evil.example/', '/\\evil.example', '/x\n/y', 'chats', `/${'x'.repeat(200)}`, 7]) {
@@ -200,6 +227,27 @@ test('a notification tapped while Mail’s page is open: gone to in this window,
   p = page();
   p.sw({ open: '/x' });
   assert.deepEqual(p.did.assigned, []);
+});
+
+test('the hub not serving the apps’ pages this visit (Today’s word, “ifl-hub-ready” 0): a notification not heard here, so the root worker opens it its own way', { skip }, () => {
+  // (this page is served before the hub's key is set, the apps' pages aren't: the worker, hearing nothing within its
+  // second, sends the tap through Today, /#go=…, to the app's own address)
+  for (const url of ['/chats/#open=abc', '/weather/', '/']) {
+    const p = page({ kept: { 'ifl-hub-ready': '0', 'ifl-crumb': '/#apps' } });
+    assert.deepEqual(p.sw({ ifl: 'open', url }), [], `${url}: not said heard`);
+    assert.deepEqual(p.did.assigned, [], `${url}: not gone to`);
+    assert.equal(p.did.kept.get('ifl-crumb'), '/#apps', `${url}: no breadcrumb`);
+  }
+});
+
+test('the Home Screen icon’s badge: counted again by the root worker as the page opens, and each time it’s back in sight', { skip }, () => {
+  const p = page();
+  assert.equal(p.did.scope, '/', 'the root worker’s registration');
+  assert.deepEqual(p.did.worker, [{ ifl: 'badge' }], 'as the page opens');
+  p.did.seen('hidden');
+  assert.deepEqual(p.did.worker, [{ ifl: 'badge' }], 'not as it’s hidden');
+  p.did.seen('visible');
+  assert.deepEqual(p.did.worker, [{ ifl: 'badge' }, { ifl: 'badge' }], 'and again as it’s back in sight');
 });
 
 test('the hub’s cross-fade into the page and out of it: one that can’t be done is let go without a word', { skip }, async () => {
