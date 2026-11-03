@@ -41,6 +41,10 @@ const tables = (env) => tablesOnce(env, "strava", async (D) => {
   await D.prepare("ALTER TABLE fx_strava ADD COLUMN name TEXT").run().catch(() => {});
   // (the activities whose streams Strava hasn't handed over when asked, how many times and since when: as Garmin's)
   await D.prepare("ALTER TABLE fx_strava ADD COLUMN missed TEXT").run().catch(() => {});
+  // (each waiting activity's moving time and distance, as Strava's activity said them, so InFlite Today can show a ride
+  // before the app has read it: functions/_fitshare.js donesIn)
+  await D.prepare("ALTER TABLE fx_strava_new ADD COLUMN secs INTEGER").run().catch(() => {});
+  await D.prepare("ALTER TABLE fx_strava_new ADD COLUMN dist REAL").run().catch(() => {});
 });
 
 // ---- the way in: to Strava's page, and back, the state signed so the answer's only taken for the one who asked ----

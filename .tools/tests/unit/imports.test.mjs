@@ -97,8 +97,12 @@ const SHARED = {
     shareFor: "env, userId, { day, tz, sport }", dropShare: "env, userId, id", doneIn: "env, userId, start, end", fitNowMany: "env, shares, asker",
     fitNow: "env, { share, asker }", addOffer: "env, userId, offer", offersFor: "env, userId", answerOffer: "env, userId, id, answer",
     sharesOf: "env, userId", offersOf: "env, userId", dropShares: "env, userId",
+    // (Today First's, spec §9.3: Today's own rides, moved and taken; an invite's pending row made a plan by the friend's Yes;
+    // the waiting rows' figures)
+    donesIn: "env, userId, start, end", addTodayOffer: "env, uid, o", setOfferTimes: "env, uid, id, start, stop", takeOffer: "env, uid, id",
+    promoteOffer: "env, inviterId, re, answererId, start, stop",
   },
-  "functions/_fitwx.js": { hoursAt: "env, lat, lon", rideWeather: "env, userId, request" },
+  "functions/_fitwx.js": { hoursAt: "env, lat, lon", rideWeather: "env, userId, request", pastWet: "env, lat, lon, t" },
   "functions/_todaywx.js+": { cellNow: "env, lat, lon, t", weatherSend: "env, place, t" },
   "functions/_wxpush.js": { COST_FULL: (v, at) => assert.equal(v, 7, at), OM_KEEP: (v, at) => assert.equal(v, 500, at) },
   "functions/_fittoday.js": { cleanSnapshot: "b", setSnapshot: "env, userId, b", snapshotOf: "env, userId" },

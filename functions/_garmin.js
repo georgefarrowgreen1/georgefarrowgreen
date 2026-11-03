@@ -46,6 +46,11 @@ const tables = (env) => tablesOnce(env, "garmin", async (D) => {
   // (the files Garmin hasn't handed over when asked, how many times and since when: { id: [tries, first] }, so one that
   // never comes is passed over in the end, not asked for first, and failed on, every time)
   await D.prepare("ALTER TABLE fx_garmin ADD COLUMN missed TEXT").run().catch(() => {});
+  // (each waiting activity's sport, time and distance, where Garmin's list said them, so InFlite Today can show a ride
+  // before the app has read its file: functions/_fitshare.js donesIn)
+  await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN sport TEXT").run().catch(() => {});
+  await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN secs INTEGER").run().catch(() => {});
+  await D.prepare("ALTER TABLE fx_garmin_new ADD COLUMN dist REAL").run().catch(() => {});
 });
 
 // ---- asking Garmin ----
