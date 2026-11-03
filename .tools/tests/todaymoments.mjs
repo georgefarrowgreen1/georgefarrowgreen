@@ -305,6 +305,18 @@ async function chatsSignIn() {
   if (!got && new URL(G.p.url()).host !== 'ifl.test:8788') await G.p.goto(`${HUB}/`).catch(() => {});
   return got;
 }
+// /chats/ in the window; Chat's first open here may ask where you are (the sign-in went straight back to Today, so it's
+// asked now, not then): answered as joinChat does, once
+let chatsAsked = false;
+async function openChats() {
+  await G.p.goto(`${HUB}/chats/`);
+  if (chatsAsked) return;
+  chatsAsked = true;
+  if (await G.p.waitForSelector('#city, [data-act=onbdone]', { state: 'attached', timeout: 8000 }).catch(() => null)) {
+    if (await G.p.$('#city')) await G.p.selectOption('#city', 'London').catch(() => {});
+    await G.p.click('[data-act=onbdone]', { timeout: 10000 }).catch(() => {});
+  }
+}
 // (where Chats couldn't be signed in at the hub, and that's failed already: Chat's own sign-in for its API, handed back by
 // the account from this phone's cookie as hubserve.mjs does, so the steps after it still run and say what they find)
 async function bearerFromCookie() {
@@ -611,7 +623,7 @@ let RIDE4 = null, MIRA_AT = 0;
   ok(!!warned, 'a MeteoAlarm warning still gets through, as Weather’s (app: weather)', `${js(wt.j, 160)} ${js(warned, 200)}`);
   WX.warn = false;
   // Chats' held row
-  await G.p.goto(`${HUB}/chats/`);
+  await openChats();
   const held = await until(async () => { const t = (await G.p.evaluate(() => document.body.innerText).catch(() => '')).replace(/\s+/g, ' '); return /Riding · messages held/.test(t) ? t : null; }, 20000);
   ok(!!held, 'Chats: “Riding · messages held”');
   await shot(G, '4-chats-held');
@@ -653,7 +665,9 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   // Open Fitness, which reads the waiting ride in; the ride in fx_acts as Fitness's import puts it; back on Today
   await fit?.click().catch(() => {});
   ok(await G.p.waitForURL(`${HUB}/fitness/#activities`, { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Open Fitness: in the window', G.p.url());
-  run(`INSERT OR REPLACE INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) VALUES ('${GID}', 'garmin-g-ride-1', ${RIDE4.start}, 'ride', 0, 'Endurance 75', 'fit', 1, '${esc(JSON.stringify({ secs, dist, tss: 68 }))}', ${Date.now()})`);
+  // (in at the watch's own time, end: this test's day is minutes long, and the evening's 21:00 comes three real minutes
+  // before step 6, so an import stamped now would fall after it and rightly keep the after card its 90 minutes)
+  run(`INSERT OR REPLACE INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) VALUES ('${GID}', 'garmin-g-ride-1', ${RIDE4.start}, 'ride', 0, 'Endurance 75', 'fit', 1, '${esc(JSON.stringify({ secs, dist, tss: 68 }))}', ${end})`);
   await G.p.goBack({ waitUntil: 'load' }).catch(() => {});
   if (new URL(G.p.url()).origin !== HUB || new URL(G.p.url()).pathname !== '/') await G.p.goto(HUB + '/');
   const figures = await until(async () => { const t = await topText(); return /Stress\s*68/.test(t) && /Fitness\s*\d+ ↑/.test(t) ? t : null; }, 20000);
@@ -692,7 +706,7 @@ step(6, 'evening: the day closed, Tesco past its alert, tomorrow first; quiet ho
   await chatTick(); await wait(1500);
   const chat = (await pushesSince('george', since)).filter((x) => x.app === 'chat');
   ok(!chat.length, 'Pat writes at 21:00: no push (quiet hours)', js(chat, 200));
-  await G.p.goto(`${HUB}/chats/`);
+  await openChats();
   const held = await until(async () => { const t = (await G.p.evaluate(() => document.body.innerText).catch(() => '')).replace(/\s+/g, ' '); return /Quiet hours until 06:00 · Warnings still get through/.test(t) ? t : null; }, 20000);
   ok(!!held, 'Chats: “Quiet hours until 06:00 · Warnings still get through”');
   await shot(G, '6-chats-quiet');
