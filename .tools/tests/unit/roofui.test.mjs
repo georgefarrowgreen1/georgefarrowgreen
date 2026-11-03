@@ -184,7 +184,7 @@ test('stages 2–4, frame.js: F.flush caps each module at 2 s and sums lost; rel
   const f = strip(read('frame.js'));
   assert.match(f, /flush\(\) \{\n\s*return Promise\.all\(Object\.values\(mods\)\.map\(\(m\) => Promise\.race\(\[Promise\.resolve\(\)\.then\(\(\) => m\.instance\?\.flush\?\.\(\)\)\.catch\(\(\) => null\), new Promise\(\(ok\) => setTimeout\(ok, 2000\)\)\]\)\)\)/);
   assert.match(f, /lost: a\.reduce\(\(n, x\) => n \+ \(Number\(x\?\.lost\) \|\| 0\), 0\)/);
-  assert.match(f, /if \(bounce\) F\.flush\(\)\.then\(\(\) => safely\(/, 'the bounce: flushed, then once nothing is unsaved');
+  assert.match(f, /if \(!F\.busy\(\)\) \{ T\(\(\) => mods\[shownApp\]\?\.instance\?\.flush\?\.\(\)\); return go\(\); \}\n\s*F\.flush\(\)\.then\(\(\) => safely\(go\)\);/, 'the bounce: at once with nothing unsaved (stage 1), else flushed, then once nothing is unsaved');
   assert.match(f, /if \(!F\.busy\(\)\) \{ clearInterval\(later\); return go\(\); \}/);
   assert.match(f, /if \(r\.kind === "app" && stale && prev && !same && !F\.busy\(\)\) return reloadStale\(\);/);
   assert.match(f, /if \(stale && away >= 60e3 && !F\.busy\(\)\) return reloadStale\(\);/);
@@ -205,7 +205,7 @@ test('stages 2–4: toast() gives { close() }; connectors.js has a provider per 
   assert.equal(await connectorOf('mail', F({})), STATIC.mail);
   assert.equal(await connectorOf('chats', F({})), STATIC.chats);
   const m = strip(read('modules.js'));
-  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error/);
+  assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error\(`the hub or the roof is off/, 'stage 1’s words (roofshell allows exactly that error)');
   assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
   assert.match(m, /keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\]\)\), 10e3\)/, 'lazy kept only on the Home Screen, 10 s on');
 });
