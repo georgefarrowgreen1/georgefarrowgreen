@@ -138,7 +138,7 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
   // ≥ 10 s after the first show, C4: waited for before going offline)
   const wxLazy = lazyOf('weather');
   const lazyKept = await until(async () => { const k = await keptOf(p, 'weather'); return k && wxLazy.every((f) => k.paths.includes(f)) ? k : null; }, 45000);
-  ok(!wxLazy.length || !!lazyKept, `c. standalone: Weather’s ${wxLazy.length} lazy files kept too, at idle (stage 2 C4)`, js({ lazy: wxLazy, kept: (await keptOf(p, 'weather'))?.paths?.filter((x) => wxLazy.includes(x)) }));
+  ok(wxLazy.length > 0 && !!lazyKept, `c. standalone: Weather’s ${wxLazy.length} lazy files kept too, at idle (stage 2 C4; Weather’s connector names some)`, js({ lazy: wxLazy, kept: (await keptOf(p, 'weather'))?.paths?.filter((x) => wxLazy.includes(x)) }));
   await ctx.close();
 
   // a fresh window of the same profile: sessionStorage empty, offline
@@ -280,7 +280,7 @@ await part('f', 'in a browser tab: only connector.files kept, never the lazy fil
   await wait(15000);
   const k2 = await keptOf(T.p, 'markets');
   const extra = (k2?.paths || []).filter((x) => lazy.includes(x));
-  ok(!!k && !extra.length, `f. a browser tab, Markets open 15 s and more: its ${files.length} files kept, none of its ${lazy.length} lazy files (RI8)`, js({ kept: k2?.paths?.length, extra }));
+  ok(!!k && lazy.length > 0 && !extra.length, `f. a browser tab, Markets open 15 s and more: its ${files.length} files kept, none of its ${lazy.length} lazy files (RI8; Markets’ connector names some)`, js({ kept: k2?.paths?.length, extra }));
   await T.ctx.close();
 });
 
