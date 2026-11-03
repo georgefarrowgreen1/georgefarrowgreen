@@ -75,7 +75,7 @@ function portfolioBox() {
   const kept = PRANGES.some(([r]) => r === S.prange) ? S.prange : "1d";
   const seg = h("div.seg.pseg", { role: "group", "aria-label": "Your portfolio over" }, h("span.sl"), PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: label })));
   S.prange = "1d";
-  if (kept !== "1d") requestAnimationFrame(() => { const b = seg.querySelector(`[data-r="${kept}"]`); if (b) seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; show(kept); });
+  if (kept !== "1d") requestAnimationFrame(() => { if (!seg.isConnected) return; const b = seg.querySelector(`[data-r="${kept}"]`); if (b) seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; show(kept); });
   // (the range drawn: where another can't be, it stays, pressed again, and today's goes on being kept fresh: refresh)
   let seq = 0, drawn = "1d";
   const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };

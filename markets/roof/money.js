@@ -185,7 +185,7 @@ function vsView() {
   const big = h("div.sprice.num", { style: "margin-top:14px", text: "–" });
   const seg = h("div.seg.thirds", { role: "group", "aria-label": "Against" }, h("span.sl"), BENCHES.map(([sym, name], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-b": sym, text: name === "the world" ? "World" : name })));
   const legend = h("div.vslegend", {}, h("span.you", {}, h("i"), "You"), h("span.mk", {}, h("i"), h("b", { "data-el": "vsname", text: BENCHES[0][1] })));
-  requestAnimationFrame(() => vsDraw(box, seg, big, say));
+  requestAnimationFrame(() => { if (box.isConnected) vsDraw(box, seg, big, say); });
   return [h("div.shead", {}, h("small", { text: "Against the market · this year" }), closeBtn()), big,
     h("div.sdelta", {}, h("span", { style: "color:var(--text-3)", text: "your year, on what you own now" })), box, legend, seg, say,
     h("p.hint", { text: "As if you'd held what you own now all year, at today's exchange rates, with the dividends it paid. Each market is followed through a fund that tracks it (iShares' FTSE 100, Vanguard's All-World, SPDR's S&P 500), with its dividends too." })];

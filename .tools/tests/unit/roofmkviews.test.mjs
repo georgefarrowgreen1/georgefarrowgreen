@@ -172,7 +172,7 @@ function frameFw(userId = "u-a-0001") {
 }
 const all = (root, sel) => root.querySelectorAll(sel);
 
-test("the module mounts: three sections, the header (percent, never pounds), the hooks, Add a Stock focused in its tap, every sheet drawn", { skip: roofSkip }, async () => {
+test("the module mounts: three sections, the header (percent, never pounds), the hooks, Add a Stock focused in its tap, every sheet drawn", { skip: roofSkip }, async (t) => {
   localStorage.clear();
   NET.acc = account(); NET.status = 0;
   const { mount, SECTIONS, CONTRACT } = await import(new URL("roof/markets.js", MK));
@@ -180,6 +180,9 @@ test("the module mounts: three sections, the header (percent, never pounds), the
   const fw = frameFw(), main = fw.screenEl, root = doc.createElement("div");
   root.className = "m-markets"; main.append(root); doc.body.append(main);
   const m = await mount(root, fw);
+  // (a failed check still lets the module go, so its timers don't keep the run alive)
+  let gone = false;
+  t.after(() => { if (!gone) try { m.hide(); m.unmount(); } catch {} });
   await m.show({ kind: "app", app: "markets", section: "today", key: "today", arg: null, query: "" });
   await settle();
   assert.deepEqual(all(root, "section.mk-sec").map((s) => s.dataset.sec), SECTIONS.map((s) => s[0]));
@@ -254,6 +257,8 @@ test("the module mounts: three sections, the header (percent, never pounds), the
   const hold = root.querySelector('section.mk-sec[data-sec="holdings"]');
   assert.ok(hold.querySelector("[data-k=about]"), "MK_ABOUT");
   assert.ok(hold.querySelector("[data-k=account]"), "MK_ACCOUNT_ROW");
+  // (every element the hook finds is an account's row: the mix's Accounts toggle is data-mix, never data-k)
+  for (const r of hold.querySelectorAll("[data-k=account]")) assert.ok(r.dataset.acct, `MK_ACCOUNT_ROW finds only accounts' rows: ${r.textContent}`);
   hold.querySelector("[data-k=edit]").click();
   const down = hold.querySelector('[data-k="move-down"][data-sym="TSCO.L"]');
   assert.ok(down, "mkMove");
@@ -279,6 +284,7 @@ test("the module mounts: three sections, the header (percent, never pounds), the
   // unmount: everything let go
   m.hide();
   m.unmount();
+  gone = true;
   assert.equal(all(root, "section").length, 0);
   assert.equal(fw.provided.length, 0, "provider let go");
   assert.equal(core.S.me, null);

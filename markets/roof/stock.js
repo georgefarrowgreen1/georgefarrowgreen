@@ -49,7 +49,8 @@ function stockView(sym, o = {}) {
       tool("", "send", "Send in Chat", () => sendInChat(sym), { "data-act": "send", "aria-label": `Send ${name}’s day to a friend` }),
       tool("", "pen", held.qty > 0 ? "Edit Holding" : "Add What You Own", () => pushSheet("holding", sym))));
   else parts.push(h("div.sbar.two", {}, h("button.btn.go.press", { type: "button", onclick: () => pushSheet("holding", sym, { name }) }, "Add to Your List"), tool("", "send", "Send in Chat", () => sendInChat(sym, name), { "data-act": "send", "aria-label": `Send ${name}’s day to a friend` })));
-  requestAnimationFrame(() => { stockChart(sym, box, seg); whyMoving(sym, why); if (held) drawBuys(sym); });
+  // (next frame: not if the sheet's gone by then, closed or Markets let go)
+  requestAnimationFrame(() => { if (!box.isConnected || !S.q[sym]) return; stockChart(sym, box, seg); whyMoving(sym, why); if (held) drawBuys(sym); });
   return parts;
 }
 stockView.failed = new Set();

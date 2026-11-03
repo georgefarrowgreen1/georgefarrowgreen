@@ -121,11 +121,11 @@ function mixPart(T) {
   if (!ways.some(([k]) => k === S.mix)) S.mix = "holding";
   const ring = mixRing(T, S.mix);
   if (ways.length < 2) return [ring];
-  // (a segmented control, its thumb sliding to the one chosen)
+  // (a segmented control, its thumb sliding to the one chosen; data-mix, not data-k: data-k=account is an account's row)
   const at = ways.findIndex(([k]) => k === S.mix);
   const seg = h("div.seg.ways", { role: "group", "aria-label": "Your mix, by", vars: { n: String(ways.length) } }, h("span.sl", { style: `transform:translateX(${at * 100}%)` }),
-    ways.map(([k, label], i) => h("button", { type: "button", "data-k": k, "aria-pressed": String(k === S.mix), text: label,
-      onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); el("ring")?.replaceWith(mixRing(totals(), k)); } })));
+    ways.map(([k, label], i) => h("button", { type: "button", "data-mix": k, "aria-pressed": String(k === S.mix), text: label,
+      onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mix === k))); el("ring")?.replaceWith(mixRing(totals(), k)); } })));
   return [h("div.mixrow", {}, seg), ring];
 }
 // How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
