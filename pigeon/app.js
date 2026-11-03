@@ -7250,7 +7250,11 @@ let sheetBack = false;
 function renderSheet(refresh) {
   // (the engine's send sheet gone some other way than its own Send or Cancel, a swipe or Escape: the page told it's
   // shut, so the frame never stays over it)
-  if (ENGINE && engineOpen && S.sheet !== engineOpen) { const en = engineOpen.engine; engineOpen = null; if (en && !en.finished) { en.done?.({ ok: false, why: "closed" }); hubParent()?.closed?.(); } }
+  if (ENGINE && engineOpen && S.sheet !== engineOpen) {
+    const en = engineOpen.engine; engineOpen = null;
+    // (one card's sheet in place of another's: that one's over, but the frame stays shown for this one)
+    if (en && !en.finished) { en.done?.({ ok: false, why: "closed" }); if (!(S.sheet?.type === "send" && S.sheet.engine)) hubParent()?.closed?.(); }
+  }
   if (ENGINE && S.sheet?.type === "send" && S.sheet.engine) engineOpen = S.sheet;
   if (S.scan && S.sheet?.type !== "scan") stopScan();
   if (S.sheet && !shownSheet && !sheetFrom) sheetFrom = lastTap;
@@ -12324,7 +12328,7 @@ async function start() {
     const had = Object.keys(S.pins).length;
     if (had) { await restorePins(); if (!S.pinsUnread && !(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins(); }      // trusted before backups: save them now
     // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
-    if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else resumeCheck(); } else {
+    if (!S.token) { movedNote(); if (signedBack) signInBack(signedBack); else if (startIn) toAccountSignIn(null, "signin", { then: thenTo }); else resumeCheck(); } else {
     // (a code for a sign-in, signed in already: one from elsewhere, used up and no more)
     if (signedBack) {
       try { localStorage.removeItem(SIGNIN_KEY); } catch (_) {}

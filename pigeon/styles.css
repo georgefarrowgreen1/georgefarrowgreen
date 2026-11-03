@@ -3041,6 +3041,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 /* ---------- InFlite's hub (Today First: app.js HUB, ENGINE) ---------- */
 /* Chat at the hub: the hub's tab bar for its own (menu.css .ifl-tabs), put away where Chat's would be */
 .hubtabs.ifl-tabs[hidden]{display:none}
+/* (under Chat's sheets and menus, as Chat's own bar is: menu.css puts the hub's over its pages' own) */
+.hubtabs.ifl-tabs{z-index:6}
 /* Friends, a button of Chats' own at the hub, with how many are asking */
 .hubpeople{position:relative}
 .hubpeople .pbadge{position:absolute;top:1px;right:1px;min-width:17px;height:17px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:#ff3b30;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center;pointer-events:none}
