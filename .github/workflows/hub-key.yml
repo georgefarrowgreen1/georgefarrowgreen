@@ -6,9 +6,11 @@ name: Give InFlite's hub its key
 # (georgefarrowgreen, production) and the Worker's (inflite; and the staging hub's, inflite-next at next.inflite.ai).
 # Until they're set, and match, every hub path answers 503 and Today links to each app's own address, as before.
 #
-# Run by hand (Actions → Give InFlite's hub its key → Run workflow) in spec §15.4's order: once this repo's Today First
-# build is live, with "next.inflite.ai" for the staging checks (§15.2), before the inflite repo's build is live at
-# inflite.ai; then with "inflite.ai" (or "both") once it is. It makes a new key, sets it on the Pages project first and
+# Run by hand (Actions → Give InFlite's hub its key → Run workflow) in addendum A3's order: once both repos' Today First
+# builds are live with the hub off (Today linking to each app's own address), and "Put InFlite's staging hub up"
+# (hub-stage.yml) has put the staging hub at next.inflite.ai and come back green, with "next.inflite.ai" for George's
+# phone checks (§15.2); then, once he says they pass, with "both", so inflite.ai and the staging hub share one key
+# ("inflite.ai" alone would leave the staging hub off). It makes a new key, sets it on the Pages project first and
 # then, only if that worked, on each Worker chosen (one that isn't there is never made: nothing changes); builds the
 # Pages project's live production deployment again (a Pages secret reaches only deployments made after it's set); waits
 # for each hub's /api/hub to say {"ready": true}; and checks Chat's hub copy is still not found to anyone without the
@@ -24,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       hub:
-        description: "Which hub gets the key: inflite.ai (the live one), next.inflite.ai (the staging hub, before the inflite repo's Today First build is live at inflite.ai), or both"
+        description: "Which hub gets the key: next.inflite.ai (the staging hub, for George's phone checks, once hub-stage.yml is green), both (inflite.ai and the staging hub, once his checks pass), or inflite.ai alone"
         type: choice
         options:
           - inflite.ai
@@ -35,8 +37,9 @@ on:
 permissions:
   contents: read
 
-# (one change to the hub's key at a time: this and hub-off.yml share it. This one waits its turn; the off switch takes
-# over from it)
+# (one change to the hub at a time: this, hub-off.yml and hub-stage.yml share it. This one waits its turn; the off switch
+# takes over from it. GitHub keeps one waiting run per group: dispatch one at a time, as a second waiting one replaces
+# the first)
 concurrency:
   group: inflite-hub-key
   cancel-in-progress: false
