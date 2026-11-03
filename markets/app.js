@@ -913,8 +913,48 @@ function sparkCard(sym) {
 // ---- the screens ----
 function head(title) {
   const line = lineIn(h("span.eyebrow", { style: "font-size:15px" }), lineSaid());
-  return IFL.header({ title, me: meFace(), onMe: youMenu, cls: "mhead", lineNode: line,
-    acts: [{ icon: "search", label: "Find and add", onclick: () => openSheet(searchView) }] });
+  const hd = IFL.header({ title, me: meFace(), onMe: youMenu, cls: "mhead", lineNode: line,
+    acts: [{ icon: "search", label: "Find and add", onclick: () => openSheet(searchView) }, IFL.hub.on && { icon: "sliders", label: "Settings", onclick: () => openSheet(settingsView) }] });
+  // (at InFlite's hub the menu button is Back, and Markets' own few settings sit beside Find and Add: your account,
+  // notifications and signing out are InFlite's there, in You)
+  if (IFL.hub.on) hd.querySelector(".ifh-me")?.replaceWith(hubBack());
+  return hd;
+}
+// ---- at InFlite's hub: Markets a page of inflite.ai (/markets/), in one window with Today, Chats and every app ----
+// Known by the marker the hub's server puts on the page (IFL.hub.on), never by the address. There: Back where you came
+// from (IFL.hub.back: the page you left, else Apps); signing in through Chats (markets/account.js); a stock sent through
+// Chats' sheet over this page (IFL.hub.send); your account, notifications and signing out in You (/#you); and the
+// notifications' subscription InFlite's own, which Markets never asks for, keeps with the account or lets go, and the
+// icon's badge InFlite's too (Chat's count among it), which Markets never clears. Off the hub, all as it ever was.
+const hubBack = () => h("button.ifl-back.press", { type: "button", onclick: () => IFL.hub.back() }, icon("back", 20, 2.4), h("span", { text: "Back" }));
+const toYou = () => { const to = IFL.hub.href("today", "you"); if (to) location.assign(to); };
+
+// ---- sections, by the address: #today, #holdings, #news (the tabs) and #s=TSCO.L (a stock's page) ----
+// Read as Markets opens, whenever the hash changes (an open page told again: a link, or a notification tapped while
+// it's open at the hub) and from Markets' own worker's markets:open (a notification tapped while it's open off the
+// hub). Then taken out of the address, as a stock's always was; at the hub the address says the tab you're on instead
+// (#holdings, kept as you change tabs), so the way back to this page (Back, Chats' back=) comes back to it.
+const SECTIONS = ["today", "holdings", "news"];
+const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
+// → { sym } or { tab }, or null for a hash that asks for neither
+function sectionOf(hash) {
+  const s = String(hash || "").replace(/^#/, ""), m = /(?:^|&)s=([^&]*)/.exec(s);
+  if (m) { let sym = null; try { sym = decodeURIComponent(m[1]).toUpperCase(); } catch (_) {} return sym && SYMBOL.test(sym) ? { sym } : null; }
+  return SECTIONS.includes(s) ? { tab: s } : null;
+}
+// (the address, as it should be now: at the hub, the tab; off it, the page alone)
+function addressSays() {
+  try { history.replaceState(history.state, "", location.pathname + location.search + (IFL.hub.on ? `#${S.tab}` : "")); } catch (_) {}
+}
+function openTo(hash) {
+  const at = sectionOf(hash);
+  if (!at) return false;
+  if (at.tab && !S.me) S.tab = at.tab;
+  addressSays();
+  if (!S.me) return true;
+  if (at.tab) { if (Sheet.stack.length) closeSheet(); if (S.tab !== at.tab) go(at.tab); }
+  else openStock(at.sym);
+  return true;
 }
 const meFace = () => (S.me?.photoAt ? h("img", { src: A.photoUrl(S.me.photoAt), alt: "", width: 44, height: 44 }) : document.createTextNode((S.me?.name || "Y").trim().slice(0, 1).toUpperCase()));
 
@@ -1824,6 +1864,8 @@ function storyMenu(n) {
 }
 function shareStory(n) {
   const text = `${n.title} (${n.src})\n${n.link}`, chat = A.chatPage();
+  // (at InFlite's hub: Chats' own sheet, over this page)
+  if (IFL.hub.on) { IFL.hub.send(text, null); return; }
   if (chat) { location.assign(`${chat}#${new URLSearchParams({ share: text })}`); return; }
   if (navigator.share) { navigator.share({ title: n.title, url: n.link }).catch(() => {}); return; }
   copyStory(n);
@@ -1876,7 +1918,7 @@ function go(tab) {
   // (News left: what was there, seen; News opened: what's new marked from when you last looked)
   if (S.tab === "news") store.set("newsSeen", Date.now());
   if (tab === "news") S.newsSince = newsSeen();
-  S.tab = tab; render(); scrollTo(0, 0); newsBadge();
+  S.tab = tab; addressSays(); render(); scrollTo(0, 0); newsBadge();
   requestAnimationFrame(() => fitScreen.fit?.());
   if (tab === "holdings") loadPaid();
 }
@@ -1988,13 +2030,14 @@ function yoursPart(sym, held, q) {
 // where it hasn't, and where they can't be turned on here, why said with it (not lost under "You'll hear…")
 async function alertSet(sym, p) {
   let why = null;
-  if (p && !S.pushOn) await turnOnHere((m) => { why = m; });
+  // (at InFlite's hub, never asked here: whether they come to this phone is InFlite's to say, in You)
+  if (p && !S.pushOn && !IFL.hub.on) await turnOnHere((m) => { why = m; });
   const r = await A.setAlert(sym, !!p, p || 3), name = S.list.find((x) => x.symbol === sym)?.name || nameOf(sym);
   S.list = r.holdings;
   if (!p) return toast("Alert off");
   if (S.alertsOff) return toast(`You'll hear when ${name} moves ${p}% in a day (alerts are off in your account)`);
   if (why) return toast(`Alert set. ${why}`, true);
-  toast(`You'll hear when ${name} moves ${p}% in a day${!S.pushOn ? " (notifications are off on this phone)" : ""}`);
+  toast(`You'll hear when ${name} moves ${p}% in a day${!S.pushOn && !IFL.hub.on ? " (notifications are off on this phone)" : ""}`);
 }
 // Alert Me: how much a move in a day is worth hearing about (or off)
 function alertView(sym) {
@@ -2386,6 +2429,9 @@ async function removeHolding(sym) {
 // ---- alerts: on this phone, and for each holding you choose ----
 const pushable = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 async function checkPush() {
+  // (at InFlite's hub the subscription is InFlite's own, made and kept by Today's You for every app: never kept with
+  // Markets here, where it would bring Markets' alerts to it without being asked)
+  if (IFL.hub.on) { S.pushOn = false; return; }
   try {
     const reg = await navigator.serviceWorker?.getRegistration(), sub = reg && Notification.permission === "granted" ? await reg.pushManager.getSubscription() : null;
     S.pushOn = !!sub;
@@ -2397,6 +2443,7 @@ const b64key = (k) => { const raw = atob(k.replace(/-/g, "+").replace(/_/g, "/")
 // turned on here (from a tap: a phone asks only then) → whether it's on; where it can't be, why's said (say: how,
 // a toast unless the caller says it along with its own word)
 async function turnOnHere(say = (m) => toast(m, true)) {
+  if (IFL.hub.on) return false;
   if (!pushable()) {
     // (an iPad's Safari says it's a Mac: told by its touch)
     const ios = (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)) && !(matchMedia("(display-mode: standalone)").matches || navigator.standalone);
@@ -2413,29 +2460,55 @@ async function turnOnHere(say = (m) => toast(m, true)) {
     return true;
   } catch (e) { say(e.message || "Couldn’t turn on alerts here just now."); return false; }
 }
+// Off the hub, on an old Home Screen icon: Markets' notifications turned off here, as InFlite's take over (IFL.hub.moved's
+// Turn Off Notifications Here): taken off the account (DELETE push), and the subscription let go, so opening the old
+// icon again doesn't keep it again (checkPush). → a promise, rejected where the account couldn't be told
+async function turnOffHere() {
+  const reg = await navigator.serviceWorker?.getRegistration(), sub = await reg?.pushManager.getSubscription();
+  if (sub) { await A.pushOff(sub.endpoint); await sub.unsubscribe().catch(() => {}); }
+  S.pushOn = false;
+}
 // ---- sending one to a friend, in Chat ----
 // (the words as ever, and beside them the day's move as a card Chat draws and keeps up to date: in percent only, never
 // a price or anything you hold: send.js. Chat's address ends in "/", and the hash starts with "#")
+// At InFlite's hub, Chats' own sheet over this page, through the hub (IFL.hub.send): the words in percent too, never the
+// price, beside the same card.
 function sendInChat(sym, name = nameOf(sym)) {
-  const q = S.q[sym], text = `${name} (${plainSym(sym)}) is ${q?.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q?.chgPct || 0), 1)}% today, at ${priceSaid(q)}.`;
+  const q = S.q[sym];
+  if (IFL.hub.on) {
+    const move = typeof q?.chgPct === "number" && Number.isFinite(q.chgPct) ? ` is ${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}% today` : "";
+    IFL.hub.send(`${name} (${plainSym(sym)})${move}.`, packCard(stockSendCard(sym, name, q, Date.now())));
+    return;
+  }
+  const text = `${name} (${plainSym(sym)}) is ${q?.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q?.chgPct || 0), 1)}% today, at ${priceSaid(q)}.`;
   const chat = A.chatPage();
   if (chat) { location.assign(chat + chatHash(text, stockSendCard(sym, name, q, Date.now()))); return; }
   if (navigator.share) { navigator.share({ text }).catch(() => {}); return; }
   navigator.clipboard?.writeText(text).then(() => toast("Copied, to paste in Chat"), () => toast(text));
 }
+// (a card packed as Chat reads one from an address: send.js's own packing, taken from the address it makes; none where
+// there's no card, or it's too long for one)
+function packCard(card) {
+  return (card && new URLSearchParams(chatHash("", card).slice(1)).get("card")) || null;
+}
 
 // ---- you, your apps, and Markets's own few: InFlite's menu, from your photo ----
+// (at InFlite's hub, where it's the desk's alone (the phone's header has Back in its place): Back first, your account and
+// notifications in You, and no Sign Out (signing out of InFlite is You's))
 function youMenu(at) {
+  const hub = IFL.hub.on;
   IFL.menu(at, {
     app: "markets", build: BUILD,
     me: { name: S.me?.name || "You", line: S.me?.handle ? `@${S.me.handle}` : "", photo: meFace() },
     rows: [
-      { key: "notify", icon: "bell", color: "red", label: "Notifications", value: S.pushOn ? "On" : "Off here", warn: !S.pushOn, open: () => openAccount("notify-markets") },
+      hub && { key: "back", icon: "back", color: "blue", label: "Back", open: () => IFL.hub.back() },
+      hub && "-",
+      { key: "notify", icon: "bell", color: "red", label: "Notifications", value: hub ? "In You" : S.pushOn ? "On" : "Off here", warn: !hub && !S.pushOn, open: () => openAccount("notify-markets") },
       { icon: "plus", color: "green", label: "Find and Add", open: () => openSheet(searchView) },
       "-",
       { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
     ],
-    account: openAccount, signOut: () => signOutHere(),
+    account: openAccount, signOut: hub ? null : () => signOutHere(),
   });
 }
 function settingsView() {
@@ -2444,11 +2517,11 @@ function settingsView() {
     h("button.acct.glass.press", { type: "button", onclick: () => openAccount(), "aria-label": "Your account" },
       h("span.me", {}, meFace()), h("span", {}, h("b", { text: S.me?.name || "You" }), h("small", { text: S.me?.handle ? `@${S.me.handle}` : "" })), h("span.chev", {}, icon("chev", 17, 2.4))),
     h("div.rows", {},
-      h("button.srow", { type: "button", onclick: () => openAccount("notify-markets") }, h("span", { text: "Notifications" }), h("i", { text: S.pushOn ? "On here" : "Off here" })),
+      h("button.srow", { type: "button", onclick: () => openAccount("notify-markets") }, h("span", { text: "Notifications" }), h("i", { text: IFL.hub.on ? "In You" : S.pushOn ? "On here" : "Off here" })),
       h("div.srow", {}, h("span", {}, "Evening Wrap", h("small", { text: "How your day went, once your markets close" })), wrapSwitch()),
       h("div.srow", {}, h("span", { text: "Values in" }), h("i", { text: "Pounds" })),
       h("div.srow", {}, h("span", { text: "Prices" }), h("i", { text: "Yahoo Finance, up to 20 min behind" })),
-      h("button.srow.danger", { type: "button", onclick: signOutHere }, "Sign Out")),
+      !IFL.hub.on && h("button.srow.danger", { type: "button", onclick: signOutHere }, "Sign Out")),
     h("p.hint", { style: "text-align:center", text: "Markets shows prices and news to help you follow your money. It isn't financial advice." })];
 }
 // the evening wrap, on or off (on it asks this phone to allow notifications, where it hasn't: straight from the tap, as
@@ -2460,15 +2533,17 @@ function wrapSwitch() {
     sw.setAttribute("aria-checked", String(on)); sw.disabled = true;
     try {
       let why = null;
-      if (on && !S.pushOn) await turnOnHere((m) => { why = m; });
+      if (on && !S.pushOn && !IFL.hub.on) await turnOnHere((m) => { why = m; });
       S.wrap = (await A.setWrap(on)).wrap;
-      toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : S.pushOn ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
+      toast(!on ? "Evening wrap off" : why ? `Evening wrap on. ${why}` : S.pushOn || IFL.hub.on ? "You'll get the evening wrap once your markets close" : "Evening wrap on, but notifications are off on this phone", !!why);
     } catch (e) { sw.setAttribute("aria-checked", String(!on)); toast(e.message, true); } finally { sw.disabled = false; }
   };
   return sw;
 }
 // (asks=1: its Notifications folder, with them off here, whose Turn On comes back to #notify, which asks)
+// (at InFlite's hub: You, where your account and every app's notifications are)
 async function openAccount(open) {
+  if (IFL.hub.on) return toYou();
   const page = A.accountPage();
   if (!page) return toast("Your account is at account.inflite.ai");
   const asks = open === "notify-markets" && !S.pushOn ? { asks: "1" } : {};
@@ -2483,27 +2558,29 @@ function welcome(note = null, again = null) {
   S.me = null;
   document.body.classList.add("out");
   document.body.classList.remove("desk-on");
-  const page = A.accountPage(), W = 1200, Hh = 520;
+  const page = A.accountPage(), hub = IFL.hub.on, W = 1200, Hh = 520;
   const walk = (seed, drift, n = 60) => { let s = seed, v = 0; const out = []; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; v += (s / 233280 - 0.5) * 3 + drift; out.push(v); } return out; };
   const line = (vals, top, span) => C.smooth(C.place(vals, W, span, { pad: 0 }).pts.map(([x, y]) => [x, y + top]));
   const scene = C.el("svg", { class: "scene", viewBox: `0 0 ${W} ${Hh}`, preserveAspectRatio: "xMidYMax slice", "aria-hidden": "true" });
   const l1 = walk(7, 0.55), end = C.place(l1, W, 260, { pad: 0 }).pts.at(-1);
   scene.append(C.el("path", { class: "l3", pathLength: 1, d: line(walk(91, 0.2), 230, 220) }), C.el("path", { class: "l2", pathLength: 1, d: line(walk(33, 0.35), 180, 240) }),
     C.el("path", { class: "l1", pathLength: 1, d: line(l1, 140, 260) }), C.el("circle", { class: "glow", cx: end[0], cy: end[1] + 140, r: 7 }));
-  main.replaceChildren(h("div.welcome.ifl-in", {}, scene,
+  main.replaceChildren(h("div.welcome.ifl-in", {}, scene, hub && hubBack(),
     h("div.ifl-top", {}, h("div.ifl-logo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
       h("h1.ifl-title", { "aria-label": "Markets" }, [..."Markets"].map((c, i) => h("span", { "aria-hidden": "true", vars: { i: String(i) }, text: c }))),
       h("p.ifl-tagline", { text: "Your money, said simply" })),
     h("div.ifl-cta", {}, note && h("p.said", { role: "status", text: note }),
-      page && h("p.ifl-brand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
+      (page || hub) && h("p.ifl-brand", {}, h("img", { src: "inflite.svg", alt: "", width: 22, height: 22 }), "Powered by InFlite"),
       again ? h("button.btn.go.ifl-go.press", { type: "button", id: "try-again", onclick: again }, "Try Again")
-        : h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
-      !page && !again && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
+        : h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page && !hub, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
+      !page && !hub && !again && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
       page && !again && h("p.ifl-new", {}, "New here? ", h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
   main.removeAttribute("aria-busy");
   document.title = "Markets";
 }
 async function toAccountSignIn(e, mode = "signin") {
+  // (at InFlite's hub: through Chats, and back to this page: markets/account.js)
+  if (A.hubSignIn()) return;
   const page = A.authPage() || A.accountPage(), b = mode === "signin" ? e?.currentTarget : null;
   if (!page) return;
   if (b) { b.disabled = true; b.textContent = "Signing in…"; }
@@ -2524,6 +2601,8 @@ async function signedBack(code) {
 }
 async function signOutHere() {
   closeSheet();
+  // (at InFlite's hub, signing out is InFlite's, in You: never this phone's subscription let go from here)
+  if (IFL.hub.on) return toYou();
   try { const reg = await navigator.serviceWorker?.getRegistration(), sub = await reg?.pushManager.getSubscription(); if (sub) await A.pushOff(sub.endpoint).catch(() => {}); } catch (_) {}
   try { await A.signOut(); } catch (_) {}
   signedOut();
@@ -2632,7 +2711,10 @@ function paint(sym, up) {
 }
 
 // opened: Markets's notifications are seen, and the icon's badge goes
+// (at InFlite's hub the icon is InFlite's, its badge and notifications every app's, Chat's count among them: left to
+// InFlite's own worker, which sets the badge from what's showing)
 async function seen() {
+  if (IFL.hub.on) return;
   try { navigator.clearAppBadge?.().catch(() => {}); const reg = await navigator.serviceWorker?.getRegistration(); (await reg?.getNotifications?.())?.forEach((n) => n.close()); } catch (_) {}
 }
 
@@ -2645,6 +2727,7 @@ function toast(msg, bad = false) {
 // ---- starting ----
 let pointed = 0;
 async function start() {
+  A.atHub(IFL.hub);
   drawTabs();
   IFL.built("markets", BUILD, NEWS);
   IFL.watch(window);
@@ -2658,18 +2741,23 @@ async function start() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
     navigator.serviceWorker.addEventListener("message", (e) => {
-      if (e.data?.type === "markets:open") { const s = /#s=([^&]+)/.exec(e.data.url || "")?.[1]; if (s && S.me) openStock(decodeURIComponent(s)); }
+      if (e.data?.type === "markets:open") { let hash = ""; try { hash = new URL(e.data.url || "", location.href).hash; } catch (_) {} if (S.me) openTo(hash); }
     });
   }
+  addEventListener("hashchange", () => openTo(location.hash));
   // (a sign-in started here and never finished: its word not kept past half an hour)
   if (Date.now() - (store.get("signin")?.at || Date.now()) > 30 * 60e3) store.del("signin");
-  const askNotify = IFL.wantsAllow();
-  const deep = /(?:^#|&)s=([^&]+)/.exec(location.hash)?.[1];
+  // (at InFlite's hub, notifications are allowed in You, never here)
+  const askNotify = !IFL.hub.on && IFL.wantsAllow();
   const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
-  if (code || deep) history.replaceState(null, "", location.pathname);
-  // (just updated: the tab you were on, how far down, and on the desk what was on it)
+  const asked = code ? null : sectionOf(location.hash);
+  if (code) history.replaceState(null, "", location.pathname);
+  // (just updated: the tab you were on, how far down, and on the desk what was on it; a tab asked for by the address
+  // before it)
   const was = IFL.here("markets");
-  if (was?.tab && ["today", "holdings", "news"].includes(was.tab)) S.tab = was.tab;
+  if (was?.tab && SECTIONS.includes(was.tab)) S.tab = was.tab;
+  if (asked?.tab) S.tab = asked.tab;
+  if (asked) addressSays();
   deskWas = was?.desk || null;
   let m = null, why = null;
   if (code) { ({ m = null, why = null } = await signedBack(code)); document.documentElement.classList.remove("arriving"); }
@@ -2706,7 +2794,10 @@ async function start() {
   checkPush();
   loadYears();
   loadPaid();
-  if (deep) openStock(decodeURIComponent(deep));
+  if (asked?.sym) openStock(asked.sym);
+  // (off the hub, opened from an old Home Screen icon: once, that InFlite is one app now, with a way to turn
+  // Markets' notifications off here)
+  else if (!IFL.hub.on && !askNotify && !code) IFL.hub.moved("markets", { off: turnOffHere });
   if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
   live();
 }
