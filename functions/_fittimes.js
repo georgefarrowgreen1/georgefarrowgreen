@@ -7,11 +7,18 @@
 //   timeFor(env, userId, day) → { day, start, stop, tz, sport, source } or null
 //   timesOf(env, userId, fromDay, toDay) → [{ day, start, stop, tz, sport, source }], each day from fromDay to toDay
 //     (both kept), in order
-//   setTime(env, userId, { day, start, stop, tz, sport = "ride", source }, { t } = {}) → the row as kept (one a day: a
-//     second for the same day replaces it). Checked: day a real "YYYY-MM-DD", the day start falls on in tz (a zone the
-//     clocks know); source set, today or moved; sport a word; start on the five minutes; 15 minutes to 6 hours long.
-//     Each write first drops the account's rows that ended over 8 days ago.
-//   dropTime(env, userId, day) → nothing
+//   setTime(env, userId, { day, start, stop, tz, sport = "ride", source }, { t, expect } = {}) → the row as kept (one a
+//     day: a second for the same day replaces it). Checked: day a real "YYYY-MM-DD", the day start falls on in tz (a
+//     zone the clocks know); source set, today or moved; sport a word; start on the five minutes; 15 minutes to 6 hours
+//     long. Each write first drops the account's rows that ended over 8 days ago. { t } is needed (the route's time).
+//     With expect ({ start, stop, source }: Undo putting a moved ride back), only the day's row that's still just that
+//     is changed, and none is made: → the row, or null where it's been changed since (or isn't there)
+//   setTimeQ(env, userId, row, { t, expect }) → the same write as one statement, for the caller's own D.batch (Undo puts
+//     the ride back and its act's row in one); the old rows' tidy-up is setTime's alone
+//   dropTime(env, userId, day, { expect } = {}) → whether a row went; with expect ({ start, stop, source }: Undo of Ride
+//     Then), only while the day's row is still just that
+//   dropTimeQ(env, userId, day, { expect }) → the same as one statement, for the caller's own D.batch
+//   timesReady(env) → the database, fx_times made in it (for a caller reading it with its own SQL)
 //   EXPLICIT_OFFER: the SQL condition for an explicit offer, written against the alias o
 //   explicitRide(row) → whether an fx_times row (the one with source) or an fx_offers row is an explicit ride
 // (Made by B0, then batch F's, which adds timesExport and dropTimes; the names and arguments stay.)
@@ -58,22 +65,50 @@ export async function timesOf(env, userId, fromDay, toDay) {
   const { results } = await D.prepare(`SELECT ${COLS} FROM fx_times WHERE user_id = ? AND day >= ? AND day <= ? ORDER BY day LIMIT 400`).bind(userId, fromDay, toDay).all();
   return (results || []).map(rowOf);
 }
-export async function setTime(env, userId, row, { t = Date.now() } = {}) {
+// (Undo's check: { start, stop, source }, all three, or none)
+function expectOf(expect) {
+  if (expect == null) return null;
+  const ex = { start: expect.start, stop: expect.stop, source: expect.source };
+  if (!Number.isSafeInteger(ex.start) || !Number.isSafeInteger(ex.stop) || !TIME_SOURCES.includes(ex.source)) throw new HttpError(400, "Bad request.");
+  return ex;
+}
+// (the time, passed in by the route: never the clock read down here)
+const need = (t, what) => { if (!Number.isFinite(t)) throw new TypeError(`${what}: pass { t }, the route's time`); return t; };
+function timeRow(row) {
   const r = row && typeof row === "object" ? row : {}, sport = r.sport ?? "ride";
   const { day, start, stop, tz, source } = r;
   if (!dayOk(day) || !zoneOk(tz) || !TIME_SOURCES.includes(source) || typeof sport !== "string" || !SPORT.test(sport)
     || !Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || start % (5 * MIN) || stop - start < SHORTEST || stop - start > LONGEST
     || dayIn(tz, start) !== day) throw new HttpError(400, "Choose a time.");
-  const D = await timesDb(env);
-  await D.batch([
-    D.prepare("DELETE FROM fx_times WHERE user_id = ? AND stop < ?").bind(userId, t - KEEP),
-    D.prepare(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-      ON CONFLICT(user_id, day) DO UPDATE SET start = ?3, stop = ?4, tz = ?5, sport = ?6, source = ?7, made = ?8`).bind(userId, day, start, stop, tz, sport, source, t),
-  ]);
   return { day, start, stop, tz, sport, source };
 }
-export async function dropTime(env, userId, day) {
-  if (!dayOk(day)) return;
-  const D = await timesDb(env);
-  await D.prepare("DELETE FROM fx_times WHERE user_id = ? AND day = ?").bind(userId, day).run();
+const writeQ = (D, userId, x, t, ex) => (ex
+  ? D.prepare("UPDATE fx_times SET start = ?3, stop = ?4, tz = ?5, sport = ?6, source = ?7, made = ?8 WHERE user_id = ?1 AND day = ?2 AND start = ?9 AND stop = ?10 AND source = ?11")
+    .bind(userId, x.day, x.start, x.stop, x.tz, x.sport, x.source, t, ex.start, ex.stop, ex.source)
+  : D.prepare(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ON CONFLICT(user_id, day) DO UPDATE SET start = ?3, stop = ?4, tz = ?5, sport = ?6, source = ?7, made = ?8`).bind(userId, x.day, x.start, x.stop, x.tz, x.sport, x.source, t));
+export async function setTime(env, userId, row, { t, expect } = {}) {
+  need(t, "setTime");
+  const x = timeRow(row), ex = expectOf(expect), D = await timesDb(env);
+  const [, w] = await D.batch([D.prepare("DELETE FROM fx_times WHERE user_id = ? AND stop < ?").bind(userId, t - KEEP), writeQ(D, userId, x, t, ex)]);
+  return ex && !w?.meta?.changes ? null : x;
 }
+export async function setTimeQ(env, userId, row, { t, expect } = {}) {
+  need(t, "setTime");
+  const x = timeRow(row), ex = expectOf(expect), D = await timesDb(env);
+  return writeQ(D, userId, x, t, ex);
+}
+const dropQ = (D, userId, day, ex) => D.prepare(`DELETE FROM fx_times WHERE user_id = ? AND day = ?${ex ? " AND start = ? AND stop = ? AND source = ?" : ""}`)
+  .bind(userId, day, ...(ex ? [ex.start, ex.stop, ex.source] : []));
+export async function dropTime(env, userId, day, { expect } = {}) {
+  const ex = expectOf(expect);
+  if (!dayOk(day)) return false;
+  const D = await timesDb(env);
+  return !!(await dropQ(D, userId, day, ex).run()).meta?.changes;
+}
+export async function dropTimeQ(env, userId, day, { expect } = {}) {
+  const ex = expectOf(expect);
+  if (!dayOk(day)) throw new HttpError(400, "Bad request.");
+  return dropQ(await timesDb(env), userId, day, ex);
+}
+export const timesReady = (env) => timesDb(env);

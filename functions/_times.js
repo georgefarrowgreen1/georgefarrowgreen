@@ -2,10 +2,11 @@
 // person's own td_times row, never any words. The inviter's phone writes a 'pending' row as it sends the invite (with
 // the other times it offered, opts); the friend's Yes, from their own phone, writes their own 'yes' row and turns the
 // inviter's 'yes' at the chosen time in the same batch. Only 'yes' rows are ever read by Today.
-//   timesFor(env, userId, from, to, { t } = {}) → [{ id, kind, start, stop, tz, withId, who, role }]: the 'yes' rows
-//     that overlap from to to (ms), not past their keep (until > t), soonest first
+//   timesFor(env, userId, from, to, { t }) → [{ id, kind, start, stop, tz, withId, who, role }]: the 'yes' rows that
+//     overlap from to to (ms), not past their keep (until > t), soonest first. { t } is needed: the route's time, never
+//     the clock read down here (a test's fixed day, or X-Today-At's), so one left out throws a TypeError at once
 //   timesAround(env, userId, t, ms) → the 'yes' rows that overlap t − ms to t + ms, not past their keep (Today's clash
-//     rule), soonest first
+//     rule), soonest first (t needed, as above)
 //   timesExport(env, userId) → [{ kind, start, stop, tz, who, role, state }]: every row of the account's, for its
 //     export (no ids: neither the letter's nor the friend's)
 //   dropTimes(env, userId) → nothing (the account's rows gone, with the account; the table needn't be made yet)
@@ -52,14 +53,17 @@ const COLS = "id, kind, start, stop, tz, with_id, who, role";
 const viewOf = (r) => ({ id: r.id, kind: r.kind, start: r.start, stop: r.stop, tz: r.tz, withId: r.with_id, who: r.who, role: r.role });
 const at = (v, or) => (Number.isFinite(v) ? Math.round(v) : or);
 
-export async function timesFor(env, userId, from, to, { t = Date.now() } = {}) {
+// (the time, passed in by the route)
+const need = (t, what) => { if (!Number.isFinite(t)) throw new TypeError(`${what}: pass { t }, the route's time`); return t; };
+export async function timesFor(env, userId, from, to, { t } = {}) {
+  need(t, "timesFor");
   const D = await timesDb(env);
   const { results } = await D.prepare(`SELECT ${COLS} FROM td_times WHERE user_id = ? AND state = 'yes' AND until > ? AND stop > ? AND start < ? ORDER BY start, id LIMIT 100`)
     .bind(userId, t, at(from, 0), at(to, Number.MAX_SAFE_INTEGER)).all();
   return (results || []).map(viewOf);
 }
 export async function timesAround(env, userId, t, ms) {
-  const now = at(t, Date.now()), w = Math.max(0, at(ms, 0));
+  const now = Math.round(need(t, "timesAround")), w = Math.max(0, at(ms, 0));
   return timesFor(env, userId, now - w, now + w, { t: now });
 }
 export async function timesExport(env, userId) {

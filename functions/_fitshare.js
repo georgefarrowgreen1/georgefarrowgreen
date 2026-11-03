@@ -220,8 +220,23 @@ function optsOf(o, t) {
 }
 // (the same ride with the same friend, new or agreed: by the friend's id where the row has one, else the name)
 const SAME = "start = ? AND stop = ? AND state IN ('new', 'yes') AND (with_id = ? OR who = ?)";
+// (the moment a write or a read for Today is at: passed in by its route, never the clock read down here; one left out
+// fails at once, rather than quietly being another moment: a test's fixed day, or X-Today-At's)
+const need = (t, what) => { if (!Number.isFinite(t)) throw new TypeError(`${what}: pass { t }, the route's time`); return t; };
+// (Undo's check, expect: { start, stop } (or [start, stop]), and state where it's given: the row only while it's just
+// that; null without one)
+function expectOf(expect) {
+  if (expect == null) return null;
+  const ex = Array.isArray(expect) ? { start: expect[0], stop: expect[1] } : { start: expect.start, stop: expect.stop ?? expect.end, state: expect.state };
+  if (!Number.isSafeInteger(ex.start) || !Number.isSafeInteger(ex.stop) || (ex.state != null && !["new", "yes", "no"].includes(ex.state))) throw new HttpError(400, "Bad request.");
+  return ex;
+}
+const expectSql = (ex, n) => (ex ? ` AND start = ?${n} AND stop = ?${n + 1}${ex.state != null ? ` AND state = ?${n + 2}` : ""}` : "");
+const expectArgs = (ex) => (ex ? [ex.start, ex.stop, ...(ex.state != null ? [ex.state] : [])] : []);
 // An offer put in the account's own Fitness, as its Chat sends it: { id, start, stop, tz, sport, wid, name, secs, who,
-// role, far, dry }, checked as an invite's plan is (functions/_share.js POST fit-offer), and since Today First:
+// role, far, dry }, checked as an invite's plan is (functions/_share.js POST fit-offer), and since Today First, only from
+// a caller that says so ({ checked: true }: it built these from fields it checked itself; a raw request's are ignored, as
+// every other field it didn't know always was):
 // - withId: the friend's id, already checked as a friend by the caller (pg_links 'ok'), stored as it is;
 // - state: "pending" (role "asked" only): the inviter's own row, written as the invite goes, never shown; 20 such at
 //   most (not counted with the plans waiting), kept until the last time it offered ends; with
@@ -230,8 +245,8 @@ const SAME = "start = ? AND stop = ? AND state IN ('new', 'yes') AND (with_id = 
 // The same id again changes nothing (one answered stays answered); 20 waiting at most (Today's own not counted). An
 // asked one that isn't pending isn't added where the same ride with the same friend is there already, new or agreed
 // (the inviter's phone drawing the Yes after the server made it from the pending row: promoteOffer).
-export async function addOffer(env, userId, offer, { t = Date.now() } = {}) {
-  const o = offer && typeof offer === "object" ? offer : {};
+export async function addOffer(env, userId, offer, { t = Date.now(), checked = false } = {}) {
+  const raw = offer && typeof offer === "object" ? offer : {}, o = checked === true ? raw : { ...raw, withId: undefined, state: undefined, opts: undefined };
   const plan = planOf(o, o.start, o.stop), opts = optsOf(o, t), pending = o.state === "pending", withId = o.withId ?? null;
   const id = typeof o.id === "string" ? o.id.toLowerCase() : "", who = text(o.who, 40), role = ["asked", "answered"].includes(o.role) ? o.role : null;
   if (!plan || !plan.tz || !UUID_RE.test(id) || !who || !role || !opts || (pending && role !== "asked")
@@ -258,8 +273,9 @@ export async function addOffer(env, userId, offer, { t = Date.now() } = {}) {
 // A ride Today adds (its habit rule at do: state "yes", taken 0, holding nothing until a tap keeps it) or offers (at
 // suggest: state "new"), in the account's own Fitness: { start, stop, tz, sport, wid, name, secs, dry?, state }, the
 // times as an invite's plan has them; role "today", who "". (was, what the day had before, is the act's, kept by the
-// caller in td_acts: nothing of it here.) 10 of Today's waiting at most. → its new id
-export async function addTodayOffer(env, uid, o, { t = Date.now() } = {}) {
+// caller in td_acts: nothing of it here.) 10 of Today's waiting at most. { t } is needed. → its new id
+export async function addTodayOffer(env, uid, o, { t } = {}) {
+  need(t, "addTodayOffer");
   const x = o && typeof o === "object" ? o : {}, plan = planOf(x, x.start, x.stop), state = ["yes", "new"].includes(x.state) ? x.state : null;
   if (!plan || !plan.tz || !state) throw new HttpError(400, "Bad request.");
   if (plan.end <= t) throw new HttpError(409, "That time has passed.");
@@ -275,21 +291,24 @@ export async function addTodayOffer(env, uid, o, { t = Date.now() } = {}) {
   return id;
 }
 // One of Today's own rides moved (its clash rule, or Undo putting it back): only a role "today" row still new or agreed,
-// and with expect ({ start, stop }, or [start, stop]) only while its times are still those (Undo's check: changed in
-// Fitness since, it isn't touched). 15 minutes to 6 hours long. → whether it changed
-export async function setOfferTimes(env, uid, id, start, stop, { expect, t = Date.now() } = {}) {
-  const ex = expect == null ? null : Array.isArray(expect) ? { start: expect[0], stop: expect[1] } : { start: expect.start, stop: expect.stop ?? expect.end };
+// and with expect ({ start, stop }, or [start, stop]; and state, where given) only while it's still just that (Undo's
+// check: changed in Fitness since, it isn't touched). 15 minutes to 6 hours long. { t } is needed. → whether it changed
+export async function setOfferTimes(env, uid, id, start, stop, { expect, t } = {}) {
+  return !!(await (await setOfferTimesQ(env, uid, id, start, stop, { expect, t })).run()).meta?.changes;
+}
+// (the same, as the statement alone, for the caller's own D.batch: Undo puts the ride back and its act's row in one)
+export async function setOfferTimesQ(env, uid, id, start, stop, { expect, t } = {}) {
+  need(t, "setOfferTimes");
   const key = typeof id === "string" ? id.toLowerCase() : "";
-  if (!UUID_RE.test(key) || !Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || stop - start < 15 * MIN || stop - start > 6 * HOUR
-    || (ex && (!Number.isSafeInteger(ex.start) || !Number.isSafeInteger(ex.stop)))) throw new HttpError(400, "Bad request.");
-  const D = await offersDb(env);
-  const r = await D.prepare(`UPDATE fx_offers SET start = ?, stop = ?, until = ? WHERE user_id = ? AND id = ? AND role = 'today' AND state IN ('new', 'yes') AND until > ?${ex ? " AND start = ? AND stop = ?" : ""}`)
-    .bind(start, stop, stop + OFFER_KEEP, uid, key, t, ...(ex ? [ex.start, ex.stop] : [])).run();
-  return !!r.meta?.changes;
+  if (!UUID_RE.test(key) || !Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || stop - start < 15 * MIN || stop - start > 6 * HOUR) throw new HttpError(400, "Bad request.");
+  const ex = expectOf(expect), D = await offersDb(env);
+  return D.prepare(`UPDATE fx_offers SET start = ?1, stop = ?2, until = ?3 WHERE user_id = ?4 AND id = ?5 AND role = 'today' AND state IN ('new', 'yes') AND until > ?6${expectSql(ex, 7)}`)
+    .bind(start, stop, stop + OFFER_KEEP, uid, key, t, ...expectArgs(ex));
 }
 // Take (a suggested ride) or Keep (one added at do), on Today: a role "today" row still new or agreed, agreed now and
-// kept by a tap (taken 1). → whether it was there
-export async function takeOffer(env, uid, id, { t = Date.now() } = {}) {
+// kept by a tap (taken 1). { t } is needed. → whether it was there
+export async function takeOffer(env, uid, id, { t } = {}) {
+  need(t, "takeOffer");
   const key = typeof id === "string" ? id.toLowerCase() : "";
   if (!UUID_RE.test(key)) throw new HttpError(400, "Bad request.");
   const D = await offersDb(env);
@@ -300,8 +319,10 @@ export async function takeOffer(env, uid, id, { t = Date.now() } = {}) {
 // The friend's Yes to an invite, from their own phone (functions/_share.js POST fit-offer with re): the inviter's pending
 // row (id re) for that friend alone (with_id the answerer), at its own time or one of its opts, becomes a plan waiting
 // in their Fitness (new) at the time chosen, kept 12 hours past it, with the inviter's phone shut. Not where the same
-// ride with the same friend is there already; never once its time has passed. → whether it changed
-export async function promoteOffer(env, inviterId, re, answererId, start, stop, { t = Date.now() } = {}) {
+// ride with the same friend is there already; never once its time has passed. { t } is needed. → whether it changed
+// (bad input: false)
+export async function promoteOffer(env, inviterId, re, answererId, start, stop, { t } = {}) {
+  need(t, "promoteOffer");
   const id = typeof re === "string" ? re.toLowerCase() : "";
   if (!UUID_RE.test(id) || typeof answererId !== "string" || !answererId || !Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || stop <= start) return false;
   const D = await offersDb(env);
@@ -313,31 +334,50 @@ export async function promoteOffer(env, inviterId, re, answererId, start, stop, 
         AND (d.with_id = ?3 OR d.who = fx_offers.who))`).bind(inviterId, id, answererId, start, stop, stop + OFFER_KEEP, t).run();
   return !!r.meta?.changes;
 }
-const offerView = (r) => ({ id: r.id, start: r.start, stop: r.stop, sport: r.sport, wid: r.wid, name: r.name, secs: r.secs, who: r.who, role: r.role, far: !!r.far, dry: !!r.dry, state: r.state,
-  taken: !!r.taken, withId: r.with_id ?? null });
-// The account's offers for Fitness to show: waiting (new) and agreed (yes), not past their time, never one pending; Today's
-// own (role "today") only when asked for (today: true); read only (nothing's deleted on a read)
-export async function offersFor(env, userId, { today = false, t = Date.now() } = {}) {
+// (an offer as Fitness has always been sent it; and as Today reads it, and Fitness when it asks for Today's: with whether
+// a tap kept it, and the friend's id)
+const offerView = (r) => ({ id: r.id, start: r.start, stop: r.stop, sport: r.sport, wid: r.wid, name: r.name, secs: r.secs, who: r.who, role: r.role, far: !!r.far, dry: !!r.dry, state: r.state });
+const offerViewToday = (r) => ({ ...offerView(r), taken: !!r.taken, withId: r.with_id ?? null });
+// The account's offers for Fitness to show: waiting (new) and agreed (yes), not past their time, never one pending, each
+// exactly as Fitness has always had them. With today: true (Today's reads, and Fitness's ?today=1), Today's own (role
+// "today") too, each with taken and withId; then { t } is needed. Read only (nothing's deleted on a read)
+export async function offersFor(env, userId, { today = false, t } = {}) {
+  const at = today ? need(t, "offersFor") : Number.isFinite(t) ? t : Date.now();
   try {
     const D = await offersDb(env);
     const { results } = await D.prepare(`SELECT id, start, stop, sport, wid, name, secs, who, role, far, dry, state, taken, with_id FROM fx_offers
-      WHERE user_id = ? AND until > ? AND state IN ('new', 'yes')${today ? "" : " AND role != 'today'"} ORDER BY start, id LIMIT 50`).bind(userId, t).all();
-    return (results || []).map(offerView);
+      WHERE user_id = ? AND until > ? AND state IN ('new', 'yes')${today ? "" : " AND role != 'today'"} ORDER BY start, id LIMIT 50`).bind(userId, at).all();
+    return (results || []).map(today ? offerViewToday : offerView);
   } catch (_) { return []; }
 }
-// Fitness's answer to one: "yes" (added to the plan there, a tap: taken) or "no". → whether it was there
-export async function answerOffer(env, userId, id, answer, { t = Date.now() } = {}) {
-  if (!["yes", "no"].includes(answer) || typeof id !== "string" || !UUID_RE.test(id)) throw new HttpError(400, "Bad request.");
-  const D = await offersDb(env);
-  const [, r] = await D.batch([
-    D.prepare("DELETE FROM fx_offers WHERE until < ?").bind(t),
-    // only a plan still waiting is answered (the same answer again changes nothing): a no never comes back as a yes, and
-    // a yes is a no only for one of Today's own (Undo, in Fitness); a pending row is never answered here
-    D.prepare(`UPDATE fx_offers SET state = ?1, taken = CASE WHEN ?1 = 'yes' THEN 1 ELSE taken END
-      WHERE user_id = ?2 AND id = ?3 AND until > ?4 AND (state = 'new' OR state = ?1 OR (role = 'today' AND state = 'yes' AND ?1 = 'no'))`).bind(answer, userId, id, t),
-  ]);
+// (an answer's UPDATE: only a plan still waiting is answered (the same answer again changes nothing): a no never comes
+// back as a yes, and a yes is a no only for one of Today's own (Undo, in Fitness); a pending row is never answered here;
+// with expect, only while the row is still just that)
+function answerSql(D, userId, id, answer, t, ex) {
+  return D.prepare(`UPDATE fx_offers SET state = ?1, taken = CASE WHEN ?1 = 'yes' THEN 1 ELSE taken END
+      WHERE user_id = ?2 AND id = ?3 AND until > ?4 AND (state = 'new' OR state = ?1 OR (role = 'today' AND state = 'yes' AND ?1 = 'no'))${expectSql(ex, 5)}`)
+    .bind(answer, userId, id, t, ...expectArgs(ex));
+}
+const answerOk = (id, answer) => { if (!["yes", "no"].includes(answer) || typeof id !== "string" || !UUID_RE.test(id)) throw new HttpError(400, "Bad request."); };
+// Fitness's answer to one: "yes" (added to the plan there, a tap: taken) or "no"; with expect ({ start, stop, state }),
+// only while the row is still just that (Today's Undo of a ride it added: changed in Fitness since, it isn't touched).
+// → whether it was there (and changed)
+export async function answerOffer(env, userId, id, answer, { t = Date.now(), expect } = {}) {
+  answerOk(id, answer);
+  const ex = expectOf(expect), D = await offersDb(env);
+  const [, r] = await D.batch([D.prepare("DELETE FROM fx_offers WHERE until < ?").bind(t), answerSql(D, userId, id, answer, t, ex)]);
   return !!r?.meta?.changes;
 }
+// (the same, as the statement alone, for the caller's own D.batch; { t } is needed)
+export async function answerOfferQ(env, userId, id, answer, { t, expect } = {}) {
+  need(t, "answerOffer");
+  answerOk(id, answer);
+  const ex = expectOf(expect), D = await offersDb(env);
+  return answerSql(D, userId, id, answer, t, ex);
+}
+// fx_offers made, and its Today First columns there, before a caller reads them with its own SQL (EXPLICIT_OFFER,
+// with_id, taken). → the database
+export const offersReady = (env) => offersDb(env);
 
 // ---- the account's export, and an account gone ----
 export async function sharesOf(env, userId) {

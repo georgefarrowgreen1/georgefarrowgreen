@@ -6,15 +6,18 @@
 // Today First's (spec §5.2, §8.4, §9.3): an invite's pending row (never listed, counted on its own, made a plan waiting
 // only by that friend's Yes at a time it offered), the same ride with the same friend not added twice, Today's own rides
 // (shown only when asked for, Take and Keep, moved and put back only while unchanged), taken on every tap, a yes said no
-// to only for Today's own; and ride times (functions/_fittimes.js) with what counts as an explicit ride.
+// to only for Today's own; and ride times (functions/_fittimes.js) with what counts as an explicit ride. A raw request's
+// friend's id and pending state ignored (only a caller that checked them gives them); Today's reads and writes taking the
+// route's time, never the clock's; Undo's guarded restores, alone and as statements for one batch; the tables made first.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
 import { fitdb } from "../../../functions/_fitness.js";
 import { shareFor, dropShare, doneIn, donesIn, addOffer, offersFor, answerOffer, sharesOf, offersOf, dropShares, daySpan, fitNow, OFFER_KEEP,
-  addTodayOffer, setOfferTimes, takeOffer, promoteOffer } from "../../../functions/_fitshare.js";
-import { timeFor, timesOf, setTime, dropTime, EXPLICIT_OFFER, explicitRide } from "../../../functions/_fittimes.js";
+  addTodayOffer, setOfferTimes, setOfferTimesQ, takeOffer, promoteOffer, answerOfferQ, offersReady } from "../../../functions/_fitshare.js";
+import { timeFor, timesOf, setTime, setTimeQ, dropTime, dropTimeQ, timesReady, EXPLICIT_OFFER, explicitRide } from "../../../functions/_fittimes.js";
+import { timesFor, timesAround } from "../../../functions/_times.js";
 
 const sql = new DatabaseSync(":memory:");
 const val = (a) => a.map((x) => (typeof x === "boolean" ? +x : x === undefined ? null : x));
@@ -95,8 +98,8 @@ test("offers: checked as a plan is, the account's own, the same id again changin
   await addOffer(env, "eve", o);
   let got = await offersFor(env, "eve");
   assert.equal(got.length, 1);
-  assert.deepEqual(got[0], { id: o.id, start: o.start, stop: o.stop, sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, who: "Leo", role: "answered", far: false, dry: true, state: "new",
-    taken: false, withId: null });
+  assert.deepEqual(got[0], { id: o.id, start: o.start, stop: o.stop, sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 7200, who: "Leo", role: "answered", far: false, dry: true, state: "new" },
+    "exactly as Fitness has always had it (shareserver.test.mjs pins GET me's keys)");
   assert.deepEqual(await offersFor(env, "fay"), [], "only the account's own");
   for (const bad of [{ id: "nope" }, { stop: o.start + 90 * 60e3 }, { wid: "rh:tempo" }, { role: "boss" }, { who: "" }, { tz: "x" }, { sport: "swim" }])
     await assert.rejects(addOffer(env, "eve", offer(bad)), /Bad request/, JSON.stringify(bad));
@@ -148,6 +151,8 @@ test("the export's rows, and an account gone taking its shares and offers", asyn
 
 // ---------- Today First ----------
 const S0 = Math.ceil(now / H) * H + 24 * H, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// (Today First's fields of an offer come only from a caller that built them from fields it checked: functions/_share.js)
+const CHECKED = { checked: true };
 const rowOf = (user, id) => sql.prepare("SELECT * FROM fx_offers WHERE user_id = ? AND id = ?").get(user, id);
 
 test("done: the waiting tables without their figures still answer (one trip, then each on its own); with them, each waiting row's sport, time and distance", async () => {
@@ -183,110 +188,110 @@ test("fx_offers has the friend's id, whether a tap kept it, and an invite's othe
 
 test("an invite's pending row: the inviter's own, never listed, not counted with the plans waiting, 20 at most, kept until the last time it offered", async () => {
   const p = offer({ role: "asked", state: "pending", withId: "leo-id", opts: [[S0 + 3 * H, S0 + 5 * H], { start: S0 + 26 * H, end: S0 + 28 * H }] });
-  await addOffer(env, "ivy", p);
+  await addOffer(env, "ivy", p, CHECKED);
   assert.deepEqual(await offersFor(env, "ivy"), [], "never listed");
-  assert.deepEqual(await offersFor(env, "ivy", { today: true }), [], "not even with Today's");
+  assert.deepEqual(await offersFor(env, "ivy", { today: true, t: now }), [], "not even with Today's");
   const row = rowOf("ivy", p.id);
   assert.equal(row.state, "pending"); assert.equal(row.with_id, "leo-id"); assert.equal(row.taken, 0);
   assert.deepEqual(JSON.parse(row.opts), [[S0 + 3 * H, S0 + 5 * H], [S0 + 26 * H, S0 + 28 * H]]);
   assert.equal(row.until, S0 + 28 * H, "kept until its last offered end");
   // (not counted with the plans waiting: 20 of those still go in beside it)
-  for (let i = 0; i < 20; i++) await addOffer(env, "ivy", offer());
-  await assert.rejects(addOffer(env, "ivy", offer()), /Fitness has 20 plans waiting already\./);
+  for (let i = 0; i < 20; i++) await addOffer(env, "ivy", offer(), CHECKED);
+  await assert.rejects(addOffer(env, "ivy", offer(), CHECKED), /Fitness has 20 plans waiting already\./);
   // (its own limit: 20 pending)
-  for (let i = 0; i < 19; i++) await addOffer(env, "ivy", offer({ role: "asked", state: "pending", withId: "leo-id" }));
-  await assert.rejects(addOffer(env, "ivy", offer({ role: "asked", state: "pending", withId: "leo-id" })), /20 invites waiting/);
+  for (let i = 0; i < 19; i++) await addOffer(env, "ivy", offer({ role: "asked", state: "pending", withId: "leo-id" }), CHECKED);
+  await assert.rejects(addOffer(env, "ivy", offer({ role: "asked", state: "pending", withId: "leo-id" }), CHECKED), /20 invites waiting/);
   assert.equal((await offersFor(env, "ivy")).length, 20, "the plans waiting, and none of the pending");
   // checked: only an asked one is pending; at most 3 other times, each one the plan could be at; the friend's id a string
   const four = [3, 6, 9, 12].map((h) => [S0 + h * H, S0 + (h + 2) * H]);
   for (const bad of [{ role: "answered", state: "pending" }, { role: "asked", state: "pending", opts: four }, { role: "asked", state: "pending", opts: [[S0 + 3 * H, S0 + 4 * H]] },
     { role: "asked", state: "pending", opts: [[S0 + 3 * H]] }, { role: "asked", state: "pending", opts: "soon" }, { withId: 7 }, { withId: "" }, { withId: "x".repeat(65) }])
-    await assert.rejects(addOffer(env, "jo", offer(bad)), /Bad request/, JSON.stringify(bad));
+    await assert.rejects(addOffer(env, "jo", offer(bad), CHECKED), /Bad request/, JSON.stringify(bad));
   // (a time offered that's already gone is left out; other times kept only on a pending row)
   const past = Math.floor(now / H) * H - 4 * H, q = offer({ role: "asked", state: "pending", withId: "leo-id", opts: [[past, past + 2 * H]] });
-  await addOffer(env, "jo", q);
+  await addOffer(env, "jo", q, CHECKED);
   assert.equal(rowOf("jo", q.id).opts, null); assert.equal(rowOf("jo", q.id).until, q.stop);
   const r = offer({ role: "asked", withId: "leo-id", opts: [[S0 + 3 * H, S0 + 5 * H]] });
-  await addOffer(env, "jo", r);
+  await addOffer(env, "jo", r, CHECKED);
   assert.equal(rowOf("jo", r.id).opts, null); assert.equal(rowOf("jo", r.id).state, "new"); assert.equal(rowOf("jo", r.id).until, r.stop + OFFER_KEEP);
 });
 
 test("promotion: the friend's Yes makes the inviter's pending row a plan waiting, only for that friend and only at a time it offered", async () => {
   const alt = [S0 + 3 * H, S0 + 5 * H], p = offer({ role: "asked", state: "pending", withId: "leo-id", opts: [alt] });
-  await addOffer(env, "kit", p);
-  assert.equal(await promoteOffer(env, "kit", p.id, "mia-id", p.start, p.stop), false, "someone else's answer");
-  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", S0 + 6 * H, S0 + 8 * H), false, "a time it didn't offer");
-  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", alt[0], alt[1] + H), false, "nor one overlapping it");
-  assert.equal(await promoteOffer(env, "kit", crypto.randomUUID(), "leo-id", p.start, p.stop), false, "another invite");
-  assert.equal(await promoteOffer(env, "lou", p.id, "leo-id", p.start, p.stop), false, "another account's");
-  assert.equal(await promoteOffer(env, "kit", "nope", "leo-id", p.start, p.stop), false);
+  await addOffer(env, "kit", p, CHECKED);
+  assert.equal(await promoteOffer(env, "kit", p.id, "mia-id", p.start, p.stop, { t: now }), false, "someone else's answer");
+  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", S0 + 6 * H, S0 + 8 * H, { t: now }), false, "a time it didn't offer");
+  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", alt[0], alt[1] + H, { t: now }), false, "nor one overlapping it");
+  assert.equal(await promoteOffer(env, "kit", crypto.randomUUID(), "leo-id", p.start, p.stop, { t: now }), false, "another invite");
+  assert.equal(await promoteOffer(env, "lou", p.id, "leo-id", p.start, p.stop, { t: now }), false, "another account's");
+  assert.equal(await promoteOffer(env, "kit", "nope", "leo-id", p.start, p.stop, { t: now }), false);
   assert.equal(rowOf("kit", p.id).state, "pending", "all of those left it pending");
-  assert.equal(await promoteOffer(env, "kit", p.id.toUpperCase(), "leo-id", ...alt), true, "one of its other times");
+  assert.equal(await promoteOffer(env, "kit", p.id.toUpperCase(), "leo-id", ...alt, { t: now }), true, "one of its other times");
   const row = rowOf("kit", p.id);
   assert.deepEqual([row.state, row.start, row.stop, row.until, row.opts, row.with_id], ["new", alt[0], alt[1], alt[1] + OFFER_KEEP, null, "leo-id"]);
-  const got = await offersFor(env, "kit");
+  const got = await offersFor(env, "kit", { today: true, t: now });
   assert.deepEqual(got.map((x) => [x.id, x.start, x.state, x.role, x.withId, x.taken]), [[p.id, alt[0], "new", "asked", "leo-id", false]], "a plan waiting in their Fitness");
-  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", ...alt), false, "once");
+  assert.equal(await promoteOffer(env, "kit", p.id, "leo-id", ...alt, { t: now }), false, "once");
   // (the inviter's phone drawing the Yes later, as an older Chat does too: nothing added)
-  await addOffer(env, "kit", offer({ role: "asked", withId: "leo-id", start: alt[0], stop: alt[1] }));
-  await addOffer(env, "kit", offer({ role: "asked", start: alt[0], stop: alt[1] }));
-  assert.equal((await offersFor(env, "kit")).length, 1, "the same ride with the same friend: still one row");
+  await addOffer(env, "kit", offer({ role: "asked", withId: "leo-id", start: alt[0], stop: alt[1] }), CHECKED);
+  await addOffer(env, "kit", offer({ role: "asked", start: alt[0], stop: alt[1] }), CHECKED);
+  assert.equal((await offersFor(env, "kit", { today: true, t: now })).length, 1, "the same ride with the same friend: still one row");
   // (its own time, too; but not where that ride's there already, nor once its time has gone)
   const m = offer({ role: "asked", state: "pending", withId: "leo-id" });
-  await addOffer(env, "kit", m);
-  assert.equal(await promoteOffer(env, "kit", m.id, "leo-id", m.start, m.stop), true, "its own time");
+  await addOffer(env, "kit", m, CHECKED);
+  assert.equal(await promoteOffer(env, "kit", m.id, "leo-id", m.start, m.stop, { t: now }), true, "its own time");
   const dupe = offer({ role: "asked", state: "pending", withId: "leo-id", start: alt[0], stop: alt[1] });
-  await addOffer(env, "kit", dupe);
-  assert.equal(await promoteOffer(env, "kit", dupe.id, "leo-id", ...alt), false, "that ride with Leo is there already");
+  await addOffer(env, "kit", dupe, CHECKED);
+  assert.equal(await promoteOffer(env, "kit", dupe.id, "leo-id", ...alt, { t: now }), false, "that ride with Leo is there already");
   const gone = offer({ role: "asked", state: "pending", withId: "leo-id", opts: [alt] });
-  await addOffer(env, "kit", gone);
+  await addOffer(env, "kit", gone, CHECKED);
   assert.equal(await promoteOffer(env, "kit", gone.id, "leo-id", gone.start, gone.stop, { t: gone.stop + 1 }), false, "its time gone");
 });
 
 test("an asked offer isn't added twice for the same ride with the same friend (by id, or by name); answered ones, and other friends, are", async () => {
   const a = offer({ role: "asked", withId: "leo-id" }), same = { start: a.start, stop: a.stop };
-  await addOffer(env, "max", a);
-  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }));
-  await addOffer(env, "max", offer({ role: "asked", ...same }));
-  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", who: "Leonard", ...same }));
+  await addOffer(env, "max", a, CHECKED);
+  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }), CHECKED);
+  await addOffer(env, "max", offer({ role: "asked", ...same }), CHECKED);
+  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", who: "Leonard", ...same }), CHECKED);
   assert.equal((await offersFor(env, "max")).length, 1);
-  await addOffer(env, "max", offer({ role: "asked", withId: "nia-id", who: "Nia", ...same }));
-  await addOffer(env, "max", offer({ role: "answered", ...same }));
-  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", start: a.start + 3 * H, stop: a.stop + 3 * H }));
+  await addOffer(env, "max", offer({ role: "asked", withId: "nia-id", who: "Nia", ...same }), CHECKED);
+  await addOffer(env, "max", offer({ role: "answered", ...same }), CHECKED);
+  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", start: a.start + 3 * H, stop: a.stop + 3 * H }), CHECKED);
   assert.equal((await offersFor(env, "max")).length, 4, "another friend, an answered one, another time");
   // (said no to, it doesn't hold the next one back; but the plan answered to Leo at that time is the same ride with him)
   await answerOffer(env, "max", a.id, "no");
-  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }));
+  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }), CHECKED);
   assert.equal((await offersFor(env, "max")).length, 3, "the answered one with Leo, still waiting, holds it back");
   const answered = (await offersFor(env, "max")).find((x) => x.role === "answered");
   await answerOffer(env, "max", answered.id, "no");
-  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }));
+  await addOffer(env, "max", offer({ role: "asked", withId: "leo-id", ...same }), CHECKED);
   assert.deepEqual((await offersFor(env, "max")).map((x) => `${x.role} ${x.who}`).sort(), ["asked Leo", "asked Leo", "asked Nia"], "now it goes in");
 });
 
 const ride = (x = {}) => ({ start: S0, stop: S0 + 2 * H, tz: "Europe/London", sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 5400, dry: true, ...x });
 
 test("Today's own rides: added (agreed, not taken) or offered (new), shown to Fitness only when asked for; Take, Keep and Fitness's Add are taps; Undo in Fitness", async () => {
-  const added = await addTodayOffer(env, "ned", ride({ state: "yes", was: { planned: "rest" } }));
-  const offered = await addTodayOffer(env, "ned", ride({ start: S0 + 48 * H, stop: S0 + 50 * H, state: "new" }));
+  const added = await addTodayOffer(env, "ned", ride({ state: "yes", was: { planned: "rest" } }), { t: now });
+  const offered = await addTodayOffer(env, "ned", ride({ start: S0 + 48 * H, stop: S0 + 50 * H, state: "new" }), { t: now });
   assert.match(added, UUID); assert.notEqual(added, offered);
   assert.deepEqual(await offersFor(env, "ned"), [], "not without today");
-  assert.deepEqual((await offersFor(env, "ned", { today: true })).map((x) => [x.id, x.role, x.who, x.state, x.taken, x.withId, x.dry]),
+  assert.deepEqual((await offersFor(env, "ned", { today: true, t: now })).map((x) => [x.id, x.role, x.who, x.state, x.taken, x.withId, x.dry]),
     [[added, "today", "", "yes", false, null, true], [offered, "today", "", "new", false, null, true]]);
   assert.equal(rowOf("ned", added).until, S0 + 2 * H + OFFER_KEEP);
   for (const bad of [ride({ state: "maybe" }), ride({ state: "yes", stop: S0 + 90 * 60e3 }), ride({ state: "yes", wid: "rh:tempo" }), ride({ state: "yes", tz: "x" }), ride({ state: "pending" })])
-    await assert.rejects(addTodayOffer(env, "ned", bad), /Bad request/, JSON.stringify(bad));
-  await assert.rejects(addTodayOffer(env, "ned", ride({ state: "yes", start: Math.floor(now / H) * H - 3 * H, stop: Math.floor(now / H) * H - H })), /passed/);
+    await assert.rejects(addTodayOffer(env, "ned", bad, { t: now }), /Bad request/, JSON.stringify(bad));
+  await assert.rejects(addTodayOffer(env, "ned", ride({ state: "yes", start: Math.floor(now / H) * H - 3 * H, stop: Math.floor(now / H) * H - H }), { t: now }), /passed/);
   // Take (the suggestion) and Keep (the one added): agreed, and kept by a tap
-  assert.equal(await takeOffer(env, "ola", added), false, "not another account's");
-  assert.equal(await takeOffer(env, "ned", offered), true);
-  assert.equal(await takeOffer(env, "ned", added), true);
+  assert.equal(await takeOffer(env, "ola", added, { t: now }), false, "not another account's");
+  assert.equal(await takeOffer(env, "ned", offered, { t: now }), true);
+  assert.equal(await takeOffer(env, "ned", added, { t: now }), true);
   for (const id of [added, offered]) assert.deepEqual([rowOf("ned", id).state, rowOf("ned", id).taken], ["yes", 1]);
-  await assert.rejects(takeOffer(env, "ned", "nope"), /Bad request/);
+  await assert.rejects(takeOffer(env, "ned", "nope", { t: now }), /Bad request/);
   // a friend's plan is Fitness's to add, and its Add is a tap too
   const f = offer();
-  await addOffer(env, "ned", f);
-  assert.equal(await takeOffer(env, "ned", f.id), false, "not taken from Today");
+  await addOffer(env, "ned", f, CHECKED);
+  assert.equal(await takeOffer(env, "ned", f.id, { t: now }), false, "not taken from Today");
   assert.equal(await answerOffer(env, "ned", f.id, "yes"), true);
   assert.equal(rowOf("ned", f.id).taken, 1, "Fitness's yes: taken");
   // Undo in Fitness: one of Today's own agreed can be said no to; a friend's agreed can't; and a no stays no
@@ -294,30 +299,30 @@ test("Today's own rides: added (agreed, not taken) or offered (new), shown to Fi
   assert.equal(rowOf("ned", added).state, "no");
   assert.equal(await answerOffer(env, "ned", f.id, "no"), false);
   assert.equal(await answerOffer(env, "ned", added, "yes"), false);
-  assert.equal(await takeOffer(env, "ned", added), false, "nor taken again");
-  assert.deepEqual((await offersFor(env, "ned", { today: true })).map((x) => x.id).sort(), [f.id, offered].sort());
+  assert.equal(await takeOffer(env, "ned", added, { t: now }), false, "nor taken again");
+  assert.deepEqual((await offersFor(env, "ned", { today: true, t: now })).map((x) => x.id).sort(), [f.id, offered].sort());
   // (10 of Today's waiting at most; those said no to not counted)
-  for (let i = 0; i < 9; i++) await addTodayOffer(env, "ned", ride({ start: S0 + (100 + i * 4) * H, stop: S0 + (102 + i * 4) * H, state: "new" }));
-  await assert.rejects(addTodayOffer(env, "ned", ride({ start: S0 + 200 * H, stop: S0 + 202 * H, state: "new" })), /10 rides waiting/);
+  for (let i = 0; i < 9; i++) await addTodayOffer(env, "ned", ride({ start: S0 + (100 + i * 4) * H, stop: S0 + (102 + i * 4) * H, state: "new" }), { t: now });
+  await assert.rejects(addTodayOffer(env, "ned", ride({ start: S0 + 200 * H, stop: S0 + 202 * H, state: "new" }), { t: now }), /10 rides waiting/);
 });
 
 test("Today's ride moved, and put back only while it's as it was left (Undo's check); never a friend's", async () => {
-  const id = await addTodayOffer(env, "pam", ride({ state: "yes" })), was = { start: S0, stop: S0 + 2 * H };
-  assert.equal(await setOfferTimes(env, "pam", id, S0 + 2 * H, S0 + 4 * H, { expect: was }), true, "moved");
+  const id = await addTodayOffer(env, "pam", ride({ state: "yes" }), { t: now }), was = { start: S0, stop: S0 + 2 * H };
+  assert.equal(await setOfferTimes(env, "pam", id, S0 + 2 * H, S0 + 4 * H, { expect: was, t: now }), true, "moved");
   assert.deepEqual([rowOf("pam", id).start, rowOf("pam", id).stop, rowOf("pam", id).until], [S0 + 2 * H, S0 + 4 * H, S0 + 4 * H + OFFER_KEEP]);
-  assert.equal(await setOfferTimes(env, "pam", id, S0, S0 + 2 * H, { expect: was }), false, "not as it was left: untouched");
+  assert.equal(await setOfferTimes(env, "pam", id, S0, S0 + 2 * H, { expect: was, t: now }), false, "not as it was left: untouched");
   assert.equal(rowOf("pam", id).start, S0 + 2 * H);
-  assert.equal(await setOfferTimes(env, "pam", id.toUpperCase(), S0, S0 + 2 * H, { expect: [S0 + 2 * H, S0 + 4 * H] }), true, "put back");
-  assert.equal(await setOfferTimes(env, "pam", id, S0 + H, S0 + 3 * H), true, "without expect: moved as it is");
-  assert.equal(await setOfferTimes(env, "quin", id, S0, S0 + 2 * H), false, "not another account's");
+  assert.equal(await setOfferTimes(env, "pam", id.toUpperCase(), S0, S0 + 2 * H, { expect: [S0 + 2 * H, S0 + 4 * H], t: now }), true, "put back");
+  assert.equal(await setOfferTimes(env, "pam", id, S0 + H, S0 + 3 * H, { t: now }), true, "without expect: moved as it is");
+  assert.equal(await setOfferTimes(env, "quin", id, S0, S0 + 2 * H, { t: now }), false, "not another account's");
   const f = offer();
-  await addOffer(env, "pam", f);
-  assert.equal(await setOfferTimes(env, "pam", f.id, f.start + H, f.stop + H), false, "an agreed ride with a friend is never moved");
+  await addOffer(env, "pam", f, CHECKED);
+  assert.equal(await setOfferTimes(env, "pam", f.id, f.start + H, f.stop + H, { t: now }), false, "an agreed ride with a friend is never moved");
   await answerOffer(env, "pam", id, "yes"); await answerOffer(env, "pam", id, "no");
-  assert.equal(await setOfferTimes(env, "pam", id, S0, S0 + 2 * H), false, "said no to in Fitness: untouched");
+  assert.equal(await setOfferTimes(env, "pam", id, S0, S0 + 2 * H, { t: now }), false, "said no to in Fitness: untouched");
   for (const [s, e, o] of [[S0, S0 + 10 * 60e3], [S0, S0 + 7 * H], [S0, S0 - H], [S0 + 0.5, S0 + 2 * H], [S0, S0 + 2 * H, { expect: { start: "x" } }]])
-    await assert.rejects(setOfferTimes(env, "pam", id, s, e, o), /Bad request/, `${s}–${e}`);
-  await assert.rejects(setOfferTimes(env, "pam", "nope", S0, S0 + 2 * H), /Bad request/);
+    await assert.rejects(setOfferTimes(env, "pam", id, s, e, { t: now, ...o }), /Bad request/, `${s}–${e}`);
+  await assert.rejects(setOfferTimes(env, "pam", "nope", S0, S0 + 2 * H, { t: now }), /Bad request/);
 });
 
 test("ride times (fx_times): one a day, checked, the account's own, old ones tidied as the next is kept; and what counts as an explicit ride", async () => {
@@ -356,4 +361,93 @@ test("ride times (fx_times): one a day, checked, the account's own, old ones tid
   assert.ok(explicit.size >= 2 && explicit.size < offers.length, "some of ned's, not all");
   for (const o of offers) assert.equal(explicitRide(o), explicit.has(o.id), `${o.role} ${o.state} ${o.taken}: the SQL and the function agree`);
   assert.ok(!explicitRide({ role: "today", state: "yes", taken: 0 }), "added at do, not kept: holds nothing");
+});
+
+test("a raw request's friend's id, pending state and other times are ignored: only a caller that checked them gives them", async () => {
+  // (as POST fit-offer passed its body on before Chat's server checked the friend: a plain plan waiting, as it always was)
+  const raw = offer({ role: "asked", state: "pending", withId: "not-a-friend", opts: [[S0 + 3 * H, S0 + 5 * H]] });
+  await addOffer(env, "uma", raw);
+  const row = rowOf("uma", raw.id);
+  assert.deepEqual([row.state, row.with_id, row.opts, row.until], ["new", null, null, raw.stop + OFFER_KEEP]);
+  assert.deepEqual((await offersFor(env, "uma")).map((x) => x.id), [raw.id], "listed, as any plan waiting");
+  await addOffer(env, "uma", offer({ role: "asked", withId: 7, start: S0 + 3 * H, stop: S0 + 5 * H }));
+  assert.equal(count("fx_offers WHERE user_id = 'uma'"), 2, "nor checked: it isn't looked at");
+  // (and from a caller that checked them, they're kept)
+  const ok = offer({ role: "asked", state: "pending", withId: "leo-id" });
+  await addOffer(env, "uma", ok, CHECKED);
+  assert.deepEqual([rowOf("uma", ok.id).state, rowOf("uma", ok.id).with_id], ["pending", "leo-id"]);
+});
+
+test("Today's reads and writes take the route's time: one left out throws at once, rather than reading the clock", async () => {
+  const id = await addTodayOffer(env, "vic", ride({ state: "new" }), { t: now });
+  const tz = "Europe/London", d = "2026-11-05", s = daySpan(d, tz).start + 10 * H;
+  for (const [what, p] of [
+    ["addTodayOffer", addTodayOffer(env, "vic", ride({ state: "new" }))], ["takeOffer", takeOffer(env, "vic", id)],
+    ["setOfferTimes", setOfferTimes(env, "vic", id, S0, S0 + 2 * H)], ["setOfferTimes", setOfferTimesQ(env, "vic", id, S0, S0 + 2 * H, { t: "soon" })],
+    ["promoteOffer", promoteOffer(env, "vic", id, "leo-id", S0, S0 + 2 * H)], ["answerOffer", answerOfferQ(env, "vic", id, "no")],
+    ["offersFor", offersFor(env, "vic", { today: true })], ["setTime", setTime(env, "vic", { day: d, start: s, stop: s + H, tz, source: "today" })],
+    ["setTime", setTimeQ(env, "vic", { day: d, start: s, stop: s + H, tz, source: "today" })],
+    ["timesFor", timesFor(env, "vic", S0, S0 + H)], ["timesAround", timesAround(env, "vic", undefined, H)],
+  ]) await assert.rejects(p, (e) => e instanceof TypeError && e.message.startsWith(what), what);
+  assert.equal(rowOf("vic", id).state, "new", "and nothing was done");
+  // (Fitness's own reads and answers, as they always were, need none)
+  assert.equal((await offersFor(env, "vic")).length, 0);
+  assert.deepEqual(await timesFor(env, "vic", S0, S0 + H, { t: now }), []);
+});
+
+test("Undo's guarded restores: each only while the row is still as the act left it, and as statements for one batch with the act's own", async () => {
+  const tz = "Europe/London", d = "2026-11-05", s = daySpan(d, tz).start + 16 * H, t = daySpan(d, tz).start - 24 * H;
+  const was = { day: d, start: s + H, stop: s + 2 * H, tz, source: "set" }, moved = { day: d, start: s, stop: s + H, tz, source: "moved" };
+  // a moved ride, put back
+  await setTime(env, "wes", moved, { t });
+  const now0 = { start: moved.start, stop: moved.stop, source: "moved" };
+  for (const ex of [{ start: s }, { start: s, stop: s + H, source: "auto" }, { start: String(s), stop: s + H, source: "moved" }])
+    await assert.rejects(setTime(env, "wes", was, { t, expect: ex }), /Bad request/, JSON.stringify(ex));
+  assert.equal(await setTime(env, "wes", was, { t, expect: { ...now0, start: s + 5 * 60e3 } }), null, "changed since (Ride At in Fitness): nothing put back");
+  assert.equal((await timeFor(env, "wes", d)).source, "moved");
+  assert.deepEqual(await setTime(env, "wes", was, { t, expect: now0 }), { ...was, sport: "ride" }, "as it was left: put back");
+  assert.equal(await setTime(env, "wes", was, { t, expect: now0 }), null, "a second Undo: nothing");
+  assert.equal(await setTime(env, "wes", { ...was, day: "2026-11-06", start: s + 25 * H, stop: s + 26 * H }, { t, expect: now0 }), null, "none made where there's none");
+  assert.equal(await timeFor(env, "wes", "2026-11-06"), null);
+  // Ride Then, taken back: the row dropped only while it's still that one
+  await setTime(env, "xan", moved, { t });
+  assert.equal(await dropTime(env, "xan", d, { expect: { ...now0, source: "today" } }), false, "not the same row");
+  assert.ok(await timeFor(env, "xan", d));
+  assert.equal(await dropTime(env, "xan", d, { expect: now0 }), true);
+  assert.equal(await timeFor(env, "xan", d), null);
+  assert.equal(await dropTime(env, "xan", d, { expect: now0 }), false, "gone already");
+  // a ride Today added, said no to: only while its time and state are as the act left them
+  const added = await addTodayOffer(env, "yan", ride({ state: "yes" }), { t: now }), at = { start: S0, stop: S0 + 2 * H, state: "yes" };
+  await assert.rejects(answerOffer(env, "yan", added, "no", { expect: { start: S0, stop: S0 + 2 * H, state: "pending" } }), /Bad request/);
+  assert.equal(await answerOffer(env, "yan", added, "no", { expect: { ...at, state: "new" } }), false, "its state changed since");
+  assert.equal(await answerOffer(env, "yan", added, "no", { expect: { ...at, start: S0 + H } }), false, "its time changed since");
+  assert.equal(rowOf("yan", added).state, "yes");
+  assert.equal(await answerOffer(env, "yan", added, "no", { expect: at }), true);
+  assert.equal(rowOf("yan", added).state, "no");
+  // the statements alone, in the caller's own batch beside its act's row: one change each, and a second batch changes nothing
+  sql.exec("CREATE TABLE IF NOT EXISTS acts_t (id TEXT PRIMARY KEY, state TEXT)");
+  sql.exec("INSERT INTO acts_t VALUES ('a1', 'done'), ('a2', 'done'), ('a3', 'done')");
+  const offered = await addTodayOffer(env, "zoe", ride({ state: "yes" }), { t: now });
+  await setOfferTimes(env, "zoe", offered, S0 + 2 * H, S0 + 4 * H, { t: now });
+  await setTime(env, "zoe", moved, { t });
+  const act = (id) => env.DB.prepare("UPDATE acts_t SET state = 'undone' WHERE id = ? AND state = 'done'").bind(id);
+  const undo = async () => (await env.DB.batch([
+    await setOfferTimesQ(env, "zoe", offered, S0, S0 + 2 * H, { t: now, expect: { start: S0 + 2 * H, stop: S0 + 4 * H, state: "yes" } }), act("a1"),
+    await setTimeQ(env, "zoe", was, { t, expect: now0 }), act("a2"),
+    await answerOfferQ(env, "zoe", offered, "no", { t: now, expect: { start: S0, stop: S0 + 2 * H, state: "yes" } }), act("a3"),
+  ])).map((r) => r.meta?.changes ?? 0);
+  assert.deepEqual(await undo(), [1, 1, 1, 1, 1, 1]);
+  assert.deepEqual([rowOf("zoe", offered).start, rowOf("zoe", offered).state, (await timeFor(env, "zoe", d)).source], [S0, "no", "set"]);
+  assert.deepEqual(await undo(), [0, 0, 0, 0, 0, 0], "two Undos never both put it back");
+  await assert.rejects(dropTimeQ(env, "zoe", "soon", { expect: now0 }), /Bad request/);
+  assert.equal((await (await dropTimeQ(env, "zoe", d, { expect: { ...was, sport: undefined } })).run()).meta.changes, 1);
+});
+
+test("offersReady and timesReady: the tables and the columns a caller's own SQL reads, made first", async () => {
+  const D1 = await offersReady(env), D2 = await timesReady(env);
+  assert.equal(D1, env.DB); assert.equal(D2, env.DB);
+  const cols = (t) => sql.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  for (const c of ["with_id", "taken", "opts"]) assert.ok(cols("fx_offers").includes(c), c);
+  assert.ok(cols("fx_times").includes("source"));
+  assert.ok(Array.isArray(sql.prepare(`SELECT o.id FROM fx_offers o WHERE ${EXPLICIT_OFFER}`).all()));
 });

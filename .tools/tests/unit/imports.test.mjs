@@ -101,6 +101,8 @@ const SHARED = {
     // the waiting rows' figures)
     donesIn: "env, userId, start, end", addTodayOffer: "env, uid, o", setOfferTimes: "env, uid, id, start, stop", takeOffer: "env, uid, id",
     promoteOffer: "env, inviterId, re, answererId, start, stop",
+    // (Undo's guarded restores as statements for the caller's own batch; the tables made before a caller's own SQL)
+    setOfferTimesQ: "env, uid, id, start, stop", answerOfferQ: "env, userId, id, answer", offersReady: "env",
   },
   "functions/_fitwx.js": { hoursAt: "env, lat, lon", rideWeather: "env, userId, request", pastWet: "env, lat, lon, t" },
   "functions/_todaywx.js+": { cellNow: "env, lat, lon, t", weatherSend: "env, place, t" },
@@ -133,6 +135,7 @@ const SHARED = {
   },
   "functions/_fittimes.js": {
     timeFor: "env, userId, day", timesOf: "env, userId, fromDay, toDay", setTime: "env, userId, row", dropTime: "env, userId, day",
+    setTimeQ: "env, userId, row", dropTimeQ: "env, userId, day", timesReady: "env",
     EXPLICIT_OFFER: (v, at) => assert.equal(v, "o.state = 'yes' AND (o.role IN ('asked','answered') OR o.taken = 1)", at),
     explicitRide: (v, at) => {
       assert.equal(typeof v, "function", at);
