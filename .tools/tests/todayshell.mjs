@@ -4,19 +4,26 @@
 // by PID at the end. Whether the hub's Worker is ready (GET /api/hub) and Chats' pages (/chats/…, Chat's engine
 // included) are stood in for in the browser, as this test is about the page, not the hub (hubserve.mjs is).
 // Checked: the tab bar (Today · Chats · Apps · You, the same on each view, Today chosen on opening, the views switched in
-// the page with history); Chat's engine made at idle; Apps' tiles and their lines, Mail's only for its account; You
-// drawn from the stub (rules with levels and records, notifications by app, this phone, other devices, quiet hours) and
-// each of its writes sent; Get Every App's Notifications Here sending fan: true only from its tap, and nothing posted to
-// /api/device on first run; a notification tapped while open; the ifl-sent toast; the way in (Sign in through Chats,
-// Sign In Without Chats as Today's own trip); the hub not ready (degraded: the apps' own addresses, no engine, no
-// hub-only rows); an account side from before Today First (v1: the four cards, Rules and Other Devices left out, This
-// Phone through /api/push); nothing of Markets' money or a Chat place kept in localStorage; and at 390, 320 and on its
-// side, light and dark: no sideways scroll, axe clean, no CSP violation or console error.
+// the page with history); Chat's engine made at idle, laid out but unseen; its sheet shown over the page in the top layer
+// (over a modal sheet of the page's own) and put away by the engine's own word (parent.IFL.hub.sent / closed); day.js
+// and the cards handed the page's own hub (a stand-in day.js saying what it's given, and batch TP's real one where it's
+// in: Radar at /weather/#radar, Send a button that opens the engine's sheet; degraded, the apps' own addresses); Apps'
+// tiles and their lines, Mail's only for its account; You drawn from the stub (rules with levels and records,
+// notifications by app, this phone, other devices, quiet hours) and each of its writes sent; This Phone on, off (staying
+// off after a reload) and on again; Get Every App's Notifications Here sending fan: true only from its tap, and nothing
+// posted to /api/device on first run; Sign Out in §11.5's order, the engine's signOut included; a notification tapped
+// while open; the ifl-sent toast; the way in (Sign in through Chats, Sign In Without Chats as Today's own trip); the hub
+// not ready (degraded: the apps' own addresses, no engine, no hub-only rows); an account side from before Today First
+// (v1: the four cards, Rules and Other Devices left out, This Phone through /api/push, on and off); nothing of Markets'
+// money or a Chat place kept in localStorage; pages off the hub never cross-fade (menu.css asks it of every page; menu.js
+// lets it go), at the hub they do; and at 390, 320 and on its side, light and dark: no sideways scroll, every view's foot
+// clear of the tab bar, axe clean, no CSP violation or console error.
 //   node .tools/tests/todayshell.mjs [state dir] [screenshots dir]      (run.sh does this)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { jsBlock, cssBlock } from '../iflmenu.mjs';
 
 // (requests a service worker makes are routed too: Today's root worker fetches its own files)
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
@@ -34,8 +41,11 @@ const FIX = (f) => JSON.parse(readFileSync(new URL(`./mocks/today/${f}`, import.
 const MIDDAY = FIX('cards.midday.json'), RULES = FIX('rules.json'), DEVICES = FIX('devices.json'), CARDS = FIX('cards.json');
 const AXE = readFileSync(`${HERE}node_modules/axe-core/axe.min.js`, 'utf8');
 const FAKE_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/inflite-phone';
-// (day.css is batch TP's: until it's in, stood in for, empty, so the page's link to it isn't a broken one)
+// (day.css is batch TP's: until it's in, stood in for, empty, so the page's link to it isn't a broken one. Its day.js and
+// cards.js, where they're in, are checked with the page's own hub too)
 const NO_DAY_CSS = !existsSync(`${IFL}today/public/day.css`);
+const TP_DAY = /export function stopDay/.test(readFileSync(`${IFL}today/public/day.js`, 'utf8'));
+const TP_CARDS = /export const hubOf/.test(readFileSync(`${IFL}today/public/cards.js`, 'utf8'));
 
 // ---- the stand-in account and the site's Worker ----
 const stub = spawn(process.execPath, [`${HERE}mocks/todaystub.mjs`, '8789'], { stdio: ['ignore', 'ignore', 'inherit'] });
@@ -59,13 +69,18 @@ const sent = async (method, route) => (await reqs()).filter((e) => e.method === 
 // ---- the browser ----
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const errs = [];
-// Chat's engine, stood in for: Chat's own page as the engine's frame loads it, ready, saying what it's asked
+// Chat's engine, stood in for: Chat's own page as the engine's frame loads it, ready, saying what it's asked. Its sheet
+// ends as §8.2 has it, through the parent's window: finish(say) → parent.IFL.hub.sent(say), finish() → closed(). Its
+// signOut says so at /chats/__signed-out (as the page it's in is about to be left)
 const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</title></head><body><script>
   window.IFLChat = { state: "ready", share: async (w, p, o) => { parent.__shared = [w, p, o]; return true; }, sendTo: async () => ({ ok: true, say: "Sent to Leo" }),
-    waiting: async () => [], since: async () => null, refresh: async () => { parent.__refreshed = (parent.__refreshed || 0) + 1; }, signOut: async () => { parent.__chatOut = true; } };
+    waiting: async () => [], since: async () => null, refresh: async () => { parent.__refreshed = (parent.__refreshed || 0) + 1; },
+    signOut: async () => { parent.__chatOut = true; await fetch("/chats/__signed-out", { method: "POST" }); } };
+  window.finish = (say) => (say ? parent.IFL.hub.sent(say) : parent.IFL.hub.closed());
   parent.dispatchEvent(new Event("ifl-chat-ready"));
 </script></body></html>`;
-async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null } = {}) {
+const chatOut = [];
+async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null, setup = null } = {}) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
@@ -73,7 +88,12 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = fals
   if (sentSay) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('done-sent')) { sessionStorage.setItem('ifl-sent', s); sessionStorage.setItem('done-sent', '1'); } }, sentSay);
   // (the hub's Worker ready, or not yet; Chats' pages, the engine among them)
   await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: hub }, headers: { 'Cache-Control': 'no-store' } }));
-  await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ contentType: 'text/html', body: new URL(r.request().url()).searchParams.has('engine') ? ENGINE : '<!doctype html><title>Chats</title><style>@view-transition { navigation: auto; }</style><p>Chats</p>' }));
+  await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => {
+    const u = new URL(r.request().url());
+    if (u.pathname === '/chats/__signed-out') { chatOut.push(Date.now()); return r.fulfill({ status: 204, body: '' }); }
+    return r.fulfill({ contentType: 'text/html', body: u.searchParams.has('engine') ? ENGINE : '<!doctype html><title>Chats</title><style>@view-transition { navigation: auto; }</style><p>Chats</p>' });
+  });
+  await setup?.(ctx);
   if (NO_DAY_CSS) await ctx.route((u) => new URL(u).pathname === '/day.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
   if (push) {
     await ctx.grantPermissions(['notifications'], { origin: BASE });
@@ -106,7 +126,7 @@ await part('tabs and views', async () => {
   same(await shown(p), ['today'], 'opens on Today');
   same(await tabs(p), [['Today', '/', 'page'], ['Chats', '/chats/', null], ['Apps', '/#apps', null], ['You', '/#you', null]], 'the tab bar: Today · Chats · Apps · You, Today chosen');
   same(await text(p, '#hd .ifh-name'), 'Today', 'the header says Today');
-  ok(await p.$('#today[data-phase="midday"]'), 'the day drawn by day.js (its phase marked)');
+  ok(await p.waitForSelector('#today[data-phase="midday"]', { timeout: 10000 }).catch(() => null), 'the day drawn by day.js (its phase marked)');
   const bar = await p.$eval('#tabs', (n) => { const r = n.getBoundingClientRect(), cs = getComputedStyle(n); return { pos: cs.position, bottom: innerHeight - r.bottom, h: r.height, vt: cs.viewTransitionName }; });
   ok(bar.pos === 'fixed' && bar.bottom >= 0 && bar.bottom < 40 && bar.h >= 44, 'the tab bar sits at the foot, fixed', JSON.stringify(bar));
   same(bar.vt, 'ifl-tabs', 'and stays put as pages cross-fade (view-transition-name)');
@@ -140,8 +160,11 @@ await part('the engine at idle', async () => {
   await mode({ phase: 'midday' });
   const { ctx, p } = await open();
   await p.waitForSelector('iframe[name="ifl-chat"]', { state: 'attached', timeout: 10000 });
-  const f = await p.$eval('iframe[name="ifl-chat"]', (n) => ({ src: n.getAttribute('src'), cls: n.className, hidden: n.hidden, vis: getComputedStyle(n).visibility, pe: getComputedStyle(n).pointerEvents, pos: getComputedStyle(n).position }));
-  same(f, { src: '/chats/?engine=1', cls: 'ifl-engine', hidden: true, vis: 'hidden', pe: 'none', pos: 'fixed' }, 'Chat’s engine made once the day’s drawn: its own page, unseen, never in the way of a tap');
+  const f = await p.$eval('iframe[name="ifl-chat"]', (n) => { const box = n.parentElement, cs = getComputedStyle(n), r = n.getBoundingClientRect();
+    return { src: n.getAttribute('src'), cls: n.className, box: `${box.tagName.toLowerCase()}.${box.className}`, open: box.open, hidden: n.hidden || box.hidden, display: cs.display, boxDisplay: getComputedStyle(box).display,
+      vis: cs.visibility, pe: cs.pointerEvents, pos: getComputedStyle(box).position, size: r.width === innerWidth && r.height === innerHeight }; });
+  same(f, { src: '/chats/?engine=1', cls: 'ifl-engine', box: 'dialog.ifl-engine-box', open: false, hidden: false, display: 'block', boxDisplay: 'block', vis: 'hidden', pe: 'none', pos: 'fixed', size: true },
+    'Chat’s engine made once the day’s drawn: its own page in a dialog of its own, shut, laid out over the whole page (never display: none), unseen and never in the way of a tap');
   same(await p.$$eval('iframe[name="ifl-chat"]', (fs) => fs.length), 1, 'one engine');
   // (a Chat push, the root worker's word: the engine caught up, and the day asked again)
   await reset();
@@ -163,6 +186,93 @@ await part('sent from Chats and back', async () => {
   await p.waitForSelector('.ifl-toast.on', { timeout: 5000 });
   same(await text(p, '.ifl-toast'), 'Sent to Pat. You’re still here', 'the one-shot toast from Chats’ own sheet');
   same(await p.evaluate(() => sessionStorage.getItem('ifl-sent')), null, 'said once');
+  await ctx.close();
+});
+
+// ======================================================================= the engine's sheet, over the page
+// (a Send: Chat's sheet shown over the page, in the top layer, over a modal sheet of the page's own as Weather's and
+// Fitness's are; the engine's own word, through the parent's window (§8.2), puts it away again)
+const engineState = (p) => p.evaluate(() => {
+  const box = document.querySelector('dialog.ifl-engine-box'), f = box.querySelector('iframe'), cs = getComputedStyle(f), r = f.getBoundingClientRect();
+  return { open: box.open, modal: box.matches(':modal'), display: cs.display, vis: cs.visibility, pe: cs.pointerEvents, tapped: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === f };
+});
+const SHOWN = { open: true, modal: true, display: 'block', vis: 'visible', pe: 'auto', tapped: true }, AWAY = { open: false, modal: false, display: 'block', vis: 'hidden', pe: 'none', tapped: false };
+await part('the engine’s sheet', async () => {
+  await mode({ phase: 'midday' });
+  const { ctx, p } = await open();
+  await p.waitForFunction(() => document.querySelector('iframe[name="ifl-chat"]')?.contentWindow?.IFLChat, null, { timeout: 10000 });
+  ok(await p.evaluate(() => window.IFL?.hub?.on === true && typeof window.IFL.hub.sent === 'function'), 'window.IFL: the page’s own IFL, at the hub (a const in a module never is)');
+  await p.evaluate(() => { const d = document.createElement('dialog'); d.id = 'mine'; d.innerHTML = '<p>A sheet of the page’s own</p><button type="button">OK</button>'; document.body.append(d); d.showModal(); });
+  same(await p.evaluate(() => window.IFL.hub.send('London today: rain from 15:00', 'eyJ2IjoxfQ', {})), true, 'Send through the engine');
+  same(await p.evaluate(() => window.__shared), ['London today: rain from 15:00', 'eyJ2IjoxfQ', {}], 'the card handed to the engine’s sheet');
+  same(await engineState(p), SHOWN, 'its sheet over the page: in the top layer, over the page’s own modal sheet, and the one thing a tap reaches');
+  await p.frame({ name: 'ifl-chat' }).evaluate(() => window.finish('Sent to Pat'));
+  await p.waitForSelector('.ifl-toast.on', { timeout: 5000 });
+  same(await engineState(p), AWAY, 'parent.IFL.hub.sent(): put away (still laid out), never left over the page');
+  same(await text(p, '.ifl-toast'), 'Sent to Pat. You’re still here', 'and the toast');
+  ok(await p.evaluate(() => document.getElementById('mine').matches(':modal')), 'the page’s own sheet still there beneath');
+  await p.evaluate(() => { document.getElementById('mine').close(); return window.IFL.hub.send('Just words', null); });
+  same(await engineState(p), SHOWN, 'shown again for another');
+  await p.frame({ name: 'ifl-chat' }).evaluate(() => window.finish());
+  same(await engineState(p), AWAY, 'parent.IFL.hub.closed(): put away');
+  await p.click('#tabs [data-tab="apps"]');
+  await p.waitForSelector('#apps:not([hidden]) .atile');
+  ok(true, 'and the page takes taps again');
+  await ctx.close();
+});
+
+// ======================================================================= day.js and the cards: the page's own hub
+// (day.js stood in for, saying what the page hands it; then batch TP's own, where it's in)
+const DAY_PROBE = `export function drawDay(root, answer, ctx) {
+  root.dataset.phase = answer?.phase || "";
+  const h = ctx.hub;
+  root.dataset.got = JSON.stringify({ on: h?.on === true, degraded: !!h?.degraded, window: !!h && h === window.IFL?.hub, radar: h ? h.go("/weather/#radar") : null, timers: ctx.timers, call: typeof ctx.call });
+  delete root.dataset.stopped;
+}
+export function phaseAt(a) { return a?.phase; }
+export function tickDay() {}
+export function stopDay(root) { root.dataset.stopped = "1"; }`;
+await part('the day gets the page’s own hub', async () => {
+  await mode({ phase: 'midday' });
+  const probe = async (c) => c.route((u) => new URL(u).pathname === '/day.js', (r) => r.fulfill({ contentType: 'text/javascript', body: DAY_PROBE }));
+  for (const hub of [true, false]) {
+    const { ctx, p } = await open({ hub, setup: probe });
+    await p.waitForSelector('#today[data-got]', { timeout: 10000 });
+    same(JSON.parse(await p.$eval('#today', (n) => n.dataset.got)), { on: true, degraded: !hub, window: true, radar: hub ? '/weather/#radar' : 'https://weather.inflite.ai/#radar', timers: false, call: 'function' },
+      hub ? 'day.js handed the page’s own hub (the hub’s paths), the page’s requests, and no timers of its own' : 'degraded: the same hub, the apps’ own addresses');
+    if (hub) {
+      // (signed out, as the worker says: the day let go, nothing more timed or drawn from it)
+      await p.evaluate(() => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { ifl: 'signedout' } })));
+      await p.waitForSelector('#out:not([hidden]) #signin');
+      same(await p.$eval('#today', (n) => [n.dataset.stopped, n.dataset.phase ?? null]), ['1', null], 'signed out: the day let go (stopDay), its phase gone');
+    }
+    await ctx.close();
+  }
+  // (the four cards, an answer without v: handed the hub too, which batch TP's cards.js uses for Send)
+  if (TP_CARDS) {
+    await mode({ v1: true });
+    const { ctx, p } = await open();
+    await p.waitForFunction(() => document.querySelectorAll('#rest .tcard[data-state="ok"]').length === 4);
+    ok(await p.$eval('#rest .tcard[data-app="weather"] [data-send]', (n) => n.tagName === 'BUTTON'), 'the four cards at the hub: Send a button, through the engine');
+    await ctx.close();
+  } else console.log('SKIP  the four cards’ Send at the hub: batch TP’s cards.js isn’t in yet');
+  if (!TP_DAY) { console.log('SKIP  batch TP’s day.js with the page’s own hub: it isn’t in yet'); return; }
+  await mode({ phase: 'midday' });
+  let { ctx, p } = await open();
+  await p.waitForSelector('#today[data-phase="midday"] #top a[data-do="open"]', { timeout: 10000 });
+  same(await p.$eval('#top a[data-do="open"]', (a) => a.getAttribute('href')), '/weather/#radar', 'day.js at the hub: Radar at /weather/#radar, in the one window');
+  ok(await p.$('#top button[data-send]'), 'day.js at the hub: the top card’s Send a button');
+  await p.waitForFunction(() => document.querySelector('iframe[name="ifl-chat"]')?.contentWindow?.IFLChat, null, { timeout: 10000 });
+  await p.click('#top button[data-send]');
+  await p.waitForFunction(() => document.querySelector('dialog.ifl-engine-box')?.open, null, { timeout: 5000 });
+  same((await p.evaluate(() => window.__shared))?.[0], MIDDAY.tops.midday.share, 'its Send: the engine’s sheet over the page, with the card’s words');
+  await p.frame({ name: 'ifl-chat' }).evaluate(() => window.finish('Sent to Pat'));
+  same(await engineState(p), AWAY, 'and put away by the engine’s word');
+  await ctx.close();
+  ({ ctx, p } = await open({ hub: false }));
+  await p.waitForSelector('#today[data-phase="midday"] #top a[data-do="open"]', { timeout: 10000 });
+  same(await p.$eval('#top a[data-do="open"]', (a) => a.getAttribute('href')), 'https://weather.inflite.ai/#radar', 'day.js degraded: Radar at Weather’s own address');
+  ok(/^https:\/\/chat\.inflite\.ai\/#share=/.test(await p.$eval('#top a[data-send]', (a) => a.getAttribute('href')).catch(() => '')), 'degraded: the top card’s Send Chat’s own #share= link');
   await ctx.close();
 });
 
@@ -268,8 +378,30 @@ await part('you: this phone', async () => {
   ok(i >= 0 && j > i, 'turning it on: POST /api/device, then PUT /api/morning');
   same([body.sub?.endpoint, body.fan, body.tz], [FAKE_ENDPOINT, undefined, 'Europe/London'], 'POST /api/device { sub, tz }: Today’s morning only, never fan');
   ok(!all.some((e) => e.path.endsWith('/today/push')), 'not /api/push, on an account side that has the device route');
-  // (Sign Out, from You: this phone out of every table, then signed out, then the sign-in page)
+  // (off: out of every table, and off it stays, drawn again and after a reload, though the browser keeps the subscription)
+  const settled = (on) => p.waitForFunction((on) => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && i.checked === on; }, on, { timeout: 15000 });
   await reset();
+  await p.click('#youPhoneRow');
+  await settled(false);
+  await p.waitForTimeout(1500);
+  same((await sent('DELETE', 'device')), [{ endpoint: FAKE_ENDPOINT }], 'turning it off: DELETE /api/device { endpoint }');
+  ok(!(await p.isChecked('#youPhone input')), 'and off it stays, drawn again from the account');
+  same(await p.evaluate(() => [!!localStorage.getItem('fakesub'), localStorage.getItem('today:push')]), [true, null], 'the subscription kept for one tap on, this browser’s word of it gone');
+  await p.reload();
+  await p.waitForSelector('#youPhone input');
+  await p.waitForTimeout(2000);
+  ok(!(await p.isChecked('#youPhone input')), 'off after a reload too');
+  // (on again: one tap, through the device route)
+  await reset();
+  await p.click('#youPhoneRow');
+  await settled(true);
+  await p.waitForTimeout(500);
+  same((await sent('POST', 'device')).map((x) => x.sub?.endpoint), [FAKE_ENDPOINT], 'on again: POST /api/device');
+  // (Sign Out, from You: this phone out of every table, Chat signed out here (the engine), then the account, then the
+  // sign-in page (§11.5))
+  await p.waitForFunction(() => document.querySelector('iframe[name="ifl-chat"]')?.contentWindow?.IFLChat, null, { timeout: 10000 });
+  await reset();
+  chatOut.length = 0;
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
   await p.click('#youOut');
   await p.waitForURL(/auth\.inflite\.ai/);
@@ -278,6 +410,7 @@ await part('you: this phone', async () => {
   const out = await reqs(), del = out.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), so = out.findIndex((e) => e.path.endsWith('/signout'));
   ok(del >= 0 && so > del, 'DELETE /api/device first, then signed out');
   same(JSON.parse(out[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device { endpoint }');
+  ok(chatOut.length === 1 && out[del].at <= chatOut[0] && chatOut[0] <= out[so].at, 'Chat signed out here by its engine (IFLChat.signOut), after this phone’s gone and before the account', JSON.stringify({ chatOut, del: out[del]?.at, so: out[so]?.at }));
   await ctx.close();
 });
 
@@ -305,7 +438,8 @@ await part('degraded', async () => {
   await mode({ phase: 'midday' });
   let { ctx, p } = await open({ hub: false });
   same(await tabs(p), [['Today', '/', 'page'], ['Chats', 'https://chat.inflite.ai/', null], ['Apps', '/#apps', null], ['You', '/#you', null]], 'not ready: Chats at its own address');
-  ok(await p.$('#today[data-phase="midday"]'), 'Today’s own day still drawn');
+  ok(await p.waitForSelector('#today[data-phase="midday"]', { timeout: 10000 }).catch(() => null), 'Today’s own day still drawn');
+  ok(await p.evaluate(() => window.IFL?.hub?.degraded === true), 'IFL.hub, degraded, on the window all the same');
   await p.waitForTimeout(3500);
   same(await p.$$eval('iframe[name="ifl-chat"]', (fs) => fs.length), 0, 'no engine');
   await p.click('#tabs [data-tab="apps"]');
@@ -350,6 +484,24 @@ await part('v1', async () => {
   const dev = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/device')), push = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/push'));
   ok(dev >= 0 && push > dev, 'v1: This Phone falls back to POST /api/push after the device route’s 404');
   same(JSON.parse(all[push]?.body || '{}').sub?.endpoint, FAKE_ENDPOINT, 'with the subscription');
+  // (off: DELETE /api/push after the device route's 404, and off it stays, after a reload too (the morning's thisDevice))
+  await reset();
+  await p.click('#youPhoneRow');
+  await p.waitForFunction(() => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && !i.checked; }, null, { timeout: 15000 });
+  await p.waitForTimeout(1500);
+  const off = await reqs(), d1 = off.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), d2 = off.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/push'));
+  ok(d1 >= 0 && d2 > d1 && JSON.parse(off[d2].body).endpoint === FAKE_ENDPOINT, 'v1 off: DELETE /api/push { endpoint } after the device route’s 404');
+  ok(!(await p.isChecked('#youPhone input')), 'v1: off it stays');
+  await p.reload();
+  await p.waitForFunction(() => document.querySelectorAll('#rest .tcard[data-state="ok"]').length === 4);
+  await p.click('#tabs [data-tab="you"]');
+  await p.waitForSelector('#youPhone input');
+  await p.waitForTimeout(1500);
+  ok(!(await p.isChecked('#youPhone input')), 'v1: off after a reload');
+  await reset();
+  await p.click('#youPhoneRow');
+  await p.waitForFunction(() => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && i.checked; }, null, { timeout: 15000 });
+  ok((await reqs()).some((e) => e.method === 'POST' && e.path.endsWith('/today/push')), 'v1: on again, through /api/push');
   await ctx.close();
 });
 
@@ -358,7 +510,7 @@ await part('kept', async () => {
   for (const m of [{ mode: 'ok' }, { phase: 'midday' }]) {
     await mode(m);
     const { ctx, p } = await open();
-    await p.waitForTimeout(1500);
+    await p.waitForFunction(() => Object.keys(localStorage).some((k) => k.startsWith('today:cards:')), null, { timeout: 10000 });
     const kept = await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('today:')).map((k) => localStorage.getItem(k)).join('\n'));
     ok(kept.includes('today'), `${m.mode || m.phase}: the day kept`);
     ok(!kept.includes('£'), `${m.mode || m.phase}: no £ kept`);
@@ -371,18 +523,52 @@ await part('kept', async () => {
   }
 });
 
+// ======================================================================= pages that cross-fade: at the hub only
+// (menu.css asks every page for the cross-fade, as an at-rule can't be kept to html.ifl-hub; menu.js lets it go on each
+// page off the hub as it's left and as it opens. Two pages of an app's own, stood in for with the real menu.css and
+// menu.js, off the hub and then with the hub's marker: off it, both transitions let go, quietly; at it, kept)
+await part('cross-fade at the hub only', async () => {
+  const SITE = 'http://app.offhub.test';
+  // (/a and /b with menu.js; /c asks for the cross-fade but has no menu.js, and goes to /d, which has)
+  const PAGE = (marker, path) => `<!doctype html><html><head><meta charset="utf-8"><title>App</title>${marker ? '<meta name="ifl-hub" content="/">' : ''}<style>${cssBlock()}</style>
+<script>
+  // (the transition each event brings, and whether it's let go: watched before menu.js's own listeners)
+  const watch = (type, key) => addEventListener(type, (e) => { const t = e.viewTransition; sessionStorage.setItem(key, t ? 'kept' : 'none'); if (t) { const skip = t.skipTransition.bind(t); t.skipTransition = () => { sessionStorage.setItem(key, 'let go'); skip(); }; } });
+  watch('pageswap', 'swap'); watch('pagereveal', 'reveal');
+</script>${path === '/c' ? '' : `<script>${jsBlock()}</script>`}</head><body><p>App</p><a id="next" href="${{ '/a': '/b', '/c': '/d' }[path] || '/a'}">Next</a></body></html>`;
+  const go = async (marker, from, to) => {
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+    await ctx.route(`${SITE}/**`, (r) => r.fulfill({ contentType: 'text/html', body: PAGE(marker, new URL(r.request().url()).pathname) }));
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => errs.push(`pageerror (${marker ? 'at' : 'off'} the hub): ${e.message}`));
+    p.on('console', (m) => { if (m.type() === 'error') errs.push(`${marker ? 'at' : 'off'} the hub: ${m.text()}`); });
+    await p.goto(SITE + from);
+    await p.evaluate(() => sessionStorage.clear());
+    await p.click('#next');
+    await p.waitForURL(SITE + to);
+    await p.waitForTimeout(800);
+    const got = await p.evaluate(() => ({ swap: sessionStorage.getItem('swap'), reveal: sessionStorage.getItem('reveal') }));
+    await ctx.close();
+    return got;
+  };
+  same(await go(true, '/a', '/b'), { swap: 'kept', reveal: 'kept' }, 'at the hub: the pages cross-fade (left and opened, kept)');
+  const off = await go(false, '/a', '/b');
+  ok(off.swap === 'let go' && off.reveal !== 'kept', 'off the hub: the page left lets the cross-fade go, so none is drawn', JSON.stringify(off));
+  same((await go(false, '/c', '/d')).reveal, 'let go', 'off the hub: a page opened from one without menu.js lets it go as it opens');
+});
+
 // ======================================================================= every size, light and dark: no sideways scroll, axe, no errors
 await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[390, 844], [320, 568], [844, 390]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.atile')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(300);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);
     // (the foot of the view clear of the tab bar, scrolled to the end)
     const clear = await p.evaluate((v) => { scrollTo(0, document.documentElement.scrollHeight); const kids = [...document.getElementById(v).querySelectorAll('*')].filter((n) => n.getClientRects().length); const last = Math.max(...kids.map((n) => n.getBoundingClientRect().bottom)); return document.getElementById('tabs').getBoundingClientRect().top - last; }, view);
-    ok(clear >= 0 || view === 'today', `${w}×${h} ${scheme} ${view}: its foot clear of the tab bar`, `${clear}px`);
+    ok(clear >= 0, `${w}×${h} ${scheme} ${view}: its foot clear of the tab bar`, `${clear}px`);
     await p.evaluate(AXE);
     const axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false } }, resultTypes: ['violations'] })).violations
       .map((v) => `${v.id} ×${v.nodes.length}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ').slice(0, 160)}`));

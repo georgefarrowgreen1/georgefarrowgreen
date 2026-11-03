@@ -24,6 +24,9 @@
 //   POST /mode { v1: true } (with or without a phase): an account side from before Today First, where only Today's own
 //     routes answer (act, rules, notify, device and devices 404), GET today/cards has no v (asked ?v=2 or not), and
 //     today/me says nothing of Today First's
+//   this phone, as the account has it: once a device is added or dropped in this mode (POST/DELETE today/device or
+//     today/push), the morning's thisDevice says so (until then, morning.json's), and devices' here, asked with a
+//     device, is the tables it's in
 //   node todaystub.mjs [port] [log file]     (port 8789)
 import { createServer } from 'node:http';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -41,7 +44,7 @@ let mode = 'ok', morningPatch = {}, log = [];
 // Today First's: the moment answered (null: none), and You's state, afresh with each mode
 const PHASES = ['morning', 'midday', 'preride', 'riding', 'after', 'after-fit', 'evening'];
 let phase = null, you = null, v1 = false, admin = false, hubPush = true;
-const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json') });
+const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json'), pushed: null });
 you = fresh();
 const LEVELS = ['do', 'suggest', 'quiet'];
 const NAMES = { moveRide: ['Moved', 'Moves are suggested now, not made'], addRide: ['Added', 'Rides are suggested now, not added'], holdRide: ['Held', 'Only app notices are held now'] };
@@ -62,6 +65,7 @@ const session = () => {
 };
 const morning = () => {
   const m = { ...read('morning.json'), ...morningPatch };
+  if (you.pushed != null) m.thisDevice = you.pushed;
   return m;
 };
 function cards(only) {
@@ -156,9 +160,9 @@ createServer(async (req, res) => {
     return json(res, { prefs: { order, hidden: (b?.hidden || []).filter((k) => K.includes(k)) } });
   }
   if (key === 'POST morning/try') return b?.endpoint ? json(res, { sent: 1 }) : json(res, { error: 'Turn the morning notification on on this device first.' }, 400);
-  if (key === 'POST push') return b?.sub?.endpoint ? json(res, { ok: true, devices: 1 }) : json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400);
+  if (key === 'POST push') { if (!b?.sub?.endpoint) return json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400); you.pushed = true; return json(res, { ok: true, devices: 1 }); }
   if (key === 'POST push-move') return json(res, { moved: true });
-  if (key === 'DELETE push') return json(res, { ok: true, devices: 0 });
+  if (key === 'DELETE push') { you.pushed = false; return json(res, { ok: true, devices: 0 }); }
   if (key === 'POST account-link') return json(res, { code: 'stubhandoffcode' });
   // ---- Today First's (spec §6.1): none of them on an account side from before it (v1) ----
   if (v1 && /^(act|rules|notify|device|devices)(\/|$)/.test(route)) return json(res, { error: 'Not found.' }, 404);
@@ -195,9 +199,10 @@ createServer(async (req, res) => {
     if (!/^https:\/\//.test(b?.sub?.endpoint || '')) return json(res, { error: 'That isn’t a push subscription this server can send to.' }, 400);
     const tables = b.fan === true && you.devices.fan && !b.was ? ['td_push', 'pg_push', 'mk_push', 'wx_devs'] : ['td_push'];
     you.devices.here = [...new Set([...(you.devices.here || []), ...tables])];
+    you.pushed = true;
     return json(res, { ok: true, tables });
   }
-  if (key === 'DELETE device') { you.devices.here = []; return json(res, { ok: true }); }
+  if (key === 'DELETE device') { you.devices.here = []; you.pushed = false; return json(res, { ok: true }); }
   if (key === 'GET devices') return json(res, { ...you.devices, here: url.searchParams.get('device') ? you.devices.here : [] });
   if (key === 'DELETE devices') {
     const n = you.devices.devices.length;

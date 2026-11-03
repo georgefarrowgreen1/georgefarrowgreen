@@ -259,20 +259,19 @@ await part('cards: ok', async () => {
   ok(await p.evaluate(() => !document.getElementById('today').hidden && document.getElementById('apps').hidden && document.getElementById('you').hidden), 'opened on Today');
   // (the fixture: weather has a packed card, fitness a null one, chat none, and markets one with characters outside
   // base64url: only weather's goes in the link, after the words)
+  // (Send: a link to Chat's #share=, or, where cards.js sends through IFL.hub, a button whose way there when the hub can't
+  // take it (data-href) is the same address. Either way, it must be there)
+  const sendTo = (k) => p.$eval(`.tcard[data-app=${k}] [data-send]`, (n) => (n.tagName === 'BUTTON' ? n.dataset.href || '' : n.getAttribute('href'))).catch(() => null);
   for (const k of KEYS) {
-    // (Send: a link to Chat's #share=, or, once cards.js sends through IFL.hub, a button, which here (the hub not ready)
-    // goes to the same address)
-    const sendEl = await p.$(`.tcard[data-app=${k}] [data-send]`);
-    if (sendEl && await sendEl.evaluate((n) => n.tagName === 'BUTTON')) { ok(true, `${k}: Send to a friend, a button through IFL.hub.send`); continue; }
-    const send = await p.$eval(`.tcard[data-app=${k}] a[data-send]`, (a) => a.href).catch(() => null), sc = CARDS.cards[k].sendCard;
+    const send = await sendTo(k), sc = CARDS.cards[k].sendCard;
     const card = typeof sc === 'string' && /^[A-Za-z0-9_-]{1,6000}$/.test(sc) ? `&card=${sc}` : '';
     same(send, `https://chat.inflite.ai/#share=${encodeURIComponent(CARDS.cards[k].share)}${card}`, `${k}: Send to a friend goes to Chat’s #share= with its line${card ? ', and the card after it' : ', and no card'}`);
   }
   ok(/^[A-Za-z0-9_-]+$/.test(CARDS.cards.weather.sendCard) && /[^A-Za-z0-9_-]/.test(CARDS.cards.markets.sendCard), 'the fixture has a good sendCard and a bad one');
-  const wsend = await p.$eval('.tcard[data-app=weather] a[data-send]', (a) => a.getAttribute('href')).catch(() => 'https://chat.inflite.ai/#share=x&card=y');
+  const wsend = String(await sendTo('weather'));
   ok(/^https:\/\/chat\.inflite\.ai\/#share=[^&]+&card=[A-Za-z0-9_-]+$/.test(wsend), 'weather: #share= first, then &card=', wsend);
-  const msend = await p.$eval('.tcard[data-app=markets] a[data-send]', (a) => a.getAttribute('href')).catch(() => '');
-  ok(!msend.includes('card=') && !msend.includes('<'), 'markets: a sendCard outside base64url is left out of the link', msend);
+  const msend = await sendTo('markets');
+  ok(typeof msend === 'string' && msend.startsWith('https://chat.inflite.ai/#share=') && !msend.includes('card=') && !msend.includes('<'), 'markets: a sendCard outside base64url is left out of the link', String(msend));
   const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
   same(fit.slice(0, 2), [['Details', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Details and Change, in Fitness’s words, to Fitness’s #today');
   ok(await p.$eval('.tcard[data-app=fitness] .tc-foot .pill.primary', (a) => a.textContent === 'Details' && !a.querySelector('svg')), 'Fitness: no play glyph, as nothing starts a session');
