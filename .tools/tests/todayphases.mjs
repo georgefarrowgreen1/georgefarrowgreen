@@ -407,13 +407,16 @@ await part('at the hub: the after card', async () => {
 // ======================================================================= at the hub: the page's own IFL.hub
 // (no stand-in: Today's own IFL.hub, the hub's Worker saying it's ready (/api/hub, addendum A1), as day.js and cards.js
 // find it on the page itself. Only once Today's page is the hub's (its marker, batch S's index.html): before that the page
-// has no hub of its own to use. Chats isn't served here: its engine's frame gets a blank page)
+// has no hub of its own to use. Chats isn't served here: its engine's frame gets a blank page. The answer's links to the
+// apps' own addresses are put on this site's (weather.localhost:8787, as weather.inflite.ai is live), since the hub
+// takes an app's address to its path only on its own site)
+const HERE_SITE = (a) => JSON.parse(JSON.stringify(a).replace(/https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/g, (_, app) => `http://${app}.localhost:8787`));
 await part('at the hub: the page’s own IFL.hub', async () => {
   const setup = async (p) => {
     await p.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: true }, headers: { 'Cache-Control': 'no-store' } }));
     await p.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ body: '<!doctype html><title>Chats</title>', contentType: 'text/html' }));
   };
-  const { ctx, p } = await open('midday', { setup });
+  const { ctx, p } = await open('midday', { setup, patch: HERE_SITE });
   if (!(await p.$('meta[name="ifl-hub"]'))) {
     console.log('SKIP  at the hub, the page’s own IFL.hub: Today’s page isn’t the hub’s yet (no ifl-hub marker: batch S)');
     await ctx.close();
