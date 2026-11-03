@@ -87,6 +87,11 @@ test("/mail/roof/<file>: Mail's own file, code only, with nothing of the browser
   await get("/mail/roof/mail.css", {}, env({ MAIL_VIA: VIA, MAIL: { fetch: (req) => { bound.push(req.url); assert.equal(req.headers.get("cookie"), null); return say(); } } }));
   assert.deepEqual(bound, [`${MAIL}/roof/mail.css`]);
   assert.deepEqual(asked, [], "the binding, not the network");
+  // (a script served as application/javascript, as some hosts still type it: a script, typed as one here)
+  say = () => new Response("export {}", { headers: { "Content-Type": "application/javascript; charset=utf-8" } });
+  const app = await get("/mail/roof/mail.js");
+  assert.equal(app.status, 200);
+  assert.equal(app.headers.get("content-type"), "text/javascript; charset=utf-8");
   // (HEAD: no body)
   say = () => new Response("export {}", { headers: { "Content-Type": "text/javascript" } });
   const head = await get("/mail/roof/mail.js", { method: "HEAD" });
