@@ -46,8 +46,39 @@ export function todayOrigin(env, request) {
 export function todayLinks(env, request) {
   return Object.fromEntries(["chat", "weather", "fitness", "finance", "account", "auth"].map((name) => [name, appOrigin(name, env, request)]));
 }
+// InFlite's hub (inflite.ai, Today First): the origins whose pages are this site's apps too, in one window with Today
+// (the IFL repo's today/src/hub.js serves them, as the apps, at /chats/, /weather/, …). HUB_ORIGINS in the environment
+// (a comma between them: production's https://inflite.ai,https://next.inflite.ai, the tests' http://ifl.test:8788);
+// else Today's own address. Each is matched exactly, never as a pattern.
+export function hubOrigins(env, request) {
+  const list = String(env?.HUB_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean);
+  return list.length ? list : [todayOrigin(env, request)];
+}
 // Cloudflare's word on where a request came from (country, region, city, latitude, longitude, timezone), for the few
 // places that read it (Weather's place, a sign-in's place, a ride's rough place, the health check's zone). Behind
-// InFlite's hub (inflite.ai, Today First) a request reaches here from the hub's Worker, whose own request.cf it'd be, so
-// the hub sends the browser's alongside, keyed. (B0: request.cf as it is, or {}; batch H merges in the hub's, checked.)
-export const cfOf = (request) => request?.cf || {};
+// InFlite's hub a request reaches here from the hub's Worker, whose own request.cf it'd be, so the hub sends the
+// browser's alongside (X-Hub-Geo: base64url JSON), and it's taken only where the hub's key said it's the hub's
+// (X-Hub-Ok, set by functions/_middleware.js and by nothing a browser sends): those six, in place of this request's own.
+const GEO = ["country", "region", "city", "latitude", "longitude", "timezone"];
+export function cfOf(request) {
+  const cf = request?.cf || {}, headers = request?.headers;
+  if (headers?.get?.("X-Hub-Ok") !== "1") return cf;
+  // (behind the hub, none of this request's own six: they'd be the hub Worker's place. Only what the hub said, and
+  // where it said nothing usable (no X-Hub-Geo, too long, not JSON of an object), nothing)
+  const out = { ...cf };
+  for (const k of GEO) delete out[k];
+  const raw = headers.get("X-Hub-Geo");
+  let geo = null;
+  if (raw && raw.length <= 2048) {
+    try {
+      const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+      geo = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    } catch (_) { geo = null; }
+  }
+  if (!geo || typeof geo !== "object" || Array.isArray(geo)) return out;
+  for (const k of GEO) {
+    const v = geo[k];
+    if ((typeof v === "string" && v.length <= 100) || (typeof v === "number" && Number.isFinite(v))) out[k] = v;
+  }
+  return out;
+}

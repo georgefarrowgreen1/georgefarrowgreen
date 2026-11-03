@@ -6,9 +6,13 @@
 // server's answer), packed for a link, and put into words: what it says, when it lands, how it's changed since, which
 // pigeons it'll take. Pure: no page, no network, no Buffer, so Chat, the server (functions/) and the tests share it.
 // (Chat's drawing of a card is pigeon/cardview.js; who it suits is pigeon/rank.js.)
+// Today First (spec §8.4) adds, each invisible to an older Chat (whose checks build everything from fixed keys): the
+// weather where a friend is (there: true, ref.friend, sent to that friend alone), the friends a planned ride is with
+// (the fitness snap's with), and a time to talk (the payload's when part, and the ans that answers it by its id).
 
 export const CARD_V = 1, KINDS = ["weather", "fitness", "markets", "streak"], FROMS = ["weather", "fitness", "markets", "today", "chat"];
 export const ASK_KINDS = ["weather", "fitness", "markets"], PLAN_SPORTS = ["ride", "run"];
+export const WHEN_KINDS = ["call", "meet"], WHEN_SHORTEST = 15, WHEN_LONGEST = 240, WHEN_OPTS = 3, WITH_MAX = 3;
 export const MAX_CARD = 4400 /* UTF-8 bytes */, MAX_PACKED = 6000, MAX_HASH = 8000, LIVE_MS = 48 * 3600e3, MARGIN_MS = 10 * 60e3;
 export const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;      // copied from functions/_markets.js:28
 export const PAD_BUCKETS = [1024, 4096, 8192];             // then multiples of 4096
@@ -18,6 +22,7 @@ const SPORTS = ["ride", "run", "swim", "walk", "row", "strength"];
 const RATINGS = ["Great", "Good", "Fair"];
 const SHARE_ID = /^[A-Za-z0-9_-]{22}$/, WID = /^[A-Za-z0-9_:-]{1,40}$/, DAYKEY = /^\d{4}-\d\d-\d\d$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const FRIEND_ID = /^[A-Za-z0-9_-]{1,64}$/;               // (a Chat account's id: a UUID, or a test's short name)
 const EARLIEST = Date.UTC(2020, 0, 1);
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], DOWL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -52,6 +57,20 @@ const pick = (v, list) => (list.includes(v) ? v : null);
 // a 0.05° square's corner (never the exact place)
 export const snapCell = (lat, lon) => [Math.round(lat * 20) / 20, Math.round(lon * 20) / 20].map((x) => +x.toFixed(2) + 0);
 const span = (o) => { if (!isObj(o)) return null; const start = time(o.start), end = time(o.end); return start != null && end != null && end > start ? { start, end } : null; };
+// a time on a quarter hour (every zone's offset is whole quarter hours, so it's on one on every clock)
+const quarter = (v) => { const t = time(v); return t != null && t % (15 * MIN) === 0 ? t : null; };
+// the friends a ride is with: first names only (a with card goes on to a third friend or a group, so never a surname;
+// as Chat's first()), each cut to 40, none twice, at most three (none: no list at all)
+function withOf(v) {
+  if (!Array.isArray(v)) return null;
+  const out = [];
+  for (const x of v) {
+    const n = str(x, 40).split(" ")[0];
+    if (n && !out.some((y) => y.toLowerCase() === n.toLowerCase())) out.push(n);
+    if (out.length >= WITH_MAX) break;
+  }
+  return out.length ? out : null;
+}
 
 function weatherSnap(s) {
   const place = str(s.place, 60); if (!place) return null;
@@ -82,6 +101,7 @@ function fitnessSnap(s) {
   const secs = int(s.secs, 0, 86400); if (secs != null) o.secs = secs;
   const tss = int(s.tss, 0, 1000); if (tss != null) o.tss = tss;
   const b = span(s.best); o.best = b ? { start: b.start, end: b.end, dry: isObj(s.best) && s.best.dry === true } : null;
+  const w = withOf(s.with); if (w) o.with = w;
   o.done = isObj(s.done) ? doneOf(s.done) : null;
   return o;
 }
@@ -110,13 +130,16 @@ function streakSnap(s) {
 const SNAPS = { weather: weatherSnap, fitness: fitnessSnap, markets: marketsSnap, streak: streakSnap };
 
 // The card, rebuilt field by field from what's known (never spread from the input). from: "hash" for a card from a
-// link, which never keeps a Fitness share id (only the sending Chat puts one in). → card | null
+// link, which never keeps a Fitness share id (only the sending Chat puts one in). A weather card made for one friend,
+// of where they are (there: true), keeps that friend's id (ref.friend) so it can go to them alone (canForward).
+// → card | null
 export function normCard(x, { from } = {}) {
   try {
     if (!isObj(x) || !KINDS.includes(x.kind) || !isObj(x.snap)) return null;
     const kind = x.kind, snap = SNAPS[kind](x.snap);
     if (!snap) return null;
     const c = { v: CARD_V, kind, from: pick(x.from, FROMS) || (kind === "streak" ? "chat" : kind) };
+    const there = kind === "weather" && x.there === true; if (there) c.there = true;
     const at = time(x.at); if (at != null) c.at = at;
     c.say = "";
     c.snap = snap;
@@ -124,6 +147,7 @@ export function normCard(x, { from } = {}) {
     if (r && kind === "weather" && Array.isArray(r.cell) && r.cell.length === 2) {
       const lat = num(r.cell[0], -90, 90, 6), lon = num(r.cell[1], -180, 180, 6);
       if (lat != null && lon != null) c.ref = { cell: snapCell(lat, lon) };
+      if (c.ref && there && typeof r.friend === "string" && FRIEND_ID.test(r.friend)) c.ref.friend = r.friend;
     } else if (r && kind === "fitness" && from !== "hash" && typeof r.share === "string" && SHARE_ID.test(r.share)) c.ref = { share: r.share };
     else if (r && kind === "markets" && snap.sym && r.sym === snap.sym) c.ref = { sym: snap.sym };
     c.say = str(x.say, 200) || cut(cardWords(c), 200);
@@ -160,13 +184,45 @@ export function laterPlan(plan, start) {
   const o = (plan?.opts || []).find((w) => w.start === start);
   return o ? { ...plan, start: o.start, end: o.end, dry: o.dry === true, opts: [] } : null;
 }
+// An answer: to a ride's invite by its letter's id (re, with the plan agreed: { re, a, plan? }), or to a time to talk by
+// its letter's id (id, with the time chosen for a yes: { id, a, start? }; a "later" or a "no" names no time, as its
+// words say none: a new time is a new when, spec §8.4). An older Chat's check wants re, so it leaves an answer to a time
+// out and shows the words.
 export function normAns(x) {
   try {
-    if (!isObj(x) || typeof x.re !== "string" || !UUID.test(x.re)) return null;
+    if (!isObj(x)) return null;
     const a = pick(x.a, ["yes", "later", "no"]); if (!a) return null;
-    const plan = normPlan(x.plan);
-    if (a !== "no" && !plan) return null;
-    return { re: x.re.toLowerCase(), a, ...(plan ? { plan } : {}) };
+    if (typeof x.re === "string" && UUID.test(x.re)) {
+      const plan = normPlan(x.plan);
+      if (a !== "no" && !plan) return null;
+      return { re: x.re.toLowerCase(), a, ...(plan ? { plan } : {}) };
+    }
+    if (typeof x.re !== "string" && typeof x.id === "string" && UUID.test(x.id)) {
+      const start = a === "yes" ? quarter(x.start) : null;
+      return { id: x.id.toLowerCase(), a, ...(start != null ? { start } : {}) };
+    }
+    return null;
+  } catch (_) { return null; }
+}
+// A time to talk (Today First, spec §8.4: "Call at 18:30?"): a call or a meeting, starting on a quarter hour, 15 to 240
+// whole minutes long (any whole minute: only the starts are on quarter hours, as the spec's "15-minute steps" are, and
+// Chat's server takes any length in whole minutes), in a real zone (else none), with at most 3 other starts offered
+// (each on a quarter hour, none twice, none the first; a bad one is left out, never the time).
+// → { kind, start, mins, tz?, opts: [start] } | null
+export function normWhen(x) {
+  try {
+    if (!isObj(x)) return null;
+    const kind = pick(x.kind, WHEN_KINDS), start = quarter(x.start), mins = x.mins;
+    if (!kind || start == null || !Number.isInteger(mins) || mins < WHEN_SHORTEST || mins > WHEN_LONGEST) return null;
+    const o = { kind, start, mins };
+    const tz = zone(x.tz); if (tz) o.tz = tz;
+    o.opts = [];
+    for (const raw of Array.isArray(x.opts) ? x.opts : []) {
+      if (o.opts.length >= WHEN_OPTS) break;
+      const s = quarter(raw);
+      if (s != null && s !== start && !o.opts.includes(s)) o.opts.push(s);
+    }
+    return o;
   } catch (_) { return null; }
 }
 
@@ -204,16 +260,19 @@ export function readShareHash(hash) {
 
 /* ---------- the letter's payload ---------- */
 // The card's own sentence, for a letter's words when there are none (and what an older Chat shows)
+const ING = { ride: "Riding", run: "Running", swim: "Swimming", walk: "Walking", row: "Rowing", strength: "Training" };
 export function cardWords(card) {
   try {
     const s = card?.snap || {};
+    const mates = Array.isArray(s.with) && s.with.length ? andList(s.with) : "";
     let w = "";
     if (card?.kind === "weather") {
       const lead = typeof s.lead === "string" && s.lead ? s.lead : "";
       w = lead ? `${s.place} today: ${lead[0].toLowerCase()}${lead.slice(1)}` : s.temp != null ? (codeLabel(s.code) ? `${s.place}: ${Math.round(s.temp)}° and ${codeLabel(s.code).toLowerCase()}.` : `${s.place}: ${Math.round(s.temp)}°.`) : `The weather in ${s.place}.`;
       if (!/[.!?…]$/.test(w)) w += ".";
     } else if (card?.kind === "fitness") {
-      w = s.done ? `Done today: ${s.name}.` : `Today’s session: ${s.name}${s.secs ? `, ${durWords(s.secs)}` : ""}.`;
+      w = mates ? (s.done ? `Done today with ${mates}: ${s.name}.` : `${ING[s.sport] || "Training"} with ${mates}: ${s.name}${s.secs ? `, ${durWords(s.secs)}` : ""}.`)
+        : s.done ? `Done today: ${s.name}.` : `Today’s session: ${s.name}${s.secs ? `, ${durWords(s.secs)}` : ""}.`;
     } else if (card?.kind === "markets") {
       const up = s.pct > 0 ? "up" : "down";
       w = !s.sym ? (Math.abs(s.pct) < 0.05 ? "My portfolio’s little changed today." : `My portfolio is ${up} ${Math.abs(s.pct).toFixed(1)}% today.`)
@@ -223,33 +282,43 @@ export function cardWords(card) {
   } catch (_) { return ""; }
 }
 const has = (v) => v != null;
-// What the letter's sealed payload is made of, each part checked on its own: a bad card, request, invite or answer is
-// simply left out, never the letter. (z, the padding, is ignored.) Never throws.
-export function payloadParts(p) {
-  const out = { t: "", card: null, ask: null, re: null, plan: null, ans: null };
+// What the letter's sealed payload is made of, each part checked on its own: a bad card, request, invite, time or answer
+// is simply left out, never the letter. (z, the padding, is ignored.) A time to talk and the weather where a friend is
+// are one to one only: in a group's letter ({ group: true }) they, and an answer to a time, are left out. Never throws.
+export function payloadParts(p, { group = false } = {}) {
+  const out = { t: "", card: null, ask: null, re: null, plan: null, ans: null, when: null };
   try {
     if (!isObj(p)) return out;
     out.t = typeof p.t === "string" ? p.t : "";
     out.card = has(p.c) ? normCard(p.c) : null;
+    if (group && out.card?.there) out.card = null;
     out.ask = out.card && has(p.ask) ? normAsk(p.ask, out.card) : null;
     out.re = has(p.re) ? normRe(p.re) : null;
     out.plan = has(p.plan) ? normPlan(p.plan) : null;
     out.ans = has(p.ans) ? normAns(p.ans) : null;
+    if (group && out.ans?.id) out.ans = null;
+    out.when = !group && has(p.when) ? normWhen(p.when) : null;
   } catch (_) {}
   return out;
 }
 // A payload to seal: always words (an older Chat shows only those), then whichever parts are good. Never r, k, p, v,
-// bad, unchecked, ph (old meanings) and no sealed type of its own.
-export function buildPayload({ t, card, ask, re, plan, ans, q } = {}) {
+// bad, unchecked, ph (old meanings) and no sealed type of its own. A time to talk (when, and an answer to one) only to
+// one friend: for a group ({ group: true }) they're left out. The weather where a friend is goes to that friend alone
+// (canForward's rule, held here too): it throws unless to is the card's own friend, and always for a group, so a place
+// is never sealed for anyone else, even by a caller that forgot to ask canForward (or built one payload for several).
+export const ONLY_FOR = "Only for the friend it’s about";
+export function buildPayload({ t, card, ask, re, plan, ans, q, when, to, group = false } = {}) {
   const words = typeof t === "string" ? t.trim() : "";
   if (!words) throw new Error("No words");
   const out = { t: words };
   const c = card ? normCard(card) : null;
+  if (c?.there && (group || !canForward(c, { mine: true, to }))) throw new Error(ONLY_FOR);
   if (c) out.c = c;
   const a = c && ask ? normAsk(ask, c) : null; if (a) out.ask = a;
   const r = re ? normRe(re) : null; if (r) out.re = r;
   const pl = plan ? normPlan(plan) : null; if (pl) out.plan = pl;
-  const an = ans ? normAns(ans) : null; if (an) out.ans = an;
+  const an = ans ? normAns(ans) : null; if (an && !(group && an.id)) out.ans = an;
+  const wh = when && !group ? normWhen(when) : null; if (wh) out.when = wh;
   if (isObj(q) && typeof q.id === "string" && typeof q.t === "string") out.q = { id: q.id, from: typeof q.from === "string" ? q.from : "", t: q.t, ...(isObj(q.p) ? { p: q.p } : {}) };
   return out;
 }
@@ -263,9 +332,12 @@ export function padPayload(p) {
 }
 
 /* ---------- live cards ---------- */
-// Yours of any kind; a friend's only where it's public: a forecast for a square, or one stock's percent
-export function canForward(card, { mine } = {}) {
+// Yours of any kind; a friend's only where it's public: a forecast for a square, or one stock's percent. The weather
+// where a friend is (there) goes only to that friend (to: their id), so a place never travels on: not to anyone else,
+// not on from the friend, and never without saying to whom.
+export function canForward(card, { mine, to } = {}) {
   if (!card || !KINDS.includes(card.kind)) return false;
+  if (card.there === true) return card.kind === "weather" && typeof to === "string" && !!to && card.ref?.friend === to;
   if (mine) return true;
   return card.kind === "weather" || (card.kind === "markets" && !!card.snap?.sym);
 }
@@ -542,9 +614,30 @@ export function planWords(plan, { tz, now = Date.now() } = {}) {
   return `${plan?.far ? `${verb} at the same time?` : `${verb} together?`} ${spanWords(plan?.start, plan?.end, z, now)}${plan?.dry ? ", dry for both" : ""}.`;
 }
 // An answer's words: "Yes, 10:00 works." (another day: "Yes, Saturday 10:00 works."), "Later suits me better: 13:00?",
-// "Can’t make it this time."
+// "Can’t make it this time." (An answer to a time to talk: whenAnsWords.)
 export function answerWords(ans, { tz, now = Date.now() } = {}) {
+  if (ans?.id && !ans?.re) return whenAnsWords(ans, { tz, now });
   if (ans?.a === "no" || !ans?.plan) return "Can’t make it this time.";
   const z = zoneOk(tz) ? tz : ans.plan.tz, at = ans.plan.start, d = dayIn(at, z, now), when = `${d === "today" ? "" : `${d} `}${clockIn(at, z)}`;
   return ans.a === "yes" ? `Yes, ${when} works.` : `Later suits me better: ${when}?`;
+}
+
+// "18:30", "tomorrow at 18:30", "Saturday at 18:30", "on Sat 14 Nov at 18:30" (on tz's clock)
+const atWords = (ms, tz, now) => { const d = dayWords(ms, tz, now); return `${d === "Today" ? "" : d === "Tomorrow" ? "tomorrow " : /day$/.test(d) ? `${d} ` : `on ${d} `}at ${clockIn(ms, tz)}`; };
+// A time to talk's words: "Call at 18:30?", "Meet tomorrow at 10:00?", and the other times: "Call at 18:30? 19:00 or
+// 19:30 would work too."
+export function whenWords(when, { tz, now = Date.now() } = {}) {
+  const z = zoneOk(tz) ? tz : when?.tz, verb = when?.kind === "meet" ? "Meet" : "Call";
+  const opts = (Array.isArray(when?.opts) ? when.opts : []).filter(Number.isFinite).map((o) => clockIn(o, z));
+  return `${verb} ${atWords(when?.start, z, now)}?${opts.length ? ` ${andList(opts).replace(/ and ([^ ]+)$/, " or $1")} would work too.` : ""}`;
+}
+// An answer to one: "Yes, 18:30 works." (another day: "Yes, Saturday 18:30 works."), "Yes, that works.", "Can we find
+// another time?", "Can’t make that time."
+export function whenAnsWords(ans, { tz, now = Date.now() } = {}) {
+  if (ans?.a === "yes") {
+    if (!Number.isFinite(ans.start)) return "Yes, that works.";
+    const d = dayIn(ans.start, tz, now);
+    return `Yes, ${d === "today" ? "" : `${d} `}${clockIn(ans.start, tz)} works.`;
+  }
+  return ans?.a === "later" ? "Can we find another time?" : "Can’t make that time.";
 }
