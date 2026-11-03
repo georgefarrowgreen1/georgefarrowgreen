@@ -435,10 +435,13 @@ test("Today First's routes signed in: acts by their id (a bad one 400, none 404)
   assert.equal(r.s, 200); assert.deepEqual([r.j.quiet.on, r.j.quiet.from, r.j.quiet.to], [true, 21, 6]);
   r = await call("GET", "me", { cookie: hal });
   assert.deepEqual(r.j.quiet, { on: true, from: 21, to: 6 }, "the session view says the same");
-  // (the devices' answers are their own module's: functions/_devices.js; here, past every guard)
+  // (the devices' answers are their own module's, functions/_devices.js, which devices.test.mjs checks; here, only that
+  // each gets past every guard to it: B0's stub's 501 "Not built yet.", or the module's own answer, never a guard's 401
+  // or 403, and a 404 only as the module's "Not found.")
   for (const [m, p, body] of [["POST", "device", { sub: await device("tfhal") }], ["DELETE", "device", { endpoint: "x" }], ["DELETE", "devices", { id: "x" }], ["GET", "devices?device=AbCdEfGhIjKlMnOp"]]) {
     r = await call(m, p, { cookie: hal, body, ...W });
-    assert.ok(![401, 403, 404].includes(r.s) || r.j?.error === "Not found.", `${m} ${p}: ${r.s} ${JSON.stringify(r.j)}`);
+    const reached = r.s === 501 ? r.j?.error === "Not built yet." : ![401, 403].includes(r.s) && (r.s !== 404 || r.j?.error === "Not found.");
+    assert.ok(reached, `${m} ${p}: ${r.s} ${JSON.stringify(r.j)}`);
   }
 });
 

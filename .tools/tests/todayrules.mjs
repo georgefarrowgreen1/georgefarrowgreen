@@ -5,7 +5,9 @@
 // drops the rule to suggest), offered at suggest (Take moves it; an Undo after the ride's been changed by hand says
 // nothing was undone), the line alone at quiet; the rules' records through GET today/rules; and a habit from eight
 // seeded weeks of rides (fx_acts, and the forecast stand-in's past days dry) adding Today's own ride (fx_offers role
-// "today", taken 0), kept with Keep. The account's zone chosen so that it's 08:00 there now (spec §14.4, layer 3), so
+// "today", taken 0), kept with Keep. The tick plans only an account whose Today has planned a day itself before (Fay's
+// hasn't: nothing done for her, and her push offers no Undo); and a ride of your own that is the ride agreed with a
+// friend is never moved (Eve's). The account's zone chosen so that it's 08:00 there now (spec §14.4, layer 3), so
 // the day has the afternoon's ride and a morning to move it to; the forecast stand-in's week where you ride is light
 // from 06:00 to 20:00 there, and dry.
 import http from 'http';
@@ -115,17 +117,22 @@ const to = (endpoint, since = 0) => box().filter((p) => p.at > since && p.header
 // ---- 1. Four accounts: their place, a phone each, the morning on at this minute ----
 const HOME = { name: 'London', lat: 51.5072, lon: -0.1276 };
 const alex = await signup('Alex Rule', 'alexrule'), bea = await signup('Bea Rule', 'bearule'), cat = await signup('Cat Rule', 'catrule'), dan = await signup('Dan Rule', 'danrule'), mira = await signup('Mira Call', 'miracall');
+const fay = await signup('Fay Rule', 'fayrule'), eve = await signup('Eve Rule', 'everule');
 const people = [alex, bea, cat, dan];
 let r = await today('GET', 'cards', { cookie: alex.cookie });
 ok(r.s === 200, 'Today’s cards, so each app’s tables are made', `${r.s}`);
-for (const p of people) {
+for (const p of [...people, fay, eve]) {
   sql(`INSERT OR REPLACE INTO wx_accts (user_id, data, ver, updated) VALUES ('${p.id}', '${esc(JSON.stringify({ places: [HOME], settings: {}, notify: {} }))}', 1, ${t0})`);
   p.ph = await phone(p.name.split(' ')[0].toLowerCase());
   r = await today('POST', 'push', { cookie: p.cookie, body: { sub: p.ph.sub } });
   ok(r.s === 200, `${p.name}: the phone kept`, `${r.s} ${JSON.stringify(r.j)}`);
+  if (p === eve) continue;                    // (Eve's morning comes on later: step 6)
   r = await today('PUT', 'morning', { cookie: p.cookie, body: { on: true, at: Math.floor(mins / 5) * 5, tz: TZ, lines: { weather: true, fitness: true, chat: true, markets: true } } });
   ok(r.s === 200 && r.j.on === true && r.j.tz === TZ, `${p.name}: the morning on, at ${hhmm(t0)} in ${TZ}`, `${r.s} ${JSON.stringify(r.j).slice(0, 160)}`);
 }
+// (Today 1.09 has planned a day of each one's already, yesterday's, so the tick plans theirs too; never Fay's)
+const yesterday = dayAfter(TODAY_DAY, -1);
+sql(people.map((p) => `INSERT OR IGNORE INTO td_plans (user_id, day, at) VALUES ('${p.id}', '${yesterday}', ${t0 - DAY})`).join('; '));
 // (Bea's clash rule at suggest, Cat's at quiet, set by hand in You)
 r = await today('PUT', 'rules', { cookie: bea.cookie, body: { rule: 'moveRide', level: 'suggest' } });
 ok(r.s === 200 && r.j.level === 'suggest' && r.j.setBy === 'you', 'Bea: moving a ride set to Suggest', JSON.stringify(r.j));
@@ -143,7 +150,7 @@ sql(`CREATE TABLE IF NOT EXISTS fx_times (user_id TEXT NOT NULL, day TEXT NOT NU
   tz TEXT NOT NULL, with_id TEXT NOT NULL, who TEXT NOT NULL, role TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'yes', opts TEXT,
   made INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (user_id, id))`);
 const RIDE = { start: at(TODAY_DAY, 14), stop: at(TODAY_DAY, 15, 15) }, CALL = { start: at(TODAY_DAY, 14, 30), stop: at(TODAY_DAY, 15) };
-for (const p of [alex, bea, cat]) {
+for (const p of [alex, bea, cat, fay]) {
   sql(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('${p.id}', '${TODAY_DAY}', ${RIDE.start}, ${RIDE.stop}, '${TZ}', 'ride', 'set', ${t0});
     INSERT INTO td_times (user_id, id, kind, start, stop, tz, with_id, who, role, state, made, until) VALUES ('${p.id}', '${crypto.randomUUID()}', 'call', ${CALL.start}, ${CALL.stop}, '${TZ}', '${mira.id}', 'Mira', 'answered', 'yes', ${t0}, ${CALL.stop + 12 * H})`);
 }
@@ -157,11 +164,12 @@ sql(`INSERT OR REPLACE INTO fx_today (user_id, tz, units, days, at) VALUES ('${d
 // ---- 4. The scheduler's turn: each account's day planned, then its morning composed and sent ----
 let since = Date.now();
 r = await tick();
-ok(r.s === 200 && r.j.due === 4 && r.j.sent === 4 && r.j.left === 0, 'the tick: four accounts due, each planned and sent', `${r.s} ${JSON.stringify(r.j)}`);
+ok(r.s === 200 && r.j.due === 5 && r.j.sent === 5 && r.j.left === 0, 'the tick: five accounts due, each sent', `${r.s} ${JSON.stringify(r.j)}`);
 const actsOf = (p) => rows(`SELECT id, rule, day, target, kind, state, level, said, was, now, undo_until FROM td_acts WHERE user_id = '${p.id}' ORDER BY made, rule`).map((a) => ({ ...a, was: JSON.parse(a.was || 'null'), now: JSON.parse(a.now || 'null') }));
 const timeOf = (p) => rows(`SELECT start, stop, source FROM fx_times WHERE user_id = '${p.id}' AND day = '${TODAY_DAY}'`)[0] || null;
 const planned = rows(`SELECT user_id FROM td_plans WHERE day = '${TODAY_DAY}'`).map((x) => x.user_id);
 ok(people.every((p) => planned.includes(p.id)), 'each one’s day claimed once planned (td_plans)', JSON.stringify(planned));
+ok(!planned.includes(fay.id), 'Fay’s not planned: her Today hasn’t planned a day itself (Today 1.08 has no Undo)', JSON.stringify(planned));
 
 // at do: moved, and the push says so
 const [aAct] = actsOf(alex), aTime = timeOf(alex);
@@ -169,6 +177,7 @@ ok(aAct?.rule === 'moveRide' && aAct.state === 'done' && aAct.level === 'do', 'A
 ok(aTime?.source === 'moved' && aTime.stop - aTime.start === RIDE.stop - RIDE.start && aTime.start >= t0 + H && (aTime.stop + 15 * MIN <= CALL.start || aTime.start >= CALL.stop + 15 * MIN),
   `the ride now ${hhmm(aTime?.start)}–${hhmm(aTime?.stop)}: as long, an hour or more off, clear of the call by 15 minutes`, JSON.stringify(aTime));
 ok(aAct?.said === `Moved your ride to ${hhmm(aTime?.start)}, clear of Mira’s call`, 'what Today says it did', aAct?.said);
+ok(aTime?.start === at(TODAY_DAY, 12) && aAct?.undo_until === at(TODAY_DAY, 11), 'as near its own time as is clear (12:00, not the first free hour), with Undo until an hour before', `${hhmm(aTime?.start)}, Undo until ${hhmm(aAct?.undo_until)}`);
 let got = to(alex.ph.sub.endpoint, since), note = got.length ? await opened(alex.ph, got[0].body) : {};
 const fitLine = String(note.body || '').split('\n').find((l) => l.includes('Undo on Today')) || '';
 ok(fitLine.includes(`Moved your ride to ${hhmm(aTime?.start)} to clear your 14:30 call. Undo on Today.`), 'the morning push says the act (Chat’s names off: no name)', note.body);
@@ -182,6 +191,11 @@ ok(/Your ride at 14:00 runs into your 14:30 call\. Move it to \d\d:\d\d on Today
 ok(cAct?.state === 'said' && cAct.level === 'quiet' && cAct.said === 'Your ride at 14:00 runs into Mira’s call at 14:30' && timeOf(cat)?.start === RIDE.start, 'Cat (quiet): the clash line alone, nothing moved', JSON.stringify(cAct));
 got = to(cat.ph.sub.endpoint, since); note = got.length ? await opened(cat.ph, got[0].body) : {};
 ok(got.length === 1 && !/Undo on Today|on Today\./.test(note.body || ''), 'its push says nothing of it', note.body);
+
+// Fay: nothing done, the ride where it was, and her push offers no Undo
+ok(actsOf(fay).length === 0 && JSON.stringify(timeOf(fay)) === JSON.stringify({ start: RIDE.start, stop: RIDE.stop, source: 'set' }), 'Fay: nothing moved', JSON.stringify({ acts: actsOf(fay), t: timeOf(fay) }));
+got = to(fay.ph.sub.endpoint, since); note = got.length ? await opened(fay.ph, got[0].body) : {};
+ok(got.length === 1 && !/on Today\./.test(note.body || ''), 'her morning went, saying nothing of an act', note.body);
 
 // the habit: Today's own ride, agreed and holding nothing (taken 0), on the rest day
 const dActs = actsOf(dan), dAdd = dActs.find((a) => a.rule === 'addRide');
@@ -230,13 +244,27 @@ r = await today('GET', 'rules', { cookie: dan.cookie });
 const add = (r.j.rules || []).find((x) => x.rule === 'addRide');
 ok(add?.line === 'Added 1 · kept 1', 'his record: Added 1 · kept 1', JSON.stringify(add));
 
-// ---- 6. Planned once: a second turn, and Today's own read, act no more ----
+// ---- 6. Planned once: a second turn, and Today's own read, act no more. And Eve's ride at 14:00 is the ride agreed
+// with Leo (her Ride At set to just that), with Mira's call at 14:30: it's never moved, only said, once ----
+const LEO = crypto.randomUUID();
+sql(`INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('${eve.id}', '${TODAY_DAY}', ${RIDE.start}, ${RIDE.stop}, '${TZ}', 'ride', 'set', ${t0});
+  INSERT INTO td_times (user_id, id, kind, start, stop, tz, with_id, who, role, state, made, until) VALUES ('${eve.id}', '${crypto.randomUUID()}', 'call', ${CALL.start}, ${CALL.stop}, '${TZ}', '${mira.id}', 'Mira', 'answered', 'yes', ${t0}, ${CALL.stop + 12 * H});
+  INSERT INTO fx_offers (user_id, id, start, stop, tz, sport, wid, name, secs, who, role, far, dry, state, made, until, with_id, taken) VALUES ('${eve.id}', '${LEO}', ${RIDE.start}, ${RIDE.stop}, '${TZ}', 'ride', 'free-ride', 'Ride how you like', 4500, 'Leo', 'answered', 0, 1, 'yes', ${t0}, ${RIDE.stop + 12 * H}, 'leo-id', 1);
+  INSERT OR IGNORE INTO td_plans (user_id, day, at) VALUES ('${eve.id}', '${yesterday}', ${t0 - DAY})`);
+r = await today('PUT', 'morning', { cookie: eve.cookie, body: { on: true, at: Math.floor(mins / 5) * 5, tz: TZ, lines: { weather: true, fitness: true, chat: true, markets: true } } });
+ok(r.s === 200 && r.j.on === true, 'Eve: the morning on', `${r.s}`);
 since = Date.now();
 sql(`UPDATE td_prefs SET m_sent = NULL WHERE user_id = '${cat.id}'`);
 r = await tick();
 ok(r.s === 200 && actsOf(cat).length === 1 && actsOf(alex).length === 1, 'a second turn the same day: nothing planned again', JSON.stringify(r.j));
+const eActs = actsOf(eve);
+ok(eActs.length === 1 && eActs[0].target === `offer:${LEO}` && eActs[0].state === 'said' && eActs[0].level === 'none' && eActs[0].said === 'Your ride with Leo at 14:00 runs into Mira’s call at 14:30',
+  'Eve: her ride is the one agreed with Leo, so it’s said once, not moved', JSON.stringify(eActs));
+ok(JSON.stringify(timeOf(eve)) === JSON.stringify({ start: RIDE.start, stop: RIDE.stop, source: 'set' }), 'her ride where it was', JSON.stringify(timeOf(eve)));
+got = to(eve.ph.sub.endpoint, since); note = got.length ? await opened(eve.ph, got[0].body) : {};
+ok(got.length === 1 && !/on Today\./.test(note.body || ''), 'her push offers no Undo', note.body);
 r = await today('GET', 'cards?v=2', { cookie: alex.cookie });
-ok(r.s === 200 && actsOf(alex).length === 1, 'nor a read of the day', `${r.s}`);
+ok(r.s === 200 && actsOf(alex).length === 1 && r.j.planning !== true, 'nor a read of the day (planned already, so not planning)', `${r.s} planning ${r.j.planning}`);
 const ex = await new Promise((done) => {
   const data = JSON.stringify({});
   const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/export', method: 'POST', agent: false, headers: { Host: ACCT, Origin: 'http://account.ifl.test:8788', Cookie: dan.cookie, 'Content-Type': 'application/json', 'Content-Length': data.length } }, (res) => {
