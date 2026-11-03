@@ -56,10 +56,11 @@
 // RPC (the frozen allow-list; `args` as ARGUMENT RULES; `v` the result's shape; `patches` the topics it may emit):
 //   Life
 //     hello(protocol: "int")                        → { protocol }                                  —
-//     start({ visible?, locked?, screen? }: bools)  → { state }                                     state me rows friends groups requests air outbox keywarn unread
+//     start({ visible?, locked?, screen?, lockUid? })  → { state }                                     state me rows friends groups requests air outbox keywarn unread
 //         visible: the page is visible (sync, not sync?quiet=1, only when also screen); locked: the app lock's state
 //         read from localStorage["inflight-lock"] by the service before this first call (default true: locked);
-//         screen: the Chats screen has been shown (cache: is written only after a start with screen: true, S3-D4)
+//         screen: the Chats screen has been shown (cache: is written only after a start with screen: true, S3-D4);
+//         lockUid ("id"): the account the kept lock is for (inflight-lock's uid): the lock holds only for that account
 //     state()                                       → { state }                                     —
 //     lock(on: "bool")                              → { state }                                     state (locked: chat:* typing:* null, rows lines blanked)
 //     signOut()                                     → { ok: true }  (logout on the server, then forget())   state
@@ -160,7 +161,7 @@ export const TOPICS = fz(["state", "me", "rows", "friends", "groups", "requests"
 const B = "bool?", O = (o) => fz(o);
 export const RPC = fz({
   hello: O({ args: fz(["int"]), v: "{ protocol }", patches: fz([]) }),
-  start: O({ args: fz([O({ visible: B, locked: B, screen: B })]), v: "{ state }", patches: fz(["state", "me", "rows", "friends", "groups", "requests", "air", "outbox", "keywarn", "unread"]) }),
+  start: O({ args: fz([O({ visible: B, locked: B, screen: B, lockUid: "id?" })]), v: "{ state }", patches: fz(["state", "me", "rows", "friends", "groups", "requests", "air", "outbox", "keywarn", "unread"]) }),
   state: O({ args: fz([]), v: "{ state }", patches: fz([]) }),
   lock: O({ args: fz(["bool"]), v: "{ state }", patches: fz(["state", "chat:", "typing:", "rows"]) }),
   signOut: O({ args: fz([]), v: "{ ok }", patches: fz(["state"]) }),

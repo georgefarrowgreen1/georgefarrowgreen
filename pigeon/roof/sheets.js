@@ -15,6 +15,7 @@
 //   (reply, retry, delete).
 // Every string from data goes in through textContent (fw.ui's builders); the QR code is qr.js's own SVG of digits only.
 // Message words never leave the core but for the chat on screen, and nothing here writes them anywhere.
+import { cardHtml } from "../cardview.js";
 import { qrSvg } from "../qr.js";
 
 export const GROUP_MAX = 12;
@@ -417,6 +418,9 @@ export function openHold(ctx, target = {}) {
         return btn;
       }));
       box.append(rr);
+      // (a card in it, as the chat draws it: cardview.js escapes everything it's given)
+      let card = ""; try { card = m.card ? cardHtml(m.card, { viewAt: Date.now() }) : ""; } catch (_) {}
+      if (card) { const t = box.ownerDocument.createElement("template"); t.innerHTML = card; box.append(el("div", { class: "chs-card" }, t.content)); }
       if (Number.isFinite(m.at)) box.append(el("p", { class: "chs-foot", text: `Sent ${fmtShort(m.at)}` }));
     }
     box.append(ui.list(items.map((it) => {

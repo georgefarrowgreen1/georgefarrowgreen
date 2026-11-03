@@ -28,6 +28,15 @@ export const MAIL_ROOF = IFL && new URL('email/public/roof/', IFL);
 export const mailSkip = roofSkip || (!existsSync(new URL('mail.js', MAIL_ROOF)) && 'the inflite repo beside has no Mail module yet (email/public/roof/mail.js): stage 4’s B0-b');
 export const appsSkip = roofSkip || (!/\bmarkets: fz\(\{|\bmarkets: Object\.freeze\(\{/.test(readFileSync(new URL('router.js', ROOF), 'utf8')) && 'the inflite repo beside has no per-app REGISTRY yet (router.js before stages 2–4’s j0)');
 // (where a REGISTRY app's module files are: MAIN's <app>/roof/ for Weather, Markets and Fitness; IFL's email/public/roof/
-// for Mail. A published path /<app>/x → the file it is on disk, or null for an app with no files here)
-export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), ...(IFL ? { mail: new URL('email/public/', IFL) } : {}) });
+// for Mail; MAIN's pigeon/ for Chats (stage 3: /chats/x is the hub's copy of Chat's /pigeon/x, S3-D1). A published path
+// /<app>/x → the file it is on disk, or null for an app with no files here)
+export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), chats: new URL('pigeon/', MAIN), ...(IFL ? { mail: new URL('email/public/', IFL) } : {}) });
 export const fileOf = (path) => { const m = /^\/(\w+)\/(.+)$/.exec(path || ''); return m && MODULE_HOME[m[1]] ? new URL(m[2], MODULE_HOME[m[1]]) : null; };
+
+// Stage 3 (Chats; roof/s3/spec.md §5, §10.1). CHATS_ROOF: MAIN's pigeon/roof/ (served at /chats/roof/ through the hub).
+// chatsSkip: false when the IFL beside has stage 3's REGISTRY.chats (router.js, B0), else the reason a Chats case that
+// needs it skips (the IFL beside predates stage 3's B0: its live branch, or stages 2–4's). chatsStub(file): true while
+// pigeon/roof/<file> is still B0's stub (exports STUB), so a behaviour case can skip with "still B0's stub".
+export const CHATS_ROOF = new URL('pigeon/roof/', MAIN);
+export const chatsSkip = roofSkip || (!/\bchats: fz\(\{/.test(readFileSync(new URL('router.js', ROOF), 'utf8')) && 'the inflite repo beside has no REGISTRY.chats yet (router.js before stage 3’s B0)');
+export const chatsStub = (file) => existsSync(new URL(file, CHATS_ROOF)) && /^\s*export\s+const\s+STUB\s*=\s*true\s*;/m.test(readFileSync(new URL(file, CHATS_ROOF), 'utf8'));

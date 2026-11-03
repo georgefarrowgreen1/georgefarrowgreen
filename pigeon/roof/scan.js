@@ -1,10 +1,12 @@
 // Scanning a friend's safety number under the roof (stage 3 spec §2.2; Chat's startScan, pigeon/app.js): the camera in
-// the page, the browser's own QR reader where there is one, else jsQR (../jsqr.js, loaded here through fw.lazy);
+// the page, the browser's own QR reader where there is one, else jsQR (../jsqr.js, which comes with this file);
 // network-only (not kept offline). Only the code's digits are compared, here; a match is the core's verify (public keys
 // only). Frozen opener: openScan(ctx) → sheet Handle (data-sheet=scan).
 //   Added (optional): openScan(ctx, { id, digits }) checks against that one friend's number (from their Safety Number);
 //   with none, it's "Verify a Friend": whichever friend's number it is (each asked of the core's safety()).
 //   A changed key is never trusted from here: that friend's Safety Number opens instead.
+import jsQR from "../jsqr.js";
+
 export const PREFIX = "inflight-safety:";
 const codeOf = (d) => `inflight-safety:1:${(Array.isArray(d) ? d.join("") : String(d || "")).replace(/\D/g, "")}`;
 const first = (n) => String(n || "").trim().split(/\s+/)[0] || "";
@@ -45,8 +47,6 @@ export function openScan(ctx, one = null) {
     await video.play?.().catch?.(() => {});
     let det = null;
     try { if ("BarcodeDetector" in globalThis && (await globalThis.BarcodeDetector.getSupportedFormats()).includes("qr_code")) det = new globalThis.BarcodeDetector({ formats: ["qr_code"] }); } catch (_) {}
-    let jsQR = null;
-    if (!det) { try { jsQR = (await fw.lazy((q) => import("../jsqr.js" + q))).default; } catch (_) { msg.textContent = "Scanning needs a connection. Compare the 60 digits instead."; stop(); return; } }
     const c = el("canvas"), g = c.getContext?.("2d", { willReadFrequently: true });
     const look = async () => {
       if (!on || h.closed) return;
