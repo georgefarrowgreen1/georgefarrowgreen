@@ -112,25 +112,27 @@ export function openSettings(ctx, page = null) {
   const fmt = () => S.f || makeFormat(S.settings || {});
   const st = () => S.settings || core.loadSettings();
   const offs = [];
-  let h = null, alive = true;
+  let h = null, alive = true, heard = 0;
   const redraws = new Set();
   const redraw = () => { for (const fn of redraws) { try { fn(); } catch (_) {} } };
 
   // a save: the patch through core (wx:settings + the account), then every open page drawn from what's kept
   async function save(patch) {
     if (!patch) return;
+    const was = heard;
     try { await core.saveSettings(patch); }
     catch (_) { fw.toast("Couldn’t save that just now. Try again."); }
-    if (alive) redraw();
+    // (core's "settings" event has drawn them already, as a rule)
+    if (alive && heard === was) redraw();
   }
 
   /* -- the list -- */
-  const vals = new Map();
+  // (ui.row's value is words, drawn once: its .ifl-val span is put right on each redraw)
+  const rows = new Map();
   const goRow = (p) => {
-    const v = el("span", { class: "wxs-val" });
-    vals.set(p, v);
-    const r = ui.row({ title: TITLES[p], value: v, trail: "chevron", run: () => go(p), label: TITLES[p] });
+    const r = ui.row({ title: TITLES[p], value: summary(p, st(), fmt(), cards()) || " ", trail: "chevron", run: () => go(p) });
     r.dataset.go = p;
+    rows.set(p, r);
     return r;
   };
   const notifyRow = ui.row({ title: "Notifications", sub: "Rain and warnings for the places you choose", trail: "chevron", href: "/#you=notify-weather", label: "Weather Notifications, in You" });
@@ -145,7 +147,7 @@ export function openSettings(ctx, page = null) {
     ui.list(["best", "commute", "solar", "forecast"].map(goRow), { label: "Highlights" }),
     ui.list([notifyRow], { label: "Notifications" }),
     el("p", { class: "wxs-foot", text: "Notifications for Weather are in You, with every app’s." }));
-  redraws.add(() => { const s = st(), f = fmt(); for (const [p, v] of vals) v.textContent = summary(p, s, f, cards()); });
+  redraws.add(() => { const s = st(), f = fmt(); for (const [p, r] of rows) { const v = r.querySelector(".ifl-val"); if (v) v.textContent = summary(p, s, f, cards()); } });
 
   /* -- Units -- */
   function unitsPage() {
@@ -171,7 +173,9 @@ export function openSettings(ctx, page = null) {
       ui.btn("Put Back as It Was", { small: true, act: "reset", run: () => { said.textContent = "Put back as it was."; save(PATCH.arrange(st(), resetLayout(st().layout, cards()))); } }));
     let focus = null;
     function draw() {
-      const L = st().layout, ks = listed(L);
+      const L = st().layout, ks = listed(L), at = rows.ownerDocument.activeElement;
+      // (the button that had the focus has it again in the rows drawn anew)
+      if (!focus && at && rows.contains(at)) focus = [at.closest("[data-card]")?.dataset.card, at.dataset.act || (at.tagName === "INPUT" ? "sw" : "up")];
       rows.replaceChildren(...ks.map((k, i) => {
         const name = nameOf(k), on = !L.off.includes(k);
         const up = ui.btn("↑", { small: true, act: "up", label: `Move ${name} up`, run: () => move(k, -1) });
@@ -182,7 +186,7 @@ export function openSettings(ctx, page = null) {
           el("span", { class: "wxs-card-n", text: name }), up, down);
         return r;
       }));
-      if (focus) { const [k, act] = focus; focus = null; const b = rows.querySelector(`[data-card="${k}"] [data-act="${act}"]`); (b && !b.disabled ? b : rows.querySelector(`[data-card="${k}"] [data-act]:not(:disabled)`))?.focus({ preventScroll: true }); }
+      if (focus) { const [k, act] = focus; focus = null; const b = rows.querySelector(act === "sw" ? `[data-card="${k}"] input` : `[data-card="${k}"] [data-act="${act}"]`); (b && !b.disabled ? b : rows.querySelector(`[data-card="${k}"] [data-act]:not(:disabled)`))?.focus({ preventScroll: true }); }
     }
     function move(k, by) {
       const L = moveCard(st().layout, k, by);
@@ -210,10 +214,10 @@ export function openSettings(ctx, page = null) {
     const wrap = el("div", { class: "wxs", data: { key: "activities" } }, list,
       el("label", { class: "wxs-line" }, el("span", { text: "Add an activity" }), add),
       el("p", { class: "wxs-foot", text: "The best hours for each, from the weather you like it in." }));
-    function draw() {
+    const draw = () => keepFocus(list, "activity", () => {
       const acts = st().activities || [], f = fmt(), have = new Set(acts.map((a) => a.id));
       list.replaceChildren(ui.list(acts.map((a, i) => {
-        const r = el("div", { class: "wxs-act", data: { act: a.id } },
+        const r = el("div", { class: "wxs-act", data: { activity: a.id } },
           ui.row({ title: a.name, sub: limitsText(a, f), trail: "chevron", run: () => actPage(i), label: `${a.name}, ${limitsText(a, f)}: change` }),
           ui.sw(a.on !== false, (v) => { const next = clone(st().activities); if (!next[i]) return; next[i].on = v; save(PATCH.best(st(), next)); }, { label: a.name }));
         return r;
@@ -221,7 +225,7 @@ export function openSettings(ctx, page = null) {
       add.replaceChildren(el("option", { value: "", text: "Choose…" }),
         ...Object.entries(ACTIVITIES).filter(([id]) => !have.has(id)).map(([id, a]) => el("option", { value: id, text: a.name })),
         el("option", { value: "custom", text: "Something else…" }));
-    }
+    });
     draw();
     redraws.add(draw);
     return wrap;
@@ -320,7 +324,7 @@ export function openSettings(ctx, page = null) {
       el("p", { class: "wxs-foot", text: `A zone is a set of panels facing one way: an east roof and a west roof are two. A card when the sun’s coming out on them: when, and how long for. Nothing on grey days. Up to ${MAX_ZONES} zones.` }),
       el("div", { class: "wxs-line" }, el("span", { text: "Tell me when the sun’s coming out" }), alertSw),
       el("p", { class: "wxs-foot", text: "A notification up to an hour and a half before a sunny spell, twice a day at most. With a briefing for the same place, a line in it too." }));
-    function draw() {
+    const draw = () => keepFocus(zones, "zone", () => {
       const s = sol(), places = S.places || [];
       setSw(on, !!s.on); setSw(alertSw, s.alert !== false);
       const box = alertSw.querySelector?.("input"); if (box) box.disabled = !s.on;
@@ -332,7 +336,7 @@ export function openSettings(ctx, page = null) {
       }))] : []));
       addBtn.hidden = s.zones.length >= MAX_ZONES;
       here.hidden = s.zones.length >= MAX_ZONES || places.some((p) => !p.gps);
-    }
+    });
     draw();
     redraws.add(draw);
     return wrap;
@@ -393,7 +397,7 @@ export function openSettings(ctx, page = null) {
     onClose: () => { alive = false; redraws.clear(); for (const off of offs) off(); if (shown === h) shown = null; } });
   if (!h) return null;
   shown = h;
-  offs.push(core.on("settings", () => { if (alive) redraw(); }));
+  offs.push(core.on("settings", () => { heard++; if (alive) redraw(); }));
   redraw();
   if (page) go(page);
   return h;
@@ -401,3 +405,12 @@ export function openSettings(ctx, page = null) {
 
 // a switch put right without telling its onChange (ui.sw's label.ifl-switch around its checkbox)
 function setSw(sw, on) { const box = sw?.querySelector?.("input") || sw; if (box && "checked" in box && box.checked !== on) box.checked = on; }
+// a list drawn anew with the focus where it was: the same row's (by its data-<attr>) switch, or its button
+function keepFocus(box, attr, draw) {
+  const at = box.ownerDocument.activeElement, host = at && box.contains(at) ? at.closest(`[data-${attr}]`) : null;
+  const key = host?.dataset[attr], kind = at?.tagName === "INPUT" ? "input" : "button, a";
+  draw();
+  if (key == null) return;
+  const row = [...box.querySelectorAll(`[data-${attr}]`)].find((x) => x.dataset[attr] === key);
+  (row?.matches(kind) ? row : row?.querySelector(kind))?.focus({ preventScroll: true });
+}

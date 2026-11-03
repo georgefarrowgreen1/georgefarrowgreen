@@ -1,7 +1,6 @@
 /* Weather Settings under the roof (One roof, spec §7.1, WS): the pages' own rules, inside the framework's sheet
    (dialog.ifl-sheet[data-app=weather][data-sheet=wxsettings]); the rows, switches, segments and buttons are roof.css's. */
 .ifl-sheet[data-app=weather] .wxs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.ifl-sheet[data-app=weather] .wxs-val { color: var(--text-2); }
 .ifl-sheet[data-app=weather] .wxs-foot { margin: 0 4px; color: var(--text-2); font-size: 13px; line-height: 1.4; }
 
 /* Units: a name above each segmented choice */
