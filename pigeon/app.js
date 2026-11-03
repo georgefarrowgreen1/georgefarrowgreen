@@ -11681,10 +11681,11 @@ function sendChat() {
   const s = S.sheet; if (s?.type !== "send" || s.pick.length !== 1 || s.busy) return;
   const f = chatOf(s.pick[0]); if (!f) return;
   const words = s.edited ? s.words.trim() : s.base, say = words && words !== s.card.say ? words : null;
-  // (the engine: Chats itself, in the page's place, that chat open with the card waiting above its box: handed over in
-  // this tab's own storage, never anywhere else, and checked again there as any card is)
+  // (the engine: Chats itself, in the page's place, that chat open with the card waiting above its box: the card handed
+  // over in this tab's own storage for the one step, never anywhere else, checked again there as any card is; never the
+  // words typed, which are written again in the chat)
   if (s.engine) {
-    try { sessionStorage.setItem(WAIT_KEY, JSON.stringify({ chat: f.id, card: s.card, say, at: Date.now() })); } catch (_) {}
+    try { sessionStorage.setItem(WAIT_KEY, JSON.stringify({ chat: f.id, card: s.card, at: Date.now() })); } catch (_) {}
     s.engine.done?.({ ok: false, why: "chat" }); S.sheet = null; renderSheet();
     try { parent.location.assign(`/chats/#open=${encodeURIComponent(f.id)}`); } catch (_) {}
     return;
@@ -12180,7 +12181,6 @@ function takeWait() {
   let card = null; try { card = normCard(w.card, { from: "hash" }); } catch (_) {}
   if (!card || (card.there && (group(w.chat) || !canForward(card, { mine: true, to: w.chat })))) return;
   S.cardWait = { chat: w.chat, card };
-  if (typeof w.say === "string" && w.say.trim()) { if (S.view === "chat" && S.chat === w.chat && $ta && !$ta.value.trim()) { $ta.value = w.say.trim().slice(0, 500); fitTa(); } else S.share = w.say.trim().slice(0, 500); }
   if (S.view === "chat") renderCompose();
 }
 async function engineStart() {
