@@ -15,6 +15,11 @@
 //     /<app>/, /<app>/index.html      the kit page where the page's session has that app on (?apps=…: kit.js sets the
 //                                     cookie kit-apps), else, for chats, fitness, markets and mail, a stand-in page
 //                                     saying which ("FITNESS STAND-IN")
+//     /chats/roof/<file>, /chats/<file>  stage 3: MAIN's pigeon/roof/, pigeon/ (the hub's copy of Chat, S3-D1); with the
+//                                     cookie kit-service=stub (the kit page's ?service=stub), /chats/roof/core.js is the
+//                                     stub core (roofkit/chatcore-stub.js), in the state of the cookie kit-chat-state
+//                                     (?state=…; default ready); /chats/version: chats.js's BUILD
+//     /kit/fixtures/chats.mjs         the unit tests' fixtures (unit/fixtures/chats.mjs), for the stub core
 //     /api/*                          404 unless the test routes it itself (page.route wins over context.route)
 //     anything else                   the inflite repo's today/public/ from disk, else 404
 //   Returns { log } (every path asked for, in order) .
@@ -51,6 +56,7 @@ export async function serveKit(context, { main = new URL('../../../', import.met
     const doc = /^\/(\w+)\/(?:index\.html)?$/.exec(p)?.[1];
     if (p === '/' || p === '/index.html' || p === '/weather/' || p === '/weather/index.html' || (doc && on.includes(doc))) return page(route, readFileSync(`${HERE}index.html`, 'utf8'));
     if (p === '/kit/shared.js') return send(route, shared, 'text/javascript');
+    if (p === '/kit/fixtures/chats.mjs') return send(route, readFileSync(`${HERE}../unit/fixtures/chats.mjs`), 'text/javascript');
     if (p.startsWith('/kit/')) { const f = HERE + p.slice(5); return fileOk(f) && !f.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
     if (!real && p === '/weather/roof/weather.js') return send(route, readFileSync(`${HERE}fake-module.js`), 'text/javascript');
     if (!real && p === '/weather/roof/connector.js') return send(route, readFileSync(`${HERE}fake-connector.js`), 'text/javascript');
@@ -66,6 +72,17 @@ export async function serveKit(context, { main = new URL('../../../', import.met
       return send(route, JSON.stringify({ build }), 'application/json');
     }
     if (home && !doc) { const f = home + mod[2]; return fileOk(f) && !p.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
+    // (stage 3: Chats' module and Chat's reused files from MAIN's pigeon/; the stub core with ?service=stub)
+    const chat = !doc && /^\/chats\/(.+)$/.exec(p);
+    if (chat && chat[1] === 'version') {
+      const e = `${main}pigeon/roof/chats.js`;
+      return send(route, JSON.stringify({ build: fileOk(e) ? /^export const BUILD = "([^"]+)";/m.exec(readFileSync(e, 'utf8'))?.[1] ?? null : null }), 'application/json');
+    }
+    if (chat && chat[1] === 'roof/core.js' && /(?:^|;\s*)kit-service=stub(?:;|$)/.test(cookie)) {
+      const st = /(?:^|;\s*)kit-chat-state=(\w+)/.exec(cookie)?.[1] || 'ready';
+      return send(route, readFileSync(`${HERE}chatcore-stub.js`, 'utf8').replace('__KIT_STATE__', st), 'text/javascript');
+    }
+    if (chat && !chat[1].startsWith('in/')) { const f = `${main}pigeon/${chat[1]}`; return fileOk(f) && !p.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
     const hub = /^\/(chats|fitness|markets|mail)\//.exec(p);
     if (hub) return page(route, `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><title>${hub[1]}</title></head><body><h1>${hub[1].toUpperCase()} STAND-IN</h1></body></html>`);
     if (p.startsWith('/api/')) return route.fulfill({ status: 404, body: '{}', headers: { 'content-type': 'application/json' } });
