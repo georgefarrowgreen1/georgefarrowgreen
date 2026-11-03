@@ -279,6 +279,10 @@
       "at": 1793637900000
     },
     {
+      "phase": "midday",
+      "at": 1793645100000
+    },
+    {
       "phase": "evening",
       "at": 1793646000000
     },
@@ -473,7 +477,7 @@
       "at": 1793640000000,
       "app": "chat",
       "title": "Pigeon from Nia lands",
-      "sub": "From Edinburgh",
+      "sub": "On its way since 06:10",
       "href": "/chats/#open=b1c2d3e4-0000-4000-8000-000000000014",
       "id": "pigeon:b1c2d3e4-0000-4000-8000-000000000014"
     },
