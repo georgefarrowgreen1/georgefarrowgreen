@@ -334,8 +334,10 @@ async function rename({ request, env }) {
   return json({ group: await groupView(env, u, g.id) });
 }
 async function listMessages({ request, env }) {
-  const u = await requireUser(request, env);
-  const D = await db(env), gid = String(new URL(request.url).searchParams.get("id") || ""), t = Date.now();
+  // (?quiet=1: Today's engine reading who's waiting: not you seen, nor a day you used Chat on, as sync's)
+  const sp = new URL(request.url).searchParams;
+  const u = await requireUser(request, env, { inflight: sp.get("quiet") !== "1" });
+  const D = await db(env), gid = String(sp.get("id") || ""), t = Date.now();
   if (!UUID_RE.test(gid)) throw new HttpError(404, "That group isn’t there any more.");
   // (the app asks every 15 s while a chat's open: the group, your friends, what you can see in it and its changes since
   // you joined, in one trip; none of it is anything you couldn't see, and nothing is sent unless you're in the group)
