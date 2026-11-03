@@ -6,5 +6,5 @@
 import * as core from "./core.js";
 import * as ui from "./mkui.js";
 export const STUB = true;
-export function searchView() { throw new Error("not yet: searchView"); }
-export function openHolding() { throw new Error("not yet: openHolding"); }
+export function searchView(...a) { throw new Error("not yet: searchView"); }
+export function openHolding(ctx, ...a) { throw new Error("not yet: openHolding"); }

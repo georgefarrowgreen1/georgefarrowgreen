@@ -7,4 +7,4 @@ import * as core from "./core.js";
 import * as ui from "./mkui.js";
 import { stockSendCard } from "../send.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
