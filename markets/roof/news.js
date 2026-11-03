@@ -7,5 +7,5 @@ import * as core from "./core.js";
 import * as ui from "./mkui.js";
 import * as stories from "../stories.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
-export function openStory() { throw new Error("not yet: openStory"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
+export function openStory(ctx, ...a) { throw new Error("not yet: openStory"); }

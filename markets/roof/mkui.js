@@ -8,19 +8,19 @@
 import * as charts from "../charts.js";
 export const STUB = true;
 export const CHARTS = charts;
-export function bind() { throw new Error("not yet: bind"); }
-export function h() { throw new Error("not yet: h"); }
-export function icon() { throw new Error("not yet: icon"); }
-export function openSheet() { throw new Error("not yet: openSheet"); }
-export function pushSheet() { throw new Error("not yet: pushSheet"); }
-export function drawSheet() { throw new Error("not yet: drawSheet"); }
-export function closeSheet() { throw new Error("not yet: closeSheet"); }
-export function toast() { throw new Error("not yet: toast"); }
-export function render() { throw new Error("not yet: render"); }
-export function sparkCard() { throw new Error("not yet: sparkCard"); }
-export function mixBar() { throw new Error("not yet: mixBar"); }
-export function vbars() { throw new Error("not yet: vbars"); }
-export function range52() { throw new Error("not yet: range52"); }
-export function ring() { throw new Error("not yet: ring"); }
-export function chart() { throw new Error("not yet: chart"); }
-export function paint() { throw new Error("not yet: paint"); }
+export function bind(...a) { throw new Error("not yet: bind"); }
+export function h(...a) { throw new Error("not yet: h"); }
+export function icon(...a) { throw new Error("not yet: icon"); }
+export function openSheet(ctx, ...a) { throw new Error("not yet: openSheet"); }
+export function pushSheet(...a) { throw new Error("not yet: pushSheet"); }
+export function drawSheet(...a) { throw new Error("not yet: drawSheet"); }
+export function closeSheet(...a) { throw new Error("not yet: closeSheet"); }
+export function toast(...a) { throw new Error("not yet: toast"); }
+export function render(...a) { throw new Error("not yet: render"); }
+export function sparkCard(...a) { throw new Error("not yet: sparkCard"); }
+export function mixBar(...a) { throw new Error("not yet: mixBar"); }
+export function vbars(...a) { throw new Error("not yet: vbars"); }
+export function range52(...a) { throw new Error("not yet: range52"); }
+export function ring(...a) { throw new Error("not yet: ring"); }
+export function chart(...a) { throw new Error("not yet: chart"); }
+export function paint(...a) { throw new Error("not yet: paint"); }

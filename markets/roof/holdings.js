@@ -6,6 +6,6 @@
 import * as core from "./core.js";
 import * as ui from "./mkui.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
-export function openAccount() { throw new Error("not yet: openAccount"); }
-export function openAbout() { throw new Error("not yet: openAbout"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
+export function openAccount(ctx, ...a) { throw new Error("not yet: openAccount"); }
+export function openAbout(ctx, ...a) { throw new Error("not yet: openAbout"); }

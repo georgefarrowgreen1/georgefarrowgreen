@@ -5,8 +5,9 @@
 // openCredits, ABOUT and their private helpers move here from wxui.js:194-208 and 372-554 (wxui.js:217-253 stays).
 // Not yet imported by anything: Weather's live graph is unchanged until WX moves the code.
 export const STUB = true;
-export const CREDITS = {}, ABOUT = {};
-export function detailBody() { throw new Error("not yet: detailBody"); }
-export function openDetail() { throw new Error("not yet: openDetail"); }
-export function creditsText() { throw new Error("not yet: creditsText"); }
-export function openCredits() { throw new Error("not yet: openCredits"); }
+export const CREDITS = {};
+export const ABOUT = {};
+export function detailBody(...a) { throw new Error("not yet: detailBody"); }
+export function openDetail(ctx, ...a) { throw new Error("not yet: openDetail"); }
+export function creditsText(...a) { throw new Error("not yet: creditsText"); }
+export function openCredits(ctx, ...a) { throw new Error("not yet: openCredits"); }
