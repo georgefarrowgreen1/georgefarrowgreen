@@ -366,6 +366,31 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   ok(st.errors.length === 0, 'no page errors (slow files)', st.errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
+// (a file that fails: the section says so with Try Again, which fetches it afresh (fw.lazy's ?retry=); a sheet's opener
+// says so in a toast, and the next tap opens it)
+{
+  const { p, st, ctx } = await phone();
+  const failing = new Set(['days', 'wxdetail']);
+  for (const f of failing) await p.route(new RegExp(`${KIT}/weather/roof/${f}\\.js(\\?.*)?$`), (r) => (failing.has(f) ? r.fulfill({ status: 503, body: '' }) : r.fallback()));
+  await openWeather(p);
+  await until(() => visible(p, H.DETAIL_TILE), 8000);
+  await p.locator(H.hdSec('days')).click();
+  ok(await until(() => visible(p, `${H.wxSec('days')} .ifl-error [data-act=retry]`), 6000), 'days.js failing: 16 Days says so, with Try Again');
+  failing.delete('days');
+  await p.locator(`${H.wxSec('days')} .ifl-error [data-act=retry]`).click();
+  ok(await until(async () => (await p.locator(H.DAY_ROW).count()) >= 10, 8000), 'Try Again: the file fetched afresh and the days drawn');
+  await p.locator(H.hdSec('now')).click(); await until(() => visible(p, H.wxSec('now')));
+  await p.locator(H.DETAIL_TILE).first().click();
+  ok(await until(async () => /didn’t open|needs a connection/.test(await p.locator(H.TOAST).allTextContents().then((a) => a.join(' ')).catch(() => '')), 6000), 'wxdetail.js failing: a tile says so in a toast');
+  ok(!(await visible(p, `${H.DETAIL_SHEET}[open]`)), 'and no sheet is left open');
+  failing.delete('wxdetail');
+  await p.locator(H.DETAIL_TILE).first().click();
+  ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1), 8000), 'the next tap: the detail sheet');
+  await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
+  // (the failed files' console errors are the module's own, said once each; nothing thrown)
+  ok(st.errors.every((e) => /Failed to fetch dynamically imported module|error loading dynamically imported module|TypeError/.test(e)), 'no page errors but the failed fetches (failing files)', st.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
 // (the settings route: a cold #settings address opens Weather Settings once wxsettings.js is in)
 {
   const { p, st, ctx } = await phone();
