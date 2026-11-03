@@ -393,7 +393,7 @@
 .ifl-sheet[data-app=fitness] .fxs-k { display: grid; gap: 2px; }
 .ifl-sheet[data-app=fitness] .fxs-est { color: var(--acc-ink); font-size: 12.5px; font-weight: 600; }
 .ifl-sheet[data-app=fitness] .fxs-stepper { flex: none; display: inline-flex; align-items: center; gap: 2px; }
-.ifl-sheet[data-app=fitness] .fxs-stepper .ifl-icon-btn { min-width: 44px; min-height: 44px; }
+.ifl-sheet[data-app=fitness] .fxs-stepper .ifl-btn { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; font-size: 20px; }
 .ifl-sheet[data-app=fitness] .fxs-n { min-width: 84px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ifl-sheet[data-app=fitness] .fxs-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--on-acc); background: var(--acc-fill); font-size: 14px; }
 .ifl-sheet[data-app=fitness] .fxs-key, .ifl-sheet[data-app=fitness] .fxs-connect, .ifl-sheet[data-app=fitness] .fxs-leave, .ifl-sheet[data-app=fitness] .fxs-sure { display: grid; gap: 10px; }

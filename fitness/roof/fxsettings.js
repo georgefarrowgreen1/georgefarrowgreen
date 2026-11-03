@@ -122,8 +122,9 @@ export function openSettings(ctx, page = null) {
     const step = ([label, k, show]) => {
       const out = el("output", { class: "fxs-n" });
       const est = el("small", { class: "fxs-est" });
-      const less = ui.iconBtn("minus", { label: `Less ${label}`, act: "less", run: () => change(-LIMITS[k][0]) });
-      const more = ui.iconBtn("plus", { label: `More ${label}`, act: "more", run: () => change(LIMITS[k][0]) });
+      // (− and + in words: the shared glyphs have no minus)
+      const less = ui.btn("−", { small: true, label: `Less ${label}`, act: "less", run: () => change(-LIMITS[k][0]) });
+      const more = ui.btn("+", { small: true, label: `More ${label}`, act: "more", run: () => change(LIMITS[k][0]) });
       const change = (d) => save(PATCH.number(P(), k, (P()[k] || 0) + d));
       const line = el("div", { class: "fxs-line fxs-step", data: { key: k } }, el("span", { class: "fxs-k" }, el("b", { text: label }), est), el("span", { class: "fxs-stepper", role: "group", "aria-label": label }, less, out, more));
       const draw = () => { out.textContent = show(P()[k]); const s = said(k); est.textContent = s || ""; est.hidden = !s; };
