@@ -325,6 +325,13 @@ test('stage 3, frame: no window scroll kept or put back for a stay route (a chat
   history.back(); await settle3();
   assert.equal(loc.pathname + loc.hash, '/chats/'); assert.equal(H3.y, 300, 'the list’s scroll put back');
   F.destroy();
+  // (Mail's thread, a stay key of an app that's no tab screen, keeps s24 C7's: its scroll put back as it's popped to)
+  const m = await boot3('/mail/#thread=t1', { apps: { mail: true } });
+  H3.y = 250;
+  m.F.nav.go('/'); await settle3();
+  history.back(); await settle3();
+  assert.equal(m.loc.hash, '#thread=t1'); assert.equal(H3.y, 250, 'Mail’s thread: put back');
+  m.F.destroy();
 });
 
 test('stage 3, frame: F.service after opts.retired, one per app; the facade to the host, the full service only by fw.service(); each state to opts.serviceState; the search while signed in and unlocked; let go of (terminate) by releaseService, the switch, sign-out', { skip: chats3 }, async () => {
@@ -362,6 +369,7 @@ test('stage 3, frame: F.service after opts.retired, one per app; the facade to t
   await F.service('chats');
   F.destroy(); await settle3();
   assert.deepEqual(H3.released.at(-1), [H3.svcMade, true], 'sign-out ended it');
+  await assert.rejects(F.service('chats'), /no service/, 'none made after sign-out');
 });
 
 test('stage 3, frame: the root worker’s { inflight: "sync", tag } to the Chats fw only, as { app, tag } (S3-C5); fw.tabs.away only while its screen shows, put back as the screen changes; badge on its own tab', { skip: chats3 }, async () => {
@@ -410,7 +418,7 @@ test('stage 3, tabs.js: with Chats on, Chats is a tab screen (in-page, a tab mov
   t.set('today'); assert.equal(tab(nav, 'chats').querySelectorAll('.ifl-tab-badge').length, 1, 'kept, once, as the bar redraws');
   t.badge('chats', 0); assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge'), null, 'none at 0');
   t.badge('chats', 'x<b>'); assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge'), null, 'a number only');
-  t.away(true); assert.ok(nav.classList.contains('away')); t.away(false); assert.ok(!nav.classList.contains('away'));
+  t.away(true); assert.ok(nav.classList.contains('away') && nav.inert, 'away, and out of reach (inert)'); t.away(false); assert.ok(!nav.classList.contains('away') && !nav.inert);
   t.destroy();
   // (Chats off: the bar as stage 1 drew it, and Chats a normal link)
   ({ nav, F, t } = mk({ chats: false }, { kind: 'tab', tab: 'today', arg: null }));
