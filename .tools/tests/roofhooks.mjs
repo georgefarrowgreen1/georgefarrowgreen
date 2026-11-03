@@ -34,6 +34,8 @@ export const SHEET_OPEN = 'dialog.ifl-sheet[open]';       // FW
 export const SHEET_TITLE = 'dialog.ifl-sheet[open] h2';   // FW
 export const SHEET_CLOSE = 'dialog.ifl-sheet[open] [data-close]'; // FW
 export const sheet = (name) => `dialog.ifl-sheet[data-sheet="${name}"]`; // FW: open(spec).sheet → data-sheet
+//   (every sheet's name is fixed here: search, connector, places, confirm-place, wxsettings, day, detail, warning, credits)
+export const CONNECTOR_SHEET = 'dialog.ifl-sheet[data-sheet=connector]'; // FW: connectors.openConnector(F, app) (You's Connected Apps rows, Apps)
 export const SEARCH_SHEET = 'dialog.ifl-sheet[data-sheet=search]'; // FW
 export const SEARCH_INPUT = 'dialog.ifl-sheet[data-sheet=search] input[type=search]'; // FW
 export const SEARCH_RESULT = 'dialog.ifl-sheet[data-sheet=search] [role=option]'; // FW
@@ -48,10 +50,15 @@ export const TODAY = 'main#today';                        // TD
 export const APPS = 'main#apps';                          // TD
 export const YOU = 'main#you';                            // TD
 export const YOU_APPS = '#youApps';                       // TD: Connected Apps
+export const YOU_APP_ROW = '#youApps [data-app]';         // TD: a Connected Apps row (tap → connectors.openConnector → CONNECTOR_SHEET)
+export const youAppRow = (app) => `#youApps [data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
 export const YOU_NOTIFY = '#youNotify';                   // TD: Notifications by App
 export const SH_WXNOTIFY = 'dialog#sh-wxnotify';          // TD: Weather Notifications
 export const APP_TILE = '.ifl-tile[data-app]';            // TD: Apps tiles
 export const appTile = (app) => `.ifl-tile[data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
+export const TODAY_WX_CARD = 'main#today .tcard[data-app="weather"]'; // TD: Today's weather card (cards.js markup, as today)
+export const TODAY_WX_OPEN = 'main#today .tcard[data-app="weather"] a.tc-head'; // TD: the card's head link (opens Weather)
+export const TODAY_WX_WARN = 'main#today .tcard[data-app="weather"] a.wx-warn'; // TD: the card's warning chip (→ that place's Warnings)
 
 // ---- Weather's screen (WX: the frame of it; WV: what's in Now, 16 Days, Warnings) ----
 export const M_WEATHER = 'main#m-weather';                // FW makes it, WX mounts in it
@@ -61,6 +68,27 @@ export const WX_HERO = '.wx-hero';                        // WV
 export const WX_ALERTS = '.wx-alerts';                    // WV: the warnings slot under the hero
 export const WX_CREDITS = '.wx-credits';                  // WV: "Learn more about weather data and map data"
 export const RADAR_MAP = '.radar-map';                    // WX
+// Now (WV, now.js)
+export const NOW_SEND = 'section.wx-sec[data-sec="now"] .wx-hero [data-act=send]'; // WV places fw.sendButton()'s button (data-act=send, FW) in the hero
+export const NOW_RETRY = 'section.wx-sec[data-sec="now"] .wx-hero [data-act=retry]'; // WV: the hero's Retry, while the forecast failed (S.error)
+export const NOW_REFRESH = 'section.wx-sec[data-sec="now"] [data-act=refresh]'; // WV: the foot's "Refresh" (core.refresh())
+export const NOW_METRIC = 'section.wx-sec[data-sec="now"] [data-key=metric]'; // WV: Next 48 hours' ui.seg, options segValue("temp"|"rain"|"wind")
+export const DETAIL_TILE = 'section.wx-sec[data-sec="now"] [data-detail]'; // WV: a Right now tile, the tappable element (→ open.detail(kind))
+export const detailTile = (kind) => `section.wx-sec[data-sec="now"] [data-detail="${kind}"]`; // WV: kind = weather/detail.js's: feels, wind, humidity, rain, pressure, visibility, uv, air, sun, moon, sea
+// 16 Days (WV, days.js)
+export const DAYS_BY = 'section.wx-sec[data-sec="days"] [data-key=daysby]'; // WV: the "Days by" ui.seg, options segValue("temp"|"rain"|"wind")
+export const DAY_ROW = 'section.wx-sec[data-sec="days"] [data-day]'; // WV: one per day (16), the tappable row (→ open.day(key))
+export const dayRow = (key) => `section.wx-sec[data-sec="days"] [data-day="${key}"]`; // WV: key "YYYY-MM-DD", the place's date
+// Warnings (WV, warnings.js)
+export const WARNING_ROW = 'section.wx-sec[data-sec="warnings"] [data-warning]'; // WV: the tappable row (→ open.warning(w))
+export const warningRow = (i) => `section.wx-sec[data-sec="warnings"] [data-warning="${i}"]`; // WV: i = 0-based index in the list as shown (official in force first, then alert insights)
+export const WARNINGS_EMPTY = 'section.wx-sec[data-sec="warnings"] .ifl-empty[data-empty]'; // WV: ui.empty(), only when there are no rows
+export const warningsEmpty = (which) => `section.wx-sec[data-sec="warnings"] .ifl-empty[data-empty="${which}"]`; // WV: "none" (wx.official is []), "unavailable" (wx.official is null)
+// Weather's sheets (WV), opened through fw.sheet.open({ sheet: <name>, … })
+export const DAY_SHEET = 'dialog.ifl-sheet[data-sheet=day]';         // WV: days.openDay(ctx, key)
+export const DETAIL_SHEET = 'dialog.ifl-sheet[data-sheet=detail]';   // WV: wxui.openDetail(ctx, kind)
+export const WARNING_SHEET = 'dialog.ifl-sheet[data-sheet=warning]'; // WV: warnings.openWarning(ctx, w)
+export const CREDITS_SHEET = 'dialog.ifl-sheet[data-sheet=credits]'; // WV: wxui.openCredits(ctx, which)
 
 // ---- Places (WX) ----
 export const PLACES_SHEET = 'dialog.ifl-sheet[data-sheet=places]'; // WX

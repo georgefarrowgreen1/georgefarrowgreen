@@ -20,7 +20,8 @@
 //   openCredits(ctx, which), open.settings(page) = openSettings(ctx, page);
 //   hint: show()'s hint (null otherwise), set before the Now view's draw().
 // A view's draw() runs when its section shows and on core's events while it shows; hide() when it's left; destroy() on
-// unmount. The header (fw.header.set): title = the place (▾ → open.places()), line, compactTitle "London · 14°", acts:
+// unmount. The header (fw.header.set): title = the place, pick { label: "Places", run: () => open.places() } (the ▾),
+// line, compactTitle "London · 14°", acts:
 // Weather Settings only ({ icon: "settings", label: "Weather Settings", run: () => open.settings(null) }), badges
 // { warnings: n }.
 import * as core from "./core.js";

@@ -5,6 +5,11 @@
 //   el: the section.wx-sec[data-sec=now] weather.js made; ctx = { S, core, fw, open, hint } (see weather.js).
 //   draw(): (re)draw from ctx.S; called when the section shows and on core events while it shows; cheap when nothing
 //   changed. hide(): its section or screen left (pause timers, observers). destroy(): unmount (remove what it added).
+// Hooks (frozen, .tools/tests/roofhooks.mjs; inside this section): the hero's Send, fw.sendButton()'s button
+//   ([data-act=send], FW) placed in .wx-hero; the hero's Retry .wx-hero [data-act=retry] while the forecast failed
+//   (S.error; → core.refresh()); the foot's Refresh [data-act=refresh]; Next 48 hours' metric ui.seg wrapped in (or
+//   being) [data-key=metric], values "temp" | "rain" | "wind"; each Right now tile's tappable element [data-detail=<kind>]
+//   (weather/detail.js's kinds: feels, wind, humidity, rain, pressure, visibility, uv, air, sun, moon, sea) → open.detail(kind).
 import { makeFormat, keyOf, HOUR } from "../format.js";
 import * as I from "../insights.js";
 import { codeInfo, iconOf, label } from "../codes.js";

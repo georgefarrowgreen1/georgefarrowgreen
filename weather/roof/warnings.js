@@ -1,7 +1,11 @@
 // Weather's Warnings section (One roof, spec §7.1, WV): official warnings in force and alert-level insights, and the two
 // empty states (wx.official [] vs null). B0's stub (STUB = true); WV writes it.
 // Frozen: view(el, ctx) → { draw(), hide(), destroy() } (as now.js says);
-//   openWarning(ctx, w) → sheet Handle | null: one warning in full (w: an entry of wx.official, or an alert insight).
+//   openWarning(ctx, w) → sheet Handle | null: one warning in full (w: an entry of wx.official, or an alert insight),
+//   fw.sheet.open({ sheet: "warning", … }) → dialog.ifl-sheet[data-sheet=warning].
+// Hooks (frozen, .tools/tests/roofhooks.mjs; inside this section): each row's tappable element [data-warning=<i>] (i:
+//   0-based, in the order shown: official warnings in force first, then alert insights) → open.warning(w); with no rows,
+//   ui.empty() with data-empty="none" (wx.official is []) or data-empty="unavailable" (wx.official is null): .ifl-empty[data-empty].
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "../official.js";
 import * as I from "../insights.js";
 import { keyOf, HOUR } from "../format.js";
