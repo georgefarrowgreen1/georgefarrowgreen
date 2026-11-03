@@ -58,6 +58,8 @@ p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.
 // (what Fitness asked of its push routes: nothing, at the hub)
 const pushAsks = []; p.on('request', (r) => { if (/\/api\/fitness\/push(\b|-)/.test(r.url())) pushAsks.push(`${r.method()} ${r.url()}`); });
 const meAsks = []; p.on('request', (r) => { if (new URL(r.url()).pathname === '/api/fitness/me' && r.method() === 'GET') meAsks.push(r.url()); });
+// (every address the window went to: Chats' page takes its #share=… out of the address as it reads it)
+const navs = []; p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
 const fresh = async (url) => { await p.goto('about:blank'); await p.goto(url); await p.waitForSelector('.fhead .ifl-back', { timeout: 30000 }); await settle(p, 600); };
 const state = () => { const r = one(`SELECT data FROM fx_state WHERE user_id = '${uid}'`)[0]; return r ? JSON.parse(r.data) : null; };
 
@@ -177,9 +179,10 @@ ok(sent.length === 1 && /^Today: Endurance 90/.test(sent[0][0]) && card?.kind ==
 ok(p.url() === navsBefore, 'and the page stays where it is');
 await p.evaluate(async () => { (await window.__fx()).IFL.hub.send = window.__send; });
 await Promise.all([p.waitForURL((u) => u.pathname === '/chats/', { timeout: 40000 }), p.click('.session.go .acts button:has-text("Send to a friend")')]);
-const q = new URLSearchParams(new URL(p.url()).hash.slice(1));
-ok(new URL(p.url()).origin === HUB && /^Today: Endurance 90/.test(q.get('share') || '') && q.get('back') === '/fitness/#today' && !!q.get('card'),
-  'unspied, with no Chats engine ready: Chats’ own sheet at the hub, the words, the card and the way back', p.url().slice(0, 200));
+const viaChats = navs.find((u) => new URL(u).pathname === '/chats/' && /#share=/.test(u)) || p.url(), q = new URLSearchParams(new URL(viaChats).hash.slice(1));
+const card2 = (() => { try { return JSON.parse(Buffer.from(q.get('card') || '', 'base64url').toString()); } catch (_) { return null; } })();
+ok(new URL(viaChats).origin === HUB && /^Today: Endurance 90/.test(q.get('share') || '') && q.get('back') === '/fitness/#today' && JSON.stringify(card2?.snap) === JSON.stringify(card?.snap),
+  'unspied, with no Chats engine ready: Chats’ own sheet at the hub, the same words and card, and the way back', viaChats.slice(0, 200));
 
 // ---- 5. Strava's row at the hub; push never asked for ----
 await fresh(HUB + '/fitness/');
