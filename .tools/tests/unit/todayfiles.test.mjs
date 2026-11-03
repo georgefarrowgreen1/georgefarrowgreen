@@ -9,6 +9,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 const PUB = new URL('../../../../inflite/today/public/', import.meta.url);
 const ROOT = new URL('../../../', import.meta.url);
 const skip = !existsSync(new URL('index.html', PUB)) && 'the inflite repo isn’t beside this one';
+// (InFlite's page's cases: skipped, not failed, where the inflite repo beside has no hub yet, as its live branch beside
+// main while this repo goes live first)
+const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
 const pub = (f) => readFileSync(new URL(f, PUB));
 const here = (f) => readFileSync(new URL(f, ROOT));
 // (a PNG's width and height, from its header)
@@ -22,7 +25,7 @@ test('Today’s copies are this repository’s, byte for byte', { skip }, () => 
   assert.ok(pub('inflite.svg').equals(here('.tools/inflite/inflite.svg')), 'inflite.svg differs from .tools/inflite/inflite.svg');
 });
 
-test('its icons are the sizes the manifest and page say, and the manifest is InFlite’s, one app at /', { skip }, () => {
+test('its icons are the sizes the manifest and page say, and the manifest is InFlite’s, one app at /', { skip: tfSkip }, () => {
   const m = JSON.parse(pub('manifest.webmanifest'));
   assert.equal(m.id, '/', 'the identity iOS already gives every Today icon: each one is InFlite');
   assert.equal(m.name, 'InFlite');
@@ -37,7 +40,7 @@ test('its icons are the sizes the manifest and page say, and the manifest is InF
   assert.deepEqual(size(pub('og.png')), [1200, 630]);
 });
 
-test('its page is a public one: title, description, og tags, canonical, robots and sitemap', { skip }, () => {
+test('its page is a public one: title, description, og tags, canonical, robots and sitemap', { skip: tfSkip }, () => {
   const html = String(pub('index.html'));
   const meta = (k) => new RegExp(`<meta (?:name|property)="${k}" content="([^"]*)"`).exec(html)?.[1];
   assert.match(html, /<title>InFlite Today<\/title>/);
@@ -54,7 +57,7 @@ test('its page is a public one: title, description, og tags, canonical, robots a
   assert.match(String(pub('404.html')), /href="\/"/);
 });
 
-test('its headers: HSTS without preload, a CSP with nothing inline and no other site, its scripts never kept stale', { skip }, () => {
+test('its headers: HSTS without preload, a CSP with nothing inline and no other site, its scripts never kept stale', { skip: tfSkip }, () => {
   const h = String(pub('_headers'));
   assert.match(h, /Strict-Transport-Security: max-age=63072000; includeSubDomains\n/);
   assert.ok(!/preload/.test(h), 'no HSTS preload at the apex until every subdomain is ready');
@@ -65,7 +68,7 @@ test('its headers: HSTS without preload, a CSP with nothing inline and no other 
   for (const f of ['/sw.js', '/', '/app.js', '/cards.js', '/day.js', '/day.css', '/apps.js', '/you.js', '/wxicons.js', '/app.css', '/theme.js']) assert.match(h, new RegExp(`^${f.replace(/[.*/]/g, '\\$&')}\\n  Cache-Control: no-cache$`, 'm'), f);
 });
 
-test('nothing Today draws has an inline style or an inline script, which its CSP refuses', { skip }, () => {
+test('nothing Today draws has an inline style or an inline script, which its CSP refuses', { skip: tfSkip }, () => {
   for (const f of ['index.html', '404.html']) {
     const html = String(pub(f));
     assert.ok(!/\sstyle\s*=/.test(html), `${f} has a style attribute`);
@@ -82,7 +85,7 @@ test('nothing Today draws has an inline style or an inline script, which its CSP
   }
 });
 
-test('its page is InFlite’s one page: the hub’s marker, the views and the tab bar, the day’s stylesheet, and the way in', { skip }, () => {
+test('its page is InFlite’s one page: the hub’s marker, the views and the tab bar, the day’s stylesheet, and the way in', { skip: tfSkip }, () => {
   const html = String(pub('index.html'));
   assert.match(html, /<head>\s*<meta charset="utf-8">\s*<meta name="ifl-hub" content="\/">/, 'the marker that says it’s the hub, first after its charset');
   assert.match(html, /<link rel="stylesheet" href="\/day\.css">/);

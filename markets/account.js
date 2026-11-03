@@ -57,6 +57,13 @@ export const pushOff = (endpoint) => call("push", { method: "DELETE", body: { en
 // ---- the account's own page ----
 // (beside this app's own address: finance.<site> → account.<site>; nowhere else is there one to sign in on)
 export const accountPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//account.")}/` : null);
+// At InFlite's hub (inflite.ai/markets/: IFL.hub.on, the marker the hub's server puts on the page, never the address)
+// there's no account page beside it: a signed-out Markets signs in through Chats there, and comes back to this page
+// (IFL.hub.signIn: /chats/#signin-start&then=/markets/…). The hub is handed over once, as the app starts (app.js)
+let hub = null;
+export const atHub = (h) => { hub = h?.on ? h : null; };
+// signed out at the hub: on to the hub's sign-in → true; anywhere else nothing done → false (the account's page, above)
+export const hubSignIn = () => (hub ? hub.signIn() === true : false);
 // (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
 export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
 // signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)

@@ -108,6 +108,20 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 /* InFlite's header, in Markets's colours */
 .ifh.mhead { --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: var(--tint-text); --ifh-band: var(--sky-top); --ifh-glass: var(--ctl);
   --ifh-photo: linear-gradient(150deg, #8f7ff0, #5e48c8); --ifh-pt: calc(var(--top) + 14px); --ifh-mb: 0px; }
+/* Back, in the menu button's place at InFlite's hub (IFL.hub.back()): a pill of the header's own glass, in its tint;
+   and at the top of the way in, signed out there */
+.mhead > .ifl-back, .welcome > .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 44px; margin: 0;
+  padding: 0 14px 0 8px; border: 0; border-radius: 999px; background: var(--ctl); color: var(--tint-text); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35);
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+.mhead > .ifl-back svg, .welcome > .ifl-back svg { flex: none; width: 20px; height: 20px; stroke-width: 2.4; }
+.mhead > .ifl-back:active, .welcome > .ifl-back:active { transform: scale(0.94); }
+.welcome > .ifl-back { position: fixed; z-index: 3; top: calc(var(--top) + 14px); left: max(16px, env(safe-area-inset-left, 0px)); }
+/* (on a narrow phone the header's Back is its chevron alone, a round button the size of the menu button it stands in
+   for, so the title keeps its room beside Find and Settings; still named Back: app.js) */
+@media (max-width: 359px) { .mhead > .ifl-back { width: 44px; padding: 0; } .mhead > .ifl-back span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .mhead > .ifl-back, .welcome > .ifl-back { transition: none; } }
 
 .view { animation: view-in 0.55s var(--ease-out); }
 @keyframes view-in { from { opacity: 0; transform: translateY(12px); } }
