@@ -20,8 +20,8 @@ import { sheetCardHtml } from "../cardview.js";
 const frag = (near, html) => { const t = near.ownerDocument.createElement("template"); t.innerHTML = html; return t.content || t; };
 
 export const SIGN_IN = "/chats/in/#signin-start&then=%2Fchats%2F";
-// the why a sheet put away unsent gives (Chat's engine's word for it; not one of the core's refusals)
-export const CLOSED = "closed";
+// the why a sheet put away unsent gives (B0's: "no"; Chat's engine said "closed", which nothing read)
+export const CLOSED = "no";
 const SEND_MAX = 12;
 // the words for each state that stops a send here (S3-D7)
 export const NOT_READY = Object.freeze({
@@ -127,7 +127,7 @@ export function openSend(ui, svc, { card, words = "", to = null, back = null } =
         const b = ui.ui.row({ lead: { avatar: r.name }, title: r.kind === "group" ? r.name : first(r.name), sub, run: () => pick(r.id) });
         b.setAttribute("role", "checkbox");
         b.setAttribute("aria-checked", String(on));
-        b.dataset.act = "pick"; b.dataset.id = r.id;
+        b.dataset.k = "to"; b.dataset.id = r.id;
         b.classList.add("chsend-row");
         if (!can) { b.classList.add("dim"); if (!on) b.disabled = true; }
         if (why[r.id]?.best || r.best) b.append(el("span", { class: "chsend-tag", text: "Best fit" }));
@@ -143,7 +143,7 @@ export function openSend(ui, svc, { card, words = "", to = null, back = null } =
         ask.dataset.act = "ask";
         box.append(ui.ui.list([ask]));
       }
-      const go = ui.ui.btn(goLabel(names, busy), { primary: true, act: "go", run: send });
+      const go = ui.ui.btn(goLabel(names, busy), { primary: true, act: "sendgo", run: send });
       go.disabled = !picks.length || sending;
       box.append(el("div", { class: "chsend-go" }, go,
         goBack && !sending ? el("p", { class: "chsend-foot", text: "Once it’s sent, you’re back where you were." }) : null,

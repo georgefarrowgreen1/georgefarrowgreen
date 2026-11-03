@@ -202,7 +202,7 @@ export function openSafety(ctx, id) {
   let box = null, s = null;
   const h = k.sheet({ sheet: "safety", title: "Safety Number", body: (b) => { box = el("div", { class: "chs chs-safety" }); b.append(box); } });
   const digits = () => {
-    const d = el("div", { class: "chs-digits", "aria-label": "Safety number" }, fives(s.digits).map((x) => el("span", { text: x })));
+    const d = el("div", { class: "chs-digits", "aria-label": "Safety number", data: { k: "digits" } }, fives(s.digits).map((x) => el("span", { text: x })));
     const copy = ui.btn("Copy", { small: true, act: "copy", run: () => { navigator.clipboard?.writeText(fives(s.digits).join(" ")).then(() => k.fw.toast("Copied."), () => {}); } });
     return el("div", { class: "chs-safedig" }, d, copy);
   };

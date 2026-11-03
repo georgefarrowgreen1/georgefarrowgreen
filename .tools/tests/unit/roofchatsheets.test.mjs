@@ -213,13 +213,13 @@ test('Send: the card checked as engineCard; ready → friends ranked, picked, se
     await settle();
     const d = top();
     assert.equal(d.dataset.sheet, 'send');
-    const rows = d.querySelectorAll('[data-act=pick]');
+    const rows = d.querySelectorAll('[data-k=to]');
     assert.equal(rows.length, 3, 'a row per friend and group');
-    assert.equal(d.querySelector(`[data-act=pick][data-id="${IDS.pat}"]`).getAttribute('aria-checked'), 'true', 'to: starts picked');
-    assert.ok(d.querySelector(`[data-act=pick][data-id="${IDS.ali}"]`).disabled, 'a changed key can’t be picked');
+    assert.equal(d.querySelector(`[data-k=to][data-id="${IDS.pat}"]`).getAttribute('aria-checked'), 'true', 'to: starts picked');
+    assert.ok(d.querySelector(`[data-k=to][data-id="${IDS.ali}"]`).disabled, 'a changed key can’t be picked');
     assert.match(d.textContent, /Lives in Leeds/, 'the reason from rank');
     clean('send');
-    d.querySelector('[data-act=go]').click();
+    d.querySelector('[data-act=sendgo]').click();
     const r = await p;
     assert.deepEqual(r, { ok: true, say: 'Sent to Pat' });
     const run = calls.find((c) => c[0] === 'sendRun');
@@ -268,7 +268,7 @@ test('Send’s not-ready states (S3-D7): signin, key, ended → words + Sign In 
     assert.ok(top().querySelector('[data-state=locked]'));
     s.set('ready'); s.emit('state', { state: 'ready' });
     await settle();
-    assert.ok(!top().querySelector('[data-state=locked]') && top().querySelectorAll('[data-act=pick]').length === 3, 'unlocked: the friends to send to');
+    assert.ok(!top().querySelector('[data-state=locked]') && top().querySelectorAll('[data-k=to]').length === 3, 'unlocked: the friends to send to');
     await shut(); }
   // offline: the sheet, with the outbox note
   { const { fw } = await ctxOf(), s = service({ state: 'offline' });
@@ -276,13 +276,13 @@ test('Send’s not-ready states (S3-D7): signin, key, ended → words + Sign In 
     await settle();
     const d = top();
     assert.equal(d.querySelector('[data-state=offline]')?.textContent, 'It’ll go when you’re back online');
-    assert.equal(d.querySelectorAll('[data-act=pick]').length, 3, 'offline: the friends all the same');
+    assert.equal(d.querySelectorAll('[data-k=to]').length, 3, 'offline: the friends all the same');
     await shut(); }
   // a send refused for a changed key: said, still open, nothing toasted
   { const { fw, toasts } = await ctxOf(), s = service({ answers: { sendRun: () => ({ ok: false, why: 'trust', sent: [], failed: [IDS.pat] }) } });
     S.openSend(fw, s.svc, { card: CARD, words: 'w', to: IDS.pat });
     await settle();
-    top().querySelector('[data-act=go]').click();
+    top().querySelector('[data-act=sendgo]').click();
     await settle();
     assert.match(top().querySelector('[role=alert]').textContent, /safety number/);
     assert.deepEqual(toasts, []);

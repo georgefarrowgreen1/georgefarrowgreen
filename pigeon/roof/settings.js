@@ -7,9 +7,10 @@
 // Tracker: `me` settings); Location (a page); Privacy & Security, which is a plain link to Chat's own page at
 // /chats/in/#account (passkeys, sessions, blocked, app lock, encryption: S3-D8, never here); Map & Weather Data (a page).
 // Not here: Appearance (InFlite's own applies), Notifications (You's), Chat Has Moved.
+// The cities, and the town a spot is nearest, are ../places.js's: geodata, network-only (NET), so the Location page
+// loads it through fw.lazy when it opens and the rest of the sheet works offline.
 // Every save is `meta("me", { method: "PATCH", …the keys it edits })` through the core (no message words in any of it); every string from data goes
 // in through textContent (fw.ui's builders).
-import { PLACES, snapToMile, nearestPlace } from "../places.js";
 
 export const PAGES = Object.freeze(["location", "credits"]);
 export const ACCOUNT_HREF = "/chats/in/#account";
@@ -26,7 +27,7 @@ export const PATCH = {
   risky: (on) => ({ risky: !!on }),
   privacy: (k, on) => (PRIVACY.some((p) => p[0] === k) ? { [k]: !!on } : null),
   autoLocation: (on) => ({ autoLocation: !!on }),
-  city: (name) => { const p = PLACES.find((x) => x[0] === name); return p ? { lat: p[1], lon: p[2], place: p[0] } : null; },
+  city: (places, name) => { const p = places?.find((x) => x[0] === name); return p ? { lat: p[1], lon: p[2], place: p[0] } : null; },
 };
 
 // (Me's names are the boundary's: pigeons, startAs, death; Chat's own server words are read too, whichever is there)
@@ -111,6 +112,8 @@ export function openChatSettings(ctx, page = null) {
   }
 
   /* -- Location -- */
+  let P = null;                                              // ../places.js, once the page has asked for it
+  const places = () => (P ? Promise.resolve(P) : fw.lazy((q) => import("../places.js" + q)).then((m) => (P = m)));
   function location(box) {
     box.replaceChildren();
     const u = me(), w = worldOf(u);
@@ -118,9 +121,11 @@ export function openChatSettings(ctx, page = null) {
     const here = ui.row({ lead: { icon: "locate" }, title: "Use Current Location", run: locate });
     here.dataset.act = "locate";
     rows.push(here);
-    const sel = el("select", { class: "chs-sel", "aria-label": "Choose a city", data: { act: "city" } }, el("option", { value: "", text: "Choose a City" }),
-      [...PLACES].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => { const o = el("option", { value: n, text: n }); if (n === u.place) o.selected = true; return o; }));
-    sel.addEventListener("change", () => { if (sel.value) save(PATCH.city(sel.value)); });
+    const sel = el("select", { class: "chs-sel", "aria-label": "Choose a city", data: { act: "city" } }, el("option", { value: "", text: "Choose a City" }));
+    sel.addEventListener("change", () => { if (sel.value && P) save(PATCH.city(P.PLACES, sel.value)); });
+    places().then((m) => {
+      for (const [n] of [...m.PLACES].sort((a, b) => a[0].localeCompare(b[0]))) { const o = el("option", { value: n, text: n }); if (n === u.place) o.selected = true; sel.append(o); }
+    }, () => { sel.disabled = true; sel.firstChild.textContent = "Cities need a connection"; });
     rows.push(el("label", { class: "chs-line" }, el("span", { text: "Choose a City" }), sel));
     if (w === "earth") {
       const auto = ui.row({ title: "Update Automatically", sub: "Every minute while Chats is open", trail: "switch", checked: !!u.autoLocation, onChange: (v) => save(PATCH.autoLocation(v)) });
@@ -141,8 +146,10 @@ export function openChatSettings(ctx, page = null) {
     const g = globalThis.navigator?.geolocation;
     if (!g) return fw.toast("This browser can’t share your location. Choose a city instead.");
     g.getCurrentPosition((p) => {
-      const { lat, lon } = snapToMile(p.coords.latitude, p.coords.longitude);
-      save({ lat, lon, place: nearestPlace(lat, lon) });
+      places().then(({ snapToMile, nearestPlace }) => {
+        const { lat, lon } = snapToMile(p.coords.latitude, p.coords.longitude);
+        save({ lat, lon, place: nearestPlace(lat, lon) });
+      }, () => fw.toast("No signal. Try again when you’re back online."));
     }, () => fw.toast("Location is off for this site. Choose a city instead."), { maximumAge: 60e3, timeout: 15e3 });
   }
 
