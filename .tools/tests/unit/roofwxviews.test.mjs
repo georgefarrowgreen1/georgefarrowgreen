@@ -135,8 +135,8 @@ test("Warnings' empty states: none in force ([]) or no official feed for the pla
   assert.equal(WARN.emptyOf({ official: [] }), "none");
   assert.equal(WARN.emptyOf({ official: null }), "unavailable");
   assert.equal(WARN.emptyOf({}), "unavailable", "no feed at all: unavailable");
-  assert.deepEqual(WARN.emptyWords("none", "London"), { title: "No warnings for London", body: "You’ll hear about any here, and on Today." });
-  assert.deepEqual(WARN.emptyWords("unavailable", "Leeds"), { title: "Official warnings aren’t available for Leeds", body: "Check your national weather service." });
+  assert.deepEqual(WARN.emptyWords("none", "London"), { title: "No warnings for London.", body: "You’ll hear about any here, and on Today." });
+  assert.deepEqual(WARN.emptyWords("unavailable", "Leeds"), { title: "Official warnings aren’t available for Leeds.", body: "Check your national weather service." });
   assert.deepEqual(WARN.paras("* WHAT...Heavy rain.\n\nSecond\nline"), ["What: Heavy rain.", "Second line"]);
 });
 

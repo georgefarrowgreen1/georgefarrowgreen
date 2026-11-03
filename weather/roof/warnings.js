@@ -43,8 +43,8 @@ export function slotOf(list) {
 // with nothing in force: which empty state (wx.official null: no official feed covers the place)
 export const emptyOf = (wx) => (wx && wx.official == null ? "unavailable" : "none");
 export const emptyWords = (which, place) => (which === "unavailable"
-  ? { title: `Official warnings aren’t available for ${place}`, body: "Check your national weather service." }
-  : { title: `No warnings for ${place}`, body: "You’ll hear about any here, and on Today." });
+  ? { title: `Official warnings aren’t available for ${place}.`, body: "Check your national weather service." }
+  : { title: `No warnings for ${place}.`, body: "You’ll hear about any here, and on Today." });
 // (blank lines part a warning's paragraphs; single ones are only where its lines were wrapped; the US's "* WHAT..." as
 // "What: ")
 export const paras = (s) => String(s || "").split(/\n\s*\n/).map((x) => x.replace(/\s*\n\s*/g, " ").trim().replace(/^\*\s*([A-Z][A-Z /]*?)\.\.\.\s*/, (m, k) => `${k[0]}${k.slice(1).toLowerCase()}: `)).filter(Boolean);
@@ -76,6 +76,7 @@ export function view(el, ctx) {
     if (!list.length) {
       const which = emptyOf(wx), e = ctx.fw.ui.empty(emptyWords(which, placeName(ctx)));
       e.dataset.empty = which;
+      e.querySelector("b")?.after(" ");      // (read as one: "No warnings for York. You’ll hear…")
       el.replaceChildren(e);
       return;
     }

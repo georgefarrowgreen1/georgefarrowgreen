@@ -58,12 +58,11 @@ export function view(el, ctx) {
   const cards = h("div", { class: "wx-cards" });
   const updated = h("span", { class: "wx-updated" });
   const refresh = h("button", { class: "wx-link", type: "button", data: { act: "refresh" }, onclick: () => { asked = true; ctx.core.refresh(); } }, "Refresh");
-  const foot = h("footer", { class: "wx-foot" },
-    h("p", { class: "wx-foot-refresh" }, updated, " · ", refresh),
-    h("p", { class: "wx-credits" }, "Learn more about ",
-      h("button", { class: "wx-link", type: "button", "aria-haspopup": "dialog", data: { credits: "weather" }, onclick: () => ctx.open.credits("weather") }, "weather data"), " and ",
-      h("button", { class: "wx-link", type: "button", "aria-haspopup": "dialog", data: { credits: "map" }, onclick: () => ctx.open.credits("map") }, "map data"), "."));
-  const wrap = h("div", { class: "wx-now-wrap" }, hero, alerts, cards, foot);
+  // the credits line: one button, "weather data" and "map data" within it, a tap on either opening the sheet at its part
+  const credits = h("button", { class: "wx-credits", type: "button", "aria-haspopup": "dialog", onclick: (e) => ctx.open.credits(e.target?.closest?.("[data-credits]")?.dataset.credits || null) },
+    "Learn more about ", h("span", { class: "wx-link", data: { credits: "weather" } }, "weather data"), " and ", h("span", { class: "wx-link", data: { credits: "map" } }, "map data"));
+  const foot = h("footer", { class: "wx-foot" }, h("p", { class: "wx-foot-refresh" }, updated, " · ", refresh), credits);
+  const parts = [hero, alerts, cards, foot];
   const place = () => ctx.core.place?.() || ctx.S.places?.[ctx.S.cur] || null;
   const placeName = () => { const p = place(); return p?.gps ? "My Location" : p?.name || ctx.S.wx?.place?.name || ctx.hint?.place || ""; };
 
@@ -302,7 +301,7 @@ export function view(el, ctx) {
     if (!alive) return;
     const S = ctx.S, wx = S.wx, f = S.f || makeFormat(S.settings || {});
     const now = wx ? nowWall(wx.place.offset) : Date.now();
-    if (!wrap.isConnected || wrap.parentNode !== el) el.replaceChildren(wrap);
+    if (hero.parentNode !== el || foot.parentNode !== el) el.replaceChildren(...parts);
     drawHero(wx, now, f);
     if (ctx.hint !== zoomedFor && (wx || ctx.hint)) { zoomedFor = ctx.hint; try { fw.zoomTarget(hero); } catch (_) {} }
     updated.textContent = wx ? `Updated ${agoOf(wx.fetchedAt || S.updatedAt || Date.now())}` : "";
