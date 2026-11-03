@@ -46,3 +46,8 @@ export function todayOrigin(env, request) {
 export function todayLinks(env, request) {
   return Object.fromEntries(["chat", "weather", "fitness", "finance", "account", "auth"].map((name) => [name, appOrigin(name, env, request)]));
 }
+// Cloudflare's word on where a request came from (country, region, city, latitude, longitude, timezone), for the few
+// places that read it (Weather's place, a sign-in's place, a ride's rough place, the health check's zone). Behind
+// InFlite's hub (inflite.ai, Today First) a request reaches here from the hub's Worker, whose own request.cf it'd be, so
+// the hub sends the browser's alongside, keyed. (B0: request.cf as it is, or {}; batch H merges in the hub's, checked.)
+export const cfOf = (request) => request?.cf || {};
