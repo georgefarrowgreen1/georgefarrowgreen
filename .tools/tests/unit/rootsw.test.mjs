@@ -2,8 +2,10 @@
 // First, spec §11.4), run here with what a browser gives it made up: every app's notification shown, tagged by its app,
 // never held back and never ending the subscription; a tap opening the app in full at what it's about, in the window
 // that's open (told, { ifl: "open", url }) or a new one, never another site; Chat's pushes telling every window and
-// pulsing Chat with the sign-in it keeps in IndexedDB (and only Chat's); the badge as many as are showing; and a renewed
-// subscription moved in every app's table through the device route (Today's own, on an account side from before it).
+// pulsing Chat with the sign-in it keeps in IndexedDB (and only Chat's); the badge as many as are showing, counted again
+// as one's tapped or cleared and as a page asks; a window that doesn't say it's heard the tap sent there, or a new one,
+// through Today while the hub can't serve the app; and a renewed subscription moved in every app's table through the
+// device route (Today's own, on an account side from before it).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -14,13 +16,16 @@ const skip = !existsSync(SW) && 'the inflite repo isn’t beside this one';
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
-// (the worker, with a network, its windows (url, and frameType, focused, visibilityState), Chat's sign-in in IndexedDB or
-// none, and what it showed, posted and opened)
+// (the worker, with a network, its windows (url, and frameType, focused, visibilityState; hears: whether its page says
+// it's heard a tap, as IFL.hub's listener does; controlled: whether this worker controls it, so it can be sent
+// elsewhere), Chat's sign-in in IndexedDB or none, and what it showed, posted and opened)
 function worker(net = () => Response.json({ ok: true }), { windows = [], token = null } = {}) {
   const on = {}, shown = [], opened = [], posts = [], badges = [];
-  let subscribed = true;
-  const win = (w) => ({ frameType: 'top-level', focused: false, visibilityState: 'hidden', ...(typeof w === 'string' ? { url: w } : w), messages: [], focusedNow: false,
-    focus() { this.focusedNow = true; return Promise.resolve(this); }, postMessage(m) { this.messages.push(m); } });
+  let subscribed = true, cleared = 0;
+  const win = (w) => ({ frameType: 'top-level', focused: false, visibilityState: 'hidden', hears: true, controlled: true, ...(typeof w === 'string' ? { url: w } : w), messages: [], focusedNow: false, went: [],
+    focus() { this.focusedNow = true; return Promise.resolve(this); },
+    postMessage(m, ports = []) { this.messages.push(m); if (this.hears && m?.ifl === 'open') ports[0]?.postMessage({ ifl: 'opened' }); },
+    navigate(u) { if (!this.controlled) return Promise.reject(new TypeError('not controlled by this worker')); this.went.push(u); return Promise.resolve(this); } });
   const wins = windows.map(win);
   let asked = null;
   const self = {
@@ -31,7 +36,7 @@ function worker(net = () => Response.json({ ok: true }), { windows = [], token =
     clients: { claim: async () => {}, matchAll: async (o) => { asked = o; return wins; }, openWindow: async (u) => { opened.push(u); return win(u); } },
     registration: {
       showNotification: async (title, o) => shown.push({ title, ...o }),
-      getNotifications: async () => shown.map(() => ({})),
+      getNotifications: async () => shown.slice(cleared).map(() => ({})),
       pushManager: {
         getSubscription: async () => (subscribed ? { unsubscribe: async () => (subscribed = false) } : null),
         subscribe: async () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/new', toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/new', keys: { p256dh: 'p', auth: 'a' } }) }),
@@ -54,11 +59,13 @@ function worker(net = () => Response.json({ ok: true }), { windows = [], token =
     posts.push({ path, method: init.method || 'GET', headers: init.headers || {}, body: init.body ? JSON.parse(init.body) : null });
     return net(path, init);
   };
-  vm.runInNewContext(readFileSync(SW, 'utf8'), { self, caches, fetch, indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date });
+  vm.runInNewContext(readFileSync(SW, 'utf8'), { self, caches, fetch, indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date, MessageChannel });
   const send = async (k, x) => { const waits = []; on[k]({ ...x, waitUntil: (p) => waits.push(p) }); await Promise.all(waits); };
   const push = (d) => send('push', { data: d === null ? null : { json: () => d, text: () => JSON.stringify(d) } });
-  const tap = (data) => send('notificationclick', { notification: { close: () => {}, data }, action: '' });
-  return { send, push, tap, shown, opened, posts, badges, wins, asked: () => asked, subscribed: () => subscribed };
+  // (a tap closes the oldest showing: the browser's list one shorter)
+  const tap = (data) => send('notificationclick', { notification: { close: () => { cleared++; }, data }, action: '' });
+  const clear = () => { cleared++; return send('notificationclose', { notification: {} }); };
+  return { send, push, tap, clear, shown, opened, posts, badges, wins, asked: () => asked, subscribed: () => subscribed };
 }
 
 test('a tap opens the app in full, at what it’s about, by its app (§11.4); an old one with no app by its address', { skip }, async () => {
@@ -195,4 +202,65 @@ test('a renewed subscription goes to the device route with the old one’s endpo
   await w.send('pushsubscriptionchange', {});
   assert.deepEqual(w.posts.filter((x) => x.method === 'POST').map((x) => x.path), ['/api/device']);
   assert.equal(w.posts.at(-1).body.sub.endpoint, 'https://fcm.googleapis.com/fcm/send/new');
+});
+
+test('the badge comes down: counted again as a notification’s tapped or cleared, and as a page of the hub asks ({ ifl: "badge" })', { skip }, async () => {
+  const w = worker(() => Response.json({}), { windows: [`${ORIGIN}/`] });
+  for (const app of ['weather', 'markets', 'today']) await w.push({ app, title: 'x', body: 'y' });
+  assert.deepEqual(w.badges, [1, 2, 3]);
+  await w.tap({ app: 'weather', url: './' });
+  assert.deepEqual(w.badges.at(-1), 2, 'one tapped: two left');
+  await w.clear();
+  assert.deepEqual(w.badges.at(-1), 1, 'one cleared without a tap: one left');
+  await w.tap({ app: 'today', url: '/' });
+  assert.deepEqual(w.badges.at(-1), 0, 'none showing: the badge cleared');
+  // (a page of the hub opened or back in sight asks; anything else said to the worker leaves it be)
+  const n = w.badges.length;
+  await w.send('message', { data: { ifl: 'badge' }, ports: [] });
+  assert.equal(w.badges.length, n + 1);
+  await w.send('message', { data: { ifl: 'nothing' }, ports: [] });
+  assert.equal(w.badges.length, n + 1);
+});
+
+test('a tap where the open window doesn’t say it’s heard (Today’s 404 page, an older page): that window sent there if it’s this worker’s, else a new one', { skip }, async () => {
+  let w = worker(undefined, { windows: [{ url: `${ORIGIN}/nowhere`, focused: true, hears: false }] });
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/chats/#open=abc' }], 'told first');
+  assert.deepEqual(w.wins[0].went, [`${ORIGIN}/chats/#open=abc`], 'then sent there');
+  assert.deepEqual(w.opened, []);
+  // (a window another worker controls (Chats', its own): a new one)
+  w = worker(undefined, { windows: [{ url: `${ORIGIN}/chats/`, focused: true, hears: false, controlled: false }] });
+  await w.tap({ app: 'markets', url: './#s=TSCO' });
+  assert.deepEqual(w.wins[0].went, []);
+  assert.deepEqual(w.opened, [`${ORIGIN}/markets/#s=TSCO`]);
+  // (heard: nothing more)
+  w = worker(undefined, { windows: [{ url: `${ORIGIN}/`, focused: true }] });
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
+});
+
+test('the hub not ready (before its key, or rolled back): an app’s notification opens Today with #go=<its path>, which sends it to the app’s own address; Today’s own, as it is', { skip }, async () => {
+  const notReady = (p) => (p === '/api/hub' ? Response.json({ ready: false }) : Response.json({}));
+  let w = worker(notReady);
+  await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+  assert.deepEqual(w.opened, [`${ORIGIN}/#go=${encodeURIComponent('/chats/#open=abc')}`]);
+  w = worker(notReady, { windows: [{ url: `${ORIGIN}/nowhere`, focused: true, hears: false }] });
+  await w.tap({ app: 'weather', url: './' });
+  assert.deepEqual(w.wins[0].went, [`${ORIGIN}/#go=${encodeURIComponent('/weather/')}`]);
+  for (const status of [404, 503]) {
+    w = worker((p) => (p === '/api/hub' ? new Response('no', { status }) : Response.json({})));
+    await w.tap({ app: 'fitness', url: './' });
+    assert.deepEqual(w.opened, [`${ORIGIN}/#go=${encodeURIComponent('/fitness/#today')}`], String(status));
+  }
+  // (Today's own: never asked about, opened as it is)
+  w = worker(notReady);
+  await w.tap({ app: 'today', url: '/#morning' });
+  assert.deepEqual(w.opened, [`${ORIGIN}/#morning`]);
+  assert.ok(!w.posts.some((p) => p.path === '/api/hub'));
+  // (ready, or no answer at all (no network): the app's page itself)
+  for (const net of [(p) => (p === '/api/hub' ? Response.json({ ready: true }) : Response.json({})), () => { throw new TypeError('Load failed'); }]) {
+    w = worker(net);
+    await w.tap({ app: 'chat', url: '/pigeon/#open=abc' });
+    assert.deepEqual(w.opened, [`${ORIGIN}/chats/#open=abc`]);
+  }
 });
