@@ -244,6 +244,7 @@ export const chSheet = (k) => `dialog.ifl-sheet[data-sheet="${CH_SHEETS[k] || k}
 export const CH_SEND_ROW = 'dialog.ifl-sheet[data-sheet=send] [data-k=to][data-id]'; // UI-B: a friend to send to
 export const chSendRow = (id) => `dialog.ifl-sheet[data-sheet=send] [data-k=to][data-id="${id}"]`; // UI-B
 export const CH_SEND_GO = 'dialog.ifl-sheet[data-sheet=send] [data-act=sendgo]'; // UI-B: the sheet's Send
+export const CH_SEND_WORDS = 'dialog.ifl-sheet[data-sheet=send] [data-act=words] input'; // UI-B: the words to go with the card (Chat's #f-sendwords); added at integration for hubshare
 export const CH_SEND_STATE = 'dialog.ifl-sheet[data-sheet=send] [data-state]'; // UI-B: a not-ready Send: signin | key | locked | device | offline
 export const CH_PRIVACY = 'dialog.ifl-sheet[data-sheet=chatsettings] a[href="/chats/in/#account"]'; // UI-B: Privacy & Security (Chat's own page)
 export const CH_SAFETY_DIGITS = 'dialog.ifl-sheet[data-sheet=safety] [data-k=digits]'; // UI-B
