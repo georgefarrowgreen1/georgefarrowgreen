@@ -1,6 +1,5 @@
-// Weather's connector, client part (One roof, spec §6.1, D5): what Weather shares with InFlite, read by the framework
-// (roof/connectors.js, modules.js) without loading the module. ≤ 4 KB, no imports. Shape and `shares` words frozen by
-// B0; WX keeps `files` equal to the module's static import graph plus its CSS (roofcontract.test walks the graph).
+// Weather's connector (One roof, §6.1, D5): what Weather shares with InFlite, read by the framework without loading
+// the module. ≤ 4096 bytes raw, comments included (roofcontract.test); no imports. Shape and `shares` frozen by B0.
 export const CONNECTOR = 1;
 
 const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
@@ -18,8 +17,8 @@ export const connector = {
   },
   sections: SECTIONS,
   aliases: { day: "days", settings: "now" },
-  // Every file of the module's static import graph (from weather.js: its own 11 and the 14 reused) and its 4
-  // stylesheets: 29 files, absolute paths. Never vendor/, the radar stack, rainmap.js or radarrain.js (fw.lazy only).
+  // The module's static import graph from weather.js (11 own, 14 reused) and its 4 CSS. Never vendor/, the radar
+  // stack, rainmap.js or radarrain.js (fw.lazy only).
   files: [
     "/weather/roof/weather.js", "/weather/roof/connector.js", "/weather/roof/core.js", "/weather/roof/sync.js",
     "/weather/roof/places.js", "/weather/roof/radarview.js", "/weather/roof/now.js", "/weather/roof/days.js",
@@ -29,17 +28,21 @@ export const connector = {
     "/weather/account.js", "/weather/send.js", "/weather/charts.js", "/weather/icons.js",
     "/weather/roof/weather.css", "/weather/roof/wxcore.css", "/weather/roof/wxsettings.css", "/weather/roof/radar.css",
   ],
-  // mini(answer) → { kind: "num-bars", num: "14°", bars: [0..100 ×5], label: "Rain from 15:00" } | null: from
-  // answer.cards.weather (now.temp, list[].pop); null unless its state is "ok". (B0: minimal; WX finishes it.)
+  // mini(answer) → { kind: "num-bars", num, bars: [0..100 ×5], label } | null, from answer.cards.weather (functions/
+  // _todaywx.js weatherCard), null unless state "ok": num = now.temp as it is (already "14°"); bars = hours.list[0..4].pop;
+  // label from rain (v=2): "Raining now", "Rain from 15:00" (at, on the place's clock: offset s, clock "12"/"24"), else "".
   mini(answer) {
     const c = answer?.cards?.weather;
-    if (!c || c.state !== "ok" || !Number.isFinite(c.now?.temp)) return null;
-    const bars = (Array.isArray(c.list) ? c.list : []).slice(0, 5).map((h) => Math.max(0, Math.min(100, Math.round(Number(h?.pop) || 0))));
+    if (!c || c.state !== "ok" || typeof c.now?.temp !== "string") return null;
+    const bars = (Array.isArray(c.hours?.list) ? c.hours.list : []).slice(0, 5).map((h) => Math.max(0, Math.min(100, Math.round(Number(h?.pop) || 0))));
     while (bars.length < 5) bars.push(0);
-    return { kind: "num-bars", num: `${Math.round(c.now.temp)}°`, bars, label: "" };
+    const r = c.rain, d = Number.isFinite(r?.at) && new Date(r.at + (Number(c.offset) || 0) * 1000);
+    const hh = d && d.getUTCHours(), mm = d && String(d.getUTCMinutes()).padStart(2, "0");
+    const at = d && (c.clock === "12" ? `${hh % 12 || 12}:${mm}${hh < 12 ? "am" : "pm"}` : `${String(hh).padStart(2, "0")}:${mm}`);
+    return { kind: "num-bars", num: c.now.temp, bars, label: r?.now ? "Raining now" : at ? `Rain from ${at}` : "" };
   },
-  // search(q) → [{ title, sub, icon: "weather", href }]: your places (localStorage wx:places), case-insensitive
-  // substring of the name, ≤ 8, then "Weather Settings". On this device only: q never leaves the page (D16).
+  // search(q) → [{ title, sub, icon: "weather", href }]: wx:places whose name has q (any case), ≤ 8, then "Weather
+  // Settings". On this device only: q never leaves the page (D16).
   search(q) {
     const s = near(q).trim();
     if (!s) return [];
