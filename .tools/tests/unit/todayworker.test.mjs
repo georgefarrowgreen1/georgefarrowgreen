@@ -3,6 +3,8 @@
 // needs X-Inflite, Today's own Origin and a same-origin Sec-Fetch-Site; no part of an address goes on but the five it
 // names (never a push endpoint); the account's Set-Cookie comes back only from signing in and out; an account that can't
 // be reached is said in fixed words; /version reads app.js's BUILD and carries no CORS; a picture is only ever a picture.
+// And Today First's: its routes (acts, rules, notifications, devices), the hub's paths and Mail's answered by the Worker,
+// never the assets, and a test's moment of the day passed on only where the Worker's TEST_AT says so.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -102,6 +104,10 @@ test('each route goes to its own place on the account, with its method; an unkno
     ['GET', '/api/today', 'today/cards'], ['PUT', '/api/prefs', 'today/prefs'], ['GET', '/api/morning', 'today/morning'], ['PUT', '/api/morning', 'today/morning'],
     ['POST', '/api/morning/try', 'today/morning/try'], ['GET', '/api/push/key', 'today/push-key'], ['POST', '/api/push', 'today/push'],
     ['POST', '/api/push/move', 'today/push-move'], ['DELETE', '/api/push', 'today/push'], ['POST', '/api/account-link', 'today/account-link'],
+    // (Today First's)
+    ['POST', '/api/act', 'today/act'], ['POST', '/api/act/undo', 'today/act/undo'], ['GET', '/api/rules', 'today/rules'], ['PUT', '/api/rules', 'today/rules'],
+    ['GET', '/api/notify', 'today/notify'], ['PATCH', '/api/notify', 'today/notify'], ['POST', '/api/device', 'today/device'], ['DELETE', '/api/device', 'today/device'],
+    ['GET', '/api/devices', 'today/devices'], ['DELETE', '/api/devices', 'today/devices'],
   ];
   for (const [method, path, to] of ROUTES) {
     const { res } = await call(req(path, { method, body: method === 'GET' ? undefined : { endpoint: 'https://fcm.googleapis.com/fcm/send/x' } }));
@@ -115,7 +121,54 @@ test('each route goes to its own place on the account, with its method; an unkno
   assert.equal((await call(req('/api/account/me'))).res.status, 404);
   assert.equal((await call(req('/api/nope', { method: 'POST', body: {} }))).res.status, 404);
   assert.equal((await call(req('/api/session', { method: 'DELETE', body: {} }))).res.status, 405);
+  // (Today First's routes take only their own methods)
+  assert.equal((await call(req('/api/act'))).res.status, 405);
+  assert.equal((await call(req('/api/rules', { method: 'DELETE', body: {} }))).res.status, 405);
+  assert.equal((await call(req('/api/devices', { method: 'POST', body: {} }))).res.status, 405);
+  assert.equal((await call(req('/api/notify', { method: 'PUT', body: {} }))).res.status, 405);
   assert.equal(asked.length, n, 'none of those reached the account');
+  // (each write of Today First's needs what every write does)
+  for (const path of ['/api/act', '/api/act/undo', '/api/device']) {
+    const { res } = await call(req(path, { method: 'POST', headers: { 'X-Inflite': null }, body: { id: 'x' } }));
+    assert.equal(res.status, 403, path);
+  }
+  for (const [method, path] of [['PUT', '/api/rules'], ['PATCH', '/api/notify'], ['DELETE', '/api/devices']]) {
+    const { res } = await call(req(path, { method, headers: { Origin: 'https://evil.example' }, body: {} }));
+    assert.equal(res.status, 403, `${method} ${path}`);
+  }
+  assert.equal(asked.length, n, 'nor did those');
+});
+
+// (what each answers is the hub's and Mail's host page's own, today/src/hub.js and mailhost.js, each tested there; here,
+// only that the Worker answers them and the assets never see them)
+test('the hub’s paths and Mail’s are the Worker’s own, never the assets’', { skip }, async () => {
+  account();
+  assets.length = 0;
+  for (const p of ['/chats', '/chats/', '/chats/x', '/chats/sw.js', '/weather', '/weather/', '/weather/?lat=1', '/fitness/', '/markets/app.js', '/mail', '/mail/', '/mail/x']) {
+    const { res } = await call(new Request(SITE + p, { headers: { 'Sec-Fetch-Site': 'same-origin' } }));
+    assert.notEqual(await res.text(), '<!doctype html>page', p);
+  }
+  assert.deepEqual(assets, [], 'none went to the assets');
+  // (and these are the assets', as before: Today's icon folder, and names that only start the same)
+  for (const p of ['/apps/chat.svg', '/chatsy', '/mailbox', '/weathers/', '/']) await call(new Request(SITE + p));
+  assert.deepEqual(assets, ['/apps/chat.svg', '/chatsy', '/mailbox', '/weathers/', '/']);
+});
+
+test('a test’s moment of the day (X-Today-At) goes on only where the Worker’s TEST_AT is "1", and only as one', { skip }, async () => {
+  const asked = account(() => Response.json({ at: 1, tz: 'Europe/London', cards: {} }));
+  const AT = '1793602800000';
+  await call(req('/api/today?v=2', { headers: { 'X-Today-At': AT } }));
+  assert.equal(asked[0].headers.get('x-today-at'), null, 'not without TEST_AT');
+  await call(req('/api/today?v=2', { headers: { 'X-Today-At': AT } }), env({ TEST_AT: '0' }));
+  assert.equal(asked[1].headers.get('x-today-at'), null, 'nor with it anything but "1"');
+  await call(req('/api/today?v=2', { headers: { 'X-Today-At': AT } }), env({ TEST_AT: '1' }));
+  assert.equal(asked[2].headers.get('x-today-at'), AT);
+  assert.equal(asked[2].headers.get('origin'), SITE, 'beside the browser’s few, as ever');
+  assert.equal(asked[2].url.searchParams.get('v'), '2');
+  for (const bad of ['17936028', '1793602800000x', 'now', '17936028000001']) {
+    await call(req('/api/today', { headers: { 'X-Today-At': bad } }), env({ TEST_AT: '1' }));
+    assert.equal(asked.at(-1).headers.get('x-today-at'), null, bad);
+  }
 });
 
 test('the account’s Set-Cookie comes back from signing in and out (and the session’s renewal), from nowhere else', { skip }, async () => {

@@ -21,6 +21,9 @@ const ENTRIES = [
   "functions/_share.js", "functions/_fitshare.js", "functions/api/pigeon/[[path]].js",
   // (and instant Chat's: the pulse, groups and notifications, each from its own end; and the typing Worker, alone)
   "functions/_pulse.js", "functions/_groups.js", "functions/_notify.js", "functions/_reacts.js", "functions/_vanish.js", "workers/live/index.js",
+  // (and Today First's, beside its _today*.js above: sign-ins' columns, devices, holds while riding, agreed times, ride
+  // times. pigeon/digest.js is the phone's alone, and imports nothing)
+  "functions/_sessions.js", "functions/_devices.js", "functions/_busy.js", "functions/_times.js", "functions/_fittimes.js",
 ];
 
 // each loaded in its own Node, all at once → null, or what went wrong
@@ -39,8 +42,16 @@ for (const [file, loaded] of loads) {
 // The names Today's parts share, and how each is called (as listed for its builders); a value's own check, else a
 // function's parameters
 const isList = (want) => (v, at) => assert.deepEqual(v, want, at);
+// (Today First's, from spec §6.1, §7, §8.7, §11.3 and §12: made by its first batch, each with its final name and
+// arguments, then written by the batch that owns it; a trailing { … } = {} is an options bag, which may be left out)
+const TODAY_ROUTE_KEYS = [
+  "GET today/me", "POST today/handback", "POST today/signout", "GET today/cards", "PUT today/prefs", "GET today/morning", "PUT today/morning",
+  "POST today/morning/try", "GET today/push-key", "POST today/push", "POST today/push-move", "DELETE today/push", "POST today/account-link", "GET today/avatar",
+  "POST today/act", "POST today/act/undo", "GET today/rules", "PUT today/rules", "GET today/notify", "PATCH today/notify",
+  "POST today/device", "DELETE today/device", "GET today/devices", "DELETE today/devices",
+];
 const SHARED = {
-  "functions/_sites.js": { todayOrigin: "env, request", todayLinks: "env, request" },
+  "functions/_sites.js": { todayOrigin: "env, request", todayLinks: "env, request", cfOf: "request" },
   "functions/_handback.js": { takeHandback: "env, request, app, b, { limitKey, max = 30 } = {}" },
   "functions/_today.js": {
     tddb: "env", CARDS: isList(["weather", "chat", "fitness", "markets"]),
@@ -55,6 +66,8 @@ const SHARED = {
     TODAY_ROUTES: (v, at) => {
       assert.ok(v && typeof v === "object" && !Array.isArray(v), `${at}: an object`);
       for (const [k, f] of Object.entries(v)) { assert.match(k, /^(GET|POST|PUT|PATCH|DELETE) today\/[a-z/-]+$/, `${at}: ${k}`); assert.equal(typeof f, "function", `${at}: ${k}`); }
+      // (and exactly these: Today's own, and Today First's, each of which its IFL Worker's ROUTES names)
+      assert.deepEqual(Object.keys(v).sort(), [...TODAY_ROUTE_KEYS].sort(), `${at}: the routes`);
     },
     todayBuild: "env", firstMorningAt: "env, u",
   },
@@ -92,6 +105,40 @@ const SHARED = {
   "functions/_markets.js": {
     dayIn: "tz, t", dividends: "env, symbol, opt", yearOf: "env, symbol, opt", nextDividend: "items, t = Date.now()", marketState: "q, t = Date.now()",
     shutToday: "held, t = Date.now()", moneySaid: "v, cur", andSaid: "list",
+  },
+  // (Today First's: the day, phase by phase; Coming Up; a ride's weather; acts and rules; notifications from You)
+  "functions/_todayphase.js": { phaseOf: "t, tz, inputs" },
+  "functions/_todayday.js": { dayInputs: "env, u, t, tz, cards", dayFor: "env, u, t, cards, { request, tz } = {}" },
+  "functions/_todaycoming.js": { upcomingFor: "cards, extra, t" },
+  "functions/_todayride.js": { rideWx: "env, u, ride, t" },
+  "functions/_todayacts.js": {
+    planDay: "env, u, t, deps = {}", actTake: "env, u, { id }, { t } = {}", actUndo: "env, u, { id }, { t } = {}",
+    rulesGet: "env, u, { t } = {}", rulesPut: "env, u, { rule, level }, { t } = {}",
+    actsFor: "env, userId, day", planned: "env, userId, day", ruleLevel: "env, userId, rule",
+  },
+  "functions/_todaynotify.js": { notifyGet: "env, u", notifyPatch: "env, u, body" },
+  // (every app's notifications through one device; holds while riding; times agreed in Chat; ride times; sign-ins)
+  "functions/_devices.js": {
+    deviceAdd: "env, u, body, { request } = {}", deviceDrop: "env, u, body", devicesList: "env, u, { device } = {}, { request } = {}", devicesStop: "env, u, { id }",
+    addEverywhere: "env, u, sub, { fan } = {}", moveEverywhere: "env, u, was, sub", dropEverywhere: "env, endpoint", otherDevices: "env, u", stopDevice: "env, u, id",
+  },
+  "functions/_busy.js": { busyMap: "D, userIds, t", busyNow: "env, userId, t", heldCount: "env, userId, since", heldAdd: "env, userId, n" },
+  "functions/_times.js": {
+    timesFor: "env, userId, from, to", timesAround: "env, userId, t, ms", timesExport: "env, userId", dropTimes: "env, userId",
+    addTime: "env, u, row", promoteTime: "env",
+  },
+  "functions/_fittimes.js": {
+    timeFor: "env, userId, day", timesOf: "env, userId, fromDay, toDay", setTime: "env, userId, row", dropTime: "env, userId, day",
+    EXPLICIT_OFFER: (v, at) => assert.equal(v, "o.state = 'yes' AND (o.role IN ('asked','answered') OR o.taken = 1)", at),
+    explicitRide: (v, at) => {
+      assert.equal(typeof v, "function", at);
+      assert.ok(v({ source: "set" }) && v({ state: "yes", role: "asked" }) && v({ state: "yes", role: "answered" }) && v({ state: "yes", role: "today", taken: 1 }), `${at}: an explicit ride`);
+      assert.ok(!v({ state: "yes", role: "today", taken: 0 }) && !v({ state: "new", role: "asked" }) && !v({ state: "pending", role: "asked" }), `${at}: not an explicit ride`);
+    },
+  },
+  "functions/_sessions.js": {
+    SESSION_COLUMNS: isList({ pg_handback: "session", pg_handoff: "session", pg_push: "session", pg_hops: "session", pg_qrsign: "session", td_push: "session", mk_push: "session", fx_push: "session", wx_devs: "sess" }),
+    repointSession: "D, from, to",
   },
   // (Pages calls one of these for the scheduler's turn)
   "functions/api/today/[[path]].js": { "onRequest*": (m, at) => assert.ok(Object.keys(m).some((k) => /^onRequest(Post)?$/.test(k) && typeof m[k] === "function"), `${at}: an onRequest or onRequestPost`) },
