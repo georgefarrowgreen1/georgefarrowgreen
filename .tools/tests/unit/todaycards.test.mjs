@@ -17,9 +17,9 @@ import { tddb } from "../../../functions/_today.js";
 import { offersReady } from "../../../functions/_fitshare.js";
 import { timesReady } from "../../../functions/_fittimes.js";
 import { timesFor } from "../../../functions/_times.js";
-import { cardsFor, localDay, shareCut, couldnt, withDeadline, Quiet, CARD_KEYS } from "../../../functions/_todaycards.js";
+import { cardsFor, localDay, shareCut, couldnt, withDeadline, Quiet, CARD_KEYS, DAY_LIMIT_MS } from "../../../functions/_todaycards.js";
 import { weatherCard, skyFor, heaviestOf } from "../../../functions/_todaywx.js";
-import { fitnessCard } from "../../../functions/_todayfit.js";
+import { fitnessCard, REST_SHARE } from "../../../functions/_todayfit.js";
 import { marketsCard } from "../../../functions/_todaymkt.js";
 import { forecast as omForecast } from "../mocks/wxappdata.mjs";
 import { unpackCard, normCard } from "../../../pigeon/cards.js";
@@ -708,7 +708,7 @@ test("v=2: the day with the cards, as the fixtures have it; without it (or with 
   // (each row of Coming Up: what it is, when, where it opens; a card to send only with its line)
   for (const r of two.upcoming) {
     for (const k of ["at", "app", "title", "sub", "href", "id"]) assert.ok(k in r, `${r.id}: ${k}`);
-    assert.ok(Object.keys(r).every((k) => ["at", "app", "title", "sub", "href", "id", "share", "sendCard"].includes(k)), JSON.stringify(r));
+    assert.ok(Object.keys(r).every((k) => ["at", "app", "title", "sub", "href", "id", "share", "sendCard", "late"].includes(k)), JSON.stringify(r));
     assert.equal("sendCard" in r, "share" in r, r.id);
   }
   assert.equal(two.phase, "morning"); assert.equal(two.planning, true, "this account's day not planned yet");
@@ -720,7 +720,10 @@ test("v=2: the day with the cards, as the fixtures have it; without it (or with 
   assert.deepEqual(m.holdings.map((h) => [h.sym, h.name, h.pct]), [["RR.L", "Rolls-Royce", 1.89], ["TSCO.L", "Tesco", -0.29], ["AAPL", "Apple", 0]], "Apple's move is Friday's, not today's");
   for (const h of m.holdings) {
     const c = unpackCard(h.sendCard);
-    assert.deepEqual(c.snap, { name: h.name, sym: h.sym, pct: h.pct, day: h.sym === "AAPL" ? "2026-11-02" : "2026-11-02" });
+    // (each holding's day by its own market's clock: Apple's New York's, 05:00 on Monday there; the rest London's)
+    const there = new Intl.DateTimeFormat("en-CA", { timeZone: h.sym === "AAPL" ? "America/New_York" : "Europe/London" }).format(new Date(WEEKDAY));
+    assert.equal(there, "2026-11-02");
+    assert.deepEqual(c.snap, { name: h.name, sym: h.sym, pct: h.pct, day: there });
     assert.deepEqual(normCard(c), c, "unchanged through normCard");
   }
   assert.ok(!/£|value|change|qty/.test(JSON.stringify(m.holdings)), "percents only");
@@ -748,6 +751,36 @@ test("v=2 when the day can't be worked out: the cards still come, as version 1's
   const a = await cardsFor(broken, { id: "wx1" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, v: 2 });
   assert.deepEqual(Object.keys(a), ["at", "tz", "cards"], "version 1's answer");
   assert.equal(a.cards.weather.state, "ok");
+  assert.ok(sql.prepare("SELECT src FROM pg_errors").all().some((r) => r.src === "today day"), "logged");
+  await settle();
+});
+
+test("v=2 with an add undone today: the Fitness card says the day as it was before, as the day's lines do; version 1's card as Fitness has it", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  // (Fitness's plan still has the habit's swap, its free ride; Today's add of it undone this morning, the day a rest day before)
+  user("v2u", "Una Done");
+  snapRow("v2u", { "2026-11-02": { state: "session", id: "free-ride", sport: "ride", name: "Ride how you like", kind: "Endurance", secs: 3600, tss: 40, steps: [] } }, { at: WEEKDAY - 2 * H });
+  put("td_acts", { user_id: "v2u", id: "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a77", rule: "addRide", day: "2026-10-30", target: "day:2026-11-02", kind: "add", state: "undone", level: "suggest",
+    was: JSON.stringify({ planned: "rest" }), now: JSON.stringify({ offer: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a77", day: "2026-11-02", start: WEEKDAY + 6 * H, stop: WEEKDAY + 7 * H, state: "yes" }),
+    said: "Added: a ride on Monday at 16:00", made: WEEKDAY - 3 * 24 * H, undo_until: WEEKDAY - H });
+  const ask = (v) => cardsFor(env, { id: "v2u", name: "Una Done" }, { only: ["fitness"], t: WEEKDAY, tz: "Europe/London", links: LINKS, v });
+  const one = await ask(1), two = await ask(2); await settle();
+  assert.deepEqual([one.cards.fitness.kind, one.cards.fitness.session?.id], ["session", "free-ride"], "version 1: Fitness's card as it has it");
+  const f = two.cards.fitness;
+  assert.deepEqual([f.state, f.day, f.kind, f.session, f.best, f.share, f.sendCard], ["ok", "2026-11-02", "rest", null, null, REST_SHARE, null]);
+  assert.equal(two.apps.fitness, "Rest day");
+  assert.ok(!("fitnessCard" in two) && !JSON.stringify(two).includes("Ride how you like"), "nothing of the undone ride anywhere");
+});
+
+test("v=2 when the day takes too long: the cards come in their time, as version 1's, and it's logged", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  sql.prepare("DELETE FROM pg_errors").run();
+  // (a statement only the day makes, the hold rule's level, that never answers)
+  const slow = { ...env, DB: { ...env.DB, prepare: (q) => (/FROM td_rules/.test(q) ? { bind: () => ({ first: () => new Promise(() => {}), all: () => new Promise(() => {}) }) } : env.DB.prepare(q)) } };
+  const began = Date.now(), a = await cardsFor(slow, { id: "wx1" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, v: 2 }), took = Date.now() - began;
+  assert.deepEqual(Object.keys(a), ["at", "tz", "cards"], "version 1's answer");
+  assert.equal(a.cards.weather.state, "ok");
+  assert.ok(took >= DAY_LIMIT_MS - 50 && took < DAY_LIMIT_MS + 3000, `in the day's time: ${took} ms`);
   assert.ok(sql.prepare("SELECT src FROM pg_errors").all().some((r) => r.src === "today day"), "logged");
   await settle();
 });

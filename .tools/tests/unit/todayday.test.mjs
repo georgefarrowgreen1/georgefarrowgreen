@@ -3,8 +3,9 @@
 // Monday in London from real rows (a ride moved to 16:45 in fx_times, Mira's call agreed in Chat, Today's two acts,
 // Thursday's habit ride and Leo's agreed one, Pat's and Mira's messages, a Garmin row waiting, then the ride in Fitness),
 // each phase's answer the shape of its fixture (.tools/tests/mocks/today/cards.<phase>.json, the page's tests being
-// built on those) and in its words: the honest after card both ways, planning handed to waitUntil, an undone add
-// hidden, Waiting for You with names and never words, every Markets card a percent and nothing more.
+// built on those) and in its words: the honest after card both ways, planning handed to waitUntil and never awaited,
+// an undone add hidden (with and without another ride that day), Keep, a ride not in yet, the small hours still the day
+// before, Waiting for You with names and never words, every Markets card a percent and nothing more.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -13,7 +14,9 @@ import { db } from "../../../functions/_pigeon.js";
 import { wxdb } from "../../../functions/_wxpush.js";
 import { fitdb } from "../../../functions/_fitness.js";
 import { tddb } from "../../../functions/_today.js";
-import { offersReady } from "../../../functions/_fitshare.js";
+import { offersReady, donesIn } from "../../../functions/_fitshare.js";
+import { snapshotOf } from "../../../functions/_fittoday.js";
+import { REST_SHARE } from "../../../functions/_todayfit.js";
 import { timesReady } from "../../../functions/_fittimes.js";
 import { timesFor } from "../../../functions/_times.js";
 import { dayFor, dayInputs } from "../../../functions/_todayday.js";
@@ -217,11 +220,27 @@ test("16:50, riding: until unknown, messages held, the count held so far", async
   assert.ok(!d.upcoming.some((x) => x.id === "ride"), "the ride's under way, not coming up");
 });
 
+test("18:50 and 21:00 with nothing in for the ride: it says so (not in yet), in the top card and Coming Up, which keeps its row", async () => {
+  let d = await day("midday", at(18, 50));
+  assert.equal(d.phase, "midday"); assert.equal(d.since, at(18, 45), "the cap: back to the clock's phase");
+  assert.ok(d.tops.midday.lines.includes("Your 16:45 ride isn’t in yet."), lines(d.tops.midday));
+  const row = d.upcoming.find((r) => r.id === "ride");
+  assert.deepEqual([row?.at, row?.sub, row?.late, row?.href], [at(16, 45), "Not in yet", true, "/fitness/#activities"], "its row kept, flagged late");
+  assert.ok(d.upcoming.filter((r) => r.at <= at(18, 50)).every((r) => r.late), "nothing else passed");
+  d = await day("midday", at(21));
+  assert.equal(d.phase, "evening");
+  assert.ok(d.tops.evening.lines.includes("Fitness: your 16:45 ride isn’t in yet"), lines(d.tops.evening));
+  assert.ok(!("doneAt" in d.ride));
+});
+
 test("18:05, after, from a Garmin row only: the honest card (no Stress, once Fitness has it, Open Fitness), Mira wrote, Send to Leo", async () => {
   put("fx_garmin_new", { user_id: ME, id: "g1", start: at(16, 46), name: "Evening Ride", added: at(18, 2), size: 1, sport: "cycling", secs: 4500, dist: 36050 });
   const d = await day("after", at(18, 5));
   sameShape(d, V2("after"), "after");
-  assert.equal(d.phase, "after"); assert.equal(d.since, at(18, 1)); assert.equal(d.until, at(19, 31));
+  // (after from the activity's arrival: its row's added, 18:02, where functions/_fitshare.js donesIn gives it; until it
+  // does, its end, 16:46 and 75 minutes)
+  const added = (await donesIn(env, ME, at(0), at(18, 5)))[0]?.added, arrived = Number.isFinite(added) ? at(18, 2) : at(18, 1);
+  assert.equal(d.phase, "after"); assert.equal(d.since, arrived); assert.equal(d.until, arrived + 90 * MIN);
   assert.deepEqual(Object.keys(d.tops), ["after", "evening"], "the evening's settled: the ride's in and London's closed");
   const a = d.tops.after;
   assert.equal(a.kind, "done"); assert.equal(a.chip, "Done"); assert.equal(a.title, "Endurance 75 · 1:15");
@@ -235,7 +254,7 @@ test("18:05, after, from a Garmin row only: the honest card (no Stress, once Fit
   assert.equal(a.share, "Done: Endurance 75, 1:15, 22.4 mi.");
   const card = unpackCard(a.sendCard);
   assert.deepEqual(card.snap.done, { secs: 4500, dist: 36050 }, "only what's known: no stress"); assert.equal(card.snap.best, null);
-  assert.equal(d.ride.doneAt, at(18, 1));
+  assert.equal(d.ride.doneAt, arrived);
   assert.equal(d.apps.fitness, "Endurance 75 done");
   assert.deepEqual(d.waiting.map((w) => w.first), ["Mira", "Pat"]);
   privacy(d);
@@ -284,6 +303,32 @@ test("21:00, evening: the day closed: Tesco past its alert, the ride and its fit
   assert.ok(privacy({ ...d, cards: cardsAt("evening") }) >= 4);
 });
 
+test("the small hours: at 00:30 it's still Monday's evening (until Tuesday's 06:00), as it was at 23:50; this morning's 07:00", async () => {
+  // (Tuesday's Fitness card, as Fitness has sent it by then; Monday's session from Fitness's plan, for the ride's name)
+  await snapshotOf(env, ME);
+  put("fx_today", { user_id: ME, tz: LON, units: "imperial", at: at(6), days: JSON.stringify({ "2026-11-02": { state: "session", id: "rh:endurance:75", name: "Endurance 75", sport: "ride" },
+    "2026-11-03": { state: "session", id: "rh:recovery:45", name: "Recovery 45", sport: "ride" } }) });
+  const tue = cardsAt("evening");
+  tue.fitness = { ...tue.fitness, day: "2026-11-03", kind: "session", session: { ...tue.fitness.session, id: "rh:recovery:45", name: "Recovery 45" }, done: null, next: null };
+  const late = await day("evening", at(23, 50)), small = await dayFor(env, U, at(0, 30, 3), tue, { tz: LON });
+  for (const d of [late, small]) {
+    assert.equal(d.phase, "evening"); assert.equal(d.since, at(19, 31), "the evening from the after's end"); assert.equal(d.until, at(6, 0, 3));
+    assert.equal(d.tops.evening.title, "Up 0.4%, 22 miles, and Mira’s call");
+    assert.match(d.tops.evening.lines[1], /^Fitness: 1:15, stress 68, fitness up to \d+$/);
+  }
+  assert.deepEqual(small.ride, late.ride, "Monday's ride, named as Fitness planned it");
+  assert.equal(small.ride.name, "Endurance 75");
+  assert.deepEqual(small.acts, late.acts, "Monday's acts");
+  assert.deepEqual(small.acts.map((a) => a.id), [MOVE, ADD]);
+  assert.equal(small.apps.fitness, late.apps.fitness);
+  assert.equal(small.tops.evening.lines[1], late.tops.evening.lines[1], "Fitness (CTL) as it was at the day's end");
+  assert.ok(late.tops.evening.lines.includes("Tomorrow first: dry and still at 07:00, a good morning for a run"), lines(late.tops.evening));
+  assert.ok(small.tops.evening.lines.includes("This morning: dry and still at 07:00, a good morning for a run"), lines(small.tops.evening));
+  assert.ok(!small.tops.evening.lines.some((l) => l.startsWith("Tomorrow first")));
+  assert.equal("planning" in small, false, "Tuesday's plan waits for Tuesday's start");
+  sql.prepare("DELETE FROM fx_today WHERE user_id = ?").run(ME);
+});
+
 test("planning: the first read of the day after its start hands planDay to waitUntil, never awaited, and says so; none before the start", async () => {
   sql.prepare("DELETE FROM td_plans WHERE user_id = ?").run(ME);
   waited = [];
@@ -298,6 +343,17 @@ test("planning: the first read of the day after its start hands planDay to waitU
   sql.prepare("DELETE FROM td_plans WHERE user_id = ?").run(ME);
   const bare = await dayFor({ ...env, waitUntil: undefined }, U, at(7), cardsAt("morning"), { tz: LON });
   assert.equal(bare.planning, true);
+  // (a plan that never ends: the answer doesn't wait for it)
+  sql.prepare("DELETE FROM td_plans WHERE user_id = ?").run(ME);
+  waited = [];
+  let settled = false, calls = 0;
+  const never = () => { calls++; return new Promise(() => {}); };
+  const timer = new Promise((_, no) => setTimeout(() => no(new Error("dayFor waited on the plan")), 2000));
+  const quick = await Promise.race([dayFor(env, U, at(7), cardsAt("morning"), { tz: LON, deps: { planDay: never } }), timer]);
+  assert.equal(quick.planning, true); assert.equal(waited.length, 1);
+  Promise.resolve(waited[0]).then(() => { settled = true; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(calls, 1, "the stand-in was asked once"); assert.equal(settled, false, "and still hasn't finished: never awaited");
   put("td_plans", { user_id: ME, day: "2026-11-02", at: at(6) });
   waited = [];
   d = await day("morning", at(7, 30));
@@ -323,6 +379,49 @@ test("the overlay: an add undone today hides its ride everywhere, and Fitness's 
   sql.prepare("DELETE FROM fx_offers WHERE id = ?").run(TODAY_HABIT); sql.prepare("DELETE FROM td_acts WHERE id = ?").run("undone-add");
 });
 
+test("the overlay with no other ride that day: the morning card, the Fitness card and its line say the day as it was, never the session", async () => {
+  const UNDONE = "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a97";
+  // (the day's only ride, Today's habit ride at 10:00, undone: its offer turned down, as Undo leaves it; Fitness hasn't
+  // heard, so its plan still has the habit's session, Fitness's free ride, with its best time and its line to send)
+  const row = sql.prepare("SELECT * FROM fx_times WHERE user_id = ? AND day = ?").get(ME, "2026-11-02");
+  sql.prepare("DELETE FROM fx_times WHERE user_id = ? AND day = ?").run(ME, "2026-11-02");
+  offer({ id: UNDONE, start: at(10), stop: at(11), state: "no", taken: 0 });
+  act({ id: "undone-only", rule: "addRide", day: "2026-10-30", target: "day:2026-11-02", kind: "add", state: "undone", level: "suggest", was: { planned: "rest" },
+    now: { offer: UNDONE, day: "2026-11-02", start: at(10), stop: at(11), state: "yes", secs: 3600 }, said: "Added: a ride on Monday at 10:00", made: at(7, 0, 30), undo_until: at(9) });
+  const habitCards = () => {
+    const c = cardsAt("morning");
+    c.fitness = { ...c.fitness, session: { ...c.fitness.session, id: "free-ride", name: "Ride how you like", kind: "Endurance", secs: 3600, tss: 40 }, share: "Today: Ride how you like, 1 h. Best time to ride 16:45 to 18:00." };
+    return c;
+  };
+  try {
+    let d = await dayFor(env, U, at(8), habitCards(), { tz: LON });
+    const m = d.tops.morning;
+    assert.equal(d.ride, null, "no ride today"); assert.ok(!d.timeline.some((x) => x.phase === "preride" || x.phase === "riding"));
+    assert.ok(!m.lines.some((l) => /Ride how you like|best 16:45/.test(l)), lines(m));
+    assert.equal(m.share, REST_SHARE, "the day's line to send: a rest day, never the session's"); assert.equal(m.sendCard, null);
+    assert.equal(d.apps.fitness, "Rest day");
+    assert.ok(!d.upcoming.some((r) => r.id === `offer:${UNDONE}`));
+    // (the Fitness card for the answer's cards, held apart: the day as it was, nothing of the session's)
+    const fc = d.fitnessCard;
+    assert.deepEqual([fc?.state, fc?.day, fc?.kind, fc?.session, fc?.best, fc?.share, fc?.sendCard], ["ok", "2026-11-02", "rest", null, null, REST_SHARE, null]);
+    assert.ok(!Object.keys(d).includes("fitnessCard") && !JSON.stringify(d).includes("fitnessCard"), "never one of the day's keys");
+    privacy(d);
+    // (nothing planned before it: no line to send of Fitness's, the weather's instead)
+    sql.prepare("UPDATE td_acts SET was = ? WHERE id = ?").run(JSON.stringify({ planned: "none" }), "undone-only");
+    d = await dayFor(env, U, at(8), habitCards(), { tz: LON });
+    assert.deepEqual([d.fitnessCard?.kind, d.fitnessCard?.share], ["none", null]);
+    assert.equal(d.apps.fitness, "Nothing planned"); assert.equal(d.tops.morning.share, FIX("cards.morning").cards.weather.share);
+    // (without the undone act, Fitness's plan stands: the session's line, as it says)
+    sql.prepare("DELETE FROM td_acts WHERE id = ?").run("undone-only");
+    d = await dayFor(env, U, at(8), habitCards(), { tz: LON });
+    assert.ok(d.tops.morning.lines.includes("Ride how you like today · best 16:45–18:00."), lines(d.tops.morning));
+    assert.equal(d.apps.fitness, "Ride how you like today"); assert.equal(d.fitnessCard, undefined);
+  } finally {
+    put("fx_times", row);
+    sql.prepare("DELETE FROM fx_offers WHERE id = ?").run(UNDONE); sql.prepare("DELETE FROM td_acts WHERE id = ?").run("undone-only");
+  }
+});
+
 test("a ride from habit on its day, added and not kept: Keep (and Undo while it can be); an earlier day's add said once", async () => {
   const ON_DAY = "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a98";
   offer({ id: ON_DAY, start: at(10), stop: at(11), state: "yes", taken: 0 });
@@ -331,9 +430,11 @@ test("a ride from habit on its day, added and not kept: Keep (and Undo while it 
   let m = (await day("morning", at(8))).tops.morning;
   assert.ok(m.lines.includes("From your habit: a ride at 10:00 today."), m.lines.join(" | "));
   assert.ok(!m.lines.includes("Added: a ride on Monday at 10:00."), "said once, as Keep's line");
-  assert.deepEqual(m.buttons.filter((b) => b.id === "add-on-day"), [{ do: "take", id: "add-on-day", label: "Keep" }, { do: "undo", id: "add-on-day", label: "Undo the Ride" }]);
+  // (Keep is its own button, do: "keep", which Today's page draws while the act is done, an added ride not kept yet; Take
+  // is only ever an offered act's)
+  assert.deepEqual(m.buttons.filter((b) => b.id === "add-on-day"), [{ do: "keep", id: "add-on-day", label: "Keep" }, { do: "undo", id: "add-on-day", label: "Undo the Ride" }]);
   let d = await day("morning", at(9, 30));
-  assert.deepEqual(d.tops.morning.buttons.filter((b) => b.id === "add-on-day"), [{ do: "take", id: "add-on-day", label: "Keep" }], "past its Undo: Keep alone");
+  assert.deepEqual(d.tops.morning.buttons.filter((b) => b.id === "add-on-day"), [{ do: "keep", id: "add-on-day", label: "Keep" }], "past its Undo: Keep alone");
   assert.ok(d.upcoming.some((r) => r.id === `offer:${ON_DAY}` && r.sub === "From habit, dry"), "Coming Up: from habit, not kept");
   assert.notEqual(d.ride.start, at(10), "not kept: no phase of its own");
   // (kept: an explicit ride, the day's)

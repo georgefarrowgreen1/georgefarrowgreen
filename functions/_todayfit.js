@@ -22,6 +22,8 @@ const pad = (n) => String(n).padStart(2, "0");
 // (a done thing's verb, by its sport; "Rode" for a ride, as the line's said)
 const DID = { ride: "Rode", run: "Ran", swim: "Swam", walk: "Walked", row: "Rowed" };
 const OUT_ON = new Set(["ride", "run", "swim", "walk", "row"]);
+// a rest day's line to send (Today First's day says it too, for a day whose ride was undone: functions/_todayday.js)
+export const REST_SHARE = "A rest day today, letting the week sink in.";
 
 // ctx: functions/_todaycards.js cardsFor's
 export async function fitnessCard(env, u, ctx) {
@@ -70,7 +72,7 @@ export async function fitnessCard(env, u, ctx) {
   if (kind === "done") {
     const s = out.session, verb = s && DID[s.sport];
     out.share = s && verb ? `${verb} my ${s.kind ? `${s.kind.toLowerCase()} ` : ""}session today: ${s.name}.` : OUT_ON.has(done.sport) ? `Out on a ${done.sport} today.` : "Trained today.";
-  } else if (kind === "rest") out.share = "A rest day today, letting the week sink in.";
+  } else if (kind === "rest") out.share = REST_SHARE;
   else if (kind === "event") out.share = `Event day today: ${out.event.name}.`;
   else if (kind === "session") out.share = `Today: ${session.name}, ${dur(session.secs)}.${out.best && !out.best.poor ? ` Best time to ${session.sport === "run" ? "run" : "ride"} ${out.best.span.replace("–", " to ")}.` : ""}`;
   // the card for Chat (pigeon/cards.js): today's session, or what's done, with no share id (Chat makes one as it's sent,

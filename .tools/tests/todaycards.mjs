@@ -7,8 +7,9 @@
 // Open-Meteo not asked), and no price for anything you own (Markets' error). (Today's address stood in for by ifl.test.)
 // And Today First's day with them (?v=2), from real rows: a ride set with Ride At (fx_times) half an hour away, the
 // preride's card; then the same ride ended five minutes ago with its activity waiting from Garmin, the honest after card
-// (no stress until Fitness has it), who wrote while you rode, and who's waiting, by name and never by their words. The
-// account's zone is chosen so it's mid-afternoon there now (spec §14.4, layer 3).
+// (no stress until Fitness has it), who wrote while you rode, and who's waiting, by name and never by their words; in
+// between, the ride past its cap with nothing in for it (not in yet, its Coming Up row flagged late). The account's zone
+// is chosen so it's mid-afternoon there now (spec §14.4, layer 3).
 import http from 'http';
 import { execSync } from 'child_process';
 import { acctCall } from './handback.mjs';
@@ -198,6 +199,15 @@ try {
     ok(a.planning === true && Array.isArray(a.acts), 'its day not yet planned: worked out in the background', JSON.stringify({ planning: a.planning, acts: a.acts }));
     r = await cards(riley);
     ok(r.s === 200 && !('v' in r.j) && !('phase' in r.j) && Object.keys(r.j).join() === 'at,tz,cards', 'without v=2: version 1’s answer, the cards alone', Object.keys(r.j).join());
+    // (the same ride, its cap passed ten minutes ago, with nothing in for it: it says so, and Coming Up keeps its row, late)
+    now = Date.now();
+    const s1 = Math.floor((now - 130 * 60e3) / 300e3) * 300e3;
+    sql(`UPDATE fx_times SET day = '${dayIn(zone, s1)}', start = ${s1}, stop = ${s1 + 75 * 60e3} WHERE user_id = '${R}'`);
+    r = await cards(riley, '?v=2');
+    const nin = r.j, row = (nin.upcoming || []).find((x) => x.id === 'ride'), topNow = nin.tops?.[nin.phase] || {};
+    ok(r.s === 200 && nin.ride?.start === s1 && !('doneAt' in nin.ride) && row?.sub === 'Not in yet' && row.late === true && row.at === s1 && row.href === '/fitness/#activities'
+      && (topNow.lines || []).some((l) => l.includes(`${clock(s1)} ride isn’t in yet`)), 'past its cap with nothing in: not in yet, in the top card, and its Coming Up row kept, flagged late',
+      JSON.stringify({ phase: nin.phase, row, lines: topNow.lines }));
     // (the same ride, ended five minutes ago, its activity waiting from Garmin with its time and distance; Sam wrote during it)
     now = Date.now();
     const s2 = Math.floor((now - 80 * 60e3) / 300e3) * 300e3, e2 = s2 + 75 * 60e3;
@@ -207,7 +217,9 @@ try {
       INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, swift, instant, stamped) VALUES ('td-v2-sam', '${SAM}', '${R}', 'SECRET-WHILE-YOU-RODE', 0, ${s2 + 30 * 60e3}, ${s2 + 30 * 60e3}, 0, 1, 1)`);
     r = await cards(riley, '?v=2');
     const b = r.j, done = b.tops?.after || {};
-    ok(r.s === 200 && b.phase === 'after' && b.since === s2 + 60e3 + 4500e3 && b.until === b.since + 90 * 60e3 && b.ride?.doneAt === b.since, 'the activity in from Garmin: after, from its end, for 90 minutes', `${r.s} ${JSON.stringify({ phase: b.phase, since: b.since, ride: b.ride })}`);
+    // (after from when it came in, the row's added, where Fitness's done rows say it; else from its end)
+    const inAt = [s2 + 60e3 + 4500e3, now - 4 * 60e3];
+    ok(r.s === 200 && b.phase === 'after' && inAt.includes(b.since) && b.until === b.since + 90 * 60e3 && b.ride?.doneAt === b.since, 'the activity in from Garmin: after, from when it came in (or its end), for 90 minutes', `${r.s} ${JSON.stringify({ phase: b.phase, since: b.since, inAt, ride: b.ride })}`);
     ok(done.kind === 'done' && done.lines?.[0] === 'From your watch' && done.lines.includes('Stress and fitness once Fitness has it') && done.stats?.some((x) => x.label === 'Distance' && /^36\.[01] km$/.test(x.value)) && !done.stats.some((x) => x.label === 'Stress')
       && done.buttons?.some((x) => x.label === 'Open Fitness' && x.href === '/fitness/#activities'), 'the honest after card: time and distance from the watch, no stress until Fitness has it, Open Fitness', JSON.stringify(done));
     ok(done.wrote?.some((w) => w.id === SAM && w.first === 'Sam') && done.lines.includes('Sam wrote while you rode') && done.buttons.some((x) => x.do === 'answer' && x.href === `/chats/#open=${SAM}`), 'who wrote while you rode, and Answer Sam', JSON.stringify({ wrote: done.wrote, buttons: done.buttons }));

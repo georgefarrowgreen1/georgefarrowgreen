@@ -18,6 +18,9 @@ export const CARD_KEYS = ["weather", "chat", "fitness", "markets"];
 // how long each card has: the page's, and the morning's (the tick's, which has a little longer, nobody waiting on it)
 const DEADLINE = { page: 7000, morning: 9000 };
 export const cardMs = (purpose) => DEADLINE[purpose] || DEADLINE.page;
+// how long Today First's day has once the cards are in (its reads, and a ride's weather, which has 2 seconds of it): past
+// it, the answer is version 1's, the cards the page draws first
+export const DAY_LIMIT_MS = 3000;
 
 // A card not had, for a reason that's no fault of ours (it took too long, or what it needed from elsewhere wasn't to be
 // had just now): its card says so, and nothing's logged
@@ -68,8 +71,9 @@ export const zoneOk = (tz) => { if (typeof tz !== "string" || !tz || tz.length >
 // or it's too big), and not at all to the morning; keepSend: the card itself kept too (Chat's "How's yours?":
 // functions/_share.js my-card), and live: the account's paid forecasts counted as Chat's live looks are (liveMiss).
 // v: 2 for Today First's day with the cards (functions/_todayday.js dayFor: its phase, top cards, Waiting for You,
-// Coming Up, acts and ride, merged into the answer, and a few more fields on the cards); anything else, the answer as
-// it's always been, byte for byte.
+// Coming Up, acts and ride, merged into the answer, and a few more fields on the cards, the Fitness card as the day's acts
+// leave it); anything else, the answer as it's always been, byte for byte. The day has DAY_LIMIT_MS; one that fails or takes
+// longer is logged, and the answer is version 1's.
 // → { at, tz, cards } (and with v: 2, { v: 2, phase, since, until, timeline, tops, waiting, upcoming, acts, ride, quiet,
 // apps, planning? } after them)
 export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), request = null, purpose = "page", tz = "Europe/London", links, memo = null, keepSend = false, live = false, v = 1 } = {}) {
@@ -97,10 +101,14 @@ export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), reque
     cards[k] = c;
   });
   if (!v2) return { at: t, tz: zone, cards };
-  // (the day that can't be worked out is no reason to lose the cards: the answer is version 1's, which the page draws)
+  // (the day that can't be worked out, or not in its time, is no reason to lose the cards: the answer is version 1's,
+  // which the page draws)
   let day = null;
-  try { day = await dayFor(env, u, t, cards, { request, tz: zone, links: ln }); } catch (e) { await logError(env, "today day", e); }
-  return day?.v === 2 ? { at: t, tz: zone, cards, ...day } : { at: t, tz: zone, cards };
+  try { day = await withDeadline(dayFor(env, u, t, cards, { request, tz: zone, links: ln }), DAY_LIMIT_MS); } catch (e) { await logError(env, "today day", e); }
+  if (day?.v !== 2) return { at: t, tz: zone, cards };
+  // (an add undone today: the Fitness card says the day as it was before, as the day's own lines do)
+  if (day.fitnessCard && cards.fitness?.state === "ok") cards.fitness = day.fitnessCard;
+  return { at: t, tz: zone, cards, ...day };
 }
 
 // Each account's last whole answer, kept a minute in this copy of the server, so a change to the morning's settings
