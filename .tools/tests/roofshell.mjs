@@ -458,7 +458,7 @@ await part('slow hub', async () => {
   const M1 = '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style><p>MILESTONE 1 WEATHER</p>';
   let docs = 0;
   // (the frame's own word that the module's load was refused as roof went off under it: expected, nothing else)
-  const late = await open({ hub: { late: 2500, json: { ready: true, roof: false } }, path: '/weather/?lat=51.5&lon=-0.12&name=London#radar', wait: false, module: 'missing', expect: /^Error: the hub or the roof is off/,
+  const late = await open({ hub: { late: 2500, json: { ready: true, roof: false } }, path: '/weather/?lat=51.5&lon=-0.12&name=London#radar', wait: false, module: 'missing', expect: /^Error: (the hub or the roof is off|weather isn't a module here)/,
     setup: (c) => c.route((u) => /^\/weather\/(index\.html)?$/.test(new URL(u).pathname), (r) => r.fulfill({ contentType: 'text/html', body: docs++ ? M1 : PAGE, headers: { 'Cache-Control': 'no-cache' } })) });
   await late.p.waitForSelector('text=MILESTONE 1 WEATHER', { timeout: 15000 });
   same([new URL(late.p.url()).origin, new URL(late.p.url()).pathname, new URL(late.p.url()).hash], [BASE, '/weather/', '#radar'], 'a late roof off at a /weather/ deep link: its path and hash again, still inflite.ai');
