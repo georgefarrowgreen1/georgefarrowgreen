@@ -156,10 +156,11 @@ test("Fitness's Add, Keep and Undo of one of Today's own: Add and Keep a tap (ta
   assert.deepEqual(await fit("POST", `offers/${offered}`, { who: "bo", data: { answer: "yes" } }), { status: 200, body: { ok: true } });
   assert.deepEqual([row(added), row(offered)], [{ state: "yes", taken: 1 }, { state: "yes", taken: 1 }]);
   assert.deepEqual((await fit("GET", "me", { who: "bo", query: "?today=1" })).body.offers.filter((o) => o.role === "today").map((o) => o.taken), [true, true]);
-  // Undo: no, from agreed; then gone from the list, and no again changes nothing
+  // Undo: no, from agreed; then listed as no (never drawn: Fitness takes its swap out by it) till it's past its time, and
+  // no again changes nothing
   assert.deepEqual(await fit("POST", `offers/${added}`, { who: "bo", data: { answer: "no" } }), { status: 200, body: { ok: true } });
   assert.equal(row(added).state, "no");
-  assert.ok(!(await fit("GET", "me", { who: "bo", query: "?today=1" })).body.offers.some((o) => o.id === added));
+  assert.equal((await fit("GET", "me", { who: "bo", query: "?today=1" })).body.offers.find((o) => o.id === added)?.state, "no");
   assert.equal((await fit("POST", `offers/${added}`, { who: "bo", data: { answer: "yes" } })).status, 404, "a no stays no");
   // (not another account's; a friend's agreed plan can't be said no to)
   assert.equal((await fit("POST", `offers/${offered}`, { who: "ann", data: { answer: "no" } })).status, 404);
@@ -168,6 +169,28 @@ test("Fitness's Add, Keep and Undo of one of Today's own: Add and Keep a tap (ta
   assert.equal((await fit("POST", `offers/${f.id}`, { who: "bo", data: { answer: "yes" } })).status, 200);
   assert.equal(row(f.id).taken, 1, "Fitness's Add of a friend's plan: a tap too");
   assert.equal((await fit("POST", `offers/${f.id}`, { who: "bo", data: { answer: "no" } })).status, 404);
+});
+
+test("POST handback answers as GET me?today=1 does: Today's own rides read whole, and the week's times by the phone's zone", async () => {
+  const { createHash, randomBytes } = await import("node:crypto");
+  const s = daySpan(dayIn(TZ, now + 2 * DAY), TZ).start + 10 * H;
+  await addTodayOffer(env, "ann", { start: s, stop: s + H, tz: TZ, sport: "ride", wid: "free-ride", name: "Ride how you like", secs: 3600, state: "yes" }, { t: now });
+  await setTime(env, "ann", { day: dayIn(TZ, now + 2 * DAY), start: s + 4 * H, stop: s + 5 * H, tz: TZ, source: "set" }, { t: now });
+  const handback = async (extra) => {
+    const code = randomBytes(24).toString("base64url"), verifier = randomBytes(32).toString("base64url");
+    const session = sql.prepare("SELECT hash FROM pg_sessions WHERE user_id = 'ann' ORDER BY rowid LIMIT 1").get().hash;
+    put("pg_handback", { hash: hex(await sha256(code)), user_id: "ann", session, app: "fitness", ask: createHash("sha256").update(verifier).digest("base64url"), box: null, pk: null, expires: Date.now() + 60e3 });
+    return fit("POST", "handback", { data: { code, verifier, ...extra } });
+  };
+  const r = await handback({ today: 1, tz: TZ });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.offersToday, true);
+  assert.ok(r.body.offers.some((o) => o.role === "today" && o.start === s), "Today's own rides");
+  assert.ok(r.body.times.some((x) => x.start === s + 4 * H && x.source === "set"), "the week's times");
+  // (an older Fitness's, without them: as before, Today's own not among its plans)
+  const old = await handback({});
+  assert.equal(old.status, 200, JSON.stringify(old.body));
+  assert.deepEqual([old.body.offersToday, old.body.offers.some((o) => o.role === "today")], [undefined, false]);
 });
 
 test("the account's export holds its rides' times (no one else's); an account gone takes them, made or not", async () => {

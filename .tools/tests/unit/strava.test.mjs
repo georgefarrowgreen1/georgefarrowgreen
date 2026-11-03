@@ -71,6 +71,9 @@ test("what's new from Strava: each waiting row with its moving time and distance
   const rows = s.prepare("SELECT id, name, sport, secs, dist FROM fx_strava_new WHERE user_id = 'sue' ORDER BY id").all().map((r) => ({ ...r }));
   assert.deepEqual(rows, [{ id: "501", name: "Endurance 75", sport: "ride", secs: 4500, dist: 30412.4 }, { id: "502", name: "Jog", sport: "run", secs: null, dist: null }]);
   assert.equal(files.size, 2, "each written as a file waiting, as before");
-  const [ride] = await donesIn(env, "sue", start - 60e3, now);
-  assert.deepEqual({ ...ride }, { name: "Endurance 75", sport: "ride", start: Date.parse(list[0].start_date), secs: 4500, dist: 30412.4, tss: null, from: "strava" });
+  const [ride] = await donesIn(env, "sue", start - 60e3, now, { added: true });
+  // (added: when it came in, as the hook wrote it, for Today's after phase)
+  const added = s.prepare("SELECT added FROM fx_strava_new WHERE user_id = 'sue' AND id = '501'").get().added;
+  assert.ok(Number.isFinite(added) && added > 0);
+  assert.deepEqual({ ...ride }, { name: "Endurance 75", sport: "ride", start: Date.parse(list[0].start_date), secs: 4500, dist: 30412.4, tss: null, from: "strava", added });
 });

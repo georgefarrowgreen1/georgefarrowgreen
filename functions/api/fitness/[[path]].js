@@ -63,21 +63,26 @@ import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom,
 
 // (a day's key, "YYYY-MM-DD", on a zone's clock; and the days a phone's today and next 7 are, in its zone, or wherever
 // they could be on Earth's clocks where it didn't say: twelve hours behind to fourteen ahead)
+// (one formatter kept per zone, at most 500 of them: a zone's name may be written any number of ways)
 const DAYKEYS = new Map();
-const dayIn = (tz, t) => (DAYKEYS.get(tz) || DAYKEYS.set(tz, new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })).get(tz)).format(new Date(t));
+const fmtOf = (tz) => { let f = DAYKEYS.get(tz); if (!f) { if (DAYKEYS.size >= 500) DAYKEYS.clear(); f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); DAYKEYS.set(tz, f); } return f; };
+const dayIn = (tz, t) => fmtOf(tz).format(new Date(t));
 const WEEK = 7 * 86400e3;
 const weekOf = (tz, t) => (zoneOk(tz) ? [dayIn(tz, t), dayIn(tz, t + WEEK)] : [dayIn("UTC", t - 12 * 3600e3), dayIn("UTC", t + 14 * 3600e3 + WEEK)]);
 // The account as Fitness shows it: who (the profile), what's kept, and the activities
 // (since: the phone has the rest, as of then; only what's changed since, and every id, so it knows what's gone; at: now,
 // for next time, a moment early so nothing changing as it's read is missed; offers: plans agreed in Chat, waiting to be
-// added here or added, read without changing anything, and, with today, InFlite Today's own rides too; times: the rides'
-// times of day, today's and the next 7 days' (tz: the phone's zone, which says which days those are); t: the route's time)
+// added here or added, read without changing anything, and, with today, InFlite Today's own rides too, those undone
+// (said no to) among them till they're past their time; offersToday: true only then, and only where they were read (one
+// that failed answers none, without it, so Fitness changes nothing by them); times: the rides' times of day, today's and
+// the next 7 days' (tz: the phone's zone, which says which days those are); t: the route's time)
 async function view(env, u, since = null, { today = false, tz = null, t = Date.now() } = {}) {
   const at = t - 2000, [from, to] = weekOf(tz, t);
   const [k, got, garmin, health, strava, offers, times] = await Promise.all([kept(env, u.id), activities(env, u.id, since), garminOf(env, u.id).catch(() => ({ on: false })), healthOf(env, u.id).catch(() => ({ on: false })), stravaOf(env, u.id).catch(() => ({ on: false })),
-    (today ? offersFor(env, u.id, { today: true, t }) : offersFor(env, u.id)).catch(() => []),
+    (today ? offersFor(env, u.id, { today: true, t, undone: true, strict: true }) : offersFor(env, u.id)).catch(() => null),
     timesOf(env, u.id, from, to).then((rows) => rows.map((r) => ({ day: r.day, start: r.start, stop: r.stop, source: r.source })), () => [])]);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava, offers, times,
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava,
+    offers: offers || [], ...(today && offers ? { offersToday: true } : {}), times,
     // (the look, as the account has it: its page's Appearance)
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
@@ -328,13 +333,15 @@ const ROUTES = {
   // word Fitness kept for it; where the browser shares the site's sign-in, it's the one the page just made, and that's
   // all; where it doesn't (a Home Screen app, or a test server's separate addresses), Fitness's own, given to the browser
   // and no fresher than the page's
+  // (answered as GET me is: with today: 1 and tz, InFlite Today's own rides and the week's times, by the phone's zone)
   "POST handback": async ({ request, env }) => {
     sameOrigin(request);
-    const { row, u, authAt } = await takeHandback(env, request, "fitness", await body(request));
+    const b = await body(request), t = Date.now(), how = { today: b?.today === 1 || b?.today === true, tz: typeof b?.tz === "string" ? b.tz : null, t };
+    const { row, u, authAt } = await takeHandback(env, request, "fitness", b);
     const c = await cookieUser(request, env).catch(() => null);
-    if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c)), request, env, c.token);
+    if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c, null, how)), request, env, c.token);
     const token = await issueSession(env, u.id, request, authAt);
-    return withSession(json(await view(env, u)), request, env, hex(await sha256(token)), true);
+    return withSession(json(await view(env, u, null, how)), request, env, hex(await sha256(token)), true);
   },
   // The account's own page, opened signed in as you (Fitness's account card): a code good once, for a minute, for this
   // sign-in, which the page swaps for one of its own, in whichever browser it opens in

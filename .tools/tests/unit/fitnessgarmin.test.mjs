@@ -79,6 +79,9 @@ test("what's new from Garmin: each waiting row with its sport, time and distance
     { id: "103", name: "Odd", sport: null, secs: null, dist: null },
   ]);
   assert.equal(files.size, 3, "each file waiting, as before");
-  const [ride] = await donesIn(env, "gee", start - 60e3, now);
-  assert.deepEqual({ ...ride }, { name: "Endurance 75", sport: "ride", start: Math.floor(start / 1000) * 1000, secs: 4500, dist: 30412.4, tss: null, from: "garmin" });
+  const [ride] = await donesIn(env, "gee", start - 60e3, now, { added: true });
+  // (added: when it came in, as the poll wrote it, for Today's after phase)
+  const added = DB.s.prepare("SELECT added FROM fx_garmin_new WHERE user_id = 'gee' AND id = '101'").get().added;
+  assert.ok(Number.isFinite(added) && added > 0);
+  assert.deepEqual({ ...ride }, { name: "Endurance 75", sport: "ride", start: Math.floor(start / 1000) * 1000, secs: 4500, dist: 30412.4, tss: null, from: "garmin", added });
 });

@@ -51,8 +51,10 @@ const timesDb = (env) => tablesOnce(env, "times", makeTimes);
 // ---- days ----
 const DAYKEY = /^\d{4}-\d\d-\d\d$/;
 const dayOk = (s) => { if (typeof s !== "string" || !DAYKEY.test(s)) return false; const [y, m, d] = s.split("-").map(Number), x = new Date(Date.UTC(y, m - 1, d)); return x.getUTCFullYear() === y && x.getUTCMonth() === m - 1 && x.getUTCDate() === d && y >= 2020 && y <= 2100; };
+// (one formatter kept per zone, at most 500 of them: a zone's name may be written any number of ways)
 const DAYS = new Map();
-const dayIn = (tz, t) => (DAYS.get(tz) || DAYS.set(tz, new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })).get(tz)).format(new Date(t));
+const fmtOf = (tz) => { let f = DAYS.get(tz); if (!f) { if (DAYS.size >= 500) DAYS.clear(); f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); DAYS.set(tz, f); } return f; };
+const dayIn = (tz, t) => fmtOf(tz).format(new Date(t));
 
 const COLS = "day, start, stop, tz, sport, source";
 const rowOf = (r) => ({ day: r.day, start: r.start, stop: r.stop, tz: r.tz, sport: r.sport, source: r.source });
