@@ -5,7 +5,11 @@
 // answered at its own host, spoken for as the app and carrying the account's cookie alone (Chat's bearer to Chat alone);
 // each page marked as the hub's, with its rules on it; /version and each /<app>/version giving each build from source;
 // Chat's hub copy (/_hub/) refused when asked for straight; one window throughout; and two sign-in attempts from two
-// addresses through the hub limited each on its own, never as the hub's one.
+// addresses through the hub limited each on its own, never as the hub's one. With One roof (stage 1, spec §8.1): Weather
+// is a module of InFlite's one page, so /weather/ is the framework's page (Today's, marker content="/", the Worker's
+// PAGE_HEADERS), never a page of the hub's; the module's files come from Weather's host with neither cookie nor bearer;
+// /weather/sw.js is the retiring worker; Weather's API is still its own, through the hub. (Fitness, Markets and Chats:
+// pages of the hub, as before. The roof off, Weather's milestone-1 page: wxhub.mjs.)
 import { readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { kit } from './lib.mjs';
@@ -16,6 +20,7 @@ const K = await kit(S, out);
 const { ok, one, hubPhone, hostAsk, HUB, errs } = K;
 const ROOT = process.env.APP_ROOT || new URL('../../', import.meta.url).pathname;
 const IFL = process.env.IFL_ROOT || `${ROOT}/../inflite/`;
+const R = await import(`${IFL}/today/src/roof.js`);
 const buildOf = (file, name = 'BUILD') => new RegExp(`const ${name} = "([\\d.]+)"`).exec(readFileSync(file, 'utf8'))[1];
 const ORIGINS = { 8792: 'http://chat.ifl.test:8788', 8802: 'http://weather.ifl.test:8788', 8803: 'http://fitness.ifl.test:8788', 8804: 'http://finance.ifl.test:8788', 8791: 'http://account.ifl.test:8788' };
 // (what reached each address through its pass-through since this test began: not the stack's own check that they're up)
@@ -41,7 +46,7 @@ await p.addInitScript(() => document.addEventListener('securitypolicyviolation',
 const navs = []; p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
 const csp = [];
 p.on('console', (m) => { if (/CSP violation/.test(m.text())) csp.push(m.text()); });
-const meOf = { '/weather/': '/api/weather/me', '/fitness/': '/api/fitness/me', '/markets/': '/api/markets/me' };
+const meOf = { '/fitness/': '/api/fitness/me', '/markets/': '/api/markets/me' };
 for (const [path, api] of Object.entries(meOf)) {
   const me = p.waitForResponse((r) => new URL(r.url()).pathname === api, { timeout: 30000 }).catch(() => null);
   const res = await p.goto(HUB + path, { waitUntil: 'load' });
@@ -58,6 +63,41 @@ for (const [path, api] of Object.entries(meOf)) {
     `${path}: the hub’s headers on it`, JSON.stringify([h['cache-control'], h['x-robots-tag'], h['x-content-type-options'], h.etag]));
   await p.screenshot({ path: `${out}/${path.replace(/\//g, '')}.png` });
 }
+// (Weather's API, still its own at its host through the hub, signed in by the cookie: asked from a page of the hub)
+const wxMe = await p.evaluate(async () => { const r = await fetch('/api/weather/me'); return { s: r.status, j: await r.json().catch(() => null) }; });
+ok(wxMe.s === 200 && wxMe.j?.signedIn === true, '/api/weather/me through the hub: signed in by the site’s cookie', JSON.stringify(wxMe).slice(0, 160));
+
+// ---- 1b. One roof: /weather/ is the framework's page; the module's files from Weather's host; the old worker retired ----
+const shared = String(readFileSync(`${IFL}/today/public/_headers`)), sharedCsp = /Content-Security-Policy: (.*)/.exec(shared)[1];
+for (const path of ['/weather/', '/weather/index.html', '/weather/?lat=51.5&lon=-0.12&name=London']) {
+  const r = await hostAsk('ifl.test:8788', path, { cookie, headers: { 'Sec-Fetch-Site': 'none', 'If-None-Match': '"x"' } });
+  ok(r.status === 200 && /<meta name="ifl-hub" content="\/">/.test(r.text) && !/ifl-hub" content="\/weather\//.test(r.text) && /<title>InFlite Today<\/title>/.test(r.text),
+    `${path}: the framework’s page (Today’s, marker "/"), never a page of the hub’s`, `${r.status} ${r.text.slice(0, 160)}`);
+  const bad = Object.entries(R.PAGE_HEADERS).filter(([k, v]) => r.headers[k.toLowerCase()] !== v).map(([k]) => `${k}: ${r.headers[k.toLowerCase()]}`);
+  ok(!bad.length && !r.headers.etag && !r.cookies.length, `${path}: the page’s headers (PAGE_HEADERS), no ETag, no cookie set`, JSON.stringify(bad));
+  ok(r.headers['content-security-policy'] === sharedCsp, `${path}: the same CSP as Today’s own page (_headers)`);
+}
+const pageRow = passed().filter((r) => r.port === 8802 && (r.path === '/' || r.path.startsWith('/?') || r.path === '/index.html'));
+ok(!pageRow.length, '/weather/ never asked of Weather’s host', JSON.stringify(pageRow.slice(0, 2)));
+const T1 = Date.now();
+for (const f of ['roof/weather.js', 'roof/connector.js', 'roof/core.js', 'roof/wxcore.css', 'data.js']) {
+  const r = await hostAsk('ifl.test:8788', `/weather/${f}`, { cookie, headers: { Authorization: 'Bearer x-not-for-weather', 'Sec-Fetch-Site': 'same-origin' } });
+  ok(r.status === 200 && (/\.css$/.test(f) ? /text\/css/ : /javascript/).test(r.headers['content-type'] || '') && r.headers['x-robots-tag'] === 'noindex' && r.headers['x-content-type-options'] === 'nosniff',
+    `/weather/${f}: Weather’s file, through the hub`, `${r.status} ${r.headers['content-type']}`);
+}
+const modRows = passed().filter((r) => r.at >= T1 && r.port === 8802);
+ok(modRows.length === 5 && modRows.every((r) => !r.cookie && !r.auth && r.hub && r.origin === ORIGINS[8802]) && modRows.some((r) => r.path === '/roof/weather.js'),
+  'the module’s files from Weather’s host, with neither cookie nor bearer, spoken as Weather with the hub’s key', JSON.stringify(modRows.map((r) => [r.path, r.cookie, r.auth, r.hub])));
+const sw = await hostAsk('ifl.test:8788', '/weather/sw.js', { headers: { 'Service-Worker': 'script' } });
+ok(sw.status === 200 && sw.text === R.RETIRE_SW && /^text\/javascript/.test(sw.headers['content-type'] || '') && sw.headers['cache-control'] === 'no-cache' && !sw.headers['service-worker-allowed'],
+  '/weather/sw.js: the retiring worker, never kept', `${sw.status} ${sw.text.slice(0, 80)}`);
+ok(!passed().some((r) => r.at >= T1 && r.port === 8802 && r.path === '/sw.js'), 'and never asked of Weather’s host');
+// (in the browser: the framework's page at /weather/, one page, its marker first)
+const wres = await p.goto(HUB + '/weather/', { waitUntil: 'load' });
+const whead = await p.evaluate(() => document.head.querySelector('meta[name="ifl-hub"]')?.getAttribute('content'));
+ok(wres.status() === 200 && whead === '/' && new URL(p.url()).origin === HUB, '/weather/ in the browser: the framework’s page, at the hub', `${wres.status()} ${whead} ${p.url()}`);
+await p.screenshot({ path: `${out}/weather.png` });
+
 // (Chat's hub copy: its own page with /chats/ for /pigeon/; its API answered at Chat's host, with its bearer)
 const res = await p.goto(HUB + '/chats/', { waitUntil: 'load' });
 const chatPage = await p.evaluate(() => ({ first: document.head.firstElementChild?.outerHTML, scripts: [...document.scripts].map((s) => s.getAttribute('src')).filter(Boolean), pigeon: /(?<![\w.-])\/pigeon\//.test(document.documentElement.outerHTML) }));
