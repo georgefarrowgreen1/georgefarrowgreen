@@ -66,7 +66,7 @@ function page(href, { marker = null, crumb, sent, standalone = false, kept = {},
     requestAnimationFrame: (fn) => fn(), setTimeout: (fn, ms) => timers.push({ fn, ms }), clearTimeout: (i) => { if (timers[i - 1]) timers[i - 1].fn = () => {}; }, setInterval: () => 0,
     addEventListener: (t, fn) => (winL[t] ||= []).push(fn), removeEventListener: (t, fn) => { winL[t] = (winL[t] || []).filter((f) => f !== fn); },
     navigator: { standalone, serviceWorker: { addEventListener: (t, fn) => (swL[t] ||= []).push(fn), getRegistration: (scope) => Promise.resolve({ scope, active: { postMessage: (m) => badge.push([scope, JSON.parse(JSON.stringify(m))]) } }) } },
-    matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400 };
+    matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400, screen: { width: 400, height: 800 } };
   ctx.window = ctx;
   before?.(ctx);
   const IFL = vm.runInNewContext(`${jsBlock()}\n;IFL`, ctx);
@@ -529,11 +529,12 @@ test("pages that cross-fade, at the hub: one bound for a page that isn't the hub
 });
 
 test("moved(): only on the app's own icon, filling the screen: never in iOS's small browser (standalone too, opened from another Home Screen app's link, short of the screen and under its bars), where the card would cover the page", () => {
-  // (an iPhone, standalone: upright or on its side; the window's height against the screen's; the top inset a probe at
-  // env(safe-area-inset-top) measures: running up behind the status bar, as a Home Screen icon's page does)
-  const phone = ({ portrait = true, inner = 844, tall = 844, inset = 0 } = {}) => (w) => {
+  // (an iPhone, standalone: upright or on its side; the window's height against the screen's (iOS gives the screen's
+  // size upright, whichever way it's held); the top inset a probe at env(safe-area-inset-top) measures: running up
+  // behind the status bar, as a Home Screen icon's page does)
+  const phone = ({ portrait = true, inner = 844, tall = 844, wide = 390, inset = 0 } = {}) => (w) => {
     w.matchMedia = (q) => ({ matches: /orientation:\s*portrait/.test(q) ? portrait : false });
-    w.innerHeight = inner; w.screen = { height: tall };
+    w.innerHeight = inner; w.screen = { height: tall, width: wide };
     const make = w.document.createElement;
     w.document.createElement = (t) => { const n = make(t); Object.defineProperty(n, "offsetHeight", { get: () => (/safe-area-inset-top/.test(n.style.cssText || "") ? inset : 0) }); return n; };
   };
@@ -542,8 +543,9 @@ test("moved(): only on the app's own icon, filling the screen: never in iOS's sm
   for (const [look, yes, why] of [
     [{ inner: 844, tall: 844 }, true, "filling the screen"],
     [{ inner: 797, tall: 844, inset: 47 }, true, "short of it by iOS's slip, but behind the status bar"],
-    [{ portrait: false, inner: 390, tall: 844 }, true, "on its side"],
+    [{ portrait: false, inner: 390, tall: 844 }, true, "on its side, filling the screen's short side"],
     [{ inner: 760, tall: 844, inset: 0 }, false, "iOS's small browser: short of the screen, no inset"],
+    [{ portrait: false, inner: 330, tall: 844, inset: 0 }, false, "iOS's small browser on its side: short of the screen's short side, under its bar (review-i1 I7)"],
   ]) {
     const p = at(look);
     assert.equal(p.hub.moved("markets", { off() {} }), yes, why);

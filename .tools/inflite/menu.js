@@ -458,13 +458,14 @@ const IFL = (() => {
   const standalone = () => { try { return navigator.standalone === true || !!matchMedia?.("(display-mode: standalone)").matches; } catch (_) { return false; } };
   // (the app's own Home Screen icon, filling the screen: not iOS's small browser, which a link from another Home Screen
   // app opens it in, "standalone" too but under its own bars and short of the screen, where moved()'s card would cover
-  // the page. On an iPhone or iPad (navigator.standalone): on its side, filling the screen, or running up behind the
-  // status bar (a top inset: every app's page is viewport-fit=cover); elsewhere, standalone is enough)
+  // the page. On an iPhone or iPad (navigator.standalone): filling the screen from top to bottom (upright, its height; on
+  // its side, its short side: the small browser's bars leave it short either way), or running up behind the status bar
+  // (a top inset: every app's page is viewport-fit=cover); elsewhere, standalone is enough)
   const ownIcon = () => {
     if (navigator.standalone !== true) return true;
     try {
-      if (!matchMedia("(orientation: portrait)").matches) return true;
-      const tall = window.screen?.height || 0;
+      const w = window.screen?.width || 0, h = window.screen?.height || 0;
+      const tall = matchMedia("(orientation: portrait)").matches ? h : (w && h ? Math.min(w, h) : w || h);
       if (tall && innerHeight >= tall - 2) return true;
       const p = document.createElement("div");
       p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none";
@@ -681,7 +682,9 @@ const IFL = (() => {
   // aborted because of invalid state. ViewTransition opt-in disabled"). So a page of the hub lets go of one that's
   // bound anywhere but the hub's own pages (Today, Chats, the apps and Mail's, whose stylesheets all ask for it), as
   // it's left. And the one this page opened with is caught as it starts (document.activeViewTransition): called off
-  // before it's shown, it would say so out loud too.
+  // before it's shown, it would say so out loud too. This runs from the page's module, which a slow load can bring in
+  // after that's happened: Today's page catches it first, as its head is read (the inflite repo's today/public/fade.js),
+  // and any page of the hub that loads that script before its module does the same.
   const FADES = /^\/(?:index\.html)?$|^\/(?:chats|weather|fitness|markets|mail)\/(?:index\.html)?$/;
   const fades = (to) => { try { const u = new URL(to, location.href); return u.origin === location.origin && FADES.test(u.pathname); } catch (_) { return false; } };
   const hush = (t) => { if (t) for (const k of ["ready", "finished", "updateCallbackDone"]) t[k]?.catch?.(() => {}); return t; };
