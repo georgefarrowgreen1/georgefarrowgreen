@@ -5,9 +5,10 @@
 // ("fitness"), store "files", as fitness/app.js:823 does; the 50-file LRU (keepFile/dropFile/tidyFiles); close() for
 // core.stop().
 export const STUB = true;
-export const NAME = "fitness", STORE = "files";
-export function idb() { throw new Error("not yet: idb"); }
-export function keepFile() { throw new Error("not yet: keepFile"); }
-export function dropFile() { throw new Error("not yet: dropFile"); }
-export function tidyFiles() { throw new Error("not yet: tidyFiles"); }
-export function close() { throw new Error("not yet: close"); }
+export const NAME = "fitness";
+export const STORE = "files";
+export function idb(...a) { throw new Error("not yet: idb"); }
+export function keepFile(...a) { throw new Error("not yet: keepFile"); }
+export function dropFile(...a) { throw new Error("not yet: dropFile"); }
+export function tidyFiles(...a) { throw new Error("not yet: tidyFiles"); }
+export function close(...a) { throw new Error("not yet: close"); }

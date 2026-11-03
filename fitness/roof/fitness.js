@@ -37,6 +37,28 @@ export async function mount(root, fw) {
     s.append(fw.ui.skeleton("card", 2));
     root.append(s);
   }
+  const ctx = { S: core.S, core, fw, open: {} };
+  Object.assign(ctx.open, {
+    act: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openAct(ctx, ...a)),
+    actMap: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openActMap(ctx, ...a)),
+    actShare: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openActShare(ctx, ...a)),
+    rename: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openRename(ctx, ...a)),
+    form: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openForm(ctx, ...a)),
+    upload: (...a) => fw.lazy((q) => import("./actsview.js" + q)).then((m) => m.openUpload(ctx, ...a)),
+    session: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openSession(ctx, ...a)),
+    workout: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openWorkout(ctx, ...a)),
+    day: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openDay(ctx, ...a)),
+    move: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openMove(ctx, ...a)),
+    workouts: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openWorkouts(ctx, ...a)),
+    rhythmSetup: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openRhythmSetup(ctx, ...a)),
+    sendDevice: (...a) => fw.lazy((q) => import("./planview.js" + q)).then((m) => m.openSendDevice(ctx, ...a)),
+    power: (...a) => fw.lazy((q) => import("./progview.js" + q)).then((m) => m.openPower(ctx, ...a)),
+    training: (...a) => fw.lazy((q) => import("./progview.js" + q)).then((m) => m.openTraining(ctx, ...a)),
+    engine: (...a) => fw.lazy((q) => import("./progview.js" + q)).then((m) => m.openEngine(ctx, ...a)),
+    year: (...a) => fw.lazy((q) => import("./progview.js" + q)).then((m) => m.openYear(ctx, ...a)),
+    offer: (id) => openOffer(ctx, id),
+    settings: (...a) => fw.lazy((q) => import("./fxsettings.js" + q)).then((m) => m.openSettings(ctx, ...a)),
+  });
   const secOf = (id) => root.querySelector(`section[data-sec="${id}"]`);
   let shown = null;
   return {

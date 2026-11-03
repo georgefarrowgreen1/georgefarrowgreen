@@ -5,10 +5,10 @@
 // Signatures: view(el, ctx) → { draw(), hide(), destroy() }; openX(ctx, …) as the ctx.open table of §4.7.
 import * as X from "./x.js";
 export const STUB = true;
-export function openSession() { throw new Error("not yet: openSession"); }
-export function openWorkout() { throw new Error("not yet: openWorkout"); }
-export function openDay() { throw new Error("not yet: openDay"); }
-export function openMove() { throw new Error("not yet: openMove"); }
-export function openWorkouts() { throw new Error("not yet: openWorkouts"); }
-export function openRhythmSetup() { throw new Error("not yet: openRhythmSetup"); }
-export function openSendDevice() { throw new Error("not yet: openSendDevice"); }
+export function openSession(ctx, ...a) { throw new Error("not yet: openSession"); }
+export function openWorkout(ctx, ...a) { throw new Error("not yet: openWorkout"); }
+export function openDay(ctx, ...a) { throw new Error("not yet: openDay"); }
+export function openMove(ctx, ...a) { throw new Error("not yet: openMove"); }
+export function openWorkouts(ctx, ...a) { throw new Error("not yet: openWorkouts"); }
+export function openRhythmSetup(ctx, ...a) { throw new Error("not yet: openRhythmSetup"); }
+export function openSendDevice(ctx, ...a) { throw new Error("not yet: openSendDevice"); }
