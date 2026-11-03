@@ -56,10 +56,11 @@
 // RPC (the frozen allow-list; `args` as ARGUMENT RULES; `v` the result's shape; `patches` the topics it may emit):
 //   Life
 //     hello(protocol: "int")                        → { protocol }                                  —
-//     start({ visible?, locked?, screen? }: bools)  → { state }                                     state me rows friends groups requests air outbox keywarn unread
+//     start({ visible?, locked?, screen?, lockUid? })  → { state }                                     state me rows friends groups requests air outbox keywarn unread
 //         visible: the page is visible (sync, not sync?quiet=1, only when also screen); locked: the app lock's state
 //         read from localStorage["inflight-lock"] by the service before this first call (default true: locked);
-//         screen: the Chats screen has been shown (cache: is written only after a start with screen: true, S3-D4)
+//         screen: the Chats screen has been shown (cache: is written only after a start with screen: true, S3-D4);
+//         lockUid ("id"): the account the kept lock is for (inflight-lock's uid): the lock holds only for that account
 //     state()                                       → { state }                                     —
 //     lock(on: "bool")                              → { state }                                     state (locked: chat:* typing:* null, rows lines blanked)
 //     signOut()                                     → { ok: true }  (logout on the server, then forget())   state
@@ -160,7 +161,7 @@ export const TOPICS = fz(["state", "me", "rows", "friends", "groups", "requests"
 const B = "bool?", O = (o) => fz(o);
 export const RPC = fz({
   hello: O({ args: fz(["int"]), v: "{ protocol }", patches: fz([]) }),
-  start: O({ args: fz([O({ visible: B, locked: B, screen: B })]), v: "{ state }", patches: fz(["state", "me", "rows", "friends", "groups", "requests", "air", "outbox", "keywarn", "unread"]) }),
+  start: O({ args: fz([O({ visible: B, locked: B, screen: B, lockUid: "id?" })]), v: "{ state }", patches: fz(["state", "me", "rows", "friends", "groups", "requests", "air", "outbox", "keywarn", "unread"]) }),
   state: O({ args: fz([]), v: "{ state }", patches: fz([]) }),
   lock: O({ args: fz(["bool"]), v: "{ state }", patches: fz(["state", "chat:", "typing:", "rows"]) }),
   signOut: O({ args: fz([]), v: "{ ok }", patches: fz(["state"]) }),
@@ -966,8 +967,9 @@ function dropTopics(id) { if (!id) return; emit("chat:" + id, null); emit("typin
 /* ---------------- keys and accounts: resume and forget (app.js 2716-2738, core half) ---------------- */
 // (lockPrefs, as the engine read it before it answered anything: here, what the service read of inflight-lock, and
 // locked until it's said otherwise, B4)
-let lockAsked = true;
-const lockPrefs = () => lockAsked;
+// (lockUid: the account Chat's kept lock is for; it holds only for that account, as lockPrefs's v.uid === S.me.id)
+let lockAsked = true, lockUid = null;
+const lockPrefs = () => lockAsked && (lockUid === null || S.me?.id === lockUid);
 async function resume() {
   const saved = await idb.get("session");
   if (saved?.token && saved.priv) {
@@ -1309,12 +1311,14 @@ const methods = {
   hello: () => ({ protocol: PROTOCOL }),
   async start(o = {}) {
     if (typeof o.locked === "boolean") lockAsked = o.locked;
+    if (typeof o.lockUid === "string") lockUid = o.lockUid;
     if (typeof o.visible === "boolean") { S.visible = o.visible; hiddenNow(); }
     if (typeof o.screen === "boolean") { S.screen = o.screen; if (o.screen) S.shown = true; if (o.screen && S.view !== "chat") S.view = "messages"; if (!o.screen && S.view === "messages") S.view = "none"; }
     if (!started) {
       started = true;
-      // (locked from the first call, B4: only start({ locked: false }) or lock(false) opens it)
-      S.locked = lockAsked;
+      // (locked from the first call, B4: only start({ locked: false }) or lock(false) opens it; a lock kept for another
+      // account is that account's: resume's lockPrefs line decides, once it knows who's here)
+      S.locked = lockAsked && lockUid === null;
       starting = (async () => {
         const have = await resume().catch(() => false);
         if (have && S.token) {
@@ -1329,7 +1333,7 @@ const methods = {
       await starting;
     } else {
       await starting;
-      if (typeof o.locked === "boolean") lockNow(o.locked);
+      if (typeof o.locked === "boolean") lockNow(lockPrefs());
       if (ready() && (o.visible || o.screen)) { emitLists(); emitOpen(); if (onScreen()) sync().catch(() => {}); }
     }
     ticking();
@@ -1594,6 +1598,8 @@ export async function handle(d) {
   if (typeof m !== "string" || !Object.hasOwn(methods, m) || !argsOk(m, a)) return { id, ok: false, why: "no" };
   if (isGone() && !["hello", "state"].includes(m)) return { id, ok: false, why: "no" };
   if (m !== "hello" && m !== "start" && !started) return { id, ok: false, why: "no" };
+  // (nothing answers while the first start is still finding out who's here and whether they're locked: B4)
+  if (starting && m !== "hello" && m !== "start") await starting.catch(() => {});
   try { return { id, ok: true, v: await methods[m](...a) }; }
   catch (e) { return { id, ok: false, why: WHY.includes(e?.why) ? e.why : e?.offline ? "offline" : "failed" }; }
 }

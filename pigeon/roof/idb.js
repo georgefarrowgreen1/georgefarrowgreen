@@ -10,7 +10,8 @@
 //     No Web Locks (an old WebKit): fn runs as it is, as Chat itself always has.
 //   gone(): after forget() (sign-out, user change), every later write is refused (risk I3): set and del answer null
 //     and write nothing, so a debounced cacheSave or a slow sync can't put an account back. Reads still answer.
-const NAME = "inflight", STORE = "kv";
+export const NAME = "inflight", STORE = "kv";
+export const STUB = false;
 let goneAt = 0;
 export const isGone = () => goneAt > 0;
 export function gone() { goneAt ||= Date.now(); }
