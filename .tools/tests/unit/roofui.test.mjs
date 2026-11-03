@@ -445,3 +445,27 @@ test('stage 3, connectors.js chatsProvider: People (friends and groups by name, 
   off();
   assert.equal(provs.size, 0); assert.equal(star, null);
 });
+
+test('stage 3, frame: a service let go of while it starts: never made if before its turn, never heard from once made (no state to the host, no search)', { skip: chats3 }, async () => {
+  let done;
+  let { F } = await boot3('/', { retired: new Promise((ok) => (done = ok)) });
+  const a = F.service('chats');
+  F.releaseService('chats', { terminate: true });
+  done();
+  await assert.rejects(a, /let go of/);
+  assert.equal(H3.svcMade, 0, 'no Worker started for it');
+  F.destroy();
+  ({ F } = await boot3('/'));
+  let go;
+  const slow = H3.loadService;
+  H3.loadService = (app, F2) => new Promise((ok) => (go = () => ok(slow(app, F2))));
+  const b = F.service('chats');
+  await settle3();
+  F.releaseService('chats', { terminate: true });
+  go(); await b.catch(() => {}); await settle3();
+  assert.deepEqual(H3.states, [], 'nothing to serviceState'); assert.equal(H3.finds.length, 0, 'no search registered');
+  assert.deepEqual(H3.released, [[1, true]], 'ended as soon as it was made');
+  H3.svc.emit('state', { state: 'ready' }); await settle3();
+  assert.equal(H3.finds.length, 0, 'its later patches unheard');
+  F.destroy();
+});
