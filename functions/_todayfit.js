@@ -10,6 +10,9 @@ import { kept } from "./_wxacct.js";
 import { localDay, dayAfter, weekdayOf, withSend } from "./_todaycards.js";
 import { bestWindow, hourScore, ratingOf, windWords, LIMITS } from "../fitness/besttime.js";
 import { dur } from "../fitness/ui.js";
+import { fitness } from "../fitness/load.js";
+import { startOfDay } from "../fitness/workouts.js";
+import { fitdb } from "./_fitness.js";
 
 // what Fitness sent is good this long (its eight days: today's and the week ahead's)
 const DAY = 864e5, FRESH = 8 * DAY;
@@ -19,6 +22,8 @@ const pad = (n) => String(n).padStart(2, "0");
 // (a done thing's verb, by its sport; "Rode" for a ride, as the line's said)
 const DID = { ride: "Rode", run: "Ran", swim: "Swam", walk: "Walked", row: "Rowed" };
 const OUT_ON = new Set(["ride", "run", "swim", "walk", "row"]);
+// a rest day's line to send (Today First's day says it too, for a day whose ride was undone: functions/_todayday.js)
+export const REST_SHARE = "A rest day today, letting the week sink in.";
 
 // ctx: functions/_todaycards.js cardsFor's
 export async function fitnessCard(env, u, ctx) {
@@ -67,7 +72,7 @@ export async function fitnessCard(env, u, ctx) {
   if (kind === "done") {
     const s = out.session, verb = s && DID[s.sport];
     out.share = s && verb ? `${verb} my ${s.kind ? `${s.kind.toLowerCase()} ` : ""}session today: ${s.name}.` : OUT_ON.has(done.sport) ? `Out on a ${done.sport} today.` : "Trained today.";
-  } else if (kind === "rest") out.share = "A rest day today, letting the week sink in.";
+  } else if (kind === "rest") out.share = REST_SHARE;
   else if (kind === "event") out.share = `Event day today: ${out.event.name}.`;
   else if (kind === "session") out.share = `Today: ${session.name}, ${dur(session.secs)}.${out.best && !out.best.poor ? ` Best time to ${session.sport === "run" ? "run" : "ride"} ${out.best.span.replace("–", " to ")}.` : ""}`;
   // the card for Chat (pigeon/cards.js): today's session, or what's done, with no share id (Chat makes one as it's sent,
@@ -124,4 +129,65 @@ async function bestOf(env, u, session, t, units, memo, request) {
     sub: poor ? `${why}: the trainer, perhaps${where}` : `${deg(b.temp)}, ${b.dry && b.pop < 30 ? "dry" : `${Math.round(b.pop)}% chance of rain`}, ${windWords(b.wind, b.dir)}${where}`,
     grid,
   };
+}
+
+// ---- Today First's (spec §7.3): a planned ride and a finished one, for a friend; and Fitness (CTL) once it has the ride ----
+// A planned ride's card for Chat: today's session where it's the ride's sport (its name, kind, workout, load), else the
+// ride's own name; best = the ride's own window (start to stop), dry as its weather says; with: the friends riding too
+// (first names, at most 3). c: the Fitness card (or null); ride: { start, stop, secs, sport, name }; say: the line;
+// day, tz: the ride's day and the account's zone. → the card, unpacked, or null
+export function rideSend(c, ride, t, { say, day, tz, dry = false, with: friends = [] } = {}) {
+  if (!ride || !Number.isFinite(ride.start) || !Number.isFinite(ride.stop) || typeof say !== "string" || !say) return null;
+  const sport = SEND_SPORTS.has(ride.sport) ? ride.sport : "ride", s = c?.session && c.session.sport === sport ? c.session : null;
+  const name = String(ride.name || s?.name || SEND_NOUN[sport]).slice(0, 60);
+  const snap = { day, tz, sport, name };
+  if (s && s.name === name) {
+    if (s.kind) snap.kind = s.kind.slice(0, 30);
+    if (/^[A-Za-z0-9_:-]{1,40}$/.test(s.id)) snap.wid = s.id;
+    if (s.tss > 0) snap.tss = Math.round(s.tss);
+  }
+  const secs = Math.round(Number.isFinite(ride.secs) && ride.secs > 0 ? ride.secs : (ride.stop - ride.start) / 1000);
+  if (secs > 0) snap.secs = secs;
+  snap.best = { start: ride.start, end: ride.stop, dry: !!dry };
+  snap.done = null;
+  const w = (Array.isArray(friends) ? friends : []).map((f) => String(f || "").trim().slice(0, 40)).filter(Boolean).slice(0, 3);
+  if (w.length) snap.with = w;
+  return { v: 1, kind: "fitness", from: "today", at: t, say: say.slice(0, 200), snap };
+}
+// A finished ride's card for Chat: done carries only the figures known (time, distance, stress), each only when it is.
+// done: functions/_fitshare.js donesIn's row. → the card, unpacked, or null
+export function doneSend(c, ride, done, t, { say, day, tz } = {}) {
+  if (!done || typeof say !== "string" || !say) return null;
+  const sport = SEND_SPORTS.has(done.sport) ? done.sport : SEND_SPORTS.has(ride?.sport) ? ride.sport : "ride", s = c?.session && c.session.sport === sport ? c.session : null;
+  const name = String(ride?.name || s?.name || SEND_NOUN[sport]).slice(0, 60);
+  const snap = { day, tz, sport, name };
+  if (s && s.name === name) {
+    if (s.kind) snap.kind = s.kind.slice(0, 30);
+    if (/^[A-Za-z0-9_:-]{1,40}$/.test(s.id)) snap.wid = s.id;
+  }
+  snap.best = null;
+  snap.done = Object.fromEntries(["secs", "dist", "tss"].filter((k) => Number.isFinite(done[k]) && done[k] >= 0).map((k) => [k, Math.round(done[k])]));
+  return { v: 1, kind: "fitness", from: "today", at: t, say: say.slice(0, 200), snap };
+}
+// What Fitness has of the last 120 days, for its fitness line: each activity's start and stress ({ start, sport, tss },
+// tss null where it has none), oldest first. Only the stress is read out of each summary, never the rest of it.
+const DAY_MS = 864e5;
+export async function loadOf(env, userId, t) {
+  const D = await fitdb(env);
+  const { results } = await D.prepare(`SELECT start, sport, CASE WHEN json_valid(sum) THEN json_extract(sum, '$.tss') END AS tss FROM fx_acts
+    WHERE user_id = ? AND start > ? AND start <= ? ORDER BY start LIMIT 3000`).bind(userId, t - 121 * DAY_MS, t).all();
+  return (results || []).map((r) => ({ start: r.start, sport: r.sport, tss: typeof r.tss === "number" && Number.isFinite(r.tss) ? r.tss : null }));
+}
+// Fitness (CTL, fitness/load.js fitness(): the six weeks' weighted average of each day's stress) today and yesterday,
+// over 120 days of what's in Fitness; only when today's ride (ride: { start }, the activity's) is among them with its
+// stress, so a ride still waiting to come in never moves it. → { ctl, was, today: true } or null
+export function ctlOf(acts, t, ride) {
+  const list = (Array.isArray(acts) ? acts : []).filter((a) => a && Number.isFinite(a.start) && a.start <= t && a.start > t - 121 * DAY_MS);
+  if (!ride || !Number.isFinite(ride.start) || !list.some((a) => Math.abs(a.start - ride.start) < 60e3 && Number.isFinite(a.tss) && a.tss > 0)) return null;
+  const daily = {};
+  for (const a of list) if (Number.isFinite(a.tss) && a.tss > 0) { const d = startOfDay(a.start); daily[d] = (daily[d] || 0) + a.tss; }
+  const series = fitness(daily, t - 120 * DAY_MS, t);
+  if (series.length < 2) return null;
+  const r1 = (v) => Math.round(v * 10) / 10;
+  return { ctl: r1(series.at(-1).ctl), was: r1(series.at(-2).ctl), today: true };
 }

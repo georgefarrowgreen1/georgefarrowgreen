@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
-import { chatCard, CHAT_COLUMNS } from "../../../functions/_todaychat.js";
+import { chatCard, CHAT_COLUMNS, GROUP_COLUMNS, waitingFor, wroteWhile } from "../../../functions/_todaychat.js";
 import { avatarFor } from "../../../functions/_todaycards.js";
 import { avatarKey } from "../../../functions/_profile.js";
 import { morningLines } from "../../../functions/_todaymorning.js";
@@ -195,4 +195,113 @@ test("today: the card for pigeons off, unread messages counted apart", async () 
   const on = await chatCard(env, { id: IVY }, ctx);
   assert.equal(on.pigeons, true); assert.equal(on.streak?.n, 5); assert.equal(on.share, "My flight streak with Jo is 5 days.");
   assert.deepEqual(await chatCard(env, { id: NEWBIE, pigeons: 0 }, ctx), { state: "empty", pigeons: false, href: `${LINKS.chat}/`, said: "Add a friend in Chat, and your messages show here.", action: { label: "Open Chat", href: `${LINKS.chat}/` } });
+});
+
+// ================================ Today First: Waiting for You (spec §7.4) ================================
+// Who's waiting for an answer, and since when, never what they said: one-to-one, the friend's newest landed letter or
+// message is theirs, within 24 hours, not lost or gone, nothing of yours sent since; groups through pg_gdeliv and
+// pg_gmsgs, someone else's the newest delivered to you, nothing of yours sent to the group since.
+const W = id(60), ANA = id(61), BO = id(62), CY = id(63), DI = id(64), ED = id(65), FI = id(66), WS = id(67), WX = id(68);
+user(W, "Wren Hale"); user(ANA, "Ana Bell"); user(BO, "Bo Chen"); user(CY, "Cy Dent"); user(DI, "Di Eves"); user(ED, "Ed Fox"); user(FI, "Fi Gray"); user(WS, "Some Stranger"); user(WX, "Was Blocked");
+for (const f of [ANA, BO, CY, DI, ED, FI]) link(W, f);
+link(W, WX, "blocked");
+// (each message's words a marker that must never come out)
+const said = (mid, sender, recipient, sent, landed, x = {}) => put("pg_msgs", { id: mid, sender, recipient, ct: `SECRET-${mid}`, km: 0, sent_at: sent, deliver_at: landed, from_place: "SECRET-FROM", to_place: "SECRET-TO", instant: 1, ...x });
+said("w-ana", ANA, W, T - 2 * H, T - 2 * H);                                        // waiting
+said("w-bo", BO, W, T - 3 * H, T - 3 * H); said("w-bo-re", W, BO, T - H, T + H, { instant: null, km: 300 });  // answered (mine still in the air)
+said("w-cy1", CY, W, T - 5 * H, T - 5 * H); said("w-cy2", CY, W, T - 4 * H, T - 4 * H, { read_at: T - 3 * H }); said("w-cy-old", W, CY, T - 6 * H, T - 6 * H);  // two since mine, one read
+said("w-di", DI, W, T - 30 * H, T - 30 * H);                                       // over a day ago
+said("w-ed-lost", ED, W, T - 3 * H, T - 2 * H, { lost_at: T - 2.5 * H }); said("w-ed-air", ED, W, T - H, T + H);  // lost; in the air
+said("w-ed-gone", ED, W, T - 3 * H, T - 3 * H, { gone_at: T - H });                 // gone
+said("w-fi", FI, W, T - 3 * H, T - 3 * H); said("w-fi-mine", W, FI, T - 5 * H, T - 2 * H, { instant: null, km: 900 });  // mine landed after theirs
+said("w-stranger", WS, W, T - H, T - H); said("w-blocked", WX, W, T - H, T - H);     // not friends
+// groups: Thursday Riders (Bo wrote last, nothing of mine since), Book Club (mine since theirs), Old Group (recalled)
+const group = (gid, name, members) => { put("pg_groups", { id: gid, name, created_by: W, created_at: 0 }); for (const m of members) put("pg_group_members", { group_id: gid, user_id: m, added_by: W, joined_at: 0 }); };
+const gsaid = (mid, gid, sender, sent, to, landed, x = {}) => { put("pg_gmsgs", { id: mid, group_id: gid, sender, body: `SECRET-${mid}`, sender_key: "SECRET-KEY", pigeon: "standard", sent_at: sent, from_place: "SECRET-GFROM" });
+  for (const u of to) put("pg_gdeliv", { msg_id: mid, user_id: u, wrap: "SECRET-WRAP", km: 0, deliver_at: landed, to_place: "SECRET-GTO", ...x }); };
+const G1 = "g-thursday", G2 = "g-books", G3 = "g-old";
+group(G1, "Thursday Riders", [W, ANA, BO]); group(G2, "Book Club", [W, CY]); group(G3, "Old Group", [W, DI]);
+gsaid("g1-ana", G1, ANA, T - 2.5 * H, [W, BO], T - 2.5 * H); gsaid("g1-bo", G1, BO, T - H, [W, ANA], T - H);
+gsaid("g2-cy", G2, CY, T - 4 * H, [W], T - 4 * H); gsaid("g2-me", G2, W, T - 3 * H, [CY], T - 3 * H);
+gsaid("g3-di", G3, DI, T - H, [W], T - H, { recalled: 1 });
+
+test("Waiting for You: who and since when, one-to-one and groups, the newest first; never a word, never a place", async () => {
+  asked.length = 0;
+  const w = await waitingFor(env, { id: W }, T), json = JSON.stringify(w);
+  assert.deepEqual(w, [
+    { id: G1, first: "Bo", group: { id: G1, name: "Thursday Riders" }, at: T - H, n: 2 },
+    { id: ANA, first: "Ana", at: T - 2 * H, n: 1 },
+    { id: CY, first: "Cy", at: T - 4 * H, n: 2 },
+  ]);
+  assert.ok(!/SECRET/.test(json), "no words, no places, no keys");
+  for (const k of ["ct", "body", "wrap", "sender_key", "from", "to", "place"]) assert.ok(!json.includes(`"${k}"`), k);
+  // (only the pinned columns of each table were read)
+  const msgQs = asked.filter((q) => /\bpg_msgs\b/.test(q)), gQs = asked.filter((q) => /\bpg_gmsgs\b/.test(q));
+  assert.ok(msgQs.length >= 2 && gQs.length >= 2);
+  // (each select list of each statement, a UNION's too)
+  const lists = (q) => [...q.matchAll(/SELECT\s+([\s\S]*?)\s+FROM\s/gi)].map((x) => x[1]);
+  for (const q of msgQs) for (const list of lists(q)) {
+    for (const [, c] of list.matchAll(/\bm\.(\w+)/g)) assert.ok(CHAT_COLUMNS.includes(c), `m.${c} isn't in CHAT_COLUMNS`);
+    assert.ok(!/\*/.test(list), list);
+  }
+  for (const q of gQs) for (const list of lists(q)) {
+    for (const [, c] of list.matchAll(/\b[gd]\.(\w+)/g)) assert.ok(GROUP_COLUMNS.includes(c), `${c} isn't in GROUP_COLUMNS`);
+    for (const c of ["body", "sender_key", "wrap", "photo", "legs", "from_place", "to_place", "wx"]) assert.ok(!new RegExp(`\\b[gd]\\.${c}\\b`).test(q), `${c} never read`);
+  }
+});
+
+test("Waiting for You: answering takes them off, as does a day passing; at most six", async () => {
+  said("w-ana-re", W, ANA, T - 30 * 60e3, T + 30 * 60e3, { instant: null, km: 50 });
+  assert.ok(!(await waitingFor(env, { id: W }, T)).some((x) => x.id === ANA), "answered: off, even with mine still in the air");
+  assert.ok(!(await waitingFor(env, { id: W }, T + 23 * H)).some((x) => x.id === CY), "Cy's newest is over a day old by then");
+  gsaid("g1-me", G1, W, T - 10 * 60e3, [ANA, BO], T - 10 * 60e3);
+  assert.ok(!(await waitingFor(env, { id: W }, T)).some((x) => x.id === G1), "said something in the group since: off");
+  const BUSY = id(70);
+  user(BUSY, "Busy Body");
+  for (let i = 0; i < 8; i++) { const f = id(71 + i); user(f, `Friend ${i}`); link(BUSY, f); said(`busy-${i}`, f, BUSY, T - (i + 1) * 60e3, T - (i + 1) * 60e3); }
+  const many = await waitingFor(env, { id: BUSY }, T);
+  assert.equal(many.length, 6); assert.deepEqual(many.map((x) => x.first), ["Friend", "Friend", "Friend", "Friend", "Friend", "Friend"]);
+  assert.equal(many[0].at, T - 60e3, "the newest first");
+  assert.deepEqual(await waitingFor(env, { id: id(9) }, T), [], "no friends: nobody");
+});
+
+test("wrote while you rode: who wrote inside the window, friends and groups, the latest first", async () => {
+  const w = await wroteWhile(env, { id: W }, T - 3 * H, T);
+  assert.equal(w.length, 4);
+  assert.deepEqual(w.slice(0, 2), [{ id: G1, first: "Bo", group: { id: G1, name: "Thursday Riders" }, at: T - H }, { id: ANA, first: "Ana", at: T - 2 * H }]);
+  assert.deepEqual(w.slice(2).map((x) => x.at), [T - 3 * H, T - 3 * H]);
+  assert.deepEqual(new Set(w.slice(2).map((x) => x.id)), new Set([FI, BO]), "Fi's and Bo's at the window's start, both in it");
+  assert.ok(!w.some((x) => [CY, ED, WS, WX].includes(x.id)), "not Cy's (before it), Ed's (lost, gone or in the air), nor anyone not a friend");
+  assert.ok(!JSON.stringify(w).includes("SECRET"));
+  assert.deepEqual(await wroteWhile(env, { id: W }, T, T - H), [], "a window the wrong way round: nobody");
+});
+
+test("Waiting for You and who wrote: a message read in the window counts as one not read; a vanished group message doesn't", async () => {
+  said("w-di-read", DI, W, T - 1.5 * H, T - 1.5 * H, { read_at: T - H });
+  gsaid("g2-gone", G2, CY, T - 2 * H, [W], T - 2 * H);
+  sql.prepare("UPDATE pg_gmsgs SET gone_at = ? WHERE id = ?").run(T - H, "g2-gone");
+  const w = await wroteWhile(env, { id: W }, T - 3 * H, T);
+  assert.deepEqual(w.slice(0, 2).map((x) => x.id), [G1, DI], "Di's, read since, in the window");
+  assert.ok(!w.some((x) => x.id === G2), "Book Club's newest is gone");
+  const waiting = await waitingFor(env, { id: W }, T);
+  assert.ok(waiting.some((x) => x.id === DI && x.at === T - 1.5 * H && x.n === 1), JSON.stringify(waiting));
+  assert.ok(!waiting.some((x) => x.id === G2), "nobody waiting in Book Club: their newest there is gone, mine came after the one before");
+});
+
+test("Waiting for You and who wrote read by indexes on the account's own rows, never its whole history", async () => {
+  asked.length = 0;
+  await waitingFor(env, { id: W }, T); await wroteWhile(env, { id: W }, T - 3 * H, T);
+  const plans = asked.map((q) => [q, sql.prepare(`EXPLAIN QUERY PLAN ${q}`).all().map((r) => r.detail)]);
+  assert.equal(plans.length, 8);
+  for (const [q, plan] of plans) {
+    const where = q.replace(/\s+/g, " ").slice(0, 80);
+    assert.ok(!plan.some((d) => /^SCAN (m|g|d|k|l)\b/.test(d)), `${where}: ${plan.join(" | ")}`);
+    for (const d of plan.filter((x) => /^SEARCH m\b/.test(x))) assert.match(d, /pg_msgs_to \(recipient=\? AND read_at[=>]\?\)|pg_msgs_pair \(sender=\? AND recipient=\? AND sent_at>\? AND sent_at<\?\)/, where);
+    for (const d of plan.filter((x) => /^SEARCH d\b/.test(x))) assert.match(d, /pg_gdeliv_user \(user_id=\? AND deliver_at>\? AND deliver_at<\?\)/, where);
+    for (const d of plan.filter((x) => /^SEARCH g\b/.test(x))) assert.match(d, /\(id=\?\)|pg_gmsgs_group \(group_id=\? AND sent_at>\? AND sent_at<\?\)/, where);
+  }
+});
+
+test("GROUP_COLUMNS is exactly the allowlist", () => {
+  assert.deepEqual(GROUP_COLUMNS, ["group_id", "sender", "sent_at", "user_id", "deliver_at", "read_at"]);
 });

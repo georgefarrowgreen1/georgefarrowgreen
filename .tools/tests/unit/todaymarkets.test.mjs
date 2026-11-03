@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { nextDividend, marketState, shutToday, wrapFigures, dividends, yearOf, dayIn, moneySaid, andSaid } from "../../../functions/_markets.js";
 import { yearDivs, marked } from "../../../markets/income.js";
+import { stockSend, alertsPast, holdingsOf } from "../../../functions/_todaymkt.js";
+import { unpackCard, normCard, packCard } from "../../../pigeon/cards.js";
 
 const APP = readFileSync(new URL("../../../markets/app.js", import.meta.url), "utf8");
 const fnOf = (name) => { const m = new RegExp(`\\nfunction ${name}\\(\\) \\{[\\s\\S]*?\\n\\}\\n`).exec(APP); assert.ok(m, `markets/app.js ${name}()`); return m[0]; };
@@ -169,4 +171,44 @@ test("the wrap's words, shared: money and lists as Markets says them; a market's
   assert.equal(andSaid(["London"]), "London"); assert.equal(andSaid(["London", "New York"]), "London and New York"); assert.equal(andSaid(["London", "New York", "Tokyo"]), "London, New York and Tokyo"); assert.equal(andSaid([]), "");
   assert.equal(moneySaid(43.2, "GBP"), "£43.20"); assert.equal(moneySaid(20862.41, "GBP"), "£20,862"); assert.equal(moneySaid(5, "USD"), "$5.00");
   assert.equal(dayIn("America/New_York", Date.UTC(2026, 9, 31, 1, 0)), "2026-10-30"); assert.equal(dayIn("Europe/London", Date.UTC(2026, 9, 31, 1, 0)), "2026-10-31");
+});
+
+// ================================ Today First: percents only (spec §7.3, §7.4, §7.6) ================================
+test("a stock's card for Chat: its name, symbol, percent and day, and nothing more; said as it is, or as it finished", () => {
+  const c = stockSend({ sym: "TSCO.L", name: "Tesco", pct: 3.4, day: "2026-11-02", value: 4108, qty: 1000, change: 30.9 }, MON);
+  assert.deepEqual(c, { v: 1, kind: "markets", from: "today", at: MON, say: "Tesco +3.4% today.", snap: { name: "Tesco", sym: "TSCO.L", pct: 3.4, day: "2026-11-02" }, ref: { sym: "TSCO.L" } });
+  assert.deepEqual(normCard(c), c, "unchanged through normCard");
+  assert.deepEqual(unpackCard(packCard(c)), c, "and packed for the page");
+  assert.equal(stockSend({ sym: "RR.L", name: "Rolls-Royce", pct: -0.84, day: "2026-11-02" }, MON).say, "Rolls-Royce −0.8% today.");
+  assert.equal(stockSend({ sym: "TSCO.L", name: "Tesco", pct: 3.4, day: "2026-11-02" }, MON, { finished: true }).say, "Tesco finished up 3.4% today.");
+  assert.equal(stockSend({ sym: "RR.L", name: "Rolls-Royce", pct: -1.25, day: "2026-11-02" }, MON, { finished: true }).say, "Rolls-Royce finished down 1.3% today.");
+  assert.equal(stockSend({ sym: "X.L", name: "Flat", pct: 0, day: "2026-11-02" }, MON, { finished: true }).say, "Flat finished level today.");
+  for (const card of [c, stockSend({ sym: "AAPL", name: "Apple", pct: 2.13, day: "2026-11-02" }, MON)]) {
+    assert.deepEqual(Object.keys(card.snap).sort(), ["day", "name", "pct", "sym"]);
+    assert.ok(!/[£$€]|\b\d+(\.\d+)?\b(?!%)/.test(card.say.replace(/\d+(\.\d+)?%/g, "")), `percent only: ${card.say}`);
+  }
+});
+
+test("the holdings past their alert today: a move of at least the alert's percent either way, the biggest first; none without an alert", () => {
+  const rows = [
+    { sym: "TSCO.L", name: "Tesco", pct: 3.4, alert: 3 }, { sym: "RR.L", name: "Rolls-Royce", pct: -5.2, alert: 5 }, { sym: "AAPL", name: "Apple", pct: 2.99, alert: 3 },
+    { sym: "BP.L", name: "BP", pct: 4, alert: null }, { sym: "SHEL.L", name: "Shell", pct: -3, alert: 3 }, { sym: "BAD", name: "Bad", pct: NaN, alert: 1 }, { sym: "ZERO", name: "Zero", pct: 9, alert: 0 },
+  ];
+  assert.deepEqual(alertsPast(rows), [
+    { sym: "RR.L", name: "Rolls-Royce", pct: -5.2, alert: 5 }, { sym: "TSCO.L", name: "Tesco", pct: 3.4, alert: 3 }, { sym: "SHEL.L", name: "Shell", pct: -3, alert: 3 },
+  ]);
+  assert.deepEqual(alertsPast([]), []); assert.deepEqual(alertsPast(null), []);
+});
+
+test("holdings: each with its percent today and its card, packed for the page; percents only, at most 20", () => {
+  const rows = [{ sym: "TSCO.L", name: "Tesco", pct: 1.2, day: "2026-11-02", alert: 3, where: "London" }, { sym: "RR.L", name: "Rolls-Royce", pct: -0.8, day: "2026-11-02" }];
+  const h = holdingsOf(rows, MON);
+  assert.deepEqual(h.map(({ sendCard, ...x }) => x), [{ sym: "TSCO.L", name: "Tesco", pct: 1.2 }, { sym: "RR.L", name: "Rolls-Royce", pct: -0.8 }], "nothing but who and the percent: no alert, no market");
+  for (const x of h) {
+    const c = unpackCard(x.sendCard);
+    assert.deepEqual(c.snap, { name: x.name, sym: x.sym, pct: x.pct, day: "2026-11-02" });
+    assert.deepEqual(normCard(c), c);
+  }
+  assert.equal(holdingsOf(Array.from({ length: 30 }, (_, i) => ({ sym: `S${i}.L`, name: `Stock ${i}`, pct: i / 10, day: "2026-11-02" })), MON).length, 20);
+  assert.deepEqual(holdingsOf(null, MON), []);
 });

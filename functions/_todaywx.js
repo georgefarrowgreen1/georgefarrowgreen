@@ -8,7 +8,7 @@
 import { kept } from "./_wxacct.js";
 import { wxdb, allowance, COST_FULL, OM_KEEP } from "./_wxpush.js";
 import { warningsAt } from "./_wxwarn.js";
-import { withDeadline, cardMs, couldnt, Quiet, zoneOk, offsetAt, withSend } from "./_todaycards.js";
+import { withDeadline, cardMs, couldnt, Quiet, zoneOk, offsetAt, withSend, withForDay } from "./_todaycards.js";
 import { logError } from "./_pigeon.js";
 import { shapeForecast, forecastQuery } from "../weather/data.js";
 import { makeFormat, nowWall, dayStart, HOUR, DAY } from "../weather/format.js";
@@ -19,6 +19,7 @@ import { inForce, colourOf, titleOf, badgeOf, spanOf } from "../weather/official
 import { oneRain } from "../weather/agree.js";
 import { nowcast, isWet } from "../weather/insights.js";
 import { liveMiss } from "./_share.js";
+import { hourScore, LIMITS } from "../fitness/besttime.js";
 
 // a forecast kept this long for its cell (caches.default: each data centre its own)
 const KEEP_S = 1800;
@@ -95,14 +96,14 @@ export async function weatherCard(env, u, ctx) {
   try {
     // (what's left of the card's time, a little kept back to say it couldn't, with its place)
     const left = cardMs(purpose) - (Date.now() - started) - 250;
-    return await withDeadline(dayAt(env, place, href, data.settings || {}, t, memo, purpose, ctx.live || null), Math.max(0, left));
+    return await withDeadline(dayAt(env, place, href, data.settings || {}, t, memo, purpose, ctx.live || null, ctx.v === 2), Math.max(0, left));
   } catch (e) {
     if (!(e instanceof Quiet)) await logError(env, "today weather", e);
     return couldnt("weather", links, { href, place });
   }
 }
 
-async function dayAt(env, place, href, settings, t, memo, purpose, userId = null) {
+async function dayAt(env, place, href, settings, t, memo, purpose, userId = null, v2 = false) {
   const slat = snap(place.lat), slon = snap(place.lon), c = cellOf(env, slat, slon, t, memo, purpose, userId);
   const [j, official] = await Promise.all([c.forecast, c.warnings]);
   let wx = shapeForecast(j, { name: place.name, lat: place.lat, lon: place.lon });
@@ -138,7 +139,10 @@ async function dayAt(env, place, href, settings, t, memo, purpose, userId = null
     list.push({ t: real, time: i || evening ? (clock === "12" ? f.time(h.t) : f.hour(h.t)) : "Now", temp: f.temp(x.temp), icon: iconOf(x.code, x.isDay), label: label(x.code, x.isDay), pop: Math.round(x.pop ?? 0) });
   });
   const hours = { label: evening ? `Tomorrow in ${place.name}` : "Next four hours", wet: list.some((h) => h.pop >= 20), list };
-  return withSend({
+  // (Today First's day, asked for with v=2: the rain on the card, with its heaviest hour; and, held apart for the day's
+  // cards (functions/_todayday.js), tomorrow's 07:00 and the temperatures as Weather's settings say them)
+  const forV2 = v2 ? { rain: rainCard(wx, now, offset) } : {};
+  const card = withSend({
     state: "ok",
     place,
     href,
@@ -152,9 +156,49 @@ async function dayAt(env, place, href, settings, t, memo, purpose, userId = null
     warning,
     hours,
     brief: { title: briefing(wx, now, f).title },
+    ...forV2,
     share: `${place.name} today: ${lower(lead)}${warning ? ` ${warning.said}` : ""}`,
   // (the card for Chat: functions/_todaycards.js packs it for the page's "Send to a friend")
   }, sendOf(wx, place.name, slat, slon, now, t, lead));
+  return v2 ? withForDay(card, { tomorrow: tomorrowOf(wx, now, tz, offset), deg: (c) => f.temp(c) }) : card;
+}
+
+// ---- Today First's day (spec §7.3, §7.6) ----
+// The heaviest hour of rain between two times on the place's clock (wall ms): the most rain to fall in an hour, the
+// soonest of equals, among the wet hours. → its wall ms, or null where none of them is wet
+export function heaviestOf(wx, from, to) {
+  let best = null;
+  for (const h of wx?.hourly || []) {
+    if (h.t + HOUR <= from || h.t >= to || !isWet(h)) continue;
+    const v = (h.precip ?? 0) * 1000 + (h.pop ?? 0);
+    if (!best || v > best.v) best = { t: h.t, v };
+  }
+  return best ? best.t : null;
+}
+// The rain on the card, in real moments: whether it's raining now, when it starts, when it stops and its heaviest
+// hour (null where it isn't known); null where it's dry for the next 12 hours
+function rainCard(wx, now, offset) {
+  const r = rainOf(wx, now, offset);
+  if (!r) return null;
+  const wall = (ms) => ms + offset * 1000, from = r.now ? now : Number.isFinite(r.at) ? wall(r.at) : now;
+  const to = Number.isFinite(r.end) ? wall(r.end) : from + 12 * HOUR, peak = heaviestOf(wx, from, to);
+  return { now: !!r.now, at: Number.isFinite(r.at) ? r.at : null, end: Number.isFinite(r.end) ? r.end : null, peak: peak == null ? null : Math.max(peak, from) - offset * 1000 };
+}
+// The next 07:00 where the place is (the evening's "Tomorrow first": tomorrow's, or in the small hours this morning's):
+// its weather, raw (°C, km/h, real ms), in a few words ("dry and still"), and whether it's a good morning for a ride or a
+// run (fitness/besttime.js hourScore, Good or better). → { at, day, temp, feels, code, label, pop, rain, wind, wet, said,
+// good } or null
+function tomorrowOf(wx, now, tz, offset) {
+  const seven = dayStart(now) + 7 * HOUR, w = seven > now ? seven : seven + DAY, h = hourAt(wx, w);
+  if (!h || Math.abs(h.t - w) >= HOUR) return null;
+  const prev = hourAt(wx, h.t - HOUR), as = (x) => x && { temp: x.temp, feels: x.feels, wind: x.wind, gust: x.gust, rain: x.precip ?? 0, code: x.code };
+  const score = (sport) => hourScore(as(h), prev && prev.t < h.t ? as(prev) : null, LIMITS[sport]);
+  const wet = isWet(h), pop = Math.round(h.pop ?? 0), wind = h.wind ?? null;
+  const sky = wet ? "rain" : pop >= 60 ? "rain likely" : pop >= 30 ? `a ${pop}% chance of rain` : "dry";
+  const air = wind == null ? null : wind < 6 ? "still" : wind < 15 ? "a light breeze" : wind < 25 ? "breezy" : "windy";
+  return { at: realOf(h.t, tz, offset), day: new Date(h.t).toISOString().slice(0, 10), temp: r1(h.temp), feels: r1(h.feels), code: Number.isFinite(h.code) ? h.code : null,
+    label: label(h.code, h.isDay), pop, rain: r1(h.precip), wind: r1(wind), wet, said: air ? `${sky} and ${air}` : sky,
+    good: wet ? null : score("ride") >= 0.6 ? "ride" : score("run") >= 0.6 ? "run" : null };
 }
 
 // ---- Chat's cards (pigeon/cards.js): the weather as it is, for a friend, and live again later ----

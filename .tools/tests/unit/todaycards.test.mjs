@@ -13,9 +13,13 @@ import { wxdb, OM_KEEP, COST_FULL } from "../../../functions/_wxpush.js";
 import { fitdb } from "../../../functions/_fitness.js";
 import { mkdb } from "../../../functions/_markets.js";
 import { snapshotOf } from "../../../functions/_fittoday.js";
-import { cardsFor, localDay, shareCut, couldnt, withDeadline, Quiet, CARD_KEYS } from "../../../functions/_todaycards.js";
-import { weatherCard, skyFor } from "../../../functions/_todaywx.js";
-import { fitnessCard } from "../../../functions/_todayfit.js";
+import { tddb } from "../../../functions/_today.js";
+import { offersReady } from "../../../functions/_fitshare.js";
+import { timesReady } from "../../../functions/_fittimes.js";
+import { timesFor } from "../../../functions/_times.js";
+import { cardsFor, localDay, shareCut, couldnt, withDeadline, Quiet, CARD_KEYS, DAY_LIMIT_MS } from "../../../functions/_todaycards.js";
+import { weatherCard, skyFor, heaviestOf } from "../../../functions/_todaywx.js";
+import { fitnessCard, REST_SHARE } from "../../../functions/_todayfit.js";
 import { marketsCard } from "../../../functions/_todaymkt.js";
 import { forecast as omForecast } from "../mocks/wxappdata.mjs";
 import { unpackCard, normCard } from "../../../pigeon/cards.js";
@@ -55,7 +59,7 @@ const ctxAt = (t, x = {}) => ({ only: CARD_KEYS, t, request: null, purpose: "pag
 
 // what's asked for, and how each stand-in answers
 const asked = [];
-let warnFeed = { warnings: [] }, ride = "fine", omAt = MON, omDown = false, omLondon = false;
+let warnFeed = { warnings: [] }, ride = "fine", omAt = MON, omDown = false, omLondon = false, omScene = {};
 const Y = {};
 const slow = new Map();
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
@@ -96,7 +100,7 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, init) => {
   const url = new URL(String(u)), k = url.host;
   asked.push(String(u));
-  if (k === "om.test" && url.pathname === "/v1/forecast") return url.searchParams.get("timeformat") === "unixtime" ? json(rideJson(omAt)) : omDown ? json({ error: true }, 503) : json(omLondon ? inLondon(omForecast(omAt, {}), omAt) : omForecast(omAt, {}));
+  if (k === "om.test" && url.pathname === "/v1/forecast") return url.searchParams.get("timeformat") === "unixtime" ? json(rideJson(omAt)) : omDown ? json({ error: true }, 503) : json(omLondon ? inLondon(omForecast(omAt, omScene), omAt) : omForecast(omAt, omScene));
   if (k === "ma.test") return url.pathname.endsWith("feeds-united-kingdom") ? json(warnFeed) : json({ warnings: [] });
   if (k === "yahoo.test") {
     const m = /^\/v8\/finance\/chart\/([^/]+)$/.exec(url.pathname), sym = m && decodeURIComponent(m[1]);
@@ -664,4 +668,154 @@ test("each card's card for Chat: packed for the page only, the weather's by its 
   assert.ok(normCard(kept.send)); assert.ok(!JSON.stringify(kept).includes('"send"'), "and never in its JSON");
   assert.equal(shares(), before, "no share row made by a page");
   await settle();
+});
+
+// ================================ Today First: the day with the cards (?v=2, spec §7.2) ================================
+const V2FIX = ["morning", "midday", "preride", "riding", "after", "after-fit", "evening"].map((n) => [n, FIX(`cards.${n}`)]);
+// (what version 2 adds to the cards themselves, and nothing else)
+function v1Of(cards) {
+  const c = JSON.parse(JSON.stringify(cards));
+  if (c.weather) delete c.weather.rain;
+  if (c.markets) { delete c.markets.holdings; if (c.markets.market) delete c.markets.market.closesAt; for (const k of ["top", "low"]) if (c.markets[k]) delete c.markets[k].pct; }
+  return c;
+}
+
+test("v=2: the day with the cards, as the fixtures have it; without it (or with v: 1), version 1's answer, byte for byte", async () => {
+  // (an account with all four: a place in Weather, Fitness's day, holdings in London and New York, a friend's pigeon on its way)
+  user("v2", "Vee Two"); user("v2-sam", "Sam Lee"); wxPlace("v2", LONDON); snapRow("v2", week("2026-11-02", [TEMPO])); pf("v2");
+  put("pg_links", { a: "v2", b: "v2-sam", status: "ok", created_at: 0 });
+  put("pg_msgs", { id: "v2-in", sender: "v2-sam", recipient: "v2", ct: "SECRET-WORDS", km: 343, sent_at: WEEKDAY - H, deliver_at: WEEKDAY + H, from_place: "Paris" });
+  omAt = WEEKDAY; omLondon = false; warnFeed = { warnings: [] }; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY); ride = "fine";
+  // (Today First's tables, made first, as they are on a live database: this kit's batches can't overlap)
+  await tddb(env); await offersReady(env); await timesReady(env); await timesFor(env, "nobody", 0, 1, { t: 0 });
+  const ask = (x = {}) => cardsFor(env, { id: "v2", name: "Vee Two" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, ...x });
+  await ask(); await settle();                         // (the dividends asked for after the first answer, kept for the rest)
+  const one = await ask(); await settle();
+  const two = await ask({ v: 2 }); await settle();
+  const again = await ask({ v: 1 }); await settle();
+  assert.deepEqual(Object.keys(one), ["at", "tz", "cards"], "version 1: when, the zone and the cards, nothing more");
+  assert.equal(JSON.stringify(again), JSON.stringify(one), "v: 1 is the same as none");
+  assert.ok(!/"(rain|holdings|closesAt)"/.test(JSON.stringify(one)) && !("pct" in (one.cards.markets.top || {})), "none of version 2's fields in version 1's cards");
+  assert.equal(JSON.stringify({ at: two.at, tz: two.tz, cards: v1Of(two.cards) }), JSON.stringify(one), "version 2's cards are version 1's, with only more on them");
+  assert.ok(!JSON.stringify(two).includes("SECRET"), "and never a word of a letter");
+  // (the answer's own fields, as every fixture has them)
+  assert.equal(two.v, 2);
+  for (const [n, f] of V2FIX) {
+    assert.deepEqual(Object.keys(two).filter((k) => k !== "planning").sort(), Object.keys(f).filter((k) => k !== "morning").sort(), `${n}: the answer's fields`);
+    for (const k of CARD_KEYS) sameShape(two.cards[k], f.cards[k], `${n}: ${k}`);
+    for (const k of ["quiet", "apps", "timeline", "acts"]) sameShape(two[k], f[k], `${n}: ${k}`);
+  }
+  // (each row of Coming Up: what it is, when, where it opens; a card to send only with its line)
+  for (const r of two.upcoming) {
+    for (const k of ["at", "app", "title", "sub", "href", "id"]) assert.ok(k in r, `${r.id}: ${k}`);
+    assert.ok(Object.keys(r).every((k) => ["at", "app", "title", "sub", "href", "id", "share", "sendCard", "late"].includes(k)), JSON.stringify(r));
+    assert.equal("sendCard" in r, "share" in r, r.id);
+  }
+  assert.equal(two.phase, "morning"); assert.equal(two.planning, true, "this account's day not planned yet");
+  // the cards' additions: the rain with its heaviest hour; when London closes; each mover's and holding's percent, a card each
+  const w = two.cards.weather, m = two.cards.markets;
+  assert.ok("rain" in w && (w.rain === null || Object.keys(w.rain).sort().join() === "at,end,now,peak"), JSON.stringify(w.rain));
+  assert.equal(m.market.closesAt, Date.UTC(2026, 10, 2, 16, 30), "London's close today (New York's period is Friday's)");
+  assert.deepEqual([m.top.pct, m.low.pct], [Math.round(((894 - 877.4) / 877.4) * 10000) / 100, Math.round(((410.8 - 412) / 412) * 10000) / 100]);
+  assert.deepEqual(m.holdings.map((h) => [h.sym, h.name, h.pct]), [["RR.L", "Rolls-Royce", 1.89], ["TSCO.L", "Tesco", -0.29], ["AAPL", "Apple", 0]], "Apple's move is Friday's, not today's");
+  for (const h of m.holdings) {
+    const c = unpackCard(h.sendCard);
+    // (each holding's day by its own market's clock: Apple's New York's, 05:00 on Monday there; the rest London's)
+    const there = new Intl.DateTimeFormat("en-CA", { timeZone: h.sym === "AAPL" ? "America/New_York" : "Europe/London" }).format(new Date(WEEKDAY));
+    assert.equal(there, "2026-11-02");
+    assert.deepEqual(c.snap, { name: h.name, sym: h.sym, pct: h.pct, day: there });
+    assert.deepEqual(normCard(c), c, "unchanged through normCard");
+  }
+  assert.ok(!/£|value|change|qty/.test(JSON.stringify(m.holdings)), "percents only");
+  // (the day's words from them: London opens at 08:00 is past at 10:00; the close and the movers in Coming Up)
+  const close = two.upcoming.find((r) => r.id === "close");
+  assert.deepEqual([close?.title, close?.sub], ["London closes", "Rolls-Royce +1.9% so far"]);
+  assert.equal(two.apps.markets, "Rolls-Royce +1.9%");
+  assert.equal(two.apps.fitness, "Tempo 2 × 15 today");
+});
+
+test("v=2 for the morning's notification is version 1's: the tick never works out a day", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  const a = await cardsFor(env, { id: "v2" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, purpose: "morning", v: 2 });
+  assert.deepEqual(Object.keys(a), ["at", "tz", "cards"]);
+  assert.ok(!("rain" in a.cards.weather) && !("holdings" in a.cards.markets));
+  await settle();
+});
+
+test("v=2 when the day can't be worked out: the cards still come, as version 1's, and the fault's logged", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  sql.prepare("DELETE FROM pg_errors").run();
+  // (a fault in the day itself: here, the request's waitUntil refusing the day's plan, which the day hands it unplanned;
+  // an account with only a Weather place, whose cards hand waitUntil nothing)
+  const broken = { ...env, waitUntil: () => { throw new Error("waitUntil refused"); } };
+  const a = await cardsFor(broken, { id: "wx1" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, v: 2 });
+  assert.deepEqual(Object.keys(a), ["at", "tz", "cards"], "version 1's answer");
+  assert.equal(a.cards.weather.state, "ok");
+  assert.ok(sql.prepare("SELECT src FROM pg_errors").all().some((r) => r.src === "today day"), "logged");
+  await settle();
+});
+
+test("v=2 with an add undone today: the Fitness card says the day as it was before, as the day's lines do; version 1's card as Fitness has it", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  // (Fitness's plan still has the habit's swap, its free ride; Today's add of it undone this morning, the day a rest day before)
+  user("v2u", "Una Done");
+  snapRow("v2u", { "2026-11-02": { state: "session", id: "free-ride", sport: "ride", name: "Ride how you like", kind: "Endurance", secs: 3600, tss: 40, steps: [] } }, { at: WEEKDAY - 2 * H });
+  put("td_acts", { user_id: "v2u", id: "7a0e1f52-3c4d-4e5f-8a9b-0c1d2e3f4a77", rule: "addRide", day: "2026-10-30", target: "day:2026-11-02", kind: "add", state: "undone", level: "suggest",
+    was: JSON.stringify({ planned: "rest" }), now: JSON.stringify({ offer: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a77", day: "2026-11-02", start: WEEKDAY + 6 * H, stop: WEEKDAY + 7 * H, state: "yes" }),
+    said: "Added: a ride on Monday at 16:00", made: WEEKDAY - 3 * 24 * H, undo_until: WEEKDAY - H });
+  const ask = (v) => cardsFor(env, { id: "v2u", name: "Una Done" }, { only: ["fitness"], t: WEEKDAY, tz: "Europe/London", links: LINKS, v });
+  const one = await ask(1), two = await ask(2); await settle();
+  assert.deepEqual([one.cards.fitness.kind, one.cards.fitness.session?.id], ["session", "free-ride"], "version 1: Fitness's card as it has it");
+  const f = two.cards.fitness;
+  assert.deepEqual([f.state, f.day, f.kind, f.session, f.best, f.share, f.sendCard], ["ok", "2026-11-02", "rest", null, null, REST_SHARE, null]);
+  assert.equal(two.apps.fitness, "Rest day");
+  assert.ok(!("fitnessCard" in two) && !JSON.stringify(two).includes("Ride how you like"), "nothing of the undone ride anywhere");
+});
+
+test("v=2 when the day takes too long: the cards come in their time, as version 1's, and it's logged", async () => {
+  omAt = WEEKDAY; market(WEEKDAY); setBucket(OM_KEEP, WEEKDAY);
+  sql.prepare("DELETE FROM pg_errors").run();
+  // (a statement only the day makes, the hold rule's level, that never answers)
+  const slow = { ...env, DB: { ...env.DB, prepare: (q) => (/FROM td_rules/.test(q) ? { bind: () => ({ first: () => new Promise(() => {}), all: () => new Promise(() => {}) }) } : env.DB.prepare(q)) } };
+  const began = Date.now(), a = await cardsFor(slow, { id: "wx1" }, { t: WEEKDAY, tz: "Europe/London", links: LINKS, v: 2 }), took = Date.now() - began;
+  assert.deepEqual(Object.keys(a), ["at", "tz", "cards"], "version 1's answer");
+  assert.equal(a.cards.weather.state, "ok");
+  assert.ok(took >= DAY_LIMIT_MS - 50 && took < DAY_LIMIT_MS + 3000, `in the day's time: ${took} ms`);
+  assert.ok(sql.prepare("SELECT src FROM pg_errors").all().some((r) => r.src === "today day"), "logged");
+  await settle();
+});
+
+test("v=2, Weather: the rain on the card (when, until, its heaviest hour), and tomorrow's 07:00 held apart for the day", async () => {
+  omAt = MON; omLondon = false; warnFeed = { warnings: [] }; setBucket(OM_KEEP, MON); omScene = { rainIn: 180 };
+  try {
+    const c = await weatherCard(env, { id: "wx1" }, ctxAt(MON, { v: 2 })), v1 = await weatherCard(env, { id: "wx1" }, ctxAt(MON));
+    assert.equal(c.state, "ok");
+    assert.ok(!("rain" in v1), "version 1's card: no rain field");
+    const r = c.rain;
+    assert.deepEqual(Object.keys(r).sort(), ["at", "end", "now", "peak"]);
+    assert.equal(r.now, false);
+    assert.ok(r.at >= MON + 2.5 * H && r.at <= MON + 3 * H + 15 * 60e3, `from about 11:10: ${new Date(r.at).toISOString()}`);
+    assert.ok(r.peak >= r.at && r.peak < r.at + 2 * H && (r.end === null || (r.end > r.at && r.peak < r.end)), `its heaviest hour within it (its end, where known): ${JSON.stringify(r)}`);
+    // (tomorrow's 07:00, held apart: in the day's cards, never the card's JSON)
+    const tw = c.forDay?.tomorrow;
+    assert.equal(tw.at, Date.UTC(2026, 10, 3, 7)); assert.equal(tw.day, "2026-11-03");
+    assert.ok(/^(dry|rain|rain likely|a \d+% chance of rain) and (still|a light breeze|breezy|windy)$/.test(tw.said), tw.said);
+    assert.ok([null, "ride", "run"].includes(tw.good));
+    assert.equal(typeof c.forDay.deg, "function"); assert.equal(c.forDay.deg(11.4), "11°");
+    assert.ok(!JSON.stringify(c).includes("forDay") && !JSON.stringify(c).includes("tomorrow"), "nothing held apart is in the JSON");
+    // (in the small hours, the next 07:00 is this morning's)
+    omAt = Date.UTC(2026, 10, 3, 3); setBucket(OM_KEEP, omAt);
+    const early = await weatherCard(env, { id: "wx1" }, ctxAt(omAt, { v: 2 }));
+    assert.equal(early.forDay?.tomorrow?.at, Date.UTC(2026, 10, 3, 7));
+  } finally { omScene = {}; omAt = MON; }
+  await settle();
+});
+
+test("heaviestOf: the wettest hour between two times on the place's clock, the soonest of equals; none when none is wet", () => {
+  const h = (hr, precip, pop = 90, code = 63) => ({ t: Date.UTC(2026, 10, 2, hr), precip, pop, code });
+  const wx = { hourly: [h(14, 0, 10, 2), h(15, 0.4), h(16, 1.2), h(17, 2.5), h(18, 2.5), h(19, 0.3), h(20, 0, 10, 2)] };
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 14), Date.UTC(2026, 10, 2, 21)), Date.UTC(2026, 10, 2, 17));
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 14), Date.UTC(2026, 10, 2, 17)), Date.UTC(2026, 10, 2, 16), "only within the times");
+  assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 20), Date.UTC(2026, 10, 2, 23)), null);
+  assert.equal(heaviestOf({}, 0, 1), null);
 });
