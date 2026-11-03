@@ -9,7 +9,7 @@
 // second row), a friend's id stored only for a friend, with their first name as the server has it. GET sync's times
 // (agreed only), rides (with a friend, new or agreed) and hold (a ride at its do level, else quiet hours, with when it
 // ends), read in sync's own trip, and the rest of sync answered all the same were those reads ever to fail; ?quiet=1
-// leaving pg_users.seen_at alone.
+// leaving pg_users.seen_at alone and noting no day of Chat used (pg_active), though the sign-in is used.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -436,6 +436,26 @@ test("sync?quiet=1 (Today's engine): what's delivered marked so, but pg_users.se
   await api(george, "GET", "sync?quiet=0");
   assert.ok(one("SELECT seen_at FROM pg_users WHERE id = ?", george.id).seen_at > 0, "an ordinary sync notes it");
   run("DELETE FROM pg_msgs");
+});
+
+test("sync?quiet=1 isn't a day of Chat used (the admin's Insights, pg_active), though the sign-in is still used; an ordinary sync is", async () => {
+  clearLimits();
+  // (the sign-in last used two hours ago, so its use is noted on this call, and no day noted yet)
+  const was = () => Date.now() - 2 * H;
+  const stale = () => { run("UPDATE pg_sessions SET seen_at = ? WHERE user_id = ?", was(), george.id); run("DELETE FROM pg_active WHERE user_id = ?", george.id); };
+  const days = () => one("SELECT COUNT(*) AS n FROM pg_active WHERE user_id = ?", george.id).n;
+  stale();
+  const q = await api(george, "GET", "sync?quiet=1");
+  assert.equal(q.status, 200, JSON.stringify(q.body));
+  assert.equal(days(), 0, "Today's engine syncing is no day of Chat's");
+  assert.ok(all("SELECT seen_at FROM pg_sessions WHERE user_id = ?", george.id).every((s) => s.seen_at > Date.now() - H), "the sign-in noted as used all the same");
+  stale();
+  assert.equal((await api(george, "GET", "sync")).status, 200);
+  assert.equal(days(), 1, "an ordinary sync is a day of Chat's");
+  // (and any other route, as before: requireUser with nothing more said)
+  stale();
+  assert.equal((await api(george, "GET", "sync?quiet=0")).status, 200);
+  assert.equal(days(), 1, "quiet=0 is an ordinary sync");
 });
 
 test("sync: were its Today First reads ever to fail as the batch runs (a column gone), the rest is answered all the same, times and rides none, what's delivered still marked", async () => {
