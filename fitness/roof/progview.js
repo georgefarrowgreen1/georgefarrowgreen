@@ -6,9 +6,9 @@
 import * as X from "./x.js";
 import * as PROG from "../progress.js";
 export const STUB = true;
-export function view() { throw new Error("not yet: view"); }
-export function openForm() { throw new Error("not yet: openForm"); }
-export function openPower() { throw new Error("not yet: openPower"); }
-export function openTraining() { throw new Error("not yet: openTraining"); }
-export function openEngine() { throw new Error("not yet: openEngine"); }
-export function openYear() { throw new Error("not yet: openYear"); }
+export function view(el, ctx) { throw new Error("not yet: view"); }
+export function openForm(ctx, ...a) { throw new Error("not yet: openForm"); }
+export function openPower(ctx, ...a) { throw new Error("not yet: openPower"); }
+export function openTraining(ctx, ...a) { throw new Error("not yet: openTraining"); }
+export function openEngine(ctx, ...a) { throw new Error("not yet: openEngine"); }
+export function openYear(ctx, ...a) { throw new Error("not yet: openYear"); }
