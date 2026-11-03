@@ -19,10 +19,14 @@
 //   8 the budget (§7.3) for a first open and a cold deep link
 //   9 storage: only Weather's own keys added, no today:* change; search typing leaves nothing anywhere
 //   10 a 401 at /api/weather/me with the session alive: no sign-out; signed out: the way in, back to the route
-//   11 a new Weather build mid-session (D21): no reload in use, no lazy file joins the old module, the reload at a
-//     boundary with URL and scroll kept, "Weather updated" once
+//   11 a new Weather build mid-session (D21): no reload in use (a lazy section while stale imports as normal, stage 2's
+//     C7), the reload at a boundary (a route into Weather; back after a minute) with URL and scroll kept, "Weather updated" once
 //   12 warnings on Now (banner, single card), the empty states ([] and null), the credits sheet
 //   13 CSP clean, axe, 390 light and dark, the 1280 layout
+//   14 loading on open (stage 2 §4.5): a first open fetches none of 16 Days, Warnings, Places, Weather Settings and the
+//     detail/credits file; each is fetched once, when first opened
+//   14b a release that changes a wxui.js export, deployed while the page is open, then 16 Days: a reload to the new
+//     build at /weather/#days, not an error (stage 2 C7, RB3)
 import { readFileSync } from 'node:fs';
 import * as OW from './mocks/wxwarnings.mjs';
 import * as H from './roofhooks.mjs';
@@ -427,9 +431,9 @@ await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5'
   const sizes = (r, kind) => r.rows.filter((x) => x.kind === kind).sort((a, b) => b.gz - a.gz).map((x) => `${x.path.replace(/^\/weather\//, '')} ${x.gz}`);
   console.log('first open:', js({ requests: r1.requests, js: r1.js, css: r1.css, unminified: r1.unminified.length, ...beyond(r1) }, 800));
   ok(r1.requests > 0 && r1.requests <= most, `8. first open: ${r1.requests} same-origin /weather/ script and style requests (≤ ${most}: connector.files + 2)`, js({ ...beyond(r1), all: r1.rows.map((r) => r.path.replace(/^\/weather\//, '')) }, 1500));
-  // (§7.3's 90 KB guessed the module's own files at 35 KB; built, they're 53 KB beside the 14 reused files' 52, so the
-  // budget is 110 KB until stage 2 loads Settings, Places, 16 Days and Warnings only when they're opened)
-  const JS_MOST = 110;
+  // (back to 90 KB: stage 2 loads 16 Days, Warnings, Places, Weather Settings and the detail and credits sheets only when
+  // they're opened, so a first open is ≈ 84–85 KB; it was 110 while all of them came with it, stage 2 spec §4.5)
+  const JS_MOST = 90;
   ok(r1.js <= JS_MOST * 1024, `8. first open: module JS ${Math.round(r1.js / 1024)} KB gzip (≤ ${JS_MOST})`, js(sizes(r1, 'js'), 1500));
   ok(r1.css <= 14 * 1024, `8. first open: CSS ${Math.round(r1.css / 1024)} KB gzip (≤ 14)`, js(sizes(r1, 'css')));
   ok(!r1.radar.length, '8. first open on Now: nothing of the radar stack (radar.js, radarmix.js, the map, vendor/: lazy, D2; the rain files may load for Now’s next hour, outside the budget, §7.3)', js({ radar: r1.radar, rain: r1.lazy.filter((x) => !RADAR_STACK.test(x)) }));
@@ -514,7 +518,7 @@ await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; si
 });
 
 // ======================================================================================================================
-await part(11, 'a new Weather build mid-session: no reload in use, no lazy file joins the old module, reload at a boundary', 'D21, RB2, UI13, D15', async () => {
+await part(11, 'a new Weather build mid-session: no reload in use, a lazy file imported while stale, reload at a boundary', 'D21, stage 2 C7, RB2, UI13, D15', async () => {
 // ======================================================================================================================
   // (no service worker here, so the page's own fetches are all there is to stand in for: with the root worker, its kept
   // copy of the module and its own version checks would be a second source of the old build)
@@ -549,16 +553,22 @@ await part(11, 'a new Weather build mid-session: no reload in use, no lazy file 
   await q.click(H.hdSec('days')); await shown(q, H.wxSec('days'));
   await q.click(H.hdSec('now')); await shown(q, H.wxSec('now'));
   ok((await life.same()) && docs.n() === 0, '11. sections switched meanwhile: still the same page');
-  // Radar's first tap: its lazy file would join the old module, so the page reloads at /weather/#radar instead
-  const order = [];
-  const onR = (r) => { if (r.isNavigationRequest() && r.frame() === q.mainFrame()) order.push('document'); else if (/\/weather\/radar\.js/.test(r.url())) order.push('radar.js'); };
+  // Radar's first tap while stale: under stage 2's C7 (s24-contracts §7) fw.lazy imports as normal, the file used, and
+  // the reload waits for the next safe point (stage 1 reloaded here at once)
+  const radarAsk = [];
+  const onR = (r) => { if (/\/weather\/roof\/radarview\.js|\/weather\/radar\.js/.test(r.url())) radarAsk.push(r.url()); };
   q.on('request', onR);
   await q.click(H.hdSec('radar'));
-  const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(reloaded && order[0] === 'document', '11. Radar tapped (its code not loaded yet): the page reloads first, no lazy file fetched into the old module (fw.lazy, D21)', js(order));
-  ok((await at(q, '/weather/#radar', 15000)) && (await shown(q, H.wxSec('radar'), 30000)), '11. …at /weather/#radar, Radar shown in the new page', here(q));
+  const radarUp = await shown(q, H.wxSec('radar'), 30000);
+  await wait(2500);
+  ok(radarUp && (await life.same()) && docs.n() === 0, '11. Radar tapped while stale: shown in the same page, its code imported as normal, no reload in the middle of use (stage 2 C7)', js({ radarAsk, docs: docs.list }));
   q.off('request', onR);
-  await screenUp(q, 'radar').catch(() => {}); await wait(2000);
+  // the next route into Weather: the reload there (D21's route boundary), the new build mounted
+  await q.click(H.HD_BACK); await shown(q, H.APPS);
+  await tapTile(q);
+  const reloaded = await until(() => docs.n() >= 1, 15000);
+  ok(reloaded && (await weatherUp(q)), '11. …Back to Apps, then Weather’s tile: the reload at that route (stale, nothing unsaved, D21), Weather in the new page', js({ docs: docs.list, at: here(q) }));
+  await wait(2000);
   ok((await said(q)).filter((t) => /Weather updated/.test(t)).length === 1, '11. the new build mounted: “Weather updated” once (IFL.built, D15)', js(await said(q)));
 
   // another release, learnt; then away a minute or more: the reload at that boundary, the address and scroll kept
@@ -634,6 +644,78 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
 });
 
 // ======================================================================================================================
+await part(14, 'loading on open: none of the lazy five on a first open; each fetched once, when first opened', 'stage 2 §4.5, C4, S2-D5, BB6', async () => {
+// ======================================================================================================================
+  const LAZY5 = { days: /\/weather\/roof\/days\.js(\?|$)/, warnings: /\/weather\/roof\/warnings\.js(\?|$)/, places: /\/weather\/roof\/places\.js(\?|$)/, wxsettings: /\/weather\/roof\/wxsettings\.js(\?|$)/, wxdetail: /\/weather\/roof\/wxdetail\.js(\?|$)/ };
+  const L = await open('wren-lazy', { sw: 'block' });
+  const q = L.p, got = Object.fromEntries(Object.keys(LAZY5).map((k) => [k, 0]));
+  q.on('request', (r) => { for (const [k, re] of Object.entries(LAZY5)) if (re.test(r.url())) got[k]++; });
+  await q.goto(`${HUB}/#apps`); await shown(q, H.appTile('weather'), 30000);
+  await tapTile(q); await weatherUp(q); await titleIs(q, 'London'); await wait(3000);
+  ok(Object.values(got).every((n) => n === 0), '14. Weather’s first open on Now: none of days.js, warnings.js, places.js, wxsettings.js, wxdetail.js fetched (§4.5)', js(got));
+  await q.click(H.hdSec('days')); await shown(q, H.wxSec('days'));
+  ok(await until(async () => (await count(q, H.DAY_ROW)) >= 10, 20000), '14. 16 Days opened: its rows drawn (a skeleton while its file loads, §2.3)');
+  await q.click(H.hdSec('now')); await shown(q, H.wxSec('now'));
+  await q.click(H.hdSec('days')); await shown(q, H.wxSec('days')); await wait(800);
+  ok(got.days === 1, '14. …days.js fetched once, and not again on a second visit', js(got));
+  await q.click(H.hdSec('warnings')); await shown(q, H.wxSec('warnings'));
+  await until(async () => (await count(q, H.WARNING_ROW)) + (await count(q, H.WARNINGS_EMPTY)) > 0, 20000);
+  ok(got.warnings === 1, '14. Warnings opened: warnings.js fetched once', js(got));
+  await q.click(H.hdSec('now')); await shown(q, H.wxSec('now'));
+  await q.click(H.HD_PICK);
+  ok((await sheetOpen(q, H.PLACES_SHEET, 20000)) && got.places === 1, '14. the Places sheet: places.js fetched once', js(got));
+  await closeSheets(q);
+  await q.click(H.HD_SETTINGS);
+  ok((await sheetOpen(q, H.WXSETTINGS, 20000)) && got.wxsettings === 1, '14. Weather Settings: wxsettings.js fetched once', js(got));
+  await closeSheets(q);
+  await q.locator(H.WX_CREDITS).scrollIntoViewIfNeeded().catch(() => {});
+  await q.click(H.WX_CREDITS);
+  ok((await sheetOpen(q, H.CREDITS_SHEET, 20000)) && got.wxdetail === 1, '14. the credits sheet: wxdetail.js fetched once', js(got));
+  await closeSheets(q);
+  await L.ctx.close();
+});
+
+// ======================================================================================================================
+await part('14b', 'a changed wxui.js export deployed mid-session, then 16 Days: a reload to the new build, not an error', 'stage 2 C7, RB3, D21', async () => {
+// ======================================================================================================================
+  // (the release, stood in: /weather/version says it; weather.js its BUILD; wxui.js gains an export that the new days.js
+  // imports, so the new days.js can't link against the old wxui.js already in the page's module map: the import rejects,
+  // as a real release that changed a wxui.js export would. No service worker, so the routes are the only source)
+  const RELEASE = '9.97';
+  const E = await open('wren-14b', { sw: 'block' });
+  let release = null;
+  const swapped = (re, fix) => route(E.ctx, re, async (r) => {
+    if (!release) return r.continue();
+    const u = new URL(r.request().url()), res = await hostCall('ifl.test:8788', u.pathname + u.search);
+    if (res.status !== 200) return r.continue();
+    return r.fulfill({ status: 200, contentType: res.headers['content-type'] || 'text/javascript; charset=utf-8', headers: { 'Cache-Control': 'no-store' }, body: fix(res.text) });
+  });
+  await route(E.ctx, /\/weather\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: 'weather', build: release, min: null }) }) : r.continue()));
+  await swapped(/\/weather\/roof\/weather\.js(\?|$)/, (t) => t.replace(/(BUILD\s*=\s*)"[^"]*"/, `$1"${RELEASE}"`));
+  await swapped(/\/weather\/roof\/wxui\.js(\?|$)/, (t) => `${t}\nexport const RELEASED_${RELEASE.replace('.', '_')} = 1;\n`);
+  await swapped(/\/weather\/roof\/days\.js(\?|$)/, (t) => `import { RELEASED_${RELEASE.replace('.', '_')} } from "./wxui.js";\nvoid RELEASED_${RELEASE.replace('.', '_')};\n${t}`);
+  const q = E.p, docs = loads(q);
+  const errsAt = [];
+  q.on('console', (m) => { if (m.type() === 'error') errsAt.push(m.text().slice(0, 160)); });
+  await q.goto(`${HUB}/#apps`); await shown(q, H.appTile('weather'), 30000);
+  await tapTile(q); await weatherUp(q); await titleIs(q, 'London'); await wait(1500);
+  const life = await alive(q);
+  docs.reset();
+  release = RELEASE;
+  await q.click(H.hdSec('days'));
+  const went = await until(() => docs.n() >= 1, 20000);
+  ok(went, '14b. 16 Days tapped after the release: the page reloads (the import refused or the version asked, C7)', js({ docs: docs.list, same: await life.same() }));
+  const up = (await at(q, '/weather/#days', 20000)) && (await shown(q, H.wxSec('days'), 30000)) && (await until(async () => (await count(q, H.DAY_ROW)) >= 10, 20000));
+  ok(up, '14b. …at /weather/#days, 16 Days drawn by the new build', here(q));
+  ok(!(await visible(q, `${H.M_WEATHER} ${H.ERROR}`)), '14b. …and no error state left on screen (Try Again isn’t the answer to a release, RB3)', await textOf(q, H.ERROR));
+  ok(docs.n() <= 2, `14b. …one reload, not a loop (${docs.n()} documents)`, js(docs.list));
+  await wait(1500);
+  ok((await said(q)).filter((t) => /Weather updated/.test(t)).length === 1, '14b. the new build mounted: “Weather updated” once', js(await said(q)));
+  if (errsAt.length) console.log(`note: 14b's console said (the old page's refused import expected): ${js(errsAt.slice(0, 3))}`);
+  await E.ctx.close();
+});
+
+// ======================================================================================================================
 await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, §3.15, §8.3, UI8, UI12', async () => {
 // ======================================================================================================================
   await p.goto(`${HUB}${link(London)}`);
@@ -670,7 +752,8 @@ await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, �
   await shot(W.p, '13-1280-radar');
   await W.ctx.close();
 
-  const all = everyone.flatMap((x) => x.errs || []);
+  // (14b's old page, whose import of the new days.js is refused by design, aside)
+  const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/^wren-14b .*(does not provide an export|Failed to fetch dynamically imported module|Importing a module script failed|SyntaxError)/.test(e));
   ok(!all.some((e) => /CSP violation|Refused to/.test(e)), '13. no CSP violation on any page (§8.3: no inline style, no inline handler, only the origins allowed)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
   ok(!all.length, '13. no page error and no console error on any page', js(all.slice(0, 8)));
   ok(!guard.hits.length, '13. nothing of all this went to Weather’s own address (D23)', js(guard.hits.slice(0, 4)));
