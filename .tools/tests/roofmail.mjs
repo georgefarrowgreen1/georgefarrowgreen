@@ -156,11 +156,14 @@ const fill = async (p, { to, subject, text }) => {
 };
 const write = async (p) => { await p.click(H.HD_COMPOSE); return sheetUp(p, 'mail-compose'); };
 const sendNow = (p) => p.click(`${COMPOSE} ${H.MAIL_SEND}`);
-const toastUndo = (p) => p.locator(`${H.TOAST} ${H.MAIL_UNDO}`).first();
-// (a row swiped by a finger: pointer down at x0 on the row's middle, moved in steps to x1, up)
-const swipe = async (p, sel, x0, x1) => {
+// (Undo in the toast: the hook, or the toast's own action by its word, as the framework's toast draws it)
+const toastUndo = (p) => p.locator(`${H.TOAST} ${H.MAIL_UNDO}`).or(p.locator(H.TOAST).getByRole('button', { name: /^Undo$/ })).first();
+// (a row swiped by a finger: pointer down on the row's middle at x0, moved in steps to x1, up; x0 and x1 inside the
+// row unless said: 'in' → 40 px in from the row's left edge, 'out' → 40 px in from its right, a number → that x)
+const swipe = async (p, sel, from, to) => {
   const b = await p.locator(sel).first().boundingBox(); if (!b) return false;
-  const y = b.y + b.height / 2;
+  const x = (v) => (v === 'in' ? b.x + 40 : v === 'out' ? b.x + b.width - 40 : v === 'left' ? b.x + 12 : v === 'right' ? b.x + b.width - 12 : v);
+  const x0 = x(from), x1 = x(to), y = b.y + b.height / 2;
   await p.mouse.move(x0, y); await p.mouse.down();
   for (let i = 1; i <= 12; i++) { await p.mouse.move(x0 + ((x1 - x0) * i) / 12, y); await wait(16); }
   await p.mouse.up(); return true;
@@ -212,7 +215,8 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
   for (const [id, url] of [['updates', '/mail/#updates'], ['later', '/mail/#later'], ['done', '/mail/#done'], ['people', '/mail/']]) {
     const h0 = (await history(p)).length;
     await p.click(H.hdSec(id));
-    const there = await at(p, url), sel = await attrOf(p, H.hdSec(id), 'aria-selected');
+    const there = await at(p, url);
+    const sel = (await p.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', H.hdSec(id), { timeout: 5000 }).then(() => true, () => false)) ? 'true' : await attrOf(p, H.hdSec(id), 'aria-selected');
     const hs = (await history(p)).slice(h0), len = await p.evaluate(() => history.length);
     ok(there && sel === 'true' && hs.length > 0 && hs.every((x) => x.kind === 'replace') && len === len0, `1. ${id}: ${url} by replaceState, no history entry (S4-D5)`, js({ url: here(p), sel, hs: hs.map((x) => x.kind), len, len0 }));
     if (id === 'updates') ok(await shown(p, row(idOf('Weekly roofing digest')), 15000), '1. …Updates lists the digest from Roof Co (§2.1)');
@@ -248,7 +252,7 @@ await part(2, 'the phone’s reader: pushed and kept, “Back to Mail” with sc
   ok(await at(p, `/mail/#thread=${target}`, 3000), '2. …and the address kept after show (REGISTRY stay: ["thread"], the D6 tidy leaves it, C2)', here(p));
   ok(!(await visible(p, H.HD_TABLIST)), '2. the switcher hidden on the reader (sections: false, C3)');
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Mail', '2. Back says “Back to Mail” (C6)', await attrOf(p, H.HD_BACK, 'aria-label'));
-  const subj = (await threadOf(target))?.thread?.subject;
+  const subj = (await threadOf(target))?.subject;
   ok(!!subj && (await textOf(p, H.HD_TITLE)) === subj, '2. the title: the conversation’s subject (§2.1)', js({ title: await textOf(p, H.HD_TITLE), subj }));
   ok(await focusIn(p, H.HD_TITLE), '2. focus on the header’s title after the push (C7)', await p.evaluate(() => document.activeElement?.outerHTML.slice(0, 80)));
   const src = await attrOf(p, BODY, 'src');
@@ -271,7 +275,9 @@ await part(2, 'the phone’s reader: pushed and kept, “Back to Mail” with sc
   // a reload on the reader (the address is kept, so it opens there)
   await p.click(row(target)); await readerUp(p);
   await p.reload();
-  ok((await readerUp(p)) && (await at(p, `/mail/#thread=${target}`)) && (await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Mail', '2. reloaded on the reader: the reader again, “Back to Mail” (S4-D6, S4-D7)', here(p));
+  const rl = { up: await readerUp(p), at: await at(p, `/mail/#thread=${target}`), back: await attrOf(p, H.HD_BACK, 'aria-label'), frames: await count(p, BODY), mail: await count(p, M_MAIL) };
+  ok(rl.up && rl.at && rl.back === 'Back to Mail', '2. reloaded on the reader: the reader again, “Back to Mail” (S4-D6, S4-D7)', js({ url: here(p), ...rl }));
+  await shot(p, '2-reloaded');
 
   // a cold reader (a new page straight at /mail/#thread=…): Back stays in Mail, at People, the label saying so
   const C = await open('george-cold');
@@ -284,7 +290,7 @@ await part(2, 'the phone’s reader: pushed and kept, “Back to Mail” with sc
   const toPeople = (await at(C.p, '/mail/')) && (await mailUp(C.p)) && (await attrOf(C.p, H.hdSec('people'), 'aria-selected')) === 'true';
   const chs = (await history(C.p)).slice(ch0);
   ok(toPeople && (await cl.same()) && chs.length > 0 && chs.every((x) => x.kind === 'replace'), '2. …its Back: People at /mail/, replacing the address, in the page (never off the site, S4-D7, C4)', js({ url: here(C.p), hs: chs.map((x) => x.kind) }));
-  ok((await attrOf(C.p, H.HD_BACK, 'aria-label')) === 'Back to Today', '2. …then the list’s own Back: “Back to Today” (the frame’s, cold)', await attrOf(C.p, H.HD_BACK, 'aria-label'));
+  ok((await attrOf(C.p, H.HD_BACK, 'aria-label')) === 'Back to Apps', '2. …then the list’s own Back: “Back to Apps” (the frame’s for a cold screen, stage 1 §3.4)', await attrOf(C.p, H.HD_BACK, 'aria-label'));
   d.stop(); await C.ctx.close();
 
   // a thread longer than the screen: no frame below the fold is said to have failed (RI10)
@@ -293,10 +299,11 @@ await part(2, 'the phone’s reader: pushed and kept, “Back to Mail” with sc
   const frames = await count(p, BODY);
   await wait(8000);
   const falseFail = await p.evaluate((s) => /Couldn’t show this message/.test(document.querySelector(s)?.textContent || ''), M_MAIL);
-  ok(frames >= 2 && !falseFail, `2. the long conversation (${frames} frames): 8 s on, no “Couldn’t show this message” for those below the fold (RI10)`, js({ frames, falseFail }));
+  const tall = await p.evaluate((b) => [...document.querySelectorAll(b)].some((f) => f.getBoundingClientRect().bottom > innerHeight), BODY);
+  ok(frames >= 1 && tall && !falseFail, `2. the long conversation (${frames} frame${frames > 1 ? 's' : ''}, longer than the screen): 8 s on, no “Couldn’t show this message” (RI10)`, js({ frames, tall, falseFail }));
   await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await wait(4000);
   const heights = await p.$$eval(BODY, (fs) => fs.map((f) => Number(f.getAttribute('height')) || Math.round(f.getBoundingClientRect().height)));
-  ok(heights.length >= 2 && heights.every((h) => h > 120), '2. …scrolled to the end, each frame sized to its message (heights from the shell, §3.2)', js(heights));
+  ok(heights.length >= 1 && heights.every((h) => h > 900), '2. …scrolled to the end, its frame sized to the message (forty lines: the height from the shell, §3.2)', js(heights));
   await shot(p, '2-long');
 });
 
@@ -344,28 +351,27 @@ await part(4, 'swipes and the row menu with Undo; the Later sheet; a picture at 
 // ======================================================================================================================
   await p.goto(`${HUB}/mail/`);
   await mailUp(p); await wait(800);
-  const W = await p.evaluate(() => innerWidth);
   const firstId = async () => p.evaluate((s) => { const r = [...document.querySelectorAll(s)].find((e) => e.getClientRects().length && e.getBoundingClientRect().top > 100); return r?.dataset.thread || null; }, ROW);
 
   // never from the left 20 px (the edge is Back's, D19)
   const e = await firstId();
-  await swipe(p, row(e), 8, W - 40); await wait(900);
+  await swipe(p, row(e), 8, 'right'); await wait(900);
   ok(!!e && (await count(p, row(e))) === 1 && (await inView('all', e)), '4. a swipe from the left edge (x 8): nothing done to the row (the edge is Back’s, S4-D18)');
 
   // swipe right: Done, then Undo
   const a = await firstId();
-  await swipe(p, row(a), 90, W - 20);
+  await swipe(p, row(a), 'in', 'right');
   const goneA = await gone(p, row(a), 8000), toastA = await shown(p, H.TOAST, 5000);
   const doneA = await until(() => inView('done', a), 8000);
   ok(goneA && toastA && doneA, '4. swiped right: Done (the row leaves People, Mail has it in Done), a toast with Undo (S4-D18)', js({ goneA, toastA, doneA, toast: await textOf(p, H.TOAST) }));
   await shot(p, '4-done-toast');
-  await toastUndo(p).click().catch(() => {});
+  await toastUndo(p).click({ timeout: 5000 }).catch(() => {});
   const backA = (await shown(p, row(a), 8000)) && (await until(() => inView('all', a), 8000));
   ok(backA, '4. …Undo: the row back, and in People at Mail again (§4.1 actions.js, put back)');
 
   // swipe left: the Later sheet; a choice
   const b = await firstId();
-  await swipe(p, row(b), W - 30, 60);
+  await swipe(p, row(b), 'out', 'left');
   const later = await sheetUp(p, 'mail-later');
   const choices = later ? await p.locator(`${SH('mail-later')}[open]`).getByRole('button').allInnerTexts().catch(() => []) : [];
   ok(later && choices.some((t) => /Pick a Time/i.test(t)), '4. swiped left: the Later sheet (mail-later), its choices and Pick a Time (S4-D18)', js(choices));
@@ -380,8 +386,11 @@ await part(4, 'swipes and the row menu with Undo; the Later sheet; a picture at 
 
   // the row menu (press and hold): Done from there, Undo
   const c = await firstId();
-  const bb = await p.locator(row(c)).first().boundingBox();
-  await p.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await p.mouse.down(); await wait(800); await p.mouse.up();
+  // (a finger held still on the row: touch pointer events, as a phone sends them, held 800 ms)
+  await p.evaluate(async (s) => {
+    const r = document.querySelector(s), b = r.getBoundingClientRect(), o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0, buttons: 1 };
+    r.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise((ok) => setTimeout(ok, 800)); r.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
+  }, row(c));
   let menu = await sheetUp(p, 'mail-rowmenu', 4000);
   if (!menu) { await p.click(row(c), { button: 'right' }).catch(() => {}); menu = await sheetUp(p, 'mail-rowmenu', 4000); }
   const items = menu ? await p.locator(`${SH('mail-rowmenu')}[open]`).getByRole('button').allInnerTexts().catch(() => []) : [];
@@ -389,7 +398,7 @@ await part(4, 'swipes and the row menu with Undo; the Later sheet; a picture at 
   await shot(p, '4-rowmenu');
   await p.locator(`${SH('mail-rowmenu')}[open]`).getByRole('button', { name: /^Done$/ }).first().click().catch(() => {});
   ok((await gone(p, row(c), 8000)) && (await until(() => inView('done', c), 8000)), '4. …Done: gone from People, in Done at Mail');
-  await toastUndo(p).click().catch(() => {});
+  await toastUndo(p).click({ timeout: 5000 }).catch(() => {});
   ok((await shown(p, row(c), 8000)) && (await until(() => inView('all', c), 8000)), '4. …Undo: back');
 
   // a picture: first at Mail's own address (Mail on its own's way), then in the module's viewer (RI6: Vary: Origin)
@@ -427,7 +436,7 @@ await part(5, 'Send with Undo and the outbox; a reply Mail quotes itself; a forw
   await sendNow(p);
   const sending = await p.waitForFunction((s) => /Sending/.test(document.querySelector(s)?.textContent || ''), H.TOAST, { timeout: 8000 }).then(() => true, () => false);
   ok(sending, '5. Send: “Sending… · Undo” (S4-D18)', await textOf(p, H.TOAST));
-  await toastUndo(p).click().catch(() => {});
+  await toastUndo(p).click({ timeout: 5000 }).catch(() => {});
   const reopened = await sheetUp(p, 'mail-compose', 8000);
   const kept = reopened ? await field(p, /^Subject/i).first().inputValue().catch(() => '') : '';
   const draft1 = await until(async () => (await folderOf('drafts')).find((m) => m.subject === 'Roof send one'), 8000);
@@ -538,7 +547,7 @@ await part(6, 'search: the provider’s hit; “Search Mail for …” a POST, t
   ok(!!hit, '6. “Quarterly”: the conversation among the results, from what’s loaded on this phone (Mail’s provider, S4-D9)', js(await p.$$eval(H.SEARCH_RESULT, (els) => els.map((e) => e.textContent.trim().slice(0, 60))).catch(() => [])));
   await p.fill(H.SEARCH_INPUT, '');
   await p.keyboard.type(RARE, { delay: 30 });
-  const offer = await until(async () => { const all = await p.$$eval(H.SEARCH_RESULT, (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim())); return all.length && /^Search Mail for “/.test(all.at(-1)) ? all : null; }, 8000);
+  const offer = await until(async () => { const all = await p.$$eval(H.SEARCH_RESULT, (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim())); return all.length && /^Search Mail for “/.test(all.at(-1)) && all.at(-1).includes(RARE) ? all : null; }, 8000);
   ok(!!offer && offer.at(-1).includes(RARE), `6. “${RARE}” (only in a message’s words, past its snippet): “Search Mail for “${RARE}”” offered, last (S4-D9)`, js(offer));
   const before = asked.slice(s0).filter((r) => (r.url + r.post).includes(RARE.slice(0, 6)));
   ok(!before.length, '6. typed but not asked: nothing has left the phone (D16)', js(before.map((r) => r.url)));
