@@ -358,9 +358,9 @@ await part(6, 'Weather Settings: every page; a save synced, glass kept; Notifica
 });
 
 // ======================================================================================================================
+let B = null;   // (part 7's phone, whose first open part 8 measures)
 await part(7, 'the module’s files from Weather’s host through the hub: minified where current, no cookie; “Weather updated” once', '§6.2, §8.1, D1, D15', async () => {
 // ======================================================================================================================
-let B = null;
   const hp = passed(S).filter((x) => x.port === WEATHER_PORT && /^\/weather\/roof\//.test(x.path));
   ok(hp.length >= FILES.filter((f) => f.startsWith('/weather/roof/')).length - 1 && hp.every((x) => !x.cookie && !x.auth), '7. the module’s files fetched from Weather’s host by the hub, each without a cookie or a bearer (§8.1, D1)', js({ n: hp.length, withCookie: hp.filter((x) => x.cookie || x.auth).map((x) => x.path) }));
   const rep = await meterA.report();
