@@ -2,7 +2,8 @@
 // page (window, document, sessionStorage, location), as every app runs its copy. The marker, not the address, turns it
 // on; go() maps the apps' own addresses to the hub's paths and is the identity off the hub; href() names an app's
 // section; the breadcrumb is written as a page is left for another and read by back(), which never uses history's own
-// back; send() goes through Chats' own sheet while there's no engine; signIn() goes through Chats and comes back.
+// back; send() goes through Chats' own sheet while there's no engine; signIn() goes through Chats and comes back. Off
+// the hub (an app at its own address), none of them does anything: every app is as it was.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -151,7 +152,8 @@ test("the breadcrumb: written as a page is left for another, read by back(), tak
   p.hub.back();
   assert.deepEqual(p.assigned, ["/chats/"]);
   // (none, one naming this very page, or one that isn't a path of this site's: Apps)
-  for (const crumb of [undefined, "/weather/", "/weather/#day=2026-11-02", "//evil.example/x", "https://evil.example/", "/x\\y", "weather/", "/" + "x".repeat(200)]) {
+  for (const crumb of [undefined, "/weather/", "/weather/#day=2026-11-02", "//evil.example/x", "https://evil.example/", "/x\\y", "weather/", "/" + "x".repeat(200),
+    "/\n/evil.example/", "/\t/evil.example/", "/\u0000/x"]) {
     p = page("https://inflite.ai/weather/", { marker: "/weather/", crumb });
     p.hub.back();
     assert.deepEqual(p.assigned, ["/#apps"], String(crumb));
@@ -187,7 +189,7 @@ test("tabs(): Today · Chats · Apps · You as links, the one you're on marked, 
 test("send() goes through Chats' own sheet while there's no engine, and comes back here; signIn() through Chats too", async () => {
   const p = page("https://inflite.ai/weather/#radar", { marker: "/weather/" });
   assert.equal(await p.hub.chat(), null, "no engine yet");
-  await p.hub.send("London today: rain from 15:00 & wind", "eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9");
+  assert.equal(await p.hub.send("London today: rain from 15:00 & wind", "eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9"), true, "gone to Chats'");
   assert.equal(p.assigned[0], "/chats/#share=London%20today%3A%20rain%20from%2015%3A00%20%26%20wind&card=eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9&back=%2Fweather%2F%23radar");
   const h = new URLSearchParams(p.assigned[0].split("#")[1]);
   assert.deepEqual([h.get("share"), h.get("card"), h.get("back")], ["London today: rain from 15:00 & wind", "eyJ2IjoxLCJraW5kIjoid2VhdGhlciJ9", "/weather/#radar"]);
@@ -198,7 +200,7 @@ test("send() goes through Chats' own sheet while there's no engine, and comes ba
   await p.hub.send("Just words", null);
   assert.equal(p.assigned[2], "/chats/#share=Just%20words&back=%2Fweather%2F%23radar");
   const s = page("https://inflite.ai/markets/#s=TSCO", { marker: "/markets/" });
-  s.hub.signIn();
+  assert.equal(s.hub.signIn(), true);
   assert.deepEqual(s.assigned, ["/chats/#signin-start&then=%2Fmarkets%2F%23s%3DTSCO"]);
   assert.deepEqual([...p.went, ...s.went], []);
 });
@@ -214,4 +216,22 @@ test("sent() says it in a toast; closed() and moved() do nothing yet, and say no
   assert.equal(toast.textContent, "Sent to Pat. You’re still here");
   assert.equal(p.doc.body.children.length, before + 1);
   assert.deepEqual(p.assigned, []);
+});
+
+test("off the hub, send, signIn, back, href and tabs do nothing: an app at its own address goes its own way, as it always has", async () => {
+  for (const h of ["https://weather.inflite.ai/#radar", "http://chat.localhost:8788/", "http://fitness.ifl.test:8788/#today", "https://inflite.ai/markets/"]) {
+    const p = page(h, { crumb: "/chats/#open=abc" });
+    assert.equal(await p.hub.send("London today: rain from 15:00", "eyJ2IjoxfQ", { to: "4f6c8d2e-1a3b-4c5d-8e9f-0a1b2c3d4e5f" }), false, `${h}: send says it did nothing`);
+    assert.equal(p.hub.signIn(), false, `${h}: signIn`);
+    assert.equal(p.hub.back(), false, `${h}: back`);
+    for (const [app, section] of [["weather", "radar"], ["chat", "open=abc"], ["today"], ["markets", "s=TSCO"]]) assert.equal(p.hub.href(app, section), null, `${h}: href ${app}`);
+    const nav = p.doc.createElement("nav"), mine = p.doc.createElement("a");
+    nav.append(mine);
+    assert.equal(p.hub.tabs(nav, "chats"), nav, `${h}: tabs gives back its element`);
+    assert.deepEqual(nav.children, [mine], `${h}: and leaves it as it was`);
+    assert.equal(nav.className, "", h);
+    assert.deepEqual(p.assigned, [], `${h}: nowhere gone`);
+    assert.deepEqual(p.went, [], h);
+    assert.equal(p.store.get("ifl-crumb"), "/chats/#open=abc", `${h}: the breadcrumb neither written nor taken`);
+  }
 });

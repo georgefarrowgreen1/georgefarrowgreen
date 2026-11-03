@@ -439,15 +439,21 @@ const IFL = (() => {
   //                      fitness. → /fitness/, finance. → /markets/, email. → /mail/, <site>/ → /; account., auth. and
   //                      any other site as they are (a test's site, ifl.test, the same way); off the hub, url as it is
   //   href(app, section) an app at a section: ("weather", "radar") → "/weather/#radar", ("markets", "s=TSCO") →
-  //                      "/markets/#s=TSCO", ("chat", "open=<id>") → "/chats/#open=<id>"
-  //   tabs(el, current)  Today · Chats · Apps · You, as links, into el; current (its key: today, chats, apps or you) marked
+  //                      "/markets/#s=TSCO", ("chat", "open=<id>") → "/chats/#open=<id>"; off the hub, null (the hub's
+  //                      paths aren't pages at an app's own address: the app links its own way, as it always has)
+  //   tabs(el, current)  Today · Chats · Apps · You, as links, into el; current (its key: today, chats, apps or you)
+  //                      marked; off the hub, el left as it is
   //   back()             back where you came from in the window (the breadcrumb, below), else to Apps; never history's
-  //                      own back (Mail keeps history of its own, and an app opened from a notification has none)
+  //                      own back (Mail keeps history of its own, and an app opened from a notification has none). → true;
+  //                      off the hub, nothing done: false
   //   chat()             Chat's engine (Chat's own page in a hidden frame, which sends a card without leaving): a promise
   //                      of it, or of null where there's none
-  //   send(words, packed, { to })   a card to a friend: the engine's sheet, else Chats' own, which comes back here after
+  //   send(words, packed, { to })   a card to a friend: the engine's sheet, else Chats' own, which comes back here after.
+  //                      → a promise of what the engine's sheet says, or true once it's gone to Chats'; off the hub, of
+  //                      false, nothing done (the app sends its own way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (said in a toast) or that its sheet's shut
-  //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here
+  //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
+  //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon's note that InFlite is one app now
   // The breadcrumb: where a page of the hub was left from, for its Back (Chat's pages send no Referer). Written, as the
   // page you're on (its path, ≤ 200 characters), by go and href to another page, the tabs and links to one; read once as
@@ -460,8 +466,9 @@ const IFL = (() => {
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
   const TABS = { today: ["Today", "/"], chats: ["Chats", "/chats/"], apps: ["Apps", "/#apps"], you: ["You", "/#you"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
-  // (a path of this site's: starts /, not //, no \, no more than 200 characters)
-  const ownPath = (p) => typeof p === "string" && p.length <= 200 && /^\/(?!\/)/.test(p) && !p.includes("\\");
+  // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
+  // "/\n/x" would be "//x"), no more than 200 characters)
+  const ownPath = (p) => typeof p === "string" && p.length <= 200 && /^\/(?!\/)/.test(p) && !/[\\\u0000-\u001f\u007f]/.test(p);
   const pageOf = (p) => { try { return new URL(p, location.origin).pathname; } catch (_) { return null; } };
   const store = () => { try { return sessionStorage; } catch (_) { return null; } };
   const crumb = () => { const p = location.pathname + location.hash; try { if (ownPath(p)) store()?.setItem(CRUMB, p); } catch (_) {} };
@@ -486,12 +493,13 @@ const IFL = (() => {
       return p;
     },
     href(app, section = "") {
+      if (!hub.on) return null;
       const s = String(section || ""), p = (HUB_APPS[app] || "/") + (!s ? "" : /^[#?]/.test(s) ? s : "#" + s);
-      if (hub.on && leaving(p)) crumb();
+      if (leaving(p)) crumb();
       return p;
     },
     tabs(el, current) {
-      if (!el) return el;
+      if (!el || !hub.on) return el;
       if (el.tagName !== "NAV") el.setAttribute("role", "navigation");
       el.setAttribute("aria-label", "InFlite");
       el.classList.add("ifl-tabs");
@@ -505,22 +513,29 @@ const IFL = (() => {
       return el;
     },
     back() {
+      if (!hub.on) return false;
       const to = cameFrom && pageOf(cameFrom) !== location.pathname ? cameFrom : "/#apps";
       try { store()?.removeItem(CRUMB); } catch (_) {}
       location.assign(to);
+      return true;
     },
     chat: () => Promise.resolve(null),
     send(words, packed, { to } = {}) {
+      if (!hub.on) return Promise.resolve(false);
       return hub.chat().then((c) => {
         if (c && c.state === "ready") return c.share(words, packed, { to });
         const card = typeof packed === "string" && /^[A-Za-z0-9_-]+$/.test(packed) ? "&card=" + packed : "";
         location.assign("/chats/#share=" + encodeURIComponent(String(words ?? "")) + card + "&back=" + encodeURIComponent(location.pathname + location.hash));
-        return null;
+        return true;
       });
     },
     sent(say) { if (say) toast(String(say)); },
     closed() {},
-    signIn() { location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash)); },
+    signIn() {
+      if (!hub.on) return false;
+      location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
+      return true;
+    },
     moved(app, { off } = {}) {},
   };
   // (a link to another of the hub's pages, followed: the breadcrumb, as the page is left, with where it was scrolled to)
