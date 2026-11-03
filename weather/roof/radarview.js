@@ -97,6 +97,8 @@ export function view(el, ctx) {
       if (dead || my !== card || r) return;
       if (off) off.hidden = true;
       r = lib.radar(card, { ...opts(), lat: p.lat, lon: p.lon, full: false, explore: true, light: fw.theme() === "light" });
+      // (the radar's handle on its card, for the tests and the console: card.radar.state())
+      card.radar = r;
       feed(true);
     })().catch((e) => {
       console.error(e);
