@@ -530,7 +530,7 @@ await part('Chats in the page', async () => {
   await ctx.close();
   // (Sign Out with Chats here: the core signs out (its marker) and is ended, then Chat's sign-in and kept chats go here
   // too; what you'd written, sealed, stays)
-  const o2 = await open({ apps: { weather: true, chats: true }, path: '/#you', setup: chatsFiles({ waiting: [] }) });
+  const o2 = await open({ apps: { weather: true, chats: true }, phone: true, path: '/#you', setup: chatsFiles({ waiting: [] }) });
   await o2.p.waitForSelector('#youOut');
   await o2.p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
   await seedApps(o2.p);

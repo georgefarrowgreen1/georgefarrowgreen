@@ -665,6 +665,7 @@ try {
   // Worker, opts.serviceState hears the state, one stub sheet opens and closes per opener file; ?state=locked starts
   // locked; with Chats off, /chats/ is still a page of its own (nothing changed for anyone)
   {
+    const CARD = { v: 1, kind: 'weather', from: 'weather', at: 1793750000000, say: 'Rain in Leeds from 15:00.', snap: { place: 'Leeds', tz: 'Europe/London', temp: 12, code: 61, isDay: true, rain: { now: true } } };
     const k = await kit({ path: '/?apps=weather,chats&service=stub&state=ready', phone: true }), p = k.p;
     await p.goto(KIT + '/chats/');
     await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('main#m-chats section.ch-sec'), null, { timeout: 15000 });
@@ -679,23 +680,28 @@ try {
     });
     same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, states: ['chats:ready'] },
       'F.service: the frozen seven-key facade, no call; fw.service: the full service, the same one; the stub core answers; opts.serviceState heard ready');
-    // (a tap (evaluate runs with one): sendTo gives the Send sheet; closed, it says so. No tap: roofcontract's unit case)
-    const tapped = await p.evaluate(async () => {
-      const f = await kit.F.service('chats'), r = f.sendTo('6c0f6f1e-0000-4000-8000-0000000000a1', 'A stand-in', null);
+    // (a tap (evaluate runs with one): sendTo to a friend whose key changed (Ali, the fixtures') gives the Send sheet;
+    // closed, it says so. No tap: roofcontract's unit case. A card that doesn't pass engineCard: refused, no sheet)
+    const tapped = await p.evaluate(async (card) => {
+      const { packCard } = await import('/chats/cards.js');
+      const f = await kit.F.service('chats'), bad = await f.sendTo('6c0f6f1e-0000-4000-8000-0000000000a1', 'A stand-in', null);
+      if (bad?.why !== 'card') return ['no card', bad];
+      const r = f.sendTo('6c0f6f1e-0000-4000-8000-0000000000a2', 'A stand-in', packCard({ ...card, at: Date.now() }));
       await new Promise((ok) => setTimeout(ok, 400));
       const open = !!document.querySelector('dialog.ifl-sheet[data-sheet=send][open]');
       kit.F.sheet.closeAll();
       return [open, await Promise.race([r, new Promise((ok) => setTimeout(() => ok('waiting'), 3000))])];
-    });
-    same(tapped, [true, { ok: false, why: 'no' }], 'facade.sendTo on a tap: the Send sheet (the stub’s); closed, { ok: false, why: "no" }');
+    }, CARD);
+    same(tapped, [true, { ok: false, why: 'no' }], 'facade.sendTo on a tap: no card → refused (card); to a changed key → the Send sheet; closed, { ok: false, why: "no" }');
     same(k.log.filter((x) => x.startsWith('/chats/roof/core.js')).length, 1, 'one Worker for the page (its script asked for once)');
     // (one stub sheet per opener file: each opens its data-sheet and closes)
     const OPENERS = [['list.js', 'openNewChat', 'newmsg'], ['friends.js', 'openRequests', 'requests'], ['sheets.js', 'openFriendInfo', 'friendinfo'], ['flight.js', 'openFlightLog', 'flightlog'],
       ['media.js', 'openGifs', 'gifs'], ['scan.js', 'openScan', 'scan'], ['settings.js', 'openChatSettings', 'chatsettings']];
     for (const [file, fn, name] of OPENERS) {
       const r = await p.evaluate(async ([file, fn]) => {
-        const fw = kit.F.forModule('chats'), svc = await fw.service(), m = await import(`/chats/roof/${file}`);
-        const h = m[fn]({ fw, svc, store: null, open: {} }, '6c0f6f1e-0000-4000-8000-0000000000a1');
+        const fw = kit.F.forModule('chats'), svc = await fw.service(), m = await import(`/chats/roof/${file}`), { createStore } = await import('/chats/roof/store.js');
+        const store = createStore(); svc.on('*', (x) => store.apply(x));
+        const h = m[fn]({ fw, svc, store, open: {} }, '6c0f6f1e-0000-4000-8000-0000000000a1');
         await new Promise((ok) => setTimeout(ok, 350));
         window.kitSheet = h;
         return !!h?.close;
@@ -704,14 +710,15 @@ try {
       await p.evaluate(() => window.kitSheet.close()); await settle(p, 500);
       ok(!(await p.isVisible(`${H.chSheet(name)}[open]`)), `${file} ${fn}: and closes`);
     }
-    const sent = await p.evaluate(async () => {
+    const sent = await p.evaluate(async (card) => {
+      const { packCard } = await import('/chats/cards.js');
       const fw = kit.F.forModule('chats'), svc = await fw.service(), m = await import('/chats/roof/send.js');
-      const r = m.openSend(fw, svc, { card: null, words: 'A stand-in', to: null });
+      const r = m.openSend(fw, svc, { card: packCard({ ...card, at: Date.now() }), words: 'A stand-in', to: null });
       await new Promise((ok) => setTimeout(ok, 350));
       const open = !!document.querySelector('dialog.ifl-sheet[data-sheet=send][open]');
       kit.F.sheet.closeAll();
       return [open, await r];
-    });
+    }, CARD);
     same(sent, [true, { ok: false, why: 'no' }], 'send.js openSend: its sheet (send) opens; closed, it resolves { ok: false, why: "no" }');
     await clean(k, 'Chats’ stub module and stub core');
     await k.ctx.close();

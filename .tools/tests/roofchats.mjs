@@ -40,7 +40,7 @@ const one = (q) => { try { return K.one(q); } catch (_) { return []; } };
 // ---- hooks: only roofhooks.mjs's; a missing one is named once and fails at the end (asked of B0, never invented) ----
 const MISSING = new Set();
 const hk = (name, ...a) => { const v = H[name]; if (v == null) { MISSING.add(name); return `[data-missing-hook="${name}"]`; } return typeof v === 'function' ? v(...a) : v; };
-const SAID = '#today .dt-said, #today .dw-said';       // TD's markup for Waiting's words (day.js), declared here as rooflib's EXCEPT are
+const SAID = '#today .dt-said, #today .dw-words';      // TD's markup for Waiting's words (day.js: the spec's .dw-said is .dw-words there), declared here as rooflib's EXCEPT are
 
 const at = (p, path, ms = 15000) => p.waitForFunction((u) => location.pathname + location.search + location.hash === u, path, { timeout: ms }).then(() => true, () => false);
 const chatsUp = async (p, ms = 30000) => (await shown(p, hk('M_CHATS'), ms)) && (await shown(p, hk('chSec', 'chats'), ms));
@@ -385,7 +385,8 @@ await part(10, 'budgets: the first Chats open and Today’s idle start', '§5.6,
   const today = meter(B.p, 'chats');
   await B.p.goto(`${HUB}/`); await todayUp(B.p); await wait(8000);
   const t = await today.report(); today.stop();
-  const ui = t.rows.filter((r) => CHAT_PAGE.test(r.path) && !/connector\.js$/.test(r.path));
+  // (cards.js and links.js are the core's graph as well as the page's: the Worker's are Today's idle start's, §5.6)
+  const ui = t.rows.filter((r) => CHAT_PAGE.test(r.path) && !/connector\.js$/.test(r.path) && !/^\/chats\/(cards|links)\.js$/.test(r.path));
   const idle = t.rows.filter((r) => CHAT_CORE.test(r.path) || /\/chats\/roof\/service\.js$/.test(r.path) || /\/chats\/(cards|links)\.js$/.test(r.path)).reduce((a, r) => a + r.gz, 0);
   ok(!ui.length, '10. Today’s idle start loads no Chats UI (service.js and the core graph only, §2.5)', js(ui.map((r) => r.path)));
   ok(idle > 0 && idle <= 58 * 1024, `10. Today’s idle start: service.js + the core graph ${(idle / 1024).toFixed(1)} KB gz (≤ 58, §5.6; the engine was ≈ 270)`, js(t.rows.map((r) => `${r.path} ${r.gz}`)));
@@ -428,7 +429,9 @@ await part(11, 'a new Chat build mid-session: stale, never reloaded over typed t
   await p.fill(hk('CH_INPUT'), SENT.typed);
   const life = await alive(p), docs = loads(p);
   newer = true;
-  // (a lazy sheet asks /chats/version beside its import: Friend Info, from the chat's Info act)
+  // (a lazy sheet asks /chats/version beside its import, at most once a minute (s24 §7): the chat's own lazy files asked
+  // as it opened, so a minute goes by first. Then Friend Info, from the chat's Info act)
+  await wait(61000);
   await p.click(hk('HD_INFO')).catch(() => {});
   await shown(p, H.SHEET_OPEN, 15000);
   await p.keyboard.press('Escape'); await gone(p, H.SHEET_OPEN);
@@ -443,6 +446,32 @@ await part(11, 'a new Chat build mid-session: stale, never reloaded over typed t
   docs.stop();
 });
 
+// (part 13 runs before 12 and 8: their phones share George's InFlite cookie, and each one's sign-in replaces the Chat
+// session handed to his first phone from that same account sign-in)
+// ======================================================================================================================
+await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Workers', 'S3-D3, risk I3, §9.5', async () => {
+// ======================================================================================================================
+  const p = G.p;
+  await p.goto(`${HUB}/chats/`); await chatsUp(p);
+  ok(workers(p).core === 1, '13. one Worker before', js(workers(p)));
+  const [st] = await chatApi(G.token, 'logout', {});
+  ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
+  // (the next sync while shown: 15 s; a hide and show asks sooner)
+  await hide(p); await wait(500); await show(p);
+  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
+  ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
+  const none = await until(() => workers(p).core === 0, 15000);
+  ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
+  ok(!(await engines(p)), '13. no engine made in its place (S3-D12)');
+  ok(!(await count(p, hk('CH_BUBBLE'))) && !(await p.evaluate((ws) => ws.some((w) => document.body.innerText.includes(w)), ALL)), '13. no message words left in the page');
+  await shot(p, '13-ended');
+});
+
+ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the missing ones asked of B0)', js([...MISSING]));
+// (the framework's pages and Chats under the roof; Chat's own page is Pat's and Leo's, its errors theirs)
+const all = everyone.filter((x) => !['pat', 'leo'].includes(x.name)).flatMap((x) => x.errs || []);
+ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
+ok(!all.length, 'no page error and no console error on any of George’s pages', js(all.slice(0, 8)));
 // ======================================================================================================================
 await part(12, 'CSP clean, axe, 390 light and dark', '§6.2, S1 §8.3', async () => {
 // ======================================================================================================================
@@ -479,30 +508,6 @@ await part(12, 'CSP clean, axe, 390 light and dark', '§6.2, S1 §8.3', async ()
   ok(!csp.length, '12. George’s page: no CSP refusal through every part', js(csp));
 });
 
-// ======================================================================================================================
-await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Workers', 'S3-D3, risk I3, §9.5', async () => {
-// ======================================================================================================================
-  const p = G.p;
-  await p.goto(`${HUB}/chats/`); await chatsUp(p);
-  ok(workers(p).core === 1, '13. one Worker before', js(workers(p)));
-  const [st] = await chatApi(G.token, 'logout', {});
-  ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
-  // (the next sync while shown: 15 s; a hide and show asks sooner)
-  await hide(p); await wait(500); await show(p);
-  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
-  ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
-  const none = await until(() => workers(p).core === 0, 15000);
-  ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
-  ok(!(await engines(p)), '13. no engine made in its place (S3-D12)');
-  ok(!(await count(p, hk('CH_BUBBLE'))) && !(await p.evaluate((ws) => ws.some((w) => document.body.innerText.includes(w)), ALL)), '13. no message words left in the page');
-  await shot(p, '13-ended');
-});
-
-ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the missing ones asked of B0)', js([...MISSING]));
-// (the framework's pages and Chats under the roof; Chat's own page is Pat's and Leo's, its errors theirs)
-const all = everyone.filter((x) => !['pat', 'leo'].includes(x.name)).flatMap((x) => x.errs || []);
-ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
-ok(!all.length, 'no page error and no console error on any of George’s pages', js(all.slice(0, 8)));
 // (part 8 runs last: its second phone shares George's InFlite cookie, so its sign-in there replaces the Chat session
 // handed to his first phone from the same account sign-in (the account's "last one it opened replaced"), which would
 // sign George's own phone out of Chats for every part after it)

@@ -112,7 +112,7 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
   R.off = false; R.fail = false;
   await route(R.ctx, /^http:\/\/ifl\.test:8788\/api\/hub(\?|$)/, async (r) => {
     if (!R.off) return r.continue();
-    const real = await r.fetch().then((x) => x.json()).catch(() => ({ ready: true, roof: true, apps: {} }));
+    const real = await r.fetch().then((x) => x.json()).catch(() => ({ ready: true, roof: true, apps: { weather: true } }));
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ ...real, apps: { ...(real.apps || {}), chats: false } }) });
   });
   await route(R.ctx, /^http:\/\/ifl\.test:8788\/chats\/roof\//, (r) => (R.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found' }) : r.continue()));
@@ -243,13 +243,15 @@ await part(4, 'the sign-in hop: /chats/#signin=… → /chats/in/; the trip roun
   const path = navs.map((u) => { const x = new URL(u); return x.host === 'ifl.test:8788' ? x.pathname + x.hash.replace(/=.*$/, '=…') : x.host; });
   const ins = path.filter((x) => x.startsWith('/chats/in/')).length;
   ok(home && ins >= 2 && (await chatsUp(T.p)) && (await shown(T.p, hk('chRow', P.id), 30000)), '4. the sign-in trip round: through /chats/in/ both ways, back at /chats/ under the roof, unlocked', js(path));
-  await T.ctx.close();
-  // /chats/in/ with a session and no sign-in under way: never the full app there (Back, a bookmark, Not Now)
+  // /chats/in/ with a session and no sign-in under way: never the full app there (Back, a bookmark, Not Now). On the trip's
+  // phone, whose Chat session is the live one: each phone of George's here shares his InFlite cookie, so each sign-in
+  // replaces the Chat session the one before had
   for (const [from, to] of [['/chats/in/', '/chats/'], [`/chats/in/#open=${P.id}`, `/chats/#open=${P.id}`]]) {
-    await p.goto(`${HUB}${from}`).catch(() => {});
-    const went = await at(p, to, 20000);
-    ok(went && (await count(p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(p));
+    await T.p.goto(`${HUB}${from}`).catch(() => {});
+    const went = await at(T.p, to, 20000);
+    ok(went && (await count(T.p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(T.p));
   }
+  await T.ctx.close();
   await p.goto(`${HUB}/chats/in/#account`).catch(() => {});
   await wait(4000);
   ok(new URL(p.url()).pathname === '/chats/in/' && !(await count(p, hk('M_CHATS'))), '4. /chats/in/#account stays Chat’s own page (Privacy & Security, S3-D8)', here(p));
