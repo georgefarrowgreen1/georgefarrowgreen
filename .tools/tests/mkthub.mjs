@@ -56,7 +56,9 @@ await ctx.addInitScript(() => {
 await p.evaluate(() => localStorage.setItem('fakesub', btoa('k'.repeat(65))));
 
 // ---- 1. a stock by the address: /markets/#s=TSCO.L ----
-await p.goto(HUB + '/markets/#s=TSCO.L');
+// (each opening by an address from blank, so it's a page loaded afresh, never a hash changed on the page that's there)
+const fresh = async (url) => { await p.goto('about:blank'); await p.goto(url); };
+await fresh(HUB + '/markets/#s=TSCO.L');
 await p.waitForSelector('#sheet .sname:has-text("Tesco")', { timeout: 30000 });
 await p.waitForSelector('#sheet .tool:has-text("Send in Chat")', { timeout: 20000 }); await settle(p, 900);
 await p.screenshot({ path: `${out}/1-stock.png` });
@@ -65,7 +67,7 @@ ok(await p.evaluate(() => location.hash) === '#today', 'and the address says the
 ok(await p.locator('.mhead .ifl-back').count() === 1 && await p.locator('.mhead .ifh-me').count() === 0, 'the menu button is Back at the hub');
 ok(await p.locator('.mhead .ifh-act[aria-label="Settings"]').count() === 1, 'and Markets’ own settings beside Find and Add');
 ok(await p.locator('.ifl-moved').count() === 0, 'at the hub, on the Home Screen: no “InFlite is one app now” card');
-ok(JSON.stringify(await p.evaluate(() => window.__badge)) === '[]', 'opened at the hub: the badge and the notifications left alone', JSON.stringify(await p.evaluate(() => window.__badge)));
+ok(JSON.stringify(await p.evaluate(() => window.__badge)) === '[]', 'opened at the hub: the badge and the notifications left alone', String(JSON.stringify(await p.evaluate(() => window.__badge))));
 const backBox = await p.locator('.mhead .ifl-back').boundingBox();
 ok(backBox && backBox.height >= 40 && backBox.width >= 44 && backBox.x >= 12, 'Back: a full-size control, inside the screen', JSON.stringify(backBox));
 
@@ -98,7 +100,7 @@ ok(new URL(viaChats).origin === HUB && q.get('share') === words && JSON.stringif
 
 // ---- 3. sections by the address, at opening ----
 for (const [hash, tab, title] of [['holdings', 'holdings', 'Holdings'], ['news', 'news', 'News']]) {
-  await p.goto(`${HUB}/markets/#${hash}`);
+  await fresh(`${HUB}/markets/#${hash}`);
   await p.waitForSelector(`.tab[data-tab="${tab}"][aria-current="page"]`, { timeout: 30000 }); await settle(p, 600);
   ok((await text(p, '.mhead .ifh-name')) === title && await p.evaluate(() => location.hash) === `#${hash}`, `/markets/#${hash}: opened on ${title}`, `${await text(p, '.mhead .ifh-name')} ${p.url()}`);
   await p.screenshot({ path: `${out}/3-${hash}.png` });
@@ -149,7 +151,7 @@ ok(await p.evaluate(() => !!localStorage.getItem('fakesub')), 'and the hub’s s
 await p.keyboard.press('Escape'); await settle(p, 500);
 
 // ---- 7. Back: where you came from, else Apps ----
-await p.goto(HUB + '/markets/#news'); await p.waitForSelector('.mhead .ifl-back'); await settle(p, 500);
+await fresh(HUB + '/markets/#news'); await p.waitForSelector('.mhead .ifl-back'); await settle(p, 500);
 await Promise.all([p.waitForURL((u) => u.pathname === '/' && u.hash === '#apps', { timeout: 20000 }), p.click('.mhead .ifl-back')]);
 ok(pathOf(p.url()) === '/#apps', 'opened straight (from nowhere in the window): Back goes to Apps', p.url());
 await p.goto(HUB + '/'); await settle(p, 1200);
@@ -163,7 +165,7 @@ ok(pathOf(p.url()) === fromAt, 'opened from Today: Back goes back to Today, wher
 
 // ---- 8. one window throughout ----
 ok(pages.length === 1, 'one window throughout: nothing opened beside it', String(pages.length));
-const away = navs.filter((u) => { const h = new URL(u).host; return h !== 'ifl.test:8788' && !/^(auth|account)\.ifl\.test:8788$/.test(h); });
+const away = navs.filter((u) => u !== 'about:blank').filter((u) => { const h = new URL(u).host; return h !== 'ifl.test:8788' && !/^(auth|account)\.ifl\.test:8788$/.test(h); });
 ok(!away.length, 'every page stayed at the hub', JSON.stringify(away));
 ok(!(await p.evaluate(() => window.__opened.length)), 'nothing asked for a new window');
 
