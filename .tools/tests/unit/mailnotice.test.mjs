@@ -13,7 +13,7 @@ import { db, hex, sha256 } from "../../../functions/_pigeon.js";
 import { onRequest } from "../../../functions/api/account/[[path]].js";
 import { mailNote, MAIL_WORDS } from "../../../functions/_mailapp.js";
 import { mailCard, cardOf, MAIL_CARD_MS } from "../../../functions/_todaymail.js";
-import { CARDS, LINES, tddb, todayPrefs, saveMorning } from "../../../functions/_today.js";
+import { CARDS, LINES, tddb, todayPrefs, savePrefs, saveMorning, todayExport } from "../../../functions/_today.js";
 import { timesReady } from "../../../functions/_fittimes.js";
 import { wxdb } from "../../../functions/_wxpush.js";
 import { fitdb } from "../../../functions/_fitness.js";
@@ -237,6 +237,16 @@ test("Mail's card on Today: the admin's alone, asked with the key, numbers only;
   const t = Date.now();
   assert.equal(await mailCard(env, { id: "gf" }), null);
   assert.ok(Date.now() - t < MAIL_CARD_MS + 400, `${Date.now() - t} ms`);
+  // (and a slow database, asked who the admin is: the same clock, from the moment the card's asked; Mail never asked)
+  mailSays = () => Response.json({ people: 3, updates: 5, later: { n: 0, next: null } });
+  const slow = { ...env, DB: { ...env.DB, prepare: (sql) => { const st = env.DB.prepare(sql); if (!/admin_user/.test(sql)) return st;
+    return { ...st, first: () => new Promise((done) => setTimeout(() => done(st.first()), MAIL_CARD_MS + 600)) }; } } };
+  asked = [];
+  const t2 = Date.now();
+  assert.equal(await mailCard(slow, { id: "gf" }), null);
+  assert.ok(Date.now() - t2 < MAIL_CARD_MS + 300, `${Date.now() - t2} ms`);
+  await new Promise((done) => setTimeout(done, 700));
+  assert.deepEqual(asked, [], "past its time, Mail's not asked after all");
   // (nothing in Later: no next said)
   assert.deepEqual(cardOf({ people: 0, updates: 0, later: { n: 0, next: t0 } }, "https://email.inflite.ai").later, { n: 0, next: null, href: "https://email.inflite.ai/#later" });
 });
@@ -256,6 +266,15 @@ test("Today's day: Mail's card among the cards and its line on Apps, where Mail 
   d = await dayFor(env, U, at, cards = {}, { tz: "Europe/London" });
   assert.equal(d.apps.mail, false);
   assert.ok(!("mail" in cards));
+  // (the card hidden in the admin's Edit: Mail not asked)
+  mailSays = () => Response.json({ people: 3, updates: 5, later: { n: 0, next: null } });
+  run("INSERT OR REPLACE INTO td_prefs (user_id, cards, updated) VALUES ('gf', ?, 1)", JSON.stringify({ order: ["weather", "chat", "fitness", "markets", "mail"], hidden: ["mail"] }));
+  asked = [];
+  d = await dayFor(env, U, at, cards = {}, { tz: "Europe/London" });
+  assert.equal(d.apps.mail, false);
+  assert.ok(!("mail" in cards));
+  assert.deepEqual(asked, []);
+  run("DELETE FROM td_prefs WHERE user_id = 'gf'");
   // (anyone else: Mail never asked)
   asked = [];
   d = await dayFor(env, { id: "bo", name: "bo", notify_prefs: "{}" }, at, cards = {}, { tz: "Europe/London" });
@@ -263,14 +282,30 @@ test("Today's day: Mail's card among the cards and its line on Apps, where Mail 
   assert.deepEqual(asked, []);
 });
 
-test("Mail a card of Today's (a saved order without it gets it at the end), never a line of the morning", async () => {
+test("Mail a card a saved order may name, never added to one (the account's page and data say the four), never a line of the morning", async () => {
   assert.deepEqual(CARDS, ["weather", "chat", "fitness", "markets", "mail"]);
   assert.deepEqual(LINES, ["weather", "chat", "fitness", "markets"]);
-  assert.deepEqual((await todayPrefs(env, "bo")).cards.order, CARDS);
+  run("DELETE FROM td_prefs WHERE user_id = 'bo'");
+  assert.deepEqual((await todayPrefs(env, "bo")).cards, { order: LINES, hidden: [] }, "a new account: the four, as before");
   run("INSERT OR REPLACE INTO td_prefs (user_id, cards, updated) VALUES ('bo', ?, 1)", JSON.stringify({ order: ["markets", "weather", "chat", "fitness"], hidden: [] }));
-  assert.deepEqual((await todayPrefs(env, "bo")).cards.order, ["markets", "weather", "chat", "fitness", "mail"]);
+  assert.deepEqual((await todayPrefs(env, "bo")).cards.order, ["markets", "weather", "chat", "fitness"], "a saved order of the four: Mail not added");
+  // (the account's own page, for anyone but the admin: the four, so its About Today sheet says "4 of 4", as before; and
+  // the account's data the same)
+  const me = await call("GET", "me", { cookie: bo });
+  assert.equal(me.s, 200);
+  assert.deepEqual(me.j.apps.today.order, ["markets", "weather", "chat", "fitness"]);
+  assert.equal(me.j.apps.today.order.length, 4);
+  assert.deepEqual(me.j.apps.today.hidden, []);
+  assert.deepEqual((await todayExport(env, "bo")).cards, { order: ["markets", "weather", "chat", "fitness"], hidden: [] });
+  // (where the admin's Edit saves Mail's place, or hides it, it's kept: Today's page puts a card the order doesn't name
+  // at its end)
+  let r = await savePrefs(env, "gf", { order: ["mail", "chat"], hidden: ["mail", "nope"] });
+  assert.deepEqual(r.cards, { order: ["mail", "chat", "weather", "fitness", "markets"], hidden: ["mail"] });
+  r = await savePrefs(env, "gf", { order: ["chat"], hidden: [] });
+  assert.deepEqual(r.cards, { order: ["chat", "weather", "fitness", "markets"], hidden: [] });
+  run("DELETE FROM td_prefs WHERE user_id = 'gf'");
   // (a line for Mail: not one the morning has)
-  const r = await saveMorning(env, "bo", { lines: { mail: false, chat: false } });
+  r = await saveMorning(env, "bo", { lines: { mail: false, chat: false } });
   assert.deepEqual(r.m_lines, { chat: false });
 });
 
@@ -314,7 +349,7 @@ test("Mail Notifications: Through InFlite from Today's own /api/notify, each add
       if (url === "https://email.inflite.ai/api/notify") { if (o.method === "PATCH") notify = JSON.parse(o.body).notify; return Response.json({ on: 1, addresses: [{ email: "hello@inflite.ai", name: "Hello", notify }, { email: "not an address", notify: true }] }); }
       return new Response("{}", { status: 404 });
     };
-    const F = { ui: fakeUi(), toast: (t) => toasts.push(t), session: { hub: true, apps: { mail: true } }, sheet: { openEl: (d) => { d.open = true; return { close() { d.open = false; } }; } } };
+    const F = { ui: fakeUi(), toast: (t) => toasts.push(t), session: { view: { apps: { mail: true } }, hub: true, apps: { mail: true } }, sheet: { openEl: (d) => { d.open = true; return { close() { d.open = false; } }; } } };
     const st = (mn.notifyTest.fetch = f, await mn.openMailNotify(F));
     assert.equal(sheet.open, true);
     assert.deepEqual(st.mine, { inflite: false, devices: 0 });
@@ -335,15 +370,43 @@ test("Mail Notifications: Through InFlite from Today's own /api/notify, each add
     assert.equal(addr.box.checked, false);
     // (Mail's switch off here: Mail never asked; the words that send you to Mail Settings, and Open Mail)
     sheet.open = false; seen.length = 0;
-    const off = (mn.notifyTest.fetch = f, await mn.openMailNotify({ ...F, session: { hub: true, apps: { mail: false } } }));
+    const off = (mn.notifyTest.fetch = f, await mn.openMailNotify({ ...F, session: { ...F.session, apps: { mail: false } } }));
     assert.deepEqual(seen.map((s) => s.url), ["/api/notify"]);
     assert.equal(off.mail, null);
     assert.ok(texts(body).includes("Choose which addresses notify you in Mail Settings."));
     assert.ok(body.kids.flatMap(flat).some((n) => n.tag === "btn" && n.text === "Open Mail"));
-    // (anyone but the admin: said so, nothing to switch)
+    // (Open Mail, with the sheet open already as it's asked (You's row opened it): put away, then Mail at its settings)
+    // (Mail's switch off here: the hub's framed /mail/, the page's own address; on, Mail's module, through nav.go)
+    const went = [];
+    globalThis.location.assign = (p) => went.push(["assign", p, sheet.open]);
+    const opened = { ...F, session: { ...F.session, apps: { mail: false } }, nav: { go: (p) => went.push(["go", p, sheet.open]) } };
+    sheet.open = true;
+    (mn.notifyTest.fetch = f, await mn.openMailNotify(opened));
+    body.kids.flatMap(flat).find((n) => n.tag === "btn" && n.text === "Open Mail").run();
+    sheet.open = true;
+    (mn.notifyTest.fetch = async (url, o) => (url === "/api/notify" ? f(url, o) : Response.json({ addresses: [] })), await mn.openMailNotify({ ...opened, session: F.session }));
+    body.kids.flatMap(flat).find((n) => n.tag === "btn" && n.text === "Open Mail").run();
+    assert.deepEqual(went, [["assign", "/mail/#settings", false], ["go", "/mail/#settings", false]], "the sheet closed before Mail's shown");
+    // (signed out meanwhile: Through InFlite's change answered 401 → the page's signed-out path, and the switch as it was)
     sheet.open = false;
-    (mn.notifyTest.fetch = async (url) => (url === "/api/notify" ? Response.json({ mail: null }) : new Response("{}", { status: 401 })), await mn.openMailNotify(F));
-    assert.ok(texts(body).includes(mn.WORDS.notAdmin));
+    let lost = 0;
+    const out = { ...F, session: { ...F.session, lost: async () => { lost++; return true; } } };
+    const st2 = (mn.notifyTest.fetch = async (url, o) => (o.method === "PATCH" ? Response.json({ error: "Sign in" }, { status: 401 }) : f(url, o)), await mn.openMailNotify(out));
+    const through = body.kids.flatMap(flat).find((n) => n.tag === "row" && n.title === "Through InFlite");
+    await through.onChange(!st2.mine.inflite);
+    assert.equal(lost, 1);
+    assert.equal(through.box.checked, st2.mine.inflite);
+    // (anyone but the admin, as Today's server said: said so, nothing to switch, no Open Mail)
+    sheet.open = false;
+    (mn.notifyTest.fetch = async (url) => (url === "/api/notify" ? Response.json({ mail: null }) : new Response("{}", { status: 401 })), await mn.openMailNotify({ ...F, session: { hub: true, apps: { mail: true } } }));
+    assert.deepEqual(texts(body), [mn.WORDS.notAdmin]);
+    // (and where the page knows it's not the admin (view.apps.mail false), even with Mail's switch on: nothing asked at
+    // all, of Mail or of Today (S4-D21))
+    sheet.open = false; seen.length = 0;
+    (mn.notifyTest.fetch = f, await mn.openMailNotify({ ...F, session: { view: { apps: { mail: false } }, hub: true, apps: { mail: true } } }));
+    assert.deepEqual(seen, []);
+    assert.equal(sheet.open, true);
+    assert.deepEqual(texts(body), [mn.WORDS.notAdmin]);
     assert.deepEqual(toasts, []);
   } finally { globalThis.location = was; delete globalThis.document; mn.notifyTest.fetch = null; }
 });

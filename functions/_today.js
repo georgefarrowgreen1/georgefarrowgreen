@@ -14,10 +14,12 @@ import { HttpError, sha256, b64url, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk } from "./_notify.js";
 import { timesExport, dropTimes } from "./_times.js";
 
-// the cards, in the order a new account has them (Mail's last: the site's admin's alone, whose card is drawn only for
-// them; a saved order without it gets it at the end, as any card missing from one does)
+// the cards a saved order may name (Mail's: the site's admin's alone, whose card is drawn only for them)
 export const CARDS = ["weather", "chat", "fitness", "markets", "mail"];
-// the morning notification's lines: the cards but Mail's, which is never a line of the morning (One roof stage 4, BI14)
+// the four every account has, in the order a new account has them, and the morning notification's lines: the cards but
+// Mail's, which is never a line of the morning (One roof stage 4, BI14) and never added to a saved order (Mail's card is
+// in one only where the admin's Edit saved it: the account's page and data say the four, as before; Today's page adds a
+// card missing from the order at its end)
 export const LINES = ["weather", "chat", "fitness", "markets"];
 // devices an account keeps (an eleventh drops the oldest), and the failures in a row that drop one
 const DEVICES = 10, FAILS = 5;
@@ -82,7 +84,7 @@ const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${Stri
 // (the cards in the account's order, those it doesn't know left out and any missing put at the end; and those it hid)
 function cardsOf(c) {
   const order = [...new Set((Array.isArray(c?.order) ? c.order : []).filter((k) => CARDS.includes(k)))];
-  return { order: [...order, ...CARDS.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
+  return { order: [...order, ...LINES.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
 }
 // (the lines turned off: false for each, nothing for one that's on)
 const linesOf = (l) => Object.fromEntries(LINES.filter((k) => l?.[k] === false).map((k) => [k, false]));

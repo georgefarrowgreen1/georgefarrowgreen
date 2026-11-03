@@ -192,7 +192,9 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   // what the cards need besides: each ride's weather, who's waiting, the held count, who wrote, Fitness's figures
   const doneToday = afterOf?.done || last?.done || dones[0] || null;
   const wantCtl = doneToday && doneToday.from === "fitness" && Number.isFinite(doneToday.tss);
-  // (and Mail's card, the admin's alone: numbers asked of Mail, 700 ms at most, functions/_todaymail.js; none, no card)
+  // (and Mail's card, the admin's alone: numbers asked of Mail, 700 ms at most from here, who the admin is included,
+  // functions/_todaymail.js; none, no card; and not asked at all where the account's Edit hid it)
+  const mailHidden = Array.isArray(g.row?.cards?.hidden) && g.row.cards.hidden.includes("mail");
   const [wxs, waiting, held, wrote, load, mail] = await Promise.all([
     Promise.all(matched.map((x) => (over(x) ? null : withDeadline(rideWx(env, u, x.ride, t), WX_MS).catch(() => null)))),
     soft(env, "waiting", waitingFor(env, u, t), []),
@@ -200,7 +202,7 @@ export async function dayFor(env, u, t, cards, opts = {}) {
     // (who wrote while you rode: from the ride's start to the activity's end)
     afterOf ? soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), []) : [],
     wantCtl ? soft(env, "load", loadOf(env, u.id, t), []) : [],
-    soft(env, "mail", mailCard(env, u, opts.request || null), null),
+    mailHidden ? null : soft(env, "mail", mailCard(env, u, opts.request || null), null),
   ]);
   // (Mail's card among the answer's cards, as the other four are: only where Mail answered)
   if (mail && cards && typeof cards === "object") cards.mail = mail;

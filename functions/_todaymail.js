@@ -36,21 +36,25 @@ export function cardOf(a, own) {
   return { state: "ok", href: `${own}/`, people, updates, later: { n, next: n ? next : null, href: `${own}/#later` } };
 }
 
+// (the whole of it on one clock, from the moment it's asked: who the admin is, then Mail; past MAIL_CARD_MS, no card,
+// however slow the database or Mail)
 export async function mailCard(env, u, request = null) {
   const key = typeof env?.MAIL_KEY === "string" ? env.MAIL_KEY : "";
   if (!key || !u?.id) return null;
-  const admin = await pigeon().then((m) => m.adminOf(env)).catch(() => null);
-  if (!admin || admin.id !== u.id) return null;
-  const own = appOrigin("email", env, request);
+  const until = Date.now() + MAIL_CARD_MS, ac = new AbortController();
   const ask = (async () => {
+    const admin = await pigeon().then((m) => m.adminOf(env)).catch(() => null);
+    if (!admin || admin.id !== u.id || ac.signal.aborted) return null;
+    const own = appOrigin("email", env, request);
     const res = await fetch(`${mailAt(env, request)}/api/connector/card`, {
-      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(MAIL_CARD_MS),
+      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" }, redirect: "manual",
+      signal: AbortSignal.any([ac.signal, AbortSignal.timeout(Math.max(1, until - Date.now()))]),
     });
     if (res.status !== 200 || !/^application\/json\b/i.test(res.headers.get("Content-Type") || "")) { res.body?.cancel?.().catch?.(() => {}); return null; }
     return cardOf(await res.json(), own);
   })();
-  // (however the fetch goes, never longer than its time)
+  // (however it goes, never longer than its time: then what's still asked is called off)
   let timer;
-  const late = new Promise((done) => { timer = setTimeout(() => done(null), MAIL_CARD_MS); });
+  const late = new Promise((done) => { timer = setTimeout(() => { ac.abort(); done(null); }, Math.max(0, until - Date.now())); });
   try { return await Promise.race([ask.catch(() => null), late]); } finally { clearTimeout(timer); }
 }

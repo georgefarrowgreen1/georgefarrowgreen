@@ -155,4 +155,19 @@ test("/mail/version: Mail's { build } through the root Worker, alone and never k
   }
   say = () => Response.json({ build: 1.5 });
   assert.deepEqual(await (await get("/mail/version")).json(), { build: 1.5 });
+  // (HEAD: Mail asked with a GET, as its answer's read here (a HEAD of Mail's has no body to read), and only this
+  // Worker's answer without one)
+  asked = [];
+  say = () => (asked.at(-1).method === "HEAD" ? new Response(null, { headers: { "Content-Type": "application/json" } }) : Response.json({ build: "1.49" }));
+  const head = await get("/mail/version", { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.match(head.headers.get("content-type"), /^application\/json/);
+  assert.equal(head.headers.get("cache-control"), "no-store");
+  assert.deepEqual(asked.map((a) => [a.url, a.method]), [[`${MAIL}/roof/version`, "GET"]]);
+  // (a file's HEAD stays a HEAD: nothing of its body's read here)
+  asked = [];
+  say = () => new Response(null, { headers: { "Content-Type": "text/javascript" } });
+  assert.equal((await get("/mail/roof/mail.js", { method: "HEAD" })).status, 200);
+  assert.equal(asked[0].method, "HEAD");
 });
