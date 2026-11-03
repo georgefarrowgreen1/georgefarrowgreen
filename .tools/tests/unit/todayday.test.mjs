@@ -220,6 +220,22 @@ test("16:50, riding: until unknown, messages held, the count held so far", async
   assert.ok(!d.upcoming.some((x) => x.id === "ride"), "the ride's under way, not coming up");
 });
 
+test("rides holding nothing anywhere (the off switch, RIDE_HOLD \"0\"): the ride never says messages are held, before it or during it, and holds nothing", async () => {
+  const off = { ...env, RIDE_HOLD: "0" };
+  let d = await dayFor(off, U, at(16, 50), cardsAt("riding"), { tz: LON });
+  assert.equal(d.phase, "riding");
+  const r = d.tops.riding;
+  assert.equal(r.chip, "Riding", "not “Riding · messages held”");
+  assert.ok(!r.lines.some((l) => /held/i.test(l)), lines(r));
+  assert.equal(d.ride.hold, false, "the ride holds nothing");
+  d = await dayFor(off, U, at(16, 5), cardsAt("preride"), { tz: LON });
+  assert.ok(!d.tops.preride.lines.some((l) => /held/i.test(l)), lines(d.tops.preride));
+  // (any other value is on, as rideHoldOn reads it)
+  d = await dayFor({ ...env, RIDE_HOLD: "1" }, U, at(16, 50), cardsAt("riding"), { tz: LON });
+  assert.equal(d.tops.riding.chip, "Riding · messages held");
+  assert.equal(d.ride.hold, true);
+});
+
 test("18:50 and 21:00 with nothing in for the ride: it says so (not in yet), in the top card and Coming Up, which keeps its row", async () => {
   let d = await day("midday", at(18, 50));
   assert.equal(d.phase, "midday"); assert.equal(d.since, at(18, 45), "the cap: back to the clock's phase");
