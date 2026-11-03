@@ -59,12 +59,13 @@ export const snapCell = (lat, lon) => [Math.round(lat * 20) / 20, Math.round(lon
 const span = (o) => { if (!isObj(o)) return null; const start = time(o.start), end = time(o.end); return start != null && end != null && end > start ? { start, end } : null; };
 // a time on a quarter hour (every zone's offset is whole quarter hours, so it's on one on every clock)
 const quarter = (v) => { const t = time(v); return t != null && t % (15 * MIN) === 0 ? t : null; };
-// the friends a ride is with: first names, each cut to 40, none twice, at most three (none: no list at all)
+// the friends a ride is with: first names only (a with card goes on to a third friend or a group, so never a surname;
+// as Chat's first()), each cut to 40, none twice, at most three (none: no list at all)
 function withOf(v) {
   if (!Array.isArray(v)) return null;
   const out = [];
   for (const x of v) {
-    const n = str(x, 40);
+    const n = str(x, 40).split(" ")[0];
     if (n && !out.some((y) => y.toLowerCase() === n.toLowerCase())) out.push(n);
     if (out.length >= WITH_MAX) break;
   }
@@ -184,8 +185,9 @@ export function laterPlan(plan, start) {
   return o ? { ...plan, start: o.start, end: o.end, dry: o.dry === true, opts: [] } : null;
 }
 // An answer: to a ride's invite by its letter's id (re, with the plan agreed: { re, a, plan? }), or to a time to talk by
-// its letter's id (id, with the time chosen where there is one: { id, a, start? }). An older Chat's check wants re, so
-// it leaves an answer to a time out and shows the words.
+// its letter's id (id, with the time chosen for a yes: { id, a, start? }; a "later" or a "no" names no time, as its
+// words say none: a new time is a new when, spec §8.4). An older Chat's check wants re, so it leaves an answer to a time
+// out and shows the words.
 export function normAns(x) {
   try {
     if (!isObj(x)) return null;
@@ -196,15 +198,17 @@ export function normAns(x) {
       return { re: x.re.toLowerCase(), a, ...(plan ? { plan } : {}) };
     }
     if (typeof x.re !== "string" && typeof x.id === "string" && UUID.test(x.id)) {
-      const start = a === "no" ? null : quarter(x.start);
+      const start = a === "yes" ? quarter(x.start) : null;
       return { id: x.id.toLowerCase(), a, ...(start != null ? { start } : {}) };
     }
     return null;
   } catch (_) { return null; }
 }
 // A time to talk (Today First, spec §8.4: "Call at 18:30?"): a call or a meeting, starting on a quarter hour, 15 to 240
-// whole minutes long, in a real zone (else none), with at most 3 other starts offered (each on a quarter hour, none
-// twice, none the first; a bad one is left out, never the time). → { kind, start, mins, tz?, opts: [start] } | null
+// whole minutes long (any whole minute: only the starts are on quarter hours, as the spec's "15-minute steps" are, and
+// Chat's server takes any length in whole minutes), in a real zone (else none), with at most 3 other starts offered
+// (each on a quarter hour, none twice, none the first; a bad one is left out, never the time).
+// → { kind, start, mins, tz?, opts: [start] } | null
 export function normWhen(x) {
   try {
     if (!isObj(x)) return null;
@@ -279,14 +283,15 @@ export function cardWords(card) {
 }
 const has = (v) => v != null;
 // What the letter's sealed payload is made of, each part checked on its own: a bad card, request, invite, time or answer
-// is simply left out, never the letter. (z, the padding, is ignored.) A time to talk is one to one only: in a group's
-// letter ({ group: true }) it, and an answer to one, are left out. Never throws.
+// is simply left out, never the letter. (z, the padding, is ignored.) A time to talk and the weather where a friend is
+// are one to one only: in a group's letter ({ group: true }) they, and an answer to a time, are left out. Never throws.
 export function payloadParts(p, { group = false } = {}) {
   const out = { t: "", card: null, ask: null, re: null, plan: null, ans: null, when: null };
   try {
     if (!isObj(p)) return out;
     out.t = typeof p.t === "string" ? p.t : "";
     out.card = has(p.c) ? normCard(p.c) : null;
+    if (group && out.card?.there) out.card = null;
     out.ask = out.card && has(p.ask) ? normAsk(p.ask, out.card) : null;
     out.re = has(p.re) ? normRe(p.re) : null;
     out.plan = has(p.plan) ? normPlan(p.plan) : null;
@@ -298,12 +303,16 @@ export function payloadParts(p, { group = false } = {}) {
 }
 // A payload to seal: always words (an older Chat shows only those), then whichever parts are good. Never r, k, p, v,
 // bad, unchecked, ph (old meanings) and no sealed type of its own. A time to talk (when, and an answer to one) only to
-// one friend: for a group ({ group: true }) they're left out.
-export function buildPayload({ t, card, ask, re, plan, ans, q, when, group = false } = {}) {
+// one friend: for a group ({ group: true }) they're left out. The weather where a friend is goes to that friend alone
+// (canForward's rule, held here too): it throws unless to is the card's own friend, and always for a group, so a place
+// is never sealed for anyone else, even by a caller that forgot to ask canForward (or built one payload for several).
+export const ONLY_FOR = "Only for the friend it’s about";
+export function buildPayload({ t, card, ask, re, plan, ans, q, when, to, group = false } = {}) {
   const words = typeof t === "string" ? t.trim() : "";
   if (!words) throw new Error("No words");
   const out = { t: words };
   const c = card ? normCard(card) : null;
+  if (c?.there && (group || !canForward(c, { mine: true, to }))) throw new Error(ONLY_FOR);
   if (c) out.c = c;
   const a = c && ask ? normAsk(ask, c) : null; if (a) out.ask = a;
   const r = re ? normRe(re) : null; if (r) out.re = r;

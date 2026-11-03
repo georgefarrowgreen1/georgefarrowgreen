@@ -158,7 +158,7 @@ test("every payload built and padded passes an older Chat's check, with no old k
     C.buildPayload({ t: "Just words" }),
     C.buildPayload({ t: "Call at 18:30?", when: when() }),
     C.buildPayload({ t: "Yes, 18:30 works.", ans: { id: UUID, a: "yes", start: when().start } }),
-    C.buildPayload({ t: "Norwich today.", card: there() }),
+    C.buildPayload({ t: "Norwich today.", card: there(), to: "leo" }),
     C.buildPayload({ t: "Riding with Leo.", card: withLeo() }),
   ];
   assert.ok(all.at(-4).when && all.at(-3).ans.id && all.at(-2).c.there && all.at(-1).c.snap.with, "each new part went in");
@@ -173,6 +173,7 @@ test("every payload built and padded passes an older Chat's check, with no old k
   assert.throws(() => C.buildPayload({}), /No words/);
   assert.equal(C.buildPayload({ t: "x", card: { kind: "bad" } }).c, undefined);
   assert.equal(C.buildPayload({ t: "x", ask: { kind: "weather" } }).ask, undefined, "no request without a card");
+  assert.throws(() => C.buildPayload({ t: "Norwich today.", card: there() }), /Only for the friend/, "the weather where Leo is: sealed only for Leo");
 });
 test("padPayload lands on 1024, 4096 and 8192 bytes exactly", () => {
   const bytes = (p) => new TextEncoder().encode(JSON.stringify(p)).length;
