@@ -900,7 +900,7 @@ async function start() {
       const j = r.ok ? await r.json() : null;
       if (j && Number.isFinite(j.lat)) addPlace({ name: j.name, region: j.region || "", lat: j.lat, lon: j.lon, approx: true });
     } catch (_) {}
-    if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276 });
+    if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276, ...(IFL.hub.on ? { standin: true } : {}) });
   }
   // (found, it's asked for already)
   if (!located) go();
@@ -3288,11 +3288,14 @@ async function adopt(r, here = false) {
   // (kept from before the account's id was: by its handle, unless that's been changed since and this device is still
   // among the account's)
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
-  // (at InFlite's hub, Weather's first open there: nothing of this device's own yet but the rough guess from the
-  // connection made as it opened, a stand-in, which is no reason to ask, nor anything to keep with the account; the
-  // account's places come in instead, as on any device of its own. Elsewhere, as ever)
-  const own = IFL.hub.on && fresh && !here && S.places.every((p) => p.gps || p.approx) ? { ...mine(), places: [] } : mine();
-  if (fresh && !here && own.places.length) {
+  // (at InFlite's hub, Weather's first open there, as the account's already signed in: the place it opened on as a
+  // stand-in (the rough guess from the connection, or London) is no reason to ask, nor anything to keep with the
+  // account, and nor is one the account has already (a notification's, say); asked only for a place of this device's
+  // own the account hasn't. Elsewhere, as ever)
+  const hubFirst = IFL.hub.on && fresh && !here, m = mine(), real = new Set(S.places.filter((p) => !p.gps && !p.approx && !p.standin).map(A.keyOf));
+  const theirs = new Set((r.data?.places || []).map(A.keyOf));
+  const own = hubFirst ? { ...m, places: m.places.filter((p) => real.has(A.keyOf(p))) } : m;
+  if (fresh && !here && (hubFirst ? own.places.some((p) => !theirs.has(A.keyOf(p))) : own.places.length)) {
     // (asked first; and the account this device was in step with till now, signed out of in this browser since, let go
     // of before it's asked, so nothing here goes to the one signed in now, nor its notifications come here, till it's
     // answered, and Settings no longer says it's signed in)
