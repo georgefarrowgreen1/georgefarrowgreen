@@ -90,7 +90,8 @@ stands in for the account only, and `/api/hub` (where `apps.chats` lives) is ans
   `tabs.js` itself on fakedom; `chatsProvider` run), `roofpage` 3 (the hop run on addresses, the swap run through
   `chatsSay`, release order in signOut, retired, lock, settings). Four frame mutations each turned a case red.
 - `node --check` every changed `.js`/`.mjs`: clean. IFL `npx wrangler deploy --dry-run`: ok.
-- e2e `./run.sh roofshell todayshell`: see the last lines below. Chats-on parts: roofshell "Chats in the page" (the tab
+- e2e `./run.sh roofshell todayshell` on the final merged state: **roofshell FAILS 0 (164 PASS), todayshell FAILS 0
+  (208 PASS)**. Chats-on parts: roofshell "Chats in the page" (the tab
   in the same document, a tab screen, Chats current, indigo the same on Today and Chats, no engine, one Worker; the
   `#signin=` hop to `/chats/in/`), todayshell "Chats in the page" (Waiting for You's words from the service, no
   iframe, one Worker, words gone when the core locks; Sign Out: core signed out before Chat's store cleared). The core
