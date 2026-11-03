@@ -212,7 +212,8 @@ aboutView.sheet = "mk-about";
 export function openAccount(ctx, name) { return openSheet(accountView, name); }
 export function openAbout(ctx) { return openSheet(aboutView); }
 
-export function view(sec, ctx) {
+export function view(el, ctx) {
+  const sec = el;
   const draw = (animate = true) => { keepFocus(() => sec.replaceChildren(h("div.mk-view", {}, holdingsView()))); afterDraw(sec, animate); };
   return {
     draw(animate) { redraw = () => draw(false); core.loadPaid(); draw(animate); },

@@ -149,7 +149,8 @@ export function openStory(ctx, id) {
   if (!n) { toast("That story isn’t in the news just now."); return null; }
   return openSheet(storyView, n);
 }
-export function view(sec, ctx) {
+export function view(el, ctx) {
+  const sec = el;
   return {
     draw(animate = true) { keepFocus(() => sec.replaceChildren(h("div.mk-view", {}, newsView()))); afterDraw(sec, animate); },
     hide() {},

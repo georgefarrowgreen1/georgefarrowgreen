@@ -6,7 +6,7 @@
 // view(el, ctx) → { draw(), patch(was), hide(), destroy() }: draw() draws it afresh from core.S; patch(was) takes new
 // prices in where they show (app.js refresh's part of the page: the total counted up, the day, the words, the line).
 import * as core from "./core.js";
-import { h, C, el, M, go, toast, openStock, viz, keepFocus, afterDraw } from "./mkui.js";
+import { h, C, el as $el, M, go, toast, openStock, viz, keepFocus, afterDraw } from "./mkui.js";
 
 const { S, INDICES, INDEX_NAMES, PRANGES, fmt, money, signed, pct, tone, priceSaid, plainSym, plural, valueOf, dayOf, divsOf, paidFor, totals, leftOutSaid, income, insights, daySeries, rangeSeries } = core;
 
@@ -33,7 +33,7 @@ function todayView() {
       h("span.kick", { text: c.kick }), h("h4", { text: c.h }), h("p", { text: c.p }), viz(c.viz))));
     const dots = h("div.dots", { role: "group", "aria-label": "Cards" }, cards.map((_, i) => h("button", { type: "button", "aria-label": `Card ${i + 1} of ${cards.length}`,
       onclick: () => box.scrollTo({ left: i * (box.firstElementChild.offsetWidth + 12), behavior: C.still() ? "auto" : "smooth" }) }, h("i", { class: i ? null : "on" }))));
-    box.addEventListener("scroll", () => { const w = box.firstElementChild.offsetWidth + 12, i = Math.round(box.scrollLeft / w); [...dots.children].forEach((d, k) => d.firstChild.classList.toggle("on", k === i)); const n = el("cardn"); if (n) n.textContent = `${i + 1} of ${cards.length}`; }, { passive: true });
+    box.addEventListener("scroll", () => { const w = box.firstElementChild.offsetWidth + 12, i = Math.round(box.scrollLeft / w); [...dots.children].forEach((d, k) => d.firstChild.classList.toggle("on", k === i)); const n = $el("cardn"); if (n) n.textContent = `${i + 1} of ${cards.length}`; }, { passive: true });
     parts.push(box, cards.length > 1 ? dots : null);
   }
   const movers = [...S.list].filter((x) => S.q[x.symbol]).sort((a, b) => Math.abs(S.q[b.symbol].chgPct ?? 0) - Math.abs(S.q[a.symbol].chgPct ?? 0)).slice(0, 4);
@@ -96,7 +96,7 @@ function portfolioBox() {
     if (portfolioChart.pts) await C.tween(rs(portfolioChart.pts), rs(pts), 700, (p) => { line.setAttribute("d", C.smooth(p)); fill.setAttribute("d", C.area(p, 150)); });
     portfolioChart.pts = pts; portfolioChart.raw = { pts, s, r };
     // (and what's said over it: the change over the range, and who did it)
-    const ch = s.vals.at(-1) - s.base, chp = s.base ? (ch / s.base) * 100 : 0, pd = el("pd"), pp = el("pp"), ps = el("ps"), say = el("say");
+    const ch = s.vals.at(-1) - s.base, chp = s.base ? (ch / s.base) * 100 : 0, pd = $el("pd"), pp = $el("pp"), ps = $el("ps"), say = $el("say");
     if (pd) { pd.textContent = signed(ch); pd.className = tone(ch); pp.textContent = pct(chp); pp.className = tone(ch); ps.textContent = PRANGES.find((x) => x[0] === r)[2]; }
     if (say) say.replaceChildren(...(r === "1d" ? daySaid(totals()) : rangeSaid(s, r)));
   };
@@ -184,7 +184,8 @@ function openInsight(c) {
 // the portfolio's Send: its day in percent, never an amount (core.portfolioSend)
 const sendBtn = () => M.fw.ui.btn("Send", { icon: "send", act: "send", small: true, label: "Send your portfolio’s day to a friend", run: () => { const s = core.portfolioSend(); if (s) M.fw.send(s); else toast("Nothing priced to send just now.", true); } });
 
-export function view(sec, ctx) {
+export function view(el, ctx) {
+  const sec = el;
   let zoomed = false;
   return {
     draw(animate = true) {
@@ -195,13 +196,13 @@ export function view(sec, ctx) {
     },
     // new prices: the total counted from where it was, the day, the words and the day's line reshaped (app.js 2920-2935)
     patch(was) {
-      const T = totals(), wasT = was ? totalsWith(was) : null, pv = el("pv");
+      const T = totals(), wasT = was ? totalsWith(was) : null, pv = $el("pv");
       if (!pv || !wasT || Math.abs(T.value - wasT.value) <= 0.004) return;
       C.count(wasT.value, T.value, 700, (v) => { const [a, b] = fmt(v).split("."); pv.replaceChildren(`£${a}`, h("span.p", { text: "." + b })); });
-      const pd = S.prange === "1d" && el("pd"), pp = el("pp");
+      const pd = S.prange === "1d" && $el("pd"), pp = $el("pp");
       if (pd) { pd.textContent = signed(T.day); pd.className = tone(T.day); pp.textContent = pct(T.dayPct); pp.className = tone(T.day); }
-      const say = S.prange === "1d" && el("say"); if (say) say.replaceChildren(...daySaid(T));
-      const svg = S.prange === "1d" && el("pchart"), line = svg?.querySelector("path[data-draw]"), fill = svg?.querySelectorAll("path")[0], s = daySeries();
+      const say = S.prange === "1d" && $el("say"); if (say) say.replaceChildren(...daySaid(T));
+      const svg = S.prange === "1d" && $el("pchart"), line = svg?.querySelector("path[data-draw]"), fill = svg?.querySelectorAll("path")[0], s = daySeries();
       if (line && s && portfolioChart.pts) {
         const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
         const n = Math.max(pts.length, portfolioChart.pts.length), rs = (p) => C.resample(p.map((x) => x[0]), n).map((x, i) => [x, C.resample(p.map((y) => y[1]), n)[i]]);
