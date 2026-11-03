@@ -198,14 +198,16 @@ ok((await pushesTo(george, since)).length === 0, 'and only once');
 
 // ---- 8. Pat's ride has no activity: what was held is told at its cap ----
 ok((await pushesTo(pat)).length === 0, 'Pat: still held, an hour and 40 minutes in and more');
-// (as if the ride had begun a little earlier, so its cap fell just after Mira's message and has passed now: the
+// (as if the ride had begun a little earlier, so its cap fell a second after Mira's message and has passed now: the
 // server's clock is never moved, and the message stays where it was)
 const mAt = rows(`SELECT deliver_at FROM pg_msgs WHERE id = '${mp}'`)[0].deliver_at;
-rideAt(pat, mAt + 30e3 - 2 * H);
+rideAt(pat, mAt + 1000 - 2 * H);
+if (Date.now() < mAt + 2000) await wait(mAt + 2000 - Date.now());
 since = Date.now();
-await chatTick();
+r = await chatTick();
 const capped = said(await pushesTo(pat, since));
-ok(capped.length === 1 && capped[0] === 'chat: Mira · Sent you a message while you rode.', 'Pat: told at the cap, “while you rode”', JSON.stringify(capped));
+ok(capped.length === 1 && capped[0] === 'chat: Mira · Sent you a message while you rode.', 'Pat: told at the cap, “while you rode”',
+  `${JSON.stringify(capped)} tick ${JSON.stringify(r.j)} now ${Date.now()} message ${JSON.stringify(rows(`SELECT deliver_at, notified_at, read_at FROM pg_msgs WHERE id = '${mp}'`))} rides ${JSON.stringify(rows(`SELECT day, start, stop FROM fx_times WHERE user_id = '${pat.id}'`))} since ${JSON.stringify(rows("SELECT v FROM pg_meta WHERE k = 'notify_since'"))}`);
 
 console.log(`FAILS ${fails}`);
 process.exit(0);
