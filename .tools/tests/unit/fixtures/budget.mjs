@@ -10,9 +10,17 @@ import { gzipSync } from 'node:zlib';
 import { createRequire } from 'node:module';
 import { MAIN, ROOF, fileOf } from './roof.mjs';
 
-const { transformSync } = createRequire(new URL('.tools/tests/package.json', MAIN))('esbuild');
+// (esbuild from the tests' own packages, asked for only when a size is measured: GitHub's unit job doesn't install them,
+// and the rest of this file (the graph, NET) needs nothing but node)
+let esb = null;
+const transform = () => { if (esb === null) { try { esb = createRequire(new URL('.tools/tests/package.json', MAIN))('esbuild').transformSync; } catch { esb = false; } } return esb; };
+export const haveEsbuild = () => !!transform();
 // (minify.mjs's options, exactly)
-export const minified = (src, css = false) => transformSync(String(src), { loader: css ? 'css' : 'js', minifyWhitespace: true, minifySyntax: true, legalComments: 'none', charset: 'utf8' }).code;
+export const minified = (src, css = false) => {
+  const t = transform();
+  if (!t) throw new Error("esbuild isn't installed (cd .tools/tests && npm ci)");
+  return t(String(src), { loader: css ? 'css' : 'js', minifyWhitespace: true, minifySyntax: true, legalComments: 'none', charset: 'utf8' }).code;
+};
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
 export const NET = Object.freeze({
   weather: [/^\/weather\/(radar|radarmix|mapstyle|mapgl|mapleaf|rainmap|radarrain)\.js$/, /^\/weather\/vendor\//],

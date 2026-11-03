@@ -9,14 +9,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { MAIN, ROOF, roofSkip, appsSkip } from './fixtures/roof.mjs';
-import { staticGz } from './fixtures/budget.mjs';
+import { staticGz, haveEsbuild } from './fixtures/budget.mjs';
 
 const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40, css: 12 }, fitness: { js: 85, css: 22 } };
 const stubbed = (rel) => existsSync(new URL(rel, MAIN)) && /^export const STUB = true;/m.test(readFileSync(new URL(rel, MAIN), 'utf8'));
 const kib = (n) => `${n.toFixed(1)} KB`;
 
 for (const [app, b] of Object.entries(BUDGET)) {
-  const skip = (app === 'weather' ? roofSkip : appsSkip) || (!existsSync(new URL(`${app}/roof/${app}.js`, MAIN)) && `no ${app}/roof/${app}.js yet`);
+  const skip = (app === 'weather' ? roofSkip : appsSkip) || (!existsSync(new URL(`${app}/roof/${app}.js`, MAIN)) && `no ${app}/roof/${app}.js yet`)
+    || (!haveEsbuild() && "esbuild isn't installed here (.tools/tests: npm ci), so sizes can't be measured as served");
   test(`${app}: first open within its budget (JS ≤ ${b.js} KB, CSS ≤ ${b.css} KB gzip, minified as served)`, { skip }, async (t) => {
     const g = await staticGz(app);
     const stubs = Object.keys(g.each).filter((p) => p.endsWith('.js') && stubbed(p.slice(1)));
