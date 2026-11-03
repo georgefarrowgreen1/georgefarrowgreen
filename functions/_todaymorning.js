@@ -306,7 +306,12 @@ async function tick(env, t, used) {
       // the day's plan first (Today's acts: functions/_todayacts.js), so the notification can say what Today did; its
       // statements the compose's, counted with them. One that fails gives its day back (a later turn, or Today's page,
       // plans it), and the morning's composed all the same
-      await (tickTest.plan || planDay)(use, u, t).catch((e) => { if (!box.refused) console.error("today tick: plan", e && e.message); });
+      await (tickTest.plan || planDay)(use, u, t).catch(async (e) => {
+        if (!box.refused) return console.error("today tick: plan", e && e.message);
+        // (stopped by the tick's share part way: its own giving back was refused too, so the day's given back here, for
+        // the next turn to plan)
+        await env.DB.prepare("DELETE FROM td_plans WHERE user_id = ? AND day = ? AND at = ?").bind(u.id, day, t).run().catch(() => {});
+      });
       return (tickTest.compose || composeMorning)(use, u, row, t, { memo });
     })()
       .catch((e) => { if (!box.refused) console.error("today tick: compose", e && e.message); return null; })
