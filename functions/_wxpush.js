@@ -523,7 +523,7 @@ async function tick(env, D, t, origin, until = Infinity) {
   // (and an account on a ride it planned, whose rule holds apps' notifications, at do or suggest (functions/_busy.js): its
   // devices' rain and sun aren't sent while it rides, nor kept to be told after ("rain in 10 minutes" is wrong by the time
   // the ride's done): the first tick after says what's true then. Warnings, and the briefing at its time, still come)
-  const busy = quiets.length ? await busyMap(D, quiets.map((q) => q.user_id), t).catch(() => new Map()) : new Map();
+  const busy = quiets.length ? await busyMap(D, quiets.map((q) => q.user_id), t, env).catch(() => new Map()) : new Map();
   for (const q of quiets) if (holdsFor(busy.get(q.user_id), "apps")) held.add(q.dev);
   for (const s of subs) s.held = held.has(s.dev);
   // (an account whose morning comes from InFlite Today, on a device of its: its devices' briefing is in that

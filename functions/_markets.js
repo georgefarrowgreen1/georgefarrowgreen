@@ -816,7 +816,7 @@ export async function alertTick(env, t = Date.now()) {
 // account's hold rule's record. → the Set of the accounts riding
 async function heldBack(env, D, due, t, mark) {
   if (!due.length) return new Set();
-  const busy = await busyMap(D, due.map((r) => r.user_id), t).catch(() => new Map());
+  const busy = await busyMap(D, due.map((r) => r.user_id), t, env).catch(() => new Map());
   const riding = new Set(due.filter((r) => holdsFor(busy.get(r.user_id), "apps")).map((r) => r.user_id));
   if (!riding.size) return riding;
   const held = due.filter((r) => riding.has(r.user_id)), got = await D.batch(held.map(mark)).catch(() => []);

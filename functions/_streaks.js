@@ -78,7 +78,7 @@ export async function streakTick(env, D, t) {
   const { results } = await D.prepare(`SELECT s.*, ua.name AS a_name, ua.notify_prefs AS a_prefs, ua.pigeons AS a_pigeons, ub.name AS b_name, ub.notify_prefs AS b_prefs, ub.pigeons AS b_pigeons
     FROM pg_streaks s JOIN pg_users ua ON ua.id = s.a JOIN pg_users ub ON ub.id = s.b
     WHERE s.last = ?1 AND s.last - s.start + 1 >= ?2 AND COALESCE(s.warned, -1) < s.last LIMIT 200`).bind(today - 1, STREAK_MIN).all();
-  const busy = results.length ? await busyMap(env.DB || D, results.flatMap((r) => [r.a, r.b]), t).catch(() => new Map()) : new Map();
+  const busy = results.length ? await busyMap(env.DB || D, results.flatMap((r) => [r.a, r.b]), t, env).catch(() => new Map()) : new Map();
   for (const r of results) {
     const claimed = await D.prepare("UPDATE pg_streaks SET warned = ?1 WHERE a = ?2 AND b = ?3 AND COALESCE(warned, -1) < ?1").bind(r.last, r.a, r.b).run();
     if (!claimed.meta.changes) continue;

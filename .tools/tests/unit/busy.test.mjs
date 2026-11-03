@@ -1,15 +1,17 @@
 // Holding a person's notifications while they ride (Today First, spec §8.7, functions/_busy.js), against a database of
 // its own (Node's SQLite, made to look like D1): who's riding, from explicit rides only (an fx_times row, an offer added
 // in Fitness or kept with a tap; never a habit ride Today added by itself, nor a plan agreed in Chat and not yet added);
-// held from 10 minutes before the start until an activity (in any of the three tables) or the cap; the account's level
-// (do holds friends and apps, suggest apps only, quiet nothing); the tables not made yet; the hold rule's record and
-// what's waiting now. And the apps: Weather's rain and sun not sent during a ride and not told after (warnings always
-// come); Markets' alert held, counted once, and told after. (Chat's own, the messages, groups and reactions held and
-// told "while you rode", are in instant.test.mjs, beside the rest of Chat's notifications.)
+// held from 10 minutes before the start until an activity (in any of the three tables) or the cap, and what's told after
+// held only until the activity came in; the account's level (do holds friends and apps, suggest apps only, quiet
+// nothing); the tables not made yet, and what's found of them kept (the whole statement for good, one trip a call);
+// the off switch (RIDE_HOLD "0"); the hold rule's record and what's waiting now. And the apps: Weather's rain and its
+// sun on a roof not sent during a ride (nor the rain told after; warnings always come); Markets' alert held, counted
+// once, and told after. (Chat's own, the messages, groups and reactions held and told "while you rode", are in instant.test.mjs,
+// beside the rest of Chat's notifications.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { busyMap, busyNow, heldCount, heldAdd, holdsFor, holdsAt, heldMark, HOLD_EARLY, HOLD_DONE } from "../../../functions/_busy.js";
+import { busyMap, busyNow, heldCount, heldAdd, holdsFor, holdsAt, heldMark, rideHoldOn, HOLD_EARLY, HOLD_DONE } from "../../../functions/_busy.js";
 import { db } from "../../../functions/_pigeon.js";
 import { fitdb } from "../../../functions/_fitness.js";
 import { offersReady } from "../../../functions/_fitshare.js";
@@ -57,9 +59,10 @@ const ride = (u, start, len = H) => run("INSERT INTO fx_times (user_id, day, sta
 // an offer (fx_offers): role asked | answered | today, state new | yes | pending, taken by a tap or not
 const offer = (u, start, { role = "asked", state = "yes", taken = 0, secs = 3600, hours = 1 } = {}) => run(`INSERT INTO fx_offers (user_id, id, start, stop, tz, sport, wid, name, secs, who, role, state, made, until, taken)
   VALUES (?, ?, ?, ?, 'Europe/London', 'ride', 'w1', 'Endurance', ?, 'Leo', ?, ?, ?, ?, ?)`, u, crypto.randomUUID(), start, start + hours * H, secs, role, state, start - D, start + hours * H + 12 * H, taken);
-const act = (table, u, start) => table === "fx_acts"
-  ? run("INSERT INTO fx_acts (user_id, id, start, sport, type, size, added) VALUES (?, ?, ?, 'ride', 'fit', 1, ?)", u, crypto.randomUUID(), start, start)
-  : run(`INSERT INTO ${table} (user_id, id, start, name, added) VALUES (?, ?, ?, 'Ride', ?)`, u, crypto.randomUUID(), start, start);
+// (an activity: when it started, and when it came in, added: as it started, unless it's said)
+const act = (table, u, start, added = start) => table === "fx_acts"
+  ? run("INSERT INTO fx_acts (user_id, id, start, sport, type, size, added) VALUES (?, ?, ?, 'ride', 'fit', 1, ?)", u, crypto.randomUUID(), start, added)
+  : run(`INSERT INTO ${table} (user_id, id, start, name, added) VALUES (?, ?, ?, 'Ride', ?)`, u, crypto.randomUUID(), start, added);
 const level = (u, lv) => run("INSERT INTO td_rules (user_id, rule, level) VALUES (?, 'holdRide', ?) ON CONFLICT(user_id, rule) DO UPDATE SET level = excluded.level", u, lv);
 
 const T = Date.UTC(2026, 10, 5, 16, 0);          // (Thursday 5 November, 16:00 in London)
@@ -130,21 +133,83 @@ test("the account's level: do holds friends and apps, suggest apps only, quiet n
   assert.deepEqual([holdsFor(null, "friends"), holdsFor(undefined, "apps")], [false, false], "not riding: nothing held");
 });
 
-test("tables not made yet: nothing held and no failure; then each part read as it's there (try, then narrow)", async () => {
+test("tables not made yet: nothing held and no failure; then each part read as it's there (try, then narrow), from the first call after it's made", async () => {
   const bare = d1();
   assert.deepEqual(await busyMap(bare, ["a"], T), new Map(), "no Fitness tables at all");
   // (ride times alone: no offers, no activities, no rules: level do)
   bare.sql.exec("CREATE TABLE fx_times (user_id TEXT NOT NULL, day TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL DEFAULT 'ride', source TEXT NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (user_id, day))");
-  bare.sql.prepare("INSERT INTO fx_times VALUES ('a', ?, ?, ?, 'UTC', 'ride', 'set', 0)").run(dayOf(T), T, T + H);
-  assert.deepEqual((await busyMap(bare, ["a"], T)).get("a"), { until: T + 2 * H, level: "do", rideStart: T });
-  // (an fx_offers from before Today First, without taken: its rows can't be told explicit, so they're left out)
+  for (const u of ["a", "g"]) bare.sql.prepare("INSERT INTO fx_times VALUES (?, ?, ?, ?, 'UTC', 'ride', 'set', 0)").run(u, dayOf(T), T, T + H);
+  assert.deepEqual((await busyMap(bare, ["a"], T)).get("a"), { until: T + 2 * H, level: "do", rideStart: T }, "read as soon as it's there");
+  // (an fx_offers from before Today First, without taken: one agreed in Chat and added in Fitness, asked or answered at
+  // yes, is explicit without it; one Today added can't be told kept or not, so it's left out)
   bare.sql.exec("CREATE TABLE fx_offers (user_id TEXT, id TEXT, start INTEGER, stop INTEGER, secs INTEGER, role TEXT, state TEXT)");
-  bare.sql.prepare("INSERT INTO fx_offers VALUES ('b', 'o', ?, ?, 3600, 'asked', 'yes')").run(T, T + H);
-  assert.deepEqual([...(await busyMap(bare, ["a", "b"], T)).keys()], ["a"]);
-  // (an activity arrives, its table made just then)
+  for (const [u, role, state] of [["b", "asked", "yes"], ["c", "today", "yes"], ["d", "answered", "yes"], ["e", "asked", "new"]]) bare.sql.prepare("INSERT INTO fx_offers VALUES (?, 'o', ?, ?, 3600, ?, ?)").run(u, T, T + H, role, state);
+  assert.deepEqual([...(await busyMap(bare, ["a", "b", "c", "d", "e"], T)).keys()].sort(), ["a", "b", "d"]);
+  // (an activity arrives, its table made just then; and one in a table without added, an old Garmin one say: it ends the
+  // hold, and when it came in isn't known, so what's told after says held until the cap)
   bare.sql.exec("CREATE TABLE fx_strava_new (user_id TEXT, id TEXT, start INTEGER, added INTEGER)");
-  bare.sql.prepare("INSERT INTO fx_strava_new VALUES ('a', 's', ?, ?)").run(T + MIN, T + H);
-  assert.equal((await busyMap(bare, ["a"], T + 2 * MIN)).get("a"), undefined, "its activity read as soon as its table's there");
+  bare.sql.prepare("INSERT INTO fx_strava_new VALUES ('a', 's', ?, ?)").run(T + MIN, T + 2 * MIN);
+  bare.sql.exec("CREATE TABLE fx_garmin_new (user_id TEXT, id TEXT, start INTEGER)");
+  bare.sql.prepare("INSERT INTO fx_garmin_new VALUES ('g', 'x', ?)").run(T + MIN);
+  assert.deepEqual([...(await busyMap(bare, ["a", "g"], T + 3 * MIN)).keys()], [], "their activities read as soon as their tables are there");
+  const view = holdsAt(bare, T + 3 * MIN);
+  await view.load(["a", "g"]);
+  assert.deepEqual([view.rode("a", T + MIN), view.rode("a", T + 2.5 * MIN)], [true, false], "held until it came in");
+  assert.equal(view.rode("g", T + 3 * MIN - 1), true, "held until the cap, as far as anyone can tell");
+});
+
+// (a database that counts its trips: each statement asked on its own one, a batch of them one)
+function counted(d) {
+  const c = { n: 0 }, wrap = (st) => ({ ...st, bind: (...a) => wrap(st.bind(...a)), all: () => (c.n++, st.all()), first: (x) => (c.n++, st.first(x)), run: () => (c.n++, st.run()) });
+  return { c, D: { ...d, prepare: (q) => wrap(d.prepare(q)), batch: (l) => (c.n++, d.batch(l)) } };
+}
+test("what's found is kept for the database: the whole statement, once it's worked, for good, one trip; else one trip that also looks again for what's missing", async () => {
+  const { c, D: bare } = counted(d1()), sql = (q) => bare.sql.exec(q);
+  const trips = async (t, ids = ["a"]) => { const was = c.n; await busyMap(bare, ids, t); return c.n - was; };
+  assert.equal(await trips(T), 2, "nothing there: the whole statement tried, then the six tables looked up (nothing to read)");
+  assert.equal(await trips(T + 1), 1, "then one: the tables looked for again");
+  assert.equal(await busyNow({ DB: bare }, "a", T + 2), null);
+  sql("CREATE TABLE fx_times (user_id TEXT NOT NULL, day TEXT NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL, tz TEXT NOT NULL, sport TEXT NOT NULL DEFAULT 'ride', source TEXT NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (user_id, day))");
+  bare.sql.prepare("INSERT INTO fx_times VALUES ('a', ?, ?, ?, 'UTC', 'ride', 'set', 0)").run(dayOf(T), T, T + H);
+  let was = c.n;
+  assert.ok((await busyMap(bare, ["a"], T + 3)).get("a"), "a table made since: read by the first call that finds it");
+  assert.equal(c.n - was, 2, "(found in the one trip, then asked again with it)");
+  assert.equal(await trips(T + 4), 1, "then one trip: the statement, and what's still missing looked for beside it");
+  // every table there: the whole statement, kept for good
+  sql(`CREATE TABLE fx_offers (user_id TEXT, id TEXT, start INTEGER, stop INTEGER, secs INTEGER, role TEXT, state TEXT, taken INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE td_rules (user_id TEXT, rule TEXT, level TEXT, held INTEGER);
+    CREATE TABLE fx_acts (user_id TEXT, id TEXT, start INTEGER, added INTEGER); CREATE TABLE fx_garmin_new (user_id TEXT, id TEXT, start INTEGER, added INTEGER);
+    CREATE TABLE fx_strava_new (user_id TEXT, id TEXT, start INTEGER, added INTEGER)`);
+  assert.equal(await trips(T + 5), 2);
+  assert.equal(await trips(T + 6), 1);
+  assert.equal(await trips(T - D), 1, "for good, whatever the time");
+  assert.equal(await trips(T + D, Array.from({ length: 100 }, (_, i) => `u${i}`)), 2, "(90 accounts a statement)");
+  // (a database whose whole statement worked and now fails: that failure is said, not narrowed past; the next call
+  // finds out afresh)
+  sql("DROP TABLE fx_strava_new");
+  await assert.rejects(busyMap(bare, ["a"], T));
+  assert.equal(await trips(T), 3);
+  // and a database with every table from the start, as the live one: one trip from the first call
+  const { c: c2, D: full } = counted(env.DB);
+  await busyMap(full, ["a"], T); await busyNow({ DB: full }, "a", T);
+  assert.equal(c2.n, 2);
+});
+
+test("the off switch: with the Pages var RIDE_HOLD \"0\" nothing's held, nothing's said to have been, nothing's counted", async () => {
+  const u = uid("offrider"), mira = uid("offmira"), off = { ...env, RIDE_HOLD: "0" };
+  ride(u, T - 5 * MIN);
+  run(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, instant) VALUES (?, ?, ?, 'x', 0, ?, ?, 1)`, crypto.randomUUID(), mira, u, T, T);
+  assert.deepEqual([rideHoldOn(env), rideHoldOn({ ...env, RIDE_HOLD: "1" }), rideHoldOn(undefined), rideHoldOn(off)], [true, true, true, false]);
+  assert.ok(await busyNow(env, u, T));
+  assert.equal(await busyNow(off, u, T), null);
+  assert.deepEqual(await busyMap(env.DB, [u], T, off), new Map());
+  assert.equal(await heldCount(env, u, T - HOLD_EARLY, { t: T + MIN }), 1);
+  assert.equal(await heldCount(off, u, T - HOLD_EARLY, { t: T + MIN }), 0);
+  const on = holdsAt(env.DB, T + 3 * H, env), no = holdsAt(env.DB, T + 3 * H, off);
+  await on.load([u]); await no.load([u]);
+  assert.deepEqual([on.rode(u, T), no.rode(u, T)], [true, false]);
+  const now = holdsAt(env.DB, T, off); await now.load([u]);
+  assert.equal(now.holds(u), false);
 });
 
 test("a tick's view: who's riding now, and the rides that held and have ended (what's told now was held while they rode)", async () => {
@@ -165,6 +230,19 @@ test("a tick's view: who's riding now, and the rides that held and have ended (w
   assert.equal(view.rode(now, T - 5 * MIN), false, "still riding: nothing's been let go");
   await assert.doesNotReject(view.load([ended]), "asked once a tick");
   assert.throws(() => holdsAt(env.DB), TypeError);
+});
+
+test("a tick's view: a ride held from 10 minutes before its start until it came in, not to its cap; what came after it came once they were home", async () => {
+  const home = uid("home"), start = T - 90 * MIN;
+  // the ride began an hour and a half ago (its cap half an hour from now); it came in from Strava 30 minutes ago, and
+  // from Fitness's import 20 minutes ago (the first to come in ends it)
+  ride(home, start); act("fx_strava_new", home, start + MIN, T - 30 * MIN); act("fx_acts", home, start + MIN, T - 20 * MIN);
+  const view = holdsAt(env.DB, T);
+  await view.load([home]);
+  assert.equal(view.holds(home), false, "home");
+  assert.equal(view.rode(home, T - 40 * MIN), true, "before it came in: held");
+  assert.equal(view.rode(home, T - 30 * MIN), false, "as it came in: not");
+  assert.equal(view.rode(home, T - 10 * MIN), false, "a reaction ten minutes ago, twenty after it came in: not held, though the cap's to come");
 });
 
 test("the hold rule's record (td_rules.held), and what's waiting for someone riding now", async () => {
@@ -188,7 +266,10 @@ test("the hold rule's record (td_rules.held), and what's waiting for someone rid
   assert.equal(await heldCount(env, u, since, { t: T + 10 * MIN }), 2 + 1 + 1 + 1 + 1, "two messages, a group's, a reaction, today's alert and the wrap");
   assert.equal(await heldCount(env, u, since, { t: T + 2 * H }), 7, "an hour on, one more message waiting");
   assert.equal(await heldCount(env, uid("nobody"), since, { t: T }), 0);
-  assert.equal(await heldCount({}, u, since), 0, "no database: nothing");
+  assert.equal(await heldCount({}, u, since, { t: T }), 0, "no database: nothing");
+  // (and the time's passed in: never the server's clock, below the route)
+  await assert.rejects(heldCount(env, u, since), TypeError);
+  await assert.rejects(heldCount(env, u, since, { t: "now" }), TypeError);
 });
 
 // ---- the apps ----
@@ -210,12 +291,21 @@ async function opened(k, buf) {
   return JSON.parse(new TextDecoder().decode(pt.slice(0, end)));
 }
 let quote = { price: 104, prev: 100 };
+// (the sunlight on a roof, as Open-Meteo has it for Weather's sun notices: each hour's the hour up to its time, a sunny
+// spell from 13:00 to 16:00 on Monday 2 November, at tz_off 0)
+const SUN_DAY = Date.UTC(2026, 10, 2);
+const sunlight = () => {
+  const time = [], w = [];
+  for (let h = 1; h <= 48; h++) { const at = SUN_DAY + h * H, hr = new Date(at).getUTCHours(); time.push(new Date(at).toISOString().slice(0, 16)); w.push(at - SUN_DAY >= 14 * H && at - SUN_DAY <= 16 * H ? 600 : hr > 8 && hr < 17 ? 60 : 0); }
+  return { utc_offset_seconds: 0, hourly: { time, global_tilted_irradiance: w } };
+};
 async function onClock(at, fn) {
   const real = globalThis.fetch, said = console.error, realNow = Date.now, from = realNow();
   Date.now = () => at + (realNow() - from);
   globalThis.fetch = async (url, o = {}) => {
     const u = new URL(String(url));
     if (String(url) === PUSH) { sent.push({ endpoint: o.headers["X-Endpoint"], body: new Uint8Array(o.body) }); return new Response("", { status: 201 }); }
+    if (u.origin === W && u.pathname === "/v1/forecast" && u.searchParams.get("hourly") === "global_tilted_irradiance") return Response.json(sunlight());
     if (u.origin === W && u.pathname === "/v1/forecast") { const f = forecast(at, wxFeed.rainIn == null ? {} : { rainIn: wxFeed.rainIn }), k = (u.searchParams.get("latitude") || "").split(",").length; return Response.json(k > 1 ? Array(k).fill(f) : f); }
     if (u.origin === W && u.pathname === "/api/v1/warnings/feeds-united-kingdom") return Response.json(ukFeed(at, { extra: wxFeed.extra }));
     if (u.origin === W && u.pathname.startsWith("/api/v1/warnings/feeds-")) return Response.json({ warnings: [] });
@@ -272,6 +362,30 @@ test("Weather: rain and sun not sent during a ride (at do or suggest), and not t
   await tick(NOON + 15 * MIN);
   assert.deepEqual(await titles("rider"), [RAIN]);
   assert.equal(one("SELECT held FROM td_rules WHERE user_id = ?", who.rider)?.held ?? 0, 0, "dropped notices aren't held ones");
+});
+
+test("Weather: the sun on a roof not told during a ride (nothing claimed for it), as it is to someone not riding; with the off switch, told", async () => {
+  const HALF = Date.UTC(2026, 10, 2, 12, 30);       // (Monday 12:30 at tz_off 0: a tick that looks at the roofs)
+  const who = { rider: uid("roofrider"), calm: uid("roofcalm") }, k = {};
+  for (const [name, id] of Object.entries(who)) {
+    person(id); k[name] = { ...(await keys()), endpoint: `https://fcm.googleapis.com/fcm/send/roof-${name}` };
+    run("INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, units, brief_at, created, updated, sess) VALUES (?, ?, ?, ?, ?, '{}', '07:00', ?, ?, ?)", `dev-roof-${name}`, k[name].endpoint, k[name].p256dh, k[name].auth, id, HALF, HALF, `s-${id}`);
+    run(`INSERT INTO wx_subs (id, dev, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, tz_off, created, updated, warn, solar)
+      VALUES (?1, ?2, ?3, ?4, ?5, 52.62, 1.3, 'Norwich', 0, 0, '07:00', '{}', 0, ?6, ?6, 0, ?7)`, `dev-roof-${name}:52.62,1.3`, `dev-roof-${name}`, k[name].endpoint, k[name].p256dh, k[name].auth, HALF,
+      JSON.stringify({ alert: true, faces: "S", pitch: 35 }));
+  }
+  ride(who.rider, HALF - 20 * MIN);
+  const tick = async (at, e = env) => { sent = []; return onClock(at, () => wxTick(e, at, "https://georgefarrowgreen.com")); };
+  const titles = async (name) => (await told(k[name])).map((x) => `${x.app}:${x.title}`);
+  // half an hour before the sun's on the panels: told to the one not riding; not the one riding, and nothing claimed
+  await tick(HALF);
+  assert.deepEqual(await titles("calm"), ["weather:Sun’s coming out"]);
+  assert.deepEqual(await titles("rider"), [], "riding: not told");
+  assert.equal(one("SELECT last_sun FROM wx_subs WHERE dev = 'dev-roof-rider'").last_sun, null);
+  // half an hour on, still riding, the Pages var RIDE_HOLD "0": told as anyone is (the sun's out now); the other once a spell
+  await tick(HALF + 30 * MIN, { ...env, RIDE_HOLD: "0" });
+  assert.deepEqual(await titles("rider"), ["weather:Sun’s out"]);
+  assert.deepEqual(await titles("calm"), []);
 });
 
 test("Markets: an alert held during a ride (at do or suggest), counted once, and told after with its app; at quiet it goes at once", async () => {
