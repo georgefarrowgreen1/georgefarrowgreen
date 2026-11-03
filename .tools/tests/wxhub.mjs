@@ -338,8 +338,10 @@ const dayOfMonth = (n) => String(new Date(now + n * D).getUTCDate());
   const { p } = ph;
   await p.goto(`${HUB}/`);
   // (Today's own worker and its copy, at /, once it's settled (it lets go of Today's own older ones itself), and the
-  // other apps' as they'd be there: Chats', Fitness's, Markets', and an older Weather's)
-  await p.waitForFunction(() => navigator.serviceWorker.getRegistration('/').then((r) => r?.active?.state === 'activated') && caches.keys().then((ks) => ks.some((k) => /^today-app-/.test(k))), null, { timeout: 20000, polling: 500 }).catch(() => {});
+  // other apps' as they'd be there: Chats', Fitness's, Markets', and an older Weather's. Today's worker can take a while
+  // to make its copy on a busy machine: given 45 seconds)
+  const todays = await p.waitForFunction(() => navigator.serviceWorker.getRegistration('/').then((r) => r?.active?.state === 'activated') && caches.keys().then((ks) => ks.some((k) => /^today-app-/.test(k))), null, { timeout: 45000, polling: 500 }).then(() => true, () => false);
+  if (!todays) console.log('note: Today\'s worker made no copy of its own in 45 s');
   await p.evaluate(async () => { for (const k of ['inflight-shell-1.67', 'fx-shell-1.40', 'mk-1.61', 'wx-1.00']) await (await caches.open(k)).put(`/__${k}`, new Response(k)); });
   const before = await p.evaluate(() => caches.keys());
   await p.goto(`${HUB}/weather/`);
