@@ -8,8 +8,12 @@
 // account.inflite.ai/api/account/today/*, functions/_todayapp.js.)
 // The apps' old addresses on georgefarrowgreen.com (chat., weather., fitness., account.): on to the new ones, signed in
 // still (functions/_hop.js). Every other address carries straight on (the home page).
-import { serveApp, isChat, notFound } from "./_app.js";
-import { oldApp, appOrigin, homeSite } from "./_sites.js";
+// InFlite's hub (inflite.ai/chats/, /weather/, …, the IFL repo's today/src/hub.js) asks each app's own address here on
+// the browser's behalf, with its key (X-Hub-Key) and what it knows of the browser (X-Hub-IP, X-Hub-Geo). Only with
+// the key is any of that believed (hubRequest, first thing); and only then is Chat's hub copy served (/_hub/).
+import { serveApp, isChat, notFound, HUB_SECURITY } from "./_app.js";
+import { oldApp, appOrigin, homeSite, hubOrigins } from "./_sites.js";
+import { safeEqual } from "./_pigeon.js";
 import { hop, hopTo } from "./_hop.js";
 import { cookieToken } from "./_account.js";
 import { HttpError } from "./_http.js";
@@ -22,7 +26,9 @@ import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
 
-export async function onRequest(ctx) {
+export async function onRequest(ctx0) {
+  // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
+  const ctx = hubRequest(ctx0);
   const url = new URL(ctx.request.url);
   // The repo root is the static output (wrangler.toml), so the source, notes and dotfiles are in it too.
   // They aren't part of the site. The asset server decodes and tidies a path before it looks, so this
@@ -42,9 +48,13 @@ export async function onRequest(ctx) {
     try { return await hop(ctx.request, ctx.env, step[1]); }
     catch (e) { if (e instanceof HttpError) return new Response(e.message, { status: e.status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }); throw e; }
   }
-  // the passkeys are georgefarrowgreen.com's: the apps on inflite.ai may use them (WebAuthn's related origins)
+  // Chat's hub copy (/_hub/): only at Chat's own address, and only asked for by the hub with its key; anywhere else, or
+  // asked for straight (a preview, a direct visit), it isn't anything
+  if (/^\/_hub(\/|$)/.test(url.pathname) && !(isChat(url, ctx.env) && !oldApp(url.hostname, ctx.env) && ctx.request.headers.get("X-Hub-Ok") === "1")) return notFound();
+  // the passkeys are georgefarrowgreen.com's: the apps on inflite.ai may use them (WebAuthn's related origins), InFlite's
+  // hub too (each exactly)
   if (url.pathname === "/.well-known/webauthn" && url.hostname === homeSite(ctx.env))
-    return new Response(JSON.stringify({ origins: ["chat", "account", "auth", "weather", "fitness", "finance"].map((a) => appOrigin(a, ctx.env, ctx.request)) }),
+    return new Response(JSON.stringify({ origins: [...new Set([...["chat", "account", "auth", "weather", "fitness", "finance"].map((a) => appOrigin(a, ctx.env, ctx.request)), ...hubOrigins(ctx.env, ctx.request)])] }),
       { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*" } });
   // the emails' pictures, the apps' (functions/_email.js APPS_PICS): at the account's address too, so an app's email is
   // inflite.ai's throughout
@@ -94,6 +104,16 @@ export async function onRequest(ctx) {
   }
   // (its version as deployed, for the updater every app shares: functions/_version.js)
   if (url.pathname === "/version") return versionResponse(ctx, url, "chat");
+  // Chat's copy for InFlite's hub (inflite.ai/chats/x is /_hub/x here, asked for by the hub with its key, above): the same
+  // files, with /chats/ for /pigeon/, framed only by the hub's own pages
+  if (url.pathname.startsWith("/_hub/")) {
+    if (url.pathname === "/_hub/version") return versionResponse(ctx, url, "chat");
+    const x = url.pathname.slice(5);
+    if (/^\/handover(\.html)?$/.test(x)) return notFound();
+    const path = "/pigeon" + (x === "/index.html" ? "/" : x);
+    const res = await assets(ctx.env).fetch(new Request(new URL(path + url.search, url), ctx.request));
+    return serveApp(ctx, res, path, true, { base: "/chats/", security: HUB_SECURITY });
+  }
   // everything else is the app: /x is /pigeon/x
   if (/^\/handover(\.html)?$/.test(url.pathname)) return notFound();   // (the old address's, not this one's)
   const path = "/pigeon" + (url.pathname === "/index.html" ? "/" : url.pathname);
@@ -140,6 +160,28 @@ self.addEventListener("notificationclick", (e) => {
 });
 `;
   return new Response(js, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" } });
+}
+
+// The hub's requests, made plain (spec §3.4). Only a request carrying an X-Hub-* header is touched (every other one goes
+// on as it came, at no cost). With the hub's key (HUB_KEY, compared in constant time), the browser's address the hub
+// passed on becomes this request's own (so every clientIp() and limit() is per person, not per Worker), X-Hub-Ok says
+// it's the hub's, and its X-Hub-Geo stays for cfOf (functions/_sites.js); without it, none of them are believed. The
+// key itself never goes further. Headers can't be changed on a request, and ctx.next() with nothing passes on the one
+// that came, so the rest works on a context with the new request in it and next() passing that on.
+function hubRequest(ctx) {
+  const was = ctx.request.headers;
+  if (![...was.keys()].some((k) => k.toLowerCase().startsWith("x-hub-"))) return ctx;
+  const headers = new Headers(was), key = was.get("X-Hub-Key"), mine = ctx.env?.HUB_KEY;
+  if (mine && key && safeEqual(key, mine)) {
+    const ip = was.get("X-Hub-IP");
+    if (ip) headers.set("CF-Connecting-IP", ip);
+    headers.set("X-Hub-Ok", "1");
+  } else for (const k of ["X-Hub-IP", "X-Hub-Geo", "X-Hub-Ok"]) headers.delete(k);
+  headers.delete("X-Hub-Key");
+  const cf = ctx.request.cf, req = new Request(ctx.request, { headers, cf });
+  // (where Request takes no cf of its own, as outside Cloudflare's runtime: carried all the same)
+  if (cf && req.cf === undefined) Object.defineProperty(req, "cf", { value: cf });
+  return { ...ctx, request: req, next: (input, init) => ctx.next(input ?? req, init) };
 }
 
 const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png" };

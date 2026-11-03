@@ -77,6 +77,31 @@ test('InFlite Today, at the apps’ site itself: a sign-in goes back only there 
   assert.equal(tests('today', 'http://gfg.test:8788/'), 'http://ifl.test:8788/');
   assert.equal(tests('home', 'http://ifl.test:8788/'), 'http://gfg.test:8788/');
 });
+test('InFlite in one window (Today First): a sign-in goes back to Chat at /chats/, Mail at /mail/ and Today, at the site and its staging copy, and nowhere looser', () => {
+  const site = backFor('https://account.inflite.ai/');
+  for (const ok of ['https://inflite.ai/chats/', 'https://next.inflite.ai/chats/', 'https://chat.inflite.ai/']) assert.equal(site('inflight', ok), ok, ok);
+  for (const ok of ['https://inflite.ai/mail/', 'https://next.inflite.ai/mail/', 'https://email.inflite.ai/']) assert.equal(site('mail', ok), ok, ok);
+  for (const ok of ['https://inflite.ai/', 'https://next.inflite.ai/']) assert.equal(site('today', ok), ok, ok);
+  // (the same rules as ever: its protocol and port, no query, no one's name and password, the path exactly)
+  for (const bad of ['https://inflite.ai/chats/x', 'https://inflite.ai/chats', 'https://inflite.ai/chats/?a=1', 'http://inflite.ai/chats/', 'https://inflite.ai:444/chats/', 'https://u:p@inflite.ai/chats/',
+    'https://next.inflite.ai/', 'https://nextx.inflite.ai/chats/', 'https://next.next.inflite.ai/chats/', 'https://evil.example/chats/', 'https://inflite.ai.evil.example/chats/', 'https://inflite.ai/mail/',
+    'https://inflite.ai/weather/', 'https://www.inflite.ai/chats/', 'https://next.georgefarrowgreen.com/chats/'])
+    assert.equal(site('inflight', bad), 'https://chat.inflite.ai/', bad);
+  for (const bad of ['https://inflite.ai/mail/x', 'https://inflite.ai/mail', 'https://inflite.ai/chats/', 'https://next.inflite.ai/', 'http://inflite.ai/mail/', 'https://inflite.ai/mail/?x=1'])
+    assert.equal(site('mail', bad), 'https://email.inflite.ai/', bad);
+  for (const bad of ['https://next.inflite.ai/x', 'https://next.inflite.ai/chats/', 'https://next.inflite.ai/?a=1', 'http://next.inflite.ai/', 'https://next.inflite.ai:444/'])
+    assert.equal(site('today', bad), 'https://inflite.ai/', bad);
+  // (no other app takes the hub's paths)
+  for (const app of ['weather', 'fitness', 'markets', 'home']) for (const p of ['https://inflite.ai/chats/', 'https://inflite.ai/mail/', 'https://next.inflite.ai/'])
+    assert.notEqual(site(app, p), p, `${app}: ${p}`);
+  // (from the sign-in page, and the tests' site, on its port)
+  assert.equal(backFor('https://auth.inflite.ai/')('inflight', 'https://inflite.ai/chats/'), 'https://inflite.ai/chats/');
+  const tests = backFor('http://account.ifl.test:8788/');
+  assert.equal(tests('inflight', 'http://ifl.test:8788/chats/'), 'http://ifl.test:8788/chats/');
+  assert.equal(tests('mail', 'http://ifl.test:8788/mail/'), 'http://ifl.test:8788/mail/');
+  assert.equal(tests('today', 'http://next.ifl.test:8788/'), 'http://next.ifl.test:8788/');
+  assert.equal(tests('inflight', 'http://ifl.test:9999/chats/'), 'http://chat.ifl.test:8788/');
+});
 test('the account’s page takes Today’s sign-in and sign-out, and names it', () => {
   const src = read('account/app.js');
   assert.match(src, /const SIGN_FOR = [\s\S]*?\(inflight\|weather\|fitness\|markets\|mail\|today\|home\)/);

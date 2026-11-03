@@ -1,0 +1,155 @@
+// needs: hub
+// InFlite in one window (Today First, spec §3, §14.3): Chats, Weather, Fitness and Markets as pages of the hub
+// (ifl.test:8788, the inflite repo's Worker), each fetched from its app's own address (chat., weather., fitness.,
+// finance.ifl.test, through the pass-throughs that note every request) and signed in by the site's cookie; each API
+// answered at its own host, spoken for as the app and carrying the account's cookie alone (Chat's bearer to Chat alone);
+// each page marked as the hub's, with its rules on it; /version and each /<app>/version giving each build from source;
+// Chat's hub copy (/_hub/) refused when asked for straight; one window throughout; and two sign-in attempts from two
+// addresses through the hub limited each on its own, never as the hub's one.
+import { readFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { kit } from './lib.mjs';
+import { hostCall } from './handback.mjs';
+
+const [,, S, out] = process.argv;
+const K = await kit(S, out);
+const { ok, one, hubPhone, hostAsk, HUB, errs } = K;
+const ROOT = process.env.APP_ROOT || new URL('../../', import.meta.url).pathname;
+const IFL = process.env.IFL_ROOT || `${ROOT}/../inflite/`;
+const buildOf = (file, name = 'BUILD') => new RegExp(`const ${name} = "([\\d.]+)"`).exec(readFileSync(file, 'utf8'))[1];
+const ORIGINS = { 8792: 'http://chat.ifl.test:8788', 8802: 'http://weather.ifl.test:8788', 8803: 'http://fitness.ifl.test:8788', 8804: 'http://finance.ifl.test:8788', 8791: 'http://account.ifl.test:8788' };
+// (what reached each address through its pass-through since this test began: not the stack's own check that they're up)
+const T0 = Date.now();
+const passed = () => readFileSync(`${S}/hostpass.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.at >= T0);
+const b64u = (u) => Buffer.from(u).toString('base64url');
+
+// ---- an account, made at the sign-in page of the tests' site (its cookie covers ifl.test), and Chat signed in to ----
+const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
+const made = await hostCall('auth.ifl.test', '/api/account/signup', { name: 'Hana Okafor', handle: 'hanahub', email: 'hana@example.com', salt: b64u(randomBytes(16)), proof: b64u(randomBytes(32)),
+  vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip: '10.0.9.1' });
+ok(made.s === 201 && made.cookie, 'an account made, signed in on the tests’ site', `${made.s} ${JSON.stringify(made.j)}`);
+const cookie = made.cookie, [cname, cvalue] = cookie.split('=');
+const word = randomBytes(32).toString('base64url'), code = await hostCall('auth.ifl.test', '/api/account/handback', { app: 'inflight', ask: createHash('sha256').update(word).digest('base64url'), box: 'x'.repeat(48) }, { cookie, ip: '10.0.9.1' });
+const chat = code.s === 200 ? await hostCall('chat.ifl.test', '/api/pigeon/handback', { code: code.j.code, verifier: word }, { ip: '10.0.9.1' }) : code;
+const token = chat.j?.token;
+ok(!!token, 'and Chat signed in to, with its own bearer', `${chat.s} ${JSON.stringify(chat.j).slice(0, 200)}`);
+
+// ---- 1. each app's page through the hub, signed in by the cookie, its API at its own host ----
+const ph = await hubPhone('hana', await K.makeKeys(), { cookies: { [cname]: cvalue, theme: 'dark', 'known-device': 'abc123' } });
+const { p, ctx, pages } = ph;
+await p.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
+const navs = []; p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
+const csp = [];
+p.on('console', (m) => { if (/CSP violation/.test(m.text())) csp.push(m.text()); });
+const meOf = { '/weather/': '/api/weather/me', '/fitness/': '/api/fitness/me', '/markets/': '/api/markets/me' };
+for (const [path, api] of Object.entries(meOf)) {
+  const me = p.waitForResponse((r) => new URL(r.url()).pathname === api, { timeout: 30000 }).catch(() => null);
+  const res = await p.goto(HUB + path, { waitUntil: 'load' });
+  const r = await me, j = r ? await r.json().catch(() => null) : null;
+  ok(res.status() === 200 && new URL(p.url()).origin === HUB, `${path}: a page of the hub`, `${res.status()} ${p.url()}`);
+  ok(r && r.status() === 200 && j?.signedIn === true && (j.name === 'Hana Okafor' || j.user?.name === 'Hana Okafor' || j.handle === 'hanahub' || j.user?.handle === 'hanahub'),
+    `${path}: signed in by the site’s cookie (${api}, through the hub)`, r ? `${r.status()} ${JSON.stringify(j).slice(0, 160)}` : 'never asked');
+  const head = await p.evaluate(() => ({ first: document.head.firstElementChild?.outerHTML, manifest: document.querySelector('link[rel=manifest]')?.getAttribute('href'),
+    icon: document.querySelector('link[rel=apple-touch-icon]')?.getAttribute('href'), beacon: !!document.querySelector('script[src*=cloudflareinsights]') }));
+  ok(head.first === `<meta name="ifl-hub" content="${path}">`, `${path}: the hub’s marker first in <head>`, head.first);
+  ok(head.manifest === '/manifest.webmanifest' && head.icon === '/icon-180.png' && !head.beacon, `${path}: InFlite’s manifest and icon, no beacon`, JSON.stringify(head));
+  const h = res.headers();
+  ok(h['cache-control'] === 'no-cache, private' && h['x-robots-tag'] === 'noindex' && h['x-content-type-options'] === 'nosniff' && !h.etag && !/cloudflareinsights/.test(h['content-security-policy'] || ''),
+    `${path}: the hub’s headers on it`, JSON.stringify([h['cache-control'], h['x-robots-tag'], h['x-content-type-options'], h.etag]));
+  await p.screenshot({ path: `${out}/${path.replace(/\//g, '')}.png` });
+}
+// (Chat's hub copy: its own page with /chats/ for /pigeon/; its API answered at Chat's host, with its bearer)
+const res = await p.goto(HUB + '/chats/', { waitUntil: 'load' });
+const chatPage = await p.evaluate(() => ({ first: document.head.firstElementChild?.outerHTML, scripts: [...document.scripts].map((s) => s.getAttribute('src')).filter(Boolean), pigeon: /(?<![\w.-])\/pigeon\//.test(document.documentElement.outerHTML) }));
+ok(res.status() === 200 && chatPage.first === '<meta name="ifl-hub" content="/chats/">', '/chats/: Chat, a page of the hub', JSON.stringify(chatPage.first));
+ok(chatPage.scripts.length && chatPage.scripts.every((s) => /^\/chats\/[\w.-]+\.js\?v=[0-9a-f]{12}$/.test(s)) && !chatPage.pigeon, '/chats/: its scripts at /chats/, stamped, no /pigeon/ path', JSON.stringify(chatPage.scripts));
+ok(/frame-ancestors 'self'/.test(res.headers()['content-security-policy'] || '') && res.headers()['x-frame-options'] === 'SAMEORIGIN', '/chats/: framed by the hub’s own pages alone');
+const sync = await p.evaluate(async (t) => { const r = await fetch('/api/pigeon/sync', { headers: { Authorization: 'Bearer ' + t } }); return { s: r.status, me: (await r.json().catch(() => ({}))).me?.handle }; }, token);
+ok(sync.s === 200 && sync.me === 'hanahub', '/api/pigeon/sync through the hub, with Chat’s bearer: Hana', JSON.stringify(sync));
+const anon = await p.evaluate(async () => (await fetch('/api/pigeon/sync')).status);
+ok(anon === 401, 'and without it, Chat’s own word: signed out', String(anon));
+await p.screenshot({ path: `${out}/chats.png` });
+
+// (what reached each app's host: spoken as that app; the account's cookie alone, and only on its API; Chat's bearer to Chat alone; every one with the hub's key)
+const all = passed(), log = all.filter((r) => r.port !== 8791), today = all.filter((r) => r.port === 8791);
+const apiRows = log.filter((r) => r.path.startsWith('/api/')), fileRows = log.filter((r) => !r.path.startsWith('/api/'));
+// (and Today's own, to the account's address, beside it: as ever, Today's Origin and the account's cookie alone, no hub key)
+ok(today.length && today.every((r) => r.origin === HUB && r.path.startsWith('/api/account/today/') && r.cookies.every((c) => c === 'account') && !r.hub && !r.auth),
+  'Today’s own requests: to the account, as Today, with the account’s cookie alone', JSON.stringify(today.filter((r) => r.origin !== HUB || r.hub).slice(0, 2)));
+for (const port of [8792, 8802, 8803, 8804]) ok(log.some((r) => r.port === port && r.path.startsWith('/api/')), `the app at :${port} answered its own API`);
+ok(apiRows.length && apiRows.every((r) => r.origin === ORIGINS[r.port]), 'every API request spoken as its own app (Origin)', JSON.stringify(apiRows.filter((r) => r.origin !== ORIGINS[r.port]).slice(0, 3)));
+ok(apiRows.every((r) => r.cookies.every((c) => c === 'account')) && apiRows.some((r) => r.cookie), 'only the account’s cookie went on (never theme or known-device)', JSON.stringify([...new Set(apiRows.flatMap((r) => r.cookies))]));
+ok(fileRows.length && fileRows.every((r) => !r.cookie && !r.auth), 'pages and files: neither cookie nor bearer', JSON.stringify(fileRows.filter((r) => r.cookie || r.auth).slice(0, 3)));
+ok(log.filter((r) => r.auth).every((r) => r.port === 8792 && r.path.startsWith('/api/pigeon/')) && log.some((r) => r.auth), 'Chat’s bearer to Chat’s API alone');
+ok(log.length && log.every((r) => r.hub), 'every request to an app with the hub’s key', JSON.stringify(log.filter((r) => !r.hub).slice(0, 2)));
+ok(log.filter((r) => r.port === 8792 && !r.path.startsWith('/api/')).every((r) => r.path.startsWith('/_hub/')), 'Chat’s pages and files from its hub copy', JSON.stringify(log.filter((r) => r.port === 8792 && !r.path.startsWith('/api/') && !r.path.startsWith('/_hub/')).slice(0, 2)));
+
+// ---- 2. one window ----
+ok(pages.length === 1, 'one window throughout: nothing opened beside it', String(pages.length));
+const away = navs.filter((u) => { const h = new URL(u).host; return h !== 'ifl.test:8788' && !/^(auth|account)\.ifl\.test:8788$/.test(h); });
+ok(!away.length, 'every page stayed at the hub', JSON.stringify(away));
+ok(!(await p.evaluate(() => window.__opened.length)), 'nothing asked for a new window');
+ok(!csp.length, 'no CSP violation on any hub page', JSON.stringify(csp.slice(0, 3)));
+
+// ---- 3. each build, from source ----
+const versions = { '/version': buildOf(`${IFL}/today/public/app.js`), '/chats/version': buildOf(`${ROOT}/pigeon/app.js`, 'APP_VERSION'), '/weather/version': buildOf(`${ROOT}/weather/app.js`),
+  '/fitness/version': buildOf(`${ROOT}/fitness/app.js`), '/markets/version': buildOf(`${ROOT}/markets/app.js`) };
+for (const [path, build] of Object.entries(versions)) {
+  const v = await hostAsk('ifl.test:8788', path, { headers: { 'Sec-Fetch-Site': 'same-origin' } });
+  ok(v.status === 200 && v.json?.build === build, `${path}: ${build}, as its source says`, `${v.status} ${v.text.slice(0, 120)}`);
+}
+// (and as each app's updater asks it, from its page: its relative "version")
+const fromPage = await p.evaluate(async () => (await (await fetch('version', { cache: 'no-store' })).json()).build);
+ok(fromPage === versions['/chats/version'], 'Chat’s page at /chats/ asks its own version, relative', String(fromPage));
+
+// ---- 4. the hub copy, asked for straight: nothing ----
+for (const [host, headers, why] of [['chat.ifl.test:8788', {}, 'at Chat’s address, straight'], ['chat.ifl.test:8788', { 'X-Hub-Ok': '1' }, 'saying it’s the hub'],
+  ['chat.ifl.test:8788', { 'X-Hub-Key': 'not-the-key', 'X-Hub-IP': '1.2.3.4' }, 'with a wrong key'], ['localhost:8788', { 'X-Hub-Key': 'hub-test-key' }, 'at localhost, even with the key'],
+  ['weather.ifl.test:8788', { 'X-Hub-Key': 'hub-test-key' }, 'at another app’s address'], ['gfg.test:8788', { 'X-Hub-Key': 'hub-test-key' }, 'at the home page']]) {
+  for (const path of ['/_hub/', '/_hub/version', '/_hub/app.js']) {
+    const r = await hostAsk(host, path, { headers });
+    ok(r.status === 404 && !/inflight-version|"build"/.test(r.text), `${path} ${why}: not found`, `${r.status} ${r.text.slice(0, 80)}`);
+  }
+}
+const keyed = await hostAsk('chat.ifl.test:8788', '/_hub/version', { headers: { 'X-Hub-Key': 'hub-test-key' } });
+ok(keyed.status === 200 && keyed.json?.build === versions['/chats/version'], 'with the hub’s key, Chat’s hub copy answers', `${keyed.status}`);
+// (Chat at its own address, beside it, as before: its own page, never framed, no marker)
+const own = await hostAsk('chat.ifl.test:8788', '/');
+ok(own.status === 200 && !/ifl-hub/.test(own.text) && own.headers['x-frame-options'] === 'DENY', 'Chat at its own address: as before, unmarked and never framed');
+
+// ---- 5. sign-in attempts through the hub, limited per person ----
+const attempt = (ip) => hostAsk('ifl.test:8788', '/api/pigeon/handback', { method: 'POST', origin: HUB, ip, body: { code: 'x'.repeat(43), verifier: 'y'.repeat(43) }, headers: { 'Sec-Fetch-Site': 'same-origin' } });
+const first = [];
+for (let i = 0; i < 31; i++) first.push((await attempt('203.0.113.21')).status);
+const other = await attempt('203.0.113.22');
+ok(first.slice(0, 30).every((s) => s !== 429) && first[30] === 429, 'thirty sign-in attempts from one address through the hub, the next held back', first.join(','));
+ok(other.status !== 429, 'one from another address through the hub: its own count, not held back', String(other.status));
+const keys = one("SELECT key, count FROM pg_limits WHERE key LIKE 'handback-ip:%' ORDER BY key");
+ok(keys.some((k) => k.key === 'handback-ip:203.0.113.21' && Number(k.count) === 31) && keys.some((k) => k.key === 'handback-ip:203.0.113.22' && Number(k.count) === 1) && !keys.some((k) => /127\.0\.0\.1|local$/.test(k.key)),
+  'counted by each person’s address, none by the hub’s', JSON.stringify(keys));
+// (and a browser can't say it's someone else: an address it sends straight to the app's host is its own connection's)
+const forged = await hostAsk('chat.ifl.test:8788', '/api/pigeon/handback', { method: 'POST', origin: 'http://chat.ifl.test:8788', body: { code: 'x'.repeat(43), verifier: 'y'.repeat(43) },
+  headers: { 'X-Hub-IP': '203.0.113.99', 'X-Hub-Key': 'guess' } });
+ok(forged.status === 400 && !one("SELECT key FROM pg_limits WHERE key = 'handback-ip:203.0.113.99'").length, 'X-Hub-IP without the hub’s key: not believed', `${forged.status}`);
+
+// ---- 6. the hub's checks, against the real stack ----
+const cross = await hostAsk('ifl.test:8788', '/api/weather/me', { cookie, headers: { 'Sec-Fetch-Site': 'cross-site' } });
+ok(cross.status === 403, 'a GET from another site, with the cookie: refused at the hub', String(cross.status));
+const write = await hostAsk('ifl.test:8788', '/api/weather/me', { method: 'PUT', cookie, origin: 'http://weather.ifl.test:8788', body: { base: 0, data: {} }, headers: { 'Sec-Fetch-Site': 'same-origin' } });
+ok(write.status === 403, 'a write with another Origin: refused at the hub', String(write.status));
+const tick = await hostAsk('ifl.test:8788', '/api/pigeon/notify-tick', { method: 'POST', origin: HUB, headers: { Authorization: 'Bearer tick-test-secret', 'Sec-Fetch-Site': 'same-origin' } });
+ok(tick.status === 404, 'Chat’s scheduler, through the hub: not found', String(tick.status));
+const viaPage = await hostAsk('ifl.test:8788', '/weather/api/weather/me', { cookie, headers: { 'Sec-Fetch-Site': 'cross-site' } });
+ok(viaPage.status === 404 && !viaPage.cookies.length, 'an app’s API by way of a page’s path, with the cookie: not found at the hub', `${viaPage.status} ${viaPage.text.slice(0, 80)}`);
+const slash = await hostAsk('ifl.test:8788', '/weather?lat=1');
+ok(slash.status === 301 && slash.headers.location === `${HUB}/weather/?lat=1`, '/weather goes to /weather/', `${slash.status} ${slash.headers.location}`);
+const ready = await hostAsk('ifl.test:8788', '/api/hub');
+ok(ready.status === 200 && ready.json?.ready === true, '/api/hub: ready', ready.text);
+
+ok(!errs.filter((e) => /CSP violation/.test(e)).length, 'no CSP violation reported anywhere', JSON.stringify(errs.slice(0, 4)));
+console.log('notes (page errors and console errors, for the apps’ own batches):', JSON.stringify(errs.slice(0, 8)));
+await ctx.close();
+await (await K.hubBrowser()).close();
+await K.b.close();
+console.log(`FAILS ${K.fails()}`);
+process.exit(0);

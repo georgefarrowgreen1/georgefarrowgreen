@@ -25,6 +25,7 @@ import { unsubscribe, moveSub, wxTick, maybeWxTick, publicKey, leaveAny } from "
 import { ACCOUNT_ROUTES, subscribeHere, setMail } from "../../_wxacct.js";
 import { isWeather } from "../../_wxapp.js";
 import { obsFor } from "../../_wxobs.js";
+import { cfOf } from "../../_sites.js";
 import { warningsAt } from "../../_wxwarn.js";
 
 // (an answer is data for this site's own pages, and nothing else: not to be framed, run, or read by another site)
@@ -32,8 +33,9 @@ const json = (o, status = 200) => new Response(JSON.stringify(o), { status, head
   "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains", "Referrer-Policy": "no-referrer" } });
 
+// (the browser's, where InFlite's hub asked on its behalf: functions/_sites.js cfOf)
 function where(request) {
-  const cf = request.cf || {}, lat = Number(cf.latitude), lon = Number(cf.longitude);
+  const cf = cfOf(request), lat = Number(cf.latitude), lon = Number(cf.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: "Unknown." }, 404);
   const name = cf.city || cf.region || cf.country || "Near you";
   const region = [cf.city ? cf.region : null, cf.country].filter(Boolean).join(", ");
