@@ -4,8 +4,10 @@
 // each app's address on the tests' site and connecting through its pass-through, and, for a test that says
 // `// needs: hub mail`, Mail's Worker on :8806. A browser reaches the hub as http://ifl.test:8788 (lib.mjs hubPhone:
 // MAP ifl.test:8788 127.0.0.1:8787).
-//   node hubstack.mjs <state dir> [mail]     starts them, writes <state>/hubstack.up once they answer, and stays until
-//                                            it's stopped (SIGTERM, SIGINT), stopping them all (run.sh does both)
+//   node hubstack.mjs <state dir> [mail] [roof-off]   starts them, writes <state>/hubstack.up once they answer, and
+//                                            stays until it's stopped (SIGTERM, SIGINT), stopping them all (run.sh does
+//                                            both). roof-off (a test's `// needs: hub roof-off`): the Worker with
+//                                            ROOF_OFF "1", One roof's off switch (Weather's milestone-1 page at /weather/)
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync, rmSync, openSync } from 'node:fs';
 
@@ -13,8 +15,8 @@ const HERE = new URL('./', import.meta.url).pathname;
 const [,, S, ...want] = process.argv;
 const ROOT = process.env.APP_ROOT || new URL('../../', import.meta.url).pathname;
 const IFL = process.env.IFL_ROOT || `${ROOT}/../inflite/`;
-const mail = want.includes('mail');
-if (!S) { console.error('usage: node hubstack.mjs <state dir> [mail]'); process.exit(2); }
+const mail = want.includes('mail'), roofOff = want.includes('roof-off');
+if (!S) { console.error('usage: node hubstack.mjs <state dir> [mail] [roof-off]'); process.exit(2); }
 if (!existsSync(`${IFL}/today/src/hub.js`)) { console.error(`no inflite repo beside (${IFL})`); process.exit(3); }
 rmSync(`${S}/hubstack.up`, { force: true });
 writeFileSync(`${S}/hostpass.jsonl`, '');
@@ -29,6 +31,7 @@ const VARS = {
   MARKETS_ORIGIN: 'http://finance.ifl.test:8788', MARKETS_VIA: 'http://127.0.0.1:8804',
   MAIL_ORIGIN: 'http://email.ifl.test:8788', AUTH_ORIGIN: 'http://auth.ifl.test:8788',
   HUB_KEY: 'hub-test-key', TEST_AT: '1',
+  ...(roofOff ? { ROOF_OFF: '1' } : {}),
 };
 const vars = (o) => Object.entries(o).flatMap(([k, v]) => ['--var', `${k}:${v}`]);
 const wrangler = [`${IFL}/node_modules/.bin/wrangler`, `${HERE}node_modules/.bin/wrangler`].find((f) => existsSync(f));

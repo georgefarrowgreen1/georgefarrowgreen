@@ -1,11 +1,14 @@
 // Today's files (the inflite repo's today/public, where it's checked out beside this one): its copies of this
 // repository's are the same, byte for byte (Weather's icons, the apps' icons, InFlite's mark); its icons are the sizes
 // its manifest says; its page is a public one (title, description, og tags, robots, sitemap); and its headers never
-// preload HSTS and allow nothing inline. (What its page is made of, and that nothing it draws has an inline style:
+// preload HSTS and allow nothing inline; with One roof (stage 1, spec §8.3), its CSP names exactly Weather's origins and is
+// the Worker's PAGE_HEADERS' for /weather/, geolocation is its own, the framework's files are never kept stale, and its
+// worker keeps them (today-app-3). (What its page is made of, and that nothing it draws has an inline style:
 // roofpage.test.mjs.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { IFL, roofSkip } from './fixtures/roof.mjs';
 
 const PUB = new URL('../../../../inflite/today/public/', import.meta.url);
 const ROOT = new URL('../../../', import.meta.url);
@@ -13,6 +16,11 @@ const skip = !existsSync(new URL('index.html', PUB)) && 'the inflite repo isn’
 // (InFlite's page's cases: skipped, not failed, where the inflite repo beside has no hub yet, as its live branch beside
 // main while this repo goes live first)
 const tfSkip = skip || (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+// (One roof's headers, where the inflite repo beside has the roof rule (today/src/roof.js); milestone 1's where it hasn't)
+const ROOFJS = new URL('../src/roof.js', PUB);
+const hasRoof = !tfSkip && existsSync(ROOFJS);
+const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
+const m1Case = tfSkip || (hasRoof && 'the inflite repo beside has the roof (today/src/roof.js): its CSP names Weather’s origins, below');
 const pub = (f) => readFileSync(new URL(f, PUB));
 const here = (f) => readFileSync(new URL(f, ROOT));
 // (a PNG's width and height, from its header)
@@ -63,8 +71,34 @@ test('its headers: HSTS without preload, a CSP with nothing inline and no other 
   assert.match(h, /Strict-Transport-Security: max-age=63072000; includeSubDomains\n/);
   assert.ok(!/preload/.test(h), 'no HSTS preload at the apex until every subdomain is ready');
   const csp = /Content-Security-Policy: (.*)/.exec(h)[1];
-  assert.ok(!/unsafe-inline|unsafe-eval|https?:/.test(csp), csp);
+  assert.ok(!/unsafe-inline|unsafe-eval/.test(csp), csp);
+  // (no other site at all in milestone 1; with the roof, Weather's alone, in connect-src and img-src: below)
+  if (!hasRoof) assert.ok(!/https?:/.test(csp), csp);
+  else assert.ok(!/https?:/.test(csp.split(';').filter((d) => !/^\s*(connect|img)-src /.test(d)).join(';')), csp);
   // (frame-src 'self': Chat's engine, its own page in a frame over Today's)
   for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-src 'self'", "frame-ancestors 'none'", "object-src 'none'"]) assert.ok(csp.includes(d), d);
   for (const f of ['/sw.js', '/', '/app.js', '/cards.js', '/day.js', '/day.css', '/apps.js', '/you.js', '/wxicons.js', '/app.css', '/theme.js']) assert.match(h, new RegExp(`^${f.replace(/[.*/]/g, '\\$&')}\\n  Cache-Control: no-cache$`, 'm'), f);
+});
+
+test('milestone 1: geolocation is no one’s', { skip: m1Case }, () => {
+  assert.match(String(pub('_headers')), /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(\)\n/);
+});
+
+test('One roof: the CSP is the Worker’s PAGE_HEADERS’ and names exactly Weather’s origins and no other site; geolocation its own; the framework’s files never kept stale; its worker keeps them', { skip: roofCase }, async () => {
+  const h = String(pub('_headers'));
+  const { PAGE_HEADERS } = await import(ROOFJS);
+  const csp = /Content-Security-Policy: (.*)/.exec(h)[1];
+  assert.equal(csp, PAGE_HEADERS['Content-Security-Policy'], '_headers and PAGE_HEADERS: one CSP');
+  const wx = String(here('functions/_wxapp.js'));
+  const list = (n) => [...new RegExp(`const ${n} = \\[([\\s\\S]*?)\\];`).exec(wx)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const dir = (d) => (new RegExp(`(?:^|;)\\s*${d} ([^;]*)`).exec(csp) || [])[1].trim().split(/\s+/);
+  assert.deepEqual(dir('connect-src'), ["'self'", ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);
+  assert.deepEqual(dir('img-src'), ["'self'", 'data:', 'blob:', ...list('IMAGES')]);
+  assert.equal((csp.match(/https:/g) || []).length, list('CONNECT').length - 1 + list('IMAGES').length, 'no other site');
+  assert.match(h, /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(self\)\n/);
+  assert.match(h, /^\/roof\/\*\n  Cache-Control: no-cache$/m, 'the framework’s files never kept stale');
+  const sw = String(pub('sw.js'));
+  assert.equal(/\nconst SHELL = "([^"]+)";/.exec(sw)?.[1], 'today-app-3');
+  const FILES = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(sw)[1]);
+  for (const f of readdirSync(new URL('roof/', PUB)).filter((f) => /\.(js|css)$/.test(f))) assert.ok(FILES.includes(`/roof/${f}`), `/roof/${f} kept by the worker`);
 });
