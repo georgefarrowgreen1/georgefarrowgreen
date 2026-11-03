@@ -49,8 +49,8 @@ export function view(el, ctx) {
       const r = ctx.fw.ui.row({
         lead: h("span", { class: "wx-dname" }, h("b", {}, name), h("small", { class: unsure ? "unsure" : null }, unsure ? "Uncertain" : f.date(d.date))),
         title: label(d.code),
-        sub: mode === "temp" && w.pop ? `${w.pop} chance of rain` : mode === "temp" ? "" : w.small,
-        trail: h("span", { class: "wx-dtail", data: { mode } }, icon(iconOf(d.code, true), 28),
+        sub: mode === "temp" ? "" : w.small,
+        trail: h("span", { class: "wx-dtail", data: { mode } }, h("span", { class: "wx-dicon" }, icon(iconOf(d.code, true), 28), mode === "temp" && w.pop ? h("small", { class: "wx-dpop" }, w.pop) : null),
           mode === "temp" ? [h("span", { class: "wx-lo" }, w.small), rangeEl(rangeBar(d, sc), mode, dot), h("span", { class: "wx-hi" }, w.value)]
             : [rangeEl(rangeBar(d, sc), mode), h("span", { class: `wx-val${mode === "rain" ? " rain" : ""}` }, w.value)]),
         run: () => ctx.open.day(d.key),

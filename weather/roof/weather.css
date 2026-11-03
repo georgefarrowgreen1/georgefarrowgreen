@@ -68,6 +68,7 @@
 .m-weather .wx-alert-words b { font-size: 16px; font-weight: 650; }
 .m-weather .wx-alert-words small { font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 .m-weather .wx-chev { flex: none; display: grid; color: var(--text-3); }
+.m-weather .wx-alert .wx-chev svg { transform: rotate(-90deg); }
 :is(.m-weather, .wx-sheet) .wx-wchip { flex: none; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--wx-chip-ink); background: var(--wx-yellow); }
 :is(.m-weather, .wx-sheet) .wx-wchip:is([data-colour="amber"], [data-colour="orange"]) { background: var(--wx-amber); }
 :is(.m-weather, .wx-sheet) .wx-wchip[data-colour="red"] { background: var(--wx-red); color: var(--wx-red-ink, var(--on-acc)); }
@@ -82,6 +83,13 @@
   .m-weather .wx-days, .m-weather .wx-sec[data-sec="warnings"] > * { max-width: 760px; margin-inline: auto; width: 100%; }
 }
 .m-weather .wx-card { display: grid; gap: 10px; min-width: 0; }
+/* (a list inside a card is part of it, not a card on a card) */
+.m-weather .wx-card .ifl-list { margin: 0 -8px; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.m-weather .wx-hero .wx-now .d { min-width: 0; }
+@media (max-width: 380px) {
+  .m-weather .wx-hero .wx-now .t { font-size: 56px; letter-spacing: -1.5px; }
+  .m-weather .wx-hero .wx-now .wi svg { width: 48px; height: 48px; }
+}
 .m-weather .wx-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 32px; }
 .m-weather .wx-card-title { margin: 0; display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); }
 .m-weather .wx-card-title .wx-g { display: grid; color: var(--acc-ink); }
@@ -158,7 +166,7 @@
 @keyframes wx-grow { from { transform: scaleY(0); } }
 
 /* Right now: the tiles, on the framework's stats grid */
-.m-weather .wx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; margin: 0; }
+.m-weather .wx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; margin: 0; }
 .m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--r-well, 16px); text-align: left; color: var(--text); background: var(--glass-ctl); transition: transform var(--dur-press) ease; }
 .m-weather .wx-tile:active { transform: scale(0.97); background: var(--press); }
 .m-weather .wx-tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
@@ -169,7 +177,7 @@
 
 /* Highlights, Best times */
 .m-weather .wx-ins .wx-g { width: 34px; height: 34px; border-radius: 10px; background: var(--acc-wash); color: var(--acc-ink); }
-.m-weather .wx-win-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.m-weather .wx-win-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
 .m-weather .wx-win { display: grid; gap: 4px; padding: 11px 12px; border-radius: var(--r-well, 16px); background: var(--glass-ctl); }
 .m-weather .wx-win.poor { opacity: 0.7; }
 .m-weather .win-name { display: flex; align-items: center; gap: 6px; font-weight: 650; }
@@ -209,8 +217,12 @@
 .m-weather .wx-dname b { font-weight: 650; font-variant-numeric: tabular-nums; }
 .m-weather .wx-dname small { font-size: 12px; color: var(--text-3); white-space: nowrap; }
 .m-weather .wx-dname small.unsure { color: var(--warn, var(--text-2)); }
-.m-weather .wx-dtail { display: grid; grid-template-columns: 28px 36px minmax(48px, 92px) 36px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 28px minmax(48px, 92px) 64px; }
+.m-weather .wx-day .ifl-tx { min-width: 0; }
+.m-weather .wx-day .ifl-tx b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-weather .wx-dtail { display: grid; grid-template-columns: 30px 32px minmax(40px, 88px) 34px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 30px minmax(40px, 88px) 62px; }
+.m-weather .wx-dicon { display: grid; justify-items: center; }
+.m-weather .wx-dpop { font-size: 11.5px; font-weight: 650; line-height: 1; color: var(--wx-rain-text); }
 .m-weather .wx-lo { text-align: right; color: var(--text-2); }
 .m-weather .wx-hi { font-weight: 650; }
 .m-weather .wx-val { font-weight: 650; text-align: right; white-space: nowrap; }
@@ -220,11 +232,14 @@
 :is(.m-weather, .wx-sheet) .wx-range[data-mode="rain"] .wx-fill { background: var(--wx-rain); }
 :is(.m-weather, .wx-sheet) .wx-range[data-mode="wind"] .wx-fill { background: var(--wx-wind); }
 :is(.m-weather, .wx-sheet) .wx-dot { position: absolute; top: 50%; left: calc(var(--at, 0) * 100%); width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--solid); }
+@media (max-width: 600px) {
+  .m-weather .wx-day .ifl-tx b { font-size: 15px; }
+  .m-weather .wx-dtail { grid-template-columns: 28px 30px minmax(36px, 52px) 32px; gap: 4px; }
+  .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 28px minmax(36px, 56px) 58px; }
+}
 @media (max-width: 380px) {
-  .m-weather .wx-dtail { grid-template-columns: 24px 32px minmax(36px, 1fr) 32px; gap: 4px; }
-  .m-weather .wx-dtail:not([data-mode="temp"]) { grid-template-columns: 24px minmax(36px, 1fr) 58px; }
-  .m-weather .wx-dname { width: 44px; }
-  .m-weather .wx-day .ifl-row-sub, .m-weather .wx-day small:not(.wx-dname small) { overflow-wrap: anywhere; }
+  .m-weather .wx-dtail { grid-template-columns: 26px 28px minmax(28px, 40px) 30px; }
+  .m-weather .wx-dname { width: 40px; }
 }
 
 /* ---- Warnings ---- */

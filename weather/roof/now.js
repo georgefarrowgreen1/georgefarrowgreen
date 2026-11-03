@@ -52,12 +52,12 @@ export const splitBrief = (said) => { const m = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.
 
 export function view(el, ctx) {
   const fw = ctx.fw, ui = fw.ui;
-  let mode = null, chosen = false, bigSig = null, heroSig = null, zoomedFor = undefined, alive = true, allIns = false, allWins = false;
+  let mode = null, chosen = false, asked = false, bigSig = null, heroSig = null, zoomedFor = undefined, alive = true, allIns = false, allWins = false;
   const hero = h("article", { class: "tcard glass wx wx-hero", "aria-label": "Weather now" });
   const alerts = h("section", { class: "wx-alerts", "aria-label": "Warnings" });
   const cards = h("div", { class: "wx-cards" });
   const updated = h("span", { class: "wx-updated" });
-  const refresh = h("button", { class: "wx-link", type: "button", data: { act: "refresh" }, onclick: () => ctx.core.refresh() }, "Refresh");
+  const refresh = h("button", { class: "wx-link", type: "button", data: { act: "refresh" }, onclick: () => { asked = true; ctx.core.refresh(); } }, "Refresh");
   const foot = h("footer", { class: "wx-foot" },
     h("p", { class: "wx-foot-refresh" }, updated, " · ", refresh),
     h("p", { class: "wx-credits" }, "Learn more about ",
@@ -73,8 +73,11 @@ export function view(el, ctx) {
     const sky = wx ? skyClass(wx, now).slice(6) : skyOk(hint?.sky) ? hint.sky : "cloudy-day";
     const c = wx ? wx.current || I.hourAt(wx, now) : null, d = wx ? I.dayOf(wx, now) : null;
     const said = wx && c ? I.headline(wx, now, f) : "";
-    const status = !wx ? "" : S.loading ? "Updating…" : S.error ? String(S.error) : S.stale ? `Offline · from ${f.time(nowWall(wx.place.offset, wx.fetchedAt || S.updatedAt || Date.now()))}` : "";
-    const sig = JSON.stringify([sky, placeName(), c ? [f.temp(c.temp), c.code, c.isDay, f.temp(c.feels)] : hint?.temp ?? null, d ? [f.temp(d.tmax), f.temp(d.tmin)] : null, said, status, !!S.error, !!S.loading, !!wx, Math.floor(now / 60e3)]);
+    // (the forecast's own failure has Try Again; the account's sync failing says so, and clears itself once one goes through)
+    const sync = ctx.core.SYNC_ERROR || "Couldn’t sync with your account", failed = S.error && S.error !== sync ? String(S.error) : null;
+    if (!S.loading) asked = false;
+    const status = !wx ? (S.error === sync ? sync : "") : S.loading && asked ? "Updating…" : failed ? failed : S.stale ? `Offline · from ${f.time(nowWall(wx.place.offset, wx.fetchedAt || S.updatedAt || Date.now()))}` : S.error === sync ? sync : "";
+    const sig = JSON.stringify([sky, placeName(), c ? [f.temp(c.temp), c.code, c.isDay, f.temp(c.feels)] : hint?.temp ?? null, d ? [f.temp(d.tmax), f.temp(d.tmin)] : null, said, status, failed, !!S.loading, !!wx, Math.floor(now / 60e3)]);
     if (sig === heroSig) return;
     heroSig = sig;
     hero.className = `tcard glass wx wx-hero wx-sk-${sky}${isNight(sky) || sky === "storm" ? " night" : ""}`;
@@ -86,14 +89,14 @@ export function view(el, ctx) {
       const [lead, rest] = splitBrief(said);
       kids.push(h("p", { class: "wx-brief" }, h("b", {}, lead), rest ? ` ${rest}` : ""));
     } else {
-      const busy = S.error && /busy/i.test(String(S.error));
-      kids.push(h("div", { class: "wx-now" }, h("span", { class: "t num" }, hint?.temp != null && !S.error ? String(hint.temp) : "–"),
-        h("span", { class: "d" }, h("b", {}, S.error ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…"),
-          S.error ? h("small", {}, busy ? "Try again in a few minutes." : "You may be offline, or the forecast service didn’t answer.") : null)));
+      const busy = failed && /busy/i.test(failed);
+      kids.push(h("div", { class: "wx-now" }, h("span", { class: "t num" }, hint?.temp != null && !failed ? String(hint.temp) : "–"),
+        h("span", { class: "d" }, h("b", {}, failed ? (busy ? "The forecast service is busy" : "Couldn’t get the forecast") : "Loading the forecast…"),
+          failed ? h("small", {}, busy ? "Try again in a few minutes." : "You may be offline, or the forecast service didn’t answer.") : null)));
     }
-    if (status) kids.push(h("p", { class: `wx-status${S.error || S.stale ? " warn" : ""}`, role: "status" }, status));
+    if (status) kids.push(h("p", { class: `wx-status${failed || S.stale || S.error ? " warn" : ""}`, role: "status" }, status));
     const acts = h("div", { class: "tc-foot" });
-    if (S.error) acts.append(ui.btn("Try Again", { small: true, act: "retry", run: () => ctx.core.refresh() }));
+    if (failed) acts.append(ui.btn("Try Again", { small: true, act: "retry", run: () => { asked = true; ctx.core.refresh(); } }));
     if (wx && c) {
       const card = weatherSendCard(wx, now, f, { activities: S.settings?.activities, name: placeName() || wx.place.name, headline: said });
       const words = card?.say || said;
@@ -102,7 +105,7 @@ export function view(el, ctx) {
     }
     if (acts.childNodes.length) kids.push(acts);
     hero.replaceChildren(...kids);
-    hero.setAttribute("aria-busy", String(!wx && !S.error));
+    hero.setAttribute("aria-busy", String(!wx && !failed));
   }
 
   // ---- the warnings slot, straight under the hero: one card for one, a banner for more; a tap opens Warnings ----
@@ -214,7 +217,7 @@ export function view(el, ctx) {
     const shown = allIns ? rest : rest.slice(0, 3);
     const rows = shown.map((c) => {
       const go = moreOf(c, wx, now, f);
-      const r = ui.row({ lead: glyphEl(c.icon, 18), title: c.title, sub: c.short && c.short !== c.text ? `${c.short} ${c.text}` : c.text, trail: go ? "chevron" : null, run: go ? go.open : null, label: go ? `${c.title}: ${go.label}` : null });
+      const r = ui.row({ lead: glyphEl(c.icon, 18), title: c.title, sub: c.text, trail: go ? "chevron" : null, run: go ? go.open : null, label: go ? `${c.title}: ${go.label}` : null });
       r.classList.add("wx-ins");
       if (c.level) r.dataset.level = c.level;
       return r;
