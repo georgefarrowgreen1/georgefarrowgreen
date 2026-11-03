@@ -12,10 +12,11 @@
 //     offline: /weather/#days → the framework from the kept session, the module from roof-weather-*, the forecast from
 //     wx:<cell>; Radar says it needs a connection; no navigation to Weather's own address ever started; Today offline as
 //     before (D11, D23)
-// In real Chromium against the hub stack (hubstack.mjs). Selectors from roofhooks.mjs (§3.14).
+// In real Chromium against the hub stack (hubstack.mjs). Selectors from roofhooks.mjs (§3.14), save rooflib's declared
+// exceptions (EXCEPT: the hub's marker, the way in).
 import { rmSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
-import { HUB, checker, phone, persistent, dress, account, wxServer, weatherAccount, shown, here, count, textOf, ownGuard, PLACES, wait, until, js, closeAll } from './rooflib.mjs';
+import { HUB, EXCEPT, checker, phone, persistent, dress, account, wxServer, weatherAccount, shown, here, count, textOf, ownGuard, route, PLACES, wait, until, js, closeAll } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
 const { ok, part, fails } = checker();
@@ -30,7 +31,7 @@ self.addEventListener("fetch", (e) => { const u = new URL(e.request.url); if (e.
 const SW_URL = /^http:\/\/ifl\.test:8788\/weather\/sw\.js(\?|$)/;
 // (the stand-in registered from a page of the site's that isn't a framework page (robots.txt), and active)
 async function oldWorker(ph) {
-  await ph.ctx.route(SW_URL, (r) => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', headers: { 'Cache-Control': 'no-cache' }, body: OLD_SW }));
+  await route(ph.ctx, SW_URL, (r) => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', headers: { 'Cache-Control': 'no-cache' }, body: OLD_SW }));
   await ph.p.goto(`${HUB}/robots.txt`);
   const state = await ph.p.evaluate(async () => {
     try {
@@ -46,12 +47,13 @@ async function oldWorker(ph) {
 const regs = (p) => p.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname)).catch(() => null);
 const cacheNames = (p) => p.evaluate(() => caches.keys()).catch(() => null);
 // (the framework's page: Today's, with its hub marker for /; never the old one)
-const framework = (p) => p.evaluate(() => document.querySelector('meta[name="ifl-hub"]')?.content === '/' && !/OLD WEATHER/.test(document.body?.textContent || '')).catch(() => false);
+const framework = (p) => p.evaluate((m) => document.querySelector(m)?.content === '/' && !/OLD WEATHER/.test(document.body?.textContent || ''), EXCEPT.HUB_MARKER).catch(() => false);
 
 wxServer();
 const acct = await account('Ola Brandt', 'olaroof');
 ok(!!acct.cookies, 'an account made at the tests’ sign-in page, its cookie on the tests’ site', js(acct.json));
 const everyone = [];
+const kept = [];   // (the persistent contexts' noted errors, part c)
 
 // ======================================================================================================================
 await part('a', 'opening / unregisters Weather’s old worker, signed out too; /weather/ is then the framework', 'D10, RI10, §8.4', async () => {
@@ -65,7 +67,7 @@ await part('a', 'opening / unregisters Weather’s old worker, signed out too; /
   await A.p.goto(`${HUB}/weather/`);
   await wait(1500);
   ok(await framework(A.p), 'a. /weather/ then: the framework’s page, not the old one (D7, D10)', (await textOf(A.p, 'body'))?.slice(0, 120));
-  ok(await shown(A.p, 'a[href*="#signin-start&then="]', 20000), 'a. …signed out, InFlite’s way in (D12)');
+  ok(await shown(A.p, EXCEPT.SIGNIN, 20000), 'a. …signed out, InFlite’s way in (D12)');
   await A.ctx.close();
 });
 
@@ -98,6 +100,7 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
   // online once: Today, then Weather on 16 Days (the root worker keeps / and the module's files; Weather keeps its forecast)
   let ctx = await persistent(dir);
   await dress(ctx, 'ola', { cookies: acct.cookies || {}, standalone: true });
+  kept.push(ctx.__errs);
   let p = ctx.pages()[0] || (await ctx.newPage());
   await p.goto(`${HUB}/robots.txt`);
   await weatherAccount(p, { places: [PLACES.London], settings: { temp: 'c' } });
@@ -107,28 +110,32 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
   await p.goto(`${HUB}/weather/#days`);
   const online = (await shown(p, H.wxSec('days'), 30000)) && (await until(async () => (await count(p, H.DAY_ROW)) >= 10, 20000));
   ok(online, 'c. online once, standalone: Weather’s 16 Days drawn');
-  const kept = await until(async () => {
+  const keptFiles = await until(async () => {
     const c = await cacheNames(p); const name = c?.find((k) => /^roof-weather-\d+\.\d{2}$/.test(k));
     if (!name) return null;
     const n = await p.evaluate((name) => caches.open(name).then((x) => x.keys()).then((k) => k.length), name);
     const cell = await p.evaluate(() => Object.keys(localStorage).some((k) => /^wx:-?\d/.test(k)));
     return n >= 20 && cell ? { name, n } : null;
   }, 30000);
-  ok(!!kept, 'c. the module’s files kept by the root worker in roof-weather-<build> ({ ifl: "keep" }, all or nothing), and the forecast in wx:<cell>', js({ kept, caches: await cacheNames(p) }));
+  ok(!!keptFiles, 'c. the module’s files kept by the root worker in roof-weather-<build> ({ ifl: "keep" }, all or nothing), and the forecast in wx:<cell>', js({ kept: keptFiles, caches: await cacheNames(p) }));
   await ctx.close();
 
   // a fresh window of the same profile: sessionStorage empty, offline
   ctx = await persistent(dir);
   await dress(ctx, 'ola-offline', { standalone: true });
+  kept.push(ctx.__errs);
+  // (sessionStorage as each document starts, before any of its own scripts: a fresh window's is empty)
+  await ctx.addInitScript(() => { window.__roofSS0 = sessionStorage.length; });
   const guard = ownGuard(ctx);
-  await ctx.route(/.*/, (r) => (/^(data|blob):/.test(r.request().url()) ? r.continue() : r.abort('internetdisconnected')));
+  await route(ctx, /.*/, (r) => (/^(data|blob):/.test(r.request().url()) ? r.continue() : r.abort('internetdisconnected')));
   await ctx.setOffline(true);
   p = ctx.pages()[0] || (await ctx.newPage());
   await p.goto(`${HUB}/weather/#days`).catch((e) => console.log('note: goto offline:', e.message.split('\n')[0]));
-  const blank = await p.evaluate(() => sessionStorage.length).catch(() => -1);
+  const blank = await p.evaluate(() => window.__roofSS0 ?? null).catch(() => null);
+  ok(blank === 0, 'c. a fresh window of the same profile: its sessionStorage empty as the page started (no kept session in it)', String(blank));
   const up = (await shown(p, H.M_WEATHER, 30000)) && (await shown(p, H.wxSec('days'), 20000));
   const rows = await until(async () => { const n = await count(p, H.DAY_ROW); return n >= 10 ? n : null; }, 20000);
-  ok(up && !!rows, `c. offline, a fresh window (sessionStorage started empty: ${blank >= 0 ? 'yes' : '?'}), /weather/#days: the framework from the kept session, the module from roof-weather-*, 16 Days from wx:<cell> (${rows || 0} rows, D11)`, here(p));
+  ok(up && !!rows, `c. offline, that fresh window, /weather/#days: the framework from the kept session, the module from roof-weather-*, 16 Days from wx:<cell> (${rows || 0} rows, D11)`, here(p));
   ok((await count(p, `${H.HD_TITLE}`)) === 1 && /London/.test((await textOf(p, H.HD_TITLE)) || ''), 'c. …its header: London (the kept place)', await textOf(p, H.HD_TITLE));
   await shot(p, 'c-offline-days');
   await p.click(H.hdSec('radar')).catch(() => {});
@@ -137,12 +144,14 @@ await part('c', 'offline from the Home Screen: Weather from the kept session, th
   await shot(p, 'c-offline-radar');
   await p.goto(`${HUB}/`).catch(() => {});
   ok((await shown(p, H.TODAY, 30000)) && (await shown(p, H.HD_TITLE, 10000)), 'c. Today offline, standalone: from the kept session, as before (D11)');
-  ok(!guard.hits.length && !(await guard.opened()).length, 'c. no navigation or request to Weather’s own address ever started (D23)', js(guard.hits));
+  ok(!guard.hits.length, 'c. no navigation or request to Weather’s own address ever started (D23)', js(guard.hits));
   await ctx.close();
 });
 
-const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/OLD WEATHER/.test(e));
+// (the old page stood in for aside: it's the test's, not the site's)
+const all = [...everyone.flatMap((x) => x.errs || []), ...kept.flat()].filter((e) => !/OLD WEATHER/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (§8.3)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
+ok(!all.length, 'no page error and no console error on any page, offline included', js(all.slice(0, 8)));
 await closeAll();
 console.log(`FAILS ${fails()}`);
 process.exit(0);

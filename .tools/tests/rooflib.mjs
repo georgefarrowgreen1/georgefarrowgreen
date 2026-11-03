@@ -11,11 +11,15 @@
 //                    Bristol, France's feed down so a place there has none at all: wx.official null)
 //   STANDALONE       a Home Screen phone (navigator.standalone, display-mode: standalone)
 //   ownGuard(ctx)    every request and navigation to Weather's own address (weather.ifl.test here, weather.inflite.ai
-//                    live), from any page or frame: a /weather/ boot under the roof must start none (D23)
+//                    live), from any page or frame (a window.open there is a request too): a /weather/ boot under the
+//                    roof must start none (D23)
 //   launch()         the browser: Chromium with the hub's names mapped (as lib.mjs hubBrowser), or WebKit when
 //                    BROWSER=webkit and it's installed (the names through a small proxy, as WebKit takes no resolver
 //                    rules; http://ifl.test isn't a secure origin there, so its service worker and push are Chromium's)
-// Selectors come only from roofhooks.mjs (§3.14); this file holds none of the apps' markup.
+// Every test that imports this file runs its browsers with PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 (set below,
+// before any browser starts): a service worker's own fetches go through the context's routes and request events too.
+// Selectors come from roofhooks.mjs (§3.14), save the few in EXCEPT below: markup the tests need that has no hook yet,
+// each named with its owner, to become a hook (B0's file) or be dropped.
 import { chromium, webkit } from 'playwright';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
@@ -32,6 +36,17 @@ import { hostCall as signupAt } from './handback.mjs';
 // Playwright as each browser starts, after this line)
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 
+// ---- selectors that aren't in roofhooks.mjs yet (declared exceptions, §3.14: asked of B0's owner as hooks) ----
+export const EXCEPT = Object.freeze({
+  SIGNIN: 'a[href*="#signin-start&then="]',          // TD: the signed-out way in (index.html #signin; hubSays writes its href)
+  ZOOM_CLONE: 'main#m-weather .ifl-zoom-slot',        // FW: the card's clone in Weather's hero slot while a zoom runs (frame.js clone())
+  // TD/FW: Apps' tile's link (ui.tile: the tile itself when it's a link, else its main link; §4.2: tiles keep their hrefs)
+  tileLink: (app) => `a.ifl-tile[data-app="${app}"], .ifl-tile[data-app="${app}"] > a.ifl-tile-main`,
+  CHAT_ENGINE: 'iframe[name=ifl-chat]',              // the shared block (menu.js): Chat's engine frame, made at idle
+  HUB_MARKER: 'meta[name="ifl-hub"]',                // SV/TD: the hub's marker on a page the Worker serves
+  hubTab: (id) => `.ifl-tabs .ifl-tab[data-tab="${id}"]`, // the shared block (menu.js IFL.hub.tabs): a hub page's tab bar
+});
+
 export const HUB = 'http://ifl.test:8788';
 export const OWN = 'http://weather.ifl.test:8788';
 export const ROOT = process.env.APP_ROOT || new URL('../../', import.meta.url).pathname;
@@ -47,7 +62,7 @@ export const js = (x, n = 300) => String(JSON.stringify(x) ?? x).slice(0, n);
 // ---- checks, each naming the spec section it proves ----
 export function checker() {
   let fails = 0;
-  const ok = (c, label, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${label}${!c && extra ? '  — ' + String(extra).slice(0, 600) : ''}`); if (!c) fails++; return !!c; };
+  const ok = (c, label, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${label}${!c && extra ? '  — ' + String(extra).slice(0, 1600) : ''}`); if (!c) fails++; return !!c; };
   const step = (n, what, sec) => console.log(`\n==== ${n}. ${what}  (${sec})`);
   // (a part of a test: a throw in it is one failure, said, and the test goes on to the next part)
   const part = async (n, what, sec, fn) => { step(n, what, sec); try { await fn(); } catch (e) { ok(false, `${n}. stopped: ${String(e?.message || e).split('\n')[0]}`); } };
@@ -235,6 +250,8 @@ export const gone = (p, sel, ms = 8000) => p.waitForSelector(sel, { state: 'hidd
 export const textOf = (p, sel) => p.evaluate((s) => document.querySelector(s)?.textContent.replace(/\s+/g, ' ').trim() ?? null, sel).catch(() => null);
 export const attrOf = (p, sel, a) => p.evaluate(([s, a]) => document.querySelector(s)?.getAttribute(a) ?? null, [sel, a]).catch(() => null);
 export const count = (p, sel) => p.evaluate((s) => document.querySelectorAll(s).length, sel).catch(() => 0);
+// (how many of sel are on screen: laid out, not inside anything hidden)
+export const visible = (p, sel) => p.evaluate((s) => [...document.querySelectorAll(s)].filter((e) => e.getClientRects().length && !e.closest('[hidden]') && getComputedStyle(e).visibility !== 'hidden').length, sel).catch(() => 0);
 // (everything the site keeps on this phone: localStorage and sessionStorage, key → value)
 export const storage = (p) => p.evaluate(() => {
   const o = { local: {}, session: {} };
@@ -259,14 +276,19 @@ export async function axe(p, label) {
 // ---- the budget meter (§7.3): Weather's same-origin scripts and styles, as sent, their gzip sizes ----
 // A file sent unminified because its minified copy is out of date (until integration runs minify.mjs) is measured as
 // minify.mjs would send it (esbuild, its options), so the budget is the shipped one; such files are listed (unminified).
-// The radar stack and the rain files (lazy, D2) are counted apart (lazy).
+// The radar stack and the rain files (lazy, D2) are counted apart (lazy), as §7.3's budget leaves them out. Of those, the
+// radar stack (RADAR_STACK) loads only for Radar; the rain files (rainmap.js, radarrain.js and their Worker radarwork.js)
+// may load on Now for the next hour's rain (core.js, fw.lazy, D2).
 const LAZY = /^\/weather\/(?:radar|radarmix|radarwork|mapstyle|mapgl|mapleaf|rainmap|radarrain)\.js$|^\/weather\/vendor\//;
+export const RADAR_STACK = /^\/weather\/(?:radar|radarmix|mapstyle|mapgl|mapleaf)\.js$|^\/weather\/vendor\//;
 let esb = null;
 const esbuild = () => (esb ||= createRequire(`${HERE}package.json`)('esbuild'));
 export const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 let manifest = null;
 const minManifest = () => (manifest ||= (() => { try { return JSON.parse(readFileSync(`${ROOT}/min/manifest.json`, 'utf8')); } catch (_) { return {}; } })());
 // (is the minified copy of a file current, and what is it: { fresh, min } — fresh: its original's fingerprint matches)
+// (has minify.mjs been run over these files at all: the manifest names any of them. Integration does it, rule 3)
+export const minKnows = (prefix) => Object.keys(minManifest()).some((k) => k.startsWith(prefix.replace(/^\//, '')));
 export function minOf(path) {
   const rel = path.replace(/^\//, ''), want = minManifest()[rel];
   let src = null; try { src = readFileSync(`${ROOT}/${rel}`); } catch (_) { return { fresh: false, min: null, src: null }; }
@@ -301,7 +323,9 @@ export function meter(p) {
       await Promise.all(jobs);
       const first = rows.filter((r) => !r.lazy);
       const sum = (k) => first.filter((r) => r.kind === k).reduce((a, r) => a + r.gz, 0);
-      return { requests: first.length, js: sum('js'), css: sum('css'), lazy: rows.filter((r) => r.lazy).map((r) => r.path), unminified: first.filter((r) => r.unminified).map((r) => r.path), rows: first };
+      const seen = new Map(); for (const r of first) seen.set(r.path, (seen.get(r.path) || 0) + 1);
+      return { requests: first.length, js: sum('js'), css: sum('css'), lazy: rows.filter((r) => r.lazy).map((r) => r.path), radar: rows.filter((r) => RADAR_STACK.test(r.path)).map((r) => r.path),
+        unminified: first.filter((r) => r.unminified).map((r) => r.path), twice: [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} ×${n}`), rows: first };
     },
   };
 }
@@ -325,9 +349,15 @@ export const PLACES = {
   Paris: { name: 'Paris', region: 'Île-de-France', lat: 48.8566, lon: 2.3522 },
 };
 const nearest = (lat, lon) => Object.values(PLACES).reduce((a, x) => (Math.hypot(x.lat - lat, x.lon - lon) < Math.hypot(a.lat - lat, a.lon - lon) ? x : a));
+// A route whose handler can't end the run: a throw in it (a stand-in's own fetch, a closed page) lets the request go on as
+// it would have, and is said once as a note
+export const route = (ctx, pattern, fn) => ctx.route(pattern, async (r) => {
+  try { await fn(r); }
+  catch (e) { console.log(`note: a route for ${String(pattern).slice(0, 60)} threw (${String(e?.message || e).split('\n')[0]}): the request goes on`); await r.continue().catch(() => {}); }
+});
 export async function standIns(ctx, { now = Date.now() } = {}) {
   const j = (r, o) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o), headers: { 'Access-Control-Allow-Origin': '*' } });
-  await ctx.route(/open-meteo\.com|bigdatacloud|nominatim\.openstreetmap\.org/, (r) => {
+  await route(ctx, /open-meteo\.com|bigdatacloud|nominatim\.openstreetmap\.org/, (r) => {
     const u = new URL(r.request().url());
     if (u.host.includes('ensemble-api')) return j(r, F.ensemble(now, { rainIn: 90 }));
     if (u.host.includes('air-quality')) return j(r, F.air(now));
@@ -343,9 +373,9 @@ export async function standIns(ctx, { now = Date.now() } = {}) {
     if (u.search.includes('models=')) return j(r, F.models(now, { rainIn: 90 }));
     return j(r, F.forecast(now, { rainIn: 90 }));
   });
-  await ctx.route(/api\.rainviewer\.com/, (r) => j(r, { host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }));
-  await ctx.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org|aviationweather|meteoalarm/, (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG }));
-  await ctx.route(/tiles\.openfreemap\.org/, (r) => {
+  await route(ctx, /api\.rainviewer\.com/, (r) => j(r, { host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }));
+  await route(ctx, /tilecache\.rainviewer\.com|tile\.openstreetmap\.org|aviationweather|meteoalarm/, (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG }));
+  await route(ctx, /tiles\.openfreemap\.org/, (r) => {
     const u = r.request().url(), cors = { 'Access-Control-Allow-Origin': '*' };
     if (/\/planet$/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ tilejson: '3.0.0', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14 }) });
     return r.fulfill({ status: 200, contentType: /\.png$/.test(u) ? 'image/png' : 'application/x-protobuf', headers: cors, body: /\.png$/.test(u) ? PNG : Buffer.alloc(0) });
@@ -385,7 +415,7 @@ export function ownGuard(ctx) {
   ctx.on('request', note('request'));
   const watch = (pg) => pg.on('framenavigated', (f) => { try { if (new URL(f.url()).origin === OWN) hits.push(`navigated ${f.url()}`); } catch (_) {} });
   ctx.on('page', watch); for (const pg of ctx.pages()) watch(pg);
-  return { hits, async opened() { const out = []; for (const pg of ctx.pages()) out.push(...(await pg.evaluate(() => window.__opened || []).catch(() => []))); return out.filter((u) => /weather\.(ifl\.test|inflite\.ai)/.test(u)); } };
+  return { hits };
 }
 
 // ---- the hub's request log (hubstack.mjs: each pass-through notes every request, without cookie values) ----
@@ -395,8 +425,8 @@ export const WEATHER_PORT = 8802;
 // ---- Chat's engine stood in for (as wxhub.mjs): its share noted as window.__shared on the page, and said as sent the
 // way Chat's engine says it (IFL.hub.sent: "Sent to Pat. You're still here") ----
 export async function engine(ctx) {
-  await ctx.route(/^http:\/\/ifl\.test:8788\/chats\/\?engine=1$/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><title>Chats</title><script src="/__roof-engine.js"></script>` }));
-  await ctx.route(/^http:\/\/ifl\.test:8788\/__roof-engine\.js$/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: `window.IFLChat = { state: "ready",
+  await route(ctx, /^http:\/\/ifl\.test:8788\/chats\/\?engine=1$/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><title>Chats</title><script src="/__roof-engine.js"></script>` }));
+  await route(ctx, /^http:\/\/ifl\.test:8788\/__roof-engine\.js$/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: `window.IFLChat = { state: "ready",
     share(words, packed, o) { parent.__shared = { words, packed, to: (o && o.to) || null }; setTimeout(() => parent.IFL && parent.IFL.hub.sent("Sent to Pat"), 50); return Promise.resolve({ sent: true, to: "Pat" }); },
     sendTo: () => Promise.resolve({ ok: false }), waiting: async () => [], since: async () => [], refresh: async () => {}, signOut: async () => {} };
     parent.dispatchEvent(new Event("ifl-chat-ready"));` }));

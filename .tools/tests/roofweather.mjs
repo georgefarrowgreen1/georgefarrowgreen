@@ -4,7 +4,8 @@
 // the framework's header, switcher, sheets and toast. In real Chromium against the hub stack (hubstack.mjs), signed in by
 // the account's cookie; Open-Meteo, the radar and the map stood in for in the browser, the forecast for Today's card and
 // the official warnings at the site's own stand-in (rooflib wxServer: two warnings over London, one over Bristol, France's
-// feed down). Every check's line names the spec section it proves; every selector is roofhooks.mjs's (§3.14).
+// feed down). Every check's line names the spec section it proves; every selector is roofhooks.mjs's (§3.14), save
+// rooflib's declared exceptions (EXCEPT: the way in, the zoom's clone, a tile's link, Chat's engine frame).
 //   1 open Weather from Today's card (zoom: the card's clone at once, then the module's hero) and from Apps' tile (push):
 //     one page, the header (crumb, place ▾, line, compactTitle, Weather Settings, the warnings badge), the switcher
 //   2 sections by replaceState and their URLs; Back to Apps and to Today with the scroll kept; Apps tab from in Weather
@@ -23,10 +24,11 @@
 //   12 warnings on Now (banner, single card), the empty states ([] and null), the credits sheet
 //   13 CSP clean, axe, 390 light and dark, the 1280 layout
 import { readFileSync } from 'node:fs';
+import * as OW from './mocks/wxwarnings.mjs';
 import * as H from './roofhooks.mjs';
 import {
-  HUB, ROOT, checker, phone, account, wxServer, engine, weatherAccount, alive, loads, history, said, here, shown, gone, textOf, attrOf, count,
-  storage, changed, axe, meter, connectorFiles, moduleBuild, minOf, passed, WEATHER_PORT, ownGuard, hide, show, PLACES, dayKey, wait, until, js, closeAll,
+  HUB, ROOT, EXCEPT, checker, phone, account, wxServer, engine, weatherAccount, alive, loads, history, said, here, shown, gone, textOf, attrOf, count, visible,
+  storage, changed, axe, meter, connectorFiles, moduleBuild, minKnows, passed, WEATHER_PORT, ownGuard, hide, show, route, hostCall, RADAR_STACK, PLACES, dayKey, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -37,7 +39,7 @@ const { London, Bristol, York, Cromer, Leeds, Paris } = PLACES;
 const link = (x) => `/weather/?${new URLSearchParams({ lat: x.lat, lon: x.lon, name: x.name })}`;
 const SETTINGS = { temp: 'c', wind: 'mph', precip: 'mm', pressure: 'hpa', clock: '24', glass: 'clear' };
 const FILES = connectorFiles(), BUILD = moduleBuild();
-const CLONE = `${H.M_WEATHER} .tcard[data-app="weather"]`;
+const CLONE = EXCEPT.ZOOM_CLONE;
 
 wxServer();
 const acct = await account('Wren Adeyemi', 'wrenroof');
@@ -50,10 +52,16 @@ const open = async (name, o = {}) => { const ph = await phone(name, { cookies, .
 const title = (p) => textOf(p, H.HD_TITLE);
 const titleIs = (p, want, ms = 20000) => p.waitForFunction(([s, w]) => document.querySelector(s)?.textContent.trim() === w, [H.HD_TITLE, want], { timeout: ms }).then(() => true, () => false);
 const at = (p, path, ms = 10000) => p.waitForFunction((u) => location.pathname + location.search + location.hash === u, path, { timeout: ms }).then(() => true, () => false);
+// (Weather on Now: its screen and the hero; screenUp: Weather's screen and, when said, that section, for a boot on another
+// section, where Now and its hero are hidden)
 const weatherUp = async (p, ms = 30000) => (await shown(p, H.M_WEATHER, ms)) && (await shown(p, `${H.M_WEATHER} ${H.WX_HERO}`, ms));
+const screenUp = async (p, sec = null, ms = 30000) => (await shown(p, H.M_WEATHER, ms)) && (!sec || (await shown(p, `${H.M_WEATHER} ${H.wxSec(sec)}`, ms)));
+// (a cold load of path: from a page that isn't the framework's, so it's a document load, never a same-document hash
+// change; → the documents fetched from then on (n() === 1 for a cold one))
+const cold = async (p, path) => { await p.goto(`${HUB}/robots.txt`); const d = loads(p); await p.goto(`${HUB}${path}`); return d; };
 const todayUp = async (p, ms = 30000) => (await shown(p, H.TODAY, ms)) && (await shown(p, H.HD_TITLE, ms));
-// (Apps' Weather tile: its link to /weather/ (§4.2: tiles keep their hrefs), tapped as a script's click, so the scroll stays)
-const tapTile = (p, app = 'weather', href = '/weather/') => p.evaluate(([s, h]) => { const t = document.querySelector(s); const a = t?.matches(`a[href="${h}"]`) ? t : t?.querySelector(`a[href="${h}"]`); if (!a) return false; a.click(); return true; }, [H.appTile(app), href]);
+// (Apps' Weather tile: its link (§4.2: tiles keep their hrefs), tapped as a script's click, so the scroll stays)
+const tapTile = (p, app = 'weather') => p.evaluate((s) => { const a = document.querySelector(s); if (!a) return false; a.click(); return true; }, EXCEPT.tileLink(app));
 const tapEl = (p, sel) => p.evaluate((s) => { const a = document.querySelector(s); if (!a) return false; a.click(); return true; }, sel);
 const stored = (p, k) => p.evaluate((k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (_) { return null; } }, k);
 const placesHave = async (p, name) => ((await stored(p, 'wx:places')) || []).some((x) => x?.name === name);
@@ -110,7 +118,8 @@ await part(1, 'open Weather from Today’s card and from Apps’ tile: one page,
   ok(/-?\d+°/.test((await textOf(p, H.HD_LINE)) || ''), '1. the line under the title: “14° · …” (§7.1)', await textOf(p, H.HD_LINE));
   ok((await count(p, H.HD_SETTINGS)) === 1 && (await count(p, `${H.hdAct('edit')}`)) === 0, '1. one act beside Search: Weather Settings (UI3)');
   ok((await count(p, H.HD_SEARCH)) === 1, '1. Search in the header on Weather too (§3.10)');
-  ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Today' && (await count(p, H.HD_ME)) === 0, '1. Back, labelled where it goes: “Back to Today”, in place of the photo (UI3)', await attrOf(p, H.HD_BACK, 'aria-label'));
+  const meShown = await p.isVisible(H.HD_ME).catch(() => false), backShown = await p.isVisible(H.HD_BACK).catch(() => false);
+  ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Today' && backShown && !meShown, '1. Back, labelled where it goes: “Back to Today”, shown in place of the photo (UI3)', js({ label: await attrOf(p, H.HD_BACK, 'aria-label'), backShown, meShown }));
   const secs = await sections(p);
   ok(js(secs.map((s) => s.id)) === js(['now', 'days', 'radar', 'warnings']) && /Now/.test(secs[0]?.label) && /16 Days/.test(secs[1]?.label) && /Radar/.test(secs[2]?.label) && /Warnings/.test(secs[3]?.label) && secs[0]?.on === 'true' && secs.slice(1).every((s) => s.on === 'false'),
     '1. the switcher: Now · 16 Days · Radar · Warnings, Now selected (§3.5 row 2)', js(secs));
@@ -132,13 +141,13 @@ await part(1, 'open Weather from Today’s card and from Apps’ tile: one page,
   ok((await shown(p, H.APPS)) && (await at(p, '/#apps')), '1. the tab bar’s Apps: Apps, in the page (§3.6)', here(p));
   await shown(p, H.appTile('weather'), 20000);
   const pushed = await p.evaluate(async ([tile, scr, clone]) => {
-    const t = document.querySelector(tile), a = t?.matches('a[href="/weather/"]') ? t : t?.querySelector('a[href="/weather/"]');
+    const a = document.querySelector(tile);
     if (!a) return { tapped: false };
     a.click();
     let cl = false;
     for (let i = 0; i < 8; i++) { await new Promise((r) => requestAnimationFrame(r)); if (document.querySelector(clone)) cl = true; const m = document.querySelector(scr); if (m && !m.hidden && m.getClientRects().length) break; }
     return { tapped: true, clone: cl };
-  }, [H.appTile('weather'), H.M_WEATHER, CLONE]);
+  }, [EXCEPT.tileLink('weather'), H.M_WEATHER, CLONE]);
   ok(pushed.tapped && !pushed.clone && (await weatherUp(p)), '1. Apps’ Weather tile: Weather pushed (no card clone: push, not zoom, §3.7)', js(pushed));
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Apps', '1. Back says “Back to Apps” now (UI3)', await attrOf(p, H.HD_BACK, 'aria-label'));
   ok((await life.same()) && docs.n() === 0, '1. still the one page throughout (Today → Weather → Today → Apps → Weather)', js(docs.list));
@@ -210,40 +219,43 @@ await part(2, 'sections by replaceState; Back to Apps and Today with the scroll 
 // ======================================================================================================================
 await part(3, 'cold deep links, the address tidied after show; Today’s warning chip → that place’s Warnings', '§3.3, D6, RB5d, UB5b, UI5, UI14', async () => {
 // ======================================================================================================================
+  // (each a cold load: from a page that isn't the framework's, so one document is fetched and the frame starts afresh)
   const day = dayKey(2);
-  await p.goto(`${HUB}/weather/#day=${day}`);
-  const d = (await weatherUp(p)) && (await shown(p, H.wxSec('days'))) && (await sheetOpen(p, H.DAY_SHEET));
-  ok(d && (await attrOf(p, H.hdSec('days'), 'aria-selected')) === 'true', `3. /weather/#day=${day}: 16 Days, that day’s sheet open (D6)`, here(p));
+  let d = await cold(p, `/weather/#day=${day}`);
+  const dd = (await screenUp(p, 'days')) && (await sheetOpen(p, H.DAY_SHEET));
+  ok(dd && (await attrOf(p, H.hdSec('days'), 'aria-selected')) === 'true' && d.n() === 1, `3. /weather/#day=${day}, cold (one document): 16 Days, that day’s sheet open (D6)`, js({ at: here(p), docs: d.list }));
   ok(await at(p, '/weather/#days'), '3. …the address tidied to /weather/#days (no #day=, RB5d)', here(p));
   await shot(p, '3-day');
-  await closeSheets(p);
+  await closeSheets(p); d.stop();
 
-  await p.goto(`${HUB}/weather/#radar`);
-  ok((await shown(p, H.wxSec('radar'), 30000)) && (await count(p, H.HTML_FILL)) === 1 && (await shown(p, H.RADAR_MAP)) && (await at(p, '/weather/#radar')), '3. /weather/#radar: Radar, the window filled, its map', here(p));
+  d = await cold(p, '/weather/#radar');
+  ok((await screenUp(p, 'radar')) && (await count(p, H.HTML_FILL)) === 1 && (await shown(p, H.RADAR_MAP)) && (await at(p, '/weather/#radar')) && d.n() === 1, '3. /weather/#radar, cold: Radar, the window filled, its map', js({ at: here(p), docs: d.list }));
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Apps', '3. a cold deep link’s Back: “Back to Apps” (§3.4)', await attrOf(p, H.HD_BACK, 'aria-label'));
   let h0 = (await history(p)).length;
   await p.click(H.HD_BACK);
   const hs = (await history(p)).slice(h0);
-  ok((await shown(p, H.APPS)) && (await at(p, '/#apps')) && hs.some((x) => x.kind === 'replace' && /\/#apps$/.test(x.url)) && !hs.some((x) => x.kind === 'push'), '3. …and it goes to Apps in place (replace, §3.4)', js(hs));
+  ok((await shown(p, H.APPS)) && (await at(p, '/#apps')) && hs.some((x) => x.kind === 'replace' && /\/#apps$/.test(x.url)) && !hs.some((x) => x.kind === 'push') && d.n() === 1, '3. …and it goes to Apps in place (replace, §3.4), no document fetched', js({ hs, docs: d.list }));
+  d.stop();
 
-  await p.goto(`${HUB}/weather/#warnings`);
-  ok((await shown(p, H.wxSec('warnings'), 30000)) && (await until(async () => (await count(p, H.WARNING_ROW)) === 2, 20000)), '3. /weather/#warnings: Warnings, London’s two in force', String(await count(p, H.WARNING_ROW)));
+  d = await cold(p, '/weather/#warnings');
+  ok((await screenUp(p, 'warnings')) && (await until(async () => (await count(p, H.WARNING_ROW)) === 2, 20000)) && d.n() === 1, '3. /weather/#warnings, cold: Warnings, London’s two in force', js({ rows: await count(p, H.WARNING_ROW), docs: d.list }));
+  d.stop();
 
-  await p.goto(`${HUB}/weather/#settings=units`);
-  ok((await sheetOpen(p, H.WXSETTINGS, 30000)) && (await shown(p, H.wxPage('units'))) && (await shown(p, H.wxSec('now'))), '3. /weather/#settings=units: Now, Weather Settings open at Units (D6)');
+  d = await cold(p, '/weather/#settings=units');
+  ok((await sheetOpen(p, H.WXSETTINGS, 30000)) && (await shown(p, H.wxPage('units'))) && (await shown(p, H.wxSec('now'))) && d.n() === 1, '3. /weather/#settings=units, cold: Now, Weather Settings open at Units (D6)', js({ docs: d.list }));
   ok(await at(p, '/weather/'), '3. …the address tidied to /weather/ (no #settings, RB5d)', here(p));
-  await closeSheets(p);
+  await closeSheets(p); d.stop();
 
-  await p.goto(`${HUB}${link(Bristol)}`);
+  await cold(p, link(Bristol));
   const sw = await titleIs(p, 'Bristol');
   await wait(1500);
   ok(sw && !(await count(p, `${H.CONFIRM_SHEET}[open]`)) && (await at(p, '/weather/')), '3. ?lat&lon&name of a place you have (Bristol): switched to it, nothing asked, the query gone (UI5, D6)', `${await title(p)} ${here(p)}`);
 
-  await p.goto(`${HUB}${link(Cromer)}`);
+  await cold(p, link(Cromer));
   ok(await sheetOpen(p, H.CONFIRM_SHEET, 30000), '3. a new place (Cromer): “Add “Cromer” to your places?” asked (§7.1 confirmPlace)');
   await p.click(H.CONFIRM_LOOK);
   ok((await titleIs(p, 'Cromer')) && !(await placesHave(p, 'Cromer')) && (await at(p, '/weather/')), '3. Just Look: Cromer shown, not added; the query gone (RB5d)', `${await title(p)} ${here(p)}`);
-  await p.goto(`${HUB}${link(Cromer)}`);
+  await cold(p, link(Cromer));
   await sheetOpen(p, H.CONFIRM_SHEET, 30000);
   await p.click(H.CONFIRM_ADD);
   ok((await titleIs(p, 'Cromer')) && (await until(() => placesHave(p, 'Cromer'), 8000)), '3. asked again, Add: Cromer added to your places (wx:places)');
@@ -310,7 +322,7 @@ await part(5, 'Send from Now → Chat’s engine through IFL.hub.send, its toast
   const btn = await shown(p, H.NOW_SEND, 20000);
   ok(btn && /Send .* to a friend/.test((await attrOf(p, H.NOW_SEND, 'aria-label')) || ''), '5. Now’s Send in the hero, “Send … to a friend” (fw.sendButton, §3.11)', await attrOf(p, H.NOW_SEND, 'aria-label'));
   // (the engine made at idle; tapped once it's there)
-  await until(() => p.evaluate(() => !!document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat), 20000);
+  await until(() => p.evaluate((s) => !!document.querySelector(s)?.contentWindow?.IFLChat, EXCEPT.CHAT_ENGINE), 20000);
   await p.click(H.NOW_SEND);
   const shared = await until(() => p.evaluate(() => window.__shared || null), 20000);
   p.off('request', watch);
@@ -361,22 +373,38 @@ await part(6, 'Weather Settings: every page; a save synced, glass kept; Notifica
 let B = null;   // (part 7's phone, whose first open part 8 measures)
 await part(7, 'the module’s files from Weather’s host through the hub: minified where current, no cookie; “Weather updated” once', '§6.2, §8.1, D1, D15', async () => {
 // ======================================================================================================================
-  const hp = passed(S).filter((x) => x.port === WEATHER_PORT && /^\/weather\/roof\//.test(x.path));
-  ok(hp.length >= FILES.filter((f) => f.startsWith('/weather/roof/')).length - 1 && hp.every((x) => !x.cookie && !x.auth), '7. the module’s files fetched from Weather’s host by the hub, each without a cookie or a bearer (§8.1, D1)', js({ n: hp.length, withCookie: hp.filter((x) => x.cookie || x.auth).map((x) => x.path) }));
+  // (the hub forwards /weather/<file> to Weather's own host as /<file>: hostpass at Weather's port has /roof/core.js, /data.js…)
+  const want = FILES.map((f) => f.replace(/^\/weather/, ''));
+  const statics = passed(S).filter((x) => x.port === WEATHER_PORT && !/^\/api\//.test(x.path) && /\.(?:js|css)(?:\?|$)/.test(x.path));
+  const got = new Set(statics.map((x) => x.path.split('?')[0]));
+  const missing = want.filter((f) => !got.has(f)), withCookie = statics.filter((x) => x.cookie || x.auth).map((x) => x.path);
+  ok(want.length > 0 && !missing.length && !withCookie.length, `7. all ${want.length} of the module’s files (connector.files) fetched from Weather’s host by the hub, as /<file>, each without a cookie or a bearer (§8.1, D1)`, js({ missing, withCookie, fetched: statics.length }));
+  // minified: every first-open file once integration has run minify.mjs over the module (min/manifest.json names
+  // weather/roof/*), or with ROOF_INTEGRATED=1; before that, only the files whose minified copy is current can be held to it
   const rep = await meterA.report();
-  const wrong = rep.rows.filter((r) => r.fresh && !r.minified && r.status === 200).map((r) => r.path), stale = rep.rows.filter((r) => !r.fresh).map((r) => r.path);
-  ok(rep.rows.length > 0 && !wrong.length, `7. each file sent minified wherever its minified copy is current (functions/_min.js; ${rep.rows.filter((r) => r.minified).length} minified, ${stale.length} with no current copy yet)`, js({ wrong }));
-  if (stale.length) console.log(`note: no current minified copy (integration runs minify.mjs): ${stale.join(' ')}`);
+  const mods = rep.rows.filter((r) => r.status === 200 && FILES.includes(r.path));
+  const integrated = process.env.ROOF_INTEGRATED === '1' || minKnows('weather/roof/');
+  if (integrated) {
+    const notMin = [...new Set(mods.filter((r) => !r.minified).map((r) => `${r.path}${r.fresh ? '' : ' (its min/ copy out of date)'}`))];
+    ok(mods.length > 0 && !notMin.length, `7. every one of the module’s files sent minified (functions/_min.js; min/ made by minify.mjs)`, js({ notMin }));
+  } else {
+    const wrong = mods.filter((r) => r.fresh && !r.minified).map((r) => r.path), stale = [...new Set(mods.filter((r) => !r.fresh).map((r) => r.path))];
+    ok(mods.length > 0 && !wrong.length, `7. each file whose minified copy is current sent minified (${mods.filter((r) => r.minified).length} of ${mods.length})`, js({ wrong }));
+    if (stale.length) console.log(`note: not yet proven, minified: ${stale.length} module files have no current min/ copy, as minify.mjs hasn’t run over weather/roof/* (integration does, rule 3; then, or with ROOF_INTEGRATED=1, every file must be minified)`);
+  }
 
   // the note (D15): a phone that last had an older Weather
   B = await open('wren-b');
   await B.ctx.addInitScript(() => { if (location.host === 'ifl.test:8788' && !sessionStorage.getItem('t-seeded')) { sessionStorage.setItem('t-seeded', '1'); localStorage.setItem('ifl-build:weather', '0.01'); } });
-  B.meter = meter(B.p);
+  const m = meter(B.p);
   await B.p.goto(`${HUB}/`);
   await todayUp(B.p);
   await B.p.click(H.tab('apps')); await shown(B.p, H.appTile('weather'), 20000);
   await tapTile(B.p);
-  await weatherUp(B.p);
+  const up = await weatherUp(B.p);
+  // (part 8's first open: everything from the page's load to Weather drawn, read now, before this phone opens it again)
+  B.first = up ? await m.report() : null;
+  m.stop();
   await wait(2500);
   const notes = (await said(B.p)).filter((t) => /Weather updated/.test(t));
   ok(notes.length === 1 && (await B.p.evaluate(() => localStorage.getItem('ifl-build:weather'))) === BUILD, `7. first mount after an older Weather: “Weather updated” once, ifl-build:weather now ${BUILD} (IFL.built, D15)`, js(await said(B.p)));
@@ -392,13 +420,16 @@ await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5'
 // ======================================================================================================================
   const most = FILES.length + 2;
   // (B's first open, in a fresh browser profile: everything fetched from the page's load to Weather drawn)
-  const r1 = await B.meter.report();
-  B.meter.stop();
-  console.log('first open:', js({ requests: r1.requests, js: r1.js, css: r1.css, unminified: r1.unminified.length }, 400));
-  ok(r1.requests > 0 && r1.requests <= most, `8. first open: ${r1.requests} same-origin /weather/ script and style requests (≤ ${most}: connector.files + 2)`, js(r1.rows.map((r) => r.path + r.query)));
-  ok(r1.js <= 90 * 1024, `8. first open: module JS ${Math.round(r1.js / 1024)} KB gzip (≤ 90)`, js(r1.rows.filter((r) => r.kind === 'js').map((r) => `${r.path} ${r.gz}`)));
-  ok(r1.css <= 14 * 1024, `8. first open: CSS ${Math.round(r1.css / 1024)} KB gzip (≤ 14)`);
-  ok(!r1.lazy.length, '8. first open on Now: nothing of the radar stack or the rain files (lazy, D2)', js(r1.lazy));
+  const r1 = B?.first;
+  if (!r1) { ok(false, '8. part 7’s first open wasn’t measured (Weather never drawn there)'); return; }
+  // (what's beyond connector.files, and anything fetched twice, first in the detail: those are what a count over says)
+  const beyond = (r) => ({ beyond: r.rows.filter((x) => !FILES.includes(x.path)).map((x) => x.path + x.query), twice: r.twice });
+  const sizes = (r, kind) => r.rows.filter((x) => x.kind === kind).sort((a, b) => b.gz - a.gz).map((x) => `${x.path.replace(/^\/weather\//, '')} ${x.gz}`);
+  console.log('first open:', js({ requests: r1.requests, js: r1.js, css: r1.css, unminified: r1.unminified.length, ...beyond(r1) }, 800));
+  ok(r1.requests > 0 && r1.requests <= most, `8. first open: ${r1.requests} same-origin /weather/ script and style requests (≤ ${most}: connector.files + 2)`, js({ ...beyond(r1), all: r1.rows.map((r) => r.path.replace(/^\/weather\//, '')) }, 1500));
+  ok(r1.js <= 90 * 1024, `8. first open: module JS ${Math.round(r1.js / 1024)} KB gzip (≤ 90)`, js(sizes(r1, 'js'), 1500));
+  ok(r1.css <= 14 * 1024, `8. first open: CSS ${Math.round(r1.css / 1024)} KB gzip (≤ 14)`, js(sizes(r1, 'css')));
+  ok(!r1.radar.length, '8. first open on Now: nothing of the radar stack (radar.js, radarmix.js, the map, vendor/: lazy, D2; the rain files may load for Now’s next hour, outside the budget, §7.3)', js({ radar: r1.radar, rain: r1.lazy.filter((x) => !RADAR_STACK.test(x)) }));
   if (r1.unminified.length) console.log(`note: measured as minify.mjs would send them (no current copy yet): ${r1.unminified.length} files`);
 
   // a cold deep link, an empty cache, signed in
@@ -409,8 +440,8 @@ await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5'
   ok(t != null && t <= 1500, `8. cold deep link /weather/#radar: Weather’s screen (skeleton) ${t == null ? 'never' : Math.round(t) + ' ms'} after the navigation began (≤ 1500)`);
   await shown(C.p, H.RADAR_MAP, 30000); await wait(2500);
   const r2 = await m.report();
-  console.log('cold deep link:', js({ requests: r2.requests, js: r2.js, css: r2.css, lazy: r2.lazy.length }, 400));
-  ok(r2.requests <= most && r2.js <= 90 * 1024 && r2.css <= 14 * 1024, `8. cold deep link: ${r2.requests} requests, ${Math.round(r2.js / 1024)} KB JS, ${Math.round(r2.css / 1024)} KB CSS gzip, the radar stack apart (§7.3)`, js(r2.rows.map((r) => `${r.path} ${r.gz}`)));
+  console.log('cold deep link:', js({ requests: r2.requests, js: r2.js, css: r2.css, lazy: r2.lazy.length, ...beyond(r2) }, 800));
+  ok(r2.requests <= most && r2.js <= 90 * 1024 && r2.css <= 14 * 1024, `8. cold deep link: ${r2.requests} requests (≤ ${most}), ${Math.round(r2.js / 1024)} KB JS (≤ 90), ${Math.round(r2.css / 1024)} KB CSS gzip (≤ 14), the radar stack and rain files apart (§7.3)`, js({ ...beyond(r2), js: sizes(r2, 'js'), css: sizes(r2, 'css') }, 1500));
   ok(r2.lazy.some((x) => /\/weather\/radar\.js$/.test(x)), '8. …the radar stack loaded for Radar, lazily (fw.lazy, D2)', js(r2.lazy));
   await C.ctx.close();
 });
@@ -459,21 +490,21 @@ await part(9, 'storage: only Weather’s own keys; no today:* change; search typ
 // ======================================================================================================================
 await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; signed out: the way in', 'D3, D12, RI4, RI15', async () => {
 // ======================================================================================================================
-  await A.ctx.route(/\/api\/weather\/me(\?|$)/, (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{"signedIn":false}' }));
-  await p.goto(`${HUB}/weather/`);
+  await route(A.ctx, /\/api\/weather\/me(\?|$)/, (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{"signedIn":false}' }));
+  await cold(p, '/weather/');
   await weatherUp(p);
   const line = await p.waitForFunction((s) => /Couldn’t sync with your account/.test(document.querySelector(s)?.textContent || ''), H.M_WEATHER, { timeout: 15000 }).then(() => true, () => false);
   await wait(1500);
-  const still = (await shown(p, H.M_WEATHER, 2000)) && (await shown(p, H.tab('apps'), 2000)) && !(await count(p, 'a[href*="#signin-start"]:not([hidden])'));
-  ok(line && still, '10. Weather’s account answering 401, the session still signed in: no sign-out (fw.session.lost() asked /api/session), “Couldn’t sync with your account” (D3, RI4)', js({ line, still }));
+  const still = { weather: await shown(p, H.M_WEATHER, 2000), tabs: await shown(p, H.tab('apps'), 2000), wayIn: await visible(p, EXCEPT.SIGNIN) };
+  ok(line && still.weather && still.tabs && !still.wayIn, '10. Weather’s account answering 401, the session still signed in: no sign-out, no way in shown (fw.session.lost() asked /api/session), “Couldn’t sync with your account” (D3, RI4)', js({ line, ...still }));
   await A.ctx.unroute(/\/api\/weather\/me(\?|$)/);
 
   const D = await phone('anon', {});
   everyone.push(D);
   const g = ownGuard(D.ctx);
   await D.p.goto(`${HUB}/weather/#radar`);
-  const way = await shown(D.p, 'a[href*="#signin-start&then="]', 30000);
-  const href = await attrOf(D.p, 'a[href*="#signin-start&then="]', 'href');
+  const way = await shown(D.p, EXCEPT.SIGNIN, 30000);
+  const href = await attrOf(D.p, EXCEPT.SIGNIN, 'href');
   ok(way && href === `/chats/#signin-start&then=${encodeURIComponent('/weather/#radar')}`, '10. signed out at /weather/#radar: InFlite’s way in, its Sign In back to /weather/#radar (D12, RI15)', href);
   ok(!(await shown(D.p, H.M_WEATHER, 1000)) && !g.hits.length, '10. …no Weather drawn signed out, nothing sent to Weather’s own address (D12, D23)', js(g.hits));
   await D.ctx.close();
@@ -482,14 +513,19 @@ await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; si
 // ======================================================================================================================
 await part(11, 'a new Weather build mid-session: no reload in use, no lazy file joins the old module, reload at a boundary', 'D21, RB2, UI13, D15', async () => {
 // ======================================================================================================================
-  // (no service worker here, so the release below reaches the page: a page's routes don't see what a worker answers)
+  // (no service worker here, so the page's own fetches are all there is to stand in for: with the root worker, its kept
+  // copy of the module and its own version checks would be a second source of the old build)
   const E = await open('wren-e', { sw: 'block', clock: true });
   let release = null;
-  await E.ctx.route(/\/weather\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: 'weather', build: release, min: null }) }) : r.continue()));
-  await E.ctx.route(/\/weather\/roof\/weather\.js(\?|$)/, async (r) => {
+  await route(E.ctx, /\/weather\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: 'weather', build: release, min: null }) }) : r.continue()));
+  // (the new build's weather.js: the hub's own, fetched from Node at the hub's real port with its Host (Node doesn't
+  // follow the browser's resolver rules), its BUILD swapped)
+  await route(E.ctx, /\/weather\/roof\/weather\.js(\?|$)/, async (r) => {
     if (!release) return r.continue();
-    const res = await r.fetch();
-    r.fulfill({ response: res, body: (await res.text()).replace(/(BUILD\s*=\s*)"[^"]*"/, `$1"${release}"`) });
+    const u = new URL(r.request().url());
+    const res = await hostCall('ifl.test:8788', u.pathname + u.search);
+    if (res.status !== 200) return r.continue();
+    return r.fulfill({ status: 200, contentType: res.headers['content-type'] || 'text/javascript; charset=utf-8', headers: { 'Cache-Control': 'no-store' }, body: res.text.replace(/(BUILD\s*=\s*)"[^"]*"/, `$1"${release}"`) });
   });
   const q = E.p, docs = loads(q);
   const versions = []; q.on('request', (r) => { if (/\/weather\/version/.test(r.url())) versions.push(Date.now()); });
@@ -519,7 +555,7 @@ await part(11, 'a new Weather build mid-session: no reload in use, no lazy file 
   ok(reloaded && order[0] === 'document', '11. Radar tapped (its code not loaded yet): the page reloads first, no lazy file fetched into the old module (fw.lazy, D21)', js(order));
   ok((await at(q, '/weather/#radar', 15000)) && (await shown(q, H.wxSec('radar'), 30000)), '11. …at /weather/#radar, Radar shown in the new page', here(q));
   q.off('request', onR);
-  await weatherUp(q).catch(() => {}); await wait(2000);
+  await screenUp(q, 'radar').catch(() => {}); await wait(2000);
   ok((await said(q)).filter((t) => /Weather updated/.test(t)).length === 1, '11. the new build mounted: “Weather updated” once (IFL.built, D15)', js(await said(q)));
 
   // another release, learnt; then away a minute or more: the reload at that boundary, the address and scroll kept
@@ -538,7 +574,7 @@ await part(11, 'a new Weather build mid-session: no reload in use, no lazy file 
   await E.ctx.clock.fastForward('01:05');
   await show(q);
   const went = await until(() => docs.n() >= 1, 15000);
-  await weatherUp(q).catch(() => {});
+  await screenUp(q, 'now').catch(() => {});
   ok(went && (await at(q, '/weather/', 15000)), '11. back after more than 60 s away, no sheet open: reloaded, at /weather/ still (D21 boundary a)', js({ docs: docs.list, at: here(q) }));
   const y1 = await until(async () => { const y = await q.evaluate(() => Math.round(scrollY)); return Math.abs(y - y0) <= 6 ? String(y) : null; }, 6000);
   ok(y1 != null, `11. …the scroll kept (${y0}px, ifl-here:today, D21)`, String(await q.evaluate(() => scrollY)));
@@ -563,8 +599,10 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
 
   await p.goto(`${HUB}${link(Bristol)}`);
   await weatherUp(p); await titleIs(p, 'Bristol');
-  const one = await p.waitForFunction((s) => { const t = document.querySelector(s)?.textContent.trim() || ''; return t && !/\d+ warnings/.test(t); }, slot, { timeout: 20000 }).then(() => true, () => false);
-  ok(one, '12. Bristol, one in force: its card in the slot, no banner of several (UB2)', await textOf(p, slot));
+  // (the one over Bristol, as mocks/wxwarnings.mjs has it: its headline on the card)
+  const brs = OW.ukFeed(Date.now()).warnings.map((x) => x.alert.info[0]).find((i) => i.area[0].polygon?.[0] === OW.BRISTOL);
+  const one = await p.waitForFunction(([s, head]) => { const t = document.querySelector(s)?.textContent.replace(/\s+/g, ' ').trim() || ''; return t.includes(head) && /wind/i.test(t) && !/\d+ warnings/.test(t); }, [slot, brs.headline], { timeout: 20000 }).then(() => true, () => false);
+  ok(one, `12. Bristol, one in force: its own card in the slot (a wind warning, “${brs.headline}”), no banner of several (UB2)`, await textOf(p, slot));
 
   await p.goto(`${HUB}${link(York)}`);
   await weatherUp(p); await titleIs(p, 'York');
@@ -632,7 +670,7 @@ await part(13, 'CSP clean, axe, 390 light and dark, the 1280 layout', '§3.13, �
   const all = everyone.flatMap((x) => x.errs || []);
   ok(!all.some((e) => /CSP violation|Refused to/.test(e)), '13. no CSP violation on any page (§8.3: no inline style, no inline handler, only the origins allowed)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
   ok(!all.length, '13. no page error and no console error on any page', js(all.slice(0, 8)));
-  ok(!guard.hits.length && !(await guard.opened()).length, '13. nothing of all this went to Weather’s own address (D23)', js(guard.hits.slice(0, 4)));
+  ok(!guard.hits.length, '13. nothing of all this went to Weather’s own address (D23)', js(guard.hits.slice(0, 4)));
 });
 
 await closeAll();
