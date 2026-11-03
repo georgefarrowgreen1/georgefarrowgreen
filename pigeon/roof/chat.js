@@ -15,6 +15,7 @@ import { put, first, dayLabel, fmtTime, untilWords, tick, ticker, framed, patchL
 import { friendSub } from "./friends.js";
 import { cardHtml } from "../cardview.js";
 import { linkParts } from "../links.js";
+import { cardWords } from "../cards.js";
 
 const STICK_PX = 64;          // this near the bottom counts as at the bottom
 const OLDER_PX = 240;         // this near the top asks for older messages
@@ -45,6 +46,7 @@ function cardEl(doc, card, o) {
   t.innerHTML = html;
   return t.content;
 }
+const safeWords = (c) => { try { return cardWords(c) || c.say || ""; } catch (_) { return typeof c?.say === "string" ? c.say : ""; } };
 const reactWords = (r) => Object.entries(r || {}).filter(([, n]) => n > 0);
 
 export function view(el, ctx) { return build(el, ctx); }
@@ -124,12 +126,17 @@ function build(host, ctx) {
       case "card": case "ask": case "plan": case "answer": case "when": {
         const c = m.card ? cardEl(doc, m.card, { mine, sentAt: m.at, viewAt: Date.now(), who: nameOf(m.from) }) : null;
         if (c) b.append(el("div", { class: "ch-card" }, c));
+        // (a card this phone can't draw: its own sentence, else just what it is, never an empty bubble)
+        else if (!m.text) b.append(el("span", { class: "ch-words", text: (m.card && safeWords(m.card)) || (m.kind === "card" ? "A card" : "A question") }));
         break;
       }
     }
     if (m.text) b.append(wordsEl(doc, m.text));
     // yours in the air: when it lands
     if (mine && fl?.flying) b.append(el("span", { class: "ch-ft" }, fl.waiting ? "sends at " : "lands in ", el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })));
+    // (a bubble with a link, a card's link or a photo's button in it isn't a button itself: those are its taps, and
+    // a tap beside them still opens its menu)
+    if (b.querySelector("a[href], button")) { b.removeAttribute("role"); b.removeAttribute("tabindex"); b.removeAttribute("aria-haspopup"); }
     row.append(b);
     const rx = reactWords(m.reactions);
     if (rx.length) row.append(el("div", { class: "ch-rx", aria: { label: "Reactions" } }, rx.map(([e, n]) => el("span", { class: `ch-r${m.mine === e ? " mine" : ""}`, text: n > 1 ? `${e} ${n}` : e }))));
