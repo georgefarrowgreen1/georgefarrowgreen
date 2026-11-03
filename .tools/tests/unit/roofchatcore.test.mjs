@@ -415,6 +415,8 @@ test('storage goldens: what the core writes, app.js reads (cache, drafts, outbox
   assert.ok(k2.srv.posted.some((p) => p.path === 'messages' && p.body.id === 'o-app-1' && p.body.ct === meta.ct), 'the core sends app.js’s queued letter as it was sealed');
   assert.ok(k2.lastOf('rows').length >= 2, 'and opens from app.js’s cache');
   // a draft the core writes keeps Chat's own (merged by chat, under the lock)
+  assert.equal((await k2.call('open', srv.ids.ali)).draft, 'from Chat itself', 'the open chat carries its draft, from Chat’s own');
+  await k2.call('leave');
   await k2.call('draft', srv.ids.pat, 'from the core'); await settle(900);
   const S3 = { me: { id: srv.ids.me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map() };
   await appStorage(S3).draftsLoad();

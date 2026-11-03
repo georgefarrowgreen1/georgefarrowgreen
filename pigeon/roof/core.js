@@ -124,6 +124,8 @@
  *   (from: "me" | "them" | a group member's id; mine: the reaction you gave, if any; card: cards.js normCard's shape;
  *   media.ref: a token for photo(ref), never a URL)
  * @typedef {{ id: string, kind: "friend"|"group", msgs: Msg[], older: boolean }} Chat           (topic chat:<id>)
+ *   (CORE adds, optional: draft?: string, what you'd started writing in this chat, opened from drafts:<uid>; only the
+ *   open chat's, never while locked)
  * @typedef {{ on: boolean }} Typing                                                              (topic typing:<id>)
  * @typedef {{ id: string, chatId: string, state: "queued"|"sending"|"failed" }} OutItem         (topic outbox: OutItem[]; no text)
  * @typedef {{ mine: boolean, friends: string[] }} KeyWarn                                        (topic keywarn)
@@ -950,7 +952,10 @@ function chatView(id) {
   const g = group(id), list = [...(S.msgs.get(id) || [])];
   for (const o of S.outbox) if (o.to === id && !list.some((m) => m.id === o.id)) list.push({ id: o.id, from: S.me.id, sentAt: o.at, waiting: true, instant: !!o.meta?.instant, pigeon: o.kind });
   const n = S.win.get(id) || WIN, shown = list.slice(-n);
-  return { id, kind: g ? "group" : "friend", msgs: S.locked ? [] : shown.map((m) => msgView(id, m, g)), older: list.length > shown.length };
+  const v = { id, kind: g ? "group" : "friend", msgs: S.locked ? [] : shown.map((m) => msgView(id, m, g)), older: list.length > shown.length };
+  const dr = S.locked ? "" : S.drafts.get(id) || "";
+  if (dr.trim()) v.draft = dr;
+  return v;
 }
 function emitLists() {
   if (!ready()) return;
