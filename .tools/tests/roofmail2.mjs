@@ -332,7 +332,8 @@ await part(12, 'CSP clean, axe, 390 light and dark, 1024', '§2.1, C13, §4.3', 
   await shot(W.p, '12-1024');
   await W.ctx.close();
 
-  const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !/^\S+ auth\.ifl\.test|^\S+ account\.ifl\.test/.test(e));
+  const SANDBOXED = /Blocked script execution in 'about:srcdoc'/;   // (the test's init scripts refused in a message's inner frame: the sandbox working)
+  const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !SANDBOXED.test(e) && !/^\S+ auth\.ifl\.test|^\S+ account\.ifl\.test/.test(e));
   ok(!errs.some((e) => /CSP violation|Refused to/.test(e)), '12. no CSP violation on any page of the hub (C13: no inline style or handler, only the origins allowed)', js(errs.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
   ok(!errs.length, '12. no page error and no console error on any page of the hub', js(errs.slice(0, 8)));
 });

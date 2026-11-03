@@ -369,7 +369,10 @@ await part('E', 'offline on the Home Screen after one online open: Mail’s offl
   await ctx.close();
 });
 
-const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !/Failed to fetch|NetworkError|ERR_|george-off.*(404|403|CORS|Access-Control|dynamically imported)/.test(e));
+// (the test's own init scripts, which Playwright puts into every frame, refused in a message's script-less inner frame:
+// Chromium says so as an error; the refusal is the sandbox working, roofmailbody's to prove)
+const SANDBOXED = /Blocked script execution in 'about:srcdoc'/;
+const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !SANDBOXED.test(e) && !/Failed to fetch|NetworkError|ERR_|george-off.*(404|403|CORS|Access-Control|dynamically imported)/.test(e));
 ok(!errs.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page of the hub (C13)', js(errs.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!errs.length, 'no page error and no console error on any page (the switched-off stand-ins’ refusals aside)', js(errs.slice(0, 8)));
 await closeAll();

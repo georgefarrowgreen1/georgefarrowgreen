@@ -570,7 +570,10 @@ await part(6, 'search: the provider’s hit; “Search Mail for …” a POST, t
 });
 
 // ---- across the run ----
-const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !/Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED/.test(e));
+// (the test's own init scripts, which Playwright puts into every frame, refused in a message's script-less inner frame:
+// Chromium says so as an error; the refusal is the sandbox working, roofmailbody's to prove)
+const SANDBOXED = /Blocked script execution in 'about:srcdoc'/;
+const errs = everyone.flatMap((x) => x.errs || []).filter((e) => !SANDBOXED.test(e) && !/Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED/.test(e));
 ok(!errs.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (C13)', js(errs.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!errs.length, 'no page error and no console error on any page (the offline outbox’s failed fetches aside)', js(errs.slice(0, 8)));
 const hubAsksMail = asked.filter((r) => r.url.startsWith(`${HUB}/`) && /\/api\/(mail|threads|messages)/.test(r.url));
