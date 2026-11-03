@@ -21,7 +21,9 @@ const skip = (!IFL && 'the inflite repo isn’t beside this one') ||
 // framework is told to route; elsewhere, as milestone 1, every window is told to open)
 const hasRoof = !skip && existsSync(new URL('today/src/roof.js', IFL));
 const roofCase = skip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
-const FRAMEWORK = ['/', '/index.html', '/weather/', '/weather/index.html'];
+// (stages 2–4: every module's page is the framework's too, s24-contracts §8)
+const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
+const FRAMEWORK = ['/', '/index.html', ...(S24 ? ['weather', 'markets', 'fitness', 'mail'] : ['weather']).flatMap((a) => [`/${a}/`, `/${a}/index.html`])];
 const kindAt = (url) => (hasRoof && FRAMEWORK.includes(new URL(url).pathname) ? 'route' : 'open');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -284,8 +286,9 @@ test('One roof: a window of the framework (/ or /weather/) is told to route in t
     assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/?lat=51.5&lon=-0.12&name=London' }], at);
     assert.deepEqual([w.wins[0].went, w.opened], [[], []], `${at}: routed in the page`);
   }
-  // (Chats, Fitness, Markets, Mail and the 404 page: told to open it, as before)
-  for (const at of ['/chats/', '/fitness/#today', '/markets/', '/mail/', '/nowhere', '/weather/app.js']) {
+  // (Chats, Fitness, Markets, Mail and the 404 page: told to open it, as before; from stages 2–4, Fitness, Markets and
+  // Mail's pages are the framework's, told to route, below)
+  for (const at of ['/chats/', ...(S24 ? [] : ['/fitness/#today', '/markets/', '/mail/']), '/nowhere', '/weather/app.js']) {
     const w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
     await w.tap({ app: 'weather', url: './#warnings' });
     assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'open', url: '/weather/#warnings' }], at);
@@ -319,4 +322,36 @@ test('One roof: a window of the framework (/ or /weather/) is told to route in t
   w = worker();
   await w.tap({ app: 'weather', url: './?lat=1&lon=2&name=Here' });
   assert.deepEqual(w.opened, [`${ORIGIN}/weather/?lat=1&lon=2&name=Here`]);
+});
+
+test('stages 2–4: a window at a module’s page (/markets/, /fitness/, /mail/) is told to route; one that only opens (that app’s hub page, its switch off) is then told to open', { skip: roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4') }, async () => {
+  for (const at of ['/fitness/#today', '/markets/', '/mail/', '/mail/index.html']) {
+    let w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true }] });
+    await w.tap({ app: 'weather', url: './#warnings' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }], at);
+    w = worker(undefined, { windows: [{ url: `${ORIGIN}${at}`, focused: true, hears: 'open' }] });
+    await w.tap({ app: 'weather', url: './#warnings' });
+    assert.deepEqual(plain(w.wins[0].messages), [{ ifl: 'route', url: '/weather/#warnings' }, { ifl: 'open', url: '/weather/#warnings' }], `${at}: only opens`);
+    assert.deepEqual([w.wins[0].went, w.opened], [[], []]);
+  }
+});
+
+test('stages 2–4: a Mail push shows its own words at once, then Mail’s (the sender and subject), silently in the same place; none fetched for a tag that isn’t an id, nor shown when Mail’s answer is odd', { skip: roofCase || (!S24 && 'the inflite repo beside is from before stages 2–4') }, async () => {
+  const asked = [];
+  const answers = { ok: { title: 'Pat Jones', body: 'Lunch on Friday?' }, long: { title: 'x'.repeat(121), body: 'y' }, num: { title: 1, body: 'y' } };
+  const net = (path, init) => { asked.push({ path, init }); const id = path.split('/').pop(); return answers[id] ? Response.json(answers[id]) : new Response('no', { status: 404 }); };
+  let w = worker(net);
+  await w.push({ app: 'mail', title: 'Mail', body: 'New mail from people', tag: 'ok', url: '/mail/#thread=ok' });
+  assert.deepEqual(w.shown.map((n) => [n.title, n.body, n.tag]), [['Mail', 'New mail from people', 'mail:ok'], ['Pat Jones', 'Lunch on Friday?', 'mail:ok']]);
+  assert.equal(w.shown[1].silent, true); assert.equal(w.shown[1].renotify, false);
+  assert.equal(w.shown[1].data.url, '/mail/#thread=ok');
+  assert.equal(asked[0].path, '/api/notice/ok'); assert.equal(asked[0].init.credentials, 'include'); assert.equal(asked[0].init.cache, 'no-store');
+  for (const tag of ['long', 'num', 'gone']) {
+    w = worker(net);
+    await w.push({ app: 'mail', title: 'Mail', body: 'New mail from people', tag, url: `/mail/#thread=${tag}` });
+    assert.equal(w.shown.length, 1, `${tag}: only the push’s own words`);
+  }
+  asked.length = 0;
+  for (const tag of ['a/b', '../x', 'x'.repeat(65), undefined]) { w = worker(net); await w.push({ app: 'mail', title: 'Mail', body: 'New', tag }); }
+  assert.deepEqual(asked, [], 'never asked for a tag that isn’t an id');
 });
