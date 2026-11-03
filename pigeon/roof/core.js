@@ -295,6 +295,8 @@ function haversineKm(aLat, aLon, bLat, bLon) {
   const r = Math.PI / 180, s = Math.sin((bLat - aLat) * r / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin((bLon - aLon) * r / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(s));
 }
+// (a timer that doesn't keep anything alive where that means something: node, for the unit tests; a number in a Worker)
+const unref = (t) => (t?.unref?.(), t);
 const fold = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /* ---------------- the wire ---------------- */
@@ -720,7 +722,7 @@ function pulseTick() {
 }
 // the 1 s check runs only while the screen shows (S3-D10): no timer of the core's while hidden
 function ticking() {
-  if (onScreen() && ready()) { if (!tickTimer) tickTimer = setInterval(pulseTick, 1000); }
+  if (onScreen() && ready()) { if (!tickTimer) { tickTimer = setInterval(pulseTick, 1000); tickTimer?.unref?.(); } }
   else if (tickTimer) { clearInterval(tickTimer); tickTimer = 0; pulseHide(); }
 }
 function pulseHide() {
@@ -1006,13 +1008,13 @@ let hideTimer = 0;
 function hiddenNow() {
   clearTimeout(hideTimer);
   if (S.visible) return;
-  hideTimer = setTimeout(() => {
+  hideTimer = unref(setTimeout(() => {
     const keep = new Set([...S.friends.map((f) => f.last?.id), ...S.groups.map((g) => g.last?.id)].filter(Boolean));
     for (const id of [...S.plain.keys()]) if (!keep.has(id)) { S.plain.delete(id); S.pctx.delete(id); }
     for (const fid of [...S.msgs.keys()]) if (fid !== S.chat) S.msgs.delete(fid);
     chatSigs.clear(); chatTags.clear();
     if (S.chat) { const id = S.chat; S.msgs.delete(id); dropTopics(id); }
-  }, HIDDEN_DROP);
+  }, HIDDEN_DROP));
 }
 function lockNow(on) {
   const was = S.locked; S.locked = !!on;
@@ -1334,7 +1336,7 @@ const methods = {
     } else {
       await starting;
       if (typeof o.locked === "boolean") lockNow(lockPrefs());
-      if (ready() && (o.visible || o.screen)) { emitLists(); emitOpen(); if (onScreen()) sync().catch(() => {}); }
+      if (ready() && (o.visible || o.screen)) { if (S.chat) markRead(S.chat, S.msgs.get(S.chat) || []); emitLists(); emitOpen(); if (onScreen()) sync().catch(() => {}); }
     }
     ticking();
     return { state: emitState() };
@@ -1361,7 +1363,7 @@ const methods = {
     if (S.chat && S.chat !== id) dropTopics(S.chat);
     S.view = "chat"; S.chat = id;
     if (!S.msgs.has(id) && S.chatRaw.has(id)) await applyChat(id, S.chatRaw.get(id), false).catch(() => {});
-    const fresh = loadChat(id).then(() => { emitOpen(); emitLists(); }, () => {});
+    const fresh = loadChat(id).then(() => { markRead(id, S.msgs.get(id) || []); emitOpen(); emitLists(); }, () => {});
     if (!S.msgs.has(id)) await fresh;
     emitTyping();
     ticking();
