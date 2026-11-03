@@ -4,7 +4,9 @@
 //   in the account's zone, which apps' lines it has, the day it was last sent and what it said (td_prefs);
 // - the devices the morning notification goes to: each a push subscription made by inflite.ai's own service worker,
 //   with the site's one key (functions/_notify.js vapid), and the sign-in it was made with, so it goes with that
-//   (td_push).
+//   (td_push);
+// - what Today did or offered, each kept for Undo (td_acts), the days its plan has run (td_plans), and each rule's level
+//   and record (td_rules), all read and written by functions/_todayacts.js.
 // The cards themselves are worked out by functions/_todaycards.js, and the morning composed and sent by
 // functions/_todaymorning.js. (This never imports those, nor Weather's or Fitness's: they import it.)
 
@@ -43,6 +45,21 @@ async function setup(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS td_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
       session TEXT, added INTEGER NOT NULL, fails INTEGER NOT NULL DEFAULT 0, ok_at INTEGER)`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS td_push_user ON td_push (user_id)"),
+    // (Today First, functions/_todayacts.js: what Today did or offered, kept for Undo. rule: moveRide | addRide | rideThen;
+    // day: YYYY-MM-DD in the account's zone; kind: move | add | time; state: done | offered | taken | undone | kept |
+    // ignored; was, now: JSON, the target before and after; one a rule, day and target)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS td_acts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, rule TEXT NOT NULL, day TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, state TEXT NOT NULL, level TEXT NOT NULL, was TEXT, now TEXT, said TEXT NOT NULL,
+      made INTEGER NOT NULL, undo_until INTEGER NOT NULL, UNIQUE (user_id, rule, day, target))`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS td_acts_user ON td_acts (user_id, day)"),
+    // (one a day once its plan has run: claimed first with INSERT OR IGNORE, so the morning's tick and a page never both act)
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS td_plans (user_id TEXT NOT NULL, day TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, day))"),
+    // (each rule's level and record, on the account. level: do | suggest | quiet; set_by: auto | you; kept_since: kept since
+    // the last level change)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS td_rules (user_id TEXT NOT NULL, rule TEXT NOT NULL, level TEXT NOT NULL DEFAULT 'do',
+      set_by TEXT NOT NULL DEFAULT 'auto', done INTEGER NOT NULL DEFAULT 0, kept INTEGER NOT NULL DEFAULT 0, undone INTEGER NOT NULL DEFAULT 0,
+      ignored INTEGER NOT NULL DEFAULT 0, held INTEGER NOT NULL DEFAULT 0, kept_since INTEGER NOT NULL DEFAULT 0, level_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, rule))`),
   ]);
 }
 const fingerprint = (text) => { let h = 2166136261; for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "t" + h.toString(36); };
