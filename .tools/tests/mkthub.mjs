@@ -183,15 +183,17 @@ ok(pathOf(p.url()) === fromAt, 'opened from Today: Back goes back to Today, wher
 // (Markets' answer held back three seconds, so what's drawn before it is seen)
 const kept = await p.evaluate(() => ({ last: JSON.parse(localStorage.getItem('markets:last') || 'null'), session: localStorage.getItem('today:session') }));
 ok(kept.last?.me?.id && (kept.last.holdings || []).some((x) => x.symbol === 'TSCO.L'), 'Markets keeps its copy at the hub (to open at once, and offline)', JSON.stringify(Object.keys(kept.last || {})));
+const hasKept = () => p.evaluate(() => /Tesco|Rolls-Royce/.test(document.querySelector('main')?.innerText || ''));
+// (as after signing out in You: InFlite's kept sign-in gone, Markets' copy still here. Taken away from a page of
+// Markets', as Today's own page, open until now, keeps it again as it goes)
+await fresh(`${HUB}/markets/#holdings`); await p.waitForSelector('.tab[data-tab="holdings"]', { timeout: 30000 }); await settle(p, 500);
+await p.evaluate(() => localStorage.removeItem('today:session'));
 let meHeld = 0, meAnswered = 0;
 await p.route('**/api/markets/me', async (r) => { meHeld++; await new Promise((go) => setTimeout(go, 3000)); meAnswered++; await r.continue().catch(() => {}); });
-const hasKept = () => p.evaluate(() => /Tesco|Rolls-Royce/.test(document.querySelector('main')?.innerText || ''));
-// (as after signing out in You: InFlite's kept sign-in gone, Markets' copy still here)
-await p.evaluate(() => localStorage.removeItem('today:session'));
 await fresh(`${HUB}/markets/#holdings`);
 await p.waitForSelector('.tab[data-tab="holdings"]', { timeout: 30000 }); await settle(p, 900);
-const before = { meHeld, meAnswered, drawn: await hasKept() };
-ok(before.meHeld >= 1 && before.meAnswered === 0 && !before.drawn, 'with no kept sign-in of InFlite’s: nothing of the copy drawn while Markets’ answer is awaited', JSON.stringify(before));
+const before = { meHeld, meAnswered, drawn: await hasKept(), session: await p.evaluate(() => localStorage.getItem('today:session')) };
+ok(before.session === null && before.meHeld >= 1 && before.meAnswered === 0 && !before.drawn, 'with no kept sign-in of InFlite’s: nothing of the copy drawn while Markets’ answer is awaited', JSON.stringify(before));
 await p.waitForFunction(() => /Tesco/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 ok(meAnswered >= 1 && await hasKept(), 'and George’s holdings, once the account says it’s him', String(meAnswered));
 // (InFlite's kept sign-in George's, as Today keeps it: the copy drawn at once)
