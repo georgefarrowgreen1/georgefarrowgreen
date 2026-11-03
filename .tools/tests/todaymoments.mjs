@@ -143,7 +143,8 @@ const tickAt = (path, host = 'localhost') => new Promise((done) => {
   });
   q.on('error', (e) => done({ s: 0, j: { error: e.message } })); q.end();
 });
-const chatTick = () => K.tick();
+// (a turn that can't be had is said in the checks after it, never a crash)
+const chatTick = () => K.tick().catch((e) => ({ status: 0, error: String(e?.message || e) }));
 const todayTick = () => tickAt('/api/today/tick');
 const weatherTick = () => tickAt('/api/weather/tick');
 const marketsMode = (m) => fetch('http://127.0.0.1:8801/mode', { method: 'POST', body: JSON.stringify(m) }).catch(() => {});
