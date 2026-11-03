@@ -22,9 +22,13 @@ function exportsOf(src) {
   for (const m of s.matchAll(/\bexport\s*\{([^}]*)\}/g)) for (const part of m[1].split(',')) { const n = part.trim().split(/\s+as\s+/).pop(); if (n) out.add(n); }
   return out;
 }
-// (an exported const's literal, one line: export const NAME = <literal>;)
-const literalOf = (src, name) => { const m = new RegExp(`\\bexport\\s+const\\s+${name}\\s*=\\s*([^\\n;]+);`).exec(uncomment(src)); return m ? Function(`"use strict"; return (${m[1]});`)() : undefined; };
-const constOf = (src, name) => { const m = new RegExp(`\\bconst\\s+${name}\\s*=\\s*([^\\n;]+);`).exec(uncomment(src)); return m ? Function(`"use strict"; return (${m[1]});`)() : undefined; };
+// (a const's literal on one line of the raw text, never uncommented first: a quoted string (which may hold ; or //), a
+// number, or an array literal; `export const NAME = <literal>;` for literalOf, the same with or without export for
+// constOf. A line inside a comment doesn't start with const, so it never matches.)
+const LITERAL = String.raw`("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|-?\d+(?:\.\d+)?|\[[^\n]*\])`;
+const lit = (src, name, exp) => { const m = new RegExp(String.raw`^[ \t]*${exp ? String.raw`export\s+` : String.raw`(?:export\s+)?`}const\s+${name}\s*=\s*${LITERAL}\s*;`, 'm').exec(src); return m ? Function(`"use strict"; return (${m[1]});`)() : undefined; };
+const literalOf = (src, name) => lit(src, name, true);
+const constOf = (src, name) => lit(src, name, false);
 // (an object literal's top-level keys, from `export const NAME = {`)
 function keysOf(src, name) {
   const s = uncomment(src), at = s.search(new RegExp(`\\bexport\\s+const\\s+${name}\\s*=\\s*\\{`));
@@ -42,16 +46,24 @@ function keysOf(src, name) {
   }
   return keys.filter((k) => /^[A-Za-z_$][\w$]*$/.test(k));
 }
-// (the static import graph from a file: import … from "./x", export … from "./x", import "./x"; relative only)
+// (the static import graph from a file: import … from "x", export … from "x", import "x". A specifier is followed when
+// relative (./, ../) or absolute on this site under /weather/ (resolved against MAIN); any other (a bare name, another
+// path, a URL) is a failure: the module's static imports stay inside Weather's files, so connector.files lists them all.)
 function graphFrom(start) {
-  const seen = new Set(), todo = [start];
+  const seen = new Set(), todo = [start], bad = [];
   while (todo.length) {
     const u = todo.pop();
     if (seen.has(u.href)) continue;
     seen.add(u.href);
     const s = uncomment(read(u));
-    for (const m of s.matchAll(/\b(?:import|export)\s+(?:[\w$*{}\s,]+?\s+from\s+)?["'](\.{1,2}\/[^"']+)["']/g)) todo.push(new URL(m[1], u));
+    for (const m of s.matchAll(/\b(?:import|export)\s+(?:[\w$*{}\s,]+?\s+from\s+)?["']([^"']+)["']/g)) {
+      const spec = m[1];
+      if (/^\.{1,2}\//.test(spec)) todo.push(new URL(spec, u));
+      else if (/^\/weather\/[\w./-]+$/.test(spec) && !spec.includes('..')) todo.push(new URL(spec.slice(1), MAIN));
+      else bad.push(`${'/' + u.href.slice(MAIN.href.length)}: ${spec}`);
+    }
   }
+  assert.deepEqual(bad, [], 'static imports are relative or /weather/…');
   return [...seen].map((h) => '/' + h.slice(MAIN.href.length));
 }
 // (every import( must be the body of fw.lazy(() => …): `fw.lazy(() => import(` or `fw.lazy(async () => import(`)
@@ -160,6 +172,11 @@ test('Weather’s module exports CONTRACT 1, BUILD and NEWS equal to weather/app
   const has = exportsOf(WEATHER);
   for (const n of ['CONTRACT', 'BUILD', 'NEWS', 'SECTIONS', 'mount']) assert.ok(has.has(n), `weather.js exports ${n}`);
   assert.match(uncomment(WEATHER), /\bexport\s+async\s+function\s+mount\s*\(\s*root\s*,\s*fw\s*\)/);
+  // (the reader bites: a NEWS with ; and // in it, a commented-out line, a const that isn't exported)
+  assert.equal(literalOf('export const NEWS = "Rain; then sun // later";\n', 'NEWS'), 'Rain; then sun // later');
+  assert.equal(constOf('// const BUILD = "0.1";\nconst BUILD = "1.66"; // raised\n', 'BUILD'), '1.66');
+  assert.equal(literalOf('const BUILD = "1.66";\n', 'BUILD'), undefined);
+  assert.deepEqual(literalOf('export const S = [["a", "b;c"], ["d", "e"]];\n', 'S'), [['a', 'b;c'], ['d', 'e']]);
   assert.equal(literalOf(WEATHER, 'CONTRACT'), 1);
   assert.equal(literalOf(WEATHER, 'BUILD'), constOf(APP, 'BUILD'), 'BUILD = weather/app.js’s (I raises both together)');
   assert.equal(literalOf(WEATHER, 'NEWS'), constOf(APP, 'NEWS'), 'NEWS = weather/app.js’s');
@@ -214,6 +231,13 @@ test('the connector: no imports, ≤ 4 KB, the agreed words, Weather’s section
   assert.equal(typeof connector.search, 'function');
   assert.equal(connector.mini(null), null);
   assert.equal(connector.mini({ cards: { weather: { state: 'none' } } }), null);
+  // (the real card's shape, functions/_todaywx.js weatherCard with v=2: now.temp already a string, the hours at hours.list,
+  // the rain in real ms, said on the place's clock)
+  const card = { state: 'ok', offset: 3600, clock: '24', now: { temp: '14°' }, hours: { label: 'Next four hours', list: [{ pop: 0 }, { pop: 20 }, { pop: 45 }, { pop: 80 }, { pop: 100 }, { pop: 60 }] },
+    rain: { now: false, at: Date.UTC(2026, 10, 3, 14, 0), end: null, peak: null } };
+  assert.deepEqual(connector.mini({ cards: { weather: card } }), { kind: 'num-bars', num: '14°', bars: [0, 20, 45, 80, 100], label: 'Rain from 15:00' });
+  assert.equal(connector.mini({ cards: { weather: { ...card, rain: { now: true, at: null } } } }).label, 'Raining now');
+  assert.deepEqual(connector.mini({ cards: { weather: { ...card, rain: null, hours: { list: [{ pop: 30 }] } } } }), { kind: 'num-bars', num: '14°', bars: [30, 0, 0, 0, 0], label: '' });
 });
 
 test('connector.files: every file there, the CSS in it, and the whole static import graph from weather.js, which never reaches vendor/, the radar stack or the rain files', () => {
@@ -248,13 +272,21 @@ test('every dynamic import in the module sits inside fw.lazy( (D21)', () => {
   for (const f of jsFiles(MOD)) assert.deepEqual(lazyOutside(read(new URL(f, MOD))), [], `weather/roof/${f}`);
 });
 
+// (listeners on the page's globals: window., document., globalThis., self., or a bare addEventListener( (= window's);
+// each must have its removeEventListener of the same type on the same global, document's on document)
+const GLOBAL_EV = (verb) => new RegExp(String.raw`(?:\b(window|document|globalThis|self)\s*\.\s*|(?<![.\w$]))${verb}EventListener\s*\(\s*(?:(["'\`])([\w:-]+)\2)?`, 'g');
+const pairs = (s, verb) => [...s.matchAll(GLOBAL_EV(verb))].map((m) => [m[1] || 'window', m[3] ?? '(not a literal)']);
+const globalListeners = (s) => pairs(s, 'add');
+const globalRemoves = (s) => pairs(s, 'remove');
+const sameGlobal = (a, b) => (a === 'document') === (b === 'document');
+
 test('the module keeps §5.1’s rules: no service worker, history, location change, confirm/alert, IFL, page selectors, today:* key, indexedDB or parent; window/document listeners removed', () => {
   const RULES = [
     [/serviceWorker/, 'registers no service worker'],
     [/(?:\b(?:window|globalThis)\s*\.\s*|(?<![.\w$]))history\s*\./, 'no history.*'],
     [/(?:\b(?:window|globalThis|document)\s*\.\s*|(?<![.\w$]))location\s*(?:\.\s*(?:assign|replace|reload)\s*\(|(?:\.\s*(?:href|hash|search|pathname))?\s*=(?!=))/, 'no location changes (reading only)'],
     [/(?<![.\w$])(?:confirm|alert|prompt)\s*\(|\bwindow\s*\.\s*(?:confirm|alert|prompt)\s*\(/, 'no confirm()/alert()'],
-    [/\bIFL\s*\./, 'no IFL.'],
+    [/\bIFL\b/, 'no IFL (window.IFL, IFL.…)'],
     [/\bdocument\s*\.\s*(?:getElementById|querySelector|querySelectorAll|getElementsBy\w+)\s*\(/, 'no document.getElementById/querySelector (only root, fw.screenEl and what it made)'],
     [/["'`]today:/, 'no today:* key'],
     [/\bindexedDB\b/, 'no indexedDB'],
@@ -264,13 +296,18 @@ test('the module keeps §5.1’s rules: no service worker, history, location cha
   for (const f of jsFiles(MOD)) {
     const s = uncomment(read(new URL(f, MOD)));
     for (const [re, why] of RULES) assert.ok(!re.test(s), `weather/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
-    for (const m of s.matchAll(/\b(window|document)\s*\.\s*addEventListener\s*\(\s*(["'`])([\w:-]+)\2/g)) assert.match(s, new RegExp(`\\b${m[1]}\\s*\\.\\s*removeEventListener\\s*\\(\\s*["'\`]${m[3]}["'\`]`), `weather/roof/${f}: ${m[1]}'s "${m[3]}" listener removed (in unmount)`);
+    for (const [who, type] of globalListeners(s)) assert.ok(globalRemoves(s).some(([w, t]) => t === type && sameGlobal(w, who)), `weather/roof/${f}: ${who}'s "${type}" listener removed (in unmount)`);
   }
   // (the rules bite)
   assert.ok(RULES[3][0].test('if (confirm("x")) 1') && !RULES[3][0].test('ctx.open.confirm(p); confirmPlace(ctx, p)'));
   assert.ok(RULES[2][0].test('location.href = "/"') && RULES[2][0].test('window.location.assign("/")') && RULES[2][0].test('location.reload()') && !RULES[2][0].test('const p = location.pathname; if (location.hash === "#x") 1; w.location = 2'));
   assert.ok(RULES[1][0].test('history.back()') && RULES[1][0].test('window.history.pushState(1)') && !RULES[1][0].test('wx.history.length'));
   assert.ok(RULES[8][0].test('parent.postMessage(1)') && !RULES[8][0].test('el.parentNode; a.parent.x'));
+  assert.ok(RULES[4][0].test('const I = window.IFL;') && RULES[4][0].test('IFL.hub.go("/")') && !RULES[4][0].test('const IFLY = 1; fw.ifl'));
+  assert.deepEqual(globalListeners('addEventListener("resize", f); window.addEventListener("keydown", g); globalThis.addEventListener("online", h); self.addEventListener("x", k); document.addEventListener("visibilitychange", v); el.addEventListener("click", c); a.b.addEventListener("y", d)'),
+    [['window', 'resize'], ['window', 'keydown'], ['globalThis', 'online'], ['self', 'x'], ['document', 'visibilitychange']]);
+  assert.deepEqual(globalListeners('addEventListener(type, f)'), [['window', '(not a literal)']], 'a type that isn’t a literal pairs only with a remove whose type isn’t one either');
+  assert.ok(sameGlobal('window', 'self') && sameGlobal('globalThis', 'window') && !sameGlobal('document', 'window'));
 });
 
 test('the module’s CSS defines nothing on :root, html or body', () => {

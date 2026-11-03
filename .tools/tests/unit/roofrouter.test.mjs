@@ -1,7 +1,8 @@
 // One roof's router (the inflite repo's today/public/roof/router.js, where it's beside this one; spec §3.3, D6): every
 // address of the framework read into its Route and written back, tab targets (/#you=<id>), a place and a section
-// together, and what's never the framework's: another origin, //x, a \ or a control character, a long query (dropped),
-// and Weather's addresses with the roof off. Frozen by B0.
+// together, format's calls with no kind or a key of another section, and what's never the framework's: another origin,
+// //x, a \ or a control character, a long path or hash (a long query is only dropped), and Weather's addresses with the
+// roof off. Frozen by B0.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ROOF, roofSkip } from './fixtures/roof.mjs';
@@ -77,6 +78,31 @@ test('Weather: Now, its sections, a day, Settings at a page, a place, and a plac
   assert.equal(R.format(null), '/');
 });
 
+test('format: kind may be left out, and a key only counts when it belongs to the section (D6’s tidy, nav.section, nav.href, a spread route)', { skip }, () => {
+  // (D6's own tidy call, with no kind: an app route because it has app; a tab route because it has tab)
+  assert.equal(R.format({ app: 'weather', section: 'days' }), '/weather/#days');
+  assert.equal(R.format({ app: 'weather', section: 'now' }), '/weather/');
+  assert.equal(R.format({ app: 'nope', section: 'days' }), '/');
+  assert.equal(R.format({ tab: 'you', arg: 'notify' }), '/#you=notify');
+  assert.equal(R.format({ tab: 'apps' }), '/#apps');
+  assert.equal(R.format({}), '/');
+  // (a spread route whose section was changed: the old key, and its arg, are dropped)
+  assert.equal(R.format({ ...R.parse('/weather/', on), section: 'radar' }), '/weather/#radar');
+  assert.equal(R.format({ ...R.parse('/weather/#day=2026-11-03', on), section: 'radar' }), '/weather/#radar');
+  assert.equal(R.format({ ...R.parse('/weather/#settings=units', on), section: 'warnings' }), '/weather/#warnings');
+  assert.equal(R.format({ ...R.parse('/weather/#radar', on), section: 'now' }), '/weather/');
+  assert.equal(R.format({ ...R.parse('/weather/#day=2026-11-03', on), section: 'days' }), '/weather/#day=2026-11-03', 'a key of the same section stays');
+  // (fw.nav.section(id, { arg }) = format({ app, section: id, arg }); fw.nav.href(key, arg) = format({ app, key, arg }))
+  assert.equal(R.format({ app: 'weather', section: 'radar', arg: null }), '/weather/#radar');
+  assert.equal(R.format({ app: 'weather', section: 'days', arg: '2026-11-03' }), '/weather/#days=2026-11-03');
+  assert.equal(R.format({ app: 'weather', key: 'day', arg: '2026-11-03' }), '/weather/#day=2026-11-03');
+  assert.equal(R.format({ app: 'weather', key: 'settings', arg: 'units' }), '/weather/#settings=units');
+  assert.equal(R.format({ app: 'weather', key: 'radar' }), '/weather/#radar');
+  assert.equal(R.format({ app: 'weather', key: 'nope', arg: 'x' }), '/weather/', 'a key that’s no section nor alias: Now, its arg dropped');
+  assert.equal(R.format({ app: 'weather', section: 'nope', key: 'warnings' }), '/weather/#warnings', 'a section that isn’t one: the key’s');
+  assert.equal(R.format({ app: 'weather', section: 'radar', key: 'day', arg: '2026-11-03' }), '/weather/#radar');
+});
+
 test('a link’s own address (a.href) of this origin is read the same; another origin, //x, \\ and control characters are never ours', { skip }, () => {
   assert.deepEqual(R.parse(`${ORIGIN}/weather/#radar`, on), app('radar'));
   assert.deepEqual(R.parse(`${ORIGIN}/#you=apps`, on), tab('you', 'apps'));
@@ -96,6 +122,13 @@ test('Weather’s query is passed on raw up to 400 characters, and dropped past 
   assert.equal(ok.length, 400);
   assert.equal(R.parse(`/weather/${ok}#radar`, on).query, ok);
   assert.deepEqual(R.parse(`/weather/${long}#radar`, on), app('radar'));
+  // (the 2048 cap is on the address less its query: a query of any length is dropped, the route kept, §3.3)
+  const huge = '?name=' + 'a'.repeat(3000);
+  assert.deepEqual(R.parse(`/weather/${huge}#radar`, on), app('radar'));
+  assert.deepEqual(R.parse(`${ORIGIN}/weather/index.html${huge}#day=2026-11-03`, on), app('days', 'day', '2026-11-03'));
+  assert.deepEqual(R.parse(`/${huge}#you=apps`, on), tab('you', 'apps'));
+  assert.equal(R.parse('/weather/#radar' + 'a'.repeat(2048), on), null, 'a long hash is still too long');
+  assert.equal(R.parse('/weather/#x?' + 'a'.repeat(2048), on), null, 'a ? after the # is the hash’s');
 });
 
 test('with the roof off (or the hub not ready) Weather’s addresses aren’t the framework’s, nor anything else of the site’s', { skip }, () => {
