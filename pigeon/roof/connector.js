@@ -8,7 +8,6 @@
 //   mini(answer) → { kind: "num", num, label: "Unread" } from Today's chat card (answer.cards.chat.unread), or null.
 // No search here: the Chats search is the frame's own provider over the core (§2.4).
 export const CONNECTOR = 1;
-export const STUB = true;
 export const connector = {
   app: "chats",
   name: "Chats",
@@ -41,7 +40,7 @@ export const connector = {
     "/chats/roof/chsheets.css",
     "/chats/cards.css",
   ],
-  lazy: ["/chats/roof/send.js", "/chats/roof/sheets.js", "/chats/roof/settings.js", "/chats/roof/media.js", "/chats/rank.js"],
+  lazy: ["/chats/roof/send.js", "/chats/roof/sheets.js", "/chats/roof/settings.js", "/chats/roof/media.js", "/chats/rank.js", "/chats/qr.js"],
   preload: ["/chats/roof/chats.js", "/chats/roof/connector.js"],
   mini(answer) {
     const u = answer?.cards?.chat?.unread;

@@ -1,24 +1,41 @@
-// Chats' page store (§3.2): the last value of each topic the core patched, subscribers called in a microtask; a null
-// value deletes the topic; clear(prefix) deletes every topic starting with it (chat:, typing: on locked and unmount).
-// B0's stub (One roof, stage 3: roof/s3/spec.md §2.2, §3.1; frozen exports, the agreed imports), UI-A's to write.
-// createStore() → { get(topic), on(topic, fn) → off, apply({ topic, data }), clear(prefix) }
-//   on(topic, fn): fn(data) after each change of that topic (data null: deleted); topic "*": fn({ topic, data }) for all.
-export const STUB = true;
-
+// Chats' store (One roof, stage 3, spec §3.2): the page's copy of what the core last said, one value per topic. The core
+// owns the state; its { t: "patch", topic, data } messages come in through apply(), and each view subscribes to the
+// topics it draws (on show) and lets go of them (on hide). A null value deletes the topic: the core sends chat:<id> =
+// null and typing:<id> = null on leave(), on locked and when it drops plaintext, and clear(prefix) does the same here
+// (on locked and on unmount), so the page holds at most the chat on screen.
+//   createStore() → { get(topic), on(topic, fn) → off, apply(patch), clear(prefix), topics() }
+//     on(topic, fn): fn(data) in a microtask after each change (a run of changes to one topic calls it once, with the
+//       last value); topic "*": fn({ topic, data }) for every topic. off() lets go.
+//     apply({ topic, data }) (or apply(topic, data)): keeps it, null/undefined deletes it.
+//     clear(prefix): every topic starting with prefix deleted (its subscribers told null).
 export function createStore() {
-  const vals = new Map(), subs = new Map();
-  const tell = (topic, data) => queueMicrotask(() => {
-    for (const f of [...(subs.get(topic) || [])]) f(data);
-    for (const f of [...(subs.get("*") || [])]) f({ topic, data });
-  });
+  const vals = new Map(), subs = new Map(), due = new Set();
+  let queued = false;
+  const flush = () => {
+    queued = false;
+    const ts = [...due];
+    due.clear();
+    for (const t of ts) {
+      const v = vals.has(t) ? vals.get(t) : null;
+      for (const fn of [...(subs.get(t) || [])]) { try { fn(v); } catch (e) { console.error(e); } }
+      for (const fn of [...(subs.get("*") || [])]) { try { fn({ topic: t, data: v }); } catch (e) { console.error(e); } }
+    }
+  };
+  const tell = (t) => { due.add(t); if (!queued) { queued = true; queueMicrotask(flush); } };
+  const set = (t, data) => {
+    if (typeof t !== "string" || !t) return;
+    if (data == null) { if (!vals.has(t)) return; vals.delete(t); } else vals.set(t, data);
+    tell(t);
+  };
   return {
-    get: (topic) => (vals.has(topic) ? vals.get(topic) : null),
-    on(topic, fn) { const l = subs.get(topic) || new Set(); l.add(fn); subs.set(topic, l); return () => l.delete(fn); },
-    apply({ topic, data } = {}) {
-      if (typeof topic !== "string") return;
-      if (data === null || data === undefined) vals.delete(topic); else vals.set(topic, data);
-      tell(topic, data ?? null);
+    get: (t) => (vals.has(t) ? vals.get(t) : null),
+    on(t, fn) {
+      if (!subs.has(t)) subs.set(t, new Set());
+      subs.get(t).add(fn);
+      return () => subs.get(t)?.delete(fn);
     },
-    clear(prefix) { for (const k of [...vals.keys()]) if (k.startsWith(prefix)) { vals.delete(k); tell(k, null); } },
+    apply(p, data) { if (typeof p === "string") set(p, data); else if (p && typeof p === "object") set(p.topic, p.data); },
+    clear(prefix = "") { for (const t of [...vals.keys()]) if (t.startsWith(prefix)) set(t, null); },
+    topics: () => [...vals.keys()],
   };
 }
