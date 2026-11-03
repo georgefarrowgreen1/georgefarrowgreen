@@ -891,8 +891,9 @@ const linesQ = (D, a, b) => D.prepare("SELECT a AS by, way, at FROM pg_wayev WHE
 const pairWaysQ = (D, a, b) => D.prepare("SELECT a, b, way FROM pg_ways WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(a, b);
 const CHAT_MAX = 300, DELTA_FOR = 10 * MIN, DELTA_DAYS = 2 * DAY, OVERLAP = 5000;
 async function listMessages({ request, env }) {
-  const u = await requireUser(request, env);
+  // (?quiet=1: Today's engine reading who's waiting, as sync's: not you seen, nor a day you used Chat on)
   const q = new URL(request.url).searchParams, other = q.get("with") || "";
+  const u = await requireUser(request, env, { inflight: q.get("quiet") !== "1" });
   const D = await db(env), t = Date.now();
   // only what's changed since the last answer (its now), when that was lately: the open chat asks this whenever the
   // pulse says the chat changed, and the whole chat (tagged) on opening and every minute

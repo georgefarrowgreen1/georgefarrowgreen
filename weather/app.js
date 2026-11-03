@@ -743,8 +743,9 @@ const IFL = (() => {
   return api;
 })();
 // ==== end of InFlite's menu ====
-// (opened from the account's Notifications page to turn them on here: #notify, asked once the account's in step)
-let ASK_NOTIFY = IFL.wantsAllow();
+// (opened from the account's Notifications page to turn them on here: #notify, asked once the account's in step; never
+// at InFlite's hub, where InFlite asks for them, once, for every app: IFL.hub)
+let ASK_NOTIFY = IFL.wantsAllow() && !IFL.hub.on;
 
 // (while a place's whole page is drawn for beside this one, in that: drawWhole)
 let R = null;
@@ -828,7 +829,9 @@ function loadSettings() {
 function notifyOf(n) {
   n = n && typeof n === "object" && !Array.isArray(n) ? n : {};
   const spot = (p) => (p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? { lat: p.lat, lon: p.lon, name: String(p.name || ""), ...(p.gps ? { gps: true } : {}) } : null);
-  const at = /^\d\d:\d\d$/.test(n.briefAt || "") ? n.briefAt : "07:00", keep = { endpoint: n.endpoint || null, devId: n.devId || null, syncedAt: n.syncedAt || 0 };
+  // (off: turned off on this device by hand, InFlite being where they go now (IFL.hub.moved): kept off till they're
+  // turned on here again by a person, never by the app keeping itself in step: syncNow)
+  const at = /^\d\d:\d\d$/.test(n.briefAt || "") ? n.briefAt : "07:00", keep = { endpoint: n.endpoint || null, devId: n.devId || null, syncedAt: n.syncedAt || 0, ...(n.off ? { off: true } : {}) };
   // (signed in: the warnings and the briefing by email too)
   const email = { warn: !!n.email?.warn, brief: !!n.email?.brief };
   if (!Array.isArray(n.places)) { const p = spot(n.place); return { places: p && (n.rain || n.warn) ? [{ ...p, rain: !!n.rain, warn: !!n.warn }] : [], brief: p && n.brief ? p : null, briefAt: at, email, ...keep }; }
@@ -853,6 +856,12 @@ async function start() {
   // (and the picture the account's page ended on, there since the first frame, taken on: early.js, arriveFrom; with no
   // code that could be one, done with at once)
   if (signedIn) arrival = arriveFrom(); else $("back-in")?.remove();
+  // (a section asked for in the address: opened once there's a forecast to open it on; and heard from the first, each
+  // time another's asked for while the page is open (a notification tapped as it's still finding where you are, say),
+  // a later one taking over from this: openTo)
+  const section = location.hash;
+  addEventListener("hashchange", () => openTo(location.hash));
+  openTo(section);
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
   // (My Location as kept by a version from before it was kept to three decimal places, its notifications' too: so from
@@ -865,14 +874,14 @@ async function start() {
   // My Location first (lists kept from before it was), still showing the same place
   const g = S.places.findIndex((x) => x.gps);
   if (g > 0) { const was = place(); S.places.unshift(...S.places.splice(g, 1)); S.cur = S.places.indexOf(was); savePlaces(); }
-  wire();
+  wire(); hubTop();
   // (the cards in your order from the first, not moved there once the forecast's in)
   balance("", true);
   // a shared link: ?lat=…&lon=…&name=…
   const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
     const name = (q.get("name") || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 60);
-    history.replaceState(null, "", location.pathname);
+    history.replaceState(null, "", location.pathname + (sectionOf(location.hash) ? location.hash : ""));
     const p = { name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon }, n = S.settings.notify;
     const near = (x, d = 0.02) => Math.abs(x.lat - lat) < d && Math.abs(x.lon - lon) < d;
     let have = S.places.findIndex((x) => !x.gps && near(x));
@@ -895,7 +904,7 @@ async function start() {
       const j = r.ok ? await r.json() : null;
       if (j && Number.isFinite(j.lat)) addPlace({ name: j.name, region: j.region || "", lat: j.lat, lon: j.lon, approx: true });
     } catch (_) {}
-    if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276 });
+    if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276, ...(IFL.hub.on ? { standin: true } : {}) });
   }
   // (found, it's asked for already)
   if (!located) go();
@@ -920,21 +929,25 @@ async function start() {
   // (a new version put in by itself, the same in every app: never with a sheet open or the radar full screen; how far
   // down you were, kept for it, the place you were on being kept anyway)
   IFL.updates({ app: "weather", build: BUILD, busy: () => !!document.querySelector("dialog[open]") || $("radar").classList.contains("radar-big"), save: () => ({ y: Math.round(scrollY) }) });
-  const was = IFL.here("weather"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 700);
+  const was = IFL.here("weather"); if (was?.y && !sectionOf(section)) setTimeout(() => scrollTo(0, was.y), 700);
   reopen();
   if (signedIn) signedBack(signedIn); else pull();
+  // (an old Home Screen icon, InFlite being one app now: said once, with notifications here turned off at a tap, as
+  // they come to InFlite instead; never at the hub, nor in a browser's tab: IFL.hub.moved)
+  if (!IFL.hub.on) setTimeout(() => IFL.hub.moved("weather", S.settings.notify.endpoint ? { off: () => syncNotify(false, { none: true }) } : {}), 1500);
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
   // (a place chosen, or found by the phone: the rough guess from the connection made on the first visit goes, as it was
-  // only ever a stand-in, and is often a city or two out)
-  if (!p.approx && S.places.some((x) => x.approx && !near(x))) {
+  // only ever a stand-in, and is often a city or two out; at InFlite's hub, so does London as one: start)
+  const stand = (x) => x.approx || x.standin;
+  if (!stand(p) && S.places.some((x) => stand(x) && !near(x))) {
     const was = S.places[S.cur];
-    S.places = S.places.filter((x) => !x.approx || near(x));
+    S.places = S.places.filter((x) => !stand(x) || near(x));
     S.cur = Math.max(0, S.places.indexOf(was));
   }
   let i = p.gps ? S.places.findIndex((x) => x.gps) : S.places.findIndex((x) => !x.gps && near(x));
-  if (i >= 0) { S.places[i] = { ...S.places[i], ...p }; if (!p.approx) delete S.places[i].approx; }
+  if (i >= 0) { S.places[i] = { ...S.places[i], ...p }; if (!p.approx) delete S.places[i].approx; if (!p.standin) delete S.places[i].standin; }
   else if (p.gps) { S.places.unshift(p); i = 0; if (!makeCurrent) S.cur++; }      // My Location first, as on iOS
   else { S.places.push(p); i = S.places.length - 1; }
   if (makeCurrent) S.cur = i;
@@ -2001,11 +2014,15 @@ async function sendToFriend() {
   const wx = S.wx;
   if (!wx) return;
   const now = nowWall(wx.place.offset), said = $("brief").dataset.said || I.headline(wx, now, S.f);
-  let card = null, chatPage = () => null, chatHash = null;
-  try { const M = await sendMod(); ({ chatPage, chatHash } = M); card = M.weatherSendCard(wx, now, S.f, { activities: S.settings.activities, name: place()?.name || wx.place.name, headline: said }); } catch (e) { console.error(e); }
-  const words = card?.say || said, chat = chatHash && chatPage();
-  // (to Chat, beside Weather, the words first and the card after them; else the words, by the phone's own sharing, or copied)
-  if (chat) { location.assign(chat + chatHash(words, card)); return; }
+  let card = null, M = null;
+  try { M = await sendMod(); card = M.weatherSendCard(wx, now, S.f, { activities: S.settings.activities, name: place()?.name || wx.place.name, headline: said }); } catch (e) { console.error(e); }
+  const words = card?.say || said, way = M?.sendWay(words, card, { hub: IFL.hub });
+  // (at InFlite's hub, Chat's own sheet over the page, sending without leaving it, else Chats' own and back: IFL.hub;
+  // elsewhere, to Chat beside Weather, the words first and the card after them; else the words, by the phone's own
+  // sharing, or copied)
+  if (way?.hub) { IFL.hub.send(way.words, way.packed).catch(() => toast("Couldn’t open Chats just now. Try again.")); return; }
+  if (way?.url) { location.assign(way.url); return; }
+  if (IFL.hub.on) { IFL.hub.send(words, null).catch(() => {}); return; }
   if (navigator.share) { navigator.share({ text: words }).catch(() => {}); return; }
   navigator.clipboard?.writeText(words).then(() => toast("Copied, to paste in Chat"), () => toast(words));
 }
@@ -2893,7 +2910,7 @@ async function locate(quiet = false, after = null) {
       const all = [...n.places, n.brief].filter(moved);
       if (!all.length) return;
       for (const q of all) Object.assign(q, { lat, lon, name });
-      saveSettings(); notifySaved().catch(() => {});
+      saveSettings(); notifySaved({ person: false }).catch(() => {});
     };
     // (named as it was, until the new name's found, if it's not gone far; "My Location" if it has)
     const as = was || (same ? before : null);
@@ -2970,7 +2987,7 @@ function drawSaved() {
         // drawn again, as takeUp has them)
         S.places.splice(at, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go(); else if (S.wx) render(); else showPlace();
         // (its notifications go with it)
-        if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved().catch(() => {}); }
+        if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved({ person: false }).catch(() => {}); }
       });
     };
     const li = h("li", { class: "pc-li" }, card, S.places.length > 1 ? [h("button", { class: "pc-del", type: "button", "aria-label": `Remove ${p.name}`, onclick: remove }, h("span", { svg: glyph("trash", 20) }), "Delete"),
@@ -3065,7 +3082,9 @@ const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "
 function nudge() {
   // (put away, it's a row at the top of Settings instead, till they're on: settings.js drawSettings)
   const box = $("nudge"), n = S.settings.notify, away = store.get("wx:nudge");
-  if (notifying(n) || away) { if (!box._fold) box.hidden = true; return; }
+  // (at InFlite's hub, never: InFlite asks for notifications, once, for every app, and the account says which: You; nor
+  // once they've been turned off here, as InFlite's are where they come now: IFL.hub.moved)
+  if (notifying(n) || away || IFL.hub.on || n.off) { if (!box._fold) box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
   // (put away, it folds away where it is, what's under it moving up rather than jumping)
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); fold(box); };
@@ -3080,8 +3099,11 @@ function nudge() {
       h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
   box.hidden = false;
 }
-// why this phone can't have them, if it can't
+// why this phone can't have them, if it can't (at InFlite's hub, they're never Weather's to ask for: InFlite asks, once,
+// for every app, in You, and the account says which come. So Settings asks the browser for nothing there, offers no
+// Send Them Here Too, and says where instead: settings.js)
 function notifyWhy() {
+  if (IFL.hub.on) return "In InFlite, every app's notifications are turned on in You.";
   if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site (browser settings)." : null;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
@@ -3106,16 +3128,31 @@ async function post(path, body) {
 // tell the server what this device wants (or that it wants nothing); signed in, it's the account's choices this device
 // gets (functions/_wxacct.js), and it's one of the account's devices
 // (one at a time, each with the settings as they are when its turn comes: two quick changes can't race each other)
+// force: turned on here and now, by a tap; person: a choice of a person's, made here (a place's rain alerts, the
+// briefing); none: nothing wanted here at all (Turn Off Notifications Here: IFL.hub.moved). Turned off here, it stays
+// off till force or a person says otherwise: never turned on again by the app keeping itself in step (My Location
+// moving, the units changed, the server told again now and then, the account's choices taken up)
 let syncs = Promise.resolve();
-function syncNotify(force = false) {
-  const run = syncs.then(() => syncNow(force));
+function syncNotify(force = false, { person = false, none = false } = {}) {
+  const run = syncs.then(() => syncNow(force, { person, none }));
   syncs = run.catch(() => {});
   return run;
 }
 const canShow = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && Notification.permission === "granted";
-async function syncNow(force = false) {
+async function syncNow(force = false, { person = false, none = false } = {}) {
+  // (at InFlite's hub, nothing: its own worker holds the one subscription there, and the account says what comes; and
+  // nothing let go of either, ever, as that's InFlite's)
+  if (IFL.hub.on) return;
   const n = S.settings.notify;
-  if (!S.acct && !notifying(n)) {
+  // (turned off here; and on again only by a person's say, here: a choice made, or turned on, never the app by itself)
+  const was = !!n.off;
+  if (none) n.off = true; else if (force || person) delete n.off;
+  // (signed out, this device's choices are its own, and nothing wanted is none of them: so Settings says Off, and
+  // nothing's left for the app to ask for again by itself. Signed in, they're the account's, and its other devices
+  // still get them)
+  if (none && !S.acct) { n.places = []; n.brief = null; if (S.settings.solar?.alert) S.settings.solar = { ...S.settings.solar, alert: false }; }
+  if (!!n.off !== was || none) saveSettings();
+  if (n.off || (!S.acct && !notifying(n))) {
     const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
     if (sub) { await post("/api/weather/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
     n.endpoint = n.devId = null; saveSettings();
@@ -3147,7 +3184,7 @@ async function syncNow(force = false) {
 let keeping = false, failedAt = 0;
 async function keepNotify(now = false) {
   const n = S.settings.notify;
-  if (keeping || (!now && Date.now() - failedAt < 10 * 60e3) || (!notifying(n) && !n.endpoint) || !canShow()) return;
+  if (IFL.hub.on || n.off || keeping || (!now && Date.now() - failedAt < 10 * 60e3) || (!notifying(n) && !n.endpoint) || !canShow()) return;
   keeping = true;
   try {
     const sub = await pushSub(false);
@@ -3160,11 +3197,13 @@ async function keepNotify(now = false) {
 const notifying = (n) => !!(n.places.length || n.brief || (S.settings?.solar?.on && S.settings.solar.alert));
 // a place, as notifications know it (My Location: wherever it is now)
 const nkey = (p) => A.nkeyOf(p);
-// a choice made: kept, and (signed in) the account's first, then this device told
-async function notifySaved() {
-  if (!S.acct) return syncNotify();
+// a choice made: kept, and (signed in) the account's first, then this device told (person: a person's choice, made
+// here, which turns them on here again if they'd been turned off here; not My Location's notifications following it,
+// nor a place's going with it: syncNotify)
+async function notifySaved({ person = true } = {}) {
+  if (!S.acct) return syncNotify(false, { person });
   await keepInStep();
-  if (!hereToo() && canShow()) { await syncNotify(); refreshDevices(); }
+  if (!hereToo() && canShow()) { await syncNotify(false, { person }); refreshDevices(); }
 }
 
 /* ---------- your account ---------- */
@@ -3176,9 +3215,12 @@ const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", 
 const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
-// what's here, as it's kept with the account (My Location is each device's own)
+// what's here, as it's kept with the account (My Location is each device's own; and at InFlite's hub, so is the place
+// Weather opened on as a stand-in, the rough guess from the connection or London, never chosen by anyone: so it's
+// never written to an account, nor on to every device it's on. Elsewhere, as ever)
+const standIn = (p) => IFL.hub.on && !!(p.approx || p.standin);
 const mine = () => ({
-  places: S.places.filter((p) => !p.gps).map((p) => ({ name: p.name, region: p.region || "", lat: p.lat, lon: p.lon })),
+  places: S.places.filter((p) => !p.gps && !standIn(p)).map((p) => ({ name: p.name, region: p.region || "", lat: p.lat, lon: p.lon })),
   settings: Object.fromEntries(SYNCED.map((k) => [k, S.settings[k]])),
   notify: { places: S.settings.notify.places, brief: S.settings.notify.brief, briefAt: S.settings.notify.briefAt, email: S.settings.notify.email },
 });
@@ -3197,14 +3239,15 @@ function combine(theirs, now, snap, first = false) {
 // taken up here: the places (My Location first, as ever, and the one on show still on show), settings and notifications
 function takeUp(d) {
   const here = place(), gps = S.places.find((p) => p.gps), units = canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]);
-  const list = d.places.map((p) => ({ ...(S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}), ...p }));
+  // (the account's places are chosen ones: one this device had as a stand-in is a stand-in no longer)
+  const list = d.places.map((p) => { const { approx, standin, ...was } = S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}; return { ...was, ...p }; });
   if (gps || list.length) S.places = gps ? [gps, ...list] : list;
   const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
   S.cur = Math.max(0, at);
   store.set("wx:places", S.places); store.set("wx:cur", S.cur);
   const n = S.settings.notify;
   const theirs = Object.fromEntries(SYNCED.filter((k) => d.settings && k in d.settings).map((k) => [k, d.settings[k]]));
-  store.set("wx:settings", { ...S.settings, ...theirs, notify: { ...d.notify, endpoint: n.endpoint, devId: n.devId, syncedAt: n.syncedAt } });
+  store.set("wx:settings", { ...S.settings, ...theirs, notify: { ...d.notify, endpoint: n.endpoint, devId: n.devId, syncedAt: n.syncedAt, ...(n.off ? { off: true } : {}) } });
   loadSettings();
   if (here && at < 0) go(); else if (S.wx) render();
   if (units !== canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]) && notifying(S.settings.notify)) syncNotify().catch(() => {});
@@ -3263,7 +3306,12 @@ async function adopt(r, here = false) {
   // (kept from before the account's id was: by its handle, unless that's been changed since and this device is still
   // among the account's)
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
-  if (fresh && !here && mine().places.length) {
+  // (at InFlite's hub, Weather's first open there, as the account's already signed in: the place it opened on as a
+  // stand-in (the rough guess from the connection, or London) is no reason to ask, nor anything to keep with the
+  // account (mine leaves it out there), and nor is one the account has already (a notification's, say); asked only for
+  // a place of this device's own the account hasn't. Elsewhere, as ever)
+  const hubFirst = IFL.hub.on && fresh && !here, own = mine(), theirs = new Set((r.data?.places || []).map(A.keyOf));
+  if (fresh && !here && (hubFirst ? own.places.some((p) => !theirs.has(A.keyOf(p))) : own.places.length)) {
     // (asked first; and the account this device was in step with till now, signed out of in this browser since, let go
     // of before it's asked, so nothing here goes to the one signed in now, nor its notifications come here, till it's
     // answered, and Settings no longer says it's signed in)
@@ -3273,7 +3321,7 @@ async function adopt(r, here = false) {
   }
   S.ask = null;
   S.acct = { ...profileOf(r), devices: r.devices || [], state: S.acct?.state || "ok" };
-  if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
+  if (fresh) takeUp(combine(r.data, own, snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
   store.set("wx:acct", { ...profileOf(r), devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
   SE()?.drawAccount(); drawInStep(); SE()?.drawMail(); drawMe();
@@ -3299,8 +3347,10 @@ const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
   const b = $("me-btn"), a = S.acct;
-  $("settings-btn").hidden = !!a;
-  b.hidden = false; b.classList.toggle("out", !a);
+  // (at InFlite's hub: Back in the photo's place, your account InFlite's (You), so Settings' gear always; signed out,
+  // the outline beside Back, signing in the hub's way: hubTop)
+  $("settings-btn").hidden = !!a && !IFL.hub.on;
+  b.hidden = !!a && IFL.hub.on; b.classList.toggle("out", !a);
   b.setAttribute("aria-label", a ? "You and your apps" : "Sign in");
   if (!a) return b.innerHTML = IFL.glyph("person");
   b.replaceChildren(photoOf(a));
@@ -3322,7 +3372,8 @@ function menuRows() {
 }
 function youMenu(e) {
   const a = S.acct;
-  if (!a) return accountPage() ? toAccountSignIn(e) : openSettings();
+  if (!a) return IFL.hub.on ? IFL.hub.signIn() : accountPage() ? toAccountSignIn(e) : openSettings();
+  if (IFL.hub.on) return openSettings();
   IFL.menu($("me-btn"), {
     app: "weather", build: BUILD,
     me: { name: a.name, line: a.handle ? `@${a.handle}` : "", photo: h("span", { class: "acct-av" }, photoOf(a)) },
@@ -3337,8 +3388,12 @@ function youMenu(e) {
 // blank (Weather's pages cut the link to tabs they open elsewhere: Cross-Origin-Opener-Policy). Weather on an iPhone's
 // Home Screen keeps a sign-in of its own, apart from Safari's: there, the sign-in's handed over with a code
 // (settings.js openAccount)
-const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+// (at InFlite's hub, neither: the sign-in there is InFlite's, the same in its Home Screen app as anywhere, there's no
+// account's page of its own to hand it to, and the account is You; so Settings' ways to it (Notifications and Weather
+// Settings, signed in: settings.js openAccount) go there)
+const standalone = () => !IFL.hub.on && (matchMedia("(display-mode: standalone)").matches || navigator.standalone === true);
 function toAccount(open) {
+  if (IFL.hub.on) return toYou();
   const page = accountPage();
   if (!page) return openSettings();
   open = typeof open === "string" ? open : null;
@@ -3349,8 +3404,12 @@ function toAccount(open) {
   document.body.append(a); a.click(); a.remove();
 }
 // Signing out here (the foot of Settings): of the site's account in this browser; this device keeps its places and
-// settings, and its notifications go on as its own
+// settings, and its notifications go on as its own. At InFlite's hub, signing out is InFlite's, in You, for every app
+// at once (Chats' key, the hub's notifications and Today's own let go with it): never the shared sign-in ended from
+// here, half done (and the row's not shown there: styles.css)
+const toYou = () => { const to = IFL.hub.href("today", "you"); if (to) location.assign(to); };
 async function signOutHere() {
+  if (IFL.hub.on) return toYou();
   const b = $("sign-out"); b.disabled = true;
   try { await A.signOut(S.settings.notify.endpoint || undefined); } catch (_) {}
   finally { b.disabled = false; }
@@ -3371,6 +3430,8 @@ function signedOutElsewhere() {
 // (a sign-in started here and never finished: its word not kept past a couple of hours)
 try { const k = JSON.parse(localStorage.getItem("wx:signin") || "null"); if (k && !(Date.now() - k.at < 2 * 3600e3)) localStorage.removeItem("wx:signin"); } catch (_) {}
 async function toAccountSignIn(e) {
+  // (at InFlite's hub, its own: through Chats, and back here, signed in for every app at once)
+  if (IFL.hub.on) return IFL.hub.signIn();
   const page = authPage() || accountPage(); if (!page || leaving) return;
   const away = handOff();
   try {
@@ -3877,6 +3938,91 @@ function reopen() {
   };
   setTimeout(open, 300);
 }
+// ---- sections: Weather opened on one (Today's links, Apps' chips, a notification), and told again while it's open ----
+// #day=YYYY-MM-DD a day in full (detail.js openDay), #radar the radar card (scrolled to, and so fetched: radarLater),
+// #warnings the warnings (the banner of several opened: openWarnings); a place is ?lat=&lon=&name= (start). Read as the
+// page opens and on each hashchange: at InFlite's hub the page stays open as you move about the window, and is told
+// again (a notification tapped meanwhile included: IFL.hub). Asked for before there's a forecast, it waits for one (a
+// few seconds); taken out of the address as it's opened, so the same one asked for again is a change, and heard
+const sectionOf = (hash) => { const m = /^#(?:day=(\d{4}-\d{2}-\d{2})|(radar)|(warnings))$/.exec(String(hash || "")); return !m ? null : m[1] ? { day: m[1] } : m[2] ? { radar: true } : { warnings: true }; };
+let opening = 0;
+async function openTo(hash) {
+  const s = sectionOf(hash);
+  if (!s) return false;
+  // (a later one asked for meanwhile takes over)
+  const my = ++opening;
+  const until = (ok, ms) => new Promise((done) => { const t0 = Date.now(); const look = () => (my !== opening ? done(false) : ok() || Date.now() - t0 > ms ? done(!!ok()) : setTimeout(look, 150)); look(); });
+  const ready = await until(() => S.wx && !S.hold, 20e3);
+  if (my !== opening) return false;
+  if (location.hash === hash) try { history.replaceState(history.state, "", location.pathname + location.search); } catch (_) {}
+  if (!ready) return false;
+  // (any other sheet of Weather's put away: the section's on the page, or is the day's own sheet. Never one that isn't
+  // Weather's: the hub's Send, Chat's engine's, say, is its own to put away: IFL.hub)
+  for (const d of document.querySelectorAll("dialog.sheet[open]")) if (!(s.day && d.id === "day")) closeSheet(d);
+  if (s.day) {
+    if (!S.wx.daily.some((d) => d.key === s.day)) { toast("That day isn’t in the forecast now."); return false; }
+    openDay(s.day);
+    return true;
+  }
+  if (s.radar) {
+    const card = $("radar");
+    if (card.hasAttribute("data-off")) { toast("The radar is turned off. Settings, Arrange Your Page, turns it on."); return false; }
+    // (fetched now, not only as it comes near)
+    S.radar?.refresh();
+    bringIn(card, my);
+    return true;
+  }
+  // (the warnings: once the official ones are in, or a few seconds; one, its card; several, their banner opened)
+  await until(() => S.wx?.official != null && !S.hold, 6e3);
+  if (my !== opening) return false;
+  await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+  const box = $("alerts"), sum = box.querySelector(".warn-sum");
+  if (!box.querySelector(".ins")) { toast(`No warnings for ${place()?.name || "here"} just now.`); return false; }
+  if (sum && !S.warnOpen) openWarnings();
+  bringIn(box, my);
+  return true;
+}
+// (a section's card brought into sight, and kept there as the page settles round it: a place just opened is still
+// moving as its forecast's drawn (the cards gliding into place, the ten days drawn in full, the radar's map made), so
+// it's scrolled to once what's moving has finished (a second and a half at most) and two frames are drawn; then looked
+// at again after 0.6 s, 1.5 s and 3 s, once any scrolling's stopped, and put back at once if what's above it has moved
+// it. Never again once you've scrolled, touched or pressed a key yourself, nor once another's been asked for)
+async function bringIn(el, my) {
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, Math.max(0, ms)));
+  // (a frame, or a tenth of a second where none come: a tab out of sight)
+  const frame = () => new Promise((ok) => { requestAnimationFrame(() => ok()); setTimeout(ok, 100); });
+  const moving = document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming?.().endTime));
+  await Promise.race([Promise.all(moving.map((a) => a.finished.catch(() => {}))), wait(1500)]);
+  await frame(); await frame();
+  if (my !== opening) return;
+  let theirs = false;
+  const yours = () => { theirs = true; }, kinds = ["wheel", "touchstart", "pointerdown", "keydown"];
+  for (const k of kinds) addEventListener(k, yours, { capture: true, passive: true });
+  // (how far it is from where it's meant to be, its top at the foot of the bar held at the top: its scroll-margin)
+  const off = () => el.getBoundingClientRect().top - (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
+  // (till the scrolling's stopped: the same three frames running, a second at most)
+  const still = async () => { let y = scrollY, n = 0; const t0 = Date.now(); while (n < 3 && Date.now() - t0 < 1000) { await frame(); if (scrollY === y) n++; else { y = scrollY; n = 0; } } };
+  try {
+    el.scrollIntoView({ block: "start", behavior: calm.matches ? "auto" : "smooth" });
+    const t0 = Date.now();
+    for (const t of [600, 1500, 3000]) {
+      await wait(t0 + t - Date.now());
+      await still();
+      if (theirs || my !== opening) return;
+      if (Math.abs(off()) > 24) el.scrollIntoView({ block: "start", behavior: "auto" });
+    }
+  } finally { for (const k of kinds) removeEventListener(k, yours, { capture: true }); }
+}
+// At InFlite's hub (Weather a page of inflite.ai: IFL.hub.on), Back where your photo goes, back where you came from in
+// the window, else Apps (IFL.hub.back()); your account is InFlite's there (You), so the photo's menu isn't, and signed
+// out, its outline beside Back signs in the hub's way (youMenu). Elsewhere, nothing changes
+function hubTop() {
+  if (!IFL.hub.on || $("hub-back")) return;
+  const b = h("button", { class: "ifl-back", id: "hub-back", type: "button", "aria-label": "Back", onclick: () => IFL.hub.back() });
+  b.innerHTML = IFL.glyph("back");
+  b.append(h("span", { class: "ifl-back-l" }, "Back"));
+  $("me-btn").before(b);
+}
 // Settings, at its list (or at one of its folders)
 // (this device among the account's that Weather tells: allowed here, and one of them)
 const notifyHere = () => canShow() && hereToo();
@@ -3895,6 +4041,8 @@ document.addEventListener("visibilitychange", () => {
 // Notifications on this device, in one tap (from the account's Notifications page, #notify; signed out, its own folder)
 function askNotify() {
   ASK_NOTIFY = false;
+  // (at InFlite's hub, never: You asks, for every app: notifyWhy)
+  if (IFL.hub.on) return;
   if (!S.acct) return openSettings("notify");
   const why = notifyWhy();
   if (why) return toast(why);

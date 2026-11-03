@@ -77,3 +77,19 @@ export function chatHash(words, card) {
 // Chat, beside Weather (weather. → chat.), ending in "/", for chatPage() + chatHash(…); elsewhere (on no address of
 // its own) none
 export const chatPage = (loc = globalThis.location) => (loc?.hostname?.startsWith("weather.") ? `${loc.origin.replace("//weather.", "//chat.")}/` : null);
+// The card as Chat's links carry it (pigeon/cards.js packCard: base64url, 6000 characters at most), for InFlite's hub,
+// which hands it to Chat's own sheet; too long, or none, null (the words go alone)
+export function packCard(card) {
+  if (!card) return null;
+  const s = b64url(JSON.stringify(card));
+  return s.length <= 6000 ? s : null;
+}
+// Where Send goes (app.js sendToFriend). At InFlite's hub (Weather as a page of inflite.ai, hub.on: IFL.hub), the hub's
+// own way: Chat's sheet over the page, sending without leaving it (IFL.hub.send(words, packed)) → { hub: true, words,
+// packed }. Elsewhere, as ever: Chat beside Weather, the words and the card in the address's fragment → { url }; on no
+// address of its own, null (the phone's own sharing, or copied)
+export function sendWay(words, card, { hub, loc = globalThis.location } = {}) {
+  if (hub?.on) return { hub: true, words, packed: packCard(card) };
+  const page = chatPage(loc);
+  return page ? { url: page + chatHash(words, card) } : null;
+}

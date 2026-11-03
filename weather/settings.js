@@ -395,7 +395,7 @@ export function drawMail() {
 async function sendHere() {
   const [go, said] = await allowed();
   if (!go || !canShow()) { notifySay(said); return; }
-  try { await syncNotify(); await refreshDevices(); } catch (e) { notifySay(`Couldn't do that just now (${e.message}).`); }
+  try { await syncNotify(true); await refreshDevices(); } catch (e) { notifySay(`Couldn't do that just now (${e.message}).`); }
 }
 
 export function drawAccount() {

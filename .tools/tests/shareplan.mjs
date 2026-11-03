@@ -99,10 +99,12 @@ ok(/Mira: Later suits me better/.test(await text(G, '.msgs')) && !!(await G.p.$(
 await G.p.click('.chatnav .back'); await G.p.waitForTimeout(400);
 
 // ---- No: nothing added ----
-const o0 = count('fx_offers');
+// (the inviter's own pending row is written as the invite goes, spec §8.4: a No adds nothing anyone can see in Fitness)
+const o0 = count(`fx_offers WHERE state <> 'pending'`), p0 = count(`fx_offers WHERE state = 'pending' AND user_id = '${gs.me.id}' AND with_id = '${ms.me.id}'`);
 await invite();
+ok(count(`fx_offers WHERE state = 'pending' AND user_id = '${gs.me.id}' AND with_id = '${ms.me.id}'`) === p0 + 1, 'the invite keeps George’s own pending row, with Mira', `${p0}`);
 await answer('no');
-ok(count('fx_offers') === o0, 'No: nothing in anyone’s Fitness');
+ok(count(`fx_offers WHERE state <> 'pending'`) === o0, 'No: nothing in anyone’s Fitness');
 ok(fxState() === state0, 'and no plan changed');
 
 // ---- typed words, then another time picked: the letter names the time picked, never the earlier one ----
