@@ -14,7 +14,7 @@
 //   7 screenshots at 320, 390 and 1280, light and dark.
 //   node .tools/tests/rooffxmount.mjs [state dir] [screenshots dir]      (run.sh / e2e.sh does this)
 import { chromium } from 'playwright';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import * as H from './roofhooks.mjs';
 import { routeFitness, rideFit, meAnswer } from './mocks/fitnessmock.mjs';
 
@@ -24,6 +24,9 @@ let fails = 0;
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c && extra ? '  — ' + extra : ''}`); if (!c) fails++; return !!c; };
 const note = (l) => console.log(`NOTE  ${l}`);
 const MAIN = new URL('../../', import.meta.url).pathname, IFL = new URL('../../../inflite/', import.meta.url).pathname;
+// (a file still j0's stub (FXB's, before it lands): its sheet can't open yet, so only that is a NOTE; once FXB's file is
+// in, the sheet must open)
+const stubbed = (f) => { try { return /^export const STUB = true;/m.test(readFileSync(`${MAIN}fitness/roof/${f}`, 'utf8')); } catch (_) { return true; } };
 process.on('uncaughtException', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 process.on('unhandledRejection', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 
@@ -128,8 +131,8 @@ const offerId = meAnswer().offers[0].id;
   ok(await until(() => seen.workers > before, 6000), 'the reader Worker made for the batch');
   ok(await until(async () => /Reading 1 file/.test(await toasts(p)), 4000) || true, 'said: Reading 1 file…');
   const upload = await until(() => visible(p, H.sheet('upload')), 6000);
-  if (upload) ok(true, 'the read batch handed on: the Upload sheet (FXB’s actsview.js)');
-  else note('the Upload sheet isn’t here yet (FXB’s actsview.js still B0’s stub): the read batch was handed to open.upload');
+  if (!stubbed('actsview.js')) ok(upload, 'the read batch handed on: the Upload sheet (FXB’s actsview.js)');
+  else note('the Upload sheet isn’t here yet (FXB’s actsview.js still j0’s stub): the read batch was handed to open.upload');
   ok(await until(async () => (await p.evaluate(() => 0)) === 0 && p.workers().length === 0, 6000), 'no Worker left after the batch', `${p.workers().length} running`);
   ok(st.uploads.length === 0, 'nothing uploaded before Upload is tapped');
   await ctx.close();
@@ -187,7 +190,7 @@ const offerId = meAnswer().offers[0].id;
     await p.dragAndDrop(`${H.M_FITNESS} .gday[data-day="${from.day}"]`, `${H.M_FITNESS} .gday[data-day="${to.day}"]`).catch(() => {});
     await p.waitForTimeout(600);
     const moved = await visible(p, H.sheet('move'));
-    if (moved) ok(true, 'the drag opens Move (FXB’s planview.js)'); else note('Move isn’t here yet (FXB’s planview.js still B0’s stub): the drop went to open.move');
+    if (!stubbed('planview.js')) ok(moved, 'the drag opens Move (FXB’s planview.js)'); else note('Move isn’t here yet (FXB’s planview.js still j0’s stub): the drop went to open.move');
     ok(seen.workers === w0 && st.uploads.length === 0 && !/Reading/.test(await toasts(p)), 'never taken as an upload: no file read, nothing sent');
     ok(!(await p.locator(H.M_FITNESS).first().evaluate((el) => el.querySelector('.m-fitness')?.classList.contains('fx-drop-on') || el.querySelector('.fx-drop-on') != null)), 'and no drop highlight');
   } else ok(false, 'a session to drag and a day ahead to drop it on', JSON.stringify(days.slice(0, 4)));
@@ -201,8 +204,8 @@ const offerId = meAnswer().offers[0].id;
   // (a lazy file asked for: the version asked beside it, a different build: stale)
   await p.locator(H.hdSec('activities')).click();
   await until(() => visible(p, H.fxSec('activities')));
-  const stale = await until(() => p.evaluate(() => !!window.kit?.F?.stale?.()), 6000);
-  if (!stale) note('the frame didn’t mark the page stale from /fitness/version (FW’s C7 not in this IFL): the rest still runs');
+  // (F.stale is the frame's boolean (frame.js), set by fw.lazy's version ask, C7)
+  ok(await until(() => p.evaluate(() => window.kit?.F?.stale === true), 6000), 'a lazy file asked for: /fitness/version says 9.99, so the page is stale');
   await p.locator(H.hdSec('today')).click();
   await until(() => visible(p, H.FX_DAYCARD));
   const loads = await p.evaluate(() => sessionStorage.getItem('fx-loads'));
@@ -220,8 +223,21 @@ const offerId = meAnswer().offers[0].id;
   await openFitness(p);
   await p.locator(H.hdSec('activities')).click(); await p.waitForTimeout(400);
   await p.locator(H.hdSec('today')).click(); await p.waitForTimeout(400);
-  const during = await p.evaluate(() => window.__fxListeners.map((x) => `${x.who}:${x.type}`));
-  note(`window/document listeners from /fitness/ while shown: ${during.length} (${[...new Set(during)].join(' ')})`);
+  const during = await p.evaluate(() => window.__fxListeners.map((x) => `${x.who}:${x.type} from ${x.from}`));
+  note(`window/document listeners from /fitness/ while Today shows: ${during.length} (${[...new Set(during)].join(' | ')})`);
+  // (§4.1, S2-D4: while shown, only the drop guard (S2-D12) and Today's own while Today is drawn; none once hidden)
+  await p.locator(H.hdSec('activities')).click(); await p.waitForTimeout(400);
+  const onActs = await p.evaluate(() => window.__fxListeners.filter((x) => /\/fitness\/roof\/todayview\.js/.test(x.from)).map((x) => `${x.who}:${x.type}`));
+  ok(onActs.length === 0, 'on Activities, none of Today’s window listeners is left', onActs.join(' '));
+  await p.locator(H.tab ? H.tab('today') : 'nav#tabs .ifl-tab[data-tab=today]').click().catch(() => {});
+  await until(() => visible(p, 'main#today'), 4000);
+  await p.waitForTimeout(300);
+  const hidden = await p.evaluate(() => window.__fxListeners.filter((x) => /\/fitness\/roof\//.test(x.from)).map((x) => `${x.who}:${x.type} from ${x.from}`));
+  ok(hidden.length === 0, 'with Fitness hidden (InFlite’s Today shown), no window or document listener of the module’s is left', hidden.join(' | '));
+  await p.evaluate(() => window.kit.F.nav.go('/fitness/'));
+  await until(() => visible(p, `${H.M_FITNESS} ${H.FX_DAYCARD}`), 8000);
+  const back = await p.evaluate(() => window.__fxListeners.filter((x) => /\/fitness\/roof\/todayview\.js/.test(x.from)).length);
+  ok(back > 0, 'shown again, Today listens again (a drag that ends without saying so still ends)');
   await p.evaluate(() => window.kit.F.destroy());
   await p.waitForTimeout(300);
   const left = await p.evaluate(() => window.__fxListeners.filter((x) => /\/fitness\/roof\//.test(x.from)).map((x) => `${x.who}:${x.type} from ${x.from}`));
@@ -230,7 +246,7 @@ const offerId = meAnswer().offers[0].id;
 }
 
 // ===================== 7. screenshots: 320 / 390 / 1280, light and dark =====================
-for (const [w, scheme] of [[320, 'light'], [320, 'dark'], [390, 'light'], [1280, 'dark']]) {
+for (const [w, scheme] of [[320, 'light'], [320, 'dark'], [390, 'light'], [390, 'dark'], [1280, 'dark']]) {
   const { p, ctx } = await phone({ width: w, height: w > 700 ? 900 : 800, colorScheme: scheme, mobile: w < 700 });
   const shown = await openFitness(p);
   await p.waitForTimeout(500);

@@ -247,12 +247,13 @@ test("one account, then another: start, stop, start keeps nothing of the first (
 
 test("the kept copy is drawn only for the framework's user (S2-D9); signed out, the framework is asked, and signs out only when it’s sure", async () => {
   // (a kept copy of A's, the framework's user B: nothing of A's drawn; the account's answer for B taken up)
-  await I.idb.put("me:last", JSON.stringify({ ...FX.me("u-a"), signedIn: true }));
+  // (written once started: between stop() and start() IndexedDB takes no writes)
   const bMe = FX.me("u-b", { name: "Bea Cyclist", prefix: "b" });
   let drawnA = false;
   answer = async (url) => (url.includes("/api/fitness/me") ? json(200, bMe) : Promise.reject(new TypeError("offline (test)")));
   const f = fw({ session: { user: { id: "u-b", name: "Bea" }, lost: async () => false } });
   core.start(f);
+  await I.idb.put("me:last", JSON.stringify({ ...FX.me("u-a"), signedIn: true }));
   const off = core.on("me", () => { if (core.S.me?.id === "u-a") drawnA = true; });
   core.shown(true);
   await settle(30);
@@ -285,6 +286,115 @@ test("the one-minute day check runs only while Fitness shows (S2-D4)", async () 
   assert.equal(core.TODAY, before);
   core.stop();
   NOW = FX.TODAY + 12 * 3600e3;
+});
+
+// (a ride as a GPX file, read as Add Files reads one)
+const gpxRide = (t0 = FX.TODAY - 20 * 3600e3) => {
+  let pts = "";
+  for (let i = 0; i < 120; i++) pts += `<trkpt lat="${51.5 + i * 1e-4}" lon="${-0.1 + i * 1e-4}"><ele>10</ele><time>${new Date(t0 + i * 10e3).toISOString()}</time></trkpt>`;
+  return new TextEncoder().encode(`<?xml version="1.0"?><gpx version="1.1" creator="t"><trk><name>Late ride</name><type>cycling</type><trkseg>${pts}</trkseg></trk></gpx>`);
+};
+const deferred = () => { let ok, no; const p = new Promise((a, b) => { ok = a; no = b; }); return { p, ok, no }; };
+const filesIn = () => [...(idbFake.dbs.get("fitness")?.get("files")?.keys() || [])];
+
+test("signed out while a ride uploads: its late answer lands nowhere (not in S, not in IndexedDB); the database refuses writes till the next start", async () => {
+  core.start(fw());
+  core.arrive(FX.me("u-a"), true);
+  const F = await core.needF();
+  const got = { acts: (await F.readAny("ride.gpx", gpxRide())).activities, workouts: [] };
+  assert.equal(got.acts.length, 1);
+  const own0 = core.S.own.length, gate = deferred();
+  answer = async (url, o) => (o.method === "POST" && url.endsWith("/api/fitness/acts") ? gate.p : Promise.reject(new TypeError("offline (test)")));
+  const btn = { disabled: false, lastChild: { textContent: "" } };
+  let then = 0;
+  const up = core.upload(got, btn, () => { then++; });
+  for (let i = 0; i < 200 && !sent.some((x) => x.url.endsWith("/api/fitness/acts")); i++) await settle(5);
+  assert.ok(sent.some((x) => x.url.endsWith("/api/fitness/acts")), "the upload asked");
+  assert.equal(core.S.own.length, own0);
+  core.stop();   // (signed out meanwhile: You's forgetApps clears what's kept)
+  gate.ok(json(200, { kept: true }));
+  await up;
+  await settle(10);
+  assert.equal(core.S.own.length, 0, "nothing of the ride in S");
+  assert.equal(core.S.me, null);
+  assert.equal(then, 0, "nothing followed (no sheet closed, no ride opened)");
+  assert.ok(!filesIn().some((k) => String(k).includes(":i")), `no ride file kept: ${filesIn().join(",")}`);
+  assert.ok(!(localStorage.getItem("fitness:files") || "").includes(":i"), "nor listed as kept");
+  await assert.rejects(I.idb.put("late", 1), /closed/, "between stop() and start(), IndexedDB refuses writes");
+  assert.ok(!filesIn().includes("late"));
+  core.start(fw());
+  await I.idb.put("again", 1);
+  assert.ok(filesIn().includes("again"), "started again: writes go through");
+  await I.idb.del("again");
+  core.stop();
+  answer = async () => { throw new TypeError("offline (test)"); };
+});
+
+test("signed out while the account's asked for: its answer isn't kept as me:last, nor taken up", async () => {
+  core.stop();
+  core.start(fw());
+  await I.idb.put("me:last", "before");
+  core.arrive(FX.me("u-a"), true);
+  const gate = deferred();
+  answer = async (url) => (url.includes("/api/fitness/me") ? gate.p : Promise.reject(new TypeError("offline (test)")));
+  const pulling = core.pull();
+  await settle(5);
+  core.stop();
+  gate.ok(json(200, FX.me("u-a")));
+  await pulling;
+  await settle(10);
+  assert.equal(core.S.me, null);
+  core.start(fw());
+  assert.equal(await I.idb.get("me:last"), "before", "me:last as it was");
+  await I.idb.del("me:last");
+  core.stop();
+  answer = async () => { throw new TypeError("offline (test)"); };
+});
+
+test("the account says signed out, the framework isn't sure: the error state with its words (Try Again), not a skeleton for ever", async () => {
+  answer = async (url) => (url.includes("/api/fitness/me") ? json(200, { signedIn: false }) : Promise.reject(new TypeError("offline (test)")));
+  let asked = 0;
+  core.start(fw({ session: { user: { id: "u-a" }, lost: async () => { asked++; return false; } } }));
+  core.shown(true);
+  for (let i = 0; i < 100 && !core.S.error; i++) await settle(5);
+  assert.equal(asked, 1, "the framework asked");
+  assert.equal(core.S.me, null);
+  assert.equal(core.S.loading, false);
+  assert.match(core.S.error || "", /couldn’t check you’re signed in/);
+  core.shown(false);
+  core.stop();
+  answer = async () => { throw new TypeError("offline (test)"); };
+});
+
+test("a save in flight: inStep() hands back that save (flush waits for it); one that fails puts the changes back, the next sends them", async () => {
+  core.start(fw());
+  core.arrive(FX.me("u-a"), false);
+  const gate = deferred(), puts = [];
+  answer = async (url, o) => {
+    if (o.method === "PUT" && url.endsWith("/api/fitness/me")) { puts.push(JSON.parse(o.body)); return puts.length === 1 ? gate.p : json(200, { ver: 12, data: puts.at(-1).data }); }
+    throw new TypeError("offline (test)");
+  };
+  core.S.feel[core.TODAY] = { sleep: 1, legs: 1, mood: 1 };
+  core.keep("feel");
+  const first = core.inStep();
+  await settle(5);
+  assert.equal(core.S.dirty.size, 0, "taken for the save in flight");
+  assert.ok(core.inStep.p, "the save in flight kept");
+  assert.equal(core.inStep(), core.inStep.p, "asked again meanwhile: the same save");
+  let waited = false;
+  const flushing = core.inStep().then(() => { waited = true; });
+  await settle(5);
+  assert.equal(waited, false, "waits for the save in flight");
+  gate.ok(json(500, { error: "Something went wrong (500)." }));
+  await first; await flushing;
+  assert.equal(waited, true);
+  assert.ok(core.S.dirty.has("feel"), "failed: the changes back as unsaved (Sign Out would ask)");
+  await core.inStep();
+  assert.equal(puts.length, 2);
+  assert.equal(core.S.dirty.size, 0, "sent the second time");
+  assert.equal(core.S.ver, 12);
+  core.stop();
+  answer = async () => { throw new TypeError("offline (test)"); };
 });
 
 test.after(() => { Date.now = realNow; });
