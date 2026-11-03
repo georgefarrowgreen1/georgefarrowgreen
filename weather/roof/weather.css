@@ -312,6 +312,7 @@
 .wx-sheet .wx-warn-when { color: var(--text-2); }
 .wx-sheet .wx-warn-headline { font-size: 16px; font-weight: 600; }
 .wx-sheet .wx-warn-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
-.wx-sheet a { color: var(--acc-ink); }
+.wx-sheet :is(p, li) a { color: var(--acc-ink); }
+.wx-sheet .wx-sub[data-part] { scroll-margin-top: 76px; }
 /* credits */
 .wx-sheet .wx-credits-lead { font-size: 15px; }
