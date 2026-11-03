@@ -33,7 +33,7 @@
 //
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 
-import { pushEndpointOk, pushToSub, vapid, unsubToken, prefsOf, isQuiet as quietNow } from "./_notify.js";
+import { pushEndpointOk, pushToSub as pushOne, vapid, unsubToken, prefsOf, isQuiet as quietNow } from "./_notify.js";
 import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
 import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
@@ -46,6 +46,11 @@ import { oneRain } from "../weather/agree.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
 import { morningUsers } from "./_today.js";
+import { busyMap, holdsFor } from "./_busy.js";
+
+// Every one of Weather's notifications says it's Weather's (sealed inside it, functions/_notify.js pushToSub: app), so a
+// phone getting every app's through InFlite opens Weather for it
+const pushToSub = (env, sub, note) => pushOne(env, sub, { ...note, app: "weather" });
 
 // (MAX_SUBS: devices not signed in, at most, and NET_DAY of them a day from one network; MAX_ALL: every device, the
 // account's included: accounts are by invite, so theirs aren't held back by anyone else's)
@@ -121,6 +126,9 @@ async function setup(env) {
     // (sess: the sign-in a signed-in device was made one of the account's with; once that's ended, from anywhere, the
     // device is no longer the account's: unlinkEnded)
     await env.DB.prepare("ALTER TABLE wx_devs ADD COLUMN sess TEXT").run().catch(() => {});
+    // (via: "hub" for a device InFlite's one device route made (functions/_devices.js, deviceFor below), so a rollback can
+    // take back exactly those, and one whose sign-in has ended is deleted rather than kept as a device of its own)
+    await env.DB.prepare("ALTER TABLE wx_devs ADD COLUMN via TEXT").run().catch(() => {});
     if (!(await env.DB.prepare("SELECT 1 FROM wx_meta WHERE k = 'devs_v1'").first())) await env.DB.batch([
       env.DB.prepare("UPDATE wx_subs SET dev = id WHERE dev IS NULL"),
       env.DB.prepare(`INSERT OR IGNORE INTO wx_devs (dev, endpoint, p256dh, auth, units, brief_at, created, updated)
@@ -316,8 +324,8 @@ export async function unitsForAccount(env, userId, U) {
 export async function devicesOf(env, userId) {
   // (those whose sign-in has ended let go first, in the same trip)
   const D = await wxdb(env);
-  const [, { results }] = await D.batch([ended(D, userId), D.prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId)]);
-  return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
+  const got = await D.batch([...ended(D, userId), D.prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId)]);
+  return got.at(-1).results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
 }
 
 // A device's notifications: { sub: { endpoint, keys: { p256dh, auth } }, places: [{ lat, lon, name, rain, warn }],
@@ -358,6 +366,51 @@ export async function subscribe(env, b, user = null, account = null, label = "",
   await setRows(D, dv, w, t);
   return { ok: true, on: true, id: dev };
 }
+// A device InFlite's one device route makes one of the account's (functions/_devices.js, after the person's tap on Get
+// Every App's Notifications Here): the root subscription (sub: the browser's) as a device of Weather's, signed in to the
+// account with that sign-in (sess) and marked (via: "hub"), with a place for each the account has notifications on for
+// (wx_accts: its notify, and its roof's settings), and no "Notifications on" first (InFlite's own note says they're on).
+// One another account's still signed in with stays theirs. → whether it's this account's now
+export async function deviceFor(env, userId, sub, { sess = null, via = null } = {}) {
+  if (typeof userId !== "string" || !userId) throw new HttpError(400, "Bad request.");
+  const s = await checkSub(sub), D = await wxdb(env), dev = await idOf(s.endpoint), t = Date.now();
+  const acct = await D.prepare("SELECT data FROM wx_accts WHERE user_id = ?").bind(userId).first().catch(() => null);
+  let data = {}; try { data = JSON.parse(acct?.data || "{}") || {}; } catch (_) {}
+  let w; try { w = { ...wantOf(data.notify || {}), solar: solarWant(data.settings?.solar) }; } catch (_) { w = { ...wantOf({}), solar: null }; }
+  const units = unitsOf(data.settings), v = via == null ? null : String(via).slice(0, 16);
+  const label = sess ? (await D.prepare("SELECT label FROM pg_sessions WHERE hash = ?").bind(sess).first().catch(() => null))?.label || null : null;
+  const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated, sess, via)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11 WHERE (SELECT COUNT(*) FROM wx_devs) < ?12
+    ON CONFLICT(dev) DO UPDATE SET endpoint = ?2, p256dh = ?3, auth = ?4, user_id = ?5, label = COALESCE(?6, label), units = ?7, brief_at = ?8, updated = ?9, sess = ?10, via = ?11
+    WHERE wx_devs.user_id IS NULL OR wx_devs.user_id = ?5 OR wx_devs.sess IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)`)
+    .bind(dev, s.endpoint, s.p256dh, s.auth, userId, label, units, w.briefAt, t, sess, v, MAX_ALL).run();
+  if (!ins.meta?.changes) return false;
+  await setRows(D, { dev, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, units }, w, t);
+  return true;
+}
+// …and the same device, by its push address, moved to a new one by the browser (was: the old), or taken off (endpoint),
+// or every device of one of the account's sign-ins taken off (sess: Stop There, in InFlite's You): only the account's own
+// (userId), with its places. → whether it moved; whether any went
+export async function moveFor(env, userId, was, sub) {
+  if (typeof was !== "string" || !was || was.length > 1000) return false;
+  const s = await checkSub(sub), D = await wxdb(env), from = await idOf(was), to = await idOf(s.endpoint);
+  if (from === to || !(await D.prepare("SELECT 1 FROM wx_devs WHERE dev = ? AND user_id = ?").bind(from, userId).first())) return false;
+  return moveDev(D, from, s, to, Date.now());
+}
+export async function dropFor(env, userId, endpoint) {
+  if (typeof endpoint !== "string" || !endpoint || endpoint.length > 1000) return false;
+  const D = await wxdb(env), dev = await idOf(endpoint);
+  const [, r] = await D.batch([D.prepare("DELETE FROM wx_subs WHERE dev IN (SELECT dev FROM wx_devs WHERE dev = ?1 AND user_id = ?2)").bind(dev, userId),
+    D.prepare("DELETE FROM wx_devs WHERE dev = ?1 AND user_id = ?2").bind(dev, userId)]);
+  return !!r.meta?.changes;
+}
+export async function dropSession(env, userId, sess) {
+  if (typeof sess !== "string" || !sess) return false;
+  const D = await wxdb(env);
+  const [, r] = await D.batch([D.prepare(`DELETE FROM wx_subs WHERE dev IN (SELECT dev FROM wx_devs WHERE sess = ?1 AND user_id = ?2 AND dev NOT LIKE '${MAIL}%')`).bind(sess, userId),
+    D.prepare(`DELETE FROM wx_devs WHERE sess = ?1 AND user_id = ?2 AND dev NOT LIKE '${MAIL}%'`).bind(sess, userId)]);
+  return !!r.meta?.changes;
+}
 export async function unsubscribe(env, endpoint) {
   if (typeof endpoint !== "string" || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
   const D = await wxdb(env), dev = await idOf(endpoint);
@@ -395,15 +448,23 @@ export async function dropAccount(env, userId) {
 // Devices whose sign-in has ended (signed out, here or from elsewhere; a password changed; ended in Signed-in devices):
 // no longer the account's, as if signed out on the device itself. They keep the places they had as their own, but hear
 // nothing more of the account (its changes, its places to come), so a phone someone else had signed in is cut off.
-// (Signed in again on the phone, the app makes it one of the account's again.) Each tick, and before the account's
+// (Signed in again on the phone, the app makes it one of the account's again.) One InFlite made (via 'hub': its root
+// service worker never unsubscribes on a push, so one kept as its own would tell a signed-out phone of rain for good) is
+// deleted instead, with its places, and so is one of those left with no account. Each tick, and before the account's
 // choices go out or its devices are listed (then only the account's: userId, as its devices' index has them; a device
-// has a sign-in only while it's the account's).
+// has a sign-in only while it's the account's). → the statements, in order, for one batch
 const ended = (D, userId) => {
-  const q = D.prepare(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE ${userId ? "user_id = ?1 AND " : ""}sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)`);
-  return userId ? q.bind(userId) : q;
+  const who = userId ? "user_id = ?1 AND " : "", gone = "sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)";
+  const hub = userId ? `${who}via = 'hub' AND ${gone}` : `via = 'hub' AND (user_id IS NULL OR ${gone})`;
+  const qs = [
+    D.prepare(`DELETE FROM wx_subs WHERE dev IN (SELECT dev FROM wx_devs WHERE ${hub})`),
+    D.prepare(`DELETE FROM wx_devs WHERE ${hub}`),
+    D.prepare(`UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE ${who}${gone}`),
+  ];
+  return userId ? qs.map((q) => q.bind(userId)) : qs;
 };
 export async function unlinkEnded(D, userId = null) {
-  await ended(D, userId).run();
+  await D.batch(ended(D, userId));
 }
 
 // Ticks are asked for every 5 minutes by schedulers, which can run late (GitHub's by hours): so the site's traffic
@@ -459,6 +520,11 @@ async function tick(env, D, t, origin, until = Infinity) {
   // own night does; warnings, and the briefing at the time it was set for, still come)
   const { results: quiets } = await D.prepare("SELECT d.dev, d.user_id, u.notify_prefs FROM wx_devs d JOIN pg_users u ON u.id = d.user_id WHERE d.user_id IS NOT NULL").all().catch(() => ({ results: [] }));
   const held = new Set(quiets.filter((q) => { const p = prefsOf(q); return p.quiet && quietNow(p, t); }).map((q) => q.dev));
+  // (and an account on a ride it planned, whose rule holds apps' notifications, at do or suggest (functions/_busy.js): its
+  // devices' rain and sun aren't sent while it rides, nor kept to be told after ("rain in 10 minutes" is wrong by the time
+  // the ride's done): the first tick after says what's true then. Warnings, and the briefing at its time, still come)
+  const busy = quiets.length ? await busyMap(D, quiets.map((q) => q.user_id), t).catch(() => new Map()) : new Map();
+  for (const q of quiets) if (holdsFor(busy.get(q.user_id), "apps")) held.add(q.dev);
   for (const s of subs) s.held = held.has(s.dev);
   // (an account whose morning comes from InFlite Today, on a device of its: its devices' briefing is in that
   // (functions/_todaymorning.js), so it isn't pushed here, nor its whole forecast asked for; its email still comes)
