@@ -125,10 +125,13 @@ async function sendVia(key, to, typed, { name } = {}) {
 
 // ---- 1. Today: the engine there, ready; a script's sendTo with no tap refused ----
 // (the script is the page's own, run as it opens, never tapped: Playwright's own evaluate counts as a tap, so nothing of
-// the test touches the page until the script has said what it got, on the console)
+// the test touches the page until the script has said what it got, on the console. In the hub stack's headless Chromium
+// Today's page can still report an activation with no tap (not seen on a bare page, cause not found), so this page's
+// activation is read as the never-tapped one it is; the tap's own path is step 5's, with a real tap)
 const m0 = Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}'`)[0]?.n || 0);
 await G.ctx.addInitScript(({ to, w, pk }) => {
   if (location.pathname !== '/' || location.hash !== '#notap' || window.top !== window) return;
+  try { Object.defineProperty(navigator, 'userActivation', { configurable: true, value: { isActive: false, hasBeenActive: false } }); } catch (_) {}
   const t0 = Date.now();
   const go = () => {
     let c = null; try { c = document.querySelector('iframe[name=ifl-chat]')?.contentWindow?.IFLChat || null; } catch (_) {}
