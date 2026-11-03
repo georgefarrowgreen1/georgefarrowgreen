@@ -156,6 +156,8 @@ test("the address's symbol rule in app.js is Chat's (and so the server's) exactl
   const appSymbol = new Function(`${/\nconst SYMBOL = [^\n]*\n/.exec(APP)?.[0]}\nreturn SYMBOL;`)();
   assert.equal(appSymbol.source, SYMBOL.source);
   assert.equal(appSymbol.flags, SYMBOL.flags);
+  // (and the server's own, which checks every symbol Markets keeps: functions/_markets.js)
+  assert.ok(readFileSync(new URL("../../../functions/_markets.js", import.meta.url), "utf8").includes(`export const SYMBOL = ${appSymbol};`), "the server's symbol rule");
 });
 
 // (openTo as the page has it, with the hub on or off, signed in or not yet: what it did to the address and the page)
