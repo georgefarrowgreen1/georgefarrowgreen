@@ -374,6 +374,8 @@ let Z = null;
 async function moment(hh, cell, { morningAt = 420, planned = true, quiet = false, rest = null } = {}) {
   const tz = zoneAt(hh);
   await georgeIn(tz);
+  // (a page of the hub's that isn't Today, while the moment's rows go in: Today open would read, and plan, the day first)
+  await G.p.goto(`${HUB}/robots.txt`);
   const t = Date.now(), D = dayIn(tz, t);
   WX.tz = tz;
   Z = { tz, D, t, hh };
@@ -418,10 +420,12 @@ async function callWithMira(start, mins = 30) {
 step(1, 'morning: the plan joined up, the clash moved and the habit ride added, each with Undo; the morning push', '§4.1, §7.3, §7.5, §14.3');
 {
   const t0 = Date.now();
-  // (a clean day: nothing planned or done for George yet, whatever opening You did meanwhile)
+  const { tz, D } = await moment(7, 0, { morningAt: 'now', planned: false, rest: 2 });
+  // (today not planned yet, whatever opening You did meanwhile; and Today 1.09 on George's phone since yesterday, which
+  // planned that day: the morning acts only for an account whose Today has planned a day itself, T2's hasPlanned)
   run(`DELETE FROM td_plans WHERE user_id = '${GID}'`); run(`DELETE FROM td_acts WHERE user_id = '${GID}'`);
   run(`DELETE FROM fx_offers WHERE user_id = '${GID}' AND role = 'today'`); run(`DELETE FROM fx_times WHERE user_id = '${GID}'`);
-  const { tz, D } = await moment(7, 0, { morningAt: 'now', planned: false, rest: 2 });
+  run(`INSERT INTO td_plans (user_id, day, at) VALUES ('${GID}', '${dayAfter(D, -1)}', ${t0 - DAY})`);
   // the habit: rides on the weekday two days on, at 10:00 there, in six of the last eight weeks (outdoors, from his watch
   // into Fitness), and that day a rest day in Fitness's plan
   const TARGET = dayAfter(D, 2), WD = WEEKDAYS[weekday(TARGET)];
