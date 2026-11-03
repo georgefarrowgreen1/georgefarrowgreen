@@ -89,7 +89,7 @@ test("warnings for a place: from the feeds that cover it, worst first, each with
     assert.deepEqual((await warningsAt(env, 51.45, -2.59, NOW)).warnings.map((w) => w.id), ["brs-wind"], "the one issued twice, once");
     assert.deepEqual((await warningsAt(env, 40.71, -74.01, NOW)).warnings.map((w) => w.id), ["nws-1"]);
     asked.length = 0;
-    assert.deepEqual(await warningsAt(env, 52.52, 13.4, NOW), { warnings: [] }, "Berlin: no feed with drawn areas");
+    assert.deepEqual(await warningsAt(env, 52.52, 13.4, NOW), { warnings: [], uncovered: true }, "Berlin: no feed with drawn areas (uncovered: no service to say)");
     assert.equal(asked.length, 0, "and nothing asked");
     // outside the Weather Service's map (Toronto's in its box): none
     assert.deepEqual(await warningsAt(env, 43.65, -79.38, NOW), { warnings: [] });

@@ -394,8 +394,8 @@ export async function standIns(ctx, { now = Date.now() } = {}) {
 }
 
 // ---- the site's own stand-ins on :8794: the forecast for Today's card, and the official warnings ----
-// (the UK's feed: two in force over London, one over Bristol (mocks/wxwarnings.mjs); France's feed down, so a place
-// there has no official warnings at all: the server says it can't tell (502) and Weather has wx.official null)
+// (the UK's feed: two in force over London, one over Bristol (mocks/wxwarnings.mjs); no service the server asks covers
+// Paris, so it says so (uncovered: true) and Weather has wx.noOfficial; France's feed, were it asked, down)
 export function wxServer({ port = 8794 } = {}) {
   const asked = [];
   const srv = http.createServer((req, res) => {

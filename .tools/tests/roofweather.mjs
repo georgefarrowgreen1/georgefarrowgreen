@@ -3,8 +3,8 @@
 // reloads between Today, Apps, You and Weather, Weather drawn by its module (weather/roof/*, served through the hub) with
 // the framework's header, switcher, sheets and toast. In real Chromium against the hub stack (hubstack.mjs), signed in by
 // the account's cookie; Open-Meteo, the radar and the map stood in for in the browser, the forecast for Today's card and
-// the official warnings at the site's own stand-in (rooflib wxServer: two warnings over London, one over Bristol, France's
-// feed down). Every check's line names the spec section it proves; every selector is roofhooks.mjs's (§3.14), save
+// the official warnings at the site's own stand-in (rooflib wxServer: two warnings over London, one over Bristol, none
+// covering Paris). Every check's line names the spec section it proves; every selector is roofhooks.mjs's (§3.14), save
 // rooflib's declared exceptions (EXCEPT: the way in, the zoom's clone, a tile's link, Chat's engine frame).
 //   1 open Weather from Today's card (zoom: the card's clone at once, then the module's hero) and from Apps' tile (push):
 //     one page, the header (crumb, place ▾, line, compactTitle, Weather Settings, the warnings badge), the switcher
@@ -626,7 +626,7 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
   await titleIs(p, 'Paris');
   await p.click(H.hdSec('warnings'));
   const parisNull = await shown(p, H.warningsEmpty('unavailable'), 20000);
-  ok(parisNull && /Official warnings aren’t available for Paris\. Check your national weather service\./.test((await textOf(p, H.warningsEmpty('unavailable'))) || ''), '12. Paris, no official feed to say (official null): “Official warnings aren’t available for Paris. Check your national weather service.” (UB2)', await textOf(p, H.WARNINGS_EMPTY));
+  ok(parisNull && /Official warnings aren’t available for Paris\. Check your national weather service\./.test((await textOf(p, H.warningsEmpty('unavailable'))) || ''), '12. Paris, no official service covers it (the server’s uncovered): “Official warnings aren’t available for Paris. Check your national weather service.” (UB2)', await textOf(p, H.WARNINGS_EMPTY));
 
   await p.click(H.hdSec('now')); await shown(p, H.wxSec('now'));
   await p.locator(H.WX_CREDITS).scrollIntoViewIfNeeded().catch(() => {});
