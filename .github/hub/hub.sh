@@ -72,7 +72,7 @@ give_key() {
   fi
   say "1. The Pages project's production secret HUB_KEY is the new key (it reaches the site with its next deployment)."
   if ! printf '%s' "$key" | $WRANGLER secret put HUB_KEY --name "$WORKER"; then
-    fail "Couldn't set the Worker's HUB_KEY ($WORKER). The token likely lacks $WORKER_PERM. (If wrangler said the Worker's latest version isn't deployed, deploy it, or roll back to it, then run this again.) The Pages project now holds a key the Worker doesn't: the site goes on as it is until Pages next deploys, and after that the hub isn't ready (Today links to each app's own address) until this runs again and both take one key."
+    fail "Couldn't set the Worker's HUB_KEY ($WORKER). The token likely lacks $WORKER_PERM. (If wrangler said the Worker's latest version isn't deployed, a push to another branch of the inflite repo has uploaded one: deploy the production branch again (Workers & Pages → $WORKER → Deployments), then run this again; never deploy that other version.) The Pages project now holds a key the Worker doesn't: the site goes on as it is until Pages next deploys, and after that the hub isn't ready (Today links to each app's own address) until this runs again and both take one key."
     return 1
   fi
   say "2. The Worker's secret HUB_KEY is the same key (live at once: until Pages has it too, the hub says it isn't ready)."
@@ -84,7 +84,7 @@ take_key_worker() {
   cf GET "/accounts/$ACCOUNT/workers/scripts/$WORKER/secrets" || { fail "Couldn't read the Worker's secrets ($WORKER: $CF_ERR). The token likely lacks $WORKER_PERM."; return 1; }
   if ! jq -e 'any(.[]; .name == "HUB_KEY")' <<<"$CF_OUT" >/dev/null; then say "1. The Worker ($WORKER) has no HUB_KEY: nothing to take away."; return 0; fi
   if ! $WRANGLER secret delete HUB_KEY --name "$WORKER"; then
-    fail "Couldn't delete the Worker's HUB_KEY ($WORKER). The token likely lacks $WORKER_PERM. The hub is still on: delete it in the dashboard (Workers & Pages → $WORKER → Settings → Variables and Secrets)."
+    fail "Couldn't delete the Worker's HUB_KEY ($WORKER). The token likely lacks $WORKER_PERM; or the Worker's latest version isn't the one deployed (a push to another branch of the inflite repo uploads one), in which case Cloudflare won't change its secrets until the production branch is deployed again. The Pages project's key is taken away next all the same, which turns the hub off within minutes; delete the Worker's by hand after (Workers & Pages → $WORKER → Settings → Variables and Secrets)."
     return 1
   fi
   say "1. The Worker's HUB_KEY is deleted: the hub is off (each hub path 503, /api/hub not ready)."

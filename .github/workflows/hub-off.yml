@@ -66,12 +66,17 @@ jobs:
           echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT" >> "$GITHUB_ENV"
       # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Worker and the Pages project
       # by the names given)
+      # (should Cloudflare refuse this one, the Pages project's key is still taken away below, which turns the hub off
+      # within minutes too; the run then fails at the end, saying the Worker's is still to delete)
       - name: Delete the Worker's HUB_KEY (the hub is off at once)
+        id: worker
+        continue-on-error: true
         working-directory: ${{ runner.temp }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           take_key_worker
       - name: Wait for inflite.ai/api/hub to say it isn't ready
+        if: steps.worker.outcome == 'success'
         run: |
           . .github/hub/hub.sh
           wait_hub false 180
@@ -84,6 +89,13 @@ jobs:
         run: |
           . .github/hub/hub.sh
           pages_redeploy
+      # (with the Worker's key still there, the hub turns off once its copies ask chat.'s /_hub/version again and are
+      # told not found: a yes is kept five minutes)
+      - name: Wait for inflite.ai/api/hub to say it isn't ready (the Pages project's key gone)
+        if: steps.worker.outcome != 'success'
+        run: |
+          . .github/hub/hub.sh
+          wait_hub false 480
       - name: Check Chat's hub copy is not found to anyone without the key
         run: |
           . .github/hub/hub.sh
@@ -94,6 +106,11 @@ jobs:
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           take_back_pushes
+      - name: The Worker's HUB_KEY is still there
+        if: steps.worker.outcome != 'success'
+        run: |
+          echo "::error::The hub is off (the Pages project's key is gone), but the Worker inflite still has its HUB_KEY: delete it by hand (Workers & Pages → inflite → Settings → Variables and Secrets), or run this again once the inflite repo's production branch is the Worker's latest version."
+          exit 1
       - name: If it went wrong
         if: failure()
         run: |
