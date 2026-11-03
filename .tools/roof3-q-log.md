@@ -100,13 +100,34 @@ Plus: every hook present; no CSP violation and no page/console error on George's
   - `roofnavoff`: **FAILS 1**, 41 PASS. Every navigation check passes; the fail is a console error on framework Today:
     `Transition was aborted because of invalid state. Page already revealed` (the frame's view transition): **HOST/FW**
     (stage-1/2 code; roofnav's off branch is stage 1's checks unchanged).
-- e2e `./run.sh hubshare roofchats`: see "Second run" below.
+- e2e `./run.sh hubshare roofchats` (first lines `roof-chats`; no SV yet, so the hub says no `apps.chats` and both
+  see Chats off):
+  - `hubshare`: **FAILS 2**, 45 PASS (its off branch: the engine, as today). (1) part 1's no-tap probe: "the page kept an
+    activation" (`seen: [false, true]`, the page gained a user activation inside its 50 s window); (7) Weather's page at
+    the hub: sent, toast right, but `stayed` false (a main-frame `framenavigated` on `/weather/`). Both are in code paths
+    my edit leaves as they were (the off branch is today's but for the `framework` check, false here).
+    **Baseline** (`claude/one-roof-24` in its own worktrees, same runner): `hubshare` FAILS 1, 45 PASS, the same part 7.
+    **Re-run on `r3/q`**: FAILS 1, the same part 7 only; part 1 passed. So part 1 was a flake, and part 7 fails before
+    stage 3 too (the main frame navigates on Weather's page at the hub while the engine sends): for **FW/WX** (Weather
+    under the roof), not Q. My changes leave hubshare as it was.
+  - `roofchats`: **FAILS 57**, 25 PASS, all 13 parts ran to the end (no crash, under run.sh's 15 min). What this run
+    proves is the test's own footing: George's account and the hub sign-in trip, Pat and Leo at Chat's own address, the
+    friendships, the database checks, every hook it uses in `roofhooks.mjs`, its 13 parts running without stopping.
+    The 57 failures are all checks that need stage 3 code: `apps.chats` isn't served (SV), so `/chats/` is
+    milestone 1's page and there is no module, core or Worker. Several of the 25 passes are vacuous with Chats off
+    (e.g. "no engine frame", the budgets measured over B0's stubs: page 15.5 KB, CSS 1.6, core graph 14.9, Today's
+    idle 14.9) and say nothing until the real files are in. The run's figures are for I to compare against, not a
+    result.
 
 ## Needs from others
 - **B0 / integrator**: a hook for the Send sheet's words field (`CH_SEND_WORDS`, UI-B's `send.js`; Chat's `#f-sendwords`):
   `hubshare` types the card's words there. Until it exists, hubshare fails it by name.
 - **SV**: `/chats/roof/*` 404 no-store with Chats off (todayauthoff part 1, spec §6.2, §8).
 - **HOST/FW**: the view-transition console error on framework Today (roofnavoff).
+- **FW/WX**: hubshare part 7, Weather's page at the hub: "stayed" false after the engine's send (fails on the
+  `claude/one-roof-24` baseline too).
+- **Flake to watch**: hubshare part 1's no-tap probe failed once ("the page kept an activation") and passed on the re-run
+  and on the baseline.
 - **I**: `suite.txt` gains `roofchats roofchatnav todayauthoff` (+ `roofnavoff hubshareoff` if wanted); `roofnav` and
   `hubshare` now start the stack with `roof-chats`.
 - Everything else in `roofchats`/`roofchatnav` needs SV (MODS chats, `/api/hub apps.chats`, the doc, the retire worker),
