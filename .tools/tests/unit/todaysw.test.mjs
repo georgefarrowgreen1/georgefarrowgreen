@@ -115,11 +115,7 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   for (const f of ['/icon-512.png', '/icon-maskable-512.png', '/og.png']) want.delete(f);
   const missing = [...want].filter((f) => !FILES.includes(f));
   assert.deepEqual(missing, [], 'loaded as Today opens, not kept for offline');
-  // (mailhost.js is batch M's, made by its own batch: until it's merged, not there yet. Integration takes this list out
-  // once it's in; day.css, batch TP's, is in)
-  const LATER = { '/mailhost.js': 'M' };
   for (const f of FILES) {
-    if (LATER[f] && !existsSync(new URL(f.slice(1), pub))) { t.diagnostic(`${f} isn't there yet (batch ${LATER[f]}'s)`); continue; }
     assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `${f} is in FILES but not there`);
   }
 });
