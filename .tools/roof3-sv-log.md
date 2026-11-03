@@ -60,7 +60,7 @@ and `ROOF_OFF="1"` still turns everything off. The s3 spec's `ROOF_OFF_CHATS` is
   - `min.test`: expected, because minified copies go stale for changed files (`pigeon/app.js`, B0's stubs, stage 2's fitness files).
   - `appstamp` "a page asks the store for each of its files once": a knock-on of the stale `min/pigeon/app.js`, since `functions/_min.js` reads both copies. I proved it: with `pigeon/app.js` reverted it passes 2/2. It goes green when I runs `minify.mjs`.
 - **Unit, IFL `claude/one-roof-24` beside (no stage 3):** 1302 tests, 1287 pass, 13 skipped (every stage-3 case, with "before stage 3"), the same 2 fails.
-- **e2e `./run.sh hubserve chats`:** hubserve FAILS 0, chats FAILS 0 (standalone Chat unchanged). Run once before the last merge; the re-run on the merged tip is in the final report.
+- **e2e `./run.sh hubserve chats`:** hubserve FAILS 0, chats FAILS 0 (standalone Chat unchanged). Run before the last merge and again on the merged tip: FAILS 0 both times.
 - **Checks:**
   - `node --check` on every changed file: clean.
   - `imports.test` is green (it's in the suite).
