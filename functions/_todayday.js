@@ -148,7 +148,9 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   const fc = cards?.fitness?.state === "ok" ? cards.fitness : null, units = fc?.units === "imperial" ? "imperial" : "metric";
   const rideCard = (x) => {
     if (!x) return {};
-    const r = x.ride, w = wxOf(x), share = shareCut(r.who ? `Riding with ${r.who} today at ${hm(r.start)}.` : `My ride today: ${r.name} at ${hm(r.start)}.`);
+    const r = x.ride, w = wxOf(x), noun = NOUN[r.sport] || "Ride";
+    // (a ride with no name of its own is said as itself: "My ride today at 16:20.")
+    const share = shareCut(r.who ? `Riding with ${r.who} today at ${hm(r.start)}.` : r.name === noun ? `My ${noun.toLowerCase()} today at ${hm(r.start)}.` : `My ride today: ${r.name} at ${hm(r.start)}.`);
     const card = rideSend(fc, r, t, { say: share, day: D, tz: zone, dry: !!w && !w.hours.some((h) => h.wet), with: r.who ? [r.who] : [] });
     return { share, sendCard: pack(card) };
   };

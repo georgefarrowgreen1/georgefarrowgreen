@@ -58,7 +58,8 @@ export function upcomingFor(cards, extra, t) {
   // today's rides: each still to come, with its weather; one with nothing in by its cap, "Not in yet"
   const rides = Array.isArray(x.rides) ? x.rides : [], rideOffers = new Set(rides.map((r) => r.offerId).filter(Boolean));
   rides.forEach((r, i) => {
-    const title = r.who ? `Ride with ${r.who}` : `Ride: ${r.name || "Ride"}`, id = i ? `ride:${r.start}` : "ride";
+    // (a ride with no name of its own is just a ride)
+    const title = r.who ? `Ride with ${r.who}` : r.name && r.name !== "Ride" ? `Ride: ${r.name}` : "Ride", id = i ? `ride:${r.start}` : "ride";
     if (soon(r.start)) keep({ at: r.start, app: "fitness", title, sub: cap1(r.sub), href: "/fitness/#today", id, share: r.share, sendCard: r.sendCard });
     else if (r.arrival == null && Number.isFinite(r.cap) && r.cap <= t) keep({ at: r.start, app: "fitness", title, sub: "Not in yet", href: "/fitness/#activities", id });
   });

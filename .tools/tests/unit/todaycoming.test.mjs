@@ -76,6 +76,7 @@ test("rides: explicit today; offered within three days, each said for what it is
   ]);
   // (a ride with a friend today: its own title)
   assert.equal(upcomingFor({}, extra({ rides: [{ ...RIDE, who: "Leo" }], offers: [], times: [] }), at(7))[0].title, "Ride with Leo");
+  assert.equal(upcomingFor({}, extra({ rides: [{ ...RIDE, name: "Ride" }], offers: [], times: [] }), at(7))[0].title, "Ride", "one with no name of its own: just a ride");
 });
 
 test("passed rows go; nothing more than a day ahead (but the offers); a ride not in by its cap says so and stays", () => {
