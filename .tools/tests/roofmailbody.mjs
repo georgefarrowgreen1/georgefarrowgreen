@@ -88,37 +88,48 @@ const ids = await mailPage.evaluate(async () => {
 ok(reg === true && ['Hostile', 'Other', 'Wide', 'Quoted', 'Plain'].every((s) => ids[s]?.id), 'Mail’s worker registered at Mail’s address, and the messages’ ids', JSON.stringify({ reg, ids }));
 const keptPage = async () => mailPage.evaluate(async () => { const c = await caches.open('mail-app-2'); const r = await c.match('/'); return r ? (await r.text()).slice(0, 4000) : null; }).catch(() => null);
 
-// ---- Part A: a page at the hub's address, framing the shell through the module's own bodyframe.js ----
-const TEST = `${HUB}/__bodytest`;
+// ---- Part A: the hub's own page (a real one: the browser checks where a frame's parent was served from), framing the
+// shell through the module's own bodyframe.js, loaded from the inflite repo beside ----
 await ctx.route(`${HUB}/__roof/**`, (r) => {
   const f = new URL(r.request().url()).pathname.slice('/__roof/'.length);
   const file = new URL(f, ROOFDIR);
   if (!/^[\w.-]+\.js$/.test(f) || !existsSync(file)) return r.fulfill({ status: 404, body: '' });
   return r.fulfill({ status: 200, contentType: 'text/javascript', body: readFileSync(file) });
 });
-await ctx.route(TEST, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Body test</title>
-<style>body{margin:0;font:16px system-ui}iframe.mail-body{display:block;width:100%;border:0}.cover{color:red}</style></head><body><main id="list"></main>
-<script type="module">
-import * as BF from "/__roof/bodyframe.js";
-window.BF = BF;
-window.said = { remote: [], mailto: [], touched: [] };
-window.frames_ = {};
-window.off = BF.listenFrames({ remote: (id, on) => said.remote.push([id, on]), mailto: (h) => said.mailto.push(h), touched: (id) => said.touched.push(id) });
-window.add = (key, msg, opts) => { const f = BF.bodyFrame(msg, opts); frames_[key] = f; document.getElementById("list").append(f.el); return f.el.src; };
-window.ready = true;
-</script></body></html>` }));
 const pageErrs0 = errs.length;
-await p.goto(TEST);
-await p.waitForFunction(() => window.ready === true, null, { timeout: 15000 });
+// (what became of each request for the shell, for the log)
+const shellNet = [];
+p.on('requestfailed', (r) => { if (r.url().startsWith(`${MAIL}/body/`)) shellNet.push(`failed ${r.failure()?.errorText} ${r.url().slice(0, 90)}`); });
+p.on('response', (r) => { if (r.url().startsWith(`${MAIL}/body/`)) shellNet.push(`${r.status()} ${r.url().slice(0, 90)}`); });
+p.on('console', (m) => { if (/frame|Refused|blocked|Content Security/i.test(m.text())) shellNet.push(`console ${m.text().slice(0, 200)}`); });
+await p.goto(`${HUB}/`);
+await p.waitForLoadState('load');
+await wait(1500);
+const TEST = p.url();
+const set = await p.evaluate(async () => {
+  const BF = await import('/__roof/bodyframe.js');
+  window.BF = BF;
+  window.said = { remote: [], mailto: [], touched: [] };
+  window.frames_ = {};
+  window.off = BF.listenFrames({ remote: (id, on) => said.remote.push([id, on]), mailto: (h) => said.mailto.push(h), touched: (id) => said.touched.push(id) });
+  // (a list of its own over the page, as the reader's would be: CSSOM only, as the page's policy allows)
+  const list = document.createElement('div');
+  list.id = 'bodytest';
+  Object.assign(list.style, { position: 'absolute', top: '0', left: '0', width: '100%', zIndex: '2147483647', background: '#fff' });
+  document.body.append(list);
+  window.add = (key, msg, opts) => { const f = BF.bodyFrame(msg, opts); frames_[key] = f; f.el.style.display = 'block'; f.el.style.width = '100%'; f.el.style.border = '0'; list.append(f.el); return f.el.src; };
+  return true;
+}).catch((e) => String(e));
+ok(set === true, 'the module’s bodyframe.js on the hub’s page', String(set));
 const msg = (s) => ({ id: ids[s].id, threadId: ids[s].threadId, from: { name: 'Rowan Ash', email: 'rowan@example.com' } });
 const evil0 = evil.hits.length, conns0 = evil.conns;
 const srcs = {};
-for (const s of ['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']) srcs[s] = await p.evaluate(([k, m, eager]) => window.add(k, m, { theme: 'light', eager }), [s, msg(s), s === 'Hostile']);
+for (const s of ['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']) srcs[s] = await p.evaluate(([k, m, eager]) => window.add(k, m, { theme: 'light', eager }), [s, msg(s), true]);
 ok(srcs.Hostile === `${MAIL}/body/#m=${ids.Hostile.id}&t=light&img=0&p=${encodeURIComponent(HUB)}`, 'the frame’s address: Mail’s shell, the message, the theme, no pictures, the parent', srcs.Hostile);
 const heights = async () => p.evaluate(() => Object.fromEntries(Object.entries(frames_).map(([k, f]) => [k, Number(f.el.getAttribute('height'))])));
 const heard = async (keys) => { for (let i = 0; i < 60; i++) { const h = await heights(); if (keys.every((k) => h[k] !== 120)) return h; await wait(250); } return heights(); };
 const h1 = await heard(['Hostile', 'Other', 'Wide', 'Quoted', 'Plain']);
-ok(Object.values(h1).every((h) => h >= 40 && h !== 120), 'every frame said its height', JSON.stringify(h1));
+ok(Object.values(h1).every((h) => h >= 40 && h !== 120), 'every frame said its height', JSON.stringify({ h1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
 await p.screenshot({ path: `${out}/frames.png`, fullPage: true });
 
 // (the shell drew the message: its inner frame, from the shell's own document, as Playwright can see it)
@@ -157,6 +168,13 @@ await wait(1500);
 const loaded = evilSince(evil0);
 ok(loaded.length > 0 && loaded.every((u) => ['/pic.png', '/cssurl.png'].includes(u)), 'Load: the hostile mail’s pictures come, and only pictures (no script, link, form or refresh with them)', JSON.stringify(loaded));
 ok(!loaded.includes('/other.png'), 'and only that message’s: the other message’s picture stays hidden', JSON.stringify(loaded));
+// (a link in the mail with no target of its own: a window of its own (the shell's <base target="_blank">), with no way
+// back to this page, and the frame itself stays on the message)
+const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), innerOf('Hostile')?.click('#web').catch(() => {})]);
+await pop?.waitForLoadState('domcontentloaded').catch(() => {});
+const popSeen = pop ? { url: pop.url(), opener: await pop.evaluate(() => window.opener === null).catch((e) => String(e)) } : null;
+ok(popSeen?.url === `${EVIL}/link` && popSeen.opener === true && innerOf('Hostile')?.url() === 'about:srcdoc', 'a link in the mail opens in a window of its own, with no opener, and the frame stays on the message', JSON.stringify({ popSeen, inner: innerOf('Hostile')?.url() }));
+await pop?.close().catch(() => {});
 const src2 = await p.evaluate(() => frames_.Hostile.el.src);
 ok(src2.includes('&img=1&') && (await p.evaluate(() => frames_.Other.el.src)).includes('&img=0&'), 'Load: img=1 on that frame’s address alone', src2);
 
@@ -215,7 +233,12 @@ ok(!offDrawn && !offCover, 'offline: the frame is the browser’s error, not Mai
 await ctx.setOffline(false);
 const kept2 = await keptPage();
 ok(kept2 === null || !/body\/body\.js/.test(kept2), 'and Mail’s kept page still Mail’s after', kept2?.slice(0, 80));
-ok(errs.slice(pageErrs0).filter((e) => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|Load failed/i.test(e)).length === 0, 'no error on the page', JSON.stringify(errs.slice(pageErrs0)));
+// (the browser's own refusals of the hostile mail, from inside the frames, are the proof above, not errors: its policy
+// refusing a base, a picture or a javascript: link, the sandbox refusing a script or a form)
+const refusal = /violates the following Content Security Policy directive|because the (document's|form's) frame is sandboxed and the 'allow-(scripts|forms)' permission is not set/;
+const otherErrs = errs.slice(pageErrs0).filter((e) => !refusal.test(e) && !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|Load failed/i.test(e));
+ok(otherErrs.length === 0, 'no error on the page (the browser’s refusals of the hostile mail aside)', JSON.stringify(otherErrs));
+ok(errs.slice(pageErrs0).some((e) => /Blocked script execution in 'about:srcdoc'/.test(e)) && errs.slice(pageErrs0).some((e) => /Blocked form submission/.test(e)), 'and the refusals were the sandbox’s: the mail’s script and form refused');
 
 // ---- Part B: through the reader at /mail/ (after MM, MR and MT are merged) ----
 const readerStub = !existsSync(new URL('reader.js', ROOFDIR)) || /export const STUB = true/.test(readFileSync(new URL('reader.js', ROOFDIR), 'utf8'));
