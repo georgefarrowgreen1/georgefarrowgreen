@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.95";
-export const NEWS = "InFlite’s note about its one app shows only on Markets’ own Home Screen icon, never over a page in a small browser";
+export const BUILD = "1.96";
+export const NEWS = "Getting ready to open inside InFlite";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

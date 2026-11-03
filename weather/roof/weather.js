@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.65";
-export const NEWS = "Weather now opens inside InFlite: no page load, the same header and sheets, and Radar on a screen of its own";
+export const BUILD = "1.66";
+export const NEWS = "Weather opens faster inside InFlite: 16 Days, Warnings, Places and Settings load the first time you open them";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

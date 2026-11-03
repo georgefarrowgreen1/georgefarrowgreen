@@ -789,8 +789,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.95";
-const NEWS = "InFlite’s note about its one app shows only on Markets’ own Home Screen icon, never over a page in a small browser";
+const BUILD = "1.96";
+const NEWS = "Getting ready to open inside InFlite";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
