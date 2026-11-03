@@ -2063,7 +2063,7 @@ function storyMenu(n) {
 function shareStory(n) {
   const text = `${n.title} (${n.src})\n${n.link}`, chat = A.chatPage();
   // (at InFlite's hub: Chats' own sheet, over this page)
-  if (IFL.hub.on) { IFL.hub.send(text, null); return; }
+  if (IFL.hub.on) { IFL.hub.send(text, null).catch(() => toast("Couldn’t open Chats just now. Try again.", true)); return; }
   if (chat) { location.assign(`${chat}#${new URLSearchParams({ share: text })}`); return; }
   if (navigator.share) { navigator.share({ title: n.title, url: n.link }).catch(() => {}); return; }
   copyStory(n);
@@ -2675,7 +2675,7 @@ function sendInChat(sym, name = nameOf(sym)) {
   const q = S.q[sym];
   if (IFL.hub.on) {
     const move = typeof q?.chgPct === "number" && Number.isFinite(q.chgPct) ? ` is ${q.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q.chgPct), 1)}% today` : "";
-    IFL.hub.send(`${name} (${plainSym(sym)})${move}.`, packCard(stockSendCard(sym, name, q, Date.now())));
+    IFL.hub.send(`${name} (${plainSym(sym)})${move}.`, packCard(stockSendCard(sym, name, q, Date.now()))).catch(() => toast("Couldn’t open Chats just now. Try again.", true));
     return;
   }
   const text = `${name} (${plainSym(sym)}) is ${q?.chgPct >= 0 ? "up" : "down"} ${fmt(Math.abs(q?.chgPct || 0), 1)}% today, at ${priceSaid(q)}.`;

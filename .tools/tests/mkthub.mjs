@@ -33,8 +33,10 @@ const { p, ctx, pages } = ph;
 const navs = []; p.on('framenavigated', (f) => { if (f === p.mainFrame()) navs.push(f.url()); });
 // (every page error and console error on Markets' pages, at the hub or its own address: none expected)
 const mktErrs = [], onMkt = () => /\/markets\/|\/\/finance\./.test(p.url());
-p.on('pageerror', (e) => { if (onMkt()) mktErrs.push(`${p.url()}: ${e.message}`); });
-p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text()) && onMkt()) mktErrs.push(`${p.url()}: ${m.text()}`); });
+// (by where it came from: Chats' engine, a frame over the page at the hub, has its own)
+const fromChats = (where) => /\/chats\//.test(where || '');
+p.on('pageerror', (e) => { if (onMkt() && !fromChats(e.stack)) mktErrs.push(`${p.url()}: ${e.message}`); });
+p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text()) && onMkt() && !fromChats(m.location()?.url)) mktErrs.push(`${p.url()}: ${m.text()}`); });
 // (what Markets asked of its push routes: nothing, at the hub)
 const pushAsks = []; p.on('request', (r) => { if (/\/api\/markets\/push(\b|-)/.test(r.url())) pushAsks.push(`${r.method()} ${r.url()}`); });
 await p.waitForSelector('main:not([aria-busy="true"])', { timeout: 30000 });
@@ -62,6 +64,7 @@ ok(new URL(p.url()).origin === HUB && (await text(p, '#sheet .sname')) === 'Tesc
 ok(await p.evaluate(() => location.hash) === '#today', 'and the address says the tab under it, so the stock isn’t asked for again on a reload', await p.evaluate(() => location.hash));
 ok(await p.locator('.mhead .ifl-back').count() === 1 && await p.locator('.mhead .ifh-me').count() === 0, 'the menu button is Back at the hub');
 ok(await p.locator('.mhead .ifh-act[aria-label="Settings"]').count() === 1, 'and Markets’ own settings beside Find and Add');
+ok(await p.locator('.ifl-moved').count() === 0, 'at the hub, on the Home Screen: no “InFlite is one app now” card');
 ok(JSON.stringify(await p.evaluate(() => window.__badge)) === '[]', 'opened at the hub: the badge and the notifications left alone', JSON.stringify(await p.evaluate(() => window.__badge)));
 const backBox = await p.locator('.mhead .ifl-back').boundingBox();
 ok(backBox && backBox.height >= 40 && backBox.width >= 44 && backBox.x >= 12, 'Back: a full-size control, inside the screen', JSON.stringify(backBox));
@@ -164,14 +167,29 @@ const away = navs.filter((u) => { const h = new URL(u).host; return h !== 'ifl.t
 ok(!away.length, 'every page stayed at the hub', JSON.stringify(away));
 ok(!(await p.evaluate(() => window.__opened.length)), 'nothing asked for a new window');
 
-// ---- 9. at Markets' own address: as it was (its menu button, the badge cleared, a section read and taken out of the address) ----
+// ---- 9. at Markets' own address: as it was (its menu button, the badge cleared, a section read and taken out of the address);
+// and, opened from an old Home Screen icon there, once, that InFlite is one app now, whose Turn Off Notifications Here
+// takes Markets' subscription off the account (DELETE push) and lets it go ----
+await ctx.addInitScript(() => { if (location.hostname.startsWith('finance.') && !sessionStorage.getItem('subbed')) { sessionStorage.setItem('subbed', '1'); localStorage.setItem('fakesub', btoa('m'.repeat(65))); } });
+const offAsks = []; p.on('request', (r) => { if (/\/\/finance\.ifl\.test:8788\/api\/markets\/push$/.test(r.url()) && r.method() === 'DELETE') offAsks.push(r.postData() || ''); });
 await p.goto(MKT + '/#holdings');
 await p.waitForSelector('.tab[data-tab="holdings"][aria-current="page"]', { timeout: 30000 }); await settle(p, 1200);
-await p.keyboard.press('Escape').catch(() => {});
 ok(await p.locator('.mhead .ifh-me').count() === 1 && await p.locator('.ifl-back').count() === 0 && await p.locator('.mhead .ifh-act[aria-label="Settings"]').count() === 0,
   'finance.ifl.test: no hub, so the menu button as ever, and no Back');
 ok(await p.evaluate(() => location.hash) === '', 'its own address: #holdings opened, then taken out of the address', p.url());
 ok((await p.evaluate(() => window.__badge)).includes('clear'), 'and there, opened, Markets clears its badge as ever', JSON.stringify(await p.evaluate(() => window.__badge)));
+const moved = await p.waitForSelector('.ifl-moved .ifa-off', { timeout: 8000 }).then(() => true, () => false);
+await p.screenshot({ path: `${out}/9-moved.png` });
+ok(moved, 'off the hub, on the Home Screen: once, “InFlite is one app now”, with Turn Off Notifications Here');
+if (moved) {
+  await p.click('.ifl-moved .ifa-off');
+  await p.waitForFunction(() => !document.querySelector('.ifl-moved .ifa-off') || !localStorage.getItem('fakesub'), null, { timeout: 15000 }).catch(() => {});
+  await settle(p, 800);
+  ok(offAsks.length === 1 && /fcm\.googleapis\.com\/fcm\/send\/george-device/.test(offAsks[0]) && !(await p.evaluate(() => localStorage.getItem('fakesub'))),
+    'Turn Off Notifications Here: Markets’ subscription taken off the account (DELETE push) and let go', JSON.stringify(offAsks));
+  ok(await p.locator('.ifl-moved').count() === 0, 'and the card put away');
+}
+await p.keyboard.press('Escape').catch(() => {});
 await p.screenshot({ path: `${out}/9-own.png` });
 await ctx.close();
 
