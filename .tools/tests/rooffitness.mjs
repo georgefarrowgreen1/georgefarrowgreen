@@ -84,6 +84,11 @@ const open = async (name, o = {}) => { const ph = await phone(name, { cookies, .
 
 // ---- helpers over the hooks ----
 const SEC = (id) => `${H.M_FITNESS} ${H.fxSec(id)}`;
+// (the Upload sheet's Upload: no hook of its own in roofhooks.mjs yet, so a local alias, as FX_UPLOAD_GO would be)
+const UPLOAD_GO = `${H.sheet('upload')}[open] [data-k=upload]`;
+// (an uploaded ride, its file kept: its id is i<start>; the seeded older rides have rows but no file, so their sheet
+// says "isn't here any more" and closes)
+const UPLOADED = `${H.M_FITNESS} [data-k=act][data-id^="i"]`;
 const titleIs = (p, want, ms = 20000) => p.waitForFunction(([s, w]) => document.querySelector(s)?.textContent.trim() === w, [H.HD_TITLE, want], { timeout: ms }).then(() => true, () => false);
 const at = (p, path, ms = 10000) => p.waitForFunction((u) => location.pathname + location.search + location.hash === u, path, { timeout: ms }).then(() => true, () => false);
 const fitnessUp = async (p, sec = 'today', ms = 30000) => (await shown(p, H.M_FITNESS, ms)) && (await shown(p, SEC(sec), ms)) && (sec !== 'today' || (await shown(p, `${H.M_FITNESS} ${H.FX_DAYCARD}`, ms)));
@@ -109,19 +114,28 @@ await p.goto(`${HUB}/robots.txt`);
 await weatherAccount(p, { places: [PLACES.London], settings: { temp: 'c' } });
 const r0 = await record(p);
 const seeded = await p.evaluate(async (base) => {
+  // (the swap tomorrow, never today: a day with a swap of its own keeps it, and Today's kept ride goes only into a day
+  // without one (fitness/invites.js todaySwaps), so part 5's card could never show it)
   const d = new Date(); d.setHours(0, 0, 0, 0); const today = d.getTime(); const mon = today - ((d.getDay() + 6) % 7) * 864e5;
+  const t1 = new Date(d); t1.setDate(d.getDate() + 1);
   const r = await fetch('/api/fitness/me', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ base, data: { plan: { id: 'sportive', start: mon, at: today }, swaps: { [today]: 'endurance-90' }, prefs: { onboarded: true, maps: 'always', units: 'metric' } } }) });
+    body: JSON.stringify({ base, data: { plan: { id: 'sportive', start: mon, at: today }, swaps: { [t1.getTime()]: 'endurance-90' }, prefs: { onboarded: true, maps: 'always', units: 'metric' } } }) });
   return r.status;
 }, r0?.ver || 0);
-ok(seeded === 200 && !!uid, 'Tamsin’s Fitness record: the Sportive plan, Endurance 90 today, prefs onboarded / maps always / metric (PUT /api/fitness/me)', js({ seeded, uid }));
-sql(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 405) INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) SELECT '${uid}', 'old' || i, ${Date.now() - 40 * 864e5} - i * 86400000, 'ride', 0, 'Old ride ' || i, 'fit', 1, json_object('secs', 3600, 'dist', 30000, 'tss', 50), ${Date.now()} FROM n`);
+ok(seeded === 200 && !!uid, 'Tamsin’s Fitness record: the Sportive plan, Endurance 90 tomorrow, prefs onboarded / maps always / metric (PUT /api/fitness/me)', js({ seeded, uid }));
+sql(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 405) INSERT INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) SELECT '${uid}', 'old' || i, ${Date.now() - 40 * 864e5} - i * 86400000, 'ride', 0, 'Old ride ' || i, 'fit', 1, json_object('secs', 3600, 'moving', 3600, 'dist', 30000, 'tss', 50), ${Date.now()} FROM n`);
 const offer = (startAt, state, name = 'Ride how you like') => { const id = randomUUID(), s = startAt, e = s + 2 * 3600e3;
   one(`INSERT INTO fx_offers (user_id, id, start, stop, tz, sport, wid, name, secs, who, role, far, dry, state, made, until, taken) VALUES ('${uid}', '${id}', ${s}, ${e}, '${ZONE}', 'ride', 'free-ride', '${name}', 7200, '', 'today', 0, 1, '${state}', ${Date.now()}, ${e + 12 * 3600e3}, 0)`);
   return id; };
-const KEEP = offer(hourAt(0, Math.min(Math.max(NOW.hour, 6), 20)), 'yes'), SUGGEST = offer(hourAt(2, 10), 'new', 'Ride with the sun');
 await p.goto(`${HUB}/`);
 await todayUp(p);
+// (Today's offers put in once Today has planned the day: its first read of a day claims it (td_plans) and tidies away
+// any of Today's own rides with no act of its own to undo them by (functions/_todayacts.js tally → tidyOffers, answered
+// "no"), which rows put in by hand never have; after the claim, nothing tidies them till tomorrow)
+const planned = await until(() => { try { return Number(one(`SELECT COUNT(*) AS n FROM td_plans WHERE user_id = '${uid}' AND day = '${keyOf(0)}'`)[0]?.n) > 0 ? 'y' : null; } catch (_) { return null; } }, 20000);
+// (before the day's start, Today plans nothing yet, and nothing tidies either: said, not failed)
+if (!planned) console.log(`NOTE  Today hadn’t planned ${keyOf(0)} within 20 s (before its day’s start?): the offers are put in anyway`);
+const KEEP = offer(hourAt(0, Math.min(Math.max(NOW.hour, 6), 20)), 'yes'), SUGGEST = offer(hourAt(2, 10), 'new', 'Ride with the sun');
 // (the baseline once Today has kept its own copy, today:cards:<id> and today:session (today/public/app.js keepSession),
 // so the host's own writes aren't taken for the module's)
 await until(async () => (Object.keys((await storage(p)).local).some((k) => k.startsWith('today:cards:')) ? 'kept' : null), 20000);
@@ -220,7 +234,11 @@ await part(3, 'cold links: #act= (older fetched first), #day= near and far, #off
   await closeSheets(p); d.stop();
 
   d = await cold(p, `/fitness/#offer=${SUGGEST}`);
-  ok((await fitnessUp(p)) && (await sheetOpen(p, 'offer', 20000)) && /Ride with the sun/.test((await textOf(p, `${H.sheet('offer')}[open]`)) || ''), '3. #offer=<a suggestion of Today’s>: Today and its offer sheet (openOffer, offers.js)', (await textOf(p, H.SHEET_TITLE))?.slice(0, 80));
+  // (the sheet names the ride by its day and time, "Ride <weekday>" and "10:00–12:00", and by its workout's name, as
+  // fitness/invites.js addView does; the offer's own name is the card's)
+  const sunDay = new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, weekday: 'long' }).format(hourAt(2, 10));
+  const offerText = async () => (await textOf(p, `${H.sheet('offer')}[open]`)) || '';
+  ok((await fitnessUp(p)) && (await sheetOpen(p, 'offer', 20000)) && new RegExp(`Ride ${sunDay}`).test(await offerText()) && /10:00–12:00/.test(await offerText()), `3. #offer=<a suggestion of Today’s>: Today and its offer sheet, “Ride ${sunDay}”, 10:00–12:00 (openOffer, offers.js)`, (await offerText()).slice(0, 120));
   await closeSheets(p); d.stop();
 
   d = await cold(p, '/fitness/#settings=numbers');
@@ -367,10 +385,14 @@ await part(10, 'files: through Add Files, and dropped onto Fitness’s screen', 
 // ======================================================================================================================
   await p.goto(`${HUB}/fitness/`); await fitnessUp(p); await wait(1000);
   const api = apiLog(p, /\/api\/fitness\/acts$/);
+  const tapUpload = async (q) => (await sheetOpen(q, 'upload', 30000)) && (await q.click(UPLOAD_GO, { timeout: 10000 }).then(() => true, () => false));
   const n0 = actsN();
   const [chooser] = await Promise.all([p.waitForEvent('filechooser', { timeout: 10000 }).catch(() => null), p.click(H.hdAct('upload'))]);
   ok(!!chooser && chooser.isMultiple(), '10. Add Files: the file picker opens in the tap, several files at once (S2-D12)');
   if (chooser) await chooser.setFiles([{ name: 'morning.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(gpxAt(t0, 'Morning ride')) }]);
+  // (read, then the Upload sheet: each ride's sport to check, nothing sent till Upload is tapped, as fitness/app.js
+  // uploadView and rooffxmount part 2 have it)
+  ok(await tapUpload(p), '10. …read: the Upload sheet, one activity, its Upload tapped (actsview.js openUpload)');
   ok(await until(() => api.list.some((x) => x.m === 'POST'), 30000), '10. …the ride read and sent: POST /api/fitness/acts', js(api.list.map((x) => x.u)));
   ok(await until(() => (actsN() === n0 + 1 ? 'y' : null), 20000), '10. …kept with the account (one more ride)', `${n0} → ${actsN()}`);
   // dropped onto the screen: a drag of Files over Fitness's screen, then the drop
@@ -386,10 +408,14 @@ await part(10, 'files: through Add Files, and dropped onto Fitness’s screen', 
     return over.defaultPrevented ? 'taken' : 'not taken';
   }, [H.FX_DROP || H.M_FITNESS, gpxAt(t0 + 3 * 3600, 'Evening ride')]);
   ok(dropped === 'taken', '10. Files dragged over Fitness’s screen: taken (dragover prevented, Files only)', dropped);
+  ok(await tapUpload(p), '10. …dropped and read: the Upload sheet, its Upload tapped');
   ok(await until(() => api.list.some((x) => x.m === 'POST'), 30000) && (await until(() => (actsN() === n0 + 2 ? 'y' : null), 20000)), '10. …dropped: read and kept (two more rides in all)', `${n0} → ${actsN()}`);
   ok(await life.same(), '10. …the same page (a drop never navigates it away, RI11)');
-  const workers = F.p.workers().length;
-  ok(await until(() => (F.p.workers().length === 0 ? 'y' : null), 15000), '10. no reader Worker left once the files are in (RI10)', `${workers} → ${F.p.workers().length}`);
+  // (the reader's Worker only, fitness/reader.js: once a single ride is in, Fitness opens it, and with maps "always" its
+  // route map's own Workers (MapLibre's, from blob: addresses) run while that sheet is open)
+  const readers = () => F.p.workers().filter((w) => /\/fitness\/reader\.js/.test(w.url()));
+  const workers = readers().length;
+  ok(await until(() => (readers().length === 0 ? 'y' : null), 15000), '10. no reader Worker left once the files are in (RI10)', `${workers} → ${readers().length}; all: ${js(F.p.workers().map((w) => w.url().slice(0, 60)))}`);
   api.stop();
 });
 
@@ -458,11 +484,17 @@ await part(14, 'axe, 320/390 light and dark, the 1280 layout', '§2.2, S2-D8, S2
   }
   const W = await open('tamsin-wide', { width: 1280, height: 900 });
   await W.p.goto(`${HUB}/fitness/`); await fitnessUp(W.p); await wait(1200);
-  const cols = await W.p.evaluate(([s, hero]) => { const kids = [...document.querySelector(s)?.querySelectorAll(':scope > *, :scope > * > *') || []].filter((e) => !e.matches(hero) && e.getClientRects().length && e.getBoundingClientRect().height > 60); return new Set(kids.map((e) => Math.round(e.getBoundingClientRect().left))).size; }, [SEC('today'), H.FX_DAYCARD]);
-  ok(cols >= 2 && (await W.p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '14. 1280 wide: Today in two columns of cards, no sideways scroll (S2-D8)', String(cols));
+  // (two columns: two blocks of cards side by side, one wholly left of the other and level with it; looked for down to
+  // three levels in, as Today's view sits in its own wrapper (div.screen > div.cols > a div per column))
+  const cols = await W.p.evaluate(([s, hero]) => {
+    const kids = [...document.querySelector(s)?.querySelectorAll(':scope > *, :scope > * > *, :scope > * > * > *') || []].filter((e) => !e.matches(hero) && e.getClientRects().length && e.getBoundingClientRect().height > 60).map((e) => e.getBoundingClientRect());
+    const side = kids.flatMap((a) => kids.filter((b) => a.right <= b.left && a.top < b.bottom && b.top < a.bottom).map((b) => [Math.round(a.left), Math.round(a.width), Math.round(b.left), Math.round(b.width)]));
+    return { n: kids.length, side: side[0] || null };
+  }, [SEC('today'), H.FX_DAYCARD]);
+  ok(!!cols.side && (await W.p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '14. 1280 wide: Today in two columns of cards, no sideways scroll (S2-D8)', js(cols));
   await shot(W.p, '14-1280-today');
-  await W.p.click(H.hdSec('activities')); await shown(W.p, `${H.M_FITNESS} ${H.fxAct('old1')}`, 20000);
-  await W.p.click(`${H.M_FITNESS} ${H.fxAct('old1')}`);
+  await W.p.click(H.hdSec('activities')); await shown(W.p, UPLOADED, 20000);
+  await W.p.locator(UPLOADED).first().click();
   await sheetOpen(W.p, 'act', 20000); await wait(800);
   const box = await W.p.evaluate((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? { l: Math.round(r.left), r: Math.round(innerWidth - r.right), w: Math.round(r.width) } : null; }, `${H.sheet('act')}[open]`);
   ok(!!box && box.w < 1100 && Math.abs(box.l - box.r) <= 4, '14. 1280: a ride opens as a centred sheet (S2-D8, Question 4)', js(box));
