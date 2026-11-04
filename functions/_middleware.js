@@ -27,8 +27,14 @@ import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
+import { keepSecrets, fillSecrets } from "./_kept.js";
 
 export async function onRequest(ctx0) {
+  // (the move off Pages: on a Worker, the Pages project's variables and secrets it hasn't got set of its own, opened
+  // from where the Pages project keeps them, before anything reads one; on the Pages project, what it has, kept:
+  // functions/_kept.js)
+  if (ctx0.env?.PIGEON_PEPPER) ctx0.waitUntil?.(keepSecrets(ctx0.env).catch(() => {}));
+  else await fillSecrets(ctx0.env).catch(() => {});
   // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
   const ctx = hubRequest(ctx0);
   const url = new URL(ctx.request.url);

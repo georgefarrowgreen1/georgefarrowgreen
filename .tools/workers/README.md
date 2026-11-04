@@ -26,33 +26,11 @@ They appear in Workers & Pages as `inflite-apps` and `gfg`, with no addresses bu
 5. On **both Workers** (each one's Settings → Variables and secrets): a secret `PIGEON_PEPPER_KEY` with the same
    value. Not `PIGEON_PEPPER`: the Workers don't need it.
 
-### 3. The other secrets, on both Workers
-**Look up and paste** (same value as before):
-- `CF_ACCOUNT_ID`: your account ID (Cloudflare dashboard, account home).
-- `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET`: strava.com/settings/api.
-- `GIPHY_API_KEY`: developers.giphy.com, your app.
-- `HUB_ORIGINS`: `https://inflite.ai,https://next.inflite.ai`
-- `HUB_PUSH`: `1`
-- `PIGEON_FROM`: the address InFlite's emails come from (as on one you've had).
-
-**Make new ones** (then set the same value on Pages too, so both run with it):
-- `RESEND_API_KEY`: a new key in Resend (delete the old one after the move).
-- `CF_EMAIL_TOKEN`: a new Cloudflare API token with Email Sending permission.
-- `FITTING_USERS`: Fit Studio's logins again, as `name:password, name:password`.
-
-**Make new shared ones.** Each is a random 40+ character password, and each goes in several places. Do one at a
-time, in this order, and it's only out of step for a minute:
-- `HUB_KEY`:
-  1. Set it on the Pages project, then Retry deployment.
-  2. Once that's live, set it on the Workers `inflite`, `inflite-next`, `inflite-apps` and `gfg`.
-- `MAIL_KEY`:
-  1. Set it on the Pages project, then Retry deployment.
-  2. Once that's live, set it on `inflite-email`, `inflite-apps` and `gfg`.
-- `PIGEON_TICK_SECRET`:
-  1. Set it on the Pages project, then Retry deployment.
-  2. Once that's live, set it on `inflite-apps`, `gfg` and the ticker Worker, and as the GitHub secret `INFLIGHT_TICK_SECRET`.
-
-Not needed: `EDIT_PASSWORD` (nothing uses it; it can be deleted from Pages).
+### 3. The other secrets: nothing to do
+With `PIGEON_PEPPER_KEY` on the Pages project and both Workers, the Pages project keeps all its other variables and
+secrets in the database too, locked with that key, and the Workers open them (`functions/_kept.js`): the same values,
+so Today's, Mail's and the ticker Workers and GitHub keep theirs. Admin → Insights says how many are kept ("Settings and
+secrets, kept for the move"). One set on a Worker of its own always wins over the kept copy.
 
 ### 4. Check them before they're live
 Open `https://inflite-apps.georgefarrowgreen.workers.dev/version` and `https://gfg.georgefarrowgreen.workers.dev/`:
@@ -67,7 +45,7 @@ the app there (or run Actions → **Sign-in check**).
 
 ### 6. Make the Workers the ones that deploy
 - Deploys on every push: `push` is added to the deploy workflow.
-- Scheduled jobs: the GitHub variable `TICK_SITE` and the ticker Worker's `TICK_SITE` are set to `https://inflite-apps.georgefarrowgreen.workers.dev`.
+- Scheduled jobs: the GitHub variable `TICK_SITE` and the ticker Worker's `TICK_SITE` are set to `https://inflite-apps.georgefarrowgreen.workers.dev` (the tick secret's carried with the rest: nothing else changes).
 - Pages: its automatic deployments are turned off.
 
 ### 7. After two quiet weeks
