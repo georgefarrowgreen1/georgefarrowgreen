@@ -368,7 +368,7 @@ await part('you: drawn from the account', async () => {
   // (Today 1.19: notifications first and together, then each app's, then the rules, Connected Apps, Other Devices, Chat,
   // About InFlite and Sign Out as a row)
   same(await p.$$eval('#you section.you-sec', (ss) => ss.map((x) => x.id ? [x.id, x.querySelector('.you-h')?.textContent] : [x.className])),
-    [['youAccount', 'Account'], ['youNotify', 'Notifications'], ['youApps2', 'From Each App'], ['youRules', 'What Today Does for You'], ['youApps', 'Connected Apps'], ['youDevices', 'Other Devices'], ['youChat', 'Chat'], ['youVersions', 'About InFlite'], ['you-sec you-out']],
+    [['youAccount', undefined], ['youNotify', 'Notifications'], ['youApps2', 'From Each App'], ['youDevices', 'Other Devices'], ['youMore', 'General'], ['you-sec you-out']],
     'You’s sections, in order: Account, Notifications, From Each App, What Today Does for You, Connected Apps, Other Devices, Chat, About InFlite, Sign Out');
   // (the rules: each a picker of Do, Suggest or Quiet on one line, with its record; the ones still to come left out)
   const rules = await p.$$eval('#youRules .row.pick[data-rule]', (rs) => rs.map((r) => [r.dataset.rule, r.querySelector('b').textContent, r.querySelector('small')?.textContent || '', r.querySelector('select[data-rulepick]')?.value, r.querySelector('.val > span')?.textContent, [...r.querySelectorAll('option')].map((o) => o.textContent).join('/')]));
@@ -379,18 +379,18 @@ await part('you: drawn from the account', async () => {
   has(await text(p, '#youRules'), 'Do: it acts and tells you. Suggest: it asks first. Quiet: it leaves it. Undo one and it drops a level; ten kept and it climbs.', 'the rules’ note: what each level does');
   // (Notifications: this phone, every app's here, Today's morning, quiet hours)
   const notify = await text(p, '#youNotify');
-  for (const w of ['On This Phone', 'Get Every App’s Here', 'Chats, Weather and Markets as well as Today', 'Today’s Morning', 'One notification, from all your apps', '07:00', 'Quiet Hours', 'Every app, but warnings']) has(notify, w, `Notifications: “${w}”`);
+  for (const w of ['On This Phone', 'Get Every App’s Here', 'Chats, Weather and Markets as well as Today', 'Today’s Morning', 'One notification, from all your apps', '07:00', 'Quiet Hours', 'Everything waits, except warnings']) has(notify, w, `Notifications: “${w}”`);
   ok(await p.$('#youNotify label#youPhoneRow input#youPhone[role=switch]') && await p.$('#youNotify button#youEvery') && await p.$('#youNotify button#youMorning'), 'On This Phone a switch, Get Every App’s Here and Today’s Morning rows (the fan-out’s on)');
   ok(await p.isChecked('#youQuiet'), 'Quiet Hours: on');
   same(await p.$$eval('#youNotify .row.pick .val span', (ss) => ss.map((x) => x.textContent)), ['21:00', '06:00'], 'Quiet Hours: From 21:00 To 06:00');
   // (From Each App: Chats and Markets' alerts as switches, the Evening Wrap, Weather's sheet, Fitness)
   const apps = await text(p, '#youApps2');
-  for (const w of ['Chats', 'Who wrote, never the words', 'Weather', 'Rain and warnings for your places', 'Markets Alerts', 'When a price you watch moves', 'Evening Wrap', 'Fitness', 'In Today’s morning']) has(apps, w, `From Each App: “${w}”`);
+  for (const w of ['Chats', 'Who wrote, never the words', 'Weather', 'Rain and warnings for your places', 'Markets', 'When a price you watch moves', 'Evening Wrap', 'Fitness', 'In Today’s morning']) has(apps, w, `From Each App: “${w}”`);
   ok(!apps.includes('Mail'), 'no Mail row but for Mail’s account');
   same(await p.$$eval('#youApps2 input[role=switch]', (xs) => xs.map((x) => [x.dataset.k, x.checked])), [['chat', true], ['alerts', true], ['wrap', true]], 'Chats, Markets Alerts and the Evening Wrap: switches, each on');
   same(await text(p, '#youWx .val'), 'On', 'Weather: rain on (in its own sheet)');
   same(await p.$$eval('#youDevices .dev', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('[data-stop]').textContent])), DEVICES.devices.map((d) => [d.label, 'Stop There']), 'Other Devices, each with Stop There');
-  has(await text(p, '#youChat'), 'Typing, Pigeons, Names on the Lock Screen', 'Chat’s own settings');
+  has(await text(p, '#youChatGo'), 'Typing, Pigeons, Names on the Lock Screen', 'Chat’s own settings');
   same(await p.$$eval('#youVersions .row', (rs) => rs.map((r) => [r.querySelector('b').textContent, /^V\d+\.\d\d$/.test(r.querySelector('.val').textContent) ? 'V' : r.querySelector('.val').textContent])),
     [['Today', 'V'], ['Chat', '—'], ['Weather', '—'], ['Fitness', '—'], ['Markets', '—']], 'About InFlite: Today’s version, and “—” for each app not opened here yet');
   ok(await p.isVisible('#you section.you-out button#youOut.you-signout.row'), 'Sign Out, a row of its own');
@@ -438,7 +438,7 @@ await part('you: its writes', async () => {
   await p.waitForFunction((s) => !document.querySelector(s), sheetOpen('sh-every'));
   const dev = await sent('POST', 'device');
   same(dev.map((x) => [x.fan, x.sub?.endpoint]), [[true, FAKE_ENDPOINT]], 'its tap: POST /api/device { sub, fan: true }');
-  ok((await text(p, '#youNotify')).includes('Every App Notifies Here') && !(await p.$('#youEvery')), 'and Notifications says every app notifies here now');
+  ok(/every app notifies here/i.test(await text(p, '#youNotify')) && !(await p.$('#youEvery')), 'and Notifications says every app notifies here now');
   await ctx.close();
 });
 

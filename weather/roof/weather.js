@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.74";
-export const NEWS = "Easier to read in light and dark: clearer secondary text, badges and buttons, shared across every app";
+export const BUILD = "1.75";
+export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

@@ -1151,12 +1151,16 @@ img, svg, a { -webkit-user-drag: none; }
   align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
   padding: calc(var(--ifh-pt0) - 4px * var(--p)) max(16px, env(safe-area-inset-right, 0px)) calc(14px - 6px * var(--p)) max(16px, env(safe-area-inset-left, 0px));
   color: var(--ifh-ink, inherit); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-.ifh::before { content: ""; position: absolute; inset: 0 0 -18px; z-index: -1; pointer-events: none; opacity: var(--p);
-  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) 40%, transparent);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+/* (the band behind the header once the page has scrolled: solid the whole way down the header, so nothing reads through
+   behind its title, then fading out over the 16px below it) */
+.ifh::before { content: ""; position: absolute; inset: 0 0 -16px; z-index: -1; pointer-events: none; opacity: var(--p);
+  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
 /* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
 .ifh:not(.ifh-up)::before { display: none; }
+/* (the blur on the header itself, not its band: a header with a view-transition-name is a backdrop root, so a blur on
+   anything inside it sees nothing of the page behind; on the header, it sees the page) */
+.ifh.ifh-up { -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
 .ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
 .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;

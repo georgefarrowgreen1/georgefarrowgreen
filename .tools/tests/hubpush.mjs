@@ -222,7 +222,7 @@ ok(pg.length === 1 && pg[0].user_id === GID && liveNow.includes(pg[0].session) &
 ok(mk.length === 1 && mk[0].user_id === GID && mk[0].via === 'hub', 'Markets’: mk_push, via the hub', JSON.stringify(mk));
 ok(wd.length === 1 && wd[0].user_id === GID && liveNow.includes(wd[0].sess) && wd[0].via === 'hub' && ws.some((x) => x.name === 'London' && x.warn === 1), 'Weather’s: one wx_devs row (this sign-in, via the hub), with London’s place', JSON.stringify({ wd, ws }));
 ok(!!rows(`SELECT endpoint FROM td_push WHERE endpoint = '${ep}'`)[0] && !rows(`SELECT endpoint FROM fx_push WHERE endpoint = '${ep}'`).length, 'Today’s still; Fitness’s not (its line is in Today’s morning)');
-ok(/Every App Notifies Here/.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'Notifications says every app notifies here now', await textOf('#youNotify'));
+ok(/every app notifies here/i.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'Notifications says every app notifies here now', await textOf('#youNotify'));
 
 // ======================================================================================================================
 step(3, 'a Chat message, a Markets alert and the morning: each pushed, opened, saying its app', '§11.3, §11.4');

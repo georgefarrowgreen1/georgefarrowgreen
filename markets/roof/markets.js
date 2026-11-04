@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.01";
-export const NEWS = "Switching sections is much quicker and smoother: every section stays ready, so changing between them no longer stalls the screen";
+export const BUILD = "2.02";
+export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

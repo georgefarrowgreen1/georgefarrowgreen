@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.83";
-export const NEWS = "Easier to read in light and dark: clearer secondary text, badges and buttons, shared across every app";
+export const BUILD = "1.84";
+export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
