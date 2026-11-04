@@ -65,7 +65,10 @@ export async function hop(request, env, step) {
     // (fresh: a sign-in just made over there, carried even over one here already, as it may be someone else's)
     if (!url.searchParams.get("fresh") && await cookieUser(request, env)) return go(to);
     const note = randomToken(24);
-    return go(`${issuer(there, env, request)}/api/hop/issue?n=${hex(await sha256(note))}&to=${encodeURIComponent(to)}`, noteCookie(url, note, 600));
+    // (from the home page, asked of the sign-in page's own address on inflite.ai: the browser's just come from there, so
+    // its connection's open, and the way back is one new connection fewer; its cookie's the whole site's)
+    const at = here === "home" ? appOrigin("auth", env, request) : issuer(there, env, request);
+    return go(`${at}/api/hop/issue?n=${hex(await sha256(note))}&to=${encodeURIComponent(to)}`, noteCookie(url, note, 600));
   }
   if (step === "issue") {
     const to = onSite(url.searchParams.get("to"), there, env), n = url.searchParams.get("n") || "";

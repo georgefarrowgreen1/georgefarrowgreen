@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.76";
-export const NEWS = "Locked Chat says when unlocking needs a connection, and signing in with a password says plainly when the browser can't";
+export const BUILD = "1.77";
+export const NEWS = "Signing in on a computer at inflite.ai: no longer stuck on Chat's page; and Chat's lock and password say plainly what they need";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

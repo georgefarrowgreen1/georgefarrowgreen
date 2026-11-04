@@ -143,7 +143,7 @@ test('under the roof, app.js: the hub three ways with roof read as roof === true
   assert.match(js, /createFrame\(/); assert.match(js, /F\.screen\(/);
   for (const k of ['session:', 'lost:', 'checkSession', 'hubAgain:', 'save', 'onMe:', 'me:']) assert.ok(js.includes(k), `createFrame's opts: ${k}`);
   // (sessionStorage written only under the framework's and the hub's own keys, never with words of anyone's)
-  for (const [, k] of js.matchAll(/sessionStorage\.setItem\(\s*([^,]+),/g)) assert.match(k.trim(), /^(VERIFIER_KEY|k)$/, `sessionStorage.setItem(${k})`);
+  for (const [, k] of js.matchAll(/sessionStorage\.setItem\(\s*([^,]+),/g)) assert.match(k.trim(), /^(VERIFIER_KEY|THEN_KEY|k)$/, `sessionStorage.setItem(${k})`);
 });
 
 // ---- stages 2–4 (s24-contracts §2, §10): the switches per module, and sign-out (C10) ----

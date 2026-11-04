@@ -41,7 +41,9 @@ class Node {
 }
 const all = (n, out = []) => { for (const c of n.children) { out.push(c); all(c, out); } return out; };
 const textOf = (n) => n.textContent;
-function page(href, { marker = null, crumb, sent, standalone = false, kept = {}, before = null } = {}) {
+// (ua: what the browser says it is; an iPhone, unless said)
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+function page(href, { marker = null, crumb, sent, standalone = false, kept = {}, before = null, ua = IPHONE_UA, touch = 5 } = {}) {
   const doc = new Node("#document"), head = new Node("head"), body = new Node("body");
   doc.append(head, body);
   doc.body = body;
@@ -65,7 +67,7 @@ function page(href, { marker = null, crumb, sent, standalone = false, kept = {},
   const ctx = { document: doc, sessionStorage, localStorage, location, history, URL, URLSearchParams, Blob, Promise, JSON, Math, Object, Array, String, Number, Set, Map, Date,
     requestAnimationFrame: (fn) => fn(), setTimeout: (fn, ms) => timers.push({ fn, ms }), clearTimeout: (i) => { if (timers[i - 1]) timers[i - 1].fn = () => {}; }, setInterval: () => 0,
     addEventListener: (t, fn) => (winL[t] ||= []).push(fn), removeEventListener: (t, fn) => { winL[t] = (winL[t] || []).filter((f) => f !== fn); },
-    navigator: { standalone, serviceWorker: { addEventListener: (t, fn) => (swL[t] ||= []).push(fn), getRegistration: (scope) => Promise.resolve({ scope, active: { postMessage: (m) => badge.push([scope, JSON.parse(JSON.stringify(m))]) } }) } },
+    navigator: { standalone, userAgent: ua, maxTouchPoints: touch, serviceWorker: { addEventListener: (t, fn) => (swL[t] ||= []).push(fn), getRegistration: (scope) => Promise.resolve({ scope, active: { postMessage: (m) => badge.push([scope, JSON.parse(JSON.stringify(m))]) } }) } },
     matchMedia: () => ({ matches: false }), innerHeight: 800, innerWidth: 400, screen: { width: 400, height: 800 } };
   ctx.window = ctx;
   before?.(ctx);
@@ -231,6 +233,14 @@ test("send() goes through Chats' own sheet while there's no engine, and comes ba
   const s = page("https://inflite.ai/markets/#s=TSCO", { marker: "/markets/" });
   assert.equal(s.hub.signIn(), true);
   assert.deepEqual(s.assigned, ["/chats/#signin-start&then=%2Fmarkets%2F%23s%3DTSCO"]);
+  // (an iPad, calling itself a Mac but touched: Chats' trip too)
+  const ipad = page("https://inflite.ai/markets/", { marker: "/markets/", ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15" });
+  assert.equal(ipad.hub.signIn(), true);
+  assert.deepEqual(ipad.assigned, ["/chats/#signin-start&then=%2Fmarkets%2F"]);
+  // (a computer: Chat doesn't open on one, so Today's own trip, and back to where it was)
+  const mac = page("https://inflite.ai/markets/#s=TSCO", { marker: "/markets/", ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", touch: 0 });
+  assert.equal(mac.hub.signIn(), true);
+  assert.deepEqual(mac.assigned, ["/#signin-today&then=%2Fmarkets%2F%23s%3DTSCO"]);
   assert.deepEqual([...p.went, ...s.went], []);
 });
 

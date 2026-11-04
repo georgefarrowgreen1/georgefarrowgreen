@@ -27,7 +27,7 @@ const DEVICES = [
   { id: 'iphone-safari', ua: UA.iphone, w: 390, h: 844, mobile: true },
   { id: 'iphone-home', ua: UA.iphone, w: 390, h: 844, mobile: true, standalone: true },
   { id: 'android-chrome', ua: UA.android, w: 412, h: 915, mobile: true },
-  { id: 'ipad-safari', ua: UA.ipad, w: 820, h: 1180, mobile: false, touch: true },
+  { id: 'ipad-safari', ua: UA.ipad, w: 820, h: 1180, mobile: false, touch: true },  // (iPadOS: a Mac's words, a touchscreen)
   { id: 'mac-safari', ua: UA.safari, w: 1440, h: 900 },
   { id: 'win-chrome', ua: UA.chrome, w: 1280, h: 800 },
   { id: 'win-firefox', ua: UA.firefox, w: 1280, h: 800 },
@@ -37,9 +37,15 @@ const ONLY = (process.env.MATRIX_DEVICES || '').split(',').filter(Boolean);
 
 // Each app: where it opens, how its Sign in is started signed out, and how it says who's signed in once back
 const meAt = (path) => async (p) => p.evaluate(async (u) => { try { const r = await fetch(u, { credentials: 'include' }); const j = await r.json().catch(() => ({})); return r.ok && (j.signedIn !== false) && !!(j.name || j.email || j.handle || j.id || j.user || j.signedIn) ? (j.name || j.handle || 'yes') : null; } catch (_) { return null; } }, path);
+const hubMe = async (p) => p.evaluate(async () => { try { const j = await (await fetch('/api/session', { credentials: 'include' })).json(); return j.signedIn ? (j.name || 'yes') : null; } catch (_) { return null; } });
 const APPS = [
-  { id: 'hub', home: HUB + '/', host: 'ifl.test', start: async (p) => p.goto(`${HUB}/chats/#signin-start&then=${encodeURIComponent('/')}`),
-    me: async (p) => (await chatSession(p))?.token ? 'chat key' : null },
+  // (InFlite's own Sign in: Chats' trip on a phone or iPad, Today's own on a computer, where Chat doesn't open)
+  { id: 'hub', home: HUB + '/', host: 'ifl.test', start: async (p) => { await p.goto(HUB + '/'); await p.waitForSelector('#signin', { state: 'visible', timeout: 30000 }); await wait(500); await p.click('#signin'); },
+    me: async (p) => (await chatSession(p))?.token ? 'chat key' : await hubMe(p) },
+  // (an app in InFlite's window, signed out: its Sign in, InFlite's menu's hub.signIn, and back to it)
+  { id: 'hub-app', home: HUB + '/markets/', host: 'ifl.test', start: async (p, x) => { await p.goto(x.home); await p.waitForFunction(() => window.IFL?.hub?.on, null, { timeout: 30000 }); await wait(500); await p.evaluate(() => IFL.hub.signIn()); },
+    back: (u) => u.pathname.startsWith('/markets/'),
+    me: async (p) => (await chatSession(p))?.token ? 'chat key' : await hubMe(p) },
   { id: 'chat', home: CHAT + '/', host: 'chat.ifl.test', start: async (p) => p.goto(`${CHAT}/#signin-start`),
     me: async (p) => (await chatSession(p))?.token ? 'chat key' : null },
   { id: 'weather', home: `${WX}/?lat=51.5072&lon=-0.1276&name=London`, host: 'weather.ifl.test',
@@ -51,7 +57,8 @@ const APPS = [
   { id: 'markets', home: MKT + '/', host: 'finance.ifl.test',
     start: async (p, x) => { await p.goto(x.home); await p.waitForSelector('#sign-in:not([disabled])', { state: 'visible', timeout: 30000 }); await wait(500); await p.click('#sign-in'); },
     me: meAt('/api/markets/me') },
-  { id: 'account', home: ACCOUNT_AT + '/', host: 'account.ifl.test', start: async (p, x) => p.goto(x.home),
+  { id: 'account', home: ACCOUNT_AT + '/', host: 'account.ifl.test',
+    start: async (p, x) => { await p.goto(x.home); await p.waitForSelector('main .signin .btn', { state: 'visible', timeout: 20000 }); await wait(400); await p.click('main .signin .btn'); },
     me: meAt('/api/account/me') },
 ];
 const ONLY_APPS = (process.env.MATRIX_APPS || '').split(',').filter(Boolean);
@@ -71,9 +78,17 @@ const table = [];
 for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
   for (const a of APPS.filter((a) => !ONLY_APPS.length || ONLY_APPS.includes(a.id))) {
     const label = `${d.id} · ${a.id}`;
+    // (Chat on a computer: not there by design (pigeon/theme.js), and it says so, with the way to a phone)
+    if (a.id === 'chat' && !d.mobile && !d.touch) {
+      const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, userAgent: d.ua, locale: 'en-GB' }); const p = await ctx.newPage();
+      await p.goto(`${CHAT}/#signin-start`); const says = await p.waitForFunction(() => /isn’t available here/.test(document.body.innerText), null, { timeout: 20000 }).then(() => true, () => false);
+      ok(says, `${label} (computer: Chat says it opens on phones and iPads)`); table.push({ d: d.id, a: a.id, ok: says, why: 'not on computers, said so' }); await ctx.close(); continue;
+    }
     const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, screen: { width: d.w, height: d.h }, deviceScaleFactor: 2,
       isMobile: !!d.mobile, hasTouch: !!(d.mobile || d.touch), userAgent: d.ua, locale: 'en-GB', timezoneId: 'Europe/London' });
     await dress(ctx, label, { standalone: d.standalone });
+    // (an iPad says it's a Mac, and its touchscreen five points, as Chat checks; Chromium's touch emulation says one)
+    if (d.touch) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true }));
     const p = await ctx.newPage();
     const t0 = Date.now();
     let step = 'start', why = '';
@@ -82,7 +97,7 @@ for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
       step = 'sign-in page';
       await onAccountPage(p, { email });
       step = 'back';
-      if (a.id !== 'account') await p.waitForURL((u) => u.hostname === a.host && !/#signin=/.test(u.hash), { timeout: 45000 });
+      if (a.id !== 'account') await p.waitForURL((u) => u.hostname === a.host && !/#signin=/.test(u.hash) && (!a.back || a.back(u)), { timeout: 45000 });
       else await p.waitForSelector('main .hero, main .ifh-me', { timeout: 30000 });
       step = 'signed in';
       const who = await until(() => a.me(p), 30000, 500);

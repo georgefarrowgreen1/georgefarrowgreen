@@ -463,7 +463,8 @@ const IFL = (() => {
   //                      way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
   //                      here" said) or that its sheet's shut (put away)
-  //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
+  //   signIn()           a signed-out app at the hub signs in through Chats (on a computer, Today's own trip, as Chat
+  //                      doesn't open there), and comes back here. → true; off the hub,
   //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
   //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
@@ -588,6 +589,11 @@ const IFL = (() => {
     closed() { hide(); },
     signIn() {
       if (!hub.on || hub.degraded) return false;
+      // (on a computer, Today's own trip, and back here: Chat doesn't open on one (pigeon/theme.js), so its trip can't
+      // sign you in there. An iPad calls itself a Mac, but it's touched; a Mac never is)
+      const ua = navigator.userAgent || "", touched = navigator.maxTouchPoints > 1;
+      const computer = !(/iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches));
+      if (computer) { location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash)); return true; }
       location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
@@ -813,8 +819,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.79";
-const NEWS = "Signing in: browsers that can't use passkeys here are offered your password instead, and clearer words when a password can't be checked";
+const BUILD = "1.80";
+const NEWS = "Signing in from georgefarrowgreen.com comes back quicker and never sends your photo in an address";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1143,7 +1149,13 @@ function siteUrl(sub) {
 }
 // (to the home page, signed in there too: its sign-in carried over, functions/_hop.js. fresh: one just made here, so
 // carried over even if the home page was signed in to before, perhaps as someone else)
-const homeVia = (to, fresh = false) => `${new URL(siteUrl("")).origin}/api/hop/start?to=${encodeURIComponent(to)}${fresh ? "&fresh=1" : ""}`;
+// (what's after the # of where it's going (#signedin, with the picture this page ends on and a small copy of your photo)
+// kept out of the hop's own addresses: put on the first one's #, which the browser carries through each step to the
+// home page itself, and no server ever sees; so the addresses stay short, and the photo stays in this browser)
+const homeVia = (to, fresh = false) => {
+  const u = new URL(to), hash = u.hash; u.hash = "";
+  return `${new URL(siteUrl("")).origin}/api/hop/start?to=${encodeURIComponent(u.href)}${fresh ? "&fresh=1" : ""}${hash}`;
+};
 
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
 // chat.<site>/, weather.<site>/, fitness.<site>/, finance.<site>/ (Markets), email.<site>/ (Mail), <site>/ itself (InFlite

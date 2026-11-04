@@ -452,7 +452,8 @@ const IFL = (() => {
   //                      way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
   //                      here" said) or that its sheet's shut (put away)
-  //   signIn()           a signed-out app at the hub signs in through Chats, and comes back here. → true; off the hub,
+  //   signIn()           a signed-out app at the hub signs in through Chats (on a computer, Today's own trip, as Chat
+  //                      doesn't open there), and comes back here. → true; off the hub,
   //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
   //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
@@ -577,6 +578,11 @@ const IFL = (() => {
     closed() { hide(); },
     signIn() {
       if (!hub.on || hub.degraded) return false;
+      // (on a computer, Today's own trip, and back here: Chat doesn't open on one (pigeon/theme.js), so its trip can't
+      // sign you in there. An iPad calls itself a Mac, but it's touched; a Mac never is)
+      const ua = navigator.userAgent || "", touched = navigator.maxTouchPoints > 1;
+      const computer = !(/iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches));
+      if (computer) { location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash)); return true; }
       location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
@@ -853,8 +859,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.76";            // shown in InFlite's menu
-const APP_NEWS = "Locked Chat says when unlocking needs a connection, and signing in with a password says plainly when the browser can't";       // (said once it's in)
+const APP_VERSION = "1.77";            // shown in InFlite's menu
+const APP_NEWS = "Signing in on a computer at inflite.ai: no longer stuck on Chat's page; and Chat's lock and password say plainly what they need";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
