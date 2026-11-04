@@ -323,8 +323,11 @@ await part('C', 'the switch off: a shown Mail bounces once, not while composing;
   await wait(2500);
   const marker = await q.evaluate(() => sessionStorage.getItem('ifl-roof-bounce')).catch(() => null);
   ok(bounced && docs.n() === 1 && marker === '1', 'C. compose closed: one bounce to the framed page at /mail/ (marker ifl-roof-bounce, D14)', js({ docs: docs.list, marker }));
-  const draft = await until(async () => ((await mailAsk('/api/messages?folder=drafts&limit=50', { cookie })).json?.messages || []).find((m) => m.subject === 'Roof switch draft'), 10000);
-  ok(!!draft, 'C. …the words written kept as a draft at Mail (flush before the bounce, C1, §8)');
+  // (Mail's API answers InFlite no longer, so the module's flush can't reach it: the switch-off page hands what compose
+  // kept on the phone, mail:unsent, to Mail in its frame, which saves it as a draft and says so; the phone's copy goes)
+  const drafts = await until(async () => { const l = ((await mailAsk('/api/messages?folder=drafts&limit=50', { cookie })).json?.messages || []).filter((m) => m.subject === 'Roof switch draft'); return l.length ? l : null; }, 10000);
+  const left = await until(async () => ((await q.evaluate(() => localStorage.getItem('mail:unsent')).catch(() => 'x')) === null ? 'gone' : null), 8000);
+  ok(drafts?.length === 1 && left === 'gone', 'C. …the words written kept as a draft at Mail, once, handed in by the switch-off page to Mail in its frame (Mail’s API closed to InFlite first, §8, C1); mail:unsent let go', js({ drafts: drafts?.length || 0, left }));
   await shot(q, 'C-bounced');
   docs.stop(); await R.ctx.close();
 
