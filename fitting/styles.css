@@ -207,8 +207,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .bm-list button{border:0;background:none;padding:0}
 
 /* bike table */
-.btable{display:flex;flex-direction:column;max-width:960px}
-.brow{display:grid;grid-template-columns:minmax(150px,1fr) minmax(170px,210px) minmax(170px,210px) 92px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.btable{display:flex;flex-direction:column;max-width:1040px}
+.brow{display:grid;grid-template-columns:minmax(130px,1fr) minmax(160px,196px) minmax(160px,196px) minmax(92px,110px) 84px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
 .brow.hd{border-top:0;padding-top:0}
 .brow.hd span{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .brow .nm{font-weight:600;font-size:15.5px}
@@ -483,3 +483,36 @@ body.signin::before{display:none}
 .sc-cut span{position:absolute;left:50%;top:-9px;transform:translateX(-50%);background:var(--paper);padding:0 10px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--p-mute);white-space:nowrap}
 .sc-row.long{display:block}
 .sc-row.long b{display:block;text-align:left;font-family:var(--f-body);font-weight:600;font-size:13.5px;margin-top:1px}
+
+/* the bike table's ideal: typed, no − / + */
+.num.ideal input{min-height:44px;padding:10px 30px 10px 10px;text-align:center}
+.num.ideal .u{right:8px;font-size:12px}
+@media (max-width:760px){.brow .cell[data-l="Ideal"]{grid-column:1/2}}
+
+/* the feet table: size, length, width and arch; unweighted and weighted; left and right */
+.ftab-wrap{overflow-x:auto;margin:0 -2px;padding:2px}
+.ftab{display:grid;grid-template-columns:96px repeat(4,minmax(128px,1fr));gap:8px 10px;align-items:center;min-width:640px}
+.ftab .fh{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);text-align:center;line-height:1.2}
+.ftab .fh small{display:block;font-weight:600;letter-spacing:.04em;color:var(--mute);font-size:11px}
+.ftab .fr{font-weight:600;font-size:15px}
+.ftab input{min-height:46px;text-align:center}
+.ftab .num input{padding-right:40px}
+.seg.sm{gap:4px;flex-wrap:nowrap}
+.seg.sm button{min-height:44px;padding:0 8px;font-size:14px;flex:1;border-radius:10px}
+
+/* the triathlon starting point */
+.tts-parts{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:8px;margin-top:14px}
+.tts-parts > div{background:var(--field);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tts-parts span{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.tts-parts b{font-size:15px}
+.tts-parts i{font-style:normal;font-family:var(--f-disp);font-weight:700;font-size:20px;color:var(--ink-2)}
+.tts-parts .tts-total{background:var(--sel);color:var(--sel-ink)}
+.tts-parts .tts-total span,.tts-parts .tts-total i{color:inherit;opacity:.8}
+.tts-parts .tts-total b{font-family:var(--f-disp);font-size:30px;line-height:1}
+.tts-tbl{display:grid;grid-template-columns:minmax(120px,1.1fr) repeat(3,minmax(0,1fr));gap:4px;margin-top:14px;font-size:14.5px}
+.tts-tbl > div{padding:9px 10px;border-radius:8px;background:var(--field)}
+.tts-h{font-family:var(--f-disp);font-weight:700;font-size:16px;text-align:center}
+.tts-h:nth-child(2){color:var(--bad)} .tts-h:nth-child(3){color:var(--warn)} .tts-h:nth-child(4){color:var(--good)}
+.tts-r{font-weight:600}
+.tts-c{text-align:center}
+.tts-tbl .on{background:var(--sel);color:var(--sel-ink)}

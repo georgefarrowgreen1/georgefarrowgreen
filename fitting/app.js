@@ -47,35 +47,41 @@ const PAIN = {neck:'Neck', shoulder_L:'Left shoulder', shoulder_R:'Right shoulde
   hand_L:'Left hand', hand_R:'Right hand', hip_L:'Left hip', hip_R:'Right hip', saddle:'Saddle contact', leg_L:'Left leg', leg_R:'Right leg',
   knee_L:'Left knee', knee_R:'Right knee', foot_L:'Left foot', foot_R:'Right foot'};
 
+// (S Standard, F Full: a road bike's; T: a TT or triathlon bike's, as Precision Fit's triathlon form lists them)
 const BIKE = [
   {g:'Saddle', k:'sadModel', label:'Saddle make & model', t:'text'},
-  {g:'Saddle', k:'sadW', label:'Saddle width', u:'mm', step:5},
+  {g:'Saddle', k:'sadW', label:'Saddle width (size)', u:'mm', step:5},
   {g:'Saddle', k:'sadH', label:'Saddle height', u:'mm', hint:'BB centre to saddle top'},
   {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
   {g:'Saddle', k:'tilt', label:'Saddle tilt', u:'°', step:0.5},
-  {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'FT'},
-  {g:'Drivetrain', k:'crank', label:'Crank length', u:'mm', step:2.5, f:'FT'},
-  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'FT'},
-  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20},
+  {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'F'},
+  {g:'Drivetrain', k:'crank', label:'Crank arm length', u:'mm', step:2.5, f:'FT'},
+  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'F'},
+  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
-  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height'},
-  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'FT'},
-  {g:'Coordinates', k:'hx', label:'Handlebar X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'hy', label:'Handlebar Y', u:'mm', step:5, f:'FT'},
-  {g:'Coordinates', k:'sx', label:'Saddle X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y', u:'mm', step:5, f:'FT'},
+  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height', f:'SF'},
+  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'tipShifter', label:'Saddle tip to shifter', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'F'},
+  {g:'Aero bars', k:'aeroModel', label:'Aero bar model', t:'text', f:'T'},
+  {g:'Aero bars', k:'padStack', label:'Arm pad stack', u:'mm', step:5, hint:'BB to top of arm pad', f:'T'},
+  {g:'Aero bars', k:'padReach', label:'Arm pad reach', u:'mm', step:5, hint:'BB to back of arm pad', f:'T'},
+  {g:'Aero bars', k:'padDrop', label:'Saddle to arm pad drop', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'noseToPad', label:'Saddle nose to arm pad', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'noseToShifter', label:'Saddle nose to shifter', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'padW', label:'Arm pad width', u:'mm', step:5, hint:'Centre to centre', f:'T'},
+  {g:'Aero bars', k:'baseW', label:'Base bar width', u:'mm', step:10, f:'T'},
+  {g:'Aero bars', k:'extLen', label:'Extension length', u:'mm', step:10, f:'T'},
+  {g:'Aero bars', k:'extA', label:'Extension angle', u:'°', step:1, f:'T'},
+  {g:'Coordinates', k:'hx', label:'Handlebar X', u:'mm', step:5, f:'F'}, {g:'Coordinates', k:'hy', label:'Handlebar Y', u:'mm', step:5, f:'F'},
+  {g:'Coordinates', k:'sx', label:'Saddle X coordinate', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y coordinate', u:'mm', step:5, f:'FT'},
+  {g:'UCI position', k:'nose', label:'Saddle nose behind BB', u:'mm', step:5, f:'T'},
+  {g:'UCI position', k:'extFront', label:'Extension tip ahead of BB', u:'mm', step:5, f:'T'},
 ];
-const TTROWS = [
-  {k:'padStack', label:'Pad stack', u:'mm', step:5, hint:'BB to top of armrest pad'},
-  {k:'padReach', label:'Pad reach', u:'mm', step:5, hint:'BB to back of pad'},
-  {k:'padW', label:'Pad width', u:'mm', step:5, hint:'Centre to centre'},
-  {k:'extLen', label:'Extension length', u:'mm', step:10},
-  {k:'extA', label:'Extension angle', u:'°', step:1},
-  {k:'nose', label:'Saddle nose behind BB', u:'mm', step:5},
-  {k:'extFront', label:'Extension tip ahead of BB', u:'mm', step:5},
-];
+const TTROWS = [];   // (a TT fit's rows are in BIKE now, marked T)
 const ALLROWS = [...BIKE, ...TTROWS];
 
 const STRETCH = [
@@ -122,22 +128,26 @@ function sectionsFor(step){
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
   case 'offbike': return [
-    {title:'Feet', fields:[SG('arch','Arch height (weighted)',['Low','Medium','High'],{lr:true, f:'FT'}), SG('footbed','Footbed',['Stock','Trimmed','Custom']),
-      N('footLen','Foot length','mm',{lr:true, f:'FT'}), N('footWid','Foot width','mm',{lr:true, f:'FT'}), N('footAng','Foot angle standing','°',{lr:true, f:'FT'}),
-      {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
+    {title:'Feet', fields:[{t:'feet', k:'feet', label:'Feet, standing', f:'FT'}, N('footAng','Foot angle standing','°',{lr:true, f:'FT', hint:'line through the foot'}),
+      SG('footbed','Footbed',['Stock','Trimmed','Custom']), {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
+    {title:'Lower leg', f:'FT', note:'Laser line, standing', fields:[SG('lowerLeg','Lower leg analysis',['Supination','Neutral','Pronation'],{lr:true, wide:true})]},
     {title:'Knees', f:'FT', fields:[SG('knee','Alignment standing',['Bends in','Neutral','Bows out'],{lr:true, wide:true})]},
     {title:'Hips & pelvis', fields:[SG('pelvis','Pelvis height',['Left higher','Level','Right higher'],{f:'FT'}), SG('legLen','Leg length',['Equal','Left shorter','Right shorter'],{f:'FT'}),
-      N('legLenMm','Difference','mm',{f:'FT', when:() => /shorter/.test(val('legLen') || '')}), {t:'ischial', k:'ischial', label:'Ischial (sit-bone) width'}, LT('backFlex','Lower back flexibility','°','back')]},
+      N('legLenMm','Difference','mm',{f:'FT', when:() => /shorter/.test(val('legLen') || '')}), {t:'ischial', k:'ischial', label:'Ischial (sit-bone) width'},
+      LT('backFlex','Sacrum angle','°','back',{f:'S', hint:'back flexibility'})]},
+    {title:'Selle Italia idmatch', f:'FT', note:'Saddle selection', fields:[N('hipW','Hip width','cm'), N('thigh','Thigh diameter','cm',{lr:true}),
+      LT('backFlex','Back flexibility (sacrum angle)','°','back'), T('idSaddle','Selle Italia saddle selection',{ph:'Model and size from idmatch', span2:true})]},
     {title:'Posture & shoulders', fields:[SG('shFwd','Shoulders drawn forward?',['Yes','No'],{f:'FT'}), SG('shLevel','Shoulders level?',['Left higher','Level','Right higher'],{f:'FT'}),
       N('shWidth','Shoulder width','cm'), SG('elbows','At 90°, elbows touching?',['Yes','No'],{f:'FT'})]},
-    {title:'Body dimensions', fields:[{t:'inseam', k:'inseam', label:'Inseam (no shoes)'}, N('thigh','Thigh diameter','cm',{f:'FT'})]},
+    {title:'Body dimensions', fields:[{t:'inseam', k:'inseam', label:'Inseam (no shoes)'}]},
     {title:'Stability', f:'FT', note:'Plank test, up to 90 seconds', fields:[{t:'timer', k:'plank', label:'Plank hold', wide:true}]},
     {title:'Range of motion', f:'FT', fields:[LT('ham','Hamstring flexibility','°','ham',{lr:true}), LT('hipR','Hip restriction','°','hip',{lr:true})]},
   ];
   case 'onbike': return [
     // (the body measurements here are the off-bike assessment's own: the same fields, so they count once a fit)
-    {title:'Starting position', custom:'start', ownFields:true, 
-      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'})]},
+    {title:'Starting position', custom:'start', ownFields:true,
+      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'}),
+        SG('ability','Ability',['Novice','Finisher','Competitor'],{f:'T'}), SG('distance','Race distance',['Ironman','Long','Sprint'],{f:'T'})]},
     {title:'Shoe set-up', fields:[CK('shoeSet',['Cleats at least 1 cm behind M1','Cleat rotation matches the off-bike foot assessment','Cleat rotation checked with the rider on the bike','Stance width adjusted for the rider'])]},
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
@@ -322,6 +332,18 @@ function fieldInner(f){
     if (f.lr) return `<div class="fld wide">${lab}<div class="lr"><span class="side">L</span>${one(f.k + '_L')}<span class="side">R</span>${one(f.k + '_R')}</div></div>`;
     return `<div class="fld wide">${lab}${one(f.k)}</div>`;
   }
+  case 'feet': {
+    const cols = [['L', 'u', 'Left', 'unweighted'], ['L', 'w', 'Left', 'weighted'], ['R', 'u', 'Right', 'unweighted'], ['R', 'w', 'Right', 'weighted']];
+    const key = (b, side, w) => `${b}_${side}${w === 'u' ? '_u' : ''}`;
+    const numCell = (b, unit) => cols.map(([sd, w]) => `<div class="num"><input type="text" inputmode="decimal" id="i-${key(b, sd, w)}" data-k="${key(b, sd, w)}" data-num value="${S.v[key(b, sd, w)] ?? ''}" aria-label="${b} ${sd} ${w}"><span class="u">${unit}</span></div>`).join('');
+    const archCell = cols.map(([sd, w]) => { const k2 = key('arch', sd, w);
+      return `<div class="seg sm" role="group" aria-label="Arch ${sd} ${w === 'u' ? 'unweighted' : 'weighted'}">${[['Low','Low'],['Medium','Med'],['High','High']].map(([o, l]) => `<button type="button" id="b-${k2}-${o}" data-seg="${k2}" data-val="${o}" aria-pressed="${S.v[k2] === o}">${l}</button>`).join('')}</div>`; }).join('');
+    const sizeCell = cols.map(([sd, w]) => { const k2 = key('footSize', sd, w); return `<input type="text" id="i-${k2}" data-k="${k2}" value="${esc(S.v[k2] ?? '')}" placeholder="e.g. 43" aria-label="Size ${sd} ${w}">`; }).join('');
+    return `<div class="fld wide"><span class="lab">${esc(f.label)}</span><div class="ftab-wrap"><div class="ftab">
+      <span></span>${cols.map(c => `<span class="fh">${c[2]}<small>${c[3]}</small></span>`).join('')}
+      <span class="fr">Size</span>${sizeCell}<span class="fr">Length</span>${numCell('footLen', 'mm')}<span class="fr">Width</span>${numCell('footWid', 'mm')}<span class="fr">Arch height</span>${archCell}
+    </div></div></div>`;
+  }
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
@@ -422,11 +444,18 @@ function stepper(k, row){
 }
 function rowsHTML(rows){
   let g = null;
-  return `<div class="btable"><div class="brow hd"><span>Measurement</span><span>Before</span><span>After</span><span style="text-align:right">Change</span></div>
+  return `<div class="btable"><div class="brow hd"><span>Measurement</span><span>Before</span><span>After</span><span>Ideal</span><span style="text-align:right">Change</span></div>
     ${rows.filter(applies).map(r => { const head = r.g && r.g !== g ? `<div class="bgrp">${esc(r.g)}</div>` : ''; g = r.g;
       return head + `<div class="brow"><div class="nm">${esc(r.label)}${r.hint ? `<small>${esc(r.hint)}</small>` : ''}</div>
       <div class="cell" data-l="Before">${stepper(r.k + '_pre', r)}</div><div class="cell" data-l="After">${stepper(r.k + '_post', r)}</div>
+      <div class="cell" data-l="Ideal">${idealInput(r)}</div>
       <div class="delta" data-x="delta" data-k="${r.k}"></div></div>`; }).join('')}</div>`;
+}
+// the ideal for a measurement: typed, no − / + (where the fit is heading; the report shows it when there is one)
+function idealInput(r){
+  const k = r.k + '_ideal', v = S.v[k];
+  if (r.t === 'text') return `<input type="text" id="i-${k}" data-k="${k}" value="${esc(v ?? '')}" aria-label="${esc(r.label)}, ideal">`;
+  return `<div class="num ideal"><input type="text" inputmode="decimal" id="i-${k}" data-k="${k}" data-num value="${v ?? ''}" aria-label="${esc(r.label)}, ideal"><span class="u">${r.u}</span></div>`;
 }
 function deltaOf(r){
   const a = S.v[r.k + '_pre'], b = S.v[r.k + '_post'];
@@ -439,8 +468,7 @@ function bikeHTML(){
   let h = `<div class="sec"><div class="sec-h"><h2>Bike set-up</h2><div class="right"><span class="sec-note">Tap − / + to nudge, or type a value</span><button type="button" class="btn sm" data-act="copy-same">Copy unchanged to After</button></div></div><div id="copy-msg"></div>${rowsHTML(BIKE)}</div>
   <div class="sec"><div class="sec-h"><h2>Cleats</h2></div><div class="grid">
     ${fieldHTML(T('cleatL','Left cleat',{ph:'e.g. 1.2 cm behind M1, neutral', span2:true}))}${fieldHTML(T('cleatR','Right cleat',{span2:true}))}</div></div>`;
-  if (S.fit === 'tt') h += `<div class="sec"><div class="sec-h"><h2>TT cockpit</h2><span class="tag-fit">TT &amp; Tri</span></div>${rowsHTML(TTROWS)}
-    <div class="uci" data-x="uci"></div></div>`;
+  if (S.fit === 'tt') h += `<div class="sec"><div class="sec-h"><h2>UCI position check</h2><span class="tag-fit">TT &amp; Tri</span></div><div class="uci" data-x="uci"></div></div>`;
   return h;
 }
 function uciHTML(){
@@ -609,14 +637,14 @@ async function markPhotos(){
 
 /* ---------------- insights ---------------- */
 function changes(){
-  const order = ['sadH','setback','drop','hoods','barReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padStack','padReach','padW','extLen','extA','tipBar','postOff','hx','hy','sx','sy','nose','extFront'];
+  const order = ['sadH','setback','drop','padDrop','hoods','barReach','padStack','padReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padW','baseW','extLen','extA','noseToPad','noseToShifter','tipBar','tipShifter','postOff','hx','hy','sx','sy','nose','extFront'];
   return order.map(k => ALLROWS.find(r => r.k === k)).filter(r => r && applies(r) && (S.fit === 'tt' || !TTROWS.includes(r)))
     .map(r => ({r, ...deltaOf(r)})).filter(x => x.ch && isNum(x.d));
 }
 function lights(){
   const out = [];
   const add = (label, k, cl, show) => { const c = lightOf(k, cl); if (c) out.push({label, c, v:num(k) != null ? fmt(num(k)) + (cl === 'plank' ? ' s' : '°') : CNAME[c]}); };
-  add('Lower back flexibility', 'backFlex', 'back');
+  add('Sacrum angle (back flexibility)', 'backFlex', 'back');
   if (S.fit !== 'std'){
     add('Core stability (plank)', 'plank', 'plank');
     add('Hamstring, left', 'ham_L', 'ham'); add('Hamstring, right', 'ham_R', 'ham');
@@ -720,7 +748,31 @@ function startHTML(){
   return `<div class="sp-sub">Body measurements</div>
     <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit bones', 'mm')}${inp('shWidth', 'Shoulders', 'cm')}
       ${S.fit === 'std' ? '' : inp('footAng_L', 'Foot angle L', '°') + inp('footAng_R', 'Foot angle R', '°')}</div>
-    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>`;
+    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>
+    ${S.fit === 'tt' ? `<div class="sp-sub" style="margin-top:22px">Triathlon starting point</div>
+      <div class="grid">${fieldHTML(SG('ability','Ability',['Novice','Finisher','Competitor'],{f:'T'}))}${fieldHTML(SG('distance','Race distance',['Ironman','Long','Sprint'],{f:'T'}))}</div>
+      <div class="tts" data-x="ttscore"></div>` : ''}`;
+}
+// Precision Fit's triathlon form: ability, distance, flexibility and the plank, 0 to 2 each, and +1 where the elbows touch
+// at 90°; the total picks the column of starting points (seatpost, knee bend at the bottom, saddle to arm pad drop).
+const TT_START = {cols:['0 to 3', '4 to 6', '7 to 10'], rows:[['Aluminium seatpost', '20 mm set back', '20 mm fore', '20 mm fore'], ['Carbon seatpost', '15 mm set back', '15 mm fore', '48 mm fore'],
+  ['Saddle height', '40 to 35° knee bend', '35° knee bend', '35 to 30° knee bend'], ['Saddle to arm pad drop', '2 cm drop', '6 cm drop', '10 cm drop']]};
+function flexColor(){ const cs = [lightOf('ham_L', 'ham'), lightOf('ham_R', 'ham'), lightOf('backFlex', 'back')].filter(Boolean); return cs.length ? (cs.includes('r') ? 'r' : cs.includes('y') ? 'y' : 'g') : null; }
+function ttScore(){
+  const pts = {r:0, y:1, g:2}, fl = flexColor(), pl = lightOf('plank', 'plank');
+  const parts = [['Ability', val('ability') || null, {Novice:0, Finisher:1, Competitor:2}[val('ability')]], ['Distance', val('distance') || null, {Ironman:0, Long:1, Sprint:2}[val('distance')]],
+    ['Flexibility', fl ? CNAME[fl] : null, fl ? pts[fl] : undefined], ['Plank', pl ? `${CNAME[pl]}${num('plank') != null ? ` · ${num('plank')} s` : ''}` : null, pl ? pts[pl] : undefined],
+    ['Elbows touch at 90°', val('elbows') || null, val('elbows') === 'Yes' ? 1 : val('elbows') === 'No' ? 0 : undefined]];
+  const known = parts.filter(p => p[2] !== undefined), total = known.reduce((a, p) => a + p[2], 0);
+  return {parts, total, complete:known.length === parts.length, band:total <= 3 ? 0 : total <= 6 ? 1 : 2};
+}
+function ttScoreHTML(){
+  const t = ttScore();
+  return `<div class="tts-parts">${t.parts.map(([n, v, p]) => `<div><span>${esc(n)}</span><b>${v ? esc(v) : '<span class="hint">not yet</span>'}</b><i>${p === undefined ? '–' : '+' + p}</i></div>`).join('')}
+      <div class="tts-total"><span>Total</span><b>${t.total}</b><i>${t.complete ? 'of 10' : 'so far'}</i></div></div>
+    <div class="tts-tbl"><div></div>${TT_START.cols.map((c, i) => `<div class="tts-h${i === t.band ? ' on' : ''}">${c}</div>`).join('')}
+      ${TT_START.rows.map(r => `<div class="tts-r">${esc(r[0])}</div>${r.slice(1).map((x, i) => `<div class="tts-c${i === t.band ? ' on' : ''}">${esc(x)}</div>`).join('')}`).join('')}</div>
+    <p class="hint" style="margin:8px 0 0">${t.complete ? `Start from the highlighted column (${TT_START.cols[t.band]}), then fine-tune on the bike.` : 'Flexibility, plank and elbows come from the off-bike assessment; answer the rest to complete the score.'}</p>`;
 }
 
 // The stretching plan's lines: "name — how much" (or a colon), each a card in the report
@@ -736,8 +788,9 @@ function cardCols(){
     has('tilt') && row('Saddle tilt', P('tilt') === 0 ? '0° level' : `${fmt(P('tilt'))}°`), (has('sadModel') || has('sadW')) && row('Saddle', [P('sadModel'), has('sadW') && !String(P('sadModel') || '').includes(String(P('sadW'))) ? `${P('sadW')} mm` : ''].filter(Boolean).join(' · ')),
     has('crank') && row('Crank length', mm('crank')), v.cleatL && row('Cleat, left', v.cleatL)].filter(Boolean);
   const right = S.fit === 'tt'
-    ? [has('padStack') && row('Pad stack', mm('padStack')), has('padReach') && row('Pad reach', mm('padReach')), has('padW') && row('Pad width', mm('padW'), 'Centre to centre'),
-       has('extLen') && row('Extension length', mm('extLen')), has('extA') && row('Extension angle', `${fmt(P('extA'))}°`), v.cleatR && row('Cleat, right', v.cleatR)]
+    ? [has('padStack') && row('Arm pad stack', mm('padStack')), has('padReach') && row('Arm pad reach', mm('padReach')), has('padDrop') && row('Saddle to arm pad drop', mm('padDrop')),
+       has('padW') && row('Arm pad width', mm('padW'), 'Centre to centre'), has('extLen') && row('Extension', [mm('extLen'), has('extA') ? `${fmt(P('extA'))}°` : ''].filter(Boolean).join(' · ')),
+       stem && row('Stem', stem), v.cleatR && row('Cleat, right', v.cleatR)]
     : [has('barReach') ? row('Saddle to bar reach', mm('barReach')) : has('hoods') ? row('Saddle to hoods reach', mm('hoods')) : has('tipBar') && row('Saddle tip to bar', mm('tipBar')),
        has('drop') && row('Saddle to bar drop', mm('drop')), stem && row('Stem', stem), has('spacers') && row('Headset spacers', mm('spacers')),
        has('barW') && row('Handlebar width', mm('barW')), v.cleatR && row('Cleat, right', v.cleatR)];
@@ -881,17 +934,21 @@ function reportBlocks(){
         <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
         <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; })});
   const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
+  const ideal = BIKE.filter(applies).some(r => filled(v[r.k + '_ideal']));
   const trs = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
-    return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
-  const TH = `<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>${was}</th><th>${now}</th><th>Change</th></tr></thead><tbody>`;
+    return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td>${ideal ? `<td>${cell(r, r.k + '_ideal')}</td>` : ''}<td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
+  const TH = `<table class="rp-tbl"><thead><tr><th style="width:${ideal ? 32 : 36}%">Measurement</th><th>${was}</th><th>${now}</th>${ideal ? '<th>Ideal</th>' : ''}<th>Change</th></tr></thead><tbody>`;
   const bike = trs(BIKE);
   if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
     tail:'<p class="rp-p" style="font-size:11.5px;color:var(--p-mute);margin-top:10px">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
   if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<ul class="rp-lst"><li><span>Left</span><b>${esc(v.cleatL || '–')}</b></li><li><span>Right</span><b>${esc(v.cleatR || '–')}</b></li></ul>`)});
-  if (S.fit === 'tt'){ const tt = trs(TTROWS); if (tt.length) B.push({title:'TT cockpit', head:TH, foot:'</tbody></table>', rows:tt}); }
+  if (S.fit === 'tt'){ const t = ttScore(); if (t.complete) B.push({html:sec('Triathlon starting point', `<p class="rp-p">Score ${t.total} of 10 (${esc(TT_START.cols[t.band])}): ${TT_START.rows.map(r => `${esc(r[0].toLowerCase())} ${esc(r[t.band + 1])}`).join(', ')}.</p>`)}); }
   const pains = Object.entries(S.pain).filter(([, x]) => x);
   const obs = [['Arch height (L / R)', S.fit !== 'std' && [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
-    ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Sit-bone width', isNum(v.ischial) ? v.ischial + ' mm' : ''], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
+    ['Lower leg (L / R)', S.fit !== 'std' && (v.lowerLeg_L || v.lowerLeg_R) ? `${v.lowerLeg_L || '–'} / ${v.lowerLeg_R || '–'}` : ''],
+    ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Hip width', S.fit !== 'std' && isNum(v.hipW) ? v.hipW + ' cm' : ''],
+    ['Thigh diameter (L / R)', S.fit !== 'std' && (isNum(v.thigh_L) || isNum(v.thigh_R)) ? `${fmt(v.thigh_L)} / ${fmt(v.thigh_R)} cm` : ''],
+    ['Selle Italia saddle', S.fit !== 'std' ? v.idSaddle : ''], ['Sit-bone width', isNum(v.ischial) ? v.ischial + ' mm' : ''], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
     ['Shoulders drawn forward', S.fit !== 'std' ? v.shFwd : ''], ['Inseam', isNum(v.inseam) ? v.inseam + ' cm' : ''], ['Knee tracking on bike (L / R)', S.fit !== 'std' && (v.kneeTrack_L || v.kneeTrack_R) ? `${v.kneeTrack_L || '–'} / ${v.kneeTrack_R || '–'}` : '']].filter(x => x[1]);
   if (Ls.length || obs.length) B.push({html:`<div class="rp-two">${Ls.length ? sec('Mobility & stability', `<ul class="rp-lst">${Ls.map(x => `<li><span>${esc(x.label)}</span><span><span style="margin-right:8px;font-variant-numeric:tabular-nums">${esc(x.v)}</span><span class="rp-pill ${x.c}">${CNAME[x.c]}</span></span></li>`).join('')}</ul>`) : ''}
     ${obs.length ? sec('Posture & alignment', `<ul class="rp-lst">${obs.map(x => `<li><span>${esc(x[0])}</span><b>${esc(x[1])}</b></li>`).join('')}</ul>`) : ''}</div>`});
@@ -1028,6 +1085,7 @@ function secProgress(sec){
     if (f.t === 'check'){ f.items.forEach((_, j) => { tot++; if ((S.v[f.k] || [])[j]) got++; }); return; }
     if (f.t === 'light'){ (f.lr ? [f.k + '_L', f.k + '_R'] : [f.k]).forEach(k => { tot++; if (lightOf(k, f.cl)) got++; }); return; }
     if (f.t === 'timer'){ tot++; if (lightOf('plank', 'plank')) got++; return; }
+    if (f.t === 'feet'){ ['footSize', 'footLen', 'footWid', 'arch'].forEach(b => ['_L_u', '_L', '_R_u', '_R'].forEach(x => cnt(b + x))); return; }
     if (f.when && !f.when()) return;
     if (f.lr){ cnt(f.k + '_L'); cnt(f.k + '_R'); } else cnt(f.k);
   });
@@ -1122,9 +1180,11 @@ function refresh(){
     case 'tl': { const c = lightOf(k, el.dataset.cl); $$('button', el).forEach(b => b.setAttribute('aria-pressed', b.dataset.c === c)); break; }
     case 'gauge': el.innerHTML = gaugeHTML(k, el.dataset.u); break;
     case 'delta': { const r = ALLROWS.find(x => x.k === k), d = deltaOf(r); el.textContent = d.txt; el.classList.toggle('ch', d.ch); break; }
-    case 'inseam': { const n = num('inseam'); el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - 10)} cm</b><span class="hint">inseam − 10 cm</span>` : '<span class="hint">Starting saddle height appears here: inseam − 10 cm</span>'; break; }
+    case 'inseam': { const n = num('inseam'), less = S.fit === 'tt' ? 9 : 10;   // (the triathlon form: inseam − 9 cm)
+      el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - less)} cm</b><span class="hint">inseam − ${less} cm</span>` : `<span class="hint">Starting saddle height appears here: inseam − ${less} cm</span>`; break; }
     case 'ischial': { const n = num('ischial'); el.innerHTML = n == null ? '' : `<span class="pill ${n < 100 ? 'b' : n <= 130 ? 'g' : 'y'}">${n < 100 ? 'Narrow' : n <= 130 ? 'Medium' : 'Wide'}</span> Saddle around ${Math.round((n + 15) / 5) * 5}–${Math.round((n + 25) / 5) * 5} mm wide, depending on posture`; break; }
     case 'painlist': el.innerHTML = painListHTML(); break;
+    case 'ttscore': el.innerHTML = ttScoreHTML(); break;
     case 'uci': el.innerHTML = uciHTML(); break;
     case 'seccount': case 'jumpcount': { const sec = sectionsFor(STEPS[S.step].id)[+el.dataset.i]; const p = secProgress(sec), ok = p.got === p.tot;
       el.classList.toggle('ok', ok); el.textContent = el.dataset.x === 'seccount' ? `${ok ? '✓ ' : ''}${p.got} of ${p.tot}` : `${p.got}/${p.tot}`; break; }
