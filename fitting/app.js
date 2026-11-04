@@ -85,6 +85,9 @@ const BIKE = [
 const TTROWS = [];   // (a TT fit's rows are in BIKE now, marked T)
 const ALLROWS = [...BIKE, ...TTROWS];
 
+// injuries and special notes, an area at a time, as the interview form has them ("Other" is the notes field from before)
+const INJ = [['inj_foot','Foot'],['inj_knee','Knee'],['inj_legs','Legs'],['inj_hip','Hip'],['inj_saddle','Saddle'],['inj_lowback','Lower back'],
+  ['inj_back','Back'],['inj_shoulder','Shoulder'],['inj_neck','Neck'],['inj_arm','Arm'],['inj_hand','Hand'],['injuries','Other']];
 const STRETCH = [
   {k:'ham', name:'Hamstring stretch', dose:'3 × 30 s each leg, daily'},
   {k:'hipflex', name:'Kneeling hip-flexor stretch', dose:'3 × 30 s each side, daily'},
@@ -111,7 +114,8 @@ function sectionsFor(step){
   case 'session': return [
     {custom:'fits', title:'Fit type'},
     {title:'Session', fields:[SG('fitter','Fitter',FITTERS), T('date','Date',{type:'date'})]},
-    {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'})]},
+    {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'}),
+      T('address','Address',{span2:true}), T('city','Town / city'), T('postcode','Postcode')]},
     {title:'Bike', fields:[T('bike','Brand & model',{ph:'e.g. Trek Domane SL 6', span2:true}), T('frame','Frame size',{ph:'e.g. 56 cm'}),
       SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float',{span2:true}), T('shoes','Shoe brand & size',{span2:true})]},
   ];
@@ -119,13 +123,13 @@ function sectionsFor(step){
     ...(S.follow ? [{title:'Since the fit', fields:[SG('since','How the bike has felt',['Better','About the same','Worse'],{wide:true}),
       TA('sinceNote','What they’ve noticed',{ph:'Rides done, what feels better, any niggles back'})]}] : []),
     {title:'About the rider', fields:[SG('sex','Sex',['Male','Female'],{hint:'Sets the side of the saddle sizer'}), SG('style','Riding style',['Recreational','Serious recreational','Racer','Triathlete'],{wide:true}),
-      N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('job','Occupation')]},
+      N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('build','Build',{ph:'e.g. slim, athletic, stocky'}), T('job','Occupation')]},
     {title:'Riding', fields:[N('rideTime','Average ride','hrs'), N('speed','Average speed','mph'), N('cadence','Cadence','rpm'), N('years','Years cycling','yrs'),
       N('daysS','Days a week (summer)','days'), N('daysW','Days a week (winter)','days'),
-      CH('miles','Where the miles come from',['Club rides','Sportives','Solo','Commuting','Racing','Indoor / Zwift','Triathlon'],{wide:true})]},
+      CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Indoor / Zwift','Triathlon'],{wide:true})]},
     {title:'Goals for today', fields:[CH('goals','Goals',['Comfort','Longer rides','Performance','Fix pain or discomfort','New bike set-up','Aero speed','Event prep'],{wide:true}), TA('goalNote','In their words')]},
     {title:'On-bike problems', custom:'body', fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
-    {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), TA('injuries','Injuries & special notes',{ph:'Broken bones, surgeries, chronic issues'}),
+    {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), {t:'injgrid', k:'injgrid', label:'Injuries & special notes', hint:'broken bones, surgeries, chronic issues', wide:true},
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
   case 'offbike': return [
@@ -345,6 +349,8 @@ function fieldInner(f){
       <span class="fr">Size</span>${sizeCell}<span class="fr">Length</span>${numCell('footLen', 'mm')}<span class="fr">Width</span>${numCell('footWid', 'mm')}<span class="fr">Arch height</span>${archCell}
     </div></div></div>`;
   }
+  case 'injgrid':
+    return `<div class="fld wide">${lab}<div class="inj">${INJ.map(([k, l]) => `<div class="fld"><label class="lab" for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off"></div>`).join('')}</div></div>`;
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
@@ -957,7 +963,7 @@ function reportBlocks(){
   const told = [v.goals && v.goals.length ? `<p class="rp-p"><b>Goals:</b> ${esc(v.goals.join(', '))}${v.goalNote ? '. ' + esc(v.goalNote) : ''}</p>` : '',
     pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}</span>`).join(' ')}</p>` : '',
     v.problems ? `<p class="rp-p">${esc(v.problems)}</p>` : '', v.activities ? `<p class="rp-p"><b>Current weekly activities:</b> ${esc(v.activities)}</p>` : '',
-    v.injuries ? `<p class="rp-p"><b>Injuries & special notes:</b> ${esc(v.injuries)}</p>` : ''].join('');
+    INJ.some(([k]) => filled(v[k])) ? `<p class="rp-p" style="margin-bottom:4px"><b>Injuries & special notes:</b></p><ul class="rp-lst" style="margin-bottom:10px">${INJ.filter(([k]) => filled(v[k])).map(([k, l]) => `<li><span>${esc(l)}</span><b style="text-align:right">${esc(v[k])}</b></li>`).join('')}</ul>` : ''].join('');
   if (told) B.push({html:sec('What you told us', told)});
   if (v.fitNotes) B.push({html:sec('Fitter’s notes', `<p class="rp-p">${esc(v.fitNotes)}</p>`)});
   const ph = S.fit === 'std' ? [] : S.photos.filter(p => p.inc && p.src);
@@ -1089,6 +1095,7 @@ function secProgress(sec){
     if (f.t === 'timer'){ tot++; if (lightOf('plank', 'plank')) got++; return; }
     if (f.t === 'feet'){ ['footSize', 'footLen', 'footWid', 'arch'].forEach(b => ['_L_u', '_L', '_R_u', '_R'].forEach(x => cnt(b + x))); return; }
     if (f.when && !f.when()) return;
+    if (f.t === 'injgrid'){ tot++; if (INJ.some(([k]) => filled(S.v[k]))) got++; return; }
     if (f.lr){ cnt(f.k + '_L'); cnt(f.k + '_R'); } else cnt(f.k);
   });
   return {tot, got};
