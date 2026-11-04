@@ -19,14 +19,18 @@ jobs:
       - name: Ask Chat to send notifications for landed pigeons
         env:
           SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
-          # (the site's address past the bot checks: the Pages project's, or the Worker's once it's moved: the TICK_SITE variable)
+          # (the site's address past the bot checks: the inflite-apps Worker's (or the TICK_SITE variable), then the Pages project's
+          # if that didn't do it, while it's still there)
           TICK_SITE: ${{ vars.TICK_SITE }}
         run: |
           if [ -z "$SECRET" ]; then echo "INFLIGHT_TICK_SECRET isn't set, so there's nothing to do."; exit 0; fi
-          # The site's .pages.dev address: the same deployment, but outside the custom
-          # domain's bot protection, which challenges requests from GitHub's servers.
-          code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST "${TICK_SITE:-https://georgefarrowgreen.pages.dev}"/api/pigeon/notify-tick \
-            -H "Authorization: Bearer $SECRET" -H "User-Agent: Chat-Notify/1.0 (+https://chat.inflite.ai/)")
+          # The site's workers.dev address (then its .pages.dev one): outside the custom
+          # domains' bot protection, which challenges requests from GitHub's servers.
+          for site in "${TICK_SITE:-https://inflite-apps.georgefarrowgreen.workers.dev}" https://georgefarrowgreen.pages.dev; do
+            code=$(curl -sS --max-time 45 -o reply.txt -w "%{http_code}" -X POST "$site"/api/pigeon/notify-tick \
+              -H "Authorization: Bearer $SECRET" -H "User-Agent: Chat-Notify/1.0 (+https://chat.inflite.ai/)")
+            [ "$code" = "200" ] && break
+          done
           echo "HTTP $code"; head -c 400 reply.txt; echo
           # 404: PIGEON_TICK_SECRET isn't set in Cloudflare; 401: the two secrets differ;
           # 403 with an HTML page: Cloudflare's bot protection stopped the request.

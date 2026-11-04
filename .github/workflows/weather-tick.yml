@@ -19,12 +19,16 @@ jobs:
       - name: Ask the weather app to send what's due
         env:
           SECRET: ${{ secrets.WEATHER_TICK_SECRET || secrets.INFLIGHT_TICK_SECRET }}
-          # (the site's address past the bot checks: the Pages project's, or the Worker's once it's moved: the TICK_SITE variable)
+          # (the site's address past the bot checks: the inflite-apps Worker's (or the TICK_SITE variable), then the Pages project's
+          # if that didn't do it, while it's still there)
           TICK_SITE: ${{ vars.TICK_SITE }}
         run: |
           if [ -z "$SECRET" ]; then echo "No tick secret is set, so there's nothing to do."; exit 0; fi
-          # The site's .pages.dev address (or its Worker's, TICK_SITE): the same deployment, outside the custom domains' bot protection.
-          code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST "${TICK_SITE:-https://georgefarrowgreen.pages.dev}"/api/weather/tick \
-            -H "Authorization: Bearer $SECRET" -H "User-Agent: Weather-Tick/1.0 (+https://weather.inflite.ai/)")
+          # The site's workers.dev address (then its .pages.dev one): outside the custom domains' bot protection.
+          for site in "${TICK_SITE:-https://inflite-apps.georgefarrowgreen.workers.dev}" https://georgefarrowgreen.pages.dev; do
+            code=$(curl -sS --max-time 45 -o reply.txt -w "%{http_code}" -X POST "$site"/api/weather/tick \
+              -H "Authorization: Bearer $SECRET" -H "User-Agent: Weather-Tick/1.0 (+https://weather.inflite.ai/)")
+            [ "$code" = "200" ] && break
+          done
           echo "HTTP $code"; head -c 400 reply.txt; echo
           if [ "$code" != "200" ]; then echo "::warning::Weather tick got HTTP $code"; fi

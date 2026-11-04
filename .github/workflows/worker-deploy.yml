@@ -1,10 +1,12 @@
 # The site as two Workers, one build (.tools/workers/README.md): "inflite-apps" (wrangler.worker.jsonc, InFlite's apps'
 # addresses) and "gfg" (wrangler.gfg.jsonc, georgefarrowgreen.com's). Deployed by hand only while the move off Pages is
-# being tried: until their addresses are moved over they have no routes, so each is reachable only at its workers.dev
-# address, and the live site stays the Pages project. At the move, `push` to main is added here (step 6).
+# The live site since the move (step 6): deployed on each push to main, as the Pages project still is (kept, as the
+# fallback behind the Workers' routes, until step 7), and by hand.
 name: Deploy the site's Workers
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

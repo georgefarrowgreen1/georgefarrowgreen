@@ -22,9 +22,9 @@ test('every tick route asks tickHost, and no route names the Pages address itsel
     assert.doesNotMatch(s, /=== "georgefarrowgreen\.pages\.dev"/, f);
   }
 });
-test('the jobs call TICK_SITE when it’s set, else the Pages project', () => {
-  for (const f of ['.github/workflows/weather-tick.yml', '.github/workflows/inflight-notify.yml']) assert.match(read(f), /\$\{TICK_SITE:-https:\/\/georgefarrowgreen\.pages\.dev\}/, f);
-  assert.match(read('workers/ticker/index.js'), /env\.TICK_SITE \|\| PAGES_SITE/);
+test('the jobs call the Worker (or TICK_SITE), then the Pages project if it didn’t do it', () => {
+  for (const f of ['.github/workflows/weather-tick.yml', '.github/workflows/inflight-notify.yml']) { const s = read(f); assert.match(s, /\$\{TICK_SITE:-https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev\}" https:\/\/georgefarrowgreen\.pages\.dev/, f); assert.match(s, /"\$site"\/api\//, f); }
+  assert.match(read('workers/ticker/index.js'), /env\.TICK_SITE \|\| PAGES_SITE/); assert.match(read('workers/ticker/wrangler.toml'), /TICK_SITE = "https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev"/);
 });
 test('the Worker’s config: the site’s files through the Worker first, the same bindings as Pages, and no routes yet', () => {
   const w = read('wrangler.worker.jsonc'), p = read('wrangler.toml');

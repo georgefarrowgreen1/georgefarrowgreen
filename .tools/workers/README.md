@@ -43,13 +43,16 @@ www.georgefarrowgreen.com (we check here that the switch is seamless), then geor
 finance., fitness., weather., account. and auth.inflite.ai, and chat.inflite.ai last. After each, sign in and open
 the app there (or run Actions → **Sign-in check**).
 
-### 6. Make the Workers the ones that deploy
-- Deploys on every push: `push` is added to the deploy workflow.
-- Scheduled jobs: the GitHub variable `TICK_SITE` and the ticker Worker's `TICK_SITE` are set to `https://inflite-apps.georgefarrowgreen.workers.dev` (the tick secret's carried with the rest: nothing else changes).
-- Pages: its automatic deployments are turned off.
+### 6. Make the Workers the ones that deploy (done in the code: nothing to do)
+- Deploys on every push to main (`.github/workflows/worker-deploy.yml`).
+- Scheduled jobs: the ticker (`workers/ticker/wrangler.toml`'s `TICK_SITE`) and GitHub's backup schedules call
+  `https://inflite-apps.georgefarrowgreen.workers.dev`, and the Pages project's address if that didn't do it (the tick
+  secret's carried with the rest). The GitHub variable `TICK_SITE`, if it's ever set, overrides the Worker's address.
+- Pages goes on deploying on every push too, so the fallback behind the routes stays the same site; it's switched off
+  at step 7.
 
 ### 7. After two quiet weeks
-Take the custom domains off the Pages project and delete it. The Pages-only bits of the code go then too
+Turn off the Pages project's automatic deployments, take its custom domains off and delete it. The Pages-only bits of the code go then too
 (`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`).
 
 ## What's ready in the code

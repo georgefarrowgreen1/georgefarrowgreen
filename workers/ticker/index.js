@@ -12,13 +12,20 @@ export default {
   async scheduled(event, env) {
     const SITE = env.TICK_SITE || PAGES_SITE;
     // (each job: null once it's gone, else its path, having said why in the log (wrangler.toml's [observability]))
+    // (and, while the Pages project's still there, asked there if the site's own address didn't do it: each job keeps
+    // itself to one run at a time, so a second ask never doubles up)
+    const once = async (site, path, secret) => {
+      try {
+        const r = await fetch(site + path, { method: "POST", headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(site === SITE ? 25000 : 30000) });
+        if (r.ok) return true;
+        console.error(site, path, r.status, (await r.text()).slice(0, 200));
+      } catch (e) { console.error(site, path, e && e.message); }
+      return false;
+    };
     const ask = async (path, secret) => {
       if (!secret) { console.error(path, "no secret set"); return path; }
-      try {
-        const r = await fetch(SITE + path, { method: "POST", headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(55000) });
-        if (r.ok) return null;
-        console.error(path, r.status, (await r.text()).slice(0, 200));
-      } catch (e) { console.error(path, e && e.message); }
+      if (await once(SITE, path, secret)) return null;
+      if (SITE !== PAGES_SITE && await once(PAGES_SITE, path, secret)) return null;
       return path;
     };
     const failed = (await Promise.all([
