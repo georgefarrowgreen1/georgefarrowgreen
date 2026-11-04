@@ -173,7 +173,7 @@ await part('header and tabs', async () => {
   ok(!(await p.$(H.HD_EDIT)), 'no Edit on Apps');
   same(new URL(p.url()).hash, '#apps', 'at /#apps');
   await p.click(H.tab('you'));
-  await p.waitForSelector('#youRules .rule');
+  await p.waitForSelector('#youRules [data-rulepick]');
   same(await text(p, H.HD_TITLE), 'You', 'You: its title');
   same(await p.$$eval(H.TAB, (as) => as.map((a) => a.getAttribute('aria-current'))), [null, null, null, 'page'], 'You current');
   await p.goBack();
@@ -248,7 +248,7 @@ await part('weather notifications', async () => {
   await mode({ phase: 'midday' }); await reset();
   let { ctx, p } = await open({ path: '/#you' });
   await p.waitForSelector('#youWx');
-  has(await text(p, '#youWx'), 'Rain and warnings for the places you choose', 'You’s Weather row: its words');
+  has(await text(p, '#youWx'), 'Rain and warnings for your places', 'You’s Weather row: its words');
   await p.click('#youWx');
   await p.waitForSelector(`${H.SH_WXNOTIFY}[open] [data-wxn]`, { timeout: 5000 });
   same(await p.evaluate(() => document.querySelector('dialog#sh-wxnotify').matches(':modal')), true, 'a modal dialog: InFlite’s sheet');
@@ -337,7 +337,7 @@ await part('search', async () => {
 await part('sheets and toasts', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you' });
-  await p.waitForSelector('#youRules .rule');
+  await p.waitForSelector('#youRules [data-rulepick]');
   await p.click(H.tab('today'));
   await p.waitForFunction(() => !document.getElementById('today').hidden);
   await p.click(H.HD_EDIT);
@@ -433,7 +433,7 @@ await part('degraded', async () => {
   let { ctx, p } = await open({ hub: { ready: false, roof: true }, path: '/#apps', setup: (c) => c.on('request', (r) => { if (/^\/weather\/(roof\/)?[\w-]+\.(js|css)$/.test(new URL(r.url()).pathname)) wxAsked.push(new URL(r.url()).pathname); }) });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
   await p.click(H.tab('you'));
-  await p.waitForSelector('#youRules .rule');
+  await p.waitForSelector('#youRules [data-rulepick]');
   await p.click(H.tab('apps'));
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
   await p.waitForTimeout(1500);
@@ -555,7 +555,7 @@ await part('apps per module', async () => {
   await ctx.close();
 });
 
-// (You's Notifications by App per switch: Fitness Settings › only while Fitness is a module here, else stage 1's row;
+// (You's From Each App per switch: Fitness Settings › only while Fitness is a module here, else stage 1's row;
 // the Evening Wrap switch back as it was when its save fails; a sign-out found by that save leaves You empty)
 await part('You per module', async () => {
   await mode({ phase: 'midday' });
@@ -581,7 +581,7 @@ await part('You per module', async () => {
   // (Fitness on: Fitness Settings ›, at the hub’s /fitness/#settings)
   ({ ctx, p } = await open({ hub: { ready: true, roof: true, apps: { ...APPS_ON, fitness: true } }, path: '/#you', fakes: ['markets', 'fitness'] }));
   await p.waitForSelector(`${H.YOU}:not([hidden]) ${FIT}`, { timeout: 10000 });
-  same(await fitRow(p), ['a', '/fitness/#settings', 'Fitness Settings', 'In Today’s morning'], 'Fitness on: Fitness Settings ›, at /fitness/#settings');
+  same(await fitRow(p), ['a', '/fitness/#settings', null, 'In Today’s morning'], 'Fitness on: its row a link ›, to Fitness Settings at /fitness/#settings');
   await ctx.close();
 });
 
@@ -637,7 +637,7 @@ await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[320, 568], [390, 844], [768, 1024], [1280, 800]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app]')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules [data-rulepick]')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app]')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(400);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);

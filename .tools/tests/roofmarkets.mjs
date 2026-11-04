@@ -462,7 +462,7 @@ await part(11, 'You’s Evening Wrap switch → PATCH /api/notify { markets: { w
   const was = n0.j?.markets?.wrap === true;
   await p.goto(`${HUB}/#you`); await shown(p, H.YOU, 30000);
   const sw = await shown(p, H.YOU_MK_WRAP, 20000);
-  ok(sw, '11. You › Notifications by App, Markets: an Evening Wrap switch beside Alerts (S2-D7)', await textOf(p, `${H.YOU_NOTIFY} [data-app=markets]`));
+  ok(sw, '11. You › From Each App, Markets: an Evening Wrap switch beside Markets Alerts (S2-D7)', await textOf(p, `${H.YOU_NOTIFY} [data-app=markets]`));
   const pat = [];
   const onP = (r) => { if (/\/api\/notify(\?|$)/.test(r.url()) && r.method() === 'PATCH') pat.push(r.postData()); };
   p.on('request', onP);
