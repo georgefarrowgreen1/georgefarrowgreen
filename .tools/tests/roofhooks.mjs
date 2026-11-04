@@ -52,7 +52,7 @@ export const YOU = 'main#you';                            // TD
 export const YOU_APPS = '#youApps';                       // TD: Connected Apps
 export const YOU_APP_ROW = '#youApps [data-app]';         // TD: a Connected Apps row (tap → connectors.openConnector → CONNECTOR_SHEET)
 export const youAppRow = (app) => `#youApps [data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
-export const YOU_NOTIFY = '#youNotify';                   // TD: Notifications by App
+export const YOU_NOTIFY = '#youApps2';                    // TD: From Each App (each app's notifications; Today 1.19's #youNotify is this phone's, the morning's and quiet hours')
 export const SH_WXNOTIFY = 'dialog#sh-wxnotify';          // TD: Weather Notifications
 export const APP_TILE = '.ifl-tile[data-app]';            // TD: Apps tiles
 export const appTile = (app) => `.ifl-tile[data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
@@ -171,7 +171,7 @@ export const TODAY_MK_OPEN = 'main#today .tcard[data-app="markets"] a.tc-head'; 
 export const TODAY_FX_CARD = 'main#today .tcard[data-app="fitness"]'; // TD
 export const TODAY_FX_OPEN = 'main#today .tcard[data-app="fitness"] a.tc-head'; // TD
 export const TODAY_MAIL_CARD = 'main#today .tcard[data-app="mail"]'; // MT (Mail's card, once its drawer's in)
-export const YOU_MK_WRAP = '#youNotify [data-app=markets] [data-k=wrap]'; // FW: Markets' Evening Wrap switch
+export const YOU_MK_WRAP = '#youApps2 [data-app=markets] [data-k=wrap]'; // FW: Markets' Evening Wrap switch (in From Each App)
 export const SH_MAILNOTIFY = 'dialog#sh-mailnotify';      // B0-b (markup), MT (its logic): Mail Notifications
 
 // ---- Mail (stage 4: MM the list, MR the reader and sheets, MB the body frame) ----

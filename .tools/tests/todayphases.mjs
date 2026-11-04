@@ -3,14 +3,15 @@
 // :8789), which answers each moment of the demo's day (Monday 2 November 2026, London) from mocks/today/cards.<phase>.json;
 // the page's clock is Playwright's, installed at the fixture's moment, so a boundary is crossed with clock.runFor.
 // Checked: each phase's top card, the header's line, Waiting for You and Coming Up present or absent (before and during
-// a ride, the ride alone), Send on every card, and nothing to type in; a boundary crossed and a passed row taken away
+// a ride, the ride alone), the top card's lines as rows beside their apps' icons, no Send or Open anywhere on Today
+// (Today 1.15–1.18: each app has its own), and nothing to type in; a boundary crossed and a passed row taken away
 // with no request (the stand-in's log); a return to the page asks again; Undo, Take and Keep call /api/act and
-// /api/act/undo; the after card without Stress offers Open Fitness; an answer that says planning is asked again once,
-// 5 seconds on. At the hub (IFL.hub stood in for, as hubshare.mjs and wxhub.mjs spy on it): the hub's paths through
-// IFL.hub.go, Send through IFL.hub.send with the card's words and card, Send to Leo in one tap through Chat's engine,
+// /api/act/undo; the after card without Stress offers no Open Fitness (the card's head is the way); an answer that says
+// planning is asked again once, 5 seconds on. At the hub (IFL.hub stood in for, as hubshare.mjs and wxhub.mjs spy on it):
+// the hub's paths through IFL.hub.go, nothing sent through IFL.hub.send or Chat's engine from the cards or Send to Leo,
 // and Waiting for You's words from the engine only beside a message the server named and only when as new as the
 // server's. And once Today's page is the hub's (its marker, batch S), the page's own IFL.hub with no stand-in: the
-// hub's paths and Send a button, with /api/hub saying ready. Under One roof (the framework beside: roof/router.js), the
+// hub's paths and no Send, with /api/hub saying ready. Under One roof (the framework beside: roof/router.js), the
 // header's line is the phase's (the date above the title, in the crumb), the page's toasts are the framework's, and
 // Radar opens in the page at /weather/#radar (one document), its screen Weather's, here its error state with both ways
 // on (the module's files not served by this stub stack). No CSP violation, console error or sideways scroll anywhere.
@@ -134,6 +135,12 @@ const ROOF = existsSync(`${IFL}today/public/roof/router.js`);
 const TOAST_ON = ROOF ? '.ifl-toast.on' : '.toast.on';
 const LINES = { morning: ROOF ? 'London' : 'Monday 2 November · London', midday: '12:30 · what’s next', preride: '16:05 · your ride', riding: '16:50 · riding', after: '18:05 · ride done', 'after-fit': '18:05 · ride done', evening: '21:00 · closed' };
 const SHOWS = { morning: 'wcr', midday: 'wcr', preride: '', riding: '', after: 'cr', 'after-fit': 'cr', evening: 'cr' };
+// (the top card as Today 1.18 draws it: each line a row, without the app's name in front ("Markets: …"), its first letter
+// capitalised; a figure that only says the title's digits again left out; no Open or Send to Leo, the rows saying where)
+const rowWords = (l) => { const w = l.replace(/^(Markets|Fitness|Weather|Chat|Mail):\s*/i, ''); return w.charAt(0).toUpperCase() + w.slice(1); };
+const rowApp = (l) => /^(Markets|Fitness|Weather|Chat|Mail):/i.exec(l)?.[1].toLowerCase() || null;
+const digitsOf = (x) => (String(x).match(/\d+(?:[.,]\d+)?/g) || []).join(' ');
+const statsShown = (top) => top.stats.filter((s) => !digitsOf(top.title) || digitsOf(s.value) !== digitsOf(top.title));
 
 // ======================================================================= each moment of the day, off the hub
 await part('each phase', async () => {
@@ -144,8 +151,10 @@ await part('each phase', async () => {
     ok(await p.$(`${sel} #top .day-top[data-phase="${a.phase}"]`), `${ph}: the top card is ${a.phase}’s`);
     same(await text(p, `${sel} #top .dt-h`), top.title, `${ph}: its title`);
     same(await text(p, `${sel} #top .dt-chip`), top.chip, `${ph}: its chip`);
-    same(await p.$$eval(`${sel} #top .dt-lines p`, (ps) => ps.map((x) => x.textContent)), top.lines, `${ph}: its lines`);
-    same(await p.$$eval(`${sel} #top .dt-stats > div`, (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])), top.stats.map((s) => [s.label, s.value]), `${ph}: its figures`);
+    const rowsDrawn = await p.$$eval(`${sel} #top ul.dt-rows > li`, (ls) => ls.map((l) => [l.querySelector('.dt-ic') ? (l.querySelector('img.dt-ic')?.getAttribute('src') || 'glyph') : null, l.querySelector('span:not(.dt-ic)')?.textContent ?? l.textContent]));
+    same(rowsDrawn.map((r) => r[1]), top.lines.map(rowWords), `${ph}: its lines, as rows (no app’s name in front, each begun with a capital)`);
+    ok(rowsDrawn.length === top.lines.length && rowsDrawn.every((r) => r[0]) && top.lines.every((l, i) => !rowApp(l) || rowsDrawn[i][0] === `/apps/${rowApp(l)}.svg`), `${ph}: each row beside its app’s icon (or a glyph)`, JSON.stringify(rowsDrawn.map((r) => r[0])));
+    same(await p.$$eval(`${sel} #top .dt-stats > div`, (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])), statsShown(top).map((s) => [s.label, s.value]), `${ph}: its figures`);
     same(await text(p, '#hd .ifh-line'), LINES[ph], `${ph}: the header’s line`);
     if (ROOF) same(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', `${ph}: the date above the title (the crumb)`);
     const want = SHOWS[ph], hasWaiting = want.includes('w') && a.waiting.length > 0;
@@ -153,34 +162,37 @@ await part('each phase', async () => {
     same(await shown(p, `${sel} #coming`), want.includes('c'), `${ph}: Coming Up ${want.includes('c') ? 'shown' : 'not shown'}`);
     same(await shown(p, `${sel} #rest`), want.includes('r'), `${ph}: The Rest of Today ${want.includes('r') ? 'shown' : 'put away'}`);
     if (!want) ok(!(await shown(p, `${sel} #waiting`)) && !(await shown(p, `${sel} #coming`)) && !(await shown(p, `${sel} #rest`)), `${ph}: the ride alone`);
-    // (Send on every card: the top card, each of the four with words, each Coming Up row with a card; off the hub, Chat's link)
-    const topSend = await p.$eval(`${sel} #top [data-send]`, (x) => x.getAttribute('href')).catch(() => null);
-    ok(topSend && /^https?:\/\/chat\.[^/]+\/#share=/.test(topSend) && decodeURIComponent(topSend.split('#share=')[1].split('&card=')[0]) === top.share && (!top.sendCard || topSend.endsWith(`&card=${top.sendCard}`)), `${ph}: Send on the top card, with its words and card`, topSend);
+    // (no Send anywhere on Today since Today 1.16–1.18, though the answer still has words to send: not on the top card,
+    // the four cards or Coming Up's rows. Each app has its own Send)
+    ok(!!top.share, `${ph}: the answer’s top card still has words to send`);
+    same(await p.$$eval(`${sel} [data-send], ${sel} [data-do="sendto"], ${sel} .dc-send`, (xs) => xs.length), 0, `${ph}: no Send on the top card, the cards or Coming Up`);
+    same(await p.$$eval(`${sel} #top [data-do="open"]`, (xs) => xs.length), 0, `${ph}: no Open on the top card (its rows say where)`);
     if (want.includes('r')) {
-      const rest = await p.$$eval(`${sel} #rest .tcard`, (cs) => cs.map((c) => [c.dataset.app, !!c.querySelector('[data-send]')]));
-      same(rest, Object.entries(a.cards).map(([k, c]) => [k, !!c.share]), `${ph}: the four cards in Edit’s order, each with Send`);
+      const rest = await p.$$eval(`${sel} #rest .tcard`, (cs) => cs.map((c) => [c.dataset.app, !!c.querySelector('a.tc-head[href]'), !!c.querySelector('.tc-go')]));
+      same(rest, Object.keys(a.cards).map((k) => [k, true, false]), `${ph}: the four cards in Edit’s order, each head the link to its app, with no Open`);
     }
     if (want.includes('c')) {
-      const rows = await p.$$eval(`${sel} #coming .dc-row`, (rs) => rs.map((r) => [r.querySelector('b').textContent, !!r.querySelector('[data-send]')]));
+      const rows = await p.$$eval(`${sel} #coming .dc-row`, (rs) => rs.map((r) => r.querySelector('b').textContent));
       // (in the evening, what's left of tonight and tomorrow's first: nothing after the next morning's first row)
       const dawn = a.timeline.find((x) => x.phase === 'morning' && x.at > a.at)?.at ?? Infinity, later = a.upcoming.filter((r) => r.at > a.at);
       const cut = a.phase === 'evening' ? later.findIndex((r) => r.at >= dawn) : -1;
-      const exp = (cut < 0 ? later : later.slice(0, cut + 1)).map((r) => [r.title, !!r.share]);
-      same(rows, exp, `${ph}: Coming Up’s rows, each with a card having Send`);
+      const exp = (cut < 0 ? later : later.slice(0, cut + 1)).map((r) => r.title);
+      same(rows, exp, `${ph}: Coming Up’s rows`);
     }
     same(await p.$$eval(`${DAY} input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), ${DAY} textarea, ${DAY} [contenteditable]`, (xs) => xs.length), 0, `${ph}: no box to type in`);
     // (off the hub, links go to each app's own address, never a hub path this site may not have yet)
-    const opens = await p.$$eval(`${sel} #top a[data-do="open"], ${sel} #top a[data-do="answer"]`, (as) => as.map((x) => x.getAttribute('href')));
-    ok(opens.every((h) => /^https?:\/\/(chat|weather|fitness|finance)\./.test(h)), `${ph}: Open and Answer at the apps’ own addresses`, JSON.stringify(opens));
+    const opens = await p.$$eval(`${sel} #top a[data-do="answer"], ${sel} #rest a.tc-head, ${sel} #coming a.dc-main`, (as) => as.map((x) => x.getAttribute('href')));
+    ok(opens.every((h) => /^https?:\/\/(chat|weather|fitness|finance)\./.test(h)), `${ph}: Answer, the cards’ heads and Coming Up at the apps’ own addresses`, JSON.stringify(opens));
     if (ph === 'midday') {
       same(await text(p, `${sel} #waiting .dw-row b`), 'Pat', 'midday: Pat waiting, by name from the server');
       same(await text(p, `${sel} #waiting .dw-row small`), '2 messages, the last at 09:41', 'midday: and when');
       ok(!(await shown(p, `${sel} #waiting .dw-words`)), 'midday: no words without Chat’s engine');
     }
     if (ph === 'after') {
-      ok(await p.$(`${sel} #top a[data-do="open"][href$="/#activities"]`), 'after, without Stress: Open Fitness');
+      ok(!(await p.$(`${sel} #top a[data-do="open"]`)) && F.after.tops.after.buttons.some((x) => x.do === 'open'), 'after, without Stress: no Open Fitness, though the answer offers it (the Fitness card’s head opens Fitness)');
+      ok(await p.$(`${sel} #top a[data-do="answer"]`) && !(await p.$(`${sel} #top [data-do="sendto"]`)), 'after: Answer Mira stays; no Send to Leo');
       ok(!(await p.$$eval(`${sel} #top dt`, (ds) => ds.some((d) => d.textContent === 'Stress'))), 'after, without Stress: no Stress figure');
-      ok((await text(p, `${sel} #top .dt-lines`)).includes('Stress and fitness once Fitness has it'), 'after: “once Fitness has it”');
+      ok((await text(p, `${sel} #top .dt-rows`)).includes('Stress and fitness once Fitness has it'), 'after: “once Fitness has it”');
     }
     if (ph === 'after-fit') {
       ok(await p.$$eval(`${sel} #top dt`, (ds) => ds.some((d) => d.textContent === 'Stress')), 'after, in Fitness: Stress');
@@ -306,7 +318,7 @@ await part('acts not built yet', async () => {
   await p.click(`${DAY} #top button[data-do="undo"][data-id="${MOVE}"]`);
   await p.waitForFunction((s) => /can’t do that just yet/.test(document.querySelector(s)?.textContent || ''), TOAST_ON, { timeout: 5000 });
   same(await p.$$eval(`${DAY} #top [data-do="undo"], ${DAY} #top [data-do="take"], ${DAY} #top [data-do="keep"]`, (xs) => xs.length), 0, 'an account side without acts (501): their buttons gone');
-  ok(await p.$(`${DAY} #top [data-send]`), 'and the card otherwise as it was');
+  same(await p.$$eval(`${DAY} #top ul.dt-rows > li`, (ls) => ls.length), F.morning.tops.morning.lines.length, 'and the card otherwise as it was (its rows all there)');
   await ctx.close();
 });
 
@@ -336,25 +348,27 @@ await part('planning', async () => {
 });
 
 // ======================================================================= at the hub
-await part('at the hub: links and Send', async () => {
+// (Coming Up's rain row is the way to Radar now: the top card has no Open since Today 1.18)
+const RAIN = `${DAY} #coming .dc-row a.dc-main:has(b:text-is("Rain reaches London"))`;
+await part('at the hub: links, and no Send', async () => {
   const a = F.midday, { ctx, p } = await open('midday', { hub: {} });
-  const radar = await p.$eval(`${DAY} #top a[data-do="open"]`, (x) => x.getAttribute('href'));
-  same(radar, '/weather/#radar', 'Radar: the hub’s path');
+  const radar = await p.$eval(RAIN, (x) => x.getAttribute('href'));
+  same(radar, '/weather/#radar', 'Radar, from Coming Up’s rain row: the hub’s path');
   ok((await hubLog(p, 'go')).some((g) => g[1] === '/weather/#radar'), 'through IFL.hub.go');
   ok(await p.$eval(`${DAY} #rest .tcard[data-app="weather"] .tc-head`, (x) => x.getAttribute('href').startsWith('/weather/')), 'the Weather card’s head at /weather/ too');
-  await p.click(`${DAY} #top button[data-send]`);
-  same((await hubLog(p, 'send')).at(-1), ['send', a.tops.midday.share, a.tops.midday.sendCard, {}], 'the top card’s Send: IFL.hub.send(share, sendCard, { to })');
-  await p.click(`${DAY} #coming .dc-row:first-child button[data-send]`);
-  same((await hubLog(p, 'send')).at(-1), ['send', a.upcoming[0].share, a.upcoming[0].sendCard, {}], 'Coming Up’s row: the same, with its card');
-  await p.click(`${DAY} #rest .tcard[data-app="markets"] button[data-send]`);
-  same((await hubLog(p, 'send')).at(-1), ['send', a.cards.markets.share, a.cards.markets.sendCard, {}], 'the Markets card: the same, percent only');
-  ok(!/[£$€]/.test(JSON.stringify(await hubLog(p, 'send'))), 'no amount in anything sent');
+  // (no Send on Today at the hub either: not the top card, Coming Up's rows (nor a long press on one) or the cards; the
+  // engine's sheet is each app's own Send's, and the Waiting for You chips')
+  same(await p.$$eval(`${DAY} [data-send], ${DAY} .dc-send, ${DAY} .dc-row[data-sends]`, (xs) => xs.length), 0, 'no Send on the top card, Coming Up’s rows or the cards');
+  ok(!!a.upcoming[0].share && !!a.cards.markets.share, 'though the answer has words for them');
+  await p.click(`${DAY} #coming .dc-row:first-child .dc-main`, { button: 'right' }).catch(() => {});
+  await real(300);
+  same(await hubLog(p, 'send'), [], 'a long press (or right click) on a Coming Up row sends nothing');
   same(new URL(p.url()).pathname, '/', 'still on Today');
   if (!ROOF) {
     // (a stand-in Weather page, which asks for the hub's cross-fade as every hub page does (InFlite's menu.css:
     // @view-transition): one that didn't would have the browser give up the cross-fade from Today with an error)
     await p.route('**/weather/**', (r) => r.fulfill({ body: '<!doctype html><title>Weather</title><style>@view-transition { navigation: auto; }</style>', contentType: 'text/html' }));
-    await p.click(`${DAY} #top a[data-do="open"]`);
+    await p.click(RAIN);
     await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
     ok(true, 'Radar opens /weather/#radar in the same window');
   }
@@ -362,7 +376,7 @@ await part('at the hub: links and Send', async () => {
 });
 
 // (One roof: with the hub ready and roof on (/api/hub stood in for), Radar is the framework's, in this same document: the
-// address /weather/#radar by pushState, Weather's screen shown, and, the module's files not served by this stub stack
+// address /weather/#radar by pushState (from Coming Up's rain row), Weather's screen shown, and, the module's files not served by this stub stack
 // (stood in for as missing, 404), its error state with Try Again and Open Weather on Its Own, never a load of a page)
 await part('at the hub, under the roof: Radar in the page', async () => {
   if (!ROOF) { console.log('SKIP  Radar in the page: the inflite repo beside has no roof yet'); return; }
@@ -376,7 +390,7 @@ await part('at the hub, under the roof: Radar in the page', async () => {
   let loads = 0;
   p.on('load', () => { loads++; });
   await p.evaluate(() => { window.__same = 1; });
-  await p.click(`${DAY} #top a[data-do="open"]`);
+  await p.click(RAIN);
   await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
   await p.waitForSelector('main#m-weather:not([hidden]) .ifl-error [data-act=retry]', { timeout: 20000 });
   ok(await p.evaluate(() => window.__same === 1), 'Radar: /weather/#radar in the same document (pushState), never a page load');
@@ -428,25 +442,11 @@ await part('at the hub: the after card', async () => {
   same(await text(p, `${DAY} #top .dt-said`), 'Mira: “Running a bit late, can we say 18:45?”', 'who wrote while you rode, with her words from the engine');
   same((await hubLog(p, 'since'))[0], ['since', MIRA, a.ride.start], 'asked since the ride began');
   same(await p.$eval(`${DAY} #top a[data-do="answer"]`, (x) => x.getAttribute('href')), `/chats/#open=${MIRA}`, 'Answer Mira: /chats/#open=<id>');
-  ok((await text(p, `${DAY} #top .dt-to`)).includes('Riding with you Thursday'), 'why Leo: riding with you Thursday');
-  await p.click(`${DAY} #top button[data-do="sendto"]`);
-  await until(async () => (await hubLog(p, 'sendTo')).length > 0, 3000);
-  same((await hubLog(p, 'sendTo'))[0]?.slice(0, 4), ['sendTo', LEO, top.share, top.sendCard], 'Send to Leo: one tap, through the engine');
-  ok((await hubLog(p, 'sendTo'))[0]?.[4] === true, 'with your tap still live');
-  same((await hubLog(p, 'sent'))[0], ['sent', 'Sent to Leo. You’re still here'], 'its word said, and still here');
-  same(await hubLog(p, 'send'), [], 'no sheet needed');
+  // (no Send to Leo since Today 1.18, though the answer offers it: nothing asked of the engine, no sheet)
+  ok(top.buttons.some((x) => x.do === 'sendto') && !(await p.$(`${DAY} #top [data-do="sendto"]`)) && !(await p.$(`${DAY} #top [data-send]`)), 'no Send to Leo (nor any Send) on the after card, though the answer offers it');
+  await real(300);
+  same([await hubLog(p, 'sendTo'), await hubLog(p, 'send')], [[], []], 'nothing sent through the engine, no sheet');
   await ctx.close();
-  // (the engine refusing without a tap, or not there: Chat's sheet with Leo chosen)
-  const refused = await open('after', { hub: { engine: { sendTo: { ok: false, why: 'tap' } } } });
-  await refused.p.click(`${DAY} #top button[data-do="sendto"]`);
-  await until(async () => (await hubLog(refused.p, 'send')).length > 0, 3000);
-  same((await hubLog(refused.p, 'send'))[0], ['send', top.share, top.sendCard, { to: LEO }], 'refused: IFL.hub.send(…, { to: Leo })');
-  await refused.ctx.close();
-  const none = await open('after', { hub: {} });
-  await none.p.click(`${DAY} #top button[data-do="sendto"]`);
-  await until(async () => (await hubLog(none.p, 'send')).length > 0, 3000);
-  same((await hubLog(none.p, 'send'))[0], ['send', top.share, top.sendCard, { to: LEO }], 'no engine: IFL.hub.send(…, { to: Leo })');
-  await none.ctx.close();
 });
 
 // ======================================================================= at the hub: the page's own IFL.hub
@@ -468,8 +468,8 @@ await part('at the hub: the page’s own IFL.hub', async () => {
     return;
   }
   ok(await p.evaluate(() => !('__hub' in window)), 'no stand-in on this page');
-  same(await p.$eval(`${DAY} #top a[data-do="open"]`, (x) => x.getAttribute('href')), '/weather/#radar', 'the page’s own hub: Radar at the hub’s path, in the one window');
-  ok(await p.$(`${DAY} #top button[data-send]`), 'the page’s own hub: the top card’s Send a button (Chat’s sheet over the page), not a link to Chat');
+  same(await p.$eval(RAIN, (x) => x.getAttribute('href')), '/weather/#radar', 'the page’s own hub: Radar (Coming Up’s rain row) at the hub’s path, in the one window');
+  same(await p.$$eval(`${DAY} [data-send], ${DAY} #top [data-do="open"]`, (xs) => xs.length), 0, 'the page’s own hub: no Send or Open on Today');
   ok(await p.$eval(`${DAY} #rest .tcard[data-app="weather"] .tc-head`, (x) => x.getAttribute('href').startsWith('/weather/')).catch(() => false), 'the page’s own hub: the Weather card’s head at /weather/');
   ok(!(await p.$$eval(`${DAY} a[href]`, (as) => as.some((a) => /^https?:\/\/(chat|weather|fitness|finance)\./.test(a.getAttribute('href'))))), 'no link of the day’s leaves the hub');
   await p.screenshot({ path: `${OUT}/hub-own.png`, fullPage: true });
@@ -483,7 +483,7 @@ await part('every width, light and dark', async () => {
     await real(300);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${ph} ${w}×${h} ${scheme}: no sideways scroll`, `${over}px`);
-    const small = await p.$$eval(`${DAY} #top button, ${DAY} #top a.pill, ${DAY} .dc-send, ${DAY} .dw-chip`, (xs) => xs.filter((x) => x.getClientRects().length).map((x) => x.getBoundingClientRect()).filter((r) => r.height < 44 || r.width < 44).length);
+    const small = await p.$$eval(`${DAY} #top button, ${DAY} #top a.pill, ${DAY} .dw-chip`, (xs) => xs.filter((x) => x.getClientRects().length).map((x) => x.getBoundingClientRect()).filter((r) => r.height < 44 || r.width < 44).length);
     same(small, 0, `${ph} ${w}×${h} ${scheme}: every button at least 44 points`);
     if (scheme === 'light' || w !== 390) await p.screenshot({ path: `${OUT}/${ph}-${w}x${h}-${scheme}.png`, fullPage: true });
     await ctx.close();

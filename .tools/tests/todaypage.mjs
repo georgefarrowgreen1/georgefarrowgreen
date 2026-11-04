@@ -261,23 +261,17 @@ await part('cards: ok', async () => {
   same(heads, KEYS.map((k) => [k, CARDS.cards[k].href]), 'each card’s head links to its app at the fixture’s href');
   same(await p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')])), [['Today', '/'], ['Chats', 'https://chat.inflite.ai/'], ['Apps', '/#apps'], ['You', '/#you']], 'InFlite’s tab bar under the day (Chats at its own address while the hub isn’t ready)');
   ok(await p.evaluate(() => !document.getElementById('today').hidden && document.getElementById('apps').hidden && document.getElementById('you').hidden), 'opened on Today');
-  // (the fixture: weather has a packed card, fitness a null one, chat none, and markets one with characters outside
-  // base64url: only weather's goes in the link, after the words)
-  // (Send: a link to Chat's #share=, or, where cards.js sends through IFL.hub, a button whose way there when the hub can't
-  // take it (data-href) is the same address. Either way, it must be there)
-  const sendTo = (k) => p.$eval(`.tcard[data-app=${k}] [data-send]`, (n) => (n.tagName === 'BUTTON' ? n.dataset.href || '' : n.getAttribute('href'))).catch(() => null);
-  for (const k of KEYS) {
-    const send = await sendTo(k), sc = CARDS.cards[k].sendCard;
-    const card = typeof sc === 'string' && /^[A-Za-z0-9_-]{1,6000}$/.test(sc) ? `&card=${sc}` : '';
-    same(send, `https://chat.inflite.ai/#share=${encodeURIComponent(CARDS.cards[k].share)}${card}`, `${k}: Send to a friend goes to Chat’s #share= with its line${card ? ', and the card after it' : ', and no card'}`);
-  }
-  ok(/^[A-Za-z0-9_-]+$/.test(CARDS.cards.weather.sendCard) && /[^A-Za-z0-9_-]/.test(CARDS.cards.markets.sendCard), 'the fixture has a good sendCard and a bad one');
-  const wsend = String(await sendTo('weather'));
-  ok(/^https:\/\/chat\.inflite\.ai\/#share=[^&]+&card=[A-Za-z0-9_-]+$/.test(wsend), 'weather: #share= first, then &card=', wsend);
-  const msend = await sendTo('markets');
-  ok(typeof msend === 'string' && msend.startsWith('https://chat.inflite.ai/#share=') && !msend.includes('card=') && !msend.includes('<'), 'markets: a sendCard outside base64url is left out of the link', String(msend));
+  // (Today 1.15–1.17: no Send to a friend on any card, though each card's answer still carries its words (share), and no
+  // Open in the heads: each head is itself the link to its app, named for it. Send is each app's own, in its own screens)
+  same(await p.$$eval('#rest [data-send]', (xs) => xs.length), 0, 'no Send to a friend on any card (each app has its own)');
+  ok(KEYS.every((k) => typeof CARDS.cards[k].share === 'string' && CARDS.cards[k].share), 'though every card in the fixture has words to send');
+  same(await p.$$eval('#rest .tc-go', (xs) => xs.length), 0, 'no Open in the cards’ heads');
+  const APPNAME = { weather: 'Weather', chat: 'Chat', fitness: 'Fitness', markets: 'Markets' };
+  same(await p.$$eval('.tcard', (cs) => cs.map((c) => { const a = c.querySelector('a.tc-head'); return [c.dataset.app, (a.getAttribute('aria-label') || '').split(' for ')[0], a.querySelector('.tc-app')?.textContent]; })),
+    KEYS.map((k) => [k, `Open ${APPNAME[k]}`, APPNAME[k]]), 'each head the link to its app, named for it (“Open Weather for London”, …), its app’s name in it');
   const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
   same(fit.slice(0, 2), [['Details', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Details and Change, in Fitness’s words, to Fitness’s #today');
+  ok(!(await text(p, '.tcard[data-app=fitness]')).includes('Open Fitness'), 'Fitness: no Open Fitness (its head opens it)', JSON.stringify(fit));
   ok(await p.$eval('.tcard[data-app=fitness] .tc-foot .pill.primary', (a) => a.textContent === 'Details' && !a.querySelector('svg')), 'Fitness: no play glyph, as nothing starts a session');
   same(await p.$$eval('.tcard[data-app=fitness] .ft-bt-key span', (ss) => ss.map((x) => x.textContent)), ['Great', 'Good', 'Fair', 'Poor'], 'Fitness: the hours’ colours, with their key');
   const rows = await p.$$eval('.tcard[data-app=chat] .pg-row, .tcard[data-app=chat] .pg-streak', (as) => as.map((a) => a.getAttribute('href')));
@@ -343,7 +337,7 @@ await part('cards: quiet', async () => {
   for (const w of ['No pigeons on their way to you', 'No session planned today', 'Next · Monday', 'London and New York are shut today', 'Your holdings are as they closed.', 'TOMORROW IN LONDON', 'Dry and partly cloudy tonight.'])
     has(words, w, `quiet: “${w}”`);
   ok(!words.includes('No change today yet'), 'quiet: no “yet” on a day the markets are shut');
-  same(await p.$$eval('[data-send]', (as) => as.map((a) => a.closest('.tcard').dataset.app)), ['weather', 'chat'], 'quiet: no Send to a friend where there’s nothing to say');
+  same(await p.$$eval('[data-send]', (as) => as.length), 0, 'quiet: no Send to a friend on any card');
   await p.screenshot({ path: `${OUT}/quiet-390-light.png`, fullPage: true });
   await ctx.close();
 });
@@ -422,7 +416,7 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
     box.innerHTML = cardHTML('chat', card, { links: { chat: 'https://chat.inflite.ai' }, tz: 'Europe/London', now });
     return { track: !!box.querySelector('.pg-track'), bird: !!box.querySelector('.bird-ic, .pg-bird'), pill: !!box.querySelector('[data-send] svg'), pigeons: box.querySelector('[data-pgtitle]')?.dataset.pigeons, words: box.textContent };
   }, [off([{ ...pigeon, sentAt: T0 - 3600e3, landsAt: T0 + 3 * 3600e3 }], [], []), T0]);
-  ok(!offBox.track && !offBox.bird && offBox.pill && offBox.pigeons === '0' && !/pigeon|Biscuit|swift|mi from/i.test(offBox.words.replace(/Send to a friend/, '')), 'Chat, pigeons off: no track, no bird (Send to a friend with a plain arrow), no kind, no pigeon words', JSON.stringify({ ...offBox, words: offBox.words.replace(/\s+/g, ' ').slice(0, 160) }));
+  ok(!offBox.track && !offBox.bird && !offBox.pill && offBox.pigeons === '0' && !/pigeon|Biscuit|swift|mi from|Send to a friend/i.test(offBox.words), 'Chat, pigeons off: no track, no bird, no Send to a friend, no kind, no pigeon words', JSON.stringify({ ...offBox, words: offBox.words.replace(/\s+/g, ' ').slice(0, 160) }));
   c5 = await parts('chat', off([], [{ ...leo, n: 1, messages: 1 }]), T0);
   same([c5.title, c5.rows[0]], ['Leo sent you a message', 'Leo sent you a message / Sent at 07:30'], 'Chat, pigeons off: one message unread');
   c5 = await parts('chat', off([], [{ ...leo, n: 3, messages: 0 }]), T0);

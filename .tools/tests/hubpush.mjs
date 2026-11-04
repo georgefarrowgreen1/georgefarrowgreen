@@ -4,8 +4,8 @@
 // sends him is opened here and read; Mira on Chat's own address.
 //   0. an old Today install with a Weather device on the same sign-in: Chat's first hand-back at the hub moves the
 //      sign-in, and Today's subscription and Weather's device go with it (td_push alive, wx_devs still the account's)
-//   1. This Phone on, in You: Today's morning only (td_push), and nothing posted to the device route before that tap
-//   2. Get Every App's Notifications Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'
+//   1. On This Phone on, in You's Notifications: Today's morning only (td_push), and nothing posted to the device route before that tap
+//   2. Get Every App's Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'
 //   3. a Chat message, a Markets alert and the morning: each in the push box, opened, each saying its app
 //   4. the root worker's pulse: a push of Chat's handed to the root worker (as the browser would) with no Chat open,
 //      and Mira's tick turns delivered
@@ -189,7 +189,7 @@ const a = await hubCall('PUT', '/api/markets/alert', { symbol: 'TSCO.L', on: tru
 ok(r.s === 200 && h.s === 200 && a.s === 200, 'George’s Weather place (rain and warnings wanted) and Tesco with a 3% alert, through the hub', `${r.s} ${h.s} ${a.s}`);
 
 // ======================================================================================================================
-step(1, 'This Phone on, in You: Today’s morning only', '§10, §11.3');
+step(1, 'On This Phone on, in You: Today’s morning only', '§10, §11.3');
 // ======================================================================================================================
 await G.p.goto(`${HUB}/#you`);
 await G.p.waitForSelector('#you #youPhone', { timeout: 30000 }).catch(() => {});
@@ -203,7 +203,7 @@ ok(!!td && !others().length, 'Allow: td_push only (Today’s morning)', JSON.str
 ok(deviceCalls().length === 1 && deviceCalls()[0].fan === undefined && deviceCalls()[0].sub?.endpoint === endpointOf('george'), 'its request: the subscription, no fan', JSON.stringify(deviceCalls()));
 
 // ======================================================================================================================
-step(2, 'Get Every App’s Notifications Here: one endpoint in every app’s table, via the hub', '§10, §11.3');
+step(2, 'Get Every App’s Here: one endpoint in every app’s table, via the hub', '§10, §11.3');
 // ======================================================================================================================
 await G.p.waitForSelector('#you #youEvery', { timeout: 15000 }).catch(() => {});
 await G.p.click('#you #youEvery').catch(() => {});
@@ -222,7 +222,7 @@ ok(pg.length === 1 && pg[0].user_id === GID && liveNow.includes(pg[0].session) &
 ok(mk.length === 1 && mk[0].user_id === GID && mk[0].via === 'hub', 'Markets’: mk_push, via the hub', JSON.stringify(mk));
 ok(wd.length === 1 && wd[0].user_id === GID && liveNow.includes(wd[0].sess) && wd[0].via === 'hub' && ws.some((x) => x.name === 'London' && x.warn === 1), 'Weather’s: one wx_devs row (this sign-in, via the hub), with London’s place', JSON.stringify({ wd, ws }));
 ok(!!rows(`SELECT endpoint FROM td_push WHERE endpoint = '${ep}'`)[0] && !rows(`SELECT endpoint FROM fx_push WHERE endpoint = '${ep}'`).length, 'Today’s still; Fitness’s not (its line is in Today’s morning)');
-ok(/Every App’s Notifications/.test(await textOf('#youPhone')), 'This Phone says every app’s come here now', await textOf('#youPhone'));
+ok(/Every App Notifies Here/.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'Notifications says every app notifies here now', await textOf('#youNotify'));
 
 // ======================================================================================================================
 step(3, 'a Chat message, a Markets alert and the morning: each pushed, opened, saying its app', '§11.3, §11.4');
@@ -313,7 +313,7 @@ run(`INSERT INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUE
 weatherDevice('ipadwx-1', ip.wx, GID, hex(IPAD), 'iPad');
 await G.p.goto(`${HUB}/#you`);
 const rowSel = '#youDevices .row.dev';
-ok(await G.p.waitForSelector(rowSel, { timeout: 20000 }).then(() => true, () => false), 'You: Other Devices Getting Notifications');
+ok(await G.p.waitForSelector(rowSel, { timeout: 20000 }).then(() => true, () => false), 'You: Other Devices');
 const list = await textOf('#youDevices');
 ok(/iPad/.test(list) && /Mac/.test(list) && /Weather/.test(list), 'the iPad (Weather among its apps) and the Mac, each with Stop There', list);
 await shot(G, '6-devices');

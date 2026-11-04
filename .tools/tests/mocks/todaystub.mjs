@@ -205,7 +205,18 @@ createServer(async (req, res) => {
       if (w.briefAt !== undefined) n.briefAt = w.briefAt;
       if (w.email && typeof w.email === 'object') n.email = { ...n.email, ...w.email };
     }
-    for (const [k, v] of Object.entries(b)) if (k !== 'weather' && v && typeof v === 'object' && you.notify[k] && typeof you.notify[k] === 'object') you.notify[k] = { ...you.notify[k], ...v };
+    // (Chat's, as setNotify takes them: each kind on or off by name, as GET then says them, in chat.kinds)
+    if (b.chat && typeof b.chat === 'object') {
+      const c = you.notify.chat, kinds = { ...c.kinds };
+      for (const [k, v] of Object.entries(b.chat)) if (k in kinds && typeof v === 'boolean') kinds[k] = v;
+      you.notify.chat = { ...c, kinds, ...(typeof b.chat.names === 'boolean' ? { names: b.chat.names } : {}), ...(typeof b.chat.email === 'boolean' ? { email: b.chat.email } : {}) };
+    }
+    // (Markets': alerts on or off says off, as GET has it; the wrap as it is)
+    if (b.markets && typeof b.markets === 'object') {
+      const m = you.notify.markets;
+      you.notify.markets = { ...m, ...(typeof b.markets.alerts === 'boolean' ? { off: !b.markets.alerts } : {}), ...(typeof b.markets.wrap === 'boolean' ? { wrap: b.markets.wrap } : {}) };
+    }
+    for (const [k, v] of Object.entries(b)) if (k !== 'weather' && k !== 'chat' && k !== 'markets' && v && typeof v === 'object' && you.notify[k] && typeof you.notify[k] === 'object') you.notify[k] = { ...you.notify[k], ...v };
     return json(res, you.notify);
   }
   if (key === 'POST device') {
