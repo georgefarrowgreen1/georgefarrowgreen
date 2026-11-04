@@ -208,7 +208,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 
 /* bike table */
 .btable{display:flex;flex-direction:column;max-width:1040px}
-.brow{display:grid;grid-template-columns:minmax(130px,1fr) minmax(160px,196px) minmax(160px,196px) minmax(92px,110px) 84px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.brow{display:grid;grid-template-columns:minmax(150px,1fr) minmax(170px,210px) minmax(170px,210px) 92px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
 .brow.hd{border-top:0;padding-top:0}
 .brow.hd span{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .brow .nm{font-weight:600;font-size:15.5px}
@@ -484,11 +484,6 @@ body.signin::before{display:none}
 .sc-row.long{display:block}
 .sc-row.long b{display:block;text-align:left;font-family:var(--f-body);font-weight:600;font-size:13.5px;margin-top:1px}
 
-/* the bike table's ideal: typed, no − / + */
-.num.ideal input{min-height:44px;padding:10px 30px 10px 10px;text-align:center}
-.num.ideal .u{right:8px;font-size:12px}
-@media (max-width:760px){.brow .cell[data-l="Ideal"]{grid-column:1/2}}
-
 /* the feet table: size, length, width and arch; unweighted and weighted; left and right */
 .ftab-wrap{overflow-x:auto;margin:0 -2px;padding:2px}
 .ftab{display:grid;grid-template-columns:96px repeat(4,minmax(128px,1fr));gap:8px 10px;align-items:center;min-width:640px}
@@ -516,8 +511,6 @@ body.signin::before{display:none}
 .tts-r{font-weight:600}
 .tts-c{text-align:center}
 .tts-tbl .on{background:var(--sel);color:var(--sel-ink)}
-.btable.no-ideal .brow{grid-template-columns:minmax(150px,1fr) minmax(170px,210px) minmax(170px,210px) 92px}
-@media (max-width:760px){.btable.no-ideal .brow{grid-template-columns:1fr 1fr}}
 
 /* injuries and special notes: a box an area, four across on an iPad */
 .inj{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 12px}
