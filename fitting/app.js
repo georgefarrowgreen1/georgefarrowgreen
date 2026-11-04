@@ -105,8 +105,8 @@ function sectionsFor(step){
     {custom:'fits', title:'Fit type'},
     {title:'Session', fields:[SG('fitter','Fitter',FITTERS), T('date','Date',{type:'date'})]},
     {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'})]},
-    {title:'Bike', fields:[T('bike','Brand & model',{ph:'e.g. Trek Domane SL 6'}), T('frame','Frame size',{ph:'e.g. 56 cm'}),
-      SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float'), T('shoes','Shoe brand & size')]},
+    {title:'Bike', fields:[T('bike','Brand & model',{ph:'e.g. Trek Domane SL 6', span2:true}), T('frame','Frame size',{ph:'e.g. 56 cm'}),
+      SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float',{span2:true}), T('shoes','Shoe brand & size',{span2:true})]},
   ];
   case 'interview': return [
     {title:'About the rider', fields:[SG('sex','Sex',['Male','Female'],{hint:'Sets the side of the saddle sizer'}), SG('style','Riding style',['Recreational','Serious recreational','Racer','Triathlete'],{wide:true}),
@@ -125,7 +125,7 @@ function sectionsFor(step){
       {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
     {title:'Knees', f:'FT', fields:[SG('knee','Alignment standing',['Bends in','Neutral','Bows out'],{lr:true, wide:true})]},
     {title:'Hips & pelvis', fields:[SG('pelvis','Pelvis height',['Left higher','Level','Right higher'],{f:'FT'}), SG('legLen','Leg length',['Equal','Left shorter','Right shorter'],{f:'FT'}),
-      N('legLenMm','Difference','mm',{f:'FT'}), {t:'ischial', k:'ischial', label:'Ischial (sit-bone) width'}, LT('backFlex','Lower back flexibility','°','back')]},
+      N('legLenMm','Difference','mm',{f:'FT', when:() => /shorter/.test(val('legLen') || '')}), {t:'ischial', k:'ischial', label:'Ischial (sit-bone) width'}, LT('backFlex','Lower back flexibility','°','back')]},
     {title:'Posture & shoulders', fields:[SG('shFwd','Shoulders drawn forward?',['Yes','No'],{f:'FT'}), SG('shLevel','Shoulders level?',['Left higher','Level','Right higher'],{f:'FT'}),
       N('shWidth','Shoulder width','cm'), SG('elbows','At 90°, elbows touching?',['Yes','No'],{f:'FT'})]},
     {title:'Body dimensions', fields:[{t:'inseam', k:'inseam', label:'Inseam (no shoes)'}, N('thigh','Thigh diameter','cm',{f:'FT'})]},
@@ -260,9 +260,15 @@ function tlHTML(k, cl){
   const c = lightOf(k, cl);
   return `<div class="tl" data-x="tl" data-k="${k}" data-cl="${cl}">${['r','y','g'].map(x => `<button type="button" data-tlset="${k}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${CL[cl].txt[x]}</span></button>`).join('')}</div>`;
 }
+// (a field shown only when another answer calls for it: f.when, checked again as answers change, refresh())
+const WHEN = {};
 function fieldHTML(f){
   if (!applies(f)) return '';
-  const wide = f.wide ? ' wide' : '';
+  if (f.when){ WHEN[f.k] = f.when; return `<div class="when" data-when="${f.k}"${f.when() ? '' : ' hidden'}>${fieldInner(f)}</div>`; }
+  return fieldInner(f);
+}
+function fieldInner(f){
+  const wide = f.wide ? ' wide' : f.span2 ? ' span2' : '';
   const lab = `<span class="lab">${esc(f.label)}${f.hint ? ` <small>· ${esc(f.hint)}</small>` : ''}</span>`;
   switch (f.t){
   case 'text': {
@@ -283,7 +289,7 @@ function fieldHTML(f){
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
-    return `<div class="fld">${lab}<div class="tl">${['r','y','b'].map(x => `<button type="button" data-bio="${x}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${t[x]}</span></button>`).join('')}</div></div>`;
+    return `<div class="fld span2">${lab}<div class="tl">${['r','y','b'].map(x => `<button type="button" data-bio="${x}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${t[x]}</span></button>`).join('')}</div></div>`;
   }
   case 'ischial':
     return `<div class="fld">${lab}${inputHTML('ischial', {t:'num', unit:'mm', label:f.label})}<div class="hint" data-x="ischial"></div></div>`;
@@ -396,7 +402,7 @@ function deltaOf(r){
 function bikeHTML(){
   let h = `<div class="sec"><div class="sec-h"><h2>Bike set-up</h2><div class="right"><span class="sec-note">Tap − / + to nudge, or type a value</span><button type="button" class="btn sm" data-act="copy-same">Copy unchanged to After</button></div></div><div id="copy-msg"></div>${rowsHTML(BIKE)}</div>
   <div class="sec"><div class="sec-h"><h2>Cleats</h2></div><div class="grid">
-    ${fieldHTML(T('cleatL','Left cleat',{ph:'e.g. 1.2 cm behind M1, neutral'}))}${fieldHTML(T('cleatR','Right cleat'))}</div></div>`;
+    ${fieldHTML(T('cleatL','Left cleat',{ph:'e.g. 1.2 cm behind M1, neutral', span2:true}))}${fieldHTML(T('cleatR','Right cleat',{span2:true}))}</div></div>`;
   if (S.fit === 'tt') h += `<div class="sec"><div class="sec-h"><h2>TT cockpit</h2><span class="tag-fit">TT &amp; Tri</span></div>${rowsHTML(TTROWS)}
     <div class="uci" data-x="uci"></div></div>`;
   return h;
@@ -646,7 +652,7 @@ function reportStepHTML(){
   <div class="sec"><div class="sec-h"><h2>Send to ${esc(val('first') || 'the client')}</h2><span class="sec-note">${esc(fu.title)}${fu.date ? ' · ' + fu.date.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : ''}</span></div>
     <div class="send"><div style="display:flex;flex-direction:column;gap:12px">
       <div class="fld"><label class="lab" for="i-email2">Client email</label><input type="email" id="i-email2" data-k="email" value="${esc(val('email') || '')}"></div>
-      <div class="row-btns"><button type="button" class="btn primary" data-act="preview">Preview report</button><button type="button" class="btn dark" data-act="pdf">Make PDF</button><a class="btn" id="mailto" href="${esc(mailtoHref())}">Open in Mail</a><button type="button" class="btn" data-act="copy-mail">Copy email</button></div>
+      <div class="row-btns"><button type="button" class="btn primary" data-act="pdf">Make PDF</button><button type="button" class="btn" data-act="preview">Preview report</button><a class="btn" id="mailto" href="${esc(mailtoHref())}">Open in Mail</a><button type="button" class="btn" data-act="copy-mail">Copy email</button></div>
       <div id="send-msg"></div>
       <div class="hint">On iPad, Make PDF then Share or email opens the share sheet: choose Mail and the report goes as an attachment.</div></div>
       <div><span class="lab">Email message</span><div class="mail" id="mail" style="margin-top:7px">${esc(mailText())}</div></div></div></div>`;
@@ -664,7 +670,7 @@ function mailText(){
 function startHTML(){
   const inp = (k, label, unit) => `<div class="fld"><label class="lab" for="i-${k}">${label}</label>${inputHTML(k, {t:'num', unit, label})}</div>`;
   return `<div class="sp-sub">Body measurements</div>
-    <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit-bone width', 'mm')}${inp('shWidth', 'Shoulder width', 'cm')}
+    <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit bones', 'mm')}${inp('shWidth', 'Shoulders', 'cm')}
       ${S.fit === 'std' ? '' : inp('footAng_L', 'Foot angle L', '°') + inp('footAng_R', 'Foot angle R', '°')}</div>
     <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>`;
 }
@@ -829,6 +835,7 @@ function secProgress(sec){
     if (f.t === 'check'){ f.items.forEach((_, j) => { tot++; if ((S.v[f.k] || [])[j]) got++; }); return; }
     if (f.t === 'light'){ (f.lr ? [f.k + '_L', f.k + '_R'] : [f.k]).forEach(k => { tot++; if (lightOf(k, f.cl)) got++; }); return; }
     if (f.t === 'timer'){ tot++; if (lightOf('plank', 'plank')) got++; return; }
+    if (f.when && !f.when()) return;
     if (f.lr){ cnt(f.k + '_L'); cnt(f.k + '_R'); } else cnt(f.k);
   });
   return {tot, got};
@@ -914,6 +921,7 @@ function renderMain(){
   if (st.id === 'photos') wireDrop();
 }
 function refresh(){
+  $$('[data-when]').forEach(el => { const f = WHEN[el.dataset.when]; if (f) el.hidden = !f(); });
   $$('[data-x]').forEach(el => {
     const k = el.dataset.k;
     switch (el.dataset.x){
