@@ -3,6 +3,7 @@
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
 // finance.inflite.ai: Markets, the same way (functions/_mktapp.js).
 // account.inflite.ai: the account's own page, the same way (functions/_acctapp.js).
+// fitting.georgefarrowgreen.com: Precision Fit Studio, Pedal Revolution's bike-fit form, the same way (functions/_fitstudio.js).
 // auth.inflite.ai: where every sign-in and sign-out happens, the same files (functions/_acctapp.js).
 // (inflite.ai itself is InFlite Today, the inflite repo's root Worker: not this project's, though its data is, at
 // account.inflite.ai/api/account/today/*, functions/_todayapp.js.)
@@ -21,6 +22,7 @@ import { isWeather, weatherHost } from "./_wxapp.js";
 import { isFitness, fitnessHost } from "./_fitapp.js";
 import { isMarkets, marketsHost } from "./_mktapp.js";
 import { isAccount, isAuth, accountHost } from "./_acctapp.js";
+import { isFitting, fittingHost } from "./_fitstudio.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
@@ -70,6 +72,7 @@ export async function onRequest(ctx0) {
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isFitness(url, ctx.env)) return fitnessHost(ctx, url);
   if (isMarkets(url, ctx.env)) return marketsHost(ctx, url);
+  if (isFitting(url, ctx.env)) return fittingHost(ctx, url);
   if (isAccount(url, ctx.env) || isAuth(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {
     // (Chat's version, where it's at /pigeon/: locally)
