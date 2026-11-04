@@ -1,7 +1,8 @@
-# The site as a Worker (wrangler.worker.jsonc), deployed by hand only while the move off Pages is being tried
-# (.tools/workers/README.md): to the Worker "georgefarrowgreen-site", which has no routes, so it's reachable only at its
-# workers.dev address; the live site stays the Pages project. At the move, `push` to main is added here (step 6).
-name: Deploy the site's Worker
+# The site as two Workers, one build (.tools/workers/README.md): "inflite-apps" (wrangler.worker.jsonc, InFlite's apps'
+# addresses) and "gfg" (wrangler.gfg.jsonc, georgefarrowgreen.com's). Deployed by hand only while the move off Pages is
+# being tried: until their addresses are moved over they have no routes, so each is reachable only at its workers.dev
+# address, and the live site stays the Pages project. At the move, `push` to main is added here (step 6).
+name: Deploy the site's Workers
 
 on:
   workflow_dispatch:
@@ -38,3 +39,4 @@ jobs:
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           node .tools/workers/build.mjs
           npx --yes wrangler@4.149.0 deploy -c wrangler.worker.jsonc
+          npx --yes wrangler@4.149.0 deploy -c wrangler.gfg.jsonc

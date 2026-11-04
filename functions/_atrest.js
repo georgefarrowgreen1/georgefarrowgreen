@@ -10,13 +10,68 @@
    - A vault (and each passkey's copy) becomes "w1:" + AES-256-GCM under a key
      from the pepper, bound to the account, so one can't be moved to another.
    - Without PIGEON_PEPPER set, everything stays as it was. Once set it must
-     never change or be lost: every password would stop working. */
-import { hex, sha256, b64url, fromB64url } from "./_pigeon.js";
+     never change or be lost: every password would stop working.
+   - Moving the site to another Cloudflare project (Pages to a Worker, .tools/workers/README.md), where it can't
+     be copied (Cloudflare never shows a secret again): PIGEON_PEPPER_KEY, a key of the owner's choosing (32
+     characters or more), set beside PIGEON_PEPPER, has the site keep the pepper in the database, locked with it
+     (pg_meta "pepper": AES-256-GCM under a key from PIGEON_PEPPER_KEY). Where PIGEON_PEPPER_KEY is set and
+     PIGEON_PEPPER isn't (the new project), the pepper's that one, opened with it: the same pepper, so every
+     password goes on working, and a copy of the database alone is still no use. */
+import { hex, sha256, b64url, fromB64url, db } from "./_pigeon.js";
 
 const enc = new TextEncoder(), dec = new TextDecoder();
+// (a key for the pepper's own lock, from PIGEON_PEPPER_KEY: none for one too short to be one)
+const keyOf = (env) => (typeof env.PIGEON_PEPPER_KEY === "string" && env.PIGEON_PEPPER_KEY.length >= 32 ? env.PIGEON_PEPPER_KEY : null);
+const AAD = enc.encode("inflight/at-rest/pepper|v1");
+async function kek(k) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(k), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: enc.encode("inflight/at-rest/pepper-key/v1") }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+// the pepper as the database keeps it, opened with PIGEON_PEPPER_KEY → the pepper, or null (none kept, or not this key's)
+async function opened(env, k) {
+  const row = await (await db(env)).prepare("SELECT v FROM pg_meta WHERE k = 'pepper'").first();
+  if (!row || !String(row.v).startsWith("k1:")) return null;
+  try { const all = fromB64url(row.v.slice(3)); return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12), additionalData: AAD }, await kek(k), all.slice(12))); }
+  catch (_) { return null; }
+}
+// (where both are set: the pepper kept, locked with the key, once per copy of the server, and kept again should the
+// key have changed; what's kept is only ever written here, where the pepper itself is)
+let kept = null;
+async function keep(env, p, k) {
+  const id = hex(await sha256(`${k}|${p}`));
+  if (kept === id) return;
+  if ((await opened(env, k)) !== p) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const d = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: AAD }, await kek(k), enc.encode(p)));
+    const out = new Uint8Array(12 + d.length); out.set(iv); out.set(d, 12);
+    await (await db(env)).prepare("INSERT INTO pg_meta (k, v) VALUES ('pepper', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").bind("k1:" + b64url(out)).run();
+  }
+  kept = id;
+}
+// The pepper: PIGEON_PEPPER (kept, locked, where PIGEON_PEPPER_KEY is set too); else, with PIGEON_PEPPER_KEY alone, the one
+// the database keeps; else none
+let held = null;
+async function pepperOf(env) {
+  const k = keyOf(env);
+  if (env.PIGEON_PEPPER) { if (k) await keep(env, env.PIGEON_PEPPER, k).catch(() => {}); return env.PIGEON_PEPPER; }
+  if (!k) return null;
+  if (held?.k === k) return held.p;
+  const p = await opened(env, k);
+  if (!p) missing();
+  held = { k, p };
+  return p;
+}
+// How the pepper stands, for the admin (never the pepper): { on, key, kept } — kept: the database has it, locked with
+// this key, and it's this pepper (so a project with PIGEON_PEPPER_KEY alone would read everything as this one does)
+export async function pepperState(env) {
+  const k = keyOf(env), on = !!env.PIGEON_PEPPER || !!k;
+  if (!k) return { on, key: false, kept: false };
+  const p = await opened(env, k).catch(() => null);
+  return { on, key: true, kept: !!p && (!env.PIGEON_PEPPER || p === env.PIGEON_PEPPER) };
+}
 let made = null;
 async function keys(env) {
-  const p = env.PIGEON_PEPPER;
+  const p = await pepperOf(env);
   if (!p) return null;
   if (made?.p === p) return made;
   const base = await crypto.subtle.importKey("raw", enc.encode(p), "HKDF", false, ["deriveKey"]);
@@ -28,7 +83,7 @@ async function keys(env) {
   };
   return made;
 }
-export const pepperOn = (env) => !!env.PIGEON_PEPPER;
+export const pepperOn = (env) => !!env.PIGEON_PEPPER || !!keyOf(env);
 const locked = (s, tag) => typeof s === "string" && s.startsWith(tag);
 function missing() { throw new Error("PIGEON_PEPPER is needed to read what it locked, and isn't set"); }
 

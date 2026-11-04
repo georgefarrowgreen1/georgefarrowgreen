@@ -1,0 +1,34 @@
+// georgefarrowgreen.com as a Worker (the move off Pages: .tools/workers/README.md): the home page, Fit Studio
+// (fitting.georgefarrowgreen.com), and the apps' old addresses there, which send you on to inflite.ai signed in. The
+// same build as InFlite's apps' Worker (wrangler.worker.jsonc, "inflite-apps"), with the same database, storage and
+// keys; the site decides what each address is. Not live till its addresses are moved (README, step 5); deployed, by
+// hand only, beside inflite-apps (.github/workflows/worker-deploy.yml).
+{
+  "$schema": ".tools/tests/node_modules/wrangler/config-schema.json",
+  "name": "gfg",
+  "main": ".tools/workers/dist/index.js",
+  "compatibility_date": "2026-06-17",
+  // (the site's files, as Pages served them: every request through the Worker first, as functions/_middleware.js
+  // sees everything on Pages; what it passes on (ctx.next()) is the files', with Pages' own ways with HTML, a 404.html
+  // and _headers and _redirects. What's never the site's is left out: .assetsignore)
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "kv_namespaces": [{ "binding": "BIO_KV", "id": "10ec6d961a224b3a8b68a7c993ca0caf" }],
+  "r2_buckets": [{ "binding": "BIO_R2", "bucket_name": "bio-media" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "bio-db", "database_id": "de4ad515-52c6-4cb3-9f8f-008384ef813a" }],
+  "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
+  "observability": { "enabled": true },
+  // (its workers.dev address, for looking at it before the move; the scheduled jobs call inflite-apps)
+  "workers_dev": true
+  // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
+  // "routes": [
+  //   { "pattern": "www.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }, { "pattern": "georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
+  //   { "pattern": "fitting.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
+  //   … and the apps' old addresses there (chat., weather., fitness., account.georgefarrowgreen.com), as the Pages project lists them
+  // ]
+}

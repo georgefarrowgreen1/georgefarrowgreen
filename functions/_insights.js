@@ -10,6 +10,7 @@
    (functions/_retention.js), so the last 30 days are the live tables plus anything already moved over. */
 import { DAY, MIN, londonOffset } from "./_pigeon.js";
 import { counts as signinCounts } from "./_signincount.js";
+import { pepperState } from "./_atrest.js";
 
 export const SPAN = 30;           // days of history shown
 export async function insights(env, D, t = Date.now()) {
@@ -98,5 +99,7 @@ export async function insights(env, D, t = Date.now()) {
     messages: msgs[0]?.n || 0,
     // (signing in, per day, each kind: functions/_signincount.js)
     signin: await signinCounts(D, first, today).catch(() => null),
+    // (whether the passwords' pepper is kept for the move off Pages, never the pepper: functions/_atrest.js)
+    pepper: await pepperState(env).catch(() => null),
   };
 }

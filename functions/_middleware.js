@@ -192,7 +192,7 @@ function hubRequest(ctx) {
 }
 
 const APP_ICONS = { "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png", "/apps/fitness.png": "/fitness/icon-180.png", "/apps/markets.png": "/markets/icon-180.png" };
-const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|min(\/|$)|readme\.md$|wrangler\.toml$|wrangler\.worker\.jsonc$)/i;
+const PRIVATE = /^\/(\.(?!well-known\/)|blokk(\/|$)|block(\/|$)|workers(\/|$)|min(\/|$)|readme\.md$|wrangler\.toml$|wrangler\.(worker|gfg)\.jsonc$)/i;
 function plainPath(p) {
   for (let i = 0; i < 4; i++) { let d; try { d = decodeURIComponent(p); } catch (_) { break; } if (d === p) break; p = d; }
   p = p.replace(/\\/g, "/").replace(/\/{2,}/g, "/");

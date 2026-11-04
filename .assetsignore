@@ -12,5 +12,6 @@ workers
 README.md
 wrangler.toml
 wrangler.worker.jsonc
+wrangler.gfg.jsonc
 .assetsignore
 .gitignore
