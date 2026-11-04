@@ -245,7 +245,7 @@ function build(host, ctx) {
     } catch (e) {
       const why = e?.why || e?.err;
       if (!input.value) { input.value = was; onInput(); }
-      fw.toast(why === "trust" ? "Check the safety number first: their key has changed." : why === "offline" ? "No signal. It’ll go when you’re back online." : why === "locked" ? "Chats is locked." : "Couldn’t send that. Try again.");
+      fw.toast(why === "trust" ? "Check the safety number first: their key has changed." : why === "offline" ? "No signal. It’ll go when you’re back online." : why === "locked" ? "Chats is locked." : e?.said || "Couldn’t send that. Try again.");
     } finally { sending--; }
   }
   const onKey = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } };

@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.70";
-export const NEWS = "Chats can now open inside InFlite: your chats, letters and Send, with your keys kept safe on this phone";
+export const BUILD = "1.71";
+export const NEWS = "When Chats can't send something, it now says why (for example, set your location first)";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

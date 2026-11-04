@@ -1069,7 +1069,8 @@ async function sendOne(to, payload, { way, kind, at, blob = null, once = false, 
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
       r = await api(sealed.path, { method: "POST", form });
     } else r = await api(sealed.path, { method: "POST", body: sealed.meta });
-  } catch (e) { if (e.offline) return queue(); throw refuse(e.why || "failed"); }
+  // (a refusal from the server keeps its words, which are the server's own and never the message's: "Set your location…")
+  } catch (e) { if (e.offline) return queue(); throw Object.assign(refuse(e.why || "failed"), { said: e.status >= 400 && e.status < 500 ? String(e.message || "").slice(0, 140) : "" }); }
   S.plain.set(id, payload);
   if (r?.me) S.me = r.me; else if (PAID.includes(k) && S.me[k] > 0) S.me[k]--;
   const list = S.msgs.get(to) || [];
@@ -1617,7 +1618,7 @@ export async function handle(d) {
   // (nothing answers while the first start is still finding out who's here and whether they're locked: B4)
   if (starting && m !== "hello" && m !== "start") await starting.catch(() => {});
   try { return { id, ok: true, v: await methods[m](...a) }; }
-  catch (e) { return { id, ok: false, why: WHY.includes(e?.why) ? e.why : e?.offline ? "offline" : "failed" }; }
+  catch (e) { return { id, ok: false, why: WHY.includes(e?.why) ? e.why : e?.offline ? "offline" : "failed", ...(typeof e?.said === "string" && e.said ? { said: e.said.slice(0, 140) } : {}) }; }
 }
 if (typeof self !== "undefined" && typeof self.postMessage === "function" && typeof self.addEventListener === "function") {
   self.addEventListener("message", (e) => { handle(e.data).then((r) => { if (r) post(r); }); });

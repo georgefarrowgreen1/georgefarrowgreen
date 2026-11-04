@@ -100,7 +100,7 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
     const p = wait.get(d.id);
     if (!p) return;
     wait.delete(d.id); clearTimeout(p.t);
-    if (d.ok) p.ok(d.v); else p.no(why(d.why || "no"));
+    if (d.ok) p.ok(d.v); else p.no(Object.assign(why(d.why || "no"), typeof d.said === "string" && d.said ? { said: d.said.slice(0, 140) } : {}));
   };
   // one call on the Worker as it is now (a Worker that dies leaves it waiting: it's failed when the Worker's made again)
   const raw = (m, a, ms = 0) => new Promise((ok, no) => {
