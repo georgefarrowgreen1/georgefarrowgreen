@@ -251,7 +251,7 @@ await part(4, 'the sign-in hop: /chats/#signin=… → /chats/in/; the trip roun
   for (const [from, to] of [['/chats/in/', '/chats/'], [`/chats/in/#open=${P.id}`, `/chats/#open=${P.id}`]]) {
     await T.p.goto(`${HUB}${from}`).catch(() => {});
     const went = await at(T.p, to, 20000);
-    ok(went && (await chatsUp(T.p)) && (await count(T.p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(T.p));
+    ok(went && (await shown(T.p, hk('M_CHATS'), 20000)) && (await count(T.p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(T.p));
   }
   await T.ctx.close();
   await p.goto(`${HUB}/chats/in/#account`).catch(() => {});

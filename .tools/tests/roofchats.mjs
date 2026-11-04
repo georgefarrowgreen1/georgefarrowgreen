@@ -440,45 +440,17 @@ await part(11, 'a new Chat build mid-session: stale, never reloaded over typed t
   const kept1 = await p.$eval(hk('CH_INPUT'), (e) => e.value ?? e.textContent).catch(() => null);
   ok((await life.same()) && docs.n() === 0 && kept1 === SENT.typed, '11. a newer build heard while text is typed: no reload, the text still there (busy(), S3-C7, risk I10)', js({ docs: docs.list, kept1 }));
   await p.fill(hk('CH_INPUT'), '');
-  // (Back to the list is the same screen, Chats', so no reload there; the next screen change is: Today, by its tab, S1 D21)
+  // (Back to the list is the same screen, Chats', so no reload there, nor going to Today; the stale reload is at the next
+  // move into an app's screen (frame.js render/go, S1 D21): Today, then Chats by its tab, reloaded at /chats/)
   await p.click(H.HD_BACK); await chatsUp(p);
-  await p.click(H.tab('today'));
+  await p.click(H.tab('today')); await todayUp(p);
+  await p.click(H.tab('chats'));
   const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(!!reloaded && docs.n() === 1 && (await todayUp(p)) && (await at(p, '/')), '11. nothing typed, the next screen change: one reload at the route (S1 D21)', js(docs.list));
+  ok(!!reloaded && docs.n() === 1 && (await chatsUp(p)) && (await at(p, '/chats/')), '11. nothing typed, the next move into an app’s screen: one reload at the route (S1 D21)', js(docs.list));
   newer = false; await G.ctx.unroute(/^http:\/\/ifl\.test:8788\/chats\/version(\?|$)/).catch(() => {});
   docs.stop();
 });
 
-// (part 13 runs before 12 and 8: their phones share George's InFlite cookie, and each one's sign-in replaces the Chat
-// session handed to his first phone from that same account sign-in)
-// ======================================================================================================================
-await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Workers', 'S3-D3, risk I3, §9.5', async () => {
-// ======================================================================================================================
-  const p = G.p;
-  await p.goto(`${HUB}/chats/`); await chatsUp(p);
-  ok(workers(p).core === 1, '13. one Worker before', js(workers(p)));
-  // (that one sign-in ended as another phone's Sessions ends it: its row gone, InFlite's own sign-in left as it is. Chat's
-  // logout from this token would end the account's sign-in it hangs from too, and Today with it)
-  const hash = createHash('sha256').update(G.token).digest('hex');
-  K.sql(`DELETE FROM pg_sessions WHERE hash = '${hash}'`);
-  const st = Number(one(`SELECT COUNT(*) AS n FROM pg_sessions WHERE hash = '${hash}'`)[0]?.n ?? 1) === 0 ? 200 : 500;
-  ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
-  // (the next sync while shown: 15 s; a hide and show asks sooner)
-  await hide(p); await wait(500); await show(p);
-  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
-  ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
-  const none = await until(() => workers(p).core === 0, 15000);
-  ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
-  ok(!(await engines(p)), '13. no engine made in its place (S3-D12)');
-  ok(!(await count(p, hk('CH_BUBBLE'))) && !(await p.evaluate((ws) => ws.some((w) => document.body.innerText.includes(w)), ALL)), '13. no message words left in the page');
-  await shot(p, '13-ended');
-});
-
-ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the missing ones asked of B0)', js([...MISSING]));
-// (the framework's pages and Chats under the roof; Chat's own page is Pat's and Leo's, its errors theirs)
-const all = everyone.filter((x) => !['pat', 'leo'].includes(x.name)).flatMap((x) => x.errs || []);
-ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
-ok(!all.length, 'no page error and no console error on any of George’s pages', js(all.slice(0, 8)));
 // ======================================================================================================================
 await part(12, 'CSP clean, axe, 390 light and dark', '§6.2, S1 §8.3', async () => {
 // ======================================================================================================================
@@ -515,9 +487,10 @@ await part(12, 'CSP clean, axe, 390 light and dark', '§6.2, S1 §8.3', async ()
   ok(!csp.length, '12. George’s page: no CSP refusal through every part', js(csp));
 });
 
-// (part 8 runs last: its second phone shares George's InFlite cookie, so its sign-in there replaces the Chat session
-// handed to his first phone from the same account sign-in (the account's "last one it opened replaced"), which would
-// sign George's own phone out of Chats for every part after it)
+// (part 8 runs after 12, and part 13 on its phone: each of these phones shares George's InFlite cookie, so each one's
+// sign-in replaces the Chat session the one before had (the account's "last one it opened replaced"); part 8's phone
+// holds the live one, kept open for part 13)
+let N8 = null;
 // ======================================================================================================================
 await part(8, 'key: signed in to InFlite, no key on this phone → Unlock Chats → /chats/in/ → back, unlocked', 'S3-D8, §2.1', async () => {
 // ======================================================================================================================
@@ -543,9 +516,40 @@ await part(8, 'key: signed in to InFlite, no key on this phone → Unlock Chats 
     ok((await chatsUp(N.p)) && (await shown(N.p, hk('chRow', P.id), 30000)), '8. …unlocked: the list with Pat (one unlock per phone, S3-D8)');
     ok((await facade(N.p))?.state === 'ready', '8. the facade ready', js(await facade(N.p)));
   }
-  await N.ctx.close();
+  N8 = N;
 });
 
+// (part 13 runs last, on part 8's phone, whose Chat session is the live one; George's first phone's Chat session is
+// InFlite's own sign-in there too (the hand-back made it the site's), so ending it would sign Today out as well)
+// ======================================================================================================================
+await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Workers', 'S3-D3, risk I3, §9.5', async () => {
+// ======================================================================================================================
+  const X = N8 || G, p = X.p;
+  await p.goto(`${HUB}/chats/`); await chatsUp(p);
+  const tok = (await chatSession(p))?.token || G.token;
+  ok(workers(p).core === 1, '13. one Worker before', js(workers(p)));
+  // (that one sign-in ended as another phone's Sessions ends it: its row gone, InFlite's own sign-in left as it is. Chat's
+  // logout from this token would end the account's sign-in it hangs from too, and Today with it)
+  const hash = createHash('sha256').update(tok).digest('hex');
+  K.sql(`DELETE FROM pg_sessions WHERE hash = '${hash}'`);
+  const st = Number(one(`SELECT COUNT(*) AS n FROM pg_sessions WHERE hash = '${hash}'`)[0]?.n ?? 1) === 0 ? 200 : 500;
+  ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
+  // (the next sync while shown: 15 s; a hide and show asks sooner)
+  await hide(p); await wait(500); await show(p);
+  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
+  ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
+  const none = await until(() => workers(p).core === 0, 15000);
+  ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
+  ok(!(await engines(p)), '13. no engine made in its place (S3-D12)');
+  ok(!(await count(p, hk('CH_BUBBLE'))) && !(await p.evaluate((ws) => ws.some((w) => document.body.innerText.includes(w)), ALL)), '13. no message words left in the page');
+  await shot(p, '13-ended');
+});
+
+ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the missing ones asked of B0)', js([...MISSING]));
+// (the framework's pages and Chats under the roof; Chat's own page is Pat's and Leo's, its errors theirs)
+const all = everyone.filter((x) => !['pat', 'leo'].includes(x.name)).flatMap((x) => x.errs || []);
+ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
+ok(!all.length, 'no page error and no console error on any of George’s pages', js(all.slice(0, 8)));
 await closeAll(); await K.b.close().catch(() => {});
 console.log(`FAILS ${fails()}`);
 process.exit(0);

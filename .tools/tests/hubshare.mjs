@@ -263,7 +263,9 @@ const one1 = await until(() => G.p.evaluate(() => window.__one), 20000);
 const said5 = await toastSaid(/Sent to Leo/);
 ok(one1?.ok === true && /Leo/.test(one1.say || ''), '5. the finished ride to Leo in one tap: sent, no sheet', js(one1));
 ok(Number(one(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}' AND recipient = '${L.id}'`)[0]?.n || 0) === l0 + 1, '5. one letter to Leo');
-ok(/You’re still here/.test(said5 || ''), '5. “Sent to Leo. You’re still here”', said5);
+// (with Chats under the roof the facade's sendTo only answers { ok, say }: the toast is its caller's, as Today's one tap
+// (day.js) says it through IFL.hub.sent, S3-D6; this button is the test's own, so nothing says it. The engine's wrap said it)
+ok(CHATS_ON ? /Sent to Leo/.test(one1?.say || '') : /You’re still here/.test(said5 || ''), CHATS_ON ? '5. the facade says “Sent to Leo” for its caller to show (S3-D6)' : '5. “Sent to Leo. You’re still here”', said5 || js(one1));
 await G.p.evaluate(() => document.getElementById('t-onetap')?.remove());
 
 // ---- 6. a group as a target ----
