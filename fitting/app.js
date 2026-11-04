@@ -368,7 +368,7 @@ function fieldInner(f){
     return `<div class="fld span2">${lab}<div class="tl">${['r','y','b'].map(x => `<button type="button" data-bio="${x}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${t[x]}</span></button>`).join('')}</div></div>`;
   }
   case 'inseam':
-    return `<div class="fld wide"><span class="lab">${esc(f.label)}</span><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${inputHTML('inseam', {t:'num', unit:'cm', label:f.label})}<div class="calc" data-x="inseam"></div></div></div>`;
+    return `<div class="fld span2"><span class="lab">${esc(f.label)}</span><div class="inseam">${inputHTML('inseam', {t:'num', unit:'cm', label:f.label})}<div class="calc" data-x="inseam"></div></div></div>`;
   case 'timer':
     return `<div class="fld wide"><div class="timer"><div class="clock" id="clock">${fmtClock((S.v.plank || 0) * 1000)}</div>
       <button type="button" class="btn dark" id="tm-go" data-act="timer">Start plank</button>
@@ -1220,8 +1220,8 @@ function renderHeader(){
 function jumpHTML(id){
   const secs = sectionsFor(id).map((s, i) => ({s, i})).filter(x => x.s.title && !(x.s.f && !applies(x.s)));
   if (secs.length < 3) return '';
-  return `<nav class="jump" aria-label="Jump to a section">${secs.map(({s, i}) => { const p = secProgress(s);
-    return `<button type="button" data-jump="${i}">${esc(s.title)}${p.tot && s.custom !== 'fits' ? `<span class="c${p.got === p.tot ? ' ok' : ''}" data-x="jumpcount" data-i="${i}">${p.got}/${p.tot}</span>` : ''}</button>`; }).join('')}</nav>`;
+  return `<div class="jump-w"><nav class="jump" aria-label="Jump to a section">${secs.map(({s, i}) => { const p = secProgress(s);
+    return `<button type="button" data-jump="${i}">${esc(s.title)}${p.tot && s.custom !== 'fits' ? `<span class="c${p.got === p.tot ? ' ok' : ''}" data-x="jumpcount" data-i="${i}">${p.got}/${p.tot}</span>` : ''}</button>`; }).join('')}</nav></div>`;
 }
 function secHTML(sec, i){
   if (sec.f && !applies(sec)) return '';
@@ -1248,7 +1248,25 @@ function renderMain(){
   const rail = $('#rail'), cur = $('#rail [aria-current]');
   if (cur && getComputedStyle(rail).flexDirection === 'row') rail.scrollLeft += cur.getBoundingClientRect().left - rail.getBoundingClientRect().left - rail.clientWidth / 2 + cur.clientWidth / 2;
   if (st.id === 'photos') wireDrop();
+  JUMPED = null; const jb = $('.jump'); if (jb){ jb.addEventListener('scroll', jumpEdge, {passive:true}); requestAnimationFrame(spy); }
 }
+// the section bar: the chip for the section in view is marked (and kept in view); a fade shows more chips off the edge
+function jumpEdge(){ const jb = $('.jump'); if (!jb) return;
+  jb.classList.toggle('more-r', jb.scrollLeft + jb.clientWidth < jb.scrollWidth - 4); jb.classList.toggle('more-l', jb.scrollLeft > 4); }
+let SPYQ = 0, JUMPED = null;   // JUMPED: the chip just tapped stays marked (a section near the end can't scroll to the top) until the user scrolls themselves
+['wheel', 'touchstart', 'keydown'].forEach(t => addEventListener(t, () => { JUMPED = null; }, {passive:true}));
+function spy(){ SPYQ = 0; const jb = $('.jump'); if (!jb) return;
+  const line = jb.getBoundingClientRect().bottom + 24; let on = JUMPED != null ? jb.querySelector(`[data-jump="${JUMPED}"]`) : null;
+  if (!on) for (const b of jb.querySelectorAll('[data-jump]')){ const sec = document.getElementById('sec-' + b.dataset.jump); if (sec && sec.getBoundingClientRect().top <= line) on = b; }
+  on = on || jb.querySelector('[data-jump]');
+  if (!on.classList.contains('on')){
+    jb.querySelectorAll('.on').forEach(b => b.classList.remove('on')); on.classList.add('on');
+    const l = on.offsetLeft - jb.offsetLeft, r = l + on.offsetWidth;
+    if (l < jb.scrollLeft + 16 || r > jb.scrollLeft + jb.clientWidth - 16) jb.scrollTo({left: Math.max(0, l - 24), behavior: 'smooth'});
+  }
+  jumpEdge();
+}
+window.addEventListener('scroll', () => { if (!SPYQ) SPYQ = requestAnimationFrame(spy); }, {passive:true});
 function refresh(){
   $$('[data-when]').forEach(el => { const f = WHEN[el.dataset.when]; if (f) el.hidden = !f(); });
   $$('[data-x]').forEach(el => {
@@ -1293,7 +1311,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('button, [data-bm]'); if (!t) return;
   const d = t.dataset;
   if (d.go !== undefined) return go(+d.go);
-  if (d.jump !== undefined){ const el = document.getElementById('sec-' + d.jump); if (el) el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); return; }
+  if (d.jump !== undefined){ JUMPED = d.jump; spy(); const el = document.getElementById('sec-' + d.jump); if (el) el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); return; }
   if (d.fit){ S.fit = d.fit; save(); renderMain(); return; }
   if (d.seg){ const k = d.seg;
     if (d.multi !== undefined){ const a = new Set(S.v[k] || []); a.has(d.val) ? a.delete(d.val) : a.add(d.val); S.v[k] = [...a]; t.setAttribute('aria-pressed', a.has(d.val)); }
@@ -1407,7 +1425,7 @@ cmpBox.addEventListener('pointerdown', e => { if (!CMP) return; e.preventDefault
 cmpBox.addEventListener('pointermove', e => { if (CMP && CMP.drag) cmpAt(e); });
 ['pointerup','pointercancel'].forEach(n => cmpBox.addEventListener(n, () => { if (CMP) CMP.drag = false; }));
 
-window.addEventListener('resize', () => { if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
+window.addEventListener('resize', () => { jumpEdge(); if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!$('#fits').hidden) $('#fits').hidden = true; else if (CMP){ $('#cmp').hidden = true; CMP = null; } else if (MZ) closeMZ(); else if (!$('#ov').hidden) $('#ov').hidden = true; } });
 
 document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFits(); });

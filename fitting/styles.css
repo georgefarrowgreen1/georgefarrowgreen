@@ -219,7 +219,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .step button{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:22px;line-height:1;font-weight:500}
 .step .num input{text-align:center;padding:10px 26px 10px 8px;min-height:44px}
 .step .num .u{right:8px;font-size:12px}
-.brow input[type=text]{min-height:44px}
+.brow input[type=text]{min-height:44px;font-size:14.5px;padding-inline:12px;text-overflow:ellipsis}
+.brow input[type=text]:focus{text-overflow:clip}
 @media (max-width:760px){
   .brow{grid-template-columns:1fr 1fr;gap:8px 10px}
   .brow .nm{grid-column:1/-1}
@@ -362,11 +363,24 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .sec-h .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sec-count{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sec-count.ok{color:var(--good);font-weight:700}
-.jump{position:sticky;top:calc(env(safe-area-inset-top,0px) + 59px);z-index:15;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;background:var(--bg);padding:10px 4px;margin:-8px -4px 10px}
+.jump-w{position:sticky;top:calc(env(safe-area-inset-top,0px) + 59px);z-index:15;background:var(--bg);margin:-8px -4px 10px}
+.jump{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:10px 4px}
 .jump::-webkit-scrollbar{display:none}
 .jump button{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 15px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-weight:600;font-size:14.5px}
 .jump .c{font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;font-weight:600}
 .jump .c.ok{color:var(--good)}
+.jump button.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
+.jump button.on .c{color:inherit;opacity:.75}
+.jump button.on .c.ok{color:inherit}
+.jump.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 56px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 56px),transparent)}
+.jump.more-l{-webkit-mask-image:linear-gradient(to right,transparent,#000 56px);mask-image:linear-gradient(to right,transparent,#000 56px)}
+.jump.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 56px,#000 calc(100% - 56px),transparent);mask-image:linear-gradient(to right,transparent,#000 56px,#000 calc(100% - 56px),transparent)}
+/* inseam: the reading and the starting saddle height it gives, side by side */
+.inseam{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:12px;align-items:stretch}
+.inseam .calc{flex-wrap:wrap;gap:2px 10px;align-content:center}
+.inseam .calc > span:first-child{white-space:nowrap}
+.inseam .calc b{white-space:nowrap}
+@media (max-width:520px){.inseam{grid-template-columns:1fr}}
 .bgrp{padding:20px 0 6px;font-family:var(--f-disp);font-weight:700;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--red-ink)}
 .btable .bgrp:first-of-type{padding-top:6px}
 .delta.ch{color:var(--red-ink)}
