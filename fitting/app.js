@@ -133,7 +133,10 @@ function sectionsFor(step){
     {title:'Range of motion', f:'FT', fields:[LT('ham','Hamstring flexibility','°','ham',{lr:true}), LT('hipR','Hip restriction','°','hip',{lr:true})]},
   ];
   case 'onbike': return [
-    {title:'Starting positions', fields:[CK('startPos',['Saddle set up level, model matched to rider posture and width','New fits: saddle height set to inseam minus 10 cm','Handlebar width suited to the rider installed','Shifters level with the tops of the bar','Saddle to handlebar drop suited to the rider'])]},
+    // (the body measurements here are the off-bike assessment's own: the same fields, so they count once a fit)
+    {title:'Starting position', custom:'start', ownFields:true, note:'From the rider’s body measurements',
+      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'}),
+        CK('startChk',['Saddle set level','Shifters level with the tops of the bar'])]},
     {title:'Shoe set-up', fields:[CK('shoeSet',['Cleats at least 1 cm behind M1','Cleat rotation matches the off-bike foot assessment','Cleat rotation checked with the rider on the bike','Stance width adjusted for the rider'])]},
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
@@ -169,7 +172,7 @@ function sampleState(){
     arch_L:'Medium', arch_R:'Low', footbed:'Stock', footLen_L:271, footLen_R:274, footWid_L:102, footWid_R:104, footAng_L:8, footAng_R:12, bio:'y', insole:'EU 42–43',
     knee_L:'Neutral', knee_R:'Bends in', pelvis:'Right higher', legLen:'Equal', ischial:128, backFlex:42, shFwd:'Yes', shLevel:'Level', shWidth:41, elbows:'No',
     inseam:84, thigh:56, plank:55, ham_L:62, ham_R:48, hipR_L:72, hipR_R:84,
-    startPos:[true,false,true,true,true], shoeSet:[true,true,true,true],
+    startChk:[true,true], shoeSet:[true,true,true,true],
     legExt_pre:136, legExt_post:141, hipTop_pre:41, hipTop_post:48, sacral_pre:62, sacral_post:65, kops_pre:1.8, kops_post:0.4, bmr_pre:3.2, bmr_post:1.6,
     torso_pre:38, torso_post:42, shoulder_pre:96, shoulder_post:89, elbow_pre:151, elbow_post:159,
     heel:'Heel drops', kneeTrack_L:'Straight', kneeTrack_R:'Tracks in', latFoot:'Wedge added',
@@ -742,6 +745,81 @@ function mailText(){
   return `Subject: Your Precision Fit report, ${FITS[S.fit].name}\n\nHi ${first},\n\nThanks for coming in for your ${FITS[S.fit].name} with ${val('fitter') || 'us'}. Your report is attached: it has your new bike measurements, before and after photos, and the stretches we talked about.\n\n${fu.body}\n\nRide it for a couple of weeks and let us know how it feels.\n\n${val('fitter') || 'The fit team'}\nPrecision Fit Studio, Pedal Revolution\n63–67 Bethel Street, Norwich NR2 1NR · 01603 614400\nprecisionfit@pedalrevolution.co.uk`;
 }
 
+/* ---------------- starting position: from the body to the bike ---------------- */
+// The rider's measurements, once, and from them a starting set-up for each part of the bike: how it's worked out, the
+// bike as it is now, and one tap to make it the After value (fine-tuned after that on the bike, with motion capture).
+// The rules are the studio's starting points, not answers: change them here.
+const BAR_SIZES = [360, 380, 400, 420, 440, 460];        // handlebar widths, centre to centre
+const SADDLE_SIZES = [128, 138, 145, 155, 168];          // Bontrager saddle widths
+const POSTURE_ADD = {low:[10, 20], mid:[15, 25], up:[25, 35]};   // saddle width over sit bones, by how upright the rider sits
+const DROP_BY_FLEX = {g:[70, 100], y:[45, 75], r:[10, 40]};      // saddle to bar drop, by hamstring and lower back flexibility
+const CRANK_BY_INSEAM = [[75, 165], [81, 167.5], [87, 170], [93, 172.5], [Infinity, 175]];   // inseam under (cm) → crank (mm)
+const nearest = (list, x) => list.reduce((a, b) => Math.abs(b - x) < Math.abs(a - x) ? b : a);
+const postureOf = () => /Racer|Triathlete/.test(val('style') || '') || S.fit === 'tt' ? 'low' : val('style') === 'Recreational' ? 'up' : 'mid';
+function flexLight(){
+  const cs = [lightOf('ham_L', 'ham'), lightOf('ham_R', 'ham'), lightOf('backFlex', 'back')].filter(Boolean);
+  return cs.length ? (cs.includes('r') ? 'r' : cs.includes('y') ? 'y' : 'g') : null;
+}
+function startRecs(){
+  const inseam = num('inseam'), isch = num('ischial'), sh = num('shWidth'), out = [];
+  const posture = postureOf(), postureTxt = {low:'a low, racing posture', mid:'a mid posture', up:'an upright posture'}[posture];
+  out.push(inseam == null ? {k:'sadH', label:'Saddle height', need:'inseam'} :
+    {k:'sadH', label:'Saddle height', u:'mm', val:Math.round((inseam - 10) * 10), basis:`Inseam ${fmt(inseam)} cm − 10 cm`, check:`Cross-check, inseam × 0.883: ${Math.round(inseam * 8.83)} mm`});
+  if (isch == null) out.push({k:'sadW', label:'Saddle width', need:'sit-bone width'});
+  else { const [a, b] = POSTURE_ADD[posture], v = nearest(SADDLE_SIZES, isch + (a + b) / 2);
+    out.push({k:'sadW', label:'Saddle width', u:'mm', val:v, basis:`Sit bones ${fmt(isch)} mm + ${a}–${b} mm for ${postureTxt}`, check:`${isch + a}–${isch + b} mm: nearest saddle ${v} mm`}); }
+  if (sh == null) out.push({k:'barW', label:'Handlebar width', need:'shoulder width'});
+  else { const v = nearest(BAR_SIZES, sh * 10); out.push({k:'barW', label:'Handlebar width', u:'mm', val:v, basis:`Shoulder width ${fmt(sh)} cm`, check:'Matched to the shoulders, centre to centre'}); }
+  if (S.fit !== 'std'){
+    if (inseam == null) out.push({k:'crank', label:'Crank length', need:'inseam'});
+    else { const v = CRANK_BY_INSEAM.find(([m]) => inseam < m)[1], hip = [lightOf('hipR_L', 'hip'), lightOf('hipR_R', 'hip')].includes('r');
+      out.push({k:'crank', label:'Crank length', u:'mm', val:v, basis:`Inseam ${fmt(inseam)} cm`, check:hip ? 'Hip restriction is red: think about one size shorter' : 'Shorter if the hip angle stays closed at the top'}); }
+    const fl = flexLight();
+    if (!fl) out.push({k:'drop', label:'Saddle to bar drop', need:'hamstring or lower back flexibility'});
+    else { const [a, b] = DROP_BY_FLEX[fl], v = Math.round((posture === 'low' ? b - 10 : posture === 'up' ? a + 10 : (a + b) / 2) / 5) * 5;
+      out.push({k:'drop', label:'Saddle to bar drop', u:'mm', val:v, basis:`Flexibility ${CNAME[fl].toLowerCase()} (hamstrings, lower back), ${postureTxt}`, check:`${a}–${b} mm for ${CNAME[fl].toLowerCase()} flexibility`}); }
+    const L = num('footAng_L'), R = num('footAng_R');
+    if (L == null && R == null) out.push({k:'cleat', label:'Cleats', need:'foot angle standing'});
+    else { const txt = a => `1 cm behind M1, toe out ${fmt(a ?? 0)}°`;
+      out.push({k:'cleat', label:'Cleats', text:true, valL:txt(L), valR:txt(R), val:`L ${fmt(L ?? 0)}° · R ${fmt(R ?? 0)}° toe out`, basis:`Foot angle standing: L ${fmt(L ?? 0)}°, R ${fmt(R ?? 0)}°`, check:'Rotation matches the standing foot; 1 cm behind M1 to start'}); }
+  }
+  return out;
+}
+function startRecHTML(){
+  return startRecs().map(r => {
+    if (r.need) return `<div class="sp-rec off"><div class="sp-nm">${esc(r.label)}<small>Add the rider’s ${esc(r.need)} to get a starting point</small></div></div>`;
+    let now = '', after = '', set = false;
+    if (r.text){
+      set = S.v.cleatL === r.valL && S.v.cleatR === r.valR;
+      after = set ? '<span class="pill g">Set as After</span>' : (S.v.cleatL || S.v.cleatR) ? '<span class="pill n">Cleat notes written</span>' : '';
+    } else {
+      const pre = num(r.k + '_pre'), post = num(r.k + '_post'), u = r.u === '°' ? '°' : ' ' + r.u;
+      now = pre != null ? `Bike now ${fmt(pre)}${u}${pre !== r.val ? ` · ${signed(r.val - pre, r.u)} to start` : ' · already there'}` : 'Bike now: not measured';
+      set = post === r.val;
+      after = post == null ? '' : set ? '<span class="pill g">Set as After</span>' : `<span class="pill n">After ${fmt(post)}${u} · fine-tuned ${signed(post - r.val, r.u)}</span>`;
+    }
+    return `<div class="sp-rec"><div class="sp-nm">${esc(r.label)}<small>${esc(r.basis)}</small></div>
+      <div class="sp-v${r.text ? ' txt' : ''}">${r.text ? esc(r.val) : `${fmt(r.val)}<span>${r.u === '°' ? '°' : ' ' + r.u}</span>`}<small>${esc(r.check)}</small></div>
+      <div class="sp-st">${now ? `<span>${esc(now)}</span>` : ''}${after}</div>
+      <div class="sp-go">${set ? '' : `<button type="button" class="btn sm dark" data-act="start-apply" data-k="${r.k}">Use as After</button>`}</div></div>`;
+  }).join('');
+}
+function startHTML(){
+  const inp = (k, label, unit) => `<div class="fld"><label class="lab" for="i-${k}">${label}</label>${inputHTML(k, {t:'num', unit, label})}</div>`;
+  const fl = S.fit === 'std' ? null : flexLight();
+  return `<div class="sp-sub">Body measurements</div>
+    <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit-bone width', 'mm')}${inp('shWidth', 'Shoulder width', 'cm')}
+      ${S.fit === 'std' ? '' : inp('footAng_L', 'Foot angle L', '°') + inp('footAng_R', 'Foot angle R', '°')}</div>
+    <div class="sp-ctx"><span class="pill n">Riding style: ${esc(val('style') || 'not set')}</span>${S.fit === 'std' ? '' : `<span class="pill ${fl || 'n'}">Flexibility: ${fl ? CNAME[fl] : 'not assessed'}</span>`}
+      <span class="hint">The same measurements as the off-bike assessment: change them in either place.</span></div>
+    <div class="sp-sub sp-row"><span>Suggested starting set-up</span><button type="button" class="btn sm" data-act="start-all">Use all for empty After values</button></div>
+    <div class="sp-recs" data-x="startrec"></div><div id="start-msg"></div>
+    <div class="sp-sub">Before the first pedal stroke</div>${fieldHTML(CK('startChk', ['Saddle set level', 'Shifters level with the tops of the bar']))}`;
+}
+function applyStart(r){
+  if (r.text){ S.v.cleatL = r.valL; S.v.cleatR = r.valR; } else S.v[r.k + '_post'] = r.val;
+}
+
 /* ---------------- client report ---------------- */
 /* The client's report: its sections one after another down A4 pages, a new page only where the next one won't fit. A
    table or list of angles carries on over a page (its heading again, marked continued); anything else moves whole. Each
@@ -971,9 +1049,9 @@ function secHTML(sec, i){
   const tag = sec.f ? `<span class="tag-fit">${sec.f === 'T' ? 'TT & Tri' : 'Full & TT fits'}</span>` : sec.note ? `<span class="sec-note">${esc(sec.note)}</span>` : '';
   const count = p.tot ? `<span class="sec-count${ok ? ' ok' : ''}" data-x="seccount" data-i="${i}">${ok ? '✓ ' : ''}${p.got} of ${p.tot}</span>` : '';
   return `<section class="sec" id="sec-${i}"><div class="sec-h"><h2>${esc(sec.title)}</h2><div class="right">${tag}${count}</div></div>
-    ${sec.custom === 'body' ? bodyHTML() + '<div style="height:18px"></div>' : ''}
+    ${sec.custom === 'body' ? bodyHTML() + '<div style="height:18px"></div>' : ''}${sec.custom === 'start' ? startHTML() : ''}
     ${sec.angles ? `<div class="angles">${sec.angles.map(angleHTML).join('')}</div>${sec.fields ? '<div style="height:18px"></div>' : ''}` : ''}
-    ${sec.fields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
+    ${sec.fields && !sec.ownFields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
 }
 function renderMain(){
   if (!applies(STEPS[S.step])) S.step = visSteps().filter(i => i < S.step).pop() ?? 0;
@@ -998,6 +1076,7 @@ function refresh(){
     case 'inseam': { const n = num('inseam'); el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - 10)} cm</b><span class="hint">inseam − 10 cm</span>` : '<span class="hint">Starting saddle height appears here: inseam − 10 cm</span>'; break; }
     case 'ischial': { const n = num('ischial'); el.innerHTML = n == null ? '' : `<span class="pill ${n < 100 ? 'b' : n <= 130 ? 'g' : 'y'}">${n < 100 ? 'Narrow' : n <= 130 ? 'Medium' : 'Wide'}</span> Saddle around ${Math.round((n + 15) / 5) * 5}–${Math.round((n + 25) / 5) * 5} mm wide, depending on posture`; break; }
     case 'painlist': el.innerHTML = painListHTML(); break;
+    case 'startrec': el.innerHTML = startRecHTML(); break;
     case 'uci': el.innerHTML = uciHTML(); break;
     case 'seccount': case 'jumpcount': { const sec = sectionsFor(STEPS[S.step].id)[+el.dataset.i]; const p = secProgress(sec), ok = p.got === p.tot;
       el.classList.toggle('ok', ok); el.textContent = el.dataset.x === 'seccount' ? `${ok ? '✓ ' : ''}${p.got} of ${p.tot}` : `${p.got}/${p.tot}`; break; }
@@ -1050,6 +1129,17 @@ document.addEventListener('click', e => {
   case 'close-ov': $('#ov').hidden = true; return;
   case 'pdf': return savePDF(t.closest('#ov') ? $('#ov-msg') : $('#send-msg'));
   case 'timer': return toggleTimer();
+  case 'start-apply': {
+    const r = startRecs().find(x => x.k === d.k); if (!r || r.need) return;
+    const cur = r.text ? (S.v.cleatL || S.v.cleatR) : S.v[r.k + '_post'];
+    if (filled(cur) && t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to replace After'; t.classList.replace('dark', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Use as After'; t.classList.replace('primary', 'dark'); } }, 3000); return; }
+    applyStart(r); save(); refresh(); renderRail(); return; }
+  case 'start-all': {
+    let n = 0;
+    startRecs().filter(r => !r.need).forEach(r => { if (!filled(r.text ? (S.v.cleatL || S.v.cleatR) : S.v[r.k + '_post'])){ applyStart(r); n++; } });
+    save(); refresh(); renderRail();
+    const m = $('#start-msg'); if (m) m.innerHTML = `<div class="msg${n ? ' ok' : ''}" style="margin-top:10px">${n ? `${n} After value${n > 1 ? 's' : ''} set from the suggestions. Fine-tune them on the bike.` : 'Every suggestion already has an After value. Use as After on one to replace it.'}</div>`;
+    return; }
   case 'draft': { const s = draftSummary(); S.v.summary = s || 'Add before and after measurements first, then tap again.'; $('#i-summary').value = S.v.summary; save(); renderRail(); return; }
   case 'prod-add': S.products.push({n:'', p:''}); save(); renderMain(); setTimeout(() => { const i = $('#pn-' + (S.products.length - 1)); i && i.focus(); }); return;
   case 'prod-del': S.products.splice(+d.i, 1); save(); renderMain(); return;
