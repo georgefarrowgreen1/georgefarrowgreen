@@ -35,12 +35,15 @@ async function opened(env, k) {
   catch (_) { return null; }
 }
 // (where both are set: the pepper kept, locked with the key, once per copy of the server, and kept again should the
-// key have changed; what's kept is only ever written here, where the pepper itself is)
+// key have changed. Never in place of another pepper kept with this same key: the pepper never changes, so one that
+// differs is a wrong one set by mistake (a new value under PIGEON_PEPPER on the Worker, say), and the one kept stays)
 let kept = null;
 async function keep(env, p, k) {
   const id = hex(await sha256(`${k}|${p}`));
   if (kept === id) return;
-  if ((await opened(env, k)) !== p) {
+  const was = await opened(env, k);
+  if (was && was !== p) throw new Error("PIGEON_PEPPER isn't the pepper kept with PIGEON_PEPPER_KEY: not kept again");
+  if (was !== p) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const d = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: AAD }, await kek(k), enc.encode(p)));
     const out = new Uint8Array(12 + d.length); out.set(iv); out.set(d, 12);

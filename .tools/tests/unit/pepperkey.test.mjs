@@ -57,3 +57,13 @@ test('a new key on the Pages project: the pepper kept again, with it', async () 
   const stored = await proofHash({ DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: K2 }, proof);
   assert.equal(await proofOk({ DB: D, PIGEON_PEPPER_KEY: K2 }, proof, stored), true);
 });
+
+test('a different pepper, with the same key (a wrong one set by mistake): the one kept stays', async () => {
+  const D = fakeDb(), K = 'q'.repeat(40);
+  await proofHash({ DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: K }, proof);
+  const was = D.meta.get('pepper');
+  await proofHash({ DB: D, PIGEON_PEPPER: 'a-wrong-new-value-typed-in-by-mistake-on-the-worker', PIGEON_PEPPER_KEY: K }, proof);
+  assert.equal(D.meta.get('pepper'), was, 'not overwritten');
+  const stored = await proofHash({ DB: D, PIGEON_PEPPER: PEPPER }, proof);
+  assert.equal(await proofOk({ DB: D, PIGEON_PEPPER_KEY: 'q'.repeat(40) }, proof, stored), true, 'the real one still opens');
+});
