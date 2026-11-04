@@ -69,6 +69,8 @@ async function pepperOf(env) {
 export async function pepperState(env) {
   const k = keyOf(env), on = !!env.PIGEON_PEPPER || !!k;
   if (!k) return { on, key: false, kept: false };
+  // (where both are set, kept now if it isn't yet: asking is enough, no password need be checked first)
+  if (env.PIGEON_PEPPER) await keep(env, env.PIGEON_PEPPER, k).catch(() => {});
   const p = await opened(env, k).catch(() => null);
   return { on, key: true, kept: !!p && (!env.PIGEON_PEPPER || p === env.PIGEON_PEPPER) };
 }

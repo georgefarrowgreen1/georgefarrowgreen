@@ -67,3 +67,9 @@ test('a different pepper, with the same key (a wrong one set by mistake): the on
   const stored = await proofHash({ DB: D, PIGEON_PEPPER: PEPPER }, proof);
   assert.equal(await proofOk({ DB: D, PIGEON_PEPPER_KEY: 'q'.repeat(40) }, proof, stored), true, 'the real one still opens');
 });
+
+test('asked how it stands, with both set: kept then and there, no password checked first', async () => {
+  const D = fakeDb(), K = 'r'.repeat(40);
+  assert.deepEqual(await pepperState({ DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: K }), { on: true, key: true, kept: true });
+  assert.match(D.meta.get('pepper'), /^k1:/);
+});
