@@ -311,6 +311,12 @@ function tlHTML(k, cl){
   const c = lightOf(k, cl);
   return `<div class="tl" data-x="tl" data-k="${k}" data-cl="${cl}">${['r','y','g'].map(x => `<button type="button" data-tlset="${k}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${CL[cl].txt[x]}</span></button>`).join('')}</div>`;
 }
+// (a row of option buttons: about how wide, so it never wraps in a cell too narrow for it; a cell is at least 210px)
+function segRoom(f){
+  if (!f.opts) return '';
+  const w = f.opts.reduce((a, o) => a + o.length * 8.6 + 36, 0) + 8 * (f.opts.length - 1);
+  return w > 440 ? ' wide' : w > 214 ? ' span2' : '';
+}
 // (a field shown only when another answer calls for it: f.when, checked again as answers change, refresh())
 const WHEN = {};
 function fieldHTML(f){
@@ -329,9 +335,10 @@ function fieldInner(f){
   case 'area':
     return `<div class="fld wide"><label class="lab" for="i-${f.k}">${esc(f.label)}</label><textarea id="i-${f.k}" data-k="${f.k}"${f.ph ? ` placeholder="${esc(f.ph)}"` : ''}>${esc(S.v[f.k] ?? '')}</textarea></div>`;
   case 'num': case 'seg': case 'chips':
+    if (f.lr && f.t === 'num') return `<div class="fld span2">${lab}<div class="lr inline"><span class="side">L</span>${inputHTML(f.k + '_L', f)}<span class="side">R</span>${inputHTML(f.k + '_R', f)}</div></div>`;
     if (f.lr) return `<div class="fld${f.t === 'seg' ? ' wide' : wide}">${lab}<div class="lr"><span class="side">L</span>${inputHTML(f.k + '_L', f)}<span class="side">R</span>${inputHTML(f.k + '_R', f)}</div></div>`;
     // (a row of buttons that wouldn't fit beside another field takes the whole row, so it never wraps in a narrow cell)
-    return `<div class="fld${wide || (f.opts && f.opts.join('').length > 16 ? ' wide' : '')}">${lab}${inputHTML(f.k, f)}</div>`;
+    return `<div class="fld${wide || segRoom(f)}">${lab}${inputHTML(f.k, f)}</div>`;
   case 'light': {
     const one = k => `<div class="light">${inputHTML(k, f)}${tlHTML(k, f.cl)}</div>`;
     if (f.lr) return `<div class="fld wide">${lab}<div class="lr"><span class="side">L</span>${one(f.k + '_L')}<span class="side">R</span>${one(f.k + '_R')}</div></div>`;
@@ -340,13 +347,16 @@ function fieldInner(f){
   case 'feet': {
     const cols = [['L', 'u', 'Left', 'unweighted'], ['L', 'w', 'Left', 'weighted'], ['R', 'u', 'Right', 'unweighted'], ['R', 'w', 'Right', 'weighted']];
     const key = (b, side, w) => `${b}_${side}${w === 'u' ? '_u' : ''}`;
-    const numCell = (b, unit) => cols.map(([sd, w]) => `<div class="num"><input type="text" inputmode="decimal" id="i-${key(b, sd, w)}" data-k="${key(b, sd, w)}" data-num value="${S.v[key(b, sd, w)] ?? ''}" aria-label="${b} ${sd} ${w}"><span class="u">${unit}</span></div>`).join('');
+    const numCell = (b, unit) => cols.map(([sd, w]) => `<div class="num"><input type="text" inputmode="decimal" id="i-${key(b, sd, w)}" data-k="${key(b, sd, w)}" data-num value="${S.v[key(b, sd, w)] ?? ''}" aria-label="${b} ${sd} ${w}"><span class="u">${unit}</span></div>`);
     const archCell = cols.map(([sd, w]) => { const k2 = key('arch', sd, w);
-      return `<div class="seg sm" role="group" aria-label="Arch ${sd} ${w === 'u' ? 'unweighted' : 'weighted'}">${[['Low','Low'],['Medium','Med'],['High','High']].map(([o, l]) => `<button type="button" id="b-${k2}-${o}" data-seg="${k2}" data-val="${o}" aria-pressed="${S.v[k2] === o}">${l}</button>`).join('')}</div>`; }).join('');
-    const sizeCell = cols.map(([sd, w]) => { const k2 = key('footSize', sd, w); return `<input type="text" id="i-${k2}" data-k="${k2}" value="${esc(S.v[k2] ?? '')}" placeholder="e.g. 43" aria-label="Size ${sd} ${w}">`; }).join('');
+      return `<div class="seg sm" role="group" aria-label="Arch ${sd} ${w === 'u' ? 'unweighted' : 'weighted'}">${[['Low','Low'],['Medium','Med'],['High','High']].map(([o, l]) => `<button type="button" id="b-${k2}-${o}" data-seg="${k2}" data-val="${o}" aria-pressed="${S.v[k2] === o}">${l}</button>`).join('')}</div>`; });
+    const sizeCell = cols.map(([sd, w]) => { const k2 = key('footSize', sd, w); return `<input type="text" id="i-${k2}" data-k="${k2}" value="${esc(S.v[k2] ?? '')}" placeholder="e.g. 43" aria-label="Size ${sd} ${w}">`; });
+    // (a row: its name, the left foot's two cells, a line, the right foot's two)
+    const row = (name, c) => `<span class="fr">${name}</span>${c[0]}${c[1]}<i class="fsep"></i>${c[2]}${c[3]}`;
     return `<div class="fld wide"><span class="lab">${esc(f.label)}</span><div class="ftab-wrap"><div class="ftab">
-      <span></span>${cols.map(c => `<span class="fh">${c[2]}<small>${c[3]}</small></span>`).join('')}
-      <span class="fr">Size</span>${sizeCell}<span class="fr">Length</span>${numCell('footLen', 'mm')}<span class="fr">Width</span>${numCell('footWid', 'mm')}<span class="fr">Arch height</span>${archCell}
+      <span></span><span class="fside">Left foot</span><i class="fsep"></i><span class="fside">Right foot</span>
+      <span></span><span class="fh">Unweighted</span><span class="fh">Weighted</span><i class="fsep"></i><span class="fh">Unweighted</span><span class="fh">Weighted</span>
+      ${row('Size', sizeCell)}${row('Length', numCell('footLen', 'mm'))}${row('Width', numCell('footWid', 'mm'))}${row('Arch height', archCell)}
     </div></div></div>`;
   }
   case 'injgrid':
