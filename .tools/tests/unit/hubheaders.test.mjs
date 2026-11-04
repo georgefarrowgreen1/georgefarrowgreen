@@ -204,3 +204,37 @@ test('One roof: with the roof on, /weather/ is the framework’s page with the p
     assert.equal(res.status, 404, p); assert.equal(res.headers.get('cache-control'), 'no-store', p); assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p);
   }
 });
+
+// ---- stage 3 (s3 spec §6.2, S3-D8): Chats' switch (ROOF_CHATS), with Chat's host answering as this repo's server ----
+const hasChats = hasRoof && R.MODS?.includes('chats');
+test('stage 3: Chats on, /chats/ is the framework’s page with the page’s headers and /chats/sw.js the retiring worker; on or off, /chats/in/ and ?engine are Chat’s page with the hub’s rules, inflite.svg under it Chat’s; off, /chats/roof/* not found', { skip: roofCase || (!hasChats && 'the inflite repo beside has no Chats switch yet (before stage 3)') }, async () => {
+  hosts();
+  const page = readFileSync(new URL('today/public/index.html', IFL));
+  const ON = { ...ENV, ROOF_OFF: undefined, ROOF_CHATS: '1', ASSETS: { fetch: async (r) => new Response(r.method === 'HEAD' ? null : page, { headers: { 'Content-Type': 'text/html; charset=utf-8', ETag: '"p"' } }) } };
+  const OFF = { ...ENV, ROOF_OFF: undefined };
+  for (const p of ['/chats/', '/chats/index.html']) {
+    const { res, text } = await ask(p, {}, ON);
+    assert.equal(res.status, 200, p); assert.match(text, /<meta name="ifl-hub" content="\/">/, `${p}: the framework’s`);
+    for (const [k, v] of Object.entries(R.PAGE_HEADERS)) assert.equal(res.headers.get(k), v, `${p}: ${k}`);
+  }
+  const sw = await ask('/chats/sw.js', {}, ON);
+  assert.equal(sw.text, R.retireSw('chats')); assert.equal(sw.res.headers.get('service-worker-allowed'), null);
+  for (const [e, name] of [[ON, 'on'], [OFF, 'off']]) {
+    for (const p of ['/chats/in/', '/chats/in/index.html', '/chats/?engine=1']) {
+      const { res, text } = await ask(p, {}, e);
+      assert.equal(res.status, 200, `${name} ${p}`);
+      assert.match(text, /<head>\s*<meta name="ifl-hub" content="\/chats\/">/, `${name} ${p}: Chat’s page, the hub’s marker first`);
+      assert.match(text, /inflight-version/); assert.doesNotMatch(text, /cloudflareinsights/);
+      assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'self'/); assert.equal(res.headers.get('cache-control'), 'no-cache, private');
+      assert.equal(res.headers.get('x-robots-tag'), 'noindex'); assert.deepEqual(res.headers.getSetCookie(), []);
+    }
+    const svg = await ask('/chats/in/inflite.svg', {}, e);
+    assert.equal(svg.res.status, 200); assert.match(svg.res.headers.get('content-type'), /svg/); assert.equal(svg.text, (await ask('/chats/inflite.svg', {}, e)).text);
+  }
+  for (const p of ['/chats/roof/chats.js', '/chats/roof/core.js']) {
+    const off = await ask(p, {}, OFF);
+    assert.equal(off.res.status, 404, p); assert.equal(off.res.headers.get('cache-control'), 'no-store');
+    const on = await ask(p, {}, ON);
+    assert.equal(on.res.status, 200, `on: ${p} from Chat’s hub copy`); assert.equal(on.res.headers.get('x-content-type-options'), 'nosniff');
+  }
+});

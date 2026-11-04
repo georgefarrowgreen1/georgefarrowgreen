@@ -1,4 +1,4 @@
-// needs: hub roof-markets roof-fitness
+// needs: hub roof-markets roof-fitness roof-chats
 // Getting about under the roof (One roof, spec §10.2): notification taps delivered into the open framework page
 // (the root worker's { ifl: "route" }), into Chats' page as before, and into a new window when none is open; round trips
 // to the pages that aren't modules yet (Chats, Markets, Fitness, Mail) and back, with route and scroll (ifl-roof-y); the
@@ -11,6 +11,12 @@
 // Every check's line names the spec section it proves; every selector of the framework's is roofhooks.mjs's (§3.14),
 // save rooflib's declared exceptions (EXCEPT: a tile's link, a hub page's tab bar, the shared block's IFL.hub.tabs, which
 // stage 1 doesn't change; only Chats draws it at the hub).
+// Stage 3 (roof/s3/spec.md §10.2, batch Q): the test reads whether Chats is under the roof from the hub (/api/hub
+// apps.chats) and proves that state. Chats on (this file's own first line, ROOF_CHATS "1"): /chats/ is the framework's,
+// so Weather → Chats is in the page, a tap with Chats open routes in the page, the hub-page tab-bar checks become the
+// framework's own tabs from Chats, and the tab-bar pixel check is framework Today vs framework Chats (S3-D16). Chats off
+// (roofnavoff.mjs runs this same file with plain `// needs: hub`): exactly stage 1's checks, Chats' own page at /chats/
+// (the switched-off path, s24 §1).
 import * as H from './roofhooks.mjs';
 import {
   HUB, OWN, EXCEPT, checker, phone, account, wxServer, weatherAccount, alive, loads, history, here, shown, gone, textOf, attrOf, count, hide, show, route,
@@ -45,6 +51,16 @@ const leaving = (p, ms = 20000) => p.waitForURL((u) => OWN_AT.test(u.href), { ti
 const hubBack = (p) => p.evaluate(() => window.IFL?.hub?.back?.() ?? 'none').catch(() => 'navigated');
 const hubPageUp = (p, path) => p.waitForFunction((x) => location.pathname === x && !!window.IFL?.hub?.on, path, { timeout: 30000 }).then(() => true, () => false);
 
+// (Chats under the roof or not: the hub's own word, s24 §2)
+const hubSays = await (await fetch('http://127.0.0.1:8787/api/hub', { headers: { Host: 'ifl.test:8788' } }).catch(() => null))?.json().catch(() => null);
+const CHATS_ON = hubSays?.apps?.chats === true;
+console.log(`Chats ${CHATS_ON ? 'under the roof (ROOF_CHATS "1")' : 'on its own page (switched off)'}: ${js(hubSays?.apps)}`);
+// (B0's Chats hooks; a missing one fails by name, never a selector of our own)
+const MISSING = new Set();
+const hk = (name, ...a) => { const v = H[name]; if (v == null) { MISSING.add(name); return `[data-missing-hook="${name}"]`; } return typeof v === 'function' ? v(...a) : v; };
+// (Chats' screen up: its list, or, for Noor (signed in to InFlite here, never to Chat), its state's screen, §2.1)
+const chatsUp = async (p, ms = 30000) => (await shown(p, hk('M_CHATS'), ms)) && ((await shown(p, hk('chSec', 'chats'), Math.min(ms, 5000))) || (await shown(p, `${hk('M_CHATS')} [data-state]`, ms)));
+
 const N = await open('noor');
 const { p } = N;
 await p.goto(`${HUB}/robots.txt`);
@@ -78,9 +94,18 @@ await part(1, 'a notification tapped with the framework open: in the page, sheet
 });
 
 // ======================================================================================================================
-await part(2, 'a notification tapped with Chats open: Chats navigates as now', '§8.2 openIn, D8', async () => {
+await part(2, CHATS_ON ? 'a notification tapped with Chats open (under the roof): in the page' : 'a notification tapped with Chats open: Chats navigates as now', CHATS_ON ? '§8.2 openIn, S3 §2.5' : '§8.2 openIn, D8', async () => {
 // ======================================================================================================================
   await p.goto(`${HUB}/chats/`);
+  if (CHATS_ON) {
+    await chatsUp(p);
+    const life = await alive(p), docs = loads(p);
+    const r = await tapNotification(N.ctx, { app: 'weather', url: '/weather/#radar' });
+    const went = (await at(p, '/weather/#radar', 30000)) && (await shown(p, H.wxSec('radar'), 30000));
+    ok(r === 'done' && went && (await life.same()) && docs.n() === 0 && N.pages.length === 1, '2. tapped with Chats open under the roof: the framework routes in the page ({ ifl: "route" }), Weather’s Radar, the same document, one window (S3 §2.5)', js({ r, url: here(p), docs: docs.list, pages: N.pages.length }));
+    docs.stop();
+    return;
+  }
   await hubPageUp(p, '/chats/'); await wait(1500);
   const r = await tapNotification(N.ctx, { app: 'weather', url: '/weather/#radar' });
   const went = (await at(p, '/weather/#radar', 30000)) && (await shown(p, H.wxSec('radar'), 30000));
@@ -116,6 +141,24 @@ await part(4, 'round trips: Weather → Chats → Back to /weather/#days with it
   await wait(800);
   const y0 = await q.evaluate(() => { scrollTo(0, Math.min(400, document.documentElement.scrollHeight - innerHeight)); return Math.round(scrollY); });
   await wait(400);
+  if (CHATS_ON) {
+    // (Chats under the roof: Weather → Chats in the page, and the browser's Back returns to /weather/#days, its scroll
+    // put back by the frame (S1 D20); Radar likewise)
+    const life = await alive(q), docs = loads(q);
+    await q.click(H.tab('chats'));
+    const inPage = (await chatsUp(q)) && (await at(q, '/chats/')) && (await life.same()) && docs.n() === 0;
+    ok(inPage, '4. Weather → the tab bar’s Chats: /chats/ in the same page, no document fetched (S3-D2, §2.1 b)', js({ at: here(q), docs: docs.list }));
+    ok((await attrOf(q, H.tab('chats'), 'aria-current')) === 'page', '4. …the Chats tab current', await attrOf(q, H.tab('chats'), 'aria-current'));
+    await q.goBack();
+    const back = (await at(q, '/weather/#days', 20000)) && (await shown(q, H.wxSec('days'), 30000));
+    const y1 = await until(async () => { const y = await q.evaluate(() => Math.round(scrollY)); return Math.abs(y - y0) <= 6 ? String(y) : null; }, 8000);
+    ok(back && y1 != null && (await life.same()) && docs.n() === 0, `4. Back: /weather/#days again in the same page, scrolled as it was (${y0}px, S1 D20)`, js({ url: here(q), y: await q.evaluate(() => scrollY), docs: docs.list }));
+    await q.click(H.hdSec('radar')); await shown(q, H.wxSec('radar'));
+    await q.click(H.tab('chats')); await chatsUp(q);
+    await q.goBack();
+    ok((await at(q, '/weather/#radar', 20000)) && (await shown(q, H.wxSec('radar'), 30000)) && (await life.same()), '4. from Radar to Chats and Back: /weather/#radar, Radar shown, the same page', here(q));
+    docs.stop();
+  } else {
   await Promise.all([q.waitForURL((u) => u.pathname === '/chats/', { timeout: 20000 }).catch(() => {}), q.click(H.tab('chats'))]);
   ok(new URL(q.url()).pathname === '/chats/', '4. the tab bar’s Chats: Chats’ own page (a normal navigation, D8)', q.url());
   const crumb = await q.evaluate(() => sessionStorage.getItem('ifl-crumb'));
@@ -131,6 +174,7 @@ await part(4, 'round trips: Weather → Chats → Back to /weather/#days with it
   await hubPageUp(q, '/chats/');
   await hubBack(q);
   ok((await at(q, '/weather/#radar', 20000)) && (await shown(q, H.wxSec('radar'), 30000)), '4. from Radar to Chats and Back: /weather/#radar, Radar shown (D8)', here(q));
+  }
 
   // warm (the module's files in the HTTP cache, modulepreloaded): Today's card tapped → Weather's hero painted
   await q.goto(`${HUB}/`);
@@ -179,6 +223,16 @@ await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same 
   const q = N.p;
   for (const [id, hash, screen, name] of [['you', '#you', H.YOU, 'You'], ['apps', '#apps', H.APPS, 'Apps'], ['today', '', H.TODAY, 'Today']]) {
     await q.goto(`${HUB}/chats/`);
+    if (CHATS_ON) {
+      // (under the roof: the framework's own tab bar on Chats, each tab in the page, S3-D2, §2.1 b)
+      await chatsUp(q);
+      const life = await alive(q), d = loads(q);
+      await q.click(H.tab(id));
+      const up = await shown(q, screen, 30000), cur = await attrOf(q, H.tab(id), 'aria-current');
+      ok(up && cur === 'page' && (await life.same()) && d.n() === 0 && (await at(q, `/${hash}`)), `6. Chats under the roof, the tab bar’s ${name}: the framework’s ${name} in the same page, its tab current (S3 §2.1 b)`, js({ at: here(q), cur, docs: d.list }));
+      d.stop();
+      continue;
+    }
     await hubPageUp(q, '/chats/');
     const d = loads(q);
     await Promise.all([q.waitForURL((u) => u.pathname === '/' && u.hash === hash, { timeout: 20000 }).catch(() => {}), q.click(EXCEPT.hubTab(id))]);
@@ -206,11 +260,16 @@ await part(6, 'the hub pages’ tab bar → the framework; the tab bar the same 
     const fb = await alone(T.p, 'nav#tabs'); await wait(300);
     const f = { apps: await T.p.locator(H.tab('apps')).screenshot().catch(() => null), you: await T.p.locator(H.tab('you')).screenshot().catch(() => null) };
     await shot(T.p, `6-tabs-today-${scheme}`);
-    await T.p.goto(`${HUB}/chats/`); await hubPageUp(T.p, '/chats/'); await wait(2000);
-    const cb = await alone(T.p, '.ifl-tabs'); await wait(300);
-    const c = { apps: await T.p.locator(EXCEPT.hubTab('apps')).screenshot().catch(() => null), you: await T.p.locator(EXCEPT.hubTab('you')).screenshot().catch(() => null) };
+    // (Chats on: framework Today vs framework Chats, the one bar in InFlite's indigo on every screen (S3-D16); off: vs
+    // Chats' own page's hub bar, stage 1's UI2)
+    await T.p.goto(`${HUB}/chats/`);
+    if (CHATS_ON) await chatsUp(T.p); else await hubPageUp(T.p, '/chats/');
+    await wait(2000);
+    const cb = await alone(T.p, CHATS_ON ? 'nav#tabs' : '.ifl-tabs'); await wait(300);
+    const tabOf = (k) => (CHATS_ON ? H.tab(k) : EXCEPT.hubTab(k));
+    const c = { apps: await T.p.locator(tabOf('apps')).screenshot().catch(() => null), you: await T.p.locator(tabOf('you')).screenshot().catch(() => null) };
     await shot(T.p, `6-tabs-chats-${scheme}`);
-    ok(fb && cb && Math.abs(fb.x - cb.x) <= 1 && Math.abs(fb.y - cb.y) <= 1 && Math.abs(fb.w - cb.w) <= 1 && Math.abs(fb.h - cb.h) <= 1, `6. ${scheme}: the tab bar in the same place and size on framework Today and on /chats/ (UI2)`, js({ fb, cb }));
+    ok(fb && cb && Math.abs(fb.x - cb.x) <= 1 && Math.abs(fb.y - cb.y) <= 1 && Math.abs(fb.w - cb.w) <= 1 && Math.abs(fb.h - cb.h) <= 1, `6. ${scheme}: the tab bar in the same place and size on framework Today and on ${CHATS_ON ? 'framework Chats (S3-D16)' : '/chats/ (UI2)'}`, js({ fb, cb }));
     for (const k of ['apps', 'you']) {
       const a = f[k] && c[k] ? alike(f[k], c[k]) : { same: 0 };
       ok(a.same >= 0.98, `6. ${scheme}: its ${k} tab the same pixels on both (${Math.round(a.same * 1000) / 10}% alike, D18, UI2)`, js(a));
@@ -395,9 +454,10 @@ await part(10, 'a framework page served at an off module’s path doesn’t loop
 // (the framework's pages only: Chats', Fitness', Markets' and Mail's own pages are theirs, unchanged in stage 1, D8)
 // (stage 2: Markets and Fitness are the framework's now, so their pages are checked too; the milestone-1 stand-ins and
 // the refused module files of parts 8 and 9 aside)
-const all = everyone.flatMap((x) => x.errs || []).filter((e) => !/^\S+ \/(chats|mail)\//.test(e) && !/MILESTONE|MARKETS ON ITS OWN|noor-(off|stale|mk-off|mk-off-wx|ri4).*(404|Failed to fetch dynamically imported module|Importing a module script failed)/.test(e));
+const all = everyone.flatMap((x) => x.errs || []).filter((e) => !(CHATS_ON ? /^\S+ \/mail\//.test(e) : /^\S+ \/(chats|mail)\//.test(e)) && !/MILESTONE|MARKETS ON ITS OWN|noor-(off|stale|mk-off|mk-off-wx|ri4).*(404|Failed to fetch dynamically imported module|Importing a module script failed)/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page (§8.3)', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!all.length, 'no page error and no console error on any page (the refused module of part 8 aside)', js(all.slice(0, 8)));
+ok(!MISSING.size, 'every Chats hook used is in roofhooks.mjs (B0’s)', js([...MISSING]));
 await closeAll();
 console.log(`FAILS ${fails()}`);
 process.exit(0);

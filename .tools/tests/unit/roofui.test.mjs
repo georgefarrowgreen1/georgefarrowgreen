@@ -170,7 +170,7 @@ const s24 = roofSkip || (!/fw\.nav\.depth|depth: \(\) => curDepth\(\)/.test(read
 test('stages 2–4, frame.js: sections false hides the switcher, back: { label } from the module, nav.go with replace and kind, nav.depth, stay keys left by the tidy, fw.changed, session.hubAgain', { skip: s24 }, () => {
   const f = strip(read('frame.js'));
   assert.match(f, /sections: h\.sections === false \|\| h\.sections === null \? null : R\.sections/, 'false (and null) hide it; anything else shows it');
-  assert.match(f, /back: \{ label: h\.back\?\.label \|\| \(to \? `Back to \$\{to\}` : "Back"\) \}/, 'the module’s label, the action always F.nav.back');
+  assert.match(f, /back: (?:t \? null : )?\{ label: h\.back\?\.label \|\| \(to \? `Back to \$\{to\}` : "Back"\) \}/, 'the module’s label, the action always F.nav.back (none at the root of an app that’s a tab screen: stage 3)');
   assert.match(f, /go: \(path, o\) => F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: KINDS\.includes\(o\?\.kind\) \? o\.kind : null \}\)/, 'a module’s kind: push, tab, zoom or section only (roofframe.test runs it)');
   assert.match(f, /depth: \(\) => curDepth\(\)/);
   assert.match(f, /function tidy\(r\) \{\n\s*if \(REGISTRY\[r\.app\]\?\.stay\?\.includes\(r\.key\)\) return;/, 'a stay key stays in the address');
@@ -206,4 +206,274 @@ test('stages 2–4: toast() gives { close() }; connectors.js has a provider per 
   assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error\(`the hub or the roof is off/, 'stage 1’s words (roofshell allows exactly that error)');
   assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
   assert.match(m, /keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\]\)\), 10e3\)/, 'lazy kept only on the Home Screen, 10 s on');
+});
+
+// ---- stage 3 (HOST, roof/s3/spec.md §2.1 rules a–e, §2.4, §4.1, S3-C3–C5, S3-C7): the frame and the tab bar run with
+// Chats on, not read. The frame with a stand-in history and location, fakedom for its elements and stand-ins for its
+// pieces (as roofframe.test does); tabs.js itself on fakedom ----
+const chats3 = roofSkip || (!/\bchats: fz\(\{/.test(read('router.js')) && 'the inflite repo beside has no Chats in REGISTRY (before stage 3’s B0)');
+const H3 = (globalThis.__host3 = {});
+const STUB3 = {
+  'header.js': 'export function createHeader() { const k = globalThis.__host3; return { set(h) { k.heads.push(h); }, destroy() {}, compact() {} }; }',
+  'tabs.js': 'export function createTabs() { const k = globalThis.__host3; return { set(c) { k.tab = c; }, away(v) { k.away.push(v); }, badge(t, n) { k.badges.push([t, n]); }, destroy() {} }; }',
+  'sheet.js': 'export function createSheets() { return { top: () => null, closeAll() {}, open() {} }; }',
+  'toast.js': 'export function toast() { return { close() {} }; }',
+  'ui.js': 'export const el = (t, a = {}, ...c) => { const e = document.createElement(t); for (const [k, v] of Object.entries(a)) { if (k === "data") Object.assign(e.dataset, v); else if (k === "hidden") e.hidden = !!v; else e.setAttribute(k, v); } e.append(...c); return e; }; export const skeleton = () => document.createElement("div");',
+  'search.js': 'export function createSearch() { return { provide() { return () => {}; } }; }',
+  'send.js': 'export function createSend() { return {}; }',
+  'modules.js': 'export const loadModule = (app, F) => globalThis.__host3.load(app, F); export const loadService = (app, F) => globalThis.__host3.loadService(app, F);',
+  'connectors.js': 'export function connectorProvider() { return () => {}; } export function chatsProvider(F, s) { const k = globalThis.__host3; k.finds.push(s); return () => { k.finds = k.finds.filter((x) => x !== s); }; }',
+};
+let frame3 = null;
+async function sandbox3() {
+  if (frame3) return frame3;
+  const { mkdtempSync, copyFileSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const d = mkdtempSync(join(tmpdir(), 'roofhost-'));
+  for (const f of ['frame.js', 'router.js']) copyFileSync(new URL(f, ROOF), join(d, f));
+  for (const [f, src] of Object.entries(STUB3)) writeFileSync(join(d, f), src);
+  return (frame3 = (await import(pathToFileURL(join(d, 'frame.js')).href)).createFrame);
+}
+const settle3 = async () => { for (let i = 0; i < 30; i++) await new Promise((ok) => setImmediate(ok)); };
+// a page at path with Chats on (apps), its history (back() fires popstate at once), a stand-in root worker to post to
+async function boot3(path, { apps = { weather: true, chats: true }, retired } = {}) {
+  const createFrame = await sandbox3();
+  const doc = fakeDocument(), win = new EventTarget(), sw = new EventTarget();
+  doc.visibilityState = 'visible';
+  doc.startViewTransition = (fn) => { fn(); return { finished: new Promise(() => {}) }; };
+  const loc = { set(h) { const u = new URL(h, this.href || 'https://ifl.test/'); Object.assign(this, { href: u.href, origin: u.origin, pathname: u.pathname, search: u.search, hash: u.hash }); }, reload() { H3.reloads++; }, assign(p) { H3.assigns.push(p); } };
+  loc.set(path);
+  const hist = {
+    entries: [{ state: null, url: loc.href }], i: 0, scrollRestoration: 'auto',
+    get state() { return this.entries[this.i].state; },
+    pushState(s, _, p) { this.entries.length = this.i + 1; this.entries.push({ state: structuredClone(s), url: new URL(p, loc.href).href }); this.i++; loc.set(this.entries[this.i].url); },
+    replaceState(s, _, p) { this.entries[this.i] = { state: structuredClone(s), url: new URL(p, loc.href).href }; loc.set(this.entries[this.i].url); },
+    back() { if (this.i > 0) { this.i--; loc.set(this.entries[this.i].url); win.dispatchEvent(new Event('popstate')); } },
+  };
+  const views = doc.createElement('div'), store = new Map();
+  doc.documentElement.append(views);
+  Object.assign(H3, {
+    heads: [], away: [], badges: [], finds: [], reloads: 0, assigns: [], y: 0, tab: null, inst: {}, svcMade: 0, released: [], states: [],
+    session: { view: { user: { id: 'u1', name: 'U' } }, hub: true, roof: !!apps.weather, links: {}, apps },
+    load: async (app, F) => { const inst = { fw: F.forModule(app), shows: 0, show() { this.shows++; }, hide() {}, unmount() {} }; H3.inst[app] = inst; return { instance: inst, m: { BUILD: '1.00' } }; },
+    loadService: async (app, F) => {
+      const n = ++H3.svcMade, subs = {};
+      const s = { n, state: H3.state0 || 'ready', ui: F.forModule(app), facade: Object.freeze({ n }), on(t, fn) { (subs[t] ||= []).push(fn); return () => {}; }, call: async () => [], release(o) { H3.released.push([n, !!o?.terminate]); }, emit(t, d) { for (const f of subs[t] || []) f(d); } };
+      H3.svc = s;
+      return s;
+    },
+  });
+  Object.assign(globalThis, {
+    document: doc, location: loc, history: hist, addEventListener: win.addEventListener.bind(win), removeEventListener: win.removeEventListener.bind(win),
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+    sessionStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) },
+    scrollTo: (_, y) => { H3.y = y; }, requestAnimationFrame: () => 0, requestIdleCallback: () => 0,
+    fetch: async () => ({ ok: false, json: async () => null }),
+  });
+  Object.defineProperty(globalThis, 'scrollY', { configurable: true, get: () => H3.y });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { serviceWorker: sw, onLine: true } });
+  const F = createFrame({ session: () => H3.session, views, retired, serviceState: (app, st) => H3.states.push([app, st]) });
+  await settle3();
+  return { F, loc, hist, doc, sw };
+}
+
+test('stage 3, frame: Chats’ root is a tab screen (no Back, no crumb, its own tab current, a tab cross-fade with Today); a chat says Back to Chats and backs cold to /chats/; at the root Back stays (§2.1 a, b, e)', { skip: chats3 }, async () => {
+  let { F, loc, doc } = await boot3('/chats/');
+  let h = H3.heads.at(-1);
+  assert.equal(h.back, null, 'no Back at a tab screen'); assert.equal(h.crumb, null, 'no crumb');
+  assert.deepEqual(h.sections.map((s) => s[0]), ['chats', 'friends'], 'its switcher kept');
+  assert.equal(H3.tab, 'chats', 'its own tab current');
+  F.nav.go('/');
+  assert.equal(doc.documentElement.dataset.vt, 'tab', 'Chats → Today: the tab cross-fade');
+  F.nav.go('/chats/');
+  assert.equal(doc.documentElement.dataset.vt, 'tab', 'Today → Chats: the tab cross-fade');
+  await settle3();
+  F.nav.go('/chats/#open=pat_1');
+  assert.equal(doc.documentElement.dataset.vt, 'push', 'into a chat: a push');
+  await settle3();
+  assert.equal(H3.heads.at(-1).back.label, 'Back to Chats', 'a chat’s Back after Chats');
+  assert.equal(H3.tab, 'chats');
+  F.destroy();
+  // (cold, from a notification: Back to Chats, to /chats/ in place; then at the root Back goes nowhere)
+  ({ F, loc } = await boot3('/chats/#open=pat_1'));
+  h = H3.heads.at(-1);
+  assert.equal(h.back.label, 'Back to Chats', 'cold: Back to Chats'); assert.equal(h.crumb.text, 'Chats');
+  assert.equal(loc.hash, '#open=pat_1', 'the stay key kept in the address');
+  F.nav.back(); await settle3();
+  assert.equal(loc.pathname + loc.hash, '/chats/', 'cold Back: the app’s root, not Apps');
+  assert.equal(history.i, 0, 'in place (replace)');
+  F.nav.back(); await settle3();
+  assert.equal(loc.pathname + loc.hash, '/chats/', 'at the root: Back stays'); assert.deepEqual(H3.assigns, []);
+  F.destroy();
+  // (Weather keeps stage 1's: a crumb, Back to Apps, its tab Apps)
+  ({ F } = await boot3('/weather/'));
+  assert.equal(H3.heads.at(-1).back.label, 'Back to Apps'); assert.equal(H3.tab, 'apps');
+  F.destroy();
+});
+
+test('stage 3, frame: no window scroll kept or put back for a stay route (a chat scrolls its own, S3-C7); the root’s is', { skip: chats3 }, async () => {
+  const { F, loc } = await boot3('/chats/');
+  H3.y = 300;
+  F.nav.go('/chats/#open=pat_1'); await settle3();
+  assert.equal(H3.y, 0);
+  H3.y = 120;
+  F.nav.go('/'); await settle3();
+  history.back(); await settle3();
+  assert.equal(loc.hash, '#open=pat_1'); assert.equal(H3.y, 0, 'popped back into the chat: no scroll put back');
+  history.back(); await settle3();
+  assert.equal(loc.pathname + loc.hash, '/chats/'); assert.equal(H3.y, 300, 'the list’s scroll put back');
+  F.destroy();
+  // (Mail's thread, a stay key of an app that's no tab screen, keeps s24 C7's: its scroll put back as it's popped to)
+  const m = await boot3('/mail/#thread=t1', { apps: { mail: true } });
+  H3.y = 250;
+  m.F.nav.go('/'); await settle3();
+  history.back(); await settle3();
+  assert.equal(m.loc.hash, '#thread=t1'); assert.equal(H3.y, 250, 'Mail’s thread: put back');
+  m.F.destroy();
+});
+
+test('stage 3, frame: F.service after opts.retired, one per app; the facade to the host, the full service only by fw.service(); each state to opts.serviceState; the search while signed in and unlocked; let go of (terminate) by releaseService, the switch, sign-out', { skip: chats3 }, async () => {
+  let done;
+  H3.state0 = 'locked';
+  let { F } = await boot3('/', { retired: new Promise((ok) => (done = ok)) });
+  const a = F.service('chats'), b = F.service('chats');
+  await settle3();
+  assert.equal(H3.svcMade, 0, 'nothing started before the old workers are let go of');
+  done(); const [fa, fb] = await Promise.all([a, b]);
+  assert.equal(H3.svcMade, 1, 'one service for the page'); assert.equal(fa, fb); assert.equal(fa, H3.svc.facade, 'the host gets the facade');
+  assert.equal(await F.forModule('chats').service(), H3.svc, 'the module gets the full service');
+  assert.equal(H3.svc.ui, F.forModule('chats'), 'its ui is the Chats fw');
+  await settle3();
+  assert.deepEqual(H3.states, [['chats', 'locked']], 'the state it started in, at once (its patch came before F.service resolved)'); assert.equal(H3.finds.length, 0);
+  H3.state0 = null;
+  H3.svc.emit('state', { state: 'ready' }); await settle3();
+  assert.deepEqual(H3.states.at(-1), ['chats', 'ready']); assert.equal(H3.finds.length, 1, 'People and Messages while ready');
+  H3.svc.emit('state', { state: 'ready' }); await settle3();
+  assert.equal(H3.finds.length, 1, 'once');
+  H3.svc.emit('state', { state: 'locked' }); await settle3();
+  assert.deepEqual(H3.states.at(-1), ['chats', 'locked']); assert.equal(H3.finds.length, 0, 'none while locked');
+  H3.svc.emit('state', { state: 'ready' }); await settle3();
+  await F.releaseService('chats', { terminate: true }); await settle3();
+  assert.deepEqual(H3.released, [[1, true]]); assert.equal(H3.finds.length, 0, 'the search goes with it');
+  await F.service('chats');
+  assert.equal(H3.svcMade, 2, 'a new one after a terminate');
+  await assert.rejects(F.service('weather'), /no service/, 'an app without one');
+  // (Chats switched off: the core ended with it; sign-out (destroy): the same)
+  H3.session.apps = { weather: true, chats: false }; F.setRoof(true, H3.session.apps); await settle3();
+  assert.deepEqual(H3.released.at(-1), [2, true], 'setRoof(off) ended it');
+  await assert.rejects(F.service('chats'), /no service/, 'refused while off');
+  F.destroy();
+  ({ F } = await boot3('/'));
+  await F.service('chats');
+  F.destroy(); await settle3();
+  assert.deepEqual(H3.released.at(-1), [H3.svcMade, true], 'sign-out ended it');
+  await assert.rejects(F.service('chats'), /no service/, 'none made after sign-out');
+});
+
+test('stage 3, frame: the root worker’s { inflight: "sync", tag } to the Chats fw only, as { app, tag } (S3-C5); fw.tabs.away only while its screen shows, put back as the screen changes; badge on its own tab', { skip: chats3 }, async () => {
+  const { F, sw } = await boot3('/');
+  const got = { chats: [], weather: [] };
+  F.forModule('chats').on('push', (x) => got.chats.push(x));
+  F.forModule('weather').on('push', (x) => got.weather.push(x));
+  const post = (data) => { const e = new Event('message'); e.data = data; sw.dispatchEvent(e); };
+  post({ inflight: 'sync', tag: 'pigeon-1' }); post({ inflight: 'sync' }); post({ ifl: 'other' });
+  assert.deepEqual(got.chats, [{ app: 'chats', tag: 'pigeon-1' }, { app: 'chats', tag: null }]);
+  assert.deepEqual(got.weather, [], 'no other module hears it');
+  const fw = F.forModule('chats');
+  fw.tabs.away(true);
+  assert.deepEqual(H3.away.at(-1), false, 'not shown: never away');
+  F.nav.go('/chats/#open=pat_1'); await settle3();
+  fw.tabs.away(true);
+  assert.equal(H3.away.at(-1), true);
+  F.nav.go('/'); await settle3();
+  assert.equal(H3.away.at(-1), false, 'back as the screen changed');
+  fw.tabs.badge(3); F.forModule('weather').tabs.badge(2);
+  assert.deepEqual(H3.badges, [['chats', 3], [undefined, 2]], 'its own tab (Weather has none)');
+  F.destroy();
+});
+
+test('stage 3, tabs.js: with Chats on, Chats is a tab screen (in-page, a tab move; on its list, to the top), the bar takes the .chats indigo, a count on its tab (none at 0, 99+), away; with it off, a plain link as before', { skip: chats3 }, async () => {
+  const doc = fakeDocument(), { El } = await import('../roofkit/fakedom.mjs');
+  El.prototype.appendChild ||= function (c) { this.append(c); return c; };
+  Object.assign(globalThis, { document: doc, addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false }), scrollTo: (o) => { H3.top = o; } });
+  globalThis.IFL = { hub: { on: true, degraded: false, tabs(nav) { nav.replaceChildren(...['today', 'chats', 'apps', 'you'].map((k) => { const a = doc.createElement('a'); a.className = 'ifl-tab'; a.dataset.tab = k; return a; })); } } };
+  const { createTabs } = await import(new URL('tabs.js', ROOF));
+  const gone = [], mk = (apps, route) => { const nav = doc.createElement('nav'); const F = { session: { apps }, route, nav: { go: (p, o) => gone.push([p, o?.kind]), prev: () => null } }; return { nav, F, t: createTabs(nav, F) }; };
+  const tab = (nav, k) => nav.querySelector(`.ifl-tab[data-tab=${k}]`);
+  const tap = (nav, k) => nav.dispatch('click', { target: tab(nav, k) });
+  let { nav, F, t } = mk({ chats: true }, { kind: 'app', app: 'chats', section: 'chats', key: 'chats' });
+  t.set('chats');
+  assert.equal(tab(nav, 'chats').getAttribute('aria-current'), 'page'); assert.ok(nav.classList.contains('chats'), 'indigo');
+  H3.top = null; assert.ok(tap(nav, 'chats').defaultPrevented); assert.ok(H3.top, 'on its list: to the top'); assert.deepEqual(gone, []);
+  F.route = { kind: 'app', app: 'chats', section: 'friends', key: 'friends' };
+  tap(nav, 'chats'); assert.deepEqual(gone.at(-1), ['/chats/', 'tab'], 'on Friends: its list');
+  tap(nav, 'apps'); assert.deepEqual(gone.at(-1), ['/#apps', 'tab'], 'Apps from Chats: a tab move, not Apps’ back');
+  F.route = { kind: 'tab', tab: 'today', arg: null }; t.set('today');
+  tap(nav, 'chats'); assert.deepEqual(gone.at(-1), ['/chats/', 'tab'], 'from Today: in-page');
+  t.badge('chats', 3);
+  assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge').textContent, '3');
+  t.badge('chats', 250); assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge').textContent, '99+');
+  t.set('today'); assert.equal(tab(nav, 'chats').querySelectorAll('.ifl-tab-badge').length, 1, 'kept, once, as the bar redraws');
+  t.badge('chats', 0); assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge'), null, 'none at 0');
+  t.badge('chats', 'x<b>'); assert.equal(tab(nav, 'chats').querySelector('.ifl-tab-badge'), null, 'a number only');
+  t.away(true); assert.ok(nav.classList.contains('away') && nav.inert, 'away, and out of reach (inert)'); t.away(false); assert.ok(!nav.classList.contains('away') && !nav.inert);
+  t.destroy();
+  // (Chats off: the bar as stage 1 drew it, and Chats a normal link)
+  ({ nav, F, t } = mk({ chats: false }, { kind: 'tab', tab: 'today', arg: null }));
+  t.set('today'); gone.length = 0;
+  assert.ok(!nav.classList.contains('chats'), 'menu.css’s colour');
+  assert.ok(!tap(nav, 'chats').defaultPrevented, 'a normal navigation'); assert.deepEqual(gone, []);
+  t.destroy();
+  delete globalThis.IFL;
+});
+
+test('stage 3, connectors.js chatsProvider: People (friends and groups by name, never the blocked) and Messages (the service’s search, the query cut to 100), each opening its chat; first while Chats shows; gone when let go of', { skip: chats3 }, async () => {
+  const { chatsProvider } = await import(new URL('connectors.js', ROOF));
+  const provs = new Set(), calls = [];
+  let star = null;
+  const F = { route: { kind: 'tab', tab: 'today' }, search: { provide(p) { provs.add(p); return () => provs.delete(p); } } };
+  const svc = { on(t, fn) { assert.equal(t, '*', 'caught up through "*"'); star = fn; return () => { star = null; }; },
+    call: async (m, q) => { calls.push([m, q]); return [{ token: 't1', chatId: 'pat_1', title: 'Pat', sub: '…the pigeon landed…', at: 1 }, { chatId: '../x', title: 'bad' }]; } };
+  const off = chatsProvider(F, svc);
+  star({ topic: 'friends', data: [{ id: 'pat_1', name: 'Pat Lee' }, { id: 'sam_2', name: 'Sam', blocked: true }] });
+  star({ topic: 'groups', data: [{ id: 'g_1', name: 'Pat’s Ride' }] });
+  star({ topic: 'rows', data: [{ id: 'zz', name: 'Pat' }] });
+  const [people, msgs] = [...provs].sort((a, b) => a.order - b.order);
+  assert.deepEqual([people.id, people.group, people.order, msgs.id, msgs.group, msgs.order], ['people', 'People', 15, 'messages', 'Messages', 16]);
+  F.route = { kind: 'app', app: 'chats', section: 'chats', key: 'chats' };
+  assert.deepEqual([people.order, msgs.order], [5, 6], 'first on the Chats screen (Apps is 10)');
+  assert.deepEqual(people.search(' pat '), [{ title: 'Pat Lee', sub: 'Chats', avatar: 'Pat Lee', href: '/chats/#open=pat_1' }, { title: 'Pat’s Ride', sub: 'Chats', avatar: 'Pat’s Ride', href: '/chats/#open=g_1' }]);
+  assert.deepEqual(people.search('sam'), [], 'never the blocked');
+  assert.deepEqual(people.search(''), []);
+  assert.deepEqual(await msgs.search('landed'), [{ title: 'Pat', sub: '…the pigeon landed…', avatar: 'Pat', href: '/chats/#open=pat_1' }], 'its chat; never a bad id');
+  await msgs.search('x'.repeat(300)); await msgs.search('   ');
+  assert.deepEqual(calls.map(([m, q]) => [m, q.length]), [['search', 6], ['search', 100]], 'the query to the core only, at most 100, none for blank');
+  off();
+  assert.equal(provs.size, 0); assert.equal(star, null);
+});
+
+test('stage 3, frame: a service let go of while it starts: never made if before its turn, never heard from once made (no state to the host, no search)', { skip: chats3 }, async () => {
+  let done;
+  let { F } = await boot3('/', { retired: new Promise((ok) => (done = ok)) });
+  const a = F.service('chats');
+  F.releaseService('chats', { terminate: true });
+  done();
+  await assert.rejects(a, /let go of/);
+  assert.equal(H3.svcMade, 0, 'no Worker started for it');
+  F.destroy();
+  ({ F } = await boot3('/'));
+  let go;
+  const slow = H3.loadService;
+  H3.loadService = (app, F2) => new Promise((ok) => (go = () => ok(slow(app, F2))));
+  const b = F.service('chats');
+  await settle3();
+  F.releaseService('chats', { terminate: true });
+  go(); await b.catch(() => {}); await settle3();
+  assert.deepEqual(H3.states, [], 'nothing to serviceState'); assert.equal(H3.finds.length, 0, 'no search registered');
+  assert.deepEqual(H3.released, [[1, true]], 'ended as soon as it was made');
+  H3.svc.emit('state', { state: 'ready' }); await settle3();
+  assert.equal(H3.finds.length, 0, 'its later patches unheard');
+  F.destroy();
 });

@@ -191,3 +191,61 @@ export const MAIL_SHEETS = Object.freeze({                // MM/MR: Mail's sheet
 export const mailSheet = (k) => `dialog.ifl-sheet[data-sheet="${MAIL_SHEETS[k] || k}"]`; // MM/MR
 // ---- the framework's own sheet of stages 2–4 ----
 export const SIGNOUT_ANYWAY = 'dialog.ifl-sheet[data-sheet=confirm]'; // FW (j0): "Sign Out Anyway?" (C10)
+
+// ---- stage 3: Chats (roof/s3/spec.md §2, §10.2; frozen by stage 3's B0: may only gain) ----
+// Chats' module draws in main#m-chats > .m-chats (FW makes it, UI-A mounts in it). Owners: UI-A (entry, list, Friends,
+// chat, lock), UI-B (sheets), HOST (tab bar, Today), FW (the frame's own, as above).
+export const M_CHATS = 'main#m-chats';                    // FW makes it, UI-A mounts in it
+export const CH_SEC = 'section.ch-sec[data-sec]';         // UI-A
+export const chSec = (id) => `section.ch-sec[data-sec="${id}"]`; // UI-A: chats, friends
+export const CH_ROW = '.m-chats [data-k=row][data-id]';   // UI-A: a chat's or group's row on the list
+export const chRow = (id) => `.m-chats [data-k=row][data-id="${id}"]`; // UI-A
+export const CH_ROW_UNREAD = '[data-k=unread]';           // UI-A: inside a row, its unread count
+export const CH_AIR = '.m-chats [data-k=air]';            // UI-A: In the Air (pigeons on)
+export const chAir = (id) => `.m-chats [data-k=air] [data-id="${id}"]`; // UI-A: one letter in the air
+export const CH_REQUESTS = '.m-chats [data-k=requests]';  // UI-A: the requests banner (opens requests)
+export const CH_KEYWARN = '.m-chats [data-k=keywarn]';    // UI-A: "your key doesn't match" (myKeyWarn)
+export const CH_FRIEND = '.m-chats [data-k=friend][data-id]'; // UI-A: a friend's row in Friends
+export const chFriend = (id) => `.m-chats [data-k=friend][data-id="${id}"]`; // UI-A
+export const CH_ADD = '.m-chats [data-act=addfriend]';    // UI-A: Add Friend (opens addfriend)
+export const CH_CHAT = '.m-chats .ch-chat';               // UI-A: the chat host (a chat or group shown)
+export const CH_SCROLLER = '.m-chats .ch-chat [data-k=scroller]'; // UI-A: the chat's one scroller (S3-D17)
+export const CH_BUBBLE = '.m-chats [data-k=msg][data-id]'; // UI-A: a message (data-from = me | them | a member's id)
+export const chBubble = (id) => `.m-chats [data-k=msg][data-id="${id}"]`; // UI-A
+export const CH_COMPOSER = '.m-chats [data-k=composer]';  // UI-A: the composer (fixed under the scroller)
+export const CH_INPUT = '.m-chats [data-k=composer] textarea'; // UI-A: what you type
+export const CH_SEND_BTN = '.m-chats [data-k=composer] [data-act=send]'; // UI-A
+export const CH_TYPING = '.m-chats [data-k=typing]';      // UI-A: "typing…" in the open chat
+export const CH_STATE = '.m-chats [data-state]';          // UI-A: a state's screen: data-state = signin | key | locked | ended | offline | device | error
+export const chState = (s) => `.m-chats [data-state="${s}"]`; // UI-A
+export const CH_SIGNIN = '.m-chats [data-act=signin]';    // UI-A: Sign In (signin, ended)
+export const CH_UNLOCK = '.m-chats [data-act=unlock]';    // UI-A: Unlock Chats (key: → /chats/in/#signin-start&then=…)
+export const CH_LOCK = '.m-chats .ch-lock';               // UI-A: the lock screen (S3-D14)
+export const CH_LOCK_OPEN = '.m-chats .ch-lock [data-act=unlock-lock]'; // UI-A: the passkey check that lets you in
+export const CH_QR = '.m-chats [data-state=device] [data-k=qr]'; // UI-A: "Chats is on your phone"'s code
+export const CH_RETRY = '.m-chats [data-act=retry]';      // UI-A: Try Again ("Chats couldn’t open")
+export const CH_OWN = '.m-chats [data-act=own]';          // UI-A: Open Chats on Its Own
+export const HD_NEWCHAT = hdAct('compose');               // UI-A: New Chat (the Chats header's act)
+export const HD_CHATSETTINGS = hdAct('settings');         // UI-A: Chat Settings (the Chats header's act)
+export const HD_INFO = hdAct('info');                     // UI-A: a chat's Info (opens friendinfo or groupinfo)
+export const TAB_BADGE = 'nav#tabs .ifl-tab[data-tab="chats"] .ifl-tab-badge'; // HOST: the Chats tab's unread count (a number only)
+export const TABS_AWAY = 'nav#tabs.away';                 // HOST: the tab bar out of the way (a chat's composer up)
+// (Chats' sheets by name, data-sheet; each opened by its file's opener, spec §2.2: list.js, friends.js UI-A; the rest UI-B)
+export const CH_SHEETS = Object.freeze({
+  newmsg: 'newmsg', newgroup: 'newgroup', requests: 'requests', addfriend: 'addfriend',                     // UI-A
+  send: 'send',                                                                                             // UI-B (send.js)
+  friendinfo: 'friendinfo', groupinfo: 'groupinfo', groupadd: 'groupadd', grouprename: 'grouprename', safety: 'safety',
+  whohas: 'whohas', view: 'view', schedule: 'schedule', timetalk: 'timetalk', fromapps: 'fromapps', hold: 'hold', // UI-B (sheets.js)
+  flightlog: 'flightlog', passport: 'passport', map: 'map', skies: 'skies', lookup: 'lookup', way: 'way', moonpick: 'moonpick',
+  birds: 'birds', bird: 'bird', birdname: 'birdname', loft: 'loft', feathers: 'feathers', news: 'news',     // UI-B (flight.js)
+  gifs: 'gifs', voice: 'voice', scan: 'scan', chatsettings: 'chatsettings',                                  // UI-B (media.js, scan.js, settings.js)
+});
+export const chSheet = (k) => `dialog.ifl-sheet[data-sheet="${CH_SHEETS[k] || k}"]`; // UI-A/UI-B
+export const CH_SEND_ROW = 'dialog.ifl-sheet[data-sheet=send] [data-k=to][data-id]'; // UI-B: a friend to send to
+export const chSendRow = (id) => `dialog.ifl-sheet[data-sheet=send] [data-k=to][data-id="${id}"]`; // UI-B
+export const CH_SEND_GO = 'dialog.ifl-sheet[data-sheet=send] [data-act=sendgo]'; // UI-B: the sheet's Send
+export const CH_SEND_WORDS = 'dialog.ifl-sheet[data-sheet=send] [data-act=words] input'; // UI-B: the words to go with the card (Chat's #f-sendwords); added at integration for hubshare
+export const CH_SEND_STATE = 'dialog.ifl-sheet[data-sheet=send] [data-state]'; // UI-B: a not-ready Send: signin | key | locked | device | offline
+export const CH_PRIVACY = 'dialog.ifl-sheet[data-sheet=chatsettings] a[href="/chats/in/#account"]'; // UI-B: Privacy & Security (Chat's own page)
+export const CH_SAFETY_DIGITS = 'dialog.ifl-sheet[data-sheet=safety] [data-k=digits]'; // UI-B
+// (Today's own hooks, above, stay as they are with Chats under the roof)

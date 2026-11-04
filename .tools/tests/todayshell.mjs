@@ -96,14 +96,15 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
   parent.dispatchEvent(new Event("ifl-chat-ready"));
 </script></body></html>`;
 const chatOut = [];
-async function open({ w = 390, h = 844, scheme = 'dark', hub = true, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null, setup = null } = {}) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
+async function open({ w = 390, h = 844, scheme = 'dark', hub = true, apps = null, push = false, signedIn = true, path = '/', wait = true, standalone = false, sentSay = null, setup = null, phone = false } = {}) {
+  // (phone: a phone's user agent, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, ...(phone ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' } : {}), colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
   if (standalone) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true }));
   if (sentSay) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('done-sent')) { sessionStorage.setItem('ifl-sent', s); sessionStorage.setItem('done-sent', '1'); } }, sentSay);
   // (the hub's Worker ready, or not yet; Chats' pages, the engine among them)
-  await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: hub, roof: hub }, headers: { 'Cache-Control': 'no-store' } }));
+  await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: hub, roof: hub, ...(apps ? { apps } : {}) }, headers: { 'Cache-Control': 'no-store' } }));
   await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => {
     const u = new URL(r.request().url());
     if (u.pathname === '/chats/__signed-out') { chatOut.push(Date.now()); return r.fulfill({ status: 204, body: '' }); }
@@ -479,6 +480,67 @@ await part('you: this phone', async () => {
   same(JSON.parse(out[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device { endpoint }');
   ok(chatOut.length === 1 && out[del].at <= chatOut[0] && chatOut[0] <= out[so].at, 'Chat signed out here by its engine (IFLChat.signOut), after this phone’s gone and before the account', JSON.stringify({ chatOut, del: out[del]?.at, so: out[so]?.at }));
   await ctx.close();
+});
+
+// ======================================================================= stage 3: Chats in the page (HOST, S3-D6, S3-D14)
+// With /api/hub's apps.chats, Today asks Chats' service (MAIN's pigeon/roof/service.js, as the hub serves it, B0's or
+// CORE's) through IFL.hub.chat, never Chat's engine: the core here is a stand-in Worker (CHAT_CORE) answering what the
+// facade asks, Pat's words for Waiting for You among them, locking itself once asked to, and on signOut writing a marker
+// into Chat's own store (so it's seen that the core signed out before Today let go of Chat's store)
+const CHATS3 = ROOF && /\bchats: fz\(\{/.test(readFileSync(`${IFL}today/public/roof/router.js`, 'utf8'));
+const SAID = 'Coffee at the usual place?';
+const CHAT_CORE = (o) => `const O = ${JSON.stringify(o)};
+let state = "ready";
+const patch = (topic, data) => postMessage({ t: "patch", topic, data });
+const mark = () => new Promise((ok) => { const r = indexedDB.open("inflight"); r.onsuccess = () => { try { const tx = r.result.transaction("kv", "readwrite"); tx.objectStore("kv").put(Date.now(), "core-out"); tx.oncomplete = () => ok(); tx.onerror = () => ok(); } catch (_) { ok(); } }; r.onerror = () => ok(); });
+addEventListener("message", async (e) => {
+  const { id, m, a = [] } = e.data || {};
+  let v = { ok: true };
+  if (m === "hello") v = { protocol: 1 };
+  else if (m === "start" || m === "state") v = { state };
+  else if (m === "waiting") { v = state === "ready" ? O.waiting.filter((w) => (a[0]?.ids || []).includes(w.id)) : []; if (O.lockAfter) setTimeout(() => { state = "locked"; patch("state", { state }); }, O.lockAfter); }
+  else if (m === "since") v = null;
+  else if (m === "signOut") { await mark(); v = { ok: true }; }
+  postMessage({ id, ok: true, v });
+  if (m === "start") patch("state", { state });
+});`;
+const chatsFiles = (o) => async (ctx) => {
+  const page = await (await fetch(`${BASE}/`)).text();
+  await ctx.route((u) => /^\/chats\/(index\.html)?$/.test(new URL(u).pathname) && !new URL(u).searchParams.has('engine'), (r) => r.fulfill({ contentType: 'text/html', body: page, headers: { 'Cache-Control': 'no-cache' } }));
+  await ctx.route((u) => /^\/chats\/(roof\/)?[\w-]+\.(js|css)$/.test(new URL(u).pathname), (r) => {
+    const f = new URL(r.request().url()).pathname.slice('/chats/'.length);
+    if (f === 'roof/core.js') return r.fulfill({ contentType: 'text/javascript', body: CHAT_CORE(o) });
+    if (!existsSync(`${MAIN}pigeon/${f}`)) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    return r.fulfill({ contentType: f.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}pigeon/${f}`, 'utf8') });
+  });
+  await ctx.route((u) => new URL(u).pathname === '/chats/version', (r) => r.fulfill({ json: { build: '1.69' }, headers: { 'Cache-Control': 'no-store' } }));
+};
+await part('Chats in the page', async () => {
+  if (!CHATS3) return console.log('SKIP  Chats in the page: the inflite repo beside has no REGISTRY.chats (before stage 3)');
+  await mode({ phase: 'midday' }); await reset();
+  const at = MIDDAY.waiting?.[0]?.at, pat = MIDDAY.waiting?.[0]?.id;
+  const { ctx, p } = await open({ apps: { weather: true, chats: true }, phone: true, setup: chatsFiles({ waiting: [{ id: pat, first: 'Pat', at, said: SAID, kind: 'question', topics: [] }], lockAfter: 1500 }) });
+  await p.waitForSelector('#today #waiting .dw-words.in:not([hidden])', { timeout: 20000 });
+  same(await text(p, '#today #waiting .dw-words'), `“${SAID}”`, 'Waiting for You’s words from Chats’ service');
+  same(await p.$$eval('iframe[name="ifl-chat"], dialog.ifl-engine-box', (n) => n.length), 0, 'no engine: no iframe, no dialog');
+  same(p.workers().map((w) => new URL(w.url()).pathname), ['/chats/roof/core.js'], 'one Worker: Chats’ core');
+  // (the core locked by the app lock: every word of Chat's gone from Today at once)
+  await p.waitForFunction(() => [...document.querySelectorAll('#today .dw-words, #today .dt-said')].every((n) => n.hidden && !n.textContent), null, { timeout: 5000 });
+  ok(!(await text(p, '#today')).includes(SAID), 'locked: Pat’s words gone from Today');
+  await ctx.close();
+  // (Sign Out with Chats here: the core signs out (its marker) and is ended, then Chat's sign-in and kept chats go here
+  // too; what you'd written, sealed, stays)
+  const o2 = await open({ apps: { weather: true, chats: true }, phone: true, path: '/#you', setup: chatsFiles({ waiting: [] }) });
+  await o2.p.waitForSelector('#youOut');
+  await o2.p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
+  await seedApps(o2.p);
+  await reset();
+  await o2.p.click('#youOut');
+  await o2.p.waitForURL(/auth\.inflite\.ai/);
+  const kept = await readApps(o2.ctx);
+  same(kept.left, PHONE_KEYS, 'Sign Out lets go of every app’s copy of you, as without Chats');
+  same(kept.chat, ['core-out', 'drafts:u77', 'outbox:u77'], 'the core signed out (its marker), and Chat’s sign-in, kept chats and pins gone here; sealed drafts and outbox kept');
+  await o2.ctx.close();
 });
 
 // ======================================================================= the way in

@@ -716,12 +716,12 @@ stage_verdict() {
 # builds on the newest version, which may be another branch's.
 #   app all (stage 1's): ROOF_OFF "1" put (off: every module off) or deleted (on)
 #   app weather: ROOF_OFF_WEATHER "1" (off) or "0" (on)
-#   app markets | fitness | mail (stage 3: chats): ROOF_<APP> "1" (on) or "0" (off): opt-in, so a Worker without it is off;
+#   app markets | fitness | mail | chats (stage 3): ROOF_<APP> "1" (on) or "0" (off): opt-in, so a Worker without it is off;
 #     on refused while ROOF_OFF is set (every module off: turn them all on first). For mail, Mail's own Worker
 #     (inflite-email) first, both ways: HUB_API (inflite.ai) or HUB_API_NEXT (next.inflite.ai) "1" or "0".
 MAIL_WORKER=inflite-email
 MAIL_SITE=https://email.inflite.ai
-ROOF_APPS="weather markets fitness mail"
+ROOF_APPS="weather markets fitness mail chats"
 
 # (rollback level 2's words, for when the switch can't be used)
 ROOF_LEVEL2="rollback level 2: revert the One roof merge on the inflite repo's claude/inflite and dist7t and push (Workers Builds deploys the Today before it in minutes; golive.md)"

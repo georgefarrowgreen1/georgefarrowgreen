@@ -15,6 +15,10 @@ import { MAIN, IFL, roofSkip } from './fixtures/roof.mjs';
 const ROOFJS = IFL && new URL('today/src/roof.js', IFL);
 const skip = roofSkip || (!existsSync(ROOFJS) && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const R = skip ? null : await import(ROOFJS);
+// (stage 3, where the inflite repo beside has it: Chats a module by ROOF_CHATS, with the page's camera, microphone and
+// blob: media for it, s3 spec §6.2; the earlier answers else)
+const hasChats = !skip && R.MODS?.includes('chats');
+const chatsCase = skip || (!hasChats && 'the inflite repo beside has no Chats switch yet (roof.js MODS without chats: before stage 3)');
 const SITE = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const PAGE = '<!doctype html><html><head><meta name="ifl-hub" content="/"></head><body>framework</body></html>';
@@ -62,7 +66,7 @@ const MAIL_ORIGINS = ['https://email.inflite.ai', 'http://email.ifl.test:8788'];
 test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly Weather’s origins (_wxapp.js CONNECT without the beacon, and IMAGES) and Mail’s Worker, nothing inline, no other site; geolocation for itself alone', { skip }, () => {
   const csp = R.PAGE_HEADERS['Content-Security-Policy'];
   assert.deepEqual(R.PAGE_HEADERS, {
-    'Content-Security-Policy': csp, 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)', 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': csp, 'Permissions-Policy': hasChats ? 'camera=(self), microphone=(self), geolocation=(self)' : 'camera=(), microphone=(), geolocation=(self)', 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin', 'Cross-Origin-Opener-Policy': 'same-origin', 'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
     'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex' });
   const headers = readFileSync(new URL('today/public/_headers', IFL), 'utf8');
@@ -78,6 +82,7 @@ test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly
   assert.deepEqual(directive(csp, 'connect-src'), ["'self'", ...mail, ...CONNECT], 'connect-src: Weather’s own (and Mail’s Worker), exactly');
   assert.deepEqual(directive(csp, 'frame-src'), ["'self'", ...mail], 'frame-src: this site (and Mail’s Worker, for its bodies), exactly');
   assert.deepEqual(directive(csp, 'img-src'), ["'self'", 'data:', 'blob:', ...IMAGES], 'img-src: Weather’s own, exactly');
+  assert.deepEqual(directive(csp, 'media-src'), hasChats ? ["'self'", 'blob:'] : [], 'media-src: Chats’ voice pigeons (blob:), this site alone; none before stage 3');
   const others = csp.split(';').filter((d) => !/^\s*(connect|img|frame)-src /.test(d)).join(';');
   assert.doesNotMatch(others, /https?:/, 'no other site anywhere else in it');
   assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|wasm-unsafe-eval|cloudflareinsights/);
@@ -143,10 +148,61 @@ test('stages 2–4: roofOn(env, app) opt-in for Markets, Fitness and Mail ("1" o
   }
   assert.equal(R.roofOn({}, 'weather'), true); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '1' }), false); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '0' }), true);
   assert.equal(R.roofOn({ ROOF_WEATHER: '0' }), true, 'no other spelling turns Weather off');
-  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false });
-  for (const [p, a] of [['/markets/', 'markets'], ['/fitness/index.html', 'fitness'], ['/weather/', 'weather'], ['/mail/', 'mail'], ['/markets', null], ['/markets/x.html', null], ['/chats/', null], ['/', null]]) assert.equal(R.modOf(p), a, p);
+  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false, ...(hasChats ? { chats: false } : {}) });
+  for (const [p, a] of [['/markets/', 'markets'], ['/fitness/index.html', 'fitness'], ['/weather/', 'weather'], ['/mail/', 'mail'], ['/markets', null], ['/markets/x.html', null], ['/chats/', hasChats ? 'chats' : null], ['/', null]]) assert.equal(R.modOf(p), a, p);
   assert.ok(R.filesOf('fitness').test('/fitness/roof/core.js')); assert.ok(!R.filesOf('fitness').test('/fitness/roofs.js'));
   assert.equal(R.RETIRE_SW, R.retireSw('weather'), 'Weather’s retiring worker as stage 1 had it');
   assert.match(R.retireSw('markets'), /startsWith\("markets-app-"\)/); assert.match(R.retireSw('fitness'), /startsWith\("fitness-app-"\)/);
   assert.doesNotMatch(R.retireSw('markets'), /wx-|fitness-app-/);
+});
+
+// ---- stage 3 (s3 spec §6.2, risk I11): Chats ----
+test('stage 3: roofOn(env, "chats") by ROOF_CHATS "1" alone; modOf Chats’ document only with no engine in the query, never /chats/in/', { skip: chatsCase }, () => {
+  assert.equal(R.roofOn({}, 'chats'), false, 'absent: off');
+  assert.equal(R.roofOn({ ROOF_CHATS: '1' }, 'chats'), true);
+  for (const v of ['0', '', 'true', ' 1']) assert.equal(R.roofOn({ ROOF_CHATS: v }, 'chats'), false, JSON.stringify(v));
+  assert.equal(R.roofOn({ ROOF_CHATS: '1', ROOF_OFF: '1' }, 'chats'), false, 'ROOF_OFF wins');
+  assert.equal(R.roofOn({ ROOF_OFF_CHATS: '1' }, 'chats'), false, 'no opt-out spelling turns it on or off: opt-in alone');
+  assert.deepEqual(R.appsOn({ ROOF_CHATS: '1' }), { weather: true, markets: false, fitness: false, mail: false, chats: true });
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', 'chats']);
+  for (const [p, q, a] of [['/chats/', '', 'chats'], ['/chats/index.html', '?x=1', 'chats'], ['/chats/', '?engined=1', 'chats'], ['/chats/', '?engine=1', null], ['/chats/index.html', '?a=1&engine', null],
+    ['/chats/in/', '', null], ['/chats/in/index.html', '', null], ['/chats', '', null], ['/chats/x.html', '', null], ['/weather/', '?engine=1', 'weather']]) assert.equal(R.modOf(p, q), a, p + q);
+  assert.ok(R.filesOf('chats').test('/chats/roof/core.js')); assert.ok(!R.filesOf('chats').test('/chats/app.js'));
+});
+
+test('stage 3: Chats’ retiring worker: Chat’s caches (inflight-shell*) alone, unregisters, then asks each window at exactly /chats/ to route and sends again only one that doesn’t say routed in a second; never /chats/in/, an engine or a framed one', { skip: chatsCase }, async () => {
+  const js = R.retireSw('chats');
+  assert.equal(await R.retireWorker(new Request(`${SITE}/chats/sw.js`), 'chats').text(), js);
+  const on = {}, deleted = [], order = [];
+  let matched = null;
+  // (each window: whether it answers a route (the framework does, frame.js), and what it was asked and sent)
+  const win = (url, o = {}) => ({ url, frameType: 'top-level', answers: false, asked: [], went: [], ...o,
+    postMessage(m, ports = []) { this.asked.push(m); if (this.answers) setTimeout(() => ports[0]?.postMessage({ ifl: 'routed' }), 5); },
+    async navigate(u) { order.push('navigate'); this.went.push(u); } });
+  const wins = [win('https://inflite.ai/chats/#open=a1', { answers: true }), win('https://inflite.ai/chats/'), win('https://inflite.ai/chats/index.html?x=1'),
+    win('https://inflite.ai/chats/in/#signin-start'), win('https://inflite.ai/chats/?engine=1'), win('https://inflite.ai/chats/', { frameType: 'nested' }),
+    win('https://inflite.ai/chats/tracker.html'), win('https://inflite.ai/'), win('https://inflite.ai/weather/')];
+  const self = {
+    addEventListener: (k, f) => { on[k] = f; }, skipWaiting: () => {},
+    registration: { unregister: async () => { order.push('unregister'); return true; } },
+    clients: { matchAll: async (o) => { matched = o; return wins; } },
+  };
+  const caches = { keys: async () => ['inflight-shell-v2', 'inflight-shell', 'wx-1.64', 'today-app-4', 'roof-chats-1.70', 'inflight-x'], delete: async (k) => { order.push('delete'); deleted.push(k); return true; } };
+  vm.runInNewContext(js, { self, caches, URL, Promise, MessageChannel, setTimeout, clearTimeout });
+  assert.deepEqual(Object.keys(on).sort(), ['activate', 'install'], 'no fetch, push or message handler');
+  const waits = [], t0 = Date.now();
+  on.activate({ waitUntil: (p) => waits.push(p) });
+  await Promise.all(waits);
+  assert.ok(Date.now() - t0 < 1900, 'the windows asked at once, each waited for a second at most');
+  assert.deepEqual(deleted, ['inflight-shell-v2', 'inflight-shell'], 'Chat’s caches alone');
+  assert.deepEqual(order.slice(0, 3), ['delete', 'delete', 'unregister']);
+  assert.deepEqual(plain(matched), { type: 'window', includeUncontrolled: true });
+  assert.deepEqual(plain(wins[0].asked), [{ ifl: 'route', url: '/chats/#open=a1' }], 'the framework asked to route where it is');
+  assert.deepEqual(wins[0].went, [], 'and, saying routed, never reloaded');
+  assert.deepEqual(wins[1].went, ['https://inflite.ai/chats/'], 'milestone 1’s page (no answer): sent there again');
+  assert.deepEqual(wins[2].went, ['https://inflite.ai/chats/index.html?x=1']);
+  for (const w of wins.slice(3)) { assert.deepEqual(w.asked, [], w.url); assert.deepEqual(w.went, [], `${w.url} ${w.frameType}: never`); }
+  assert.doesNotMatch(js, /"wx-"|markets-app-/);
+  assert.equal(R.retireSw('weather'), R.RETIRE_SW, 'Weather’s unchanged');
+  assert.doesNotMatch(R.RETIRE_SW, /route|MessageChannel/);
 });

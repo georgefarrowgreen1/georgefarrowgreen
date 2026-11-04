@@ -560,9 +560,13 @@ test('One roof off (ROOF_OFF "1"): Weather’s milestone-1 page and worker are t
 // ---- stages 2–4 (s24-contracts §1, §2): one switch per module; opt-in for the new ones, opt-out for Weather ----
 const hasApps = hasRoof && typeof R?.appsOn === 'function';
 const appsCase = roofCase || (!hasApps && 'the inflite repo beside has no per-app switch yet (roof.js appsOn)');
+// (stage 3: Chats a module by its own switch, ROOF_CHATS, where the inflite repo beside has it)
+const hasChats = hasApps && R.MODS.includes('chats');
+const chatsCase = appsCase || (!hasChats && 'the inflite repo beside has no Chats switch yet (roof.js MODS without chats: before stage 3)');
 test('stages 2–4: /api/hub says each module’s switch: Weather on unless ROOF_OFF or ROOF_OFF_WEATHER is "1"; Markets, Fitness and Mail only with ROOF_<APP> "1"', { skip: appsCase }, async () => {
   H.forgetProbe(); apps(() => new Response('{}'));
-  const A = async (o) => (await hubAll(env(o))).apps;
+  // (stage 3's Chats, where the inflite repo beside has it: off unless ROOF_CHATS "1"; the earlier answers else)
+  const A = async (o) => { const a = { ...(await hubAll(env(o))).apps }; if (hasChats) { assert.equal(a.chats, o.ROOF_CHATS === '1' && o.ROOF_OFF !== '1', 'chats by ROOF_CHATS'); delete a.chats; } return a; };
   assert.deepEqual(await A({}), { weather: true, markets: false, fitness: false, mail: false }, 'absent: only Weather');
   assert.deepEqual(await A({ ROOF_MARKETS: '1' }), { weather: true, markets: true, fitness: false, mail: false });
   assert.deepEqual(await A({ ROOF_FITNESS: '1', ROOF_MAIL: '1' }), { weather: true, markets: false, fitness: true, mail: true });
@@ -570,8 +574,8 @@ test('stages 2–4: /api/hub says each module’s switch: Weather on unless ROOF
   assert.deepEqual(await A({ ROOF_OFF_WEATHER: '1', ROOF_MARKETS: '1' }), { weather: false, markets: true, fitness: false, mail: false }, 'Weather alone off');
   assert.equal((await hubAll(env({ ROOF_OFF_WEATHER: '1' }))).roof, false, 'roof is Weather’s');
   assert.equal((await A({ ROOF_OFF_WEATHER: '0' })).weather, true, 'only "1" turns Weather off');
-  assert.deepEqual(await A({ ROOF_OFF: '1', ROOF_MARKETS: '1', ROOF_FITNESS: '1', ROOF_MAIL: '1' }), { weather: false, markets: false, fitness: false, mail: false }, 'ROOF_OFF: every module off');
-  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail']);
+  assert.deepEqual(await A({ ROOF_OFF: '1', ROOF_MARKETS: '1', ROOF_FITNESS: '1', ROOF_MAIL: '1', ROOF_CHATS: '1' }), { weather: false, markets: false, fitness: false, mail: false }, 'ROOF_OFF: every module off');
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', ...(hasChats ? ['chats'] : [])]);
   H.forgetProbe();
 });
 
@@ -640,5 +644,64 @@ test('stages 2–4: a switched-off module’s files not found when written under
     assert.equal((await call(req(p), env(o))).res.status, 200, `${JSON.stringify(o)} ${p}`);
   }
   assert.equal(asked.length, 2);
+  H.forgetProbe();
+});
+
+// ---- stage 3 (s3 spec §6.2, S3-D8, risk I11): Chats a module by ROOF_CHATS "1" ----
+test('stage 3: Chats by its own switch: /chats/ the framework’s page (never with ?engine, never /chats/in/), /chats/sw.js its retiring worker; off, milestone 1’s page and worker and /chats/roof/* not found', { skip: chatsCase }, async () => {
+  H.forgetProbe();
+  const on = (o = {}) => env({ asset: assetsPage, ROOF_CHATS: '1', ...o });
+  let asked = apps((u) => new Response(`chat ${u.pathname}${u.search}`, { headers: { 'Content-Type': 'text/plain' } }));
+  const hub = () => asked.filter((a) => a.url.pathname !== '/_hub/version');
+  // (on: the framework's page, before the key too; its headers the page's; HEAD with no body)
+  for (const e of [on(), on({ HUB_KEY: undefined })]) {
+    for (const p of ['/chats/', '/chats/index.html', '/chats/?x=1', '/chats/?engined=1']) {
+      assets.length = 0;
+      const r = await worker.fetch(req(p), e, {});
+      assert.equal(r.status, 200, p); assert.equal(await r.text(), PAGE, `${p}: the framework`);
+      assert.equal(r.headers.get('content-security-policy'), R.PAGE_HEADERS['Content-Security-Policy']);
+      assert.equal(r.headers.get('permissions-policy'), R.PAGE_HEADERS['Permissions-Policy']);
+      assert.deepEqual(assets, ['/']);
+    }
+    const head = await worker.fetch(req('/chats/', { method: 'HEAD' }), e, {});
+    assert.equal(head.status, 200); assert.equal(head.body, null);
+    const sw = await worker.fetch(req('/chats/sw.js'), e, {});
+    assert.equal(sw.status, 200); assert.equal(sw.headers.get('cache-control'), 'no-cache');
+    assert.equal(await sw.text(), R.retireSw('chats'));
+  }
+  assert.equal(hub().length, 0, 'none of it Chat’s to answer');
+  // (on, with the key: the engine, Chat's own page at /chats/in/ and every file still Chat's hub copy, /_hub/…)
+  const PASSED = ['/chats/?engine=1', '/chats/index.html?engine=1&x=2', '/chats/?a=1&engine', '/chats/in/', '/chats/in/index.html', '/chats/in/inflite.svg', '/chats/roof/chats.js', '/chats/roof/core.js?v=0123456789ab', '/chats/app.js', '/chats/version'];
+  for (const p of PASSED) {
+    assets.length = 0;
+    const r = await worker.fetch(req(p), on(), {});
+    assert.equal(r.status, 200, p); assert.equal(await r.text(), `chat /_hub/${p.slice(7)}`, `${p}: Chat’s`);
+    assert.deepEqual(assets, [], `${p}: never the assets`);
+  }
+  // (/chats with no slash: the hub's 301, behind the key, as before)
+  assert.equal((await worker.fetch(req('/chats?a=1'), on(), {})).headers.get('location'), `${SITE}/chats/?a=1`);
+  assert.equal((await worker.fetch(req('/chats'), on({ HUB_KEY: undefined }), {})).status, 503);
+  // (off: absent, "0", anything but "1", or ROOF_OFF: milestone 1's page and worker, the module's files not found)
+  for (const o of [{}, { ROOF_CHATS: '0' }, { ROOF_CHATS: 'true' }, { ROOF_OFF: '1', ROOF_CHATS: '1' }]) {
+    asked = apps((u) => new Response(`chat ${u.pathname}${u.search}`, { headers: { 'Content-Type': 'text/plain' } }));
+    assets.length = 0;
+    for (const p of ['/chats/', '/chats/index.html', '/chats/sw.js', '/chats/?engine=1', '/chats/in/', '/chats/app.js']) {
+      const r = await worker.fetch(req(p), env(o), {});
+      assert.equal(r.status, 200, `${JSON.stringify(o)} ${p}`); assert.equal(await r.text(), `chat /_hub/${p.slice(7)}`);
+    }
+    for (const p of ['/chats/roof/chats.js', '/chats/roof/', '/chats/%72oof/core.js', '/chats//roof/core.js', '/chats/x/..%2Froof/core.js']) {
+      for (const method of ['GET', 'HEAD']) {
+        const r = await worker.fetch(req(p, { method }), env(o), {});
+        assert.equal(r.status, 404, `${JSON.stringify(o)} ${method} ${p}`); assert.equal(r.headers.get('cache-control'), 'no-store');
+      }
+    }
+    assert.equal(hub().filter((a) => /roof/.test(a.url.pathname)).length, 0, 'no module file asked of Chat');
+    assert.deepEqual(assets, [], 'never the assets');
+    assert.equal((await worker.fetch(req('/chats/'), env({ ...o, HUB_KEY: undefined }), {})).status, 503, 'milestone 1’s page: behind the key, as now');
+  }
+  // (Weather, Markets untouched by Chats' switch, and Chats by theirs)
+  assets.length = 0;
+  assert.equal(await (await worker.fetch(req('/weather/'), on(), {})).text(), PAGE);
+  assert.equal(await (await worker.fetch(req('/chats/'), on({ ROOF_OFF_WEATHER: '1', ROOF_MARKETS: '0' }), {})).text(), PAGE);
   H.forgetProbe();
 });

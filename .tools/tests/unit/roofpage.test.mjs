@@ -191,7 +191,7 @@ test('stages 2–4, app.js: fw.changed() marks Today’s cards, which are asked 
   const js = own();
   assert.match(js, /changed: \(\) => \{ cardsStale = true; \}/);
   assert.match(js, /onShow\(\) \{ drawLine\(true\); if \(cardsStale\) \{ cardsStale = false; refresh\(\); \} \}/);
-  assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt" \};/);
+  assert.match(js, /const USED = \{ weather: "wx:places", markets: "markets:last", fitness: "fitness:meAt"(?:, chats: "ifl-build:chat")? \};/, "(stage 3 adds Chats, used here once Chat said its build here)");
   assert.doesNotMatch(js, /preloadWeather/);
 });
 
@@ -221,4 +221,69 @@ test('stage 2, app.js: each module’s old worker at its own path let go of once
   assert.equal(REGISTRY.markets?.link, 'finance', 'Markets on its own: links.finance');
   assert.equal(REGISTRY.fitness?.link, undefined, 'Fitness on its own: links.fitness (its name)');
   assert.match(js, /finance: at\("finance"\)/, 'DEFAULT_LINKS has finance');
+});
+
+// ---- stage 3 HOST (roof/s3/spec.md §4.2, S3-D6, S3-D8, S3-D12, S3-D14; risk I3, I4, I11; build I5): Today with Chats in
+// the page, where the inflite repo beside has Chats in its REGISTRY ----
+const s3 = s24 || (!/\bchats: fz\(\{/.test(String(pub('roof/router.js'))) && 'the inflite repo beside has no Chats in REGISTRY (before stage 3’s B0)');
+test('stage 3, app.js: the sign-in hop to /chats/in/ is start()’s first line, only at /chats/ and only for the trip’s keys; Sign In’s hrefs unchanged', { skip: s3 }, () => {
+  const js = own();
+  const st = js.slice(js.indexOf('\nfunction start() {'));
+  const first = st.split('\n').slice(2).find((l) => !/^\s*\/\//.test(l));
+  assert.equal(first.trim(), 'if (/^\\/chats\\/(index\\.html)?$/.test(location.pathname) && /^#(signin|verify=|invite=|reset=)/.test(location.hash)) return location.replace("/chats/in/" + location.hash);');
+  const hop = new Function('location', `${first.trim()} return null;`);
+  const at = (p, h) => { let to = null; hop({ pathname: p, hash: h, replace: (u) => (to = u) }); return to; };
+  assert.equal(at('/chats/', '#signin-start&then=%2F'), '/chats/in/#signin-start&then=%2F');
+  assert.equal(at('/chats/index.html', '#signin=abc'), '/chats/in/#signin=abc');
+  for (const h of ['#verify=x', '#invite=y', '#reset=z']) assert.equal(at('/chats/', h), '/chats/in/' + h);
+  for (const [p, h] of [['/chats/', '#open=pat_1'], ['/chats/', '#share=x'], ['/', '#signin=abc'], ['/weather/', '#signin=1'], ['/chats/', '#verifyx']]) assert.equal(at(p, h), null, `${p}${h} stays`);
+  assert.equal((js.match(/#signin-start&then=\$\{thenHere\(\)\}/g) || []).length, 2, 'Sign In’s href and click, as before');
+  assert.ok(!/\/chats\/in\/#signin/.test(js), 'no link of Today’s goes to /chats/in/ itself');
+});
+
+test('stage 3, app.js: Chats decided once as the page boots: IFL.hub.chat the frame’s facade before the first render, the engine back if switched off, never on mid-session; a bare ifl-roof asked again', { skip: s3 }, () => {
+  const js = own();
+  assert.match(js, /const engineChat = IFL\.hub\.chat;/);
+  const src = js.slice(js.indexOf('const engineChat = IFL.hub.chat;'), js.indexOf('\n}\n', js.indexOf('function chatsSay(')) + 3);
+  const run = new Function('IFL', 'getF', src.replace(/\bF\b/g, 'getF()') + '; return chatsSay;');
+  const svc = [], IFL = { hub: { chat: () => 'engine' } }, engine = IFL.hub.chat;
+  let F = null;
+  const say = run(IFL, () => F);
+  const apps = { weather: true, chats: true };
+  say(apps);
+  assert.notEqual(IFL.hub.chat, engine, 'on: the facade’s way'); assert.equal(apps.chats, true);
+  F = { service: (a) => { svc.push(a); return Promise.resolve({ facade: 1 }); } };
+  IFL.hub.chat(); assert.deepEqual(svc, ['chats'], 'F.service("chats")');
+  F = null; assert.ok(IFL.hub.chat() instanceof Promise, 'no frame (signed out): null, no engine');
+  const off = { chats: false }; say(off);
+  assert.equal(IFL.hub.chat, engine, 'off later: the engine’s way back'); assert.equal(off.chats, false);
+  const again = { chats: true }; say(again);
+  assert.equal(IFL.hub.chat, engine, 'never on mid-session'); assert.equal(again.chats, false, 'the frame told it’s off till the next load');
+  const run2 = run({ hub: { chat: engine } }, () => null), none = {};
+  run2(none); assert.equal(none.chats, false, 'the hub unknown at boot: off for this page');
+  // (called where the hub's said, before the frame's made: hubSays, and applyHub before setRoof)
+  const hs = js.slice(js.indexOf('function hubSays('), js.indexOf('function signinHref('));
+  assert.ok(hs.indexOf('chatsSay(S.apps)') > hs.indexOf('S.apps = '), 'hubSays: on S.apps once it’s set');
+  const ah = js.slice(js.indexOf('function applyHub('), js.indexOf('function retireOld('));
+  assert.ok(ah.indexOf('chatsSay(apps)') > 0 && ah.indexOf('chatsSay(apps)') < ah.indexOf('F?.setRoof(on, apps)'), 'applyHub: before setRoof');
+  assert.match(js, /\(v === "1" \|\| v === "0"\) && \(r === "1" \|\| r === "0"\) && ss\.get\(APPS_KEY\) != null;/, 'a bare ifl-roof (no ifl-roof-apps): asked again');
+});
+
+test('stage 3, app.js: the core let go of on every way out (sign-out ends it before Chat’s store is cleared, another account, the frame’s destroy); retireOld’s promise is opts.retired; locked clears Chat’s words from Today; Chat Settings in-page', { skip: s3 }, () => {
+  const js = own();
+  const so = js.slice(js.indexOf('async function signOut('), js.indexOf('function anyway('));
+  const rel = so.indexOf('F?.releaseService("chats", { terminate: true })'), fa = so.indexOf('await forgetApps(');
+  assert.ok(so.indexOf('c.signOut()') > 0 && so.indexOf('c.signOut()') < rel && rel < fa, 'the core’s signOut, then ended, then the store cleared');
+  assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut \}\);/, 'Chat’s store cleared here too with Chats in the page');
+  assert.match(js, /if \(was\) \{ you\?\.forgetYou\?\.\(\); F\?\.releaseService\("chats", \{ terminate: true \}\); \}/, 'another account: let go of');
+  assert.match(js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn(')), /unframe\(\);/, 'signed out: the frame destroyed (which ends its services)');
+  assert.match(js, /retired: (retiredSoon\(\)|\{ then: \(ok, no\) => retiredSoon\(\)\.then\(ok, no\) \}), serviceState,/, "opts.retired: retireOld’s promise, read when the frame first asks (a thenable)");
+  assert.match(js, /retiring = Promise\.all\(\[retiring, gone\]\);/);
+  assert.match(js, /return r\.unregister\(\)\.catch\(\(\) => \{\}\);/);
+  const ss = js.slice(js.indexOf('function serviceState('), js.indexOf('function frame('));
+  assert.match(ss, /if \(app !== "chats" \|\| state !== "locked"\) return;/);
+  assert.match(ss, /#today \.dw-words, #today \.dw-chips, #today \.dt-said/); assert.match(ss, /day\?\.forgetHeard\?\.\(\);/);
+  assert.match(String(pub('day.js')), /export function forgetHeard\(\) \{ heard\.clear\(\); wroteHeard\.clear\(\); \}/);
+  assert.match(js, /chatSettings: \(\) => \(chatsHere && F \? F\.nav\.go\("\/chats\/#settings"\)/);
+  assert.match(js, /if \(S\.hub && !chatsHere\) IFL\.hub\.chat\(\)\.then\(\(c\) => c\?\.refresh\?\.\(\)\)/, 'the push’s sync: the frame relays it with Chats here');
 });

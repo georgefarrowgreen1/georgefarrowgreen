@@ -85,8 +85,9 @@ const ENGINE = `<!doctype html><html><head><meta charset="utf-8"><title>Chats</t
 // fakes: apps whose module and connector are the kit's stand-ins (roofkit/fake-module.js, fake-connector.js), their CSS
 // empty and their /<app>/version 9.99, and whose document (/<app>/) is the framework's page (stage 2 FW)
 const FAKE_MOD = readFileSync(`${HERE}roofkit/fake-module.js`, 'utf8'), FAKE_CONN = readFileSync(`${HERE}roofkit/fake-connector.js`, 'utf8');
-async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null, fakes = [] } = {}) {
-  const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
+async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, roof: true }, signedIn = true, path = '/', wait = true, module = 'connector', weatherPage = null, warning = null, setup = null, expect = null, fakes = [], phone = false } = {}) {
+  // (phone: a phone's user agent, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, ...(phone ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' } : {}), colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'allow' });
   if (signedIn) await ctx.addCookies([{ name: 'account', value: 'stubsession0123456789abcdefABCDEF', url: BASE }]);
   await ctx.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
   const hubAsked = [];
@@ -535,7 +536,10 @@ await part('module error state', async () => {
 // ======================================================================= stage 2: a switch per module
 // (/api/hub's apps, one on and one off: the one on opens in the page, the one off is a page load of the hub's page; the
 // map kept as ifl-roof-apps, app names and booleans only)
-const APPS_ON = { weather: true, markets: true, fitness: false, mail: false };
+// (stage 3's B0: REGISTRY.chats, so the map the page keeps names Chats too, off)
+const APPS_ON = { weather: true, markets: true, fitness: false, mail: false, chats: false };
+// (the inflite repo beside has stage 3's REGISTRY.chats)
+const CHATS3 = /\bchats: fz\(\{/.test(readFileSync(`${IFL}today/public/roof/router.js`, 'utf8'));
 await part('apps per module', async () => {
   await mode({ phase: 'midday' });
   const HUBPAGE = '<!doctype html><title>Fitness</title><style>@view-transition { navigation: auto; }</style><p>FITNESS HUB PAGE</p>';
@@ -630,6 +634,62 @@ await part('cards after a change', async () => {
   await p.waitForTimeout(1500);
   same(await cards(), 1, 'after fw.changed(): Today asks for its cards again on its next show, once');
   await ctx.close();
+});
+
+// ======================================================================= stage 3: Chats, the framework's second tab screen (HOST)
+// With /api/hub's apps.chats: the Chats tab in-page (no page load, no iframe), its root a tab screen (your photo, no
+// Back, its own tab current), the tab bar InFlite's indigo on Today and on Chats alike (S3-D16), one Worker (Chats' core,
+// a stand-in here answering what the service asks; the module and service are MAIN's pigeon/roof/ files as the hub
+// serves them); and Chat's sign-in trip at /chats/ hopped to Chat's own page at /chats/in/ (S3-D8)
+const CHAT_CORE = `addEventListener("message", (e) => {
+  const { id, m } = e.data || {};
+  const v = m === "hello" ? { protocol: 1 } : m === "start" || m === "state" ? { state: "ready" } : m === "waiting" ? [] : m === "since" ? null : { ok: true };
+  postMessage({ id, ok: true, v });
+  if (m === "start") postMessage({ t: "patch", topic: "state", data: { state: "ready" } });
+});`;
+const chatsFiles = async (ctx) => {
+  await ctx.route((u) => /^\/chats\/(index\.html)?$/.test(new URL(u).pathname) && !new URL(u).searchParams.has('engine'), (r) => r.fulfill({ contentType: 'text/html', body: PAGE, headers: { 'Cache-Control': 'no-cache' } }));
+  await ctx.route((u) => /^\/chats\/(roof\/)?[\w-]+\.(js|css)$/.test(new URL(u).pathname), (r) => {
+    const f = new URL(r.request().url()).pathname.slice('/chats/'.length);
+    if (f === 'roof/core.js') return r.fulfill({ contentType: 'text/javascript', body: CHAT_CORE });
+    if (!existsSync(`${MAIN}pigeon/${f}`)) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
+    return r.fulfill({ contentType: f.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}pigeon/${f}`, 'utf8') });
+  });
+  await ctx.route((u) => new URL(u).pathname === '/chats/version', (r) => r.fulfill({ json: { build: '1.69' }, headers: { 'Cache-Control': 'no-store' } }));
+  await ctx.route((u) => new URL(u).pathname.startsWith('/chats/in/'), (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Chats</title><p>CHAT’S OWN PAGE</p>' }));
+};
+await part('Chats in the page', async () => {
+  if (!CHATS3) return console.log('SKIP  Chats in the page: the inflite repo beside has no REGISTRY.chats (before stage 3)');
+  await mode({ phase: 'midday' }); await reset();
+  const CHATS_ON = { weather: true, chats: true };
+  const { ctx, p, loads } = await open({ hub: { ready: true, roof: true, apps: CHATS_ON }, setup: chatsFiles, phone: true });
+  await p.evaluate(() => { window.__same = 1; });
+  ok(await p.$eval('nav#tabs', (n) => n.classList.contains('chats')), 'the tab bar takes InFlite’s indigo (.chats)');
+  const onColour = () => p.$eval(`${H.TAB}[aria-current]`, (a) => getComputedStyle(a).color);
+  const todayColour = await onColour();
+  same(todayColour, 'rgb(154, 144, 255)', 'Today’s current tab: InFlite’s indigo (dark)');
+  await p.click(H.tab('chats'));
+  await p.waitForFunction(() => document.documentElement.dataset.app === 'chats', null, { timeout: 10000 });
+  same(new URL(p.url()).pathname, '/chats/', 'at /chats/');
+  ok(await p.evaluate(() => window.__same === 1) && loads() === 1, 'in the same document');
+  same(await p.$$eval(H.TAB, (as) => as.map((a) => [a.dataset.tab, a.getAttribute('aria-current')])), [['today', null], ['chats', 'page'], ['apps', null], ['you', null]], 'Chats current (aria-current="page")');
+  ok(await p.isVisible(H.HD_ME) && !(await p.isVisible(H.HD_BACK)), 'a tab screen: your photo, no Back');
+  same(await text(p, H.HD_TITLE), 'Chats', 'its title');
+  await p.waitForTimeout(600);
+  same(await onColour(), todayColour, 'the tab bar’s indigo on Chats as on Today (S3-D16)');
+  same(await p.$$eval('iframe[name="ifl-chat"], dialog.ifl-engine-box', (n) => n.length), 0, 'no engine');
+  await p.waitForTimeout(500);
+  same(p.workers().map((w) => new URL(w.url()).pathname), ['/chats/roof/core.js'], 'one Worker: Chats’ core');
+  await p.click(H.tab('today'));
+  await p.waitForFunction(() => !document.getElementById('today').hidden);
+  ok(await p.evaluate(() => window.__same === 1) && loads() === 1, 'and Today again, in the same document');
+  await p.screenshot({ path: `${OUT}/chats-tab-390-dark.png` });
+  await ctx.close();
+  // (Chat's sign-in trip, its links unchanged, at /chats/: on to Chat's own page, the same hash)
+  const o2 = await open({ hub: { ready: true, roof: true, apps: CHATS_ON }, setup: chatsFiles, path: '/chats/#signin=abc123', wait: false });
+  await o2.p.waitForURL(`${BASE}/chats/in/#signin=abc123`, { timeout: 10000 });
+  has(await text(o2.p, 'body'), 'CHAT’S OWN PAGE', '/chats/#signin=… → /chats/in/#signin=…');
+  await o2.ctx.close();
 });
 
 // ======================================================================= every size, light and dark
