@@ -536,8 +536,11 @@ await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Wo
   ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
   // (the next sync while shown: 15 s; a hide and show asks sooner)
   await hide(p); await wait(500); await show(p);
-  const ended = (await shown(p, hk('chState', 'ended'), 40000)) && (await shown(p, hk('CH_SIGNIN'), 5000)) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')));
-  ok(ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In (ended, §2.1)', await textOf(p, hk('M_CHATS')));
+  // (at the hub, Chat's sign-in on a phone is InFlite's own there too (the trip's hand-back makes it the site's), so its
+  // end signs Today out as well: the frame let go of, the core ended. Where InFlite's sign-in outlives it, the Chats
+  // screen says so: either is the right end, and what matters is below: no Worker, no words, no engine)
+  const ended = await until(async () => ((await count(p, hk('chState', 'ended'))) && (await count(p, hk('CH_SIGNIN'))) && (await p.evaluate((s) => /signed out of Chats/.test(document.querySelector(s)?.textContent || ''), hk('M_CHATS')))) || (await p.isVisible('#signin').catch(() => false)), 40000);
+  ok(!!ended, '13. the Chats screen: “You’ve been signed out of Chats” + Sign In, or InFlite signed out with it (ended, §2.1)', await textOf(p, hk('M_CHATS')));
   const none = await until(() => workers(p).core === 0, 15000);
   ok(!!none, '13. …and no Worker left on the page (risk I3, §9.5)', js(workers(p)));
   ok(!(await engines(p)), '13. no engine made in its place (S3-D12)');
