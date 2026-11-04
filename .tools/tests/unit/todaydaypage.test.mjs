@@ -191,27 +191,28 @@ test("tickDay: an Undo whose time has gone is taken away", { skip }, () => {
   assert.match(late.sec("top").innerHTML, /Undo Thursday’s Ride/);
 });
 
-test("drawDay: each phase's sections, a Send on every card that has words, and never a box to type in", { skip }, () => {
+// (a top card's line as Today 1.18 draws it: the app's name in front taken off, the rest started with a capital)
+const lineSaid = (l) => { const w = l.replace(/^(Markets|Fitness|Weather|Chat|Mail):\s*/i, ""); return w.charAt(0).toUpperCase() + w.slice(1); };
+const digitsOf = (x) => (String(x).match(/\d+(?:[.,]\d+)?/g) || []).join(" ");
+test("drawDay: each phase's sections, no Send or Open on Today (each app has its own), and never a box to type in", { skip }, () => {
   const SHOWS = { morning: "wcr", midday: "wcr", preride: "", riding: "", after: "cr", "after-fit": "cr", evening: "cr" };
   for (const p of PHASES) {
     const a = FIX(p), d = drawn(a, a.at), top = a.tops[a.phase];
     assert.equal(d.root.dataset.phase, a.phase, p);
     assert.match(d.sec("top").innerHTML, new RegExp(`data-phase="${a.phase}"`), `${p}: the top card says its phase`);
     assert.ok(d.sec("top").innerHTML.includes(cards.esc(top.title)), `${p}: the top card's title`);
-    for (const l of top.lines) assert.ok(d.sec("top").innerHTML.includes(cards.esc(l)), `${p}: “${l}”`);
-    for (const s of top.stats) assert.ok(d.sec("top").innerHTML.includes(`<dt>${cards.esc(s.label)}</dt><dd>${cards.esc(s.value)}</dd>`), `${p}: ${s.label}`);
+    for (const l of top.lines) assert.ok(d.sec("top").innerHTML.includes(cards.esc(lineSaid(l))), `${p}: “${l}”`);
+    for (const s of top.stats.filter((s) => !digitsOf(top.title) || digitsOf(s.value) !== digitsOf(top.title))) assert.ok(d.sec("top").innerHTML.includes(`<dt>${cards.esc(s.label)}</dt><dd>${cards.esc(s.value)}</dd>`), `${p}: ${s.label}`);
     const want = SHOWS[p], waits = want.includes("w") && a.waiting.length > 0;
     assert.equal(!d.sec("waiting").hidden, waits, `${p}: Waiting for You ${waits ? "shown" : "not shown"}`);
     assert.equal(!d.sec("coming").hidden, want.includes("c"), `${p}: Coming Up`);
     assert.equal(!d.sec("rest").hidden, want.includes("r"), `${p}: The Rest of Today`);
-    assert.ok(/data-send(?![\w-])/.test(d.sec("top").innerHTML), `${p}: Send on the top card`);
-    if (want.includes("r")) assert.equal((d.sec("rest").innerHTML.match(/data-send(?![\w-])/g) || []).length, Object.values(a.cards).filter((c) => c.share).length, `${p}: Send on each of the four cards with words`);
-    if (want.includes("c")) assert.equal((d.sec("coming").innerHTML.match(/data-send(?![\w-])/g) || []).length, day.comingAt(a.upcoming, a.at, a.phase).filter((r) => r.share).length, `${p}: Send on each row that has a card`);
+    assert.doesNotMatch(d.html(), /data-send(?![\w-])|data-do="sendto"|data-do="open"/, `${p}: no Send and no Open on Today`);
     assert.doesNotMatch(d.html(), /<input|<textarea|contenteditable/i, `${p}: nothing to type in`);
     assert.doesNotMatch(d.html(), /\sstyle\s*=|\son[a-z]+\s*=/i, `${p}: no inline style or handler`);
   }
   const after = drawn(FIX("after"), FIX("after").at);
-  assert.match(after.sec("top").innerHTML, /Open Fitness/, "the after card without Stress: Open Fitness");
+  assert.doesNotMatch(after.sec("top").innerHTML, /Open Fitness/, "the after card: no Open Fitness (the row says where it is)");
   assert.doesNotMatch(after.sec("top").innerHTML, /<dt>Stress<\/dt>/);
   const fit = drawn(FIX("after-fit"), FIX("after-fit").at);
   assert.match(fit.sec("top").innerHTML, /<dt>Stress<\/dt><dd>68<\/dd>/);
@@ -221,26 +222,22 @@ test("drawDay: each phase's sections, a Send on every card that has words, and n
   assert.match(mid.sec("waiting").innerHTML, /<b>Pat<\/b><small>2 messages, the last at 09:41<\/small>/, "Pat and when, never words, from the server");
 });
 
-test("drawDay: off the hub every link is the app's own address and Send is Chat's link; at the hub, the hub's paths through IFL.hub.go and Send a button", { skip }, () => {
-  const a = FIX("after"), id = a.tops.after.sendTo.id;
+test("drawDay: off the hub every link is the app's own address; at the hub, the hub's paths through IFL.hub.go; no Send either way", { skip }, () => {
+  const a = FIX("after"), mira = a.tops.after.wrote[0].id;
   const off = drawn(a, a.at).sec("top").innerHTML;
-  assert.match(off, /href="https:\/\/fitness\.inflite\.ai\/#activities"/, "Open Fitness at Fitness's own address");
-  assert.match(off, new RegExp(`href="https://chat\\.inflite\\.ai/#open=${a.tops.after.wrote[0].id}"`), "Answer Mira at Chat's own address");
-  assert.match(off, /<a class="pill" href="https:\/\/chat\.inflite\.ai\/#share=Done%3A%20Endurance%2075%2C%201%3A15%2C%2022\.4%20mi\.&amp;card=[\w-]+" data-send/, "Send: Chat's #share= link");
-  assert.doesNotMatch(off, /<button[^>]*data-send/);
+  assert.doesNotMatch(off, /fitness\.inflite\.ai\/#activities|data-send|data-do="sendto"/, "no Open Fitness and no Send on the top card");
   const calls = [], on = drawn(a, a.at, { hub: hubAt(calls) }).sec("top").innerHTML;
-  assert.match(on, /href="\/fitness\/#activities" data-do="open"/, "at the hub: the hub's path");
-  assert.ok(calls.some(([k, u]) => k === "go" && u === "/fitness/#activities"), "through IFL.hub.go");
-  assert.match(on, new RegExp(`<button class="pill" type="button" data-do="sendto" data-to="${id}">`), "Send to Leo: one tap, at the hub");
-  assert.match(on, /<button class="pill" type="button" data-send data-share="Done: Endurance 75, 1:15, 22\.4 mi\." data-card="[\w-]+"/, "Send: a button at the hub");
+  assert.doesNotMatch(on, /data-send|data-do="sendto"|data-do="open"/, "at the hub: no Send, no Open");
+  void mira;
   // (the hub there but not ready (degraded, its key not set yet): as off it)
   const degraded = drawn(a, a.at, { hub: { ...hubAt(), degraded: true } }).sec("top").innerHTML;
-  assert.match(degraded, /href="https:\/\/fitness\.inflite\.ai\/#activities"/);
+  assert.doesNotMatch(degraded, /href="\/fitness\//);
   // (the four cards, drawn by day.js where the page has none of its own: their links through the hub too)
   const m = FIX("midday"), rest = drawn(m, m.at, { hub: hubAt() }).sec("rest").innerHTML;
   assert.match(rest, /class="tc-head" href="\/weather\/\?lat=51\.5072/, "the Weather card's head at /weather/");
   assert.match(rest, /class="tc-head" href="\/markets\/"/, "the Markets card's head at /markets/");
-  assert.doesNotMatch(rest, /(?<![\w-])href="https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/, "no card link leaves the hub (Chat's own link kept only as the Send button's fallback)");
+  assert.doesNotMatch(rest, /(?<![\w-])href="https:\/\/(chat|weather|fitness|finance)\.inflite\.ai/, "no card link leaves the hub");
+  assert.doesNotMatch(rest, /data-send|tc-go/, "no Send and no Open on the cards");
 });
 
 test("drawDay: the page's ctx: line(text) for the phase (null in the morning, the page's own date), and Edit's prefs", { skip }, () => {
@@ -448,18 +445,17 @@ test("links: a row with nowhere to go isn't a link; a hub path of Mail's goes to
 });
 
 test("the hub: the page's own (window.IFL.hub) first, else ctx.hub; with neither, off the hub", { skip }, () => {
-  const a = FIX("after"), calls = [];
-  globalThis.IFL = { hub: hubAt(calls) };
+  const m = FIX("midday");
+  globalThis.IFL = { hub: hubAt([]) };
   try {
-    const top = drawn(a, a.at).sec("top").innerHTML;
-    assert.match(top, /href="\/fitness\/#activities" data-do="open"/, "window.IFL.hub: the hub's path");
-    assert.match(top, /<button class="pill" type="button" data-send/, "and Send a button");
-    const both = drawn(a, a.at, { hub: { ...hubAt(), degraded: true } }).sec("top").innerHTML;
-    assert.match(both, /href="\/fitness\/#activities"/, "the page's own hub before one handed in");
+    const rest = drawn(m, m.at).sec("rest").innerHTML;
+    assert.match(rest, /class="tc-head" href="\/markets\/"/, "window.IFL.hub: the hub's path");
+    const both = drawn(m, m.at, { hub: { ...hubAt(), degraded: true } }).sec("rest").innerHTML;
+    assert.match(both, /class="tc-head" href="\/markets\/"/, "the page's own hub before one handed in");
   } finally {
     delete globalThis.IFL;
   }
-  assert.match(drawn(a, a.at).sec("top").innerHTML, /href="https:\/\/fitness\.inflite\.ai\/#activities"/, "neither: off the hub");
+  assert.doesNotMatch(drawn(m, m.at).sec("rest").innerHTML, /class="tc-head" href="\/markets\/"/, "neither: off the hub");
 });
 
 test("mergeWaiting: words only beside a row the server named, and only when the engine's message is as new as the server's", { skip }, () => {
