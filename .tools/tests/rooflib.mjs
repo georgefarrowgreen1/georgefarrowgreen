@@ -72,7 +72,10 @@ export function checker() {
 // ---- the browser ----
 const SECURE = ['', 'auth.', 'account.', 'chat.', 'email.', 'weather.', 'fitness.', 'finance.'].map((h) => `http://${h}ifl.test:8788`).join(',');
 const RULES = 'MAP ifl.test:8788 127.0.0.1:8787, MAP email.ifl.test:8788 127.0.0.1:8806, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1, MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1';
-export const CHROMIUM_ARGS = [`--host-resolver-rules=${RULES}`, `--unsafely-treat-insecure-origin-as-secure=${SECURE}`];
+// (and no Local Network Access checks: every test address is this machine's, as each live one is the internet's, but a
+// page a test hands in itself (route.fulfill) has no address, so Chromium would count it public and keep it from framing
+// one here: the switch-off page's frame of Mail, roofmailnav C)
+export const CHROMIUM_ARGS = [`--host-resolver-rules=${RULES}`, `--unsafely-treat-insecure-origin-as-secure=${SECURE}`, '--disable-features=LocalNetworkAccessChecks'];
 export const ENGINE = (() => {
   if (process.env.BROWSER !== 'webkit') return 'chromium';
   try { if (existsSync(webkit.executablePath())) return 'webkit'; } catch (_) {}

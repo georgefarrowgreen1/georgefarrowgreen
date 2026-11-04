@@ -128,7 +128,9 @@ const fn = (name) => new RegExp(`\\n {2}(?:async )?function ${name}\\([^)]*\\) \
 const part = (re, what) => re.exec(src)?.[0] || assert.fail(`app.js: ${what}`);
 // (Mail at an address, in a window: its parent, its name, and the address of the window holding it as the browser says
 // it (ancestorOrigins: undefined where it doesn't, 'throws' for one that can't be read); → its embed mode's parts, working)
-function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl-mail', parentThrows = false, ancestors } = {}) {
+// (unsent: with the hand-in of what InFlite's Mail was writing as its switch went off, Mail's saves answered by it:
+// (draft) → a promise; what was saved, toasted, and the list and counts asked again, in saved, toasts, again)
+function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl-mail', parentThrows = false, ancestors, unsent } = {}) {
   const posted = [], listeners = {}, classes = [];
   const win = { name };
   const parent = { postMessage: (m, o) => { if (parentThrows) throw new Error('gone'); posted.push([JSON.parse(JSON.stringify(m)), o]); } };
@@ -141,8 +143,12 @@ function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl
   const code = `${part(/\n {2}const EMBED = \(\(\) => \{[\s\S]*?\n {2}\}\)\(\);\n/, 'EMBED')}${part(/\n {2}const SITE = .+;\n {2}const HUBS = .+;\n/, 'SITE, HUBS')}
     ${part(/\n {2}let HUB = \(\(\) => \{[\s\S]*?\n {2}\}\)\(\);\n {2}let hubHeard = false;\n/, 'HUB, hubHeard')}
     ${fn('toHub')}${fn('helloHub')}${fn('fromHub')}${part(/\n {2}if \(EMBED\) \{\n[\s\S]*?\n {2}\}\n/, 'if (EMBED)')}
-    ({ EMBED, HUBS, hub: () => HUB, toHub, fromHub, heard: () => hubHeard })`;
-  return { ...vm.runInNewContext(code, ctx), posted, listeners, classes, parent, win };
+    ${unsent ? `${fn('unsentDraft')}\n  const handedIn = new Set();${fn('fromHubUnsent')}` : 'const fromHubUnsent = null;'}
+    ({ EMBED, HUBS, hub: () => HUB, toHub, fromHub, fromHubUnsent, heard: () => hubHeard })`;
+  const saved = [], toasts = [], again = [];
+  if (unsent) Object.assign(ctx, { api: { saveDraft: (d) => (saved.push(JSON.parse(JSON.stringify(d))), unsent(d)) }, toast: (t) => toasts.push(t), S: { me: {} },
+    refreshCounts: () => again.push('counts'), loadList: (o) => again.push(o) });
+  return { ...vm.runInNewContext(code, ctx), posted, listeners, classes, parent, win, saved, toasts, again };
 }
 const HELLO = { ifl: 'hello', v: 1 };
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -241,4 +247,54 @@ test('in the frame: nothing in your photo’s place (the hub’s bar has Back to
   assert.match(fn('forgetMail'), /if \(!EMBED\) navigator\.clearAppBadge\?\.\(\);/);
   // (signed out in the frame: the sign-in page, never framed, isn't gone to)
   assert.match(fn('signOut'), /if \(!EMBED && authOrigin\(\) !== accountOrigin\) location\.assign\(/);
+});
+
+test('what InFlite’s Mail was writing as its switch went off, handed in by the hub’s page: saved as a draft only from the hub holding the frame, after its hello; the hub told by the copy’s time alone (One roof stage 4, §8)', { skip }, async () => {
+  const tick = () => new Promise((ok) => setTimeout(ok, 0));
+  const words = { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com', extra: 1 }, { name: 'x' }, null], cc: [], bcc: [], subject: 'Roof switch draft', text: 'Words',
+    inReplyTo: '<a@x>', references: '<a@x>', quote: { of: 'm-1', mode: 'replyAll' } };
+  const msg = (draft = words, at = 1700000000000) => ({ ifl: 'unsent', v: 1, at, draft });
+  let m = embed({ unsent: async () => ({ id: 'd-9' }) });
+  // (before the hub's answered the hello, or from anywhere but the hub holding the frame: nothing saved)
+  assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), false, 'not before the hello');
+  m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });
+  for (const e of [{ source: {}, origin: 'https://inflite.ai' }, { source: m.parent, origin: 'https://next.inflite.ai' }, { source: m.parent, origin: 'https://evil.example' }, { source: m.parent, origin: 'https://email.inflite.ai' }])
+    assert.equal(m.fromHubUnsent({ ...e, data: msg() }), false, e.origin);
+  for (const data of [null, 'unsent', { ...msg(), v: 2 }, { ...msg(), ifl: 'hello' }, { ...msg(), at: 'x' }, msg(null), msg({ ...words, to: [], subject: '', text: ' ' }), msg('words')])
+    assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data }), false, JSON.stringify(data));
+  assert.deepEqual(m.saved, []);
+  m.posted.length = 0;
+  assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), true);
+  await tick();
+  assert.deepEqual(m.saved, [{ from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: [], bcc: [], subject: 'Roof switch draft', text: 'Words', inReplyTo: '<a@x>', references: '<a@x>',
+    attachments: [], quote: { of: 'm-1', mode: 'replyAll' } }], 'a new draft, its people as Mail keeps them, the quote by which message it is');
+  assert.deepEqual(m.posted, [[{ ifl: 'unsent', v: 1, at: 1700000000000, saved: true }, 'https://inflite.ai']], 'the hub told, by the copy’s time alone (none of the words)');
+  assert.deepEqual(m.toasts, ['Draft Saved']);
+  assert.deepEqual(plain(m.again), ['counts', { quiet: true }]);
+  // (the same copy again: saved once)
+  assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), false);
+  // (a draft it was: saved over, its files kept by their places; a references list as Mail keeps it, one line)
+  m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg({ ...words, draftId: 'd-1', references: ['<a@x>', '<b@x>'], quote: null }, 2) });
+  await tick();
+  assert.equal(m.saved[1].id, 'd-1');
+  assert.deepEqual(m.saved[1].attachments, Array.from({ length: 20 }, (_, i) => ({ i })));
+  assert.equal(m.saved[1].references, '<a@x> <b@x>');
+  assert.equal('quote' in m.saved[1], false, 'no quote key: Mail keeps the one the draft has');
+  for (const draftId of ['../x', 'a b', 'x'.repeat(65), 42]) {
+    m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg({ ...words, draftId }, 3 + m.saved.length) });
+    await tick();
+    assert.equal('id' in m.saved.at(-1), false, String(draftId));
+  }
+  // (Mail couldn't save it: the hub not told, so it keeps its copy, and the same copy is taken again later)
+  m = embed({ unsent: async () => { throw new Error('no'); } });
+  m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });
+  m.posted.length = 0;
+  m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() });
+  await tick();
+  assert.deepEqual(m.posted, []);
+  assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), true, 'taken again');
+  // (Mail at its own address: nothing)
+  m = embed({ framed: false, unsent: async () => ({}) });
+  assert.equal(m.fromHubUnsent({ source: m.win, origin: 'https://inflite.ai', data: msg() }), false);
+  assert.deepEqual(m.saved, []);
 });
