@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.74";
-export const NEWS = "Switching between Today, Activities and Progress no longer redraws them: each stays as it was unless something changed";
+export const BUILD = "1.75";
+export const NEWS = "Switching sections is now completely still: Fitness no longer checks your account or redraws on every switch";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -186,7 +186,7 @@ export async function mount(root, fw) {
   let queued = 0;
   const all = () => { ver++; if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
   const ACTS_EVENTS = new Set(["me", "acts", "settings", "loading", "error"]);
-  const offs = core.EVENTS.map((e) => core.on(e, () => { if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
+  const offs = core.EVENTS.map((e) => core.on(e, () => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
   const unprovide = fw.search?.provide?.({
@@ -238,12 +238,14 @@ export async function mount(root, fw) {
       const id = SECTIONS.some(([k]) => k === route?.section) ? route.section : "today";
       if (shown && shown !== id) { try { views.get(shown).hide(); } catch (e) { console.error(e); } away.set(shown, Date.now()); }
       for (const [k, el] of secs) el.hidden = k !== id;
+      const coming = !onScreen;
       shown = id; onScreen = true;
       // (a section out of sight 5 minutes: its DOM let go, drawn afresh from S now, S2-D22)
       for (const [k, t] of away) if (k !== id && Date.now() - t > AWAY) { views.get(k)?.drop?.(); if (k === "today") secs.get(k).replaceChildren(); away.delete(k); drawnAt.delete(k); }
       away.delete(id);
       guard(true);
-      core.shown(true);
+      // (Fitness coming on screen: its account looked at again; a section switch within it isn't a reason to)
+      if (coming) core.shown(true);
       header();
       draw(id);
       openTo(route);

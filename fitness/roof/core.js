@@ -507,6 +507,10 @@ export async function pull() {
     const m = await fetchMe(meBase, me);
     if (!still(t)) return;
     if (!m.signedIn || m.id !== S.me.id) return signedOutHere();
+    // (nothing new since the last look: kept as it is, nothing drawn again)
+    const sig = JSON.stringify([m.ver, m.name, m.handle, m.photoAt, (m.acts || []).length, (m.acts || [])[0]?.id, (m.acts || [])[0]?.sum, m.offers, m.offersToday, m.times, m.health, m.more, m.garmin, m.strava]);
+    if (sig === pull.sig && !S.dirty.size) { S.pulledAt = Date.now(); return; }
+    pull.sig = sig;
     takeUp(m);
   } catch (e) {
     // (a 401 is the framework's to confirm, as Weather's sync does: fw.session.lost(); an offline or a 5xx waits for next time)
