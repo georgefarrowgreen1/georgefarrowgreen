@@ -273,7 +273,8 @@ function fieldHTML(f){
     return `<div class="fld wide"><label class="lab" for="i-${f.k}">${esc(f.label)}</label><textarea id="i-${f.k}" data-k="${f.k}"${f.ph ? ` placeholder="${esc(f.ph)}"` : ''}>${esc(S.v[f.k] ?? '')}</textarea></div>`;
   case 'num': case 'seg': case 'chips':
     if (f.lr) return `<div class="fld${f.t === 'seg' ? ' wide' : wide}">${lab}<div class="lr"><span class="side">L</span>${inputHTML(f.k + '_L', f)}<span class="side">R</span>${inputHTML(f.k + '_R', f)}</div></div>`;
-    return `<div class="fld${wide}">${lab}${inputHTML(f.k, f)}</div>`;
+    // (a row of buttons that wouldn't fit beside another field takes the whole row, so it never wraps in a narrow cell)
+    return `<div class="fld${wide || (f.opts && f.opts.join('').length > 16 ? ' wide' : '')}">${lab}${inputHTML(f.k, f)}</div>`;
   case 'light': {
     const one = k => `<div class="light">${inputHTML(k, f)}${tlHTML(k, f.cl)}</div>`;
     if (f.lr) return `<div class="fld wide">${lab}<div class="lr"><span class="side">L</span>${one(f.k + '_L')}<span class="side">R</span>${one(f.k + '_R')}</div></div>`;
@@ -303,17 +304,22 @@ function fieldHTML(f){
 function angleHTML(f){
   if (!applies(f)) return '';
   const r = range(f.k);
-  return `<div class="ang"><div><div class="nm">${esc(f.label)}</div><div class="gd">${r ? `Guide ${fmt(r[0])}–${fmt(r[1])}${f.unit === '°' ? '°' : ' ' + f.unit}` : 'Recorded only'}</div></div>
+  return `<div class="ang"><div><div class="nm">${esc(f.label)}</div><div class="gd">${r ? guideTxt(r, f.unit) : 'Recorded only'}</div></div>
     <div class="pp">
       <div class="fld"><label class="lab" for="i-${f.k}_pre">Before</label><div class="num"><input type="text" inputmode="decimal" id="i-${f.k}_pre" data-k="${f.k}_pre" data-num value="${S.v[f.k + '_pre'] ?? ''}"><span class="u">${f.unit}</span></div></div>
       <div class="fld"><label class="lab" for="i-${f.k}_post">After</label><div class="num"><input type="text" inputmode="decimal" id="i-${f.k}_post" data-k="${f.k}_post" data-num value="${S.v[f.k + '_post'] ?? ''}"><span class="u">${f.unit}</span></div></div>
     </div>
     <div class="gauge-wrap" data-x="gauge" data-k="${f.k}" data-u="${f.unit}"></div></div>`;
 }
+// "Guide 138–148°"; a range across nothing "Guide −1 to +1 cm"
+function guideTxt(r, unit){
+  const u = unit === '°' ? '°' : ' ' + unit;
+  return r[0] < 0 ? `Guide ${fmt(r[0])} to ${r[1] > 0 ? '+' : ''}${fmt(r[1])}${u}` : `Guide ${fmt(r[0])}–${fmt(r[1])}${u}`;
+}
 function gaugeHTML(k, unit){
   const pre = num(k + '_pre'), post = num(k + '_post'), r = range(k);
   const vals = [pre, post].filter(x => x != null);
-  if (!vals.length && !r) return '<div class="gread"><span class="hint">Enter before and after</span></div>';
+  if (!vals.length && !r) return '<div class="gread"><span class="hint">Not measured</span></div>';
   const lo0 = Math.min(...vals, ...(r || [])), hi0 = Math.max(...vals, ...(r || []));
   const pad = Math.max((hi0 - lo0) * 0.25, r ? (r[1] - r[0]) * 0.4 : 1, 1);
   const lo = lo0 - pad, hi = hi0 + pad, P = x => ((x - lo) / (hi - lo) * 100).toFixed(2);
@@ -680,7 +686,7 @@ function reportBlocks(){
   if (v.summary) B.push({html:sec('What we changed and why', `<p class="rp-p">${esc(v.summary)}</p>`)});
   if (A.length) B.push({title:'Your position on the bike', head:'<p class="rp-p" style="color:var(--p-mute);font-size:12.5px">Hollow dot: before the fit. Solid dot: after. The green band is the range we aim for.</p>', foot:'',
     rows:A.map(a => { const ok = a.r && a.post != null ? a.post >= a.r[0] && a.post <= a.r[1] : null;
-      return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div style="font-size:11.5px;color:var(--p-mute)">${a.r ? `Guide ${fmt(a.r[0])}–${fmt(a.r[1])}${u(a.u)}` : 'Recorded'}</div></div>
+      return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div style="font-size:11.5px;color:var(--p-mute)">${a.r ? guideTxt(a.r, a.u) : 'Recorded'}</div></div>
         <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
         <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; })});
   const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
