@@ -279,7 +279,7 @@ test('fw.nav.go: kind push | tab | zoom | section passed on; "pop" (or anything 
   assert.equal(hist.i, 1); assert.equal(fw.nav.depth(), 1);
   assert.ok(el.cls.has('ifl-enter-push') && !el.cls.has('ifl-enter-pop'), 'rendered as a push');
   fw.nav.go('/markets/#holdings', { kind: 'section', replace: true }); await settle();
-  assert.equal(hist.i, 1, 'replace'); assert.ok(el.cls.has('ifl-enter-section'));
+  assert.equal(hist.i, 1, 'replace'); assert.ok(!el.cls.has('ifl-enter-section') && !el.cls.has('ifl-enter-fade'), 'a section: not animated');
 }));
 
 test('header: back { label } as given, sections: false (and null) hide the switcher, any other shows it', { skip }, timed(async (_, keep) => {
