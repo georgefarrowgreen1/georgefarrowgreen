@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.74";
-export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
+export const BUILD = "1.75";
+export const NEWS = "Reply from Today: a friend's message on Today's Chat card can be answered right there";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

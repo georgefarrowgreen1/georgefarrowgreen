@@ -47,6 +47,7 @@ import { devicesOf as weatherDevices } from "./_wxpush.js";
 import { morningOf } from "./_fitpush.js";
 import { adminOf } from "./api/pigeon/[[path]].js";
 import { actTake, actUndo, rulesGet, rulesPut } from "./_todayacts.js";
+import { planChange } from "./_todayfit.js";
 import { notifyGet, notifyPatch } from "./_todaynotify.js";
 import { deviceAdd, deviceDrop, devicesList, devicesStop } from "./_devices.js";
 
@@ -281,6 +282,15 @@ export const TODAY_ROUTES = {
     await limit(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024), t = Date.now();
     return json(await actUndo(env, u, b, { t }));
+  },
+  // { act: "rest" | "move", day } → { ok, said, undo }; { act: "undo", undo } → { ok, said }: today's session rested or
+  // moved to tomorrow from Today's card, in Fitness's own plan (functions/_todayfit.js planChange)
+  "POST today/plan": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await limit(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 4 * 1024), t = Date.now();
+    return json(await planChange(env, u, b, { t }));
   },
   // → { rules: [{ rule, name, level, setBy, record, line, soon? }] }
   "GET today/rules": async ({ request, env }) => {

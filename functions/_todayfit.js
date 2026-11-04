@@ -12,7 +12,8 @@ import { bestWindow, hourScore, ratingOf, windWords, LIMITS } from "../fitness/b
 import { dur } from "../fitness/ui.js";
 import { fitness } from "../fitness/load.js";
 import { startOfDay } from "../fitness/workouts.js";
-import { fitdb } from "./_fitness.js";
+import { fitdb, kept as fitKept, saveState, cleanState } from "./_fitness.js";
+import { HttpError } from "./_pigeon.js";
 
 // what Fitness sent is good this long (its eight days: today's and the week ahead's)
 const DAY = 864e5, FRESH = 8 * DAY;
@@ -33,7 +34,10 @@ export async function fitnessCard(env, u, ctx) {
   const byTz = localDay(tz, t);
   let day = byTz, zone = tz;
   if (fresh && !snap.days[byTz.day]) { zone = snap.tz; day = localDay(snap.tz, t); }
-  const today = fresh ? snap.days[day.day] : undefined;
+  let today = fresh ? snap.days[day.day] : undefined;
+  // (a change made from Today's card (planChange) that Fitness hasn't sent days since: today as it now is, from Fitness's
+  // own swaps, where the day it was swapped with is one Fitness sent)
+  if (today) today = await swapped(env, u, snap, day, today).catch(() => today);
 
   // done, whatever was planned: anything started today, in Fitness, or waiting to come in from Garmin or Strava
   // (functions/_fitshare.js donesIn: the newest of any)
@@ -190,4 +194,50 @@ export function ctlOf(acts, t, ride) {
   if (series.length < 2) return null;
   const r1 = (v) => Math.round(v * 10) / 10;
   return { ctl: r1(series.at(-1).ctl), was: r1(series.at(-2).ctl), today: true };
+}
+
+// ---- today's session rested or moved from Today's card (POST today/plan): Fitness's own swaps (its record's swaps,
+// keyed by the day's start where Fitness last sent its days, as Fitness keys them), saved over the version read; and
+// the card shows the change at once (swapped), till Fitness sends its days again with it in them.
+// { act: "rest" | "move", day } → { ok, said, undo: { [dayStart]: id | null | "" } } ("" = not set before)
+// { act: "undo", undo } → { ok, said }
+const UNDO_KEY = /^\d{10,14}$/, WID = /^[A-Za-z0-9_:-]{1,40}$/;
+async function swapped(env, u, snap, day, today) {
+  const rec = await fitKept(env, u.id), sw = rec?.data?.swaps || {}, want = sw[String(day.start)];
+  if (want === undefined) return today;
+  if (want === null) return today.state === "session" ? { state: "rest", why: "You’re resting today: your session’s off the plan." } : today;
+  if (today.state === "session" && today.id === want) return today;
+  for (let n = 1; n <= 7; n++) { const x = snap.days[dayAfter(day.day, n)]; if (x?.state === "session" && x.id === want) return { ...x, why: "" }; }
+  for (let n = 1; n <= 7; n++) { const x = snap.days[dayAfter(day.day, -n)]; if (x?.state === "session" && x.id === want) return { ...x, why: "" }; }
+  return today;
+}
+export async function planChange(env, u, b, { t = Date.now() } = {}) {
+  const act = b?.act;
+  if (!["rest", "move", "undo"].includes(act)) throw new HttpError(400, "Bad request.");
+  for (let i = 0; i < 2; i++) {
+    const rec = await fitKept(env, u.id);
+    if (!rec?.data) throw new HttpError(409, "Open Fitness first, to set up your plan.");
+    const swaps = { ...(rec.data.swaps || {}) };
+    let said, undo = null;
+    if (act === "undo") {
+      const un = b.undo && typeof b.undo === "object" ? Object.entries(b.undo).slice(0, 4) : [];
+      if (!un.length || un.some(([k, v]) => !UNDO_KEY.test(k) || !(v === null || v === "" || WID.test(String(v))))) throw new HttpError(400, "Bad request.");
+      for (const [k, v] of un) { if (v === "") delete swaps[k]; else swaps[k] = v; }
+      said = "Back as it was";
+    } else {
+      const snap = await snapshotOf(env, u.id);
+      if (!snap?.days || !snap.tz) throw new HttpError(409, "Open Fitness first, to set up your plan.");
+      const day = localDay(snap.tz, t), x = snap.days[day.day];
+      if (typeof b.day === "string" && b.day !== day.day) throw new HttpError(409, "That day’s gone: Today has the new one.");
+      const now = await swapped(env, u, snap, day, x || { state: "none" });
+      if (now?.state !== "session" || !WID.test(String(now.id || ""))) throw new HttpError(409, "There’s no session today to change.");
+      const k0 = String(day.start), k1 = String(day.end), next = snap.days[dayAfter(day.day, 1)];
+      undo = { [k0]: k0 in swaps ? swaps[k0] : "", ...(act === "move" ? { [k1]: k1 in swaps ? swaps[k1] : "" } : {}) };
+      if (act === "rest") { swaps[k0] = null; said = "Rest today. Fitness makes up for it later in the week."; }
+      else { swaps[k1] = now.id; swaps[k0] = next?.state === "session" && WID.test(String(next.id || "")) ? next.id : null; said = `${now.name || "Today’s session"} moved to tomorrow.`; }
+    }
+    const r = await saveState(env, u.id, rec.ver, cleanState({ ...rec.data, swaps }));
+    if (!r.conflict) return { ok: true, said, ...(undo ? { undo } : {}) };
+  }
+  throw new HttpError(409, "Fitness changed just then. Try again.");
 }

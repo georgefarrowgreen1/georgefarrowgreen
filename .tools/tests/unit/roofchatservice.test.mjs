@@ -1,6 +1,6 @@
 // Chats' service (One roof, stage 3: roof/s3/spec.md S3-D3, S3-D6, S3-D14, §5.2 S3-C3, §10.1): pigeon/roof/service.js
 // run in node with a Worker stand-in (in this process: a scripted core, or the real core.js on a fake phone and a fake
-// Chat server). Proves: the facade has exactly makeIFLChat's seven keys and is frozen, with no call(); sendTo without
+// Chat server). Proves: the facade has exactly makeIFLChat's eight keys and is frozen, with no call(); sendTo without
 // the page's tap is refused before anything reaches the core; a PROTOCOL that isn't ours calls onStale and nothing
 // else; a Worker that died is made again on visible, calls waiting meanwhile (5 s at most, then "offline");
 // inflight-lock is read before the first call and the core started locked as it says; a push is one quiet sync; a
@@ -79,7 +79,7 @@ const settle = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 const fresh = () => { FakeWorker.made = []; log.length = 0; store.clear(); globalThis.__active = false; nav.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)'; };
 const PACKED = 'x'; // (a card's packed form; the scripted core's answers don't depend on it)
 
-test('the facade: exactly makeIFLChat’s seven keys, frozen, no call (S3-D6, risk I1)', async () => {
+test('the facade: exactly makeIFLChat’s eight keys, frozen, no call (S3-D6, risk I1)', async () => {
   fresh(); FakeWorker.impl = scripted();
   const { ui } = makeUI();
   const svc = await (await loadService()).startService({ path: '/chats/', ui, onStale() {} });
@@ -90,7 +90,7 @@ test('the facade: exactly makeIFLChat’s seven keys, frozen, no call (S3-D6, ri
   const ref = R.makeIFLChat({ state: () => 'ready', share() {}, sendOne() {}, waiting() {}, since() {}, refresh() {}, signOut() {}, tapped: () => false });
   const f = svc.facade;
   assert.deepEqual(Object.keys(f).sort(), Object.keys(ref).sort());
-  assert.deepEqual(Object.keys(f).sort(), ['refresh', 'sendTo', 'share', 'signOut', 'since', 'state', 'waiting']);
+  assert.deepEqual(Object.keys(f).sort(), ['refresh', 'reply', 'sendTo', 'share', 'signOut', 'since', 'state', 'waiting']);
   assert.ok(Object.isFrozen(f));
   assert.equal(typeof Object.getOwnPropertyDescriptor(f, 'state').get, 'function', 'state is a getter, read each time');
   assert.ok(!('call' in f) && !('on' in f), 'no call, no on: the full service is the Chats module’s only');

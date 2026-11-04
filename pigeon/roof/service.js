@@ -19,12 +19,13 @@
 //   release({ terminate })                   terminate: the Worker ended and every listener dropped (sign-out, user
 //                                            change, the switch off)
 // }
-// Facade (exactly makeIFLChat's seven keys, pigeon/app.js; Object.freeze):
+// Facade (exactly makeIFLChat's eight keys, pigeon/app.js; Object.freeze):
 //   get state; share(words, packed, { to }) → false | { ok, say } | { ok: false, why }   (Send through ui.lazy(send.js))
 //   sendTo(id, words, packed) → { ok, say } | { ok: false, why }   only on a real tap (the page's user activation, read
 //     through Navigator's and UserActivation's own getters, as tappedOn); else { ok: false, why: "tap" }. Best-effort
 //     inside one realm: a script of this origin could still fake more than this; it only raises the bar.
 //   waiting({ ids, stocks }) → Waiting[]; since(id, t) → { said, at } | null; refresh() → boolean; signOut() → true
+//   reply(id, text) → { ok } | { ok: false, why }   a reply from Today's card: sendText, sealed here, only on a real tap
 // Before the first call the service reads localStorage["inflight-lock"] ({ on, uid, … }, Chat's LOCK_KEY) and starts
 // the core with start({ visible, locked, screen: false, lockUid }); the core starts locked by default (S3-D14).
 // ==== end of the frozen part ====
@@ -38,7 +39,7 @@
 //
 // The tap check is best-effort inside one realm (as tappedOn in pigeon/app.js): the getters are taken as this file
 // loads, before a module could reach them, and the page's own scripts are the site's. It only raises the bar; the
-// facade has no call(), so Today and every other module reach the core only through these seven keys (risk I1).
+// facade has no call(), so Today and every other module reach the core only through these eight keys (risk I1).
 export const PROTOCOL = 1;
 export const STUB = false;
 
@@ -207,6 +208,15 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
       return call("waiting", a).catch(() => []);
     },
     since(id, t) { return call("since", id, t).catch(() => null); },
+    // (a reply typed on Today's card to one friend or group: sealed in the core as every message is, only from a real
+    // tap; the words go nowhere else and nothing keeps them)
+    reply(id, text) {
+      if (!tapped()) return Promise.resolve({ ok: false, why: "tap" });
+      if (state !== "ready") return Promise.resolve({ ok: false, why: state });
+      const t = String(text ?? "").trim().slice(0, 2000);
+      if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id) || !t) return Promise.resolve({ ok: false, why: "no" });
+      return call("sendText", id, t).then(() => ({ ok: true }), (e) => ({ ok: false, why: e.why || "failed" }));
+    },
     refresh() { return call("sync", { quiet: true }).then((r) => !!r?.ok, () => false); },
     signOut() { return call("signOut").then(() => true, () => true); },
   });

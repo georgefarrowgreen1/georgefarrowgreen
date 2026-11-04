@@ -684,9 +684,9 @@ test('chats: the core’s RPC table and META are spec §5.4’s: every method th
   }
 });
 
-test('chats: the service’s facade has exactly makeIFLChat’s seven keys, frozen, no call; startService gives protocol, state, call, on, facade, release; hello first, the lock read before start', { skip: chatsSkip }, async () => {
+test('chats: the service’s facade has exactly makeIFLChat’s eight keys, frozen, no call; startService gives protocol, state, call, on, facade, release; hello first, the lock read before start', { skip: chatsSkip }, async () => {
   const keys = [...PIGEON_APP.slice(PIGEON_APP.indexOf('function makeIFLChat(')).split('\n// ==== end of the hub')[0].matchAll(/^\s{4}(?:get\s+)?(\w+)\s*\(/gm)].map((m) => m[1]);
-  assert.deepEqual(keys, ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], 'makeIFLChat’s keys, as pigeon/app.js has them');
+  assert.deepEqual(keys, ['state', 'share', 'sendTo', 'waiting', 'since', 'reply', 'refresh', 'signOut'], 'makeIFLChat’s keys, as pigeon/app.js has them');
   // (a stand-in Worker answering hello and start; localStorage holding a lock)
   const posted = [];
   class FakeWorker {
@@ -722,7 +722,7 @@ test('chats: the service’s facade has exactly makeIFLChat’s seven keys, froz
     assert.equal(start.a[0].locked, true, 'the kept lock said before the first start (S3-D14)');
     const f = svc.facade;
     assert.ok(Object.isFrozen(f), 'frozen');
-    assert.deepEqual(Object.keys(f).sort(), [...keys].sort(), 'exactly the seven keys');
+    assert.deepEqual(Object.keys(f).sort(), [...keys].sort(), 'exactly the eight keys');
     assert.equal(f.call, undefined, 'no call on the facade (risk I1)');
     assert.equal(stale, 0);
     assert.deepEqual(await f.sendTo('x', 'w', null), { ok: false, why: 'tap' }, 'sendTo with no tap: refused, why tap');

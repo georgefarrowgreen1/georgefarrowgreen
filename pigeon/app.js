@@ -828,6 +828,8 @@ function makeIFLChat(d) {
     sendTo(id, words, packed) { return d.tapped() ? d.sendOne(id, words, packed) : Promise.resolve({ ok: false, why: "tap" }); },
     waiting({ ids, stocks } = {}) { return d.waiting({ ids, stocks }); },
     since(id, t) { return d.since(id, t); },
+    // (a reply from Today's card: only where the engine can send one, from a real tap; else Today opens the chat)
+    reply(id, text) { return !d.reply ? Promise.resolve({ ok: false, why: "engine" }) : d.tapped() ? d.reply(id, text) : Promise.resolve({ ok: false, why: "tap" }); },
     refresh() { return d.refresh(); },
     signOut() { return d.signOut(); },
   });
@@ -851,8 +853,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.74";            // shown in InFlite's menu
-const APP_NEWS = "The header stays clear as you scroll: nothing shows through behind the title";       // (said once it's in)
+const APP_VERSION = "1.75";            // shown in InFlite's menu
+const APP_NEWS = "Reply from Today: a friend's message on Today's Chat card can be answered right there";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

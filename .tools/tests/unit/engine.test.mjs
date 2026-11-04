@@ -72,7 +72,7 @@ const deps = (o = {}) => {
 test("IFLChat has these keys and no others, and can't be changed", () => {
   const { d } = deps();
   const c = R.makeIFLChat(d);
-  assert.deepEqual(Object.keys(c).sort(), ["refresh", "sendTo", "share", "signOut", "since", "state", "waiting"]);
+  assert.deepEqual(Object.keys(c).sort(), ["refresh", "reply", "sendTo", "share", "signOut", "since", "state", "waiting"]);
   assert.ok(Object.isFrozen(c));
   assert.throws(() => { "use strict"; c.sendTo = () => ({ ok: true }); });
   assert.throws(() => { "use strict"; c.extra = 1; });
