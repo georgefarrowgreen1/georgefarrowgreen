@@ -88,6 +88,7 @@ const ALLROWS = [...BIKE, ...TTROWS];
 // injuries and special notes, an area at a time, as the interview form has them ("Other" is the notes field from before)
 const INJ = [['inj_foot','Foot'],['inj_knee','Knee'],['inj_legs','Legs'],['inj_hip','Hip'],['inj_saddle','Saddle'],['inj_lowback','Lower back'],
   ['inj_back','Back'],['inj_shoulder','Shoulder'],['inj_neck','Neck'],['inj_arm','Arm'],['inj_hand','Hand'],['injuries','Other']];
+const INJOPEN = new Set();   // areas tapped open this session, still to be written in
 const STRETCH = [
   {k:'ham', name:'Hamstring stretch', dose:'3 × 30 s each leg, daily'},
   {k:'hipflex', name:'Kneeling hip-flexor stretch', dose:'3 × 30 s each side, daily'},
@@ -128,7 +129,7 @@ function sectionsFor(step){
       N('daysS','Days a week (summer)','days'), N('daysW','Days a week (winter)','days'),
       CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Gravel','Indoor / Zwift','Triathlon'],{wide:true})]},
     {title:'Goals for today', fields:[CH('goals','Goals',['Comfort','Longer rides','Performance','Fix pain or discomfort','New bike set-up','Aero speed','Event prep'],{wide:true}), TA('goalNote','In their words')]},
-    {title:'On-bike problems', custom:'body', fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
+    {title:'On-bike problems', custom:'body', ownFields:true, fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
     {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), {t:'injgrid', k:'injgrid', label:'Injuries & special notes', hint:'broken bones, surgeries, chronic issues', wide:true},
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
@@ -360,8 +361,14 @@ function fieldInner(f){
     </div></div></div>`;
   }
   case 'feetdraw': return feetHTML();
-  case 'injgrid':
-    return `<div class="fld wide">${lab}<div class="inj">${INJ.map(([k, l]) => `<div class="fld"><label class="lab" for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off"></div>`).join('')}</div></div>`;
+  case 'injgrid': {
+    const open = k => filled(S.v[k]) || INJOPEN.has(k);
+    return `<div class="fld wide">${lab}<div class="seg chips inj-areas" role="group" aria-label="${esc(f.label)}">${INJ.map(([k, l]) =>
+        `<button type="button" data-injarea="${k}" aria-pressed="${open(k)}">${l}</button>`).join('')}</div>
+      <div class="inj">${INJ.filter(([k]) => open(k)).map(([k, l]) => `<div class="inj-row"><label for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off" placeholder="What happened, when, and how it is now">
+        <button type="button" class="inj-x" data-injclear="${k}" aria-label="Remove ${l}">×</button></div>`).join('')}</div>
+      ${INJ.some(([k]) => open(k)) ? '' : '<p class="inj-none">Tap an area to add a note. Leave them all off if there is nothing to record.</p>'}</div>`;
+  }
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
@@ -444,7 +451,8 @@ function bodyHTML(){
     <text class="bm-txt" x="12" y="236">L</text><text class="bm-txt" x="180" y="236">R</text></svg>`;
   return `<div class="bodymap"><div class="bm">${svg}</div><div>
     <div class="bm-legend"><span>Tap an area: once for <span class="pill y">Niggle</span>, twice for <span class="pill r">Painful</span>, again to clear. Viewed from behind.</span></div>
-    <div class="bm-list" data-x="painlist"></div></div></div>`;
+    <div class="bm-list" data-x="painlist"></div>
+    <div class="grid bm-note">${(sectionsFor('interview').find(x => x.custom === 'body') || {fields:[]}).fields.map(fieldHTML).join('')}</div></div></div>`;
 }
 function painListHTML(){
   const e = Object.entries(S.pain).filter(([, v]) => v);
@@ -996,25 +1004,32 @@ function reportBlocks(){
   const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
   const B = [];
   const FU = !!S.follow, was = FU ? 'At your fit' : 'Pre-fit', now = FU ? 'Today' : 'Post-fit';
-  B.push({html:`<div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>${FU ? 'Follow-up to' : 'Fit'}</span><b>${esc(FU ? `${fit.name}, ${dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'})}` : fit.name)}</b></div>
-    <div><span>Bike</span><b>${esc(v.bike || '')}</b></div><div><span>Frame size</span><b>${esc(v.frame || '')}</b></div><div><span>Pedals</span><b>${esc(v.pedals || '')}</b></div><div><span>Shoes</span><b>${esc(v.shoes || '')}</b></div></div>`});
+  const metaI = [['Bike', v.bike], ['Frame size', v.frame], ['Pedals', v.pedals], ['Shoes', v.shoes]].filter(x => filled(x[1]));
+  const ranged = A.filter(a => a.r && a.post != null), inR = ranged.filter(a => a.post >= a.r[0] && a.post <= a.r[1]).length;
+  const nCh = ch.length, fu0 = followUp();   // (the same count as the app's own summary)
+  const glance = [ranged.length ? [`${inR}<small>/${ranged.length}</small>`, 'angles in the guide range'] : null,
+    [String(nCh), nCh === 1 ? 'set-up change' : 'set-up changes'],
+    fu0.date ? [fu0.date.toLocaleDateString('en-GB', {day:'numeric', month:'short'}), 'free follow-up due'] : null].filter(Boolean);
+  B.push({html:`${glance.length > 1 ? `<div class="rp-glance" style="grid-template-columns:repeat(${glance.length},1fr)">${glance.map(([n, l]) => `<div><b>${n}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
+    ${metaI.length ? `<div class="rp-meta">${metaI.map(([l, x]) => `<div><span>${l}</span><b>${esc(x)}</b></div>`).join('')}</div>` : ''}`});
   if (FU && (v.since || v.sinceNote)) B.push({html:sec('Since your fit', `${v.since ? `<p class="rp-p"><b>How it’s felt:</b> ${esc(v.since)}</p>` : ''}${v.sinceNote ? `<p class="rp-p">${esc(v.sinceNote)}</p>` : ''}`)});
   if (FU && !ch.length) B.push({html:sec('Changes today', '<p class="rp-p">Your position is as your fit left it: no changes were needed.</p>')});
-  if (ch.length) B.push({html:sec(FU ? 'Changes today' : 'Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}</b><i>${x.txt}</i></div>`).join('')}</div>`)});
+  if (ch.length) B.push({html:sec(FU ? 'Changes today' : 'Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])}<em>→</em>${fmt(v[x.r.k + '_post'])}</b><i>${x.d > 0 ? '▲' : '▼'} ${x.txt.replace(/^[+−-]/, '')}</i></div>`).join('')}</div>`)});
   if (v.summary) B.push({html:sec('What we changed and why', `<p class="rp-p">${esc(v.summary)}</p>`)});
-  if (A.length) B.push({title:'Your position on the bike', head:`<p class="rp-p" style="color:var(--p-mute);font-size:12.5px">${FU ? 'Hollow dot: where your fit left you. Solid dot: today.' : 'Hollow dot: before the fit. Solid dot: after.'} The green band is the range we aim for.</p>`, foot:'',
+  if (A.length) B.push({title:'Your position on the bike', head:`<div class="rp-key"><span><i class="k-pre"></i>${FU ? 'Where your fit left you' : 'Before the fit'}</span><span><i class="k-post"></i>${FU ? 'Today' : 'After'}</span><span><i class="k-band"></i>The range we aim for</span></div>`, foot:'',
     rows:A.map(a => { const ok = a.r && a.post != null ? a.post >= a.r[0] && a.post <= a.r[1] : null;
-      return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div style="font-size:11.5px;color:var(--p-mute)">${a.r ? guideTxt(a.r, a.u) : 'Recorded'}</div></div>
-        <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
+      return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div class="gd">${a.r ? guideTxt(a.r, a.u) : 'Recorded'}</div></div>
+        <div class="val"><span>${a.pre != null ? fmt(a.pre) + u(a.u) : '–'}</span> → <b>${a.post != null ? fmt(a.post) + u(a.u) : '–'}</b></div>
         <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; })});
   const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
-  const trs = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
-    return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
+  const trs = rows => { let g = ''; return rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
+    const gh = r.g && r.g !== g ? `<tr class="g"><td colspan="4">${esc(r.g)}</td></tr>` : ''; g = r.g || g;
+    return `${gh}<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : 'same'}">${d.txt === '–' ? '' : d.txt}</td></tr>`; }); };
   const TH = `<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>${was}</th><th>${now}</th><th>Change</th></tr></thead><tbody>`;
   const bike = trs(BIKE);
   if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
-    tail:'<p class="rp-p" style="font-size:11.5px;color:var(--p-mute);margin-top:10px">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
-  if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<ul class="rp-lst"><li><span>Left</span><b>${esc(v.cleatL || '–')}</b></li><li><span>Right</span><b>${esc(v.cleatR || '–')}</b></li></ul>`)});
+    tail:'<p class="rp-note">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
+  if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<dl class="rp-dl"><dt>Left</dt><dd>${esc(v.cleatL || '–')}</dd><dt>Right</dt><dd>${esc(v.cleatR || '–')}</dd></dl>`)});
   if (S.fit === 'tt'){ const t = ttScore(); if (t.complete) B.push({html:sec('Triathlon starting point', `<p class="rp-p">Score ${t.total} of 10 (${esc(TT_START.cols[t.band])}): ${TT_START.rows.map(r => `${esc(r[0].toLowerCase())} ${esc(r[t.band + 1])}`).join(', ')}.</p>`)}); }
   const pains = Object.entries(S.pain).filter(([, x]) => x);
   const obs = [['Arch height (L / R)', S.fit !== 'std' && [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
@@ -1028,9 +1043,9 @@ function reportBlocks(){
   if (S.fit !== 'std' && (num('footAng_L') != null || num('footAng_R') != null))
     B.push({html:sec('Foot angle standing', `<div style="display:flex;gap:22px;align-items:center">${feetSVG('report')}<p class="rp-p" style="flex:1">The line runs along each foot from the heel. Your cleats are rotated to match it, so your feet sit on the pedals the way they stand naturally.<br><br><b>Left:</b> ${esc(footWord(num('footAng_L')))}<br><b>Right:</b> ${esc(footWord(num('footAng_R')))}</p></div>`)});
   const told = [v.goals && v.goals.length ? `<p class="rp-p"><b>Goals:</b> ${esc(v.goals.join(', '))}${v.goalNote ? '. ' + esc(v.goalNote) : ''}</p>` : '',
-    pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}</span>`).join(' ')}</p>` : '',
+    pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}${x === 2 ? ' · painful' : ''}</span>`).join(' ')}</p>` : '',
     v.problems ? `<p class="rp-p">${esc(v.problems)}</p>` : '', v.activities ? `<p class="rp-p"><b>Current weekly activities:</b> ${esc(v.activities)}</p>` : '',
-    INJ.some(([k]) => filled(v[k])) ? `<p class="rp-p" style="margin-bottom:4px"><b>Injuries & special notes:</b></p><ul class="rp-lst" style="margin-bottom:10px">${INJ.filter(([k]) => filled(v[k])).map(([k, l]) => `<li><span>${esc(l)}</span><b style="text-align:right">${esc(v[k])}</b></li>`).join('')}</ul>` : ''].join('');
+    INJ.some(([k]) => filled(v[k])) ? `<p class="rp-p rp-sub">Injuries & special notes</p><dl class="rp-dl">${INJ.filter(([k]) => filled(v[k])).map(([k, l]) => `<dt>${esc(l)}</dt><dd>${esc(v[k])}</dd>`).join('')}</dl>` : ''].join('');
   if (told) B.push({html:sec('What you told us', told)});
   if (v.fitNotes) B.push({html:sec('Fitter’s notes', `<p class="rp-p">${esc(v.fitNotes)}</p>`)});
   const ph = S.fit === 'std' ? [] : S.photos.filter(p => p.inc && p.src);
@@ -1043,16 +1058,21 @@ function reportBlocks(){
   // (each line of the plan a card: what's before a dash or colon its name, what's after how much)
   const st = planLines();
   const fu = followUp(), prods = S.products.filter(p => p.n);
-  if (st.length) B.push({html:sec('Stretching & strengthening', `<div class="rp-plan">${st.map(x => `<div><b>${esc(x.name)}</b>${x.dose ? `<span>${esc(x.dose)}</span>` : ''}</div>`).join('')}</div>`)});
+  if (st.length) B.push({html:sec('Stretching & strengthening', `<div class="rp-plan">${st.map((x, i) => `<div><em>${i + 1}</em><b>${esc(x.name)}</b>${x.dose ? `<span>${esc(x.dose)}</span>` : ''}</div>`).join('')}</div>`)});
   if (prods.length) B.push({html:sec('Recommended for you', `<ul class="rp-lst">${prods.map(p => `<li><span>${esc(p.n)}</span><b>${p.p ? '£' + esc(p.p) : ''}</b></li>`).join('')}</ul>`)});
   // (settling in and the follow-up kept together: the report never ends on the follow-up alone)
-  B.push({html:sec('Settling in', '<p class="rp-p">Give your body two to three weeks to adapt. Build ride length gradually and note anything that feels different, good or bad. Small aches usually settle; sharp or lasting pain means we should look again.</p>') + `<div class="rp-cta"><div><b>${esc(fu.title)}</b><span>${esc(fu.body)}</span></div><div style="text-align:right;font-size:12.5px;white-space:nowrap">01603 614400<br>precisionfit@pedalrevolution.co.uk</div></div>`});
+  B.push({html:sec('Settling in', '<p class="rp-p">Give your body two to three weeks to adapt. Build ride length gradually and note anything that feels different, good or bad. Small aches usually settle; sharp or lasting pain means we should look again.</p>') + `<div class="rp-cta">${fu.date ? `<div class="rp-cal"><span>${fu.date.toLocaleDateString('en-GB', {month:'short'})}</span><b>${fu.date.getDate()}</b></div>` : ''}<div style="flex:1"><b>${esc(fu.title)}</b><span>${esc(fu.body)}</span></div><div class="rp-ct">01603 614400<br>precisionfit@pedalrevolution.co.uk</div></div>`});
   return B;
 }
-const rowsBlock = (b, i, j, cont) => `<div class="rp-sec"><h3 class="rp-h">${b.title}${cont ? '<span class="rp-cont">continued</span>' : ''}</h3>${cont ? '' : b.head.startsWith('<p') ? b.head : ''}${b.head.startsWith('<p') ? '' : b.head}${b.rows.slice(i, j).join('')}${b.foot}${j === b.rows.length ? b.tail || '' : ''}</div>`;
+const rowsBlock = (b, i, j, cont) => `<div class="rp-sec"><h3 class="rp-h">${b.title}${cont ? '<span class="rp-cont">continued</span>' : ''}</h3>${b.head.startsWith('<table') ? b.head : cont ? '' : b.head}${b.rows.slice(i, j).join('')}${b.foot}${j === b.rows.length ? b.tail || '' : ''}</div>`;
 function reportPages(){
   const fit = FITS[S.fit], name = fullName() || 'Client', cap = $('#cap');
-  const band = big => `<div class="rp-band${big ? '' : ' sm'}"><img src="${LOGO}" alt=""><div><div class="rp-k">${esc(fit.name)} · ${esc(name)}</div><div class="rp-t">${S.follow ? 'Follow-up Report' : 'Precision Fit Report'}</div></div></div>`;
+  const v = S.v, dateTxt = v.date ? new Date(v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'}) : '';
+  const kind = S.follow ? 'Follow-up report' : fit.name + ' report';
+  const sub = [S.follow ? `Follow-up to your ${fit.name}${S.follow.date ? ' of ' + dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'}) : ''}` : '', dateTxt, v.fitter ? 'Fitted by ' + v.fitter : ''].filter(Boolean);
+  const band = big => big
+    ? `<div class="rp-band"><img src="${LOGO}" alt=""><div class="rp-bt"><div class="rp-k">${esc(kind)}</div><div class="rp-t">${esc(name)}</div>${sub.length ? `<div class="rp-s">${sub.map(x => `<span>${esc(x)}</span>`).join(' · ')}</div>` : ''}</div></div>`
+    : `<div class="rp-band sm"><img src="${LOGO}" alt=""><div class="rp-k">${esc(kind)}</div><div class="rp-r">${esc(name)}${dateTxt ? ' · ' + esc(dateTxt) : ''}</div></div>`;
   const blocks = reportBlocks();
   // measure: each band, each whole block, and for a carried-on block its heading and each row
   const blk = h => `<div class="rp-blk">${h}</div>`;
@@ -1063,7 +1083,9 @@ function reportPages(){
     // (a block's own space below it, its last part's bottom margin, can fall past the page's end: it's only white)
     if (!b.rows){ const e = els[k++], last = e.lastElementChild; b.h = e.offsetHeight; b.tail = last ? parseFloat(getComputedStyle(last).marginBottom) || 0 : 0; return; }
     b.headH = els[k++].offsetHeight; const whole = els[k++];
-    b.rowH = $$(b.foot ? 'tbody > tr' : '.rp-ang', whole).map(e => e.offsetHeight);
+    // (a table row can carry its group's heading row with it: the two are measured, and kept, together)
+    const els2 = $$(b.foot ? 'tbody > tr' : '.rp-ang', whole);
+    b.rowH = b.rows.map(r => els2.splice(0, b.foot ? (r.match(/<tr/g) || []).length : 1).reduce((t, e) => t + e.offsetHeight, 0));
   });
   cap.innerHTML = '';
   // pack
@@ -1083,7 +1105,7 @@ function reportPages(){
     }
   }
   const [cL, cR] = cardCols(), card = cL.length || cR.length, n = pages.length + (card ? 1 : 0);
-  const out = pages.map((items, i) => `<div class="rp-page">${band(i === 0)}<div class="rp-in">${items.join('')}</div><div class="rp-foot"><span>Pedal Revolution · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>${i + 1} / ${n}</span></div></div>`);
+  const out = pages.map((items, i) => `<div class="rp-page">${band(i === 0)}<div class="rp-in">${items.join('')}</div><div class="rp-foot"><span><b>Pedal Revolution</b> · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>Page ${i + 1} of ${n}</span></div></div>`);
   if (card){ const [front, back] = cardPages(); out.push(`<div class="rp-page rp-card">${front}<div class="sc-cut"><span>Cut along the line to keep the card with your bike</span></div>${back}</div>`); }
   return out;
 }
@@ -1233,7 +1255,7 @@ function secHTML(sec, i){
   const tag = sec.f ? `<span class="tag-fit">${sec.f === 'T' ? 'TT & Tri' : 'Full & TT fits'}</span>` : sec.note ? `<span class="sec-note">${esc(sec.note)}</span>` : '';
   const count = p.tot ? `<span class="sec-count${ok ? ' ok' : ''}" data-x="seccount" data-i="${i}">${ok ? '✓ ' : ''}${p.got} of ${p.tot}</span>` : '';
   return `<section class="sec" id="sec-${i}"><div class="sec-h"><h2>${esc(sec.title)}</h2><div class="right">${tag}${count}</div></div>
-    ${sec.custom === 'body' ? bodyHTML() + '<div style="height:18px"></div>' : ''}${sec.custom === 'start' ? startHTML() : ''}
+    ${sec.custom === 'body' ? bodyHTML() : ''}${sec.custom === 'start' ? startHTML() : ''}
     ${sec.angles ? `<div class="angles">${sec.angles.map(angleHTML).join('')}</div>${sec.fields ? '<div style="height:18px"></div>' : ''}` : ''}
     ${sec.fields && !sec.ownFields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
 }
@@ -1322,6 +1344,10 @@ document.addEventListener('click', e => {
     const inp = $('#i-' + k); if (inp) inp.value = ''; save(); refresh(); renderRail(); return; }
   if (d.bio){ S.v.bio = S.v.bio === d.bio ? '' : d.bio; $$('[data-bio]').forEach(b => b.setAttribute('aria-pressed', b.dataset.bio === S.v.bio)); save(); refresh(); renderRail(); return; }
   if (d.chk){ const a = S.v[d.chk] = (S.v[d.chk] || []).slice(); a[+d.i] = !a[+d.i]; t.setAttribute('aria-pressed', !!a[+d.i]); save(); refresh(); renderRail(); return; }
+  if (d.injarea || d.injclear){ const k = d.injarea || d.injclear;
+    if (d.injclear || (INJOPEN.has(k) && !filled(S.v[k]))){ INJOPEN.delete(k); S.v[k] = ''; save(); }
+    else INJOPEN.add(k);
+    const y = scrollY; renderMain(); scrollTo(0, y); const inp = d.injarea && $('#i-' + k); if (inp) inp.focus({preventScroll:true}); return; }
   if (d.bm){ const k = d.bm; S.pain[k] = ((S.pain[k] || 0) + 1) % 3; if (!S.pain[k]) delete S.pain[k]; $$(`.bm-r[data-bm="${k}"]`).forEach(r => r.dataset.s = S.pain[k] || 0); save(); refresh(); return; }
   if (d.stepk){ const k = d.stepk, by = +d.by * +d.dir, cur = isNum(S.v[k]) ? S.v[k] : (isNum(S.v[k.replace('_post', '_pre')]) && k.endsWith('_post') ? S.v[k.replace('_post', '_pre')] : 0);
     S.v[k] = Math.round((cur + by) * 10) / 10; const inp = $('#i-' + k); if (inp) inp.value = S.v[k]; save(); refresh(); renderRail(); return; }
