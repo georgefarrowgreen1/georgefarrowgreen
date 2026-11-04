@@ -88,6 +88,7 @@ const ALLROWS = [...BIKE, ...TTROWS];
 // injuries and special notes, an area at a time, as the interview form has them ("Other" is the notes field from before)
 const INJ = [['inj_foot','Foot'],['inj_knee','Knee'],['inj_legs','Legs'],['inj_hip','Hip'],['inj_saddle','Saddle'],['inj_lowback','Lower back'],
   ['inj_back','Back'],['inj_shoulder','Shoulder'],['inj_neck','Neck'],['inj_arm','Arm'],['inj_hand','Hand'],['injuries','Other']];
+const INJOPEN = new Set();   // areas tapped open this session, still to be written in
 const STRETCH = [
   {k:'ham', name:'Hamstring stretch', dose:'3 × 30 s each leg, daily'},
   {k:'hipflex', name:'Kneeling hip-flexor stretch', dose:'3 × 30 s each side, daily'},
@@ -128,7 +129,7 @@ function sectionsFor(step){
       N('daysS','Days a week (summer)','days'), N('daysW','Days a week (winter)','days'),
       CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Gravel','Indoor / Zwift','Triathlon'],{wide:true})]},
     {title:'Goals for today', fields:[CH('goals','Goals',['Comfort','Longer rides','Performance','Fix pain or discomfort','New bike set-up','Aero speed','Event prep'],{wide:true}), TA('goalNote','In their words')]},
-    {title:'On-bike problems', custom:'body', fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
+    {title:'On-bike problems', custom:'body', ownFields:true, fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
     {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), {t:'injgrid', k:'injgrid', label:'Injuries & special notes', hint:'broken bones, surgeries, chronic issues', wide:true},
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
@@ -360,8 +361,14 @@ function fieldInner(f){
     </div></div></div>`;
   }
   case 'feetdraw': return feetHTML();
-  case 'injgrid':
-    return `<div class="fld wide">${lab}<div class="inj">${INJ.map(([k, l]) => `<div class="fld"><label class="lab" for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off"></div>`).join('')}</div></div>`;
+  case 'injgrid': {
+    const open = k => filled(S.v[k]) || INJOPEN.has(k);
+    return `<div class="fld wide">${lab}<div class="seg chips inj-areas" role="group" aria-label="${esc(f.label)}">${INJ.map(([k, l]) =>
+        `<button type="button" data-injarea="${k}" aria-pressed="${open(k)}">${l}</button>`).join('')}</div>
+      <div class="inj">${INJ.filter(([k]) => open(k)).map(([k, l]) => `<div class="inj-row"><label for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off" placeholder="What happened, when, and how it is now">
+        <button type="button" class="inj-x" data-injclear="${k}" aria-label="Remove ${l}">×</button></div>`).join('')}</div>
+      ${INJ.some(([k]) => open(k)) ? '' : '<p class="inj-none">Tap an area to add a note. Leave them all off if there is nothing to record.</p>'}</div>`;
+  }
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
@@ -444,7 +451,8 @@ function bodyHTML(){
     <text class="bm-txt" x="12" y="236">L</text><text class="bm-txt" x="180" y="236">R</text></svg>`;
   return `<div class="bodymap"><div class="bm">${svg}</div><div>
     <div class="bm-legend"><span>Tap an area: once for <span class="pill y">Niggle</span>, twice for <span class="pill r">Painful</span>, again to clear. Viewed from behind.</span></div>
-    <div class="bm-list" data-x="painlist"></div></div></div>`;
+    <div class="bm-list" data-x="painlist"></div>
+    <div class="grid bm-note">${(sectionsFor('interview').find(x => x.custom === 'body') || {fields:[]}).fields.map(fieldHTML).join('')}</div></div></div>`;
 }
 function painListHTML(){
   const e = Object.entries(S.pain).filter(([, v]) => v);
@@ -1233,7 +1241,7 @@ function secHTML(sec, i){
   const tag = sec.f ? `<span class="tag-fit">${sec.f === 'T' ? 'TT & Tri' : 'Full & TT fits'}</span>` : sec.note ? `<span class="sec-note">${esc(sec.note)}</span>` : '';
   const count = p.tot ? `<span class="sec-count${ok ? ' ok' : ''}" data-x="seccount" data-i="${i}">${ok ? '✓ ' : ''}${p.got} of ${p.tot}</span>` : '';
   return `<section class="sec" id="sec-${i}"><div class="sec-h"><h2>${esc(sec.title)}</h2><div class="right">${tag}${count}</div></div>
-    ${sec.custom === 'body' ? bodyHTML() + '<div style="height:18px"></div>' : ''}${sec.custom === 'start' ? startHTML() : ''}
+    ${sec.custom === 'body' ? bodyHTML() : ''}${sec.custom === 'start' ? startHTML() : ''}
     ${sec.angles ? `<div class="angles">${sec.angles.map(angleHTML).join('')}</div>${sec.fields ? '<div style="height:18px"></div>' : ''}` : ''}
     ${sec.fields && !sec.ownFields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
 }
@@ -1322,6 +1330,10 @@ document.addEventListener('click', e => {
     const inp = $('#i-' + k); if (inp) inp.value = ''; save(); refresh(); renderRail(); return; }
   if (d.bio){ S.v.bio = S.v.bio === d.bio ? '' : d.bio; $$('[data-bio]').forEach(b => b.setAttribute('aria-pressed', b.dataset.bio === S.v.bio)); save(); refresh(); renderRail(); return; }
   if (d.chk){ const a = S.v[d.chk] = (S.v[d.chk] || []).slice(); a[+d.i] = !a[+d.i]; t.setAttribute('aria-pressed', !!a[+d.i]); save(); refresh(); renderRail(); return; }
+  if (d.injarea || d.injclear){ const k = d.injarea || d.injclear;
+    if (d.injclear || (INJOPEN.has(k) && !filled(S.v[k]))){ INJOPEN.delete(k); S.v[k] = ''; save(); }
+    else INJOPEN.add(k);
+    const y = scrollY; renderMain(); scrollTo(0, y); const inp = d.injarea && $('#i-' + k); if (inp) inp.focus({preventScroll:true}); return; }
   if (d.bm){ const k = d.bm; S.pain[k] = ((S.pain[k] || 0) + 1) % 3; if (!S.pain[k]) delete S.pain[k]; $$(`.bm-r[data-bm="${k}"]`).forEach(r => r.dataset.s = S.pain[k] || 0); save(); refresh(); return; }
   if (d.stepk){ const k = d.stepk, by = +d.by * +d.dir, cur = isNum(S.v[k]) ? S.v[k] : (isNum(S.v[k.replace('_post', '_pre')]) && k.endsWith('_post') ? S.v[k.replace('_post', '_pre')] : 0);
     S.v[k] = Math.round((cur + by) * 10) / 10; const inp = $('#i-' + k); if (inp) inp.value = S.v[k]; save(); refresh(); renderRail(); return; }
