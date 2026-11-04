@@ -612,11 +612,11 @@
 .m-fitness .fit-tiles small.sub{font-size: 12px; color: var(--text-3);}
 .m-fitness .form-card .line-said{margin: 0;}
 @media (prefers-color-scheme: light){
-.m-fitness .next-up,.m-fitness .best-time{background: rgba(255, 255, 255, 0.7);}
-.m-fitness .seg3{background: rgba(13, 16, 32, 0.055); box-shadow: none;}
-.m-fitness .seg3 button[aria-pressed="true"]:not(.t0):not(.t2){background: #fff; box-shadow: 0 1px 3px rgba(13, 16, 32, 0.14);}
-.m-fitness .hero-chips .rec{color: #4a46b8; background: #e6e3ff; box-shadow: none;}
-.m-fitness .fband .knob{box-shadow: 0 0 0 1px rgba(13, 16, 32, 0.12), 0 2px 8px rgba(13, 16, 32, 0.3);}
+:root:not([data-theme="dark"]) .m-fitness .next-up,:root:not([data-theme="dark"]) .m-fitness .best-time{background: rgba(255, 255, 255, 0.7);}
+:root:not([data-theme="dark"]) .m-fitness .seg3{background: rgba(13, 16, 32, 0.055); box-shadow: none;}
+:root:not([data-theme="dark"]) .m-fitness .seg3 button[aria-pressed="true"]:not(.t0):not(.t2){background: #fff; box-shadow: 0 1px 3px rgba(13, 16, 32, 0.14);}
+:root:not([data-theme="dark"]) .m-fitness .hero-chips .rec{color: #4a46b8; background: #e6e3ff; box-shadow: none;}
+:root:not([data-theme="dark"]) .m-fitness .fband .knob{box-shadow: 0 0 0 1px rgba(13, 16, 32, 0.12), 0 2px 8px rgba(13, 16, 32, 0.3);}
 }
 [data-app="fitness"][data-theme="light"] .m-fitness .next-up,[data-app="fitness"][data-theme="light"] .m-fitness .best-time{background: rgba(255, 255, 255, 0.7);}
 [data-app="fitness"][data-theme="light"] .m-fitness .seg3{background: rgba(13, 16, 32, 0.055); box-shadow: none;}
@@ -731,9 +731,9 @@
 .m-fitness .mv-bars i.tint{background: var(--tint);}
 .m-fitness .mv-week .line-said{margin: 0;}
 @media (prefers-color-scheme: light){
-.m-fitness .sday.on{background: var(--tint-deep); color: #fff;}
-.m-fitness .sday.on small{color: rgba(255, 255, 255, 0.92);}
-.m-fitness .sday.on .r-rest{fill: rgba(255, 255, 255, 0.5);}
+:root:not([data-theme="dark"]) .m-fitness .sday.on{background: var(--tint-deep); color: #fff;}
+:root:not([data-theme="dark"]) .m-fitness .sday.on small{color: rgba(255, 255, 255, 0.92);}
+:root:not([data-theme="dark"]) .m-fitness .sday.on .r-rest{fill: rgba(255, 255, 255, 0.5);}
 }
 [data-app="fitness"][data-theme="light"] .m-fitness .sday.on{background: var(--tint-deep); color: #fff;}
 [data-app="fitness"][data-theme="light"] .m-fitness .sday.on small{color: rgba(255, 255, 255, 0.92);}
@@ -918,7 +918,7 @@
 .m-fitness .ride-at-time{width: auto; min-width: 7.5em; font-variant-numeric: tabular-nums;}
 .m-fitness .ride-at-set,.m-fitness .ride-at-clear{width: 100%; margin-top: 10px;}
 @media (prefers-color-scheme: light){
-.m-fitness .ride-at{background: rgba(255, 255, 255, 0.7);}
+:root:not([data-theme="dark"]) .m-fitness .ride-at{background: rgba(255, 255, 255, 0.7);}
 }
 [data-app="fitness"][data-theme="light"] .m-fitness .ride-at{background: rgba(255, 255, 255, 0.7);}
 .m-fitness .offer.from-today .offer-chip{color: var(--tint-text);}

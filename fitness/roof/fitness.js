@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.80";
-export const NEWS = "Switching sections is much quicker and smoother: every section stays ready, so changing between them no longer stalls the screen";
+export const BUILD = "1.81";
+export const NEWS = "Dark mode is easier to read: the next session, Ride At and the chosen day no longer turn pale when your phone is set to light";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
