@@ -828,6 +828,8 @@ export function view(el, ctx) {
       const fu = firstUse();
       el.replaceChildren(h("div.screen.t-today", {}, fu, todayView()));
     },
+    // (on screen again with nothing new: listening again, the day left as it was drawn)
+    resume() { if (todayMap?.failed) { todayMap = null; on = true; listen(); this.draw(); return; } on = true; listen(); },
     hide() { on = false; unlisten(); dragDone(); },
     destroy() {
       unlisten();

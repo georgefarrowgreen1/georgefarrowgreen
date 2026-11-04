@@ -484,6 +484,13 @@ export function view(el, ctx) {
       // (always a moment after it shows, and once per show: coming back to Activities never sets it filling straight away)
       if (first) { first = false; clearTimeout(view.later); view.later = setTimeout(() => { if (working()) routes(); }, 1500); }
     },
+    // (on screen again, nothing new: the list as it was, its "more" watched again and its figures filled in a moment after)
+    resume() {
+      shownHere = true;
+      const more = el.querySelector(".more-acts");
+      if (more) whenSeen(more);
+      if (first) { first = false; clearTimeout(view.later); view.later = setTimeout(() => { if (working()) routes(); }, 1500); }
+    },
     hide() { shownHere = false; first = true; clearTimeout(view.later); moreSeen?.disconnect(); moreSeen = null; },
     destroy() { shownHere = false; moreSeen?.disconnect(); moreSeen = null; dropMaps(); el.replaceChildren(); },
   };

@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.73";
-export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
+export const BUILD = "1.74";
+export const NEWS = "Switching between Today, Activities and Progress no longer redraws them: each stays as it was unless something changed";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -118,6 +118,8 @@ export async function mount(root, fw) {
     };
     return {
       draw() { drawn = true; if (!failed) go(); },
+      // (shown again with nothing new to draw: told it's on screen, its DOM left as it is)
+      resume() { drawn = true; if (real) (real.resume || real.draw).call(real); else if (!loading && !failed) go(); },
       hide() { drawn = false; real?.hide?.(); },
       drop() { if (real) { real.destroy?.(); real = null; } el.replaceChildren(); },
       destroy() { real?.destroy?.(); real = null; },
@@ -144,12 +146,18 @@ export async function mount(root, fw) {
     el.replaceChildren(fw.ui.skeleton("hero"), fw.ui.skeleton("card", 3));
     return true;
   };
-  const draw = (id = shown) => {
+  // (each section drawn again only when what it shows has changed since it was last drawn: going back to one that
+  // hasn't leaves it exactly as it was, its charts and rows never drawing in again)
+  let ver = 0;
+  const drawnAt = new Map();
+  const draw = (id = shown, force = false) => {
     if (!onScreen || !id) return;
+    if (!force && S.me && drawnAt.get(id) === ver) { try { views.get(id)?.resume?.(); } catch (e) { console.error(e); } return; }
     const el = secs.get(id);
     try {
       if (state(el)) return;
       views.get(id)?.draw();
+      drawnAt.set(id, ver);
       if (id === "today" && !zoomed) { const hero = el.querySelector("[data-k=daycard]"); if (hero) { zoomed = true; fw.zoomTarget?.(hero); } }
     } catch (e) { console.error(e); }
   };
@@ -176,9 +184,9 @@ export async function mount(root, fw) {
   // (one redraw a frame however many events come; and Activities drawn again only for what it shows, never for the plan,
   // offers, times or how you feel)
   let queued = 0;
-  const all = () => { if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
+  const all = () => { ver++; if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
   const ACTS_EVENTS = new Set(["me", "acts", "settings", "loading", "error"]);
-  const offs = core.EVENTS.map((e) => core.on(e, () => { if (shown === "activities" && !ACTS_EVENTS.has(e)) header(); else all(); }));
+  const offs = core.EVENTS.map((e) => core.on(e, () => { if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
   const unprovide = fw.search?.provide?.({
@@ -232,7 +240,7 @@ export async function mount(root, fw) {
       for (const [k, el] of secs) el.hidden = k !== id;
       shown = id; onScreen = true;
       // (a section out of sight 5 minutes: its DOM let go, drawn afresh from S now, S2-D22)
-      for (const [k, t] of away) if (k !== id && Date.now() - t > AWAY) { views.get(k)?.drop?.(); if (k === "today") secs.get(k).replaceChildren(); away.delete(k); }
+      for (const [k, t] of away) if (k !== id && Date.now() - t > AWAY) { views.get(k)?.drop?.(); if (k === "today") secs.get(k).replaceChildren(); away.delete(k); drawnAt.delete(k); }
       away.delete(id);
       guard(true);
       core.shown(true);
