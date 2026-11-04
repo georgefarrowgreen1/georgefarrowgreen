@@ -28,7 +28,9 @@
   // (the addresses it has taken over from the Pages project so far, one at a time: README, step 5)
   "routes": [
     // (www had no address of its own before: a custom domain gives it one, and it goes on to georgefarrowgreen.com)
-    { "pattern": "www.georgefarrowgreen.com", "custom_domain": true }
+    { "pattern": "www.georgefarrowgreen.com", "custom_domain": true },
+    // (the Pages project's addresses, each a route in front of its custom domain: undone by taking the route out)
+    { "pattern": "account.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }
   ]
   // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
   // "routes": [
