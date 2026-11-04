@@ -17,6 +17,8 @@ import { nkeyOf } from "../account.js";
 
 export const PAGES = Object.freeze(["units", "arrange", "best", "commute", "solar", "forecast"]);
 const TITLES = { units: "Units", arrange: "Arrange Now", best: "Best Times", commute: "Commute", solar: "Solar", forecast: "Forecast" };
+// (each row's icon, in Weather's colour, as You's rows have)
+const ICONS = { units: "ruler", arrange: "sliders", best: "clock", commute: "globe", solar: "sun", forecast: "rain" };
 
 // Units: the same choices as Weather's own Settings, in the same order (index.html #settings-form)
 export const UNITS = Object.freeze({
@@ -134,12 +136,12 @@ export function openSettings(ctx, page = null) {
   // (ui.row's value is words, drawn once: its .ifl-val span is put right on each redraw)
   const rows = new Map();
   const goRow = (p) => {
-    const r = ui.row({ title: TITLES[p], value: summary(p, st(), fmt(), cards()) || " ", trail: "chevron", run: () => go(p) });
+    const r = ui.row({ lead: { icon: ICONS[p] }, title: TITLES[p], value: summary(p, st(), fmt(), cards()) || " ", trail: "chevron", run: () => go(p) });
     r.dataset.go = p;
     rows.set(p, r);
     return r;
   };
-  const notifyRow = ui.row({ title: "Notifications", sub: "Rain and warnings for the places you choose", trail: "chevron", href: "/#you=notify-weather", label: "Weather Notifications, in You" });
+  const notifyRow = ui.row({ lead: { icon: "bell" }, title: "Notifications", sub: "Rain and warnings for the places you choose", trail: "chevron", href: "/#you=notify-weather", label: "Weather Notifications, in You" });
   notifyRow.addEventListener("click", (e) => {
     if (e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();

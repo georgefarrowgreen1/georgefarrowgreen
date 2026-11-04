@@ -22,6 +22,8 @@ import { paceOf } from "../ui.js";
 
 export const PAGES = Object.freeze(["numbers", "units", "nights", "devices"]);
 const TITLES = { numbers: "Your Numbers", units: "Units and Maps", nights: "Nights and Check-in", devices: "Devices", garmin: "Garmin Connect", strava: "Strava", health: "Apple Health" };
+// (each row's icon, in Fitness's colour, as You's rows have)
+const ICONS = { numbers: "data", units: "ruler", nights: "moon", devices: "watch", garmin: "link", strava: "link", health: "shield" };
 
 /* ---------- the patch each page saves (only the keys it edits; pure: never mutates what it's given) ---------- */
 // (one of your numbers set by you: kept as it is from then on, as fitness/app.js setNumber; FTP logged by the day for
@@ -111,12 +113,12 @@ export function openSettings(ctx, page = null) {
   /* -- the list -- */
   const rows = new Map();
   const goRow = (p) => {
-    const r = ui.row({ title: TITLES[p], value: summary(p) || " ", trail: "chevron", run: () => go(p) });
+    const r = ui.row({ lead: { icon: ICONS[p] }, title: TITLES[p], value: summary(p) || " ", trail: "chevron", run: () => go(p) });
     r.dataset.go = p;
     rows.set(p, r);
     return r;
   };
-  const notifyRow = ui.row({ title: "Notifications", sub: "Today’s morning, with every app’s", trail: "chevron", href: "/#you=notify", label: "Notifications, in You" });
+  const notifyRow = ui.row({ lead: { icon: "bell" }, title: "Notifications", sub: "Today’s morning, with every app’s", trail: "chevron", href: "/#you=notify", label: "Notifications, in You" });
   notifyRow.addEventListener("click", (e) => {
     if (e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();

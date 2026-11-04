@@ -151,10 +151,25 @@ export function view(el, ctx) {
   }) || (() => {}));
   offs.push(core.on("place", () => { if (r) feed(true); }));
 
+  // (Radar used on this device before: its map made ahead, out of sight, so its next show is at once; else only its files)
+  const USED = "wx:radar-used";
+  const used = () => { try { return localStorage.getItem(USED) === "1"; } catch (_) { return false; } };
   return {
+    warm() {
+      if (dead || r || starting || onScreen || globalThis.navigator?.onLine === false || globalThis.navigator?.connection?.saveData) return;
+      const go = () => {
+        if (dead || r || starting || onScreen || fw.stale?.()) return;
+        if (!used()) { if (!lib) fw.lazy(() => import("../radar.js")).then((m) => { lib ||= m; }, () => {}); return; }
+        stamp(); make();
+        // (made and never shown: let go after the same five minutes as one shown and left)
+        clearTimeout(awayT); awayT = setTimeout(() => { if (!onScreen) release(); }, AWAY);
+      };
+      (globalThis.requestIdleCallback || ((f) => setTimeout(f, 1)))(() => setTimeout(go, 1500), { timeout: 4000 });
+    },
     draw() {
       if (dead) return;
       onScreen = true;
+      try { localStorage.setItem(USED, "1"); } catch (_) {}
       clearTimeout(awayT); awayT = 0;
       fw.fill(true);
       stamp();

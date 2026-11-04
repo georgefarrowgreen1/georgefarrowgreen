@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.85";
-export const NEWS = "A link to a day weeks ahead opens that day, with its planned session";
+export const BUILD = "1.86";
+export const NEWS = "Fitness Settings is clearer: an icon on every row, and long values no longer squash the names";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
