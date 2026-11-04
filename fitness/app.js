@@ -1273,8 +1273,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.76";
-const NEWS = "Progress no longer redraws when you switch back to it";
+const BUILD = "1.77";
+const NEWS = "The rest day now just says Rest";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2107,7 +2107,7 @@ function morningDays() {
     const r = rhDay(d), swapped = S.swaps[d] !== undefined, w = id && id !== "event" ? wkById(id) : null, why = swapped ? "" : r?.why || "";
     out[dayStamp(d)] = id === "event" ? { title: "Event day", body: `${plan()?.name || "Your event"}. Enjoy it.` }
       : w ? { title: `Today: ${w.name}`, body: `${dur(measure(w, paceFor(w.sport)).secs)}, ${!swapped && r?.hard ? "a hard day" : w.kind.toLowerCase()}. ${why}`.trim() }
-      : { title: "Rest day", body: `Rest, and let it sink in. ${why}`.trim() };
+      : { title: "Rest day", body: `Rest. ${why}`.trim() };
   }
   return out;
 }

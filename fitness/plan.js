@@ -110,7 +110,7 @@ function rhythmView() {
       (td.fuel || td.strength) && h("div.extras", {}, td.fuel && h("span", {}, icon("bolt", 14, 2.2), `Eat ${td.fuel}`), td.strength && h("span", {}, icon("strength", 14, 2.2), "Then 20 min strength")),
       h("div.acts", {}, tw.sport !== "strength" && h("button.pill.primary", { type: "button", onclick: () => download(tw) }, "Download"), h("button.pill", { type: "button", onclick: () => openSheet(() => sessionView(TODAY), { tall: true }) }, "Details"), h("button.pill", { type: "button", onclick: () => openDay(TODAY) }, "Change")),
       tw.sport !== "strength" && dlFor(tw, TODAY)));
-  } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest, and let it sink in" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
+  } else out.push(h("button.card.glass.rh-today.rest", { type: "button", onclick: () => openDay(TODAY) }, h("span.rh-chip", {}, icon("heart", 13, 2.4), "Today · rest"), h("h2", { text: "Rest" }), h("p", { text: td?.why || "Fitness is built while you recover." })));
   // coming up: three days, the rest of the week ahead a tap away
   const ahead = r.days.filter((d) => d.date > TODAY), shown = S.planMore ? ahead : ahead.slice(0, 3);
   const rowOf = (d) => { const id = S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id, w = id ? wkById(id) : null;

@@ -538,7 +538,7 @@ export function morningDays() {
     const r = rhDay(d), swapped = S.swaps[d] !== undefined, w = id && id !== "event" ? wkById(id) : null, why = swapped ? "" : r?.why || "";
     out[dayStamp(d)] = id === "event" ? { title: "Event day", body: `${plan()?.name || "Your event"}. Enjoy it.` }
       : w ? { title: `Today: ${w.name}`, body: `${dur(measure(w, paceFor(w.sport)).secs)}, ${!swapped && r?.hard ? "a hard day" : w.kind.toLowerCase()}. ${why}`.trim() }
-      : { title: "Rest day", body: `Rest, and let it sink in. ${why}`.trim() };
+      : { title: "Rest day", body: `Rest. ${why}`.trim() };
   }
   return out;
 }

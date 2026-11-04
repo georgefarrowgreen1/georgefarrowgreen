@@ -168,7 +168,7 @@ function dayCard(day) {
   if (unplanned(day)) return h("div.card.hero.glass.session.rest", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, icon("calendar", 14, 2.2)), "Not planned yet"), "Planned nearer the time", null),
     h("p.about", { text: "Rhythm plans each day a week ahead, from what you’ve ridden and how you feel by then. Look again nearer the day." }));
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), past ? "Rested" : "Rest day");
-  if (!w && id !== "event") return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, past ? "A rest day" : "Rest, and let it sink in", null),
+  if (!w && id !== "event") return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, past ? "A rest day" : "Rest", null),
     h("p.about", { text: rd?.why || (past ? "Nothing recorded this day." : "Fitness is built while you recover.") }));
   if (id === "event") return h("div.card.hero.glass.session", {}, heroTop(h("span.sport", {}, h("i.s-ride", {}, sportIcon("ride", 14)), "Event day"), plan().name, null));
   const m = measure(w, paceFor(w.sport)), fig = (k, v) => h("div", {}, h("small", { text: k }), h("b", { text: v }));
@@ -312,7 +312,7 @@ function sessionCard(w, id, done, day = TODAY) {
   const restChip = h("span.sport", {}, h("i.s-walk", {}, icon("heart", 14, 2.2)), "Rest day");
   if (!w && rd) {
     const next = [1, 2, 3].map((n) => rhDay(addDays(TODAY, n))).find((x) => x?.id), nw = next && wkById(next.id);
-    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"), h("p.why", { text: rd.why }), rideAtRow(null), nw && nextUp(next.date, nw));
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest"), h("p.why", { text: rd.why }), rideAtRow(null), nw && nextUp(next.date, nw));
   }
   if (!w && myPlan() && TODAY < planStart()) {
     const first = weeks()[0].days.find((d) => d.id), fw = first && wkById(first.id);
@@ -323,7 +323,7 @@ function sessionCard(w, id, done, day = TODAY) {
   if (!w) {
     const next = [1, 2, 3].map((n) => addDays(TODAY, n)).find((d) => plannedOn(d));
     const nw = next && plannedOn(next) !== "event" ? wkById(plannedOn(next)) : null;
-    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest, and let it sink in"),
+    return h("div.card.hero.glass.session.rest", {}, heroTop(restChip, "Rest"),
       h("p.about", { text: "Fitness is built while you recover. A walk is fine; anything harder can wait." }), rideAtRow(null), nw && nextUp(next, nw));
   }
   const m = measure(w, paceFor(w.sport)), swapped = S.swaps[TODAY] !== undefined;
