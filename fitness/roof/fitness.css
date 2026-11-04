@@ -9,7 +9,7 @@
 /* ---- tokens: dark first, light in both light cases ---- */
 .m-fitness {
   --tint: var(--acc, #ff8a68); --tint-deep: var(--acc-fill, #b93a1c); --tint-text: var(--acc-ink, #ff8a68); --on-tint: var(--on-acc, #fff);
-  --glass-ctl: rgba(255, 255, 255, 0.1); --glass-strong: rgba(28, 31, 52, 0.86); --cell: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
+  --cell: rgba(255, 255, 255, 0.07);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-d: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-r: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -23,20 +23,20 @@
 }
 @media (prefers-color-scheme: light) {
   .m-fitness {
-    --glass-ctl: rgba(20, 30, 60, 0.06); --glass-strong: rgba(250, 251, 255, 0.9); --cell: rgba(255, 255, 255, 0.78); --field: rgba(20, 30, 60, 0.06);
+    --cell: rgba(255, 255, 255, 0.78);
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
     --hr: #e5395f; --pwr: #f08a10; --ele: rgba(90, 100, 140, 0.2); --spd: #1aa3d6; --hrv: #6847e0; --sleep: #4258e0;
   }
 }
 [data-app="fitness"][data-theme="dark"] .m-fitness {
-  --glass-ctl: rgba(255, 255, 255, 0.1); --glass-strong: rgba(28, 31, 52, 0.86); --cell: rgba(255, 255, 255, 0.07); --field: rgba(0, 0, 0, 0.24);
+  --cell: rgba(255, 255, 255, 0.07);
   --z1: #a3abc0; --z2: #4aa3ff; --z3: #3fd08f; --z4: #ffd23f; --z5: #ff9440; --z6: #ff5a5a; --z7: #c07bff;
   --fit: #4aa3ff; --fat: #ff6fae; --form-up: #3fd08f; --form-down: #ffb340;
   --hr: #ff5a7a; --pwr: #ffb340; --ele: rgba(160, 175, 210, 0.32); --spd: #4fd2ff; --hrv: #ad97ff; --sleep: #8c9cff;
 }
 [data-app="fitness"][data-theme="light"] .m-fitness {
-  --glass-ctl: rgba(20, 30, 60, 0.06); --glass-strong: rgba(250, 251, 255, 0.9); --cell: rgba(255, 255, 255, 0.78); --field: rgba(20, 30, 60, 0.06);
+  --cell: rgba(255, 255, 255, 0.78);
   --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
   --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
   --hr: #e5395f; --pwr: #f08a10; --ele: rgba(90, 100, 140, 0.2); --spd: #1aa3d6; --hrv: #6847e0; --sleep: #4258e0;
@@ -212,7 +212,7 @@
   background: var(--glass-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25), 0 0 0 0.5px var(--line); font-size: 15px; font-weight: 600; color: var(--text);
   transition: transform var(--dur-release) var(--ease-spring), background-color var(--dur-fast);}
 .m-fitness .pill:active{transform: scale(0.95); transition-duration: var(--dur-press);}
-.m-fitness .pill.primary{color: var(--on-tint); background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -10px var(--tint-deep);}
+.m-fitness .pill.primary{color: var(--on-tint); background: linear-gradient(180deg, var(--tint-deep), color-mix(in srgb, var(--tint-deep) 82%, #000)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -10px var(--tint-deep);}
 .m-fitness .pill.small{min-height: 32px; padding: 0 12px; font-size: 14px;}
 .m-fitness .link{border: 0; background: none; padding: 0; color: var(--tint-text); font-size: 17px; font-weight: 500;}
 @keyframes fx-sheet-in{from { transform: translateY(calc(100% + 16px)); }}
@@ -505,7 +505,7 @@
 .m-fitness .hero-figs b u{text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-2);}
 .m-fitness .session.rest .about,.m-fitness .session.rest .why{margin-top: 14px;}
 .m-fitness .next-up{display: flex; align-items: center; gap: 14px; width: 100%; min-height: 68px; margin-top: 16px; padding: 12px 12px 12px 16px; border: 0; border-radius: 20px; text-align: left; font: inherit; color: inherit;
-  background: color-mix(in srgb, #000 22%, transparent); box-shadow: inset 0 0 0 0.5px var(--line); cursor: pointer;}
+  background: var(--inset); box-shadow: inset 0 0 0 0.5px var(--line); cursor: pointer;}
 .m-fitness .next-up .tx{flex: 1; min-width: 0; display: grid; gap: 3px;}
 .m-fitness .next-up .tx b{font-size: 16px; font-weight: 600;}
 .m-fitness .next-up .tx small{font-size: 13px; color: var(--text-2);}
@@ -514,7 +514,7 @@
 .m-fitness .next-up .mini svg{display: block; width: 96px; height: 36px;}
 .m-fitness .next-up .chev{color: var(--text-3); display: grid;}
 .m-fitness .next-up:active{transform: scale(0.985);}
-.m-fitness .best-time{display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, #000 18%, transparent);}
+.m-fitness .best-time{display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: var(--inset);}
 .m-fitness .best-time .wxi{flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(255, 211, 107, 0.18);}
 .m-fitness .best-time .wxi svg{width: 22px; height: 22px;}
 .m-fitness .best-time .tx{display: grid; gap: 1px;}
@@ -556,9 +556,9 @@
 .m-fitness .checkin-row{display: flex; align-items: center; gap: 10px;}
 .m-fitness .checkin-row .lab{width: 112px; flex: none; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-2);}
 .m-fitness .checkin-row .ico{width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: var(--glass-ctl); color: var(--text-2);}
-.m-fitness .seg3{flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 13px; background: color-mix(in srgb, #000 22%, transparent); box-shadow: inset 0 0 0 0.5px var(--line);}
+.m-fitness .seg3{flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 13px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line);}
 .m-fitness .seg3 button{min-height: 34px; padding: 0 2px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s, color 0.2s;}
-.m-fitness .seg3 button[aria-pressed="true"]{color: var(--text); background: color-mix(in srgb, var(--text) 16%, transparent); box-shadow: inset 0 0 0 0.5px var(--line), 0 1px 2px rgba(0, 0, 0, 0.25);}
+.m-fitness .seg3 button[aria-pressed="true"]{color: var(--text); background: var(--raised); box-shadow: inset 0 0 0 0.5px var(--line), 0 1px 3px rgba(0, 0, 0, 0.2);}
 .m-fitness .seg3 button.t0[aria-pressed="true"]{color: var(--warn); background: color-mix(in srgb, #ffb547 22%, transparent);}
 .m-fitness .seg3 button.t2[aria-pressed="true"]{color: var(--good-text); background: color-mix(in srgb, #4cd98a 20%, transparent);}
 .m-fitness .checkin-said{display: flex; align-items: flex-start; gap: 10px; margin-top: 4px; padding: 11px 12px; border-radius: 14px; font-size: 14px; line-height: 1.38;}
@@ -612,15 +612,9 @@
 .m-fitness .fit-tiles small.sub{font-size: 12px; color: var(--text-3);}
 .m-fitness .form-card .line-said{margin: 0;}
 @media (prefers-color-scheme: light){
-.m-fitness:not([data-theme="dark"] *) .next-up,.m-fitness:not([data-theme="dark"] *) .best-time{background: rgba(255, 255, 255, 0.7);}
-.m-fitness:not([data-theme="dark"] *) .seg3{background: rgba(13, 16, 32, 0.055); box-shadow: none;}
-.m-fitness:not([data-theme="dark"] *) .seg3 button[aria-pressed="true"]:not(.t0):not(.t2){background: #fff; box-shadow: 0 1px 3px rgba(13, 16, 32, 0.14);}
 .m-fitness:not([data-theme="dark"] *) .hero-chips .rec{color: #4a46b8; background: #e6e3ff; box-shadow: none;}
 .m-fitness:not([data-theme="dark"] *) .fband .knob{box-shadow: 0 0 0 1px rgba(13, 16, 32, 0.12), 0 2px 8px rgba(13, 16, 32, 0.3);}
 }
-[data-app="fitness"][data-theme="light"] .m-fitness .next-up,[data-app="fitness"][data-theme="light"] .m-fitness .best-time{background: rgba(255, 255, 255, 0.7);}
-[data-app="fitness"][data-theme="light"] .m-fitness .seg3{background: rgba(13, 16, 32, 0.055); box-shadow: none;}
-[data-app="fitness"][data-theme="light"] .m-fitness .seg3 button[aria-pressed="true"]:not(.t0):not(.t2){background: #fff; box-shadow: 0 1px 3px rgba(13, 16, 32, 0.14);}
 [data-app="fitness"][data-theme="light"] .m-fitness .hero-chips .rec{color: #4a46b8; background: #e6e3ff; box-shadow: none;}
 [data-app="fitness"][data-theme="light"] .m-fitness .fband .knob{box-shadow: 0 0 0 1px rgba(13, 16, 32, 0.12), 0 2px 8px rgba(13, 16, 32, 0.3);}
 .m-fitness .best-time.poor .wxi{background: var(--glass-ctl); color: var(--text-2);}
@@ -909,7 +903,7 @@
 .m-fitness .gday[draggable="true"]{cursor: grab;}
 .m-fitness .gday.dragging{opacity: 0.4;}
 .m-fitness .gday.drop-on{background: color-mix(in srgb, var(--tint) 16%, transparent); outline: 2px dashed var(--tint); outline-offset: -2px;}
-.m-fitness .ride-at{display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, #000 18%, transparent);}
+.m-fitness .ride-at{display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: var(--inset);}
 .m-fitness .ride-at .ic{flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;}
 .m-fitness .ride-at .tx{flex: 1; min-width: 0; display: grid; gap: 1px;}
 .m-fitness .ride-at b{font-size: 15px; font-weight: 600;}
@@ -917,8 +911,4 @@
 .m-fitness .ride-at .pill{flex: none;}
 .m-fitness .ride-at-time{width: auto; min-width: 7.5em; font-variant-numeric: tabular-nums;}
 .m-fitness .ride-at-set,.m-fitness .ride-at-clear{width: 100%; margin-top: 10px;}
-@media (prefers-color-scheme: light){
-.m-fitness:not([data-theme="dark"] *) .ride-at{background: rgba(255, 255, 255, 0.7);}
-}
-[data-app="fitness"][data-theme="light"] .m-fitness .ride-at{background: rgba(255, 255, 255, 0.7);}
 .m-fitness .offer.from-today .offer-chip{color: var(--tint-text);}

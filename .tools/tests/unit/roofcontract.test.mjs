@@ -148,7 +148,7 @@ test('roof.css’s token block: the framework’s tokens and each app’s accent
   // [app, light acc, dark acc, light ink, dark ink, fill]
   const ACC = [['inflite', '#5a4fe0', '#9a90ff', '#5a4fe0', '#9a90ff', '#5a4fe0'], ['chat', '#2a6ae6', '#6ea6ff', '#1f63d6', '#6ea6ff', '#1f63d6'],
     ['weather', '#2f7af0', '#6aa8ff', '#1f63d6', '#6aa8ff', '#1f63d6'], ['fitness', '#e8532f', '#ff8a68', '#b93a1c', '#ff8a68', '#b93a1c'],
-    ['markets', '#138a52', '#4fd18e', '#0a7a4d', '#4fd18e', '#0a7a4d'], ['mail', '#0f8f8a', '#45cfc8', '#0b7a76', '#45cfc8', '#0b7a76']];
+    ['markets', '#138a52', '#4fd18e', '#0a7a4d', '#4fd18e', '#0a7a4d'], ['mail', '#0f8f8a', '#45cfc8', '#096b67', '#45cfc8', '#0b7a76']];
   for (const [app, la, da, li, di, fill] of ACC) {
     const sel = `[data-app="${app}"]`;
     assert.equal(get(sel, null, '--acc'), da, `${app} dark --acc`);

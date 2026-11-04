@@ -163,7 +163,7 @@
 .m-fitness .p-badge { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); font-size: 12px; font-weight: 700; }
 .m-fitness .p-big { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
 .m-fitness .p-big b { font: 700 56px/1 var(--font-d); letter-spacing: -2px; font-variant-numeric: tabular-nums; } .m-fitness .p-big span { font-size: 17px; font-weight: 600; opacity: 0.85; }
-.m-fitness .p-big .p-gain { margin-left: auto; padding: 4px 10px; border-radius: 10px; background: rgba(120, 255, 190, 0.2); color: #b8ffd9; font-size: 15px; font-weight: 700; opacity: 1; }
+.m-fitness .p-big .p-gain { margin-left: auto; padding: 4px 10px; border-radius: 10px; background: rgba(120, 255, 190, 0.2); color: #e6fff2; font-size: 15px; font-weight: 700; opacity: 1; }
 .m-fitness .p-hero > p { margin: 0; font-size: 15px; line-height: 1.4; opacity: 0.9; }
 .m-fitness .p-hero-chart { display: block; margin: 6px 0 0; overflow: visible; }
 .m-fitness .p-hero-chart .axis { stroke: rgba(255, 255, 255, 0.2); } .m-fitness .p-hero-chart .ln { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
