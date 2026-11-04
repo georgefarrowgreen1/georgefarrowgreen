@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.72";
-export const NEWS = "The header shrinks and grows smoothly as you scroll";
+export const BUILD = "1.73";
+export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

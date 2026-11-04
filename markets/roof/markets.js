@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.97";
-export const NEWS = "The header shrinks and grows smoothly as you scroll";
+export const BUILD = "1.98";
+export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

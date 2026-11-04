@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.72";
-export const NEWS = "The header shrinks and grows smoothly as you scroll";
+export const BUILD = "1.73";
+export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

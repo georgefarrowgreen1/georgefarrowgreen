@@ -383,6 +383,16 @@ const IFL = (() => {
   const watched = new Set();
   // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
   // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
+  // (no pinch zoom: iOS keeps it even with the viewport's user-scalable=no, so its gestures are refused here; and a copy
+  // from the page is empty, but never from a field you type in)
+  if (!globalThis.__iflNoZoom && typeof document !== "undefined") {
+    globalThis.__iflNoZoom = true;
+    for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    const typing = (t) => t && t.closest?.("input, textarea, select, [contenteditable]");
+    document.addEventListener("copy", (e) => { if (!typing(e.target)) e.preventDefault(); });
+    document.addEventListener("selectstart", (e) => { if (!typing(e.target)) e.preventDefault(); });
+  }
   const upNow = new WeakMap();
   function settle(t = window) {
     const y = t === window ? scrollY : t.scrollTop, was = upNow.get(t) || false, up = was ? y > 8 : y > 28;

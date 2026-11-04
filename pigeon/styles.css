@@ -2928,6 +2928,11 @@ html { touch-action: pan-x pan-y; }
    band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
    as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
    shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+/* (an app, not a page: no text picked up and copied by a long press or a drag, no callout, no double-tap zoom; what you
+   type in stays yours to select and paste) */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+body, body *:not(input):not(textarea):not(select):not([contenteditable]):not([contenteditable] *) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+img, svg, a { -webkit-user-drag: none; }
 /* (--p animated as a number: the header's height, title size and band all move together, smoothly, as it goes compact) */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
 .ifh { transition: --p 0.34s cubic-bezier(0.32, 0.72, 0, 1); }

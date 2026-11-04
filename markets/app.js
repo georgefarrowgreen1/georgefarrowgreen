@@ -410,6 +410,16 @@ const IFL = (() => {
   const watched = new Set();
   // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
   // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
+  // (no pinch zoom: iOS keeps it even with the viewport's user-scalable=no, so its gestures are refused here; and a copy
+  // from the page is empty, but never from a field you type in)
+  if (!globalThis.__iflNoZoom && typeof document !== "undefined") {
+    globalThis.__iflNoZoom = true;
+    for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    const typing = (t) => t && t.closest?.("input, textarea, select, [contenteditable]");
+    document.addEventListener("copy", (e) => { if (!typing(e.target)) e.preventDefault(); });
+    document.addEventListener("selectstart", (e) => { if (!typing(e.target)) e.preventDefault(); });
+  }
   const upNow = new WeakMap();
   function settle(t = window) {
     const y = t === window ? scrollY : t.scrollTop, was = upNow.get(t) || false, up = was ? y > 8 : y > 28;
@@ -793,8 +803,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.97";
-const NEWS = "The header shrinks and grows smoothly as you scroll";
+const BUILD = "1.98";
+const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
