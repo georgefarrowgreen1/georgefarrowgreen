@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.78";
-export const NEWS = "Activities no longer redraws itself a moment after you switch to it: route maps fill in row by row";
+export const BUILD = "1.79";
+export const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -107,6 +107,8 @@ export async function mount(root, fw) {
   const lazyView = (k, label) => (el, c) => {
     let real = null, loading = null, failed = false, drawn = false;
     const go = () => {
+      // (its file in already (fetched ahead, or before a drop): the view made and drawn at once, never a skeleton between)
+      if (!real && loaded[k]) real = loaded[k].view(el, c);
       if (real) { if (drawn) real.draw(); return; }
       if (loading) return;
       failed = false;
@@ -117,6 +119,8 @@ export async function mount(root, fw) {
       });
     };
     return {
+      // (its file fetched ahead, at a quiet moment once Fitness shows)
+      warm() { if (!real && !loading && !loaded[k]) L[k]().then((m) => { loaded[k] = m; }, () => {}); },
       draw() { drawn = true; if (!failed) go(); },
       // (shown again with nothing new to draw: told it's on screen, its DOM left as it is)
       resume() { drawn = true; if (real) real.resume?.(); else if (!loading && !failed) go(); },
@@ -126,6 +130,9 @@ export async function mount(root, fw) {
     };
   };
   const VIEWS = { today: todayView, activities: lazyView("acts", "Activities"), progress: lazyView("prog", "Progress") };
+  // (the other sections' files fetched once, a moment after Fitness first shows, so a first switch to one is instant)
+  let warmed = false, warmT = 0;
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.()) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
   const secs = new Map(), views = new Map();
   for (const [id, name] of SECTIONS) {
     const el = doc.createElement("section");
@@ -249,6 +256,7 @@ export async function mount(root, fw) {
       header();
       draw(id);
       openTo(route);
+      warm();
     },
     hide() {
       onScreen = false;

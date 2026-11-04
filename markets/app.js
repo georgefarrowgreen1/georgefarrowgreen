@@ -803,8 +803,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.99";
-const NEWS = "Switching between Today, Holdings and News leaves each as it was: nothing redraws unless it changed";
+const BUILD = "2.00";
+const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)

@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.99";
-export const NEWS = "Switching between Today, Holdings and News leaves each as it was: nothing redraws unless it changed";
+export const BUILD = "2.00";
+export const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -80,6 +80,8 @@ export async function mount(root, fw) {
     let real = null, loading = null;
     const load = () => (loading ??= LAZY[id]().then((m) => { real = m.view(el, ctx); return real; }, (e) => { loading = null; throw e; }));
     return {
+      // (its file fetched ahead, at a quiet moment once Markets shows: its first show then drawn at once, no skeleton)
+      warm() { if (!real) load().catch(() => {}); },
       draw(animate) {
         if (real) return real.draw(animate);
         el.replaceChildren(fw.ui.skeleton("rows", 6));
@@ -103,6 +105,9 @@ export async function mount(root, fw) {
     views2.set(id, id === "today" ? todayView(el, ctx) : stub(id, el));
   }
   let shown = null, onScreen = false, opening = 0;
+  // (the other sections' files fetched once, a moment after Markets first shows, so a first switch to one is instant)
+  let warmed = false, warmT = 0;
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.()) return; warmed = true; for (const v of views2.values()) v.warm?.(); }, 1200); };
   const draw = (id = shown, animate = false) => {
     if (!onScreen || !id) return;
     stale.delete(id);
@@ -178,15 +183,17 @@ export async function mount(root, fw) {
       for (const [k, el] of secs) el.hidden = k !== id;
       // (a section drawn afresh only when it's new, out of date, or Markets is coming back on screen: switching between
       // Today, Holdings and News leaves each as it was, nothing drawing in again; its entrance only on a first draw)
-      const empty = !secs.get(id).childElementCount, fresh = !onScreen || stale.has(id) || empty;
+      // (the entrance plays only as Markets comes on screen, never on a switch between its sections)
+      const empty = !secs.get(id).childElementCount, fresh = !onScreen || stale.has(id) || empty, coming = !onScreen;
       shown = id; onScreen = true;
       back(id);
       core.at(id);
       core.shown(true);
       header();
-      if (fresh) draw(id, empty);
+      if (fresh) draw(id, empty && coming);
       if (route?.key && route.key !== id && route.key !== "today") openFrom(route);
       takeWant();
+      warm();
     },
     hide() {
       onScreen = false;
