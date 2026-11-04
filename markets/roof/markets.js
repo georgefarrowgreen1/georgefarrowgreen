@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.00";
-export const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
+export const BUILD = "2.01";
+export const NEWS = "Switching sections is much quicker and smoother: every section stays ready, so changing between them no longer stalls the screen";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -105,9 +105,9 @@ export async function mount(root, fw) {
     views2.set(id, id === "today" ? todayView(el, ctx) : stub(id, el));
   }
   let shown = null, onScreen = false, opening = 0;
-  // (the other sections' files fetched once, a moment after Markets first shows, so a first switch to one is instant)
+  // (the other sections' files fetched once (not when Save Data is asked for), a moment after Markets first shows, so a first switch to one is instant)
   let warmed = false, warmT = 0;
-  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.()) return; warmed = true; for (const v of views2.values()) v.warm?.(); }, 1200); };
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views2.values()) v.warm?.(); }, 1200); };
   const draw = (id = shown, animate = false) => {
     if (!onScreen || !id) return;
     stale.delete(id);

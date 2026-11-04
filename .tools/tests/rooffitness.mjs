@@ -284,7 +284,7 @@ await part(5, 'Keep an offer: Today’s cards asked for again on return, the rid
 await part(6, 'the budget: first open of Fitness’s Today', '§4.6, S2-D5, RI12', async () => {
 // ======================================================================================================================
   const most = FILES.length + 2;
-  const B = await open('tamsin-budget', { sw: 'block' });
+  const B = await open('tamsin-budget', { sw: 'block', saveData: true });
   const m = meter(B.p, APP);
   await B.p.goto(`${HUB}/#apps`); await shown(B.p, H.appTile(APP), 30000);
   await tapTile(B.p);
@@ -298,6 +298,13 @@ await part(6, 'the budget: first open of Fitness’s Today', '§4.6, S2-D5, RI12
   const lazyIn = r.rows.filter((x) => LAZY.includes(x.path) || /\/fitness\/(map|mapstyle|share|formats|fit|reader|sample)\.js$/.test(x.path)).map((x) => x.path);
   ok(!lazyIn.length, '6. …none of connector.lazy nor the NET files on Today’s first open (C4)', js(lazyIn));
   await B.ctx.close();
+  // (without Save Data: Activities' and Progress's files fetched a moment after Fitness shows, so a first switch is instant)
+  const Wm = await open('tamsin-warm', { sw: 'block' }), wm = meter(Wm.p, APP);
+  await Wm.p.goto(`${HUB}/#apps`); await shown(Wm.p, H.appTile(APP), 30000);
+  await tapTile(Wm.p); await fitnessUp(Wm.p); await wait(4000);
+  const warmed = (await wm.report()).rows.map((x) => x.path).filter((x) => /\/fitness\/roof\/(actsview|progview)\.js$/.test(x));
+  ok(warmed.length === 2, '6. …and without Save Data, Activities’ and Progress’s files fetched ahead, a moment after it shows', js(warmed));
+  await Wm.ctx.close();
 });
 
 // ======================================================================================================================
@@ -343,7 +350,7 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
 // ======================================================================================================================
 await part(9, 'a new Fitness build mid-session: no reload in use; a lazy section while stale reloads first', 'D21, C7, RB2, RB3', async () => {
 // ======================================================================================================================
-  const R = await open('tamsin-release', { sw: 'block', clock: true });
+  const R = await open('tamsin-release', { sw: 'block', clock: true, saveData: true });
   let release = null;
   await route(R.ctx, /\/fitness\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: APP, build: release, min: null }) }) : r.continue()));
   await route(R.ctx, /\/fitness\/roof\/fitness\.js(\?|$)/, async (r) => {

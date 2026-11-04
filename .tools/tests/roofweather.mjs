@@ -398,7 +398,7 @@ await part(7, 'the module’s files from Weather’s host through the hub: minif
   }
 
   // the note (D15): a phone that last had an older Weather
-  B = await open('wren-b');
+  B = await open('wren-b', { saveData: true });
   await B.ctx.addInitScript(() => { if (location.host === 'ifl.test:8788' && !sessionStorage.getItem('t-seeded')) { sessionStorage.setItem('t-seeded', '1'); localStorage.setItem('ifl-build:weather', '0.01'); } });
   const m = meter(B.p);
   await B.p.goto(`${HUB}/`);
@@ -440,7 +440,7 @@ await part(8, 'the budget: a first open and a cold deep link', '§7.3, RB7, RI5'
   if (r1.unminified.length) console.log(`note: measured as minify.mjs would send them (no current copy yet): ${r1.unminified.length} files`);
 
   // a cold deep link, an empty cache, signed in
-  const C = await open('wren-c');
+  const C = await open('wren-c', { saveData: true });
   const m = meter(C.p);
   await C.p.goto(`${HUB}/weather/#radar`, { waitUntil: 'commit' });
   const t = await C.p.waitForFunction((s) => { const e = document.querySelector(s); return e && !e.hidden && e.getClientRects().length ? performance.now() : false; }, H.M_WEATHER, { timeout: 30000, polling: 'raf' }).then((h) => h.jsonValue(), () => null);
@@ -522,7 +522,7 @@ await part(11, 'a new Weather build mid-session: no reload in use, no lazy file 
 // ======================================================================================================================
   // (no service worker here, so the page's own fetches are all there is to stand in for: with the root worker, its kept
   // copy of the module and its own version checks would be a second source of the old build)
-  const E = await open('wren-e', { sw: 'block', clock: true });
+  const E = await open('wren-e', { sw: 'block', clock: true, saveData: true });
   let release = null;
   await route(E.ctx, /\/weather\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: 'weather', build: release, min: null }) }) : r.continue()));
   // (the new build's weather.js: the hub's own, fetched from Node at the hub's real port with its Host (Node doesn't
@@ -645,7 +645,7 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
 await part(14, 'loading on open: none of the lazy five on a first open; each fetched once, when first opened', 'stage 2 §4.5, C4, S2-D5, BB6', async () => {
 // ======================================================================================================================
   const LAZY5 = { days: /\/weather\/roof\/days\.js(\?|$)/, warnings: /\/weather\/roof\/warnings\.js(\?|$)/, places: /\/weather\/roof\/places\.js(\?|$)/, wxsettings: /\/weather\/roof\/wxsettings\.js(\?|$)/, wxdetail: /\/weather\/roof\/wxdetail\.js(\?|$)/ };
-  const L = await open('wren-lazy', { sw: 'block' });
+  const L = await open('wren-lazy', { sw: 'block', saveData: true });
   const q = L.p, got = Object.fromEntries(Object.keys(LAZY5).map((k) => [k, 0]));
   q.on('request', (r) => { for (const [k, re] of Object.entries(LAZY5)) if (re.test(r.url())) got[k]++; });
   await q.goto(`${HUB}/#apps`); await shown(q, H.appTile('weather'), 30000);
@@ -680,7 +680,7 @@ await part('14b', 'a changed wxui.js export deployed mid-session, then 16 Days: 
   // imports, so the new days.js can't link against the old wxui.js already in the page's module map: the import rejects,
   // as a real release that changed a wxui.js export would. No service worker, so the routes are the only source)
   const RELEASE = '9.97';
-  const E = await open('wren-14b', { sw: 'block' });
+  const E = await open('wren-14b', { sw: 'block', saveData: true });
   let release = null;
   const swapped = (re, fix) => route(E.ctx, re, async (r) => {
     if (!release) return r.continue();

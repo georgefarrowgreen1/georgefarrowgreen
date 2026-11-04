@@ -1,7 +1,6 @@
 /* Weather's Places and "Add this place?" sheets under InFlite's roof (One roof, spec §7.1, WX): only inside those sheets
    and Weather's screen, framework tokens only (roof.css, app.css), Weather's accent from [data-app=weather]. */
 .m-weather { display: block; }
-.m-weather .wx-sec[hidden] { display: none; }
 
 :is(.ifl-sheet[data-sheet="places"], .ifl-sheet[data-sheet="confirm-place"]) .wx-ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
 

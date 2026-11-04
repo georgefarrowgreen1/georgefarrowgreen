@@ -324,7 +324,7 @@ await part(5, 'polling: nothing of /api/markets/* while Weather is shown or the 
 await part(6, 'the budget: first open of Markets’ Today', '§4.6, S2-D5, BI1', async () => {
 // ======================================================================================================================
   const most = FILES.length + 2;
-  const B = await open('imogen-budget', { sw: 'block' });
+  const B = await open('imogen-budget', { sw: 'block', saveData: true });
   const m = meter(B.p, APP);
   await B.p.goto(`${HUB}/#apps`); await shown(B.p, H.appTile(APP), 30000);
   await tapTile(B.p);
@@ -402,7 +402,7 @@ await part(8, 'a 401 with the session alive: no sign-out; a confirmed sign-out l
 // ======================================================================================================================
 await part(9, 'a new Markets build mid-session: no reload in use; a lazy section while stale reloads first', 'D21, C7, RB2, RB3', async () => {
 // ======================================================================================================================
-  const R = await open('imogen-release', { sw: 'block', clock: true });
+  const R = await open('imogen-release', { sw: 'block', clock: true, saveData: true });
   let release = null;
   await route(R.ctx, /\/markets\/version(\?|$)/, (r) => (release ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ app: APP, build: release, min: null }) }) : r.continue()));
   await route(R.ctx, /\/markets\/roof\/markets\.js(\?|$)/, async (r) => {

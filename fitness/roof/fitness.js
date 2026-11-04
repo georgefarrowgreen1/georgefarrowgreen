@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.79";
-export const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
+export const BUILD = "1.80";
+export const NEWS = "Switching sections is much quicker and smoother: every section stays ready, so changing between them no longer stalls the screen";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -130,9 +130,9 @@ export async function mount(root, fw) {
     };
   };
   const VIEWS = { today: todayView, activities: lazyView("acts", "Activities"), progress: lazyView("prog", "Progress") };
-  // (the other sections' files fetched once, a moment after Fitness first shows, so a first switch to one is instant)
+  // (the other sections' files fetched once (not when Save Data is asked for), a moment after Fitness first shows, so a first switch to one is instant)
   let warmed = false, warmT = 0;
-  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.()) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
   const secs = new Map(), views = new Map();
   for (const [id, name] of SECTIONS) {
     const el = doc.createElement("section");

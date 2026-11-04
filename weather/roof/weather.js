@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.72";
-export const NEWS = "Switching sections is steady from the first tap: every section is ready a moment after you open the app, so nothing flashes or pops in";
+export const BUILD = "1.73";
+export const NEWS = "Switching sections is much quicker and smoother: every section stays ready, so changing between them no longer stalls the screen";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
@@ -146,9 +146,9 @@ export async function mount(root, fw) {
     secs.set(id, el);
     views.set(id, VIEWS[id](el, ctx));
   }
-  // (the other sections' files fetched once, a moment after Weather first shows, so a first switch to one is instant)
+  // (the other sections' files fetched once (not when Save Data is asked for), a moment after Weather first shows, so a first switch to one is instant)
   let warmed = false, warmT = 0;
-  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.()) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
   const draw = (id = shown) => { if (onScreen && id) { try { views.get(id)?.draw(); } catch (e) { console.error(e); } } };
   const header = () => {
     if (!onScreen) return;

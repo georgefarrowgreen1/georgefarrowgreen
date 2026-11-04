@@ -184,6 +184,9 @@ export async function dress(ctx, name, o = {}) {
   await ctx.addInitScript(NOTING);
   await ctx.addInitScript(VISIBILITY);
   if (o.standalone) await ctx.addInitScript(STANDALONE);
+  // (Save Data asked for: no module fetches its other sections' files ahead (weather.js, fitness.js, markets.js warm), so
+  // a first open is only what it needs and a lazy file is only ever fetched when wanted)
+  if (o.saveData) await ctx.addInitScript(() => { try { Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true, effectiveType: '4g' } }); } catch (_) {} });
   if (o.clock) { await ctx.clock.install(); await ctx.clock.resume(); }
   await standIns(ctx);
   const watch = (pg) => {

@@ -24,6 +24,9 @@
 /* ---- the frame of it: sections, the column, what every view draws with ---- */
 .m-markets { display: block; padding-bottom: 24px; }
 .m-markets .mk-sec[hidden] { display: none; }
+/* (a section not shown: kept laid out, only not painted and taking no room (content-visibility: hidden keeps its layout,
+   so switching back costs no layout and nothing is drawn again); where that isn't known, display: none as before) */
+@supports (content-visibility: hidden) { .m-markets .mk-sec[hidden] { display: block !important; content-visibility: hidden; } }
 .m-markets .mk-view { max-width: var(--col); margin: 0 auto; }
 .m-markets button, .ifl-sheet[data-app=markets] button, .m-markets input, .ifl-sheet[data-app=markets] input { font: inherit; color: inherit; letter-spacing: inherit; }
 .m-markets button, .ifl-sheet[data-app=markets] button { cursor: pointer; border: 0; background: none; padding: 0; text-align: left; }
