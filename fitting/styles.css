@@ -347,7 +347,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .rp-photos{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .rp-ph{display:flex;flex-direction:column;gap:6px}
 .rp-ph .im{width:100%;aspect-ratio:3/2;background-color:var(--p-soft);background-size:contain;background-position:center;background-repeat:no-repeat;border-radius:6px}
-.rp-ph.big .im{aspect-ratio:auto;height:400px}
+.rp-ph.big .im{aspect-ratio:4/3}
 .rp-ph b{font-family:var(--f-disp);text-transform:uppercase;letter-spacing:.06em;font-size:14px}
 .rp-ph span{font-size:12.5px;color:var(--p-mute)}
 .rp-foot{position:absolute;left:44px;right:44px;bottom:24px;display:flex;justify-content:space-between;gap:20px;font-size:10.5px;color:var(--p-mute);border-top:1px solid var(--p-line);padding-top:10px}
@@ -420,3 +420,11 @@ input[type=search]:focus{border-color:var(--focus)}
 .fit-row .fr-main b{font-size:16.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .fit-row .fr-main span{font-size:13.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:620px){#btn-fits span{display:none}#btn-fits{padding:0 14px}}
+
+/* the report's later pages: a slimmer band, so more of each page is the report */
+.rp-band.sm{padding:12px 44px;gap:18px}
+.rp-band.sm img{height:34px}
+.rp-band.sm .rp-k{font-size:11.5px}
+.rp-band.sm .rp-t{font-size:22px}
+.rp-blk{display:flow-root}
+.rp-cont{font-family:var(--f-body);font-size:11.5px;font-weight:600;letter-spacing:.06em;color:var(--p-mute);text-transform:none;margin-left:2px}

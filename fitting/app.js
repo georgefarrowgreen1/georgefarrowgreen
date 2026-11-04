@@ -742,74 +742,94 @@ function mailText(){
 }
 
 /* ---------------- client report ---------------- */
-function reportPages(){
+/* The client's report: its sections one after another down A4 pages, a new page only where the next one won't fit. A
+   table or list of angles carries on over a page (its heading again, marked continued); anything else moves whole. Each
+   block is measured as it'll be drawn (in #cap, at the page's width), so the preview and the PDF are the same pages. */
+const PAGE_H = 1123, FOOT_H = 70, TOP_PAD = 26, SAFE = 4;
+function reportBlocks(){
   const v = S.v, fit = FITS[S.fit], name = fullName() || 'Client';
   const dateTxt = v.date ? new Date(v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'}) : '';
-  const band = t => `<div class="rp-band"><img src="${LOGO}" alt=""><div><div class="rp-k">${esc(fit.name)} · ${esc(name)}</div><div class="rp-t">${t}</div></div></div>`;
-  const pages = [];
-  const ch = changes(), A = anglesList(), Ls = lights();
-  const u = x => x === '°' ? '°' : ' ' + x;
-  // page 1
-  pages.push(`${band('Precision Fit Report')}<div class="rp-in">
-    <div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>Fit</span><b>${esc(fit.name)}</b></div>
-      <div><span>Bike</span><b>${esc(v.bike || '')}</b></div><div><span>Frame size</span><b>${esc(v.frame || '')}</b></div><div><span>Pedals</span><b>${esc(v.pedals || '')}</b></div><div><span>Shoes</span><b>${esc(v.shoes || '')}</b></div></div>
-    ${ch.length ? `<div class="rp-sec"><h3 class="rp-h">Key changes</h3><div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}</b><i>${x.txt}</i></div>`).join('')}</div></div>` : ''}
-    ${v.summary ? `<div class="rp-sec"><h3 class="rp-h">What we changed and why</h3><p class="rp-p">${esc(v.summary)}</p></div>` : ''}
-  </div>`);
-  // your position: the angles before and after, each against its guide range (a page of its own: page 1's summary can run long)
-  if (A.length) pages.push(`${band('Your position')}<div class="rp-in"><div class="rp-sec"><h3 class="rp-h">On the bike, before and after</h3>
-    <p class="rp-p" style="color:var(--p-mute);font-size:12.5px">Hollow dot: before the fit. Solid dot: after. The green band is the range we aim for.</p>${A.map(a => {
-      const ok = a.r && a.post != null ? a.post >= a.r[0] && a.post <= a.r[1] : null;
+  const ch = changes(), A = anglesList(), Ls = lights(), u = x => x === '°' ? '°' : ' ' + x;
+  const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
+  const B = [];
+  B.push({html:`<div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>Fit</span><b>${esc(fit.name)}</b></div>
+    <div><span>Bike</span><b>${esc(v.bike || '')}</b></div><div><span>Frame size</span><b>${esc(v.frame || '')}</b></div><div><span>Pedals</span><b>${esc(v.pedals || '')}</b></div><div><span>Shoes</span><b>${esc(v.shoes || '')}</b></div></div>`});
+  if (ch.length) B.push({html:sec('Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}</b><i>${x.txt}</i></div>`).join('')}</div>`)});
+  if (v.summary) B.push({html:sec('What we changed and why', `<p class="rp-p">${esc(v.summary)}</p>`)});
+  if (A.length) B.push({title:'Your position on the bike', head:'<p class="rp-p" style="color:var(--p-mute);font-size:12.5px">Hollow dot: before the fit. Solid dot: after. The green band is the range we aim for.</p>', foot:'',
+    rows:A.map(a => { const ok = a.r && a.post != null ? a.post >= a.r[0] && a.post <= a.r[1] : null;
       return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div style="font-size:11.5px;color:var(--p-mute)">${a.r ? `Guide ${fmt(a.r[0])}–${fmt(a.r[1])}${u(a.u)}` : 'Recorded'}</div></div>
         <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
-        <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; }).join('')}</div>
-  </div>`);
-  // page 2: measurements
-  const rowsT = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
-    return `<tr><td>${esc(r.label)}</td><td>${esc(r.t === 'text' ? v[r.k + '_pre'] ?? '' : v[r.k + '_pre'] != null && v[r.k + '_pre'] !== '' ? fmt(v[r.k + '_pre']) + u(r.u) : '')}</td><td class="c">${esc(r.t === 'text' ? v[r.k + '_post'] ?? '' : v[r.k + '_post'] != null && v[r.k + '_post'] !== '' ? fmt(v[r.k + '_post']) + u(r.u) : '')}</td><td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; }).join('');
-  const bikeRows = rowsT(BIKE);
-  pages.push(`${band('Bike measurements')}<div class="rp-in">
-    <div class="rp-sec"><table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>${bikeRows || '<tr><td colspan="4">No measurements recorded.</td></tr>'}</tbody></table></div>
-    ${v.cleatL || v.cleatR ? `<div class="rp-sec"><h3 class="rp-h">Cleats</h3><ul class="rp-lst"><li><span>Left</span><b>${esc(v.cleatL || '–')}</b></li><li><span>Right</span><b>${esc(v.cleatR || '–')}</b></li></ul></div>` : ''}
-    ${S.fit === 'tt' ? `<div class="rp-sec"><h3 class="rp-h">TT cockpit</h3><table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>${rowsT(TTROWS)}</tbody></table></div>` : ''}
-    <p style="font-size:11.5px;color:var(--p-mute)">All measurements in millimetres unless shown. Keep this page with your bike: it lets any mechanic put your position back exactly.</p>
-  </div>`);
-  // page 3: assessment
+        <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; })});
+  const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
+  const trs = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
+    return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
+  const TH = '<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>';
+  const bike = trs(BIKE);
+  if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
+    tail:'<p class="rp-p" style="font-size:11.5px;color:var(--p-mute);margin-top:10px">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
+  if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<ul class="rp-lst"><li><span>Left</span><b>${esc(v.cleatL || '–')}</b></li><li><span>Right</span><b>${esc(v.cleatR || '–')}</b></li></ul>`)});
+  if (S.fit === 'tt'){ const tt = trs(TTROWS); if (tt.length) B.push({title:'TT cockpit', head:TH, foot:'</tbody></table>', rows:tt}); }
   const pains = Object.entries(S.pain).filter(([, x]) => x);
   const obs = [['Arch height (L / R)', S.fit !== 'std' && [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
     ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Sit-bone width', isNum(v.ischial) ? v.ischial + ' mm' : ''], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
     ['Shoulders drawn forward', S.fit !== 'std' ? v.shFwd : ''], ['Inseam', isNum(v.inseam) ? v.inseam + ' cm' : ''], ['Knee tracking on bike (L / R)', S.fit !== 'std' && (v.kneeTrack_L || v.kneeTrack_R) ? `${v.kneeTrack_L || '–'} / ${v.kneeTrack_R || '–'}` : '']].filter(x => x[1]);
-  pages.push(`${band('Your assessment')}<div class="rp-in">
-    <div class="rp-two"><div class="rp-sec"><h3 class="rp-h">Mobility & stability</h3><ul class="rp-lst">${Ls.map(x => `<li><span>${esc(x.label)}</span><span><span style="margin-right:8px;font-variant-numeric:tabular-nums">${esc(x.v)}</span><span class="rp-pill ${x.c}">${CNAME[x.c]}</span></span></li>`).join('') || '<li><span>Not assessed</span></li>'}</ul></div>
-      <div class="rp-sec"><h3 class="rp-h">Posture & alignment</h3><ul class="rp-lst">${obs.map(x => `<li><span>${esc(x[0])}</span><b>${esc(x[1])}</b></li>`).join('') || '<li><span>Not assessed</span></li>'}</ul></div></div>
-    <div class="rp-sec"><h3 class="rp-h">What you told us</h3>
-      ${v.goals && v.goals.length ? `<p class="rp-p"><b>Goals:</b> ${esc(v.goals.join(', '))}${v.goalNote ? '. ' + esc(v.goalNote) : ''}</p>` : ''}
-      ${pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}</span>`).join(' ')}</p>` : ''}
-      ${v.problems ? `<p class="rp-p">${esc(v.problems)}</p>` : ''}
-      ${v.activities ? `<p class="rp-p"><b>Current weekly activities:</b> ${esc(v.activities)}</p>` : ''}
-      ${v.injuries ? `<p class="rp-p"><b>Injuries & special notes:</b> ${esc(v.injuries)}</p>` : ''}</div>
-    ${v.fitNotes ? `<div class="rp-sec"><h3 class="rp-h">Fitter’s notes</h3><p class="rp-p">${esc(v.fitNotes)}</p></div>` : ''}
-  </div>`);
-  // photos
-  const ph = S.photos.filter(p => p.inc && p.src);
-  if (ph.length && S.fit !== 'std'){
-    const sideB = ph.find(p => p.tag === 'Before · side'), sideA = ph.find(p => p.tag === 'After · side');
-    const rest = ph.filter(p => p !== sideB && p !== sideA);
+  if (Ls.length || obs.length) B.push({html:`<div class="rp-two">${Ls.length ? sec('Mobility & stability', `<ul class="rp-lst">${Ls.map(x => `<li><span>${esc(x.label)}</span><span><span style="margin-right:8px;font-variant-numeric:tabular-nums">${esc(x.v)}</span><span class="rp-pill ${x.c}">${CNAME[x.c]}</span></span></li>`).join('')}</ul>`) : ''}
+    ${obs.length ? sec('Posture & alignment', `<ul class="rp-lst">${obs.map(x => `<li><span>${esc(x[0])}</span><b>${esc(x[1])}</b></li>`).join('')}</ul>`) : ''}</div>`});
+  const told = [v.goals && v.goals.length ? `<p class="rp-p"><b>Goals:</b> ${esc(v.goals.join(', '))}${v.goalNote ? '. ' + esc(v.goalNote) : ''}</p>` : '',
+    pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}</span>`).join(' ')}</p>` : '',
+    v.problems ? `<p class="rp-p">${esc(v.problems)}</p>` : '', v.activities ? `<p class="rp-p"><b>Current weekly activities:</b> ${esc(v.activities)}</p>` : '',
+    v.injuries ? `<p class="rp-p"><b>Injuries & special notes:</b> ${esc(v.injuries)}</p>` : ''].join('');
+  if (told) B.push({html:sec('What you told us', told)});
+  if (v.fitNotes) B.push({html:sec('Fitter’s notes', `<p class="rp-p">${esc(v.fitNotes)}</p>`)});
+  const ph = S.fit === 'std' ? [] : S.photos.filter(p => p.inc && p.src);
+  if (ph.length){
     const card = (p, big) => `<div class="rp-ph${big ? ' big' : ''}"><div class="im" style="background-image:url('${p._comp || p.src}')"></div><b>${esc(p.tag)}</b>${p.cap ? `<span>${esc(p.cap)}</span>` : ''}</div>`;
-    const chunks = [];
-    if (sideB || sideA) chunks.push([sideB, sideA].filter(Boolean).map(p => card(p, true)).join(''));
-    for (let i = 0; i < rest.length; i += 4) chunks.push(rest.slice(i, i + 4).map(p => card(p)).join(''));
-    chunks.forEach((c, i) => pages.push(`${band(i === 0 && (sideB || sideA) ? 'Before & after' : 'Fit photos')}<div class="rp-in"><div class="rp-photos"${i === 0 && (sideB || sideA) ? ' style="grid-template-columns:1fr"' : ''}>${c}</div></div>`));
+    const side = ['Before · side', 'After · side'].map(t => ph.find(p => p.tag === t)).filter(Boolean), rest = ph.filter(p => !side.includes(p));
+    if (side.length) B.push({html:sec('Before & after', `<div class="rp-photos">${side.map(p => card(p, true)).join('')}</div>`)});
+    for (let i = 0; i < rest.length; i += 2) B.push({html:sec(i === 0 ? 'Fit photos' : '', `<div class="rp-photos">${rest.slice(i, i + 2).map(p => card(p)).join('')}</div>`)});
   }
-  // plan
   const st = [...chosenStretches()].map(k => STRETCH.find(x => x.k === k)).filter(Boolean), fu = followUp(), prods = S.products.filter(p => p.n);
-  pages.push(`${band('Your plan')}<div class="rp-in">
-    ${st.length ? `<div class="rp-sec"><h3 class="rp-h">Stretching & strengthening</h3><div class="rp-plan">${st.map(x => `<div><b>${esc(x.name)}</b><span>${esc(x.dose)}</span></div>`).join('')}</div></div>` : ''}
-    ${prods.length ? `<div class="rp-sec"><h3 class="rp-h">Recommended for you</h3><ul class="rp-lst">${prods.map(p => `<li><span>${esc(p.n)}</span><b>${p.p ? '£' + esc(p.p) : ''}</b></li>`).join('')}</ul></div>` : ''}
-    <div class="rp-sec"><h3 class="rp-h">Settling in</h3><p class="rp-p">Give your body two to three weeks to adapt. Build ride length gradually and note anything that feels different, good or bad. Small aches usually settle; sharp or lasting pain means we should look again.</p></div>
-    <div class="rp-cta"><div><b>${esc(fu.title)}</b><span>${esc(fu.body)}</span></div><div style="text-align:right;font-size:12.5px;white-space:nowrap">01603 614400<br>precisionfit@pedalrevolution.co.uk</div></div>
-  </div>`);
-  return pages.map((h, i) => `<div class="rp-page">${h}<div class="rp-foot"><span>Pedal Revolution · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>${i + 1} / ${pages.length}</span></div></div>`);
+  if (st.length) B.push({html:sec('Stretching & strengthening', `<div class="rp-plan">${st.map(x => `<div><b>${esc(x.name)}</b><span>${esc(x.dose)}</span></div>`).join('')}</div>`)});
+  if (prods.length) B.push({html:sec('Recommended for you', `<ul class="rp-lst">${prods.map(p => `<li><span>${esc(p.n)}</span><b>${p.p ? '£' + esc(p.p) : ''}</b></li>`).join('')}</ul>`)});
+  // (settling in and the follow-up kept together: the report never ends on the follow-up alone)
+  B.push({html:sec('Settling in', '<p class="rp-p">Give your body two to three weeks to adapt. Build ride length gradually and note anything that feels different, good or bad. Small aches usually settle; sharp or lasting pain means we should look again.</p>') + `<div class="rp-cta"><div><b>${esc(fu.title)}</b><span>${esc(fu.body)}</span></div><div style="text-align:right;font-size:12.5px;white-space:nowrap">01603 614400<br>precisionfit@pedalrevolution.co.uk</div></div>`});
+  return B;
+}
+const rowsBlock = (b, i, j, cont) => `<div class="rp-sec"><h3 class="rp-h">${b.title}${cont ? '<span class="rp-cont">continued</span>' : ''}</h3>${cont ? '' : b.head.startsWith('<p') ? b.head : ''}${b.head.startsWith('<p') ? '' : b.head}${b.rows.slice(i, j).join('')}${b.foot}${j === b.rows.length ? b.tail || '' : ''}</div>`;
+function reportPages(){
+  const fit = FITS[S.fit], name = fullName() || 'Client', cap = $('#cap');
+  const band = big => `<div class="rp-band${big ? '' : ' sm'}"><img src="${LOGO}" alt=""><div><div class="rp-k">${esc(fit.name)} · ${esc(name)}</div><div class="rp-t">Precision Fit Report</div></div></div>`;
+  const blocks = reportBlocks();
+  // measure: each band, each whole block, and for a carried-on block its heading and each row
+  const blk = h => `<div class="rp-blk">${h}</div>`;
+  cap.innerHTML = `<div class="rp-page" style="min-height:0">${band(true)}${band(false)}<div class="rp-in">${blocks.map(b => b.rows ? blk(rowsBlock({...b, rows:[]}, 0, 0, false)) + blk(rowsBlock(b, 0, b.rows.length, false)) : blk(b.html)).join('')}</div></div>`;
+  const bands = $$('.rp-band', cap).map(e => e.offsetHeight), els = $$('.rp-blk', cap);
+  let k = 0;
+  blocks.forEach(b => {
+    // (a block's own space below it, its last part's bottom margin, can fall past the page's end: it's only white)
+    if (!b.rows){ const e = els[k++], last = e.lastElementChild; b.h = e.offsetHeight; b.tail = last ? parseFloat(getComputedStyle(last).marginBottom) || 0 : 0; return; }
+    b.headH = els[k++].offsetHeight; const whole = els[k++];
+    b.rowH = $$(b.foot ? 'tbody > tr' : '.rp-ang', whole).map(e => e.offsetHeight);
+  });
+  cap.innerHTML = '';
+  // pack
+  const room = first => PAGE_H - (first ? bands[0] : bands[1]) - TOP_PAD - FOOT_H - SAFE;
+  const pages = [[]]; let left = room(true);
+  const turn = () => { pages.push([]); left = room(false); };
+  const here = () => pages[pages.length - 1];
+  for (const b of blocks){
+    if (!b.rows){ if (b.h - b.tail > left && here().length) turn(); here().push(b.html); left -= b.h; continue; }
+    let i = 0, cont = false;
+    while (i < b.rows.length){
+      if (left < b.headH + b.rowH[i] && here().length) turn();
+      let used = b.headH, j = i;
+      while (j < b.rows.length && (used + b.rowH[j] <= left || j === i)){ used += b.rowH[j]; j++; }
+      here().push(rowsBlock(b, i, j, cont)); left -= used; i = j; cont = true;
+      if (i < b.rows.length) turn();
+    }
+  }
+  return pages.map((items, i) => `<div class="rp-page">${band(i === 0)}<div class="rp-in">${items.join('')}</div><div class="rp-foot"><span>Pedal Revolution · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>${i + 1} / ${pages.length}</span></div></div>`);
 }
 function gaugeOnly(k){ const h = gaugeHTML(k, ''); const i = h.indexOf('<div class="gauge">'); return i >= 0 ? h.slice(i) : ''; }
 
@@ -817,6 +837,7 @@ async function openReport(){
   for (const p of S.photos) if (p.src && p.marks.length && !p._comp) await composite(p);
   $('#ov-ttl').textContent = `Client report · ${fullName() || 'Client'}`;
   $('#ov-msg').innerHTML = '';
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
   $('#pages').innerHTML = reportPages().map(h => `<div class="pg-wrap">${h}</div>`).join('');
   $('#ov').hidden = false; fitPages();
 }
