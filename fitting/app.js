@@ -699,7 +699,6 @@ function reportStepHTML(){
     <div class="send"><div style="display:flex;flex-direction:column;gap:12px">
       <div class="fld"><label class="lab" for="i-email2">Client email</label><input type="email" id="i-email2" data-k="email" value="${esc(val('email') || '')}"></div>
       <div class="row-btns"><button type="button" class="btn primary" data-act="pdf">Make PDF</button><button type="button" class="btn" data-act="preview">Preview report</button></div>
-      <div class="row-btns"><button type="button" class="btn dark" data-act="show-rider">Show the rider</button><button type="button" class="btn" data-act="card">Bike set-up card</button></div>
       <div class="row-btns"><a class="btn" id="mailto" href="${esc(mailtoHref())}">Open in Mail</a><button type="button" class="btn" data-act="copy-mail">Copy email</button></div>
       <div id="send-msg"></div>
       <div class="hint">On iPad, Make PDF then Share or email opens the share sheet: choose Mail and the report goes as an attachment.</div></div>
@@ -724,80 +723,12 @@ function startHTML(){
     <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>`;
 }
 
-/* ---------------- show the rider: the iPad turned round at the end of the fit ---------------- */
-// What changed and why, their before and after, and their plan: big, plain and dark, with none of the form around it.
-// Everything in it is the fit as recorded.
-const WHY = {
-  sadH:d => d > 0 ? 'Your knee now opens fully at the bottom of the stroke.' : 'Less stretch for the pedal: steadier hips on the saddle.',
-  setback:d => d < 0 ? 'Forward: puts your knee over the pedal.' : 'Back: more room for your hips and hamstrings.',
-  drop:d => d < 0 ? 'Less drop to the bars: less load on your lower back.' : 'A lower front end, for a longer, faster position.',
-  hoods:d => d < 0 ? 'Shorter reach: elbows soft, hands lighter on the hoods.' : 'More reach: room to breathe and stretch out.',
-  barReach:d => d < 0 ? 'Shorter reach to the bars: shoulders and neck more relaxed.' : 'Longer reach to the bars: a more stretched-out position.',
-  stemL:d => d < 0 ? 'A shorter stem brings the bars closer.' : 'A longer stem stretches you out.',
-  stemA:() => 'Stem angle changed to set the bar height.',
-  spacers:d => d > 0 ? 'Bars raised: a more upright, easier position.' : 'Bars lowered: a lower, faster position.',
-  barW:() => 'Bars matched to your shoulders: steadier steering, freer breathing.',
-  crank:d => d < 0 ? 'Shorter cranks open your hip at the top of the stroke.' : 'Longer cranks, to suit your leg length.',
-  tilt:() => 'Saddle angle set so you sit steady without sliding.',
-  sadW:() => 'Saddle width matched to your sit bones.',
-};
+// The stretching plan's lines: "name — how much" (or a colon), each a card in the report
 const planLines = () => stretchText().split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(l) || /^([^:]+):\s*(.+)$/.exec(l); return m ? {name:m[1], dose:m[2]} : {name:l, dose:''}; });
-let HO = {tab:'ch', x:.5};
-async function openHandover(){
-  await markPhotos();
-  HO = {tab:'ch', x:.5}; renderHandover(); $('#ho').hidden = false;
-}
-function renderHandover(){
-  const v = S.v, fit = FITS[S.fit], u = x => x === '°' ? '°' : ' ' + x;
-  const ch = changes().slice(0, 4);
-  const A = anglesList().filter(a => a.r && a.post != null), inR = a => a.post >= a.r[0] && a.post <= a.r[1];
-  const moved = A.filter(a => a.pre != null && !(a.pre >= a.r[0] && a.pre <= a.r[1]) && inR(a));
-  const show = (moved.length ? moved : A.filter(inR)).slice(0, 3);
-  const side = canCompare() ? ['Before · side', 'After · side'].map(t => S.photos.find(p => p.src && p.tag === t)) : null;
-  const tabs = [['ch', 'Your changes'], side ? ['ba', 'Before & after'] : null, ['pl', 'Your plan']].filter(Boolean);
-  if (!tabs.some(t => t[0] === HO.tab)) HO.tab = 'ch';
-  const bar = a => {
-    const vals = [a.pre, a.post].filter(x => x != null), lo0 = Math.min(...vals, a.r[0]), hi0 = Math.max(...vals, a.r[1]);
-    const pad = Math.max((hi0 - lo0) * .25, (a.r[1] - a.r[0]) * .4, 1), lo = lo0 - pad, hi = hi0 + pad, P = x => ((x - lo) / (hi - lo) * 100).toFixed(1);
-    return `<div class="ho-bar"><div class="ho-band" style="left:${P(a.r[0])}%;width:${(P(a.r[1]) - P(a.r[0])).toFixed(1)}%"></div>${a.pre != null ? `<div class="ho-dot was" style="left:${P(a.pre)}%"></div>` : ''}<div class="ho-dot now" style="left:${P(a.post)}%"></div></div>`;
-  };
-  const changesPane = `<p class="ho-h">${esc(v.first || 'Your')}${v.first ? ', here’s' : ''} ${S.follow ? 'today’s changes' : 'your new position'}</p>
-    <p class="ho-sub">${ch.length ? `${ch.length === 1 ? 'One change' : `${['', '', 'Two', 'Three', 'Four'][ch.length]} changes`} did most of the work.` : 'Your position stays as it is: nothing needed changing.'}</p>
-    ${ch.length ? `<div class="ho-tiles">${ch.map(x => `<div class="ho-tile"><div class="k">${esc(x.r.label)}</div><div class="v">${esc(x.txt)}</div><div class="d">${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}${u(x.r.u)}. ${esc((WHY[x.r.k] || (() => ''))(x.d))}</div></div>`).join('')}</div>` : ''}
-    ${show.length ? `<div class="ho-angs">${show.map(a => `<div class="ho-ang"><div class="t"><span>${esc(a.label)}</span><b>${a.pre != null ? fmt(a.pre) + u(a.u) + ' → ' : ''}${fmt(a.post)}${u(a.u)}</b></div>${bar(a)}<small>${inR(a) ? `Now inside ${guideTxt(a.r, a.u).replace('Guide ', '')}` : `Aim: ${guideTxt(a.r, a.u).replace('Guide ', '')}`}</small></div>`).join('')}</div>` : ''}`;
-  const notes = moved.map(a => ({t:`${a.label} into range`, d:`${fmt(a.pre)}${u(a.u)} to ${fmt(a.post)}${u(a.u)}, inside the range we aim for.`}))
-    .concat(ch.filter(x => WHY[x.r.k]).map(x => ({t:`${x.r.label} ${x.txt}`, d:WHY[x.r.k](x.d)}))).slice(0, 3);
-  const baPane = side ? `<div class="ho-ba"><div class="ho-cmp" id="ho-cmp" role="slider" tabindex="0" aria-label="Before and after" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="aspect-ratio:${side[0].w || 3}/${side[0].h || 2}">
-      <img src="${side[0]._comp || side[0].src}" alt="Before"><img id="ho-after" src="${side[1]._comp || side[1].src}" alt="After"><div class="ho-hd" id="ho-h"><span>⇆</span></div>
-      <span class="ho-l" style="left:12px">Before</span><span class="ho-l" style="right:12px">After</span></div>
-    <ul class="ho-notes">${notes.map(n => `<li><b>${esc(n.t)}</b>${esc(n.d)}</li>`).join('')}</ul></div>` : '';
-  const fu = followUp(), plan = planLines();
-  const planPane = `<div class="ho-plan"><div><p class="ho-h" style="font-size:30px">Your plan</p><p class="ho-sub">${plan.length ? 'Little and often. These target what we found in your assessment.' : 'Keep riding and build up gradually.'}</p>
-      ${plan.length ? `<ul class="ho-list">${plan.map(x => `<li><b>${esc(x.name)}</b>${x.dose ? `<span>${esc(x.dose)}</span>` : ''}</li>`).join('')}</ul>` : ''}</div>
-    <div class="ho-fu"><span>${esc(fu.title)}</span><b>${fu.date ? esc(fu.date.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'long'})) : 'Any time'}</b><span>${esc(fu.body)}</span>
-      ${v.email ? `<div class="ho-sent">Your full report goes to ${esc(v.email)}</div>` : ''}</div></div>`;
-  $('#ho').innerHTML = `<div class="ho-top"><img src="${LOGO}" alt="Pedal Revolution Precision Fit">
-      <div class="ho-who">${esc(fullName() || 'Rider')}<span>${esc([S.follow ? 'Follow-up' : '', fit.name, v.bike, v.fitter ? 'with ' + v.fitter : ''].filter(Boolean).join(' · '))}</span></div>
-      <div class="ho-tabs" role="tablist" aria-label="Show the rider">${tabs.map(([k, l]) => `<button type="button" role="tab" id="ho-t-${k}" data-hotab="${k}" aria-selected="${HO.tab === k}">${l}</button>`).join('')}</div>
-      <button type="button" class="ho-done" data-act="ho-close">Done</button></div>
-    <div class="ho-body">${HO.tab === 'ch' ? changesPane : HO.tab === 'ba' ? baPane : planPane}</div>`;
-  const box = $('#ho-cmp');
-  if (box){
-    const after = $('#ho-after'), h = $('#ho-h');
-    const set = x => { HO.x = Math.max(0, Math.min(1, x)); after.style.clipPath = `inset(0 0 0 ${(HO.x * 100).toFixed(1)}%)`; h.style.left = (HO.x * 100).toFixed(1) + '%'; box.setAttribute('aria-valuenow', Math.round(HO.x * 100)); };
-    const at = e => { const r = box.getBoundingClientRect(); set((e.clientX - r.left) / r.width); };
-    let drag = false;
-    box.addEventListener('pointerdown', e => { e.preventDefault(); drag = true; box.setPointerCapture(e.pointerId); at(e); });
-    box.addEventListener('pointermove', e => { if (drag) at(e); });
-    ['pointerup', 'pointercancel'].forEach(n => box.addEventListener(n, () => { drag = false; }));
-    box.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') set(HO.x - .05); if (e.key === 'ArrowRight') set(HO.x + .05); });
-    set(HO.x);
-  }
-}
 
-/* ---------------- the bike set-up card: A5, front and back, to keep with the bike ---------------- */
-// The After values a mechanic needs to put the position back, and on the back where each is measured from. Only
-// rows with a value appear. Its own PDF, from Report & send.
+/* ---------------- the bike set-up card: the report's last page ---------------- */
+// The After values a mechanic needs to put the position back (front), and where each is measured from (back): two A5
+// halves of one A4 page, to cut along the line and keep with the bike. Only rows with a value appear; with none, no card.
 function cardCols(){
   const v = S.v, P = k => v[k + '_post'], has = k => filled(P(k)), mm = k => `${fmt(P(k))} mm`, row = (label, value, sub) => ({label, value, sub});
   const stem = has('stemL') || has('stemA') ? [has('stemL') ? mm('stemL') : '', has('stemA') ? `${P('stemA') > 0 ? '+' : ''}${fmt(P('stemA'))}°` : ''].filter(Boolean).join(' · ') : '';
@@ -841,29 +772,6 @@ function cardPages(){
     <div class="sc-foot">Measured at Pedal Revolution’s Precision Fit Studio${when ? ` on ${esc(when)}` : ''}. Your full fit report has the angles behind these numbers.</div></div>`;
   return [front, back];
 }
-async function openCard(){
-  OVKIND = 'card';
-  $('#ov-ttl').textContent = `Bike set-up card · ${fullName() || 'Rider'}`;
-  $('#ov-msg').innerHTML = '';
-  if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  $('#pages').innerHTML = cardPages().map(h => `<div class="pg-wrap">${h}</div>`).join('');
-  $('#ov').hidden = false; fitPages();
-}
-async function buildCardPDF(){
-  await ensureLibs();
-  if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  const cap = $('#cap'), pdf = new window.jspdf.jsPDF({unit:'pt', format:'a5', orientation:'landscape', compress:true});
-  const PW = pdf.internal.pageSize.getWidth(), PH = pdf.internal.pageSize.getHeight(), pages = cardPages();
-  for (let i = 0; i < pages.length; i++){
-    cap.innerHTML = pages[i];
-    const canvas = await window.html2canvas(cap.firstElementChild, {scale:2.5, backgroundColor:'#ffffff', useCORS:true, logging:false, windowWidth:900});
-    if (i) pdf.addPage();
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, PW, PH);
-  }
-  cap.innerHTML = '';
-  return pdf.output('blob');
-}
-
 /* ---------------- client report ---------------- */
 /* The client's report: its sections one after another down A4 pages, a new page only where the next one won't fit. A
    table or list of angles carries on over a page (its heading again, marked continued); anything else moves whole. Each
@@ -957,13 +865,14 @@ function reportPages(){
       if (i < b.rows.length) turn();
     }
   }
-  return pages.map((items, i) => `<div class="rp-page">${band(i === 0)}<div class="rp-in">${items.join('')}</div><div class="rp-foot"><span>Pedal Revolution · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>${i + 1} / ${pages.length}</span></div></div>`);
+  const [cL, cR] = cardCols(), card = cL.length || cR.length, n = pages.length + (card ? 1 : 0);
+  const out = pages.map((items, i) => `<div class="rp-page">${band(i === 0)}<div class="rp-in">${items.join('')}</div><div class="rp-foot"><span>Pedal Revolution · Precision Fit Studio · 63–67 Bethel Street, Norwich NR2 1NR · 01603 614400</span><span>${i + 1} / ${n}</span></div></div>`);
+  if (card){ const [front, back] = cardPages(); out.push(`<div class="rp-page rp-card">${front}<div class="sc-cut"><span>Cut along the line to keep the card with your bike</span></div>${back}</div>`); }
+  return out;
 }
 function gaugeOnly(k){ const h = gaugeHTML(k, ''); const i = h.indexOf('<div class="gauge">'); return i >= 0 ? h.slice(i) : ''; }
 
-let OVKIND = 'report';
 async function openReport(){
-  OVKIND = 'report';
   for (const p of S.photos) if (p.src && p.marks.length && !p._comp) await composite(p);
   $('#ov-ttl').textContent = `Client report · ${fullName() || 'Client'}`;
   $('#ov-msg').innerHTML = '';
@@ -1007,13 +916,13 @@ async function buildPDF(onStep){
   return pdf.output('blob');
 }
 let lastPDF = null;
-async function savePDF(msgEl, kind = 'report'){
+async function savePDF(msgEl){
   const say = (t, cls = '') => { if (msgEl) msgEl.innerHTML = `<div class="msg ${cls}" style="margin-top:8px">${t}</div>`; };
   const btns = $$('[data-act="pdf"]'); btns.forEach(b => b.disabled = true);
   try {
-    say(kind === 'card' ? 'Building the set-up card…' : 'Building the PDF…');
-    const blob = kind === 'card' ? await buildCardPDF() : await buildPDF((i, n) => say(`Building page ${i} of ${n}…`));
-    const fname = `Pedal Revolution ${kind === 'card' ? 'Bike Set-up Card' : 'Precision Fit'} - ${fullName() || 'Client'}${val('date') ? ' - ' + val('date') : ''}.pdf`.replace(/[\\/:*?"<>|]+/g, ' ');
+    say('Building the PDF…');
+    const blob = await buildPDF((i, n) => say(`Building page ${i} of ${n}…`));
+    const fname = `Pedal Revolution Precision Fit - ${fullName() || 'Client'}${val('date') ? ' - ' + val('date') : ''}.pdf`.replace(/[\\/:*?"<>|]+/g, ' ');
     lastPDF = new File([blob], fname, {type:'application/pdf'});
     let share = false; try { share = !!(navigator.canShare && navigator.canShare({files:[lastPDF]})); } catch(_){}
     say(`<b>${esc(fname)}</b> is ready (${Math.round(blob.size / 1024)} KB).${share ? ' Share it to Mail and it goes as an attachment, with the message already written.' : ''}
@@ -1161,7 +1070,6 @@ document.addEventListener('click', e => {
   const t = e.target.closest('button, [data-bm]'); if (!t) return;
   const d = t.dataset;
   if (d.go !== undefined) return go(+d.go);
-  if (d.hotab){ HO.tab = d.hotab; renderHandover(); return; }
   if (d.jump !== undefined){ const el = document.getElementById('sec-' + d.jump); if (el) el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); return; }
   if (d.fit){ S.fit = d.fit; save(); renderMain(); return; }
   if (d.seg){ const k = d.seg;
@@ -1181,10 +1089,7 @@ document.addEventListener('click', e => {
   case 'back': return go(S.step - 1);
   case 'preview': return openReport();
   case 'close-ov': $('#ov').hidden = true; return;
-  case 'pdf': return t.closest('#ov') ? savePDF($('#ov-msg'), OVKIND) : savePDF($('#send-msg'));
-  case 'card': return openCard();
-  case 'show-rider': return openHandover();
-  case 'ho-close': $('#ho').hidden = true; return;
+  case 'pdf': return savePDF(t.closest('#ov') ? $('#ov-msg') : $('#send-msg'));
   case 'timer': return toggleTimer();
   case 'stretch-draft': {
     const ta = $('#i-stretchText'), m = $('#stretch-msg'), txt = draftStretches();
@@ -1280,7 +1185,7 @@ cmpBox.addEventListener('pointermove', e => { if (CMP && CMP.drag) cmpAt(e); });
 ['pointerup','pointercancel'].forEach(n => cmpBox.addEventListener(n, () => { if (CMP) CMP.drag = false; }));
 
 window.addEventListener('resize', () => { if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!$('#ho').hidden) $('#ho').hidden = true; else if (!$('#fits').hidden) $('#fits').hidden = true; else if (CMP){ $('#cmp').hidden = true; CMP = null; } else if (MZ) closeMZ(); else if (!$('#ov').hidden) $('#ov').hidden = true; } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!$('#fits').hidden) $('#fits').hidden = true; else if (CMP){ $('#cmp').hidden = true; CMP = null; } else if (MZ) closeMZ(); else if (!$('#ov').hidden) $('#ov').hidden = true; } });
 
 document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFits(); });
 
