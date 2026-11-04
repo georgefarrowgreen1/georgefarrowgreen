@@ -52,7 +52,11 @@ test('signed out: the page goes to the sign-in, nothing else of the app is given
 test('the sign-in page and what it shows are open, under the app’s rules', async () => {
   const res = await ask(HOST + '/login');
   assert.equal(res.status, 200); assert.match(res.headers.get('content-type'), /text\/html/);
-  assert.match(await res.text(), /<title>Sign in · Precision Fit Studio/);
+  const html = await res.text();
+  assert.match(html, /<title>Sign in · Precision Fit Studio/);
+  // (its styles and script asked for by what they hold, so an older copy kept anywhere is never used with it)
+  assert.match(html, /href="styles\.css\?v=[0-9a-f]{12}"/); assert.match(html, /src="login\.js\?v=[0-9a-f]{12}"/);
+  assert.equal(res.headers.get('etag'), null);
   assert.match(res.headers.get('content-security-policy'), /script-src 'self'( https:\/\/static\.cloudflareinsights\.com)?;/);
   assert.equal(res.headers.get('x-robots-tag'), 'noindex, nofollow');
   for (const f of ['/styles.css', '/login.js', '/logo.png', '/fonts/barlow-400.woff2', '/icon-180.png', '/manifest.webmanifest']) assert.equal((await ask(HOST + f)).status, 200, f);
@@ -74,7 +78,8 @@ test('signing in: a wrong password, a wrong name, from elsewhere, then right (ha
 test('signed in: the app, its files and who’s signed in; the sign-in page goes to the app', async () => {
   const cookie = cookieOf(await signIn('Kate', 'kate-password-1'));
   const page = await ask(HOST + '/', { cookie });
-  assert.equal(page.status, 200); assert.match(await page.text(), /<title>Precision Fit Studio/);
+  assert.equal(page.status, 200);
+  const html = await page.text(); assert.match(html, /<title>Precision Fit Studio/); assert.match(html, /src="app\.js\?v=[0-9a-f]{12}"/);
   assert.equal(page.headers.get('cache-control'), 'private, no-cache');
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   for (const f of ['/app.js', '/sw.js']) { const r = await ask(HOST + f, { cookie }); assert.equal(r.status, 200, f); assert.equal(r.headers.get('cache-control'), 'private, no-cache', f); }

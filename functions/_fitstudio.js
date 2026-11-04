@@ -72,8 +72,24 @@ export async function fitting(ctx, url, base) {
   }
   if (me && sub === "/login") return redirect(`${url.origin}${base}/`);
   const path = "/fitting" + (sub === "/index.html" ? "/" : sub);
-  const res = await ctx.env.ASSETS.fetch(new Request(new URL(path + url.search, url), ctx.request));
-  return serveFitting(res, path);
+  // (a page asked for whole every time, never "is mine still the same?", so it's always stamped: below)
+  const res = await ctx.env.ASSETS.fetch(PAGE.test(path) ? new Request(new URL(path, url)) : new Request(new URL(path + url.search, url), ctx.request));
+  return serveFitting(PAGE.test(path) && res.status === 200 ? await stamped(ctx, url, res) : res, path);
+}
+
+// A page with its styles and scripts asked for by what they hold (styles.css?v=…): a browser that kept an older copy
+// of one can't use it with a newer page, the way a desktop's did with the sign-in page's styles
+async function stamped(ctx, url, res) {
+  let html = await res.text();
+  for (const f of new Set([...html.matchAll(/(?:href|src)="(styles\.css|app\.js|login\.js)"/g)].map((m) => m[1]))) {
+    const r = await ctx.env.ASSETS.fetch(new Request(new URL("/fitting/" + f, url)));
+    if (!r.ok) continue;
+    const v = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await r.arrayBuffer()))].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
+    html = html.split(`"${f}"`).join(`"${f}?v=${v}"`);
+  }
+  const out = new Response(html, res);
+  out.headers.delete("content-length"); out.headers.delete("etag");
+  return out;
 }
 
 // ---- the API: api/login, api/logout, api/me ----
