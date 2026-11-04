@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Precision Fit Studio · Pedal Revolution</title>
+<meta name="description" content="Pedal Revolution's bike-fit form for the Precision Fit Studio.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171a1e" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fit Studio">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/barlow-condensed-800i.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <img src="logo.png" alt="Pedal Revolution Precision Fit" width="358" height="122">
+    <div class="who"><b id="hd-name">New fit</b><span id="hd-sub"></span></div>
+    <span class="saved" id="saved"></span>
+    <button class="btn" type="button" id="btn-fits" data-act="fits">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+      <span>Fits</span></button>
+    <button class="btn primary" type="button" id="btn-preview" data-act="preview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+      <span>Report</span></button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Fit steps"></nav>
+  <main id="main"></main>
+</div>
+
+<footer class="pager"><div class="pg-prog" id="pg-prog"></div><div class="pager-in">
+  <button class="btn" type="button" id="pg-back" data-act="back">← Back</button>
+  <div class="mid" id="pg-mid"></div>
+  <button class="btn dark" type="button" id="pg-next" data-act="next">Next →</button>
+</div></footer>
+
+<div class="overlay" id="ov" hidden>
+  <div class="ov-bar">
+    <div class="ttl" id="ov-ttl">Client report</div>
+    <button class="btn primary" type="button" id="ov-pdf" data-act="pdf">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+      Make PDF</button>
+    <button class="btn" type="button" data-act="close-ov">Close</button>
+    <div id="ov-msg"></div>
+  </div>
+  <div class="ov-body"><div class="pages" id="pages"></div></div>
+</div>
+
+<div class="overlay" id="mz" hidden>
+  <div class="ov-bar">
+    <div class="ttl">Measure an angle</div>
+    <button class="btn sm" type="button" data-act="mz-new">New angle</button>
+    <button class="btn sm" type="button" data-act="mz-undo">Undo point</button>
+    <button class="btn sm dark" type="button" data-act="mz-done">Done</button>
+  </div>
+  <div class="mz-stage" id="mz-stage"><canvas id="mz-c"></canvas></div>
+  <div class="mz-foot">
+    <div class="hint" id="mz-hint">Tap three points: the start, the joint, then the end (for knee extension: hip, knee, ankle). Drag any point to adjust it.</div>
+    <div class="mz-list" id="mz-list"></div>
+  </div>
+</div>
+<div class="overlay" id="cmp" hidden>
+  <div class="ov-bar"><div class="ttl" id="cmp-ttl">Before &amp; after</div><span class="hint">Drag the handle across the photo</span><button class="btn dark" type="button" data-act="cmp-close">Done</button></div>
+  <div class="mz-stage" id="cmp-stage"><div class="cmp" id="cmp-box"><img id="cmp-a" alt="Before"><img id="cmp-b" alt="After"><div class="cmp-h" id="cmp-h"><span>⇆</span></div><span class="cmp-l l">Before</span><span class="cmp-l r">After</span></div></div>
+</div>
+<div class="overlay" id="fits" hidden>
+  <div class="ov-bar">
+    <div class="ttl">Fits on this device</div>
+    <span class="who-me" id="who-me"></span>
+    <button class="btn" type="button" data-act="signout">Sign out</button>
+    <button class="btn primary" type="button" data-act="new">+ New fit</button>
+    <button class="btn" type="button" data-act="fits-close">Close</button>
+  </div>
+  <div class="ov-body"><div class="fitlist">
+    <input type="search" id="fits-q" placeholder="Find a rider" aria-label="Find a rider" autocomplete="off">
+    <div id="fitlist"></div>
+    <p class="hint">Fits are kept in this browser on this device only. Nothing is sent anywhere until you share a report.</p>
+  </div></div>
+</div>
+<div id="cap" aria-hidden="true"></div>
+</body>
+</html>

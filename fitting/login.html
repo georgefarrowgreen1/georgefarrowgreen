@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sign in · Precision Fit Studio</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fit Studio">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preload" href="fonts/barlow-condensed-800i.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="login.js" defer></script>
+</head>
+<body class="signin">
+<main class="si-wrap">
+  <form class="si-card" id="si-form" novalidate>
+    <img class="si-logo" src="logo.png" alt="Pedal Revolution Precision Fit" width="358" height="122">
+    <h1 class="si-title">Precision Fit Studio</h1>
+    <p class="si-lede">Sign in to record fits and send reports.</p>
+    <div class="fld"><label class="lab" for="si-name">Name</label>
+      <input type="text" id="si-name" name="username" autocomplete="username" autocapitalize="words" spellcheck="false" required></div>
+    <div class="fld"><label class="lab" for="si-pass">Password</label>
+      <div class="si-pass"><input type="password" id="si-pass" name="password" autocomplete="current-password" required>
+        <button type="button" class="si-show" id="si-show" aria-pressed="false">Show</button></div></div>
+    <div class="si-msg" id="si-msg" role="alert" hidden></div>
+    <button type="submit" class="btn primary si-go" id="si-go">Sign in</button>
+    <p class="si-foot">For Pedal Revolution’s fit team. Fits stay on the device they’re recorded on.</p>
+  </form>
+</main>
+</body>
+</html>

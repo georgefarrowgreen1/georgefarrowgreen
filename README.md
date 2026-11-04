@@ -2304,6 +2304,36 @@ also remembers each friend's key and warns if it changes.
 strict Content-Security-Policy; `/pigeon/*` gets the strictest one and is the
 only place on the site that allows location, the microphone and passkeys.
 
+## Precision Fit Studio (fitting.georgefarrowgreen.com)
+
+Pedal Revolution's bike-fit form, for the fitter's iPad: one page in `fitting/`, served at the root of its own address
+by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefarrowgreen.com/fitting/` sends you on).
+
+- **Steps:** session (Standard, Full Precision or TT & Triathlon fit), rider interview with a tap-to-mark body map,
+  off-bike assessment (traffic lights from the studio's own thresholds, plank timer), on-bike angles before and after
+  against guide ranges, bike measurements before and after, a shot list of photos with angles marked on them, then
+  the client's report.
+- **Report:** a branded A4 PDF made in the browser (html2canvas and jsPDF, our own copies in `fitting/vendor/`).
+  On iPad, Share or email opens the share sheet, so Mail gets the PDF as an attachment; Download everywhere else.
+- **Storage:** every fit stays in the browser that recorded it (IndexedDB), listed under Fits. Nothing is sent to the
+  server: the app has no API. A service worker keeps it working without a connection.
+- **Guide ranges** for the angles are in `TARGETS` at the top of `fitting/app.js`; the traffic-light thresholds in
+  `CL`; the fit types' contents in `FITS` and `sectionsFor`.
+- **Typefaces:** Barlow and Barlow Condensed (SIL OFL), kept in `fitting/fonts/`.
+- **Sign-in:** its own, apart from the rest of the site (no account, no shared cookie). The fit team are in the
+  `FITTING_USERS` secret: `Kate:…,Matt:…`, each password either as it is or hashed with
+  `node .tools/fitting-user.mjs Kate`. Signed in, a cookie for this address alone lasts 30 days; changing
+  `FITTING_USERS` signs everyone out. Eight wrong passwords from one address wait 15 minutes. Without `FITTING_USERS`
+  no one can sign in. Only the sign-in page, its styles, typefaces, logo and icons are open to anyone.
+
+**Sign-in setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables
+and Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
+the hashed lines from the tool) → **Save**, then redeploy (Deployments → … → Retry deployment, or push any commit).
+
+**One-time setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Custom domains** →
+**Set up a custom domain** → `fitting.georgefarrowgreen.com`. Cloudflare adds the DNS record itself when the domain's
+zone is in the same account.
+
 ## Local preview
 
 The look works offline, but the API calls need Cloudflare's runtime. To run Functions, KV, R2 and D1 locally, install
