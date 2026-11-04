@@ -58,7 +58,8 @@ console.log(`Chats ${CHATS_ON ? 'under the roof (ROOF_CHATS "1")' : 'on its own 
 // (B0's Chats hooks; a missing one fails by name, never a selector of our own)
 const MISSING = new Set();
 const hk = (name, ...a) => { const v = H[name]; if (v == null) { MISSING.add(name); return `[data-missing-hook="${name}"]`; } return typeof v === 'function' ? v(...a) : v; };
-const chatsUp = async (p, ms = 30000) => (await shown(p, hk('M_CHATS'), ms)) && (await shown(p, hk('chSec', 'chats'), ms));
+// (Chats' screen up: its list, or, for Noor (signed in to InFlite here, never to Chat), its state's screen, §2.1)
+const chatsUp = async (p, ms = 30000) => (await shown(p, hk('M_CHATS'), ms)) && ((await shown(p, hk('chSec', 'chats'), Math.min(ms, 5000))) || (await shown(p, `${hk('M_CHATS')} [data-state]`, ms)));
 
 const N = await open('noor');
 const { p } = N;

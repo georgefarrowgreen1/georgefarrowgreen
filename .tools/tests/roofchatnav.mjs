@@ -118,7 +118,9 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
   await route(R.ctx, /^http:\/\/ifl\.test:8788\/chats\/roof\//, (r) => (R.off ? r.fulfill({ status: 404, contentType: 'text/plain', headers: { 'Cache-Control': 'no-store' }, body: 'Not found' }) : r.continue()));
   await route(R.ctx, /^http:\/\/ifl\.test:8788\/chats\/(index\.html)?(#.*)?$/, async (r) => {
     if (!(R.off && r.request().isNavigationRequest())) return r.continue();
-    const m1 = await r.fetch({ url: `${CHAT}/_hub/` });
+    // (Chat's hub copy as the hub forwards it, with its key and marker: /chats/in/ is the same page as /_hub/'s, S3-D8;
+    // asked of Chat's host directly, the page has no hub marker and goes to Chat's own address)
+    const m1 = await r.fetch({ url: `${HUB}/chats/in/` });
     return r.fulfill({ response: m1 });
   });
   // (the network failing for the core's sends: the letter stays in the sealed outbox, S3-D4)
@@ -249,7 +251,7 @@ await part(4, 'the sign-in hop: /chats/#signin=… → /chats/in/; the trip roun
   for (const [from, to] of [['/chats/in/', '/chats/'], [`/chats/in/#open=${P.id}`, `/chats/#open=${P.id}`]]) {
     await T.p.goto(`${HUB}${from}`).catch(() => {});
     const went = await at(T.p, to, 20000);
-    ok(went && (await count(T.p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(T.p));
+    ok(went && (await chatsUp(T.p)) && (await count(T.p, hk('M_CHATS'))) === 1, `4. ${from} with a session and no sign-in under way: ${to}, under the roof (S3-D8 c, risk I13)`, here(T.p));
   }
   await T.ctx.close();
   await p.goto(`${HUB}/chats/in/#account`).catch(() => {});

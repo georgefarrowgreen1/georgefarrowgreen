@@ -22,6 +22,7 @@
 // Privacy throughout (rule 5): the words George and Pat send are hunted in every request any frame or Worker made, the
 // hub's request log, every log the stack writes and the phones' storage (rooflib hunt()).
 import * as H from './roofhooks.mjs';
+import { createHash } from 'node:crypto';
 import { kit } from './lib.mjs';
 import { packCard } from '../../pigeon/cards.js';
 import {
@@ -439,9 +440,11 @@ await part(11, 'a new Chat build mid-session: stale, never reloaded over typed t
   const kept1 = await p.$eval(hk('CH_INPUT'), (e) => e.value ?? e.textContent).catch(() => null);
   ok((await life.same()) && docs.n() === 0 && kept1 === SENT.typed, '11. a newer build heard while text is typed: no reload, the text still there (busy(), S3-C7, risk I10)', js({ docs: docs.list, kept1 }));
   await p.fill(hk('CH_INPUT'), '');
-  await p.click(H.HD_BACK);
+  // (Back to the list is the same screen, Chats', so no reload there; the next screen change is: Today, by its tab, S1 D21)
+  await p.click(H.HD_BACK); await chatsUp(p);
+  await p.click(H.tab('today'));
   const reloaded = await until(() => docs.n() >= 1, 15000);
-  ok(!!reloaded && docs.n() === 1 && (await chatsUp(p)) && (await at(p, '/chats/')), '11. nothing typed, the next route change: one reload at the route (S1 D21)', js(docs.list));
+  ok(!!reloaded && docs.n() === 1 && (await todayUp(p)) && (await at(p, '/')), '11. nothing typed, the next screen change: one reload at the route (S1 D21)', js(docs.list));
   newer = false; await G.ctx.unroute(/^http:\/\/ifl\.test:8788\/chats\/version(\?|$)/).catch(() => {});
   docs.stop();
 });
@@ -454,7 +457,11 @@ await part(13, 'a 401 mid-session: “You’ve been signed out of Chats”, 0 Wo
   const p = G.p;
   await p.goto(`${HUB}/chats/`); await chatsUp(p);
   ok(workers(p).core === 1, '13. one Worker before', js(workers(p)));
-  const [st] = await chatApi(G.token, 'logout', {});
+  // (that one sign-in ended as another phone's Sessions ends it: its row gone, InFlite's own sign-in left as it is. Chat's
+  // logout from this token would end the account's sign-in it hangs from too, and Today with it)
+  const hash = createHash('sha256').update(G.token).digest('hex');
+  K.sql(`DELETE FROM pg_sessions WHERE hash = '${hash}'`);
+  const st = Number(one(`SELECT COUNT(*) AS n FROM pg_sessions WHERE hash = '${hash}'`)[0]?.n ?? 1) === 0 ? 200 : 500;
   ok(st < 300, '13. George’s Chat session ended on the server (as from another phone’s Sessions)', String(st));
   // (the next sync while shown: 15 s; a hide and show asks sooner)
   await hide(p); await wait(500); await show(p);

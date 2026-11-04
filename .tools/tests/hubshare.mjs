@@ -175,7 +175,8 @@ async function sendVia(key, to, typed, { name } = {}) {
     await G.p.click(hk('CH_SEND_GO')).catch(() => {});
     const said = await toastSaid(new RegExp(`Sent to ${name}`));
     const res = await until(() => G.p.evaluate(() => window.__sent), 10000);
-    return { said, res, sheetText, stayed: navs.length === n0 && G.p.url() === url0 };
+    const same = await G.p.evaluate(() => window.__stay === 1).catch(() => false);
+    return { said, res, sheetText, stayed: same && docs.length === d0 && G.p.url() === url0, url0 };
   }
   const row = F().locator(`.sheet [data-act=sendpick][data-id="${to}"]`);
   await row.waitFor({ timeout: 30000 });
