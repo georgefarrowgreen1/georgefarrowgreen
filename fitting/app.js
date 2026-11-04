@@ -605,7 +605,15 @@ function suggested(){
   if (S.pain.neck) s.add('neck');
   return s;
 }
-function chosenStretches(){ return S.stretches ? new Set(S.stretches) : suggested(); }
+// Stretching & strengthening, as the fitter writes it: one a line, "name — how much". "Suggest from the assessment"
+// writes the ones the assessment calls for (suggested()) into it, to edit. A fit from before, with buttons ticked,
+// starts from those.
+const stretchLine = x => `${x.name} — ${x.dose}`;
+function stretchText(){
+  if (typeof S.v.stretchText === 'string') return S.v.stretchText;
+  return Array.isArray(S.stretches) ? S.stretches.map(k => STRETCH.find(x => x.k === k)).filter(Boolean).map(stretchLine).join('\n') : '';
+}
+function draftStretches(){ return [...suggested()].map(k => STRETCH.find(x => x.k === k)).filter(Boolean).map(stretchLine).join('\n'); }
 function draftSummary(){
   const c = Object.fromEntries(changes().map(x => [x.r.k, x])), v = S.v, out = [];
   const mm = x => fmt(Math.abs(x.d)) + ' mm';
@@ -630,7 +638,7 @@ function followUp(){
 }
 
 function reportStepHTML(){
-  const ch = changes().slice(0, 4), L = lights(), A = anglesList(), st = chosenStretches(), sug = suggested(), fu = followUp();
+  const ch = changes().slice(0, 4), L = lights(), A = anglesList(), fu = followUp();
   const pains = Object.entries(S.pain).filter(([, v]) => v);
   const into = A.filter(a => a.r && a.post != null && a.post >= a.r[0] && a.post <= a.r[1]).length, measured = A.filter(a => a.r && a.post != null).length;
   return `<div class="sec"><div class="sec-h"><h2>Ready to send?</h2><span class="sec-count" data-x="readycount"></span></div><div class="ready" data-x="ready"></div></div>
@@ -644,8 +652,9 @@ function reportStepHTML(){
   </div>
   <div class="sec"><div class="sec-h"><h2>Overview of set-up changes</h2><button type="button" class="btn sm" data-act="draft">Write it for me</button></div>
     <div class="fld"><label class="lab" for="i-summary">What we changed and why · this opens the client report</label><textarea id="i-summary" data-k="summary" style="min-height:160px" placeholder="Tap “Write it for me” to draft this from your measurements, then edit.">${esc(val('summary') || '')}</textarea></div></div>
-  <div class="sec"><div class="sec-h"><h2>Stretching & strengthening</h2><span class="sec-note">Suggested from the assessment: tap to add or remove</span></div>
-    <div class="stretches">${STRETCH.map(x => `<button type="button" class="stretch" id="st-${x.k}" data-stretch="${x.k}" aria-pressed="${st.has(x.k)}"><span class="box">${ICON_TICK}</span><span><b>${x.name}${sug.has(x.k) ? '<em>Suggested</em>' : ''}</b><span>${x.dose}</span></span></button>`).join('')}</div></div>
+  <div class="sec"><div class="sec-h"><h2>Stretching & strengthening</h2><button type="button" class="btn sm" data-act="stretch-draft">Suggest from the assessment</button></div>
+    <div class="fld"><label class="lab" for="i-stretchText">The rider’s plan · one a line, e.g. Hamstring stretch — 3 × 30 s each leg, daily</label><textarea id="i-stretchText" data-k="stretchText" style="min-height:140px" placeholder="Type the stretches and exercises, or tap “Suggest from the assessment” to start from what the assessment found.">${esc(stretchText())}</textarea></div>
+    <div id="stretch-msg"></div></div>
   <div class="sec"><div class="sec-h"><h2>Recommended products</h2></div>
     <div id="prods">${S.products.map((p, i) => `<div class="prow"><input type="text" id="pn-${i}" data-prod="${i}" data-f="n" value="${esc(p.n)}" placeholder="Product" aria-label="Product"><div class="num"><input type="text" inputmode="decimal" id="pp-${i}" data-prod="${i}" data-f="p" value="${esc(p.p)}" aria-label="Price"><span class="u">£</span></div><button type="button" class="x" data-act="prod-del" data-i="${i}" aria-label="Remove product">×</button></div>`).join('')}</div>
     <button type="button" class="btn sm" data-act="prod-add">+ Add product</button></div>
@@ -723,8 +732,10 @@ function reportBlocks(){
     if (side.length) B.push({html:sec('Before & after', `<div class="rp-photos">${side.map(p => card(p, true)).join('')}</div>`)});
     for (let i = 0; i < rest.length; i += 2) B.push({html:sec(i === 0 ? 'Fit photos' : '', `<div class="rp-photos">${rest.slice(i, i + 2).map(p => card(p)).join('')}</div>`)});
   }
-  const st = [...chosenStretches()].map(k => STRETCH.find(x => x.k === k)).filter(Boolean), fu = followUp(), prods = S.products.filter(p => p.n);
-  if (st.length) B.push({html:sec('Stretching & strengthening', `<div class="rp-plan">${st.map(x => `<div><b>${esc(x.name)}</b><span>${esc(x.dose)}</span></div>`).join('')}</div>`)});
+  // (each line of the plan a card: what's before a dash or colon its name, what's after how much)
+  const st = stretchText().split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(l) || /^([^:]+):\s*(.+)$/.exec(l); return m ? {name:m[1], dose:m[2]} : {name:l, dose:''}; });
+  const fu = followUp(), prods = S.products.filter(p => p.n);
+  if (st.length) B.push({html:sec('Stretching & strengthening', `<div class="rp-plan">${st.map(x => `<div><b>${esc(x.name)}</b>${x.dose ? `<span>${esc(x.dose)}</span>` : ''}</div>`).join('')}</div>`)});
   if (prods.length) B.push({html:sec('Recommended for you', `<ul class="rp-lst">${prods.map(p => `<li><span>${esc(p.n)}</span><b>${p.p ? '£' + esc(p.p) : ''}</b></li>`).join('')}</ul>`)});
   // (settling in and the follow-up kept together: the report never ends on the follow-up alone)
   B.push({html:sec('Settling in', '<p class="rp-p">Give your body two to three weeks to adapt. Build ride length gradually and note anything that feels different, good or bad. Small aches usually settle; sharp or lasting pain means we should look again.</p>') + `<div class="rp-cta"><div><b>${esc(fu.title)}</b><span>${esc(fu.body)}</span></div><div style="text-align:right;font-size:12.5px;white-space:nowrap">01603 614400<br>precisionfit@pedalrevolution.co.uk</div></div>`});
@@ -975,7 +986,6 @@ document.addEventListener('click', e => {
   if (d.bm){ const k = d.bm; S.pain[k] = ((S.pain[k] || 0) + 1) % 3; if (!S.pain[k]) delete S.pain[k]; $$(`.bm-r[data-bm="${k}"]`).forEach(r => r.dataset.s = S.pain[k] || 0); save(); refresh(); return; }
   if (d.stepk){ const k = d.stepk, by = +d.by * +d.dir, cur = isNum(S.v[k]) ? S.v[k] : (isNum(S.v[k.replace('_post', '_pre')]) && k.endsWith('_post') ? S.v[k.replace('_post', '_pre')] : 0);
     S.v[k] = Math.round((cur + by) * 10) / 10; const inp = $('#i-' + k); if (inp) inp.value = S.v[k]; save(); refresh(); renderRail(); return; }
-  if (d.stretch){ const s = chosenStretches(); s.has(d.stretch) ? s.delete(d.stretch) : s.add(d.stretch); S.stretches = [...s]; t.setAttribute('aria-pressed', s.has(d.stretch)); save(); return; }
   switch (d.act){
   case 'next': return go(S.step + 1);
   case 'back': return go(S.step - 1);
@@ -983,6 +993,14 @@ document.addEventListener('click', e => {
   case 'close-ov': $('#ov').hidden = true; return;
   case 'pdf': return savePDF(t.closest('#ov') ? $('#ov-msg') : $('#send-msg'));
   case 'timer': return toggleTimer();
+  case 'stretch-draft': {
+    const ta = $('#i-stretchText'), m = $('#stretch-msg'), txt = draftStretches();
+    if (!txt){ if (m) m.innerHTML = '<div class="msg" style="margin-top:10px">Nothing in the assessment calls for one yet. Type the plan, or fill in the off-bike assessment first.</div>'; return; }
+    // (what's typed already stays: the suggestions not in it go below)
+    const have = (ta.value || '').trim(), add = txt.split('\n').filter(l => !have.toLowerCase().includes(l.split(' — ')[0].toLowerCase()));
+    S.v.stretchText = [have, ...add].filter(Boolean).join('\n'); ta.value = S.v.stretchText; save();
+    if (m) m.innerHTML = add.length ? '' : '<div class="msg" style="margin-top:10px">Everything the assessment suggests is already in the plan.</div>';
+    return; }
   case 'draft': { const s = draftSummary(); S.v.summary = s || 'Add before and after measurements first, then tap again.'; $('#i-summary').value = S.v.summary; save(); renderRail(); return; }
   case 'prod-add': S.products.push({n:'', p:''}); save(); renderMain(); setTimeout(() => { const i = $('#pn-' + (S.products.length - 1)); i && i.focus(); }); return;
   case 'prod-del': S.products.splice(+d.i, 1); save(); renderMain(); return;
