@@ -48,7 +48,7 @@ jobs:
         working-directory: georgefarrowgreen
         run: |
           fail=0
-          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'markets/*.js' 'account/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
+          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'markets/*.js' 'account/*.js' 'fitting/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
       - name: Unit tests
         working-directory: georgefarrowgreen
