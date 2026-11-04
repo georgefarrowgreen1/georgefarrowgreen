@@ -38,6 +38,8 @@ export async function onRequest(ctx0) {
   // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
   const ctx = hubRequest(ctx0);
   const url = new URL(ctx.request.url);
+  // (www.georgefarrowgreen.com: the home page's own address, the same place)
+  if (url.hostname === `www.${homeSite(ctx.env)}`) { url.hostname = homeSite(ctx.env); return Response.redirect(url.href, 301); }
   // The repo root is the static output (wrangler.toml), so the source, notes and dotfiles are in it too.
   // They aren't part of the site. The asset server decodes and tidies a path before it looks, so this
   // checks the same path it will look for (/%62lokk/, //blokk/ and /%2Etools/ all mean the real thing).
