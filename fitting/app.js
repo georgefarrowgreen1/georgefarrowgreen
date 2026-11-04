@@ -116,8 +116,7 @@ function sectionsFor(step){
     {custom:'fits', title:'Fit type'},
     {title:'Session', fields:[SG('fitter','Fitter',FITTERS), T('date','Date',{type:'date'})]},
     {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'}),
-      T('address','Address',{span2:true}), T('city','Town / city'), T('postcode','Postcode'),
-      SG('consent','May we keep this fit on file?',['Yes','No'],{hint:'Yes: backed up to the studio, on every signed-in iPad. No: on this iPad only', wide:true})]},
+      T('address','Address',{span2:true}), T('city','Town / city'), T('postcode','Postcode')]},
     {title:'Bike', fields:[T('bike','Brand & model',{ph:'e.g. Trek Domane SL 6', span2:true}), T('frame','Frame size',{ph:'e.g. 56 cm'}),
       SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float',{span2:true}), T('shoes','Shoe brand & size',{span2:true})]},
   ];
@@ -195,9 +194,11 @@ async function tx(mode, fn){
 }
 const lsGet = k => { try { return localStorage.getItem(k); } catch(_){ return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(_){} };
+// (an index of the fits here, kept with every write: the fits list and the returning-rider check read it, never every
+// fit's photos. m: something measured after, a real fit rather than one only started)
 const IDX = 'pr-fitting-index';
-const summary = r => ({id:r.id, updated:r.updated || 0, synced:r.synced || 0, fit:r.fit, follow:r.follow || null,
-  pend:(r.photos || []).some(p => p.src && !p.up), m:Object.keys(r.v).some(k => k.endsWith('_post') && filled(r.v[k])), v:Object.fromEntries(['first','last','email','bike','date','consent','fitter'].map(k => [k, r.v[k] || '']))});
+const summary = r => ({id:r.id, updated:r.updated || 0, fit:r.fit, follow:r.follow || null,
+  m:Object.keys(r.v).some(k => k.endsWith('_post') && filled(r.v[k])), v:Object.fromEntries(['first','last','email','bike','date','fitter'].map(k => [k, r.v[k] || '']))});
 let INDEX = null;
 async function index(){
   if (INDEX) return INDEX;
@@ -224,121 +225,20 @@ async function writeNow(){
   clearTimeout(saveT); saveT = null;
   try {
     await dbPut(record()); lsSet(CUR, S.id);
-    const t = new Date(); SAVED_AT = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
-    syncSoon(); showSaved();
+    const t = new Date();
+    $('#saved').textContent = `Saved ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
   } catch(e){
     $('#saved').textContent = e && e.name === 'QuotaExceededError' ? 'Not saved: this device is out of space' : 'Not saved: this browser is blocking storage';
   }
 }
-let SAVED_AT = '';
-function showSaved(){
-  if (!SAVED_AT || !S) return;
-  const st = S.v.consent === 'No' ? ' · this iPad only' : NET === 'auth' ? ' · sign in again to back up' : NET === 'off' ? ' · backup waits for a connection'
-    : syncT || SYNCING ? ' · backing up…' : NET === 'ok' ? ' · backed up' : '';
-  $('#saved').textContent = `Saved ${SAVED_AT}${st}`;
-}
 
-/* the studio's store (functions/_fitstore.js): a fit backed up a few seconds after each save here, its photos once
-   each; other iPads' fits brought down when the app starts, the fits list opens or the connection comes back (their
-   photos when the fit is opened). The newer copy of a fit wins. One whose client said no (consent: No) stays here only,
-   and is taken out of the store if it was there. A fit deleted is deleted everywhere. */
-const DELS = 'pr-fitting-deleted';
-let syncT = null, SYNCING = null, NET = '';   // NET: how the last call to the store went: ok, off (no answer), auth (signed out)
-const onlyHere = r => r.v && r.v.consent === 'No';
-const delsGet = () => { try { return JSON.parse(lsGet(DELS) || '[]'); } catch(_){ return []; } };
-const delsSet = a => lsSet(DELS, JSON.stringify(a));
-async function store(path, o = {}){
-  let r;
-  try { r = await fetch('api/' + path, {credentials:'same-origin', cache:'no-store', ...o}); }
-  catch(e){ NET = 'off'; throw e; }
-  if (r.status === 401){ NET = 'auth'; throw new Error('signed out'); }
-  if (r.status >= 500){ NET = 'off'; throw new Error('store ' + r.status); }
-  NET = 'ok'; return r;
-}
-function syncSoon(){ const id = S.id; clearTimeout(syncT); syncT = setTimeout(() => { syncT = null; syncOne(id); }, 2500); }
-const dataToBlob = src => { const i = src.indexOf(','), type = (/^data:([^;,]+)/.exec(src) || [])[1] || 'image/jpeg', bin = atob(src.slice(i + 1)), u = new Uint8Array(bin.length);
-  for (let j = 0; j < bin.length; j++) u[j] = bin.charCodeAt(j); return new Blob([u], {type}); };
-const blobToData = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
-// (what the store has, noted on the copy here, and on the open fit too, so its next save doesn't send them again)
-async function noteSynced(id, updated, up){
-  const mark = rec => { if (updated && rec.updated === updated) rec.synced = updated; if (updated === 0) rec.synced = 0; for (const p of rec.photos || []) if (up.includes(p.id)) p.up = true; };
-  try { const rec = await dbGet(id); if (rec){ mark(rec); await dbPut(rec); } } catch(_){}
-  if (S && S.id === id){ for (const p of S.photos) if (up.includes(p.id)) p.up = true; if (updated) S.synced = updated; }
-}
-// one fit to the store: the fit (its photos without their pictures), then each picture the store hasn't got
-async function pushFit(rec){
-  if (onlyHere(rec)){ if (rec.synced){ await store('fits/' + rec.id, {method:'DELETE'}); await noteSynced(rec.id, 0, []); } return; }
-  const {synced, ...fit} = rec; fit.photos = (rec.photos || []).map(({src, _comp, up, ...p}) => p);
-  const r = await store('fits/' + rec.id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({fit})});
-  if (r.status === 409){ const j = await r.json().catch(() => ({}));
-    // (deleted on another iPad since this copy last changed: deleted here too, unless it's the one open)
-    if (j.deleted && !(S && S.id === rec.id)) await dbDel(rec.id).catch(() => {});
-    return; }
-  if (!r.ok) throw new Error('store ' + r.status);
-  const up = [];
-  for (const p of rec.photos || []) if (p.src && !p.up){
-    const pr = await store(`photos/${rec.id}/${p.id}`, {method:'PUT', headers:{'Content-Type':'image/jpeg'}, body:dataToBlob(p.src)});
-    if (pr.ok) up.push(p.id);
-  }
-  await noteSynced(rec.id, rec.updated, up);
-}
-// (a fit here the store needs: one it hasn't got, a newer one, one changed since it was last sent, or a photo still to
-// send; one kept on this iPad only, if the store still has it, to take it out. `l` a fit or its index entry, `s` the store's)
-const backedUp = l => onlyHere(l) || (l.synced >= l.updated && !l.pend);
-const needsPush = (l, s) => onlyHere(l) ? !!l.synced
-  : !s || l.updated > s.updated || !(l.synced >= l.updated) || !!l.pend || (l.photos || []).some(p => p.src && !p.up);
-async function syncOne(id){
-  if (SYNCING){ await SYNCING.catch(() => {}); }
-  SYNCING = (async () => {
-    const rec = await dbGet(id); if (rec && rec.v && needsPush(rec)) await pushFit(rec);
-  })();
-  showSaved();
-  try { await SYNCING; } catch(_){} finally { SYNCING = null; showSaved(); }
-}
-// everything: deletes still to send, then each fit the store has newer brought down, then each one here it hasn't got sent up
-async function syncAll(){
-  if (SYNCING){ await SYNCING.catch(() => {}); }
-  let got = 0;
-  SYNCING = (async () => {
-    for (const id of delsGet()){ const r = await store('fits/' + id, {method:'DELETE'}); if (r.ok || r.status === 404) delsSet(delsGet().filter(x => x !== id)); }
-    const r = await store('fits'); if (!r.ok) return;
-    const remote = (await r.json()).fits || [], IX = await index(), R = new Map(remote.map(x => [x.id, x]));
-    for (const x of remote){
-      const l = IX.get(x.id);
-      if (x.deleted){ if (l && !onlyHere(l) && !(l.updated > x.updated) && !(S && S.id === x.id)){ await dbDel(x.id).catch(() => {}); got++; } continue; }
-      if (l && l.updated >= x.updated) continue;
-      if (S && S.id === x.id && (saveT || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) continue;   // (being worked on here)
-      const g = await store('fits/' + x.id); if (!g.ok) continue;
-      const {fit} = await g.json(); if (!fit || fit.id !== x.id) continue;
-      const mine = l ? await dbGet(x.id) : null, had = new Map(((mine && mine.photos) || []).map(p => [p.id, p]));
-      fit.photos = (fit.photos || []).map(p => ({...p, src:(had.get(p.id) || {}).src || '', up:true}));
-      fit.synced = fit.updated; await dbPut(fit); got++;
-      if (S && S.id === fit.id){ S = Object.assign(blank(), fit); renderMain(); hydrate(S).then(n => { if (n && S.id === fit.id){ markPhotos().then(renderMain); } }); }
-    }
-    for (const l of [...IX.values()]) if (needsPush(l, R.get(l.id))){ const rec = await dbGet(l.id); if (rec && rec.v) await pushFit(rec); }
-  })();
-  try { await SYNCING; } catch(_){} finally { SYNCING = null; showSaved(); }
-  return got;
-}
-// a fit's photos that are in the store but not on this iPad yet, brought down (and kept here)
-async function hydrate(rec){
-  const want = (rec.photos || []).filter(p => !p.src && p.up); let n = 0;
-  for (const p of want){ try { const r = await store(`photos/${rec.id}/${p.id}`); if (r.ok){ p.src = await blobToData(await r.blob()); n++; } } catch(_){ break; } }
-  if (n){ try { const l = await dbGet(rec.id); if (l){ for (const q of l.photos || []){ const h = rec.photos.find(x => x.id === q.id); if (h && h.src && !q.src) q.src = h.src; } await dbPut(l); } } catch(_){} }
-  return n;
-}
-async function deleteFit(id){
-  await dbDel(id).catch(() => {});
-  delsSet([...new Set([...delsGet(), id])]);
-  syncAll();
-}
-addEventListener('online', () => syncAll());
 function save(){ clearTimeout(saveT); saveT = setTimeout(writeNow, 350); }
+const deleteFit = id => dbDel(id).catch(() => {});
 async function openFit(rec){
   if (saveT) await writeNow();
   S = Object.assign(blank(), rec);
-  lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0); showSaved();
-  await hydrate(S); await markPhotos(); renderMain();
+  lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0);
+  await markPhotos(); renderMain();
 }
 async function newFit(){
   if (saveT) await writeNow();
@@ -352,7 +252,6 @@ async function newFit(){
 const FRESH = new Set(['date', 'summary', 'fitNotes', 'since', 'sinceNote']);
 async function startFollowUp(prev){
   if (saveT) await writeNow();
-  await hydrate(prev);
   const S2 = blank(), v = {};
   for (const [k, x] of Object.entries(prev.v || {})){
     if (FRESH.has(k) || k.endsWith('_pre') || k === 'fitter') continue;
@@ -384,8 +283,6 @@ const listFits = async () => { FITLIST = [...(await index()).values()].sort((a, 
 async function openFits(){
   if (saveT) await writeNow();
   await listFits(); $('#fits-q').value = ''; renderFits(); $('#fits').hidden = false;
-  $('#fits-net').textContent = 'Checking the studio’s store…';
-  await syncAll(); await listFits(); if (!$('#fits').hidden) renderFits();
 }
 /* a rider fitted here before (by their email, or their first and last name): their fits, newest first. Offered on a new
    fit's Rider section: start it as a follow-up to the last one, or bring across what doesn't change between visits. */
@@ -429,8 +326,6 @@ async function followFromHistory(id){
 function renderFits(){
   const q = $('#fits-q').value.trim().toLowerCase();
   const rows = FITLIST.filter(f => !q || [f.v.first, f.v.last, f.v.bike, f.v.email].join(' ').toLowerCase().includes(q));
-  $('#fits-net').textContent = NET === 'ok' ? 'Every fit backed up to the studio’s store is here.' : NET === 'auth' ? 'Signed out: sign in again to back up and see other iPads’ fits.'
-    : NET === 'off' ? 'No connection to the studio’s store: showing the fits on this iPad.' : '';
   $('#fitlist').innerHTML = rows.length ? rows.map(f => {
     const name = [f.v.first, f.v.last].filter(Boolean).join(' ') || 'Rider not named yet';
     const when = f.v.date ? new Date(f.v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
@@ -438,7 +333,7 @@ function renderFits(){
     const st = followState(f, FITLIST);
     return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}${f.follow ? ' <span class="pill n">Follow-up</span>' : ''}</b>
       <span>${esc([FITS[f.fit] ? FITS[f.fit].name : '', f.v.bike, when].filter(Boolean).join(' · '))}</span>
-      ${st || !backedUp(f) || onlyHere(f) ? `<span class="fr-state">${st ? `<span class="pill ${st.cls}">${esc(st.txt)}</span>` : ''}${onlyHere(f) ? '<span class="pill n">This iPad only</span>' : backedUp(f) ? '' : '<span class="pill n">Not backed up yet</span>'}</span>` : ''}</div>
+      ${st ? `<span class="fr-state"><span class="pill ${st.cls}">${esc(st.txt)}</span></span>` : ''}</div>
       <button type="button" class="btn sm" data-act="fit-follow" data-id="${esc(f.id)}">Start follow-up</button>
       ${open ? '<span class="pill g">Open</span>' : `<button type="button" class="btn sm dark" data-act="fit-open" data-id="${esc(f.id)}">Open</button>`}
       <button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button></div>`;
@@ -1634,7 +1529,6 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   await index();
   S = await load();
   renderMain();
-  syncAll().then(async () => { if (await hydrate(S)){ await markPhotos(); renderMain(); } refresh(); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   try { if (document.fonts) await Promise.race([document.fonts.load("italic 800 46px 'Barlow Condensed'"), new Promise(r => setTimeout(r, 2500))]); } catch(_){}
   await markPhotos();
