@@ -1,0 +1,16 @@
+# What's never the site's files when it's a Worker (wrangler.worker.jsonc: the assets are this folder): its code, its
+# tools and tests, its Workers, its repository's own files. (On Pages, functions/_middleware.js PRIVATE refuses these;
+# it still does, as every request goes through the Worker first.)
+.git
+.github
+.tools
+.wrangler
+.claude
+node_modules
+functions
+workers
+README.md
+wrangler.toml
+wrangler.worker.jsonc
+.assetsignore
+.gitignore

@@ -1,0 +1,40 @@
+# The site as a Worker (wrangler.worker.jsonc), deployed by hand only while the move off Pages is being tried
+# (.tools/workers/README.md): to the Worker "georgefarrowgreen-site", which has no routes, so it's reachable only at its
+# workers.dev address; the live site stays the Pages project. At the move, `push` to main is added here (step 6).
+name: Deploy the site's Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the token's there
+        id: ready
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::notice::CLOUDFLARE_API_TOKEN isn't set, so nothing's deployed."; echo "go=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "go=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.go == '1'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.go == '1'
+        with:
+          node-version: 22
+      - name: Build (functions/ compiled as Pages compiles it) and deploy
+        if: steps.ready.outputs.go == '1'
+        run: |
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
+          node .tools/workers/build.mjs
+          npx --yes wrangler@4.149.0 deploy -c wrangler.worker.jsonc

@@ -1,0 +1,39 @@
+// The site as a Worker with static assets (the move off Pages: .tools/workers/README.md). Not live: the site is still
+// the Pages project (wrangler.toml) until the custom domains are moved over. Until then this deploys, by hand only
+// (.github/workflows/worker-deploy.yml), to a Worker of its own with no routes, so it's reachable only at its
+// workers.dev address, side by side with Pages, on the same database, storage and keys.
+//   node .tools/workers/build.mjs                     the functions/ folder compiled into one Worker (as Pages does)
+//   npx wrangler deploy -c wrangler.worker.jsonc      (or the workflow)
+{
+  "$schema": ".tools/tests/node_modules/wrangler/config-schema.json",
+  "name": "georgefarrowgreen-site",
+  "main": ".tools/workers/dist/index.js",
+  "compatibility_date": "2026-06-17",
+  // (the site's files, as Pages served them: every request through the Worker first, as functions/_middleware.js
+  // sees everything on Pages; what it passes on (ctx.next()) is the files', with Pages' own ways with HTML, a 404.html
+  // and _headers and _redirects. What's never the site's is left out: .assetsignore)
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "kv_namespaces": [{ "binding": "BIO_KV", "id": "10ec6d961a224b3a8b68a7c993ca0caf" }],
+  "r2_buckets": [{ "binding": "BIO_R2", "bucket_name": "bio-media" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "bio-db", "database_id": "de4ad515-52c6-4cb3-9f8f-008384ef813a" }],
+  "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
+  "observability": { "enabled": true },
+  // (its workers.dev address: what the scheduled jobs call once it's live, past the custom domains' bot checks, as
+  // they call georgefarrowgreen.pages.dev now. Its name, georgefarrowgreen-site.<the account's subdomain>.workers.dev,
+  // is set as TICK_HOST once it's known (README, step 2): functions/_sites.js tickHost)
+  "workers_dev": true
+  // The custom domains go here at the move, and come off the Pages project as they do (README, step 5):
+  // "routes": [
+  //   { "pattern": "georgefarrowgreen.com", "custom_domain": true }, { "pattern": "www.georgefarrowgreen.com", "custom_domain": true },
+  //   { "pattern": "chat.inflite.ai", "custom_domain": true }, { "pattern": "weather.inflite.ai", "custom_domain": true },
+  //   { "pattern": "fitness.inflite.ai", "custom_domain": true }, { "pattern": "finance.inflite.ai", "custom_domain": true },
+  //   { "pattern": "account.inflite.ai", "custom_domain": true }, { "pattern": "auth.inflite.ai", "custom_domain": true }
+  //   … and the old app addresses on georgefarrowgreen.com, as the Pages project lists them
+  // ]
+}

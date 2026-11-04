@@ -82,3 +82,9 @@ export function cfOf(request) {
   }
   return out;
 }
+
+// The site's own address past the custom domains' bot checks, which the scheduled jobs call (GitHub's weather and
+// notify ticks, the ticker Worker): georgefarrowgreen.pages.dev while it's a Pages project, and the Worker's
+// workers.dev address (TICK_HOST) once it's a Worker (.tools/workers/README.md). Only these routes take a tick there.
+export const PAGES_HOST = "georgefarrowgreen.pages.dev";
+export const tickHost = (hostname, env) => hostname === PAGES_HOST || (!!env?.TICK_HOST && hostname === env.TICK_HOST);

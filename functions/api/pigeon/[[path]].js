@@ -1,3 +1,4 @@
+import { tickHost } from "../../_sites.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
@@ -1759,7 +1760,7 @@ export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   // (the scheduled notify job calls the site's .pages.dev address, past the custom domain's bot checks: only that, there)
-  if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
+  if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && tickHost(url.hostname, ctx.env))) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
   if (ctx.env.DB && parts[0] !== "notify-tick") {

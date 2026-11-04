@@ -44,6 +44,7 @@
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
+import { tickHost } from "../../_sites.js";
 import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
@@ -366,7 +367,7 @@ export async function onRequest(ctx) {
     : parts[0] === "offers" && parts.length === 2 && UUID_RE.test(parts[1]) ? parts[1] : null;
   const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
   // (only at Fitness's own address; the scheduler's turn at the site's own, as Chat's and Weather's are)
-  const tick = parts[0] === "garmin-tick" && url.hostname === "georgefarrowgreen.pages.dev";
+  const tick = parts[0] === "garmin-tick" && tickHost(url.hostname, ctx.env);
   if (!route || !(isFitness(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
   try { return await route({ ...ctx, id }); }
   catch (e) {

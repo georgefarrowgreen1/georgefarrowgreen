@@ -1,5 +1,6 @@
 #!/bin/bash
-# The local site for the end-to-end tests: `wrangler pages dev` on :8788 (run.sh calls this).
+# The local site for the end-to-end tests: `wrangler pages dev` on :8788 (run.sh calls this); with SERVE=worker, the
+# site as a Worker instead (`wrangler dev -c wrangler.worker.jsonc`, the move off Pages tried: .tools/workers/README.md).
 #   server.sh fresh    a new, empty database          server.sh keep    the same database, restarted
 #   server.sh stop
 # (InFlite's hub, Today First: HUB_KEY, the key the hub's Worker is known by (hubstack.mjs gives it the same);
@@ -17,6 +18,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 kill_tree() { for c in $(pgrep -P "$1"); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
 for p in $(pgrep -f "pages dev . --port 8788"); do kill_tree "$p"; done
+for p in $(pgrep -f "dev -c wrangler.worker.jsonc --port 8788"); do kill_tree "$p"; done
 for p in $(pgrep -f "wrangler dev --port 8790"); do kill_tree "$p"; done
 [ "${1:-fresh}" = stop ] && exit 0
 sleep 1
@@ -31,12 +33,22 @@ if [ "${TYPING:-1}" != 0 ]; then
   # (the binding's in the root wrangler.toml once it's live; until then, given here)
   grep -q 'name = "TYPING"' "$APP_ROOT/wrangler.toml" || DO=(--do TYPING=Typing@georgefarrowgreen-live)
 fi
-nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$S/wrstate" ${DO[@]+"${DO[@]}"} \
-  --binding RESEND_API_KEY=test-key PIGEON_FROM=noreply@georgefarrowgreen.com PIGEON_ADMIN_EMAIL=owner@example.com RESEND_API_URL=http://127.0.0.1:8799/emails PIGEON_PUSH_URL=http://127.0.0.1:8798/push \
+# (what the site's given, as Pages' --binding KEY=VALUE; as a Worker, the same as --var KEY:VALUE)
+BINDS=(RESEND_API_KEY=test-key PIGEON_FROM=noreply@georgefarrowgreen.com PIGEON_ADMIN_EMAIL=owner@example.com RESEND_API_URL=http://127.0.0.1:8799/emails PIGEON_PUSH_URL=http://127.0.0.1:8798/push \
     PIGEON_TICK_SECRET=tick-test-secret WX_TRAFFIC_TICK=0 GIPHY_API_KEY=giphy-test-key GIPHY_API_URL=http://127.0.0.1:8797 GIPHY_MEDIA_URL=http://127.0.0.1:8797 \
     WEATHER_URL=http://127.0.0.1:8796 MET_URL=http://127.0.0.1:8796 SWPC_URL=http://127.0.0.1:8796 EONET_URL=http://127.0.0.1:8796 ENSEMBLE_URL=http://127.0.0.1:8796 \
     PIGEON_OPEN_SIGNUP=${OPEN_SIGNUP:-1} CHAT_HOST=chat.localhost,chat.ifl.test WEATHER_HOST=weather.localhost,weather.ifl.test FITNESS_HOST=fitness.localhost,fitness.ifl.test MARKETS_HOST=finance.localhost,finance.ifl.test MARKETS_DATA=http://127.0.0.1:8801 MARKETS_PAGE=http://127.0.0.1:8801 MARKETS_TTL=0 ACCOUNT_HOST=account.localhost,account.ifl.test AUTH_HOST=auth.ifl.test ACCOUNT_SITE=gfg.test APPS_SITE=ifl.test PASSKEY_SITE=ifl.test WXAPP_URL=http://127.0.0.1:8794 RAINVIEWER_URL=http://127.0.0.1:8794 AWC_URL=http://127.0.0.1:8794 METEOALARM_URL=http://127.0.0.1:8794 WARN_TTL=0 NWS_URL=http://127.0.0.1:8794 EA_URL=http://127.0.0.1:8794 PWNED_URL=http://127.0.0.1:8795 GARMIN_API=http://127.0.0.1:8793 STRAVA_API=http://127.0.0.1:8800 STRAVA_CLIENT_ID=4242 STRAVA_CLIENT_SECRET=test-strava-secret-for-local-tests PIGEON_PEPPER=test-pepper-for-local-tests-only PIGEON_COUNT_DB=1 WX_NET_DAY=1000 \
     HUB_KEY=hub-test-key HUB_ORIGINS=http://ifl.test:8788 HUB_PUSH=1 TODAY_TEST_AT=1 MAIL_KEY=mail-test-key MAIL_VIA=http://127.0.0.1:8807 \
-    PIGEON_TEST_PIGEONS=${PIGEONS:-1} PIGEON_STREAK_ANYTIME=${STREAK_ANYTIME:-0} ${PULSE_MS:+PULSE_MS=$PULSE_MS} ${TYPINGB[@]+"${TYPINGB[@]}"} >> "$S/wrangler.log" 2>&1 &
+    PIGEON_TEST_PIGEONS=${PIGEONS:-1} PIGEON_STREAK_ANYTIME=${STREAK_ANYTIME:-0} ${PULSE_MS:+PULSE_MS=$PULSE_MS} ${TYPINGB[@]+"${TYPINGB[@]}"})
+if [ "${SERVE:-pages}" = worker ]; then
+  # The site as a Worker (wrangler.worker.jsonc, built from functions/ as Pages builds it: .tools/workers/build.mjs),
+  # where the move off Pages is tried before it's made (.tools/workers/README.md)
+  node "$APP_ROOT/.tools/workers/build.mjs" >> "$S/wrangler.log" 2>&1 || { echo "the Worker didn't build" >&2; exit 1; }
+  VARS=(); for b in "${BINDS[@]}"; do VARS+=(--var "${b%%=*}:${b#*=}"); done
+  nohup "$HERE/node_modules/.bin/wrangler" dev -c wrangler.worker.jsonc --port 8788 --inspector-port 9231 --show-interactive-dev-session=false --persist-to "$S/wrstate" \
+    "${VARS[@]}" < /dev/null >> "$S/wrangler.log" 2>&1 &
+else
+  nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$S/wrstate" ${DO[@]+"${DO[@]}"} --binding "${BINDS[@]}" >> "$S/wrangler.log" 2>&1 &
+fi
 for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8788/pigeon/ && break; sleep 1; done
 curl -s -o /dev/null -X POST http://127.0.0.1:8796/mode -d '{"speed":0,"down":false,"pattern":"","kp":2,"eonet":[]}'   # calm weather unless a test sets its own

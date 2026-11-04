@@ -26,6 +26,7 @@
 //   POST   /api/markets/handback      signed in on the account's page, for Markets: its code swapped for the sign-in
 //   POST   /api/markets/account-link  the account's page, opened signed in as you
 //   POST   /api/markets/signout       and the profile (your photo, name and handle), as on every page of the site
+import { tickHost } from "../../_sites.js";
 import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
@@ -235,7 +236,7 @@ export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
   // (only at Markets's own address; the scheduler's turn at the site's own, as the other apps' are)
-  const tick = parts[0] === "tick" && url.hostname === "georgefarrowgreen.pages.dev";
+  const tick = parts[0] === "tick" && tickHost(url.hostname, ctx.env);
   if (!route || !(isMarkets(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);
   // (what's fetched for everyone is written down for the other copies of the server after the answer's gone: its
   // waitUntil, carried with the environment for functions/_markets.js cached())

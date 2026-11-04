@@ -3,6 +3,7 @@
 // apps' scheduled turns are (not under /api/account, whose API answers only at the account's own); and at localhost for
 // the tests (APPS_SITE set, as it is only there).
 //   POST /api/today/tick
+import { tickHost } from "../../_sites.js";
 import { json } from "../../_accountapi.js";
 import { tickAuthOk } from "../../_notify.js";
 import { HttpError, logError } from "../../_pigeon.js";
@@ -10,7 +11,7 @@ import { morningTick } from "../../_todaymorning.js";
 
 export async function onRequest(ctx) {
   const { request, env } = ctx, url = new URL(request.url), parts = [].concat(ctx.params?.path || []);
-  const here = url.hostname === "georgefarrowgreen.pages.dev" || (url.hostname === "localhost" && !!env.APPS_SITE);
+  const here = tickHost(url.hostname, env) || (url.hostname === "localhost" && !!env.APPS_SITE);
   if (!here || request.method !== "POST" || parts.join("/") !== "tick") return json({ error: "Not found." }, 404);
   try {
     tickAuthOk(request, env);

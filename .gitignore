@@ -12,3 +12,6 @@ node_modules/
 # Chat tests (.tools/tests)
 .tools/tests/.state/
 .tools/tests/node_modules
+
+# The site as a Worker, built (node .tools/workers/build.mjs)
+.tools/workers/dist/

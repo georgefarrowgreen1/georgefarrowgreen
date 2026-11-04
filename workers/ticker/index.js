@@ -4,10 +4,13 @@
 // asks for: while it's on, Weather's briefing and Fitness's reminder aren't sent for that account, so it mustn't stop).
 // Each job keeps itself to one run at a time, so the two schedulers, and the apps' own traffic, never double up.
 // Its secrets are the jobs' own: wrangler secret put INFLIGHT_TICK_SECRET (and WEATHER_TICK_SECRET, if it's different).
-const SITE = "https://georgefarrowgreen.pages.dev";
+// (the site's address past the custom domains' bot checks: the Pages project's, or, once the site's a Worker, its
+// workers.dev address, as the ticker's TICK_SITE says: .tools/workers/README.md)
+const PAGES_SITE = "https://georgefarrowgreen.pages.dev";
 
 export default {
   async scheduled(event, env) {
+    const SITE = env.TICK_SITE || PAGES_SITE;
     // (each job: null once it's gone, else its path, having said why in the log (wrangler.toml's [observability]))
     const ask = async (path, secret) => {
       if (!secret) { console.error(path, "no secret set"); return path; }
