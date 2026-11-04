@@ -399,12 +399,16 @@ const IFL = (() => {
     return hd;
   }
   const watched = new Set();
+  // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
+  // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
+  const upNow = new WeakMap();
   function settle(t = window) {
-    const y = t === window ? scrollY : t.scrollTop, p = Math.max(0, Math.min(1, y / 64)).toFixed(3);
-    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { hd.style.setProperty("--p", p); hd.classList.toggle("ifh-up", p > 0); }
+    const y = t === window ? scrollY : t.scrollTop, was = upNow.get(t) || false, up = was ? y > 8 : y > 28;
+    upNow.set(t, up);
+    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { if (hd.style.getPropertyValue("--p") !== (up ? "1" : "0")) hd.style.setProperty("--p", up ? "1" : "0"); hd.classList.toggle("ifh-up", up); }
   }
   function watch(t = window) {
-    if (!watched.has(t)) { watched.add(t); t.addEventListener("scroll", () => settle(t), { passive: true }); }
+    if (!watched.has(t)) { watched.add(t); let q = 0; t.addEventListener("scroll", () => { if (!q) q = requestAnimationFrame(() => { q = 0; settle(t); }); }, { passive: true }); }
     settle(t);
   }
   const glyph = (name) => svg(name);
@@ -3376,8 +3380,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.68";
-const NEWS = "Radar inside InFlite drops its Send button";
+const BUILD = "1.69";
+const NEWS = "The header shrinks and grows smoothly as you scroll";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

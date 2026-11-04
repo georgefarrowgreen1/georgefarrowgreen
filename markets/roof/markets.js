@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.96";
-export const NEWS = "Getting ready to open inside InFlite";
+export const BUILD = "1.97";
+export const NEWS = "The header shrinks and grows smoothly as you scroll";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

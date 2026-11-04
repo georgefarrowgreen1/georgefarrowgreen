@@ -381,12 +381,16 @@ const IFL = (() => {
     return hd;
   }
   const watched = new Set();
+  // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
+  // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
+  const upNow = new WeakMap();
   function settle(t = window) {
-    const y = t === window ? scrollY : t.scrollTop, p = Math.max(0, Math.min(1, y / 64)).toFixed(3);
-    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { hd.style.setProperty("--p", p); hd.classList.toggle("ifh-up", p > 0); }
+    const y = t === window ? scrollY : t.scrollTop, was = upNow.get(t) || false, up = was ? y > 8 : y > 28;
+    upNow.set(t, up);
+    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { if (hd.style.getPropertyValue("--p") !== (up ? "1" : "0")) hd.style.setProperty("--p", up ? "1" : "0"); hd.classList.toggle("ifh-up", up); }
   }
   function watch(t = window) {
-    if (!watched.has(t)) { watched.add(t); t.addEventListener("scroll", () => settle(t), { passive: true }); }
+    if (!watched.has(t)) { watched.add(t); let q = 0; t.addEventListener("scroll", () => { if (!q) q = requestAnimationFrame(() => { q = 0; settle(t); }); }, { passive: true }); }
     settle(t);
   }
   const glyph = (name) => svg(name);

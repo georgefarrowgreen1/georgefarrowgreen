@@ -397,12 +397,16 @@ const IFL = (() => {
     return hd;
   }
   const watched = new Set();
+  // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
+  // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
+  const upNow = new WeakMap();
   function settle(t = window) {
-    const y = t === window ? scrollY : t.scrollTop, p = Math.max(0, Math.min(1, y / 64)).toFixed(3);
-    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { hd.style.setProperty("--p", p); hd.classList.toggle("ifh-up", p > 0); }
+    const y = t === window ? scrollY : t.scrollTop, was = upNow.get(t) || false, up = was ? y > 8 : y > 28;
+    upNow.set(t, up);
+    for (const hd of (t === window ? document : t).querySelectorAll(".ifh")) { if (hd.style.getPropertyValue("--p") !== (up ? "1" : "0")) hd.style.setProperty("--p", up ? "1" : "0"); hd.classList.toggle("ifh-up", up); }
   }
   function watch(t = window) {
-    if (!watched.has(t)) { watched.add(t); t.addEventListener("scroll", () => settle(t), { passive: true }); }
+    if (!watched.has(t)) { watched.add(t); let q = 0; t.addEventListener("scroll", () => { if (!q) q = requestAnimationFrame(() => { q = 0; settle(t); }); }, { passive: true }); }
     settle(t);
   }
   const glyph = (name) => svg(name);
@@ -837,8 +841,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.71";            // shown in InFlite's menu
-const APP_NEWS = "When Chats can't send something, it now says why (for example, set your location first)";       // (said once it's in)
+const APP_VERSION = "1.72";            // shown in InFlite's menu
+const APP_NEWS = "The header shrinks and grows smoothly as you scroll";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

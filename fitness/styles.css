@@ -2155,6 +2155,10 @@ html { touch-action: pan-x pan-y; }
    band behind it scrolled, --ifh-glass: the capsule), where it starts (--ifh-pt) and the room under it (--ifh-mb); --p, 0 → 1,
    as it's scrolled. (Compact, it gives back as margin what it no longer takes up, so the page under it never moves as it
    shrinks: else the page's height, and so how far it can scroll, changes with it, and the two chase each other) */
+/* (--p animated as a number: the header's height, title size and band all move together, smoothly, as it goes compact) */
+@property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
+.ifh { transition: --p 0.34s cubic-bezier(0.32, 0.72, 0, 1); }
+@media (prefers-reduced-motion: reduce) { .ifh { transition-duration: 0.01s; } }
 .ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
   padding: calc(var(--ifh-pt0) - 4px * var(--p)) max(16px, env(safe-area-inset-right, 0px)) calc(14px - 6px * var(--p)) max(16px, env(safe-area-inset-left, 0px));

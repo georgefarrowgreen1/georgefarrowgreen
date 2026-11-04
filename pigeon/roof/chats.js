@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.71";
-export const NEWS = "When Chats can't send something, it now says why (for example, set your location first)";
+export const BUILD = "1.72";
+export const NEWS = "The header shrinks and grows smoothly as you scroll";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
