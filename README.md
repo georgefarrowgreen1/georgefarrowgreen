@@ -2316,7 +2316,10 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
 - **Report:** a branded A4 PDF made in the browser (html2canvas and jsPDF, our own copies in `fitting/vendor/`).
   On iPad, Share or email opens the share sheet, so Mail gets the PDF as an attachment; Download everywhere else.
 - **Storage:** every fit stays in the browser that recorded it (IndexedDB), listed under Fits. Nothing is sent to the
-  server: the app has no API. A service worker keeps it working without a connection.
+  server: the app has no API. A service worker keeps it working without a connection. A small index of the fits
+  (localStorage) is kept with every save, so the list never reads every fit's photos.
+- **Returning riders:** on a new fit, a name or email that matches an earlier fit on the iPad offers to start it as a
+  follow-up to the last one, or to bring across their contact details, riding background and injuries.
 - **Guide ranges** for the angles are in `TARGETS` at the top of `fitting/app.js`; the traffic-light thresholds in
   `CL`; the fit types' contents in `FITS` and `sectionsFor`.
 - **Typefaces:** Barlow and Barlow Condensed (SIL OFL), kept in `fitting/fonts/`.

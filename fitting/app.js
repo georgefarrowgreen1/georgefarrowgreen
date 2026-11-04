@@ -192,10 +192,25 @@ async function tx(mode, fn){
   const d = await db();
   return new Promise((res, rej) => { const t = d.transaction('fits', mode), q = fn(t.objectStore('fits')); t.oncomplete = () => res(q ? q.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
 }
-const dbGet = id => tx('readonly', st => st.get(id)), dbAll = () => tx('readonly', st => st.getAll());
-const dbPut = rec => tx('readwrite', st => st.put(rec)), dbDel = id => tx('readwrite', st => st.delete(id));
 const lsGet = k => { try { return localStorage.getItem(k); } catch(_){ return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(_){} };
+// (an index of the fits here, kept with every write: the fits list and the returning-rider check read it, never every
+// fit's photos. m: something measured after, a real fit rather than one only started)
+const IDX = 'pr-fitting-index';
+const summary = r => ({id:r.id, updated:r.updated || 0, fit:r.fit, follow:r.follow || null,
+  m:Object.keys(r.v).some(k => k.endsWith('_post') && filled(r.v[k])), v:Object.fromEntries(['first','last','email','bike','date','fitter'].map(k => [k, r.v[k] || '']))});
+let INDEX = null;
+async function index(){
+  if (INDEX) return INDEX;
+  try { const j = JSON.parse(lsGet(IDX) || 'null'); if (j && j.n === 2){ INDEX = new Map(j.fits.map(f => [f.id, f])); return INDEX; } } catch(_){}
+  INDEX = new Map();
+  try { for (const r of await tx('readonly', st => st.getAll())) if (r && r.v) INDEX.set(r.id, summary(r)); } catch(_){}
+  keepIndex(); return INDEX;
+}
+const keepIndex = () => lsSet(IDX, JSON.stringify({n:2, fits:[...INDEX.values()]}));
+const dbGet = id => tx('readonly', st => st.get(id));
+const dbPut = rec => tx('readwrite', st => st.put(rec)).then(r => { if (INDEX && rec.v){ INDEX.set(rec.id, summary(rec)); keepIndex(); } return r; });
+const dbDel = id => tx('readwrite', st => st.delete(id)).then(r => { if (INDEX && INDEX.delete(id)) keepIndex(); return r; });
 // (an open fit, else a new one: the first one a Standard Fit, as New fit makes. The example rider the app first came
 // with, Jordan Hale, saved as 'sample': deleted from every device that has him)
 async function load(){
@@ -216,7 +231,9 @@ async function writeNow(){
     $('#saved').textContent = e && e.name === 'QuotaExceededError' ? 'Not saved: this device is out of space' : 'Not saved: this browser is blocking storage';
   }
 }
+
 function save(){ clearTimeout(saveT); saveT = setTimeout(writeNow, 350); }
+const deleteFit = id => dbDel(id).catch(() => {});
 async function openFit(rec){
   if (saveT) await writeNow();
   S = Object.assign(blank(), rec);
@@ -262,10 +279,49 @@ function followState(f, all){
 
 /* the fits on this device */
 let FITLIST = [];
+const listFits = async () => { FITLIST = [...(await index()).values()].sort((a, b) => (b.updated || 0) - (a.updated || 0)); };
 async function openFits(){
   if (saveT) await writeNow();
-  try { FITLIST = (await dbAll()).sort((a, b) => (b.updated || 0) - (a.updated || 0)); } catch(_){ FITLIST = []; }
-  $('#fits-q').value = ''; renderFits(); $('#fits').hidden = false;
+  await listFits(); $('#fits-q').value = ''; renderFits(); $('#fits').hidden = false;
+}
+/* a rider fitted here before (by their email, or their first and last name): their fits, newest first. Offered on a new
+   fit's Rider section: start it as a follow-up to the last one, or bring across what doesn't change between visits. */
+function pastFits(){
+  if (!INDEX || !S || S.follow) return [];
+  const lc = x => String(x || '').trim().toLowerCase(), f = lc(S.v.first), l = lc(S.v.last), e = lc(S.v.email);
+  if (!e.includes('@') && !(f && l)) return [];
+  return [...INDEX.values()].filter(x => x.id !== S.id && ((e.includes('@') && lc(x.v.email) === e) || (f && l && lc(x.v.first) === f && lc(x.v.last) === l)))
+    .sort((a, b) => (b.m ? 1 : 0) - (a.m ? 1 : 0) || (b.v.date || '').localeCompare(a.v.date || '') || (b.updated || 0) - (a.updated || 0));
+}
+// (a fit with nothing measured yet can become a follow-up; one with work in it can only take the rider's details)
+const fresh = () => !Object.keys(S.v).some(k => /_(pre|post)$/.test(k) && filled(S.v[k])) && !S.photos.length;
+function historyHTML(){
+  const past = pastFits(); if (!past.length || S.histNo === past[0].id) return '';
+  const p = past[0], name = [p.v.first, p.v.last].filter(Boolean).join(' ') || 'This rider';
+  const used = S.histUsed === p.id;
+  return `<div class="hist"><div class="hist-t"><b>${esc(name)} has been fitted here before</b>
+    <span>${esc([FITS[p.fit] ? FITS[p.fit].name : '', dayTxt(p.v.date, {day:'numeric', month:'short', year:'numeric'}), p.v.bike, p.v.fitter && 'with ' + p.v.fitter].filter(Boolean).join(' · '))}${past.length > 1 ? ` · and ${past.length - 1} more` : ''}</span>
+    ${used ? '<span class="hist-ok">Their details are filled in. Check them with the rider.</span>' : ''}</div>
+    <div class="hist-a">${fresh() ? `<button type="button" class="btn sm dark" data-act="hist-follow" data-id="${esc(p.id)}">Start as a follow-up</button>` : ''}
+      ${used ? '' : `<button type="button" class="btn sm" data-act="hist-use" data-id="${esc(p.id)}">Use their details</button>`}
+      <button type="button" class="btn sm ghost" data-act="hist-no" data-id="${esc(p.id)}">${used ? 'Done' : 'Not them'}</button></div></div>`;
+}
+// what doesn't change between visits: contact details, the rider, how they ride, their health and injuries
+function riderKeys(){
+  const ks = [];
+  const add = f => { if (!f.k || f.t === 'feetdraw') return; if (f.t === 'injgrid') ks.push(...INJ.map(x => x[0])); else if (f.lr) ks.push(f.k + '_L', f.k + '_R'); else ks.push(f.k); };
+  sectionsFor('session').filter(x => x.title === 'Rider').forEach(x => x.fields.forEach(add));
+  sectionsFor('interview').filter(x => ['About the rider', 'Riding', 'Health & activity'].includes(x.title)).forEach(x => x.fields.forEach(add));
+  return ks;
+}
+async function useDetails(id){
+  const prev = await dbGet(id); if (!prev) return;
+  for (const k of riderKeys()) if (!filled(S.v[k]) && filled(prev.v[k])) S.v[k] = Array.isArray(prev.v[k]) ? [...prev.v[k]] : prev.v[k];
+  S.histUsed = id; save(); const y = scrollY; renderMain(); scrollTo(0, y);
+}
+async function followFromHistory(id){
+  const prev = await dbGet(id); if (!prev) return;
+  const was = S.id; await startFollowUp(prev); await deleteFit(was);
 }
 function renderFits(){
   const q = $('#fits-q').value.trim().toLowerCase();
@@ -1251,11 +1307,12 @@ function secHTML(sec, i){
   if (sec.custom === 'bike') return bikeHTML();
   if (sec.custom === 'photos') return photosHTML();
   if (sec.custom === 'report') return reportStepHTML();
+  if (sec.title === 'Rider') sec = {...sec, pre:'<div data-x="history"></div>'};
   const p = secProgress(sec), ok = p.tot && p.got === p.tot;
   const tag = sec.f ? `<span class="tag-fit">${sec.f === 'T' ? 'TT & Tri' : 'Full & TT fits'}</span>` : sec.note ? `<span class="sec-note">${esc(sec.note)}</span>` : '';
   const count = p.tot ? `<span class="sec-count${ok ? ' ok' : ''}" data-x="seccount" data-i="${i}">${ok ? '✓ ' : ''}${p.got} of ${p.tot}</span>` : '';
   return `<section class="sec" id="sec-${i}"><div class="sec-h"><h2>${esc(sec.title)}</h2><div class="right">${tag}${count}</div></div>
-    ${sec.custom === 'body' ? bodyHTML() : ''}${sec.custom === 'start' ? startHTML() : ''}
+    ${sec.pre || ''}${sec.custom === 'body' ? bodyHTML() : ''}${sec.custom === 'start' ? startHTML() : ''}
     ${sec.angles ? `<div class="angles">${sec.angles.map(angleHTML).join('')}</div>${sec.fields ? '<div style="height:18px"></div>' : ''}` : ''}
     ${sec.fields && !sec.ownFields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
 }
@@ -1300,6 +1357,7 @@ function refresh(){
     case 'inseam': { const n = num('inseam'), less = S.fit === 'tt' ? 9 : 10;   // (the triathlon form: inseam − 9 cm)
       el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - less)} cm</b><span class="hint">inseam − ${less} cm</span>` : `<span class="hint">Starting saddle height appears here: inseam − ${less} cm</span>`; break; }
     case 'painlist': el.innerHTML = painListHTML(); break;
+    case 'history': { const h = historyHTML(); if (el.innerHTML !== h) el.innerHTML = h; break; }
     case 'feetdraw': if (!FOOTDRAG) el.innerHTML = feetSVG('rider'); break;
     case 'footword': el.textContent = footWord(num('footAng_' + k)); break;
     case 'ttscore': el.innerHTML = ttScoreHTML(); break;
@@ -1387,17 +1445,20 @@ document.addEventListener('click', e => {
     save(); renderMain(); const m = $('#copy-msg');
     if (m) m.innerHTML = `<div class="msg${n ? ' ok' : ''}" style="margin-bottom:12px">${n ? `Copied ${n} unchanged value${n > 1 ? 's' : ''} to After. Edit any that did change.` : 'Every After value with a Before value is already filled in.'}</div>`; return; }
   case 'new': return newFit();
+  case 'hist-use': return useDetails(d.id);
+  case 'hist-follow': t.disabled = true; return followFromHistory(d.id);
+  case 'hist-no': S.histNo = d.id; save(); refresh(); return;
   case 'fits': return openFits();
   case 'fits-close': $('#fits').hidden = true; return;
   case 'signout': {
     t.disabled = true;
     (async () => { if (saveT) await writeNow(); try { await fetch('api/logout', {method:'POST', credentials:'same-origin'}); } catch(_){} location.replace('login'); })();
     return; }
-  case 'fit-open': { const f = FITLIST.find(x => x.id === d.id); if (f) openFit(f); return; }
-  case 'fit-follow': { const f = FITLIST.find(x => x.id === d.id); if (f) startFollowUp(f); return; }
+  case 'fit-open': dbGet(d.id).then(f => { if (f) openFit(f); }); return;
+  case 'fit-follow': dbGet(d.id).then(f => { if (f) startFollowUp(f); }); return;
   case 'fit-del': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to delete'; t.classList.replace('ghost', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Delete'; t.classList.replace('primary', 'ghost'); } }, 3000); return; }
-    dbDel(d.id).catch(() => {}).then(async () => { FITLIST = FITLIST.filter(x => x.id !== d.id); if (S.id === d.id){ S = blank(); S.fit = 'std'; await writeNow(); renderMain(); } renderFits(); }); return; }
+    deleteFit(d.id).then(async () => { FITLIST = FITLIST.filter(x => x.id !== d.id); if (S.id === d.id){ S = blank(); S.fit = 'std'; await writeNow(); renderMain(); } renderFits(); }); return; }
   case 'share-pdf': {
     if (!lastPDF) return;
     navigator.share({files:[lastPDF], title:lastPDF.name, text:mailText().replace(/^Subject: .*\n\n/, '')}).catch(e => { if (e && e.name !== 'AbortError'){ const m = t.closest('.msg'); if (m) m.insertAdjacentHTML('beforeend', '<div style="margin-top:8px">Sharing didn’t open. Use Download, then attach the file.</div>'); } });
@@ -1465,6 +1526,7 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
     if (r.ok) ME = (await r.json()).name || '';
   } catch(_){}
   $('#who-me').textContent = ME ? `Signed in as ${ME}` : '';
+  await index();
   S = await load();
   renderMain();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
