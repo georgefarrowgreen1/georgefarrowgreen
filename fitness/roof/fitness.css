@@ -47,7 +47,7 @@
 .m-fitness .fx-sec[hidden] { display: none; }
 /* (a section not shown: kept laid out, only not painted and taking no room (content-visibility: hidden keeps its layout,
    so switching back costs no layout and nothing is drawn again); where that isn't known, display: none as before) */
-@supports (content-visibility: hidden) { .m-fitness .fx-sec[hidden] { display: block !important; content-visibility: hidden; } }
+@supports (content-visibility: hidden) { .m-fitness .fx-sec[hidden] { display: block !important; content-visibility: hidden; min-height: 0 !important; } }
 .m-fitness .screen { display: block; }
 .m-fitness.fx-drop-on::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-group); border: 2px dashed var(--acc); background: var(--acc-wash, rgba(255, 138, 104, 0.13)); pointer-events: none; }
 .m-fitness.fx-sheet { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 18px; color: var(--text); font: 17px/1.35 var(--font); }

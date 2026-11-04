@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.77";
-export const NEWS = "Swipe left or right to move between sections, as in a native app: the next one slides in with your finger";
+export const BUILD = "1.78";
+export const NEWS = "Warnings sits right under the header again, and every section starts at the top";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

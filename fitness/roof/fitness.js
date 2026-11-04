@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.87";
-export const NEWS = "Swipe left or right to move between sections, as in a native app: the next one slides in with your finger";
+export const BUILD = "1.88";
+export const NEWS = "Warnings sits right under the header again, and every section starts at the top";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

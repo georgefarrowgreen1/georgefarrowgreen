@@ -46,6 +46,14 @@ for (const [app, path, main, secs] of [['weather', '/weather/', H.M_WEATHER, ['n
   // (a vertical drag scrolls and switches nothing)
   await touch('touchStart', 200, 650); for (let i = 1; i <= 10; i++) { await touch('touchMove', 205, 650 - i * 30); await wait(16); } await touch('touchEnd', 205, 350); await wait(500);
   ok((await sec()) === secs[0], `${app}: a vertical drag switches nothing`, await sec());
+  // every section starts just under the header (one not shown takes no room, Radar's full-screen height included)
+  for (const id of await p.$$eval('#hd [role=tab][data-sec]', (b) => b.map((x) => x.dataset.sec))) {
+    if (id === 'radar') continue;
+    await p.evaluate((s) => document.querySelector(`#hd [role=tab][data-sec="${s}"]`)?.click(), id); await wait(900);
+    const top = await p.evaluate((s) => { const e = document.querySelector(`main:not([hidden]) section[data-sec="${s}"]`); return e ? Math.round(e.getBoundingClientRect().top + scrollY) : null; }, id);
+    ok(top != null && top < 360, `${app}: ${id} starts just under the header`, String(top));
+  }
+  await p.evaluate((s) => document.querySelector(`#hd [role=tab][data-sec="${s}"]`)?.click(), secs[0]); await wait(900);
   // at phone speed: the frames during a swipe
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await p.evaluate(() => { window.__fr = []; let l = performance.now(); const t = (n) => { window.__fr.push(n - l); l = n; if (window.__fr.length < 400) requestAnimationFrame(t); }; requestAnimationFrame(t); });

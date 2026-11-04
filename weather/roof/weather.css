@@ -45,7 +45,7 @@
 .m-weather .wx-sec[hidden] { display: none; }
 /* (a section not shown: kept laid out, only not painted and taking no room (content-visibility: hidden keeps its layout,
    so switching back costs no layout and nothing is drawn again); where that isn't known, display: none as before) */
-@supports (content-visibility: hidden) { .m-weather .wx-sec[hidden] { display: grid !important; content-visibility: hidden; } }
+@supports (content-visibility: hidden) { .m-weather .wx-sec[hidden] { display: grid !important; content-visibility: hidden; min-height: 0 !important; } }
 .m-weather :is(.wx-days, .wx-sec[data-sec="warnings"]) { display: grid; gap: var(--wx-gap); min-width: 0; }
 
 /* ---- Now: the hero (Today's card, app.css .tcard.wx) ---- */
