@@ -160,7 +160,8 @@ async function routes() {
   let got = 0;
   try {
     await needF();
-    for (const a of S.own.filter((x) => (!sumOf(x)?.route && !none.has(x.id)) || !(sumOf(x)?.xv >= XV)).slice(0, 40)) {
+    // (one that couldn't be read is never asked for again; a few at a time, with a pause between, so the list stays smooth)
+    for (const a of S.own.filter((x) => !none.has(x.id) && (!sumOf(x)?.route || !(sumOf(x)?.xv >= XV))).slice(0, 12)) {
       if (S.me?.id !== me || !working() || X.core?.busy?.()) break;
       try {
         const x = await load(a, false), r = sumOf(a)?.route ? null : F.routeShape(x.s), figs = { ...staying(x), ...effortFigs(a, x), ...(r ? { route: r } : {}) };
@@ -168,11 +169,11 @@ async function routes() {
         await A.addFigures(a.id, figs);
         a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
         got++;
-        // (the list drawn again every 10 filled in, and once at the end: never once per activity)
-        if (got % 10 === 0 && working()) redraw("acts");
+        await new Promise((r) => setTimeout(r, 250));
       } catch (e) { if (e.status === 401) { lost(); break; } if (e.offline) break; none.add(a.id); }
     }
-    if (got % 10 && working()) redraw("acts");
+    // (drawn again once, at the end, and only if something was filled in)
+    if (got && working()) redraw("acts");
   } catch (_) {
   } finally {
     routes.busy = false;

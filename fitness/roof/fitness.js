@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.70";
-export const NEWS = "Activities inside InFlite opens calmly: no more redrawing over and over when you come back to it";
+export const BUILD = "1.71";
+export const NEWS = "Activities stays still when you come back to it: rides that can't be read aren't fetched again, and maps fill in a few at a time";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
