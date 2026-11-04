@@ -144,8 +144,8 @@ await L.p.keyboard.press('Escape'); await L.p.waitForSelector('.ifm-layer', { st
     await click();
     const t = await tab;
     if (!t) return { url: '' };
-    await t.waitForSelector('.backapp', { timeout: 20000 }).catch(() => {});
-    const r = { url: t.url(), said: (await t.innerText('body').catch(() => '')).replace(/\s+/g, ' '), back: await t.textContent('.backapp').catch(() => '') };
+    await t.waitForSelector('.ifh-done, .backapp', { timeout: 20000 }).catch(() => {});
+    const r = { url: t.url(), said: (await t.innerText('body').catch(() => '')).replace(/\s+/g, ' '), back: await t.$eval('.ifh-done, .backapp', (b) => `${b.textContent} ${b.getAttribute('aria-label') || ''}`).catch(() => '') };
     await t.close(); return r;
   };
   const viaMenu = await opened(async () => { await D.p.click('#me-btn'); await D.p.waitForSelector('.ifm-pop.open'); await D.p.click('.ifm-pop .ifm-card'); });

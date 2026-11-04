@@ -798,7 +798,10 @@ a.btn { text-decoration: none; }
 .ifh.ahead .ifh-me .avatar { display: grid; place-items: center; }
 /* (busy, as you sign out from the menu: a ring turning round your photo, over a shade, so it shows on any photo) */
 .ifh.ahead .ifh-me > .spin { position: absolute; inset: 0; border: 2.5px solid #fff; border-right-color: transparent; background: rgba(0, 0, 0, 0.32); }
-.ifh.ahead .ifh-acts .backapp { height: 38px; padding: 0 12px 0 8px; gap: 4px; display: inline-flex; align-items: center; color: var(--tint-text); font-weight: 600; font-size: 15px; }
+.ifh.ahead .ifh-acts .ifh-done { height: 38px; padding: 0 14px; border: 0; border-radius: 19px; background: none; display: inline-flex; align-items: center;
+  color: var(--ifh-tint, var(--tint-text)); font: 600 17px/1 inherit; font-family: inherit; letter-spacing: -0.2px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ifh.ahead .ifh-acts .ifh-done:active { background: var(--press, rgba(255, 255, 255, 0.08)); }
+.ifh.ahead .ifh-acts .ifh-done:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 2px; }
 body:has(.ifh) .status { display: none; }
 @media (min-width: 760px) { .ifh.ahead { margin-top: calc(-1 * (var(--top) + 72px)); --ifh-pt: calc(var(--top) + 40px); } }
 

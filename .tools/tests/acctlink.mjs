@@ -59,7 +59,7 @@ ok(/Rowan Hale/.test(confirmSays) && /@rowan, from Chat\. Carry on as this accou
   && rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n === 1, 'first, who it\'s for: Continue as Rowan, or Not you', confirmSays);
 await shot(pop, '02a-continue-as');
 await pop.click('main .signin .btn'); await pop.waitForSelector('main .hero', { timeout: 20000 }); await pop.waitForTimeout(900);
-ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.backapp')), 'signed in as you, with the way back to Chat');
+ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.ifh-done, .backapp')), 'signed in as you, with the way back to Chat');
 const dev = rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n;
 ok(dev === 2, 'a sign-in of its own (seen in Signed-in devices)', String(dev));
 ok(!(await pop.evaluate(async () => (await (await fetch('/api/account/me')).json()).fresh)), 'which doesn\'t count as showing it\'s you (a password change still asks)');
@@ -71,7 +71,7 @@ ok(rows(`SELECT name FROM pg_users WHERE handle = 'rowan'`)[0].name === 'Rowan A
 // back to Chat
 const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () => false);
 // (the page can close before the click's done with it)
-await pop.click('.backapp').catch((e) => { if (!/closed/.test(e.message)) throw e; });
+await pop.click('.ifh-done, .backapp').catch((e) => { if (!/closed/.test(e.message)) throw e; });
 ok(await closed, 'Chat: the page goes, back to the app');
 await A.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await A.p.waitForTimeout(2500);
 const after = await youCard(); await shut();

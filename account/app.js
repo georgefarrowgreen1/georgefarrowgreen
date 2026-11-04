@@ -813,8 +813,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.77";
-const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
+const BUILD = "1.78";
+const NEWS = "Opened from an app, your account has Done at the top right to go back";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -973,6 +973,9 @@ function backToApp(hash) {
 }
 const backPill = () => h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name);
 const backButton = (r) => fromApp() && r(backPill());
+// (in the header's capsule: Done, as a page opened over an app says it, never a back arrow on the right; it goes back the
+// same way, to the app it was opened from)
+const doneBtn = () => h("button.ifh-done", { type: "button", onclick: backToApp, "aria-label": `Done, back to ${APPS[fromApp()]?.name || "the app"}` }, "Done");
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -1508,7 +1511,7 @@ const SECURE = `<span class="ifh-secure" role="img" aria-label="secure"><svg wid
 function acctHead(m, todo) {
   const hd = IFL.header({ title: "Account", me: avatar(m), onMe: (b) => youMenu(b, m), cls: "ahead",
     line: `@${String(m.handle).replace(/[&<>"]/g, "")}${todo ? ` · <i>${todo} to do</i>` : SECURE}` });
-  if (fromApp()) hd.querySelector(".ifh-acts").append(backPill());
+  if (fromApp()) hd.querySelector(".ifh-acts").append(doneBtn());
   return hd;
 }
 function youMenu(at, m) {

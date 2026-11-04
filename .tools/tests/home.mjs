@@ -137,9 +137,9 @@ await home(P);
 ok(await shown(P, '#me') && !(await shown(P, '#sign-in')) && !(await shown(P, '#edit')), 'someone signed in: their photo’s place, no Sign in, and no Edit');
 ok(await text(P, '#face') === 'P' && await P.p.getAttribute('#me', 'href') === `${ACCT}/#from=home`, 'their initial, a tap from their account');
 // the account's page, from here: a way back to the home page (and Back from the home page doesn't go there again)
-await P.p.click('#me'); await P.p.waitForSelector('main .backapp', { timeout: 20000 }).catch(() => {});
-ok(await text(P, 'main .backapp') === 'Home' && !P.p.url().includes('#'), 'their account’s page has Home, to go back', `${await text(P, 'main .backapp')} ${P.p.url()}`);
-await P.p.click('main .backapp'); await P.p.waitForSelector('body.known', { timeout: 20000 }).catch(() => {});
+await P.p.click('#me'); await P.p.waitForSelector('.ifh-done', { timeout: 20000 }).catch(() => {});
+ok(/back to Home/.test(await P.p.getAttribute('.ifh-done', 'aria-label').catch(() => '') || '') && !P.p.url().includes('#'), 'their account’s page has Done, back to Home', `${await text(P, 'main .backapp')} ${P.p.url()}`);
+await P.p.click('.ifh-done'); await P.p.waitForSelector('body.known', { timeout: 20000 }).catch(() => {});
 ok(P.p.url() === `${SITE}/`, 'Home: back on the home page', P.p.url());
 await settle(P);
 ok(await text(P, '#app-inflight small') === 'Messages, and letters by pigeon', 'an app they’ve not used yet says what it is');
