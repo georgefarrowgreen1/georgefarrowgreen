@@ -524,10 +524,20 @@ body.signin::before{display:none}
 /* L and R on one line */
 .lr.inline{grid-template-columns:22px minmax(0,1fr) 22px minmax(0,1fr)}
 
-/* feet, standing: the form's neutral example beside the rider's feet */
-.feet{display:grid;grid-template-columns:minmax(0,200px) minmax(0,380px);gap:18px;align-items:start}
-.feet figure{margin:0;display:flex;flex-direction:column;gap:6px}
-.feet figcaption{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}
+/* feet, standing: the rider's feet to draw on, their angles beside them, the neutral example beneath those */
+.feet{display:grid;grid-template-columns:minmax(0,420px) minmax(220px,280px);gap:16px 28px;align-items:start}
+.feet figure{margin:0}
+.feet figcaption{margin-top:8px;font-size:13.5px;color:var(--mute);line-height:1.4}
+.feet figcaption b{color:var(--ink-2);margin-right:4px}
 .feet svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
-.feet-ex{opacity:.85}
-@media (max-width:560px){.feet{grid-template-columns:1fr}.feet-ex{max-width:200px}}
+.feet-side{display:flex;flex-direction:column;gap:14px}
+.fa{display:grid;grid-template-columns:minmax(0,1fr) 120px;grid-template-areas:"l n" "w n";gap:2px 12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--field)}
+.fa-l{grid-area:l;font-weight:700;font-size:16px}
+.fa .num{grid-area:n}
+.fa .num input{background:var(--card);text-align:center;padding-right:30px;font-size:20px;font-weight:600}
+.fa-w{grid-area:w;font-size:14px;color:var(--ink-2)}
+.feet-ex{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:center;margin-top:4px !important}
+.feet-ex figcaption{margin:0}
+@media (max-width:760px){.feet{grid-template-columns:1fr}.feet-rider{max-width:420px}}
+.ftab{min-width:700px}
+.seg.sm button{min-width:0}

@@ -133,7 +133,7 @@ function sectionsFor(step){
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
   case 'offbike': return [
-    {title:'Feet', fields:[{t:'feetdraw', k:'feetdraw', label:'Foot angle standing', f:'FT', wide:true}, N('footAng','Foot angle','°',{lr:true, f:'FT', hint:'toe out +, toe in −'}), {t:'feet', k:'feet', label:'Feet, standing', f:'FT'},
+    {title:'Feet', fields:[{t:'feetdraw', k:'footAng', label:'Foot angle standing', f:'FT', wide:true}, {t:'feet', k:'feet', label:'Size, length, width and arch', f:'FT'},
       SG('footbed','Footbed',['Stock','Trimmed','Custom']), {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
     {title:'Lower leg', f:'FT', note:'Laser line, standing', fields:[SG('lowerLeg','Lower leg analysis',['Supination','Neutral','Pronation'],{lr:true, wide:true})]},
     {title:'Knees', f:'FT', fields:[SG('knee','Alignment standing',['Bends in','Neutral','Bows out'],{lr:true, wide:true})]},
@@ -934,7 +934,7 @@ function footShape(side){
 // a foot's angle (toe out +) as the direction of its line in the drawing, and back
 const footEnd = (side, out) => { const a = (side === 'L' ? -out : out) * Math.PI / 180; return [HEEL[0] + Math.sin(a) * FOOT_LINE, HEEL[1] - Math.cos(a) * FOOT_LINE]; };
 const footOut = (side, x, y) => { const d = Math.atan2(x - HEEL[0], HEEL[1] - y) * 180 / Math.PI; return Math.max(-45, Math.min(45, Math.round(side === 'L' ? -d : d))); };
-const footWord = out => out == null ? 'Drag along the foot' : out === 0 ? 'Straight' : `${Math.abs(out)}° toe ${out > 0 ? 'out' : 'in'}`;
+const footWord = out => out == null ? 'Not drawn yet' : out === 0 ? 'Straight' : `${Math.abs(out)}° toe ${out > 0 ? 'out' : 'in'}`;
 function feetSVG(mode){
   const rider = mode !== 'example', W = 300, H = 250;
   const foot = side => {
@@ -945,16 +945,19 @@ function feetSVG(mode){
     const guide = rider ? `<line x1="50" y1="186" x2="50" y2="14" stroke="#9aa0a8" stroke-width="1" stroke-dasharray="3 4"/>` : '';
     return `<g transform="translate(${FOOT_X[side]} ${FOOT_Y})" ${rider && mode === 'rider' ? `data-footpad="${side}" style="cursor:crosshair"` : ''}>
       <rect x="-14" y="-14" width="128" height="222" fill="transparent"/>${footShape(side)}${guide}${line}</g>
-      <text x="${FOOT_X[side] + 50}" y="${H - 8}" text-anchor="middle" font-family="Barlow, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3f47">${side}${rider ? ` · ${esc(footWord(out))}` : ''}</text>`;
+      <text x="${FOOT_X[side] + 50}" y="${H - 8}" text-anchor="middle" font-family="Barlow, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3f47">${side}${mode === 'report' ? ` · ${esc(footWord(out))}` : ''}</text>`;
   };
   const divider = `<line x1="${W / 2}" y1="8" x2="${W / 2}" y2="${H - 26}" stroke="${rider ? '#3a3f47' : '#9aa0a8'}" stroke-width="${rider ? 2 : 1.4}" ${rider ? '' : 'stroke-dasharray="3 3"'}/>`;
   return `<svg viewBox="0 0 ${W} ${H}" ${mode === 'report' ? 'width="300" height="250"' : ''} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${rider ? 'The rider’s feet, standing, with a line along each foot' : 'Neutral example: a straight line along each foot'}">
     <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#d6d3ce" stroke-width="1.5" rx="6"/>${divider}${foot('L')}${foot('R')}</svg>`;
 }
 function feetHTML(){
-  return `<div class="fld wide"><span class="lab">Foot angle standing <small>· drag along each of the rider’s feet, from the heel, or type the angle</small></span>
-    <div class="feet"><figure class="feet-ex"><figcaption>Neutral example</figcaption>${feetSVG('example')}</figure>
-      <figure class="feet-rider"><figcaption>Rider</figcaption><div data-x="feetdraw">${feetSVG('rider')}</div></figure></div></div>`;
+  const box = (side, name) => `<div class="fa"><label class="fa-l" for="i-footAng_${side}">${name}</label>
+      ${inputHTML('footAng_' + side, {t:'num', unit:'°', label:name + ' angle'})}<span class="fa-w" data-x="footword" data-k="${side}">${esc(footWord(num('footAng_' + side)))}</span></div>`;
+  return `<div class="fld wide"><span class="lab">Foot angle standing</span>
+    <div class="feet"><figure class="feet-rider"><div data-x="feetdraw">${feetSVG('rider')}</div><figcaption>Drag along each foot from the heel to draw its line. Toe out counts +, toe in −.</figcaption></figure>
+      <div class="feet-side">${box('L', 'Left foot')}${box('R', 'Right foot')}
+        <figure class="feet-ex">${feetSVG('example')}<figcaption><b>Neutral</b> The line runs straight along the foot, heel to second toe.</figcaption></figure></div></div></div>`;
 }
 // drawing a line: from the heel to wherever the finger is, until it lifts
 let FOOTDRAG = null;
@@ -967,6 +970,7 @@ function footSet(side, out){
   S.v['footAng_' + side] = out;
   const inp = $('#i-footAng_' + side); if (inp) inp.value = out;
   const box = $('[data-x="feetdraw"]'); if (box) box.innerHTML = feetSVG('rider');
+  const w = $(`[data-x="footword"][data-k="${side}"]`); if (w) w.textContent = footWord(out);
 }
 document.addEventListener('pointerdown', e => {
   const g = e.target.closest && e.target.closest('[data-footpad]'); if (!g) return;
@@ -1156,7 +1160,7 @@ function secProgress(sec){
     if (f.t === 'timer'){ tot++; if (lightOf('plank', 'plank')) got++; return; }
     if (f.t === 'feet'){ ['footSize', 'footLen', 'footWid', 'arch'].forEach(b => ['_L_u', '_L', '_R_u', '_R'].forEach(x => cnt(b + x))); return; }
     if (f.when && !f.when()) return;
-    if (f.t === 'feetdraw') return;
+    if (f.t === 'feetdraw'){ cnt('footAng_L'); cnt('footAng_R'); return; }
     if (f.t === 'injgrid'){ tot++; if (INJ.some(([k]) => filled(S.v[k]))) got++; return; }
     if (f.lr){ cnt(f.k + '_L'); cnt(f.k + '_R'); } else cnt(f.k);
   });
@@ -1255,6 +1259,7 @@ function refresh(){
       el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - less)} cm</b><span class="hint">inseam − ${less} cm</span>` : `<span class="hint">Starting saddle height appears here: inseam − ${less} cm</span>`; break; }
     case 'painlist': el.innerHTML = painListHTML(); break;
     case 'feetdraw': if (!FOOTDRAG) el.innerHTML = feetSVG('rider'); break;
+    case 'footword': el.textContent = footWord(num('footAng_' + k)); break;
     case 'ttscore': el.innerHTML = ttScoreHTML(); break;
     case 'uci': el.innerHTML = uciHTML(); break;
     case 'seccount': case 'jumpcount': { const sec = sectionsFor(STEPS[S.step].id)[+el.dataset.i]; const p = secProgress(sec), ok = p.got === p.tot;
