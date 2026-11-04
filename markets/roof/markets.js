@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.02";
-export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
+export const BUILD = "2.03";
+export const NEWS = "Swipe left or right to move between sections, as in a native app: the next one slides in with your finger";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -131,7 +131,11 @@ export async function mount(root, fw) {
   };
   // every section but the one showing is drawn afresh when it next shows
   const others = () => { for (const [id] of SECTIONS) if (id !== shown) stale.add(id); };
+  // (a section about to be swiped to and never drawn: drawn now, out of sight: Today's swipe.js)
+  const peek = (e) => { const id = e.detail; if (onScreen && views2.has(id) && !secs.get(id)?.childElementCount) { try { views2.get(id).draw(false); } catch (x) { console.error(x); } } };
+  root.addEventListener("ifl-peek", peek);
   const offs = [
+    () => root.removeEventListener("ifl-peek", peek),
     core.on("me", () => { others(); header(); draw(shown, true); }),
     core.on("list", () => { others(); header(); draw(); }),
     core.on("settings", () => { if (shown === "holdings") draw(); else stale.add("holdings"); }),

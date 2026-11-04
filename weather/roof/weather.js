@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.76";
-export const NEWS = "Radar opens straight away once you’ve used it, and Weather Settings has an icon on every row";
+export const BUILD = "1.77";
+export const NEWS = "Swipe left or right to move between sections, as in a native app: the next one slides in with your finger";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
@@ -162,7 +162,12 @@ export async function mount(root, fw) {
       badges: { warnings: core.warningsInForce() },
     });
   };
+  // (a section about to be swiped to and never drawn: drawn now, out of sight, so it comes in with its words; not Radar,
+  // whose map is made as it shows: Today's swipe.js)
+  const peek = (e) => { const id = e.detail; if (onScreen && id !== "radar" && views.has(id) && !secs.get(id)?.childElementCount) { try { views.get(id).draw(); } catch (x) { console.error(x); } } };
+  root.addEventListener("ifl-peek", peek);
   const offs = [
+    () => root.removeEventListener("ifl-peek", peek),
     core.on("wx", () => { header(); draw(); }),
     core.on("place", () => { header(); draw(); }),
     core.on("settings", () => { header(); draw(); }),

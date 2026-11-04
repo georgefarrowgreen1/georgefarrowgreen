@@ -124,7 +124,7 @@ test('under the roof, each of the framework’s static files is asked for ahead 
   assert.ok(roof.includes('/roof/frame.js'), 'the frame');
   // (modules.js and connectors.js: dynamic only, and no module's own file from the page)
   const dyn = [...js.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]);
-  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/roof/modules.js', '/roof/connectors.js'].includes(d), `import("${d}")`);
+  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/swipe.js', '/roof/modules.js', '/roof/connectors.js'].includes(d), `import("${d}")`);
   assert.ok(!/\/weather\/roof\//.test(own()), 'the page never names a module’s file itself: the router’s registry does');
 });
 

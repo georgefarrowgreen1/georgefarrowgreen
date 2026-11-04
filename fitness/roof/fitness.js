@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.86";
-export const NEWS = "Fitness Settings is clearer: an icon on every row, and long values no longer squash the names";
+export const BUILD = "1.87";
+export const NEWS = "Swipe left or right to move between sections, as in a native app: the next one slides in with your finger";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -193,6 +193,9 @@ export async function mount(root, fw) {
   let queued = 0;
   const all = () => { ver++; if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
   const ACTS_EVENTS = new Set(["me", "acts", "settings", "loading", "error"]);
+  // (a section about to be swiped to and never drawn: drawn now, out of sight, then told it's hidden: Today's swipe.js)
+  const peek = (e) => { const id = e.detail, v = views.get(id); if (!onScreen || !v || secs.get(id)?.childElementCount) return; try { v.draw(); drawnAt.set(id, ver); v.hide?.(); } catch (x) { console.error(x); } };
+  root.addEventListener("ifl-peek", peek);
   const offs = core.EVENTS.map((e) => core.on(e, (d) => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (d?.patched && shown === "activities") { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
@@ -280,6 +283,7 @@ export async function mount(root, fw) {
       guard(false);
       for (const [t, f] of [["dragenter", enter], ["dragover", over], ["dragleave", leave], ["drop", drop]]) screen.removeEventListener(t, f);
       for (const off of offs) off();
+      root.removeEventListener("ifl-peek", peek);
       unprovide();
       for (const v of views.values()) { try { v.destroy(); } catch (e) { console.error(e); } }
       for (const el of secs.values()) el.remove();
