@@ -54,15 +54,15 @@ const BIKE = [
   {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
   {g:'Saddle', k:'tilt', label:'Saddle tilt', u:'°', step:0.5},
   {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'FT'},
-  {g:'Drivetrain', k:'crank', label:'Crank length', u:'mm', step:2.5},
+  {g:'Drivetrain', k:'crank', label:'Crank length', u:'mm', step:2.5, f:'FT'},
   {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'FT'},
   {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20},
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
-  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5},
-  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5},
+  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height'},
+  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'FT'},
   {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5},
+  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'FT'},
   {g:'Coordinates', k:'hx', label:'Handlebar X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'hy', label:'Handlebar Y', u:'mm', step:5, f:'FT'},
   {g:'Coordinates', k:'sx', label:'Saddle X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y', u:'mm', step:5, f:'FT'},
 ];
@@ -94,7 +94,7 @@ const STEPS = [
   {id:'offbike', title:'Off-bike assessment', lede:'Measure and observe standing. Results drop straight into traffic lights for the report.'},
   {id:'onbike', title:'On-bike assessment', lede:'Record angles before and after. Each one is checked against the studio guide range as you type.'},
   {id:'bike', title:'Bike measurements', lede:'Before and after, in millimetres. Changes are worked out for you and lead the client report.'},
-  {id:'photos', title:'Photos', lede:'Take photos on the iPad or add them from the library. Mark angles on them; they go into the PDF.'},
+  {id:'photos', f:'FT', title:'Photos', lede:'Take photos on the iPad or add them from the library. Mark angles on them; they go into the PDF.'},
   {id:'report', title:'Report & send', lede:'Check the summary, add the plan and send the client their report.'},
 ];
 
@@ -119,7 +119,7 @@ function sectionsFor(step){
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
   case 'offbike': return [
-    {title:'Feet', fields:[SG('arch','Arch height (weighted)',['Low','Medium','High'],{lr:true}), SG('footbed','Footbed',['Stock','Trimmed','Custom']),
+    {title:'Feet', fields:[SG('arch','Arch height (weighted)',['Low','Medium','High'],{lr:true, f:'FT'}), SG('footbed','Footbed',['Stock','Trimmed','Custom']),
       N('footLen','Foot length','mm',{lr:true, f:'FT'}), N('footWid','Foot width','mm',{lr:true, f:'FT'}), N('footAng','Foot angle standing','°',{lr:true, f:'FT'}),
       {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
     {title:'Knees', f:'FT', fields:[SG('knee','Alignment standing',['Bends in','Neutral','Bows out'],{lr:true, wide:true})]},
@@ -436,7 +436,7 @@ const SLOTS = {std:['Before · side','After · side'], full:['Before · side','A
   tt:['Before · side','After · side','Before · front','After · front','Aero · front','Cleats & feet']};
 const SLOT_HINT = {'Before · side':'Drive side, cranks level, before any changes','After · side':'Same spot and height as the before photo','Before · front':'Square on, from in front of the bike','After · front':'Same spot as the before photo','Aero · front':'Rider on the extensions, square on','Cleats & feet':'Sole view of both shoes'};
 const ICON_CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
-const canCompare = () => ['Before · side','After · side'].every(t => S.photos.some(p => p.src && p.tag === t));
+const canCompare = () => S.fit !== 'std' && ['Before · side','After · side'].every(t => S.photos.some(p => p.src && p.tag === t));
 function photoCard(p){
   const done = p.marks.filter(m => m.p.length === 3);
   return `<div class="ph"><button type="button" class="img" data-ph="${p.id}" data-act="measure" aria-label="Measure angles on this photo">
@@ -643,7 +643,7 @@ async function ensureSamplePhotos(){
     if (p.sample && !p.src){ const r = scene(p.sample === 'after'); p.src = r.src; p.w = r.w; p.h = r.h; if (!p.marks || !p.marks.length) p.marks = r.marks; await composite(p); changed = true; }
     else if (p.src && p.marks.length && !p._comp){ await composite(p); changed = true; }
   }
-  if (changed && S.step === 5) renderMain();
+  if (changed && STEPS[S.step].id === 'photos') renderMain();
 }
 
 /* ---------------- insights ---------------- */
@@ -676,7 +676,7 @@ function suggested(){
   if (bad(L('plank','plank'))) s.add('plank');
   if (val('shFwd') === 'Yes') s.add('pec');
   if ([val('knee_L'), val('knee_R'), val('kneeTrack_L'), val('kneeTrack_R')].some(x => x === 'Bends in' || x === 'Tracks in')) s.add('glute');
-  if (val('arch_L') === 'Low' || val('arch_R') === 'Low' || S.pain.foot_L || S.pain.foot_R) s.add('calf');
+  if ((S.fit !== 'std' && (val('arch_L') === 'Low' || val('arch_R') === 'Low')) || S.pain.foot_L || S.pain.foot_R) s.add('calf');
   if (S.pain.neck) s.add('neck');
   return s;
 }
@@ -776,7 +776,7 @@ function reportPages(){
   </div>`);
   // page 3: assessment
   const pains = Object.entries(S.pain).filter(([, x]) => x);
-  const obs = [['Arch height (L / R)', [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
+  const obs = [['Arch height (L / R)', S.fit !== 'std' && [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
     ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Sit-bone width', isNum(v.ischial) ? v.ischial + ' mm' : ''], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
     ['Shoulders drawn forward', S.fit !== 'std' ? v.shFwd : ''], ['Inseam', isNum(v.inseam) ? v.inseam + ' cm' : ''], ['Knee tracking on bike (L / R)', S.fit !== 'std' && (v.kneeTrack_L || v.kneeTrack_R) ? `${v.kneeTrack_L || '–'} / ${v.kneeTrack_R || '–'}` : '']].filter(x => x[1]);
   pages.push(`${band('Your assessment')}<div class="rp-in">
@@ -792,7 +792,7 @@ function reportPages(){
   </div>`);
   // photos
   const ph = S.photos.filter(p => p.inc && p.src);
-  if (ph.length){
+  if (ph.length && S.fit !== 'std'){
     const sideB = ph.find(p => p.tag === 'Before · side'), sideA = ph.find(p => p.tag === 'After · side');
     const rest = ph.filter(p => p !== sideB && p !== sideA);
     const card = (p, big) => `<div class="rp-ph${big ? ' big' : ''}"><div class="im" style="background-image:url('${p._comp || p.src}')"></div><b>${esc(p.tag)}</b>${p.cap ? `<span>${esc(p.cap)}</span>` : ''}</div>`;
@@ -901,18 +901,21 @@ function readyItems(){
     {ok:/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), t:'Email address', d:email ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : `“${email}” doesn’t look like an email address`) : 'Needed to send the report', step:0},
     {ok:A >= 3, t:'Angles after the fit', d:`${A} recorded${A < 3 ? ', at least 3 needed' : ''}`, step:3},
     {ok:bikePost >= 5, t:'Bike measurements after the fit', d:`${bikePost} recorded${bikePost < 5 ? ', at least 5 needed' : ''}`, step:4},
-    {ok:S.fit === 'std' || sides === 2, t:'Before & after side photos', d:S.fit === 'std' ? `Optional for a Standard Fit · ${sides} of 2` : `${sides} of 2 taken`, step:5},
+    ...(S.fit === 'std' ? [] : [{ok:sides === 2, t:'Before & after side photos', d:`${sides} of 2 taken`, step:5}]),
     {ok:filled(val('summary')), t:'Overview of changes', d:filled(val('summary')) ? 'Written' : 'Tap “Write it for me” below to draft it', step:6},
   ];
 }
 function readyHTML(){
   return readyItems().map(x => `<div class="ready-i${x.ok ? ' ok' : ''}"><span class="ic">${x.ok ? ICON_TICK : ''}</span><span class="tx">${esc(x.t)}<small>${esc(x.d)}</small></span>${x.ok || x.step === S.step ? '' : `<button type="button" class="btn sm" data-go="${x.step}">${esc(STEPS[x.step].title)} →</button>`}</div>`).join('');
 }
+// the steps this fit has (a Standard Fit has no photos), as indexes into STEPS
+const visSteps = () => STEPS.map((_, i) => i).filter(i => applies(STEPS[i]));
+const stepNo = i => visSteps().indexOf(i) + 1;
 function renderRail(){
   let T = 0, G = 0;
-  const items = STEPS.map((s, i) => { const p = progress(i); T += p.tot; G += p.got; const done = p.tot && p.got === p.tot;
+  const items = visSteps().map(i => { const s = STEPS[i], p = progress(i); T += p.tot; G += p.got; const done = p.tot && p.got === p.tot;
     const sfx = s.id === 'photos' ? ' photos' : s.id === 'report' ? ' ready' : '';
-    return `<button type="button" class="step-btn${done ? ' done' : ''}" data-go="${i}"${i === S.step ? ' aria-current="step"' : ''}><span class="n">${done && i !== S.step ? '✓' : i + 1}</span><span class="t">${s.title}</span><span class="p">${p.got} of ${p.tot}${sfx}</span></button>`; }).join('');
+    return `<button type="button" class="step-btn${done ? ' done' : ''}" data-go="${i}"${i === S.step ? ' aria-current="step"' : ''}><span class="n">${done && i !== S.step ? '✓' : stepNo(i)}</span><span class="t">${s.title}</span><span class="p">${p.got} of ${p.tot}${sfx}</span></button>`; }).join('');
   const pct = T ? Math.round(G / T * 100) : 0;
   const A = anglesList().filter(a => a.r && a.post != null), inR = A.filter(a => a.post >= a.r[0] && a.post <= a.r[1]).length, L = lights(), reds = L.filter(x => x.c === 'r').length;
   $('#rail').innerHTML = items + `<div class="rail-fit"><b>${FITS[S.fit].name}</b>${FITS[S.fit].price} · ${FITS[S.fit].time}${val('fitter') ? ' · ' + esc(val('fitter')) : ''}
@@ -923,10 +926,11 @@ function renderRail(){
 function renderHeader(){
   $('#hd-name').textContent = fullName() || 'New fit';
   $('#hd-sub').textContent = [FITS[S.fit].name, val('bike'), val('date') ? new Date(val('date') + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'}) : ''].filter(Boolean).join(' · ');
-  $('#pg-back').disabled = S.step === 0;
-  $('#pg-mid').textContent = `Step ${S.step + 1} of ${STEPS.length} · ${STEPS[S.step].title}`;
-  const last = S.step === STEPS.length - 1;
-  $('#pg-next').textContent = last ? 'Preview report' : `${STEPS[S.step + 1].title} →`;
+  const vis = visSteps(), at = vis.indexOf(S.step);
+  $('#pg-back').disabled = at === 0;
+  $('#pg-mid').textContent = `Step ${at + 1} of ${vis.length} · ${STEPS[S.step].title}`;
+  const last = at === vis.length - 1;
+  $('#pg-next').textContent = last ? 'Preview report' : `${STEPS[vis[at + 1]].title} →`;
   $('#pg-next').dataset.act = last ? 'preview' : 'next';
 }
 function jumpHTML(id){
@@ -950,10 +954,11 @@ function secHTML(sec, i){
     ${sec.fields ? `<div class="grid">${sec.fields.map(fieldHTML).join('')}</div>` : ''}</section>`;
 }
 function renderMain(){
+  if (!applies(STEPS[S.step])) S.step = visSteps().filter(i => i < S.step).pop() ?? 0;
   const st = STEPS[S.step];
   const banner = S.sample ? `<div class="banner"><span class="sp"><b>Sample fit.</b> Jordan Hale is an example rider, so you can see a finished fit. Your own fits are kept on this device: find them under Fits.</span>
     <button type="button" class="btn sm dark" id="btn-new" data-act="new">Start a new fit</button></div>` : '';
-  $('#main').innerHTML = `${banner}<div class="step-head"><div class="eyebrow">Step ${S.step + 1} · ${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
+  $('#main').innerHTML = `${banner}<div class="step-head"><div class="eyebrow">Step ${stepNo(S.step)} · ${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
     ${jumpHTML(st.id)}${sectionsFor(st.id).map(secHTML).join('')}
 `;
   refresh(); renderRail(); renderHeader();
@@ -981,7 +986,12 @@ function refresh(){
   const m = $('#mail'); if (m) m.textContent = mailText();
   const ml = $('#mailto'); if (ml) ml.href = mailtoHref();
 }
-function go(i){ S.step = Math.max(0, Math.min(STEPS.length - 1, i)); save(); renderMain(); window.scrollTo(0, 0); }
+function go(i){
+  // (Back and Next step over a step this fit doesn't have)
+  const dir = i < S.step ? -1 : 1;
+  while (i >= 0 && i < STEPS.length && !applies(STEPS[i])) i += dir;
+  S.step = Math.max(0, Math.min(STEPS.length - 1, i)); save(); renderMain(); window.scrollTo(0, 0);
+}
 
 /* ---------------- events ---------------- */
 let timer = null;
@@ -1110,5 +1120,5 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   try { if (document.fonts) await Promise.race([document.fonts.load("italic 800 46px 'Barlow Condensed'"), new Promise(r => setTimeout(r, 2500))]); } catch(_){}
   await ensureSamplePhotos();
-  if (S.step === 5) renderMain();
+  if (STEPS[S.step].id === 'photos') renderMain();
 })();
