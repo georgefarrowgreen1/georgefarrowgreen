@@ -9,6 +9,7 @@
    ago. A message is in pg_msgs / pg_gmsgs until 30 days after it lands, then one line per pigeon in pg_flights
    (functions/_retention.js), so the last 30 days are the live tables plus anything already moved over. */
 import { DAY, MIN, londonOffset } from "./_pigeon.js";
+import { counts as signinCounts } from "./_signincount.js";
 
 export const SPAN = 30;           // days of history shown
 export async function insights(env, D, t = Date.now()) {
@@ -95,5 +96,7 @@ export async function insights(env, D, t = Date.now()) {
     adoption: { passkey: A.passkey || 0, push: A.push || 0, email: A.email || 0, risky: A.risky || 0, approx: A.approx || 0, space: A.space || 0, birds: A.birds || 0, friends: A.friends || 0, groups: A.groups || 0 },
     health: { flying: H.flying || 0, landed: H.landed || 0, lost: H.lost || 0, late: H.late || 0 },
     messages: msgs[0]?.n || 0,
+    // (signing in, per day, each kind: functions/_signincount.js)
+    signin: await signinCounts(D, first, today).catch(() => null),
   };
 }

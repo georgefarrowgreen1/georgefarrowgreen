@@ -6,7 +6,8 @@
 // sign-in cookie (one for every address on the site, out of any page's reach). The browsers are Chromium dressed as each
 // (their screen, touch, what they say they are): what's tested is what the site does for each, not the engines.
 // (Mail asks for the site's admin with a passkey, so it's left to mailauth.mjs; Today's API to todayauth.mjs.)
-import { launch, dress, chatSession, until, wait, HUB, CHAT, ACCOUNT_AT, STANDALONE } from './rooflib.mjs';
+import { dress, chatSession, until, wait, HUB, CHAT, ACCOUNT_AT, CHROMIUM_ARGS } from './rooflib.mjs';
+import { chromium } from 'playwright';
 import { makeAccount, onAccountPage } from './join.mjs';
 import { randomBytes } from 'node:crypto';
 const [,, , out] = process.argv;
@@ -63,7 +64,10 @@ const APPS = [
 ];
 const ONLY_APPS = (process.env.MATRIX_APPS || '').split(',').filter(Boolean);
 
-const b = await launch();
+// (the browser, opened again should it close under the test: a long run on a busy machine)
+let b = null;
+const browser = async () => (b?.isConnected() ? b : (b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: CHROMIUM_ARGS })));
+await browser();
 // the account, made once (as on any phone)
 const handle = `mx${randomBytes(3).toString('hex')}`, email = `${handle}@example.com`;
 {
@@ -80,13 +84,18 @@ for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
     const label = `${d.id} · ${a.id}`;
     // (Chat on a computer: not there by design (pigeon/theme.js), and it says so, with the way to a phone)
     if (a.id === 'chat' && !d.mobile && !d.touch) {
-      const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, userAgent: d.ua, locale: 'en-GB' }); const p = await ctx.newPage();
+      const ctx = await (await browser()).newContext({ viewport: { width: d.w, height: d.h }, userAgent: d.ua, locale: 'en-GB' }); const p = await ctx.newPage();
       await p.goto(`${CHAT}/#signin-start`); const says = await p.waitForFunction(() => /isn’t available here/.test(document.body.innerText), null, { timeout: 20000 }).then(() => true, () => false);
       ok(says, `${label} (computer: Chat says it opens on phones and iPads)`); table.push({ d: d.id, a: a.id, ok: says, why: 'not on computers, said so' }); await ctx.close(); continue;
     }
-    const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, screen: { width: d.w, height: d.h }, deviceScaleFactor: 2,
-      isMobile: !!d.mobile, hasTouch: !!(d.mobile || d.touch), userAgent: d.ua, locale: 'en-GB', timezoneId: 'Europe/London' });
-    await dress(ctx, label, { standalone: d.standalone });
+    // (a browser that closed as the context was made: opened again, and tried once more)
+    const make = async () => {
+      const c = await (await browser()).newContext({ viewport: { width: d.w, height: d.h }, screen: { width: d.w, height: d.h }, deviceScaleFactor: 2,
+        isMobile: !!d.mobile, hasTouch: !!(d.mobile || d.touch), userAgent: d.ua, locale: 'en-GB', timezoneId: 'Europe/London' });
+      await dress(c, label, { standalone: d.standalone });
+      return c;
+    };
+    const ctx = await make().catch(() => make());
     // (an iPad says it's a Mac, and its touchscreen five points, as Chat checks; Chromium's touch emulation says one)
     if (d.touch) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5, configurable: true }));
     const p = await ctx.newPage();
@@ -95,7 +104,15 @@ for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
     try {
       await a.start(p, a);
       step = 'sign-in page';
-      await onAccountPage(p, { email });
+      // (the account's page signs in on the sign-in page and comes back to itself, an address the helper takes for still
+      // signing in: filled here instead)
+      if (a.id === 'account') {
+        await p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 30000 });
+        await p.waitForSelector('main .signin input[name=email]', { timeout: 30000 });
+        await p.fill('main .signin input[name=email]', email); await p.fill('main .signin input[name=password]', 'a long test password');
+        await p.click('main .signin form .btn');
+        await p.waitForURL((u) => u.hostname === a.host, { timeout: 45000 });
+      } else await onAccountPage(p, { email });
       step = 'back';
       if (a.id !== 'account') await p.waitForURL((u) => u.hostname === a.host && !/#signin=/.test(u.hash) && (!a.back || a.back(u)), { timeout: 45000 });
       else await p.waitForSelector('main .hero, main .ifh-me', { timeout: 30000 });
@@ -115,7 +132,7 @@ for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
       table.push({ d: d.id, a: a.id, ok: false, why });
       await p.screenshot({ path: `${out}/${d.id}-${a.id}.png` }).catch(() => {});
     }
-    await ctx.close();
+    await ctx.close().catch(() => {});
   }
 }
 console.log('\nMATRIX');

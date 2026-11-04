@@ -10,7 +10,7 @@
 
 import { HttpError } from "./_http.js";
 import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
-import { siteOf, homeSite, appOrigin, hubOrigins, cfOf } from "./_sites.js";
+import { siteOf, homeSite, appsSite, appOrigin, hubOrigins, cfOf } from "./_sites.js";
 export { HttpError };
 
 export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -389,6 +389,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_passkeys ADD COLUMN provider TEXT",
   // (how many times the passkey says it's been used, where it counts: a copy of it would fall behind)
   "ALTER TABLE pg_passkeys ADD COLUMN sign_count INTEGER",
+  // (the site each passkey belongs to: inflite.ai's for one made at an app's address from now on; none, for every one
+  // made before, the home site's: functions/_pigeon.js passkeySites)
+  "ALTER TABLE pg_passkeys ADD COLUMN rp TEXT",
+  // (how signing in is going, in counts only: per London day, each kind's number: functions/_signincount.js)
+  "CREATE TABLE IF NOT EXISTS pg_signin_counts (day INTEGER NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, kind))",
   "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
@@ -895,6 +900,40 @@ export function rpIdFor(request, env) {
   // (PASSKEY_SITE: tests, over plain http, which can't be told about related sites, so their passkeys are the apps' site's)
   return siteOf(h, env) ? env?.PASSKEY_SITE || homeSite(env) : h;
 }
+// The two sites a passkey can belong to, as asked at this address: the home site's (every passkey made before inflite.ai
+// had its own, and the home page's), and inflite.ai's own, for every passkey made at an app's address from now on, so it
+// needs nothing of georgefarrowgreen.com (no related site to ask, which some browsers can't, nor a signal to ask it with).
+// At the home page's address, only the home site's. (PASSKEY_APPS_SITE: tests', as PASSKEY_SITE)
+export function passkeySites(request, env) {
+  const home = rpIdFor(request, env), h = new URL(request.url).hostname;
+  const apps = siteOf(h, env) === "apps" ? env?.PASSKEY_APPS_SITE || env?.PASSKEY_SITE || appsSite(env) : home;
+  return { home, apps };
+}
+// (a new passkey's site, here: inflite.ai's at an app's address)
+export const newRpFor = (request, env) => passkeySites(request, env).apps;
+// (the site a saved passkey belongs to: its own, or, saved before passkeys said, the home site's)
+export const rpOf = (cred, request, env) => cred?.rp || (request ? rpIdFor(request, env) : env?.PASSKEY_SITE || homeSite(env));
+// Which site to ask a passkey of, as a sign-in asks (a browser can ask one site at a time): the one a passkey it names
+// belongs to (id: the one used here last); the one this browser last used one of (rp: "apps" or "home", or rpId); the account's,
+// where it's said (email), if its passkeys are all inflite.ai's; else the home site's, as nearly every passkey is,
+// unless the browser can't use a related site's (ror: false), where only inflite.ai's can work at all
+export async function askRp(env, request, b = {}, user = null) {
+  const s = passkeySites(request, env), D = await db(env);
+  const id = typeof b.id === "string" && /^[A-Za-z0-9_-]{16,1400}$/.test(b.id) ? b.id : null;
+  // (one of the home site's, where the browser can't use a related site's: inflite.ai's instead, as it can't be used)
+  if (id) { const c = await D.prepare("SELECT rp FROM pg_passkeys WHERE id = ?").bind(id).first(); if (c) return rpOf(c, request, env) === s.apps || b.ror === false ? s.apps : s.home; }
+  if (b.rp === "apps" || b.rp === "home") return s[b.rp];
+  if (typeof b.rpId === "string" && (b.rpId === s.apps || b.rpId === s.home)) return b.rpId;
+  let uid = user?.id || null;
+  if (!uid && typeof b.email === "string" && EMAIL_RE.test(b.email.trim())) uid = (await D.prepare("SELECT id FROM pg_users WHERE email = ?").bind(b.email.trim().toLowerCase()).first())?.id || null;
+  if (uid) {
+    const { results } = await D.prepare("SELECT rp FROM pg_passkeys WHERE user_id = ?").bind(uid).all();
+    const rps = new Set(results.map((r) => rpOf(r, request, env)));
+    if (rps.size && (b.ror === false ? rps.has(s.apps) : !rps.has(s.home))) return s.apps;
+    if (rps.size) return s.home;
+  }
+  return b.ror === false ? s.apps : s.home;
+}
 // (and InFlite's hub's origins, exactly: Chat's pages there are this site's too, functions/_sites.js hubOrigins)
 export function originOk(origin, request, env) {
   try {
@@ -934,7 +973,8 @@ export async function checkRegistration(request, env, b, { quiet = false } = {})
   const bad = () => new HttpError(400, "The passkey response didn’t match this site.");
   let ad = null; try { ad = fromB64url(String(b.authenticatorData || "")); } catch (_) {}
   if (!ad || ad.length < 55) throw new HttpError(400, "This browser didn’t say enough about the passkey. Update it and try again.");
-  const rpHash = await sha256(rpIdFor(request, env));
+  // (made for the site a new one's made for here: newRpFor, as its options said)
+  const rpHash = await sha256(newRpFor(request, env));
   for (let i = 0; i < 32; i++) if (ad[i] !== rpHash[i]) throw bad();
   if ((!quiet && (!(ad[32] & 0x01) || !(ad[32] & 0x04))) || !(ad[32] & 0x40)) throw bad();     // present, verified, and the key in it
   const n = (ad[53] << 8) | ad[54];
@@ -967,7 +1007,10 @@ function cbor(u8, at) {
 }
 export async function verifyAssertion(cred, request, b, env) {
   const authData = fromB64url(b.authenticatorData);
-  const rpHash = await sha256(rpIdFor(request, env));
+  // (for the site this passkey belongs to, and only one of the two this address may ask: passkeySites)
+  const rp = rpOf(cred, request, env), s = passkeySites(request, env);
+  if (rp !== s.home && rp !== s.apps) return false;
+  const rpHash = await sha256(rp);
   for (let i = 0; i < 32; i++) if (authData[i] !== rpHash[i]) return false;
   if (!(authData[32] & 0x01)) return false;                     // user present
   if (!(authData[32] & 0x04)) return false;                     // and verified (Face ID, Touch ID or the phone's passcode)

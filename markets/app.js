@@ -809,8 +809,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.05";
-const NEWS = "Signing in on a computer at inflite.ai works: it no longer goes through Chat, which only opens on phones and iPads";
+const BUILD = "2.06";
+const NEWS = "Signing in from a browser comes straight back: no code to swap, the sign-in's already shared";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -2851,7 +2851,8 @@ async function toAccountSignIn(e, mode = "signin") {
   try {
     const { word, ask } = await A.signInWord();
     store.set("signin", { word, at: Date.now() });
-    location.assign(`${page}#${new URLSearchParams({ [mode]: "markets", ask, back: `${location.origin}/` })}`);
+    // (in a browser's tab, the sign-in's shared: straight back, nothing to swap (jar=shared); a Home Screen app, a code)
+    location.assign(`${page}#${new URLSearchParams({ [mode]: "markets", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) })}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 // Back from signing in: its code swapped for the sign-in. → { m (the account, as GET me gives it) } or, where it
@@ -2859,6 +2860,11 @@ async function toAccountSignIn(e, mode = "signin") {
 async function signedBack(code) {
   const k = store.get("signin");
   store.del("signin");
+  // (back in this tab, which shares the sign-in just made: the account, as GET me gives it)
+  if (code === "shared") {
+    try { const m = await A.me(); return m?.signedIn ? { m } : { why: "That sign-in didn’t reach Markets. Sign in again here." }; }
+    catch (e) { return { why: e.message }; }
+  }
   if (!k || Date.now() - k.at > 30 * 60e3) { A.handback(code, "").catch(() => {}); return { why: "That sign-in was started somewhere else. Sign in again here." }; }
   try { return { m: await A.handback(code, k.word) }; }
   catch (e) { return { why: e.message }; }
@@ -3021,7 +3027,7 @@ async function start() {
   if (Date.now() - (store.get("signin")?.at || Date.now()) > 30 * 60e3) store.del("signin");
   // (at InFlite's hub, notifications are allowed in You, never here)
   const askNotify = !IFL.hub.on && IFL.wantsAllow();
-  const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  const code = /^#signin=([A-Za-z0-9_-]{20,64}|shared)(?:&|$)/.exec(location.hash)?.[1];
   const asked = code ? null : sectionOf(location.hash);
   if (code) history.replaceState(null, "", location.pathname);
   // (just updated: the tab you were on, how far down, and on the desk what was on it; a tab asked for by the address

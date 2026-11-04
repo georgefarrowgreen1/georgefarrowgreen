@@ -123,7 +123,7 @@ export async function requestReset(env, request, email, later, send) {
 export async function checkReset(env, request, token) {
   await limit(env, "resetcheck:" + clientIp(request), 30, 15 * 60e3);
   const { reset, user: u } = await findReset(env, token);
-  const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
+  const { results } = await (await db(env)).prepare("SELECT id, vault, rp FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
   for (const r of results) r.vault = await openVault(env, u.id, r.vault);
   return { name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset) : null };
 }

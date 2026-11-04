@@ -1279,8 +1279,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.89";
-const NEWS = "Signing in on a computer at inflite.ai works: it no longer goes through Chat, which only opens on phones and iPads";
+const BUILD = "1.90";
+const NEWS = "Signing in from a browser comes straight back: no code to swap, the sign-in's already shared";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2404,7 +2404,8 @@ async function toAccountSignIn(e, mode = "signin") {
     localStorage.setItem("fitness:signin", JSON.stringify({ word, at: Date.now() }));
     // (the account page's sky coming in over this one first, so going there is one sky, not a jump)
     await handOff();
-    location.assign(`${page}#${new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/` })}`);
+    // (in a browser's tab, the sign-in's shared: straight back, nothing to swap (jar=shared); a Home Screen app, a code)
+    location.assign(`${page}#${new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) })}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 
@@ -2490,6 +2491,11 @@ function dusk() {
 async function signedBack(code) {
   let k = null;
   try { k = JSON.parse(localStorage.getItem("fitness:signin") || "null"); localStorage.removeItem("fitness:signin"); } catch (_) {}
+  // (back in this tab, which shares the sign-in just made: the account, as GET me gives it)
+  if (code === "shared") {
+    try { const m = await A.me(); if (!m?.signedIn) throw new Error("That sign-in didn’t reach Fitness. Sign in again here."); toast(`Signed in as ${String(m.name).trim().split(/\s+/)[0]}`); return m; }
+    catch (e) { toast(e.message, true); return null; }
+  }
   if (!k || Date.now() - k.at > 30 * 60e3) { A.handback(code, "").catch(() => {}); toast("That sign-in was started somewhere else. Sign in again here.", true); return null; }
   try { const m = await A.handback(code, k.word); toast(`Signed in as ${String(m.name).trim().split(/\s+/)[0]}`); return m; }
   catch (e) { toast(e.message, true); return null; }
@@ -2763,7 +2769,7 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
 // ---- starting ----
 (async () => {
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const code = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  const code = /^#signin=([A-Za-z0-9_-]{20,64}|shared)(?:&|$)/.exec(location.hash)?.[1];
   if (code) history.replaceState(null, "", location.pathname + location.search);
   // (its sky and you, over Fitness till you're in: theme.js put them up for the first frame, this carries them on)
   const arv = code || document.documentElement.classList.contains("arriving") ? arriving() : null;

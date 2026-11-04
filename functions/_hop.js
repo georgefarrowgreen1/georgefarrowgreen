@@ -17,6 +17,7 @@
 import { HttpError, db, sha256, hex, randomToken, issueSession } from "./_pigeon.js";
 import { cookieUser, withSession } from "./_account.js";
 import { siteOf, appOrigin, homeOrigin, APP_NAMES, appsSite, homeSite, oldApp } from "./_sites.js";
+import { count } from "./_signincount.js";
 
 const NOTE = "hop", TTL = 2 * 60e3;
 // (made here when it's first wanted)
@@ -90,7 +91,7 @@ export async function hop(request, env, step) {
     // (the code's gone once it's tried, whether it's taken or not)
     const D = await ready(env);
     const row = await D.prepare("DELETE FROM pg_hops WHERE hash = ? RETURNING *").bind(hex(await sha256(code))).first();
-    if (!row || !note || row.expires_at < Date.now() || row.note !== hex(await sha256(note))) return go(to, clear);
+    if (!row || !note || row.expires_at < Date.now() || row.note !== hex(await sha256(note))) { await count(env, "hop-failed"); return go(to, clear); }
     // (the account it came from, still there and not being deleted, and the sign-in it came from still on: one signed
     // out, or ended by a new password, in the moments since, carries nothing)
     const ok = await D.prepare("SELECT 1 FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ? AND s.user_id = ? AND u.delete_at IS NULL").bind(row.session, row.user_id).first();

@@ -300,6 +300,18 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const i = h("i"); i.style.width = `${of ? Math.max(n ? 2 : 0, (n / of) * 100) : 0}%`; i.style.setProperty("--j", j);
     return h("div.adm-meter", {}, h("span.ml", { text: label }), h("span.mbar", { "aria-hidden": "true" }, i), h("span.mv", { text: val ?? `${num(n)} · ${pct(n, of)}%` }));
   }
+  // Signing in, in counts only (functions/_signincount.js): each day's made and refused, and what went wrong, by kind
+  const SIGNIN_SAID = { "bad-password": "Wrong password", "bad-passkey": "Passkey refused", "handback-failed": "Code back to an app no good",
+    "hop-failed": "Carried to the home page, no good", "passkey-cancelled": "Passkey cancelled or none found", "passkey-unusable": "Passkey couldn’t be used here",
+    offline: "Offline", "no-wasm": "No WebAssembly (Lockdown Mode)", error: "Something else went wrong" };
+  function signinPart(si, grow, g) {
+    if (!si) return [];
+    const add = (ks) => (si[ks[0]] || []).map((_, i) => ks.reduce((n, k) => n + (si[k]?.[i] || 0), 0));
+    const made = add(["ok-password", "ok-passkey", "ok-qr"]), bad = Object.keys(SIGNIN_SAID);
+    const tot = (k) => (si[k] || []).reduce((a, b) => a + b, 0), wrong = bad.map((k) => [SIGNIN_SAID[k], tot(k)]).filter(([, n]) => n), wrongN = wrong.reduce((a, [, n]) => a + n, 0);
+    return [h("h4.app-k", { text: "Signing in" }), admBars("Signed in", made, grow), admBars("Went wrong", add(bad), grow),
+      wrong.length ? h("div.group.adm-meters" + g, {}, wrong.sort((a, b) => b[1] - a[1]).map(([l, n], j) => admMeter(l, n, wrongN, null, j))) : h("div.group", {}, h("div.empty", { text: "Nothing’s gone wrong signing in." }))];
+  }
   function admInsightsView() {
     const x = admAsk("insights");
     if (!x) return { title: "Insights", body: [admWait("insights")] };
@@ -324,6 +336,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("h4.app-k", { text: `Accounts · ${num(P.total)}` }),
       meters([["Have a friend", U.friends], ["In a group", U.groups], ["Notifications on", U.push], ["Email confirmed", U.email], ["Passkey", U.passkey],
         ["Named pigeons", U.birds], ["Pigeon Death on", U.risky], ["Approximate location", U.approx], ["Living in space", U.space]], P.total),
+      ...signinPart(x.signin, grow, g),
       h("h4.app-k", { text: "Landing on time" }),
       h("div.group", {}, admInfo("In the air now", num(H.flying)), admInfo("Landed today", num(H.landed)), admInfo("Lost to Pigeon Death today", num(H.lost)),
         admInfo("Landings not told yet", H.late ? num(H.late) : "None", !!H.late)),

@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.77";
-export const NEWS = "Signing in on a computer at inflite.ai: no longer stuck on Chat's page; and Chat's lock and password say plainly what they need";
+export const BUILD = "1.78";
+export const NEWS = "A new passkey belongs to inflite.ai itself: Chat's lock opens with no signal";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

@@ -2,7 +2,7 @@ import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -338,8 +338,9 @@ async function getAvatar({ request, env }, id) {
 
 /* ---------------- passkeys ---------------- */
 async function passkeyOptions({ request, env }) {
-  const b = await body(request), rpId = rpIdFor(request, env);
+  const b = await body(request);
   if (b.mode === "register") {
+    const rpId = newRpFor(request, env);
     const u = await requireUser(request, env);
     requireFresh(u);
     const { results } = await (await db(env)).prepare("SELECT id FROM pg_passkeys WHERE user_id = ?").bind(u.id).all();
@@ -348,7 +349,9 @@ async function passkeyOptions({ request, env }) {
       exclude: results.map((r) => r.id) });
   }
   await limit(env, "pkopt:" + clientIp(request), 60, 15 * 60e3);
-  return json({ challenge: await newChallenge(env, "login"), rpId });
+  // (which site's passkey to ask for: the one Chat says this phone's is, or as askRp has it)
+  const user = await requireUser(request, env).catch(() => null);
+  return json({ challenge: await newChallenge(env, "login"), rpId: await askRp(env, request, b, user) });
 }
 
 async function passkeyRegister({ request, env, waitUntil }) {
@@ -361,8 +364,8 @@ async function passkeyRegister({ request, env, waitUntil }) {
   const count = await checkRegistration(request, env, b);
   const D = await db(env), provider = providerOf(b.authenticatorData);
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now(), count).run();
+  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count, rp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now(), count, newRpFor(request, env)).run();
   waitUntil(logEvent(env, u.id, "passkey-add", request, provider || String(b.label || "Passkey").slice(0, 40)));
   waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), request).catch(() => {}));
   return json({ ok: true });
@@ -810,7 +813,7 @@ async function sync({ request, env }) {
     // (one whose words have disappeared isn't waiting: with read receipts off, that can be before it's read)
     D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL AND gone_at IS NULL GROUP BY sender").bind(u.id, t),
     D.prepare("SELECT a, b, ms, by, at FROM pg_vanish WHERE (a = ?1 OR b = ?1) AND ms > 0").bind(u.id),
-    D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id),
+    D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks, rp FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id),
     D.prepare("SELECT * FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(u.id),
     D.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM pg_feathers WHERE user_id = ?").bind(u.id),
     ...birdQs(D, u.id),
@@ -872,7 +875,7 @@ async function sync({ request, env }) {
   const groups = groupsFrom(res.slice(11, 11 + GROUP_QS), u, t);
   return json({ now: t, me: await meOf(D, u, t), feathers: bal.n, friends, groups, incoming, outgoing, blocked,
     birds: await birdsFrom(D, u.id, t, [birdRows, flightRows]), emailOn: emailReady(env), gifsOn: gifsReady(env),
-    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })),
+    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks, rp: rpOf(p, request, env) })),
     // Today First: what's holding your notifications, your times agreed with friends and your rides planned with one (ids
     // and times only)
     hold: holdOf(await busyP, prefsOf(u), t), times: timeRows.map(timeOut), rides: rideRows.map(rideOut) },

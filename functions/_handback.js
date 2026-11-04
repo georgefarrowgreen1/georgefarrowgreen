@@ -12,6 +12,7 @@
 // the key's opened with it, a code for Chat is made only for a sign-in that's just shown it's you (requireFresh).
 
 import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, safeEqual } from "./_pigeon.js";
+import { count } from "./_signincount.js";
 
 const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness", "markets", "mail", "today"]);
 const WORD = /^[A-Za-z0-9_-]{43}$/, CODE = /^[A-Za-z0-9_-]{20,64}$/;
@@ -50,9 +51,9 @@ export async function takeHandback(env, request, app, b, { limitKey, max = 30 } 
   const code = String(b.code || ""), verifier = String(b.verifier || ""), D = await db(env), t = Date.now();
   const row = CODE.test(code) && await D.prepare("DELETE FROM pg_handback WHERE hash = ? RETURNING *").bind(hex(await sha256(code))).first();
   const word = WORD.test(verifier) ? b64url(await sha256(verifier)) : "";
-  if (!row || row.expires < t || row.app !== app || !word || !safeEqual(word, row.ask)) throw new HttpError(400, "That sign-in has run out. Sign in again.", "handback");
+  if (!row || row.expires < t || row.app !== app || !word || !safeEqual(word, row.ask)) { await count(env, "handback-failed"); throw new HttpError(400, "That sign-in has run out. Sign in again.", "handback"); }
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
   const from = u && !u.delete_at && await D.prepare("SELECT site_hash, auth_at FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, u.id).first();
-  if (!from) throw new HttpError(400, "That sign-in has ended. Sign in again.", "handback");
+  if (!from) { await count(env, "handback-failed"); throw new HttpError(400, "That sign-in has ended. Sign in again.", "handback"); }
   return { row, u, siteHash: from.site_hash || null, authAt: from.auth_at || 0 };
 }

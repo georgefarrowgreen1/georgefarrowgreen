@@ -4,8 +4,9 @@
 // functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
 // address (sameOrigin). view(env, u): the account as that page shows it.
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
+import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, askRp, limit, clientIp, hex, sha256, readCapped } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
+import { count, SAID } from "./_signincount.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
 import { qrStart, qrWait, qrTake, qrRefuse, qrLook, qrAnswer } from "./_qrsign.js";
 import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
@@ -44,18 +45,34 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
     "POST signin/password": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
       const b = await body(request);
-      return started(request, env, waitUntil, await passwordUser(env, request, b, { deleting }), "Password", b.app);
+      // (counted, in numbers only, whichever way it goes: functions/_signincount.js)
+      const u = await passwordUser(env, request, b, { deleting }).catch((e) => { if (e?.status === 401) waitUntil(count(env, "bad-password")); throw e; });
+      waitUntil(count(env, "ok-password"));
+      return started(request, env, waitUntil, u, "Password", b.app);
     },
     "POST signin/options": async ({ request, env }) => {
       sameOrigin(request);
       // (asked for as each sign-in card's drawn, for a passkey offered in the keyboard, as well as by the passkey button)
       await limit(env, "pkopt:" + clientIp(request), 150, 15 * 60e3);
-      return json({ challenge: await newChallenge(env, "login"), rpId: rpIdFor(request, env) });
+      // (which site's passkey to ask for, from what the page says it knows: askRp)
+      // (signed in, as when it's to show it's you: the account's own passkeys say)
+      const b = await body(request, 4096).catch(() => ({})), user = await cookieUser(request, env).catch(() => null);
+      return json({ challenge: await newChallenge(env, "login"), rpId: await askRp(env, request, b, user) });
     },
     "POST signin/passkey": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
       const b = await body(request);
-      return started(request, env, waitUntil, (await passkeyUser(env, request, b, { deleting })).u, "Passkey", b.app);
+      const { u } = await passkeyUser(env, request, b, { deleting }).catch((e) => { if (e?.status === 401 || e?.status === 400) waitUntil(count(env, "bad-passkey")); throw e; });
+      waitUntil(count(env, "ok-passkey"));
+      return started(request, env, waitUntil, u, "Passkey", b.app);
+    },
+    // (what the sign-in page saw go wrong in the browser, as one of a few words: counted, nothing else kept)
+    "POST signin/said": async ({ request, env, waitUntil }) => {
+      sameOrigin(request);
+      await limit(env, "said:" + clientIp(request), 30, 15 * 60e3);
+      const k = String((await body(request, 512).catch(() => ({}))).kind || "");
+      if (SAID.includes(k)) waitUntil(count(env, k));
+      return json({ ok: true });
     },
     // signing in on a computer with your phone (functions/_qrsign.js): the computer's QR code, its asking after it till a
     // phone's said yes, and then, once it's said whose account that is is right, its sign-in (though not as having just
@@ -66,6 +83,7 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
     "POST signin/qr/take": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
       const b = await body(request), r = await qrTake(env, request, b);
+      if (r.u) waitUntil(count(env, "ok-qr"));
       return r.u ? started(request, env, waitUntil, r.u, `QR code, from ${r.phone || "your phone"}`, b.app, 0) : json(r);
     },
     // (and the phone that scanned it, signed in: the computer that's asking, then yes with its number, or no)

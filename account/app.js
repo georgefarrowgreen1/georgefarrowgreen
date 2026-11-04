@@ -819,8 +819,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.80";
-const NEWS = "Signing in from georgefarrowgreen.com comes back quicker and never sends your photo in an address";
+const BUILD = "1.81";
+const NEWS = "New passkeys belong to inflite.ai itself, so they work in every browser (Firefox too) and with no signal; the ones you have keep working";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -902,7 +902,10 @@ const SIGN_FOR = (() => {
   }
   history.replaceState(null, "", location.pathname + location.search);
   const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
-  const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now() };
+  const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now(),
+    // (an app in a browser's tab, which shares this page's sign-in: straight back, nothing to swap. Weather, Fitness and
+    // Markets only; Chat needs its key handed over, and Mail and Today make their own trips)
+    shared: p.get("jar") === "shared" && ["weather", "fitness", "markets"].includes(m[2]) };
   // (an app asks with its word, and Chat with its key as well: without them, it didn't come from the app; and one
   // kept from before is dropped, as arriving any other way drops it)
   if ((a.app !== "home" && !a.ask) || (a.app === "inflight" && !a.seal)) {
@@ -1085,13 +1088,26 @@ async function call(path, { method = "GET", body, type } = {}) {
   return j;
 }
 const post = (path, body = {}) => call(path, { method: "POST", body });
-// (the site's passkeys are its home site's, used on inflite.ai through Related Origin Requests: a browser without them
-// can't use one here at all, so none's offered, and the password is the way in. Where the browser says, its word;
+// (what went wrong signing in, as one of a few words, for the site's counts of how signing in is going: nothing else
+// goes with it, and it's never waited on: functions/_signincount.js)
+function told(kind) { try { fetch(`${API}/signin/said`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }), keepalive: true, credentials: "same-origin" }).catch(() => {}); } catch (_) {} }
+// (the passkeys made before inflite.ai had its own are its home site's, used here through Related Origin Requests: a
+// browser without them can use only inflite.ai's own here (askRp is told so: ror). Where the browser says, its word;
 // where it doesn't, Firefox (its own engine, not Firefox on an iPhone, which is Safari's) is the one that hasn't them)
 const ELSEWHERE = /(^|\.)inflite\.ai$/.test(location.hostname);
 let related = !ELSEWHERE || !/\bFirefox\//.test(navigator.userAgent);
 try { PublicKeyCredential.getClientCapabilities?.().then((c) => { if (ELSEWHERE && c && "relatedOrigins" in c) related = !!c.relatedOrigins; }, () => {}); } catch (_) {}
-const passkeysWork = () => related && !!(window.PublicKeyCredential && navigator.credentials?.get);
+const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials?.get);
+// (inflite.ai's own passkeys' site, here: the address's own site)
+const APPS_RP = ELSEWHERE ? location.hostname.split(".").slice(-2).join(".") : null;
+// Which site's passkey to ask for: a passkey made on inflite.ai is its own from now on, every one before is
+// georgefarrowgreen.com's, and a browser asks one site at a time. So the server's told what this browser knows (the
+// passkey it used here last, the site of the one it used or made here last, and whether it can use a related site's at
+// all) and says which (functions/_pigeon.js askRp); and only the passkeys of that site are named in what's asked
+const RP_KEY = "acct:rp";
+const rpAsk = (id) => { let rpId = null; try { rpId = localStorage.getItem(RP_KEY); } catch (_) {} return { ...(id ? { id } : {}), ...(rpId ? { rpId } : {}), ror: related }; };
+const usedRp = (rpId) => { try { if (rpId) localStorage.setItem(RP_KEY, rpId); } catch (_) {} };
+const ofRp = (list, rpId) => (list || []).filter((p) => !p.rp || p.rp === rpId).map((p) => ({ type: "public-key", id: fromB64url(p.id) }));
 // The passkeys a password manager keeps for this account, told which the account still has, and the name and email to
 // show on them (the WebAuthn Signal API, where the browser has it): so one taken off the account here stops being
 // offered there, and a new name or email shows on the rest. (RP: the site's passkeys are for, once it's been said.)
@@ -1099,9 +1115,12 @@ let RP = null;
 async function signalPasskeys(m) {
   if (!m?.signedIn || !m.id || !Array.isArray(m.passkeys) || !window.PublicKeyCredential?.signalAllAcceptedCredentials) return;
   try {
-    const rpId = RP ||= (await post("signin/options")).rpId, userId = b64url(new TextEncoder().encode(m.id));
-    await PublicKeyCredential.signalAllAcceptedCredentials({ rpId, userId, allAcceptedCredentialIds: m.passkeys.map((p) => p.id) });
-    await PublicKeyCredential.signalCurrentUserDetails?.({ rpId, userId, name: m.email, displayName: m.name });
+    const userId = b64url(new TextEncoder().encode(m.id)), home = RP ||= (await post("signin/options", rpAsk())).rpId;
+    // (each site's own: a password manager keeps each site's passkeys apart)
+    for (const rpId of new Set([home, ...m.passkeys.map((p) => p.rp).filter(Boolean)])) {
+      await PublicKeyCredential.signalAllAcceptedCredentials({ rpId, userId, allAcceptedCredentialIds: m.passkeys.filter((p) => (p.rp || home) === rpId).map((p) => p.id) });
+      await PublicKeyCredential.signalCurrentUserDetails?.({ rpId, userId, name: m.email, displayName: m.name });
+    }
   } catch (_) {}
 }
 // (a passkey the account doesn't have any more, used to sign in: its password manager told, so it stops offering it)
@@ -1120,7 +1139,7 @@ async function startAutofill(field, picked) {
   try { if (!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return; } catch (_) { return; }
   const ac = new AbortController(); autofill = ac;
   try {
-    const o = await post("signin/options"); RP = o.rpId;
+    const o = await post("signin/options", rpAsk()); RP = o.rpId;
     if (ac.signal.aborted || !field.isConnected) return;
     // (its challenge lasts 5 minutes, and a keyboard's ask has no end: asked for anew before then, while the page is in
     // sight, else on coming back to it)
@@ -2189,11 +2208,12 @@ function unlockCard(m, said) {
     const b = e.currentTarget; say(said, "");
     try {
       const way = await working(b, "Waiting for your passkey", async () => {
-        const o = await post("signin/options");
+        const o = await post("signin/options", rpAsk());
         let a;
         try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
-          allowCredentials: pks.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
+          allowCredentials: ofRp(pks, o.rpId), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
         catch (_) { throw new Error("No passkey was used."); }
+        usedRp(o.rpId);
         await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
           authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
         return { prf: prfOf(a), id: a.id };
@@ -2223,6 +2243,8 @@ async function handBack(m, way, btn) {
   if (a.app === "mail" && !m.fresh) { if (!(await shownHere())) return; m.fresh = true; }
   // (the home page: back, saying it's from signing in, so it greets you)
   if (a.app === "home") { const face = await leaving(btn, m); return leaveFor(homeVia(`${a.back}#signedin${faceHint(m, face)}`, true)); }
+  // (an app in a tab that shares this sign-in: back, saying so, with the picture this page ends on; no code to swap)
+  if (a.shared) { const face = await leaving(btn, m); return leaveFor(`${a.back}#signin=shared${faceHint(m, face)}`); }
   const go = async () => {
     const key = a.app === "inflight" ? await keyFor(m, way) : {};
     if (!key) throw Object.assign(new Error(""), { more: true });
@@ -2304,7 +2326,7 @@ function signinCard() {
 // You, signed in here before: your passkey first, if that's how you did (the password a tap away), or your password, your
 // email known (a passkey offered in its keyboard too, and a button for one)
 function rememberedCard(l) {
-  const said = h("p.said", { role: "alert" }), can = passkeysWork(), byKey = can && l.way === "passkey";
+  const said = h("p.said", { role: "alert" }), can = passkeysWork(), byKey = can && l.way === "passkey" && (related || l.rp === APPS_RP);
   const pw = h("input", { type: "password", name: "password", autocomplete: "current-password webauthn", required: true, onfocus: () => { warmUp(); saltSoon(l.email); } });
   const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(l.email, null, pw, go, said); } },
@@ -2610,7 +2632,7 @@ async function resetCheck(again) {
   const R = S.reset, was = R.error;
   R.error = null; R.away = false;
   // (no signal, or the server not answering, isn't the link's fault: said so, with Try again, not "get a new one")
-  try { R.info = await post("reset/check", { token: R.token }); } catch (e) { R.error = e.message; R.away = !!e.offline || e.status >= 500; }
+  try { R.info = await post("reset/check", { token: R.token, ror: related }); } catch (e) { R.error = e.message; R.away = !!e.offline || e.status >= 500; }
   if (again && R.away && R.error === was) return;
   anew(() => { S.settled = false; render(); });
 }
@@ -2639,7 +2661,7 @@ function resetPage(r) {
         if (mode === "keep") {
           let a;
           try { a = await passkeyAsk({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: info.rpId, userVerification: "required", timeout: 120000,
-            allowCredentials: info.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
+            allowCredentials: ofRp(info.passkeys, info.rpId), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
           catch (_) { throw new Error("No passkey was used. You can start fresh instead."); }
           const res = a?.getClientExtensionResults?.().prf?.results?.first, pk = a && info.passkeys.find((p) => p.id === a.id);
           if (!res || !pk) throw new Error("That passkey couldn’t unlock your key here. You can start fresh instead.");
@@ -2676,14 +2698,15 @@ function resetPage(r) {
 // → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for Chat (where it sent you here: what
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
 async function signInWithPasskey(only) {
-  const o = await post("signin/options"), inflight = S.signFor?.app === "inflight";
+  const o = await post("signin/options", rpAsk(only)), inflight = S.signFor?.app === "inflight";
   RP = o.rpId;
   let a;
   try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
     allowCredentials: only ? [{ type: "public-key", id: fromB64url(only) }] : undefined,
     extensions: inflight ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } }); }
-  catch (e) { throw new Error(e?.name === "NotAllowedError" ? "No passkey was used." : "Your passkey couldn’t be used here."); }
+  catch (e) { told(e?.name === "NotAllowedError" ? "passkey-cancelled" : "passkey-unusable"); throw new Error(e?.name === "NotAllowedError" ? "No passkey was used." : "Your passkey couldn’t be used here."); }
   if (!a) throw new Error("No passkey was used.");
+  usedRp(o.rpId);
   return passkeySignedIn(o, a);
 }
 async function passkeySignedIn(o, a) {
@@ -2740,14 +2763,15 @@ async function withPassword(email, emailIn, pw, go, said) {
         patch(); toast("Passkey saved. Next time, just a glance.", false, 4000);
       });
     }
-  } catch (err) { say(said, err.message, err.field === "email" ? emailIn : pw); }
+  } catch (err) { if (err.noWasm) told("no-wasm"); else if (err.offline) told("offline"); say(said, err.message, err.field === "email" ? emailIn : pw); }
 }
 // Who signed in here last (in this browser only): their name, handle and email, and how (with a passkey: which), so that
 // coming back is a tap. Forgotten with Not you? (Forget, once you've signed out here)
 const LAST = "acct:last";
 function lastHere() { try { const l = JSON.parse(localStorage.getItem(LAST) || "null"); return l?.email && l.name ? l : null; } catch (_) { return null; } }
 function remember(m, way, id) {
-  try { localStorage.setItem(LAST, JSON.stringify({ name: m.name, handle: m.handle, email: m.email, way, id: way === "passkey" ? id : undefined })); } catch (_) {}
+  let rp; try { rp = localStorage.getItem(RP_KEY) || undefined; } catch (_) {}
+  try { localStorage.setItem(LAST, JSON.stringify({ name: m.name, handle: m.handle, email: m.email, way, id: way === "passkey" ? id : undefined, rp: way === "passkey" ? rp : undefined })); } catch (_) {}
 }
 function forget() { try { localStorage.removeItem(LAST); } catch (_) {} }
 // Signed in with a password, for an app, on a device that can make a passkey, with none yet: one offered before going
@@ -3361,11 +3385,12 @@ function confirmWays(ok) {
     say(said, "");
     try {
       await busy(e.currentTarget, "Waiting for your passkey…", async () => {
-        const o = await post("signin/options");
+        const o = await post("signin/options", rpAsk());
         let a;
         try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
-          allowCredentials: m.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } }); }
+          allowCredentials: ofRp(m.passkeys, o.rpId) } }); }
         catch (_) { throw new Error("No passkey was used."); }
+        usedRp(o.rpId);
         await post("reauth", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
           authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
       });
@@ -3596,7 +3621,7 @@ function passkeyView(id) {
     !p.messages && passkeysWork() && h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
       try {
-        const secret = await busy(b, "Waiting for your passkey…", async () => prfByUse(p.id, (await post("signin/options")).rpId));
+        const secret = await busy(b, "Waiting for your passkey…", async () => prfByUse(p.id, p.rp || (await post("signin/options", rpAsk(p.id))).rpId));
         if (secret) pushSheet(() => keyCopyView(id, secret));
         else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
       } catch (err) { say(said, err.message); }
@@ -3631,6 +3656,7 @@ async function savePasskey(o, cred, quiet = false) {
   // (the authenticator data says where it's saved: iCloud Keychain, Google Password Manager…)
   S.me = await post("passkeys", { challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(r.clientDataJSON),
     authenticatorData: r.getAuthenticatorData ? b64url(r.getAuthenticatorData()) : undefined, quiet: quiet || undefined });
+  usedRp(o.rpId);
   // (its PRF secret, for its own copy of the messages' key: given as it's made, or, by some devices, only once it's used;
   // not asked for then for one made by itself, which would mean asking after all)
   const secret = prfOf(cred) || (!quiet && cred.getClientExtensionResults?.().prf?.enabled ? await prfByUse(cred.id, o.rpId) : null);

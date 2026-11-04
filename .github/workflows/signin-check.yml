@@ -1,0 +1,57 @@
+# Every night, signing in on the real site, from each app, on a phone and a computer (.tools/tests/live/signincheck.mjs),
+# with an account kept for it: its email and password are the repository's secrets SIGNIN_CHECK_EMAIL and
+# SIGNIN_CHECK_PASSWORD (Settings, Secrets and variables, Actions). Without them it says so and does nothing. A run where
+# any sign-in didn't work fails, so GitHub tells the repository's owner, with a screenshot of each in its artifacts.
+# Run it by hand from the Actions tab too (another site, say the staging copy, as SITE).
+name: Sign-in check
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      site:
+        description: "The site to check"
+        default: "https://inflite.ai"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signin-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: A browser
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Sign in, from every app, on a phone and a computer
+        env:
+          SITE: ${{ inputs.site || 'https://inflite.ai' }}
+          CHECK_EMAIL: ${{ secrets.SIGNIN_CHECK_EMAIL }}
+          CHECK_PASSWORD: ${{ secrets.SIGNIN_CHECK_PASSWORD }}
+        run: |
+          if [ -z "$CHECK_EMAIL" ] || [ -z "$CHECK_PASSWORD" ]; then
+            echo "No SIGNIN_CHECK_EMAIL / SIGNIN_CHECK_PASSWORD secrets yet: nothing checked." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node .tools/tests/live/signincheck.mjs signin-check | tee out.txt
+          code=${PIPESTATUS[0]}
+          { echo '```'; cat out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: Screenshots of any that didn't work
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signin-check
+          path: signin-check/
+          if-no-files-found: ignore

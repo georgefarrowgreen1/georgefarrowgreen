@@ -906,7 +906,7 @@ const savePlaces = () => { sayIfFull(keepSafe("wx:places", S.places) && keepSafe
 /* ---------- start ---------- */
 async function start() {
   // back from signing in on the account's page, with the code it handed back (taken out of the address at once)
-  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64})(?:&|$)/.exec(location.hash)?.[1];
+  const signedIn = /^#signin=([A-Za-z0-9_-]{20,64}|shared)(?:&|$)/.exec(location.hash)?.[1];
   if (signedIn) history.replaceState(null, "", location.pathname + location.search);
   // (and the picture the account's page ended on, there since the first frame, taken on: early.js, arriveFrom; with no
   // code that could be one, done with at once)
@@ -3396,8 +3396,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.79";
-const NEWS = "Signing in on a computer at inflite.ai works: it no longer goes through Chat, which only opens on phones and iPads";
+const BUILD = "1.80";
+const NEWS = "Signing in from a browser comes straight back: no code to swap, the sign-in's already shared";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3493,7 +3493,9 @@ async function toAccountSignIn(e) {
     const { word, ask } = await A.signInWord();
     localStorage.setItem("wx:signin", JSON.stringify({ word, at: Date.now() }));
     await away.done;
-    const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/` });
+    // (in a browser's tab, the site's sign-in is this one's too: the account's page comes straight back, nothing to swap
+    // (jar=shared). A Home Screen app keeps its own cookies, so it's handed a code to swap for one of its own, as ever)
+    const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) });
     location.assign(`${page}#${q}`);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") away.undo(); }, 10e3);
@@ -3506,6 +3508,18 @@ async function toAccountSignIn(e) {
 async function signedBack(code) {
   let k = null;
   try { k = JSON.parse(localStorage.getItem("wx:signin") || "null"); localStorage.removeItem("wx:signin"); } catch (_) {}
+  // (back in this tab, which shares the sign-in the page just made: the account, as it's asked for any time)
+  if (code === "shared") {
+    pulledAt = Date.now();
+    try {
+      const r = await A.me();
+      if (!r?.signedIn) throw new Error("That sign-in didn’t reach Weather. Sign in again here.");
+      const adopted = adopt(r, true), landed = arrival ? welcome(arrival, r) : null;
+      await Promise.all([adopted, landed]);
+      toast(`Signed in as ${String(r.name).trim().split(/\s+/)[0]}.`);
+    } catch (e) { arriveEnd(arrival, true); toast(e.message); pull(); }
+    return;
+  }
   if (!k || Date.now() - k.at > 30 * 60e3) {
     arriveEnd(arrival, true);
     A.handback(code, "").catch(() => {}); pull();

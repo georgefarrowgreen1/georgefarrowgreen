@@ -859,8 +859,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.77";            // shown in InFlite's menu
-const APP_NEWS = "Signing in on a computer at inflite.ai: no longer stuck on Chat's page; and Chat's lock and password say plainly what they need";       // (said once it's in)
+const APP_VERSION = "1.78";            // shown in InFlite's menu
+const APP_NEWS = "A new passkey belongs to inflite.ai itself: Chat's lock opens with no signal";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -954,6 +954,17 @@ const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
 // passkeys belong to georgefarrowgreen.com, which lets Chat's address on inflite.ai use them (as the server has it: rpIdFor)
 const RP_ID = /(^|\.)(georgefarrowgreen\.com|inflite\.ai)$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
+// (and from now on, a passkey made at Chat's address on inflite.ai is inflite.ai's own, needing nothing of the home site,
+// with or without a signal: each saved passkey says whose it is (rp). The one this phone made or used last is noted, so
+// its lock and "it's you" ask that site's, and name only that site's passkeys: a browser asks one site at a time)
+const RP_NOTE = "inflight-rp";
+function chatRp() {
+  try { const r = localStorage.getItem(RP_NOTE); if (r) return r; } catch (_) {}
+  const rps = new Set((S.passkeys || []).map((p) => p.rp || RP_ID));
+  return rps.size === 1 ? [...rps][0] : RP_ID;
+}
+const noteRp = (rp) => { try { if (rp) localStorage.setItem(RP_NOTE, rp); } catch (_) {} };
+const ofRp = (rp) => (S.passkeys || []).filter((p) => (p.rp || RP_ID) === rp).map((p) => ({ type: "public-key", id: fromB64url(p.id) }));
 // where Chat is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.inflite.ai"
 // Chat lives at chat.inflite.ai now. At its old address (georgefarrowgreen.com/pigeon)
 // this is where it went; null at the new address. (Locally, tests turn the old address on.)
@@ -3199,9 +3210,10 @@ async function withFresh(fn) {
   }
 }
 async function reauthPasskey() {
-  const o = await api("passkey-options", { method: "POST", body: { mode: "login" } });
+  const o = await api("passkey-options", { method: "POST", body: { mode: "login", rpId: chatRp() } });
   const a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
-    allowCredentials: (S.passkeys || []).map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } });
+    allowCredentials: ofRp(o.rpId) } });
+  noteRp(o.rpId);
   await api("reauth", { method: "POST", body: { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) } });
 }
@@ -3229,6 +3241,7 @@ async function addPasskey() {
   await api("passkey-register", { method: "POST", body: {
     challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(resp.clientDataJSON), label: deviceLabel(),
     authenticatorData: resp.getAuthenticatorData ? b64url(resp.getAuthenticatorData()) : undefined } });
+  noteRp(o.rpId);
   let secret = prfResult(cred);
   const ext = cred.getClientExtensionResults?.().prf;
   if (!secret && ext?.enabled) {
@@ -10525,9 +10538,9 @@ function lockPrefs() { try { const v = JSON.parse(localStorage.getItem(LOCK_KEY)
 function setLockPrefs(v) { try { if (v) localStorage.setItem(LOCK_KEY, JSON.stringify({ ...v, uid: S.me.id })); else localStorage.removeItem(LOCK_KEY); } catch (_) {} }
 // a user-verified passkey check, on this phone
 async function lockCheck() {
-  const ids = (S.passkeys || []).map((p) => p.id).filter(Boolean);
-  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 60000,
-    allowCredentials: ids.map((id) => ({ type: "public-key", id: fromB64url(id) })) } });
+  const rp = chatRp();
+  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: rp, userVerification: "required", timeout: 60000,
+    allowCredentials: ofRp(rp) } });
   const ad = a && new Uint8Array(a.response.authenticatorData);
   if (!ad || !(ad[32] & 0x04)) throw new Error("not verified");           // the UV flag: Face ID, Touch ID or the passcode was used
   return true;
@@ -10549,7 +10562,7 @@ async function unlock() {
   try { await lockCheck(); S.locked = false; haptic("success"); drawLock(); render(); backStep(); sync(); }      // (Android's Back: the chat you're back in has its step again)
   // (on inflite.ai the passkey is the home site's, and the browser asks that site before it will take one: with no
   // signal it can't, so it's said, not "try again" with no end)
-  catch (_) { toast(navigator.onLine === false && RP_ID !== location.hostname ? "Unlocking needs a connection here. Try again once you’re online." : "Couldn’t unlock. Try again."); }
+  catch (_) { toast(navigator.onLine === false && chatRp() !== location.hostname.split(".").slice(-2).join(".") && RP_ID !== location.hostname ? "Unlocking needs a connection here. Try again once you’re online." : "Couldn’t unlock. Try again."); }
   finally { S.unlocking = false; }
 }
 let hiddenAt = 0;

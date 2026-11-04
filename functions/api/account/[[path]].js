@@ -31,7 +31,7 @@
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
-import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
+import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -134,7 +134,7 @@ async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
   const [{ results: pks }, { results: ss }, wx, inflight, last, admin, fitness, markets, today] = await Promise.all([
-    D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
+    D.prepare("SELECT id, label, provider, created_at, used_at, vault IS NOT NULL AS messages, rp FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
     weatherOf(env, u.id),
@@ -159,7 +159,7 @@ async function view(env, u) {
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     // (messages: it has its own locked copy of the key to Chat's messages, so it opens them on a new phone by itself)
-    passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null, messages: !!p.messages })),
+    passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null, messages: !!p.messages, rp: rpOf(p, null, env) })),
     // (each named by the one app it's used in, where that's so: a Home Screen app on an iPhone is a sign-in of its own;
     // otherwise by its browser (the account's page too, unless it's on the Home Screen); this one being the app's
     // sign-in an account page opened from an app came from)
@@ -445,7 +445,14 @@ const ROUTES = {
       line: "someone asked to reset the password for your inflite.ai account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
       pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${authOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
-  "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
+  "POST reset/check": async ({ request, env }) => {
+    sameOrigin(request);
+    const b = await body(request, 4096), r = await checkReset(env, request, b.token);
+    // (the site the passkeys that can keep the key belong to: inflite.ai's where they're all its own)
+    const s = passkeySites(request, env), rps = new Set(r.passkeys.map((p) => (p.rp = rpOf(p, request, env))));
+    const rpId = rps.size === 1 ? [...rps][0] : rps.has(s.apps) && b.ror === false ? s.apps : s.home;
+    return json({ ...r, rpId });
+  },
   "POST reset/complete": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const { u, kept } = await completeReset(env, request, await body(request));
@@ -560,7 +567,7 @@ const ROUTES = {
     const u = await signedIn(request, env);
     requireFresh(u);
     const { results } = await (await db(env)).prepare("SELECT id FROM pg_passkeys WHERE user_id = ?").bind(u.id).all();
-    return json({ challenge: await newChallenge(env, "register", u.id), rpId: rpIdFor(request, env),
+    return json({ challenge: await newChallenge(env, "register", u.id), rpId: newRpFor(request, env),
       user: { id: b64url(new TextEncoder().encode(u.id)), name: u.email, displayName: u.name }, exclude: results.map((r) => r.id) });
   },
   "POST passkeys": async ({ request, env, waitUntil }) => {
@@ -573,7 +580,7 @@ const ROUTES = {
     const count = await checkRegistration(request, env, b, { quiet: b.quiet === true });
     const D = await db(env), label = cleanLabel(b.label) || deviceOf(request) || "Passkey", provider = providerOf(b.authenticatorData);
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now(), count).run();
+    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count, rp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now(), count, newRpFor(request, env)).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
     waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
