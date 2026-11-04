@@ -126,7 +126,7 @@ function sectionsFor(step){
       N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('build','Build',{ph:'e.g. slim, athletic, stocky'}), T('job','Occupation')]},
     {title:'Riding', fields:[N('rideTime','Average ride','hrs'), N('speed','Average speed','mph'), N('cadence','Cadence','rpm'), N('years','Years cycling','yrs'),
       N('daysS','Days a week (summer)','days'), N('daysW','Days a week (winter)','days'),
-      CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Indoor / Zwift','Triathlon'],{wide:true})]},
+      CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Gravel','Indoor / Zwift','Triathlon'],{wide:true})]},
     {title:'Goals for today', fields:[CH('goals','Goals',['Comfort','Longer rides','Performance','Fix pain or discomfort','New bike set-up','Aero speed','Event prep'],{wide:true}), TA('goalNote','In their words')]},
     {title:'On-bike problems', custom:'body', fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
     {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), {t:'injgrid', k:'injgrid', label:'Injuries & special notes', hint:'broken bones, surgeries, chronic issues', wide:true},
