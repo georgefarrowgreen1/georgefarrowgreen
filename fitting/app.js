@@ -49,23 +49,24 @@ const PAIN = {neck:'Neck', shoulder_L:'Left shoulder', shoulder_R:'Right shoulde
 
 // (S Standard, F Full: a road bike's; T: a TT or triathlon bike's, as Precision Fit's triathlon form lists them)
 const BIKE = [
-  {g:'Saddle', k:'sadModel', label:'Saddle make & model', t:'text'},
-  {g:'Saddle', k:'sadW', label:'Saddle width (size)', u:'mm', step:5},
-  {g:'Saddle', k:'sadH', label:'Saddle height', u:'mm', hint:'BB centre to saddle top'},
-  {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
+  // (the road form's order and names: saddle 1–6, reach and drop 7–9, cockpit 10–13, crank 14, coordinates 15–18)
+  {g:'Saddle', k:'sadH', label:'Saddle height', u:'mm', hint:'BB centre to top of saddle'},
+  {g:'Saddle', k:'sadModel', label:'Saddle model', t:'text'},
+  {g:'Saddle', k:'sadW', label:'Saddle size', u:'mm', step:5, hint:'Width'},
   {g:'Saddle', k:'tilt', label:'Saddle tilt', u:'°', step:0.5},
+  {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
   {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'F'},
-  {g:'Drivetrain', k:'crank', label:'Crank arm length', u:'mm', step:2.5, f:'FT'},
-  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'F'},
-  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
-  {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
-  {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
-  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height', f:'SF'},
-  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
-  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'tipShifter', label:'Saddle tip to shifter', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'F'},
+  {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
+  {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
+  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
+  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'F'},
+  {g:'Cockpit', k:'spacers', label:'Headset spacer height', u:'mm', step:5, f:'SF'},
+  {g:'Drivetrain', k:'crank', label:'Crank arm length', u:'mm', step:2.5, f:'FT'},
   {g:'Aero bars', k:'aeroModel', label:'Aero bar model', t:'text', f:'T'},
   {g:'Aero bars', k:'padStack', label:'Arm pad stack', u:'mm', step:5, hint:'BB to top of arm pad', f:'T'},
   {g:'Aero bars', k:'padReach', label:'Arm pad reach', u:'mm', step:5, hint:'BB to back of arm pad', f:'T'},
@@ -76,7 +77,7 @@ const BIKE = [
   {g:'Aero bars', k:'baseW', label:'Base bar width', u:'mm', step:10, f:'T'},
   {g:'Aero bars', k:'extLen', label:'Extension length', u:'mm', step:10, f:'T'},
   {g:'Aero bars', k:'extA', label:'Extension angle', u:'°', step:1, f:'T'},
-  {g:'Coordinates', k:'hx', label:'Handlebar X', u:'mm', step:5, f:'F'}, {g:'Coordinates', k:'hy', label:'Handlebar Y', u:'mm', step:5, f:'F'},
+  {g:'Coordinates', k:'hx', label:'Handlebar X coordinate', u:'mm', step:5, f:'F'}, {g:'Coordinates', k:'hy', label:'Handlebar Y coordinate', u:'mm', step:5, f:'F'},
   {g:'Coordinates', k:'sx', label:'Saddle X coordinate', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y coordinate', u:'mm', step:5, f:'FT'},
   {g:'UCI position', k:'nose', label:'Saddle nose behind BB', u:'mm', step:5, f:'T'},
   {g:'UCI position', k:'extFront', label:'Extension tip ahead of BB', u:'mm', step:5, f:'T'},
@@ -444,11 +445,12 @@ function stepper(k, row){
 }
 function rowsHTML(rows){
   let g = null;
-  return `<div class="btable"><div class="brow hd"><span>Measurement</span><span>Before</span><span>After</span><span>Ideal</span><span style="text-align:right">Change</span></div>
+  const ideal = S.fit === 'tt';   // (the triathlon form has an Ideal column; the road form doesn't)
+  return `<div class="btable${ideal ? '' : ' no-ideal'}"><div class="brow hd"><span>Measurement</span><span>Before</span><span>After</span>${ideal ? '<span>Ideal</span>' : ''}<span style="text-align:right">Change</span></div>
     ${rows.filter(applies).map(r => { const head = r.g && r.g !== g ? `<div class="bgrp">${esc(r.g)}</div>` : ''; g = r.g;
       return head + `<div class="brow"><div class="nm">${esc(r.label)}${r.hint ? `<small>${esc(r.hint)}</small>` : ''}</div>
       <div class="cell" data-l="Before">${stepper(r.k + '_pre', r)}</div><div class="cell" data-l="After">${stepper(r.k + '_post', r)}</div>
-      <div class="cell" data-l="Ideal">${idealInput(r)}</div>
+      ${ideal ? `<div class="cell" data-l="Ideal">${idealInput(r)}</div>` : ''}
       <div class="delta" data-x="delta" data-k="${r.k}"></div></div>`; }).join('')}</div>`;
 }
 // the ideal for a measurement: typed, no − / + (where the fit is heading; the report shows it when there is one)
@@ -934,7 +936,7 @@ function reportBlocks(){
         <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
         <div>${gaugeOnly(a.k)}</div><div>${ok == null ? '' : `<span class="rp-pill ${ok ? 'g' : 'r'}">${ok ? 'In range' : 'Outside'}</span>`}</div></div>`; })});
   const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
-  const ideal = BIKE.filter(applies).some(r => filled(v[r.k + '_ideal']));
+  const ideal = S.fit === 'tt' && BIKE.filter(applies).some(r => filled(v[r.k + '_ideal']));
   const trs = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
     return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td>${ideal ? `<td>${cell(r, r.k + '_ideal')}</td>` : ''}<td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
   const TH = `<table class="rp-tbl"><thead><tr><th style="width:${ideal ? 32 : 36}%">Measurement</th><th>${was}</th><th>${now}</th>${ideal ? '<th>Ideal</th>' : ''}<th>Change</th></tr></thead><tbody>`;
