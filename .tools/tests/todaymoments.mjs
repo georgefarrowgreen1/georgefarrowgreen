@@ -8,12 +8,14 @@
 //       ride added with Undo (the offer no, hidden at once); the morning push saying the act, without Mira's name
 //   (2) midday: the weather you'll ride in; Pat's two messages, her name from the server and her words from Chat's engine
 //       on the phone, with a Tesco chip from the first; neither message's words anywhere they mustn't be
-//   (3) send: the weather to Pat from Today, in the engine's sheet over Today; you stay on Today; live in Pat's chat
-//   (4) preride: a ride 30 minutes ahead (Ride At): the ride card; Radar in the window; then riding: a message to George
+//   (3) send: Today has no Send of its own (Today 1.16–1.18): its Weather card's head opens Weather in the window, and
+//       Weather's own Send takes the weather to Pat, in the engine's sheet over Weather; you stay there; live in Pat's chat
+//   (4) preride: a ride 30 minutes ahead (Ride At): the ride card, its lines as rows, no Open or Send; then riding: a message to George
 //       gives no push while a MeteoAlarm warning does; Chats' held row
 //   (5) after: a waiting Garmin row with time and distance (not fx_acts): the honest card; then the ride in fx_acts as
 //       Fitness's import puts it, and Today again: Stress and Fitness up; Mira wrote while you rode, with her words; the
-//       held message released "while you rode"; Send to Leo in one tap, live in Leo's chat
+//       held message released "while you rode"; no Send to Leo or Open Fitness on Today (Fitness by its card's head),
+//       nothing sent to Leo
 //   (6) evening, quiet hours on: Tesco past its alert, the day closed, tomorrow first; a message arrives with no push
 // Every request URL and body from every frame of every phone is recorded (ctx.route), and every push opened with the
 // keys the test holds: none of the words typed (Pat's two messages, Mira's, Pat's at night) is in any of them, nor in
@@ -35,6 +37,7 @@ import { execSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { makeAccount, joinChat, onAccountPage } from './join.mjs';
 import { hostCall } from './handback.mjs';
+import { standIns } from './rooflib.mjs';
 import * as F from './mocks/wxappdata.mjs';
 import * as OW from './mocks/wxwarnings.mjs';
 
@@ -202,6 +205,7 @@ const sessAt = (page) => page.evaluate(() => new Promise((res) => {
   } catch (_) { res(null); }
 })).catch(() => null);
 const sentBy = (id) => Number(rows(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${id}'`)[0]?.n || 0);
+const sentTo = (id) => Number(rows(`SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = '${GID}' AND recipient = '${id}'`)[0]?.n || 0);
 async function write(ph, to, text) {
   const n0 = sentBy(ph.id);
   await K.openChat(ph, to);
@@ -245,6 +249,9 @@ async function georgeIn(tz) {
     PushManager.prototype.subscribe = async function (o) { const k = new Uint8Array(o.applicationServerKey.buffer || o.applicationServerKey); localStorage.setItem('fakesub', toB(k)); return make(k.buffer); };
   }, { endpoint: 'https://fcm.googleapis.com/fcm/send/george-device', p256dh: b64u(gKeys.pub), auth: b64u(gKeys.auth) });
   await record(ctx, 'george');
+  // (Open-Meteo, the radar and the map, stood in for in the browser as roofweather.mjs has them, for Weather's own screens
+  // at the hub, whose Send step 3 uses; after the recorder, so these are answered here and never go out)
+  await standIns(ctx);
   const p = ctx.pages()[0] || await ctx.newPage(), pages = [p];
   ctx.on('page', (pg) => { if (!pages.includes(pg)) { pages.push(pg); G.extra++; } });
   p.on('pageerror', (e) => errs.push(`george: ${e}`));
@@ -501,8 +508,8 @@ step(1, 'morning: the plan joined up, the clash moved and the habit ride added, 
   const rules = await hubCall('GET', '/api/rules');
   ok(rules.j?.rules?.find((x) => x.rule === 'moveRide')?.level === 'suggest' && rules.j.rules.find((x) => x.rule === 'addRide')?.level === 'suggest', 'You’s rules: moving a ride and adding one each at Suggest now', JSON.stringify(rules.j?.rules?.map((x) => [x.rule, x.level])));
   await G.p.goto(`${HUB}/#you`);
-  const pressed = await G.p.waitForSelector('#youRules [data-rule="moveRide"] [data-level="suggest"][aria-pressed="true"]', { timeout: 15000 }).then(() => true, () => false);
-  ok(pressed, 'and in You: Moving a Ride shows Suggest');
+  const picked = await G.p.waitForFunction(() => { const r = document.querySelector('#youRules [data-rule="moveRide"]'); return r?.querySelector('select[data-rulepick]')?.value === 'suggest' && r.querySelector('.val > span')?.textContent === 'Suggest'; }, null, { timeout: 15000 }).then(() => true, () => false);
+  ok(picked, 'and in You: Moving a Ride’s picker shows Suggest');
   await shot(G, '1-you-rules');
 }
 
@@ -550,28 +557,40 @@ let PAT_AT = 0;
 }
 
 // ======================================================================================================================
-// (3) send, 12:32: the weather to Pat from Today, in Chat's own sheet over Today; you stay on Today
+// (3) send, 12:32: the weather to Pat from Weather's own Send (Today has none), in Chat's own sheet; you stay on Weather
 // ======================================================================================================================
-step(3, 'send: the weather to Pat from Today; you stay on Today', '§4.1, §8.2, §8.3, §14.3');
+step(3, 'send: the weather to Pat from Weather’s own Send, reached from Today’s card; you stay on Weather', '§4.1, §8.2, §8.3, §14.3');
 {
+  // (Today itself offers no Send since Today 1.16–1.18: each app has its own. Its Weather card's head opens Weather, in
+  // the window, where Now's Send is)
+  // (Waiting for You's chips are the one Send left: Tesco's card to Pat, who asked about it)
+  ok(!(await G.p.$('#top [data-send], #rest [data-send], #coming [data-send], #today [data-do=sendto]')), 'Today offers no Send of its own (the top card, the cards, Coming Up)');
+  const head = '#rest .tcard[data-app="weather"] a.tc-head';
+  const href = await G.p.getAttribute(head, 'href').catch(() => null);
+  ok(/^\/weather\//.test(href || ''), 'Today’s Weather card: its head the link to Weather, at the hub’s path', href);
+  await G.p.click(head).catch((e) => console.log('DEBUG head', e.message));
+  ok(await G.p.waitForURL((u) => u.pathname === '/weather/', { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'and opens Weather in the window', G.p.url());
+  const NOW_SEND = 'section.wx-sec[data-sec="now"] .wx-hero [data-act=send]';
+  ok(await G.p.waitForSelector(NOW_SEND, { state: 'visible', timeout: 30000 }).then(() => true, () => false), 'Weather’s own Send, in Now’s hero');
+  await until(async () => (await engine()) === 'ready', 30000);
   const pages0 = G.pages.length, url0 = G.p.url(), n0 = sentBy(GID);
-  await G.p.click('#top .day-top [data-send]', { timeout: 10000 }).catch((e) => console.log('DEBUG send', e.message));
+  await G.p.click(NOW_SEND, { timeout: 10000 }).catch((e) => console.log('DEBUG send', e.message));
   const sheet = G.p.frameLocator('iframe[name="ifl-chat"]');
   const pick = sheet.locator(`.sheet [data-act=sendpick][data-id="${P.id}"]`);
-  ok(await pick.waitFor({ timeout: 10000 }).then(() => true, () => false), 'Send opens Chat’s own sheet, in the engine over Today', G.p.url());
+  ok(await pick.waitFor({ timeout: 10000 }).then(() => true, () => false), 'Send opens Chat’s own sheet, in the engine over Weather', G.p.url());
   await pick.click().catch(() => {});
   await sheet.locator('.sheet [data-act=sendgo]').click().catch(() => {});
   const said = await toastSaid(/Sent to Pat/, 20000);
   ok(/Sent to Pat\. You[’']re still here/.test(said || ''), '“Sent to Pat. You’re still here”', said);
-  ok(G.p.url() === url0 && G.pages.length === pages0 && new URL(G.p.url()).pathname === '/', 'still on Today: the same page, no new window', `${G.p.url()} ${G.pages.length}`);
+  ok(G.p.url() === url0 && G.pages.length === pages0 && new URL(G.p.url()).pathname === '/weather/', 'still on Weather: the same page, no new window', `${G.p.url()} ${G.pages.length}`);
   ok(await until(async () => sentBy(GID) > n0, 10000), 'the letter sent, sealed (pg_msgs)');
   await shot(G, '3-sent');
   await K.openChat(P, GID);
   const card = await until(async () => { const c = (await P.p.locator('.msgs .cd-card').last().textContent().catch(() => '')).replace(/\s+/g, ' '); return /When sent/.test(c) && /Now/.test(c) ? c : null; }, 20000);
   ok(!!card, 'live in Pat’s chat: “When sent · …” and “Now · …”', card || await P.p.locator('.msgs').innerText().catch(() => ''));
   await P.p.screenshot({ path: `${out}/3-pat.png` }).catch(() => {});
-  // (wherever Send took the window, back to the hub for what follows)
-  if (new URL(G.p.url()).origin !== HUB) await G.p.goto(HUB + '/');
+  // (back to Today for what follows)
+  await G.p.goto(HUB + '/');
 }
 
 // ======================================================================================================================
@@ -593,12 +612,11 @@ let RIDE4 = null, MIRA_AT = 0;
   ok(/Messages are held while you ride, except warnings/.test(top), '“Messages are held while you ride, except warnings”', top);
   ok(new RegExp(`Done before Mira[’']s call at ${hm(tz, CALL)}`).test(top), `“Done before Mira’s call at ${hm(tz, CALL)}”`, top);
   ok(!(await G.p.isVisible('#waiting')) && !(await G.p.isVisible('#rest')), 'nothing beside the ride (no Waiting, no Rest of Today)');
-  const radar = await G.p.getAttribute('#top a[data-do=open]:has-text("Radar")', 'href').catch(() => null), sess = await G.p.getAttribute('#top a[data-do=open]:has-text("The Session")', 'href').catch(() => null);
-  ok(radar === '/weather/#radar' && sess === '/fitness/#today', 'Radar and The Session, at the hub’s own addresses', `${radar} ${sess}`);
+  // (the ride card's lines as rows beside their apps' icons, and no Open or Send on it: Today 1.18)
+  const rowsOf = await G.p.$$eval('#top ul.dt-rows > li', (ls) => ls.map((l) => [!!l.querySelector('.dt-ic'), l.innerText.trim()])).catch(() => []);
+  ok(rowsOf.length >= 4 && rowsOf.every((r) => r[0] && /^[A-Z0-9]/.test(r[1])), 'the ride card’s lines as rows, each beside an icon', js(rowsOf, 400));
+  ok(!(await G.p.$('#top [data-do=open], #top [data-send], #top [data-do=sendto]')), 'no Open (Radar, The Session) or Send on it: its rows say where');
   await shot(G, '4-preride');
-  await G.p.click('#top a[data-do=open]:has-text("Radar")').catch(() => {});
-  ok(await G.p.waitForURL(`${HUB}/weather/#radar`, { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Radar opens in the window: /weather/#radar', G.p.url());
-  await G.p.goto(HUB + '/');
 
   // riding: the ride began a quarter of an hour ago (Ride At moved), so the hold is on (start − 10 min, §8.7)
   // (begun after Pat's messages at midday where it can be, so who wrote while he rode is Mira, as the story has it)
@@ -630,9 +648,9 @@ let RIDE4 = null, MIRA_AT = 0;
 }
 
 // ======================================================================================================================
-// (5) after, 18:05: the ride from the watch, honest until Fitness has it; who wrote; held released; Send to Leo
+// (5) after, 18:05: the ride from the watch, honest until Fitness has it; who wrote; held released; no Send to Leo
 // ======================================================================================================================
-step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figures; Mira’s words; released; Send to Leo', '§4.1, §7.3, §8.7, §14.3, §14.4');
+step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figures; Mira’s words; released; no Send to Leo', '§4.1, §7.3, §8.7, §14.3, §14.4');
 {
   // the ride as it arrives from the watch (a waiting Garmin row with its time and distance, ended 5 minutes ago; after
   // Mira wrote): never fx_acts first (§14.4)
@@ -649,6 +667,7 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   const freed = await until(async () => (await pushesSince('george', since)).find((x) => x.app === 'chat'), 10000);
   ok(!!freed && /while you rode/.test(freed.body || '') && !(JSON.stringify(freed).includes(SAID.mira)), 'the held message released: “… while you rode”, no words', js(freed, 200));
 
+  const leo0 = sentTo(L.id);
   ok(await today('after'), 'Today after the ride (phaseOf: after, on arrival)');
   let top = await topText();
   ok(/From your watch/.test(top) && /Stress and fitness once Fitness has it/.test(top) && !/Stress\s*\d/.test(top), 'the honest card: “From your watch”, “Stress and fitness once Fitness has it”, no Stress', top);
@@ -658,13 +677,16 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   ok(!!words, 'and her words, from the engine on this phone', words);
   const to = await textOf('#top .dt-to');
   ok(/^Leo · Riding with you (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)$/i.test(to), '“Leo · Riding with you <the day you agreed>”', to);
-  ok(!!(await G.p.$(`#top [data-do=sendto][data-to="${L.id}"]`)), 'Send to Leo, a button for one tap (sendTo)', await G.p.evaluate(() => document.querySelector('#top .tc-foot')?.innerHTML.slice(0, 300)).catch(() => ''));
-  const fit = await G.p.$('#top a[data-do=open]:has-text("Open Fitness")');
-  ok(!!fit && (await fit.getAttribute('href')) === '/fitness/#activities', 'Open Fitness, at /fitness/#activities');
+  // (no Send to Leo or Open Fitness on the card since Today 1.18; Answer Mira stays. Fitness is a tap on its card's head)
+  ok(!(await G.p.$('#top [data-do=sendto], #top [data-send], #top [data-do=open]')), 'no Send to Leo, Send or Open Fitness on the after card', await G.p.evaluate(() => document.querySelector('#top .tc-foot')?.innerHTML.slice(0, 300)).catch(() => ''));
+  ok(!!(await G.p.$(`#top a[data-do=answer][href="/chats/#open=${M.id}"]`)), 'Answer Mira, at /chats/#open=<id>');
+  const fhead = '#rest .tcard[data-app="fitness"] a.tc-head';
+  const fhref = await G.p.getAttribute(fhead, 'href').catch(() => null);
+  ok(/^\/fitness\//.test(fhref || ''), 'Today’s Fitness card: its head the link to Fitness, at the hub’s path', fhref);
   await shot(G, '5-after-honest');
-  // Open Fitness, which reads the waiting ride in; the ride in fx_acts as Fitness's import puts it; back on Today
-  await fit?.click().catch(() => {});
-  ok(await G.p.waitForURL(`${HUB}/fitness/#activities`, { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Open Fitness: in the window', G.p.url());
+  // Fitness from its card's head, which reads the waiting ride in; the ride in fx_acts as Fitness's import puts it; back on Today
+  await G.p.click(fhead).catch(() => {});
+  ok(await G.p.waitForURL((u) => u.pathname === '/fitness/', { timeout: 15000 }).then(() => true, () => false) && G.pages.length === 1, 'Fitness, from its card: in the window', G.p.url());
   // (in at the watch's own time, end: this test's day is minutes long, and the evening's 21:00 comes three real minutes
   // before step 6, so an import stamped now would fall after it and rightly keep the after card its 90 minutes)
   run(`INSERT OR REPLACE INTO fx_acts (user_id, id, start, sport, indoor, name, type, size, sum, added) VALUES ('${GID}', 'garmin-g-ride-1', ${RIDE4.start}, 'ride', 0, 'Endurance 75', 'fit', 1, '${esc(JSON.stringify({ secs, dist, tss: 68 }))}', ${end})`);
@@ -673,16 +695,10 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   const figures = await until(async () => { const t = await topText(); return /Stress\s*68/.test(t) && /Fitness\s*\d+ ↑/.test(t) ? t : null; }, 20000);
   ok(!!figures, 'back on Today, fetched again: “Stress 68 · Fitness … ↑”', await topText());
   await shot(G, '5-after-figures');
-  // Send to Leo, in one tap
-  const n0 = sentBy(GID);
-  await G.p.click(`#top [data-do=sendto][data-to="${L.id}"]`).catch(() => {});
-  const said = await toastSaid(/Sent to Leo/, 20000);
-  ok(!!said && G.pages.length === 1 && new URL(G.p.url()).pathname === '/', 'Send to Leo: one tap, sent, still on Today', said);
-  ok(await until(async () => sentBy(GID) > n0, 10000), 'the finished ride sent to Leo, sealed');
-  await K.openChat(L, GID);
-  const card = await until(async () => { const c = (await L.p.locator('.msgs .cd-card').last().textContent().catch(() => '')).replace(/\s+/g, ' '); return /Endurance 75|Done/.test(c) ? c : null; }, 20000);
-  ok(!!card, 'live in Leo’s chat: the finished ride', card);
-  await L.p.screenshot({ path: `${out}/5-leo.png` }).catch(() => {});
+  // (no Send to Leo from Today any more (Today 1.18): Fitness's own Send to a friend is on its session card, which wants a
+  // plan George hasn't made here (fitshare.mjs and ridetime.mjs check it), and a card to a friend in one tap through Chat's
+  // engine is hubshare.mjs's (5). Here: nothing sent to Leo from Today, though Today names him)
+  ok(/Leo/.test(to) && !(await G.p.$('#top [data-do=sendto], #top [data-send]')) && sentTo(L.id) === leo0, 'nothing sent to Leo from Today: no button for it, nothing new in pg_msgs', `${leo0} → ${sentTo(L.id)}`);
 }
 
 // ======================================================================================================================
