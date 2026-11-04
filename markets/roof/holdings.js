@@ -230,7 +230,8 @@ export function view(el, ctx) {
   return {
     draw(animate) { redraw = () => draw(false); core.loadPaid(); draw(animate); },
     // (Change Order left on only while a move is still on its way to your account)
-    hide() { if (E.on && !core.orderingNow()) E.on = false; },
+    // (→ whether it changed: leaving Edit, it has to be drawn again on its next show)
+    hide() { const was = E.on; if (E.on && !core.orderingNow()) E.on = false; return was; },
     destroy() { E.on = false; sec.replaceChildren(); redraw = () => {}; },
   };
 }

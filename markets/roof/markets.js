@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.98";
-export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
+export const BUILD = "1.99";
+export const NEWS = "Switching between Today, Holdings and News leaves each as it was: nothing redraws unless it changed";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -88,7 +88,7 @@ export async function mount(root, fw) {
           el.replaceChildren(fw.ui.error({ title: "This part of Markets didn’t open", body: "Try again in a moment.", acts: [{ label: "Try Again", act: "retry", run: () => draw(id) }] }));
         });
       },
-      hide() { real?.hide(); },
+      hide() { return real?.hide() || false; },
       destroy() { real?.destroy(); el.replaceChildren(); },
     };
   };
@@ -129,7 +129,7 @@ export async function mount(root, fw) {
   const offs = [
     core.on("me", () => { others(); header(); draw(shown, true); }),
     core.on("list", () => { others(); header(); draw(); }),
-    core.on("settings", () => { if (shown === "holdings") draw(); }),
+    core.on("settings", () => { if (shown === "holdings") draw(); else stale.add("holdings"); }),
     // (before your list is in, each section shows where it's got to: on its way, or why it couldn't come, with Try Again:
     // todayview.notIn)
     core.on("loading", () => { header(); if (!S.me) { others(); draw(); } }),
@@ -139,7 +139,7 @@ export async function mount(root, fw) {
       header();
       if (!d?.was) return;
       for (const s of Object.keys(S.q)) { const a = d.was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
-      if (shown === "today") views2.get("today")?.patch?.(d.was);
+      if (shown === "today") views2.get("today")?.patch?.(d.was); else stale.add("today");
     }),
   ];
   // your holdings on this phone, Markets' sheets, and Find (connector.search, from what's live here)
@@ -170,19 +170,21 @@ export async function mount(root, fw) {
     async show(route) {
       const id = SECTIONS.some((s) => s[0] === route?.section) ? route.section : "today";
       if (shown && shown !== id) {
-        try { views2.get(shown).hide(); } catch (e) { console.error(e); }
+        try { if (views2.get(shown).hide()) stale.add(shown); } catch (e) { console.error(e); }
         if (shown === "news") core.leftNews();
         away(shown);
       }
       if (id === "news" && shown !== "news") S.newsSince = core.newsSeen();
       for (const [k, el] of secs) el.hidden = k !== id;
-      const fresh = shown !== id || !onScreen || stale.has(id) || !secs.get(id).childElementCount;
+      // (a section drawn afresh only when it's new, out of date, or Markets is coming back on screen: switching between
+      // Today, Holdings and News leaves each as it was, nothing drawing in again; its entrance only on a first draw)
+      const empty = !secs.get(id).childElementCount, fresh = !onScreen || stale.has(id) || empty;
       shown = id; onScreen = true;
       back(id);
       core.at(id);
       core.shown(true);
       header();
-      if (fresh) draw(id, true);
+      if (fresh) draw(id, empty);
       if (route?.key && route.key !== id && route.key !== "today") openFrom(route);
       takeWant();
     },
