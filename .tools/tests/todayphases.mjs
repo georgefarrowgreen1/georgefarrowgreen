@@ -156,7 +156,7 @@ await part('each phase', async () => {
     ok(rowsDrawn.length === top.lines.length && rowsDrawn.every((r) => r[0]) && top.lines.every((l, i) => !rowApp(l) || rowsDrawn[i][0] === `/apps/${rowApp(l)}.svg`), `${ph}: each row beside its app’s icon (or a glyph)`, JSON.stringify(rowsDrawn.map((r) => r[0])));
     same(await p.$$eval(`${sel} #top .dt-stats > div`, (ds) => ds.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])), statsShown(top).map((s) => [s.label, s.value]), `${ph}: its figures`);
     same(await text(p, '#hd .ifh-line'), LINES[ph], `${ph}: the header’s line`);
-    if (ROOF) same(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', `${ph}: the date above the title (the crumb)`);
+    if (ROOF) same(await text(p, '#hd .ifh-crumb') || '', '', `${ph}: no date above the title (Today 1.39 took it away)`);
     const want = SHOWS[ph], hasWaiting = want.includes('w') && a.waiting.length > 0;
     same(await shown(p, `${sel} #waiting`), hasWaiting, `${ph}: Waiting for You ${hasWaiting ? 'shown' : 'not shown'}`);
     same(await shown(p, `${sel} #coming`), want.includes('c'), `${ph}: Coming Up ${want.includes('c') ? 'shown' : 'not shown'}`);
