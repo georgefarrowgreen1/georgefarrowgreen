@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.75";
-export const NEWS = "Switching sections is now completely still: Fitness no longer checks your account or redraws on every switch";
+export const BUILD = "1.76";
+export const NEWS = "Progress no longer redraws when you switch back to it";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -119,7 +119,7 @@ export async function mount(root, fw) {
     return {
       draw() { drawn = true; if (!failed) go(); },
       // (shown again with nothing new to draw: told it's on screen, its DOM left as it is)
-      resume() { drawn = true; if (real) (real.resume || real.draw).call(real); else if (!loading && !failed) go(); },
+      resume() { drawn = true; if (real) real.resume?.(); else if (!loading && !failed) go(); },
       hide() { drawn = false; real?.hide?.(); },
       drop() { if (real) { real.destroy?.(); real = null; } el.replaceChildren(); },
       destroy() { real?.destroy?.(); real = null; },
