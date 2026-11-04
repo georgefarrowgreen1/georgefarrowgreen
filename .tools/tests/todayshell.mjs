@@ -7,10 +7,11 @@
 // the page with history); Chat's engine made at idle, laid out but unseen; its sheet shown over the page in the top layer
 // (over a modal sheet of the page's own) and put away by the engine's own word (parent.IFL.hub.sent / closed); day.js
 // and the cards handed the page's own hub (a stand-in day.js saying what it's given, and batch TP's real one where it's
-// in: Radar at /weather/#radar, Send a button that opens the engine's sheet; degraded, the apps' own addresses); Apps'
-// tiles and their lines, Mail's only for its account; You drawn from the stub (rules with levels and records,
-// notifications by app, this phone, other devices, quiet hours) and each of its writes sent; This Phone on, off (staying
-// off after a reload) and on again; Get Every App's Notifications Here sending fan: true only from its tap, and nothing
+// in: Radar at /weather/#radar from Coming Up, no Open or Send on Today (Today 1.15–1.18); degraded, the apps' own
+// addresses); Apps' tiles and their lines, Mail's only for its account; You drawn from the stub, as Today 1.19 lays it
+// out (Notifications: this phone, every app's here, the morning, quiet hours; From Each App; the rules as pickers, those to
+// come left out; other devices; About InFlite) and each of its writes sent; On This Phone on, off (staying
+// off after a reload) and on again; Get Every App's Here sending fan: true only from its tap, and nothing
 // posted to /api/device on first run; Sign Out in §11.5's order, the engine's signOut included, and every app's copy of
 // you kept at this address let go (Chat's too where there's no engine); a notification tapped
 // while open; the ifl-sent toast; the way in (Sign in through Chats, Sign In Without Chats as Today's own trip); the hub
@@ -306,31 +307,33 @@ await part('the day gets the page’s own hub', async () => {
     }
     await ctx.close();
   }
-  // (the four cards, an answer without v: handed the hub too, which batch TP's cards.js uses for Send)
+  // (the four cards, an answer without v: handed the hub too, which batch TP's cards.js uses for its links. No Send on
+  // them since Today 1.16: each app has its own)
   if (TP_CARDS) {
     await mode({ v1: true });
     const { ctx, p } = await open();
     await p.waitForFunction(() => document.querySelectorAll('#rest .tcard[data-state="ok"]').length === 4);
-    ok(await p.$eval('#rest .tcard[data-app="weather"] [data-send]', (n) => n.tagName === 'BUTTON'), 'the four cards at the hub: Send a button, through the engine');
+    same(await p.$$eval('#rest [data-send]', (xs) => xs.length), 0, 'the four cards at the hub: no Send to a friend (each app has its own)');
+    const wxHead = await p.$eval('#rest .tcard[data-app="weather"] a.tc-head', (a) => [a.getAttribute('href'), !!a.querySelector('.tc-go')]).catch(() => null);
+    ok(wxHead && /^(\/weather\/|https:\/\/weather\.inflite\.ai\/)/.test(wxHead[0]) && !wxHead[1], 'the Weather card’s head: the link to Weather, with no Open in it', JSON.stringify(wxHead));
     await ctx.close();
-  } else console.log('SKIP  the four cards’ Send at the hub: batch TP’s cards.js isn’t in yet');
+  } else console.log('SKIP  the four cards at the hub: batch TP’s cards.js isn’t in yet');
   if (!TP_DAY) { console.log('SKIP  batch TP’s day.js with the page’s own hub: it isn’t in yet'); return; }
+  // (the day at the hub: Coming Up's rows at the hub's paths (Radar, from the rain's row); the top card with no Open or
+  // Send since Today 1.18: its rows say where each thing is, and each app has its own Send. The engine's sheet itself is
+  // checked above, through IFL.hub.send)
+  const RAIN = '#coming .dc-row a.dc-main:has(b:text-is("Rain reaches London"))';
   await mode({ phase: 'midday' });
   let { ctx, p } = await open();
-  await p.waitForSelector('#today[data-phase="midday"] #top a[data-do="open"]', { timeout: 10000 });
-  same(await p.$eval('#top a[data-do="open"]', (a) => a.getAttribute('href')), '/weather/#radar', 'day.js at the hub: Radar at /weather/#radar, in the one window');
-  ok(await p.$('#top button[data-send]'), 'day.js at the hub: the top card’s Send a button');
-  await p.waitForFunction(() => document.querySelector('iframe[name="ifl-chat"]')?.contentWindow?.IFLChat, null, { timeout: 10000 });
-  await p.click('#top button[data-send]');
-  await p.waitForFunction(() => document.querySelector('dialog.ifl-engine-box')?.open, null, { timeout: 5000 });
-  same((await p.evaluate(() => window.__shared))?.[0], MIDDAY.tops.midday.share, 'its Send: the engine’s sheet over the page, with the card’s words');
-  await p.frame({ name: 'ifl-chat' }).evaluate(() => window.finish('Sent to Pat'));
-  same(await engineState(p), AWAY, 'and put away by the engine’s word');
+  await p.waitForSelector(`#today[data-phase="midday"] ${RAIN}`, { timeout: 10000 });
+  same(await p.$eval(RAIN, (a) => a.getAttribute('href')), '/weather/#radar', 'day.js at the hub: Coming Up’s rain row to Radar at /weather/#radar, in the one window');
+  same(await p.$$eval('#top [data-do="open"], #top [data-send], #top [data-do="sendto"], #coming [data-send]', (xs) => xs.length), 0, 'day.js at the hub: no Open or Send on the top card, and no Send on Coming Up’s rows');
+  same(await p.$$eval('#top .dt-rows li', (ls) => ls.map((l) => [l.querySelector('.dt-ic')?.getAttribute('src') || null, l.textContent])), MIDDAY.tops.midday.lines.map((l) => ['/apps/weather.svg', l]), 'the top card’s lines as rows, each beside its app’s icon (Weather’s)');
   await ctx.close();
   ({ ctx, p } = await open({ hub: false }));
-  await p.waitForSelector('#today[data-phase="midday"] #top a[data-do="open"]', { timeout: 10000 });
-  same(await p.$eval('#top a[data-do="open"]', (a) => a.getAttribute('href')), 'https://weather.inflite.ai/#radar', 'day.js degraded: Radar at Weather’s own address');
-  ok(/^https:\/\/chat\.inflite\.ai\/#share=/.test(await p.$eval('#top a[data-send]', (a) => a.getAttribute('href')).catch(() => '')), 'degraded: the top card’s Send Chat’s own #share= link');
+  await p.waitForSelector(`#today[data-phase="midday"] ${RAIN}`, { timeout: 10000 });
+  same(await p.$eval(RAIN, (a) => a.getAttribute('href')), 'https://weather.inflite.ai/#radar', 'day.js degraded: Radar at Weather’s own address');
+  same(await p.$$eval('#today [data-send]', (xs) => xs.length), 0, 'degraded: no Send on Today either');
   await ctx.close();
 });
 
@@ -360,22 +363,36 @@ await part('apps', async () => {
 await part('you: drawn from the account', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
-  await p.waitForSelector('#youRules .rule');
-  const rules = await p.$$eval('#youRules .row', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('small')?.textContent || '', r.querySelector('[aria-pressed="true"]')?.textContent || r.querySelector('.val')?.textContent || '']));
-  same(rules, RULES.rules.map((r) => [r.name, r.line, r.soon ? 'Coming' : 'Do']), 'Rules: each at its level, with its record; later and arrange as coming');
-  has(await text(p, '#youRules'), 'A rule drops a level when you undo it, and climbs after ten kept actions.', 'Rules: the note');
+  await p.waitForSelector('#youRules [data-rulepick]');
+  // (Today 1.19: notifications first and together, then each app's, then the rules, Connected Apps, Other Devices, Chat,
+  // About InFlite and Sign Out as a row)
+  same(await p.$$eval('#you section.you-sec', (ss) => ss.map((x) => x.id ? [x.id, x.querySelector('.you-h')?.textContent] : [x.className])),
+    [['youAccount', 'Account'], ['youNotify', 'Notifications'], ['youApps2', 'From Each App'], ['youRules', 'What Today Does for You'], ['youApps', 'Connected Apps'], ['youDevices', 'Other Devices'], ['youChat', 'Chat'], ['youVersions', 'About InFlite'], ['you-sec you-out']],
+    'You’s sections, in order: Account, Notifications, From Each App, What Today Does for You, Connected Apps, Other Devices, Chat, About InFlite, Sign Out');
+  // (the rules: each a picker of Do, Suggest or Quiet on one line, with its record; the ones still to come left out)
+  const rules = await p.$$eval('#youRules .row.pick[data-rule]', (rs) => rs.map((r) => [r.dataset.rule, r.querySelector('b').textContent, r.querySelector('small')?.textContent || '', r.querySelector('select[data-rulepick]')?.value, r.querySelector('.val > span')?.textContent, [...r.querySelectorAll('option')].map((o) => o.textContent).join('/')]));
+  same(rules, RULES.rules.filter((r) => !r.soon).map((r) => [r.rule, r.name, r.line, 'do', 'Do', 'Do/Suggest/Quiet']), 'What Today Does for You: each rule a picker (Do, Suggest, Quiet) at its level, with its record');
+  const youRules = await text(p, '#youRules');
+  ok(RULES.rules.filter((r) => r.soon).length === 2 && !youRules.includes('Deliver when a friend is free') && !youRules.includes('Arrange group rides') && !youRules.includes('Coming'), 'the rules still to come left out (later, arrange)', youRules);
+  same(await p.$$eval('#youRules [data-rule="later"], #youRules [data-rule="arrange"]', (xs) => xs.length), 0, 'no row for either');
+  has(await text(p, '#youRules'), 'Do: it acts and tells you. Suggest: it asks first. Quiet: it leaves it. Undo one and it drops a level; ten kept and it climbs.', 'the rules’ note: what each level does');
+  // (Notifications: this phone, every app's here, Today's morning, quiet hours)
   const notify = await text(p, '#youNotify');
-  for (const w of ['Friends and Groups', 'Never the words', 'Weather', ROOF ? 'Rain and warnings for the places you choose' : 'Warnings always', 'Markets', 'Fitness', 'In Today’s morning', 'Today’s Morning', '07:00']) has(notify, w, `Notifications, by App: “${w}”`);
-  ok(!notify.includes('Mail'), 'no Mail row but for Mail’s account');
-  if (ROOF) same(await p.$$eval('#youNotify [aria-pressed="true"]', (bs) => bs.map((x) => x.textContent)), ['All', 'Alerts'], 'Friends and Groups All, Markets’ Alerts (Weather’s in its own sheet)');
-  else same(await p.$$eval('#youNotify [aria-pressed="true"]', (bs) => bs.map((x) => x.textContent)), ['All', 'All', 'Alerts'], 'Friends and Groups All, Weather’s rain All, Markets’ Alerts');
-  has(await text(p, '#youPhone'), 'Get Every App’s Notifications Here', 'This Phone: Get Every App’s Notifications Here (the fan-out’s on)');
-  same(await p.$$eval('#youDevices .dev', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('[data-stop]').textContent])), DEVICES.devices.map((d) => [d.label, 'Stop There']), 'Other Devices Getting Notifications, each with Stop There');
+  for (const w of ['On This Phone', 'Get Every App’s Here', 'Chats, Weather and Markets as well as Today', 'Today’s Morning', 'One notification, from all your apps', '07:00', 'Quiet Hours', 'Every app, but warnings']) has(notify, w, `Notifications: “${w}”`);
+  ok(await p.$('#youNotify label#youPhoneRow input#youPhone[role=switch]') && await p.$('#youNotify button#youEvery') && await p.$('#youNotify button#youMorning'), 'On This Phone a switch, Get Every App’s Here and Today’s Morning rows (the fan-out’s on)');
   ok(await p.isChecked('#youQuiet'), 'Quiet Hours: on');
-  same(await p.$$eval('#youQuietSec .row.pick .val span', (ss) => ss.map((x) => x.textContent)), ['21:00', '06:00'], 'Quiet Hours: 21:00 to 06:00');
-  has(await text(p, '#youChat'), 'Show When I’m Typing, Pigeons, Names on the Lock Screen', 'Chat’s own settings');
-  has(await text(p, '#youVersions'), 'Today', 'InFlite: each app’s version');
-  ok(await p.isVisible('#youOut'), 'Sign Out');
+  same(await p.$$eval('#youNotify .row.pick .val span', (ss) => ss.map((x) => x.textContent)), ['21:00', '06:00'], 'Quiet Hours: From 21:00 To 06:00');
+  // (From Each App: Chats and Markets' alerts as switches, the Evening Wrap, Weather's sheet, Fitness)
+  const apps = await text(p, '#youApps2');
+  for (const w of ['Chats', 'Who wrote, never the words', 'Weather', 'Rain and warnings for your places', 'Markets Alerts', 'When a price you watch moves', 'Evening Wrap', 'Fitness', 'In Today’s morning']) has(apps, w, `From Each App: “${w}”`);
+  ok(!apps.includes('Mail'), 'no Mail row but for Mail’s account');
+  same(await p.$$eval('#youApps2 input[role=switch]', (xs) => xs.map((x) => [x.dataset.k, x.checked])), [['chat', true], ['alerts', true], ['wrap', true]], 'Chats, Markets Alerts and the Evening Wrap: switches, each on');
+  same(await text(p, '#youWx .val'), 'On', 'Weather: rain on (in its own sheet)');
+  same(await p.$$eval('#youDevices .dev', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('[data-stop]').textContent])), DEVICES.devices.map((d) => [d.label, 'Stop There']), 'Other Devices, each with Stop There');
+  has(await text(p, '#youChat'), 'Typing, Pigeons, Names on the Lock Screen', 'Chat’s own settings');
+  same(await p.$$eval('#youVersions .row', (rs) => rs.map((r) => [r.querySelector('b').textContent, /^V\d+\.\d\d$/.test(r.querySelector('.val').textContent) ? 'V' : r.querySelector('.val').textContent])),
+    [['Today', 'V'], ['Chat', '—'], ['Weather', '—'], ['Fitness', '—'], ['Markets', '—']], 'About InFlite: Today’s version, and “—” for each app not opened here yet');
+  ok(await p.isVisible('#you section.you-out button#youOut.you-signout.row'), 'Sign Out, a row of its own');
   await p.waitForTimeout(1500);
   same((await reqs()).filter((e) => e.path.endsWith('/today/device')).length, 0, 'nothing posted to /api/device on first run');
   await p.screenshot({ path: `${OUT}/you-390-dark.png`, fullPage: true });
@@ -385,30 +402,27 @@ await part('you: drawn from the account', async () => {
 await part('you: its writes', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
-  await p.waitForSelector('#youRules .rule');
-  await p.click('#youRules [data-rule="moveRide"] [data-level="suggest"]');
-  await p.waitForFunction(() => document.querySelector('#youRules [data-rule="moveRide"] [data-level="suggest"]').getAttribute('aria-pressed') === 'true');
+  await p.waitForSelector('#youRules [data-rulepick]');
+  await p.selectOption('#youRules select[data-rulepick="moveRide"]', 'suggest');
+  await p.waitForFunction(() => document.querySelector('#youRules [data-rule="moveRide"] .val > span')?.textContent === 'Suggest');
   await p.waitForTimeout(400);
-  same(await sent('PUT', 'rules'), [{ rule: 'moveRide', level: 'suggest' }], 'a rule’s level: PUT /api/rules');
-  await p.click('#youNotify [data-chat="off"]');
+  same(await sent('PUT', 'rules'), [{ rule: 'moveRide', level: 'suggest' }], 'a rule’s level, picked: PUT /api/rules, and the picker says Suggest');
+  await p.click('#youApps2 input[data-k="chat"]');
   await p.waitForTimeout(500);
   const chat = (await sent('PATCH', 'notify'))[0]?.chat || {};
-  ok(Object.keys(chat).length > 3 && Object.values(chat).every((v) => v === false), 'Friends and Groups Off: PATCH /api/notify { chat: every kind off }', JSON.stringify(chat));
-  await p.click('#youNotify [data-alerts="off"]');
+  ok(Object.keys(chat).length > 3 && Object.values(chat).every((v) => v === false), 'Chats off: PATCH /api/notify { chat: every kind off }', JSON.stringify(chat));
+  ok(!(await p.isChecked('#youApps2 input[data-k="chat"]')), 'and its switch off, drawn again from the answer');
+  await p.click('#youApps2 input[data-k="alerts"]');
   await p.waitForTimeout(500);
-  same((await sent('PATCH', 'notify')).at(-1), { markets: { alerts: false } }, 'Markets Off: PATCH { markets: { alerts: false } }');
-  if (!ROOF) {
-    await p.click('#youNotify [data-rain="off"]');
-    await p.waitForTimeout(500);
-    same((await sent('PATCH', 'notify')).at(-1), { weather: { place: { lat: 51.5072, lon: -0.1276, name: 'London', rain: false } } }, 'Weather’s rain Off: PATCH { weather: { place } }');
-  }
+  same((await sent('PATCH', 'notify')).at(-1), { markets: { alerts: false } }, 'Markets Alerts off: PATCH { markets: { alerts: false } }');
+  ok(!(await p.isChecked('#youApps2 input[data-k="alerts"]')) && await p.isChecked('#youApps2 input[data-k="wrap"]'), 'and its switch off, the Evening Wrap’s still on');
   await p.selectOption('#youQfrom', '22');
   await p.waitForTimeout(500);
   same((await sent('PATCH', 'notify')).at(-1), { quiet: { on: true, from: 22, to: 6, tz: 'Europe/London' } }, 'Quiet Hours: PATCH { quiet: { on, from, to, tz } }');
   await p.click(`#youDevices [data-stop="${DEVICES.devices[1].id}"]`);
   await p.waitForFunction((id) => !document.querySelector(`#youDevices [data-dev="${id}"]`), DEVICES.devices[1].id);
   same(await sent('DELETE', 'devices'), [{ id: DEVICES.devices[1].id }], 'Stop There: DELETE /api/devices { id }, and its row gone');
-  // Get Every App's Notifications Here: nothing until its own tap
+  // Get Every App's Here: nothing until its own tap
   same(await sent('POST', 'device'), [], 'nothing fanned out yet');
   await p.click('#youEvery');
   await p.waitForSelector(sheetOpen('sh-every'));
@@ -423,17 +437,17 @@ await part('you: its writes', async () => {
   await p.waitForFunction((s) => !document.querySelector(s), sheetOpen('sh-every'));
   const dev = await sent('POST', 'device');
   same(dev.map((x) => [x.fan, x.sub?.endpoint]), [[true, FAKE_ENDPOINT]], 'its tap: POST /api/device { sub, fan: true }');
-  has(await text(p, '#youPhone'), 'Every App’s Notifications', 'and This Phone says every app’s come here');
+  ok((await text(p, '#youNotify')).includes('Every App Notifies Here') && !(await p.$('#youEvery')), 'and Notifications says every app notifies here now');
   await ctx.close();
 });
 
 await part('you: this phone', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
-  await p.waitForSelector('#youPhone input');
-  ok(!(await p.isChecked('#youPhone input')), 'This Phone: off, with no subscription');
+  await p.waitForSelector('#youPhone');
+  ok(!(await p.isChecked('#youPhone')), 'This Phone: off, with no subscription');
   await p.click('#youPhoneRow');
-  await p.waitForFunction(() => document.querySelector('#youPhone input')?.checked && !document.querySelector('#youPhone input').disabled, null, { timeout: 15000 });
+  await p.waitForFunction(() => document.querySelector('#youPhone')?.checked && !document.querySelector('#youPhone').disabled, null, { timeout: 15000 });
   await p.waitForTimeout(500);
   const all = await reqs(), i = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/device')), j = all.findIndex((e) => e.method === 'PUT' && e.path.endsWith('/today/morning'));
   const body = JSON.parse(all[i]?.body || '{}');
@@ -441,18 +455,18 @@ await part('you: this phone', async () => {
   same([body.sub?.endpoint, body.fan, body.tz], [FAKE_ENDPOINT, undefined, 'Europe/London'], 'POST /api/device { sub, tz }: Today’s morning only, never fan');
   ok(!all.some((e) => e.path.endsWith('/today/push')), 'not /api/push, on an account side that has the device route');
   // (off: out of every table, and off it stays, drawn again and after a reload, though the browser keeps the subscription)
-  const settled = (on) => p.waitForFunction((on) => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && i.checked === on; }, on, { timeout: 15000 });
+  const settled = (on) => p.waitForFunction((on) => { const i = document.querySelector('#youPhone'); return i && !i.disabled && i.checked === on; }, on, { timeout: 15000 });
   await reset();
   await p.click('#youPhoneRow');
   await settled(false);
   await p.waitForTimeout(1500);
   same((await sent('DELETE', 'device')), [{ endpoint: FAKE_ENDPOINT }], 'turning it off: DELETE /api/device { endpoint }');
-  ok(!(await p.isChecked('#youPhone input')), 'and off it stays, drawn again from the account');
+  ok(!(await p.isChecked('#youPhone')), 'and off it stays, drawn again from the account');
   same(await p.evaluate(() => [!!localStorage.getItem('fakesub'), localStorage.getItem('today:push')]), [true, null], 'the subscription kept for one tap on, this browser’s word of it gone');
   await p.reload();
-  await p.waitForSelector('#youPhone input');
+  await p.waitForSelector('#youPhone');
   await p.waitForTimeout(2000);
-  ok(!(await p.isChecked('#youPhone input')), 'off after a reload too');
+  ok(!(await p.isChecked('#youPhone')), 'off after a reload too');
   // (on again: one tap, through the device route)
   await reset();
   await p.click('#youPhoneRow');
@@ -516,10 +530,10 @@ await part('degraded', async () => {
   same(own.map((t) => t.href), ['https://weather.inflite.ai/', 'https://fitness.inflite.ai/', 'https://finance.inflite.ai/'], 'the tiles: the apps’ own addresses');
   same(own[0].chips[0]?.[1], 'https://weather.inflite.ai/#radar', 'and their sections');
   await p.click('#tabs [data-tab="you"]');
-  await p.waitForSelector('#youRules .rule');
-  ok(!(await p.$('#youEvery')) && !(await text(p, '#you')).includes('Every App'), 'You: no Get Every App’s Notifications Here');
+  await p.waitForSelector('#youRules [data-rulepick]');
+  ok(!(await p.$('#youEvery')) && !(await text(p, '#you')).includes('Every App'), 'You: no Get Every App’s Here');
   ok(!(await p.$('#youDevices')), 'You: no Other Devices');
-  ok(await p.$('#youNotify') && await p.$('#youRules'), 'the rest of You as ever');
+  ok(await p.$('#youNotify #youPhone') && await p.$('#youApps2') && await p.$('#youRules'), 'the rest of You as ever');
   ok(await p.evaluate(() => sessionStorage.getItem('ifl-hub-ready') === '0'), 'the answer kept for the visit');
   // (Sign Out with no engine to sign Chat out: Today lets go of Chat's sign-in and its kept chats here itself, as
   // Chat's forget does; what was written and not sent stays, sealed)
@@ -550,14 +564,15 @@ await part('v1', async () => {
   same(await p.$$eval('#rest .tcard', (cs) => cs.map((c) => c.dataset.app)), ['weather', 'chat', 'fitness', 'markets'], 'v1: today’s four cards, in Edit’s order');
   ok(!(await p.$('#today[data-phase]')), 'no phase drawn');
   await p.click('#tabs [data-tab="you"]');
-  await p.waitForSelector('#youPhone input');
+  await p.waitForSelector('#youPhone');
   await p.waitForTimeout(1200);
   ok(!(await p.$('#youRules')), 'v1: no Rules');
   ok(!(await p.$('#youDevices')), 'v1: no Other Devices');
-  ok(!(await p.$('#youNotify')) && !(await p.$('#youQuietSec')), 'v1: no Notifications by App or Quiet Hours');
+  ok(!(await p.$('#youApps2')) && !(await p.$('#youQuiet')), 'v1: no From Each App or Quiet Hours');
+  ok(await p.$('#youNotify #youPhoneRow') && await p.$('#youNotify #youMorning'), 'v1: Notifications with On This Phone and Today’s Morning alone');
   await reset();
   await p.click('#youPhoneRow');
-  await p.waitForFunction(() => document.querySelector('#youPhone input')?.checked && !document.querySelector('#youPhone input').disabled, null, { timeout: 15000 });
+  await p.waitForFunction(() => document.querySelector('#youPhone')?.checked && !document.querySelector('#youPhone').disabled, null, { timeout: 15000 });
   await p.waitForTimeout(500);
   const all = await reqs();
   const dev = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/device')), push = all.findIndex((e) => e.method === 'POST' && e.path.endsWith('/today/push'));
@@ -566,20 +581,20 @@ await part('v1', async () => {
   // (off: DELETE /api/push after the device route's 404, and off it stays, after a reload too (the morning's thisDevice))
   await reset();
   await p.click('#youPhoneRow');
-  await p.waitForFunction(() => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && !i.checked; }, null, { timeout: 15000 });
+  await p.waitForFunction(() => { const i = document.querySelector('#youPhone'); return i && !i.disabled && !i.checked; }, null, { timeout: 15000 });
   await p.waitForTimeout(1500);
   const off = await reqs(), d1 = off.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), d2 = off.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/push'));
   ok(d1 >= 0 && d2 > d1 && JSON.parse(off[d2].body).endpoint === FAKE_ENDPOINT, 'v1 off: DELETE /api/push { endpoint } after the device route’s 404');
-  ok(!(await p.isChecked('#youPhone input')), 'v1: off it stays');
+  ok(!(await p.isChecked('#youPhone')), 'v1: off it stays');
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('#rest .tcard[data-state="ok"]').length === 4);
   await p.click('#tabs [data-tab="you"]');
-  await p.waitForSelector('#youPhone input');
+  await p.waitForSelector('#youPhone');
   await p.waitForTimeout(1500);
-  ok(!(await p.isChecked('#youPhone input')), 'v1: off after a reload');
+  ok(!(await p.isChecked('#youPhone')), 'v1: off after a reload');
   await reset();
   await p.click('#youPhoneRow');
-  await p.waitForFunction(() => { const i = document.querySelector('#youPhone input'); return i && !i.disabled && i.checked; }, null, { timeout: 15000 });
+  await p.waitForFunction(() => { const i = document.querySelector('#youPhone'); return i && !i.disabled && i.checked; }, null, { timeout: 15000 });
   ok((await reqs()).some((e) => e.method === 'POST' && e.path.endsWith('/today/push')), 'v1: on again, through /api/push');
   await ctx.close();
 });
@@ -670,7 +685,7 @@ await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[390, 844], [320, 568], [844, 390]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules .rule')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app], .atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules [data-rulepick]')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app], .atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(300);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);
