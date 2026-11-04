@@ -155,40 +155,7 @@ function sectionsFor(step){
 /* ---------------- state ---------------- */
 let S = null;
 const newId = () => Date.now().toString(36) + uid();
-const blank = () => ({id:newId(), created:Date.now(), fit:'full', step:0, v:{date:new Date().toISOString().slice(0,10), fitter:'Kate'}, pain:{}, photos:[], products:[], stretches:null, sample:false});
-
-function sampleState(){
-  const s = blank();
-  s.id = 'sample'; s.sample = true; s.fit = 'full';
-  Object.assign(s.v, {
-    fitter:'Kate', first:'Jordan', last:'Hale', email:'jordan.hale@example.com', phone:'07700 900123',
-    bike:'Trek Domane SL 6', frame:'56 cm', bikeType:'Road', pedals:'Shimano SPD-SL, yellow cleats (6°)', shoes:'Specialized Torch, EU 43',
-    sex:'Male', style:'Serious recreational', age:46, height:178, weight:78, job:'Architect, desk-based',
-    rideTime:2.5, speed:17, cadence:84, years:6, daysS:3, daysW:2, miles:['Club rides','Sportives','Indoor / Zwift'],
-    goals:['Comfort','Longer rides','Fix pain or discomfort'], goalNote:'Wants to ride the 100-mile Norfolk sportive in June without his back seizing up.',
-    problems:'Lower back aches after about 2 hours. Right knee niggles on long climbs. Left hand goes numb after an hour on the hoods.',
-    activities:'Yoga once a week. Five-a-side football on Tuesdays.', injuries:'Right ACL reconstruction in 2014, fully rehabilitated. Tight hips from desk work.', treated:'Yes',
-    arch_L:'Medium', arch_R:'Low', footbed:'Stock', footLen_L:271, footLen_R:274, footWid_L:102, footWid_R:104, footAng_L:8, footAng_R:12, bio:'y', insole:'EU 42–43',
-    knee_L:'Neutral', knee_R:'Bends in', pelvis:'Right higher', legLen:'Equal', ischial:128, backFlex:42, shFwd:'Yes', shLevel:'Level', shWidth:41, elbows:'No',
-    inseam:84, thigh:56, plank:55, ham_L:62, ham_R:48, hipR_L:72, hipR_R:84,
-    shoeSet:[true,true,true,true],
-    legExt_pre:136, legExt_post:141, hipTop_pre:41, hipTop_post:48, sacral_pre:62, sacral_post:65, kops_pre:1.8, kops_post:0.4, bmr_pre:3.2, bmr_post:1.6,
-    torso_pre:38, torso_post:42, shoulder_pre:96, shoulder_post:89, elbow_pre:151, elbow_post:159,
-    heel:'Heel drops', kneeTrack_L:'Straight', kneeTrack_R:'Tracks in', latFoot:'Wedge added',
-    fitNotes:'Right knee tracks in under load. One varus wedge under the right cleat straightened it on the camera.',
-    sadModel_pre:'Bontrager Montrose Comp 138', sadModel_post:'Bontrager Verse Pro 145', sadW_pre:138, sadW_post:145, sadH_pre:718, sadH_post:734,
-    setback_pre:62, setback_post:55, tilt_pre:-1.5, tilt_post:0, crank_pre:172.5, crank_post:170, barW_pre:420, barW_post:400,
-    stemL_pre:110, stemL_post:100, stemA_pre:-7, stemA_post:7, spacers_pre:15, spacers_post:25, barReach_pre:470, barReach_post:448, hoods_pre:545, hoods_post:520, drop_pre:85, drop_post:67,
-    tipBar_pre:520, tipBar_post:497, barModel_pre:'Bontrager Elite VR-CF 42', barModel_post:'Bontrager Elite VR-CF 40',
-    cleatL:'1.2 cm behind M1, neutral rotation', cleatR:'1.2 cm behind M1, 2° heel in, one varus wedge',
-    summary:''
-  });
-  s.pain = {lowback:2, knee_R:1, hand_L:1, neck:1};
-  s.products = [{n:'BioDynamic custom insoles', p:'49.99'}, {n:'Cleat wedges, pair', p:'14.99'}];
-  s.photos = [{id:'smp1', sample:'before', tag:'Before · side', cap:'Saddle low, long reach: knee extension short of range', marks:[], inc:true},
-              {id:'smp2', sample:'after', tag:'After · side', cap:'Saddle up 16 mm, front raised: knee inside range, torso more open', marks:[], inc:true}];
-  return s;
-}
+const blank = () => ({id:newId(), created:Date.now(), fit:'full', step:0, v:{date:new Date().toISOString().slice(0,10), fitter:'Kate'}, pain:{}, photos:[], products:[], stretches:null});
 
 /* storage: every fit kept in this browser (IndexedDB, one record a fit, photos and all); the one that's open remembered
    (localStorage). Where the browser won't keep anything (some private windows), the fit lives only as long as the page. */
@@ -209,12 +176,15 @@ const dbGet = id => tx('readonly', st => st.get(id)), dbAll = () => tx('readonly
 const dbPut = rec => tx('readwrite', st => st.put(rec)), dbDel = id => tx('readwrite', st => st.delete(id));
 const lsGet = k => { try { return localStorage.getItem(k); } catch(_){ return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(_){} };
+// (an open fit, else a new one: the first one a Standard Fit, as New fit makes. The example rider the app first came
+// with, Jordan Hale, saved as 'sample': deleted from every device that has him)
 async function load(){
+  try { await dbDel('sample'); } catch(_){}
   const id = lsGet(CUR);
-  if (id){ try { const r = await dbGet(id); if (r && r.v) return Object.assign(blank(), r); } catch(_){} }
-  return sampleState();
+  if (id && id !== 'sample'){ try { const r = await dbGet(id); if (r && r.v) return Object.assign(blank(), r); } catch(_){} }
+  const s = blank(); s.fit = 'std'; return s;
 }
-const record = () => ({...S, updated:Date.now(), photos:S.photos.map(p => { const {_comp, ...rest} = p; return p.sample ? {...rest, src:undefined} : rest; })});
+const record = () => ({...S, updated:Date.now(), photos:S.photos.map(p => { const {_comp, ...rest} = p; return rest; })});
 let saveT = null;
 async function writeNow(){
   clearTimeout(saveT); saveT = null;
@@ -231,7 +201,7 @@ async function openFit(rec){
   if (saveT) await writeNow();
   S = Object.assign(blank(), rec);
   lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0);
-  await ensureSamplePhotos(); renderMain();
+  await markPhotos(); renderMain();
 }
 async function newFit(){
   if (saveT) await writeNow();
@@ -244,7 +214,6 @@ let FITLIST = [];
 async function openFits(){
   if (saveT) await writeNow();
   try { FITLIST = (await dbAll()).sort((a, b) => (b.updated || 0) - (a.updated || 0)); } catch(_){ FITLIST = []; }
-  if (!FITLIST.some(f => f.id === 'sample')) FITLIST.push({id:'sample', v:{first:'Jordan', last:'Hale', date:'', bike:'Trek Domane SL 6'}, fit:'full', sample:true});
   $('#fits-q').value = ''; renderFits(); $('#fits').hidden = false;
 }
 function renderFits(){
@@ -254,10 +223,10 @@ function renderFits(){
     const name = [f.v.first, f.v.last].filter(Boolean).join(' ') || 'Rider not named yet';
     const when = f.v.date ? new Date(f.v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
     const open = S && f.id === S.id;
-    return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}${f.sample ? ' <span class="pill n">Sample</span>' : ''}</b>
+    return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}</b>
       <span>${esc([FITS[f.fit] ? FITS[f.fit].name : '', f.v.bike, when].filter(Boolean).join(' · '))}</span></div>
       ${open ? '<span class="pill g">Open</span>' : `<button type="button" class="btn sm dark" data-act="fit-open" data-id="${esc(f.id)}">Open</button>`}
-      ${f.sample ? '' : `<button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button>`}</div>`;
+      <button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button></div>`;
   }).join('') : `<p class="hint">No fits match “${esc(q)}”.</p>`;
 }
 
@@ -581,71 +550,10 @@ async function closeMZ(){
   await composite(p); MZ = null; $('#mz').hidden = true; save(); renderMain();
 }
 
-/* ---------------- sample photos (drawn, so the demo has something to measure) ---------------- */
-function scene(after){
-  const W = 1280, H = 860, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#e1e3e6'); gr.addColorStop(0.9, '#c3c7cc'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(20,22,26,.06)'; g.lineWidth = 2;
-  for (let x = 40; x < W; x += 80){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 773); g.stroke(); }
-  for (let y = 53; y < 773; y += 80){ g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-  g.fillStyle = '#9097a0'; g.fillRect(0, 773, W, H - 773);
-  const P = (x, y) => ({x, y}), rad = d => d * Math.PI / 180;
-  const BB = P(560, 640), RA = P(355, 605), FA = P(865, 605), sta = rad(73.5);
-  const sadH = after ? 367 : 359;
-  const seatTop = P(BB.x - Math.cos(sta) * sadH + (after ? 3.5 : 0), BB.y - Math.sin(sta) * sadH);
-  const SC = P(BB.x - Math.cos(sta) * 265, BB.y - Math.sin(sta) * 265);
-  const HT = P(792, 352), HB = P(810, 432);
-  const bar = after ? P(838, 329) : P(845, 346), hoods = P(bar.x + 20, bar.y - 12);
-  const hip = P(seatTop.x - 12, seatTop.y - 24);
-  const pedal = P(BB.x + 86 * Math.sin(rad(8)), BB.y + 86 * Math.cos(rad(8))), ankle = P(pedal.x - 22, pedal.y - 40);
-  const ik = (A, C, l1, l2, pick) => { const dx = C.x - A.x, dy = C.y - A.y; let d = Math.hypot(dx, dy); d = Math.min(d, l1 + l2 - 0.01);
-    const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a)), ux = dx / Math.hypot(dx, dy), uy = dy / Math.hypot(dx, dy);
-    const m = P(A.x + ux * a, A.y + uy * a), s1 = P(m.x - uy * h, m.y + ux * h), s2 = P(m.x + uy * h, m.y - ux * h); return pick(s1, s2) ? s1 : s2; };
-  const knee = ik(hip, ankle, 230, 230, (a, b) => a.x > b.x);
-  const th = rad(after ? 42 : 38), shoulder = P(hip.x + 250 * Math.cos(th), hip.y - 250 * Math.sin(th));
-  const elbow = ik(shoulder, hoods, 160, 160, (a, b) => a.y > b.y);
-  const L = (a, b, w, col) => { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
-  // wheels
-  [RA, FA].forEach(a => { g.lineWidth = 18; g.strokeStyle = '#1b1d21'; g.beginPath(); g.arc(a.x, a.y, 168, 0, 7); g.stroke();
-    g.lineWidth = 6; g.strokeStyle = '#4a4f57'; g.beginPath(); g.arc(a.x, a.y, 150, 0, 7); g.stroke();
-    g.fillStyle = '#1b1d21'; g.beginPath(); g.arc(a.x, a.y, 10, 0, 7); g.fill(); });
-  // frame
-  const fr = '#24272c';
-  L(BB, RA, 12, fr); L(SC, RA, 10, fr); L(BB, SC, 15, fr); L(SC, HT, 14, fr); L(BB, HB, 18, fr); L(HT, HB, 18, fr); L(HB, FA, 12, fr);
-  L(SC, P(seatTop.x + 4, seatTop.y + 12), 9, '#6b7179');
-  L(HT, P(HT.x - 3, bar.y + 6), 11, '#3a3e45'); L(P(HT.x - 3, bar.y + 4), bar, 12, '#24272c');
-  g.strokeStyle = '#24272c'; g.lineWidth = 10; g.beginPath(); g.moveTo(bar.x, bar.y); g.quadraticCurveTo(bar.x + 46, bar.y + 4, bar.x + 34, bar.y + 50); g.quadraticCurveTo(bar.x + 22, bar.y + 70, bar.x + 2, bar.y + 64); g.stroke();
-  L(bar, hoods, 14, '#111214');
-  g.fillStyle = '#111214'; roundRect(g, seatTop.x - 52, seatTop.y - 9, 104, 16, 8); g.fill();
-  L(BB, pedal, 10, '#3a3e45'); g.fillStyle = '#3a3e45'; g.beginPath(); g.arc(BB.x, BB.y, 30, 0, 7); g.fill();
-  // rider
-  const skin = '#d9a67f';
-  L(knee, ankle, 34, skin); L(P(ankle.x - 4, ankle.y - 10), ankle, 30, '#f2f2f2');
-  L(ankle, P(pedal.x + 34, pedal.y - 4), 26, '#16181b');
-  L(hip, knee, 50, '#16181b');
-  L(shoulder, elbow, 30, '#e5141c'); L(elbow, hoods, 24, skin);
-  g.fillStyle = '#16181b'; g.beginPath(); g.arc(hoods.x, hoods.y, 14, 0, 7); g.fill();
-  L(hip, shoulder, 74, '#e5141c'); L(P(hip.x + 6, hip.y + 4), P(hip.x + 50 * Math.cos(th), hip.y - 50 * Math.sin(th)), 70, '#16181b');
-  const neck = P(shoulder.x + 28, shoulder.y - 26), head = P(shoulder.x + 54, shoulder.y - 52);
-  L(shoulder, neck, 26, skin);
-  g.fillStyle = skin; g.beginPath(); g.arc(head.x, head.y, 32, 0, 7); g.fill();
-  g.fillStyle = '#24272c'; g.beginPath(); g.ellipse(head.x - 6, head.y - 12, 42, 28, -0.25, Math.PI, 2 * Math.PI); g.fill();
-  g.fillRect(head.x + 12, head.y - 6, 22, 8);
-  // motion-capture markers
-  [hip, knee, ankle, shoulder, elbow, hoods].forEach(q => { g.beginPath(); g.arc(q.x, q.y, 9, 0, 7); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#14161a'; g.stroke(); });
-  // label
-  g.fillStyle = 'rgba(20,22,26,.86)'; roundRect(g, 32, 30, after ? 290 : 312, 74, 14); g.fill();
-  g.fillStyle = '#ffffff'; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
-  g.font = "italic 800 46px 'Barlow Condensed', 'Arial Narrow', sans-serif"; g.fillText(after ? 'AFTER' : 'BEFORE', 52, 82);
-  g.font = "600 18px 'Barlow', sans-serif"; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText('Sample still', after ? 196 : 218, 80);
-  return {src:c.toDataURL('image/jpeg', 0.88), w:W, h:H, marks:[{p:[hip, knee, ankle].map(q => [q.x / W, q.y / H])}]};
-}
-async function ensureSamplePhotos(){
+// (each photo's angles drawn onto it, for the cards and the report: made again when a fit is opened)
+async function markPhotos(){
   let changed = false;
-  for (const p of S.photos){
-    if (p.sample && !p.src){ const r = scene(p.sample === 'after'); p.src = r.src; p.w = r.w; p.h = r.h; if (!p.marks || !p.marks.length) p.marks = r.marks; await composite(p); changed = true; }
-    else if (p.src && p.marks.length && !p._comp){ await composite(p); changed = true; }
-  }
+  for (const p of S.photos) if (p.src && p.marks.length && !p._comp){ await composite(p); changed = true; }
   if (changed && STEPS[S.step].id === 'photos') renderMain();
 }
 
@@ -989,9 +897,7 @@ function secHTML(sec, i){
 function renderMain(){
   if (!applies(STEPS[S.step])) S.step = visSteps().filter(i => i < S.step).pop() ?? 0;
   const st = STEPS[S.step];
-  const banner = S.sample ? `<div class="banner"><span class="sp"><b>Sample fit.</b> Jordan Hale is an example rider, so you can see a finished fit. Your own fits are kept on this device: find them under Fits.</span>
-    <button type="button" class="btn sm dark" id="btn-new" data-act="new">Start a new fit</button></div>` : '';
-  $('#main').innerHTML = `${banner}<div class="step-head"><div class="eyebrow">Step ${stepNo(S.step)} · ${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
+  $('#main').innerHTML = `<div class="step-head"><div class="eyebrow">Step ${stepNo(S.step)} · ${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
     ${jumpHTML(st.id)}${sectionsFor(st.id).map(secHTML).join('')}
 `;
   refresh(); renderRail(); renderHeader();
@@ -1084,7 +990,7 @@ document.addEventListener('click', e => {
   case 'new': return newFit();
   case 'fits': return openFits();
   case 'fits-close': $('#fits').hidden = true; return;
-  case 'fit-open': { const f = FITLIST.find(x => x.id === d.id); if (f) openFit(f.id === 'sample' && !f.created ? sampleState() : f); return; }
+  case 'fit-open': { const f = FITLIST.find(x => x.id === d.id); if (f) openFit(f); return; }
   case 'fit-del': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to delete'; t.classList.replace('ghost', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Delete'; t.classList.replace('primary', 'ghost'); } }, 3000); return; }
     dbDel(d.id).catch(() => {}).then(async () => { FITLIST = FITLIST.filter(x => x.id !== d.id); if (S.id === d.id){ S = blank(); S.fit = 'std'; await writeNow(); renderMain(); } renderFits(); }); return; }
@@ -1152,6 +1058,5 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   renderMain();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   try { if (document.fonts) await Promise.race([document.fonts.load("italic 800 46px 'Barlow Condensed'"), new Promise(r => setTimeout(r, 2500))]); } catch(_){}
-  await ensureSamplePhotos();
-  if (STEPS[S.step].id === 'photos') renderMain();
+  await markPhotos();
 })();

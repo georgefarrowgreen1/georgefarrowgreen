@@ -86,9 +86,6 @@ button{cursor:pointer}
   .rail-fit b{display:block;font-family:var(--f-disp);font-size:19px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.02em}}
 
 main{min-width:0}
-.banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;border-radius:14px;background:var(--blue-soft);color:var(--ink);margin-bottom:18px;font-size:15px}
-.banner b{font-weight:700}
-.banner .sp{flex:1;min-width:200px}
 .step-head{margin:2px 0 18px}
 .eyebrow{font-family:var(--f-disp);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:13.5px;color:var(--red-ink)}
 h1{font-family:var(--f-disp);font-weight:800;font-style:italic;text-transform:uppercase;font-size:clamp(32px,4.4vw,44px);line-height:1;margin:4px 0 6px;letter-spacing:.005em;text-wrap:balance}
@@ -403,7 +400,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .cmp-l.l{left:12px}.cmp-l.r{right:12px}
 .step-btn.done .n{font-size:16px}
 @media (max-width:900px){.saved{display:none}}
-@media (max-width:620px){.top .who span,#btn-preview span{display:none}#btn-preview{padding:0 14px}.top img{height:32px}.banner{font-size:14px;padding:10px 14px}}
+@media (max-width:620px){.top .who span,#btn-preview span{display:none}#btn-preview{padding:0 14px}.top img{height:32px}}
 .cmp-l{top:auto;bottom:12px}
 @media (min-width:980px){.rail{max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 180px);overflow-y:auto;scrollbar-width:thin}}
 
