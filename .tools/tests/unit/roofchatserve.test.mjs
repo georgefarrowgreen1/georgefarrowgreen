@@ -124,7 +124,8 @@ test('Chats’ own module files (pigeon/roof/): service.js’s Worker and every 
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.js'))) {
     const got = await within(serve(mod, `roof/${f}`, 'hub', env), 5000, f);
     assert.equal(got.status, 200, f);
-    const raw = readFileSync(new URL(f, dir), 'utf8');
+    // (the file's code, its comments left out: a minified copy, as sent, has none, so an import named in one is never a real one)
+    const raw = readFileSync(new URL(f, dir), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const rels = [...raw.matchAll(/\b(?:from\s*|import\()"(\.\.?\/[\w./-]+\.js)"|\bnew URL\(\s*"(\.\.?\/[\w./-]+\.js)"\s*,\s*import\.meta\.url\s*\)/g)].map((m) => m[1] || m[2]);
     for (const rel of rels) {
       const to = new URL(rel, `https://x/pigeon/roof/${f}`).pathname;
@@ -134,7 +135,7 @@ test('Chats’ own module files (pigeon/roof/): service.js’s Worker and every 
     }
   }
   const svc = await serve(mod, 'roof/service.js', 'hub', env);
-  const v = /new URL\("\.\/core\.js\?v=([0-9a-f]{12})", import\.meta\.url\)/.exec(svc.body)?.[1];
+  const v = /new URL\("\.\/core\.js\?v=([0-9a-f]{12})",\s*import\.meta\.url\)/.exec(svc.body)?.[1];
   assert.ok(v, 'the core Worker’s address stamped');
   assert.match((await serve(mod, `roof/core.js?v=${v}`, 'hub', env)).cache, /immutable/, 'so core.js is kept for good');
   assert.equal((await serve(mod, 'roof/core.js', 'hub', env)).cache, 'no-store', 'and plain, never kept');
