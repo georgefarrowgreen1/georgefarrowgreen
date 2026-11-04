@@ -297,12 +297,13 @@ function rhythmSetup({ first = false, at = null } = {}) {
   return openSheet(first0, { sheet: "rhythm-setup", tall: true });
 }
 // a day: what's planned, what's done
-function openDay(day) {
-  if (rhythmOn() && actsOn(day).length === 1) return X.open.act(actsOn(day)[0].id);
+// (asDay: the day's own sheet, whatever's on it: a link to a day (#day=) opens the day, not the one thing on it)
+function openDay(day, { asDay = false } = {}) {
+  if (!asDay && rhythmOn() && actsOn(day).length === 1) return X.open.act(actsOn(day)[0].id);
   if (rhythmOn() && rhDay(day) && !actsOn(day).length) return openSheet(() => rhDayView(day), { sheet: "fx-day" });
   const id = plannedOn(day), w = id && id !== "event" ? wkById(id) : null, did = actsOn(day);
-  if (did.length === 1 && !w) return X.open.act(did[0].id);
-  if (!did.length && w) return openWorkout(w);
+  if (!asDay && did.length === 1 && !w) return X.open.act(did[0].id);
+  if (!asDay && !did.length && w) return openWorkout(w);
   openSheet(() => ({
     title: dayLong(day),
     body: [h("div.sheet-top", {}, h("h1", { text: dayLong(day) }), h("div.sub", { text: w ? `Planned: ${w.name}` : id === "event" ? "Event day" : "A rest day" })),
@@ -430,7 +431,7 @@ function openWorkoutBy(ctx, id, day) {
   openWorkout(w);
 }
 export { openWorkoutBy as openWorkout };
-function openDayOf(ctx, day) { use(ctx); openDay(dayArg(day)); }
+function openDayOf(ctx, day, o) { use(ctx); openDay(dayArg(day), o); }
 export { openDayOf as openDay };
 export function openMove(ctx, day) { use(ctx); moveTo = null; const d = dayArg(day); openSheet(() => moveView(d), { sheet: "move" }); }
 export function openWorkouts(ctx) { use(ctx); openSheet(workoutsView, { sheet: "workouts", tall: true }); }

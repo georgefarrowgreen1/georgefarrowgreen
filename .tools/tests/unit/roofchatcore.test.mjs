@@ -141,7 +141,8 @@ function fakeLocks() {
   return { held, request(name, fn) { const prev = q.get(name) || Promise.resolve(); const run = prev.then(() => { held.push(name); return fn(); }); q.set(name, run.catch(() => {})); return run; } };
 }
 const SENTENCE = 'meet me under the old clock tower';
-const T = Date.UTC(2026, 10, 3, 9, 0);
+// (the fixture's "now": half an hour ago, to the minute, so what's waiting is always within the day it's read in)
+const T = Math.floor(Date.now() / 60e3) * 60e3 - 30 * 60e3;
 async function ident() {
   const { privJwk, pub } = await E2E.newIdentity();
   return { priv: await E2E.importPriv(privJwk), pub };

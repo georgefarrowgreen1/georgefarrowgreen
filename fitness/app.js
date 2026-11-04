@@ -1273,8 +1273,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.84";
-const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
+const BUILD = "1.85";
+const NEWS = "A link to a day weeks ahead opens that day, with its planned session";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

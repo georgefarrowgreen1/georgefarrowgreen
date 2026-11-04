@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.84";
-export const NEWS = "The header stays clear as you scroll: nothing shows through behind the title";
+export const BUILD = "1.85";
+export const NEWS = "A link to a day weeks ahead opens that day, with its planned session";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -234,7 +234,7 @@ export async function mount(root, fw) {
     } else if (key === "day" && arg) {
       const d = dayOfKey(arg), lo = addDays(mondayOf(core.TODAY), -7), hi = addDays(mondayOf(core.TODAY), 13);
       if (d == null) return;
-      if (d >= lo && d <= hi) { if (sheetEl.open) closeSheet(); lookAt(d); } else ctx.open.day(d);
+      if (d >= lo && d <= hi) { if (sheetEl.open) closeSheet(); lookAt(d); } else ctx.open.day(d, { asDay: true });
     } else if (key === "offer" && arg) {
       if (!openOffer(ctx, arg)) fw.toast("That plan isn’t there any more.");
     }
