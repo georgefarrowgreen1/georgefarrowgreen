@@ -135,8 +135,7 @@ function sectionsFor(step){
   case 'onbike': return [
     // (the body measurements here are the off-bike assessment's own: the same fields, so they count once a fit)
     {title:'Starting position', custom:'start', ownFields:true, 
-      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'}),
-        CK('startChk',['Saddle set level','Shifters level with the tops of the bar'])]},
+      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'})]},
     {title:'Shoe set-up', fields:[CK('shoeSet',['Cleats at least 1 cm behind M1','Cleat rotation matches the off-bike foot assessment','Cleat rotation checked with the rider on the bike','Stance width adjusted for the rider'])]},
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
@@ -172,7 +171,7 @@ function sampleState(){
     arch_L:'Medium', arch_R:'Low', footbed:'Stock', footLen_L:271, footLen_R:274, footWid_L:102, footWid_R:104, footAng_L:8, footAng_R:12, bio:'y', insole:'EU 42–43',
     knee_L:'Neutral', knee_R:'Bends in', pelvis:'Right higher', legLen:'Equal', ischial:128, backFlex:42, shFwd:'Yes', shLevel:'Level', shWidth:41, elbows:'No',
     inseam:84, thigh:56, plank:55, ham_L:62, ham_R:48, hipR_L:72, hipR_R:84,
-    startChk:[true,true], shoeSet:[true,true,true,true],
+    shoeSet:[true,true,true,true],
     legExt_pre:136, legExt_post:141, hipTop_pre:41, hipTop_post:48, sacral_pre:62, sacral_post:65, kops_pre:1.8, kops_post:0.4, bmr_pre:3.2, bmr_post:1.6,
     torso_pre:38, torso_post:42, shoulder_pre:96, shoulder_post:89, elbow_pre:151, elbow_post:159,
     heel:'Heel drops', kneeTrack_L:'Straight', kneeTrack_R:'Tracks in', latFoot:'Wedge added',
@@ -745,14 +744,13 @@ function mailText(){
   return `Subject: Your Precision Fit report, ${FITS[S.fit].name}\n\nHi ${first},\n\nThanks for coming in for your ${FITS[S.fit].name} with ${val('fitter') || 'us'}. Your report is attached: it has your new bike measurements, before and after photos, and the stretches we talked about.\n\n${fu.body}\n\nRide it for a couple of weeks and let us know how it feels.\n\n${val('fitter') || 'The fit team'}\nPrecision Fit Studio, Pedal Revolution\n63–67 Bethel Street, Norwich NR2 1NR · 01603 614400\nprecisionfit@pedalrevolution.co.uk`;
 }
 
-/* ---------------- starting position: the rider's body measurements, then the two checks before riding ---------------- */
+/* ---------------- starting position: the rider's body measurements ---------------- */
 function startHTML(){
   const inp = (k, label, unit) => `<div class="fld"><label class="lab" for="i-${k}">${label}</label>${inputHTML(k, {t:'num', unit, label})}</div>`;
   return `<div class="sp-sub">Body measurements</div>
     <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit-bone width', 'mm')}${inp('shWidth', 'Shoulder width', 'cm')}
       ${S.fit === 'std' ? '' : inp('footAng_L', 'Foot angle L', '°') + inp('footAng_R', 'Foot angle R', '°')}</div>
-    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>
-    <div class="sp-sub" style="margin-top:22px">Before the first pedal stroke</div>${fieldHTML(CK('startChk', ['Saddle set level', 'Shifters level with the tops of the bar']))}`;
+    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>`;
 }
 
 /* ---------------- client report ---------------- */
