@@ -948,7 +948,9 @@ function feetSVG(mode){
       <text x="${FOOT_X[side] + 50}" y="${H - 8}" text-anchor="middle" font-family="Barlow, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3f47">${side}${mode === 'report' ? ` · ${esc(footWord(out))}` : ''}</text>`;
   };
   const divider = `<line x1="${W / 2}" y1="8" x2="${W / 2}" y2="${H - 26}" stroke="${rider ? '#3a3f47' : '#9aa0a8'}" stroke-width="${rider ? 2 : 1.4}" ${rider ? '' : 'stroke-dasharray="3 3"'}/>`;
-  return `<svg viewBox="0 0 ${W} ${H}" ${mode === 'report' ? 'width="300" height="250"' : ''} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${rider ? 'The rider’s feet, standing, with a line along each foot' : 'Neutral example: a straight line along each foot'}">
+  // (its own size on it, so it's never the page's full width, whatever styles the browser has: the rider's 420 wide, the example 110)
+  const size = mode === 'report' ? 'width="300" height="250"' : mode === 'example' ? 'width="110" height="92" style="max-width:100%;height:auto"' : 'width="420" height="350" style="max-width:100%;height:auto"';
+  return `<svg viewBox="0 0 ${W} ${H}" ${size} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${rider ? 'The rider’s feet, standing, with a line along each foot' : 'Neutral example: a straight line along each foot'}">
     <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#d6d3ce" stroke-width="1.5" rx="6"/>${divider}${foot('L')}${foot('R')}</svg>`;
 }
 function feetHTML(){
