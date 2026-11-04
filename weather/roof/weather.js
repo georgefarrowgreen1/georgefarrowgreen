@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.70";
-export const NEWS = "Feels more like an app: no text selecting or copying, and no pinch or double-tap zoom";
+export const BUILD = "1.71";
+export const NEWS = "When the forecast updates, everything stays on screen: only the figures change";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

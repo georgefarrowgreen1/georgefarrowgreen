@@ -14,7 +14,7 @@ import { makeFormat, keyOf, HOUR, nowWall } from "../format.js";
 import * as I from "../insights.js";
 import { codeInfo, iconOf, label, LIGHT_MMH, HEAVY_MMH, heaviness } from "../codes.js";
 import { weatherIcon, glyph } from "../icons.js";
-import { timeChart, rangeChart } from "../charts.js";
+import { timeChart, rangeChart, hush } from "../charts.js";
 import { climateOn, rankIn, yearsAgo } from "../climate.js";
 import { inForce, colourOf, titleOf, glyphOf, spanOf } from "../official.js";
 import { zonesSay, zonesSpell, zoneSaid, ZONE_COLOURS } from "../solar.js";
@@ -333,6 +333,15 @@ export function view(el, ctx) {
     return { el: a, id: card.dataset.card, by, val: by ? a.dataset[by] : null, at: all.indexOf(a) };
   }
   function drawCards(wx, now, f) {
+    // (drawn again with new figures: the cards stay as they are and only what's in them changes, their charts never
+    // drawing in from nothing again; only a first paint, or another place, draws in)
+    const again = cards.children.length > 0 && !cards.querySelector(".ifl-skeleton") && drawnFor === `${wx.place.lat},${wx.place.lon}`;
+    drawnFor = `${wx.place.lat},${wx.place.lon}`;
+    if (again) hush(true);
+    try { drawCardsNow(wx, now, f); } finally { if (again) hush(false); }
+  }
+  let drawnFor = "";
+  function drawCardsNow(wx, now, f) {
     const S = ctx.S, list = [];
     const ask = askCard();
     if (ask) list.push(ask);

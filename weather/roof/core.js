@@ -228,7 +228,10 @@ export async function go(force = false) {
   const my = ++P.seq;
   setLoading(true);
   setError(null);
-  const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
+  // (a new place far off: the old forecast let go of, its page drawn afresh; a step within ~25 km, as My Location moves
+  // with you, keeps everything on screen while the new forecast comes, so nothing blanks)
+  const far = !S.wx || Math.abs(S.wx.place.lat - p.lat) > 0.25 || Math.abs(S.wx.place.lon - p.lon) > 0.35;
+  const moved = far && (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon));
   if (moved) { P.base = null; S.wx = null; S.updatedAt = null; S.stale = false; P.rain = rainOf(cell(p.lat, p.lon)); clearTimeout(P.paintT); P.painted = 0; emit("wx", null); }
   try {
     const loading = load(p, (wx, how) => {

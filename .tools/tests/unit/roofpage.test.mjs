@@ -91,7 +91,8 @@ test('under the roof, its sheets are InFlite’s sheet, in the frozen markup: Mo
   // (stage 4's B0-b adds Mail Notifications with Mail's module, s4/spec §3.8; an inflite beside without Mail's module
   // has the four)
   const mail = existsSync(new URL('../../email/public/roof/mail.js', PUB));
-  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify', ...(mail ? ['sh-mailnotify'] : [])], mail ? 'the five, as dialogs' : 'the four, as dialogs');
+  // (Today 1.35: You's folders, one sheet for the three, before Mail's)
+  assert.deepEqual(ids, ['morning', 'sh-every', 'sh-edit', 'sh-wxnotify', 'sh-youfolder', ...(mail ? ['sh-mailnotify'] : [])], mail ? 'the six, as dialogs' : 'the five, as dialogs');
   if (mail) {
     assert.match(html, /<h2 id="sh-mailnotify-t" tabindex="-1">Mail Notifications<\/h2>/);
     assert.match(html, /<div class="ifs-body" id="mlnBody"><\/div><\/dialog>/, 'Mail Notifications’ body, drawn by mailnotify.js');
