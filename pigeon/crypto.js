@@ -65,7 +65,9 @@ function inBackground(opts) {
 async function argon2(opts) {
   const away = inBackground(opts);
   if (away) { try { return await away; } catch (_) { noWorker = true; } }
-  return (await loadArgon())(opts);
+  // (no WebAssembly at all: iOS's Lockdown Mode turns it off, and nothing else can stretch the password here; said so)
+  try { return (await loadArgon())(opts); }
+  catch (e) { if (typeof WebAssembly === "undefined") throw Object.assign(new Error("This browser has WebAssembly turned off (Lockdown Mode does), which a password needs here. Use a passkey, or turn Lockdown Mode off for this site in Safari’s settings."), { noWasm: true }); throw e; }
 }
 const ECDH = { name: "ECDH", namedCurve: "P-256" };
 const aesKey = (raw, uses) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, uses);

@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.75";
-export const NEWS = "Reply from Today: a friend's message on Today's Chat card can be answered right there";
+export const BUILD = "1.76";
+export const NEWS = "Locked Chat says when unlocking needs a connection, and signing in with a password says plainly when the browser can't";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

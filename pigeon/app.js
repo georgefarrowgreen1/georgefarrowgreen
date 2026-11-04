@@ -853,8 +853,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.75";            // shown in InFlite's menu
-const APP_NEWS = "Reply from Today: a friend's message on Today's Chat card can be answered right there";       // (said once it's in)
+const APP_VERSION = "1.76";            // shown in InFlite's menu
+const APP_NEWS = "Locked Chat says when unlocking needs a connection, and signing in with a password says plainly when the browser can't";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -10511,7 +10511,8 @@ function showUpload(stage, f = 0) {
    Optional, per phone: Chat locks when you leave it (straight away, or
    after a minute, 15 minutes or an hour), and opens with Face ID, Touch ID
    or the phone's passkey. The check is the phone's own (a user-verified
-   passkey assertion), so it works with no signal too. While locked nothing
+   passkey assertion). (On inflite.ai the browser first asks
+   georgefarrowgreen.com that its passkeys may be used there, so it needs a signal.) While locked nothing
    from your chats is drawn, and it's blurred in the app switcher. */
 const LOCK_KEY = "inflight-lock", LOCK_AFTER = [[0, "Immediately"], [60e3, "After 1 Minute"], [15 * 60e3, "After 15 Minutes"], [HOUR, "After 1 Hour"]];
 function lockPrefs() { try { const v = JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); return v && S.me && v.uid === S.me.id && v.on ? v : null; } catch (_) { return null; } }
@@ -10540,7 +10541,9 @@ function drawLock() {
 async function unlock() {
   if (S.unlocking) return; S.unlocking = true;
   try { await lockCheck(); S.locked = false; haptic("success"); drawLock(); render(); backStep(); sync(); }      // (Android's Back: the chat you're back in has its step again)
-  catch (_) { toast("Couldn’t unlock. Try again."); }
+  // (on inflite.ai the passkey is the home site's, and the browser asks that site before it will take one: with no
+  // signal it can't, so it's said, not "try again" with no end)
+  catch (_) { toast(navigator.onLine === false && RP_ID !== location.hostname ? "Unlocking needs a connection here. Try again once you’re online." : "Couldn’t unlock. Try again."); }
   finally { S.unlocking = false; }
 }
 let hiddenAt = 0;

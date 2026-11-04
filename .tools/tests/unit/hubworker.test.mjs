@@ -444,7 +444,7 @@ test('the hub never asks Today’s assets (but for One roof’s page), and its s
   assert.doesNotMatch(src, /env\.ASSETS|caches\.|localStorage/);
   assert.equal(src.match(/Date\.now\(\)/g).length, 2, 'the clock read twice: for /api/hub, and to see whether what it found is still fresh');
   assert.equal(src.match(/^let /gm).length, 1, 'one thing kept in the isolate: what the probe found (and whether it’s being asked)');
-  assert.match(src, /import \{ accountCookie \} from "\.\/account\.js";/, 'the account’s cookie as Today picks it out');
+  assert.match(src, /import \{ accountCookie, geoOf \} from "\.\/account\.js";/, 'the account’s cookie as Today picks it out, and where the browser is as Today says it to the account');
 });
 
 // ---- One roof (stage 1, spec §8.1, D7, D14) ----

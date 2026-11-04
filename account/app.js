@@ -813,8 +813,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.78";
-const NEWS = "Opened from an app, your account has Done at the top right to go back";
+const BUILD = "1.79";
+const NEWS = "Signing in: browsers that can't use passkeys here are offered your password instead, and clearer words when a password can't be checked";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1079,7 +1079,13 @@ async function call(path, { method = "GET", body, type } = {}) {
   return j;
 }
 const post = (path, body = {}) => call(path, { method: "POST", body });
-const passkeysWork = () => !!(window.PublicKeyCredential && navigator.credentials?.get);
+// (the site's passkeys are its home site's, used on inflite.ai through Related Origin Requests: a browser without them
+// can't use one here at all, so none's offered, and the password is the way in. Where the browser says, its word;
+// where it doesn't, Firefox (its own engine, not Firefox on an iPhone, which is Safari's) is the one that hasn't them)
+const ELSEWHERE = /(^|\.)inflite\.ai$/.test(location.hostname);
+let related = !ELSEWHERE || !/\bFirefox\//.test(navigator.userAgent);
+try { PublicKeyCredential.getClientCapabilities?.().then((c) => { if (ELSEWHERE && c && "relatedOrigins" in c) related = !!c.relatedOrigins; }, () => {}); } catch (_) {}
+const passkeysWork = () => related && !!(window.PublicKeyCredential && navigator.credentials?.get);
 // The passkeys a password manager keeps for this account, told which the account still has, and the name and email to
 // show on them (the WebAuthn Signal API, where the browser has it): so one taken off the account here stops being
 // offered there, and a new name or email shows on the rest. (RP: the site's passkeys are for, once it's been said.)

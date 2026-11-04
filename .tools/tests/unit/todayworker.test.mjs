@@ -53,6 +53,21 @@ const req = (path, { method = 'GET', headers = {}, body } = {}) => {
 };
 const call = async (r, e = env()) => { const res = await worker.fetch(r, e, {}); let data = null; try { data = await res.clone().json(); } catch {} return { res, data }; };
 
+// (sign-in review: behind a Worker, the account sees the Worker's address, not the browser's; so with the hub's key, as
+// the hub's own requests carry it, the browser's address and place go too, and every sign-in back to Today isn't one
+// address's tries for everyone)
+test('with the hub’s key, the browser’s address and place go to the account as the hub says them; without it, neither', { skip }, async () => {
+  const asked = account(() => Response.json({ signedIn: false, links: {} }));
+  const r = () => { const q = req('/api/session', { headers: { Cookie: `__Secure-account=${TOKEN}`, 'CF-Connecting-IP': '203.0.113.9' } }); Object.defineProperty(q, 'cf', { value: { country: 'GB', city: 'London', asn: 1 } }); return q; };
+  await call(r(), env({ HUB_KEY: 'k'.repeat(32) }));
+  const h = asked[0].headers;
+  assert.equal(h.get('x-hub-key'), 'k'.repeat(32));
+  assert.equal(h.get('x-hub-ip'), '203.0.113.9');
+  assert.deepEqual(JSON.parse(atob(h.get('x-hub-geo').replace(/-/g, '+').replace(/_/g, '/'))), { country: 'GB', city: 'London' });
+  await call(r());
+  for (const k of ['x-hub-key', 'x-hub-ip', 'x-hub-geo']) assert.equal(asked[1].headers.get(k), null, k);
+});
+
 test('only the account’s cookie goes on, with Today’s own origin as Origin, and the browser’s few headers', { skip }, async () => {
   const asked = account(() => Response.json({ signedIn: false, links: {} }));
   await call(req('/api/session', { headers: { Cookie: `__Secure-known-device=abc123; theme=dark; __Secure-account=${TOKEN}; other=1`, 'X-Home-Screen': '1', 'CF-Connecting-IP': '203.0.113.9', Referer: 'https://inflite.ai/x', 'X-Secret': 'nope' } }));
