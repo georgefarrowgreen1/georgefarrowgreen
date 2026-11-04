@@ -2320,6 +2320,15 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
 - **Guide ranges** for the angles are in `TARGETS` at the top of `fitting/app.js`; the traffic-light thresholds in
   `CL`; the fit types' contents in `FITS` and `sectionsFor`.
 - **Typefaces:** Barlow and Barlow Condensed (SIL OFL), kept in `fitting/fonts/`.
+- **Sign-in:** its own, apart from the rest of the site (no account, no shared cookie). The fit team are in the
+  `FITTING_USERS` secret: `Kate:…,Matt:…`, each password either as it is or hashed with
+  `node .tools/fitting-user.mjs Kate`. Signed in, a cookie for this address alone lasts 30 days; changing
+  `FITTING_USERS` signs everyone out. Eight wrong passwords from one address wait 15 minutes. Without `FITTING_USERS`
+  no one can sign in. Only the sign-in page, its styles, typefaces, logo and icons are open to anyone.
+
+**Sign-in setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables
+and Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
+the hashed lines from the tool) → **Save**, then redeploy (Deployments → … → Retry deployment, or push any commit).
 
 **One-time setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Custom domains** →
 **Set up a custom domain** → `fitting.georgefarrowgreen.com`. Cloudflare adds the DNS record itself when the domain's

@@ -103,7 +103,7 @@ h1{font-family:var(--f-disp);font-weight:800;font-style:italic;text-transform:up
 .fld{display:flex;flex-direction:column;gap:7px;min-width:0}
 .lab{font-size:12.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}
 .lab small{font-weight:500;letter-spacing:0;text-transform:none;font-size:12.5px}
-input[type=text],input[type=email],input[type=tel],input[type=date],textarea,select{width:100%;min-height:50px;border-radius:12px;border:1px solid transparent;background:var(--field);padding:11px 14px;font-size:17px;outline:none;-webkit-appearance:none;appearance:none}
+input[type=text],input[type=email],input[type=tel],input[type=date],input[type=password],textarea,select{width:100%;min-height:50px;border-radius:12px;border:1px solid transparent;background:var(--field);padding:11px 14px;font-size:17px;outline:none;-webkit-appearance:none;appearance:none}
 input[type=date]{min-width:0}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),linear-gradient(135deg,var(--mute) 50%,transparent 50%);background-position:calc(100% - 20px) 22px,calc(100% - 14px) 22px;background-size:6px 6px;background-repeat:no-repeat;padding-right:36px}
 textarea{min-height:96px;resize:vertical;line-height:1.45}
@@ -429,3 +429,19 @@ input[type=search]:focus{border-color:var(--focus)}
 /* starting position: the body measurements, then the checks */
 .sp-sub{font-family:var(--f-disp);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink);margin:4px 0 12px}
 .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:12px 14px}
+
+/* the sign-in page (login.html) */
+body.signin{min-height:100vh;min-height:100dvh;display:flex;padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}
+body.signin::before{display:none}
+.si-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding-block:32px}
+.si-card{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:28px;display:flex;flex-direction:column;gap:16px}
+.si-logo{height:52px;width:auto;align-self:flex-start;border-radius:9px}
+.si-title{font-family:var(--f-disp);font-weight:800;font-style:italic;text-transform:uppercase;font-size:34px;line-height:1;margin:6px 0 0}
+.si-lede{margin:-6px 0 4px;color:var(--ink-2)}
+.si-pass{position:relative;display:flex}
+.si-pass input{padding-right:84px}
+.si-show{position:absolute;right:6px;top:50%;transform:translateY(-50%);min-height:38px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);font-weight:600;font-size:14px}
+.si-msg{padding:10px 14px;border-radius:12px;background:var(--bad-soft);color:var(--bad);font-size:15px}
+.si-go{min-height:54px;font-size:17px;margin-top:4px}
+.si-foot{margin:0;font-size:13px;color:var(--mute);text-align:center}
+.who-me{font-size:14px;color:var(--mute);white-space:nowrap}

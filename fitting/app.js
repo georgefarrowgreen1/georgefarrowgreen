@@ -155,7 +155,9 @@ function sectionsFor(step){
 /* ---------------- state ---------------- */
 let S = null;
 const newId = () => Date.now().toString(36) + uid();
-const blank = () => ({id:newId(), created:Date.now(), fit:'full', step:0, v:{date:new Date().toISOString().slice(0,10), fitter:'Kate'}, pain:{}, photos:[], products:[], stretches:null});
+// (who's signed in: api/me, functions/_fitstudio.js; a new fit's fitter, where they're one of FITTERS)
+let ME = '';
+const blank = () => ({id:newId(), created:Date.now(), fit:'full', step:0, v:{date:new Date().toISOString().slice(0,10), fitter:FITTERS.find(f => f.toLowerCase() === ME.toLowerCase()) || ''}, pain:{}, photos:[], products:[], stretches:null});
 
 /* storage: every fit kept in this browser (IndexedDB, one record a fit, photos and all); the one that's open remembered
    (localStorage). Where the browser won't keep anything (some private windows), the fit lives only as long as the page. */
@@ -990,6 +992,10 @@ document.addEventListener('click', e => {
   case 'new': return newFit();
   case 'fits': return openFits();
   case 'fits-close': $('#fits').hidden = true; return;
+  case 'signout': {
+    t.disabled = true;
+    (async () => { if (saveT) await writeNow(); try { await fetch('api/logout', {method:'POST', credentials:'same-origin'}); } catch(_){} location.replace('login'); })();
+    return; }
   case 'fit-open': { const f = FITLIST.find(x => x.id === d.id); if (f) openFit(f); return; }
   case 'fit-del': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to delete'; t.classList.replace('ghost', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Delete'; t.classList.replace('primary', 'ghost'); } }, 3000); return; }
@@ -1054,6 +1060,13 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
 
 /* ---------------- start ---------------- */
 (async () => {
+  // (signed in? Not: the sign-in page. No answer at all, offline in the studio: carry on with what's on this device)
+  try {
+    const r = await fetch('api/me', {credentials:'same-origin', cache:'no-store'});
+    if (r.status === 401){ location.replace('login'); return; }
+    if (r.ok) ME = (await r.json()).name || '';
+  } catch(_){}
+  $('#who-me').textContent = ME ? `Signed in as ${ME}` : '';
   S = await load();
   renderMain();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
