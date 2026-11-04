@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.77";
-export const NEWS = "The rest day now just says Rest";
+export const BUILD = "1.78";
+export const NEWS = "Activities no longer redraws itself a moment after you switch to it: route maps fill in row by row";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -186,7 +186,7 @@ export async function mount(root, fw) {
   let queued = 0;
   const all = () => { ver++; if (queued) return; queued = requestAnimationFrame(() => { queued = 0; header(); draw(); }); };
   const ACTS_EVENTS = new Set(["me", "acts", "settings", "loading", "error"]);
-  const offs = core.EVENTS.map((e) => core.on(e, () => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
+  const offs = core.EVENTS.map((e) => core.on(e, (d) => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (d?.patched && shown === "activities") { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
   const unprovide = fw.search?.provide?.({

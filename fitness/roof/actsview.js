@@ -20,7 +20,7 @@
 // Map) and [data-k=share].
 // Not carried (S2-D8): the two-pane Activities and its right-click menu (fitness/activities.js actsWide, actMenu): at
 // any width a ride opens as a sheet, which the framework centres on a wide screen.
-import { A, C, F, HR_ZONES, M, P, S, SPORTS, Sheet, TODAY, U, XV, ZONES, addDays, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, effortFigs, effortsOf, fileKey, fitnessSeries, formSaid, full, h, height, held, hm, icon, lightNow, load, mapCredit, mapsAlways, measure, mondayOf, needF, openSheet, pace, paceFor, pct, perSecond, plannedOn, plural, pushSheet, redraw, rollAvg, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, speed, sportIcon, sportTile, startOfDay, stat, staying, stopped, store, sumOf, summarise, svgOf, timeOf, toast, upload as keepUploads, wait, wkById, zoneBars, zoneOf } from "./x.js";
+import { emit, A, C, F, HR_ZONES, M, P, S, SPORTS, Sheet, TODAY, U, XV, ZONES, addDays, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, effortFigs, effortsOf, fileKey, fitnessSeries, formSaid, full, h, height, held, hm, icon, lightNow, load, mapCredit, mapsAlways, measure, mondayOf, needF, openSheet, pace, paceFor, pct, perSecond, plannedOn, plural, pushSheet, redraw, rollAvg, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, speed, sportIcon, sportTile, startOfDay, stat, staying, stopped, store, sumOf, summarise, svgOf, timeOf, toast, upload as keepUploads, wait, wkById, zoneBars, zoneOf } from "./x.js";
 import { effortsCard, effortsSeen } from "./todayview.js";
 
 // ---- the module's handle: the ctx the entry gave the last view or opener (its fw, core and open) ----
@@ -158,6 +158,7 @@ async function routes() {
   routes.busy = true;
   const none = new Set(store.get("noroute", [])), me = S.me.id;
   let got = 0;
+  const done = [];
   try {
     await needF();
     // (one that couldn't be read is never asked for again; a few at a time, with a pause between, so the list stays smooth)
@@ -168,12 +169,14 @@ async function routes() {
         if (!r && !sumOf(a)?.route) none.add(a.id);
         await A.addFigures(a.id, figs);
         a.sum = { ...(a.sum || {}), ...figs }; const s = sumOf(a); if (s) S.sums.set(a.id, { ...s, ...figs });
-        got++;
+        got++; done.push(a.id);
         await new Promise((r) => setTimeout(r, 250));
       } catch (e) { if (e.status === 401) { lost(); break; } if (e.offline) break; none.add(a.id); }
     }
-    // (drawn again once, at the end, and only if something was filled in)
-    if (got && working()) redraw("acts");
+    // (each row filled in swapped in its place, the rest of the list untouched: nothing redrawn, nothing jumps)
+    if (got && sectionEl?.isConnected) for (const id of done) { const was = sectionEl.querySelector(`[data-k=act][data-id="${CSS.escape(id)}"]`), a = S.own.find((x) => x.id === id); if (was && a) was.replaceWith(actRow(a)); }
+    // (the other sections told, so they draw the new figures when they next show; this one already has them)
+    if (got) emit("acts", { patched: true });
   } catch (_) {
   } finally {
     routes.busy = false;
@@ -470,8 +473,10 @@ export async function openUpload(ctx, got) {
 }
 // the Activities section: drawn on show and on core's events while it shows (the entry calls draw); the list's DOM let
 // go after it's been out of sight a while (S2-D22) is the entry's; here, the observer and the background work stop
+let sectionEl = null;
 export function view(el, ctx) {
   use(ctx);
+  sectionEl = el;
   el.classList.add("fx-acts");
   let first = true;
   return {
