@@ -140,7 +140,7 @@ function sectionsFor(step){
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
         SG('latFoot','Lateral foot alignment',['Aligned','Wedge added','Spacer added'],{f:'FT'})]},
-    {title:'Upper body', angles:[AN('torso','Torso angle','°'), AN('shoulder','Shoulder angle','°'), AN('elbow','Elbow angle','°')]},
+    {title:'Upper body', angles:[AN('torso','Torso angle','°'), AN('backAngle','Back angle','°'), AN('shoulder','Shoulder angle','°'), AN('elbow','Elbow angle','°')]},
     {title:'Aero position', f:'T', fields:[N('aeroHold','Holds the aero position for','min'), SG('head','Head position',['Low & tucked','Neutral','High']),
       SG('aeroFeel','How it feels',['Comfortable','Manageable','Struggling'])]},
     {title:'Other fit comments', fields:[TA('fitNotes','Notes',{ph:'Anything the numbers don’t show'})]},
@@ -590,7 +590,7 @@ function lights(){
   return out;
 }
 function anglesList(){
-  const all = [['legExt','Leg extension','°'],['hipTop','Hip angle, top of stroke','°'],['sacral','Sacral angle','°','FT'],['kops','Knee over pedal spindle','cm'],['bmr','Body mass representation','cm'],['torso','Torso angle','°'],['shoulder','Shoulder angle','°'],['elbow','Elbow angle','°']];
+  const all = [['legExt','Leg extension','°'],['hipTop','Hip angle, top of stroke','°'],['sacral','Sacral angle','°','FT'],['kops','Knee over pedal spindle','cm'],['bmr','Body mass representation','cm'],['torso','Torso angle','°'],['backAngle','Back angle','°'],['shoulder','Shoulder angle','°'],['elbow','Elbow angle','°']];
   return all.filter(a => (a[3] || 'SFT').includes(fitCode())).map(([k, label, u]) => ({k, label, u, pre:num(k + '_pre'), post:num(k + '_post'), r:range(k)})).filter(a => a.pre != null || a.post != null);
 }
 function suggested(){
