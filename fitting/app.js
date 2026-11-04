@@ -47,37 +47,47 @@ const PAIN = {neck:'Neck', shoulder_L:'Left shoulder', shoulder_R:'Right shoulde
   hand_L:'Left hand', hand_R:'Right hand', hip_L:'Left hip', hip_R:'Right hip', saddle:'Saddle contact', leg_L:'Left leg', leg_R:'Right leg',
   knee_L:'Left knee', knee_R:'Right knee', foot_L:'Left foot', foot_R:'Right foot'};
 
+// (S Standard, F Full: a road bike's; T: a TT or triathlon bike's, as Precision Fit's triathlon form lists them)
 const BIKE = [
-  {g:'Saddle', k:'sadModel', label:'Saddle make & model', t:'text'},
-  {g:'Saddle', k:'sadW', label:'Saddle width', u:'mm', step:5},
-  {g:'Saddle', k:'sadH', label:'Saddle height', u:'mm', hint:'BB centre to saddle top'},
-  {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
+  // (the road form's order and names: saddle 1–6, reach and drop 7–9, cockpit 10–13, crank 14, coordinates 15–18)
+  {g:'Saddle', k:'sadH', label:'Saddle height', u:'mm', hint:'BB centre to top of saddle'},
+  {g:'Saddle', k:'sadModel', label:'Saddle model', t:'text'},
+  {g:'Saddle', k:'sadW', label:'Saddle size', u:'mm', step:5, hint:'Width'},
   {g:'Saddle', k:'tilt', label:'Saddle tilt', u:'°', step:0.5},
-  {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'FT'},
-  {g:'Drivetrain', k:'crank', label:'Crank length', u:'mm', step:2.5, f:'FT'},
-  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'FT'},
-  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20},
+  {g:'Saddle', k:'setback', label:'Saddle setback', u:'mm', hint:'Saddle tip behind BB'},
+  {g:'Saddle', k:'postOff', label:'Seat post offset', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'tipShifter', label:'Saddle tip to shifter', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'F'},
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
-  {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height'},
-  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'FT'},
-  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'FT'},
-  {g:'Coordinates', k:'hx', label:'Handlebar X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'hy', label:'Handlebar Y', u:'mm', step:5, f:'FT'},
-  {g:'Coordinates', k:'sx', label:'Saddle X', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y', u:'mm', step:5, f:'FT'},
+  {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
+  {g:'Cockpit', k:'barModel', label:'Handlebar model', t:'text', f:'F'},
+  {g:'Cockpit', k:'spacers', label:'Headset spacer height', u:'mm', step:5, f:'SF'},
+  {g:'Drivetrain', k:'crank', label:'Crank arm length', u:'mm', step:2.5, f:'FT'},
+  {g:'Aero bars', k:'aeroModel', label:'Aero bar model', t:'text', f:'T'},
+  {g:'Aero bars', k:'padStack', label:'Arm pad stack', u:'mm', step:5, hint:'BB to top of arm pad', f:'T'},
+  {g:'Aero bars', k:'padReach', label:'Arm pad reach', u:'mm', step:5, hint:'BB to back of arm pad', f:'T'},
+  {g:'Aero bars', k:'padDrop', label:'Saddle to arm pad drop', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'noseToPad', label:'Saddle nose to arm pad', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'noseToShifter', label:'Saddle nose to shifter', u:'mm', step:5, f:'T'},
+  {g:'Aero bars', k:'padW', label:'Arm pad width', u:'mm', step:5, hint:'Centre to centre', f:'T'},
+  {g:'Aero bars', k:'baseW', label:'Base bar width', u:'mm', step:10, f:'T'},
+  {g:'Aero bars', k:'extLen', label:'Extension length', u:'mm', step:10, f:'T'},
+  {g:'Aero bars', k:'extA', label:'Extension angle', u:'°', step:1, f:'T'},
+  {g:'Coordinates', k:'hx', label:'Handlebar X coordinate', u:'mm', step:5, f:'F'}, {g:'Coordinates', k:'hy', label:'Handlebar Y coordinate', u:'mm', step:5, f:'F'},
+  {g:'Coordinates', k:'sx', label:'Saddle X coordinate', u:'mm', step:5, f:'FT'}, {g:'Coordinates', k:'sy', label:'Saddle Y coordinate', u:'mm', step:5, f:'FT'},
+  {g:'UCI position', k:'nose', label:'Saddle nose behind BB', u:'mm', step:5, f:'T'},
+  {g:'UCI position', k:'extFront', label:'Extension tip ahead of BB', u:'mm', step:5, f:'T'},
 ];
-const TTROWS = [
-  {k:'padStack', label:'Pad stack', u:'mm', step:5, hint:'BB to top of armrest pad'},
-  {k:'padReach', label:'Pad reach', u:'mm', step:5, hint:'BB to back of pad'},
-  {k:'padW', label:'Pad width', u:'mm', step:5, hint:'Centre to centre'},
-  {k:'extLen', label:'Extension length', u:'mm', step:10},
-  {k:'extA', label:'Extension angle', u:'°', step:1},
-  {k:'nose', label:'Saddle nose behind BB', u:'mm', step:5},
-  {k:'extFront', label:'Extension tip ahead of BB', u:'mm', step:5},
-];
+const TTROWS = [];   // (a TT fit's rows are in BIKE now, marked T)
 const ALLROWS = [...BIKE, ...TTROWS];
 
+// injuries and special notes, an area at a time, as the interview form has them ("Other" is the notes field from before)
+const INJ = [['inj_foot','Foot'],['inj_knee','Knee'],['inj_legs','Legs'],['inj_hip','Hip'],['inj_saddle','Saddle'],['inj_lowback','Lower back'],
+  ['inj_back','Back'],['inj_shoulder','Shoulder'],['inj_neck','Neck'],['inj_arm','Arm'],['inj_hand','Hand'],['injuries','Other']];
 const STRETCH = [
   {k:'ham', name:'Hamstring stretch', dose:'3 × 30 s each leg, daily'},
   {k:'hipflex', name:'Kneeling hip-flexor stretch', dose:'3 × 30 s each side, daily'},
@@ -104,7 +114,8 @@ function sectionsFor(step){
   case 'session': return [
     {custom:'fits', title:'Fit type'},
     {title:'Session', fields:[SG('fitter','Fitter',FITTERS), T('date','Date',{type:'date'})]},
-    {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'})]},
+    {title:'Rider', fields:[T('first','First name'), T('last','Last name'), T('email','Email',{type:'email', ph:'For sending the report'}), T('phone','Phone',{type:'tel'}),
+      T('address','Address',{span2:true}), T('city','Town / city'), T('postcode','Postcode')]},
     {title:'Bike', fields:[T('bike','Brand & model',{ph:'e.g. Trek Domane SL 6', span2:true}), T('frame','Frame size',{ph:'e.g. 56 cm'}),
       SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float',{span2:true}), T('shoes','Shoe brand & size',{span2:true})]},
   ];
@@ -112,32 +123,36 @@ function sectionsFor(step){
     ...(S.follow ? [{title:'Since the fit', fields:[SG('since','How the bike has felt',['Better','About the same','Worse'],{wide:true}),
       TA('sinceNote','What they’ve noticed',{ph:'Rides done, what feels better, any niggles back'})]}] : []),
     {title:'About the rider', fields:[SG('sex','Sex',['Male','Female'],{hint:'Sets the side of the saddle sizer'}), SG('style','Riding style',['Recreational','Serious recreational','Racer','Triathlete'],{wide:true}),
-      N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('job','Occupation')]},
+      N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('build','Build',{ph:'e.g. slim, athletic, stocky'}), T('job','Occupation')]},
     {title:'Riding', fields:[N('rideTime','Average ride','hrs'), N('speed','Average speed','mph'), N('cadence','Cadence','rpm'), N('years','Years cycling','yrs'),
       N('daysS','Days a week (summer)','days'), N('daysW','Days a week (winter)','days'),
-      CH('miles','Where the miles come from',['Club rides','Sportives','Solo','Commuting','Racing','Indoor / Zwift','Triathlon'],{wide:true})]},
+      CH('miles','How they get their yearly miles',['Club rides','Sportives','Solo','Commuting','Racing','Gravel','Indoor / Zwift','Triathlon'],{wide:true})]},
     {title:'Goals for today', fields:[CH('goals','Goals',['Comfort','Longer rides','Performance','Fix pain or discomfort','New bike set-up','Aero speed','Event prep'],{wide:true}), TA('goalNote','In their words')]},
     {title:'On-bike problems', custom:'body', fields:[TA('problems','Describe the problems',{ph:'When it starts, which side, what helps'})]},
-    {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), TA('injuries','Injuries & special notes',{ph:'Broken bones, surgeries, chronic issues'}),
+    {title:'Health & activity', fields:[TA('activities','Current physical activities (weekly or more)'), {t:'injgrid', k:'injgrid', label:'Injuries & special notes', hint:'broken bones, surgeries, chronic issues', wide:true},
       SG('treated','Treated by a medical professional or therapist?',['No','Yes'],{f:'FT', wide:true})]},
   ];
   case 'offbike': return [
-    {title:'Feet', fields:[SG('arch','Arch height (weighted)',['Low','Medium','High'],{lr:true, f:'FT'}), SG('footbed','Footbed',['Stock','Trimmed','Custom']),
-      N('footLen','Foot length','mm',{lr:true, f:'FT'}), N('footWid','Foot width','mm',{lr:true, f:'FT'}), N('footAng','Foot angle standing','°',{lr:true, f:'FT'}),
-      {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
+    {title:'Feet', fields:[{t:'feetdraw', k:'footAng', label:'Foot angle standing', f:'FT', wide:true}, {t:'feet', k:'feet', label:'Size, length, width and arch', f:'FT'},
+      SG('footbed','Footbed',['Stock','Trimmed','Custom']), {t:'bio', k:'bio', label:'BioDynamic 3D arch profile', f:'FT'}, T('insole','Innersole size',{f:'FT'})]},
+    {title:'Lower leg', f:'FT', note:'Laser line, standing', fields:[SG('lowerLeg','Lower leg analysis',['Supination','Neutral','Pronation'],{lr:true, wide:true})]},
     {title:'Knees', f:'FT', fields:[SG('knee','Alignment standing',['Bends in','Neutral','Bows out'],{lr:true, wide:true})]},
     {title:'Hips & pelvis', fields:[SG('pelvis','Pelvis height',['Left higher','Level','Right higher'],{f:'FT'}), SG('legLen','Leg length',['Equal','Left shorter','Right shorter'],{f:'FT'}),
-      N('legLenMm','Difference','mm',{f:'FT', when:() => /shorter/.test(val('legLen') || '')}), {t:'ischial', k:'ischial', label:'Ischial (sit-bone) width'}, LT('backFlex','Lower back flexibility','°','back')]},
+      N('legLenMm','Difference','mm',{f:'FT', when:() => /shorter/.test(val('legLen') || '')}), SG('ischialW','Ischial (sit-bone) width',['Narrow','Medium','Wide'],{hint:'saddle sizer, set to the rider’s side'}),
+      LT('backFlex','Sacrum angle','°','back',{f:'S', hint:'back flexibility'})]},
+    {title:'Selle Italia idmatch', f:'FT', note:'Saddle selection', fields:[N('hipW','Hip width','cm'), N('thigh','Thigh diameter','cm',{lr:true}),
+      LT('backFlex','Back flexibility (sacrum angle)','°','back'), T('idSaddle','Selle Italia saddle selection',{ph:'Model and size from idmatch', span2:true})]},
     {title:'Posture & shoulders', fields:[SG('shFwd','Shoulders drawn forward?',['Yes','No'],{f:'FT'}), SG('shLevel','Shoulders level?',['Left higher','Level','Right higher'],{f:'FT'}),
       N('shWidth','Shoulder width','cm'), SG('elbows','At 90°, elbows touching?',['Yes','No'],{f:'FT'})]},
-    {title:'Body dimensions', fields:[{t:'inseam', k:'inseam', label:'Inseam (no shoes)'}, N('thigh','Thigh diameter','cm',{f:'FT'})]},
+    {title:'Body dimensions', fields:[{t:'inseam', k:'inseam', label:'Inseam (no shoes)'}]},
     {title:'Stability', f:'FT', note:'Plank test, up to 90 seconds', fields:[{t:'timer', k:'plank', label:'Plank hold', wide:true}]},
     {title:'Range of motion', f:'FT', fields:[LT('ham','Hamstring flexibility','°','ham',{lr:true}), LT('hipR','Hip restriction','°','hip',{lr:true})]},
   ];
   case 'onbike': return [
     // (the body measurements here are the off-bike assessment's own: the same fields, so they count once a fit)
-    {title:'Starting position', custom:'start', ownFields:true, 
-      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('ischial','Sit-bone width','mm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'})]},
+    {title:'Starting position', custom:'start', ownFields:true,
+      fields:[N('height','Height','cm'), N('inseam','Inseam','cm'), N('shWidth','Shoulder width','cm'), N('footAng','Foot angle','°',{lr:true, f:'FT'}),
+        SG('ability','Ability',['Novice','Finisher','Competitor'],{f:'T'}), SG('distance','Race distance',['Ironman','Long','Sprint'],{f:'T'})]},
     {title:'Shoe set-up', fields:[CK('shoeSet',['Cleats at least 1 cm behind M1','Cleat rotation matches the off-bike foot assessment','Cleat rotation checked with the rider on the bike','Stance width adjusted for the rider'])]},
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
@@ -296,6 +311,12 @@ function tlHTML(k, cl){
   const c = lightOf(k, cl);
   return `<div class="tl" data-x="tl" data-k="${k}" data-cl="${cl}">${['r','y','g'].map(x => `<button type="button" data-tlset="${k}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${CL[cl].txt[x]}</span></button>`).join('')}</div>`;
 }
+// (a row of option buttons: about how wide, so it never wraps in a cell too narrow for it; a cell is at least 210px)
+function segRoom(f){
+  if (!f.opts) return '';
+  const w = f.opts.reduce((a, o) => a + o.length * 8.6 + 36, 0) + 8 * (f.opts.length - 1);
+  return w > 440 ? ' wide' : w > 214 ? ' span2' : '';
+}
 // (a field shown only when another answer calls for it: f.when, checked again as answers change, refresh())
 const WHEN = {};
 function fieldHTML(f){
@@ -314,23 +335,40 @@ function fieldInner(f){
   case 'area':
     return `<div class="fld wide"><label class="lab" for="i-${f.k}">${esc(f.label)}</label><textarea id="i-${f.k}" data-k="${f.k}"${f.ph ? ` placeholder="${esc(f.ph)}"` : ''}>${esc(S.v[f.k] ?? '')}</textarea></div>`;
   case 'num': case 'seg': case 'chips':
+    if (f.lr && f.t === 'num') return `<div class="fld span2">${lab}<div class="lr inline"><span class="side">L</span>${inputHTML(f.k + '_L', f)}<span class="side">R</span>${inputHTML(f.k + '_R', f)}</div></div>`;
     if (f.lr) return `<div class="fld${f.t === 'seg' ? ' wide' : wide}">${lab}<div class="lr"><span class="side">L</span>${inputHTML(f.k + '_L', f)}<span class="side">R</span>${inputHTML(f.k + '_R', f)}</div></div>`;
     // (a row of buttons that wouldn't fit beside another field takes the whole row, so it never wraps in a narrow cell)
-    return `<div class="fld${wide || (f.opts && f.opts.join('').length > 16 ? ' wide' : '')}">${lab}${inputHTML(f.k, f)}</div>`;
+    return `<div class="fld${wide || segRoom(f)}">${lab}${inputHTML(f.k, f)}</div>`;
   case 'light': {
     const one = k => `<div class="light">${inputHTML(k, f)}${tlHTML(k, f.cl)}</div>`;
     if (f.lr) return `<div class="fld wide">${lab}<div class="lr"><span class="side">L</span>${one(f.k + '_L')}<span class="side">R</span>${one(f.k + '_R')}</div></div>`;
     return `<div class="fld wide">${lab}${one(f.k)}</div>`;
   }
+  case 'feet': {
+    const cols = [['L', 'u', 'Left', 'unweighted'], ['L', 'w', 'Left', 'weighted'], ['R', 'u', 'Right', 'unweighted'], ['R', 'w', 'Right', 'weighted']];
+    const key = (b, side, w) => `${b}_${side}${w === 'u' ? '_u' : ''}`;
+    const numCell = (b, unit) => cols.map(([sd, w]) => `<div class="num"><input type="text" inputmode="decimal" id="i-${key(b, sd, w)}" data-k="${key(b, sd, w)}" data-num value="${S.v[key(b, sd, w)] ?? ''}" aria-label="${b} ${sd} ${w}"><span class="u">${unit}</span></div>`);
+    const archCell = cols.map(([sd, w]) => { const k2 = key('arch', sd, w);
+      return `<div class="seg sm" role="group" aria-label="Arch ${sd} ${w === 'u' ? 'unweighted' : 'weighted'}">${[['Low','Low'],['Medium','Med'],['High','High']].map(([o, l]) => `<button type="button" id="b-${k2}-${o}" data-seg="${k2}" data-val="${o}" aria-pressed="${S.v[k2] === o}">${l}</button>`).join('')}</div>`; });
+    const sizeCell = cols.map(([sd, w]) => { const k2 = key('footSize', sd, w); return `<input type="text" id="i-${k2}" data-k="${k2}" value="${esc(S.v[k2] ?? '')}" placeholder="e.g. 43" aria-label="Size ${sd} ${w}">`; });
+    // (a row: its name, the left foot's two cells, a line, the right foot's two)
+    const row = (name, c) => `<span class="fr">${name}</span>${c[0]}${c[1]}<i class="fsep"></i>${c[2]}${c[3]}`;
+    return `<div class="fld wide"><span class="lab">${esc(f.label)}</span><div class="ftab-wrap"><div class="ftab">
+      <span></span><span class="fside">Left foot</span><i class="fsep"></i><span class="fside">Right foot</span>
+      <span></span><span class="fh">Unweighted</span><span class="fh">Weighted</span><i class="fsep"></i><span class="fh">Unweighted</span><span class="fh">Weighted</span>
+      ${row('Size', sizeCell)}${row('Length', numCell('footLen', 'mm'))}${row('Width', numCell('footWid', 'mm'))}${row('Arch height', archCell)}
+    </div></div></div>`;
+  }
+  case 'feetdraw': return feetHTML();
+  case 'injgrid':
+    return `<div class="fld wide">${lab}<div class="inj">${INJ.map(([k, l]) => `<div class="fld"><label class="lab" for="i-${k}">${l}</label><input type="text" id="i-${k}" data-k="${k}" value="${esc(S.v[k] ?? '')}" autocomplete="off"></div>`).join('')}</div></div>`;
   case 'bio': {
     const c = S.v.bio;
     const t = {r:'Low arch', y:'Medium arch', b:'High arch'};
     return `<div class="fld span2">${lab}<div class="tl">${['r','y','b'].map(x => `<button type="button" data-bio="${x}" data-c="${x}" aria-pressed="${c === x}"><b>${CNAME[x]}</b><span>${t[x]}</span></button>`).join('')}</div></div>`;
   }
-  case 'ischial':
-    return `<div class="fld">${lab}${inputHTML('ischial', {t:'num', unit:'mm', label:f.label})}<div class="hint" data-x="ischial"></div></div>`;
   case 'inseam':
-    return `<div class="fld wide"><span class="lab">${esc(f.label)}</span><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${inputHTML('inseam', {t:'num', unit:'cm', label:f.label})}<div class="calc" data-x="inseam"></div></div></div>`;
+    return `<div class="fld span2"><span class="lab">${esc(f.label)}</span><div class="inseam">${inputHTML('inseam', {t:'num', unit:'cm', label:f.label})}<div class="calc" data-x="inseam"></div></div></div>`;
   case 'timer':
     return `<div class="fld wide"><div class="timer"><div class="clock" id="clock">${fmtClock((S.v.plank || 0) * 1000)}</div>
       <button type="button" class="btn dark" id="tm-go" data-act="timer">Start plank</button>
@@ -422,10 +460,10 @@ function stepper(k, row){
 }
 function rowsHTML(rows){
   let g = null;
-  return `<div class="btable"><div class="brow hd"><span>Measurement</span><span>Before</span><span>After</span><span style="text-align:right">Change</span></div>
+  return `<div class="btable"><div class="brow hd"><span>Measurement</span><span>Pre-fit</span><span>Post-fit</span><span style="text-align:right">Change</span></div>
     ${rows.filter(applies).map(r => { const head = r.g && r.g !== g ? `<div class="bgrp">${esc(r.g)}</div>` : ''; g = r.g;
       return head + `<div class="brow"><div class="nm">${esc(r.label)}${r.hint ? `<small>${esc(r.hint)}</small>` : ''}</div>
-      <div class="cell" data-l="Before">${stepper(r.k + '_pre', r)}</div><div class="cell" data-l="After">${stepper(r.k + '_post', r)}</div>
+      <div class="cell" data-l="Pre-fit">${stepper(r.k + '_pre', r)}</div><div class="cell" data-l="Post-fit">${stepper(r.k + '_post', r)}</div>
       <div class="delta" data-x="delta" data-k="${r.k}"></div></div>`; }).join('')}</div>`;
 }
 function deltaOf(r){
@@ -436,11 +474,10 @@ function deltaOf(r){
   return {txt:d === 0 ? 'Same' : signed(d, r.u), ch:d !== 0, d};
 }
 function bikeHTML(){
-  let h = `<div class="sec"><div class="sec-h"><h2>Bike set-up</h2><div class="right"><span class="sec-note">Tap − / + to nudge, or type a value</span><button type="button" class="btn sm" data-act="copy-same">Copy unchanged to After</button></div></div><div id="copy-msg"></div>${rowsHTML(BIKE)}</div>
+  let h = `<div class="sec"><div class="sec-h"><h2>Bike set-up</h2><div class="right"><span class="sec-note">Tap − / + to nudge, or type a value</span><button type="button" class="btn sm" data-act="copy-same">Copy unchanged to Post-fit</button></div></div><div id="copy-msg"></div>${rowsHTML(BIKE)}</div>
   <div class="sec"><div class="sec-h"><h2>Cleats</h2></div><div class="grid">
     ${fieldHTML(T('cleatL','Left cleat',{ph:'e.g. 1.2 cm behind M1, neutral', span2:true}))}${fieldHTML(T('cleatR','Right cleat',{span2:true}))}</div></div>`;
-  if (S.fit === 'tt') h += `<div class="sec"><div class="sec-h"><h2>TT cockpit</h2><span class="tag-fit">TT &amp; Tri</span></div>${rowsHTML(TTROWS)}
-    <div class="uci" data-x="uci"></div></div>`;
+  if (S.fit === 'tt') h += `<div class="sec"><div class="sec-h"><h2>UCI position check</h2><span class="tag-fit">TT &amp; Tri</span></div><div class="uci" data-x="uci"></div></div>`;
   return h;
 }
 function uciHTML(){
@@ -609,14 +646,14 @@ async function markPhotos(){
 
 /* ---------------- insights ---------------- */
 function changes(){
-  const order = ['sadH','setback','drop','hoods','barReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padStack','padReach','padW','extLen','extA','tipBar','postOff','hx','hy','sx','sy','nose','extFront'];
+  const order = ['sadH','setback','drop','padDrop','hoods','barReach','padStack','padReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padW','baseW','extLen','extA','noseToPad','noseToShifter','tipBar','tipShifter','postOff','hx','hy','sx','sy','nose','extFront'];
   return order.map(k => ALLROWS.find(r => r.k === k)).filter(r => r && applies(r) && (S.fit === 'tt' || !TTROWS.includes(r)))
     .map(r => ({r, ...deltaOf(r)})).filter(x => x.ch && isNum(x.d));
 }
 function lights(){
   const out = [];
   const add = (label, k, cl, show) => { const c = lightOf(k, cl); if (c) out.push({label, c, v:num(k) != null ? fmt(num(k)) + (cl === 'plank' ? ' s' : '°') : CNAME[c]}); };
-  add('Lower back flexibility', 'backFlex', 'back');
+  add('Sacrum angle (back flexibility)', 'backFlex', 'back');
   if (S.fit !== 'std'){
     add('Core stability (plank)', 'plank', 'plank');
     add('Hamstring, left', 'ham_L', 'ham'); add('Hamstring, right', 'ham_R', 'ham');
@@ -655,7 +692,7 @@ function draftSummary(){
   const mm = x => fmt(Math.abs(x.d)) + ' mm';
   if (c.sadH) out.push(`${c.sadH.d > 0 ? 'Raised' : 'Lowered'} your saddle by ${mm(c.sadH)}${c.setback ? ` and moved it ${mm(c.setback)} ${c.setback.d < 0 ? 'forward' : 'back'}` : ''}.`);
   else if (c.setback) out.push(`Moved your saddle ${mm(c.setback)} ${c.setback.d < 0 ? 'forward' : 'back'}.`);
-  if (filled(v.sadModel_post) && v.sadModel_post !== v.sadModel_pre) out.push(`Changed your saddle to a ${v.sadModel_post}${isNum(v.ischial) ? ` to suit your ${v.ischial} mm sit-bone width` : ''}.`);
+  if (filled(v.sadModel_post) && v.sadModel_post !== v.sadModel_pre) out.push(`Changed your saddle to a ${v.sadModel_post}${v.ischialW ? ` to suit your ${v.ischialW.toLowerCase()} sit-bone width` : ''}.`);
   if (c.tilt) out.push(`Adjusted saddle tilt from ${fmt(v.tilt_pre)}° to ${fmt(v.tilt_post)}°.`);
   if (c.drop || c.spacers || c.stemA) out.push(`${c.drop && c.drop.d < 0 ? 'Raised the front end' : 'Adjusted the front end'}${c.drop ? `, so the drop from saddle to bars is now ${fmt(v.drop_post)} mm (was ${fmt(v.drop_pre)} mm)` : ''}.`);
   if (c.hoods || c.stemL) out.push(`${c.hoods && c.hoods.d < 0 ? 'Shortened' : 'Changed'} your reach${c.stemL ? ` with a ${fmt(v.stemL_post)} mm stem` : ''}${c.hoods ? ` (saddle to hoods ${fmt(v.hoods_pre)} → ${fmt(v.hoods_post)} mm)` : ''}.`);
@@ -718,9 +755,33 @@ function mailText(){
 function startHTML(){
   const inp = (k, label, unit) => `<div class="fld"><label class="lab" for="i-${k}">${label}</label>${inputHTML(k, {t:'num', unit, label})}</div>`;
   return `<div class="sp-sub">Body measurements</div>
-    <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('ischial', 'Sit bones', 'mm')}${inp('shWidth', 'Shoulders', 'cm')}
+    <div class="sp-grid">${inp('height', 'Height', 'cm')}${inp('inseam', 'Inseam', 'cm')}${inp('shWidth', 'Shoulders', 'cm')}
       ${S.fit === 'std' ? '' : inp('footAng_L', 'Foot angle L', '°') + inp('footAng_R', 'Foot angle R', '°')}</div>
-    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>`;
+    <p class="hint" style="margin:12px 0 0">The same measurements as the off-bike assessment: change them in either place.</p>
+    ${S.fit === 'tt' ? `<div class="sp-sub" style="margin-top:22px">Triathlon starting point</div>
+      <div class="grid">${fieldHTML(SG('ability','Ability',['Novice','Finisher','Competitor'],{f:'T'}))}${fieldHTML(SG('distance','Race distance',['Ironman','Long','Sprint'],{f:'T'}))}</div>
+      <div class="tts" data-x="ttscore"></div>` : ''}`;
+}
+// Precision Fit's triathlon form: ability, distance, flexibility and the plank, 0 to 2 each, and +1 where the elbows touch
+// at 90°; the total picks the column of starting points (seatpost, knee bend at the bottom, saddle to arm pad drop).
+const TT_START = {cols:['0 to 3', '4 to 6', '7 to 10'], rows:[['Aluminium seatpost', '20 mm set back', '20 mm fore', '20 mm fore'], ['Carbon seatpost', '15 mm set back', '15 mm fore', '48 mm fore'],
+  ['Saddle height', '40 to 35° knee bend', '35° knee bend', '35 to 30° knee bend'], ['Saddle to arm pad drop', '2 cm drop', '6 cm drop', '10 cm drop']]};
+function flexColor(){ const cs = [lightOf('ham_L', 'ham'), lightOf('ham_R', 'ham'), lightOf('backFlex', 'back')].filter(Boolean); return cs.length ? (cs.includes('r') ? 'r' : cs.includes('y') ? 'y' : 'g') : null; }
+function ttScore(){
+  const pts = {r:0, y:1, g:2}, fl = flexColor(), pl = lightOf('plank', 'plank');
+  const parts = [['Ability', val('ability') || null, {Novice:0, Finisher:1, Competitor:2}[val('ability')]], ['Distance', val('distance') || null, {Ironman:0, Long:1, Sprint:2}[val('distance')]],
+    ['Flexibility', fl ? CNAME[fl] : null, fl ? pts[fl] : undefined], ['Plank', pl ? `${CNAME[pl]}${num('plank') != null ? ` · ${num('plank')} s` : ''}` : null, pl ? pts[pl] : undefined],
+    ['Elbows touch at 90°', val('elbows') || null, val('elbows') === 'Yes' ? 1 : val('elbows') === 'No' ? 0 : undefined]];
+  const known = parts.filter(p => p[2] !== undefined), total = known.reduce((a, p) => a + p[2], 0);
+  return {parts, total, complete:known.length === parts.length, band:total <= 3 ? 0 : total <= 6 ? 1 : 2};
+}
+function ttScoreHTML(){
+  const t = ttScore();
+  return `<div class="tts-parts">${t.parts.map(([n, v, p]) => `<div><span>${esc(n)}</span><b>${v ? esc(v) : '<span class="hint">not yet</span>'}</b><i>${p === undefined ? '–' : '+' + p}</i></div>`).join('')}
+      <div class="tts-total"><span>Total</span><b>${t.total}</b><i>${t.complete ? 'of 10' : 'so far'}</i></div></div>
+    <div class="tts-tbl"><div></div>${TT_START.cols.map((c, i) => `<div class="tts-h${i === t.band ? ' on' : ''}">${c}</div>`).join('')}
+      ${TT_START.rows.map(r => `<div class="tts-r">${esc(r[0])}</div>${r.slice(1).map((x, i) => `<div class="tts-c${i === t.band ? ' on' : ''}">${esc(x)}</div>`).join('')}`).join('')}</div>
+    <p class="hint" style="margin:8px 0 0">${t.complete ? `Start from the highlighted column (${TT_START.cols[t.band]}), then fine-tune on the bike.` : 'Flexibility, plank and elbows come from the off-bike assessment; answer the rest to complete the score.'}</p>`;
 }
 
 // The stretching plan's lines: "name — how much" (or a colon), each a card in the report
@@ -736,8 +797,9 @@ function cardCols(){
     has('tilt') && row('Saddle tilt', P('tilt') === 0 ? '0° level' : `${fmt(P('tilt'))}°`), (has('sadModel') || has('sadW')) && row('Saddle', [P('sadModel'), has('sadW') && !String(P('sadModel') || '').includes(String(P('sadW'))) ? `${P('sadW')} mm` : ''].filter(Boolean).join(' · ')),
     has('crank') && row('Crank length', mm('crank')), v.cleatL && row('Cleat, left', v.cleatL)].filter(Boolean);
   const right = S.fit === 'tt'
-    ? [has('padStack') && row('Pad stack', mm('padStack')), has('padReach') && row('Pad reach', mm('padReach')), has('padW') && row('Pad width', mm('padW'), 'Centre to centre'),
-       has('extLen') && row('Extension length', mm('extLen')), has('extA') && row('Extension angle', `${fmt(P('extA'))}°`), v.cleatR && row('Cleat, right', v.cleatR)]
+    ? [has('padStack') && row('Arm pad stack', mm('padStack')), has('padReach') && row('Arm pad reach', mm('padReach')), has('padDrop') && row('Saddle to arm pad drop', mm('padDrop')),
+       has('padW') && row('Arm pad width', mm('padW'), 'Centre to centre'), has('extLen') && row('Extension', [mm('extLen'), has('extA') ? `${fmt(P('extA'))}°` : ''].filter(Boolean).join(' · ')),
+       stem && row('Stem', stem), v.cleatR && row('Cleat, right', v.cleatR)]
     : [has('barReach') ? row('Saddle to bar reach', mm('barReach')) : has('hoods') ? row('Saddle to hoods reach', mm('hoods')) : has('tipBar') && row('Saddle tip to bar', mm('tipBar')),
        has('drop') && row('Saddle to bar drop', mm('drop')), stem && row('Stem', stem), has('spacers') && row('Headset spacers', mm('spacers')),
        has('barW') && row('Handlebar width', mm('barW')), v.cleatR && row('Cleat, right', v.cleatR)];
@@ -857,6 +919,71 @@ function cardPages(){
     <div class="sc-foot">Measured at Pedal Revolution’s Precision Fit Studio${when ? ` on ${esc(when)}` : ''}. Your full fit report has the angles behind these numbers.</div></div>`;
   return [front, back];
 }
+/* ---------------- feet, standing: the form's footprints, a line drawn along each foot ---------------- */
+// Each foot is drawn in a 100 × 200 box, seen from above (the left foot's big toe on its right, the inside). The line
+// runs from the middle of the heel (50, 180) along the foot; its angle from straight ahead is the foot angle, toe out
+// counted positive (footAng_L / footAng_R, the boxes beneath). Drag on a foot to draw it; type an angle to set it.
+// Inline attributes only, so the report's copy draws the same in the PDF.
+const FOOT_PATH = 'M48 196C32 196 26 184 27 168C28 152 36 140 36 124C36 110 22 96 22 76C22 54 40 44 56 46C74 48 82 62 80 84C78 108 70 128 70 150C70 172 66 196 48 196Z';
+const FOOT_TOES = [[34, 30, 10, 13], [52, 22, 6, 8], [63, 26, 5.5, 7], [72, 33, 5, 6], [79, 42, 4.5, 5.5]];
+const FOOT_X = {L:30, R:170}, FOOT_Y = 26, HEEL = [50, 180], FOOT_LINE = 156;
+function footShape(side){
+  const m = side === 'L' ? ' transform="translate(100 0) scale(-1 1)"' : '';   // (the left foot: the right one turned over)
+  return `<g${m}><path d="${FOOT_PATH}" fill="#c3c6cb"/>${FOOT_TOES.map(([x, y, rx, ry]) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#c3c6cb"/>`).join('')}</g>`;
+}
+// a foot's angle (toe out +) as the direction of its line in the drawing, and back
+const footEnd = (side, out) => { const a = (side === 'L' ? -out : out) * Math.PI / 180; return [HEEL[0] + Math.sin(a) * FOOT_LINE, HEEL[1] - Math.cos(a) * FOOT_LINE]; };
+const footOut = (side, x, y) => { const d = Math.atan2(x - HEEL[0], HEEL[1] - y) * 180 / Math.PI; return Math.max(-45, Math.min(45, Math.round(side === 'L' ? -d : d))); };
+const footWord = out => out == null ? 'Not drawn yet' : out === 0 ? 'Straight' : `${Math.abs(out)}° toe ${out > 0 ? 'out' : 'in'}`;
+function feetSVG(mode){
+  const rider = mode !== 'example', W = 300, H = 250;
+  const foot = side => {
+    const out = rider ? num('footAng_' + side) : 0, [ex, ey] = out == null ? [0, 0] : footEnd(side, out);
+    const line = out == null ? '' : rider
+      ? `<line x1="${HEEL[0]}" y1="${HEEL[1]}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#e3141c" stroke-width="3.2" stroke-linecap="round"/><circle cx="${HEEL[0]}" cy="${HEEL[1]}" r="4.5" fill="#e3141c"/>`
+      : `<line x1="50" y1="180" x2="50" y2="24" stroke="#8a8f97" stroke-width="2"/><circle cx="50" cy="180" r="3.5" fill="#8a8f97"/>`;
+    const guide = rider ? `<line x1="50" y1="186" x2="50" y2="14" stroke="#9aa0a8" stroke-width="1" stroke-dasharray="3 4"/>` : '';
+    return `<g transform="translate(${FOOT_X[side]} ${FOOT_Y})" ${rider && mode === 'rider' ? `data-footpad="${side}" style="cursor:crosshair"` : ''}>
+      <rect x="-14" y="-14" width="128" height="222" fill="transparent"/>${footShape(side)}${guide}${line}</g>
+      <text x="${FOOT_X[side] + 50}" y="${H - 8}" text-anchor="middle" font-family="Barlow, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3f47">${side}${mode === 'report' ? ` · ${esc(footWord(out))}` : ''}</text>`;
+  };
+  const divider = `<line x1="${W / 2}" y1="8" x2="${W / 2}" y2="${H - 26}" stroke="${rider ? '#3a3f47' : '#9aa0a8'}" stroke-width="${rider ? 2 : 1.4}" ${rider ? '' : 'stroke-dasharray="3 3"'}/>`;
+  // (its own size on it, so it's never the page's full width, whatever styles the browser has: the rider's 420 wide, the example 110)
+  const size = mode === 'report' ? 'width="300" height="250"' : mode === 'example' ? 'width="110" height="92" style="max-width:100%;height:auto"' : 'width="420" height="350" style="max-width:100%;height:auto"';
+  return `<svg viewBox="0 0 ${W} ${H}" ${size} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${rider ? 'The rider’s feet, standing, with a line along each foot' : 'Neutral example: a straight line along each foot'}">
+    <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#d6d3ce" stroke-width="1.5" rx="6"/>${divider}${foot('L')}${foot('R')}</svg>`;
+}
+function feetHTML(){
+  const box = (side, name) => `<div class="fa"><label class="fa-l" for="i-footAng_${side}">${name}</label>
+      ${inputHTML('footAng_' + side, {t:'num', unit:'°', label:name + ' angle'})}<span class="fa-w" data-x="footword" data-k="${side}">${esc(footWord(num('footAng_' + side)))}</span></div>`;
+  return `<div class="fld wide"><span class="lab">Foot angle standing</span>
+    <div class="feet"><figure class="feet-rider"><div data-x="feetdraw">${feetSVG('rider')}</div><figcaption>Drag along each foot from the heel to draw its line. Toe out counts +, toe in −.</figcaption></figure>
+      <div class="feet-side">${box('L', 'Left foot')}${box('R', 'Right foot')}
+        <figure class="feet-ex">${feetSVG('example')}<figcaption><b>Neutral</b> The line runs straight along the foot, heel to second toe.</figcaption></figure></div></div></div>`;
+}
+// drawing a line: from the heel to wherever the finger is, until it lifts
+let FOOTDRAG = null;
+function footAt(e, g){
+  const svg = g.ownerSVGElement, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(g.getScreenCTM().inverse());
+  return footOut(g.dataset.footpad, p.x, p.y);
+}
+function footSet(side, out){
+  S.v['footAng_' + side] = out;
+  const inp = $('#i-footAng_' + side); if (inp) inp.value = out;
+  const box = $('[data-x="feetdraw"]'); if (box) box.innerHTML = feetSVG('rider');
+  const w = $(`[data-x="footword"][data-k="${side}"]`); if (w) w.textContent = footWord(out);
+}
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest && e.target.closest('[data-footpad]'); if (!g) return;
+  e.preventDefault(); FOOTDRAG = g.dataset.footpad; footSet(FOOTDRAG, footAt(e, g));
+});
+document.addEventListener('pointermove', e => {
+  if (!FOOTDRAG) return;
+  const g = $(`[data-footpad="${FOOTDRAG}"]`); if (g){ e.preventDefault(); footSet(FOOTDRAG, footAt(e, g)); }
+}, {passive:false});
+['pointerup', 'pointercancel'].forEach(n => document.addEventListener(n, () => { if (FOOTDRAG){ FOOTDRAG = null; save(); refresh(); renderRail(); } }));
+
 /* ---------------- client report ---------------- */
 /* The client's report: its sections one after another down A4 pages, a new page only where the next one won't fit. A
    table or list of angles carries on over a page (its heading again, marked continued); anything else moves whole. Each
@@ -868,7 +995,7 @@ function reportBlocks(){
   const ch = changes(), A = anglesList(), Ls = lights(), u = x => x === '°' ? '°' : ' ' + x;
   const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
   const B = [];
-  const FU = !!S.follow, was = FU ? 'At your fit' : 'Before', now = FU ? 'Today' : 'After';
+  const FU = !!S.follow, was = FU ? 'At your fit' : 'Pre-fit', now = FU ? 'Today' : 'Post-fit';
   B.push({html:`<div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>${FU ? 'Follow-up to' : 'Fit'}</span><b>${esc(FU ? `${fit.name}, ${dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'})}` : fit.name)}</b></div>
     <div><span>Bike</span><b>${esc(v.bike || '')}</b></div><div><span>Frame size</span><b>${esc(v.frame || '')}</b></div><div><span>Pedals</span><b>${esc(v.pedals || '')}</b></div><div><span>Shoes</span><b>${esc(v.shoes || '')}</b></div></div>`});
   if (FU && (v.since || v.sinceNote)) B.push({html:sec('Since your fit', `${v.since ? `<p class="rp-p"><b>How it’s felt:</b> ${esc(v.since)}</p>` : ''}${v.sinceNote ? `<p class="rp-p">${esc(v.sinceNote)}</p>` : ''}`)});
@@ -888,17 +1015,22 @@ function reportBlocks(){
   if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
     tail:'<p class="rp-p" style="font-size:11.5px;color:var(--p-mute);margin-top:10px">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
   if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<ul class="rp-lst"><li><span>Left</span><b>${esc(v.cleatL || '–')}</b></li><li><span>Right</span><b>${esc(v.cleatR || '–')}</b></li></ul>`)});
-  if (S.fit === 'tt'){ const tt = trs(TTROWS); if (tt.length) B.push({title:'TT cockpit', head:TH, foot:'</tbody></table>', rows:tt}); }
+  if (S.fit === 'tt'){ const t = ttScore(); if (t.complete) B.push({html:sec('Triathlon starting point', `<p class="rp-p">Score ${t.total} of 10 (${esc(TT_START.cols[t.band])}): ${TT_START.rows.map(r => `${esc(r[0].toLowerCase())} ${esc(r[t.band + 1])}`).join(', ')}.</p>`)}); }
   const pains = Object.entries(S.pain).filter(([, x]) => x);
   const obs = [['Arch height (L / R)', S.fit !== 'std' && [v.arch_L, v.arch_R].some(Boolean) ? `${v.arch_L || '–'} / ${v.arch_R || '–'}` : ''], ['Knee alignment (L / R)', S.fit !== 'std' && (v.knee_L || v.knee_R) ? `${v.knee_L || '–'} / ${v.knee_R || '–'}` : ''],
-    ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Sit-bone width', isNum(v.ischial) ? v.ischial + ' mm' : ''], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
+    ['Lower leg (L / R)', S.fit !== 'std' && (v.lowerLeg_L || v.lowerLeg_R) ? `${v.lowerLeg_L || '–'} / ${v.lowerLeg_R || '–'}` : ''],
+    ['Pelvis', S.fit !== 'std' ? v.pelvis : ''], ['Hip width', S.fit !== 'std' && isNum(v.hipW) ? v.hipW + ' cm' : ''],
+    ['Thigh diameter (L / R)', S.fit !== 'std' && (isNum(v.thigh_L) || isNum(v.thigh_R)) ? `${fmt(v.thigh_L)} / ${fmt(v.thigh_R)} cm` : ''],
+    ['Selle Italia saddle', S.fit !== 'std' ? v.idSaddle : ''], ['Sit-bone width', v.ischialW || (isNum(v.ischial) ? v.ischial + ' mm' : '')], ['Shoulder width', isNum(v.shWidth) ? v.shWidth + ' cm' : ''],
     ['Shoulders drawn forward', S.fit !== 'std' ? v.shFwd : ''], ['Inseam', isNum(v.inseam) ? v.inseam + ' cm' : ''], ['Knee tracking on bike (L / R)', S.fit !== 'std' && (v.kneeTrack_L || v.kneeTrack_R) ? `${v.kneeTrack_L || '–'} / ${v.kneeTrack_R || '–'}` : '']].filter(x => x[1]);
   if (Ls.length || obs.length) B.push({html:`<div class="rp-two">${Ls.length ? sec('Mobility & stability', `<ul class="rp-lst">${Ls.map(x => `<li><span>${esc(x.label)}</span><span><span style="margin-right:8px;font-variant-numeric:tabular-nums">${esc(x.v)}</span><span class="rp-pill ${x.c}">${CNAME[x.c]}</span></span></li>`).join('')}</ul>`) : ''}
     ${obs.length ? sec('Posture & alignment', `<ul class="rp-lst">${obs.map(x => `<li><span>${esc(x[0])}</span><b>${esc(x[1])}</b></li>`).join('')}</ul>`) : ''}</div>`});
+  if (S.fit !== 'std' && (num('footAng_L') != null || num('footAng_R') != null))
+    B.push({html:sec('Foot angle standing', `<div style="display:flex;gap:22px;align-items:center">${feetSVG('report')}<p class="rp-p" style="flex:1">The line runs along each foot from the heel. Your cleats are rotated to match it, so your feet sit on the pedals the way they stand naturally.<br><br><b>Left:</b> ${esc(footWord(num('footAng_L')))}<br><b>Right:</b> ${esc(footWord(num('footAng_R')))}</p></div>`)});
   const told = [v.goals && v.goals.length ? `<p class="rp-p"><b>Goals:</b> ${esc(v.goals.join(', '))}${v.goalNote ? '. ' + esc(v.goalNote) : ''}</p>` : '',
     pains.length ? `<p class="rp-p"><b>Discomfort:</b> ${pains.map(([k, x]) => `<span class="rp-pill ${x === 2 ? 'r' : 'y'}" style="margin-right:4px">${PAIN[k]}</span>`).join(' ')}</p>` : '',
     v.problems ? `<p class="rp-p">${esc(v.problems)}</p>` : '', v.activities ? `<p class="rp-p"><b>Current weekly activities:</b> ${esc(v.activities)}</p>` : '',
-    v.injuries ? `<p class="rp-p"><b>Injuries & special notes:</b> ${esc(v.injuries)}</p>` : ''].join('');
+    INJ.some(([k]) => filled(v[k])) ? `<p class="rp-p" style="margin-bottom:4px"><b>Injuries & special notes:</b></p><ul class="rp-lst" style="margin-bottom:10px">${INJ.filter(([k]) => filled(v[k])).map(([k, l]) => `<li><span>${esc(l)}</span><b style="text-align:right">${esc(v[k])}</b></li>`).join('')}</ul>` : ''].join('');
   if (told) B.push({html:sec('What you told us', told)});
   if (v.fitNotes) B.push({html:sec('Fitter’s notes', `<p class="rp-p">${esc(v.fitNotes)}</p>`)});
   const ph = S.fit === 'std' ? [] : S.photos.filter(p => p.inc && p.src);
@@ -1028,7 +1160,10 @@ function secProgress(sec){
     if (f.t === 'check'){ f.items.forEach((_, j) => { tot++; if ((S.v[f.k] || [])[j]) got++; }); return; }
     if (f.t === 'light'){ (f.lr ? [f.k + '_L', f.k + '_R'] : [f.k]).forEach(k => { tot++; if (lightOf(k, f.cl)) got++; }); return; }
     if (f.t === 'timer'){ tot++; if (lightOf('plank', 'plank')) got++; return; }
+    if (f.t === 'feet'){ ['footSize', 'footLen', 'footWid', 'arch'].forEach(b => ['_L_u', '_L', '_R_u', '_R'].forEach(x => cnt(b + x))); return; }
     if (f.when && !f.when()) return;
+    if (f.t === 'feetdraw'){ cnt('footAng_L'); cnt('footAng_R'); return; }
+    if (f.t === 'injgrid'){ tot++; if (INJ.some(([k]) => filled(S.v[k]))) got++; return; }
     if (f.lr){ cnt(f.k + '_L'); cnt(f.k + '_R'); } else cnt(f.k);
   });
   return {tot, got};
@@ -1085,8 +1220,8 @@ function renderHeader(){
 function jumpHTML(id){
   const secs = sectionsFor(id).map((s, i) => ({s, i})).filter(x => x.s.title && !(x.s.f && !applies(x.s)));
   if (secs.length < 3) return '';
-  return `<nav class="jump" aria-label="Jump to a section">${secs.map(({s, i}) => { const p = secProgress(s);
-    return `<button type="button" data-jump="${i}">${esc(s.title)}${p.tot && s.custom !== 'fits' ? `<span class="c${p.got === p.tot ? ' ok' : ''}" data-x="jumpcount" data-i="${i}">${p.got}/${p.tot}</span>` : ''}</button>`; }).join('')}</nav>`;
+  return `<div class="jump-w"><nav class="jump" aria-label="Jump to a section">${secs.map(({s, i}) => { const p = secProgress(s);
+    return `<button type="button" data-jump="${i}">${esc(s.title)}${p.tot && s.custom !== 'fits' ? `<span class="c${p.got === p.tot ? ' ok' : ''}" data-x="jumpcount" data-i="${i}">${p.got}/${p.tot}</span>` : ''}</button>`; }).join('')}</nav></div>`;
 }
 function secHTML(sec, i){
   if (sec.f && !applies(sec)) return '';
@@ -1113,7 +1248,25 @@ function renderMain(){
   const rail = $('#rail'), cur = $('#rail [aria-current]');
   if (cur && getComputedStyle(rail).flexDirection === 'row') rail.scrollLeft += cur.getBoundingClientRect().left - rail.getBoundingClientRect().left - rail.clientWidth / 2 + cur.clientWidth / 2;
   if (st.id === 'photos') wireDrop();
+  JUMPED = null; const jb = $('.jump'); if (jb){ jb.addEventListener('scroll', jumpEdge, {passive:true}); requestAnimationFrame(spy); }
 }
+// the section bar: the chip for the section in view is marked (and kept in view); a fade shows more chips off the edge
+function jumpEdge(){ const jb = $('.jump'); if (!jb) return;
+  jb.classList.toggle('more-r', jb.scrollLeft + jb.clientWidth < jb.scrollWidth - 4); jb.classList.toggle('more-l', jb.scrollLeft > 4); }
+let SPYQ = 0, JUMPED = null;   // JUMPED: the chip just tapped stays marked (a section near the end can't scroll to the top) until the user scrolls themselves
+['wheel', 'touchstart', 'keydown'].forEach(t => addEventListener(t, () => { JUMPED = null; }, {passive:true}));
+function spy(){ SPYQ = 0; const jb = $('.jump'); if (!jb) return;
+  const line = jb.getBoundingClientRect().bottom + 24; let on = JUMPED != null ? jb.querySelector(`[data-jump="${JUMPED}"]`) : null;
+  if (!on) for (const b of jb.querySelectorAll('[data-jump]')){ const sec = document.getElementById('sec-' + b.dataset.jump); if (sec && sec.getBoundingClientRect().top <= line) on = b; }
+  on = on || jb.querySelector('[data-jump]');
+  if (!on.classList.contains('on')){
+    jb.querySelectorAll('.on').forEach(b => b.classList.remove('on')); on.classList.add('on');
+    const l = on.offsetLeft - jb.offsetLeft, r = l + on.offsetWidth;
+    if (l < jb.scrollLeft + 16 || r > jb.scrollLeft + jb.clientWidth - 16) jb.scrollTo({left: Math.max(0, l - 24), behavior: 'smooth'});
+  }
+  jumpEdge();
+}
+window.addEventListener('scroll', () => { if (!SPYQ) SPYQ = requestAnimationFrame(spy); }, {passive:true});
 function refresh(){
   $$('[data-when]').forEach(el => { const f = WHEN[el.dataset.when]; if (f) el.hidden = !f(); });
   $$('[data-x]').forEach(el => {
@@ -1122,9 +1275,12 @@ function refresh(){
     case 'tl': { const c = lightOf(k, el.dataset.cl); $$('button', el).forEach(b => b.setAttribute('aria-pressed', b.dataset.c === c)); break; }
     case 'gauge': el.innerHTML = gaugeHTML(k, el.dataset.u); break;
     case 'delta': { const r = ALLROWS.find(x => x.k === k), d = deltaOf(r); el.textContent = d.txt; el.classList.toggle('ch', d.ch); break; }
-    case 'inseam': { const n = num('inseam'); el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - 10)} cm</b><span class="hint">inseam − 10 cm</span>` : '<span class="hint">Starting saddle height appears here: inseam − 10 cm</span>'; break; }
-    case 'ischial': { const n = num('ischial'); el.innerHTML = n == null ? '' : `<span class="pill ${n < 100 ? 'b' : n <= 130 ? 'g' : 'y'}">${n < 100 ? 'Narrow' : n <= 130 ? 'Medium' : 'Wide'}</span> Saddle around ${Math.round((n + 15) / 5) * 5}–${Math.round((n + 25) / 5) * 5} mm wide, depending on posture`; break; }
+    case 'inseam': { const n = num('inseam'), less = S.fit === 'tt' ? 9 : 10;   // (the triathlon form: inseam − 9 cm)
+      el.innerHTML = n != null ? `<span>Starting saddle height</span><b>${fmt(n - less)} cm</b><span class="hint">inseam − ${less} cm</span>` : `<span class="hint">Starting saddle height appears here: inseam − ${less} cm</span>`; break; }
     case 'painlist': el.innerHTML = painListHTML(); break;
+    case 'feetdraw': if (!FOOTDRAG) el.innerHTML = feetSVG('rider'); break;
+    case 'footword': el.textContent = footWord(num('footAng_' + k)); break;
+    case 'ttscore': el.innerHTML = ttScoreHTML(); break;
     case 'uci': el.innerHTML = uciHTML(); break;
     case 'seccount': case 'jumpcount': { const sec = sectionsFor(STEPS[S.step].id)[+el.dataset.i]; const p = secProgress(sec), ok = p.got === p.tot;
       el.classList.toggle('ok', ok); el.textContent = el.dataset.x === 'seccount' ? `${ok ? '✓ ' : ''}${p.got} of ${p.tot}` : `${p.got}/${p.tot}`; break; }
@@ -1155,7 +1311,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('button, [data-bm]'); if (!t) return;
   const d = t.dataset;
   if (d.go !== undefined) return go(+d.go);
-  if (d.jump !== undefined){ const el = document.getElementById('sec-' + d.jump); if (el) el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); return; }
+  if (d.jump !== undefined){ JUMPED = d.jump; spy(); const el = document.getElementById('sec-' + d.jump); if (el) el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); return; }
   if (d.fit){ S.fit = d.fit; save(); renderMain(); return; }
   if (d.seg){ const k = d.seg;
     if (d.multi !== undefined){ const a = new Set(S.v[k] || []); a.has(d.val) ? a.delete(d.val) : a.add(d.val); S.v[k] = [...a]; t.setAttribute('aria-pressed', a.has(d.val)); }
@@ -1269,7 +1425,7 @@ cmpBox.addEventListener('pointerdown', e => { if (!CMP) return; e.preventDefault
 cmpBox.addEventListener('pointermove', e => { if (CMP && CMP.drag) cmpAt(e); });
 ['pointerup','pointercancel'].forEach(n => cmpBox.addEventListener(n, () => { if (CMP) CMP.drag = false; }));
 
-window.addEventListener('resize', () => { if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
+window.addEventListener('resize', () => { jumpEdge(); if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!$('#fits').hidden) $('#fits').hidden = true; else if (CMP){ $('#cmp').hidden = true; CMP = null; } else if (MZ) closeMZ(); else if (!$('#ov').hidden) $('#ov').hidden = true; } });
 
 document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFits(); });
