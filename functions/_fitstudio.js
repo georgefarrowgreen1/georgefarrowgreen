@@ -10,9 +10,11 @@
 // Without FITTING_USERS no one can sign in. Every file but the sign-in page and what it shows (its styles, typefaces,
 // logo and icons) is only for someone signed in.
 //
-// Every fit itself stays in the browser that recorded it (IndexedDB), until the fitter shares the client's report.
+// Every fit is kept in the browser that recorded it (IndexedDB) and, backed up from there, in the studio’s own store
+// (functions/_fitstore.js: api/fits, api/photos), so every signed-in device has them all.
 
 import { notFound } from "./_app.js";
+import { fitStore } from "./_fitstore.js";
 export const FITTING_HOST = "fitting.georgefarrowgreen.com";
 // (FITTING_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
 export const isFitting = (url, env) => (env.FITTING_HOST || FITTING_HOST).split(",").includes(url.hostname);
@@ -101,6 +103,7 @@ async function api(ctx, url, what) {
     const me = await signedIn(req, env);
     return me ? json(200, { name: me }) : json(401, { error: "Not signed in." });
   }
+  if (/^(fits|photos)(\/|$)/.test(what)) return fitStore(ctx, url, what, await signedIn(req, env), { json, plain });
   if (what !== "login" && what !== "logout") return notFound();
   if (req.method !== "POST") return plain(405, "POST only.");
   // (only from its own pages: a POST from anywhere else is turned away)
