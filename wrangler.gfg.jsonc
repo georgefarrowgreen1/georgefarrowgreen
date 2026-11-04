@@ -24,7 +24,11 @@
   "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
   "observability": { "enabled": true },
   // (its workers.dev address, for looking at it before the move; the scheduled jobs call inflite-apps)
-  "workers_dev": true
+  "workers_dev": true,
+  // (the addresses it has taken over from the Pages project so far, one at a time: README, step 5)
+  "routes": [
+    { "pattern": "www.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }
+  ]
   // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
   // "routes": [
   //   { "pattern": "www.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }, { "pattern": "georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
