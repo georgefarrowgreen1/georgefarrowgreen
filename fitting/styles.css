@@ -523,3 +523,11 @@ body.signin::before{display:none}
 .ftab .num .u{right:12px}
 /* L and R on one line */
 .lr.inline{grid-template-columns:22px minmax(0,1fr) 22px minmax(0,1fr)}
+
+/* feet, standing: the form's neutral example beside the rider's feet */
+.feet{display:grid;grid-template-columns:minmax(0,200px) minmax(0,380px);gap:18px;align-items:start}
+.feet figure{margin:0;display:flex;flex-direction:column;gap:6px}
+.feet figcaption{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}
+.feet svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.feet-ex{opacity:.85}
+@media (max-width:560px){.feet{grid-template-columns:1fr}.feet-ex{max-width:200px}}
