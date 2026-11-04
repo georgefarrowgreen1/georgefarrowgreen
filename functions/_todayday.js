@@ -139,7 +139,11 @@ async function gather(env, u, t, zone, cards) {
     const name = r.name || (session && session.sport === r.sport ? session.name : null) || NOUN[r.sport] || "Ride";
     return { ...r, name, who: r.who || agreed?.who || null, withId: r.withId || agreed?.withId || null };
   });
-  return { today, cal, D, early, p, quietOn, row, offers, times, dones, holdLevel, acts, allActs, hide, isPlanned, dayStart, eveningAt, rides, undone, fc, fcDay, overlay };
+  // (a Ride Then offered for a session the plan no longer has today, or by another name: left out, as Fitness's plan has
+  // moved on since the day was planned; and none once the session has a time)
+  const stale = (a) => a.rule === "rideThen" && a.state === "offered" && (!session || (a.now?.name && a.now.name !== session.name) || rides.length > 0);
+  const actsNow = acts.filter((a) => !stale(a));
+  return { today, cal, D, early, p, quietOn, row, offers, times, dones, holdLevel, acts: actsNow, allActs, hide, isPlanned, dayStart, eveningAt, rides, undone, fc, fcDay, overlay };
 }
 
 // ---- the acts' overlay on the Fitness card (spec §7.5) ----
