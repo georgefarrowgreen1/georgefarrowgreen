@@ -60,6 +60,7 @@ const BIKE = [
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
   {g:'Cockpit', k:'spacers', label:'Headset spacers', u:'mm', step:5, hint:'Front height'},
+  {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'FT'},
   {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'FT'},
   {g:'Reach & drop', k:'tipBar', label:'Saddle tip to bar', u:'mm', step:5, f:'FT'},
   {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'FT'},
@@ -175,7 +176,7 @@ function sampleState(){
     fitNotes:'Right knee tracks in under load. One varus wedge under the right cleat straightened it on the camera.',
     sadModel_pre:'Bontrager Montrose Comp 138', sadModel_post:'Bontrager Verse Pro 145', sadW_pre:138, sadW_post:145, sadH_pre:718, sadH_post:734,
     setback_pre:62, setback_post:55, tilt_pre:-1.5, tilt_post:0, crank_pre:172.5, crank_post:170, barW_pre:420, barW_post:400,
-    stemL_pre:110, stemL_post:100, stemA_pre:-7, stemA_post:7, spacers_pre:15, spacers_post:25, hoods_pre:545, hoods_post:520, drop_pre:85, drop_post:67,
+    stemL_pre:110, stemL_post:100, stemA_pre:-7, stemA_post:7, spacers_pre:15, spacers_post:25, barReach_pre:470, barReach_post:448, hoods_pre:545, hoods_post:520, drop_pre:85, drop_post:67,
     tipBar_pre:520, tipBar_post:497, barModel_pre:'Bontrager Elite VR-CF 42', barModel_post:'Bontrager Elite VR-CF 40',
     cleatL:'1.2 cm behind M1, neutral rotation', cleatR:'1.2 cm behind M1, 2° heel in, one varus wedge',
     summary:''
@@ -648,7 +649,7 @@ async function ensureSamplePhotos(){
 
 /* ---------------- insights ---------------- */
 function changes(){
-  const order = ['sadH','setback','drop','hoods','stemL','spacers','stemA','barW','crank','tilt','sadW','padStack','padReach','padW','extLen','extA','tipBar','postOff','hx','hy','sx','sy','nose','extFront'];
+  const order = ['sadH','setback','drop','hoods','barReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padStack','padReach','padW','extLen','extA','tipBar','postOff','hx','hy','sx','sy','nose','extFront'];
   return order.map(k => ALLROWS.find(r => r.k === k)).filter(r => r && applies(r) && (S.fit === 'tt' || !TTROWS.includes(r)))
     .map(r => ({r, ...deltaOf(r)})).filter(x => x.ch && isNum(x.d));
 }
