@@ -675,8 +675,8 @@ step(5, 'after: the honest card from a waiting Garmin row, then Fitness’s figu
   ok(/Mira(?:, \w+)*(?: and \w+)? wrote while you rode/.test(top), '“Mira wrote while you rode” (the server: who)', top);
   const words = await until(async () => { const w = await textOf(`#top .dt-said[data-wid="${M.id}"]`); return w.includes(SAID.mira) ? w : null; }, 20000);
   ok(!!words, 'and her words, from the engine on this phone', words);
-  const to = await textOf('#top .dt-to');
-  ok(/^Leo · Riding with you (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)$/i.test(to), '“Leo · Riding with you <the day you agreed>”', to);
+  // (no “Leo · Riding with you …” line since Today 1.26: its Send to Leo went in 1.18, so it had nothing to tap)
+  ok(!(await G.p.$('#top .dt-to')), 'no line about Leo on the after card (Today 1.26)');
   // (no Send to Leo or Open Fitness on the card since Today 1.18; Answer Mira stays. Fitness is a tap on its card's head)
   ok(!(await G.p.$('#top [data-do=sendto], #top [data-send], #top [data-do=open]')), 'no Send to Leo, Send or Open Fitness on the after card', await G.p.evaluate(() => document.querySelector('#top .tc-foot')?.innerHTML.slice(0, 300)).catch(() => ''));
   ok(!!(await G.p.$(`#top a[data-do=answer][href="/chats/#open=${M.id}"]`)), 'Answer Mira, at /chats/#open=<id>');
