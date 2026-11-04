@@ -109,6 +109,8 @@ function sectionsFor(step){
       SG('bikeType','Bike type',['Road','Gravel','TT / Tri','Other']), T('pedals','Pedals & cleat float',{span2:true}), T('shoes','Shoe brand & size',{span2:true})]},
   ];
   case 'interview': return [
+    ...(S.follow ? [{title:'Since the fit', fields:[SG('since','How the bike has felt',['Better','About the same','Worse'],{wide:true}),
+      TA('sinceNote','What they’ve noticed',{ph:'Rides done, what feels better, any niggles back'})]}] : []),
     {title:'About the rider', fields:[SG('sex','Sex',['Male','Female'],{hint:'Sets the side of the saddle sizer'}), SG('style','Riding style',['Recreational','Serious recreational','Racer','Triathlete'],{wide:true}),
       N('age','Age','yrs'), N('height','Height','cm'), N('weight','Weight','kg'), T('job','Occupation')]},
     {title:'Riding', fields:[N('rideTime','Average ride','hrs'), N('speed','Average speed','mph'), N('cadence','Cadence','rpm'), N('years','Years cycling','yrs'),
@@ -211,6 +213,37 @@ async function newFit(){
   $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0);
 }
 
+/* a follow-up: a new fit for the same rider and bike, starting where the last one finished. Everything the rider
+   told us and every body measurement comes across to update; the bike's and the angles' After values become this
+   visit's Before; the After photos become its Before photos; the plan carries on. Its own date, notes and summary. */
+const FRESH = new Set(['date', 'summary', 'fitNotes', 'since', 'sinceNote']);
+async function startFollowUp(prev){
+  if (saveT) await writeNow();
+  const S2 = blank(), v = {};
+  for (const [k, x] of Object.entries(prev.v || {})){
+    if (FRESH.has(k) || k.endsWith('_pre') || k === 'fitter') continue;
+    if (k.endsWith('_post')){ v[k.slice(0, -5) + '_pre'] = x; continue; }
+    v[k] = x;
+  }
+  for (const [k, x] of Object.entries(prev.v || {})) if (k.endsWith('_pre') && !filled(v[k])) v[k] = x;   // (where nothing was changed)
+  S2.fit = prev.fit; S2.v = Object.assign(S2.v, v); S2.pain = {...(prev.pain || {})}; S2.step = 1;
+  S2.follow = {of:prev.id, date:prev.v.date || '', fitter:prev.v.fitter || ''};
+  S2.photos = (prev.photos || []).filter(p => p.src && /^After · (side|front)$/.test(p.tag))
+    .map(p => ({...p, id:uid(), tag:p.tag.replace('After', 'Before'), cap:p.cap ? `At the last fit: ${p.cap}` : 'At the last fit', _comp:undefined}));
+  S = S2; await writeNow();
+  $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0); await markPhotos();
+}
+const dayTxt = (d, o = {day:'numeric', month:'short'}) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', o) : '';
+// a fit's follow-up, by the fits list: done (the follow-up's date), else when it's due (Full and TT fits, eight weeks on)
+function followState(f, all){
+  const done = all.filter(x => x.follow && x.follow.of === f.id).sort((a, b) => (b.v.date || '').localeCompare(a.v.date || ''))[0];
+  if (done) return {cls:'g', txt:`Followed up ${dayTxt(done.v.date)}`};
+  if (f.follow || f.fit === 'std' || !f.v.date) return null;
+  const due = new Date(f.v.date + 'T12:00:00'); due.setDate(due.getDate() + 56);
+  const over = due < new Date();
+  return {cls:over ? 'r' : 'y', txt:`${over ? 'Follow-up overdue since' : 'Follow-up due'} ${due.toLocaleDateString('en-GB', {day:'numeric', month:'short'})}`};
+}
+
 /* the fits on this device */
 let FITLIST = [];
 async function openFits(){
@@ -225,8 +258,11 @@ function renderFits(){
     const name = [f.v.first, f.v.last].filter(Boolean).join(' ') || 'Rider not named yet';
     const when = f.v.date ? new Date(f.v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
     const open = S && f.id === S.id;
-    return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}</b>
-      <span>${esc([FITS[f.fit] ? FITS[f.fit].name : '', f.v.bike, when].filter(Boolean).join(' · '))}</span></div>
+    const st = followState(f, FITLIST);
+    return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}${f.follow ? ' <span class="pill n">Follow-up</span>' : ''}</b>
+      <span>${esc([FITS[f.fit] ? FITS[f.fit].name : '', f.v.bike, when].filter(Boolean).join(' · '))}</span>
+      ${st ? `<span class="fr-state"><span class="pill ${st.cls}">${esc(st.txt)}</span></span>` : ''}</div>
+      <button type="button" class="btn sm" data-act="fit-follow" data-id="${esc(f.id)}">Start follow-up</button>
       ${open ? '<span class="pill g">Open</span>' : `<button type="button" class="btn sm dark" data-act="fit-open" data-id="${esc(f.id)}">Open</button>`}
       <button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button></div>`;
   }).join('') : `<p class="hint">No fits match “${esc(q)}”.</p>`;
@@ -632,6 +668,7 @@ function draftSummary(){
   return out.join(' ').replace(/ \n/g, '\n\n');
 }
 function followUp(){
+  if (S.follow) return {title:'Keep in touch', body:'If anything changes, or a niggle comes back, call us on 01603 614400 and we’ll book you in.'};
   if (S.fit === 'std') return {title:'Follow-up appointment', body:'Book a follow-up for £25 if anything needs a tweak once you’ve done a few longer rides.'};
   const d = val('date') ? new Date(val('date') + 'T12:00:00') : new Date(); d.setDate(d.getDate() + 56);
   return {title:'Free follow-up', date:d, body:`Your complimentary 30-minute follow-up is due around ${d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})}. We’ll check how the changes feel after eight weeks of riding.`};
@@ -672,6 +709,7 @@ function mailtoHref(){
 }
 function mailText(){
   const fu = followUp(), first = val('first') || 'there';
+  if (S.follow) return `Subject: Your Precision Fit follow-up report\n\nHi ${first},\n\nThanks for coming back in for your follow-up with ${val('fitter') || 'us'}. Your updated report is attached: it shows what we changed today, from where your fit on ${dayTxt(S.follow.date, {day:'numeric', month:'long'}) || 'your last visit'} left you, and your plan from here.\n\n${fu.body}\n\n${val('fitter') || 'The fit team'}\nPrecision Fit Studio, Pedal Revolution\n63–67 Bethel Street, Norwich NR2 1NR · 01603 614400\nprecisionfit@pedalrevolution.co.uk`;
   return `Subject: Your Precision Fit report, ${FITS[S.fit].name}\n\nHi ${first},\n\nThanks for coming in for your ${FITS[S.fit].name} with ${val('fitter') || 'us'}. Your report is attached: it has your new bike measurements, before and after photos, and the stretches we talked about.\n\n${fu.body}\n\nRide it for a couple of weeks and let us know how it feels.\n\n${val('fitter') || 'The fit team'}\nPrecision Fit Studio, Pedal Revolution\n63–67 Bethel Street, Norwich NR2 1NR · 01603 614400\nprecisionfit@pedalrevolution.co.uk`;
 }
 
@@ -695,11 +733,14 @@ function reportBlocks(){
   const ch = changes(), A = anglesList(), Ls = lights(), u = x => x === '°' ? '°' : ' ' + x;
   const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
   const B = [];
-  B.push({html:`<div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>Fit</span><b>${esc(fit.name)}</b></div>
+  const FU = !!S.follow, was = FU ? 'At your fit' : 'Before', now = FU ? 'Today' : 'After';
+  B.push({html:`<div class="rp-meta"><div><span>Customer</span><b>${esc(name)}</b></div><div><span>Date</span><b>${esc(dateTxt)}</b></div><div><span>Technician</span><b>${esc(v.fitter || '')}</b></div><div><span>${FU ? 'Follow-up to' : 'Fit'}</span><b>${esc(FU ? `${fit.name}, ${dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'})}` : fit.name)}</b></div>
     <div><span>Bike</span><b>${esc(v.bike || '')}</b></div><div><span>Frame size</span><b>${esc(v.frame || '')}</b></div><div><span>Pedals</span><b>${esc(v.pedals || '')}</b></div><div><span>Shoes</span><b>${esc(v.shoes || '')}</b></div></div>`});
-  if (ch.length) B.push({html:sec('Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}</b><i>${x.txt}</i></div>`).join('')}</div>`)});
+  if (FU && (v.since || v.sinceNote)) B.push({html:sec('Since your fit', `${v.since ? `<p class="rp-p"><b>How it’s felt:</b> ${esc(v.since)}</p>` : ''}${v.sinceNote ? `<p class="rp-p">${esc(v.sinceNote)}</p>` : ''}`)});
+  if (FU && !ch.length) B.push({html:sec('Changes today', '<p class="rp-p">Your position is as your fit left it: no changes were needed.</p>')});
+  if (ch.length) B.push({html:sec(FU ? 'Changes today' : 'Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])} → ${fmt(v[x.r.k + '_post'])}</b><i>${x.txt}</i></div>`).join('')}</div>`)});
   if (v.summary) B.push({html:sec('What we changed and why', `<p class="rp-p">${esc(v.summary)}</p>`)});
-  if (A.length) B.push({title:'Your position on the bike', head:'<p class="rp-p" style="color:var(--p-mute);font-size:12.5px">Hollow dot: before the fit. Solid dot: after. The green band is the range we aim for.</p>', foot:'',
+  if (A.length) B.push({title:'Your position on the bike', head:`<p class="rp-p" style="color:var(--p-mute);font-size:12.5px">${FU ? 'Hollow dot: where your fit left you. Solid dot: today.' : 'Hollow dot: before the fit. Solid dot: after.'} The green band is the range we aim for.</p>`, foot:'',
     rows:A.map(a => { const ok = a.r && a.post != null ? a.post >= a.r[0] && a.post <= a.r[1] : null;
       return `<div class="rp-ang"><div><div class="nm">${esc(a.label)}</div><div style="font-size:11.5px;color:var(--p-mute)">${a.r ? guideTxt(a.r, a.u) : 'Recorded'}</div></div>
         <div class="val">${a.pre != null ? fmt(a.pre) + u(a.u) : '–'} → ${a.post != null ? fmt(a.post) + u(a.u) : '–'}</div>
@@ -707,7 +748,7 @@ function reportBlocks(){
   const cell = (r, k) => esc(r.t === 'text' ? v[k] ?? '' : v[k] != null && v[k] !== '' ? fmt(v[k]) + u(r.u) : '');
   const trs = rows => rows.filter(applies).filter(r => filled(v[r.k + '_pre']) || filled(v[r.k + '_post'])).map(r => { const d = deltaOf(r);
     return `<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : ''}">${d.txt === '–' ? '' : d.txt}</td></tr>`; });
-  const TH = '<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>';
+  const TH = `<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>${was}</th><th>${now}</th><th>Change</th></tr></thead><tbody>`;
   const bike = trs(BIKE);
   if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
     tail:'<p class="rp-p" style="font-size:11.5px;color:var(--p-mute);margin-top:10px">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
@@ -744,7 +785,7 @@ function reportBlocks(){
 const rowsBlock = (b, i, j, cont) => `<div class="rp-sec"><h3 class="rp-h">${b.title}${cont ? '<span class="rp-cont">continued</span>' : ''}</h3>${cont ? '' : b.head.startsWith('<p') ? b.head : ''}${b.head.startsWith('<p') ? '' : b.head}${b.rows.slice(i, j).join('')}${b.foot}${j === b.rows.length ? b.tail || '' : ''}</div>`;
 function reportPages(){
   const fit = FITS[S.fit], name = fullName() || 'Client', cap = $('#cap');
-  const band = big => `<div class="rp-band${big ? '' : ' sm'}"><img src="${LOGO}" alt=""><div><div class="rp-k">${esc(fit.name)} · ${esc(name)}</div><div class="rp-t">Precision Fit Report</div></div></div>`;
+  const band = big => `<div class="rp-band${big ? '' : ' sm'}"><img src="${LOGO}" alt=""><div><div class="rp-k">${esc(fit.name)} · ${esc(name)}</div><div class="rp-t">${S.follow ? 'Follow-up Report' : 'Precision Fit Report'}</div></div></div>`;
   const blocks = reportBlocks();
   // measure: each band, each whole block, and for a carried-on block its heading and each row
   const blk = h => `<div class="rp-blk">${h}</div>`;
@@ -868,7 +909,7 @@ function readyItems(){
     {ok:/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), t:'Email address', d:email ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : `“${email}” doesn’t look like an email address`) : 'Needed to send the report', step:0},
     {ok:A >= 3, t:'Angles after the fit', d:`${A} recorded${A < 3 ? ', at least 3 needed' : ''}`, step:3},
     {ok:bikePost >= 5, t:'Bike measurements after the fit', d:`${bikePost} recorded${bikePost < 5 ? ', at least 5 needed' : ''}`, step:4},
-    ...(S.fit === 'std' ? [] : [{ok:sides === 2, t:'Before & after side photos', d:`${sides} of 2 taken`, step:5}]),
+    ...(S.fit === 'std' || S.follow ? [] : [{ok:sides === 2, t:'Before & after side photos', d:`${sides} of 2 taken`, step:5}]),
     {ok:filled(val('summary')), t:'Overview of changes', d:filled(val('summary')) ? 'Written' : 'Tap “Write it for me” below to draft it', step:6},
   ];
 }
@@ -923,7 +964,8 @@ function secHTML(sec, i){
 function renderMain(){
   if (!applies(STEPS[S.step])) S.step = visSteps().filter(i => i < S.step).pop() ?? 0;
   const st = STEPS[S.step];
-  $('#main').innerHTML = `<div class="step-head"><div class="eyebrow">Step ${stepNo(S.step)} · ${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
+  $('#main').innerHTML = `<div class="step-head"><div class="eyebrow">Step ${stepNo(S.step)} · ${S.follow ? 'Follow-up · ' : ''}${FITS[S.fit].name}</div><h1>${st.title}</h1><p class="lede">${st.lede}</p></div>
+    ${S.follow ? `<div class="fu-note"><b>Follow-up to the fit on ${esc(dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'}) || 'an earlier date')}.</b> Before values are where that fit left the bike and the rider; record today’s as After.</div>` : ''}
     ${jumpHTML(st.id)}${sectionsFor(st.id).map(secHTML).join('')}
 `;
   refresh(); renderRail(); renderHeader();
@@ -1029,6 +1071,7 @@ document.addEventListener('click', e => {
     (async () => { if (saveT) await writeNow(); try { await fetch('api/logout', {method:'POST', credentials:'same-origin'}); } catch(_){} location.replace('login'); })();
     return; }
   case 'fit-open': { const f = FITLIST.find(x => x.id === d.id); if (f) openFit(f); return; }
+  case 'fit-follow': { const f = FITLIST.find(x => x.id === d.id); if (f) startFollowUp(f); return; }
   case 'fit-del': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to delete'; t.classList.replace('ghost', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Delete'; t.classList.replace('primary', 'ghost'); } }, 3000); return; }
     dbDel(d.id).catch(() => {}).then(async () => { FITLIST = FITLIST.filter(x => x.id !== d.id); if (S.id === d.id){ S = blank(); S.fit = 'std'; await writeNow(); renderMain(); } renderFits(); }); return; }
