@@ -743,6 +743,105 @@ function cardCols(){
        has('barW') && row('Handlebar width', mm('barW')), v.cleatR && row('Cleat, right', v.cleatR)];
   return [left, right.filter(Boolean)];
 }
+// The bike on the card's back, drawn in millimetres from the BB (x forward, y up) and scaled into the picture: a road
+// bike, or a TT bike for a TT fit. Where the rider's numbers decide a place (saddle height and setback or nose, pad
+// stack and reach, extension) the drawing uses them, so the marks sit where the numbers say; the frame itself is a
+// typical 56. Inline attributes only: in the PDF it's drawn as a picture, away from the page's styles.
+function bikeSVG(){
+  const v = S.v, num2 = k => isNum(v[k + '_post']) ? v[k + '_post'] : null, tt = S.fit === 'tt';
+  const k = 0.36, OX = 290, OY = 330, X = x => (OX + x * k).toFixed(1), Y = y => (OY - y * k).toFixed(1), P = (x, y) => `${X(x)} ${Y(y)}`;
+  const INK = '#1c1f24', RED = '#ed1c24', MUTE = '#676b73';
+  const line = (pts, w, col = INK, extra = '') => `<path d="M${pts.map(p => P(p[0], p[1])).join(' L')}" stroke="${col}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+  const circ = (x, y, r, w, col = INK, fill = 'none') => `<circle cx="${X(x)}" cy="${Y(y)}" r="${(r * k).toFixed(1)}" stroke="${col}" stroke-width="${w}" fill="${fill}"/>`;
+  const label = (x, y, s, anchor = 'start', col = RED, size = 16) => `<text x="${X(x)}" y="${Y(y)}" text-anchor="${anchor}" fill="${col}" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="${size}" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${esc(s)}</text>`;
+  const note = (x, y, s, anchor = 'middle') => `<text x="${X(x)}" y="${Y(y)}" text-anchor="${anchor}" fill="${MUTE}" font-family="Barlow, Arial, sans-serif" font-size="12">${esc(s)}</text>`;
+  const dimH = (x1, x2, y, tick = 14) => line([[x1, y], [x2, y]], 2, RED) + line([[x1, y - tick], [x1, y + tick]], 2, RED) + line([[x2, y - tick], [x2, y + tick]], 2, RED);
+  const dimV = (x, y1, y2, tick = 14) => line([[x, y1], [x, y2]], 2, RED) + line([[x - tick, y1], [x + tick, y1]], 2, RED) + line([[x - tick, y2], [x + tick, y2]], 2, RED);
+  const guide = (pts) => line(pts, 1.4, RED, 'stroke-dasharray="5 5"');
+  const R = 340, rearAx = [-404, 70], frontAx = tt ? [600, 70] : [591, 70];
+  const sta = (tt ? 78 : 73.5) * Math.PI / 180, ax = [-Math.cos(sta), Math.sin(sta)];
+  const H = num2('sadH') ?? 734, seat = [ax[0] * H, ax[1] * H];                       // saddle top, on the seat tube's line
+  const back = tt ? (num2('nose') ?? 50) : (num2('setback') ?? 55);                   // saddle tip (or nose) behind the BB
+  const sLen = tt ? 250 : 270, tip = [-back, seat[1]], tail = [-back - sLen, seat[1]];
+  let g = '';
+  // wheels: tyre, rim, hub (a TT bike: a disc behind, a deep rim in front)
+  if (tt){
+    g += circ(rearAx[0], rearAx[1], 318, 0, 'none', '#d9dbdf') + circ(rearAx[0], rearAx[1], 34, 2, '#b9bdc4', '#cfd2d7');
+    g += circ(frontAx[0], frontAx[1], 276, 74 * k, '#d5d8dc') + circ(frontAx[0], frontAx[1], 238, 1.2, '#b9bdc4');   // deep rim
+  } else {
+    for (const a of [rearAx, frontAx]){ g += circ(a[0], a[1], 312, 2.5, '#8a9099'); for (let i = 0; i < 16; i++){ const t = i * Math.PI / 8; g += line([[a[0] + 14 * Math.cos(t), a[1] + 14 * Math.sin(t)], [a[0] + 305 * Math.cos(t + .35), a[1] + 305 * Math.sin(t + .35)]], .6, '#a9aeb5'); } }
+  }
+  for (const a of [rearAx, frontAx]) g += circ(a[0], a[1], R - 12, 9, INK) + circ(a[0], a[1], 16, 3, INK, '#ffffff');
+  // frame
+  const w = tt ? 13 : 8.5;
+  const cluster = tt ? [ax[0] * 470, ax[1] * 470] : [ax[0] * 540, ax[1] * 540];
+  const htTop = tt ? [410, 515] : [385, 575], hta = 73 * Math.PI / 180, htLen = tt ? 115 : 165;
+  const htBot = [htTop[0] + Math.cos(hta) * htLen, htTop[1] - Math.sin(hta) * htLen];
+  g += line([rearAx, [0, 0]], w * .75) + line([rearAx, cluster], w * .65);                  // chain and seat stays
+  g += line([[0, 0], cluster], w) + line([[cluster[0] + 6, cluster[1] - 10], [htTop[0] - 4, htTop[1] - 14]], w);   // seat tube, top tube
+  g += line([[0, 0], htBot], w * 1.15) + line([htTop, htBot], w * 1.25);                   // down tube, head tube
+  // fork: down the steering axis, curving forward to the axle (its rake)
+  const axisX = htBot[0] + (htBot[1] - frontAx[1]) / Math.tan(hta), fc = [axisX, frontAx[1] + (htBot[1] - frontAx[1]) * .3];
+  g += `<path d="M${P(htBot[0], htBot[1])} Q${P(fc[0], fc[1])} ${P(frontAx[0], frontAx[1])}" stroke="${INK}" stroke-width="${w * .7}" fill="none" stroke-linecap="round"/>`;
+  // seatpost and saddle (on the post's line, where the numbers put it)
+  g += line([[cluster[0] - 2, cluster[1]], [seat[0], seat[1] - 18]], tt ? 9 : 6, '#3a3e45');
+  g += `<path d="M${P(tail[0], tail[1] - 8)} Q${P(tail[0] + 30, tail[1] + 22)} ${P(tail[0] + 90, tail[1] + 16)} L${P(tip[0] - 40, tip[1] + 6)} Q${P(tip[0], tip[1] + 4)} ${P(tip[0] + 6, tip[1] - 4)} L${P(tail[0] + 20, tail[1] - 16)} Z" fill="${INK}"/>`;
+  g += line([[seat[0] - 40, seat[1] - 14], [seat[0] + 40, seat[1] - 14]], 3, '#3a3e45');
+  // crankset: chainring, crank, pedal
+  const crank = num2('crank') ?? 170, ca = -68 * Math.PI / 180, pedal = [Math.cos(ca) * crank, Math.sin(ca) * crank];
+  g += circ(0, 0, 104, 3.5, INK) + circ(0, 0, 92, 1, '#8a9099');
+  g += line([[0, 0], pedal], 7, '#2a2e35') + line([[pedal[0] - 45, pedal[1]], [pedal[0] + 45, pedal[1]]], 6, '#2a2e35') + circ(0, 0, 22, 0, 'none', INK);
+  // cockpit
+  let barPoint, cockpit = '';
+  if (!tt){
+    const sp = num2('spacers') ?? 25, steerTop = [htTop[0] - Math.cos(hta) * (sp + 12), htTop[1] + Math.sin(hta) * (sp + 12)];
+    const stemL = num2('stemL') ?? 100, stemA = ((num2('stemA') ?? -7) + 17) * Math.PI / 180;   // stem angle from the steerer's normal
+    const clamp = [steerTop[0] + Math.cos(stemA) * stemL, steerTop[1] + Math.sin(stemA) * stemL];
+    cockpit += line([htTop, steerTop], 10, '#3a3e45') + line([steerTop, clamp], 11, INK);
+    // drop bar: forward to the hoods' bend, down the drop, back underneath
+    cockpit += `<path d="M${P(clamp[0], clamp[1])} C${P(clamp[0] + 90, clamp[1] + 4)} ${P(clamp[0] + 112, clamp[1] - 30)} ${P(clamp[0] + 100, clamp[1] - 70)} C${P(clamp[0] + 88, clamp[1] - 120)} ${P(clamp[0] + 50, clamp[1] - 132)} ${P(clamp[0] + 8, clamp[1] - 122)}" stroke="${INK}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+    cockpit += `<path d="M${P(clamp[0] + 70, clamp[1] + 2)} Q${P(clamp[0] + 96, clamp[1] + 30)} ${P(clamp[0] + 110, clamp[1] + 18)} L${P(clamp[0] + 104, clamp[1] - 26)} Z" fill="${INK}"/>`;   // hood
+    barPoint = clamp;
+  } else {
+    const padStack = num2('padStack') ?? 620, padReach = num2('padReach') ?? 430, extLen = num2('extLen') ?? 300, extA = (num2('extA') ?? 10) * Math.PI / 180;
+    const stemEnd = [htTop[0] + 70, htTop[1] - 8], pad = [padReach, padStack], padFront = [padReach + 110, padStack];
+    const extTip = [padReach + Math.cos(extA) * extLen, padStack - 20 + Math.sin(extA) * extLen];
+    cockpit += line([[htTop[0] - 6, htTop[1] + 4], stemEnd], 12, INK);
+    cockpit += `<path d="M${P(stemEnd[0], stemEnd[1])} C${P(stemEnd[0] + 80, stemEnd[1] - 4)} ${P(stemEnd[0] + 110, stemEnd[1] - 30)} ${P(stemEnd[0] + 120, stemEnd[1] - 70)}" stroke="${INK}" stroke-width="9" fill="none" stroke-linecap="round"/>`;   // base bar
+    cockpit += line([[pad[0] + 40, stemEnd[1] + 4], [pad[0] + 40, padStack - 20]], 8, '#3a3e45');    // riser to the pads
+    cockpit += line([pad, padFront], 12, INK) + line([[pad[0] + 20, padStack - 20], extTip], 6, INK) + line([extTip, [extTip[0] - 6, extTip[1] + 30]], 6, INK);   // pad, extension, hand
+    barPoint = pad;
+    // TT marks: pad stack and reach (from the BB), the extension, the nose
+    g += cockpit;
+    // (pad stack beside the front wheel, clear of the rim: from the BB's height to the pad's)
+    const xs = frontAx[0] + R + 30;
+    g += guide([[0, 0], [xs + 16, 0]]) + guide([[pad[0], padStack + 16], [pad[0], 0]]) + guide([[padFront[0], padStack], [xs + 16, padStack]]);
+    g += dimV(xs, 0, padStack) + label(xs + 14, padStack / 2 + 40, 'Pad stack') + label(xs + 14, padStack / 2 - 4, fmt(padStack));
+    g += guide([[0, 0], [0, padStack + 130]]) + dimH(0, pad[0], padStack + 110) + label(pad[0] / 2, padStack + 126, `Pad reach ${fmt(padReach)}`, 'middle');
+    if (num2('extLen') != null) g += label(extTip[0] + 10, extTip[1] + 10, `Extension ${fmt(extLen)}`);
+    if (num2('extFront') != null) g += dimH(0, extTip[0], padStack + 210) + label(extTip[0] / 2 + 60, padStack + 226, `Tip ahead of BB ${fmt(num2('extFront'))}`, 'middle');
+    if (num2('nose') != null) g += guide([[0, seat[1] + 60], [0, padStack + 130]]) + dimH(tip[0], 0, seat[1] + 60) + label(tip[0] - 20, seat[1] + 76, `Nose behind BB ${fmt(back)}`, 'end');
+  }
+  if (!tt){
+    g += cockpit;
+    const reach = num2('barReach') != null ? ['Reach', num2('barReach')] : num2('hoods') != null ? ['Reach to hoods', num2('hoods')] : num2('tipBar') != null ? ['Saddle tip to bar', num2('tipBar')] : null;
+    if (num2('setback') != null) g += guide([[0, 0], [0, seat[1] + 100]]) + dimH(Math.min(tip[0], 0), Math.max(tip[0], 0), seat[1] + 60) + label(Math.max(tip[0], 0) + 24, seat[1] + 54, `Setback ${fmt(back)}`);
+    if (reach) g += dimH(tip[0], barPoint[0], seat[1] + 150) + label((tip[0] + barPoint[0]) / 2, seat[1] + 166, `${reach[0]} ${fmt(reach[1])}`, 'middle');
+    if (num2('drop') != null){
+      const xr = barPoint[0] + 200;
+      g += guide([[tip[0] + 30, seat[1]], [xr + 20, seat[1]]]) + guide([[barPoint[0] + 20, barPoint[1]], [xr + 20, barPoint[1]]]);
+      g += dimV(xr, barPoint[1], seat[1], 10) + label(xr + 26, (barPoint[1] + seat[1]) / 2 - 8, `Drop ${fmt(num2('drop'))}`);
+    }
+  }
+  // saddle height, along the seat tube's line, both bikes
+  if (num2('sadH') != null){
+    const at = H * 0.72, pt = [ax[0] * at, ax[1] * at];
+    g += line([[0, 0], seat], 2, RED, 'stroke-dasharray="7 5"') + line([[pt[0] - 150, pt[1]], pt], 1.6, RED);
+    g += label(pt[0] - 160, pt[1] - 6, `Saddle height ${fmt(H)}`, 'end');
+  }
+  g += note(0, -200, 'BB centre') + (num2('crank') != null ? note(pedal[0] + 70, pedal[1] - 10, `Crank ${fmt(crank)}`, 'start') : '');
+  return `<svg viewBox="0 0 760 440" width="714" height="413" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+}
 function cardPages(){
   const v = S.v, P = k => v[k + '_post'], name = fullName() || 'Rider';
   const when = v.date ? new Date(v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
@@ -752,22 +851,8 @@ function cardPages(){
     <div class="sc-grid"><div>${rows(L)}</div><div>${rows(Rr)}</div></div>
     ${!L.length && !Rr.length ? '<p class="sc-empty">Add the bike’s After measurements to fill this card.</p>' : ''}
     <div class="sc-foot">Being serviced, rebuilt or packed for travel? Give this card to the mechanic: these numbers put your position back exactly. Questions: Pedal Revolution, 63–67 Bethel Street, Norwich · 01603 614400</div></div>`;
-  // the back: where each is measured from, with this rider's numbers on it (inline styles: drawn as a picture in the PDF)
-  const T = (x, y, s, extra = '') => `<text x="${x}" y="${y}" fill="#ed1c24" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="16" ${extra}>${esc(s)}</text>`;
-  const D = 'stroke="#ed1c24" stroke-width="2.2" fill="none"', K = (w) => `stroke="#14161a" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"`;
-  const reach = filled(P('barReach')) ? ['Reach', P('barReach')] : filled(P('hoods')) ? ['Reach to hoods', P('hoods')] : filled(P('tipBar')) ? ['Saddle tip to bar', P('tipBar')] : null;
-  const svg = `<svg viewBox="0 0 640 330" width="714" height="368" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="150" cy="228" r="86" ${K(7)}/><circle cx="470" cy="228" r="86" ${K(7)}/>
-    <path ${K(6)} d="M300 250 L150 228 L262 120 L300 250 L440 98 L262 120 M440 98 L452 140 L470 228"/>
-    <path ${K(4)} d="M262 120 L246 62"/><path ${K(9)} d="M214 58 L272 58"/>
-    <path ${K(5)} d="M440 98 L436 76 L478 72"/><path ${K(5)} d="M478 72 q22 2 16 26 q-6 18 -24 16"/>
-    <path ${K(5)} d="M300 250 L312 292"/><circle cx="300" cy="250" r="9" fill="#14161a"/>
-    ${filled(P('sadH')) ? `<path ${D} stroke-dasharray="6 5" d="M300 250 L246 58"/><path ${D} d="M196 100 L257 100"/>${T(36, 105, `Saddle height ${fmt(P('sadH'))}`)}` : ''}
-    ${filled(P('setback')) ? `<path ${D} d="M300 250 L300 30 M272 40 L300 40 M272 34 v12 M300 34 v12"/>${T(310, 40, `Setback ${fmt(P('setback'))}`)}` : ''}
-    ${reach ? `<path ${D} d="M272 20 L478 20 M272 14 v12 M478 14 v12"/>${T(340, 13, `${reach[0]} ${fmt(reach[1])}`)}` : ''}
-    ${filled(P('drop')) ? `<path ${D} d="M520 58 L520 72"/><path ${D} stroke-dasharray="4 4" d="M492 58 L528 58 M492 72 L528 72"/>${T(534, 72, `Drop ${fmt(P('drop'))}`)}` : ''}
-    <text x="282" y="320" fill="#676b73" font-family="Barlow, sans-serif" font-size="12">BB centre</text>
-    ${filled(P('crank')) ? `<text x="318" y="300" fill="#676b73" font-family="Barlow, sans-serif" font-size="12">Crank ${esc(fmt(P('crank')))}</text>` : ''}</svg>`;
+  // the back: where each is measured from, with this rider's numbers on it
+  const svg = bikeSVG();
   const back = `<div class="sc-page"><div class="sc-back"><h3>Where we measure from</h3><p>All in millimetres, from the centre of the bottom bracket (BB) and the top of the saddle, with the bike level.</p>${svg}</div>
     <div class="sc-foot">Measured at Pedal Revolution’s Precision Fit Studio${when ? ` on ${esc(when)}` : ''}. Your full fit report has the angles behind these numbers.</div></div>`;
   return [front, back];
