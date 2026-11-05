@@ -158,7 +158,7 @@ function sectionsFor(step){
     {title:'Lower body', angles:[AN('legExt','Leg extension','°'), AN('hipTop','Hip angle, top of stroke','°'), AN('sacral','Sacral angle','°',{f:'FT'}), AN('kops','Knee over pedal spindle','cm'), AN('bmr','Body mass representation','cm')],
       fields:[SG('heel','Heel lift & pedal technique',['Even','Heel drops','Toes down']), SG('kneeTrack','Knee tracking',['Tracks in','Straight','Tracks out'],{lr:true, f:'FT'}),
         SG('latFoot','Lateral foot alignment',['Aligned','Wedge added','Spacer added'],{f:'FT'})]},
-    {title:'Upper body', angles:[AN('torso','Torso angle','°'), AN('backAngle','Back angle','°'), AN('shoulder','Shoulder angle','°'), AN('elbow','Elbow angle','°')]},
+    {title:'Upper body', angles:[AN('torso','Torso angle','°'), AN('shoulder','Shoulder angle','°'), AN('elbow','Elbow angle','°')]},
     {title:'Aero position', f:'T', fields:[N('aeroHold','Holds the aero position for','min'), SG('head','Head position',['Low & tucked','Neutral','High']),
       SG('aeroFeel','How it feels',['Comfortable','Manageable','Struggling'])]},
     {title:'Other fit comments', fields:[TA('fitNotes','Notes',{ph:'Anything the numbers don’t show'})]},
@@ -741,7 +741,7 @@ function lights(){
   return out;
 }
 function anglesList(){
-  const all = [['legExt','Leg extension','°'],['hipTop','Hip angle, top of stroke','°'],['sacral','Sacral angle','°','FT'],['kops','Knee over pedal spindle','cm'],['bmr','Body mass representation','cm'],['torso','Torso angle','°'],['backAngle','Back angle','°'],['shoulder','Shoulder angle','°'],['elbow','Elbow angle','°']];
+  const all = [['legExt','Leg extension','°'],['hipTop','Hip angle, top of stroke','°'],['sacral','Sacral angle','°','FT'],['kops','Knee over pedal spindle','cm'],['bmr','Body mass representation','cm'],['torso','Torso angle','°'],['shoulder','Shoulder angle','°'],['elbow','Elbow angle','°']];
   return all.filter(a => (a[3] || 'SFT').includes(fitCode())).map(([k, label, u]) => ({k, label, u, pre:num(k + '_pre'), post:num(k + '_post'), r:range(k)})).filter(a => a.pre != null || a.post != null);
 }
 function suggested(){
@@ -1074,14 +1074,15 @@ function reportBlocks(){
   const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
   const B = [];
   const FU = !!S.follow, was = FU ? 'At your fit' : 'Pre-fit', now = FU ? 'Today' : 'Post-fit';
-  const metaI = [['Bike', v.bike], ['Frame size', v.frame], ['Pedals', v.pedals], ['Shoes', v.shoes]].filter(x => filled(x[1]));
+  const metaI = [['Bike', v.bike, 'w'], ['Frame size', v.frame], ['Pedals', v.pedals], ['Shoes', v.shoes]].filter(x => filled(x[1]));
+  const mrow = (h, items) => items.length ? `<div class="rp-mrow"><div class="rp-mh">${h}</div><div class="rp-meta">${items.map(([l, x, w]) => `<div${w ? ' class="w"' : ''}><span>${l}</span><b>${esc(x)}</b></div>`).join('')}</div></div>` : '';
   const ranged = A.filter(a => a.r && a.post != null), inR = ranged.filter(a => a.post >= a.r[0] && a.post <= a.r[1]).length;
   const nCh = ch.length, fu0 = followUp();   // (the same count as the app's own summary)
   const glance = [ranged.length ? [`${inR}<small>/${ranged.length}</small>`, 'angles in the guide range'] : null,
     [String(nCh), nCh === 1 ? 'set-up change' : 'set-up changes'],
     fu0.date ? [fu0.date.toLocaleDateString('en-GB', {day:'numeric', month:'short'}), 'free follow-up due'] : null].filter(Boolean);
   B.push({html:`${glance.length > 1 ? `<div class="rp-glance" style="grid-template-columns:repeat(${glance.length},1fr)">${glance.map(([n, l]) => `<div><b>${n}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
-    ${metaI.length ? `<div class="rp-meta">${metaI.map(([l, x]) => `<div><span>${l}</span><b>${esc(x)}</b></div>`).join('')}</div>` : ''}`});
+    ${metaI.length ? `<div class="rp-panel">${mrow('Bike', metaI)}</div>` : ''}`});
   if (FU && (v.since || v.sinceNote)) B.push({html:sec('Since your fit', `${v.since ? `<p class="rp-p"><b>How it’s felt:</b> ${esc(v.since)}</p>` : ''}${v.sinceNote ? `<p class="rp-p">${esc(v.sinceNote)}</p>` : ''}`)});
   if (FU && !ch.length) B.push({html:sec('Changes today', '<p class="rp-p">Your position is as your fit left it: no changes were needed.</p>')});
   if (ch.length) B.push({html:sec(FU ? 'Changes today' : 'Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])}<em>→</em>${fmt(v[x.r.k + '_post'])}</b><i>${x.d > 0 ? '▲' : '▼'} ${x.txt.replace(/^[+−-]/, '')}</i></div>`).join('')}</div>`)});
@@ -1142,8 +1143,10 @@ function reportPages(){
   const v = S.v, dateTxt = v.date ? new Date(v.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'}) : '';
   const kind = S.follow ? 'Follow-up report' : fit.name + ' report';
   const sub = [S.follow ? `Follow-up to your ${fit.name}${S.follow.date ? ' of ' + dayTxt(S.follow.date, {day:'numeric', month:'long', year:'numeric'}) : ''}` : '', dateTxt, v.fitter ? 'Fitted by ' + v.fitter : ''].filter(Boolean);
+  // (the rider's email, phone and address, opposite their name)
+  const contact = [v.email, v.phone, [v.address, v.city, v.postcode].filter(filled).join(', ')].filter(filled);
   const band = big => big
-    ? `<div class="rp-band"><img src="${LOGO}" alt=""><div class="rp-bt"><div class="rp-k">${esc(kind)}</div><div class="rp-t">${esc(name)}</div>${sub.length ? `<div class="rp-s">${sub.map(x => `<span>${esc(x)}</span>`).join(' · ')}</div>` : ''}</div></div>`
+    ? `<div class="rp-band"><img src="${LOGO}" alt=""><div class="rp-bt"><div class="rp-k">${esc(kind)}</div><div class="rp-t${name.length > 16 ? ' long' : ''}">${esc(name)}</div>${sub.length ? `<div class="rp-s">${sub.map(x => `<span>${esc(x)}</span>`).join(' · ')}</div>` : ''}</div>${contact.length ? `<div class="rp-bc">${contact.map((x, i) => i === 0 && x.includes('@') ? `<b>${esc(x)}</b>` : `<span>${esc(x)}</span>`).join('')}</div>` : ''}</div>`
     : `<div class="rp-band sm"><img src="${LOGO}" alt=""><div class="rp-k">${esc(kind)}</div><div class="rp-r">${esc(name)}${dateTxt ? ' · ' + esc(dateTxt) : ''}</div></div>`;
   const blocks = reportBlocks();
   // measure: each band, each whole block, and for a carried-on block its heading and each row
