@@ -1539,8 +1539,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.92";
-const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
+const BUILD = "1.93";
+const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2665,7 +2665,9 @@ async function toAccountSignIn(e, mode = "signin") {
     // (the account page's sky coming in over this one first, so going there is one sky, not a jump)
     await handOff();
     // (in a browser's tab, the sign-in's shared: straight back, nothing to swap (jar=shared); a Home Screen app, a code)
-    location.assign(`${page}#${new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) })}`);
+    // (Sign in by the sign-in page's /go: signed in to the site already, the server sends you straight back, with no page)
+    const q = new URLSearchParams({ [mode]: "fitness", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) });
+    location.assign(mode === "signin" && A.authPage() ? `${A.authPage()}go?${q}` : `${page}#${q}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 

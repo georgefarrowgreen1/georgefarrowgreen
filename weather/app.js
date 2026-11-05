@@ -3656,8 +3656,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.82";
-const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
+const BUILD = "1.83";
+const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3756,7 +3756,8 @@ async function toAccountSignIn(e) {
     // (in a browser's tab, the site's sign-in is this one's too: the account's page comes straight back, nothing to swap
     // (jar=shared). A Home Screen app keeps its own cookies, so it's handed a code to swap for one of its own, as ever)
     const q = new URLSearchParams({ signin: "weather", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) });
-    location.assign(`${page}#${q}`);
+    // (by the sign-in page's /go: signed in to the site already, the server sends you straight back, with no page)
+    location.assign(authPage() ? `${authPage()}go?${q}` : `${page}#${q}`);
     // (still here a good while later, and in sight: the page as it was, should the account's page never come)
     setTimeout(() => { if (document.visibilityState === "visible") away.undo(); }, 10e3);
   } catch (_) { away.undo(); toast("This browser can’t sign in here. Try Safari or Chrome."); }

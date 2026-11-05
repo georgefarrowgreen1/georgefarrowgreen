@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.82";
-export const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
+export const BUILD = "1.83";
+export const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

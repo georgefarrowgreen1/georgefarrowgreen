@@ -1069,8 +1069,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.08";
-const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
+const BUILD = "2.09";
+const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3112,7 +3112,9 @@ async function toAccountSignIn(e, mode = "signin") {
     const { word, ask } = await A.signInWord();
     store.set("signin", { word, at: Date.now() });
     // (in a browser's tab, the sign-in's shared: straight back, nothing to swap (jar=shared); a Home Screen app, a code)
-    location.assign(`${page}#${new URLSearchParams({ [mode]: "markets", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) })}`);
+    // (Sign in by the sign-in page's /go: signed in to the site already, the server sends you straight back, with no page)
+    const q = new URLSearchParams({ [mode]: "markets", ask, back: `${location.origin}/`, ...((() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })() ? {} : { jar: "shared" }) });
+    location.assign(mode === "signin" && A.authPage() ? `${A.authPage()}go?${q}` : `${page}#${q}`);
   } catch (_) { if (b) { b.disabled = false; b.textContent = "Sign in"; } toast("This browser can’t sign in here. Try Safari or Chrome.", true); }
 }
 // Back from signing in: its code swapped for the sign-in. → { m (the account, as GET me gives it) } or, where it

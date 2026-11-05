@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.08";
-export const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
+export const BUILD = "2.09";
+export const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

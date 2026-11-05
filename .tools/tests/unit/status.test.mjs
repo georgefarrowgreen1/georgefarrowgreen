@@ -22,7 +22,9 @@ const link = (id, body) => ({ fetch: async () => (up[id] ? new Response(JSON.str
 const DB = d1(), TICK = "inflite-apps.example.workers.dev";
 const env = { DB, STATUS_DEPS: "0", PIGEON_TICK_SECRET: "tick", TICK_HOST: TICK, TODAY_APP: link("today", { build: "1.58", min: null }), MAIL_APP: link("mail", { v: "9", build: "abc", app: "1.62" }),
   ASSETS: { fetch: async (r) => new Response(new URL(r.url).pathname === "/pigeon/app.js" ? 'const APP_VERSION = "1.79";' : 'const BUILD = "1.50";') } };
-const T0 = Date.UTC(2026, 10, 5, 9, 0);
+// (a morning after today's, whenever the tests run: the routes' own checks keep reports at the real time, and a report
+// older than the last one kept isn't kept)
+const T0 = (() => { const d = new Date(Date.now() + 864e5); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 0); })();
 // (a report: every address fine at 120 ms, but for `over`, and every job run)
 const report = (over = {}, jobs = {}) => ({ checks: STATUS_SERVICES.map((s) => ({ id: s.id, s: "ok", ms: 120, ...(over[s.id] || {}) })), jobs: STATUS_JOBS.map((j) => ({ path: j.path, ok: jobs[j.id] ?? true, ms: 800 })) });
 

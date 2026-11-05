@@ -1079,8 +1079,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.87";
-const NEWS = "Admin’s Server, clearer: how it’s doing in a line, every scheduled job, each error once with how often and in plain words, and people’s bug reports with what they said";
+const BUILD = "1.88";
+const NEWS = "Signing in quicker: an app you open while signed in comes straight back without this page, a passkey goes straight to Face ID, and checking a password takes fewer trips to the server";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2579,6 +2579,7 @@ function signinCard() {
   const go = h("button.btn" + (passkeysWork() ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon("face", 21, 1.9), "Sign in with a passkey");
+  if (pk) passkeySoon();
   startAutofill(email, (o, a) => withPasskey(pk || go, said, () => passkeySignedIn(o, a)));
   return h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form,
     h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
@@ -2595,6 +2596,7 @@ function rememberedCard(l) {
   const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
     icon("face", 21, 1.9), byKey ? "Continue with your passkey" : "Sign in with a passkey");
   if (can) startAutofill(pw, (o, a) => withPasskey(key, said, () => passkeySignedIn(o, a)));
+  if (byKey) passkeySoon(l.id);
   const card = h("div.signin.glass.remembered", {},
     byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
     byKey ? [key, pwBox] : [pwBox, key],
@@ -2957,8 +2959,22 @@ function resetPage(r) {
 }
 // → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for Chat (where it sent you here: what
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)
+// (a passkey button's challenge asked for as the button's drawn, so a tap goes straight to Face ID, not first to the
+// server and back. Each kept 4 minutes of the 5 it's good for, and used once; one that couldn't be had is asked for again)
+const PK_READY = new Map();
+function passkeySoon(only) {
+  const k = only || "", e = PK_READY.get(k);
+  if (e && Date.now() - e.at < 4 * 60e3) return;
+  const p = post("signin/options", rpAsk(only));
+  PK_READY.set(k, { at: Date.now(), p }); p.catch(() => PK_READY.delete(k));
+}
+function passkeyOptions(only) {
+  const k = only || "", e = PK_READY.get(k), again = () => post("signin/options", rpAsk(only));
+  PK_READY.delete(k);
+  return e && Date.now() - e.at < 4 * 60e3 ? e.p.catch(again) : again();
+}
 async function signInWithPasskey(only) {
-  const o = await post("signin/options", rpAsk(only)), inflight = S.signFor?.app === "inflight";
+  const o = await passkeyOptions(only), inflight = S.signFor?.app === "inflight";
   RP = o.rpId;
   let a;
   try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,

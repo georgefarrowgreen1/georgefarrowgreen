@@ -139,9 +139,10 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
   // (every try from an address counts towards a ceiling only, 30 in 15 minutes, which also caps a burst sent all at once:
   // so a family, an office or a phone signing in again and again isn't held back for getting it right; only its wrong
   // ones count against it, below)
-  const net = clientNet(request), ip = clientIp(request);
-  await limit(env, "login:" + ip, 30, 15 * 60e3);
-  if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
+  const net = clientNet(request), ip = clientIp(request), D = await db(env), well = EMAIL_RE.test(email);
+  // (the account looked up beside the address's count, not after it: one trip to the database fewer)
+  const [, u] = await Promise.all([limit(env, "login:" + ip, 30, 15 * 60e3), well ? D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first() : null]);
+  if (!well) throw new HttpError(401, "That email or password isn’t right.");
   // Only wrong passwords count against an account, and only from where they were tried: 30 an hour
   // from one address holds that address back, and only a spread-out guessing (300 an hour, from
   // many addresses at once) holds back the account itself, and then only on devices that haven't
@@ -149,18 +150,19 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
   // 10 an hour, so guessing elsewhere can't lock you out there, and a word that's stolen is worth
   // no more than one more network. And 30 wrong ones an hour from one address, whatever accounts
   // they're for, hold that address back from all of them. (A passkey's never held back by any of this.)
-  const em = await emailKey(email), D = await db(env), now0 = Date.now();
+  const em = await emailKey(email), now0 = Date.now();
   // (the account first, as a word's good only for it as it is)
-  const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em, dev = u && await knownHere(request, env, em, u);
   const holds = [[here, 30], ["loginip:" + ip, 30], dev ? ["loginacct:dev:" + em + ":" + dev, 10] : [acct, 300]];
+  // (the three counts read in one look, and said in this order)
+  const { results: kept = [] } = await D.prepare("SELECT key, count, reset_at FROM pg_limits WHERE key IN (?, ?, ?)").bind(...holds.map(([key]) => key)).all();
   for (const [key, max] of holds) {
-    const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
+    const held = kept.find((r) => r.key === key);
     const wait = held && waitText(held.reset_at - now0);
     if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, key === acct ? `Too many tries for this account. Try again in ${wait}, or sign in with a passkey.` : `Too many tries. Try again in ${wait}.`);
   }
   if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
-    for (const [key, max] of holds) await limit(env, key, max, 60 * 60e3).catch(() => {});
+    await Promise.all(holds.map(([key, max]) => limit(env, key, max, 60 * 60e3).catch(() => {})));
     throw new HttpError(401, "That email and password don’t match an account.");
   }
   if (u.delete_at && !deleting) refuseDeleting(u);
@@ -168,10 +170,10 @@ export async function passwordUser(env, request, b, { deleting = false } = {}) {
 }
 // The account a passkey's answer signs in to: { u, cred }, or a 401
 export async function passkeyUser(env, request, b, { deleting = false } = {}) {
-  await limit(env, "pklogin:" + clientIp(request), 20, 15 * 60e3);
-  await checkClientData(env, request, b, "webauthn.get", "login");
+  // (the count, the challenge and the passkey side by side, not one after another: each is a trip to the database)
   const D = await db(env);
-  const cred = await D.prepare("SELECT * FROM pg_passkeys WHERE id = ?").bind(String(b.id || "")).first();
+  const [, , cred] = await Promise.all([limit(env, "pklogin:" + clientIp(request), 20, 15 * 60e3), checkClientData(env, request, b, "webauthn.get", "login"),
+    D.prepare("SELECT * FROM pg_passkeys WHERE id = ?").bind(String(b.id || "")).first()]);
   if (!cred) throw new HttpError(401, "This passkey isn’t linked to an account any more.", "unknownpasskey");
   if (!(await verifyAssertion(cred, request, b, env))) throw new HttpError(401, "The passkey signature didn’t check out.");
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();

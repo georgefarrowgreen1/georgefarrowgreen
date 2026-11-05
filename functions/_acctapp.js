@@ -10,6 +10,7 @@ import { versionResponse } from "./_version.js";
 
 import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
+import { fastSignIn } from "./_signinfast.js";
 export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -90,6 +91,8 @@ export async function accountHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
   // (its version as deployed, the sign-in page's too, for the updater every app shares: functions/_version.js)
   if (url.pathname === "/version") return versionResponse(ctx, url, "account");
+  // (an app's sign-in, already signed in to the site: straight back to it, no page in between: functions/_signinfast.js)
+  if (url.pathname === "/go" && isAuth(url, ctx.env)) return fastSignIn(ctx, url);
   // an address from the site's own copy, on the new host: the same place, at the root
   if (url.pathname === "/account" || url.pathname.startsWith("/account/")) { const to = new URL(url); to.pathname = url.pathname.slice(8) || "/"; return Response.redirect(to.href, 301); }
   const path = SHARED[url.pathname] || "/account" + (url.pathname === "/index.html" ? "/" : url.pathname);
