@@ -1105,8 +1105,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.91";
-const NEWS = "Signing in to Today on a phone with your password, or a passkey that can, now opens Chats in the same go";
+const BUILD = "1.92";
+const NEWS = "Admin’s Incident Desk: what’s gone wrong in one place, each item with what people saw, why, and what to do next; incidents finished with a write-up, and false alarms taken out of uptime";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1581,7 +1581,7 @@ async function load() {
   if (S.me?.signedIn) S.gate = null;
   // (a sheet coming straight up over it, from an app, Admin's link or the home page: the page behind it there already,
   // not rising under it as it comes)
-  if (S.me?.signedIn && (opens() || (S.me.admin && location.hash === "#admin") || homeEdit())) S.settled = true;
+  if (S.me?.signedIn && (opens() || (S.me.admin && ADMIN_HASH.test(location.hash)) || homeEdit())) S.settled = true;
   await anew(render);
   if (opens() && S.me?.signedIn) openSheet(opens());
   else if (qrNext()) openSheet(qrView);
@@ -1810,9 +1810,12 @@ function signedIn(r) {
     (!m.emailOk || m.emailNew) && r(sec("banner", banner(m))),
     pw.leaked && r(sec("leak", leakBanner())),
   ];
-  if (m.admin && location.hash === "#admin") {
+  // (#admin opens Admin; #admin=desk, the Incident Desk; #admin=incident:<id>, that incident, as an incident's
+  // notification links to it)
+  const adm = m.admin && ADMIN_HASH.exec(location.hash);
+  if (adm) {
     history.replaceState(null, "", location.pathname + location.search);
-    afterRise(() => (m.admin.ready ? openAdmin() : openSheet(passkeysView)));
+    afterRise(() => (m.admin.ready ? openAdmin(adm[1] ? decodeURIComponent(adm[1]) : null) : openSheet(passkeysView)));
   }
   // the account: sign-in and security (how it stands, by the check-up), and your data (deleting the account at its
   // foot), a row each; the rest in their sheets
@@ -3369,9 +3372,13 @@ function morph(box, change, fade = true) {
   a.id = "morph"; a.onfinish = a.oncancel = () => { box.style.overflow = ""; };
 }
 let toastT = 0, toastAt = 0;
-function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong stays long enough to read)
+// (act: { label, fn }, a button on it, Undo, there while it shows: the toast takes taps then, and stays longer)
+function toast(text, bad, ms = bad ? 5000 : 2800, act = null) {     // (something gone wrong stays long enough to read)
   const top = !!toastEl.showPopover, showing = toastEl.classList.contains("on");
-  toastEl.replaceChildren(bad ? icon("x", 18, 2.4) : icon("check", 18, 2.4), h("span", { text }));
+  if (act) ms = Math.max(ms, 8000);
+  const btn = act && h("button.toast-act", { type: "button", onclick: () => { clearTimeout(toastT); toastEl.classList.remove("on"); act.fn(); } }, act.label);
+  toastEl.replaceChildren(bad ? icon("x", 18, 2.4) : icon("check", 18, 2.4), h("span", { text }), btn || "");
+  toastEl.classList.toggle("acts", !!act);
   toastEl.classList.toggle("bad", !!bad);
   // (a new word over one still showing fades in, rather than taking its place in a frame)
   if (showing) for (const k of toastEl.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: tok("--ease-out") });
@@ -3379,11 +3386,14 @@ function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong
   const back = $("main .ifh .backapp")?.getBoundingClientRect();
   if (back && back.bottom > 0 && back.top < 120) toastEl.style.setProperty("--below", `${Math.round(back.bottom + 8)}px`); else toastEl.style.removeProperty("--below");
   // (above an open sheet too: the top layer)
+  // (over an open sheet, inside it: a modal sheet leaves everything outside it inert, so a toast outside would be seen
+  // but its Undo couldn't be tapped, nor its words heard; back outside once there's no sheet)
+  toastHome();
   if (top && !toastEl.matches(":popover-open")) { toastEl.showPopover(); void toastEl.offsetWidth; }
   toastEl.classList.add("on"); toastAt = Date.now();
   // (a sheet that's up is modal, so the toast, outside it, is seen but never read out: said in the sheet as well, on the
   // next frame, so the same words again are said again)
-  const at = toastAt, heard = sheetEl.open && !sheetEl.classList.contains("closing") && $("#sheet-say", sheetEl);
+  const at = toastAt, heard = sheetEl.open && !sheetEl.contains(toastEl) && !sheetEl.classList.contains("closing") && $("#sheet-say", sheetEl);
   if (heard) { heard.textContent = ""; requestAnimationFrame(() => { heard.textContent = text; }); }
   // (a sheet on its way out is still modal, so the toast is too: said again once it's gone, the same words put back)
   else if (sheetEl.classList.contains("closing")) Sheet.closed?.then(() => {
@@ -3393,9 +3403,19 @@ function toast(text, bad, ms = bad ? 5000 : 2800) {     // (something gone wrong
   clearTimeout(toastT);
   toastT = setTimeout(() => { toastEl.classList.remove("on"); $("#sheet-say", sheetEl)?.replaceChildren(); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, ms);
 }
+// (where the toast lives: in the open sheet, else the page; moved shut and shown again, as a popover moved is shut)
+function toastHome() {
+  const home = sheetEl.open && !sheetEl.classList.contains("closing") ? sheetEl : document.body;
+  if (toastEl.parentNode === home) return;
+  const open = !!toastEl.matches?.(":popover-open");
+  if (open) toastEl.hidePopover();
+  home.append(toastEl);
+  if (open && toastEl.classList.contains("on")) toastEl.showPopover();
+}
 // (a sheet opened since: the word put back above it, dropping in again if it had only just started to)
 function toastOnTop() {
   if (!toastEl.matches?.(":popover-open") || !toastEl.classList.contains("on")) return;
+  toastHome();
   toastEl.hidePopover(); toastEl.showPopover();
   if (Date.now() - toastAt > 400) return;
   toastEl.style.transition = "none"; toastEl.classList.remove("on"); void toastEl.offsetWidth;
@@ -3495,7 +3515,12 @@ function draw(mode) {
   body.classList.add("arriving"); setTimeout(() => body.classList.remove("arriving"), 250);
   const swap = (mode === "push" || mode === "back") && body0 && head0;
   // (with somewhere in it for a toast to be read out: toast())
-  if (!swap) sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), head, body, h("p.vh", { id: "sheet-say", role: "status" }));
+  if (!swap) {
+    const kept = toastEl.parentNode === sheetEl;
+    sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), head, body, h("p.vh", { id: "sheet-say", role: "status" }));
+    // (a toast that was in it kept there, showing again if it was)
+    if (kept) { sheetEl.append(toastEl); if (toastEl.classList.contains("on") && toastEl.showPopover && !toastEl.matches(":popover-open")) toastEl.showPopover(); }
+  }
   else if (still.matches) { head.classList.add("swap"); body.classList.add("swap"); head0.replaceWith(head); body0.replaceWith(body); }
   else {
     const going = [head0, body0].map((el) => ({ el, y: el.offsetTop, h: el.offsetHeight, cs: getComputedStyle(el) })).map((g) => ({ ...g, o: g.cs.opacity, tf: g.cs.transform }));
@@ -3544,6 +3569,7 @@ const swapped = () => Promise.all(($(".sheet-body:not(.going)", sheetEl)?.getAni
 function closeSheet() {
   if (!sheetEl.open) return Promise.resolve();
   if (sheetEl.classList.contains("closing")) return Sheet.closed;
+  queueMicrotask(toastHome);     // (a toast in it, out to the page as it goes)
   const cancel = Sheet.cancel, from = Sheet.from; Sheet.cancel = null; Sheet.from = null;
   histDrop(Sheet.hist);
   // (going from wherever it is, still on its way up or where a finger let it go, the dim from as dark as it had got)
@@ -4088,13 +4114,21 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 let ADM = null, admComing = null;
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
   return admComing;
 }
-const openAdmin = () => loadAdmin().then((a) => openSheet(a.adminView), () => toast("Admin couldn’t be loaded. Try again.", true));
+const ADMIN_HASH = /^#admin(?:=([\w:%.-]{1,80}))?$/;
+// (an incident's notification tapped with the page already open: the address's # changes, the page isn't loaded again)
+if (!SIGNIN_PAGE) addEventListener("hashchange", () => {
+  const adm = S.me?.admin?.ready && ADMIN_HASH.exec(location.hash);
+  if (!adm) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  openAdmin(adm[1] ? decodeURIComponent(adm[1]) : null);
+});
+const openAdmin = (to) => loadAdmin().then((a) => { openSheet(a.adminView); if (to && a.openTo) a.openTo(to); }, () => toast("Admin couldn’t be loaded. Try again.", true));
 function adminRowSoon() {
   loadAdmin().catch(() => {});
   return section(null, h("div.group.glass", {}, row({ icon: "sliders", tint: "indigo", title: "Admin", onclick: openAdmin })));

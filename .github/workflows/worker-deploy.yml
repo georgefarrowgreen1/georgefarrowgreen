@@ -42,3 +42,19 @@ jobs:
           node .tools/workers/build.mjs
           npx --yes wrangler@4.149.0 deploy -c wrangler.worker.jsonc
           npx --yes wrangler@4.149.0 deploy -c wrangler.gfg.jsonc
+      # The deploy told to the Incident Desk (functions/_desk.js recordDeploy), which also wakes the new Worker and lets
+      # it set its database up once, so the first person after a deploy isn't the one kept waiting for that. Never fails
+      # the deploy.
+      - name: Tell the Incident Desk, and warm the Worker up
+        if: steps.ready.outputs.go == '1'
+        continue-on-error: true
+        env:
+          TICK_SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
+          SITE: ${{ vars.TICK_SITE || 'https://inflite-apps.georgefarrowgreen.workers.dev' }}
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          [ -n "$TICK_SECRET" ] || { echo "::notice::INFLIGHT_TICK_SECRET isn't set: the deploy isn't recorded."; exit 0; }
+          note=$(printf '%s' "$SUBJECT" | head -n1 | cut -c1-120)
+          body=$(node -e 'console.log(JSON.stringify({ what: "The site", version: process.argv[1], note: process.argv[2] }))' "${GITHUB_SHA::7}" "$note")
+          curl -sS --max-time 30 -X POST -H "Authorization: Bearer $TICK_SECRET" -H "Content-Type: application/json" -d "$body" "$SITE/api/status/deploy" || true
+          curl -sS --max-time 30 -o /dev/null https://status.inflite.ai/api/status || true

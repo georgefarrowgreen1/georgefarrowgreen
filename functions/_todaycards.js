@@ -25,11 +25,33 @@ export const DAY_LIMIT_MS = 3000;
 // A card not had, for a reason that's no fault of ours (it took too long, or what it needed from elsewhere wasn't to be
 // had just now): its card says so, and nothing's logged
 export class Quiet extends Error {}
-// p, or a Quiet error once ms have gone
-export function withDeadline(p, ms) {
+// p, or a Quiet error once ms have gone (steps: a stepTimer the work was timed by, whose steps, as far as they'd got, the
+// error carries for the admin's Incident Desk: which part was slow)
+export function withDeadline(p, ms, steps = null) {
   let timer;
-  const late = new Promise((_, no) => { timer = setTimeout(() => no(new Quiet("Too slow.")), ms); });
+  const late = new Promise((_, no) => { timer = setTimeout(() => { const e = new Quiet("Too slow."); if (steps) e.detail = { limit: ms, steps: steps.snapshot() }; no(e); }, ms); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+// Each part of a piece of work timed by name (time(name, p) → p), so one that runs out of time can say which part was
+// slow: snapshot() → [{ name, ms, done }], each part's time so far (one still going counted to now), the longest of a
+// name kept where it's timed more than once (each ride's forecast)
+export function stepTimer(now = () => Date.now()) {
+  const parts = [];
+  return {
+    time(name, p) {
+      const part = { name: String(name).slice(0, 40), at: now(), ms: null };
+      parts.push(part);
+      return Promise.resolve(p).finally(() => { part.ms = now() - part.at; });
+    },
+    snapshot() {
+      const t = now(), by = new Map();
+      for (const x of parts) {
+        const ms = x.ms ?? t - x.at, done = x.ms != null, had = by.get(x.name);
+        if (!had || ms > had.ms) by.set(x.name, { name: x.name, ms, done });
+      }
+      return [...by.values()].slice(0, 12);
+    },
+  };
 }
 
 // What each card says when it couldn't be had (each card's own module says it too, with what it knows by then: the
@@ -104,7 +126,8 @@ export async function cardsFor(env, u, { only = CARD_KEYS, t = Date.now(), reque
   // (the day that can't be worked out, or not in its time, is no reason to lose the cards: the answer is version 1's,
   // which the page draws)
   let day = null;
-  try { day = await withDeadline(dayFor(env, u, t, cards, { request, tz: zone, links: ln }), DAY_LIMIT_MS); } catch (e) { await logError(env, "today day", e); }
+  const steps = stepTimer();
+  try { day = await withDeadline(dayFor(env, u, t, cards, { request, tz: zone, links: ln, steps }), DAY_LIMIT_MS, steps); } catch (e) { await logError(env, "today day", e); }
   if (day?.v !== 2) return { at: t, tz: zone, cards };
   // (an add undone today: the Fitness card says the day as it was before, as the day's own lines do)
   if (day.fitnessCard && cards.fitness?.state === "ok") cards.fitness = day.fitnessCard;

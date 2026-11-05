@@ -1,5 +1,6 @@
 import { tickHost } from "../../_sites.js";
 import { adminIncidents, adminMaint, noteIncident, openIncidents, jobsNow, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
+import { deskView, deskNeeds, codeState, incidentOutage, incidentWriteup, incidentReopen, incidentNote, incidentUnnote, incidentAffects, CAUSES } from "../../_desk.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
@@ -1493,7 +1494,7 @@ async function adminSummary({ request, env, waitUntil }) {
     D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => []),
     D.prepare("SELECT code, app, kind, at, version, words, note, issue FROM pg_bugs WHERE at > ? ORDER BY at DESC LIMIT 30").bind(t - 7 * DAY).all().then((r) => r.results || []).catch(() => [])]);
   // (status.inflite.ai's incidents still going: functions/_status.js)
-  const [statusOpen, statusJobs] = await Promise.all([openIncidents(env), jobsNow(env)]);
+  const [statusOpen, statusJobs, needs] = await Promise.all([openIncidents(env), jobsNow(env), deskNeeds(env, t)]);
   const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
   return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
     messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
@@ -1501,7 +1502,7 @@ async function adminSummary({ request, env, waitUntil }) {
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
     from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
-    ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs, statusOpen, statusJobs });
+    ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs, statusOpen, statusJobs, deskNeeds: needs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1691,8 +1692,29 @@ async function adminStatusNote({ request, env }) {
   await adminLog(env, "status-update", x.id, `${b.kind} · ${x.title}`);
   return json({ ok: true, incident: x });
 }
+// The Incident Desk (functions/_desk.js): looking needs it shown it's you in the last 12 hours, any change the last 10
+// minutes; each change in the admin log
+async function adminDesk({ request, env }) {
+  await requireAdmin(request, env, false, { look: true });
+  const [desk, incidents, maint, prefs] = await Promise.all([deskView(env), adminIncidents(env), adminMaint(env), alertPrefs(env)]);
+  return json({ ...desk, maint, prefs, kinds: NOTE_KINDS, catalogue: CATALOGUE, causes: CAUSES, open: incidents.filter((x) => !x.ended).length });
+}
+const deskChange = (fn, what, detail) => async ({ request, env }) => {
+  await requireAdmin(request, env, true);
+  const b = await body(request), r = await fn(env, b);
+  await adminLog(env, what, String(b.id || b.code || ""), detail(b, r));
+  return json(r);
+};
 // on the admin's own page (functions/api/account: admin/…)
 export const ADMIN_ROUTES = {
+  "GET admin/desk": adminDesk,
+  "POST admin/desk-code": deskChange(codeState, "desk-code", (b) => b.state),
+  "POST admin/status-outage": deskChange(incidentOutage, "status-outage", (b) => (b.outage === false ? "not an outage" : "an outage")),
+  "POST admin/status-writeup": deskChange(incidentWriteup, "status-writeup", (b) => b.cause),
+  "POST admin/status-reopen": deskChange(incidentReopen, "status-reopen", () => null),
+  "POST admin/status-private": deskChange(incidentNote, "status-private", (b) => (b.remove != null ? "taken back" : "added")),
+  "POST admin/status-unnote": deskChange(incidentUnnote, "status-unnote", () => null),
+  "POST admin/status-affects": deskChange(incidentAffects, "status-affects", (b) => (Array.isArray(b.svcs) ? b.svcs.join(", ").slice(0, 80) : null)),
   "GET admin/status": adminStatus, "POST admin/status-note": adminStatusNote, "POST admin/status-incident": adminStatusIncident,
   "POST admin/status-maint": adminStatusMaint, "POST admin/status-prefs": adminStatusPrefs,
   "GET admin/summary": adminSummary, "GET admin/users": adminUsers, "GET admin/avatar": (ctx) => adminAvatar(ctx, new URL(ctx.request.url).searchParams.get("id")),

@@ -35,22 +35,38 @@ const CODE = /^IF-[A-Z]-[0-9A-Z]{4,6}$/;
 const text = (v, n) => (typeof v === "string" ? scrub(v, n) : "");
 
 let ready = null;
-const table = (env) => (ready ||= db(env).then((D) => D.batch([
+export const table = (env) => (ready ||= db(env).then((D) => D.batch([
   D.prepare(`CREATE TABLE IF NOT EXISTS pg_bugs (id TEXT PRIMARY KEY, code TEXT NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
     version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)`),
   D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_unfiled ON pg_bugs(filed_at, at)"),
-]).then(() => D)).catch((e) => { ready = null; throw e; }));
+  D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_code ON pg_bugs(code, at)"),
+  // (a server error's detail, for the Incident Desk: { sev: "slow" | "failed", limit, steps: [{ name, ms, done }] })
+]).then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN detail TEXT").run().catch(() => {})).then(() => D)).catch((e) => { ready = null; throw e; }));
 const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => ALPHA[b % 32]).join("");
 
 async function keep(env, r) {
   const D = await table(env), id = newId();
-  await D.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, version, words, at_where, stack, path, device, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null).run();
+  await D.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, version, words, at_where, stack, path, device, note, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null, r.detail ? JSON.stringify(r.detail) : null).run();
   // (the same code five times in ten minutes: an incident on status.inflite.ai, where the owner has that on)
   await import("./_status.js").then((m) => m.burstCheck(env, r.code, r.app)).catch((e) => console.error("status burst", e && e.message));
   return id;
 }
 
+// (how bad it was, and what it knew of itself: a request that ran out of time and answered with what it had (a Quiet
+// "Too slow.", functions/_todaycards.js) was slow, the person given something; anything else failed. With the time each
+// part had taken, where it was timed: names and numbers only)
+export function detailOf(e) {
+  const slow = /^too slow\.?$/i.test(String(e?.message || "").trim()) || e?.constructor?.name === "Quiet";
+  const d = { sev: slow ? "slow" : "failed" };
+  const x = e?.detail;
+  if (x && typeof x === "object") {
+    if (Number.isFinite(x.limit)) d.limit = Math.round(x.limit);
+    if (Array.isArray(x.steps)) d.steps = x.steps.slice(0, 12).filter((p) => p && typeof p.name === "string" && Number.isFinite(p.ms))
+      .map((p) => ({ name: scrub(p.name, 40), ms: Math.max(0, Math.round(p.ms)), done: !!p.done }));
+  }
+  return d;
+}
 // A server error, filed (logError's): its code, from where it was and what it said
 let filedRecently = 0, filedWindow = 0;
 export async function fileServerBug(env, src, e) {
@@ -59,7 +75,7 @@ export async function fileServerBug(env, src, e) {
   if (t - filedWindow > 60e3) { filedWindow = t; filedRecently = 0; }
   if (++filedRecently <= 10 && env?.DB) {
     const stack = scrub(String(e?.stack || "").split("\n").slice(1, 6).map((l) => l.trim()).join("\n"), 800);
-    try { await keep(env, { code, app: "server", kind: String(src || "server").slice(0, 40), words, where: String(src || "").slice(0, 80), stack }); } catch (_) {}
+    try { await keep(env, { code, app: "server", kind: String(src || "server").slice(0, 40), words, where: String(src || "").slice(0, 80), stack, detail: detailOf(e) }); } catch (_) {}
   }
   return code;
 }

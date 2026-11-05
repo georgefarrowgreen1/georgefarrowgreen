@@ -73,9 +73,15 @@ const table = (env) => (ready ||= db(env).then(async (D) => {
     D.prepare("CREATE TABLE IF NOT EXISTS status_incidents (id TEXT PRIMARY KEY, title TEXT NOT NULL, svcs TEXT NOT NULL, started INTEGER NOT NULL, ended INTEGER, updates TEXT NOT NULL)"),
     D.prepare("CREATE INDEX IF NOT EXISTS status_incidents_started ON status_incidents(started)"),
     D.prepare("CREATE TABLE IF NOT EXISTS status_maint (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT, svcs TEXT NOT NULL, starts INTEGER NOT NULL, ends INTEGER NOT NULL, created INTEGER NOT NULL, cancelled INTEGER)"),
+    // (each deploy: the site's Worker as its workflow says (recordDeploy), and any app whose version the checks see change)
+    D.prepare("CREATE TABLE IF NOT EXISTS status_deploys (id TEXT PRIMARY KEY, at INTEGER NOT NULL, what TEXT NOT NULL, version TEXT, note TEXT)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS status_deploys_at ON status_deploys(at)"),
+    // (the Incident Desk's word on a bug code: fixed (at, and it's back if it's seen after), or muted until a time)
+    D.prepare("CREATE TABLE IF NOT EXISTS desk_codes (code TEXT PRIMARY KEY, state TEXT NOT NULL, at INTEGER NOT NULL, until INTEGER)"),
   ]);
-  // (what kind of incident, and a burst's bug code: added to a table made before them)
-  for (const col of ["kind TEXT", "code TEXT"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(() => {});
+  // (what kind of incident, and a burst's bug code: added to a table made before them; and the Incident Desk's: whether it
+  // was a real outage (null: not said), the uptime taken back for one that wasn't, the write-up, the owner's own notes)
+  for (const col of ["kind TEXT", "code TEXT", "outage INTEGER", "fixup TEXT", "writeup TEXT", "notes TEXT"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(() => {});
   return D;
 }).catch((e) => { ready = null; throw e; }));
 
@@ -99,7 +105,8 @@ async function tell(env, events) {
     const admin = p.push ? (await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first().catch(() => null))?.v : null;
     const to = p.email && emailReady(env) ? env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO : null, page = `https://${statusHostOf(env)}/`;
     await Promise.allSettled(events.flatMap((e) => [
-      admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin`, app: "account", urgency: "high" }),
+      // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
+      admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
       to && sendEmail(env, { brand: "account", to, subject: `${e.open ? "Incident" : "Resolved"}: ${e.title}`, text: `${e.text}\n\n${page}\n\nAdd an update from Admin, on your account page.` }),
     ].filter(Boolean)));
   } catch (e) { console.error("status tell", e && e.message); }
@@ -199,6 +206,8 @@ export async function keepReport(env, body, t = Date.now()) {
   const day = dayOf(t), writes = [];
   for (const r of rows) {
     const p = prev[r.svc] || { bad: 0, good: 0 };
+    // (an app on a new version since the last check: deployed, as far as the Desk's told)
+    if (r.version && p.version && r.version !== p.version) writes.push(D.prepare("INSERT OR IGNORE INTO status_deploys (id, at, what, version, note) VALUES (?, ?, ?, ?, NULL)").bind(`v${r.svc}${r.version}`, at, nameOf(r.svc), r.version));
     r.bad = r.s === "down" ? p.bad + 1 : r.s === "none" ? p.bad : 0;
     r.good = r.s === "ok" || r.s === "warn" ? p.good + 1 : r.s === "none" ? p.good : 0;
     r.maint = covers(maint, r.svc);
@@ -213,6 +222,8 @@ export async function keepReport(env, body, t = Date.now()) {
   writes.push(D.prepare("DELETE FROM status_days WHERE day < ?").bind(dayOf(t - 120 * DAY_MS)));
   writes.push(D.prepare("DELETE FROM status_incidents WHERE ended IS NOT NULL AND ended < ?").bind(t - 120 * DAY_MS));
   writes.push(D.prepare("DELETE FROM status_maint WHERE ends < ?").bind(t - 30 * DAY_MS));
+  writes.push(D.prepare("DELETE FROM status_deploys WHERE at < ?").bind(t - 30 * DAY_MS));
+  writes.push(D.prepare("DELETE FROM desk_codes WHERE at < ? AND (until IS NULL OR until < ?)").bind(t - 30 * DAY_MS, t));
   const { writes: incs, events } = await incidents(D, rows, t);
   writes.push(...incs);
   await D.batch(writes);
@@ -263,7 +274,9 @@ async function incidents(D, rows, t) {
   return { writes: out, events };
 }
 const lasted = (ms) => { const m = Math.max(1, Math.round(ms / MIN)); return m < 60 ? `${m} minute${m === 1 ? "" : "s"}` : `${Math.floor(m / 60)} h ${m % 60} min`; };
-const put = (D, x) => D.prepare("INSERT OR REPLACE INTO status_incidents (id, title, svcs, started, ended, updates, kind, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+// (written over in place, so what the Desk keeps on it (outage, write-up, notes) stays)
+const put = (D, x) => D.prepare(`INSERT INTO status_incidents (id, title, svcs, started, ended, updates, kind, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET title = excluded.title, svcs = excluded.svcs, started = excluded.started, ended = excluded.ended, updates = excluded.updates, kind = excluded.kind, code = excluded.code`)
   .bind(x.id, x.title, JSON.stringify(x.svcs), x.started, x.ended ?? null, JSON.stringify(x.updates.slice(0, 40)), x.kind || "auto", x.code || null);
 // (the page's copies at this edge, and every app's banner, let go of: so a change shows at once here, elsewhere within a minute)
 const forget = async (env) => {
@@ -317,7 +330,8 @@ export async function summary(env, t = Date.now()) {
   const jobs = STATUS_JOBS.map((j) => { const l = latest[j.id]; return { id: j.id, name: j.name, s: st(j.id), at: l?.at || null, ms: l?.ms ?? null }; });
   const deps = STATUS_DEPS.map((d) => { const l = latest[d.id]; return { id: d.id, name: d.name, s: st(d.id), at: l?.at || null, ms: l?.ms ?? null, why: l?.why || null }; }).filter((d) => d.at);
   const maint = (mts.results || []).map((m) => ({ id: m.id, title: m.title, text: m.text || "", svcs: JSON.parse(m.svcs || "[]"), starts: m.starts, ends: m.ends }));
-  const list = (incs.results || []).map((x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: JSON.parse(x.svcs || "[]"), started: x.started, ended: x.ended, updates: JSON.parse(x.updates || "[]"), codes: x.code ? [x.code] : [] }));
+  const list = (incs.results || []).map((x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: JSON.parse(x.svcs || "[]"), started: x.started, ended: x.ended, updates: JSON.parse(x.updates || "[]"), codes: x.code ? [x.code] : [],
+    ...(x.outage === 0 ? { notOutage: true } : {}) }));
   // (the bug codes of the week, and the site's own server errors' codes during each incident: codes alone, no words)
   let bugs = [];
   try {
@@ -354,7 +368,9 @@ export async function bannerFor(env, app, t = Date.now()) {
 // and how the owner's told ----
 // (what kind of update: Resolved closes an incident that's still open; one the checks opened opens again if it's still failing)
 export const NOTE_KINDS = ["Investigating", "Identified", "Update", "Monitoring", "Resolved"];
-const parse = (x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: JSON.parse(x.svcs || "[]"), started: x.started, ended: x.ended, updates: JSON.parse(x.updates || "[]") });
+const json1 = (v, or) => { try { return v ? JSON.parse(v) : or; } catch (_) { return or; } };
+export const parse = (x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: json1(x.svcs, []), started: x.started, ended: x.ended, updates: json1(x.updates, []),
+  code: x.code || null, outage: x.outage == null ? null : !!x.outage, writeup: json1(x.writeup, null), notes: json1(x.notes, []) });
 // (what can be named as affected: every address, job and outside service, by name)
 export const CATALOGUE = [...STATUS_SERVICES, ...STATUS_JOBS, ...STATUS_DEPS].map((x) => ({ id: x.id, name: x.name }));
 export async function adminIncidents(env, t = Date.now()) {
@@ -380,6 +396,8 @@ export async function openIncidents(env) {
   try { const D = await table(env); return ((await D.prepare("SELECT id, title, started FROM status_incidents WHERE ended IS NULL ORDER BY started DESC LIMIT 5").all()).results || []); }
   catch (_) { return []; }
 }
+export const statusTable = (env) => table(env);
+export { nameOf, forget as forgetStatus, S as STATE };
 export async function noteIncident(env, b, t = Date.now()) {
   const kind = NOTE_KINDS.includes(b?.kind) ? b.kind : null, text = typeof b?.text === "string" ? b.text.replace(/\s+/g, " ").trim() : "";
   if (!kind) throw new HttpError(400, "Which kind of update is it?");
@@ -465,12 +483,14 @@ export async function statusRoute(ctx, url) {
       // (kept a minute at the edge, never in the browser: a change shows the next time it's asked)
       return await cached(cacheKey(env, `/api/status-banner?app=${app}`), () => bannerFor(env, app), 60, (v) => json(v, 200, "public, max-age=0, s-maxage=60"));
     }
-    if (!/^\/api\/status(\/day|\/report|\/outside)?$/.test(p)) return null;
-    if (p === "/api/status/report" || p === "/api/status/outside") {
+    if (!/^\/api\/status(\/day|\/report|\/outside|\/deploy)?$/.test(p)) return null;
+    if (p === "/api/status/report" || p === "/api/status/outside" || p === "/api/status/deploy") {
       if (!tickHost(url.hostname, env)) return null;
       if (req.method !== "POST") return json({ error: "Not found." }, 404);
       tickAuthOk(req, env);
       if (p === "/api/status/outside") return json({ ok: true, ...(await outsideSaw(env)) });
+      // (a deploy, as the site's workflow says just after it: for the Incident Desk, functions/_desk.js)
+      if (p === "/api/status/deploy") return json(await (await import("./_desk.js")).recordDeploy(env, await req.json().catch(() => ({}))));
       const raw = await req.text();
       if (raw.length > 32000) throw new HttpError(413, "Too long.");
       let body; try { body = JSON.parse(raw || "{}"); } catch (_) { throw new HttpError(400, "Not readable."); }

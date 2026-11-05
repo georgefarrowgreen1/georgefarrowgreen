@@ -1,7 +1,7 @@
 // The site's admin, on its admin's account page (account/app.js): its own file, fetched only for the account that's the
 // site's admin, so no one else's page carries it. The page hands over what it draws with (setup), and gets back the
 // Admin row for the page and the Admin sheet.
-export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
+export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
@@ -73,71 +73,359 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     if (!s.email) out.push({ title: "Email is off", text: "Password resets and notifications can’t be emailed.", open: admEmailView });
     else if (s.mailFail) out.push({ title: "Email isn’t sending", text: `The last ${s.mailFail.n} failed · since ${seenAt(s.mailFail.since).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}`, open: admEmailView });
     if (s.late) out.push({ title: `${nOf(s.late, "landing")} not told yet`, text: "Notifications are running late.", open: admInsightsView });
-    // (the scheduled jobs that send notifications: one that's run before but not in the last 20 minutes, said; and the server's errors today)
+    // (the scheduled jobs that send notifications, late; and anything on the Incident Desk that needs you: an incident
+    // going on first, by its title)
     const stale = [["Chat", s.ticks?.inflight], ["Weather", s.ticks?.weather]].filter(([, k]) => k && Date.now() - k.at > 20 * 60e3);
     if (s.ticks && stale.length) out.push({ title: `${stale.map(([n]) => n).join(" and ")} notifications aren’t running`,
-      text: stale.map(([n, k]) => (k ? `${n}: last ran ${seenAt(k.at)}` : `${n}: hasn’t run yet`)).join(" · "), open: admServerView });
-    if (s.errors?.length) out.push({ title: `${nOf(s.errors.length, "server error")} today`, text: `Latest: ${s.errors[0].src} · ${seenAt(s.errors[0].at)}`, open: admServerView });
-    const sent = (s.bugs || []).filter((b) => b.app !== "server" && Date.now() - b.at < 86400e3);
-    if (sent.length) out.push({ title: `${nOf(sent.length, "bug report")} today`, text: `Latest: ${sent[0].code} · ${sent[0].app} · ${seenAt(sent[0].at)}`, open: admServerView });
-    // (an incident still going on the status page: say what's happening there)
-    const inc = s.statusOpen || [];
-    if (inc.length) out.push({ title: inc.length > 1 ? `${nOf(inc.length, "incident")} on the status page` : inc[0].title, text: `Since ${seenAt(inc[inc.length - 1].started)} · add an update`, open: admStatusView });
+      text: stale.map(([n, k]) => (k ? `${n}: last ran ${seenAt(k.at)}` : `${n}: hasn’t run yet`)).join(" · "), open: admDeskView });
+    const inc = s.statusOpen || [], n = s.deskNeeds ?? (inc.length + (s.errors?.length ? 1 : 0));
+    if (inc.length) out.push({ title: inc.length > 1 ? `${nOf(inc.length, "incident")} going on` : inc[0].title, text: `Since ${seenAt(inc[inc.length - 1].started)} · on the Incident Desk`, open: admDeskView });
+    else if (n) out.push({ title: n === 1 ? "1 thing needs you" : `${num(n)} things need you`, text: "On the Incident Desk", open: admDeskView });
     return out;
   }
-  // The server: how it's doing in a line; each scheduled job, when it last ran and how long it took; what's gone wrong on
-  // it today, the same failure once, with how often, in words a person can read and under its bug code; and the bug
-  // reports people sent this week, each under its code, with what they said (yours alone: never filed anywhere public)
-  const SRC = { "today day": "Today: building your day", "today tick": "Today: the morning notification", "today weather": "Today: the weather", "today plan": "Today: your plan",
-    "today preview": "Today: the preview", "weather tick": "Weather: the alerts job", "weather api": "Weather", tick: "Chat: the notifications job", "pigeon notify email": "Chat: notification emails",
-    "sync plans": "Chat: syncing plans", "sync hold": "Chat: held messages" };
-  const APPN = { today: "Today", pigeon: "Chat", chat: "Chat", chats: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", finance: "Markets", account: "Account", auth: "Signing in",
-    mail: "Mail", email: "Mail", sync: "Chat", home: "Home page", hub: "InFlite", fitting: "Fit Studio", server: "The site" };
-  const srcName = (src) => SRC[src] || ((w) => `${APPN[w[0]] || upper(w[0] || "The site")}${w.length > 1 && w.slice(1).join(" ") !== "api" ? `: ${w.slice(1).join(" ")}` : ""}`)(String(src || "").split(/\s+/));
-  const plainMsg = (m) => /^too slow\.?$/i.test(String(m || "").trim()) ? "Took too long to answer" : /D1_ERROR|SQLITE/i.test(m) ? `The database: ${String(m).replace(/^.*?:\s*/, "")}` : String(m || "Something went wrong");
-  const dotEl = (st) => h("span.adm-dot", { "data-s": st, "aria-hidden": "true" });
-  function admServerView() {
-    const s = AD.sum || {}, k = s.ticks || {}, errs = s.errors || [], bugs = s.bugs || [];
-    const t = Date.now(), hm = (x) => new Date(x).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-    // (each scheduled job: the status page's, all five, where it has them; else Chat's and Weather's own notes)
-    const jobs = (s.statusJobs?.length ? s.statusJobs : [{ name: "Chat notifications", s: k.inflight ? "ok" : "none", at: k.inflight?.at, ms: k.inflight?.ms }, { name: "Weather alerts", s: k.weather ? "ok" : "none", at: k.weather?.at, ms: k.weather?.ms }])
-      .map((j) => ({ ...j, late: j.at && t - j.at > 20 * 60e3 }));
-    const jobSub = (j) => !j.at ? "Not run yet" : j.s === "down" ? `Failed at ${hm(j.at)}` : j.late ? `Late · last ran ${seenAt(j.at).replace(/^Today /, "")}` : `Every 5 min · ran ${hm(j.at)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}`;
-    // (today's errors, the same where and what once: how many, the latest; and its code, where a bug report carries it)
-    const groups = [];
-    for (const e of errs) {
-      const g = groups.find((x) => x.src === e.src && x.msg === e.msg);
-      if (g) { g.n++; g.first = Math.min(g.first, e.at); } else groups.push({ src: e.src, msg: e.msg, n: 1, at: e.at, first: e.at });
-    }
-    for (const g of groups) g.code = bugs.find((b) => b.app === "server" && b.kind === g.src && String(b.words || "").startsWith(String(g.msg || "").slice(0, 40)))?.code || null;
-    // (people's reports: one row a code, how often, the latest, and every note sent with it)
-    const sent = [];
-    for (const b of bugs.filter((x) => x.app !== "server")) {
-      const r = sent.find((x) => x.code === b.code);
-      if (r) { r.n++; if (b.note) r.notes.push(b.note); } else sent.push({ ...b, n: 1, notes: b.note ? [b.note] : [] });
-    }
-    const late = jobs.filter((j) => j.late || j.s === "down");
-    const st = late.length ? "down" : groups.length ? "warn" : "ok";
-    const head = late.length ? `${nOf(late.length, "job")} not running` : groups.length ? `Running · ${nOf(errs.length, "error")} today` : "Everything’s running";
-    const sub = late.length ? late.map((j) => j.name).join(", ") : groups.length ? `Latest: ${srcName(groups[0].src)}, ${seenAt(groups[0].at).replace(/^Today /, "")}` : "Every job ran on time, and nothing’s gone wrong today";
-    const chip = (c) => h("code.adm-chip", { text: c });
-    return { title: "Server", body: [
-      h("div.adm-sv", { "data-s": st }, h("span.adm-halo", {}, icon(st === "ok" ? "check" : "alert", 18, 2.6)), h("span.tx", {}, h("b", { text: head }), h("small", { text: sub }))),
-      h("h4.app-k", { text: "Scheduled jobs" }),
-      h("div.group", {}, jobs.map((j) => h("div.row.plain", {}, dotEl(j.late ? "warn" : j.s), h("span.tx", {}, h("b", { text: j.name }), h("small", { text: jobSub(j) }))))),
-      h("h4.app-k", { text: "Errors today" }),
-      groups.length ? h("div.group", {}, groups.map((g) => h("div.row.plain.adm-err", {}, dotEl("down"),
-        h("span.tx", {}, h("b", { text: srcName(g.src) }), h("small", { text: `${plainMsg(g.msg)}${g.n > 1 ? ` · ${g.n} times since ${hm(g.first)}` : ` · ${hm(g.at)}`}` }),
-          g.code ? h("span.adm-chips", {}, chip(g.code)) : null))))
-        : h("div.group", {}, h("div.empty", { text: "Nothing’s gone wrong today." })),
-      h("h4.app-k", { text: "Bug reports this week" }),
-      sent.length ? h("div.group", {}, sent.map((b) => h("div.row.plain.adm-err", {}, dotEl(b.issue ? "ok" : "warn"),
-        h("span.tx", {}, h("b", { text: `${APPN[b.app] || upper(b.app)}${b.version ? ` ${b.version}` : ""}` }),
-          h("small", { text: `${b.kind === "manual" ? "Reported by hand" : b.words || "Something went wrong"} · ${b.n > 1 ? `${b.n} reports, latest ` : ""}${seenAt(b.at)}` }),
-          ...b.notes.slice(0, 3).map((n) => h("small.adm-note", { text: `“${n}”` })), h("span.adm-chips", {}, chip(b.code))))))
-        : h("div.group", {}, h("div.empty", { text: "No one’s reported a problem this week." })),
-      h("p.hint", { text: "Each code is one problem, the same every time it happens. What people write with a report is yours alone." })] };
+  // ---- The Incident Desk: everything that's gone wrong, in one place (functions/_desk.js). A summary first; each app's
+  // state in a strip, a tap to see only its items; then Needs you, Watching and Done. A code is marked fixed (back in
+  // Needs you if it's seen again) or muted for a day, by a swipe or on its own page; an incident's open with a progress
+  // bar and an update box at the foot, and once it's over, finished with two answers (a real outage? and a write-up).
+  // Routine changes undo from the message that says they're done; what the public sees, or uptime, shows its result
+  // before it's made. Colour never alone: each tone has its own shape ----
+  const deskOpen = () => { desk(true); pushSheet(admDeskView); };
+  const DK = { filter: null, showDone: false, code: null, inc: null, kind: null, text: "", vis: "pub", reason: "check", line: null, cause: null, fix: null, prevent: null, summary: null, sumOn: true };
+  const desk = (again) => admAsk("desk", again);
+  const deskChanged = () => { desk(true); admChanged(); };
+  const TONE_SHAPE = {
+    bad: '<circle cx="5" cy="5" r="4.2" fill="currentColor"/>',
+    warn: '<path d="M5 .9L9.4 8.9H.6z" fill="currentColor"/>',
+    ok: '<path d="M1.5 5.2l2.3 2.3L8.5 2.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    info: '<rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1.6" fill="currentColor"/>',
+    grey: '<circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+  };
+  const mark = (tone) => { const t = document.createElement("template"); t.innerHTML = `<span class="dk-mark" data-t="${tone}" aria-hidden="true"><svg viewBox="0 0 10 10" width="10" height="10">${TONE_SHAPE[tone]}</svg></span>`; return t.content.firstChild; };
+  const TONE_WORD = { bad: "Failed", warn: "Slow, handled", ok: "Resolved", info: "Marked fixed", grey: "Muted" };
+  const toneOf = (x) => x.type === "incident" ? (!x.ended ? "bad" : x.bucket === "done" ? "grey" : "ok")
+    : x.state === "muted" ? "grey" : x.state === "fixed" ? (x.bucket === "done" ? "grey" : "info") : x.bucket === "done" ? "grey" : x.sev === "slow" ? "warn" : "bad";
+  const clock = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const whenShort = (t) => seenAt(t).replace(/^Today /, "");
+  const mins = (n) => (n < 60 ? `${n} min` : `${Math.floor(n / 60)} h ${n % 60 ? `${n % 60} min` : ""}`.trim());
+  const undoToast = (text, fn) => toast(text, false, 8000, { label: "Undo", fn: () => Promise.resolve(fn()).then(deskChanged, (e) => { if (!e.quiet) toast(e.message, true); }) });
+  const deskPost = (path, body) => freshly(() => post(`admin/${path}`, body));
+  const subOf = (x) => {
+    if (x.type === "incident") return !x.ended ? `${x.stage} · since ${whenShort(x.started)}`
+      : `Resolved ${whenShort(x.ended)} after ${mins(x.mins)}${x.outage === false ? " · not an outage" : ""}${x.bucket === "watching" ? ` · ${[x.outage === null && "outage?", !x.writeup && "write-up"].filter(Boolean).join(", ")} to do` : ""}`;
+    if (x.state === "fixed") return x.bucket === "done" ? `Fixed ${whenShort(x.fixedAt)} · quiet since` : `Marked fixed ${whenShort(x.fixedAt)} · watching`;
+    if (x.state === "muted") return `Muted until ${whenShort(x.until)}`;
+    const how = `${x.count > 1 ? `${num(x.count)} times, last ` : ""}${whenShort(x.last)}`;
+    return `${x.state === "back" ? "Back again · " : x.sev === "slow" ? "Slow, handled · " : ""}${how}${x.after && x.state !== "back" ? ` · ${mins(x.after.mins)} after a deploy` : ""}`;
+  };
+  // (a row: its tone as a bar and a shape; a code's swipes underneath (Fixed and Mute; or back to new))
+  function deskRow(x) {
+    const tone = toneOf(x);
+    const open = () => { if (x.type === "incident") { DK.inc = x.id; DK.kind = null; DK.text = ""; DK.vis = "pub"; pushSheet(admIncidentView); } else { DK.code = x.id; pushSheet(admCodeView); } };
+    const r = h("button.row.dk-row", { type: "button", "data-k": x.id, onclick: (e) => { if (r.dataset.swiped) { delete r.dataset.swiped; e.preventDefault(); return; } open(); } },
+      h("span.dk-bar", { "data-t": tone }),
+      h("span.tx", {}, h("b", {}, mark(tone), h("span", { text: x.title })), h("small", { text: subOf(x) })),
+      x.code && x.type === "error" ? h("code.adm-chip", { text: x.code }) : x.type === "incident" && !x.ended ? h("span.dk-live", { text: "Live" }) : null,
+      h("span.chev", {}, icon("chev", 16, 2.4)));
+    if (x.type !== "error") return r;
+    const act = (state, label, ic, cls) => h(`button.dk-act.${cls}`, { type: "button", onclick: () => codeTo(x, state) }, icon(ic, 18, 2.4), h("span", { text: label }));
+    const under = h("div.dk-under", {}, ...(x.state === "new" || x.state === "back" ? [act("fixed", "Fixed", "check", "fix"), act("muted", "Mute", "bell", "mute")] : [act("new", x.state === "muted" ? "Unmute" : "Not fixed", "undo", "mute")]));
+    swipeable(r, under.children.length * 78);
+    return h("div.dk-swipe", {}, under, r);
   }
+  // (a row dragged left shows what's under it; let go past halfway and it stays open, else it closes)
+  function swipeable(r, w) {
+    let x0 = null, y0 = 0, dx = 0, open = false, moving = false;
+    r.addEventListener("pointerdown", (e) => { if (e.button) return; x0 = e.clientX; y0 = e.clientY; dx = open ? -w : 0; moving = false; });
+    r.addEventListener("pointermove", (e) => {
+      if (x0 == null) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!moving) { if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; } if (Math.abs(mx) < 8) return; moving = true; r.setPointerCapture?.(e.pointerId); r.classList.add("dragging"); }
+      dx = Math.min(0, Math.max(-w - 24, mx + (open ? -w : 0)));
+      r.style.transform = `translateX(${dx}px)`;
+    });
+    const end = () => {
+      if (x0 == null) return;
+      x0 = null; r.classList.remove("dragging");
+      if (!moving) return;
+      open = dx < -w / 2; r.style.transform = open ? `translateX(${-w}px)` : ""; r.dataset.swiped = "1";
+      setTimeout(() => delete r.dataset.swiped, 350);
+    };
+    r.addEventListener("pointerup", end); r.addEventListener("pointercancel", end);
+  }
+  async function codeTo(x, state) {
+    const was = x.state === "back" ? "fixed" : x.state;
+    try {
+      await deskPost("desk-code", { code: x.code, state });
+      deskChanged();
+      const said = state === "fixed" ? "Marked fixed. It comes back if it’s seen again." : state === "muted" ? "Muted until this time tomorrow." : "Back in Needs you.";
+      undoToast(said, () => deskPost("desk-code", { code: x.code, state: was === "new" ? "new" : was }));
+    } catch (e) { if (!e.quiet) toast(e.message, true); }
+  }
+  // (each app's state: red where something of it is live or failing, amber where it's slow, else fine)
+  const appTone = (d, a) => { const live = d.items.filter((x) => x.bucket === "needs" && (x.app === a || x.apps?.includes(a))); return live.some((x) => toneOf(x) === "bad") ? "bad" : live.length ? "warn" : "ok"; };
+  function admDeskView() {
+    const d = desk();
+    if (!d) return { title: "Incident Desk", body: [admWait("desk")] };
+    const of = (x) => !DK.filter || x.app === DK.filter || x.apps?.includes(DK.filter);
+    const all = d.items, needsAll = all.filter((x) => x.bucket === "needs"), vis = all.filter(of);
+    const needs = vis.filter((x) => x.bucket === "needs"), watching = vis.filter((x) => x.bucket === "watching"), done = vis.filter((x) => x.bucket === "done");
+    const worst = needsAll.find((x) => toneOf(x) === "bad") || needsAll[0], st = !needsAll.length ? "ok" : needsAll.some((x) => toneOf(x) === "bad") ? "down" : "warn";
+    const lastInc = all.filter((x) => x.type === "incident").map((x) => x.ended || Date.now()).sort((a, b) => b - a)[0];
+    const sec = (title, list, empty) => [h("h4.app-k", { text: `${title}${list.length ? ` · ${list.length}` : ""}` }),
+      h("div.group.dk-list", {}, list.length ? list.map(deskRow) : h("div.empty", { text: empty }))];
+    const late = d.jobs.filter((j) => j.s === "down" || (j.at && Date.now() - j.at > 20 * 60e3));
+    const today = d.deploys.filter((x) => Date.now() - x.at < 864e5);
+    const w = d.week || {};
+    return { title: "Incident Desk", body: [
+      h("div.adm-sv", { "data-s": st }, h("span.adm-halo", {}, icon(st === "ok" ? "check" : "alert", 18, 2.6)),
+        h("span.tx", {}, h("b", { text: !needsAll.length ? "All clear" : needsAll.length === 1 ? "1 thing needs you" : `${needsAll.length} things need you` }),
+          h("small", { text: !needsAll.length ? `Every job on time${lastInc ? ` · last incident ${ago(lastInc)}` : ""}` : `${worst.title} · ${worst.type === "incident" ? "live" : TONE_WORD[toneOf(worst)].toLowerCase()}` }))),
+      h("div.dk-apps", { role: "group", "aria-label": "Show one app’s" }, d.apps.map((a) => h("button.dk-app", { type: "button", "aria-pressed": String(DK.filter === a), onclick: () => { DK.filter = DK.filter === a ? null : a; redraw(); } }, mark(appTone(d, a)), a))),
+      sec("Needs you", needs, DK.filter ? `Nothing of ${DK.filter}’s needs you.` : "Nothing needs you."),
+      watching.length ? sec("Watching", watching, "") : null,
+      done.length ? [h("h4.app-k.dk-k", {}, h("span", { text: `Done · ${done.length}` }), h("button.link.dk-more", { type: "button", onclick: () => { DK.showDone = !DK.showDone; redraw(); } }, DK.showDone ? "Hide" : "Show")),
+        DK.showDone ? h("div.group.dk-list", {}, done.map(deskRow)) : null] : null,
+      h("h4.app-k", { text: "The site" }),
+      h("div.group", {},
+        row({ icon: "clock", tint: late.length ? "red" : "green", title: late.length ? `${nOf(late.length, "job")} not running` : `${nOf(d.jobs.length, "job")} on time`, sub: d.jobs.length ? `Every 5 minutes · slowest ${d.jobs.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0))[0]?.name || "—"}` : null, warn: !!late.length, onclick: () => pushSheet(admJobsView) }),
+        row({ icon: "share", tint: "blue", title: today.length ? `${nOf(today.length, "deploy")} today` : "No deploys today", sub: d.deploys[0] ? `Latest ${seenAt(d.deploys[0].at)} · ${d.deploys[0].what}${d.deploys[0].version ? ` ${d.deploys[0].version}` : ""}` : "None this week", onclick: () => pushSheet(admDeploysView) })),
+      h("h4.app-k", { text: "This week" }),
+      h("div.dk-week", {}, h("div", {}, h("b", { text: num(w.incidents || 0) }), h("small", { text: w.incidents === 1 ? "incident" : "incidents" })),
+        h("div", {}, h("b", { text: w.typicalMins != null ? mins(w.typicalMins) : "—" }), h("small", { text: "to resolve, typical" })),
+        h("div", {}, h("b", { text: w.uptime != null ? `${w.uptime}%` : "—" }), h("small", { text: "uptime" }))),
+      w.causes?.length ? h("div.group", {}, w.causes.map((c) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: c.cause }), h("small", { text: "This month’s write-ups" })), h("span.val", { text: num(c.n) })))) : null,
+      h("h4.app-k", { text: "Status page" }),
+      h("div.group", {},
+        h("a.row.action", { href: statusUrl(), target: "_blank", rel: "noopener" }, "Open the status page"),
+        row({ icon: "alert", tint: "red", title: "Start an incident", sub: "For what the checks can’t see", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; pushSheet(admStartView); } }),
+        row({ icon: "clock", tint: "indigo", title: "Plan maintenance", sub: "Announced ahead; it doesn’t count against uptime", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; AD.when = null; admAsk("status", true); pushSheet(admMaintView); } }),
+        row({ icon: "bell", tint: "blue", title: "Maintenance and alerts", sub: d.maint?.length ? `${nOf(d.maint.length, "planned")} · how you’re told` : "How you’re told", onclick: () => { admAsk("status", true); pushSheet(admStatusView); } })),
+      h("p.hint", { text: "Swipe a code’s row left to mark it fixed or mute it. An incident opens by itself when something fails two checks in a row, and closes once it’s working again." })] };
+  }
+  // (the scheduled jobs: when each last ran, and how long it took)
+  function admJobsView() {
+    const d = desk(), t = Date.now();
+    const jobs = (d?.jobs || []).map((j) => ({ ...j, late: j.at && t - j.at > 20 * 60e3 }));
+    const sub = (j) => !j.at ? "Not run yet" : j.s === "down" ? `Failed at ${clock(j.at)}` : j.late ? `Late · last ran ${whenShort(j.at)}` : `Every 5 min · ran ${clock(j.at)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}`;
+    return { title: "Scheduled jobs", body: [h("div.group", {}, jobs.length ? jobs.map((j) => h("div.row.plain", {}, mark(j.s === "down" || j.late ? "bad" : j.s === "none" ? "grey" : "ok"), h("span.tx", {}, h("b", { text: j.name }), h("small", { text: sub(j) })))) : h("div.empty", { text: "No jobs have reported yet." }))] };
+  }
+  function admDeploysView() {
+    const d = desk();
+    return { title: "Deploys", body: [h("div.group", {}, d?.deploys?.length ? d.deploys.map((x) => h("div.row.plain", {}, mark("info"), h("span.tx", {}, h("b", { text: `${x.what}${x.version ? ` ${x.version}` : ""}` }), h("small", { text: `${seenAt(x.at)}${x.note ? ` · ${x.note}` : ""}` })))) : h("div.empty", { text: "No deploys this week." })),
+      h("p.hint", { text: "The site’s own deploys as its workflow says; the apps’ as the checks see their versions change." })] };
+  }
+  // (a dock at the foot of a sheet: its main actions, in reach of a thumb)
+  const dock = (...kids) => h("div.dk-dock", {}, ...kids);
+  // One code: what people saw first, then why (each part's time, where it was timed), the day with deploys marked, what
+  // it is, and the raw detail folded away
+  function admCodeView() {
+    const d = desk(), x = d?.items.find((i) => i.id === DK.code);
+    if (!d) return { title: "Code", body: [admWait("desk")] };
+    if (!x) return { title: DK.code || "Code", body: [h("div.group", {}, h("div.empty", { text: "That code isn’t on the Desk any more." }))] };
+    const tone = toneOf(x), steps = x.detail?.steps || [], limit = x.detail?.limit || null, max = Math.max(...steps.map((s) => s.ms), 1);
+    const scale = Math.max(limit || 0, ...steps.map((s) => s.ms), 1), lead = steps.find((s) => s.ms === max);
+    const why = steps.length ? [h("h4.app-k", { text: limit ? `Why · ${(steps.reduce((a, s) => Math.max(a, s.ms), 0) / 1000).toFixed(1)} s, of a ${(limit / 1000).toFixed(0)} s limit` : "Why" }),
+      h("div.group.dk-steps", {}, steps.map((s) => h("div.dk-step" + (s === lead ? ".lead" : ""), {}, h("span", { text: s.name }), h("span.dk-track", {}, h("i", { style: `width:${Math.max(3, (s.ms / scale) * 100)}%`, "data-slow": s === lead ? "1" : null })), h("em", { text: `${(s.ms / 1000).toFixed(1)} s${s.done ? "" : "+"}` }))),
+        h("p.dk-note", { text: `${lead.name} took longest${lead.done ? "" : " (still going when time ran out)"}.` }))]
+      : x.sev === "slow" ? [h("h4.app-k", { text: "Why" }), h("div.group", {}, h("div.empty", { text: "This one came before each part’s time was kept. The next will say which part was slow." }))] : null;
+    return { title: x.code, body: [
+      h("div.dk-impact", {}, h("span.dk-pill", { "data-t": tone }, mark(tone), x.state === "back" ? "Back again" : TONE_WORD[tone]), h("h3", { text: x.title }), h("p", { text: x.saw })),
+      why,
+      x.today.length ? [h("h4.app-k", { text: "The last 24 hours" }), h("div.group.dk-chart", {}, dayChart(x.today, d.deploys), h("p.dk-note", { text: x.after ? `Dashed lines are deploys. It was first seen ${mins(x.after.mins)} after ${x.after.what}${x.after.version ? ` ${x.after.version}` : ""} was deployed.` : "Dashed lines are deploys." }))] : null,
+      h("h4.app-k", { text: "About it" }),
+      h("div.group", {},
+        admInfo("Happened", x.count === 1 ? `Once, ${seenAt(x.last)}` : `${num(x.count)} times this week`),
+        x.count > 1 ? admInfo("First and last", `${seenAt(x.first)} · ${seenAt(x.last)}`) : null,
+        x.versions.length ? admInfo("Version", x.versions.join(", ")) : null,
+        x.after ? admInfo("Started", `${mins(x.after.mins)} after a deploy`) : null,
+        x.filed ? admInfo("Filed", "As an issue on GitHub") : null),
+      x.notes.length ? [h("h4.app-k", { text: "What people wrote" }), h("div.group", {}, x.notes.map((n) => h("div.row.plain", {}, h("span.tx", {}, h("small.adm-note", { text: `“${n}”` })))))] : null,
+      h("details.dk-tech", {}, h("summary", {}, "Technical detail"), h("pre", { text: [`code     ${x.code}`, `source   ${x.source}${x.kind ? ` · ${x.kind}` : ""}`, x.words && `message  ${x.words}`, x.where && `where    ${x.where}`, limit && `limit    ${limit} ms`, x.stack && `\n${x.stack}`].filter(Boolean).join("\n") })),
+      dock(x.state === "new" || x.state === "back"
+        ? h("div.dk-btns", {}, h("button.btn", { type: "button", onclick: () => codeTo(x, "fixed") }, icon("check", 18, 2.4), "Mark fixed"),
+          h("button.btn.ghost", { type: "button", "aria-label": "Mute for a day", onclick: () => codeTo(x, "muted") }, "Mute"),
+          h("button.btn.ghost.dk-sq", { type: "button", "aria-label": "Open an incident from this", onclick: () => { AD.pick = new Set(x.app ? [] : []); AD.title = x.title; AD.text = `${x.saw} (${x.code})`; admAsk("status"); pushSheet(admStartView); } }, icon("alert", 18, 2.2)))
+        : h("div.dk-btns", {}, h("button.btn.ghost", { type: "button", onclick: () => codeTo(x, "new") }, x.state === "muted" ? "Unmute" : "Move back to Needs you")))] };
+  }
+  // (the last day, its occurrences as dots along it, its deploys as dashed lines)
+  function dayChart(times, deploys) {
+    const t1 = Date.now(), t0 = t1 - 864e5, X = (t) => 8 + ((t - t0) / (t1 - t0)) * 284;
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 300 70"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", `${times.length} in the last 24 hours`);
+    const el = (n, a) => { const e = document.createElementNS(ns, n); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+    el("line", { x1: 8, y1: 60, x2: 292, y2: 60, class: "dk-axis" });
+    for (const dpl of deploys.filter((x) => x.at > t0)) el("line", { x1: X(dpl.at), y1: 6, x2: X(dpl.at), y2: 60, class: "dk-dep" });
+    const seen = new Map();
+    for (const t of times) { const col = Math.round(X(t) / 6), n = seen.get(col) || 0; seen.set(col, n + 1); el("circle", { cx: X(t), cy: 52 - Math.min(n, 5) * 8, r: 3.6, class: "dk-hit" }); }
+    const box = h("div.dk-svg", {}); box.append(svg);
+    box.append(h("div.dk-ax", {}, h("span", { text: clock(t0) }), h("span", { text: clock(t0 + 432e5) }), h("span", { text: "Now" })));
+    return box;
+  }
+  // One incident: open, a progress bar, what it affects, its timeline and an update box at the foot (suggested words,
+  // Public or Private, Preview); over, a banner, what's left to finish it, its timeline, and notes for yourself
+  const STAGES = ["Investigating", "Identified", "Monitoring", "Resolved"];
+  const SUGGEST = {
+    Investigating: [["Looking into it", "Investigating", (x) => `${x.title.replace(/ not (answering|running|working)$/, "")} isn’t working as it should. We’re looking into it.`], ["Found the cause", "Identified", () => "We’ve found the cause and are working on a fix."]],
+    Identified: [["Fix on its way", "Identified", () => "A fix is on its way."], ["Working again", "Monitoring", () => "It’s working again. We’re keeping an eye on it."]],
+    Monitoring: [["Still watching", "Monitoring", () => "Still working normally. We’ll close this soon."]],
+  };
+  function timeline(x) {
+    const evs = [
+      ...x.updates.map((u) => ({ at: u.at, t: u.k === "Resolved" ? "ok" : u.k === "Spotted" ? "bad" : u.by === "owner" ? "pub" : "grey", head: u.k === "Spotted" ? "Spotted" : u.k, sub: u.w, tag: u.by === "owner" ? "Public" : null })),
+      ...x.notes.map((n) => ({ at: n.at, t: "me", head: "Your note", sub: n.w, tag: "Private" })),
+      ...x.deploys.map((dp) => ({ at: dp.at, t: "dep", head: `Deploy · ${dp.what}${dp.version ? ` ${dp.version}` : ""}`, sub: dp.note || "" })),
+    ].sort((a, b) => a.at - b.at);
+    return h("div.group.dk-tl", {}, evs.map((e) => h("div.dk-ev", { "data-t": e.t }, h("span.dk-pin"), h("div.dk-evh", {}, h("time", { text: clock(e.at) }), h("b", { text: e.head }), e.tag ? h("span.dk-tag", { "data-p": e.tag === "Private" ? "1" : null, text: e.tag }) : null), e.sub ? h("p", { text: e.sub }) : null)),
+      x.codes.length ? h("div.dk-codes", {}, h("small", { text: "Errors while it lasted" }), ...x.codes.map((c) => h("button.adm-chip.dk-codebtn", { type: "button", onclick: () => { DK.code = c; pushSheet(admCodeView); } }, c))) : null);
+  }
+  function admIncidentView() {
+    const d = desk(), x = d?.items.find((i) => i.id === DK.inc && i.type === "incident");
+    if (!d) return { title: "Incident", body: [admWait("desk")] };
+    if (!x) return { title: "Incident", body: [h("div.group", {}, h("div.empty", { text: "That incident isn’t there any more." }))] };
+    const said = h("p.said", { role: "alert" }), more = h("button.x.dk-more-btn", { type: "button", "aria-label": "More", onclick: () => pushSheet(admIncidentMore) }, icon("sliders", 17, 2.2));
+    const text = h("textarea.dk-text", { rows: x.ended ? "2" : "3", maxlength: "600", placeholder: x.ended ? "A note for yourself" : "What’s happening, in a sentence or two", "aria-label": x.ended ? "A note for yourself" : "The update" });
+    text.value = DK.text || ""; text.addEventListener("input", () => { DK.text = text.value; });
+    const priv = !!x.ended || DK.vis === "priv";
+    const go = h("button.btn.dk-post", { type: "button", onclick: () => postUpdate(x, go, said) }, icon(priv ? "pencil" : "share", 18, 2.2), priv ? "Add note" : DK.kind === "Resolved" ? "Post and close" : "Post");
+    const box = h("div.dk-composer", {},
+      !x.ended ? h("div.dk-suggest", {}, [...(SUGGEST[x.stage] || []), ["Resolved", "Resolved", () => "It’s working normally again. Sorry for the trouble."]].map(([label, kind, f]) =>
+        h("button.adm-kind", { type: "button", "aria-checked": String(DK.kind === kind && DK.text === f(x)), role: "checkbox", onclick: () => { DK.kind = kind; DK.text = f(x); DK.vis = "pub"; redraw(); } }, label))) : null,
+      text,
+      h("div.dk-crow", {},
+        x.ended ? h("small.dk-hint", { text: "Once it’s over, notes are yours alone" })
+          : h("div.dk-seg", { role: "group", "aria-label": "Who sees it" }, [["pub", "Public"], ["priv", "Private"]].map(([k, l]) => h("button", { type: "button", "aria-pressed": String(DK.vis === k), onclick: () => { DK.vis = k; redraw(); } }, l))),
+        !priv ? h("button.link", { type: "button", onclick: () => pushSheet(admPreviewView) }, "Preview") : null,
+        h("span.dk-grow"), go));
+    const stageIx = x.ended ? 4 : STAGES.indexOf(x.stage);
+    const body = !x.ended ? [
+      h("div.dk-impact", {}, h("span.dk-pill", { "data-t": "bad" }, mark("bad"), `Live · since ${clock(x.started)}`), h("h3", { text: x.title }), h("p", { text: x.updates[0]?.w || "" }),
+        h("div.dk-stepper", {}, STAGES.map((s, i) => h("div", { "data-s": i < stageIx ? "done" : i === stageIx ? "now" : null }, h("i"), s)))),
+      h("h4.app-k", { text: "Affects" }),
+      h("div.adm-kinds", { role: "group", "aria-label": "What it affects" }, (d.catalogue || []).filter((c) => x.svcs.includes(c.id) || ["today", "chat", "weather", "fitness", "markets", "mail", "auth"].includes(c.id)).map((c) =>
+        h("button.adm-kind", { type: "button", role: "checkbox", "aria-checked": String(x.svcs.includes(c.id)), onclick: (e) => affects(x, c.id, e.currentTarget) }, c.name))),
+    ] : [
+      h("div.dk-banner", {}, icon("check", 20, 2.6), h("span", {}, h("b", { text: `Resolved after ${mins(x.mins)}` }), h("small", { text: `${seenAt(x.started)} to ${clock(x.ended)} · ${x.updates.find((u) => u.k === "Resolved")?.by === "owner" ? "closed by you" : "closed by itself when its checks passed"}` }))),
+      h("h4.app-k", { text: "Finish up" }),
+      h("div.group", {},
+        h("button.row.dk-check", { type: "button", onclick: () => { DK.reason = "check"; DK.line = null; pushSheet(admOutageView); } }, h("span.dk-box", { "data-on": x.outage !== null ? "1" : null }, x.outage !== null ? icon("check", 14, 3) : null),
+          h("span.tx", {}, h("b", { text: "Was it a real outage?" }), h("small", { text: x.outage === null ? "Until you say, it counts against uptime" : x.outage ? "Kept as an outage" : "Not an outage: taken out of uptime" })), h("span.chev", {}, icon("chev", 16, 2.4))),
+        h("button.row.dk-check", { type: "button", onclick: () => { DK.cause = x.writeup?.cause || null; DK.fix = x.writeup?.fix ?? null; DK.prevent = x.writeup?.prevent ?? null; DK.summary = x.writeup?.summary ?? null; DK.sumOn = x.writeup ? !!x.writeup.summary : true; pushSheet(admWriteupView); } },
+          h("span.dk-box", { "data-on": x.writeup ? "1" : null }, x.writeup ? icon("check", 14, 3) : null),
+          h("span.tx", {}, h("b", { text: "Write it up" }), h("small", { text: x.writeup ? `Cause: ${x.writeup.cause.toLowerCase()}${x.writeup.fix ? ` · fixed by ${x.writeup.fix}` : ""}` : "What caused it, what fixed it, what stops it again" })), h("span.chev", {}, icon("chev", 16, 2.4)))),
+    ];
+    return { title: x.title, right: more, body: [...body, h("h4.app-k", { text: "Timeline" }), timeline(x), said, dock(box)] };
+  }
+  async function affects(x, id, b) {
+    const svcs = x.svcs.includes(id) ? x.svcs.filter((s) => s !== id) : [...x.svcs, id], was = x.svcs;
+    try { b.disabled = true; await deskPost("status-affects", { id: x.id, svcs }); deskChanged(); undoToast("What it affects changed on the status page.", () => deskPost("status-affects", { id: x.id, svcs: was })); }
+    catch (e) { if (!e.quiet) toast(e.message, true); } finally { b.disabled = false; }
+  }
+  async function postUpdate(x, b, said) {
+    say(said, "");
+    const text = (DK.text || "").trim();
+    if (!text) return say(said, x.ended ? "Write the note first." : "Write the update first, or tap a suggestion.");
+    try {
+      if (x.ended || DK.vis === "priv") {
+        const r = await busy(b, "Adding…", () => deskPost("status-private", { id: x.id, text }));
+        DK.text = ""; deskChanged();
+        const at = r.notes?.[0]?.at;
+        undoToast("Note added. Only you see it.", () => deskPost("status-private", { id: x.id, remove: at }));
+      } else {
+        const kind = DK.kind || (x.stage === "Investigating" ? "Update" : x.stage);
+        const r = await busy(b, "Posting…", () => deskPost("status-note", { id: x.id, kind, text }));
+        DK.text = ""; DK.kind = null; deskChanged();
+        const at = r.incident?.updates?.[0]?.at;
+        undoToast(kind === "Resolved" ? "Resolved. It’s on the status page." : `Posted to the status page${kind !== "Update" ? ` as ${kind}` : ""}.`, () => deskPost("status-unnote", { id: x.id, at }));
+      }
+    } catch (e) { if (!e.quiet) say(said, e.message); }
+  }
+  // (how the update will read on the status page)
+  function admPreviewView() {
+    const x = desk()?.items.find((i) => i.id === DK.inc);
+    if (!x) return { title: "Preview", body: [] };
+    const kind = DK.kind || (x.stage === "Investigating" ? "Update" : x.stage);
+    const pub = x.updates.filter((u) => u.k !== "Spotted" || true).slice(0, 4);
+    return { title: "Preview", body: [h("p.hint", { text: "How it will look on the status page when you post it." }),
+      h("div.dk-public", {}, h("div.dk-ph", {}, h("b", { text: x.title }), h("span", { "data-k": kind === "Resolved" ? "ok" : "on", text: kind === "Resolved" ? "Resolved" : x.stage })),
+        h("div.dk-up", {}, h("b", { text: `${kind} · now` }), h("span", { text: (DK.text || "").trim() || "Nothing written yet." })),
+        ...pub.map((u) => h("div.dk-up", {}, h("b", { text: `${u.k} · ${clock(u.at)}` }), h("span", { text: u.w }))))] };
+  }
+  // (more: open it again, or the status page)
+  function admIncidentMore() {
+    const x = desk()?.items.find((i) => i.id === DK.inc), said = h("p.said", { role: "alert" });
+    if (!x) return { title: "Incident", body: [] };
+    const text = h("textarea", { rows: "2", maxlength: "600", "aria-label": "What the status page says", placeholder: "We’re looking at this again." });
+    return { title: x.title, body: [
+      h("div.group", {}, h("a.row.action", { href: statusUrl(), target: "_blank", rel: "noopener" }, "Open the status page")),
+      x.ended ? [h("h4.app-k", { text: "Open it again" }), h("div.form", {}, h("label.field", {}, text),
+        h("button.btn.ghost", { type: "button", onclick: async (e) => {
+          try { await admPost(e.currentTarget, "Opening…", "status-reopen", { id: x.id, text: text.value }); deskChanged(); popSheet(); toast("Opened again. The status page says so."); }
+          catch (err) { if (!err.quiet) say(said, err.message); }
+        } }, "Reopen")), h("p.hint", { text: "It stays open until you post an update marked Resolved; the checks won’t close it." }), said] : null] };
+  }
+  // Was it a real outage? The answer's effect shown before it's made: uptime now and with it, and the status page's line
+  const REASONS = [["check", "Our own check was wrong", (x) => `${x.title.replace(/ not (answering|running|working)$/, "")} kept working throughout. A fault in our own check reported it as down.`],
+    ["noone", "Nobody was affected", () => "Nobody was affected: it was over before anyone could notice."], ["planned", "Planned work", () => "This was planned work, done without notice."]];
+  function admOutageView() {
+    const d = desk(), x = d?.items.find((i) => i.id === DK.inc), said = h("p.said", { role: "alert" });
+    if (!x) return { title: "Not an outage?", body: [] };
+    const r = REASONS.find((y) => y[0] === DK.reason) || REASONS[0];
+    if (DK.line == null) DK.line = r[2](x);
+    const line = h("textarea", { rows: "3", maxlength: "300", "aria-label": "What the status page will say" }); line.value = DK.line; line.addEventListener("input", () => { DK.line = line.value; });
+    const svc = x.svcs.find((s) => d.uptime90?.[s]), u = svc ? d.uptime90[svc] : null, take = x.downN || 0;
+    const pct = (n, dn) => (n ? `${(Math.floor(((n - dn) / n) * 10000) / 100).toFixed(2)}%` : "—");
+    return { title: "Not an outage?", body: [
+      h("p.hint", { text: "Mark it when what the checks saw wasn’t something people went without: it comes out of uptime, and the status page says what happened." }),
+      h("h4.app-k", { text: "Why" }),
+      h("div.adm-kinds", { role: "radiogroup" }, REASONS.map(([k, l, f]) => h("button.adm-kind", { type: "button", role: "radio", "aria-checked": String(DK.reason === k), onclick: () => { DK.reason = k; DK.line = f(x); redraw(); } }, l))),
+      h("label.field", {}, h("span", { text: "What the status page will say" }), line),
+      u ? [h("h4.app-k", { text: `${d.catalogue.find((c) => c.id === svc)?.name || svc}’s uptime, 90 days` }), h("div.dk-uptime", {}, h("div", {}, h("b", { text: pct(u[0], u[1]) }), h("small", { text: "now" })), icon("chev", 18, 2.4),
+        h("div", {}, h("b.ok", { text: pct(u[0], Math.max(0, u[1] - (x.outage === false ? 0 : take))) }), h("small", { text: "with this" })))] : null,
+      h("div.form", {},
+        h("button.btn", { type: "button", onclick: async (e) => {
+          say(said, "");
+          try { await admPost(e.currentTarget, "Saving…", "status-outage", { id: x.id, outage: false, line: DK.line }); deskChanged(); popSheet(); undoToast("Not an outage: taken out of uptime.", () => deskPost("status-outage", { id: x.id, outage: true })); }
+          catch (err) { if (!err.quiet) say(said, err.message); }
+        } }, "Mark as not an outage"),
+        h("button.btn.ghost", { type: "button", onclick: async (e) => {
+          try { await admPost(e.currentTarget, "Saving…", "status-outage", { id: x.id, outage: true }); deskChanged(); popSheet(); toast("Kept as an outage."); }
+          catch (err) { if (!err.quiet) say(said, err.message); }
+        } }, "It was a real outage")),
+      said] };
+  }
+  // The write-up: three answers, a minute's work; the summary on the status page if you want it there
+  function admWriteupView() {
+    const d = desk(), x = d?.items.find((i) => i.id === DK.inc), said = h("p.said", { role: "alert" });
+    if (!x) return { title: "Write-up", body: [] };
+    const area = (k, ph, rows = "2") => { const el = h("textarea", { rows, maxlength: "600", placeholder: ph, "aria-label": ph }); el.value = DK[k] || ""; el.addEventListener("input", () => { DK[k] = el.value; }); return el; };
+    const fixes = [...x.deploys.map((dp) => `${dp.what}${dp.version ? ` ${dp.version}` : ""} · ${clock(dp.at)}`), "Nothing: it passed by itself"];
+    return { title: "Write-up", body: [
+      h("h4.app-k", { text: "What caused it" }),
+      h("div.adm-kinds", { role: "radiogroup" }, (d.causes || []).map((c) => h("button.adm-kind", { type: "button", role: "radio", "aria-checked": String(DK.cause === c), onclick: () => { DK.cause = c; redraw(); } }, c))),
+      h("h4.app-k", { text: "What fixed it" }),
+      h("div.adm-kinds", { role: "radiogroup" }, fixes.map((f) => h("button.adm-kind", { type: "button", role: "radio", "aria-checked": String(DK.fix === f), onclick: () => { DK.fix = f; redraw(); } }, f))),
+      h("label.field", {}, h("span", { text: "What stops it happening again" }), area("prevent", "A test, a check, a change", "3")),
+      h("h4.app-k", { text: "On the status page" }),
+      h("div.dk-seg.wide", { role: "group" }, [[true, "Show a summary"], [false, "Keep it private"]].map(([on, l]) => h("button", { type: "button", "aria-pressed": String(DK.sumOn === on), onclick: () => { DK.sumOn = on; redraw(); } }, l))),
+      DK.sumOn ? h("label.field", {}, area("summary", "A sentence or two for anyone to read")) : null,
+      h("div.form", {}, h("button.btn", { type: "button", onclick: async (e) => {
+        say(said, "");
+        if (!DK.cause) return say(said, "Pick what caused it.");
+        try {
+          await admPost(e.currentTarget, "Saving…", "status-writeup", { id: x.id, cause: DK.cause, fix: DK.fix || "", prevent: DK.prevent || "", summary: DK.sumOn ? DK.summary || "" : "" });
+          deskChanged(); popSheet(); toast(x.outage !== null ? "Written up. It’s in Done now." : "Written up.");
+        } catch (err) { if (!err.quiet) say(said, err.message); }
+      } }, "Save write-up")),
+      said] };
+  }
+  // (from an incident's notification, #admin=incident:<id>; or the Desk, #admin=desk: opened over Admin once it's loaded)
+  function openTo(to) {
+    const m = /^(desk|incident:(.+))$/.exec(String(to || ""));
+    if (!m) return;
+    pushSheet(admDeskView);
+    if (m[2]) { DK.inc = m[2]; DK.kind = null; DK.text = ""; DK.vis = "pub"; desk(true); pushSheet(admIncidentView); }
+  }
+
   // status.inflite.ai: its incidents (opened and closed by the checks themselves), and on each, an update written here,
   // shown there as it's posted: what's happening, in your words (functions/_status.js)
   const statusUrl = () => (/\/\/account\./.test(location.origin) ? location.origin.replace("//account.", "//status.") : "https://status.inflite.ai");
@@ -146,8 +434,6 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   const span = (m) => `${seenAt(m.starts).replace(/^Today /, "today ")}–${hm(m.ends)}`;
   function admStatusView() {
     const x = admAsk("status"), said = h("p.said", { role: "alert" });
-    const item = (i) => row({ icon: i.ended ? "check" : "alert", tint: i.ended ? "green" : "red", title: i.title, sub: `${incWhen(i)} · ${nOf(i.updates.length, "update")}${i.kind === "manual" ? " · by you" : ""}`,
-      onclick: () => { AD.inc = i.id; AD.kind = null; AD.picked = false; AD.text = ""; pushSheet(admIncidentView); } });
     // (how you're told: each a switch, saved as it's flipped)
     const sw = (k, title, sub) => {
       const el = h("input.switch", { type: "checkbox", role: "switch", "aria-label": title, checked: !!x?.prefs?.[k] });
@@ -165,16 +451,14 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         try { await admPost(e.currentTarget, "", "status-maint", { cancel: m.id }); admAsk("status", true); admChanged(); toast("Maintenance called off."); }
         catch (err) { if (!err.quiet) say(said, err.message); }
       } }, "Cancel"));
-    return { title: "Status page", body: [
+    return { title: "Maintenance and alerts", body: [
       h("div.group", {}, h("a.row.action", { href: statusUrl(), target: "_blank", rel: "noopener" }, "Open the status page")),
       h("div.group", {},
         row({ icon: "alert", tint: "red", title: "Start an incident", sub: "For what the checks can’t see", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; pushSheet(admStartView); } }),
         row({ icon: "clock", tint: "indigo", title: "Plan maintenance", sub: "Announced ahead; it doesn’t count against uptime", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; AD.when = null; pushSheet(admMaintView); } })),
       said,
       x && x.maint.length ? [h("h4.app-k", { text: "Maintenance planned" }), h("div.group", {}, x.maint.map(maint))] : null,
-      h("h4.app-k", { text: "Incidents" }),
-      !x ? admWait("status") : x.incidents.length ? h("div.group", {}, x.incidents.map(item)) : h("div.group", {}, h("div.empty", { text: "No incidents in the last 30 days." })),
-      h("p.hint", { text: "An incident opens by itself when something fails two checks in a row, and closes once it’s working again. Add an update to say what’s happening: it’s on the status page as soon as you post it, for anyone to see." }),
+      !x ? admWait("status") : null,
       x && [h("h4.app-k", { text: "Tell me when" }), h("div.group", {},
         sw("push", "An incident opens or closes", "A notification on your devices, whatever the hour"),
         sw("email", "And by email", "To the site’s admin address"),
@@ -195,7 +479,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         e.preventDefault(); say(said, "");
         try {
           const r = await admPost(go, "Posting…", "status-incident", { svcs: [...AD.pick], title: AD.title || "", text: AD.text || "" });
-          AD.title = AD.text = ""; AD.pick = new Set(); AD.inc = r.incident.id; admAsk("status", true); admChanged(); toast("On the status page."); pushSheet(admIncidentView);
+          AD.title = AD.text = ""; AD.pick = new Set(); DK.inc = r.incident.id; DK.kind = null; DK.text = ""; DK.vis = "pub"; admAsk("status", true); deskChanged(); toast("On the status page."); pushSheet(admIncidentView);
         } catch (err) { if (!err.quiet) say(said, err.message); }
       } }, h("h4.app-k", { text: "What’s affected" }), pickChips(x), h("label.field", {}, h("span", { text: "Title" }), title), h("label.field", {}, h("span", { text: "What’s happening" }), text), go),
       said,
@@ -228,36 +512,6 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       said,
       h("p.hint", { text: "Nothing named covers everything. While it’s on, failures in what it covers open no incident and don’t count against uptime; each app it covers shows a banner." })] };
   }
-  function admIncidentView() {
-    const x = admAsk("status"), inc = x?.incidents.find((i) => i.id === AD.inc);
-    if (!x) return { title: "Incident", body: [admWait("status")] };
-    if (!inc) return { title: "Incident", body: [h("div.group", {}, h("div.empty", { text: "That incident isn’t there any more." }))] };
-    const kinds = x.kinds.filter((k) => !(inc.ended && k === "Resolved")), said = h("p.said", { role: "alert" });
-    // (Investigating to begin with, or Update once it's closed, until one's picked)
-    if (!AD.picked || !kinds.includes(AD.kind)) AD.kind = inc.ended ? "Update" : "Investigating";
-    // (what's typed kept across a redraw)
-    const text = h("textarea", { rows: "4", maxlength: "600", placeholder: "What’s happening, in a sentence or two", "aria-label": "The update", spellcheck: "true" });
-    text.value = AD.text || "";
-    text.addEventListener("input", () => { AD.text = text.value; });
-    const go = h("button.btn", { type: "submit" }, icon("share", 20, 2.2), AD.kind === "Resolved" ? "Post and close it" : "Post update");
-    return { title: inc.ended ? "Resolved incident" : "Ongoing incident", body: [
-      h("div.group", {}, h("div.row.plain", {}, h("span.tx", {}, h("b", { text: inc.title }), h("small", { text: incWhen(inc) })))),
-      h("h4.app-k", { text: "Add an update" }),
-      h("form.form", { onsubmit: async (e) => {
-        e.preventDefault(); say(said, "");
-        try {
-          await admPost(go, "Posting…", "status-note", { id: inc.id, kind: AD.kind, text: AD.text || "" });
-          AD.text = ""; AD.kind = null; AD.picked = false; admAsk("status", true); admChanged(); redraw(); toast("Posted to the status page.");
-        } catch (err) { if (!err.quiet) say(said, err.message); }
-      } },
-        h("div.adm-kinds", { role: "radiogroup", "aria-label": "Kind of update" }, kinds.map((k) => h("button.adm-kind", { type: "button", role: "radio", "aria-checked": String(AD.kind === k),
-          onclick: () => { AD.kind = k; AD.picked = true; redraw(); } }, k))),
-        h("label.field", {}, text), go),
-      said,
-      h("p.hint", { text: AD.kind === "Resolved" ? "Closes the incident. If what’s in it is still failing, the checks open a new one." : "Shown on the status page for anyone to see, with the time it’s posted." }),
-      h("h4.app-k", { text: "So far" }),
-      h("div.group", {}, inc.updates.map((u) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: `${u.k}${u.by === "owner" ? " · by you" : ""}` }), h("small", { text: `${u.w} · ${seenAt(u.at)}` })))))] };
-  }
   function adminView() {
     admSum();
     const s = AD.sum;
@@ -284,10 +538,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         row({ icon: "db", tint: "grey", title: "Storage", value: s.storage == null ? null : bytes(s.storage), onclick: () => pushSheet(admStorageView) }),
         row({ icon: "mail", tint: "red", title: "Email", value: !s.email ? "Off" : s.mailFail ? "Not sending" : h("span.adm-ok", {}, icon("check", 15, 3), "Working"),
           warn: !s.email || !!s.mailFail, onclick: () => pushSheet(admEmailView) }),
-        ((late) => row({ icon: "info", tint: "blue", title: "Server", value: late ? "Late" : s.errors?.length ? nOf(s.errors.length, "error") : h("span.adm-ok", {}, icon("check", 15, 3), "Running"),
-          warn: late || !!s.errors?.length, onclick: () => pushSheet(admServerView) }))(!!s.ticks && [s.ticks.inflight, s.ticks.weather].some((k) => k && Date.now() - k.at > 20 * 60e3)),
-        row({ icon: "wave", tint: "green", title: "Status page", value: s.statusOpen?.length ? `${num(s.statusOpen.length)} ongoing` : h("span.adm-ok", {}, icon("check", 15, 3), "No incidents"),
-          warn: !!s.statusOpen?.length, onclick: () => { admAsk("status", true); pushSheet(admStatusView); } }),
+        // (the Incident Desk: the server, the status page, bug reports and deploys, in one place)
+        ((n, live) => row({ icon: "wave", tint: live ? "red" : n ? "amber" : "green", title: "Incident Desk", sub: live ? `${nOf(live, "incident")} going on` : null, subWarn: !!live,
+          value: n ? `${num(n)} need${n === 1 ? "s" : ""} you` : h("span.adm-ok", {}, icon("check", 15, 3), "All clear"), warn: !!n, onclick: () => deskOpen() }))(s.deskNeeds ?? 0, s.statusOpen?.length || 0),
         row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
       h("h4.app-k", { text: "Home page" }),
       // (Edit: there signed in as you, carried over just now, as the home page's sign-in is a cookie of its own site's,
@@ -623,5 +876,5 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     }) : h("div.empty", { text: "Nothing yet." }))] };
   }
 
-  return { adminRow, adminView };
+  return { adminRow, adminView, openTo };
 }

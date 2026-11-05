@@ -31,7 +31,7 @@
 // Every word is plain text (the page draws it escaped); every card for Chat is built by the module whose data it is
 // (functions/_todaywx.js, _todayfit.js, _todaymkt.js), packed here (pigeon/cards.js packCard), and its line cut by
 // shareCut. The links are the hub's own paths (/weather/#radar, /fitness/#today, /chats/#open=…).
-import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline } from "./_todaycards.js";
+import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer } from "./_todaycards.js";
 import { phaseOf, ridesWithDones, wallAt, DAY_START, EVENING_AT } from "./_todayphase.js";
 import { upcomingFor } from "./_todaycoming.js";
 import { rideWx } from "./_todayride.js";
@@ -177,7 +177,9 @@ export async function dayInputs(env, u, t, tz, cards) {
 
 export async function dayFor(env, u, t, cards, opts = {}) {
   const zone = zoneOk(opts.tz) ? opts.tz : "Europe/London", hm = (ms) => clockOf(zone).format(new Date(ms));
-  const g = await gather(env, u, t, zone, cards), { today, D, rides, dones } = g;
+  // (each part timed, so a day that runs out of time says which part was slow: opts.steps, _todaycards.js stepTimer)
+  const T = opts.steps || stepTimer();
+  const g = await T.time("Your day’s data", gather(env, u, t, zone, cards)), { today, D, rides, dones } = g;
   const ph = phaseOf(t, zone, { dayStart: g.dayStart, eveningAt: g.eveningAt, rides, dones });
   const matched = ridesWithDones(rides, dones);
   const over = (x) => (x.arrival != null ? x.arrival <= t : x.cap <= t);
@@ -200,13 +202,13 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   // functions/_todaymail.js; none, no card; and not asked at all where the account's Edit hid it)
   const mailHidden = Array.isArray(g.row?.cards?.hidden) && g.row.cards.hidden.includes("mail");
   const [wxs, waiting, held, wrote, load, mail] = await Promise.all([
-    Promise.all(matched.map((x) => (over(x) ? null : withDeadline(rideWx(env, u, x.ride, t), WX_MS).catch(() => null)))),
-    soft(env, "waiting", waitingFor(env, u, t), []),
-    ph.phase === "riding" && next ? soft(env, "held", heldCount(env, u.id, next.ride.start - HOLD_EARLY, { t }), 0) : 0,
+    Promise.all(matched.map((x) => (over(x) ? null : T.time("Ride forecast", withDeadline(rideWx(env, u, x.ride, t), WX_MS).catch(() => null))))),
+    T.time("Who’s waiting", soft(env, "waiting", waitingFor(env, u, t), [])),
+    ph.phase === "riding" && next ? T.time("Held messages", soft(env, "held", heldCount(env, u.id, next.ride.start - HOLD_EARLY, { t }), 0)) : 0,
     // (who wrote while you rode: from the ride's start to the activity's end)
-    afterOf ? soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), []) : [],
-    wantCtl ? soft(env, "load", loadOf(env, u.id, t), []) : [],
-    mailHidden ? null : soft(env, "mail", mailCard(env, u, opts.request || null), null),
+    afterOf ? T.time("Who wrote", soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), [])) : [],
+    wantCtl ? T.time("Fitness load", soft(env, "load", loadOf(env, u.id, t), [])) : [],
+    mailHidden ? null : T.time("Mail’s numbers", soft(env, "mail", mailCard(env, u, opts.request || null), null)),
   ]);
   // (Mail's card among the answer's cards, as the other four are: only where Mail answered)
   if (mail && cards && typeof cards === "object") cards.mail = mail;
