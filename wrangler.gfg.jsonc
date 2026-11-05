@@ -35,7 +35,9 @@
     { "pattern": "fitness.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
     { "pattern": "weather.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
     { "pattern": "fitting.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
-    { "pattern": "georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }
+    // (step 7, tried here first: the address the Worker's own (a custom domain, with its own DNS record, taken over from
+    // the Pages project's), so it goes on working when the Pages project's gone)
+    { "pattern": "georgefarrowgreen.com", "custom_domain": true }
   ]
   // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
   // "routes": [
