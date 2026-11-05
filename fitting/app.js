@@ -1074,14 +1074,18 @@ function reportBlocks(){
   const sec = (title, body) => `<div class="rp-sec">${title ? `<h3 class="rp-h">${title}</h3>` : ''}${body}</div>`;
   const B = [];
   const FU = !!S.follow, was = FU ? 'At your fit' : 'Pre-fit', now = FU ? 'Today' : 'Post-fit';
-  const metaI = [['Bike', v.bike], ['Frame size', v.frame], ['Pedals', v.pedals], ['Shoes', v.shoes]].filter(x => filled(x[1]));
+  const metaI = [['Bike', v.bike, 'w'], ['Frame size', v.frame], ['Pedals', v.pedals], ['Shoes', v.shoes]].filter(x => filled(x[1]));
+  // the rider's own details (their name is the page's title): how to reach them, where they live
+  const addr = [v.address, v.city, v.postcode].filter(filled).join(', ');
+  const who = [['Email', v.email, 'w'], ['Phone', v.phone], ['Address', addr, 'w']].filter(x => filled(x[1]));
+  const mrow = (h, items) => items.length ? `<div class="rp-mrow"><div class="rp-mh">${h}</div><div class="rp-meta">${items.map(([l, x, w]) => `<div${w ? ' class="w"' : ''}><span>${l}</span><b>${esc(x)}</b></div>`).join('')}</div></div>` : '';
   const ranged = A.filter(a => a.r && a.post != null), inR = ranged.filter(a => a.post >= a.r[0] && a.post <= a.r[1]).length;
   const nCh = ch.length, fu0 = followUp();   // (the same count as the app's own summary)
   const glance = [ranged.length ? [`${inR}<small>/${ranged.length}</small>`, 'angles in the guide range'] : null,
     [String(nCh), nCh === 1 ? 'set-up change' : 'set-up changes'],
     fu0.date ? [fu0.date.toLocaleDateString('en-GB', {day:'numeric', month:'short'}), 'free follow-up due'] : null].filter(Boolean);
   B.push({html:`${glance.length > 1 ? `<div class="rp-glance" style="grid-template-columns:repeat(${glance.length},1fr)">${glance.map(([n, l]) => `<div><b>${n}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
-    ${metaI.length ? `<div class="rp-meta">${metaI.map(([l, x]) => `<div><span>${l}</span><b>${esc(x)}</b></div>`).join('')}</div>` : ''}`});
+    ${who.length || metaI.length ? `<div class="rp-panel">${mrow('Rider', who)}${mrow('Bike', metaI)}</div>` : ''}`});
   if (FU && (v.since || v.sinceNote)) B.push({html:sec('Since your fit', `${v.since ? `<p class="rp-p"><b>How it’s felt:</b> ${esc(v.since)}</p>` : ''}${v.sinceNote ? `<p class="rp-p">${esc(v.sinceNote)}</p>` : ''}`)});
   if (FU && !ch.length) B.push({html:sec('Changes today', '<p class="rp-p">Your position is as your fit left it: no changes were needed.</p>')});
   if (ch.length) B.push({html:sec(FU ? 'Changes today' : 'Key changes', `<div class="rp-kcs">${ch.slice(0, 4).map(x => `<div class="rp-kc"><span>${esc(x.r.label)}</span><b>${fmt(v[x.r.k + '_pre'])}<em>→</em>${fmt(v[x.r.k + '_post'])}</b><i>${x.d > 0 ? '▲' : '▼'} ${x.txt.replace(/^[+−-]/, '')}</i></div>`).join('')}</div>`)});
