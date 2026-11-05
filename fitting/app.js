@@ -216,7 +216,7 @@ const dbDel = id => tx('readwrite', st => st.delete(id)).then(r => { if (INDEX &
 async function load(){
   try { await dbDel('sample'); } catch(_){}
   const id = lsGet(CUR);
-  if (id && id !== 'sample'){ try { const r = await dbGet(id); if (r && r.v) return Object.assign(blank(), r); } catch(_){} }
+  if (id && id !== 'sample'){ try { const r = await dbGet(id); if (r && r.v) return Object.assign(blank(), upgrade(r)); } catch(_){} }
   const s = blank(); s.fit = 'std'; return s;
 }
 const record = () => ({...S, updated:Date.now(), photos:S.photos.map(p => { const {_comp, ...rest} = p; return rest; })});
@@ -236,7 +236,7 @@ function save(){ clearTimeout(saveT); saveT = setTimeout(writeNow, 350); }
 const deleteFit = id => dbDel(id).catch(() => {});
 async function openFit(rec){
   if (saveT) await writeNow();
-  S = Object.assign(blank(), rec);
+  S = Object.assign(blank(), upgrade(rec));
   lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0);
   await markPhotos(); renderMain();
 }
@@ -261,7 +261,7 @@ async function startFollowUp(prev){
   for (const [k, x] of Object.entries(prev.v || {})) if (k.endsWith('_pre') && !filled(v[k])) v[k] = x;   // (where nothing was changed)
   S2.fit = prev.fit; S2.v = Object.assign(S2.v, v); S2.pain = {...(prev.pain || {})}; S2.step = 1;
   S2.follow = {of:prev.id, date:prev.v.date || '', fitter:prev.v.fitter || ''};
-  S2.photos = (prev.photos || []).filter(p => p.src && /^After · (side|front)$/.test(p.tag))
+  S2.photos = (prev.photos || []).filter(p => p.src && /^After · (right side|left side|front)$/.test(p.tag))
     .map(p => ({...p, id:uid(), tag:p.tag.replace('After', 'Before'), cap:p.cap ? `At the last fit: ${p.cap}` : 'At the last fit', _comp:undefined}));
   S = S2; await writeNow();
   $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0); await markPhotos();
@@ -320,7 +320,7 @@ async function useDetails(id){
   S.histUsed = id; save(); const y = scrollY; renderMain(); scrollTo(0, y);
 }
 async function followFromHistory(id){
-  const prev = await dbGet(id); if (!prev) return;
+  const prev = upgrade(await dbGet(id)); if (!prev) return;
   const was = S.id; await startFollowUp(prev); await deleteFit(was);
 }
 function renderFits(){
@@ -554,12 +554,24 @@ function uciHTML(){
 }
 
 /* ---------------- photos ---------------- */
-const TAGS = ['Before · side','After · side','Before · front','After · front','Aero · front','Cleats & feet','Saddle pressure map','Posture','Other'];
-const SLOTS = {std:['Before · side','After · side'], full:['Before · side','After · side','Before · front','After · front','Cleats & feet'],
-  tt:['Before · side','After · side','Before · front','After · front','Aero · front','Cleats & feet']};
-const SLOT_HINT = {'Before · side':'Drive side, cranks level, before any changes','After · side':'Same spot and height as the before photo','Before · front':'Square on, from in front of the bike','After · front':'Same spot as the before photo','Aero · front':'Rider on the extensions, square on','Cleats & feet':'Sole view of both shoes'};
+const TAGS = ['Before · right side','After · right side','Before · left side','After · left side','Before · front','After · front','Aero · front','Cleats & feet','Saddle pressure map','Posture','Other'];
+const SIDES = ['Before · right side','After · right side','Before · left side','After · left side'];
+const SLOTS = {std:[...SIDES], full:[...SIDES,'Before · front','After · front','Cleats & feet'],
+  tt:[...SIDES,'Before · front','After · front','Aero · front','Cleats & feet']};
+// (the shot list in rows: each view's before and after side by side)
+const SLOT_ROWS = [['Right side', 'drive side', ['Before · right side','After · right side']], ['Left side', 'non-drive side', ['Before · left side','After · left side']],
+  ['Front', '', ['Before · front','After · front']], ['Also', '', ['Aero · front','Cleats & feet']]];
+const SLOT_HINT = {'Before · right side':'Drive side, cranks level, before any changes','After · right side':'Same spot and height as the before photo',
+  'Before · left side':'Non-drive side, cranks level, before any changes','After · left side':'Same spot and height as the before photo',
+  'Before · front':'Square on, from in front of the bike','After · front':'Same spot as the before photo','Aero · front':'Rider on the extensions, square on','Cleats & feet':'Sole view of both shoes'};
+// (a fit from before there were two sides: its side photos were the drive side's)
+const OLDTAG = {'Before · side':'Before · right side', 'After · side':'After · right side'};
+const upgrade = r => { for (const p of (r && r.photos) || []) if (OLDTAG[p.tag]) p.tag = OLDTAG[p.tag]; return r; };
+// the before and after side photos to compare: the drive side's, else the other side's
+const sidePair = (ph = S.photos.filter(p => p.src)) => [['Before · right side','After · right side'], ['Before · left side','After · left side']]
+  .map(([a, b]) => [ph.find(p => p.tag === a), ph.find(p => p.tag === b)]).filter(([a, b]) => a && b);
 const ICON_CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
-const canCompare = () => S.fit !== 'std' && ['Before · side','After · side'].every(t => S.photos.some(p => p.src && p.tag === t));
+const canCompare = () => S.fit !== 'std' && sidePair().length > 0;
 function photoCard(p){
   const done = p.marks.filter(m => m.p.length === 3);
   return `<div class="ph"><button type="button" class="img" data-ph="${p.id}" data-act="measure" aria-label="Measure angles on this photo">
@@ -574,16 +586,18 @@ function photoCard(p){
 }
 function photosHTML(){
   const used = new Set();
-  const slots = SLOTS[S.fit].map((tag, i) => {
-    const p = S.photos.find(x => x.src && x.tag === tag && !used.has(x.id));
+  const slot = tag => {
+    const i = SLOTS[S.fit].indexOf(tag), p = S.photos.find(x => x.src && x.tag === tag && !used.has(x.id));
     if (p){ used.add(p.id); return photoCard(p); }
     return `<label class="slot" for="slot-${i}">${ICON_CAM}<b>${esc(tag)}</b><span>${esc(SLOT_HINT[tag] || '')}</span><span class="go">Tap to take or choose</span>
       <input type="file" id="slot-${i}" accept="image/*" data-slot="${esc(tag)}"></label>`;
-  }).join('');
+  };
+  const slots = SLOT_ROWS.map(([name, note, tags]) => { const ts = tags.filter(t => SLOTS[S.fit].includes(t)); if (!ts.length) return '';
+    return `<div class="slot-row"><h3 class="slot-g">${esc(name)}${note ? ` <small>${esc(note)}</small>` : ''}</h3><div class="slots pair">${ts.map(slot).join('')}</div></div>`; }).join('');
   const got = SLOTS[S.fit].filter(t => S.photos.some(p => p.src && p.tag === t)).length, all = SLOTS[S.fit].length;
   const extra = S.photos.filter(p => p.src && !used.has(p.id));
   return `<div class="sec"><div class="sec-h"><h2>Shot list</h2><div class="right">${canCompare() ? '<button type="button" class="btn sm dark" data-act="compare">Compare before &amp; after</button>' : ''}<span class="sec-count${got === all ? ' ok' : ''}">${got === all ? '✓ ' : ''}${got} of ${all}${S.fit === 'std' ? ' · optional' : ''}</span></div></div>
-    <div class="slots">${slots}</div></div>
+    ${slots}</div>
   <div class="sec"><div class="sec-h"><h2>More photos</h2><span class="sec-note">Pressure maps, posture, anything else worth showing</span></div>
     <label class="drop" id="drop">${ICON_CAM}<b>Add more photos</b><span class="hint">Take a photo or choose several from the library. You can also drag photos here.</span>
       <input type="file" id="file" accept="image/*" multiple></label>
@@ -1107,8 +1121,10 @@ function reportBlocks(){
   const ph = S.fit === 'std' ? [] : S.photos.filter(p => p.inc && p.src);
   if (ph.length){
     const card = (p, big) => `<div class="rp-ph${big ? ' big' : ''}"><div class="im" style="background-image:url('${p._comp || p.src}')"></div><b>${esc(p.tag)}</b>${p.cap ? `<span>${esc(p.cap)}</span>` : ''}</div>`;
-    const side = ['Before · side', 'After · side'].map(t => ph.find(p => p.tag === t)).filter(Boolean), rest = ph.filter(p => !side.includes(p));
-    if (side.length) B.push({html:sec('Before & after', `<div class="rp-photos">${side.map(p => card(p, true)).join('')}</div>`)});
+    const pairs = [['Before & after · right side', ['Before · right side', 'After · right side']], ['Before & after · left side', ['Before · left side', 'After · left side']]]
+      .map(([t, tags]) => [t, tags.map(x => ph.find(p => p.tag === x)).filter(Boolean)]).filter(([, a]) => a.length);
+    const side = pairs.flatMap(([, a]) => a), rest = ph.filter(p => !side.includes(p));
+    for (const [t, a] of pairs) B.push({html:sec(t, `<div class="rp-photos">${a.map(p => card(p, true)).join('')}</div>`)});
     for (let i = 0; i < rest.length; i += 2) B.push({html:sec(i === 0 ? 'Fit photos' : '', `<div class="rp-photos">${rest.slice(i, i + 2).map(p => card(p)).join('')}</div>`)});
   }
   // (each line of the plan a card: what's before a dash or colon its name, what's after how much)
@@ -1256,14 +1272,14 @@ function progress(i){
 function readyItems(){
   const A = anglesList().filter(a => a.post != null).length;
   const bikePost = ALLROWS.filter(r => applies(r) && (S.fit === 'tt' || !TTROWS.includes(r))).filter(r => filled(S.v[r.k + '_post'])).length;
-  const sides = ['Before · side','After · side'].filter(t => S.photos.some(p => p.src && p.tag === t)).length;
+  const sides = SIDES.filter(t => S.photos.some(p => p.src && p.tag === t)).length;
   const email = (val('email') || '').trim();
   return [
     {ok:!!fullName(), t:'Rider’s name', d:fullName() || 'Add it in Session', step:0},
     {ok:/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), t:'Email address', d:email ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : `“${email}” doesn’t look like an email address`) : 'Needed to send the report', step:0},
     {ok:A >= 3, t:'Angles after the fit', d:`${A} recorded${A < 3 ? ', at least 3 needed' : ''}`, step:3},
     {ok:bikePost >= 5, t:'Bike measurements after the fit', d:`${bikePost} recorded${bikePost < 5 ? ', at least 5 needed' : ''}`, step:4},
-    ...(S.fit === 'std' || S.follow ? [] : [{ok:sides === 2, t:'Before & after side photos', d:`${sides} of 2 taken`, step:5}]),
+    ...(S.fit === 'std' || S.follow ? [] : [{ok:sides === 4, t:'Before & after side photos, both sides', d:`${sides} of 4 taken`, step:5}]),
     {ok:filled(val('summary')), t:'Overview of changes', d:filled(val('summary')) ? 'Written' : 'Tap “Write it for me” below to draft it', step:6},
   ];
 }
@@ -1455,7 +1471,7 @@ document.addEventListener('click', e => {
     (async () => { if (saveT) await writeNow(); try { await fetch('api/logout', {method:'POST', credentials:'same-origin'}); } catch(_){} location.replace('login'); })();
     return; }
   case 'fit-open': dbGet(d.id).then(f => { if (f) openFit(f); }); return;
-  case 'fit-follow': dbGet(d.id).then(f => { if (f) startFollowUp(f); }); return;
+  case 'fit-follow': dbGet(d.id).then(f => { if (f) startFollowUp(upgrade(f)); }); return;
   case 'fit-del': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to delete'; t.classList.replace('ghost', 'primary'); setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Delete'; t.classList.replace('primary', 'ghost'); } }, 3000); return; }
     deleteFit(d.id).then(async () => { FITLIST = FITLIST.filter(x => x.id !== d.id); if (S.id === d.id){ S = blank(); S.fit = 'std'; await writeNow(); renderMain(); } renderFits(); }); return; }
@@ -1493,7 +1509,7 @@ const mzc = $('#mz-c');
 mzc.addEventListener('pointerdown', mzDown); mzc.addEventListener('pointermove', mzMove); mzc.addEventListener('pointerup', mzUp); mzc.addEventListener('pointercancel', mzUp);
 let CMP = null;
 function openCompare(){
-  const a = S.photos.find(p => p.src && p.tag === 'Before · side'), b = S.photos.find(p => p.src && p.tag === 'After · side');
+  const [a, b] = sidePair()[0] || [];
   if (!a || !b) return;
   $('#cmp-a').src = a._comp || a.src; $('#cmp-b').src = b._comp || b.src;
   $('#cmp-ttl').textContent = `Before & after · ${fullName() || 'Rider'}`;

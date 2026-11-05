@@ -429,6 +429,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .pbar i{display:block;height:100%;background:var(--red);border-radius:3px;transition:width .3s}
 .pg-prog{position:absolute;left:0;top:-1px;height:3px;width:0;background:var(--red);transition:width .3s}
 .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.slot-row + .slot-row{margin-top:20px}
+.slot-g{margin:0 0 10px;font-family:var(--f-disp);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.slot-g small{font-family:var(--f-body);font-weight:500;font-size:13px;letter-spacing:0;text-transform:none;color:var(--mute);margin-left:6px}
+.slots.pair{grid-template-columns:repeat(2,minmax(0,1fr))}
+.slots.pair .slot{min-height:210px}
+@media (max-width:560px){.slots.pair{grid-template-columns:1fr}}
 .slot{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:250px;border:2px dashed var(--line);border-radius:16px;background:var(--field);cursor:pointer;text-align:center;padding:16px}
 .slot svg{width:32px;height:32px;color:var(--mute)}
 .slot b{font-size:17px}
