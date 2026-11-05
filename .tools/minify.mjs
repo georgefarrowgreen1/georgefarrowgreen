@@ -16,6 +16,15 @@ export function sources() {
     .toString().split("\n").filter((f) => f && !/\/sw\.js$|\/vendor\/|\.min\./.test(f) && existsSync(ROOT + f));
 }
 export const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+// The sign-in page's script: account/app.js made with SIGNIN_PAGE true (see its own words on it), and whatever that
+// leaves unused taken out (what only the account's page draws, and InFlite's menu, which only it shows), again until
+// nothing more goes, as taking out one thing can leave another unused. Nothing renamed, as everywhere here.
+export function signinPage(src, transformSync) {
+  const o = { loader: "js", format: "esm", treeShaking: true, minifySyntax: true, legalComments: "none", charset: "utf8" };
+  let out = transformSync(src.replace("const IFL = (() => {", "const IFL = /* @__PURE__ */ (() => {"), { ...o, define: { SIGNIN_PAGE: "true" } }).code;
+  for (let was = "", n = 0; was !== out && n < 8; n++) { was = out; out = transformSync(out, o).code; }
+  return transformSync(out, { ...o, minifyWhitespace: true }).code;
+}
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
   const { transformSync } = createRequire(ROOT + ".tools/tests/package.json")("esbuild");
@@ -30,6 +39,12 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     manifest[f] = sha(src);
     before += src.length; after += Buffer.byteLength(out);
   }
+  // the sign-in page's own copy of the account's script (functions/_acctapp.js sends it at auth.<site>), made from
+  // account/app.js as it is, and kept under its fingerprint: signinPage, below
+  const from = readFileSync(ROOT + "account/app.js");
+  const page = signinPage(from.toString(), transformSync);
+  writeFileSync(ROOT + "min/account/signin.js", page);
+  manifest["account/signin.js"] = sha(from);
   writeFileSync(ROOT + "min/manifest.json", JSON.stringify(manifest, null, 1) + "\n");
   console.log(`${list.length} files minified: ${Math.round(before / 1024)} KB → ${Math.round(after / 1024)} KB`);
 }

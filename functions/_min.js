@@ -7,6 +7,9 @@ import { FRESH } from "./_minfresh.js";
 
 export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account|status)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
 const SKIP = /\/sw\.js$/;
+// (copies made from another file: the sign-in page's script, from the account's (.tools/minify.mjs signinPage), current
+// while that file is as it was made from, and that file itself sent while it isn't)
+export const MADE_FROM = { "account/signin.js": "account/app.js" };
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 // (per copy of the server, and its store of files: a deploy starts fresh ones, with the new files)
@@ -28,7 +31,7 @@ function current(env, url, path) {
     p = (async () => {
       const want = (await listOf(env, url))[path.slice(1)];
       if (!want) return false;
-      const r = await env.ASSETS.fetch(new Request(new URL(path, url)));
+      const r = await env.ASSETS.fetch(new Request(new URL("/" + (MADE_FROM[path.slice(1)] || path.slice(1)), url)));
       return r.ok && hex(await crypto.subtle.digest("SHA-256", await r.arrayBuffer())) === want;
     })().catch(() => false);
     fresh.set(path, p);
@@ -38,7 +41,7 @@ function current(env, url, path) {
 }
 
 export function assets(env) {
-  return {
+  const me = {
     async fetch(input, init) {
       const req = input instanceof Request && !init ? input : new Request(input, init);
       const url = new URL(req.url);
@@ -47,7 +50,10 @@ export function assets(env) {
         const r = await env.ASSETS.fetch(new Request(min, req));
         if (r.status === 200 || r.status === 304) return r;
       }
+      const from = MADE_FROM[url.pathname.slice(1)];
+      if (from) { const to = new URL(url); to.pathname = "/" + from; return me.fetch(new Request(to, req)); }
       return env.ASSETS.fetch(req);
     },
   };
+  return me;
 }

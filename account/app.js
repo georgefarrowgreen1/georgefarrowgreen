@@ -1068,6 +1068,11 @@ const IFL = (() => {
 })();
 // ==== end of InFlite's menu ====
 
+// The sign-in page's own copy of this script (auth.<site>: min/account/signin.js, made by node .tools/minify.mjs) is
+// this file made with SIGNIN_PAGE true: what only the account's page draws (the account itself, its sheets, InFlite's
+// menu) is left out of it, so the sign-in page has about half as much to fetch and read (functions/_acctapp.js sends
+// it there, and this file itself should that copy be out of date). Here, as written, it's false.
+globalThis.SIGNIN_PAGE ??= false;
 const API = "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
@@ -1080,7 +1085,7 @@ const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
 const BUILD = "1.88";
-const NEWS = "Signing in quicker: an app you open while signed in comes straight back without this page, a passkey goes straight to Face ID, and checking a password takes fewer trips to the server";
+const NEWS = "Signing in quicker: an app you open while signed in comes straight back without the sign-in page, which itself now loads less than half as much; a passkey goes straight to Face ID; and checking a password takes fewer trips to the server";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1229,7 +1234,7 @@ const OPENS = { profile: () => profileView, inflight: () => inflightView, fitnes
   // (an app's Notifications row: its folder, or the whole page)
   notify: () => notifyView, "notify-inflight": () => chatNotifyView, "notify-weather": () => weatherNotifyView, "notify-fitness": () => fitnessNotifyView, "notify-markets": () => marketsNotifyView, "notify-mail": () => mailNotifyView,
   "notify-today": () => todayNotifyView };
-const opens = () => OPENS[HANDOFF?.open]?.() || null;
+const opens = () => (SIGNIN_PAGE ? null : OPENS[HANDOFF?.open]?.() || null);
 // back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again; hash: what it's to open at, where it's opened here)
 function backToApp(hash) {
@@ -1618,12 +1623,12 @@ function render() {
   const rise = !S.settled; S.settled = true;
   const was = rise ? null : where(), risers = [];
   const r = (el) => { if (rise && el) risers.push(el); return el; };
-  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.out?.ask ? outPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : AUTH?.here ? authHome(r) : signedIn(r))
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.out?.ask ? outPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : SIGNIN_PAGE || AUTH?.here ? authHome(r) : signedIn(r))
     : S.gone ? gonePage(r) : S.out ? outPage(r) : AUTH && !AUTH.here && !S.handoff ? awayPage(r) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
   main.removeAttribute("aria-busy");
   document.title = AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
-  IFL.watch(window);
+  if (!SIGNIN_PAGE) IFL.watch(window);
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
 }
@@ -4975,6 +4980,7 @@ addEventListener("focus", refresh);
 // (back online: what a sheet couldn't fetch let go, and the sheet that's up drawn again, asking for it afresh, if it's
 // the one that said so: any other's left as it is, as drawing it again would lose what's being typed in it)
 function unfail() {
+  if (SIGNIN_PAGE) return;           // (the account's sheets, which the sign-in page hasn't)
   const top = Sheet.stack.at(-1);
   let here = false;
   if (NT?.error) { NT = null; here ||= onNt(); }
@@ -5009,9 +5015,9 @@ function scrolled() {
 }
 addEventListener("scroll", scrolled, { passive: true });
 
-IFL.built("account", BUILD, NEWS);
+if (!SIGNIN_PAGE) IFL.built("account", BUILD, NEWS);
 // (a new version put in by itself, the same in every app: never with a sheet up or something saving; how far down you
 // were, kept for it. Not on the sign-in page, there only for as long as a sign-in takes, where a reload would lose what
 // you'd typed)
-if (!AUTH?.here) IFL.updates({ app: "account", build: BUILD, busy: () => sheetEl.open || !!document.querySelector(".working"), save: () => (S.me?.signedIn ? { y: Math.round(scrollY) } : null) });
-load().then(() => { const was = IFL.here("account"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 400); });
+if (!SIGNIN_PAGE && !AUTH?.here) IFL.updates({ app: "account", build: BUILD, busy: () => sheetEl.open || !!document.querySelector(".working"), save: () => (S.me?.signedIn ? { y: Math.round(scrollY) } : null) });
+load().then(() => { const was = SIGNIN_PAGE ? null : IFL.here("account"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 400); });

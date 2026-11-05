@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { MADE_FROM } from "../../functions/_min.js";
 const ROOT = new URL("../../", import.meta.url).pathname, OUT = `${ROOT}.tools/workers/dist`;
 const local = `${ROOT}.tools/tests/node_modules/.bin/wrangler`;
 const [cmd, pre] = existsSync(local) ? [local, []] : ["npx", ["--yes", "wrangler@4.149.0"]];
@@ -13,8 +14,10 @@ const date = /compatibility_date\s*=\s*"([^"]+)"/.exec(readFileSync(`${ROOT}wran
 // (which minified copies are still of their files, known now, for the Worker: functions/_minfresh.js, put back after)
 const FRESH_JS = `${ROOT}functions/_minfresh.js`, was = readFileSync(FRESH_JS, "utf8");
 const manifest = existsSync(`${ROOT}min/manifest.json`) ? JSON.parse(readFileSync(`${ROOT}min/manifest.json`, "utf8")) : {};
-const fresh = Object.entries(manifest).filter(([f, sum]) => existsSync(`${ROOT}min/${f}`) && existsSync(`${ROOT}${f}`)
-  && createHash("sha256").update(readFileSync(`${ROOT}${f}`)).digest("hex") === sum).map(([f]) => f).sort();
+// (a copy made from another file, the sign-in page's script, current while that file is as it was made from: functions/_min.js MADE_FROM)
+const src = (f) => MADE_FROM[f] || f;
+const fresh = Object.entries(manifest).filter(([f, sum]) => existsSync(`${ROOT}min/${f}`) && existsSync(`${ROOT}${src(f)}`)
+  && createHash("sha256").update(readFileSync(`${ROOT}${src(f)}`)).digest("hex") === sum).map(([f]) => f).sort();
 const stale = Object.keys(manifest).length - fresh.length;
 let r;
 try {

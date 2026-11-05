@@ -104,7 +104,11 @@ export async function accountHost(ctx, url) {
   if (res.status === 404) return notFound();
   const head = ctx.request.method === "HEAD", name = url.pathname.slice(1);
   const page = res.status === 200 && PAGE.test(path), script = res.status === 200 && /^[\w.-]+\.(js|css)$/.test(name);
-  const body = head ? null : page ? await stamped(ctx, url, await res.text()) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
+  // (the sign-in page runs its own copy of the script, made from the account's with what only the account's page draws
+  // left out: about half as much to fetch and read. .tools/minify.mjs signinPage; functions/_min.js sends app.js itself
+  // should that copy be out of date)
+  const html = page && !head ? await res.text() : null;
+  const body = head ? null : page ? await stamped(ctx, url, isAuth(url, ctx.env) ? html.replace('src="app.js"', 'src="signin.js"') : html) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
   const out = new Response(body, res);
   for (const [k, v] of Object.entries(isAuth(url, ctx.env) ? AUTH_SECURITY : ACCT_SECURITY)) out.headers.set(k, v);
   if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }
