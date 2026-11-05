@@ -51,17 +51,14 @@ the app there (or run Actions → **Sign-in check**).
 - Pages goes on deploying on every push too, so the fallback behind the routes stays the same site; it's switched off
   at step 7.
 
-### 7. After two quiet weeks
-1. Pages → the project → Custom domains: remove each address (**Remove domain**). Its DNS record stays, so the
-   Worker's route in front of it goes on answering, with nothing to change. (Tried first on georgefarrowgreen.com,
-   5 November: removed from Pages, and it went on working.) If an address ever has no DNS record of its own, add one:
-   DNS → Add record, AAAA, its name, `100::`, proxied: the Worker answers on it.
-2. Settings → Builds: turn off automatic deployments, then delete the project.
-3. The Pages-only bits of the code go then too (`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`, the scheduled
-   jobs' fallback to `georgefarrowgreen.pages.dev`). Changing a secret from then on is done on the Worker.
-
-(Not a Worker custom domain: Cloudflare won't let one take over a DNS record the Pages project made, and a route
-needs nothing more than the record that's there.)
+### 7. Done (5 November)
+The Pages project's custom domains were removed and the project deleted. Deleting it deleted the DNS records it had
+made, so every address went dark until the Workers took each as a custom domain of their own (the configs'
+`"custom_domain": true`), which made each its own DNS record again. (While the Pages project was there, a custom domain
+couldn't take over a record it had made: Cloudflare refuses.) And a Worker's fetch to an address in its own zone skips
+the zone's routes, so Today and Mail (the inflite repo) reach inflite-apps through a service binding (`APPS`).
+Left: the Pages-only bits of the code (`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`, the scheduled jobs'
+fallback to `georgefarrowgreen.pages.dev`). Changing a secret from now on is done on the Worker.
 
 ## What's ready in the code
 

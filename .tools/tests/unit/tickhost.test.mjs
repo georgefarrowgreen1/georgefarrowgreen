@@ -26,13 +26,14 @@ test('the jobs call the Worker (or TICK_SITE), then the Pages project if it didn
   for (const f of ['.github/workflows/weather-tick.yml', '.github/workflows/inflight-notify.yml']) { const s = read(f); assert.match(s, /\$\{TICK_SITE:-https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev\}" https:\/\/georgefarrowgreen\.pages\.dev/, f); assert.match(s, /"\$site"\/api\//, f); }
   assert.match(read('workers/ticker/index.js'), /env\.TICK_SITE \|\| PAGES_SITE/); assert.match(read('workers/ticker/wrangler.toml'), /TICK_SITE = "https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev"/);
 });
-test('the Worker’s config: the site’s files through the Worker first, the same bindings as Pages, and no routes yet', () => {
+test('the Worker’s config: the site’s files through the Worker first, the same bindings as Pages, and only InFlite’s app addresses, each its own custom domain', () => {
   const w = read('wrangler.worker.jsonc'), p = read('wrangler.toml');
   assert.match(w, /"run_worker_first": true/);
   assert.match(w, /"binding": "ASSETS"/);
   for (const id of [...p.matchAll(/(?:id|database_id) = "([^"]+)"/g)].map((m) => m[1])) assert.ok(w.includes(id), `binding ${id} as Pages has it`);
   // (its routes: only InFlite's own addresses, never the hub's inflite.ai itself, nor georgefarrowgreen.com's)
-  for (const m of w.replace(/\/\/.*$/gm, '').matchAll(/"pattern": "([^"]+)"/g)) assert.match(m[1], /^(finance|fitness|weather|account|auth|chat)\.inflite\.ai\/\*$/, m[1]);
+  for (const m of w.replace(/\/\/.*$/gm, '').matchAll(/"pattern": "([^"]+)"/g)) assert.match(m[1], /^(finance|fitness|weather|account|auth|chat)\.inflite\.ai$/, m[1]);
+  assert.doesNotMatch(w.replace(/\/\/.*$/gm, ''), /"zone_name"/, 'custom domains (their own DNS records), not routes');
   const ignore = read('.assetsignore').split('\n');
   for (const k of ['functions', 'workers', '.tools', '.git']) assert.ok(ignore.includes(k), k);
   assert.ok(!ignore.includes('min'), 'the minified copies are the Worker’s to read (functions/_min.js)');
