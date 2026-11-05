@@ -32,7 +32,7 @@ test('the Worker’s config: the site’s files through the Worker first, the sa
   assert.match(w, /"binding": "ASSETS"/);
   for (const id of [...p.matchAll(/(?:id|database_id) = "([^"]+)"/g)].map((m) => m[1])) assert.ok(w.includes(id), `binding ${id} as Pages has it`);
   // (its routes: only InFlite's own addresses, never the hub's inflite.ai itself, nor georgefarrowgreen.com's)
-  for (const m of w.replace(/\/\/.*$/gm, '').matchAll(/"pattern": "([^"]+)"/g)) assert.match(m[1], /^(finance|fitness|weather|account|auth|chat)\.inflite\.ai$/, m[1]);
+  for (const m of w.replace(/\/\/.*$/gm, '').matchAll(/"pattern": "([^"]+)"/g)) assert.match(m[1], /^(finance|fitness|weather|account|auth|chat|status)\.inflite\.ai$/, m[1]);
   assert.doesNotMatch(w.replace(/\/\/.*$/gm, ''), /"zone_name"/, 'custom domains (their own DNS records), not routes');
   const ignore = read('.assetsignore').split('\n');
   for (const k of ['functions', 'workers', '.tools', '.git']) assert.ok(ignore.includes(k), k);

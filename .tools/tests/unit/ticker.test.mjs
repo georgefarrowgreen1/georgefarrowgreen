@@ -2,14 +2,22 @@
 // to have failed (thrown), so it's seen in Cloudflare's dashboard and not only in a log no one's watching.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import ticker from "../../../workers/ticker/index.js";
+import ticker, { probe } from "../../../workers/ticker/index.js";
+import { STATUS_SERVICES } from "../../../functions/_statuslist.js";
 
-// (one run, the site answering each job with answer(path): → what was asked, and what the run threw, or null)
-async function run(env, answer) {
-  const asked = [], real = globalThis.fetch, said = console.error;
-  globalThis.fetch = async (url, o) => { const p = new URL(url).pathname; asked.push(`${p} ${o.headers.Authorization}`); return answer(p); };
+// (one run, the site answering each job with answer(path), and each address status.inflite.ai checks with look(url):
+// → the jobs asked for, the addresses looked at, what was reported, and what the run threw, or null)
+async function run(env, answer, look = () => new Response('{"build":"1.50"}', { headers: { "Content-Type": "application/json" } })) {
+  const asked = [], looked = [], real = globalThis.fetch, said = console.error;
+  let reported = null;
+  globalThis.fetch = async (url, o) => {
+    const u = new URL(url), p = u.pathname;
+    if (!o.headers.Authorization) { looked.push(u.href); return look(u.href); }
+    if (p === "/api/status/report") { reported = JSON.parse(o.body); return answer(p); }
+    asked.push(`${p} ${o.headers.Authorization}`); return answer(p);
+  };
   console.error = () => {};
-  try { const threw = await ticker.scheduled({}, env, { waitUntil() {} }).then(() => null, (e) => e); return { asked: asked.sort(), threw }; }
+  try { const threw = await ticker.scheduled({}, env, { waitUntil() {} }).then(() => null, (e) => e); return { asked: asked.sort(), looked, reported, threw }; }
   finally { globalThis.fetch = real; console.error = said; }
 }
 const env = { INFLIGHT_TICK_SECRET: "chat", WEATHER_TICK_SECRET: "wx" };
@@ -36,4 +44,33 @@ test("a run where a job fails (refused, or the site not answering) is said to ha
   const none = await run({}, () => new Response("{}"));
   assert.equal(none.asked.length, 0);
   assert.match(none.threw?.message || "", /notify-tick.*weather\/tick.*garmin-tick.*markets\/tick.*today\/tick/);
+});
+
+test("status.inflite.ai's checks: every address looked at as a phone would, how each job went, all reported with the key", async () => {
+  const r = await run(env, (p) => new Response("{}", { status: p === "/api/markets/tick" ? 500 : 200 }));
+  assert.deepEqual(r.looked.sort(), STATUS_SERVICES.map((s) => s.probe).sort());
+  assert.ok(!r.looked.some((u) => u.includes("fitting")), "not Fit Studio");
+  assert.equal(r.reported.checks.length, STATUS_SERVICES.length);
+  assert.ok(r.reported.checks.every((c) => c.s === "ok" && c.version === "1.50" && Number.isFinite(c.ms)));
+  assert.deepEqual(r.reported.jobs.find((j) => j.path === "/api/markets/tick").ok, false);
+  assert.equal(r.reported.jobs.filter((j) => j.ok).length, 4);
+  // (the report refused: the run said to have failed, naming it)
+  const no = await run(env, (p) => new Response("x", { status: p === "/api/status/report" ? 401 : 200 }));
+  assert.match(no.threw?.message || "", /\/api\/status\/report/);
+});
+
+test("one address: fine, slow, down, not answering, or behind a bot check (which isn't down: it can't be told)", async () => {
+  const real = globalThis.fetch, svc = { id: "chat", probe: "https://chat.inflite.ai/version" };
+  const as = async (f) => { globalThis.fetch = f; try { return await probe(svc); } finally { globalThis.fetch = real; } };
+  try {
+    assert.equal((await as(async () => new Response('{"app":"chat","build":"1.79"}', { headers: { "Content-Type": "application/json" } }))).version, "1.79");
+    assert.equal((await as(async () => new Response('{"v":"9","app":"1.62"}', { headers: { "Content-Type": "application/json" } }))).version, "1.62", "Mail's");
+    const down = await as(async () => new Response("x", { status: 502 }));
+    assert.equal(down.s, "down"); assert.equal(down.why, "HTTP 502");
+    const gone = await as(async () => { throw new TypeError("fetch failed"); });
+    assert.equal(gone.s, "down"); assert.equal(gone.why, "unreachable");
+    assert.equal((await as(async () => new Response("<html>", { status: 403, headers: { "Content-Type": "text/html", "cf-mitigated": "challenge" } }))).s, "none");
+    const slow = await as(async () => { await new Promise((r) => setTimeout(r, 5)); return new Response("ok"); });
+    assert.equal(slow.s, "ok");
+  } finally { globalThis.fetch = real; }
 });

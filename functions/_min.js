@@ -5,7 +5,7 @@
 // Every app's files are read through this (assets(env).fetch, in place of env.ASSETS.fetch).
 import { FRESH } from "./_minfresh.js";
 
-export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
+export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account|status)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
 const SKIP = /\/sw\.js$/;
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");

@@ -1,4 +1,6 @@
 {
+ "status/app.js": "e68e82a6ac1613687db47a5797c4b3e745f0e5099a73838289db243d52c3cbe2",
+ "status/styles.css": "3bb84a54ae9202ff42a4e795fe96e81d83feacc70a031a6ff36fb44f8f0b83c9",
  "account/admin.js": "a9d8f1839de9f87bc3c153882271e68f93d4822165aeed3b6e8590e78bd11fc7",
  "account/app.js": "8aef74f3fea473e43ab795b432b21f51b1ae4395d2f5254f2883cceccd450872",
  "account/boot.js": "774f53a3f4f557117e69cf4bd4cb7dcf6805d07d23a5ff1938cd30d8ad93a6a6",

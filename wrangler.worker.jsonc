@@ -1,5 +1,5 @@
 // InFlite's apps as a Worker with static assets (the move off Pages: .tools/workers/README.md): chat., weather.,
-// fitness., finance., account. and auth.inflite.ai. Its twin, "gfg" (wrangler.gfg.jsonc), is the same build for
+// fitness., finance., account., auth. and status.inflite.ai. Its twin, "gfg" (wrangler.gfg.jsonc), is the same build for
 // georgefarrowgreen.com's own addresses; the site decides what each address is, as it does on Pages. Not live: the site
 // is still the Pages project (wrangler.toml) until the addresses are moved over. Until then this deploys, by hand only
 // (.github/workflows/worker-deploy.yml), with no routes, so it's reachable only at its workers.dev address, side by
@@ -41,7 +41,9 @@
     { "pattern": "weather.inflite.ai", "custom_domain": true },
     { "pattern": "account.inflite.ai", "custom_domain": true },
     { "pattern": "auth.inflite.ai", "custom_domain": true },
-    { "pattern": "chat.inflite.ai", "custom_domain": true }
+    { "pattern": "chat.inflite.ai", "custom_domain": true },
+    // (InFlite's status page: functions/_status.js)
+    { "pattern": "status.inflite.ai", "custom_domain": true }
   ]
   // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
   // "routes": [
