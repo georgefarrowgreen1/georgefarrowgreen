@@ -34,7 +34,10 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { messages: true, landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, streaks: true, names: false, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { messages: true, landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, streaks: true, names: false, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC",
+  // (by email, each kind: Chat's (while its emails are on, notify_email: chatEmails), and the account's word that a
+  // problem you reported is fixed. The week in flight's, where it's never been chosen, as its notification is)
+  eMessages: true, eLanded: true, eRequests: true, eFixed: true };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -43,7 +46,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["messages", "landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "streaks", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["messages", "landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "streaks", "names", "quiet", "eMessages", "eLanded", "eRequests", "eWeekly", "eFixed"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -53,6 +56,21 @@ export function cleanPrefs(cur, b) {
 export const savePrefs = (D, id, b) =>
   D.prepare("UPDATE pg_users SET notify_prefs = json_patch(CASE WHEN json_valid(notify_prefs) THEN notify_prefs ELSE '{}' END, ?) WHERE id = ?")
     .bind(JSON.stringify(cleanPrefs({}, b)), id).run();
+// Chat's emails, each kind, as they are (the account's Emails page): none while its emails are off (notify_email)
+export const EMAIL_KINDS = ["messages", "landed", "requests", "weekly"];
+const EKEY = { messages: "eMessages", landed: "eLanded", requests: "eRequests", weekly: "eWeekly" };
+export const KIND_SAID = { messages: "new message", landed: "pigeon", requests: "friend request", weekly: "week in flight" };
+export function chatEmails(u, p = prefsOf(u)) {
+  return Object.fromEntries(EMAIL_KINDS.map((k) => [k, !!u.notify_email && !!(p[EKEY[k]] ?? (k === "weekly" ? p.weekly : true))]));
+}
+// …some of them changed (on: { kind: true or false }): each kind kept, and Chat's emails on while any is
+export async function setChatEmails(D, u, on) {
+  const now = { ...chatEmails(u), ...Object.fromEntries(EMAIL_KINDS.filter((k) => typeof on[k] === "boolean").map((k) => [k, on[k]])) };
+  await savePrefs(D, u.id, Object.fromEntries(EMAIL_KINDS.map((k) => [EKEY[k], now[k]])));
+  const any = EMAIL_KINDS.some((k) => now[k]);
+  await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(any ? 1 : 0, Date.now(), u.id).run();
+  return now;
+}
 export function isQuiet(p, t = Date.now()) {
   if (!p.quiet || p.quietFrom === p.quietTo) return false;
   const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: p.tz, hour: "numeric", hourCycle: "h23" }).format(t));
@@ -199,15 +217,16 @@ export async function unsubToken(env, userId) {
   await D.prepare("UPDATE pg_users SET unsub = ? WHERE id = ? AND unsub IS NULL").bind(t, userId).run();
   return (await D.prepare("SELECT unsub FROM pg_users WHERE id = ?").bind(userId).first()).unsub;
 }
-async function notifyEmail(env, origin, u, subject, mail) {
+async function notifyEmail(env, origin, u, subject, mail, kind) {
   if (!emailReady(env)) return false;
   // only to an address its owner has confirmed (anyone can type anyone's at sign-up), and not to an account being deleted
   const st = await (await db(env)).prepare("SELECT email_ok, delete_at FROM pg_users WHERE id = ?").bind(u.id).first();
   if (!st?.email_ok || st.delete_at) return false;
-  const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
-  // (and beside turning them all off, choosing which: Chat's folder on the account's Notifications page)
-  const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: "You get these because you turned on email notifications in Chat.", unsub,
-    more: { label: "Choose which emails", url: `${accountLink(origin)}/#from=inflight&open=notify-inflight` } });
+  // (its kind's own way off: one tap, or the mail app's Unsubscribe, turns off just these; and every email, on the
+  // account's Emails page)
+  const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}${kind ? `&k=${kind}` : ""}`;
+  const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: kind ? `You get these because ${KIND_SAID[kind]} emails are on in Chat.` : "You get these because you turned on email notifications in Chat.", unsub,
+    more: { label: "Choose which emails", url: `${accountLink(origin)}/#from=inflight&open=emails` } });
   await sendEmail(env, { brand: "inflight", to: u.email, subject, text, html,
     headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
   await (await db(env)).prepare("UPDATE pg_users SET email_at = ? WHERE id = ?").bind(Date.now(), u.id).run();
@@ -295,14 +314,14 @@ export async function friendRequested(env, origin, from, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.requests) return;
   if (isQuiet(r.p) || await ridingNow(env, toId, Date.now())) return hold(env, toId, "request", from.id);
   await pushTo(env, toId, { title: r.p.names ? "Friend request" : "Chat", body: r.p.names ? `${firstName(from.name)} (@${from.handle}) wants to be friends on Chat.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
-  if (r.u.notify_email && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
+  if (chatEmails(r.u, r.p).requests && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
     await notifyEmail(env, origin, r.u, r.p.names ? `${firstName(from.name)} wants to be friends on Chat` : "You have a new friend request on Chat", {
       icon: "friend", title: r.p.names ? `${firstName(from.name)} wants to be friends` : "New friend request",
       preheader: r.p.names ? `@${from.handle} sent you a friend request.` : "Someone sent you a friend request.",
       lines: [r.p.names ? `${firstName(from.name)} sent you a friend request. ${r.u.pigeons ? "Accept it to start sending each other pigeons." : "Accept it to start chatting."}` : "Someone sent you a friend request. Open Chat to see who."],
       ...(r.p.names ? { pill: ["at", `@${from.handle}`] } : {}),
       button: { label: "See request", url: appLink(origin, "#requests") },
-    }).catch(() => {});
+    }, "requests").catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted) return;
@@ -933,7 +952,8 @@ export async function tick(env, origin) {
     await H.load(waiting.map((u) => u.id));
     for (const u of waiting) {
       // (letters as landed says, messages as messages does; not while quiet hours or a ride hold them)
-      const p = prefsOf(u), msgs = u.msgs || 0; if (!((p.landed && u.n - msgs > 0) || (p.messages && msgs > 0)) || isQuiet(p, t) || H.holds(u.id)) continue;
+      const p = prefsOf(u), msgs = u.msgs || 0, em = chatEmails({ ...u, notify_email: 1 }, p);
+      if (!((em.landed && u.n - msgs > 0) || (em.messages && msgs > 0)) || isQuiet(p, t) || H.holds(u.id)) continue;
       const claimed = await D.prepare("UPDATE pg_users SET email_at = ?1 WHERE id = ?2 AND COALESCE(email_at, 0) < ?3").bind(t, u.id, t - EMAIL_EVERY).run();
       if (!claimed.meta.changes) continue;
       const who = String(u.names || "").split(",").map(firstName);
@@ -951,7 +971,7 @@ export async function tick(env, origin) {
           lines: [u.n > 1 ? `They’re waiting for you in Chat.` : "It’s waiting for you in Chat."],
           // one sender: straight into their chat; several: the Messages list
           button: { label: u.n > 1 ? "Read them" : "Read it", url: appLink(origin, String(u.senders || "").includes(",") || !u.senders ? "" : `#open=${u.senders}`) },
-        });
+        }, msgs > 0 && em.messages ? "messages" : "landed");
         emails++;
       } catch (e) {
         // (not sent: the claim given back, so the next tick tries these landings again rather than only later ones)
@@ -999,16 +1019,17 @@ async function weeklyTick(env, D, t, origin) {
     const p = prefsOf(u);
     if (!weeklyDue(env, p, t)) continue;
     const claimed = await D.prepare("UPDATE pg_users SET weekly_at = ?1 WHERE id = ?2 AND COALESCE(weekly_at, 0) < ?3").bind(t, u.id, t - 6 * DAY).run();
-    if (!claimed.meta.changes || !p.weekly) continue;
+    const byMail = !!u.notify_email && chatEmails(u, p).weekly;
+    if (!claimed.meta.changes || !(p.weekly || byMail)) continue;
     const w = await weekOf(D, u.id, t); if (!w) continue;
     out.sent++;
-    out.pushes += await pushTo(env, u.id, { title: "Your week in flight", body: w.line, tag: "weekly", url: "/pigeon/#flightlog" });
-    if (u.notify_email && emailReady(env)) {
+    if (p.weekly) out.pushes += await pushTo(env, u.id, { title: "Your week in flight", body: w.line, tag: "weekly", url: "/pigeon/#flightlog" });
+    if (byMail && emailReady(env)) {
       try {
         if (await notifyEmail(env, origin, u, "Your week in flight", { icon: "bird", title: "Your week in flight", preheader: w.line,
           rows: [...(w.mi ? [["Miles flown", `${w.mi.toLocaleString("en-GB")} mi`]] : []), ["Pigeons sent", String(w.sent)], ["Pigeons received", String(w.got)],
             ...(w.fresh.length ? [["New badges", w.fresh.join(", ")]] : w.next && w.next.progress > 0 ? [["Next badge", `${w.next.name}, ${Math.round(w.next.progress * 100)}% there`]] : [])],
-          button: { label: "Open your flight log", url: appLink(origin, "#flightlog") } })) out.emails++;
+          button: { label: "Open your flight log", url: appLink(origin, "#flightlog") } }, "weekly")) out.emails++;
       } catch (e) { console.error("pigeon weekly email", e && e.message); }
     }
   }

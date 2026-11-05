@@ -76,7 +76,7 @@ await folder();
 ok(await W.isChecked('#nt-c-landed') && await W.isChecked('#nt-c-messages') && !(await W.isChecked('#nt-c-names')) && /Messages\s*Messages\s*When a friend sends you one/i.test(await text(W, '#sheet')) && /Pigeons/i.test(await text(W, '#sheet')) && /Friends/i.test(await text(W, '#sheet')) && /How they look/i.test(await text(W, '#sheet')),
   'Notifications: Chat\'s folder on the account\'s Notifications page: messages, pigeons, friends, the lock screen, its emails', (await text(W, '#sheet')).slice(0, 200));
 ok(/Just “Sent you a message” or “A pigeon has landed”/.test(await text(W, '#sheet')), 'names off: just “Sent you a message” or “A pigeon has landed”');
-ok(!(await W.isDisabled('#nt-c-email')), 'email, its address confirmed, can be turned on');
+ok(/Emails\s*0 of 4 on/.test(await text(W, '#sheet')), 'its emails: a link to the Emails page, none on yet', (await text(W, '#sheet')).slice(-200));
 await shot(W, '02b-notifications');
 
 // ---- 3. changes, each saved by Chat's own rules ----
@@ -85,8 +85,10 @@ const flip = async (k) => { const id = idFor(k); await W.locator('#' + id).scrol
 const back = async () => { await W.click('#sheet .sheet-head .back'); await W.waitForSelector(FIRST); await W.waitForTimeout(500); };
 await flip('reactions');
 ok(prefs('rowan').reactions === false, 'Reactions off: saved to the account', JSON.stringify(prefs('rowan')));
-await flip('email');
-ok(row('rowan').notify_email === 1, 'Email Me Too: on');
+await W.click('#sheet .row[data-k="Emails"]'); await W.waitForSelector('#sheet #em-c-messages'); await W.waitForTimeout(500);
+ok(!(await W.isDisabled('#em-c-messages')), 'the Emails page: its address confirmed, each kind can be turned on');
+await W.click('#em-c-messages'); await W.waitForFunction(() => !document.getElementById('em-c-messages')?.disabled); await W.waitForTimeout(400);
+ok(row('rowan').notify_email === 1 && prefs('rowan').eMessages === true && prefs('rowan').eRequests === false, 'new messages by email: on, and just that kind', JSON.stringify(prefs('rowan')));
 // (Quiet Hours, every app's: on the Notifications page itself)
 await acctOpen(W, 'notify');
 await flip('quiet'); await W.waitForSelector('#nt-from');

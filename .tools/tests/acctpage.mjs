@@ -338,15 +338,16 @@ const nt = await sheetText(L);
 ok(/Quiet Hours/.test(nt) && /Chat/.test(nt) && /Weather/.test(nt) && /Fitness/.test(nt) && /Sign-in and security emails always come/.test(nt) && !(await L.p.$('#sheet .app-row[data-k="Mail"]')),
   'Notifications: Quiet Hours, a folder for each app (Mail\'s the admin\'s alone), and security emails always', nt);
 const ntBack = async () => { await L.p.click('#sheet .sheet-head .back'); await L.p.waitForSelector('#sheet #nt-quiet'); await settle(L, 600); };
-await L.p.click('#sheet .app-row[data-k="Chat"]'); await L.p.waitForSelector('#sheet #nt-c-email'); await settle(L, 600);
+await L.p.click('#sheet .app-row[data-k="Chat"]'); await L.p.waitForSelector('#sheet .row[data-k="Emails"]'); await settle(L, 600);
 ok(/Not on any device yet/.test(await sheetText(L)) && !!(await L.p.$('#sheet a.open-in[href$="#notify"]')), 'Chat\'s folder: on no device yet, and the way to turn it on there');
-await L.p.click('#nt-c-email'); await settle(L, 1000);
+await L.p.click('#sheet .row[data-k="Emails"]'); await L.p.waitForSelector('#sheet #em-c-messages'); await settle(L, 600);
+ok(/Always sent/i.test(await sheetText(L)) && /Phone only/i.test(await sheetText(L)) && /A problem you reported is fixed/.test(await sheetText(L)), 'the Emails page: those always sent, each app\'s, and the apps that only tell your phone', await sheetText(L));
+await L.p.click('#em-c-messages'); await settle(L, 1000);
 const ne = rows("SELECT notify_email FROM pg_users WHERE handle = 'rowan_h'")[0]?.notify_email;
 ok(ne === 1, 'Chat\'s emails turned on from here', String(ne));
-await ntBack();
-await L.p.click('#sheet .app-row[data-k="Weather"]'); await L.p.waitForSelector('#sheet #nt-w-ewarn'); await settle(L, 600);
-for (const id of ['nt-w-ewarn', 'nt-w-ebrief']) { await L.p.click('#' + id); await settle(L, 1000); }
+for (const id of ['em-w-warn', 'em-w-brief']) { await L.p.click('#' + id); await settle(L, 1000); }
 await shot(L, '14b-notifications');
+await L.p.click('#sheet .sheet-head .back'); await settle(L, 600);
 const wxm = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').notify?.email;
 ok(wxm?.warn === true && wxm?.brief === true, 'Weather\'s warnings and briefing by email: kept with Weather\'s own choices', JSON.stringify(wxm));
 await ntBack();

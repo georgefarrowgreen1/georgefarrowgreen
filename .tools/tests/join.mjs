@@ -145,7 +145,7 @@ export async function inflightSettings(page, sub = null) {
 }
 // Chat's notifications, as its menu's Notifications row opens them: the account's Notifications page, at Chat's folder
 // (a window of its own, signed in there by the code Chat hands over): its switches #nt-c-<kind> (landed, takeoff,
-// names…), #nt-c-email. → that window
+// names…), and a link to the Emails page (#em-c-<kind>). → that window
 export async function notifyFolder(page) {
   await page.click('.chead .ifh-me'); await page.waitForSelector('.ifm-pop.open');
   const [w] = await Promise.all([page.context().waitForEvent('page'), page.click('.ifm-pop [data-k=notify]')]);

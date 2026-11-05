@@ -855,6 +855,13 @@ a.btn { text-decoration: none; }
 .app-head { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 4px 0 2px; }
 .app-head img { width: 76px; height: 76px; border-radius: 18px; margin-bottom: 8px; box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app-head b { font: 700 24px/1.15 var(--font-d); }
+/* the Emails page's own picture, as an app's would be; its counts beside each app; the lock on those always sent */
+.mail-tile { width: 76px; height: 76px; border-radius: 18px; margin-bottom: 8px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(180deg, #5f9bff, #2a6ae6); box-shadow: 0 14px 30px -12px rgba(42, 106, 230, 0.7), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.app-k .n { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.val.lock { color: var(--text-3); display: grid; }
+.confirm-row .pill { flex: none; margin-top: 0; }
+.btn.quiet.all-off { margin-top: 18px; }
 .app-head span { color: var(--text-2); font-size: 15px; }
 /* ---- an app's settings that are the account's (app.js setHead and the rest): its icon and name at the head, each row's
    words under it rather than said below, a choice of two in its row, and the way into the app at the foot ---- */

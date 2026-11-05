@@ -46,7 +46,7 @@ import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet, setChatEmails, EMAIL_KINDS, KIND_SAID } from "../../_notify.js";
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";
 import { repointSession } from "../../_sessions.js";
@@ -274,8 +274,9 @@ async function updateMe({ request, env, waitUntil }) {
     await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
   }
   if (b.notify && typeof b.notify === "object") await savePrefs(D, u.id, b.notify);
+  // (Chat's emails, all at once: every kind on or off, as the account's Emails page keeps them)
   if (b.notifyEmail !== undefined)
-    await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
+    await setChatEmails(D, { ...u, ...(await D.prepare("SELECT notify_email, notify_prefs FROM pg_users WHERE id = ?").bind(u.id).first()) }, Object.fromEntries(EMAIL_KINDS.map((k) => [k, !!b.notifyEmail])));
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
   if (b.risky !== undefined) await D.prepare("UPDATE pg_users SET risky = ? WHERE id = ?").bind(b.risky ? 1 : 0, u.id).run();
   // a rare pigeon: only one whose achievement you've earned (null: back to the usual look)
@@ -1788,20 +1789,28 @@ const unsubPage = (title, msg, form) => new Response(`<!doctype html><html lang=
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
 async function unsubUser(env, request) {
   const q = new URL(request.url).searchParams, id = q.get("u") || "", tok = q.get("t") || "";
-  const u = UUID_RE.test(id) && tok ? await (await db(env)).prepare("SELECT id, unsub FROM pg_users WHERE id = ?").bind(id).first() : null;
+  const u = UUID_RE.test(id) && tok ? await (await db(env)).prepare("SELECT id, unsub, notify_email, notify_prefs FROM pg_users WHERE id = ?").bind(id).first() : null;
   return u && u.unsub && safeEqual(u.unsub, tok) ? u : null;
 }
+// (which kind the email was: its link turns off just those; none named (an older email's link), all of Chat's)
+const unsubKind = (request) => { const k = new URL(request.url).searchParams.get("k"); return EMAIL_KINDS.includes(k) ? k : null; };
+const EMAILS_AT = "on your account page, under Notifications → Emails";
 async function unsubscribeGet({ request, env }) {
-  if (!(await unsubUser(env, request))) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in Chat, under Account → Notifications.");
-  const q = new URL(request.url).search.replace(/"/g, "");
-  return unsubPage("Turn off emails?", "You won’t get emails about Chat any more. Notifications on your phone aren’t affected.",
-    `<form method="post" action="/api/pigeon/unsubscribe${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="/pigeon/">Keep Them On</a>`);
+  if (!(await unsubUser(env, request))) return unsubPage("Link expired", `This link doesn’t work any more. You can choose which emails you get ${EMAILS_AT}.`);
+  const url = new URL(request.url), k = unsubKind(request), q = url.search.replace(/"/g, ""), all = new URLSearchParams(url.search);
+  all.delete("k");
+  return k
+    ? unsubPage(`Turn off ${KIND_SAID[k]} emails?`, `You won’t get emails about ${k === "weekly" ? "your week in flight" : `${KIND_SAID[k]}s`} any more. Chat’s other emails, and notifications on your phone, aren’t affected.`,
+      `<form method="post" action="/api/pigeon/unsubscribe${q}"><button class="btn">Turn Off These Emails</button></form><form method="post" action="/api/pigeon/unsubscribe?${all.toString().replace(/"/g, "")}"><button class="btn plain">Turn Off All Chat Emails</button></form>`)
+    : unsubPage("Turn off emails?", "You won’t get emails about Chat any more. Notifications on your phone aren’t affected.",
+      `<form method="post" action="/api/pigeon/unsubscribe${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="/pigeon/">Keep Them On</a>`);
 }
 async function unsubscribePost({ request, env }) {
   const u = await unsubUser(env, request);
-  if (!u) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in Chat, under Account → Notifications.");
-  await (await db(env)).prepare("UPDATE pg_users SET notify_email = 0 WHERE id = ?").bind(u.id).run();
-  return unsubPage("Emails turned off", "Chat won’t email you any more. You can turn them back on any time in Account → Notifications.");
+  if (!u) return unsubPage("Link expired", `This link doesn’t work any more. You can choose which emails you get ${EMAILS_AT}.`);
+  const k = unsubKind(request);
+  await setChatEmails(await db(env), u, k ? { [k]: false } : Object.fromEntries(EMAIL_KINDS.map((x) => [x, false])));
+  return unsubPage("Emails turned off", `${k ? `Chat won’t email you about ${k === "weekly" ? "your week in flight" : `${KIND_SAID[k]}s`} any more.` : "Chat won’t email you any more."} You can turn them back on any time ${EMAILS_AT}.`);
 }
 
 const ROUTES = {

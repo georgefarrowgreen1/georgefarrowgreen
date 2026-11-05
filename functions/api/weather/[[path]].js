@@ -88,7 +88,10 @@ async function offUser(env, request) {
   const u = UUID_RE.test(id) && tok ? await (await db(env)).prepare("SELECT id, unsub FROM pg_users WHERE id = ?").bind(id).first() : null;
   return u && u.unsub && safeEqual(u.unsub, tok) ? u : null;
 }
-const OFF_GONE = "This link doesn’t work any more. You can turn Weather’s emails off in its Settings, under Notifications.";
+const OFF_GONE = "This link doesn’t work any more. You can choose which emails you get on your account page, under Notifications → Emails.";
+// (which kind the email was: warnings or the briefing, its link turning off just those; none named, both)
+const OFF_SAID = { warn: "warning", brief: "morning briefing" };
+const offKind = (request) => { const k = new URL(request.url).searchParams.get("k"); return Object.hasOwn(OFF_SAID, k || "") ? k : null; };
 const ROUTES = {
   "GET where": ({ request }) => where(request),
   "GET obs": async ({ request, env }) => {
@@ -113,16 +116,22 @@ const ROUTES = {
   "GET email-off": async ({ request, env }) => {
     await pace(env, `wxoff:${clientIp(request)}`, 60, HOUR);
     if (!(await offUser(env, request))) return offPage(request, env, "Link expired", OFF_GONE);
-    const q = new URL(request.url).search.replace(/"/g, "");
-    return offPage(request, env, "Turn off Weather’s emails?", "You won’t get warnings or the morning briefing by email. Notifications on your phone aren’t affected.",
-      `<form method="post" action="/api/weather/email-off${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="${isWeather(new URL(request.url), env) ? "/" : "/weather/"}">Keep Them On</a>`);
+    const url = new URL(request.url), k = offKind(request), q = url.search.replace(/"/g, ""), all = new URLSearchParams(url.search);
+    all.delete("k");
+    const back = `<a class="btn plain" href="${isWeather(url, env) ? "/" : "/weather/"}">Keep Them On</a>`;
+    return k
+      ? offPage(request, env, `Turn off ${OFF_SAID[k]} emails?`, `You won’t get ${OFF_SAID[k]}s by email any more. Weather’s other emails, and notifications on your phone, aren’t affected.`,
+        `<form method="post" action="/api/weather/email-off${q}"><button class="btn">Turn Off These Emails</button></form><form method="post" action="/api/weather/email-off?${all.toString().replace(/"/g, "")}"><button class="btn plain">Turn Off All Weather Emails</button></form>`)
+      : offPage(request, env, "Turn off Weather’s emails?", "You won’t get warnings or the morning briefing by email. Notifications on your phone aren’t affected.",
+        `<form method="post" action="/api/weather/email-off${q}"><button class="btn">Turn Off Emails</button></form>${back}`);
   },
   "POST email-off": async ({ request, env }) => {
     await pace(env, `wxoff:${clientIp(request)}`, 60, HOUR);
     const u = await offUser(env, request);
     if (!u) return offPage(request, env, "Link expired", OFF_GONE);
-    await setMail(env, u.id, { warn: false, brief: false });
-    return offPage(request, env, "Emails turned off", "Weather won’t email you any more. You can turn them back on any time in its Settings, under Notifications.");
+    const k = offKind(request);
+    await setMail(env, u.id, k ? { [k]: false } : { warn: false, brief: false });
+    return offPage(request, env, "Emails turned off", `${k ? `Weather won’t email you ${OFF_SAID[k]}s any more.` : "Weather won’t email you any more."} You can turn them back on any time on your account page, under Notifications → Emails.`);
   },
   // (the account's only at Weather's own address: not the site's, nor a preview's)
   ...Object.fromEntries(Object.entries(ACCOUNT_ROUTES).map(([k, fn]) => [k, (ctx) => (isWeather(new URL(ctx.request.url), ctx.env) ? fn(ctx) : json({ error: "Not found." }, 404))])),

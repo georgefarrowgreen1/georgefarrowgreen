@@ -49,7 +49,7 @@ test("GET today/notify: the account page's own settings, exactly", async () => {
   assert.deepEqual(r.j, page.j, "the same as the account page's");
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = 'ann'").first();
   assert.deepEqual(r.j, JSON.parse(JSON.stringify(await notifySettings(env, u))));
-  assert.deepEqual(Object.keys(r.j).sort(), ["chat", "emailOk", "fitness", "mail", "markets", "quiet", "today", "weather"]);
+  assert.deepEqual(Object.keys(r.j).sort(), ["account", "chat", "emailOk", "fitness", "mail", "markets", "quiet", "today", "weather"]);
   assert.deepEqual(await notifyGet(env, u), await notifySettings(env, u));
 });
 

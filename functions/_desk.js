@@ -135,13 +135,15 @@ export async function tellFixed(env, code, t = Date.now()) {
   try {
     const D = await bugsTable(env);
     await D.prepare("CREATE TABLE IF NOT EXISTS desk_told (code TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (code, user_id))").run();
-    const { results } = await D.prepare(`SELECT b.user_id, MIN(b.at) AS first, MAX(b.app) AS app, MAX(b.version) AS version, u.name, u.handle, u.email, u.email_ok, u.delete_at
+    const { results } = await D.prepare(`SELECT b.user_id, MIN(b.at) AS first, MAX(b.app) AS app, MAX(b.version) AS version, u.name, u.handle, u.email, u.email_ok, u.delete_at, u.notify_prefs
       FROM pg_bugs b JOIN pg_users u ON u.id = b.user_id WHERE b.code = ?1 AND b.user_id IS NOT NULL AND b.at > ?2
         AND NOT EXISTS (SELECT 1 FROM desk_told d WHERE d.code = b.code AND d.user_id = b.user_id) GROUP BY b.user_id LIMIT 50`).bind(code, t - 60 * DAY).all();
     if (!results.length) return 0;
     const { accountMail } = await import("./_account.js"), page = `https://${env.STATUS_HOST || `status.${appsSite(env)}`}/#${code}`;
     for (const r of results) {
-      if (!r.email || !r.email_ok || r.delete_at) continue;
+      // (only where it's wanted: the account's Emails page has it, on unless turned off)
+      let off = false; try { off = JSON.parse(r.notify_prefs || "{}")?.eFixed === false; } catch (_) {}
+      if (!r.email || !r.email_ok || r.delete_at || off) continue;
       if (!(await D.prepare("INSERT OR IGNORE INTO desk_told (code, user_id, at) VALUES (?, ?, ?)").bind(code, r.user_id, t).run()).meta?.changes) continue;
       const app = APP_NAMES[r.app] || "The site";
       const sent = await accountMail(env, { id: r.user_id, name: r.name, handle: r.handle, email: r.email, email_ok: r.email_ok }, {

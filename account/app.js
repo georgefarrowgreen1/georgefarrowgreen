@@ -1110,8 +1110,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.95";
-const NEWS = "Emails about your account have a “This wasn’t me” button: one tap signs out every device and sends you a reset link. A changed email can be undone from the old address for 7 days";
+const BUILD = "1.96";
+const NEWS = "Emails: one page lists every email the apps can send you, with a switch for each kind, under Notifications. Each email’s link turns off just its kind";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1262,7 +1262,7 @@ const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 const OPENS = { profile: () => profileView, inflight: () => inflightView, fitness: () => fitnessSetView, weather: () => weatherSetView,
   // (an app's Notifications row: its folder, or the whole page)
   notify: () => notifyView, "notify-inflight": () => chatNotifyView, "notify-weather": () => weatherNotifyView, "notify-fitness": () => fitnessNotifyView, "notify-markets": () => marketsNotifyView, "notify-mail": () => mailNotifyView,
-  "notify-today": () => todayNotifyView };
+  "notify-today": () => todayNotifyView, emails: () => emailsView };
 const opens = () => (SIGNIN_PAGE ? null : OPENS[HANDOFF?.open]?.() || null);
 // back to the app: this window closed where Chat opened it, else the app opened here (the home page in this
 // page's place, so Back from it doesn't come here again; hash: what it's to open at, where it's opened here)
@@ -1337,6 +1337,7 @@ const ICONS = {
   laptop: '<rect x="4.5" y="5" width="15" height="10.5" rx="1.8"/><path d="M2.5 18.5h19"/>',
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.6"/><path d="M11 18.5h2"/>',
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
   watch: '<rect x="7" y="3.5" width="10" height="17" rx="3"/><path d="M10 7.5h4M10 16.5h4"/>',
@@ -4372,7 +4373,7 @@ const failed = (text, drop) => h("div.group", {}, h("div.empty", { text }),
 // thing an app does itself (a phone asks each app for itself): a folder says how many devices it's on, and opens the
 // app to turn it on where it isn't ----
 let NT = null, ntFor = null, ntAt = 0, ntSeq = 0, ntPlace = null, MAILN = null;
-const ntViews = () => [notifyView, todayNotifyView, chatNotifyView, weatherNotifyView, wxPlaceView, wxBriefView, fitnessNotifyView, marketsNotifyView, mailNotifyView];
+const ntViews = () => [notifyView, todayNotifyView, chatNotifyView, weatherNotifyView, wxPlaceView, wxBriefView, fitnessNotifyView, marketsNotifyView, mailNotifyView, emailsView];
 const onNt = () => ntViews().includes(Sheet.stack.at(-1));
 const tzHere = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 // (what was last fetched, at once, and fetched again behind it; another account's never shown)
@@ -4417,7 +4418,8 @@ const ntSwitch = (id, on, patch, disabled = false) => {
 const pickRow = (title, sel, said) => h("label.row.plain.info.pick", {}, h("span.tx", {}, h("b", { text: title })), h("span.val", { text: said }), icon("chev", 16, 2.4), sel);
 const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 const QUARTERS = Array.from({ length: 96 }, (_, i) => hhmm(i * 15));
-const appImg = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
+// (the account's own: its icon, beside the apps')
+const appImg = (id) => (id === "mail" ? MAIL_ICON : id === "account" ? "/icon.svg" : `/apps/${id}.png`);
 const appRow = (id, title, sub, onclick) => h("button.row.app-row", { type: "button", onclick, "data-k": title },
   h("img.ic-img", { src: appImg(id), alt: "" }), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), h("span.chev", {}, icon("chev", 16, 2.4)));
 // (a folder's head: the app, and how many devices it can tell you on; none, the way to turn it on there)
@@ -4470,7 +4472,65 @@ function notifyView() {
       NT.markets && appRow("markets", "Markets", mkNotifySaid(NT.markets), () => pushSheet(marketsNotifyView)),
       // (Mail's asked afresh each time it's opened, where it couldn't answer before)
       NT.mail && appRow("mail", "Mail", "New mail, for each of your addresses", () => { if (MAILN?.error) MAILN = null; pushSheet(mailNotifyView); })),
-    h("p.hint", { text: "Sign-in and security emails always come." })] };
+    h("h4.app-k", { text: "By email" }),
+    h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Emails", value: emailsSaid(), onclick: () => pushSheet(emailsView) })),
+    h("p.hint", { text: "Which emails each app sends you, in one list. Sign-in and security emails always come." })] };
+}
+// ---- Emails: every email the apps can send you, in one list. Those that always come, and why; each app's, a switch
+// for each kind (Chat's four, Weather's two, the account's word that a problem you reported is fixed); the apps that
+// only tell your phone; all of them off, or back on, at once. Until the email's confirmed, the switches wait, and the
+// confirm link's a tap away. (The apps' footers link here: #open=emails) ----
+const emailList = () => {
+  const c = NT.chat?.emails || {}, w = NT.weather?.email || {}, a = NT.account || {}, pigeons = NT.chat?.pigeons !== false;
+  return [["chat", "messages", c.messages], ["chat", "landed", c.landed], ["chat", "requests", c.requests], ...(pigeons ? [["chat", "weekly", c.weekly]] : []),
+    ["weather", "warn", w.warn], ["weather", "brief", w.brief], ["account", "fixed", a.fixed !== false]];
+};
+function emailsSaid(app) {
+  if (!NT?.emailOk) return "Confirm your email first";
+  const l = emailList().filter(([x]) => !app || x === app);
+  return `${l.filter(([, , on]) => on).length} of ${l.length} on`;
+}
+function emailsView() {
+  const w = ntWait("Emails"); if (w) return w;
+  const ok = !!NT.emailOk, C = NT.chat, W = NT.weather, off = C.pigeons === false, m = S.me;
+  const sw = (id, title, sub, on, patch) => switchRow({ title, sub, input: ntSwitch(id, ok && on, patch, !ok) });
+  const always = (title, sub) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })), h("span.val.lock", {}, icon("lock", 16, 2.2)));
+  const phoneOnly = (id, name) => h("div.row.plain.info.app-row", {}, h("img.ic-img", { src: appImg(id), alt: "" }), h("span.tx", {}, h("b", { text: name })), h("span.val", { text: "No emails" }));
+  const count = (app) => ok ? h("span.n", { text: emailsSaid(app).replace(" on", "") }) : null;
+  const head = (id, name, app) => h("h4.app-k", {}, h("img", { src: appImg(id), alt: "" }), name, count(app));
+  const warned = W.places.filter((p) => p.warn).map((p) => p.name);
+  const all = emailList(), anyOn = all.some(([, , on]) => on);
+  const flip = (v) => ({ chat: { emails: Object.fromEntries(["messages", "landed", "requests", ...(off ? [] : ["weekly"])].map((k) => [k, v])) }, weather: { email: { warn: v, brief: v } }, account: { fixed: v } });
+  const send = h("button.pill", { type: "button", onclick: async (e) => {
+    try { confirmSent(await busy(e.currentTarget, "Sending…", () => post("email/confirm-send"))); toast(`A link is on its way to ${m.email}.`); } catch (err) { toast(err.message, true); }
+  } }, "Send Link");
+  return { title: "Emails", body: [
+    h("div.app-head.set", {}, h("span.mail-tile", {}, icon("mail", 38, 1.9)), h("b", { text: "Emails" }), h("span", { text: `To ${m.email}` })),
+    !ok && h("div.group", {}, h("div.row.plain.info.confirm-row", {}, h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "Emails from the apps start once you have." })), send)),
+    h("h4.app-k", { text: "Always sent" }),
+    h("div.group", {},
+      always("A sign-in from a new device", "With “This wasn’t me”, in case it wasn’t"),
+      always("Password, passkey and email changes", "And a link to reset a forgotten password"),
+      always("Deleting your account", "Reminders before, and a note once it’s done")),
+    h("p.hint", { text: "These can’t be turned off, so you’d always know if someone else got into your account." }),
+    head("inflight", "Chat", "chat"),
+    h("div.group", {},
+      sw("em-c-messages", "New messages", "Still unread after 10 minutes", C.emails.messages, (v) => ({ chat: { emails: { messages: v } } })),
+      sw("em-c-landed", off ? "A letter lands" : "A pigeon lands", "Still unread after 10 minutes", C.emails.landed, (v) => ({ chat: { emails: { landed: v } } })),
+      sw("em-c-requests", "Friend requests", "When someone asks to be friends", C.emails.requests, (v) => ({ chat: { emails: { requests: v } } })),
+      !off && sw("em-c-weekly", "Your week in flight", "Sunday evening: miles, pigeons, badges", C.emails.weekly, (v) => ({ chat: { emails: { weekly: v } } }))),
+    h("p.hint", { text: "At most one email every half hour, and none during Quiet Hours." }),
+    head("weather", "Weather", "weather"),
+    h("div.group", {},
+      sw("em-w-warn", "Official warnings", warned.length ? `For ${and2(warned)}, as they’re issued` : "Turn warnings on for a place to get these", W.email.warn, (v) => ({ weather: { email: { warn: v } } })),
+      sw("em-w-brief", "Morning briefing", W.brief ? `${W.briefAt} · ${W.brief.name}` : "Turn the briefing on in Weather’s notifications", W.email.brief, (v) => ({ weather: { email: { brief: v } } }))),
+    head("account", "Account", "account"),
+    h("div.group", {}, sw("em-a-fixed", "A problem you reported is fixed", "With a link to where it stands", NT.account?.fixed !== false, (v) => ({ account: { fixed: v } }))),
+    h("h4.app-k", { text: "Phone only" }),
+    h("div.group", {}, phoneOnly("today", "Today"), phoneOnly("fitness", "Fitness"), NT.markets && phoneOnly("markets", "Markets"), NT.mail && phoneOnly("mail", "Mail")),
+    h("p.hint", { text: "These only notify your phone. What they tell you is in each app’s Notifications." }),
+    ok && h("button.btn.quiet.all-off", { type: "button", onclick: (e) => ntChange(e.currentTarget, flip(!anyOn)) }, anyOn ? "Turn Off All of These" : "Turn All of These Back On"),
+    h("p.hint.center", { text: "Every email also has a link at the bottom to turn its kind off." })] };
 }
 // InFlite Today: its morning notification, on or off, and when (for every device it's on); what's in it is chosen in
 // Today itself, with a look at how it will read (functions/_todayapp.js)
@@ -4510,7 +4570,7 @@ function chatNotifyView() {
     h("div.group", {}, switchRow({ title: "Names on the Lock Screen", sub: c.names ? "Who sent it, never what it says" : off ? "Just “Sent you a message”" : "Just “Sent you a message” or “A pigeon has landed”",
       input: ntSwitch("nt-c-names", c.names, (v) => ({ chat: { names: v } })) })),
     h("h4.app-k", { text: "Emails" }),
-    h("div.group", {}, switchRow({ title: "Email Me Too", sub: NT.emailOk ? "What’s still unread after 10 minutes" : "Confirm your email first", input: ntSwitch("nt-c-email", c.email, (v) => ({ chat: { email: v } }), !NT.emailOk) })),
+    h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Emails", value: emailsSaid("chat"), onclick: () => pushSheet(emailsView) })),
     c.on > 0 && h("div.group", {}, test)] };
 }
 // Weather: each place's warnings and rain, the morning briefing, the sun on your panels, and its emails
@@ -4530,9 +4590,7 @@ function weatherNotifyView() {
       W.solar && switchRow({ icon: "sun", tint: "amber", title: "Your Panels", sub: "When the sun comes out on them", input: ntSwitch("nt-w-solar", W.solar.alert, (v) => ({ weather: { solar: v } })) })),
     todayInstead() && h("p.hint", { text: "Today’s morning notification comes instead of this on your devices; the briefing email still comes, if it’s on." }),
     h("h4.app-k", { text: "Emails" }),
-    h("div.group", {},
-      switchRow({ title: "Warnings by Email", sub: NT.emailOk ? "For the places with warnings on" : "Confirm your email first", input: ntSwitch("nt-w-ewarn", W.email.warn, (v) => ({ weather: { email: { warn: v } } }), !NT.emailOk) }),
-      switchRow({ title: "Briefing by Email", sub: NT.emailOk ? "At its time, for its place" : "Confirm your email first", input: ntSwitch("nt-w-ebrief", W.email.brief, (v) => ({ weather: { email: { brief: v } } }), !NT.emailOk) }))] };
+    h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Emails", value: emailsSaid("weather"), onclick: () => pushSheet(emailsView) }))] };
 }
 // (one place: its warnings, its rain)
 function wxPlaceView() {

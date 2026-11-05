@@ -232,14 +232,16 @@ const allowHere = async (x) => {
 const wxFolder = async (x) => {
   await x.p.click('#me-btn'); await x.p.waitForSelector('.ifm-pop.open');
   const [w] = await Promise.all([x.ctx.waitForEvent('page'), x.p.click('.ifm-pop [data-k=notify]')]);
-  await w.waitForSelector('#sheet[open] #nt-w-ewarn', { timeout: 20000 }); await w.waitForTimeout(600);
+  await w.waitForSelector('#sheet[open] .row[data-k="Emails"]', { timeout: 20000 }); await w.waitForTimeout(600);
   return w;
 };
 const placeIn = async (w, name, id) => {
   await w.click(`#sheet .row[data-k="${name}"]`); await w.waitForSelector(`#sheet #${id}`); await w.waitForTimeout(400);
   await w.click(`#${id}`); await w.waitForTimeout(1000);
-  await w.click('#sheet .sheet-head .back'); await w.waitForSelector('#sheet #nt-w-ewarn'); await w.waitForTimeout(500);
+  await w.click('#sheet .sheet-head .back'); await w.waitForSelector('#sheet .row[data-k="Emails"]'); await w.waitForTimeout(500);
 };
+// (the account's Emails page, from the Weather folder: its two switches)
+const emailsPage = async (w) => { await w.click('#sheet .row[data-k="Emails"]'); await w.waitForSelector('#sheet #em-w-warn'); await w.waitForTimeout(500); };
 await allowHere(P);
 await waitFor(() => devs().length === 1, 15000);
 const menuSays = async (x) => { await x.p.click('#me-btn'); await x.p.waitForSelector('.ifm-pop.open'); await x.p.waitForTimeout(500); const t = await x.p.textContent('.ifm-pop [data-k=notify] .ifm-val'); await x.p.keyboard.press('Escape'); await x.p.waitForSelector('.ifm-layer', { state: 'detached' }); return t; };
@@ -502,8 +504,9 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   await W.click('#sheet .row:has(b:text-is("Morning Briefing"))'); await W.waitForSelector('#sheet #nt-b-on'); await W.waitForTimeout(400);
   await W.click('#nt-b-on'); await W.waitForTimeout(1000);
   await W.selectOption('#nt-b-place', { label: 'Edinburgh' }); await W.waitForTimeout(1000);
-  await W.click('#sheet .sheet-head .back'); await W.waitForSelector('#sheet #nt-w-ewarn'); await W.waitForTimeout(500);
-  for (const id of ['nt-w-ewarn', 'nt-w-ebrief']) { await W.click('#' + id); await W.waitForTimeout(1000); }
+  await W.click('#sheet .sheet-head .back'); await W.waitForSelector('#sheet .row[data-k="Emails"]'); await W.waitForTimeout(500);
+  await emailsPage(W);
+  for (const id of ['em-w-warn', 'em-w-brief']) { await W.click('#' + id); await W.waitForTimeout(1000); }
   await waitFor(() => rows(`SELECT COUNT(*) AS n FROM wx_subs WHERE dev = '${mailDev}'`)[0]?.n === 2);
   const mailSubs = rows(`SELECT name, rain, warn, brief FROM wx_subs WHERE dev = '${mailDev}' ORDER BY name`);
   ok(JSON.stringify(mailSubs) === JSON.stringify([{ name: 'Edinburgh', rain: 0, warn: 0, brief: 1 }, { name: 'London', rain: 0, warn: 1, brief: 0 }]) && kept('sam')?.notify.email?.warn === true,
@@ -515,23 +518,26 @@ const again = (...a) => call(...a).catch((e) => { if (e.code !== 'ECONNRESET') t
   sql(`UPDATE wx_subs SET tz_off = 0, told = '{}' WHERE dev = '${mailDev}' AND warn = 1`);
   const before = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).length;
   const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', agent: false, headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
-  const mails = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).slice(before).map((l) => JSON.parse(l).body).filter((m) => /^Weather </.test(m.from));
+  const mails = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).slice(before).map((l) => JSON.parse(l).body).filter((m) => /^InFlite Weather </.test(m.from));
   const brief = mails.find((m) => /^Edinburgh: .+ · \d+°$/.test(m.subject)), warn = mails.find((m) => /^Amber thunderstorm warning: London/.test(m.subject));
   if (at.getUTCDate() === new Date().getUTCDate()) ok(brief && brief.to === 'sam@example.com' && /mail\/wx-[a-z-]+\.png/.test(brief.html) && /Morning:/.test(brief.text), 'the tick: the briefing by email, from Weather, with the day in three', `${JSON.stringify(tick)} ${mails.map((m) => m.subject)}`);
   else console.log('(just after midnight: the briefing waits for its day)');
   ok(warn && /mail\/weather-warn-amber\.png/.test(warn.html) && /Thunderstorms could bring flooding/.test(warn.text), 'and London\'s warning, in its own colour', mails.map((m) => m.subject).join(' | '));
-  const link = /(\/api\/weather\/email-off\?u=[^&"]+&(?:amp;)?t=[A-Za-z0-9_-]+)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&') || '';
+  const link = /(\/api\/weather\/email-off\?u=[^&"]+&(?:amp;)?t=[A-Za-z0-9_-]+&(?:amp;)?k=warn)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&') || '';
   ok(link && warn.headers?.['List-Unsubscribe']?.includes(link) && warn.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'each with a link to turn them off, and the mail app\'s own Unsubscribe', link);
   // the link: GET shows a button and changes nothing; POST turns them off (as a mail app's one-click does)
   // (each on a connection of its own: one kept open since may have been closed by the server meanwhile)
   const hit = (method, path = link) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.ifl.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
   const g = await hit('GET');
-  ok(g.status === 200 && /Turn off Weather’s emails\?/.test(g.body) && /<form method="post"/.test(g.body) && kept('sam')?.notify.email?.warn === true, 'the link: a button first, nothing turned off yet', String(g.status));
+  ok(g.status === 200 && /Turn off warning emails\?/.test(g.body) && /Turn Off All Weather Emails/.test(g.body) && /<form method="post"/.test(g.body) && kept('sam')?.notify.email?.warn === true, 'the link: a button first (just warnings, or all of Weather’s), nothing turned off yet', String(g.status));
   const pst = await hit('POST');
-  ok(pst.status === 200 && /Emails turned off/.test(pst.body) && kept('sam')?.notify.email?.warn === false && !rows(`SELECT dev FROM wx_devs WHERE dev = '${mailDev}'`).length, 'pressed: turned off, kept so, and the email no longer sent to', JSON.stringify(kept('sam')?.notify.email));
-  ok(/Link expired/.test((await hit('POST', link.replace(/t=[^&]+$/, 't=wrong'))).body), 'a wrong link turns nothing off');
-  { const W = await wxFolder(P);
-    ok(!(await W.isChecked('#nt-w-ewarn')) && !(await W.isChecked('#nt-w-ebrief')), 'and the account\'s Weather folder shows them off', '');
+  ok(pst.status === 200 && /Emails turned off/.test(pst.body) && kept('sam')?.notify.email?.warn === false && kept('sam')?.notify.email?.brief === true,
+    'pressed: just warnings turned off, the briefing’s still on', String(pst.status));
+  const allOff = await hit('POST', link.replace(/&k=warn$/, ''));
+  ok(allOff.status === 200 && kept('sam')?.notify.email?.brief === false && !rows(`SELECT dev FROM wx_devs WHERE dev = '${mailDev}'`).length, 'the link without a kind: all of Weather’s off, and the email no longer sent to', String(allOff.status));
+  ok(/Link expired/.test((await hit('POST', link.replace(/t=[^&]+/, 't=wrong'))).body), 'a wrong link turns nothing off');
+  { const W = await wxFolder(P); await emailsPage(W);
+    ok(!(await W.isChecked('#em-w-warn')) && !(await W.isChecked('#em-w-brief')), 'and the account\'s Emails page shows them off', '');
     await W.close(); }
 }
 

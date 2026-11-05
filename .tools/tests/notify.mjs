@@ -206,7 +206,8 @@ if (regs) {
 
 // ---- email: Mira turns it on; a pigeon waits unread; she gets one email ----
 await M.p.click('.chatnav .back'); const MW = await notifyFolder(M.p);
-ok(await MW.isDisabled('#nt-c-email') && /Confirm your email first/.test(await MW.locator('#sheet').innerText()), 'until she confirms her address, Email Me Too waits for it');
+await MW.click('#sheet .row[data-k="Emails"]'); await MW.waitForSelector('#sheet #em-c-messages'); await MW.waitForTimeout(400);
+ok(await MW.isDisabled('#em-c-messages') && /Confirm your email/.test(await MW.locator('#sheet').innerText()) && !!(await MW.$('#sheet .confirm-row .pill')), 'until she confirms her address, the Emails page’s switches wait for it, with the link a tap away');
 await MW.close();
 // (on, as an account from before could have it, to show nothing goes to an address not confirmed)
 sql("UPDATE pg_users SET notify_email = 1 WHERE handle = 'mira'");
@@ -241,10 +242,12 @@ ok(em.headers?.['List-Unsubscribe'] === `<${unsub}>` && em.headers?.['List-Unsub
 r = await tick(); ok(r.emails === 0, 'no second email within half an hour');
 // unsubscribe: GET only shows a button; POST turns it off
 const ug = await fetch(unsub); const ugt = await ug.text();
-ok(ug.status === 200 && /Turn Off Emails/.test(ugt) && sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 1'), 'unsubscribe link asks first (mail scanners can’t unsubscribe you)');
+ok(ug.status === 200 && /Turn off pigeon emails\?/.test(ugt) && /Turn Off All Chat Emails/.test(ugt) && sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 1'), 'unsubscribe link asks first (mail scanners can’t unsubscribe you): just these, or all of Chat’s');
 ok((await (await fetch(unsub.replace(/t=[^&]+/, 't=wrong'), { method: 'POST' })).text()).includes('doesn’t work'), 'a forged unsubscribe link does nothing');
 await fetch(unsub, { method: 'POST' });
-ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 0'), 'one-click unsubscribe turns email off');
+ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 1') && /"eLanded":false/.test(sql("SELECT notify_prefs FROM pg_users WHERE handle = 'mira'").replace(/\\/g, '')), 'one-click unsubscribe turns off just that kind (pigeons landing)');
+await fetch(unsub.replace(/&k=[a-z]+$/, ''), { method: 'POST' });
+ok(sql("SELECT notify_email FROM pg_users WHERE handle = 'mira'").includes('"notify_email": 0'), 'and without a kind, all of Chat’s emails off');
 
 // ---- devices that go away stop getting pushes ----
 await fetch('http://127.0.0.1:8798/mode', { method: 'POST', body: '410' });

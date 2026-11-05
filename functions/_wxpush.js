@@ -35,7 +35,7 @@
 
 import { pushEndpointOk, pushToSub as pushOne, vapid, unsubToken, prefsOf, isQuiet as quietNow } from "./_notify.js";
 import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
-import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
+import { emailBody, emailReady, sendEmail, SITE, accountLink } from "./_email.js";
 import { WEATHER_HOST } from "./_wxapp.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf, parseWall, dayStart } from "../weather/format.js";
@@ -666,10 +666,12 @@ async function mailOut(env, D, s, t, origin, m) {
   if (!u.email || !u.email_ok || u.delete_at) return "skip";
   if (!(await spend(env, D, t, m.kind))) return "held";
   const app = origin === SITE ? `https://${WEATHER_HOST}` : `${origin}/weather`, api = origin === SITE ? `https://${WEATHER_HOST}/api/weather` : `${origin}/api/weather`;
-  const unsub = `${api}/email-off?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
+  // (its kind's own way off: warnings or the briefing)
+  const unsub = `${api}/email-off?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}&k=${m.kind === "warn" ? "warn" : "brief"}`;
   const url = `${app}/?lat=${s.lat}&lon=${s.lon}&name=${encodeURIComponent(s.name || "")}`;
   // (no address under the button: it only opens Weather; a briefing's picture small, so its rain sits higher)
-  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, fallback: false, compact: m.kind === "brief", button: { label: m.kind === "warn" ? "See it in Weather" : "See the latest", url } });
+  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, fallback: false, compact: m.kind === "brief", button: { label: m.kind === "warn" ? "See it in Weather" : "See the latest", url },
+    more: { label: "Choose which emails", url: `${accountLink(origin)}/#from=weather&open=emails` } });
   try {
     await sendEmail(env, { brand: "weather", to: u.email, subject: m.subject, text, html, headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
     return "sent";

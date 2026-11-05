@@ -167,3 +167,49 @@ test('someone who reported a bug while signed in is told once when it’s marked
   await codeState(env, { code: 'IF-T-RMS1H', state: 'fixed' });
   assert.equal(sent.length, 1, 'once');
 });
+
+// ---- the Emails page: each kind of Chat's emails its own, kept as the page sends them; its link turns off just its kind ----
+const { onRequest: pigeonApi } = await import('../../../functions/api/pigeon/[[path]].js');
+const { chatEmails, unsubToken } = await import('../../../functions/_notify.js');
+async function signedInHere(u) {
+  const site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hex(await sha256(await issueSession(env, u.id, req('/api/account/me'))))).run();
+  return `account=${site}`;
+}
+async function patchNotify(cookie, data) {
+  const request = new Request(`${ACCT}/api/account/notify`, { method: 'PATCH', headers: { Origin: ACCT, 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(data) });
+  const res = await accountApi({ request, env, params: { path: ['notify'] }, waitUntil: () => {} });
+  return { s: res.status, j: await res.json() };
+}
+const row = (id) => D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(id).first();
+
+test('the Emails page: each of Chat’s emails its own switch, Chat’s emails on while any is; the fixed-report email too', async () => {
+  const u = await account('tam'), cookie = await signedInHere(u);
+  assert.deepEqual(chatEmails(await row(u.id)), { messages: false, landed: false, requests: false, weekly: false }, 'Chat’s emails off: none of them');
+  let r = await patchNotify(cookie, { chat: { emails: { requests: true } } });
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.deepEqual(r.j.chat.emails, { messages: false, landed: false, requests: true, weekly: false }, 'turned on from off: just that one');
+  assert.equal((await row(u.id)).notify_email, 1);
+  r = await patchNotify(cookie, { chat: { email: true } });
+  assert.deepEqual(r.j.chat.emails, { messages: true, landed: true, requests: true, weekly: true }, 'all at once, as Chat’s own switch does it');
+  r = await patchNotify(cookie, { chat: { emails: { messages: false, landed: false, requests: false, weekly: false } } });
+  assert.equal(r.j.chat.email, false, 'every kind off: Chat’s emails off'); assert.equal((await row(u.id)).notify_email, 0);
+  assert.equal((await patchNotify(cookie, { chat: { emails: { nonsense: true } } })).s, 400);
+  assert.equal(r.j.account.fixed, true, 'the fixed-report email: on unless turned off');
+  r = await patchNotify(cookie, { account: { fixed: false } });
+  assert.equal(r.j.account.fixed, false);
+});
+
+test('an email’s link turns off just its kind (a GET only asks); one without a kind, all of Chat’s', async () => {
+  const u = await account('uma'), cookie = await signedInHere(u);
+  await patchNotify(cookie, { chat: { email: true } });
+  const tok = await unsubToken(env, u.id), at = (k) => `http://chat.localhost:8788/api/pigeon/unsubscribe?u=${u.id}&t=${tok}${k ? `&k=${k}` : ''}`;
+  const hit = (method, url) => pigeonApi({ request: new Request(url, { method }), env, params: { path: ['unsubscribe'] }, waitUntil: () => {} });
+  const ask = await (await hit('GET', at('weekly'))).text();
+  assert.match(ask, /Turn off week in flight emails\?/); assert.match(ask, /Turn Off All Chat Emails/);
+  assert.equal(chatEmails(await row(u.id)).weekly, true, 'asking changes nothing');
+  assert.match(await (await hit('POST', at('weekly'))).text(), /Notifications → Emails/);
+  assert.deepEqual(chatEmails(await row(u.id)), { messages: true, landed: true, requests: true, weekly: false }, 'just that kind off');
+  await hit('POST', at(null));
+  assert.equal((await row(u.id)).notify_email, 0, 'without a kind: all of Chat’s');
+});

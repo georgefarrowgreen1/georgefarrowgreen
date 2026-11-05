@@ -43,7 +43,7 @@ import { siteOf } from "../../_sites.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { setMail, changeNotify } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
-import { prefsOf, savePrefs, pushTo } from "../../_notify.js";
+import { prefsOf, savePrefs, pushTo, chatEmails, setChatEmails, EMAIL_KINDS } from "../../_notify.js";
 import { morningOf, setMorningFor } from "../../_fitpush.js";
 import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap, holdings as marketHoldings, isaOf, mkdb } from "../../_markets.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
@@ -222,7 +222,10 @@ export async function notifySettings(env, u) {
   return {
     quiet: { on: !!p.quiet, from: p.quietFrom, to: p.quietTo, tz: p.tz },
     emailOk: !!u.email_ok,
-    chat: { on: chatOn, kinds: Object.fromEntries(CHAT_KINDS.map((k) => [k, !!p[k]])), names: !!p.names, email: !!u.notify_email, pigeons: !!u.pigeons },
+    // (Chat's emails: on at all, and each kind (the account's Emails page))
+    chat: { on: chatOn, kinds: Object.fromEntries(CHAT_KINDS.map((k) => [k, !!p[k]])), names: !!p.names, email: !!u.notify_email, emails: chatEmails(u, p), pigeons: !!u.pigeons },
+    // (the account's own that can be turned off: a problem you reported, fixed)
+    account: { fixed: p.eFixed !== false },
     weather: { on: wxOn, places, brief: n.brief ? { name: n.brief.name, lat: n.brief.lat, lon: n.brief.lon } : null, briefAt: n.briefAt || "07:00",
       email: { warn: !!n.email?.warn, brief: !!n.email?.brief }, solar: zones ? { alert: !!solar.alert, zones } : null },
     fitness: { on: fm.phones, morning: fm.on, at: fm.at },
@@ -245,9 +248,15 @@ export async function setNotify(env, u, b) {
     const c = b.chat && typeof b.chat === "object" ? b.chat : {}, set = {};
     for (const k of [...CHAT_KINDS, "names"]) if (c[k] !== undefined) { if (typeof c[k] !== "boolean") throw new HttpError(400, "Choose on or off."); set[k] = c[k]; }
     if (Object.keys(set).length) await savePrefs(D, u.id, set);
+    // (its emails: all at once (email), or each kind (emails: { messages, landed, requests, weekly }))
     if (c.email !== undefined) {
       if (typeof c.email !== "boolean") throw new HttpError(400, "Choose on or off.");
-      await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(c.email ? 1 : 0, Date.now(), u.id).run();
+      await setChatEmails(D, { ...u, ...(await D.prepare("SELECT notify_email, notify_prefs FROM pg_users WHERE id = ?").bind(u.id).first()) }, Object.fromEntries(EMAIL_KINDS.map((k) => [k, c.email])));
+    }
+    if (c.emails !== undefined) {
+      const e = c.emails && typeof c.emails === "object" ? c.emails : null;
+      if (!e || Object.entries(e).some(([k, v]) => !EMAIL_KINDS.includes(k) || typeof v !== "boolean")) throw new HttpError(400, "Choose on or off.");
+      await setChatEmails(D, { ...u, ...(await D.prepare("SELECT notify_email, notify_prefs FROM pg_users WHERE id = ?").bind(u.id).first()) }, e);
     }
   }
   if (b.weather !== undefined) {
@@ -271,6 +280,10 @@ export async function setNotify(env, u, b) {
       if (typeof w.solar === "boolean" && d.settings?.solar) out.settings = { ...d.settings, solar: { ...d.settings.solar, alert: w.solar } };
       return out;
     });
+  }
+  if (b.account !== undefined) {
+    const a = b.account && typeof b.account === "object" ? b.account : {};
+    if (a.fixed !== undefined) { if (typeof a.fixed !== "boolean") throw new HttpError(400, "Choose on or off."); await savePrefs(D, u.id, { eFixed: a.fixed }); }
   }
   if (b.fitness !== undefined) {
     const f = b.fitness && typeof b.fitness === "object" ? b.fitness : {};
