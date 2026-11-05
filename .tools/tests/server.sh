@@ -18,6 +18,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 kill_tree() { for c in $(pgrep -P "$1"); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
 for p in $(pgrep -f "pages dev . --port 8788"); do kill_tree "$p"; done
+for p in $(pgrep -f "dev -c .tools/workers/dist/wrangler.test.json --port 8788"); do kill_tree "$p"; done
 for p in $(pgrep -f "dev -c wrangler.worker.jsonc --port 8788"); do kill_tree "$p"; done
 for p in $(pgrep -f "wrangler dev --port 8790"); do kill_tree "$p"; done
 [ "${1:-fresh}" = stop ] && exit 0
@@ -45,7 +46,13 @@ if [ "${SERVE:-pages}" = worker ]; then
   # where the move off Pages is tried before it's made (.tools/workers/README.md)
   node "$APP_ROOT/.tools/workers/build.mjs" >> "$S/wrangler.log" 2>&1 || { echo "the Worker didn't build" >&2; exit 1; }
   VARS=(); for b in "${BINDS[@]}"; do VARS+=(--var "${b%%=*}:${b#*=}"); done
-  nohup "$HERE/node_modules/.bin/wrangler" dev -c wrangler.worker.jsonc --port 8788 --inspector-port 9231 --show-interactive-dev-session=false --persist-to "$S/wrstate" \
+  # (its config less its addresses: given a domain, wrangler dev answers every request as that address, where the tests
+  # need each one's own host, as on Pages; .tools/workers/dist is the build's own, not kept)
+  node -e '
+    const fs = require("fs"), c = JSON.parse(fs.readFileSync("wrangler.worker.jsonc", "utf8").replace(/^\s*\/\/.*$/gm, ""));
+    delete c.routes; delete c.$schema; c.main = "index.js"; c.assets.directory = "../../..";
+    fs.writeFileSync(".tools/workers/dist/wrangler.test.json", JSON.stringify(c, null, 1));' || { echo "the Worker's test config wasn't made" >&2; exit 1; }
+  nohup "$HERE/node_modules/.bin/wrangler" dev -c .tools/workers/dist/wrangler.test.json --port 8788 --inspector-port 9233 --show-interactive-dev-session=false --persist-to "$S/wrstate" \
     "${VARS[@]}" < /dev/null >> "$S/wrangler.log" 2>&1 &
 else
   nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$S/wrstate" ${DO[@]+"${DO[@]}"} --binding "${BINDS[@]}" >> "$S/wrangler.log" 2>&1 &

@@ -59,7 +59,18 @@ const kids = [];
 // (each in a process group of its own, so stopping it stops what it started)
 const start = (cmd, args, cwd, name) => { const k = spawn(cmd, args, { cwd, detached: true, stdio: ['ignore', log(name), log(name)], env }); kids.push(k); return k; };
 start(process.execPath, [`${HERE}mocks/hostpass.mjs`, `${S}/hostpass.jsonl`, ...Object.entries(PASS).map(([p, h]) => `${p}=${h}`)], HERE, 'hostpass');
-start(wrangler, ['dev', '-c', 'wrangler.toml', '--port', '8787', '--inspector-port', '9231', '--show-interactive-dev-session=false', '--persist-to', `${S}/iflstate`, ...vars(VARS)], IFL, 'ifl');
+// (Today's config less its direct link to Mail's Worker, the service binding MAIL: here Mail's reached through its
+// pass-through, MAIL_VIA, where the tests see what's asked of it, as the link would skip it. A copy beside it, in
+// .wrangler/, which git leaves out; paths as from there)
+{
+  const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
+  const t = readFileSync(`${IFL}/wrangler.toml`, 'utf8')
+    .replace(/^\[\[(?:env\.next\.)?services\]\]\nbinding = "MAIL"\nservice = "inflite-email"\n/gm, '')
+    .replace(/^main = "today\//m, 'main = "../today/').replace(/^directory = "\.\/today\//m, 'directory = "../today/');
+  mkdirSync(`${IFL}/.wrangler`, { recursive: true });
+  writeFileSync(`${IFL}/.wrangler/test.toml`, t);
+}
+start(wrangler, ['dev', '-c', '.wrangler/test.toml', '--port', '8787', '--inspector-port', '9231', '--show-interactive-dev-session=false', '--persist-to', `${S}/iflstate`, ...vars(VARS)], IFL, 'ifl');
 // (--local-upstream: wrangler dev otherwise puts its first route's host in place of the browser's Origin, and the account
 // refuses Mail's hand-back from the frame)
 if (mail) start(wrangler, ['dev', '-c', 'wrangler.jsonc', '--port', '8806', '--inspector-port', '9232', '--show-interactive-dev-session=false', '--local-upstream', 'email.ifl.test:8788', '--persist-to', `${S}/mailstate`,
