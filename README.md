@@ -2337,9 +2337,10 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
   `FITTING_USERS` signs everyone out. Eight wrong passwords from one address wait 15 minutes. Without `FITTING_USERS`
   no one can sign in. Only the sign-in page, its styles, typefaces, logo and icons are open to anyone.
 
-**Sign-in setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables
-and Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
-the hashed lines from the tool) → **Save**, then redeploy (Deployments → … → Retry deployment, or push any commit).
+**Sign-in setup:** Cloudflare dashboard → Workers & Pages → the **`gfg` Worker** → **Settings → Variables and
+Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
+the hashed lines from the tool) → **Deploy**. (The one the Pages project had came across in the move to Workers:
+`functions/_kept.js`; one set on the Worker wins.)
 
 **Google Drive setup (the shop, once, ~15 minutes):** signed in to Google as the shop's account:
 1. [console.cloud.google.com](https://console.cloud.google.com) → project menu → **New project**, e.g. "Pedal
@@ -2351,16 +2352,16 @@ the hashed lines from the tool) → **Save**, then redeploy (Deployments → …
    Google review). Until it's published, Google's window says the app isn't verified: **Continue**.
 4. **Clients → Create client** → type **Web application**, name "Fit Studio", **Authorised JavaScript origins** →
    `https://fitting.georgefarrowgreen.com` → **Create**, and copy the **Client ID** (`….apps.googleusercontent.com`).
-5. Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables and Secrets** →
-   **Add** → type **Text**, name `FITTING_GOOGLE_CLIENT_ID`, value the Client ID → **Save**, then redeploy.
+5. Cloudflare dashboard → Workers & Pages → the **`gfg` Worker** (it serves fitting.georgefarrowgreen.com) →
+   **Settings → Variables and Secrets** → **Add** → type **Secret** (a Text variable there is wiped by the next deploy
+   from `wrangler.gfg.jsonc`), name `FITTING_GOOGLE_CLIENT_ID`, value the Client ID → **Deploy**. Or put it in
+   `wrangler.gfg.jsonc` as `"vars": { "FITTING_GOOGLE_CLIENT_ID": "….apps.googleusercontent.com" }`: it isn't a secret.
 6. On each iPad and the Mac: Fits → **Connect Google Drive** → choose the shop's account → **Allow**.
 
 The fits are then the shop's, in its Google account. A Google Workspace account comes with Google's data processing
 terms; a free Gmail account doesn't, so for a business's client records Workspace is the safer home.
 
-**One-time setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Custom domains** →
-**Set up a custom domain** → `fitting.georgefarrowgreen.com`. Cloudflare adds the DNS record itself when the domain's
-zone is in the same account.
+**Its address:** fitting.georgefarrowgreen.com is a custom domain of the `gfg` Worker (`wrangler.gfg.jsonc` routes).
 
 ## Local preview
 
