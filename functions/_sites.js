@@ -87,3 +87,14 @@ export function cfOf(request) {
 // notify ticks, the ticker Worker): the inflite-apps Worker's workers.dev address, its TICK_HOST
 // (wrangler.worker.jsonc). Only these routes take a tick there, and nowhere without a TICK_HOST.
 export const tickHost = (hostname, env) => !!env?.TICK_HOST && hostname === env.TICK_HOST;
+
+// A request from this Worker to one of InFlite's other Workers, over the direct link between them (a service binding:
+// wrangler.worker.jsonc / wrangler.gfg.jsonc) where there is one, in place of out through the internet and back in:
+// Mail's (email.inflite.ai, MAIL_APP) and Today's (inflite.ai, TODAY_APP). The same request either way, at the same
+// address (each Worker decides what it is by its host); anything else, and anywhere without the link (the tests' stand-
+// ins, a local copy), is a plain fetch.
+export function siteFetch(env, url, init) {
+  const u = new URL(url), host = u.hostname;
+  const link = u.protocol !== "https:" ? null : host === "email." + APPS_SITE ? env?.MAIL_APP : host === APPS_SITE ? env?.TODAY_APP : null;
+  return typeof link?.fetch === "function" ? link.fetch(new Request(u, init)) : fetch(u, init);
+}

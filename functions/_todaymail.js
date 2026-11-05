@@ -7,7 +7,7 @@
 //     env.MAIL_KEY: the key (the Pages secret, the same as Mail's Worker's MAIL_KEY); none, no card and nothing asked
 //     env.MAIL_VIA: where Mail's Worker is reached, in place of its address (the tests' stand-in)
 //     href: Mail's own address (the hub's /mail/ at inflite.ai: IFL.hub.go), and Later's, #later
-import { appOrigin } from "./_sites.js";
+import { appOrigin, siteFetch } from "./_sites.js";
 
 // (Chat's API, for who the site's admin is: asked for when first needed, not imported here, as Chat's API imports Chat's
 // "Send to a friend", which imports Today's cards, which import this: a static import would have it run too early)
@@ -46,7 +46,7 @@ export async function mailCard(env, u, request = null) {
     const admin = await pigeon().then((m) => m.adminOf(env)).catch(() => null);
     if (!admin || admin.id !== u.id || ac.signal.aborted) return null;
     const own = appOrigin("email", env, request);
-    const res = await fetch(`${mailAt(env, request)}/api/connector/card`, {
+    const res = await siteFetch(env, `${mailAt(env, request)}/api/connector/card`, {
       headers: { Authorization: `Bearer ${key}`, Accept: "application/json" }, redirect: "manual",
       signal: AbortSignal.any([ac.signal, AbortSignal.timeout(Math.max(1, until - Date.now()))]),
     });

@@ -37,7 +37,7 @@ import { HttpError, db, hex, sha256, issueSession, limit, randomToken, logError 
 import { cookieUser, withCookie, withSession, withoutSession } from "./_account.js";
 import { takeHandback } from "./_handback.js";
 import { json, body, signedIn } from "./_accountapi.js";
-import { todayOrigin, todayLinks } from "./_sites.js";
+import { todayOrigin, todayLinks, siteFetch } from "./_sites.js";
 import { prefsOf, vapid } from "./_notify.js";
 import { todayPrefs, savePrefs, saveMorning, morningTz, deviceHash, todayDevices, addDevice, moveDevice, removeDevice } from "./_today.js";
 import { CARD_KEYS, cardsFor, cardsMemo, avatarFor, localDay } from "./_todaycards.js";
@@ -365,7 +365,7 @@ export async function todayBuild(env) {
   if (built && t - built.at < built.keep) return built.build;
   let build = null;
   try {
-    const r = await fetch(`${todayOrigin(env)}/version`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2000) });
+    const r = await siteFetch(env, `${todayOrigin(env)}/version`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2000) });
     const j = r.ok ? await r.json() : null;
     if (typeof j?.build === "string" && /^\d{1,3}\.\d{2}$/.test(j.build)) build = j.build;
   } catch (_) {}

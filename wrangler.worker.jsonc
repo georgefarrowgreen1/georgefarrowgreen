@@ -25,6 +25,9 @@
   "r2_buckets": [{ "binding": "BIO_R2", "bucket_name": "bio-media" }],
   "d1_databases": [{ "binding": "DB", "database_name": "bio-db", "database_id": "de4ad515-52c6-4cb3-9f8f-008384ef813a" }],
   "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
+  // (direct links to InFlite's other Workers, Mail's and Today's, for this one's own requests to them: functions/_sites.js
+  // siteFetch)
+  "services": [{ "binding": "MAIL_APP", "service": "inflite-email" }, { "binding": "TODAY_APP", "service": "inflite" }],
   "observability": { "enabled": true },
   // (its workers.dev address: what the scheduled jobs call once it's live, past the custom domains' bot checks, as
   // they call georgefarrowgreen.pages.dev now: functions/_sites.js tickHost)
