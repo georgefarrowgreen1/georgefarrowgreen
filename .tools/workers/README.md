@@ -52,8 +52,16 @@ the app there (or run Actions → **Sign-in check**).
   at step 7.
 
 ### 7. After two quiet weeks
-Turn off the Pages project's automatic deployments, take its custom domains off and delete it. The Pages-only bits of the code go then too
-(`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`).
+1. Pages → the project → Custom domains: remove each address (**Remove domain**). Its DNS record stays, so the
+   Worker's route in front of it goes on answering, with nothing to change. (Tried first on georgefarrowgreen.com,
+   5 November: removed from Pages, and it went on working.) If an address ever has no DNS record of its own, add one:
+   DNS → Add record, AAAA, its name, `100::`, proxied: the Worker answers on it.
+2. Settings → Builds: turn off automatic deployments, then delete the project.
+3. The Pages-only bits of the code go then too (`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`, the scheduled
+   jobs' fallback to `georgefarrowgreen.pages.dev`). Changing a secret from then on is done on the Worker.
+
+(Not a Worker custom domain: Cloudflare won't let one take over a DNS record the Pages project made, and a route
+needs nothing more than the record that's there.)
 
 ## What's ready in the code
 
