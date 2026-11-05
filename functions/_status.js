@@ -22,7 +22,11 @@ import { STATUS_SERVICES, STATUS_JOBS } from "./_statuslist.js";
 
 export const STATUS_HOST = "status.inflite.ai";
 // (STATUS_HOST in the environment: tests, on their own names; else status. on the apps' site)
-export const isStatus = (url, env) => url.hostname === (env?.STATUS_HOST || `status.${appsSite(env)}`);
+const statusHostOf = (env) => env?.STATUS_HOST || `status.${appsSite(env)}`;
+export const isStatus = (url, env) => url.hostname === statusHostOf(env);
+// (the page's answers kept at the edge under one address whatever port or scheme they were asked at, so an update
+// from Admin can let go of the same copy)
+const cacheKey = (env, path) => new Request(`https://${statusHostOf(env)}${path}`);
 
 const S = { ok: 0, warn: 1, down: 2, none: 3 }, NAME = ["ok", "warn", "down", "none"];
 const SVC = Object.fromEntries(STATUS_SERVICES.map((s) => [s.id, s])), JOB = Object.fromEntries(STATUS_JOBS.map((j) => [j.id, j]));
@@ -195,10 +199,40 @@ export async function dayOfChecks(env, svc, t = Date.now()) {
   return { svc, from: t - DAY_MS, to: t, points: (results || []).map((r) => [r.at, NAME[r.s], r.ms]) };
 }
 
+// ---- Admin's (functions/api/pigeon admin/status, admin/status-note): the incidents, and a written update on one ----
+// (what kind of update: Resolved closes an incident that's still open; it opens again by itself if what's in it is still failing)
+export const NOTE_KINDS = ["Investigating", "Identified", "Update", "Monitoring", "Resolved"];
+const parse = (x) => ({ id: x.id, title: x.title, svcs: JSON.parse(x.svcs || "[]"), started: x.started, ended: x.ended, updates: JSON.parse(x.updates || "[]") });
+export async function adminIncidents(env, t = Date.now()) {
+  const D = await table(env);
+  const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL OR started >= ? ORDER BY ended IS NOT NULL, started DESC LIMIT 12").bind(t - 30 * DAY_MS).all();
+  return (results || []).map(parse);
+}
+// (the open ones, for Admin's figures: none where there's no table yet)
+export async function openIncidents(env) {
+  try { const D = await table(env); return ((await D.prepare("SELECT id, title, started FROM status_incidents WHERE ended IS NULL ORDER BY started DESC LIMIT 5").all()).results || []); }
+  catch (_) { return []; }
+}
+export async function noteIncident(env, b, t = Date.now()) {
+  const kind = NOTE_KINDS.includes(b?.kind) ? b.kind : null, text = typeof b?.text === "string" ? b.text.replace(/\s+/g, " ").trim() : "";
+  if (!kind) throw new HttpError(400, "Which kind of update is it?");
+  if (!text) throw new HttpError(400, "Write what’s happening.");
+  if (text.length > 600) throw new HttpError(400, "Keep it under 600 characters.");
+  const D = await table(env), row = typeof b.id === "string" ? await D.prepare("SELECT * FROM status_incidents WHERE id = ?").bind(b.id).first() : null;
+  if (!row) throw new HttpError(404, "That incident isn’t there any more.");
+  const x = parse(row);
+  x.updates.unshift({ at: t, k: kind, w: text, by: "owner" });
+  if (kind === "Resolved" && !x.ended) x.ended = t;
+  await D.prepare("UPDATE status_incidents SET ended = ?, updates = ? WHERE id = ?").bind(x.ended, JSON.stringify(x.updates.slice(0, 40)), x.id).run();
+  // (the page's copy at this edge let go of, so it's there at once; elsewhere within half a minute)
+  try { await globalThis.caches?.default?.delete(cacheKey(env, "/api/status")); } catch (_) {}
+  return x;
+}
+
 const json = (v, status = 200, cache = "no-store") => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": cache, "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*" } });
 // (the page's answers kept half a minute at Cloudflare's edge, so however many are looking it's a read every 30 seconds)
-async function cached(url, make, secs) {
-  const cache = globalThis.caches?.default, key = new Request(url.href);
+async function cached(key, make, secs) {
+  const cache = globalThis.caches?.default;
   const hit = cache && (await cache.match(key).catch(() => null));
   if (hit) return hit;
   const res = json(await make(), 200, `public, max-age=${secs}`);
@@ -221,10 +255,10 @@ export async function statusRoute(ctx, url) {
     }
     if (!isStatus(url, env)) return null;
     if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "Not found." }, 404);
-    if (p === "/api/status") return await cached(url, () => summary(env), 30);
+    if (p === "/api/status") return await cached(cacheKey(env, "/api/status"), () => summary(env), 30);
     const svc = url.searchParams.get("svc") || "";
     if (!SVC[svc]) return json({ error: "Not found." }, 404);
-    return await cached(new URL(`/api/status/day?svc=${svc}`, url), () => dayOfChecks(env, svc), 60);
+    return await cached(cacheKey(env, `/api/status/day?svc=${svc}`), () => dayOfChecks(env, svc), 60);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
     console.error("status", e && (e.stack || e.message || e));

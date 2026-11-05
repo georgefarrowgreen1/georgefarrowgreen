@@ -304,6 +304,15 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   transition: box-shadow 0.2s; }
 .field input:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--tint); }
 .field input[readonly] { color: var(--text-2); }
+.field textarea { width: 100%; min-height: 104px; padding: 13px 16px; border: 0; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); font: inherit; font-size: 17px;
+  line-height: 1.4; color: inherit; resize: vertical; transition: box-shadow 0.2s; }
+.field textarea:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--tint); }
+/* Admin, the status page: what kind of update it is, one of a few */
+.adm-kinds { display: flex; flex-wrap: wrap; gap: 8px; }
+.adm-kind { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); font-size: 14.5px; font-weight: 600; color: var(--text-2);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.adm-kind[aria-checked="true"] { background: var(--tint); color: #fff; box-shadow: none; }
+.adm-kind:active { opacity: 0.6; }
 /* no account without an invite (app.js inviteCard): what it takes, three steps along a faint line, then the link */
 .invite-steps { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
 .invite-steps li { position: relative; display: grid; justify-items: center; align-content: start; gap: 9px; font-size: 13px; font-weight: 500; line-height: 1.25; color: var(--text-2);

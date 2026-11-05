@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus } from "../../../functions/_status.js";
+import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS } from "../../../functions/_status.js";
 import { STATUS_SERVICES, STATUS_JOBS } from "../../../functions/_statuslist.js";
 
 function d1() {
@@ -106,4 +106,26 @@ test("the report only at the workers.dev address with the jobs' key; the page's 
   assert.equal((await call("GET", "https://status.inflite.ai/api/status/day?svc=chat")).status, 200);
   assert.equal((await call("GET", "https://status.inflite.ai/api/status/day?svc=nope")).status, 404);
   assert.equal((await call("POST", "https://status.inflite.ai/api/status")).status, 404);
+});
+
+test("Admin's written update on an incident: on the status page at once; Resolved closes one still open", async () => {
+  let t = T0 + 3 * 3600e3;
+  for (let i = 0; i < 2; i++) { t += 5 * 60e3; await keepReport(env, report({ weather: { s: "down", ms: null } }), t); }
+  const open = await openIncidents(env);
+  assert.equal(open.length, 1); assert.equal(open[0].title, "Weather not answering");
+  const list = await adminIncidents(env, t);
+  assert.equal(list[0].id, open[0].id, "the open one first"); assert.ok(list.length >= 2, "and the one resolved before");
+  await assert.rejects(noteIncident(env, { id: open[0].id, kind: "Shouting", text: "x" }, t), /Which kind/);
+  await assert.rejects(noteIncident(env, { id: open[0].id, kind: "Update", text: "   " }, t), /Write what/);
+  await assert.rejects(noteIncident(env, { id: open[0].id, kind: "Update", text: "x".repeat(601) }, t), /600/);
+  await assert.rejects(noteIncident(env, { id: "nope", kind: "Update", text: "x" }, t), /isn’t there/);
+  await noteIncident(env, { id: open[0].id, kind: "Identified", text: "  The radar   provider is down;\n we’re switching to the backup. " }, t + 1000);
+  let s = await summary(env, t + 2000), inc = s.incidents.find((x) => x.id === open[0].id);
+  assert.deepEqual(inc.updates[0], { at: t + 1000, k: "Identified", w: "The radar provider is down; we’re switching to the backup.", by: "owner" });
+  assert.equal(inc.ended, null);
+  await noteIncident(env, { id: open[0].id, kind: "Resolved", text: "Back on the main provider." }, t + 3000);
+  s = await summary(env, t + 4000); inc = s.incidents.find((x) => x.id === open[0].id);
+  assert.equal(inc.ended, t + 3000); assert.equal(inc.updates[0].k, "Resolved");
+  assert.equal((await openIncidents(env)).length, 0);
+  assert.deepEqual(NOTE_KINDS, ["Investigating", "Identified", "Update", "Monitoring", "Resolved"]);
 });

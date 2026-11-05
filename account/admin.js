@@ -80,6 +80,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     if (s.errors?.length) out.push({ title: `${nOf(s.errors.length, "server error")} today`, text: `Latest: ${s.errors[0].src} · ${seenAt(s.errors[0].at)}`, open: admServerView });
     const sent = (s.bugs || []).filter((b) => b.app !== "server" && Date.now() - b.at < 86400e3);
     if (sent.length) out.push({ title: `${nOf(sent.length, "bug report")} today`, text: `Latest: ${sent[0].code} · ${sent[0].app} · ${seenAt(sent[0].at)}`, open: admServerView });
+    // (an incident still going on the status page: say what's happening there)
+    const inc = s.statusOpen || [];
+    if (inc.length) out.push({ title: inc.length > 1 ? `${nOf(inc.length, "incident")} on the status page` : inc[0].title, text: `Since ${seenAt(inc[inc.length - 1].started)} · add an update`, open: admStatusView });
     return out;
   }
   // The server: when the scheduled jobs last ran, and its errors today (newest first: where, what, when)
@@ -101,6 +104,49 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         b.note ? h("small", { text: `“${b.note}”` }) : null))))
         : h("div.group", {}, h("div.empty", { text: "No bug reports this week." })),
       h("p.hint", { text: "Each code is one issue, the same every time it happens. Every hour they're filed as issues in the georgefarrowgreen repository on GitHub, without the notes." })] };
+  }
+  // status.inflite.ai: its incidents (opened and closed by the checks themselves), and on each, an update written here,
+  // shown there as it's posted: what's happening, in your words (functions/_status.js)
+  const statusUrl = () => (/\/\/account\./.test(location.origin) ? location.origin.replace("//account.", "//status.") : "https://status.inflite.ai");
+  const incWhen = (i) => `${i.ended ? "Resolved" : "Ongoing"} · ${seenAt(i.started)}${i.ended ? ` to ${new Date(i.ended).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}`;
+  function admStatusView() {
+    const x = admAsk("status");
+    const item = (i) => row({ icon: i.ended ? "check" : "alert", tint: i.ended ? "green" : "red", title: i.title, sub: `${incWhen(i)} · ${nOf(i.updates.length, "update")}`,
+      onclick: () => { AD.inc = i.id; AD.kind = null; AD.picked = false; AD.text = ""; pushSheet(admIncidentView); } });
+    return { title: "Status page", body: [
+      h("div.group", {}, h("a.row.action", { href: statusUrl(), target: "_blank", rel: "noopener" }, "Open the status page")),
+      !x ? admWait("status") : x.incidents.length ? h("div.group", {}, x.incidents.map(item)) : h("div.group", {}, h("div.empty", { text: "No incidents in the last 30 days." })),
+      h("p.hint", { text: "An incident opens by itself when something fails two checks in a row, and closes once it’s working again. Add an update to say what’s happening: it’s on the status page as soon as you post it, for anyone to see." })] };
+  }
+  function admIncidentView() {
+    const x = admAsk("status"), inc = x?.incidents.find((i) => i.id === AD.inc);
+    if (!x) return { title: "Incident", body: [admWait("status")] };
+    if (!inc) return { title: "Incident", body: [h("div.group", {}, h("div.empty", { text: "That incident isn’t there any more." }))] };
+    const kinds = x.kinds.filter((k) => !(inc.ended && k === "Resolved")), said = h("p.said", { role: "alert" });
+    // (Investigating to begin with, or Update once it's closed, until one's picked)
+    if (!AD.picked || !kinds.includes(AD.kind)) AD.kind = inc.ended ? "Update" : "Investigating";
+    // (what's typed kept across a redraw)
+    const text = h("textarea", { rows: "4", maxlength: "600", placeholder: "What’s happening, in a sentence or two", "aria-label": "The update", spellcheck: "true" });
+    text.value = AD.text || "";
+    text.addEventListener("input", () => { AD.text = text.value; });
+    const go = h("button.btn", { type: "submit" }, icon("share", 20, 2.2), AD.kind === "Resolved" ? "Post and close it" : "Post update");
+    return { title: inc.ended ? "Resolved incident" : "Ongoing incident", body: [
+      h("div.group", {}, h("div.row.plain", {}, h("span.tx", {}, h("b", { text: inc.title }), h("small", { text: incWhen(inc) })))),
+      h("h4.app-k", { text: "Add an update" }),
+      h("form.form", { onsubmit: async (e) => {
+        e.preventDefault(); say(said, "");
+        try {
+          await admPost(go, "Posting…", "status-note", { id: inc.id, kind: AD.kind, text: AD.text || "" });
+          AD.text = ""; AD.kind = null; AD.picked = false; admAsk("status", true); admChanged(); redraw(); toast("Posted to the status page.");
+        } catch (err) { if (!err.quiet) say(said, err.message); }
+      } },
+        h("div.adm-kinds", { role: "radiogroup", "aria-label": "Kind of update" }, kinds.map((k) => h("button.adm-kind", { type: "button", role: "radio", "aria-checked": String(AD.kind === k),
+          onclick: () => { AD.kind = k; AD.picked = true; redraw(); } }, k))),
+        h("label.field", {}, text), go),
+      said,
+      h("p.hint", { text: AD.kind === "Resolved" ? "Closes the incident. If what’s in it is still failing, the checks open a new one." : "Shown on the status page for anyone to see, with the time it’s posted." }),
+      h("h4.app-k", { text: "So far" }),
+      h("div.group", {}, inc.updates.map((u) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: `${u.k}${u.by === "owner" ? " · by you" : ""}` }), h("small", { text: `${u.w} · ${seenAt(u.at)}` })))))] };
   }
   function adminView() {
     admSum();
@@ -130,6 +176,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
           warn: !s.email || !!s.mailFail, onclick: () => pushSheet(admEmailView) }),
         ((late) => row({ icon: "info", tint: "blue", title: "Server", value: late ? "Late" : s.errors?.length ? nOf(s.errors.length, "error") : h("span.adm-ok", {}, icon("check", 15, 3), "Running"),
           warn: late || !!s.errors?.length, onclick: () => pushSheet(admServerView) }))(!!s.ticks && [s.ticks.inflight, s.ticks.weather].some((k) => k && Date.now() - k.at > 20 * 60e3)),
+        row({ icon: "wave", tint: "green", title: "Status page", value: s.statusOpen?.length ? `${num(s.statusOpen.length)} ongoing` : h("span.adm-ok", {}, icon("check", 15, 3), "No incidents"),
+          warn: !!s.statusOpen?.length, onclick: () => { admAsk("status", true); pushSheet(admStatusView); } }),
         row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
       h("h4.app-k", { text: "Home page" }),
       // (Edit: there signed in as you, carried over just now, as the home page's sign-in is a cookie of its own site's,
@@ -453,7 +501,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
 
   // The admin log: what's been done here (and by the site itself: unused accounts warned and deleted)
-  const LOG = { "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
+  const LOG = { "status-update": ["Status page updated", "wave", "green"], "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
     "reset-link": ["Reset link made", "link", "indigo"], "reset-used": ["Password reset", "key", "green"], "signed-out": ["Signed out everywhere", "signout", "grey"],
     deleted: ["Account deleted", "trash", "red"], "idle-warned": ["Unused account warned", "mail", "grey"], "idle-deleted": ["Unused account deleted", "trash", "grey"],
     "invite-made": ["Invite made", "link", "blue"], "invite-cancelled": ["Invite cancelled", "link", "grey"], linked: ["Admin linked to your account", "shield", "green"] };

@@ -1032,8 +1032,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.84";
-const NEWS = "Something went wrong? A window with its own code to send straight to InFlite (and Report a Problem in the menu), drawn to the bottom of the screen on the Home Screen, icons back where they were missing";
+const BUILD = "1.85";
+const NEWS = "Admin: write an update on any incident on status.inflite.ai (what’s happening, in your words), shown there as soon as it’s posted";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
