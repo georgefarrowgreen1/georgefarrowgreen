@@ -65,6 +65,8 @@ body { margin: 0; min-height: 100vh; font: 14.5px/1.45 var(--font); color: var(-
 
 /* each app's colour */
 .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18); background: linear-gradient(160deg, #666c80, #3a3f52); }
+.ic.logo { overflow: hidden; background: none; padding: 0; }
+.ic.logo img { display: block; width: 100%; height: 100%; }
 .ic[data-app="today"] { background: linear-gradient(160deg, #2f3a70, #141a40); }
 .ic[data-app="chat"], .ic[data-app="notify"] { background: linear-gradient(160deg, #5592ff, #2b6fe6); }
 .ic[data-app="weather"], .ic[data-app="wxtick"] { background: linear-gradient(160deg, #62acff, #3a86f0); }

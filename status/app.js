@@ -26,7 +26,12 @@
     "dep-email": '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     morning: '<path d="M17 18a5 5 0 0 0-10 0M12 2v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4 3 4-3"/>',
   };
-  const icon = (id) => `<span class="ic" data-app="${esc(id)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPH[id] || GLYPH.home}</svg></span>`;
+  // (each app's own logo, as InFlite's menu shows it, for the app, its job and the home page; what's outside InFlite
+  // (the weather provider, prices, Garmin, email sending) keeps a plain glyph)
+  const LOGO = { today: "today", morning: "today", chat: "chat", notify: "chat", weather: "weather", wxtick: "weather", fitness: "fitness", garmin: "fitness",
+    markets: "markets", mkttick: "markets", mail: "mail", auth: "account", account: "account", home: "home" };
+  const icon = (id) => LOGO[id] ? `<span class="ic logo" data-app="${esc(id)}"><img src="icons/${LOGO[id]}.svg" alt="" width="28" height="28" decoding="async"></span>`
+    : `<span class="ic" data-app="${esc(id)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPH[id] || GLYPH.home}</svg></span>`;
   const CHEV = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
   const hm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dm = (t) => new Date(t).toLocaleDateString([], { day: "numeric", month: "short" });

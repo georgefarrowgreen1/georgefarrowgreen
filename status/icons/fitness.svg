@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+  <!-- an evening sky after a hard ride: coral, a touch lighter at the top -->
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8457"/><stop offset="1" stop-color="#ee4b2f"/></linearGradient>
+  <!-- the sun: flat and warm, as Weather's is, a little deeper to its foot -->
+  <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd85a"/><stop offset="1" stop-color="#ffb52e"/></linearGradient>
+  <!-- the wheel: frosted glass, as Weather's cloud is, whiter at the top; what's behind it soft through it -->
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.84"/><stop offset="1" stop-color="#fff4f0" stop-opacity="0.72"/></linearGradient>
+  <linearGradient id="rimFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.7" stop-color="#fff" stop-opacity="0.3"/><stop offset="1" stop-color="#fff" stop-opacity="0.15"/></linearGradient>
+  <mask id="rimMask"><rect width="1024" height="1024" fill="url(#rimFade)"/></mask>
+  <clipPath id="wheelClip"><path clip-rule="evenodd" d="M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z"/></clipPath>
+  <filter id="frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="9"/></filter>
+  <filter id="shade" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1024" height="1024" fill="url(#sky)"/>
+<circle cx="700" cy="330" r="150" fill="url(#sun)"/>
+<!-- a faint shadow under the wheel -->
+<path fill-rule="evenodd" d="M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z" fill="#8f1d0b" fill-opacity="0.18" filter="url(#shade)" transform="translate(0 16)"/>
+<!-- through the frosted glass: the sky and the sun, softened -->
+<g clip-path="url(#wheelClip)">
+  <g filter="url(#frost)"><rect width="1024" height="1024" fill="url(#sky)"/><circle cx="700" cy="330" r="150" fill="url(#sun)"/></g>
+  <rect width="1024" height="1024" fill="url(#glass)"/>
+</g>
+<!-- its edges: a fine light rim, brightest along the top -->
+<path fill-rule="evenodd" d="M 512 270 A 290 290 0 1 1 511.9 270 Z M 512 380 A 180 180 0 1 0 512.1 380 Z" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="5" mask="url(#rimMask)"/>
+</svg>
