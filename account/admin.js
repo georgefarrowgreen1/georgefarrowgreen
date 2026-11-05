@@ -85,25 +85,58 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     if (inc.length) out.push({ title: inc.length > 1 ? `${nOf(inc.length, "incident")} on the status page` : inc[0].title, text: `Since ${seenAt(inc[inc.length - 1].started)} · add an update`, open: admStatusView });
     return out;
   }
-  // The server: when the scheduled jobs last ran, and its errors today (newest first: where, what, when)
+  // The server: how it's doing in a line; each scheduled job, when it last ran and how long it took; what's gone wrong on
+  // it today, the same failure once, with how often, in words a person can read and under its bug code; and the bug
+  // reports people sent this week, each under its code, with what they said (yours alone: never filed anywhere public)
+  const SRC = { "today day": "Today: building your day", "today tick": "Today: the morning notification", "today weather": "Today: the weather", "today plan": "Today: your plan",
+    "today preview": "Today: the preview", "weather tick": "Weather: the alerts job", "weather api": "Weather", tick: "Chat: the notifications job", "pigeon notify email": "Chat: notification emails",
+    "sync plans": "Chat: syncing plans", "sync hold": "Chat: held messages" };
+  const APPN = { today: "Today", pigeon: "Chat", chat: "Chat", chats: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", finance: "Markets", account: "Account", auth: "Signing in",
+    mail: "Mail", email: "Mail", sync: "Chat", home: "Home page", hub: "InFlite", fitting: "Fit Studio", server: "The site" };
+  const srcName = (src) => SRC[src] || ((w) => `${APPN[w[0]] || upper(w[0] || "The site")}${w.length > 1 && w.slice(1).join(" ") !== "api" ? `: ${w.slice(1).join(" ")}` : ""}`)(String(src || "").split(/\s+/));
+  const plainMsg = (m) => /^too slow\.?$/i.test(String(m || "").trim()) ? "Took too long to answer" : /D1_ERROR|SQLITE/i.test(m) ? `The database: ${String(m).replace(/^.*?:\s*/, "")}` : String(m || "Something went wrong");
+  const dotEl = (st) => h("span.adm-dot", { "data-s": st, "aria-hidden": "true" });
   function admServerView() {
-    const s = AD.sum || {}, k = s.ticks || {}, errs = s.errors || [];
-    const info = (t, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val", { text: v }));
-    const ran = (x) => (x ? `${seenAt(x.at)} · ${(x.ms / 1000).toFixed(1)} s` : "Not yet");
+    const s = AD.sum || {}, k = s.ticks || {}, errs = s.errors || [], bugs = s.bugs || [];
+    const t = Date.now(), hm = (x) => new Date(x).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    // (each scheduled job: the status page's, all five, where it has them; else Chat's and Weather's own notes)
+    const jobs = (s.statusJobs?.length ? s.statusJobs : [{ name: "Chat notifications", s: k.inflight ? "ok" : "none", at: k.inflight?.at, ms: k.inflight?.ms }, { name: "Weather alerts", s: k.weather ? "ok" : "none", at: k.weather?.at, ms: k.weather?.ms }])
+      .map((j) => ({ ...j, late: j.at && t - j.at > 20 * 60e3 }));
+    const jobSub = (j) => !j.at ? "Not run yet" : j.s === "down" ? `Failed at ${hm(j.at)}` : j.late ? `Late · last ran ${seenAt(j.at).replace(/^Today /, "")}` : `Every 5 min · ran ${hm(j.at)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}`;
+    // (today's errors, the same where and what once: how many, the latest; and its code, where a bug report carries it)
+    const groups = [];
+    for (const e of errs) {
+      const g = groups.find((x) => x.src === e.src && x.msg === e.msg);
+      if (g) { g.n++; g.first = Math.min(g.first, e.at); } else groups.push({ src: e.src, msg: e.msg, n: 1, at: e.at, first: e.at });
+    }
+    for (const g of groups) g.code = bugs.find((b) => b.app === "server" && b.kind === g.src && String(b.words || "").startsWith(String(g.msg || "").slice(0, 40)))?.code || null;
+    // (people's reports: one row a code, how often, the latest, and every note sent with it)
+    const sent = [];
+    for (const b of bugs.filter((x) => x.app !== "server")) {
+      const r = sent.find((x) => x.code === b.code);
+      if (r) { r.n++; if (b.note) r.notes.push(b.note); } else sent.push({ ...b, n: 1, notes: b.note ? [b.note] : [] });
+    }
+    const late = jobs.filter((j) => j.late || j.s === "down");
+    const st = late.length ? "down" : groups.length ? "warn" : "ok";
+    const head = late.length ? `${nOf(late.length, "job")} not running` : groups.length ? `Running · ${nOf(errs.length, "error")} today` : "Everything’s running";
+    const sub = late.length ? late.map((j) => j.name).join(", ") : groups.length ? `Latest: ${srcName(groups[0].src)}, ${seenAt(groups[0].at).replace(/^Today /, "")}` : "Every job ran on time, and nothing’s gone wrong today";
+    const chip = (c) => h("code.adm-chip", { text: c });
     return { title: "Server", body: [
-      h("div.group", {}, info("Chat’s notifications", ran(k.inflight)), info("Weather’s notifications", ran(k.weather))),
-      h("p.hint", { text: "Each runs every few minutes (on a schedule, and whenever the apps are used). Over 20 minutes since the last run means notifications are late." }),
-      errs.length ? h("div.group", {}, errs.map((e) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: e.src }), h("small", { text: `${e.msg} · ${seenAt(e.at)}` })))))
-        : h("div.group", {}, h("div.empty", { text: "No errors today." })),
-      // (the bug reports of the last week, each under its code, with what the sender said: the notes are yours alone, never
-      // in the repository's issues, which are public)
-      h("h4.app-k", { text: "Bug reports" }),
-      (s.bugs || []).length ? h("div.group", {}, s.bugs.map((b) => h("div.row.plain", {}, h("span.tx", {},
-        h("b", { text: `${b.code} · ${b.app}${b.version ? " " + b.version : ""}${b.issue ? ` · issue #${b.issue}` : ""}` }),
-        h("small", { text: `${b.kind === "manual" ? "Reported" : b.words || "Something went wrong"} · ${seenAt(b.at)}` }),
-        b.note ? h("small", { text: `“${b.note}”` }) : null))))
-        : h("div.group", {}, h("div.empty", { text: "No bug reports this week." })),
-      h("p.hint", { text: "Each code is one issue, the same every time it happens. Every hour they're filed as issues in the georgefarrowgreen repository on GitHub, without the notes." })] };
+      h("div.adm-sv", { "data-s": st }, h("span.adm-halo", {}, icon(st === "ok" ? "check" : "alert", 18, 2.6)), h("span.tx", {}, h("b", { text: head }), h("small", { text: sub }))),
+      h("h4.app-k", { text: "Scheduled jobs" }),
+      h("div.group", {}, jobs.map((j) => h("div.row.plain", {}, dotEl(j.late ? "warn" : j.s), h("span.tx", {}, h("b", { text: j.name }), h("small", { text: jobSub(j) }))))),
+      h("h4.app-k", { text: "Errors today" }),
+      groups.length ? h("div.group", {}, groups.map((g) => h("div.row.plain.adm-err", {}, dotEl("down"),
+        h("span.tx", {}, h("b", { text: srcName(g.src) }), h("small", { text: `${plainMsg(g.msg)}${g.n > 1 ? ` · ${g.n} times since ${hm(g.first)}` : ` · ${hm(g.at)}`}` }),
+          g.code ? h("span.adm-chips", {}, chip(g.code)) : null))))
+        : h("div.group", {}, h("div.empty", { text: "Nothing’s gone wrong today." })),
+      h("h4.app-k", { text: "Bug reports this week" }),
+      sent.length ? h("div.group", {}, sent.map((b) => h("div.row.plain.adm-err", {}, dotEl(b.issue ? "ok" : "warn"),
+        h("span.tx", {}, h("b", { text: `${APPN[b.app] || upper(b.app)}${b.version ? ` ${b.version}` : ""}` }),
+          h("small", { text: `${b.kind === "manual" ? "Reported by hand" : b.words || "Something went wrong"} · ${b.n > 1 ? `${b.n} reports, latest ` : ""}${seenAt(b.at)}` }),
+          ...b.notes.slice(0, 3).map((n) => h("small.adm-note", { text: `“${n}”` })), h("span.adm-chips", {}, chip(b.code))))))
+        : h("div.group", {}, h("div.empty", { text: "No one’s reported a problem this week." })),
+      h("p.hint", { text: "Each code is one problem, the same every time it happens. What people write with a report is yours alone." })] };
   }
   // status.inflite.ai: its incidents (opened and closed by the checks themselves), and on each, an update written here,
   // shown there as it's posted: what's happening, in your words (functions/_status.js)

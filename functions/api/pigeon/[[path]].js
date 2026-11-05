@@ -1,5 +1,5 @@
 import { tickHost } from "../../_sites.js";
-import { adminIncidents, adminMaint, noteIncident, openIncidents, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
+import { adminIncidents, adminMaint, noteIncident, openIncidents, jobsNow, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
@@ -1493,7 +1493,7 @@ async function adminSummary({ request, env, waitUntil }) {
     D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => []),
     D.prepare("SELECT code, app, kind, at, version, words, note, issue FROM pg_bugs WHERE at > ? ORDER BY at DESC LIMIT 30").bind(t - 7 * DAY).all().then((r) => r.results || []).catch(() => [])]);
   // (status.inflite.ai's incidents still going: functions/_status.js)
-  const statusOpen = await openIncidents(env);
+  const [statusOpen, statusJobs] = await Promise.all([openIncidents(env), jobsNow(env)]);
   const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
   return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
     messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
@@ -1501,7 +1501,7 @@ async function adminSummary({ request, env, waitUntil }) {
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
     from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
-    ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs, statusOpen });
+    ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs, statusOpen, statusJobs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {

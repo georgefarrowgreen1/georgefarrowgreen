@@ -313,6 +313,20 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .adm-kind[aria-checked="true"] { background: var(--tint); color: #fff; box-shadow: none; }
 .adm-kind:active { opacity: 0.6; }
+/* Admin, the server */
+.adm-sv { --sv: #1f9d55; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 14px 16px; border-radius: 22px;
+  background: color-mix(in srgb, var(--sv) 10%, var(--glass-ctl, transparent)); border: 0.5px solid color-mix(in srgb, var(--sv) 24%, transparent); margin-bottom: 4px; }
+.adm-sv[data-s="warn"] { --sv: #d98a00; } .adm-sv[data-s="down"] { --sv: #e0342a; }
+.adm-halo { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--sv); box-shadow: 0 0 0 5px color-mix(in srgb, var(--sv) 18%, transparent); }
+.adm-sv .tx { display: grid; gap: 2px; min-width: 0; }
+.adm-sv b { font-size: 16px; font-weight: 600; }
+.adm-sv small { color: var(--text-2); font-size: 13px; }
+.adm-dot { --dt: #1f9d55; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--dt) !important; margin: 0 4px 0 2px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--dt) 18%, transparent) !important; }
+.adm-dot[data-s="warn"] { --dt: #d98a00; } .adm-dot[data-s="down"] { --dt: #e0342a; } .adm-dot[data-s="none"] { --dt: #9aa0b2; }
+.adm-chips { display: flex; margin-top: 5px; }
+.adm-err { align-items: flex-start; } .adm-err .adm-dot { margin-top: 7px; }
+.adm-chip { flex: none; padding: 3px 8px; border-radius: 8px; background: var(--field); font: 600 11.5px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-2); letter-spacing: 0.2px; }
+.adm-note { font-style: italic; }
 .adm-two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
 .field select { width: 100%; min-height: 50px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); font-size: 17px; color: inherit; }
 /* no account without an invite (app.js inviteCard): what it takes, three steps along a faint line, then the link */

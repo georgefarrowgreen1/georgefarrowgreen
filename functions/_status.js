@@ -367,6 +367,14 @@ export async function adminMaint(env, t = Date.now()) {
   const { results } = await D.prepare("SELECT * FROM status_maint WHERE cancelled IS NULL AND ends > ? ORDER BY starts LIMIT 12").bind(t).all();
   return (results || []).map((m) => ({ id: m.id, title: m.title, text: m.text || "", svcs: JSON.parse(m.svcs || "[]"), starts: m.starts, ends: m.ends }));
 }
+// (each scheduled job's latest, for Admin's Server: none where there's no table yet)
+export async function jobsNow(env) {
+  try {
+    const D = await table(env), { results } = await D.prepare(`SELECT * FROM status_now WHERE svc IN (${STATUS_JOBS.map(() => "?").join(", ")})`).bind(...STATUS_JOBS.map((j) => j.id)).all();
+    const by = Object.fromEntries((results || []).map((r) => [r.svc, r]));
+    return STATUS_JOBS.map((j) => ({ id: j.id, name: j.name, s: by[j.id] ? NAME[by[j.id].s] : "none", at: by[j.id]?.at || null, ms: by[j.id]?.ms ?? null }));
+  } catch (_) { return []; }
+}
 // (the open ones, for Admin's figures: none where there's no table yet)
 export async function openIncidents(env) {
   try { const D = await table(env); return ((await D.prepare("SELECT id, title, started FROM status_incidents WHERE ended IS NULL ORDER BY started DESC LIMIT 5").all()).results || []); }
