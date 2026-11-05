@@ -269,7 +269,7 @@ async function deleteFit(id){
 const GDAPI = 'https://www.googleapis.com/', GSCOPE = 'https://www.googleapis.com/auth/drive.file', GSI = 'https://accounts.google.com/gsi/client';
 const ROOT_NAME = 'Pedal Revolution – Fits', FOLDER = 'application/vnd.google-apps.folder';
 const DKEY = 'pr-fitting-drive', DDELS = 'pr-fitting-drive-bin', TKEY = 'pr-fitting-gtoken';
-let GCLIENT = '';   // the shop's Google client ID (none: Drive isn't set up)
+let GCLIENT = '', GFIXED = false, GEDIT = false;   // the shop's Google client ID (none: Drive isn't set up); set on the server; being changed
 let DRIVE = (() => { try { return JSON.parse(lsGet(DKEY) || 'null') || {}; } catch(_){ return {}; } })();   // {on, email, root}
 const keepDrive = () => lsSet(DKEY, JSON.stringify(DRIVE));
 let TOKEN = (() => { try { const t = JSON.parse(sessionStorage.getItem(TKEY) || 'null'); return t && t.exp > Date.now() ? t : null; } catch(_){ return null; } })();
@@ -459,11 +459,21 @@ async function drivePDF(file){
 }
 const ICON_CLOUD = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8a4 4 0 0 1 0 8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>';
 function driveCardHTML(){
-  const card = (cls, title, sub, btns) => `<div class="gd${cls}"><span class="ic">${ICON_CLOUD}</span><span class="tx"><b>${title}</b><span>${sub}</span></span>${btns}</div>`;
-  if (!GCLIENT) return card('', 'Google Drive isn’t set up yet', 'Once the shop’s Google sign-in is set up, every fit can be kept in the shop’s Google Drive, on every device.', '');
+  const card = (cls, title, sub, btns, foot = '') => `<div class="gd${cls}"><span class="ic">${ICON_CLOUD}</span><span class="tx"><b>${title}</b><span>${sub}</span></span>${btns}${foot}</div>`;
+  if (!GCLIENT || GEDIT) return `<div class="gd"><span class="ic">${ICON_CLOUD}</span><span class="tx"><b>${GCLIENT ? 'Change the Google Client ID' : 'Google Drive isn’t set up yet'}</b>
+      <span>Paste the shop’s Google Client ID here once, from any device: every device then offers Connect Google Drive.</span></span>
+      <div class="gd-id"><input type="text" id="gd-id" value="${esc(GCLIENT)}" placeholder="123456789012-abc….apps.googleusercontent.com" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Google Client ID">
+        <button type="button" class="btn dark" data-act="gd-id-save">Save</button>${GEDIT ? '<button type="button" class="btn ghost" data-act="gd-id-cancel">Cancel</button>' : ''}</div>
+      <div id="gd-id-msg"></div>
+      <details class="gd-how"><summary>Where to get a Client ID</summary><ol>
+        <li>Signed in as the shop’s Google account, go to console.cloud.google.com and create a project, e.g. “Pedal Revolution Fit Studio”.</li>
+        <li>APIs &amp; Services → Library → Google Drive API → Enable.</li>
+        <li>Google Auth Platform (OAuth consent screen) → Get started: app name, the shop’s email, audience External. Then Audience → Test users → add the shop’s Google address.</li>
+        <li>Clients → Create client → Web application. Authorised JavaScript origins: <b>${esc(location.origin)}</b>. Create, and copy the Client ID.</li></ol></details></div>`;
   if (!DRIVE.on) return card('', 'Google Drive: not connected',
     DNET === 'scope' ? 'Google wasn’t given leave to keep the app’s files. Connect again and allow it.' : 'Keep every fit in the shop’s Google Drive, photos and reports too, on every iPad and the Mac. Sign in once with the shop’s Google account.',
-    `<button type="button" class="btn dark" data-act="drive-connect"${DNET === 'loading' ? ' disabled' : ''}>${DNET === 'loading' ? 'One moment…' : 'Connect Google Drive'}</button>`);
+    `<button type="button" class="btn dark" data-act="drive-connect"${DNET === 'loading' ? ' disabled' : ''}>${DNET === 'loading' ? 'One moment…' : 'Connect Google Drive'}</button>`,
+    GFIXED ? '' : `<p class="gd-cid">Google Client ID …${esc(GCLIENT.split('.')[0].slice(-6))} · <button type="button" class="linkbtn" data-act="gd-id-edit">Change</button></p>`);
   const live = tokenOk(), where = `${esc(DRIVE.email || 'The shop’s Google account')} · folder “${ROOT_NAME}”`;
   return card(live ? ' on' : ' warn', live ? 'Google Drive: connected' : 'Google Drive: signed out',
     live ? `${where}${DSYNC ? ' · saving…' : DNET === 'off' ? ' · waiting for a connection' : DLAST ? ' · up to date ' + DLAST : ''}` : `${where} · Google’s sign-in lasts an hour: reconnect to carry on saving there.`,
@@ -581,7 +591,7 @@ function renderFits(){
       <button type="button" class="btn sm" data-act="fit-follow" data-id="${esc(f.id)}">Start follow-up</button>
       ${open ? '<span class="pill g">Open</span>' : `<button type="button" class="btn sm dark" data-act="fit-open" data-id="${esc(f.id)}">Open</button>`}
       <button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button></div>`;
-  }).join('') : `<p class="hint">No fits match “${esc(q)}”.</p>`;
+  }).join('') : `<p class="hint">${FITLIST.length ? `No fits match “${esc(q)}”.` : 'No fits on this device yet.'}</p>`;
 }
 
 const fitCode = () => FITS[S.fit].code;
@@ -1712,6 +1722,16 @@ document.addEventListener('click', e => {
     if (m) m.innerHTML = `<div class="msg${n ? ' ok' : ''}" style="margin-bottom:12px">${n ? `Copied ${n} unchanged value${n > 1 ? 's' : ''} to After. Edit any that did change.` : 'Every After value with a Before value is already filled in.'}</div>`; return; }
   case 'new': return newFit();
   case 'drive-connect': if (DRIVE.on && tokenOk() && S){ hydrate(S).then(n => { if (n) markPhotos().then(renderMain); }); return; } return driveConnect();
+  case 'gd-id-edit': GEDIT = true; renderDriveCard(); return;
+  case 'gd-id-cancel': GEDIT = false; renderDriveCard(); return;
+  case 'gd-id-save': {
+    const id = $('#gd-id').value.trim(), m = $('#gd-id-msg'); t.disabled = true;
+    fetch('api/google', {method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})})
+      .then(async r => { const j = await r.json().catch(() => ({}));
+        if (!r.ok){ t.disabled = false; m.innerHTML = `<div class="msg err" style="margin-top:8px">${esc(j.error || 'It didn’t save. Try again.')}</div>`; return; }
+        GCLIENT = j.google || ''; GEDIT = false; TC = null; renderDriveCard(); loadGsi().then(renderDriveCard); })
+      .catch(() => { t.disabled = false; m.innerHTML = '<div class="msg err" style="margin-top:8px">No connection: it didn’t save.</div>'; });
+    return; }
   case 'drive-off': {
     if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to disconnect'; setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Disconnect'; } }, 3000); return; }
     return driveOff(); }
@@ -1793,7 +1813,7 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   try {
     const r = await fetch('api/me', {credentials:'same-origin', cache:'no-store'});
     if (r.status === 401){ location.replace('login'); return; }
-    if (r.ok){ const j = await r.json(); ME = j.name || ''; GCLIENT = j.google || ''; }
+    if (r.ok){ const j = await r.json(); ME = j.name || ''; GCLIENT = j.google || ''; GFIXED = !!j.googleFixed; }
   } catch(_){}
   $('#who-me').textContent = ME ? `Signed in as ${ME}` : '';
   await index();

@@ -12,8 +12,9 @@
 //
 // Every fit is kept in the browser that recorded it (IndexedDB). Connected to the shop's Google Drive (signed in there
 // with the shop's Google account, in Google's own window), each fit is kept in that Drive too, sent straight from the
-// device to Google: nothing of it passes through here. The app's Google client ID is FITTING_GOOGLE_CLIENT_ID
-// (Cloudflare, Variables and Secrets; not a secret), handed to the app by api/me; without it the app offers no Drive.
+// device to Google: nothing of it passes through here. The app's Google client ID (not a secret) is pasted into the
+// app's Fits list by a fitter (api/google, kept in KV), or set as FITTING_GOOGLE_CLIENT_ID on the Worker, which wins;
+// api/me hands it to the app. Without one the app offers no Drive.
 
 import { notFound } from "./_app.js";
 export const FITTING_HOST = "fitting.georgefarrowgreen.com";
@@ -97,14 +98,33 @@ async function stamped(ctx, url, res) {
   return out;
 }
 
-// ---- the API: api/login, api/logout, api/me ----
+// ---- the API: api/login, api/logout, api/me, api/google ----
 const COOKIE = "__Host-fit", DAYS = 30, TRIES = 8, TRIES_FOR = 900;
+// the shop's Google client ID: the Worker's own setting, else the one a fitter pasted in
+const GKEY = "fitting:google-client", GID = /^\d{6,}-[a-z0-9]{8,}\.apps\.googleusercontent\.com$/;
+async function googleClient(env) {
+  const fixed = String(env.FITTING_GOOGLE_CLIENT_ID || "").trim();
+  if (fixed) return { google: fixed, googleFixed: true };
+  let kept = ""; try { kept = (env.BIO_KV && await env.BIO_KV.get(GKEY)) || ""; } catch (_) {}
+  return { google: kept, googleFixed: false };
+}
 async function api(ctx, url, what) {
   const req = ctx.request, env = ctx.env;
   if (what === "me") {
     if (req.method !== "GET") return plain(405, "GET only.");
     const me = await signedIn(req, env);
-    return me ? json(200, { name: me, google: String(env.FITTING_GOOGLE_CLIENT_ID || "").trim() }) : json(401, { error: "Not signed in." });
+    return me ? json(200, { name: me, ...await googleClient(env) }) : json(401, { error: "Not signed in." });
+  }
+  if (what === "google") {
+    if (req.method !== "PUT") return plain(405, "PUT only.");
+    if (req.headers.get("Origin") !== url.origin) return json(403, { error: "Only from the Fit Studio’s own pages." });
+    if (!await signedIn(req, env)) return json(401, { error: "Sign in first." });
+    if (String(env.FITTING_GOOGLE_CLIENT_ID || "").trim()) return json(409, { error: "The Client ID is set on the server, so it’s changed there." });
+    let id = ""; try { id = String((await req.json()).id || "").trim(); } catch (_) {}
+    if (id && !GID.test(id)) return json(400, { error: "That doesn’t look like a Google Client ID: it ends .apps.googleusercontent.com." });
+    if (!env.BIO_KV) return json(503, { error: "The site can’t keep it just now." });
+    if (id) await env.BIO_KV.put(GKEY, id); else await env.BIO_KV.delete(GKEY);
+    return json(200, { google: id });
   }
   if (what !== "login" && what !== "logout") return notFound();
   if (req.method !== "POST") return plain(405, "POST only.");

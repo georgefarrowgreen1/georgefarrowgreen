@@ -21,7 +21,7 @@ const store = { async fetch(r) {
   if (!existsSync(file) || path.includes('..')) return new Response(readFileSync(new URL('404.html', ROOT)), { status: 404, headers: { 'content-type': TYPES.html } });
   return new Response(readFileSync(file), { headers: { 'content-type': TYPES[path.split('.').pop()] || 'application/octet-stream', etag: '"x"' } });
 } };
-const kv = () => { const m = new Map(); return { async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); } }; };
+const kv = () => { const m = new Map(); return { async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 const salt = new Uint8Array(16).fill(7), b64 = (u) => Buffer.from(u).toString('base64');
 const USERS = `Kate:pbkdf2$100000$${b64(salt)}$${b64(await hashPassword('kate-password-1', salt))}, Matt:matt-plain-99`;
 const HOST = 'https://fitting.georgefarrowgreen.com';
@@ -84,9 +84,11 @@ test('signed in: the app, its files and who’s signed in; the sign-in page goes
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   for (const f of ['/app.js', '/sw.js']) { const r = await ask(HOST + f, { cookie }); assert.equal(r.status, 200, f); assert.equal(r.headers.get('cache-control'), 'private, no-cache', f); }
   const lib = await ask(HOST + '/vendor/jspdf.umd.min.js', { cookie }); assert.equal(lib.status, 200); assert.equal(lib.headers.get('cache-control'), 'private, max-age=2592000');
-  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie })).json(), { name: 'Kate', google: '' });
-  // (the shop's Google client ID, for its Drive, when it's set)
-  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie, env: envOf({ FITTING_GOOGLE_CLIENT_ID: ' 123-abc.apps.googleusercontent.com ' }) })).json(), { name: 'Kate', google: '123-abc.apps.googleusercontent.com' });
+  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie })).json(), { name: 'Kate', google: '', googleFixed: false });
+  // (the shop's Google client ID, for its Drive: set on the server, it's that one, and can't be changed from the app)
+  const fixedEnv = envOf({ FITTING_GOOGLE_CLIENT_ID: ' 123456789-abcdefgh.apps.googleusercontent.com ' });
+  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie, env: fixedEnv })).json(), { name: 'Kate', google: '123456789-abcdefgh.apps.googleusercontent.com', googleFixed: true });
+  assert.equal((await ask(HOST + '/api/google', { env: fixedEnv, method: 'PUT', cookie, origin: HOST, body: { id: '987654321-zyxwvuts.apps.googleusercontent.com' } })).status, 409);
   assert.equal(page.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
   assert.match(page.headers.get('content-security-policy'), /connect-src 'self' https:\/\/www\.googleapis\.com https:\/\/accounts\.google\.com\/gsi\/ /);
   const login = await ask(HOST + '/login', { cookie }); assert.equal(login.status, 302); assert.equal(login.headers.get('location'), HOST + '/');
@@ -151,4 +153,21 @@ test('the app asks nothing of anywhere else, and its worker keeps only files tha
   assert.doesNotMatch(app.replace(/https:\/\/(accounts|drive)\.google\.com\/|https:\/\/www\.googleapis\.com\//g, ''), /https?:\/\/(?!www\.w3\.org)/);
   const shell = JSON.parse(read('sw.js').match(/const SHELL = (\[[\s\S]*?\]);/)[1].replace(/'/g, '"'));
   for (const f of shell) assert.ok(existsSync(new URL('fitting/' + (f === './' ? 'index.html' : f), ROOT)), f);
+});
+
+test('the shop’s Google Client ID: pasted into the app by a fitter, kept for every device', async () => {
+  const env = envOf(), cookie = cookieOf(await signIn('Kate', 'kate-password-1', env));
+  const put = (id, o = {}) => ask(HOST + '/api/google', { env, method: 'PUT', cookie, origin: HOST, body: { id }, ...o });
+  const ID = '123456789012-abcdefghijklmnop.apps.googleusercontent.com';
+  assert.equal((await put(ID, { cookie: undefined })).status, 401);
+  assert.equal((await put(ID, { origin: 'https://evil.example' })).status, 403);
+  assert.equal((await put('not-a-client-id')).status, 400);
+  assert.equal((await put('<script>.apps.googleusercontent.com')).status, 400);
+  assert.equal((await ask(HOST + '/api/google', { env, cookie })).status, 405);
+  assert.equal((await put(ID)).status, 200);
+  // (Matt's iPad, signed in apart, has it too)
+  const matt = cookieOf(await signIn('Matt', 'matt-plain-99', env));
+  assert.deepEqual(await (await ask(HOST + '/api/me', { env, cookie: matt })).json(), { name: 'Matt', google: ID, googleFixed: false });
+  assert.equal((await put('')).status, 200);
+  assert.equal((await (await ask(HOST + '/api/me', { env, cookie })).json()).google, '');
 });

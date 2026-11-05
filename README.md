@@ -2325,7 +2325,7 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
   fit (photos come down when a fit is opened); the newer copy of a fit wins; a fit deleted goes to the Drive's bin; a
   fit with nothing in it isn't sent. The app asks Google only for the files it makes itself (`drive.file`). Google's
   sign-in lasts an hour, then the header and the Fits button offer a tap to reconnect. Without
-  `FITTING_GOOGLE_CLIENT_ID` the app offers no Drive.
+  a Client ID the app offers no Drive.
 - **Returning riders:** on a new fit, a name or email that matches an earlier fit on the iPad offers to start it as a
   follow-up to the last one, or to bring across their contact details, riding background and injuries.
 - **Guide ranges** for the angles are in `TARGETS` at the top of `fitting/app.js`; the traffic-light thresholds in
@@ -2352,10 +2352,9 @@ the hashed lines from the tool) → **Deploy**. (The one the Pages project had c
    Google review). Until it's published, Google's window says the app isn't verified: **Continue**.
 4. **Clients → Create client** → type **Web application**, name "Fit Studio", **Authorised JavaScript origins** →
    `https://fitting.georgefarrowgreen.com` → **Create**, and copy the **Client ID** (`….apps.googleusercontent.com`).
-5. Cloudflare dashboard → Workers & Pages → the **`gfg` Worker** (it serves fitting.georgefarrowgreen.com) →
-   **Settings → Variables and Secrets** → **Add** → type **Secret** (a Text variable there is wiped by the next deploy
-   from `wrangler.gfg.jsonc`), name `FITTING_GOOGLE_CLIENT_ID`, value the Client ID → **Deploy**. Or put it in
-   `wrangler.gfg.jsonc` as `"vars": { "FITTING_GOOGLE_CLIENT_ID": "….apps.googleusercontent.com" }`: it isn't a secret.
+5. In the Fit Studio: **Fits** → paste the Client ID into the Google Drive card → **Save** (once, from any device; it's
+   kept for all of them, `api/google`, in KV). Or set it as `FITTING_GOOGLE_CLIENT_ID` on the `gfg` Worker (a **Secret**:
+   a Text variable there is wiped by the next deploy), which then wins and can't be changed from the app.
 6. On each iPad and the Mac: Fits → **Connect Google Drive** → choose the shop's account → **Allow**.
 
 The fits are then the shop's, in its Google account. A Google Workspace account comes with Google's data processing
