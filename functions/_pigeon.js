@@ -480,8 +480,15 @@ function counted(D) {
     if (k === "batch") return (list) => { TRIPS.n++; return v.call(o, list.map((x) => real.get(x) || x)); };
     return v.bind(o); } });
 }
+// (the schema's fingerprint, kept in KV too, read from the copy nearest this server: so a new copy of the server, which
+// on a quiet site is most requests, needn't make a trip to the database just to learn the tables are as they should be.
+// Only ever written once the database has this schema; any other value, or none, and the database is asked, as before)
+const FP_KV = "site:schema_fp";
+const kvFp = async (env) => { try { return env.BIO_KV ? await env.BIO_KV.get(FP_KV, { cacheTtl: 3600 }) : null; } catch (_) { return null; } };
+const keepFp = async (env) => { try { if (env.BIO_KV) await env.BIO_KV.put(FP_KV, SCHEMA_FP); } catch (_) {} };
 async function setUp(env) {
-  if ((await env.DB.prepare("SELECT v FROM pg_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+  if ((await kvFp(env)) === SCHEMA_FP) return;
+  if ((await env.DB.prepare("SELECT v FROM pg_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return keepFp(env);
   {
     await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
     for (const m of MIGRATIONS) {
@@ -525,6 +532,7 @@ async function setUp(env) {
       ]);
     }
     await env.DB.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
+    await keepFp(env);
   }
 }
 
