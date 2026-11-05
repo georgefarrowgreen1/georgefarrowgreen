@@ -33,7 +33,7 @@ ok(j && j.services.map((s) => s.id).join() === IDS.join(), 'the page’s answer:
 const by = Object.fromEntries((j?.services || []).map((s) => [s.id, s]));
 ok(by.chat?.s === 'ok' && by.chat.version && by.chat.ms === 140, 'Chat working, its version from its files', JSON.stringify(by.chat));
 ok(by.today?.s === 'down' && by.mail?.s === 'down', 'Today and Mail not answering from inside: down, whatever the outside said', `${by.today?.s} ${by.mail?.s}`);
-ok(by.home?.s === 'none', 'the home page behind a bot check, with no way in from inside: not checked, never down');
+ok(by.home?.s === 'down', 'the home page behind a bot check: asked from inside over its link instead, and its Worker isn’t running here, so down');
 ok(j?.jobs.find((x) => x.id === 'mkttick')?.s === 'down' && j.jobs.filter((x) => x.s === 'ok').length === 4, 'the jobs: Market alerts failed, the rest ran');
 ok(!api.text.includes('fitting'), 'no Fit Studio');
 ok((await ask('chat.ifl.test:8788', '/status/')).status === 404 && (await ask('chat.ifl.test:8788', '/status/app.js')).status === 404, 'the page’s files at no other address');
@@ -49,14 +49,16 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   await p.goto('http://status.ifl.test:8788/', { waitUntil: 'networkidle' });
   await p.waitForSelector('.item');
   const title = await p.textContent('#vtitle');
-  ok(/^Today, Mail and Market alerts are down$/.test(title), `${w} ${scheme}: the verdict names what’s down`, title);
-  ok((await p.locator('.item').count()) === 9 && (await p.locator('.tile').count()) === 5, `${w} ${scheme}: nine addresses and five jobs`);
+  ok(/^Today, Mail, Home page, Market alerts.* are down$/.test(title), `${w} ${scheme}: the verdict names what’s down`, title);
+  ok((await p.locator('.item').count()) === 9 && (await p.locator('.group:has(h2:text-is("Behind the scenes")) .tile').count()) === 5 && (await p.locator('.group:has(h2:text-is("What they rely on")) .tile').count()) >= 3, `${w} ${scheme}: nine addresses, five jobs, what they rely on`);
   ok((await p.locator('.bars').first().locator('i').count()) === 90, `${w} ${scheme}: ninety days of bars`);
   ok(/Live · checked/.test(await p.textContent('#live')), `${w} ${scheme}: when it was checked`);
   await p.locator('.item[data-svc="chat"] .row').click();
   await p.waitForFunction(() => { const d = document.querySelector('.item[data-svc="chat"] .day'); return d && d.textContent && !/Loading/.test(d.textContent); }, null, { timeout: 10000 }).catch(() => {});
   const day = await p.textContent('.item[data-svc="chat"] .day');
   ok(/Not enough checks yet/.test(day), `${w} ${scheme}: Chat’s row open, its 24 hours (one check so far)`, day);
+  const cks = await p.locator('.item[data-svc="chat"] .checks > div').allInnerTexts();
+  ok(cks.length === 3 && /Answers/.test(cks[0]) && /Database and storage/.test(cks[1]) && /Chat notifications/.test(cks[2]), `${w} ${scheme}: and its checks: it answers, the database, its job`, cks.join(' | '));
   ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w} ${scheme}: nothing sideways`);
   ok(!errs.length, `${w} ${scheme}: no errors`, errs.join(' | '));
   await p.waitForTimeout(400);   // (the row's opening)

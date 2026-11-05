@@ -1,0 +1,38 @@
+# status.inflite.ai, checked from outside Cloudflare: every hour, from GitHub's servers, the site is asked whether its own
+# checks are still running (functions/_status.js outsideSaw, at the site's workers.dev address with the scheduled jobs'
+# key). If the site doesn't answer, or its checks have stopped (none for 20 minutes), this run fails, and GitHub emails the
+# repository's owner: the one alert that still reaches you when Cloudflare itself, or the ticker, is down. What it saw is
+# kept, and the status page says it was checked from outside.
+name: Status, from outside
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: status-outside
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ask the site whether its checks are running
+        env:
+          SITE: ${{ vars.TICK_SITE || 'https://inflite-apps.georgefarrowgreen.workers.dev' }}
+          TICK_SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
+        run: |
+          if [ -z "$TICK_SECRET" ]; then echo "::notice::INFLIGHT_TICK_SECRET isn't set: nothing checked."; exit 0; fi
+          body=$(curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TICK_SECRET" "$SITE/api/status/outside" || echo $'\n000')
+          code=$(printf '%s' "$body" | tail -n1); json=$(printf '%s' "$body" | sed '$d')
+          echo "HTTP $code: $json"
+          if [ "$code" != "200" ]; then echo "::error::The site didn't answer the status check (HTTP $code)."; exit 1; fi
+          if printf '%s' "$json" | grep -q '"stale":true'; then echo "::error::status.inflite.ai's checks have stopped: none in the last 20 minutes."; exit 1; fi
+          down=$(printf '%s' "$json" | sed -n 's/.*"down":\[\([^]]*\)\].*/\1/p')
+          if [ -n "$down" ]; then echo "::warning::Down now: $down (the status page has an incident for it)."; fi
+          echo "Checks running."

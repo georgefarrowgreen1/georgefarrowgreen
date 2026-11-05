@@ -5,7 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const SAY = { ok: "Working", warn: "Slow", down: "Down", none: "Not checked" };
-  const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["jobs", "Behind the scenes"], ["home", "georgefarrowgreen.com"]];
+  const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["jobs", "Behind the scenes"], ["deps", "What they rely on"], ["home", "georgefarrowgreen.com"]];
   const GLYPH = {
     today: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     chat: '<path d="M21 11.5a8.4 8.4 0 0 1-12.2 7.5L3 21l2-5.4A8.4 8.4 0 1 1 21 11.5Z"/>',
@@ -20,6 +20,10 @@
     wxtick: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/>',
     garmin: '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/>',
     mkttick: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    "dep-weather": '<path d="M7 18a5 5 0 1 1 .9-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 7.9Z"/>',
+    "dep-prices": '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    "dep-garmin": '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/>',
+    "dep-email": '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     morning: '<path d="M17 18a5 5 0 0 0-10 0M12 2v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4 3 4-3"/>',
   };
   const icon = (id) => `<span class="ic" data-app="${esc(id)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPH[id] || GLYPH.home}</svg></span>`;
@@ -60,7 +64,7 @@
     const d = data, stale = !d.at || Date.now() - d.at > STALE;
     const late = (j) => j.at && Date.now() - j.at > STALE;
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && late(j) ? "warn" : j.s }));
-    const all = [...d.services, ...jobs];
+    const deps = d.deps || [], all = [...d.services, ...jobs, ...deps];
     const down = all.filter((x) => x.s === "down"), slow = all.filter((x) => x.s === "warn");
     // the verdict
     if (!d.at) verdict("none", "Checks starting", "The first checks run within five minutes of this page going up.", '<path d="M12 7v5l3 2"/>');
@@ -74,19 +78,23 @@
     $("vup").textContent = ups.length ? `${(ups.reduce((a, s) => a + s.up90, 0) / ups.length).toFixed(2)}%` : "–";
     $("vupl").textContent = ups.length ? (d.services.some((s) => s.days.filter(Boolean).length >= 90) ? "up, 90 days" : "up since checks began") : "no history yet";
     const lastInc = d.incidents[0];
-    $("vfoot").innerHTML = `<span>Checked every <b>${d.every || 5} minutes</b></span>${d.at ? `<span>Next check <b>${hm(d.at + (d.every || 5) * 60e3)}</b></span>` : ""}<span>Last incident <b>${lastInc ? (lastInc.ended ? dm(lastInc.started) : "now") : "none"}</b></span>`;
+    $("vfoot").innerHTML = `<span>Checked every <b>${d.every || 5} minutes</b></span>${d.at ? `<span>Next check <b>${hm(d.at + (d.every || 5) * 60e3)}</b></span>` : ""}<span>Last incident <b>${lastInc ? (lastInc.ended ? dm(lastInc.started) : "now") : "none"}</b></span>`
+      + (d.outside && Date.now() - d.outside < 3 * 3600e3 ? `<span>Also checked from outside Cloudflare <b>${hm(d.outside)}</b></span>` : "");
+    maint(d);
     // the groups
     const box = $("groups"), keys = dayKeys();
     box.textContent = "";
     for (const [g, title] of GROUPS) {
-      const items = g === "jobs" ? jobs : d.services.filter((s) => s.group === g);
+      const items = g === "jobs" ? jobs : g === "deps" ? deps : d.services.filter((s) => s.group === g);
       if (!items.length) continue;
       const sec = document.createElement("section"); sec.className = "group";
       const bad = items.filter((x) => x.s === "down" || x.s === "warn").length;
-      sec.innerHTML = `<div class="gh"><h2>${esc(title)}</h2><span>${bad ? `${bad} of ${items.length} affected` : g === "jobs" ? "Scheduled jobs, every 5 minutes" : items.length > 1 ? `All ${items.length} working` : SAY[items[0].s]}</span></div>`;
+      sec.innerHTML = `<div class="gh"><h2>${esc(title)}</h2><span>${bad ? `${bad} of ${items.length} affected` : g === "jobs" ? "Scheduled jobs, every 5 minutes" : g === "deps" ? "Outside InFlite, checked every 5 minutes" : items.length > 1 ? `All ${items.length} working` : SAY[items[0].s]}</span></div>`;
       const card = document.createElement("div"); card.className = "card glass";
       if (g === "jobs") {
         card.innerHTML = `<div class="tiles">${items.map((j) => `<div class="tile" data-s="${esc(j.s)}">${icon(j.id)}<b>${esc(j.name)}</b><span class="dot" role="img" aria-label="${esc(SAY[j.s])}" title="${esc(SAY[j.s])}"></span><small class="num">${j.s === "down" ? `Failed at ${hm(j.at)}` : !j.at ? "Not run yet" : late(j) ? `Late · last ran ${ago(j.at)}` : `Every 5 min · ran ${hm(j.at)}`}</small></div>`).join("")}</div>`;
+      } else if (g === "deps") {
+        card.innerHTML = `<div class="tiles">${items.map((x) => `<div class="tile" data-s="${esc(x.s)}">${icon(x.id)}<b>${esc(x.name)}</b><span class="dot" role="img" aria-label="${esc(SAY[x.s])}" title="${esc(SAY[x.s])}"></span><small class="num">${x.s === "down" ? esc(x.why || "Not answering") : x.s === "warn" ? `Slow · ${x.ms} ms` : x.ms != null ? `Answering · ${x.ms} ms` : "Working"}</small></div>`).join("")}</div>`;
       } else {
         for (const s of items) card.append(row(s, keys));
         card.insertAdjacentHTML("beforeend", `<div class="axis num"><span><span class="n90">${esc(dm(new Date(`${keys[0]}T12:00:00`)))}</span><span class="n45">${esc(dm(new Date(`${keys[45]}T12:00:00`)))}</span></span><span>Today</span></div>`);
@@ -108,6 +116,7 @@
       </div>
       <div class="more"><div><div class="inner">
         <div class="facts num"><div><span>Response now</span><b>${s.s === "down" ? "No answer" : s.ms != null ? `${s.ms} ms` : "–"}</b></div><div><span>Uptime</span><b>${up || "–"}</b></div><div><span>${s.version ? "Version" : "Address"}</span><b>${esc(s.version || s.address)}</b></div></div>
+        ${(s.checks || []).length > 1 ? `<div class="checks num">${s.checks.map((c) => `<div data-s="${esc(c.s)}"><span class="dot"></span><span>${esc(c.k)}</span><em>${c.s === "down" ? esc(c.why || "Failing") : c.at ? `ran ${esc(hm(c.at))}` : c.ms != null ? `${c.ms} ms` : esc(SAY[c.s])}</em></div>`).join("")}</div>` : ""}
         <div class="day"></div>
       </div></div></div>`;
     const r = el.querySelector(".row");
@@ -161,8 +170,18 @@
       + `<p class="chart-note num">${mid != null ? `Typically ${mid} ms` : "Checked from inside"}${pts.some((p) => p[1] === "down") ? " · red where it didn’t answer" : ""}</p>`;
   }
 
+  // planned maintenance: going on now, or coming up in the next fortnight
+  function maint(d) {
+    const box = $("maint"), list = d.maint || [];
+    box.hidden = !list.length;
+    const names = Object.fromEntries([...d.services, ...d.jobs, ...(d.deps || [])].map((x) => [x.id, x.name]));
+    box.innerHTML = list.map((m) => {
+      const on = Date.now() >= m.starts, when = on ? `Going on now, until ${hm(m.ends)}` : `${new Date(m.starts).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}, ${hm(m.starts)}–${hm(m.ends)}`;
+      return `<div class="mt glass" data-s="plan"><span class="dot"></span><div><b>${on ? "Maintenance now" : "Planned maintenance"} · ${esc(when)}</b><p>${esc(m.title)}${m.text ? `: ${esc(m.text)}` : ""}${m.svcs.length ? ` <small>(${esc(and(m.svcs.map((id) => names[id] || id)))})</small>` : ""}</p></div></div>`;
+    }).join("");
+  }
   function incidents(d) {
-    const names = Object.fromEntries([...d.services, ...d.jobs].map((x) => [x.id, x.name]));
+    const names = { db: "Database and storage", ...Object.fromEntries([...d.services, ...d.jobs, ...(d.deps || [])].map((x) => [x.id, x.name])) };
     const box = $("incidents");
     if (!d.incidents.length) { box.innerHTML = `<p class="empty">No incidents in the last 90 days${d.at ? "" : " (the checks have only just begun)"}.</p>`; return; }
     box.innerHTML = d.incidents.map((x) => {
@@ -170,7 +189,7 @@
       const when = `${dm(x.started)} · ${open ? `since ${hm(x.started)}` : `${hm(x.started)}–${hm(x.ended)} · ${len(x.ended - x.started)}`}`;
       const codes = x.codes?.length ? ` · ${x.codes.map(esc).join(", ")}` : "";
       return `<article class="inc" data-s="${s}"><header><h3>${esc(x.title)}</h3><span class="tag">${open ? "Ongoing" : "Resolved"}</span></header>
-        <p class="sub num">${esc(and(x.svcs.map((id) => names[id] || id)))} · ${esc(when)}${codes}</p>
+        <p class="sub num">${x.svcs.length ? `${esc(and(x.svcs.map((id) => names[id] || id)))} · ` : ""}${esc(when)}${codes}</p>
         <ol class="steps">${x.updates.map((u) => `<li><time>${esc(hm(u.at))}</time><span><b>${esc(u.k)}.</b> ${esc(u.w)}</span></li>`).join("")}</ol></article>`;
     }).join("");
   }

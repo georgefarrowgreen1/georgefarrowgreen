@@ -109,14 +109,91 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   // shown there as it's posted: what's happening, in your words (functions/_status.js)
   const statusUrl = () => (/\/\/account\./.test(location.origin) ? location.origin.replace("//account.", "//status.") : "https://status.inflite.ai");
   const incWhen = (i) => `${i.ended ? "Resolved" : "Ongoing"} · ${seenAt(i.started)}${i.ended ? ` to ${new Date(i.ended).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}`;
+  const hm = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const span = (m) => `${seenAt(m.starts).replace(/^Today /, "today ")}–${hm(m.ends)}`;
   function admStatusView() {
-    const x = admAsk("status");
-    const item = (i) => row({ icon: i.ended ? "check" : "alert", tint: i.ended ? "green" : "red", title: i.title, sub: `${incWhen(i)} · ${nOf(i.updates.length, "update")}`,
+    const x = admAsk("status"), said = h("p.said", { role: "alert" });
+    const item = (i) => row({ icon: i.ended ? "check" : "alert", tint: i.ended ? "green" : "red", title: i.title, sub: `${incWhen(i)} · ${nOf(i.updates.length, "update")}${i.kind === "manual" ? " · by you" : ""}`,
       onclick: () => { AD.inc = i.id; AD.kind = null; AD.picked = false; AD.text = ""; pushSheet(admIncidentView); } });
+    // (how you're told: each a switch, saved as it's flipped)
+    const sw = (k, title, sub) => {
+      const el = h("input.switch", { type: "checkbox", role: "switch", "aria-label": title, checked: !!x?.prefs?.[k] });
+      el.onchange = async () => {
+        say(said, "");
+        try { const r = await admPost(el, "", "status-prefs", { [k]: el.checked }); x.prefs = r.prefs; }
+        catch (err) { el.checked = !el.checked; if (!err.quiet) say(said, err.message); }
+      };
+      return h("label.row.plain", {}, h("span.tx", {}, h("b", { text: title }), h("small", { text: sub })), el);
+    };
+    const maint = (m) => h("div.row", {}, h("span.ic.indigo", {}, icon("clock", 19)),
+      h("span.tx", {}, h("b", { text: m.title }), h("small", { text: `${Date.now() >= m.starts ? "Going on now, until " + hm(m.ends) : span(m)}${m.svcs.length ? ` · ${m.svcs.map((id) => x.catalogue.find((c) => c.id === id)?.name || id).join(", ")}` : " · everything"}` })),
+      h("button.mini", { type: "button", onclick: async (e) => {
+        say(said, "");
+        try { await admPost(e.currentTarget, "", "status-maint", { cancel: m.id }); admAsk("status", true); admChanged(); toast("Maintenance called off."); }
+        catch (err) { if (!err.quiet) say(said, err.message); }
+      } }, "Cancel"));
     return { title: "Status page", body: [
       h("div.group", {}, h("a.row.action", { href: statusUrl(), target: "_blank", rel: "noopener" }, "Open the status page")),
+      h("div.group", {},
+        row({ icon: "alert", tint: "red", title: "Start an incident", sub: "For what the checks can’t see", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; pushSheet(admStartView); } }),
+        row({ icon: "clock", tint: "indigo", title: "Plan maintenance", sub: "Announced ahead; it doesn’t count against uptime", onclick: () => { AD.pick = new Set(); AD.title = ""; AD.text = ""; AD.when = null; pushSheet(admMaintView); } })),
+      said,
+      x && x.maint.length ? [h("h4.app-k", { text: "Maintenance planned" }), h("div.group", {}, x.maint.map(maint))] : null,
+      h("h4.app-k", { text: "Incidents" }),
       !x ? admWait("status") : x.incidents.length ? h("div.group", {}, x.incidents.map(item)) : h("div.group", {}, h("div.empty", { text: "No incidents in the last 30 days." })),
-      h("p.hint", { text: "An incident opens by itself when something fails two checks in a row, and closes once it’s working again. Add an update to say what’s happening: it’s on the status page as soon as you post it, for anyone to see." })] };
+      h("p.hint", { text: "An incident opens by itself when something fails two checks in a row, and closes once it’s working again. Add an update to say what’s happening: it’s on the status page as soon as you post it, for anyone to see." }),
+      x && [h("h4.app-k", { text: "Tell me when" }), h("div.group", {},
+        sw("push", "An incident opens or closes", "A notification on your devices, whatever the hour"),
+        sw("email", "And by email", "To the site’s admin address"),
+        sw("burst", "The same bug, five times in ten minutes", "Opens an incident by itself"))]] };
+  }
+  // (what an incident or maintenance covers: any of the status page's addresses, jobs and outside services, or none)
+  const pickChips = (x) => h("div.adm-kinds", { role: "group", "aria-label": "What’s affected" }, x.catalogue.map((c) => h("button.adm-kind", { type: "button", role: "checkbox", "aria-checked": String(AD.pick.has(c.id)),
+    onclick: () => { AD.pick.has(c.id) ? AD.pick.delete(c.id) : AD.pick.add(c.id); redraw(); } }, c.name)));
+  const kept = (el, k) => { el.value = AD[k] || ""; el.addEventListener("input", () => { AD[k] = el.value; }); return el; };
+  function admStartView() {
+    const x = admAsk("status"), said = h("p.said", { role: "alert" });
+    if (!x) return { title: "Start an incident", body: [admWait("status")] };
+    const title = kept(h("input", { placeholder: "What people see, e.g. Weather alerts are late", maxlength: "100", "aria-label": "Title" }), "title");
+    const text = kept(h("textarea", { rows: "3", maxlength: "600", placeholder: "What’s happening, in a sentence or two", "aria-label": "What’s happening" }), "text");
+    const go = h("button.btn", { type: "submit" }, icon("share", 20, 2.2), "Post to the status page");
+    return { title: "Start an incident", body: [
+      h("form.form", { onsubmit: async (e) => {
+        e.preventDefault(); say(said, "");
+        try {
+          const r = await admPost(go, "Posting…", "status-incident", { svcs: [...AD.pick], title: AD.title || "", text: AD.text || "" });
+          AD.title = AD.text = ""; AD.pick = new Set(); AD.inc = r.incident.id; admAsk("status", true); admChanged(); toast("On the status page."); pushSheet(admIncidentView);
+        } catch (err) { if (!err.quiet) say(said, err.message); }
+      } }, h("h4.app-k", { text: "What’s affected" }), pickChips(x), h("label.field", {}, h("span", { text: "Title" }), title), h("label.field", {}, h("span", { text: "What’s happening" }), text), go),
+      said,
+      h("p.hint", { text: "It stays open until you post an update marked Resolved. Anything you name shows a banner in its app while it’s open." })] };
+  }
+  const DURS = [[15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"], [120, "2 hours"], [240, "4 hours"]];
+  function admMaintView() {
+    const x = admAsk("status"), said = h("p.said", { role: "alert" });
+    if (!x) return { title: "Plan maintenance", body: [admWait("status")] };
+    // (when, as this device's own time: tomorrow at 02:00 to begin with)
+    if (!AD.when) { const d = new Date(Date.now() + 864e5); d.setHours(2, 0, 0, 0); AD.when = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); AD.dur = 30; }
+    const when = h("input", { type: "datetime-local", value: AD.when, "aria-label": "Starts" });
+    when.addEventListener("input", () => { AD.when = when.value; });
+    const dur = h("select", { "aria-label": "How long" }, DURS.map(([m, t]) => h("option", { value: String(m), selected: AD.dur === m }, t)));
+    dur.addEventListener("change", () => { AD.dur = Number(dur.value); });
+    const title = kept(h("input", { placeholder: "e.g. Database upgrade", maxlength: "100", "aria-label": "Title" }), "title");
+    const text = kept(h("textarea", { rows: "2", maxlength: "600", placeholder: "What people might notice (optional)", "aria-label": "What people might notice" }), "text");
+    const go = h("button.btn", { type: "submit" }, icon("clock", 20, 2.2), "Plan it");
+    return { title: "Plan maintenance", body: [
+      h("form.form", { onsubmit: async (e) => {
+        e.preventDefault(); say(said, "");
+        const starts = new Date(AD.when).getTime();
+        try {
+          await admPost(go, "Planning…", "status-maint", { svcs: [...AD.pick], title: AD.title || "", text: AD.text || "", starts, ends: starts + (AD.dur || 30) * 6e4 });
+          AD.title = AD.text = ""; AD.pick = new Set(); AD.when = null; admAsk("status", true); admChanged(); toast("Maintenance planned: it’s on the status page.");
+        } catch (err) { if (!err.quiet) say(said, err.message); }
+      } }, h("h4.app-k", { text: "What it covers" }), pickChips(x),
+        h("div.adm-two", {}, h("label.field", {}, h("span", { text: "Starts" }), when), h("label.field", {}, h("span", { text: "How long" }), dur)),
+        h("label.field", {}, h("span", { text: "Title" }), title), h("label.field", {}, h("span", { text: "What people might notice" }), text), go),
+      said,
+      h("p.hint", { text: "Nothing named covers everything. While it’s on, failures in what it covers open no incident and don’t count against uptime; each app it covers shows a banner." })] };
   }
   function admIncidentView() {
     const x = admAsk("status"), inc = x?.incidents.find((i) => i.id === AD.inc);
@@ -501,7 +578,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
 
   // The admin log: what's been done here (and by the site itself: unused accounts warned and deleted)
-  const LOG = { "status-update": ["Status page updated", "wave", "green"], "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
+  const LOG = { "status-update": ["Status page updated", "wave", "green"], "status-incident": ["Incident started", "alert", "red"], "status-maint": ["Maintenance planned", "clock", "indigo"], "status-maint-off": ["Maintenance called off", "clock", "grey"], "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
     "reset-link": ["Reset link made", "link", "indigo"], "reset-used": ["Password reset", "key", "green"], "signed-out": ["Signed out everywhere", "signout", "grey"],
     deleted: ["Account deleted", "trash", "red"], "idle-warned": ["Unused account warned", "mail", "grey"], "idle-deleted": ["Unused account deleted", "trash", "grey"],
     "invite-made": ["Invite made", "link", "blue"], "invite-cancelled": ["Invite cancelled", "link", "grey"], linked: ["Admin linked to your account", "shield", "green"] };

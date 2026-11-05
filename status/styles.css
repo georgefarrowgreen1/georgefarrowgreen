@@ -41,7 +41,7 @@ body { margin: 0; min-height: 100vh; font: 14.5px/1.45 var(--font); color: var(-
 .live i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--s, var(--text-3)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--s, var(--text-3)) 22%, transparent); }
 
 /* verdict */
-[data-s="ok"] { --s: var(--ok); } [data-s="warn"] { --s: var(--warn); } [data-s="down"] { --s: var(--down); } [data-s="none"] { --s: var(--text-3); }
+[data-s="ok"] { --s: var(--ok); } [data-s="warn"] { --s: var(--warn); } [data-s="down"] { --s: var(--down); } [data-s="none"] { --s: var(--text-3); } [data-s="plan"] { --s: var(--tint); }
 .verdict { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px 18px; padding: 22px 24px; }
 .halo { position: relative; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--s) 13%, transparent); }
 .halo b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--s); color: #fff; }
@@ -73,6 +73,8 @@ body { margin: 0; min-height: 100vh; font: 14.5px/1.45 var(--font); color: var(-
 .ic[data-app="mail"] { background: linear-gradient(160deg, #3cc7b0, #1aa58f); }
 .ic[data-app="auth"], .ic[data-app="account"] { background: linear-gradient(160deg, #8279ff, #5b4fe0); }
 .ic[data-app="morning"] { background: linear-gradient(160deg, #ffb54f, #f28a00); }
+.ic[data-app="dep-weather"] { background: linear-gradient(160deg, #62acff, #3a86f0); } .ic[data-app="dep-prices"] { background: linear-gradient(160deg, #30c88a, #12a46a); }
+.ic[data-app="dep-garmin"] { background: linear-gradient(160deg, #ff7f52, #f0542e); } .ic[data-app="dep-email"] { background: linear-gradient(160deg, #3cc7b0, #1aa58f); }
 
 /* a row: name, state, 90 days */
 .row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 12px; align-items: center; padding: 16px 18px; cursor: pointer; transition: background 0.15s; }

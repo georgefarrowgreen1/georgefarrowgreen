@@ -93,8 +93,9 @@ export const tickHost = (hostname, env) => !!env?.TICK_HOST && hostname === env.
 // Mail's (email.inflite.ai, MAIL_APP) and Today's (inflite.ai, TODAY_APP). The same request either way, at the same
 // address (each Worker decides what it is by its host); anything else, and anywhere without the link (the tests' stand-
 // ins, a local copy), is a plain fetch.
-export function siteFetch(env, url, init) {
+// (via: the link to use, where the caller knows it: the home page's Worker, GFG_APP, for status.inflite.ai's checks)
+export function siteFetch(env, url, init, via) {
   const u = new URL(url), host = u.hostname;
-  const link = u.protocol !== "https:" ? null : host === "email." + APPS_SITE ? env?.MAIL_APP : host === APPS_SITE ? env?.TODAY_APP : null;
+  const link = via || (u.protocol !== "https:" ? null : host === "email." + APPS_SITE ? env?.MAIL_APP : host === APPS_SITE ? env?.TODAY_APP : null);
   return typeof link?.fetch === "function" ? link.fetch(new Request(u, init)) : fetch(u, init);
 }

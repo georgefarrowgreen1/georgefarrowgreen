@@ -43,7 +43,7 @@ export async function onRequest(ctx0) {
   // (status.inflite.ai, its page and its answers; and the ticker's report of what it found, at the workers.dev address:
   // functions/_status.js. Its page's files are its address's alone)
   if (isStatus(url, ctx.env)) return statusHost(ctx, url);
-  if (url.pathname.startsWith("/api/status")) { const r = await statusRoute(ctx, url); if (r) return r; }
+  if (url.pathname.startsWith("/api/status") || url.pathname === "/api/account/status-banner") { const r = await statusRoute(ctx, url); if (r) return r; }
   if (/^\/status(\/|$)/i.test(plainPath(url.pathname))) return notFound();
   // (www.georgefarrowgreen.com: the home page's own address, the same place)
   if (url.hostname === `www.${homeSite(ctx.env)}`) { url.hostname = homeSite(ctx.env); return Response.redirect(url.href, 301); }

@@ -46,6 +46,8 @@ async function keep(env, r) {
   const D = await table(env), id = newId();
   await D.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, version, words, at_where, stack, path, device, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null).run();
+  // (the same code five times in ten minutes: an incident on status.inflite.ai, where the owner has that on)
+  await import("./_status.js").then((m) => m.burstCheck(env, r.code, r.app)).catch((e) => console.error("status burst", e && e.message));
   return id;
 }
 

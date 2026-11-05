@@ -1,5 +1,5 @@
 import { tickHost } from "../../_sites.js";
-import { adminIncidents, noteIncident, openIncidents, NOTE_KINDS } from "../../_status.js";
+import { adminIncidents, adminMaint, noteIncident, openIncidents, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
@@ -1663,7 +1663,27 @@ async function adminLogList({ request, env }) {
 // incidents are public anyway; an update, as any change, needs it shown it's you in the last 10 minutes
 async function adminStatus({ request, env }) {
   await requireAdmin(request, env, false, { look: true });
-  return json({ incidents: await adminIncidents(env), kinds: NOTE_KINDS });
+  const [incidents, maint, prefs] = await Promise.all([adminIncidents(env), adminMaint(env), alertPrefs(env)]);
+  return json({ incidents, maint, prefs, kinds: NOTE_KINDS, catalogue: CATALOGUE });
+}
+// (an incident started by hand, for what the checks can't see; maintenance planned ahead, or called off; how you're told)
+async function adminStatusIncident({ request, env }) {
+  await requireAdmin(request, env, true);
+  const x = await startIncident(env, await body(request));
+  await adminLog(env, "status-incident", x.id, x.title);
+  return json({ ok: true, incident: x });
+}
+async function adminStatusMaint({ request, env }) {
+  await requireAdmin(request, env, true);
+  const b = await body(request);
+  if (b.cancel) { await cancelMaint(env, b.cancel); await adminLog(env, "status-maint-off", String(b.cancel), null); return json({ ok: true }); }
+  const m = await planMaint(env, b);
+  await adminLog(env, "status-maint", m.id, m.title);
+  return json({ ok: true, maint: m });
+}
+async function adminStatusPrefs({ request, env }) {
+  await requireAdmin(request, env, true);
+  return json({ ok: true, prefs: await setAlertPrefs(env, await body(request)) });
 }
 async function adminStatusNote({ request, env }) {
   await requireAdmin(request, env, true);
@@ -1673,7 +1693,8 @@ async function adminStatusNote({ request, env }) {
 }
 // on the admin's own page (functions/api/account: admin/…)
 export const ADMIN_ROUTES = {
-  "GET admin/status": adminStatus, "POST admin/status-note": adminStatusNote,
+  "GET admin/status": adminStatus, "POST admin/status-note": adminStatusNote, "POST admin/status-incident": adminStatusIncident,
+  "POST admin/status-maint": adminStatusMaint, "POST admin/status-prefs": adminStatusPrefs,
   "GET admin/summary": adminSummary, "GET admin/users": adminUsers, "GET admin/avatar": (ctx) => adminAvatar(ctx, new URL(ctx.request.url).searchParams.get("id")),
   "GET admin/invites": adminInvites, "GET admin/insights": adminInsights, "GET admin/storage": adminStorage, "GET admin/log": adminLogList,
   "POST admin/reset": adminReset, "POST admin/signout": adminSignOut, "POST admin/pigeons": adminPigeons, "POST admin/delete": adminDelete,

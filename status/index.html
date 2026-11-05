@@ -9,6 +9,7 @@
 <meta name="theme-color" content="#060814" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
+<link rel="alternate" type="application/atom+xml" title="InFlite Status" href="feed.xml">
 <link rel="stylesheet" href="styles.css">
 <script src="app.js" defer></script>
 </head>
@@ -27,6 +28,8 @@
     <div class="foot num" id="vfoot"><span>Checked every <b>5 minutes</b></span></div>
   </section>
 
+  <div id="maint" class="maint" hidden></div>
+
   <div id="groups"></div>
 
   <section class="group">
@@ -39,7 +42,7 @@
     <div class="card glass"><div class="codes" id="codes"></div></div>
   </section>
 
-  <p class="foot-note">Each app is checked at its own address, the way your phone reaches it, every five minutes.<br>Something wrong that isn’t shown here? Use Report a Problem in any app’s menu.</p>
+  <p class="foot-note">Each app is checked at its own address, the way your phone reaches it, every five minutes.<br>Something wrong that isn’t shown here? Use Report a Problem in any app’s menu. · <a href="feed.xml">Follow in a feed reader</a></p>
   <noscript><p class="foot-note">This page needs JavaScript to show the checks.</p></noscript>
 </div>
 <div class="tip" id="tip" hidden></div>

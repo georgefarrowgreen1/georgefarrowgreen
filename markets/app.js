@@ -1007,10 +1007,57 @@ const IFL = (() => {
         window.fetch = watched;
       }
     }
+    bug.app = appNow;
     return bug;
   })();
 
-  const api = { bug: BUG, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
+  // ---- Something's wrong with this app: a slim banner under its header while status.inflite.ai has an incident going on
+  // that touches it, or maintenance (the site's functions/_status.js bannerFor, asked at this app's own address, as
+  // /api/status-banner), linking there. Asked a moment after the page opens and every five minutes it's on screen; one
+  // closed stays closed for the visit; gone by itself when the incident is ----
+  const BANNER = (() => {
+    if (typeof window === "undefined" || typeof document === "undefined" || typeof addEventListener !== "function" || typeof fetch !== "function") return null;
+    let now = null, el = null, off = false, gone = new Set();
+    try { gone = new Set(JSON.parse(sessionStorage.getItem("ifl-sb") || "[]")); } catch (_) {}
+    const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const place = () => {
+      if (!now || gone.has(now.id)) { el?.remove(); return; }
+      const hd = [...document.querySelectorAll(".ifh")].find((x) => x.offsetParent !== null || x.getClientRects().length);
+      if (!el) {
+        el = document.createElement("div"); el.className = "ifl-sb"; el.setAttribute("role", "status");
+        el.addEventListener("click", (e) => {
+          if (e.target.closest(".ifl-sb-x")) { gone.add(now.id); try { sessionStorage.setItem("ifl-sb", JSON.stringify([...gone])); } catch (_) {} el.remove(); return; }
+          if (now?.url) window.open(now.url, "_blank", "noopener");
+        });
+      }
+      const maint = now.kind === "maint";
+      el.dataset.k = now.kind;
+      el.innerHTML = `<span class="ifl-sb-dot" aria-hidden="true"></span><span class="ifl-sb-t"><b>${esc(maint ? `Maintenance: ${now.title}` : now.title)}</b><small>${esc(maint ? `Until ${hhmm(now.until)}${now.text ? ` · ${now.text}` : ""}` : now.text || "Being looked into.")}</small></span>`
+        + `<span class="ifl-sb-go">Status${svg("chev")}</span><button type="button" class="ifl-sb-x" aria-label="Hide this">${svg("x")}</button>`;
+      if (hd) { if (el.previousElementSibling !== hd) hd.after(el); el.classList.remove("float"); }
+      else { if (el.parentNode !== document.body) document.body.prepend(el); el.classList.add("float"); }
+    };
+    const ask = async () => {
+      if (off || document.visibilityState === "hidden") return;
+      try {
+        const r = await (fetch.__iflReal || fetch)(`/api/status-banner?app=${encodeURIComponent(BUG.app ? BUG.app() : "hub")}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+        if (r.status === 404) { off = true; return; }
+        if (!r.ok) return;
+        now = (await r.json())?.banner || null;
+        place();
+      } catch (_) {}
+    };
+    // (timers that never keep anything running that would otherwise end: a test's stand-in window, under Node)
+    const loose = (t) => (t && typeof t.unref === "function" ? t.unref() : t);
+    loose(setTimeout(ask, 2500));
+    loose(setInterval(ask, 5 * 60e3));
+    // (an app that draws its header anew: put back under it)
+    loose(setInterval(() => { if (now) place(); }, 3000));
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") ask(); });
+    return { ask, place };
+  })();
+
+  const api = { bug: BUG, banner: BANNER, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
     updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
@@ -1022,8 +1069,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.07";
-const NEWS = "Something went wrong? A window with its own code to send straight to InFlite (and Report a Problem in the menu), drawn to the bottom of the screen on the Home Screen, icons back where they were missing";
+const BUILD = "2.08";
+const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)

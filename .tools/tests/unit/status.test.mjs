@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS } from "../../../functions/_status.js";
+import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost } from "../../../functions/_status.js";
 import { STATUS_SERVICES, STATUS_JOBS } from "../../../functions/_statuslist.js";
 
 function d1() {
@@ -20,7 +20,7 @@ function d1() {
 const up = { today: true, mail: true };
 const link = (id, body) => ({ fetch: async () => (up[id] ? new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } }) : new Response("no", { status: 503 })) });
 const DB = d1(), TICK = "inflite-apps.example.workers.dev";
-const env = { DB, PIGEON_TICK_SECRET: "tick", TICK_HOST: TICK, TODAY_APP: link("today", { build: "1.58", min: null }), MAIL_APP: link("mail", { v: "9", build: "abc", app: "1.62" }),
+const env = { DB, STATUS_DEPS: "0", PIGEON_TICK_SECRET: "tick", TICK_HOST: TICK, TODAY_APP: link("today", { build: "1.58", min: null }), MAIL_APP: link("mail", { v: "9", build: "abc", app: "1.62" }),
   ASSETS: { fetch: async (r) => new Response(new URL(r.url).pathname === "/pigeon/app.js" ? 'const APP_VERSION = "1.79";' : 'const BUILD = "1.50";') } };
 const T0 = Date.UTC(2026, 10, 5, 9, 0);
 // (a report: every address fine at 120 ms, but for `over`, and every job run)
@@ -128,4 +128,93 @@ test("Admin's written update on an incident: on the status page at once; Resolve
   assert.equal(inc.ended, t + 3000); assert.equal(inc.updates[0].k, "Resolved");
   assert.equal((await openIncidents(env)).length, 0);
   assert.deepEqual(NOTE_KINDS, ["Investigating", "Identified", "Update", "Monitoring", "Resolved"]);
+});
+
+test("each app's checks: it answers, the database and storage, its job; told when an incident opens and when it closes", async () => {
+  let t = T0 + 6 * 3600e3;
+  const r1 = await keepReport(env, report(), t);
+  assert.equal(r1.told, 0);
+  const s = await summary(env, t);
+  const chat = s.services.find((x) => x.id === "chat");
+  assert.deepEqual(chat.checks.map((c) => c.k), ["Answers", "Database and storage", "Chat notifications"]);
+  assert.ok(chat.checks.every((c) => c.s === "ok"));
+  assert.deepEqual(s.services.find((x) => x.id === "mail").checks.map((c) => c.k), ["Answers"], "Mail's data is its own Worker's");
+  for (let i = 0; i < 2; i++) { t += 5 * 60e3; const r = await keepReport(env, report({ fitness: { s: "down", ms: null } }), t); if (i === 1) assert.equal(r.told, 1, "opened: told"); }
+  for (let i = 0; i < 2; i++) { t += 5 * 60e3; const r = await keepReport(env, report(), t); if (i === 1) assert.equal(r.told, 1, "closed: told"); }
+});
+
+test("maintenance planned: on the page ahead, and while it's on, what it covers failing opens nothing and isn't counted", async () => {
+  let t = T0 + 9 * 3600e3;
+  await assert.rejects(planMaint(env, { title: "x", starts: t, ends: t + 60e3 }, t), /title/);
+  await assert.rejects(planMaint(env, { title: "Upgrade", starts: t + 60e3, ends: t }, t), /start and end/);
+  await assert.rejects(planMaint(env, { title: "Upgrade", starts: t, ends: t + 2 * 864e5 }, t), /a day/);
+  const m = await planMaint(env, { title: "Database upgrade", text: "Chat may pause.", svcs: ["markets", "nope"], starts: t + 10 * 60e3, ends: t + 40 * 60e3 }, t);
+  assert.deepEqual(m.svcs, ["markets"], "only what's known");
+  assert.equal((await summary(env, t)).maint[0].title, "Database upgrade");
+  assert.equal((await adminMaint(env, t)).length, 1);
+  const before = (await summary(env, t)).services.find((x) => x.id === "markets").up90;
+  for (let i = 0; i < 3; i++) { t += 10 * 60e3 + (i ? 0 : 1000); await keepReport(env, report({ markets: { s: "down", ms: null } }), t); }
+  const s = await summary(env, t);
+  assert.ok(!s.incidents.some((x) => !x.ended && x.svcs.includes("markets")), "no incident while it's on");
+  assert.equal(s.services.find((x) => x.id === "markets").up90, before, "and not counted against uptime");
+  assert.equal((await bannerFor(env, "markets", t)).banner?.kind, "maint", "Markets says so");
+  assert.equal((await bannerFor(env, "weather", t)).banner, null, "Weather doesn't");
+  await cancelMaint(env, m.id, t);
+  assert.equal((await adminMaint(env, t)).length, 0);
+  await assert.rejects(cancelMaint(env, m.id, t), /isn’t there/);
+});
+
+test("an incident started by hand stays until it's resolved by hand, and shows a banner in the apps it names", async () => {
+  const t = T0 + 12 * 3600e3;
+  await assert.rejects(startIncident(env, { title: "Hi", text: "x" }, t), /title/);
+  const x = await startIncident(env, { title: "Weather alerts are late", text: "Up to 20 minutes late. Looking into it.", svcs: ["wxtick", "weather"] }, t);
+  assert.equal(x.kind, "manual"); assert.deepEqual(x.svcs, ["weather", "wxtick"]);
+  for (let i = 1; i <= 3; i++) await keepReport(env, report(), t + i * 5 * 60e3);
+  assert.equal((await summary(env, t + 16 * 60e3)).incidents.find((i) => i.id === x.id).ended, null, "not closed by the checks");
+  const b = await bannerFor(env, "weather", t + 16 * 60e3);
+  assert.equal(b.banner.title, "Weather alerts are late"); assert.match(b.banner.text, /20 minutes/);
+  assert.equal((await bannerFor(env, "chat", t)).banner, null);
+  assert.equal((await bannerFor(env, "hub", t)).banner?.id, x.id, "the hub: anything");
+  await noteIncident(env, { id: x.id, kind: "Resolved", text: "Caught up." }, t + 20 * 60e3);
+  assert.equal((await bannerFor(env, "weather", t + 21 * 60e3)).banner, null, "gone once it's resolved");
+});
+
+test("the same bug five times in ten minutes opens an incident (where that's on), and an hour without it closes it", async () => {
+  const t = T0 + 15 * 3600e3;
+  DB.sql.exec("CREATE TABLE IF NOT EXISTS pg_bugs (id TEXT PRIMARY KEY, code TEXT NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL, version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)");
+  for (let i = 0; i < 4; i++) DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES (?, 'IF-C-AAAAA', 'chat', 'crash', ?)").run(`b${i}`, t - i * 60e3);
+  assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "four isn't a burst");
+  DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES ('b9', 'IF-C-AAAAA', 'chat', 'crash', ?)").run(t);
+  await setAlertPrefs(env, { burst: false });
+  assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "off: nothing");
+  assert.equal((await setAlertPrefs(env, { burst: true, nope: 1 })).burst, true);
+  assert.deepEqual(Object.keys(await alertPrefs(env)).sort(), ["burst", "email", "push"]);
+  const id = await burstCheck(env, "IF-C-AAAAA", "chat", t);
+  assert.ok(id); assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "one at a time");
+  let x = (await summary(env, t)).incidents.find((i) => i.id === id);
+  assert.equal(x.kind, "burst"); assert.deepEqual(x.svcs, ["chat"]); assert.deepEqual(x.codes, ["IF-C-AAAAA"]);
+  await keepReport(env, report(), t + 30 * 60e3);
+  assert.equal((await summary(env, t + 30 * 60e3)).incidents.find((i) => i.id === id).ended, null);
+  await keepReport(env, report(), t + 75 * 60e3);
+  assert.ok((await summary(env, t + 75 * 60e3)).incidents.find((i) => i.id === id).ended, "an hour quiet: closed");
+});
+
+test("the outside check, the feed, and the banner at every app's address (and Today's and Mail's way to it)", async () => {
+  const t = T0 + 18 * 3600e3;
+  await keepReport(env, report(), t);
+  const o = await outsideSaw(env, t + 60e3);
+  assert.equal(o.stale, false); assert.deepEqual(o.down, []);
+  assert.equal((await summary(env, t + 60e3)).outside, t + 60e3);
+  assert.equal((await outsideSaw(env, t + 30 * 60e3)).stale, true, "no check for 20 minutes: stale");
+  const call = async (method, url, auth) => statusRoute({ env, request: new Request(url, { method, headers: auth ? { Authorization: `Bearer ${auth}` } : {} }) }, new URL(url));
+  assert.equal((await call("POST", `https://${TICK}/api/status/outside`)).status, 401);
+  assert.equal((await call("POST", `https://${TICK}/api/status/outside`, "tick")).status, 200);
+  for (const u of ["https://chat.inflite.ai/api/status-banner?app=chat", "https://account.inflite.ai/api/account/status-banner?app=hub"]) {
+    const r = await call("GET", u);
+    assert.equal(r.status, 200, u); assert.ok("banner" in (await r.json()));
+  }
+  const f = await statusHost({ env, request: new Request("https://status.inflite.ai/feed.xml") }, new URL("https://status.inflite.ai/feed.xml"));
+  assert.equal(f.status, 200); assert.match(f.headers.get("Content-Type"), /atom/);
+  const xml = await f.text();
+  assert.match(xml, /^<\?xml/); assert.match(xml, /<entry>/); assert.match(xml, /Weather alerts are late/);
 });

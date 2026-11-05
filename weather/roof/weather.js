@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.81";
-export const NEWS = "Something went wrong? A window with its own code to send straight to InFlite (and Report a Problem in the menu), drawn to the bottom of the screen on the Home Screen, icons back where they were missing";
+export const BUILD = "1.82";
+export const NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

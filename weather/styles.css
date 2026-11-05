@@ -2315,6 +2315,24 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifb-btn:disabled { opacity: 0.6; cursor: default; }
 .ifb-btn:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 .ifb-said { min-height: 1.2em; margin: 10px 0 0; color: var(--ifm-text-2); font-size: 13.5px; text-align: center; }
+
+/* the status banner (menu.js BANNER): under the app's header while something touching it is wrong, a link to the status
+   page; amber for an incident, the app's tint for maintenance */
+.ifl-sb { --sb: #c26a00; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 2px 10px; margin: 6px 16px 10px; padding: 10px 6px 10px 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--sb) 12%, rgba(255, 255, 255, 0.78)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: #11131c; cursor: pointer;
+  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
+.ifl-sb[data-k="maint"] { --sb: #4c56dc; }
+.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: 0 10px 30px -14px rgba(10, 16, 50, 0.4); }
+.ifl-sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sb); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb) 22%, transparent); }
+.ifl-sb-t { min-width: 0; display: grid; }
+.ifl-sb-t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ifl-sb-t small { font-size: 12px; opacity: 0.72; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ifl-sb-go { display: inline-flex; align-items: center; gap: 1px; color: var(--sb); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.ifl-sb-go svg, .ifl-sb-x svg { width: 14px; height: 14px; stroke-width: 2.6; }
+.ifl-sb-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.55; display: grid; place-items: center; cursor: pointer; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: #9c93ff; } }
+:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; }
+:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
 /* ==== end of InFlite's menu ==== */
 
 /* InFlite's header, the same in every app (its copy just above), on Weather's own bar: your photo (or, signed out, an

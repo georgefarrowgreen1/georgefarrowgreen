@@ -24,3 +24,18 @@ export const STATUS_JOBS = [
 ];
 // (slower than this, and it's "slow")
 export const SLOW_MS = 3000;
+// (what the apps rely on outside InFlite, checked from inside each time: for: the apps each one's part of)
+export const STATUS_DEPS = [
+  { id: "dep-weather", name: "Weather data", for: ["weather", "today"] },
+  { id: "dep-prices", name: "Market prices", for: ["markets"] },
+  { id: "dep-garmin", name: "Garmin Connect", for: ["fitness"] },
+  { id: "dep-email", name: "Email sending", for: ["auth", "account"] },
+];
+// (the job each app's checks include)
+export const APP_JOB = { chat: "notify", weather: "wxtick", fitness: "garmin", markets: "mkttick", today: "morning" };
+// (what an app's banner is about, as the shared menu asks for it: its own address, its job, what it relies on; the hub, everything)
+export const APP_SVCS = {
+  chat: ["chat", "notify"], chats: ["chat", "notify"], weather: ["weather", "wxtick", "dep-weather"], fitness: ["fitness", "garmin", "dep-garmin"],
+  markets: ["markets", "mkttick", "dep-prices"], finance: ["markets", "mkttick", "dep-prices"], mail: ["mail"], email: ["mail"],
+  account: ["account", "auth", "dep-email"], auth: ["auth", "dep-email"], home: ["home"],
+};
