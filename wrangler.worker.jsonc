@@ -30,15 +30,15 @@
   // they call georgefarrowgreen.pages.dev now: functions/_sites.js tickHost)
   "workers_dev": true,
   "vars": { "TICK_HOST": "inflite-apps.georgefarrowgreen.workers.dev" },
-  // (the addresses it has taken over from the Pages project, each a route in front of its custom domain: undone by
-  // taking the route out)
+  // (its addresses, each its own custom domain, with its own DNS record, since the Pages project and the records it had
+  // made are gone)
   "routes": [
-    { "pattern": "finance.inflite.ai/*", "zone_name": "inflite.ai" },
-    { "pattern": "fitness.inflite.ai/*", "zone_name": "inflite.ai" },
-    { "pattern": "weather.inflite.ai/*", "zone_name": "inflite.ai" },
-    { "pattern": "account.inflite.ai/*", "zone_name": "inflite.ai" },
-    { "pattern": "auth.inflite.ai/*", "zone_name": "inflite.ai" },
-    { "pattern": "chat.inflite.ai/*", "zone_name": "inflite.ai" }
+    { "pattern": "finance.inflite.ai", "custom_domain": true },
+    { "pattern": "fitness.inflite.ai", "custom_domain": true },
+    { "pattern": "weather.inflite.ai", "custom_domain": true },
+    { "pattern": "account.inflite.ai", "custom_domain": true },
+    { "pattern": "auth.inflite.ai", "custom_domain": true },
+    { "pattern": "chat.inflite.ai", "custom_domain": true }
   ]
   // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
   // "routes": [
