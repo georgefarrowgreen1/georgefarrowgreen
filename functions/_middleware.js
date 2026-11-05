@@ -28,6 +28,7 @@ import { homePage } from "./_home.js";
 import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
 import { fillSecrets } from "./_kept.js";
+import { bugsRoute } from "./_bugs.js";
 
 export async function onRequest(ctx0) {
   // (the variables and secrets the Pages project kept in the database at the move off it, for any the Worker hasn't
@@ -36,6 +37,8 @@ export async function onRequest(ctx0) {
   // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
   const ctx = hubRequest(ctx0);
   const url = new URL(ctx.request.url);
+  // (bug reports, at every address, each app's own: functions/_bugs.js)
+  if (url.pathname.startsWith("/api/bugs") || url.pathname === "/api/account/bugs") { const r = await bugsRoute(ctx, url); if (r) return r; }
   // (www.georgefarrowgreen.com: the home page's own address, the same place)
   if (url.hostname === `www.${homeSite(ctx.env)}`) { url.hostname = homeSite(ctx.env); return Response.redirect(url.href, 301); }
   // The repo root is the static output (wrangler.toml), so the source, notes and dotfiles are in it too.

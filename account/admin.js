@@ -78,6 +78,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     if (s.ticks && stale.length) out.push({ title: `${stale.map(([n]) => n).join(" and ")} notifications aren’t running`,
       text: stale.map(([n, k]) => (k ? `${n}: last ran ${seenAt(k.at)}` : `${n}: hasn’t run yet`)).join(" · "), open: admServerView });
     if (s.errors?.length) out.push({ title: `${nOf(s.errors.length, "server error")} today`, text: `Latest: ${s.errors[0].src} · ${seenAt(s.errors[0].at)}`, open: admServerView });
+    const sent = (s.bugs || []).filter((b) => b.app !== "server" && Date.now() - b.at < 86400e3);
+    if (sent.length) out.push({ title: `${nOf(sent.length, "bug report")} today`, text: `Latest: ${sent[0].code} · ${sent[0].app} · ${seenAt(sent[0].at)}`, open: admServerView });
     return out;
   }
   // The server: when the scheduled jobs last ran, and its errors today (newest first: where, what, when)
@@ -89,7 +91,16 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("div.group", {}, info("Chat’s notifications", ran(k.inflight)), info("Weather’s notifications", ran(k.weather))),
       h("p.hint", { text: "Each runs every few minutes (on a schedule, and whenever the apps are used). Over 20 minutes since the last run means notifications are late." }),
       errs.length ? h("div.group", {}, errs.map((e) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: e.src }), h("small", { text: `${e.msg} · ${seenAt(e.at)}` })))))
-        : h("div.group", {}, h("div.empty", { text: "No errors today." }))] };
+        : h("div.group", {}, h("div.empty", { text: "No errors today." })),
+      // (the bug reports of the last week, each under its code, with what the sender said: the notes are yours alone, never
+      // in the repository's issues, which are public)
+      h("h4.app-k", { text: "Bug reports" }),
+      (s.bugs || []).length ? h("div.group", {}, s.bugs.map((b) => h("div.row.plain", {}, h("span.tx", {},
+        h("b", { text: `${b.code} · ${b.app}${b.version ? " " + b.version : ""}${b.issue ? ` · issue #${b.issue}` : ""}` }),
+        h("small", { text: `${b.kind === "manual" ? "Reported" : b.words || "Something went wrong"} · ${seenAt(b.at)}` }),
+        b.note ? h("small", { text: `“${b.note}”` }) : null))))
+        : h("div.group", {}, h("div.empty", { text: "No bug reports this week." })),
+      h("p.hint", { text: "Each code is one issue, the same every time it happens. Every hour they're filed as issues in the georgefarrowgreen repository on GitHub, without the notes." })] };
   }
   function adminView() {
     admSum();

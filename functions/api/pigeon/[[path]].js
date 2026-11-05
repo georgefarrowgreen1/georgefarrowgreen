@@ -1487,8 +1487,10 @@ async function adminSummary({ request, env, waitUntil }) {
   const [msgs, photos, edits] = await Promise.all([messageCounts(env).catch(() => null), homePhotos(env).catch(() => []), getHistory(env).catch(() => [])]);
   // (the scheduled jobs: when each last ran; and what's gone wrong on the server today, the latest few)
   const meta1 = async (q) => { try { const r = await D.prepare(q).first(); return r?.v ? JSON.parse(r.v) : null; } catch (_) { return null; } };
-  const [pTick, wTick, errs] = await Promise.all([meta1("SELECT v FROM pg_meta WHERE k = 'tick_last'"), meta1("SELECT v FROM wx_meta WHERE k = 'tick_last'"),
-    D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => [])]);
+  // (and the bug reports of the last week, with what each sender said: functions/_bugs.js; their issues hold the rest)
+  const [pTick, wTick, errs, bugs] = await Promise.all([meta1("SELECT v FROM pg_meta WHERE k = 'tick_last'"), meta1("SELECT v FROM wx_meta WHERE k = 'tick_last'"),
+    D.prepare("SELECT at, src, msg FROM pg_errors WHERE at > ? ORDER BY at DESC LIMIT 20").bind(t - DAY).all().then((r) => r.results || []).catch(() => []),
+    D.prepare("SELECT code, app, kind, at, version, words, note, issue FROM pg_bugs WHERE at > ? ORDER BY at DESC LIMIT 30").bind(t - 7 * DAY).all().then((r) => r.results || []).catch(() => [])]);
   const on = emailReady(env), fail = on && m.mail_fail?.n >= 2 ? m.mail_fail : null;
   return json({ ...main.results[0], ...people.results[0], late: late.results[0]?.late || 0,
     messages: msgs?.n || 0, unread: msgs?.unread || 0, lastMessage: msgs?.lastAt ? { name: msgs.lastName, at: msgs.lastAt } : null,
@@ -1496,7 +1498,7 @@ async function adminSummary({ request, env, waitUntil }) {
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
     from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
-    ticks: { inflight: pTick, weather: wTick }, errors: errs });
+    ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
@@ -1781,7 +1783,7 @@ export async function onRequest(ctx) {
     return res;
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
-    await logError(ctx.env, "pigeon api", e);
-    return json({ error: "Something went wrong on our side. Try again in a moment." }, 500);
+    const code = await logError(ctx.env, "pigeon api", e);
+    return json({ error: "Something went wrong on our side. Try again in a moment.", code }, 500);
   }
 }

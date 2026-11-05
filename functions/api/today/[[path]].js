@@ -20,7 +20,7 @@ export async function onRequest(ctx) {
     return json(await morningTick({ ...env, waitUntil: (p) => ctx.waitUntil(p) }, Date.now()));
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    await logError(env, "today tick", e);
-    return json({ error: "Something went wrong on our side. Try again in a moment." }, 500);
+    const code = await logError(env, "today tick", e);
+    return json({ error: "Something went wrong on our side. Try again in a moment.", code }, 500);
   }
 }

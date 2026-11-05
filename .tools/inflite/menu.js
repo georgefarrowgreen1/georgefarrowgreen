@@ -339,7 +339,8 @@ const IFL = (() => {
       }
       return groups.filter((g) => g.childNodes.length);
     };
-    const rowsBox = el("div", "ifm-rows", ...drawRows(o.rows));
+    // (and last, in every app: Report a Problem, the bug window for anything that isn't right)
+    const rowsBox = el("div", "ifm-rows", ...drawRows([...(o.rows || []), "-", { icon: "warn", color: "grey", label: "Report a Problem", key: "bug", open: () => BUG.report() }]));
     const mark = el("img", "ifm-foot-ic"); mark.src = iconUrl(o.app); mark.alt = "";
     // (its foot: the app and its version, quietly, a green dot while it's up to date; a new version waiting, an Update
     // button in the dot's place; and Sign Out, the one round button at the end, named for screen readers)
@@ -840,7 +841,149 @@ const IFL = (() => {
     if (said) toast(stillHere(String(said).slice(0, 200)));
   }
 
-  const api = { header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
+  // ---- Something went wrong: the window every app shows when it breaks, each issue its own code ----
+  // What broke in this app's own code (an error nothing caught, a promise that failed with a real bug in it), or an API of
+  // the site's that failed and said under what code (the site files those itself: functions/_bugs.js), shown once a page
+  // in a window that can be screenshotted as it is: the code (IF-, the app's letter, five more: the same for the same bug
+  // every time, as functions/_bugs.js works it out), what happened in a line, the app and its version, the page, when,
+  // the device, and Send to InFlite, which files it (POST /api/bugs) for a GitHub Action to make an issue of, where it's
+  // fixed. Report a Problem (the menu's last row) opens it for anything else. Never anything of what's on the screen or
+  // anyone's words: the page's path alone, an error's words with addresses, numbers and anything like a key taken out.
+  //   bug({ words, where, kind }) → the window for one an app caught itself; bug.report() → Report a Problem
+  const BUG = (() => {
+    const ALPHA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    const LETTER = { chat: "C", chats: "C", weather: "W", fitness: "F", markets: "M", finance: "M", account: "A", auth: "A", hub: "T", mail: "E", email: "E", home: "H", fitting: "P" };
+    const HOSTS = { chat: "chat", weather: "weather", fitness: "fitness", finance: "markets", account: "account", auth: "auth", email: "mail", fitting: "fitting" };
+    const HUB = { chats: "chats", weather: "weather", fitness: "fitness", markets: "markets", mail: "mail" };
+    const NAMES = { chats: "Chats", auth: "Sign in", home: "georgefarrowgreen.com", fitting: "Fit Studio", hub: "InFlite" };
+    const same = (s) => String(s || "").toLowerCase().replace(/https?:\/\/\S+/g, "<url>").replace(/[0-9a-f]{8,}/g, "#").replace(/\d+/g, "#")
+      .replace(/(["'`]).*?\1/g, "''").replace(/\s+/g, " ").trim().slice(0, 200);
+    const fnv = (s) => { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
+    const codeOf = (app, kind, words, where = "") => {
+      let h = fnv(`${kind}|${same(words)}|${String(where).replace(/:\d+(:\d+)?$/, "")}`), out = "";
+      for (let i = 0; i < 5; i++) { out += ALPHA[h % 32]; h = Math.floor(h / 32); }
+      return `IF-${letterOf(app)}-${out}`;
+    };
+    const scrub = (s, n = 400) => String(s ?? "").replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
+      .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
+    // (the app it's in: at the hub, the section's (its own page's own app aside); else the app's address, or what it said)
+    const appNow = () => {
+      const host = HOSTS[location.hostname.split(".")[0]], seg = HUB[location.pathname.split("/")[1]];
+      if (seg && !host) return seg;
+      return U.app || host || (/georgefarrowgreen|gfg/.test(location.hostname) ? "home" : "hub");
+    };
+    const letterOf = (a) => LETTER[a] || String(a || "X")[0].toUpperCase();
+    const nameOf = (a) => NAMES[a] || NAME[a] || a;
+    const device = () => {
+      const ua = navigator.userAgent || "";
+      const kind = /iPhone/.test(ua) ? "iPhone" : /iPad|Macintosh.*Mobile/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Computer";
+      const b = /Edg\/(\d+)/.exec(ua) ? `Edge ${RegExp.$1}` : /Firefox\/(\d+)/.exec(ua) ? `Firefox ${RegExp.$1}` : /CriOS\/(\d+)|Chrome\/(\d+)/.exec(ua) ? `Chrome ${RegExp.$1 || RegExp.$2}` : /Version\/(\d+)[^ ]* .*Safari/.exec(ua) ? `Safari ${RegExp.$1}` : "a browser";
+      const home = navigator.standalone === true || (() => { try { return matchMedia("(display-mode: standalone)").matches; } catch (_) { return false; } })();
+      return `${kind} · ${b}${home ? " · Home Screen" : ""}`;
+    };
+    // (where in this site's own code: the file and line, from an error's stack, its other frames for the report)
+    const FRAME = /(?:https?:\/\/[^/\s]+)?(\/[^\s():]*\.m?js)(?:\?[^\s():]*)?:(\d+)(?::\d+)?/;
+    const frames = (stack) => String(stack || "").split("\n").map((l) => FRAME.exec(l)).filter(Boolean).map((m) => `${m[1]}:${m[2]}`);
+    const ours = (stack) => String(stack || "").includes(location.origin);
+    const shownNow = new Set();
+    let showing = null, count = 0;
+    const when = () => { try { return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()); } catch (_) { return new Date().toISOString(); } };
+    const reportId = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => ALPHA[b % 32]).join("").replace(/^(.{4})/, "$1-");
+
+    function show(r) {
+      if (showing || !document.body) return;
+      if (r.kind !== "manual" && (shownNow.has(r.code) || ++count > 3)) return;
+      shownNow.add(r.code);
+      const manual = r.kind === "manual", app = r.app, ver = r.version;
+      const facts = [["App", `${nameOf(app)}${ver ? " " + ver : ""}`], ["Page", r.path || "/"], ["When", r.when], ["Device", r.device]];
+      if (!manual && r.words) facts.push(["What", r.words + (r.where ? `\n${r.where}` : "")]);
+      facts.push(["Report", r.id]);
+      const dl = el("dl", "ifb-facts", ...facts.flatMap(([k, v]) => [el("dt", "", k), el("dd", k === "What" ? "ifb-tech" : "", v)]));
+      const head = el("div", "ifb-head"); head.innerHTML = svg("warn", "ifb-ic");
+      const title = el("b", "", manual ? "Report a Problem" : "Something went wrong"); title.id = "ifb-t"; head.append(title);
+      const note = el("textarea", "ifb-note"); note.rows = 2; note.maxLength = 1000;
+      note.placeholder = manual ? "What’s wrong? What were you doing?" : "What were you doing? (if you like)"; note.setAttribute("aria-label", note.placeholder);
+      const send = el("button", "ifb-btn ifb-go", "Send to InFlite"), copy = el("button", "ifb-btn", "Copy"), shut = el("button", "ifb-btn", "Close");
+      for (const b of [send, copy, shut]) b.type = "button";
+      const said = el("p", "ifb-said"); said.setAttribute("role", "status");
+      const box = el("div", "ifb",
+        head, el("p", "ifb-code", r.code),
+        el("p", "ifb-say", manual ? "Say what’s wrong, and send it with this code. A screenshot of the screen it’s on helps too."
+          : "InFlite hit a problem it didn’t expect. Send it on and it’ll be looked into: the code says which."),
+        dl, note, el("p", "ifb-who", "What you write here is read by InFlite’s owner alone."), el("div", "ifb-acts", send, copy, shut), said);
+      box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ifb-t");
+      const layer = el("div", "ifb-layer", box);
+      const text = () => [`${manual ? "Problem report" : "Bug report"} ${r.code}`, ...facts.map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " · ")}`), note.value.trim() ? `Note: ${note.value.trim()}` : ""].filter(Boolean).join("\n");
+      const done = () => { layer.remove(); document.removeEventListener("keydown", key, true); showing = null; };
+      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+      shut.onclick = done;
+      layer.addEventListener("pointerdown", (e) => { if (e.target === layer) done(); });
+      copy.onclick = async () => { try { await navigator.clipboard.writeText(text()); said.textContent = "Copied."; } catch (_) { said.textContent = "Couldn’t copy: a screenshot works as well."; } };
+      send.onclick = async () => {
+        if (manual && !note.value.trim()) { said.textContent = "Say what’s wrong first."; note.focus(); return; }
+        send.disabled = true; said.textContent = "Sending…";
+        try {
+          const res = await (fetch.__iflReal || fetch)("/api/bugs", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify({ code: r.code, app, kind: r.kind, version: ver, words: r.words, where: r.where, stack: r.stack, path: r.path, device: r.device, note: note.value.trim() }) });
+          if (!res.ok) throw new Error(String(res.status));
+          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into.";
+        } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
+      };
+      document.body.append(layer);
+      document.addEventListener("keydown", key, true);
+      showing = layer;
+      (manual ? note : shut).focus({ preventScroll: true });
+    }
+    // one this app caught, or found: { words, where, stack, kind, code }
+    function bug(o = {}) {
+      try {
+        const app = appNow(), kind = o.kind || "crash", words = scrub(o.words, 300), where = scrub(o.where, 160);
+        show({ code: o.code || codeOf(app, kind, words, where), app, kind, version: U.build || "", words, where, stack: scrub(o.stack, 1500),
+          path: location.pathname, when: when(), device: device(), id: reportId() });
+      } catch (_) {}
+    }
+    bug.report = () => { try { const app = appNow(); show({ code: `IF-${letterOf(app)}-R${reportId().replace("-", "").slice(0, 4)}`, app, kind: "manual", version: U.build || "", path: location.pathname, when: when(), device: device(), id: reportId() }); } catch (_) {} };
+    bug.code = codeOf;
+    // (once a page, whichever copy of the menu runs first)
+    if (typeof window !== "undefined" && typeof addEventListener === "function" && !window.__iflBugs) {
+      window.__iflBugs = true;
+      addEventListener("error", (e) => {
+        if (!(e instanceof ErrorEvent) || !e.filename || !e.filename.startsWith(location.origin)) return;
+        const m = String(e.message || "");
+        if (/^(Uncaught )?Script error\.?$/i.test(m) || /ResizeObserver loop/i.test(m)) return;
+        const st = e.error?.stack || "", where = frames(st)[0] || `${new URL(e.filename).pathname}:${e.lineno || 0}`;
+        bug({ words: e.error ? `${e.error.name || "Error"}: ${e.error.message || m}` : m, where, stack: frames(st).slice(0, 8).join("\n") });
+      });
+      addEventListener("unhandledrejection", (e) => {
+        const r = e.reason;
+        // (a real bug only: a mistake in the code, never a request that failed, was called off or met no signal)
+        if (!(r instanceof Error) || !/^(TypeError|ReferenceError|RangeError|SyntaxError)$/.test(r.name) || !navigator.onLine) return;
+        if (/fetch|load failed|network|abort/i.test(r.message) || !ours(r.stack)) return;
+        bug({ words: `${r.name}: ${r.message}`, where: frames(r.stack)[0] || "", stack: frames(r.stack).slice(0, 8).join("\n") });
+      });
+      // (an API of the site's that failed, and said under what code it's filed: its window, for the person to send theirs)
+      const real = window.fetch;
+      if (typeof real === "function" && !real.__iflReal) {
+        const watched = function (input) {
+          const p = real.apply(globalThis, arguments);
+          p.then((res) => {
+            try {
+              if (res.status < 500) return;
+              const u = new URL(res.url || input?.url || String(input), location.href);
+              if (u.origin !== location.origin || !u.pathname.startsWith("/api/") || u.pathname === "/api/bugs") return;
+              res.clone().json().then((j) => { if (typeof j?.code === "string" && /^IF-S-[0-9A-Z]{5}$/.test(j.code)) bug({ kind: "server", code: j.code, words: j.error || `The server said ${res.status}`, where: u.pathname }); }).catch(() => {});
+            } catch (_) {}
+          }, () => {});
+          return p;
+        };
+        watched.__iflReal = real;
+        window.fetch = watched;
+      }
+    }
+    return bug;
+  })();
+
+  const api = { bug: BUG, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
     updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.

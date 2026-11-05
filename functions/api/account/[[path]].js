@@ -1077,7 +1077,7 @@ export async function onRequest(ctx) {
   try { return await route(ctx); }
   catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
-    await logError(ctx.env, "account api", e);
-    return json({ error: "Something went wrong. Try again in a moment." }, 500);
+    const code = await logError(ctx.env, "account api", e);
+    return json({ error: "Something went wrong. Try again in a moment.", code }, 500);
   }
 }

@@ -1,0 +1,33 @@
+# InFlite's bug reports, filed as issues here every hour (.tools/bugs/file.mjs): each code one issue, a comment each time
+# it's seen again. The reports come from the window every app shows when something breaks (the shared menu), and from the
+# site's own errors (functions/_bugs.js). Asked of the site at its workers.dev address, with the scheduled jobs' key.
+name: Bug reports
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: bug-reports
+  cancel-in-progress: false
+
+jobs:
+  file:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: File the new ones
+        env:
+          SITE: ${{ vars.TICK_SITE }}
+          TICK_SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .tools/bugs/file.mjs

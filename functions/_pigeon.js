@@ -682,12 +682,17 @@ export async function requireUser(request, env, { inflight = true } = {}) {
 // Something gone wrong, noted for the admin (pg_errors): never throws, and no more than 20 a minute from one copy of the
 // server, so a loop of failures can't fill the database. (Also to the console, as before.)
 let errWindow = 0, errCount = 0;
+// (→ the issue's code, "IF-S-XXXXX", which the API's answer carries, so the window each app shows names it, and the bug
+// report it's filed under: functions/_bugs.js)
 export async function logError(env, src, e) {
   console.error(src, e && (e.stack || e.message || e));
+  let code = null;
+  try { code = await (await import("./_bugs.js")).fileServerBug(env, src, e); } catch (_) {}
   const t = Date.now();
   if (t - errWindow > MIN) { errWindow = t; errCount = 0; }
-  if (++errCount > 20 || !env?.DB) return;
+  if (++errCount > 20 || !env?.DB) return code;
   try { await (await db(env)).prepare("INSERT INTO pg_errors (at, src, msg) VALUES (?, ?, ?)").bind(t, String(src).slice(0, 40), String(e && (e.message || e)).slice(0, 300)).run(); } catch (_) {}
+  return code;
 }
 export async function sessionUser(env, token, inflight = true, site = false, request = null) {
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();

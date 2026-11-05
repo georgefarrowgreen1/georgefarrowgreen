@@ -28,7 +28,7 @@ import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js
 
 export const CONTRACT = 1;
 export const BUILD = "1.91";
-export const NEWS = "Drawn to the bottom of the screen on the Home Screen (no dark band under the tab bar), icons back where they were missing, the tab bar fully away in a chat, and your own view-once photos say who’s opened them";
+export const NEWS = "Something went wrong? A window with its own code to send straight to InFlite (and Report a Problem in the menu), drawn to the bottom of the screen on the Home Screen, icons back where they were missing";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
