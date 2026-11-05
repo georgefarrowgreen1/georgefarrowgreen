@@ -21,6 +21,12 @@ const r = await site("/api/bugs/pending");
 if (!r.ok) { console.log(`The site said ${r.status}: ${(await r.text()).slice(0, 200)}`); process.exit(r.status === 404 ? 0 : 1); }
 const { bugs = [] } = await r.json();
 if (!bugs.length) { console.log("No new bug reports."); process.exit(0); }
+// (issues turned off for the repository: nothing can be filed, so the reports stay as they are, unfiled, for Admin to show,
+// and the run says why without failing every hour; turned on (Settings, General, Features, Issues), the next run files them)
+if ((await gh(`/repos/${REPO}`))?.has_issues === false) {
+  console.log(`::warning::Issues are turned off for ${REPO}, so ${bugs.length} bug report(s) stay unfiled (in Admin, Server). Turn them on in the repository's Settings → General → Features → Issues.`);
+  process.exit(0);
+}
 const byCode = new Map();
 for (const b of bugs) (byCode.get(b.code) || byCode.set(b.code, []).get(b.code)).push(b);
 
