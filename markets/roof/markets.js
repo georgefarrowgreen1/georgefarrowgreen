@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.10";
-export const NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";
+export const BUILD = "2.11";
+export const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

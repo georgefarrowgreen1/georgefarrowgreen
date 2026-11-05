@@ -1043,8 +1043,32 @@ const IFL = (() => {
     return { ask, place };
   })();
 
+  // ---- Sign in, warmed: the connection to the sign-in page (auth.<site>) opened while Sign in's on the screen ----
+  // An app calls warm() as it draws its Sign in (and any Sign in, .ifl-go, touched or pointed at does it too), so the tap
+  // doesn't wait on finding the address and making a secure connection: the browser has one ready (a preconnect, and a
+  // DNS look-up for one that hasn't). Once a page; never on the sign-in page itself, nor where there's no site (localhost).
+  const WARM = (() => {
+    let done = false;
+    const origin = () => {
+      if (typeof location === "undefined") return null;
+      const { protocol, hostname, port } = location;
+      if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
+    };
+    function warm() {
+      const o = origin();
+      if (done || !o || o === location.origin || typeof document === "undefined" || !document.head) return;
+      done = true;
+      for (const rel of ["preconnect", "dns-prefetch"]) { const l = document.createElement("link"); l.rel = rel; l.href = o; document.head.append(l); }
+    }
+    if (typeof document !== "undefined" && document.addEventListener)
+      for (const ev of ["pointerover", "pointerdown", "focusin"]) document.addEventListener(ev, (e) => { if (!done && e.target?.closest?.(".ifl-go")) warm(); }, { capture: true, passive: true });
+    return warm;
+  })();
+
   const api = { bug: BUG, banner: BANNER, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
-    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub, warm: WARM };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
   // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
@@ -1116,8 +1140,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.81";            // shown in InFlite's menu
-const APP_NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";       // (said once it's in)
+const APP_VERSION = "1.82";            // shown in InFlite's menu
+const APP_NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -3059,6 +3083,7 @@ async function resumeCheck() {
 // (signed in to the account elsewhere on the site, in this browser: carrying on as them; back from signing in, a moment
 // while it's taken up)
 function welcomeCta() {
+  IFL.warm();                    // (Sign in's connection to the sign-in page made ahead, while it's on the screen)
   const r = S.resumable;
   if (S.signingIn) return `<div class="wcta ifl-cta">${brandLine}<button class="btn wide wglow ifl-go" disabled>Signing in…</button></div>`;
   // (at the hub, the key couldn't be unlocked here just now: Not Now, back where it was asked from, signed in to the rest)

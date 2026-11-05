@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.81";
-export const NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";
+export const BUILD = "1.82";
+export const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

@@ -1054,8 +1054,32 @@ const IFL = (() => {
     return { ask, place };
   })();
 
+  // ---- Sign in, warmed: the connection to the sign-in page (auth.<site>) opened while Sign in's on the screen ----
+  // An app calls warm() as it draws its Sign in (and any Sign in, .ifl-go, touched or pointed at does it too), so the tap
+  // doesn't wait on finding the address and making a secure connection: the browser has one ready (a preconnect, and a
+  // DNS look-up for one that hasn't). Once a page; never on the sign-in page itself, nor where there's no site (localhost).
+  const WARM = (() => {
+    let done = false;
+    const origin = () => {
+      if (typeof location === "undefined") return null;
+      const { protocol, hostname, port } = location;
+      if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
+    };
+    function warm() {
+      const o = origin();
+      if (done || !o || o === location.origin || typeof document === "undefined" || !document.head) return;
+      done = true;
+      for (const rel of ["preconnect", "dns-prefetch"]) { const l = document.createElement("link"); l.rel = rel; l.href = o; document.head.append(l); }
+    }
+    if (typeof document !== "undefined" && document.addEventListener)
+      for (const ev of ["pointerover", "pointerdown", "focusin"]) document.addEventListener(ev, (e) => { if (!done && e.target?.closest?.(".ifl-go")) warm(); }, { capture: true, passive: true });
+    return warm;
+  })();
+
   const api = { bug: BUG, banner: BANNER, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
-    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub, warm: WARM };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
   // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
@@ -1066,8 +1090,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.10";
-const NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";
+const BUILD = "2.11";
+const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3086,6 +3110,7 @@ function welcome(note = null, again = null) {
   const l1 = walk(7, 0.55), end = C.place(l1, W, 260, { pad: 0 }).pts.at(-1);
   scene.append(C.el("path", { class: "l3", pathLength: 1, d: line(walk(91, 0.2), 230, 220) }), C.el("path", { class: "l2", pathLength: 1, d: line(walk(33, 0.35), 180, 240) }),
     C.el("path", { class: "l1", pathLength: 1, d: line(l1, 140, 260) }), C.el("circle", { class: "glow", cx: end[0], cy: end[1] + 140, r: 7 }));
+  IFL.warm();                    // (Sign in's connection to the sign-in page made ahead, while it's on the screen)
   main.replaceChildren(h("div.welcome.ifl-in", {}, scene, hub && hubBack(),
     h("div.ifl-top", {}, h("div.ifl-logo", {}, h("img.mark", { src: "icon.svg", alt: "", width: 96, height: 96 })),
       h("h1.ifl-title", { "aria-label": "Markets" }, [..."Markets"].map((c, i) => h("span", { "aria-hidden": "true", vars: { i: String(i) }, text: c }))),

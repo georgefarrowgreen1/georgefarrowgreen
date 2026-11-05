@@ -52,6 +52,10 @@ ok(!pages.length, 'Weather in a tab: straight back, no sign-in page', pages.join
 const fresh = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'en-GB' });
 await dress(fresh, 'fast-out');
 const q = await fresh.newPage();
+// (signed out on Today: Sign in on the screen, its connection to the sign-in page made ahead: IFL.warm)
+await q.goto(HUB + '/'); await q.waitForSelector('#signin', { state: 'visible', timeout: 30000 });
+const warm = await q.evaluate(() => [...document.querySelectorAll('link[rel=preconnect], link[rel=dns-prefetch]')].map((l) => `${l.rel} ${l.href}`));
+ok(warm.some((x) => /^preconnect http:\/\/auth\.ifl\.test:8788\/?$/.test(x)), 'signed out on Today: the sign-in page’s connection made ahead', warm.join(', '));
 const w3 = word();
 await q.goto(`${AUTH}/go?${new URLSearchParams({ signin: 'today', ask: w3.ask, back: HUB + '/' })}`);
 await q.waitForSelector('main .signin input[name=email]', { timeout: 30000 });

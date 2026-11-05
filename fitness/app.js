@@ -1066,8 +1066,32 @@ const IFL = (() => {
     return { ask, place };
   })();
 
+  // ---- Sign in, warmed: the connection to the sign-in page (auth.<site>) opened while Sign in's on the screen ----
+  // An app calls warm() as it draws its Sign in (and any Sign in, .ifl-go, touched or pointed at does it too), so the tap
+  // doesn't wait on finding the address and making a secure connection: the browser has one ready (a preconnect, and a
+  // DNS look-up for one that hasn't). Once a page; never on the sign-in page itself, nor where there's no site (localhost).
+  const WARM = (() => {
+    let done = false;
+    const origin = () => {
+      if (typeof location === "undefined") return null;
+      const { protocol, hostname, port } = location;
+      if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
+    };
+    function warm() {
+      const o = origin();
+      if (done || !o || o === location.origin || typeof document === "undefined" || !document.head) return;
+      done = true;
+      for (const rel of ["preconnect", "dns-prefetch"]) { const l = document.createElement("link"); l.rel = rel; l.href = o; document.head.append(l); }
+    }
+    if (typeof document !== "undefined" && document.addEventListener)
+      for (const ev of ["pointerover", "pointerdown", "focusin"]) document.addEventListener(ev, (e) => { if (!done && e.target?.closest?.(".ifl-go")) warm(); }, { capture: true, passive: true });
+    return warm;
+  })();
+
   const api = { bug: BUG, banner: BANNER, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
-    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub };
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub, warm: WARM };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
   // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
@@ -1536,8 +1560,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.94";
-const NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";
+const BUILD = "1.95";
+const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2599,6 +2623,7 @@ function welcome(note = null, { again = !!welcome.shown } = {}) {
   welcome.shown = true;
   S.me = null;
   document.body.classList.add("out");
+  IFL.warm();                    // (Sign in's connection to the sign-in page made ahead, while it's on the screen)
   const page = A.accountPage();
   main.replaceChildren(h("div.welcome.dawn.ifl-in" + (again ? ".again" : ""), {},
     courseScene(),
