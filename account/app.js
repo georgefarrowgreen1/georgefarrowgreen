@@ -950,7 +950,12 @@ const IFL = (() => {
           const res = await (fetch.__iflReal || fetch)("/api/bugs", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({ code: r.code, app, kind: r.kind, version: ver, words: r.words, where: r.where, stack: r.stack, path: r.path, device: r.device, note: note.value.trim() }) });
           if (!res.ok) throw new Error(String(res.status));
-          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into.";
+          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into. ";
+          // (where it stands, on the status page: the link the server gave, its own address only)
+          const j = await res.json().catch(() => null);
+          if (typeof j?.status === "string" && /^https:\/\/status\.[^/]+\/#IF-[A-Z]-[0-9A-Z]{4,6}$/.test(j.status)) {
+            const a = el("a", "ifb-link", "See where this stands"); a.href = j.status; a.target = "_blank"; a.rel = "noopener"; said.append(a);
+          }
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
@@ -1105,8 +1110,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.93";
-const NEWS = "The Incident Desk: a row pressed or tapped opens it, with nothing showing through it; a swipe counts only once it’s clearly sideways, and a tap on an open row closes it";
+const BUILD = "1.94";
+const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,

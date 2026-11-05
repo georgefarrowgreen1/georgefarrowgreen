@@ -941,7 +941,12 @@ const IFL = (() => {
           const res = await (fetch.__iflReal || fetch)("/api/bugs", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({ code: r.code, app, kind: r.kind, version: ver, words: r.words, where: r.where, stack: r.stack, path: r.path, device: r.device, note: note.value.trim() }) });
           if (!res.ok) throw new Error(String(res.status));
-          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into.";
+          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into. ";
+          // (where it stands, on the status page: the link the server gave, its own address only)
+          const j = await res.json().catch(() => null);
+          if (typeof j?.status === "string" && /^https:\/\/status\.[^/]+\/#IF-[A-Z]-[0-9A-Z]{4,6}$/.test(j.status)) {
+            const a = el("a", "ifb-link", "See where this stands"); a.href = j.status; a.target = "_blank"; a.rel = "noopener"; said.append(a);
+          }
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
@@ -3677,8 +3682,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.85";
-const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
+const BUILD = "1.86";
+const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

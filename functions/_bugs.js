@@ -12,7 +12,7 @@
 //     Worker asks), or null for anything else
 //   fileServerBug(env, src, e) → the code a server error's filed under (logError's)
 import { HttpError, db, clientIp, limit } from "./_pigeon.js";
-import { tickHost } from "./_sites.js";
+import { tickHost, appsSite } from "./_sites.js";
 import { tickAuthOk } from "./_notify.js";
 
 // (each app's letter; S, the site's own servers)
@@ -99,7 +99,8 @@ export async function bugsRoute(ctx, url) {
       await limit(env, "bugs:" + clientIp(req), 12, 3600e3);
       const id = await keep(env, { code, app, kind, version: text(r.version, 20), words: text(r.words, 500), where: text(r.where, 200),
         stack: text(r.stack, 1500), path: text(r.path, 200).replace(/[?#].*$/, ""), device: text(r.device, 120), note: text(r.note, 1000) });
-      return json({ ok: true, id, code });
+      // (and where it stands, on the status page, for the window's "See where this stands")
+      return json({ ok: true, id, code, status: `https://${env.STATUS_HOST || `status.${appsSite(env)}`}/#${code}` });
     }
     // ---- the new ones, for the GitHub Action, and their issues once filed (its address past the bot checks, its key) ----
     if (!tickHost(url.hostname, env)) return json({ error: "Not found." }, 404);

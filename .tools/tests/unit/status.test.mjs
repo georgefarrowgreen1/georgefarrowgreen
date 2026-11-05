@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost } from "../../../functions/_status.js";
+import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost, dayHours, codeLookup, statusSubscribe, statusUnsubscribe, tellSubscribers } from "../../../functions/_status.js";
 import { STATUS_SERVICES, STATUS_JOBS } from "../../../functions/_statuslist.js";
 
 function d1() {
@@ -52,9 +52,10 @@ test("a report kept: each address, its version, from outside or (where a bot che
   assert.equal(by.mail.s, "ok", "the outside couldn't tell: the inside's word"); assert.equal(by.mail.version, "1.62");
   assert.equal(by.home.s, "none", "no way in from inside: not checked, never down");
   assert.equal(by.home.days.at(-1), null, "and not counted");
-  assert.deepEqual(by.chat.days.at(-1), { s: "ok", up: 100 }); assert.equal(by.chat.days.length, 90); assert.equal(by.chat.up90, 100);
+  assert.deepEqual(by.chat.days.at(-1), { s: "ok", up: 100, n: 1, slow: 0, down: 0 }, "with its counts, for the day sheet"); assert.equal(by.chat.days.length, 90); assert.equal(by.chat.up90, 100);
   assert.equal(s.jobs.length, STATUS_JOBS.length); assert.ok(s.jobs.every((j) => j.s === "ok" && j.at === T0));
   assert.deepEqual(s.incidents, []);
+  assert.equal(s.dayKeys.length, 90); assert.equal(s.dayKeys.at(-1), dayOf(T0)); assert.equal(s.since, dayOf(T0), "bars from the first day checked");
 });
 
 test("two failed checks in a row open an incident (what fails together, one), two fine ones close it", async () => {
@@ -219,4 +220,29 @@ test("the outside check, the feed, and the banner at every app's address (and To
   assert.equal(f.status, 200); assert.match(f.headers.get("Content-Type"), /atom/);
   const xml = await f.text();
   assert.match(xml, /^<\?xml/); assert.match(xml, /<entry>/); assert.match(xml, /Weather alerts are late/);
+});
+
+test("a day's quarter-hours (while its checks are kept), a code looked up, and updates without an account", async () => {
+  const h = await dayHours(env, "chat", dayOf(T0), T0 + 60e3);
+  assert.equal(h.kept, true); assert.equal(h.q.length, 96); assert.ok(h.q.includes("ok")); assert.equal(typeof h.ms, "number");
+  assert.equal((await dayHours(env, "chat", "2001-01-01", T0)).kept, false, "older than two days: not kept");
+  await assert.rejects(dayHours(env, "nope", dayOf(T0), T0), /Not found/);
+  await assert.rejects(codeLookup(env, "hello"), /code/);
+  const miss = await codeLookup(env, "if-c-zzzzz");
+  assert.equal(miss.found, false); assert.equal(miss.code, "IF-C-ZZZZZ");
+  // (subscriptions: a real push address and keys, an app chosen; changed in place; forgotten)
+  const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const b64 = (u) => Buffer.from(u).toString("base64url");
+  const keys = { p256dh: b64(new Uint8Array(await crypto.subtle.exportKey("raw", k.publicKey))), auth: b64(crypto.getRandomValues(new Uint8Array(16))) };
+  const sub = (n) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/dev${n}`, keys });
+  await assert.rejects(statusSubscribe(env, { sub: { endpoint: "https://evil.example/x", keys }, apps: ["chat"] }, "1.1.1.1"), /supported/);
+  await assert.rejects(statusSubscribe(env, { sub: sub(1), apps: ["nope"] }, "1.1.1.1"), /at least one/);
+  assert.deepEqual(await statusSubscribe(env, { sub: sub(1), apps: ["chat", "chat", "x"], maint: false }, "1.1.1.1"), { ok: true, apps: ["chat"], maint: false });
+  await statusSubscribe(env, { sub: sub(2), apps: ["weather"], maint: true }, "1.1.1.1");
+  const pushEnv = { ...env, PIGEON_PUSH_URL: "http://127.0.0.1:9/" };
+  assert.equal(await tellSubscribers(pushEnv, { svcs: ["notify"], title: "x", id: "i1" }), 1, "Chat's notifications: the Chat device only");
+  assert.equal(await tellSubscribers(pushEnv, { svcs: ["wxtick"], maint: true, title: "x", id: "m1" }), 1, "maintenance: only who asked for it");
+  assert.equal(await tellSubscribers(pushEnv, { svcs: [], title: "x", id: "i2" }), 2, "naming nothing: everyone");
+  await statusUnsubscribe(env, { endpoint: sub(1).endpoint });
+  assert.equal(await tellSubscribers(pushEnv, { svcs: ["chat"], title: "x", id: "i3" }), 0);
 });

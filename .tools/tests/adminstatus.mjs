@@ -143,10 +143,10 @@ await tctx.close();
 // the status page: each bug code as an incident is, where it stands
 const sb2 = await (await import('playwright')).chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--host-resolver-rules=MAP status.ifl.test 127.0.0.1'] });
 const sp = await sb2.newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
-await sp.goto('http://status.ifl.test:8788/'); await sp.waitForSelector('#codes .bug', { timeout: 20000 });
-const bugCard = (await sp.locator('#codes .bug').first().innerText()).replace(/\s+/g, ' ');
+await sp.goto('http://status.ifl.test:8788/'); await sp.waitForSelector('#codes .inc', { timeout: 20000 });
+const bugCard = (await sp.locator('#codes .inc').first().innerText()).replace(/\s+/g, ' ');
 ok(/Today: building your day/.test(bugCard) && /Looking into it/.test(bugCard) && /IF-S-MB90H/.test(bugCard) && /Spotted\./.test(bugCard), 'the status page: the bug code laid out as an incident, where it stands', bugCard);
-await sp.locator('#bugsec').screenshot({ path: `${out}/status-bugs.png` }).catch(() => {});
+await sp.locator('#codesec').screenshot({ path: `${out}/status-bugs.png` }).catch(() => {});
 await sb2.close();
 
 // one started by hand: on the status page, and a banner in the app it names

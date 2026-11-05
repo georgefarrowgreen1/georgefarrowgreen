@@ -2314,6 +2314,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifb-go { flex-basis: 100%; color: #fff; background: var(--ifm-tint); }
 .ifb-btn:disabled { opacity: 0.6; cursor: default; }
 .ifb-btn:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
+.ifb-link { color: var(--ifm-tint, #4c8dff); font-weight: 600; white-space: nowrap; }
 .ifb-said { min-height: 1.2em; margin: 10px 0 0; color: var(--ifm-text-2); font-size: 13.5px; text-align: center; }
 
 /* the status banner (menu.js BANNER): under the app's header while something touching it is wrong, a link to the status

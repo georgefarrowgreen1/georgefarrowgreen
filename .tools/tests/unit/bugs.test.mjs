@@ -38,6 +38,7 @@ test("nothing of anyone's: emails, long keys and any address's query taken out",
 test("a report from the window: kept under its code, the page's path alone, a few an hour from one address", async () => {
   const r = await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ code: "IF-C-ABCDE", app: "chat", kind: "crash", version: "1.79", words: "TypeError: x of bob@example.com", where: "/pigeon/app.js:12", path: "/chats/x?with=1#secret", device: "iPhone · Safari 18", note: "Tapped send" }));
   assert.equal(r.status, 200); assert.equal(r.json.code, "IF-C-ABCDE");
+  assert.match(r.json.status, /^https:\/\/status\.[^/]+\/#IF-C-ABCDE$/, "and where it stands, for the window's link");
   const row = DB.sql.prepare("SELECT * FROM pg_bugs WHERE id = ?").get(r.json.id);
   assert.equal(row.path, "/chats/x"); assert.equal(row.words, "TypeError: x of <email>"); assert.equal(row.note, "Tapped send"); assert.equal(row.filed_at, null);
   assert.equal((await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ app: "nope" }))).status, 400, "an app it knows");

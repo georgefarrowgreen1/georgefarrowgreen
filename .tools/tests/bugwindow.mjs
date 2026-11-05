@@ -32,7 +32,7 @@ for (const scheme of ['dark', 'light']) {
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
   const p = await ctx.newPage(), sent = [], errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
-  await p.route('**/api/bugs', async (r) => { sent.push(JSON.parse(r.request().postData() || '{}')); await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: 'T3ST', code: 'x' }) }); });
+  await p.route('**/api/bugs', async (r) => { sent.push(JSON.parse(r.request().postData() || '{}')); await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: 'T3ST', code: 'x', status: 'https://status.inflite.ai/#IF-S-7KQ2M' }) }); });
   await p.route('**/api/boom', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Something went wrong on our side.', code: 'IF-S-7KQ2M' }) }));
   await p.route('**/__boom.js', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'setTimeout(function boom() { const o = null; o.secretThing = 1; }, 0);' }));
   await p.goto(`${BASE}/?private=1#k=secret`, { waitUntil: 'load' });
@@ -49,6 +49,8 @@ for (const scheme of ['dark', 'light']) {
   await p.fill('.ifb-note', 'Opened Apps');
   await p.click('.ifb-go');
   await p.waitForFunction(() => /Sent/.test(document.querySelector('.ifb-said')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  const link = p.locator('.ifb-said a.ifb-link');
+  ok((await link.count()) === 1 && (await link.getAttribute('href')) === 'https://status.inflite.ai/#IF-S-7KQ2M' && (await link.getAttribute('target')) === '_blank', `${scheme}: once sent, See where this stands, to its code on the status page`);
   const s0 = sent[0] || {};
   ok(s0.code === 'IF-S-7KQ2M' && s0.kind === 'server' && s0.path === '/' && s0.note === 'Opened Apps' && /iPhone/.test(s0.device || ''), `${scheme}: Send files it: its code, the page's path alone, the note, the device`, JSON.stringify(s0));
   ok(!JSON.stringify(s0).includes('secret') && !JSON.stringify(s0).includes('private'), `${scheme}: never the address's query or #`);

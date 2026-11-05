@@ -950,7 +950,12 @@ const IFL = (() => {
           const res = await (fetch.__iflReal || fetch)("/api/bugs", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({ code: r.code, app, kind: r.kind, version: ver, words: r.words, where: r.where, stack: r.stack, path: r.path, device: r.device, note: note.value.trim() }) });
           if (!res.ok) throw new Error(String(res.status));
-          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into.";
+          send.textContent = "Sent"; said.textContent = "Sent. Thank you: it’ll be looked into. ";
+          // (where it stands, on the status page: the link the server gave, its own address only)
+          const j = await res.json().catch(() => null);
+          if (typeof j?.status === "string" && /^https:\/\/status\.[^/]+\/#IF-[A-Z]-[0-9A-Z]{4,6}$/.test(j.status)) {
+            const a = el("a", "ifb-link", "See where this stands"); a.href = j.status; a.target = "_blank"; a.rel = "noopener"; said.append(a);
+          }
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
@@ -1090,8 +1095,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.11";
-const NEWS = "Sign in starts quicker: while it's on the screen, the connection to the sign-in page is made ahead, so tapping it doesn't wait";
+const BUILD = "2.12";
+const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)

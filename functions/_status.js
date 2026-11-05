@@ -19,9 +19,9 @@
 // there's an incident feed (/feed.xml). Nothing of anyone's is in any of it: addresses, times, versions, bug codes.
 //   statusRoute(ctx, url) → the answer for /api/status*, /api/status-banner, or null for anything else
 //   isStatus(url, env), statusHost(ctx, url): the address and its page
-import { HttpError, db } from "./_pigeon.js";
+import { HttpError, db, pace, clientIp, fromB64url } from "./_pigeon.js";
 import { appsSite, homeSite, tickHost, siteFetch, appOrigin } from "./_sites.js";
-import { tickAuthOk, pushTo } from "./_notify.js";
+import { tickAuthOk, pushTo, pushToSub, pushEndpointOk, vapid } from "./_notify.js";
 import { emailReady, sendEmail } from "./_email.js";
 import { buildOf } from "./_version.js";
 import { assets } from "./_min.js";
@@ -78,6 +78,8 @@ const table = (env) => (ready ||= db(env).then(async (D) => {
     D.prepare("CREATE INDEX IF NOT EXISTS status_deploys_at ON status_deploys(at)"),
     // (the Incident Desk's word on a bug code: fixed (at, and it's back if it's seen after), or muted until a time)
     D.prepare("CREATE TABLE IF NOT EXISTS desk_codes (code TEXT PRIMARY KEY, state TEXT NOT NULL, at INTEGER NOT NULL, until INTEGER)"),
+    // (anyone's device asking to be told, no account: which apps, whether maintenance too)
+    D.prepare("CREATE TABLE IF NOT EXISTS status_subs (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, apps TEXT NOT NULL, maint INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL)"),
   ]);
   // (what kind of incident, and a burst's bug code: added to a table made before them; and the Incident Desk's: whether it
   // was a real outage (null: not said), the uptime taken back for one that wasn't, the write-up, the owner's own notes)
@@ -108,6 +110,7 @@ async function tell(env, events) {
       // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
       admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
       to && sendEmail(env, { brand: "account", to, subject: `${e.open ? "Incident" : "Resolved"}: ${e.title}`, text: `${e.text}\n\n${page}\n\nAdd an update from Admin, on your account page.` }),
+      tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/ not (answering|running|working)$/, "")}: working again`, body: e.text, id: e.id }),
     ].filter(Boolean)));
   } catch (e) { console.error("status tell", e && e.message); }
 }
@@ -267,8 +270,8 @@ async function incidents(D, rows, t) {
         x.ended = t; x.updates.unshift({ at: t, k: "Resolved", w: x.svcs.length > 1 ? "Everything is working again." : `${nameOf(x.svcs[0])} is working again.` }); x.changed = true; x.closedNow = true;
       }
     }
-    if (x.fresh) events.push({ open: true, id: x.id, title: x.title, text: x.updates[x.updates.length - 1].w });
-    else if (x.closedNow) events.push({ open: false, id: x.id, title: x.title, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.` });
+    if (x.fresh) events.push({ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[x.updates.length - 1].w });
+    else if (x.closedNow) events.push({ open: false, id: x.id, title: x.title, svcs: x.svcs, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.` });
     if (x.changed) out.push(put(D, x));
   }
   return { writes: out, events };
@@ -297,7 +300,7 @@ export async function burstCheck(env, code, app, t = Date.now()) {
     title: `${svc ? nameOf(svc) : "The site"}: the same error over and over`, updates: [{ at: t, k: "Spotted", w: `${n} reports of the same error (${code}) in ten minutes.` }] };
   await put(D, x).run();
   await forget(env);
-  await tell(env, [{ open: true, id: x.id, title: x.title, text: x.updates[0].w }]);
+  await tell(env, [{ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[0].w }]);
   return x.id;
 }
 
@@ -325,7 +328,7 @@ export async function summary(env, t = Date.now()) {
     if (APP_JOB[s.id]) checks.push({ k: nameOf(APP_JOB[s.id]), s: st(APP_JOB[s.id]), at: latest[APP_JOB[s.id]]?.at || null });
     for (const dep of STATUS_DEPS.filter((x) => x.for.includes(s.id))) if (latest[dep.id]) checks.push({ k: dep.name, s: st(dep.id), ms: latest[dep.id].ms ?? null });
     return { id: s.id, name: s.name, group: s.group, address: s.address, s: st(s.id), ms: l?.ms ?? null, version: l?.version || null, why: l?.why || null,
-      at: l?.at || null, up90: n ? Math.round(((n - down) / n) * 10000) / 100 : null, days: days.map((k) => dayState(d[k])), checks };
+      at: l?.at || null, up90: n ? Math.round(((n - down) / n) * 10000) / 100 : null, days: days.map((k) => { const x = dayState(d[k]); return x && { ...x, n: d[k].n, slow: d[k].slow, down: d[k].down }; }), checks };
   });
   const jobs = STATUS_JOBS.map((j) => { const l = latest[j.id]; return { id: j.id, name: j.name, s: st(j.id), at: l?.at || null, ms: l?.ms ?? null }; });
   const deps = STATUS_DEPS.map((d) => { const l = latest[d.id]; return { id: d.id, name: d.name, s: st(d.id), at: l?.at || null, ms: l?.ms ?? null, why: l?.why || null }; }).filter((d) => d.at);
@@ -339,19 +342,16 @@ export async function summary(env, t = Date.now()) {
     // (muted there); and its name in words where it's the site's own (functions/_desk.js titleOf), never anyone's words)
     const week = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, MAX(b.issue) AS issue, d.state, d.at AS said_at, d.until
       FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.at >= ? AND b.app != 'fitting' GROUP BY b.code, b.app ORDER BY MAX(b.at) DESC LIMIT 8`).bind(t - 7 * DAY_MS).all();
-    const { titleOf } = await import("./_desk.js");
-    bugs = (week.results || []).map((b) => {
-      const state = b.state === "fixed" ? (b.last > b.said_at ? "back" : "fixed") : b.state === "muted" && b.until > t ? "known" : "new";
-      return { code: b.code, app: b.app, n: b.n, filed: !!b.issue, first: b.first, last: b.last, state, fixedAt: b.state === "fixed" ? b.said_at : null,
-        title: b.app === "server" ? titleOf("server", b.kind, "") : null };
-    });
+    bugs = await Promise.all((week.results || []).map(async (b) => ({ ...(await bugItem(b, t)), filed: !!b.issue })));
     if (list.length) {
       const from = Math.min(...list.map((x) => x.started));
       const srv = await D.prepare("SELECT DISTINCT code, at FROM pg_bugs WHERE app = 'server' AND at >= ? ORDER BY at LIMIT 500").bind(from).all();
       for (const x of list) if (!x.codes.length) x.codes = [...new Set((srv.results || []).filter((b) => b.at >= x.started && b.at <= (x.ended || t)).map((b) => b.code))].slice(0, 3);
     }
   } catch (_) {}
-  return { at, every: 5, services, jobs, deps, maint, incidents: list, bugs, outside: latest.outside?.at || null };
+  // (the days, and the first any address was checked on: the page shows bars only from then)
+  const first = Math.min(...services.map((x) => x.days.findIndex(Boolean)).filter((i) => i >= 0));
+  return { at, every: 5, services, jobs, deps, maint, incidents: list, bugs, outside: latest.outside?.at || null, dayKeys: days, since: Number.isFinite(first) ? days[first] : null };
 }
 export async function dayOfChecks(env, svc, t = Date.now()) {
   if (!SVC[svc]) throw new HttpError(404, "Not found.");
@@ -419,6 +419,7 @@ export async function noteIncident(env, b, t = Date.now()) {
   await D.prepare("UPDATE status_incidents SET ended = ?, updates = ? WHERE id = ?").bind(x.ended, JSON.stringify(x.updates.slice(0, 40)), x.id).run();
   // (the page's copy at this edge let go of, so it's there at once; elsewhere within half a minute)
   await forget(env);
+  await tellSubscribers(env, { svcs: x.svcs, title: kind === "Resolved" ? `${x.title.replace(/ not (answering|running|working)$/, "")}: working again` : x.title, body: text, id: x.id });
   return x;
 }
 const svcsOf = (v) => [...new Set((Array.isArray(v) ? v : []).filter((id) => typeof id === "string" && known(id)))].sort(byOrder).slice(0, 20);
@@ -429,6 +430,7 @@ export async function startIncident(env, b, t = Date.now()) {
   const D = await table(env), x = { id: `m${t.toString(36)}`, kind: "manual", title, svcs, started: t, ended: null, updates: [{ at: t, k: "Investigating", w: text, by: "owner" }] };
   await put(D, x).run();
   await forget(env);
+  await tellSubscribers(env, { svcs, title, body: text, id: x.id });
   return parse({ ...x, svcs: JSON.stringify(svcs), updates: JSON.stringify(x.updates) });
 }
 export async function planMaint(env, b, t = Date.now()) {
@@ -441,6 +443,7 @@ export async function planMaint(env, b, t = Date.now()) {
   const D = await table(env), id = `p${t.toString(36)}`;
   await D.prepare("INSERT INTO status_maint (id, title, text, svcs, starts, ends, created) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, title, text, JSON.stringify(svcs), Math.round(starts), Math.round(ends), t).run();
   await forget(env);
+  await tellSubscribers(env, { svcs, maint: true, title: `Planned maintenance: ${title}`, body: `${new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" }).format(starts)}, ${ukTime.format(starts)}–${ukTime.format(ends)}${text ? `. ${text}` : ""}`, id });
   return { id, title, text, svcs, starts: Math.round(starts), ends: Math.round(ends) };
 }
 export async function cancelMaint(env, id, t = Date.now()) {
@@ -455,6 +458,82 @@ export async function outsideSaw(env, t = Date.now()) {
   await D.prepare("INSERT OR REPLACE INTO status_now (svc, s, ms, version, why, at, bad, good) VALUES ('outside', 0, NULL, NULL, NULL, ?, 0, 0)").bind(t).run();
   const s = await summary(env, t);
   return { at: s.at, stale: !s.at || t - s.at > 20 * MIN, down: [...s.services, ...s.jobs, ...s.deps].filter((x) => x.s === "down").map((x) => x.name) };
+}
+
+// ---- for the page: a day's quarter-hours (each check is kept two days), a bug code looked up, and updates without an
+// account (the browser's own push, for the apps chosen) ----
+const ukHM = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+export async function dayHours(env, svc, day, t = Date.now()) {
+  if (!SVC[svc] || !/^\d{4}-\d{2}-\d{2}$/.test(String(day || ""))) throw new HttpError(404, "Not found.");
+  const D = await table(env);
+  const { results } = await D.prepare("SELECT at, s, ms FROM status_checks WHERE svc = ? AND at >= ? AND at <= ? ORDER BY at").bind(svc, t - 2 * DAY_MS - DAY_MS, t).all();
+  const pts = (results || []).filter((r) => dayOf(r.at) === day);
+  if (!pts.length) return { svc, day, kept: false };
+  const q = Array(96).fill("none"), rank = { none: -1, ok: 0, warn: 1, down: 2 }, ms = [];
+  for (const r of pts) {
+    const [h, m] = ukHM.format(r.at).split(":").map(Number), i = Math.min(95, h * 4 + Math.floor(m / 15)), st = NAME[r.s];
+    if (st === "none") continue;
+    if (rank[st] > rank[q[i]]) q[i] = st;
+    if (r.ms != null) ms.push(r.ms);
+  }
+  ms.sort((a, b) => a - b);
+  return { svc, day, kept: true, q, ms: ms.length ? ms[Math.floor(ms.length / 2)] : null };
+}
+const CODE_RE = /^IF-[A-Z]-[0-9A-Z]{4,6}$/;
+export async function codeLookup(env, code, t = Date.now()) {
+  const c = String(code || "").toUpperCase();
+  if (!CODE_RE.test(c)) throw new HttpError(400, "That doesn’t look like a code.");
+  const D = await table(env);
+  const r = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, d.state, d.at AS said_at, d.until
+    FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.code = ? AND b.at >= ? GROUP BY b.code, b.app`).bind(c, t - 30 * DAY_MS).first().catch(() => null);
+  if (!r) {
+    const old = await D.prepare("SELECT MAX(at) AS at FROM pg_bugs WHERE code = ?").bind(c).first().catch(() => null);
+    return { code: c, found: false, last: old?.at || null };
+  }
+  return { found: true, ...(await bugItem(r, t)) };
+}
+async function bugItem(b, t) {
+  const { titleOf } = await import("./_desk.js");
+  const state = b.state === "fixed" ? (b.last > b.said_at ? "back" : "fixed") : b.state === "muted" && b.until > t ? "known" : "new";
+  return { code: b.code, app: b.app, n: b.n, first: b.first, last: b.last, state, fixedAt: b.state === "fixed" ? b.said_at : null, title: b.app === "server" ? titleOf("server", b.kind, "") : null };
+}
+// (what each subscribed app covers: its own address, its job, what it relies on)
+const SUB_APPS = ["today", "chat", "weather", "fitness", "markets", "mail"];
+const COVERS = { today: ["today", "morning", "dep-weather"], chat: ["chat", "notify"], weather: ["weather", "wxtick", "dep-weather"], fitness: ["fitness", "garmin", "dep-garmin"], markets: ["markets", "mkttick", "dep-prices"], mail: ["mail"] };
+export async function statusSubscribe(env, b, ip, t = Date.now()) {
+  await pace(env, `statsub:${ip}`, 20, 60 * MIN);
+  const sub = b?.sub || {}, endpoint = String(sub.endpoint || ""), p256dh = String(sub.keys?.p256dh || ""), auth = String(sub.keys?.auth || "");
+  if (!pushEndpointOk(endpoint) || endpoint.length > 1000) throw new HttpError(400, "This browser’s push service isn’t supported.");
+  let ok = false; try { ok = fromB64url(p256dh).length === 65 && fromB64url(auth).length === 16; } catch (_) {}
+  if (!ok) throw new HttpError(400, "That push subscription was malformed.");
+  const apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).filter((a) => SUB_APPS.includes(a)))];
+  if (!apps.length) throw new HttpError(400, "Choose at least one app.");
+  const D = await table(env);
+  await D.prepare(`INSERT INTO status_subs (endpoint, p256dh, auth, apps, maint, created) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, apps = excluded.apps, maint = excluded.maint`).bind(endpoint, p256dh, auth, JSON.stringify(apps), b.maint ? 1 : 0, t).run();
+  return { ok: true, apps, maint: !!b.maint };
+}
+export async function statusUnsubscribe(env, b) {
+  const endpoint = String(b?.endpoint || "");
+  if (!endpoint) throw new HttpError(400, "Which device?");
+  await (await table(env)).prepare("DELETE FROM status_subs WHERE endpoint = ?").bind(endpoint).run();
+  return { ok: true };
+}
+// (told: every device whose apps the incident touches (one naming nothing touches all), or that asked for maintenance;
+// a device its push service says is gone, forgotten. Never stops what called it)
+export async function tellSubscribers(env, { svcs = [], maint = false, title, body, id }) {
+  try {
+    const D = await table(env);
+    const { results } = await D.prepare("SELECT endpoint, p256dh, auth, apps, maint FROM status_subs LIMIT 2000").all();
+    const hit = (apps) => !svcs.length || apps.some((a) => (COVERS[a] || []).some((x) => svcs.includes(x)) || svcs.includes("db"));
+    const to = (results || []).filter((r) => { const apps = JSON.parse(r.apps || "[]"); return maint ? r.maint && (hit(apps) || !svcs.length) : hit(apps); });
+    const url = `https://${statusHostOf(env)}/#${encodeURIComponent(id || "")}`;
+    await Promise.all(to.map(async (r) => {
+      const res = await pushToSub(env, r, { title: String(title).slice(0, 120), body: String(body || "").slice(0, 240), tag: `status-${id}`, url, ttl: 6 * 3600 });
+      if (res === "gone") await D.prepare("DELETE FROM status_subs WHERE endpoint = ?").bind(r.endpoint).run();
+    }));
+    return to.length;
+  } catch (e) { console.error("status subscribers", e && e.message); return 0; }
 }
 
 // ---- the incident feed (Atom), for any news reader ----
@@ -491,7 +570,7 @@ export async function statusRoute(ctx, url) {
       // (kept a minute at the edge, never in the browser: a change shows the next time it's asked)
       return await cached(cacheKey(env, `/api/status-banner?app=${app}`), () => bannerFor(env, app), 60, (v) => json(v, 200, "public, max-age=0, s-maxage=60"));
     }
-    if (!/^\/api\/status(\/day|\/report|\/outside|\/deploy)?$/.test(p)) return null;
+    if (!/^\/api\/status(\/day|\/report|\/outside|\/deploy|\/hours|\/code|\/push-key|\/subscribe|\/unsubscribe)?$/.test(p)) return null;
     if (p === "/api/status/report" || p === "/api/status/outside" || p === "/api/status/deploy") {
       if (!tickHost(url.hostname, env)) return null;
       if (req.method !== "POST") return json({ error: "Not found." }, 404);
@@ -505,8 +584,17 @@ export async function statusRoute(ctx, url) {
       return json({ ok: true, ...(await keepReport(env, body)) });
     }
     if (!isStatus(url, env)) return null;
+    // (updates without an account: this device's subscription kept, or forgotten)
+    if (p === "/api/status/subscribe" || p === "/api/status/unsubscribe") {
+      if (req.method !== "POST") return json({ error: "Not found." }, 404);
+      const b = await req.json().catch(() => ({}));
+      return json(p === "/api/status/subscribe" ? await statusSubscribe(env, b, clientIp(req)) : await statusUnsubscribe(env, b));
+    }
     if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "Not found." }, 404);
     if (p === "/api/status") return await cached(cacheKey(env, "/api/status"), () => summary(env), 30);
+    if (p === "/api/status/push-key") return json({ key: (await vapid(env)).pub });
+    if (p === "/api/status/hours") { const svc = url.searchParams.get("svc") || "", day = url.searchParams.get("day") || ""; return await cached(cacheKey(env, `/api/status/hours?svc=${svc}&day=${day}`), () => dayHours(env, svc, day), 120); }
+    if (p === "/api/status/code") return json(await codeLookup(env, url.searchParams.get("c")), 200, "public, max-age=30");
     const svc = url.searchParams.get("svc") || "";
     if (!SVC[svc]) return json({ error: "Not found." }, 404);
     return await cached(cacheKey(env, `/api/status/day?svc=${svc}`), () => dayOfChecks(env, svc), 60);
@@ -519,7 +607,7 @@ export async function statusRoute(ctx, url) {
 
 // ---- the page: status/, at the address's root ----
 const SECURITY = {
-  "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -527,7 +615,7 @@ const SECURITY = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
 };
-const FILES = /^\/(app\.js|styles\.css|icon\.svg|icon-180\.png|icons\/(today|chat|weather|fitness|markets|mail|account|home)\.svg)$/;
+const FILES = /^\/(app\.js|styles\.css|icon\.svg|icon-180\.png|icons\/(today|chat|weather|fitness|markets|mail|account|home)\.svg|sw\.js|manifest\.webmanifest)$/;
 export async function statusHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return (await statusRoute(ctx, url)) || json({ error: "Not found." }, 404);
   if (!["GET", "HEAD"].includes(ctx.request.method)) return new Response("Not allowed.", { status: 405 });
@@ -539,8 +627,19 @@ export async function statusHost(ctx, url) {
   if (!page && !FILES.test(url.pathname)) return notFound();
   const res = page ? await ctx.env.ASSETS.fetch(new Request(new URL("/status/", url))) : await assets(ctx.env).fetch(new Request(new URL("/status" + url.pathname, url), ctx.request));
   if (res.status === 404) return notFound();
-  const out = new Response(res.body, res);
+  // (the page with what it shows already in it: the checks' answer as it's kept at this edge, for the script to draw at
+  // once, rather than "Checking…" while it asks)
+  let body = res.body;
+  if (page) {
+    try {
+      const seed = await (await cached(cacheKey(ctx.env, "/api/status"), () => summary(ctx.env), 30)).text();
+      body = (await res.text()).replace("</body>", `<script type="application/json" id="seed">${seed.replace(/</g, "\\u003c")}</script>\n</body>`);
+    } catch (_) { body = res.body; }
+  }
+  const out = new Response(body, res);
   for (const [k, v] of Object.entries(SECURITY)) out.headers.set(k, v);
   out.headers.set("Cache-Control", /\.(svg|png)$/.test(url.pathname) ? "public, max-age=86400" : "no-cache");
+  if (url.pathname === "/manifest.webmanifest") out.headers.set("Content-Type", "application/manifest+json");
+  if (page) out.headers.delete("Content-Length");
   return out;
 }
