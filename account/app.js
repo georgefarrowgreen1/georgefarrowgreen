@@ -1105,8 +1105,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.92";
-const NEWS = "Admin’s Incident Desk: what’s gone wrong in one place, each item with what people saw, why, and what to do next; incidents finished with a write-up, and false alarms taken out of uptime";
+const BUILD = "1.93";
+const NEWS = "The Incident Desk: a row pressed or tapped opens it, with nothing showing through it; a swipe counts only once it’s clearly sideways, and a tap on an open row closes it";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,

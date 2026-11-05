@@ -88,7 +88,16 @@ test("each code once, in Needs you, Watching or Done; fixed, back again once see
   assert.equal(by("IF-S-AAAAA").state, "fixed"); assert.equal(by("IF-S-AAAAA").bucket, "watching");
   assert.equal(by("IF-W-BBBBB").state, "muted"); assert.equal(by("IF-W-BBBBB").bucket, "done");
   assert.equal(await deskNeeds(env, T + MIN), 1, "fixed and muted no longer count");
+  // (the status page says where each stands, laid out as an incident: its name in words where it's the site's own)
+  let pub = (await summary(env, T + MIN)).bugs;
+  assert.deepEqual(pub.find((b) => b.code === "IF-S-AAAAA") && { state: pub.find((b) => b.code === "IF-S-AAAAA").state, title: pub.find((b) => b.code === "IF-S-AAAAA").title, n: pub.find((b) => b.code === "IF-S-AAAAA").n },
+    { state: "fixed", title: "Today: building your day", n: 2 });
+  assert.equal(pub.find((b) => b.code === "IF-W-BBBBB").state, "known", "muted: known");
+  assert.equal(pub.find((b) => b.code === "IF-W-BBBBB").title, null, "a report's words never on the page");
+  assert.ok(!JSON.stringify(pub).includes("It went blank") && !JSON.stringify(pub).includes("x is null"));
   bug("IF-S-AAAAA", "server", "today day", T + 2 * MIN);
+  pub = (await summary(env, T + 3 * MIN)).bugs;
+  assert.equal(pub.find((b) => b.code === "IF-S-AAAAA").state, "back");
   d = await deskView(env, T + 3 * MIN);
   assert.equal(by("IF-S-AAAAA").state, "back"); assert.equal(by("IF-S-AAAAA").bucket, "needs", "seen after it was marked fixed: back in Needs you");
   d = await deskView(env, T + 864e5 + 5 * MIN);

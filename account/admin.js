@@ -111,7 +111,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   const deskPost = (path, body) => freshly(() => post(`admin/${path}`, body));
   const subOf = (x) => {
     if (x.type === "incident") return !x.ended ? `${x.stage} · since ${whenShort(x.started)}`
-      : `Resolved ${whenShort(x.ended)} after ${mins(x.mins)}${x.outage === false ? " · not an outage" : ""}${x.bucket === "watching" ? ` · ${[x.outage === null && "outage?", !x.writeup && "write-up"].filter(Boolean).join(", ")} to do` : ""}`;
+      : `Resolved ${whenShort(x.ended)} after ${mins(x.mins)}${x.outage === false ? " · not an outage" : ""}${x.bucket === "watching" ? ((n) => ` · ${n === 1 ? "1 thing" : `${n} things`} to finish`)([x.outage === null, !x.writeup].filter(Boolean).length) : ""}`;
     if (x.state === "fixed") return x.bucket === "done" ? `Fixed ${whenShort(x.fixedAt)} · quiet since` : `Marked fixed ${whenShort(x.fixedAt)} · watching`;
     if (x.state === "muted") return `Muted until ${whenShort(x.until)}`;
     const how = `${x.count > 1 ? `${num(x.count)} times, last ` : ""}${whenShort(x.last)}`;
@@ -132,25 +132,38 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     swipeable(r, under.children.length * 78);
     return h("div.dk-swipe", {}, under, r);
   }
-  // (a row dragged left shows what's under it; let go past halfway and it stays open, else it closes)
+  // (a row dragged left shows what's under it, and only then: a tap, even one that wobbles a little, opens the row; a
+  // drag counts once it's clearly sideways. Let go past halfway and it stays open, where a tap closes it again)
   function swipeable(r, w) {
     let x0 = null, y0 = 0, dx = 0, open = false, moving = false;
+    const box = () => r.parentElement;
+    const settle = (on) => {
+      open = on; r.classList.remove("dragging"); r.style.transform = on ? `translateX(${-w}px)` : "";
+      box()?.classList.toggle("open", on);
+      if (!on) setTimeout(() => { if (!open) box()?.classList.remove("swiping"); }, 260);
+    };
     r.addEventListener("pointerdown", (e) => { if (e.button) return; x0 = e.clientX; y0 = e.clientY; dx = open ? -w : 0; moving = false; });
     r.addEventListener("pointermove", (e) => {
       if (x0 == null) return;
       const mx = e.clientX - x0, my = e.clientY - y0;
-      if (!moving) { if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; } if (Math.abs(mx) < 8) return; moving = true; r.setPointerCapture?.(e.pointerId); r.classList.add("dragging"); }
+      if (!moving) {
+        if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; }
+        if (Math.abs(mx) < 14 || Math.abs(mx) < Math.abs(my) * 1.5) return;
+        moving = true; r.setPointerCapture?.(e.pointerId); r.classList.add("dragging"); box()?.classList.add("swiping");
+      }
       dx = Math.min(0, Math.max(-w - 24, mx + (open ? -w : 0)));
       r.style.transform = `translateX(${dx}px)`;
     });
     const end = () => {
       if (x0 == null) return;
-      x0 = null; r.classList.remove("dragging");
+      x0 = null;
       if (!moving) return;
-      open = dx < -w / 2; r.style.transform = open ? `translateX(${-w}px)` : ""; r.dataset.swiped = "1";
+      settle(dx < -w / 2); r.dataset.swiped = "1";
       setTimeout(() => delete r.dataset.swiped, 350);
     };
     r.addEventListener("pointerup", end); r.addEventListener("pointercancel", end);
+    // (a tap on a row that's open closes it, rather than opening it)
+    r.addEventListener("click", (e) => { if (open && !r.dataset.swiped) { e.stopImmediatePropagation(); e.preventDefault(); settle(false); } }, true);
   }
   async function codeTo(x, state) {
     const was = x.state === "back" ? "fixed" : x.state;

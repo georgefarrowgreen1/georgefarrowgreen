@@ -128,6 +128,27 @@ await ad.emulateMedia({ colorScheme: 'light' });
 const r = await fetch('http://127.0.0.1:8788/api/account/admin/status-outage', { method: 'POST', headers: { Authorization: 'Bearer ' + as.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'inc-old', outage: false }) }).catch(() => ({ status: 0 }));
 ok(r.status === 403 || r.status === 404 || r.status === 401, 'not from outside the admin’s own page', String(r.status));
 
+// on a phone, by touch: a tap on a row opens it, with nothing showing through (the swipe's buttons hidden till a swipe)
+const tctx = await K.b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+await tctx.addCookies([AD.cookie]);
+const tp = await tctx.newPage();
+tp.on('pageerror', (e) => K.errs.push(`touch: ${e.message}`));
+await tp.goto(AD.page + '/#admin=desk'); await tp.waitForSelector('#sheet .dk-row:has-text("building your day")', { timeout: 20000 }); await tp.waitForTimeout(500);
+ok(await tp.locator('#sheet .dk-swipe .dk-under').first().evaluate((e) => getComputedStyle(e).visibility) === 'hidden', 'the swipe’s buttons hidden until a swipe');
+await tp.tap('#sheet .dk-row:has-text("building your day")');
+await tp.waitForSelector('#sheet .dk-impact', { timeout: 10000 });
+ok(true, 'a tap opens the row');
+await tp.screenshot({ path: `${out}/desk-touch.png` });
+await tctx.close();
+// the status page: each bug code as an incident is, where it stands
+const sb2 = await (await import('playwright')).chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--host-resolver-rules=MAP status.ifl.test 127.0.0.1'] });
+const sp = await sb2.newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
+await sp.goto('http://status.ifl.test:8788/'); await sp.waitForSelector('#codes .bug', { timeout: 20000 });
+const bugCard = (await sp.locator('#codes .bug').first().innerText()).replace(/\s+/g, ' ');
+ok(/Today: building your day/.test(bugCard) && /Looking into it/.test(bugCard) && /IF-S-MB90H/.test(bugCard) && /Spotted\./.test(bugCard), 'the status page: the bug code laid out as an incident, where it stands', bugCard);
+await sp.locator('#bugsec').screenshot({ path: `${out}/status-bugs.png` }).catch(() => {});
+await sb2.close();
+
 // one started by hand: on the status page, and a banner in the app it names
 await toDesk();
 await ad.click('#sheet .row:has(b:text-is("Start an incident"))');

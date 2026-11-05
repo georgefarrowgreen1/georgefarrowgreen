@@ -335,8 +335,16 @@ export async function summary(env, t = Date.now()) {
   // (the bug codes of the week, and the site's own server errors' codes during each incident: codes alone, no words)
   let bugs = [];
   try {
-    const week = await D.prepare("SELECT code, app, COUNT(*) AS n, MAX(issue) AS issue FROM pg_bugs WHERE at >= ? AND app != 'fitting' GROUP BY code, app ORDER BY n DESC, MAX(at) DESC LIMIT 8").bind(t - 7 * DAY_MS).all();
-    bugs = (week.results || []).map((b) => ({ code: b.code, app: b.app, n: b.n, filed: !!b.issue }));
+    // (each with where it stands, as the Incident Desk has it: new, fixed, back again since it was fixed, or known
+    // (muted there); and its name in words where it's the site's own (functions/_desk.js titleOf), never anyone's words)
+    const week = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, MAX(b.issue) AS issue, d.state, d.at AS said_at, d.until
+      FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.at >= ? AND b.app != 'fitting' GROUP BY b.code, b.app ORDER BY MAX(b.at) DESC LIMIT 8`).bind(t - 7 * DAY_MS).all();
+    const { titleOf } = await import("./_desk.js");
+    bugs = (week.results || []).map((b) => {
+      const state = b.state === "fixed" ? (b.last > b.said_at ? "back" : "fixed") : b.state === "muted" && b.until > t ? "known" : "new";
+      return { code: b.code, app: b.app, n: b.n, filed: !!b.issue, first: b.first, last: b.last, state, fixedAt: b.state === "fixed" ? b.said_at : null,
+        title: b.app === "server" ? titleOf("server", b.kind, "") : null };
+    });
     if (list.length) {
       const from = Math.min(...list.map((x) => x.started));
       const srv = await D.prepare("SELECT DISTINCT code, at FROM pg_bugs WHERE app = 'server' AND at >= ? ORDER BY at LIMIT 500").bind(from).all();

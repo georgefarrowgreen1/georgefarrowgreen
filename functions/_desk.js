@@ -37,7 +37,7 @@ export function titleOf(app, kind, words) {
     const w = String(kind || "").split(/\s+/);
     return `${APPN[w[0]] || upper(w[0] || "The site")}${w.length > 1 && w.slice(1).join(" ") !== "api" ? `: ${w.slice(1).join(" ")}` : ""}`;
   }
-  return `${APPN[app] || upper(app)}: ${kind === "manual" ? "reported by hand" : words ? String(words).slice(0, 60) : "something went wrong"}`;
+  return `${APPN[app] || upper(app)}: ${kind === "manual" ? "a problem someone reported" : words ? String(words).slice(0, 60) : "something went wrong"}`;
 }
 // (what people saw, in a sentence: a slow answer that still gave them what it could, or a failure)
 function sawOf(app, kind, sev) {
@@ -134,6 +134,8 @@ export async function codeState(env, b, t = Date.now()) {
   else if (state === "fixed") await D.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at, until) VALUES (?, 'fixed', ?, NULL)").bind(code, t).run();
   else if (state === "muted") await D.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at, until) VALUES (?, 'muted', ?, ?)").bind(code, t, t + DAY).run();
   else throw new HttpError(400, "Fixed, muted or new?");
+  // (the status page shows where each code stands: its copy let go of, so it says so at once)
+  await forgetStatus(env);
   return { ok: true, code, state };
 }
 

@@ -137,6 +137,8 @@
     const bars = r.querySelector(".bars");
     bars.addEventListener("pointermove", (e) => { const i = e.target.dataset?.i; if (i != null) tipAt(e, keys[+i], s.days[+i]); });
     bars.addEventListener("pointerleave", () => ($("tip").hidden = true));
+    // (a finger lifted: a touch never leaves, so the day's word goes a moment after)
+    for (const k of ["pointerup", "pointercancel"]) bars.addEventListener(k, (e) => { if (e.pointerType !== "mouse") setTimeout(() => ($("tip").hidden = true), 1400); });
     if (opened.has(s.id)) flip(true);
     return el;
   }
@@ -239,11 +241,30 @@
     }).join("");
   }
   const APP = { chat: "Chat", chats: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", finance: "Markets", account: "Account", auth: "Account", today: "Today", mail: "Mail", email: "Mail", home: "Home page", fitting: "Fit Studio", server: "Server" };
+  // Bug codes this week, each laid out as an incident is: what it's about, where it stands (looking into it, fixed,
+  // back again since it was fixed, or known), when it was seen, and its story newest first. Codes and the app alone,
+  // with the site's own errors named in words: never anything anyone wrote
+  const STATE = { new: ["warn", "Looking into it"], fixed: ["ok", "Fixed"], back: ["down", "Back again"], known: ["none", "Known"] };
   function bugs(d) {
     $("bugsec").hidden = !d.bugs.length;
-    $("codes").innerHTML = d.bugs.map((b) => `<span class="code" data-s="${b.filed ? "ok" : "warn"}"><i></i><b>${esc(b.code)}</b>${esc(APP[b.app] || b.app)} · ${b.n} report${b.n === 1 ? "" : "s"} · ${b.filed ? "filed" : "new"}</span>`).join("");
+    $("codes").innerHTML = d.bugs.map((b) => {
+      const [s, tag] = STATE[b.state] || STATE.new, app = APP[b.app] || b.app, first = b.first || b.last, last = b.last || first;
+      const title = b.title || `${app === "Server" ? "The site" : app}: a problem someone reported`;
+      const steps = [];
+      if (b.state === "back") steps.push([last, "Back again", "Seen again since it was fixed. We’re looking into it."]);
+      if (b.fixedAt && (b.state === "fixed" || b.state === "back")) steps.push([b.fixedAt, "Fixed", b.state === "fixed" ? "A fix is in. It’s watched in case it comes back." : "A fix went in."]);
+      if (b.state === "known") steps.push([last, "Known", "We know about it; it doesn’t stop anything working."]);
+      if (b.n > 1 && last !== first && b.state !== "back") steps.push([last, "Seen again", `${b.n} times in all this week.`]);
+      steps.push([first, b.app === "server" ? "Spotted" : "Reported", b.app === "server" ? "The site logged it as it happened." : "Sent from Report a Problem."]);
+      steps.sort((a, b2) => b2[0] - a[0]);
+      return `<article class="inc bug" data-s="${s}"><header><h3>${esc(title)}</h3><span class="tag">${esc(tag)}</span></header>
+        <p class="sub num"><span class="cd">${esc(b.code)}</span> · ${esc(app)} · ${esc(dm(first))}${last !== first ? `–${esc(dm(last))}` : ""} · ${b.n} time${b.n === 1 ? "" : "s"}</p>
+        <ol class="steps">${steps.map(([at, k, w]) => `<li><time>${esc(hm(at))}</time><span><b>${esc(k)}.</b> ${esc(w)}</span></li>`).join("")}</ol></article>`;
+    }).join("");
   }
 
+  // (and gone as the page scrolls, never left floating over something else)
+  addEventListener("scroll", () => ($("tip").hidden = true), { passive: true });
   load();
   setInterval(() => { if (document.visibilityState === "visible") load(); }, 60e3);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && data && Date.now() - (data.fetched || 0) > 30e3) load(); });
