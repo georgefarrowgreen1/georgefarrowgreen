@@ -7,7 +7,7 @@
    not places (those would point at where their other friends live), a lost
    pigeon has no place, a pigeon's own miles and flights stay its owner's,
    and nothing says whether one is flying right now. */
-import { json, db, requireUser, limit, HttpError, UUID_RE, DAY } from "./_pigeon.js";
+import { json, db, requireUser, limit, HttpError, UUID_RE, DAY, pace } from "./_pigeon.js";
 import { rankOf, settleBirds } from "./_birds.js";
 import { passportFor, stampPassports } from "./_passport.js";
 import { logFor, SKINS } from "./_stats.js";
@@ -45,7 +45,7 @@ export async function loftFor(D, uid, t) {
 }
 async function loft({ request, env }) {
   const u = await requireUser(request, env), t = Date.now();
-  await limit(env, "loft:" + u.id, 120, 3600e3);
+  await pace(env, "loft:" + u.id, 120, 3600e3);
   const id = new URL(request.url).searchParams.get("id") || "", D = await db(env);
   if (!UUID_RE.test(id) || id === u.id) throw new HttpError(404, "That loft wasn’t found.");
   const f = await D.prepare(`SELECT p.hide_news FROM pg_links l JOIN pg_users p ON p.id = ?2

@@ -4,7 +4,7 @@
 // its key sealed for each member), so the server can't see which one it was.
 // One reaction per person per message; sending another replaces it.
 
-import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken } from "./_pigeon.js";
+import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken, pace } from "./_pigeon.js";
 import { pokes } from "./_pulse.js";
 
 const SPEED = 9;                     // as fast as a rocket pigeon
@@ -37,7 +37,7 @@ async function target(D, u, msgId, group) {
 
 async function react({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "react:" + u.id, 240, 60 * 60e3);
+  await pace(env, "react:" + u.id, 240, 60 * 60e3);
   const b = await body(request), D = await db(env), t = Date.now();
   const id = String(b.id || ""), msgId = String(b.msg || ""), group = !!b.group;
   if (!UUID_RE.test(id) || !UUID_RE.test(msgId)) throw new HttpError(400, "That reaction was malformed.");

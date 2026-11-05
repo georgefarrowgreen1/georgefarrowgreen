@@ -19,7 +19,7 @@
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
 import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, waitText, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, SESSION_MAX, randomToken,
-  safeEqual, deviceOf, regionOf, accountPage } from "./_pigeon.js";
+  safeEqual, deviceOf, regionOf, accountPage, pace } from "./_pigeon.js";
 import { emailReady, emailBody, sendEmail, ukTime, linkOrigin } from "./_email.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
@@ -97,7 +97,7 @@ export function sameOrigin(request) {
 // The salt for an email's password (public input to the stretching on the phone). Unknown emails get a stable made-up
 // one, so this can't be used to find out who has an account.
 export async function saltFor(env, request, email) {
-  await limit(env, "salt:" + clientIp(request), 60, 15 * 60e3);
+  await pace(env, "salt:" + clientIp(request), 60, 15 * 60e3);
   email = String(email || "").trim().toLowerCase();
   const u = await (await db(env)).prepare("SELECT salt FROM pg_users WHERE email = ?").bind(email).first();
   const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)

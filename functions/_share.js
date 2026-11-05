@@ -16,7 +16,7 @@
 // and only times and ids (never a word of a letter): in the asker's own rows, and, for a Yes, the inviter's pending row
 // for that friend alone (functions/_fitshare.js, functions/_times.js).
 
-import { HttpError, json, body, db, limit, requireUser, haversineKm, logError, UUID_RE } from "./_pigeon.js";
+import { HttpError, json, body, db, limit, requireUser, haversineKm, logError, UUID_RE, pace } from "./_pigeon.js";
 import { cellNow, weatherSend } from "./_todaywx.js";
 import { cardsFor, Quiet } from "./_todaycards.js";
 import { quotes, cleanSymbol, dayIn, holdings } from "./_markets.js";
@@ -70,7 +70,7 @@ const quietly = (env, where) => (e) => { if (!(e instanceof Quiet)) logError(env
 
 async function cardNow({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, `cardnow:${u.id}`, 240, HOUR);
+  await pace(env, `cardnow:${u.id}`, 240, HOUR);
   const b = await body(request, 16 * 1024), t = Date.now();
   const items = Array.isArray(b?.items) ? b.items.slice(0, 12) : [];
   const out = items.map(() => QUIET);
@@ -163,7 +163,7 @@ const COULDNT = "Couldn’t get yours just now. Try again in a moment.";
 const APP = { weather: "weather", fitness: "fitness", markets: "finance" };
 async function myCard({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, `mycard:${u.id}`, 60, HOUR);
+  await pace(env, `mycard:${u.id}`, 60, HOUR);
   const q = new URL(request.url).searchParams, kind = q.get("kind"), tz = zoneOk(q.get("tz")) ? q.get("tz") : "Europe/London";
   if (!ASK_KINDS.includes(kind)) throw new HttpError(400, "Bad request.");
   const links = todayLinks(env, request), href = `${links[APP[kind]]}/`, t = Date.now();
@@ -204,7 +204,7 @@ async function stockCard(env, u, sym, t, href, answer) {
 
 async function fitShare({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, `fitshare:${u.id}`, 60, HOUR);
+  await pace(env, `fitshare:${u.id}`, 60, HOUR);
   const b = await body(request, 4 * 1024);
   if (b && b.drop != null) {
     if (typeof b.drop !== "string" || !SHARE_ID.test(b.drop)) throw new HttpError(400, "Bad request.");
@@ -279,7 +279,7 @@ async function together({ request, env, waitUntil }) {
 // sends no with, still finds the same ride by it.
 async function fitOffer({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, `fitoffer:${u.id}`, 30, HOUR);
+  await pace(env, `fitoffer:${u.id}`, 30, HOUR);
   const b = await body(request, 4 * 1024), t = Date.now(), x = b && typeof b === "object" && !Array.isArray(b) ? b : {};
   if (x.with != null && (typeof x.with !== "string" || !x.with || x.with.length > 64)) throw new HttpError(400, "Bad request.");
   if (x.re != null && (typeof x.re !== "string" || !UUID_RE.test(x.re.toLowerCase()))) throw new HttpError(400, "Bad request.");
@@ -318,7 +318,7 @@ async function answeredFirst(env, me, withId, x, t) {
 // inviter's phone shut. Says only { ok: true }: never whether the other side had a row. (functions/_times.js addTime)
 async function timeOffer({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, `timeoffer:${u.id}`, 30, HOUR);
+  await pace(env, `timeoffer:${u.id}`, 30, HOUR);
   const b = await body(request, 4 * 1024), t = Date.now(), x = b && typeof b === "object" && !Array.isArray(b) ? b : {};
   if (typeof x.with !== "string" || !x.with || x.with.length > 64 || x.with === u.id) throw new HttpError(400, "Bad request.");
   const who = await friendName(await db(env), u.id, x.with);

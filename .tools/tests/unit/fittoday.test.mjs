@@ -128,7 +128,7 @@ test("kept one row an account, read back as it was kept; a later one takes its p
 test("the route: from Fitness's own page, signed in, a limit an hour, a body of 32 KB at most", () => {
   const src = readFileSync(new URL("../../../functions/api/fitness/[[path]].js", import.meta.url), "utf8");
   const route = /"POST today": async \(\{ request, env \}\) => \{([\s\S]*?)\n  \},/.exec(src)?.[1] || "";
-  assert.match(route, /sameOrigin\(request\);\s*const u = await signedIn\(request, env\);\s*await limit\(env, `fxtoday:\$\{u\.id\}`, 120, 3600e3\);/);
+  assert.match(route, /sameOrigin\(request\);\s*const u = await signedIn\(request, env\);\s*await pace\(env, `fxtoday:\$\{u\.id\}`, 120, 3600e3\);/);      // (pace: counted where Cloudflare serves it, functions/_pigeon.js)
   assert.match(route, /setSnapshot\(env, u\.id, await body\(request, 32 \* 1024\)\)/);
 });
 

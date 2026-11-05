@@ -5,7 +5,7 @@
    that it flew over them: never who it was flying to, or where. Worked out
    when a pigeon takes off and again whenever its flight changes (it turns, is
    cheered on, or is called back), like near misses (functions/_moments.js). */
-import { HOUR, HttpError, json, db, body, limit, requireUser, UUID_RE, haversineKm, chunks } from "./_pigeon.js";
+import { HOUR, HttpError, json, db, body, limit, requireUser, UUID_RE, haversineKm, chunks, pace } from "./_pigeon.js";
 import { stopsOf } from "./_moments.js";
 import { wavedNote } from "./_notify.js";
 
@@ -111,7 +111,7 @@ export async function flyOnMine(D, me, ids) {
 async function wave({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that.");
-  await limit(env, "wave:" + u.id, 60, HOUR);
+  await pace(env, "wave:" + u.id, 60, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env), t = Date.now();
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");
   const r = await D.prepare("SELECT * FROM pg_flyover WHERE msg_id = ? AND user_id = ? AND told IS NOT NULL").bind(id, u.id).first();

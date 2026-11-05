@@ -7,7 +7,7 @@
 // Needs the secret GIPHY_API_KEY (free from developers.giphy.com). Without it
 // the app hides its GIF button. GIPHY_API_URL / GIPHY_MEDIA_URL: tests only.
 
-import { HttpError, json, limit, requireUser } from "./_pigeon.js";
+import { HttpError, json, limit, requireUser, pace } from "./_pigeon.js";
 
 const GIF_ID = /^[A-Za-z0-9]{5,40}$/;
 const MAX_GIF = 8 * 1024 * 1024;
@@ -16,7 +16,7 @@ export const gifsReady = (env) => !!env.GIPHY_API_KEY;
 async function search({ request, env }) {
   const u = await requireUser(request, env);
   if (!gifsReady(env)) throw new HttpError(503, "GIF search isn’t set up yet.");
-  await limit(env, "gifq:" + u.id, 300, 60 * 60e3);
+  await pace(env, "gifq:" + u.id, 300, 60 * 60e3);
   const q = new URL(request.url).searchParams;
   const term = String(q.get("q") || "").trim().replace(/\s+/g, " ").slice(0, 50);
   const offset = Math.max(0, Math.min(4900, Math.floor(Number(q.get("offset")) || 0)));
@@ -49,7 +49,7 @@ async function file({ request, env }, id) {
   const u = await requireUser(request, env);
   if (!gifsReady(env)) throw new HttpError(503, "GIF search isn’t set up yet.");
   if (!GIF_ID.test(String(id || ""))) throw new HttpError(404, "No such GIF.");
-  await limit(env, "giff:" + u.id, 1500, 60 * 60e3);
+  await pace(env, "giff:" + u.id, 1500, 60 * 60e3);
   const kind = new URL(request.url).searchParams.get("s") === "f" ? "f" : "p";
   for (const name of FILES[kind]) {
     let r;

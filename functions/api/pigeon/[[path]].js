@@ -5,7 +5,7 @@ import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
@@ -289,7 +289,7 @@ async function updateMe({ request, env, waitUntil }) {
   // Earth again (below) brings you home.
   if (b.moon != null && b.lat === undefined) {
     const mn = cleanMoon(b.moon);
-    await limit(env, "move:" + u.id, 30, 15 * 60e3);
+    await pace(env, "move:" + u.id, 30, 15 * 60e3);
     await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify(mn.b === "mars" ? { b: "mars", lat: mn.lat, lon: mn.lon } : { lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
     await followAll(env, D, u, endOf({ moon: mn, place: mn.place }), t, waitUntil);    // (what's on its way follows, off the Earth too)
   }
@@ -297,7 +297,7 @@ async function updateMe({ request, env, waitUntil }) {
     const p = cleanPlace(b, b.approxLocation ?? !!u.loc_approx);
     if (u.moon) await D.prepare("UPDATE pg_users SET moon = NULL WHERE id = ?").bind(u.id).run();
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
-    if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
+    if (u.lat != null && moved > 0.1) await pace(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
     // (the time it was last updated moves only when you do: "still here" every few minutes would say when the app was open)
     await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = CASE WHEN ?4 THEN ?5 ELSE COALESCE(loc_at, ?5) END WHERE id = ?6").bind(p.lat, p.lon, p.place, moved > REROUTE_KM ? 1 : 0, t, u.id).run();
     if (u.lat != null) { await reroute(env, u, p, t, waitUntil); await rerouteGroups(env, u, p, t, waitUntil); }   // also catches up a turn held back by TURN_EVERY
@@ -350,7 +350,7 @@ async function passkeyOptions({ request, env }) {
       user: { id: b64url(new TextEncoder().encode(u.id)), name: u.email, displayName: u.name },
       exclude: results.map((r) => r.id) });
   }
-  await limit(env, "pkopt:" + clientIp(request), 60, 15 * 60e3);
+  await pace(env, "pkopt:" + clientIp(request), 60, 15 * 60e3);
   // (which site's passkey to ask for: the one Chat says this phone's is, or as askRp has it)
   const user = await requireUser(request, env).catch(() => null);
   return json({ challenge: await newChallenge(env, "login"), rpId: await askRp(env, request, b, user) });
@@ -389,7 +389,7 @@ async function pinsGet({ request, env }) {
 }
 async function pinsPut({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "pins:" + u.id, 240, 60 * 60e3);
+  await pace(env, "pins:" + u.id, 240, 60 * 60e3);
   const s = String((await body(request)).pins || "");
   if (s.length < 20 || s.length > 200000) throw new HttpError(400, "That was malformed.");
   await (await db(env)).prepare("UPDATE pg_users SET pins = ? WHERE id = ?").bind(s, u.id).run();
@@ -470,7 +470,7 @@ async function passkeyDelete({ request, env, waitUntil }) {
 // Only the handle comes back (no name or photo until they say yes).
 async function friendStatus({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "fstat:" + u.id, 400, 60 * 60e3);
+  await pace(env, "fstat:" + u.id, 400, 60 * 60e3);
   const h = String(new URL(request.url).searchParams.get("h") || "").trim().replace(/^@/, "").toLowerCase();
   if (!HANDLE_RE.test(h)) return json({ state: "invalid" });
   const D = await db(env), t = await D.prepare("SELECT id, handle FROM pg_users WHERE handle = ?").bind(h).first();
@@ -491,7 +491,7 @@ function linkState(l, me) {
 const PENDING_MAX = 50;                  // friend requests waiting for one person (older than 30 days go)
 async function addFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
-  await limit(env, "friend:" + u.id, 40, 60 * 60e3);
+  await pace(env, "friend:" + u.id, 40, 60 * 60e3);
   const handle = String((await body(request)).handle || "").trim().replace(/^@/, "").toLowerCase();
   const D = await db(env);
   const t = await D.prepare("SELECT id, handle FROM pg_users WHERE handle = ?").bind(handle).first();
@@ -654,7 +654,7 @@ async function allChats(D, u, way, t) {
 // A chat's usual way, mine to a friend ({ with }) or in a group ({ group }): set, with a line the others see
 async function setWay({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "way:" + u.id, 20, HOUR);
+  await pace(env, "way:" + u.id, 20, HOUR);
   if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that.");
   const b = await body(request), D = await db(env), t = Date.now();
   const w = b.with != null && b.with !== "", g = b.group != null && b.group !== "";
@@ -691,7 +691,7 @@ const endWays = (D, a, b) => [
 // picture or place. They aren't told. Unblocking just lifts it.
 async function block({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
-  await limit(env, "block:" + u.id, 60, 60 * 60e3);
+  await pace(env, "block:" + u.id, 60, 60 * 60e3);
   const id = String((await body(request)).id || ""), D = await db(env);
   if (id === u.id || !(await D.prepare("SELECT 1 FROM pg_users WHERE id = ?").bind(id).first())) throw new HttpError(404, "There’s no one like that to block.");
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
@@ -1019,7 +1019,7 @@ async function sendMessage({ request, env, waitUntil }) {
   // A message, not a letter: only when the phone says so (a phone from before always sends letters), and before anything
   // about pigeons, places or the Moon. Its own limit; letters keep theirs
   if (meta.instant === true) return sendInstant({ env, waitUntil, D, u, to, t, id, ct, photo, meta });
-  await limit(env, "send:" + u.id, 120, 60 * 60e3);
+  await pace(env, "send:" + u.id, 120, 60 * 60e3);
   if (await idTaken(D, id)) throw new HttpError(409, "That scroll was already sent.");
   if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
@@ -1158,7 +1158,7 @@ async function sendInstant({ env, waitUntil, D, u, to, t, id, ct, photo, meta })
   if (meta.via != null || meta.viaCt != null) throw new HttpError(400, "A message can’t stop over. Send it by pigeon to stop over.");
   const landAt = meta.landAt == null ? null : Number(meta.landAt);
   if (landAt != null && !(Number.isFinite(landAt) && landAt > t && landAt <= t + MAX_SCHEDULE)) throw new HttpError(400, "Pick a time in the next 30 days.");
-  await limit(env, "msg:" + u.id, 600, HOUR);
+  await pace(env, "msg:" + u.id, 600, HOUR);
   // (the same words as a letter's: the phone's outbox knows it went by "already sent")
   if (await idTaken(D, id)) throw new HttpError(409, "That scroll was already sent.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send messages to friends.");
@@ -1237,7 +1237,7 @@ async function sendSpace({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }
 // the phone can say whether it's worth waiting for the skies to clear.
 async function wxPlan({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "wxplan:" + u.id, 120, 60 * 60e3);
+  await pace(env, "wxplan:" + u.id, 120, 60 * 60e3);
   const other = new URL(request.url).searchParams.get("with") || "", D = await db(env);
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
   const r = await D.prepare("SELECT lat, lon FROM pg_users WHERE id = ?").bind(other).first();
@@ -1253,7 +1253,7 @@ async function wxPlan({ request, env }) {
 // it's what would happen, weather and all, if nothing changes.
 async function routePlan({ request, env }) {
   const u = await requireUser(request, env), q = new URL(request.url).searchParams, t = Date.now();
-  await limit(env, "routeplan:" + u.id, 60, 60 * 60e3);
+  await pace(env, "routeplan:" + u.id, 60, 60 * 60e3);
   const other = q.get("with") || "", kind = Object.hasOwn(PIGEONS, q.get("pigeon")) ? q.get("pigeon") : "standard", D = await db(env);
   const carrier = await carrierOf(D, u.id, q.get("bird"), t);              // (the named pigeon that would carry it: its rests)
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
@@ -1317,7 +1317,7 @@ async function stopover(D, u, to, r, viaId, viaCt, landAt) {
 async function stopoverNote({ request, env }) {
   const u = await requireUser(request, env);
   if (!u.pigeons) throw new HttpError(409, "Turn on pigeons to do that.");
-  await limit(env, "note:" + u.id, 60, 60 * 60e3);
+  await pace(env, "note:" + u.id, 60, 60 * 60e3);
   const b = await body(request), id = String(b.id || ""), ct = String(b.ct || ""), D = await db(env), t = Date.now();
   if (!UUID_RE.test(id) || ct.length < 20 || ct.length > 4000) throw new HttpError(400, "That line was malformed.");
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND via = ?").bind(id, u.id).first();
@@ -1339,7 +1339,7 @@ function stopView(me, m, t) {
 // It never arrives, what it carried is deleted, and it's the sender's turn again.
 async function recallMessage({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "recall:" + u.id, 30, 60 * 60e3);
+  await pace(env, "recall:" + u.id, 30, 60 * 60e3);
   const id = String((await body(request)).id || ""), D = await db(env), t = Date.now();
   const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
   if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");

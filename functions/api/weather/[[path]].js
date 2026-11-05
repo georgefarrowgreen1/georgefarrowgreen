@@ -18,7 +18,7 @@
 //   POST /api/weather/email-off    scanners that follow links turn nothing off); POST turns them off, and is the mail
 //                                  app's own one-click Unsubscribe too (RFC 8058)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
-import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped } from "../../_pigeon.js";
+import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped, pace } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { linkOrigin } from "../../_email.js";
 import { unsubscribe, moveSub, wxTick, maybeWxTick, publicKey, leaveAny } from "../../_wxpush.js";
@@ -93,32 +93,32 @@ const ROUTES = {
   "GET where": ({ request }) => where(request),
   "GET obs": async ({ request, env }) => {
     const [lat, lon] = placeOf(request);
-    await limit(env, `wxobs:${clientIp(request)}`, 60, HOUR);
+    await pace(env, `wxobs:${clientIp(request)}`, 60, HOUR);
     return json(await obsFor(env, lat, lon));
   },
   "GET warnings": async ({ request, env }) => {
     const [lat, lon] = placeOf(request);
-    await limit(env, `wxwarn:${clientIp(request)}`, 120, HOUR);
+    await pace(env, `wxwarn:${clientIp(request)}`, 120, HOUR);
     // (the feeds are taken a few minutes at a time anyway: the phone keeps its answer as long, rather than asking again,
     // and this server writing down each ask, as it opens and comes back to the app; a minute, with one of its sources
     // not heard from, as a source that's failed is let be for a minute: functions/_wxwarn.js shaped)
     const w = await warningsAt(env, lat, lon), r = json(w); r.headers.set("Cache-Control", `private, max-age=${w.missing ? 60 : 180}`); return r;
   },
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
-  "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },
+  "POST subscribe": async ({ request, env }) => { sameOrigin(request); await pace(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },
   "POST unsubscribe": async ({ request, env }) => { sameOrigin(request); return json(await unsubscribe(env, (await body(request)).endpoint)); },
-  "POST leave": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await leaveAny(env, (await body(request)).endpoint)); },
-  "POST move": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await moveSub(env, await body(request))); },
+  "POST leave": async ({ request, env }) => { sameOrigin(request); await pace(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await leaveAny(env, (await body(request)).endpoint)); },
+  "POST move": async ({ request, env }) => { sameOrigin(request); await pace(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await moveSub(env, await body(request))); },
   "POST tick": async ({ request, env }) => { tickAuthOk(request, env, env.WEATHER_TICK_SECRET || env.PIGEON_TICK_SECRET); return json(await wxTick(env, Date.now(), linkOrigin(request))); },
   "GET email-off": async ({ request, env }) => {
-    await limit(env, `wxoff:${clientIp(request)}`, 60, HOUR);
+    await pace(env, `wxoff:${clientIp(request)}`, 60, HOUR);
     if (!(await offUser(env, request))) return offPage(request, env, "Link expired", OFF_GONE);
     const q = new URL(request.url).search.replace(/"/g, "");
     return offPage(request, env, "Turn off Weather’s emails?", "You won’t get warnings or the morning briefing by email. Notifications on your phone aren’t affected.",
       `<form method="post" action="/api/weather/email-off${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="${isWeather(new URL(request.url), env) ? "/" : "/weather/"}">Keep Them On</a>`);
   },
   "POST email-off": async ({ request, env }) => {
-    await limit(env, `wxoff:${clientIp(request)}`, 60, HOUR);
+    await pace(env, `wxoff:${clientIp(request)}`, 60, HOUR);
     const u = await offUser(env, request);
     if (!u) return offPage(request, env, "Link expired", OFF_GONE);
     await setMail(env, u.id, { warn: false, brief: false });

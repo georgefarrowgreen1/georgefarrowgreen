@@ -45,7 +45,7 @@
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
 import { tickHost } from "../../_sites.js";
-import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE } from "../../_pigeon.js";
+import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -105,7 +105,7 @@ const ROUTES = {
   "PUT me": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 512 * 1024);
-    await limit(env, `fxstate:${u.id}`, 600, 3600e3);
+    await pace(env, `fxstate:${u.id}`, 600, 3600e3);
     const r = await saveState(env, u.id, Number.isInteger(b.base) ? b.base : -1, cleanState(b.data));
     return json(r, r.conflict ? 409 : 200);
   },
@@ -247,7 +247,7 @@ const ROUTES = {
   // (Strava's word, from Strava: its check as the subscription's made, and each event after; answered at once)
   "GET strava/hook": async ({ request, env }) => json(await hookCheck(env, new URL(request.url).searchParams)),
   "POST strava/hook": async ({ request, env }) => {
-    await limit(env, `fxstravahook:${clientNet(request)}`, 2000, 3600e3);
+    await pace(env, `fxstravahook:${clientNet(request)}`, 2000, 3600e3);
     await hookEvent(env, await body(request, 16 * 1024).catch(() => null)).catch((e) => console.error("strava hook", e.message));
     return json({ ok: true });
   },
@@ -266,7 +266,7 @@ const ROUTES = {
   // (the weather for a ride today: functions/_fitwx.js; none, where it can't be had)
   "GET weather": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `fxwx:${u.id}`, 120, 3600e3);
+    await pace(env, `fxwx:${u.id}`, 120, 3600e3);
     try { return json(await rideWeather(env, u.id, request)); } catch (e) { return json({ place: null, error: "The forecast isn’t available right now." }); }
   },
   "GET push-key": async ({ env }) => json({ key: await pushKey(env) }),
@@ -290,7 +290,7 @@ const ROUTES = {
   "POST today": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    await limit(env, `fxtoday:${u.id}`, 120, 3600e3);
+    await pace(env, `fxtoday:${u.id}`, 120, 3600e3);
     return json(await setSnapshot(env, u.id, await body(request, 32 * 1024)));
   },
   // (a plan from Chat: added to your plan here, so yes, or not wanted, no; the plan itself is the phone's to change. And
@@ -298,7 +298,7 @@ const ROUTES = {
   "POST offers/:id": async ({ request, env, id }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4 * 1024), t = Date.now();
-    await limit(env, `fxoffer:${u.id}`, 120, 3600e3);
+    await pace(env, `fxoffer:${u.id}`, 120, 3600e3);
     if (!(await answerOffer(env, u.id, id, b.answer, { t }))) throw new HttpError(404, "That plan isn’t there any more.");
     return json({ ok: true });
   },
@@ -308,7 +308,7 @@ const ROUTES = {
   "PUT time": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024), t = Date.now();
-    await limit(env, `fxtime:${u.id}`, 120, 3600e3);
+    await pace(env, `fxtime:${u.id}`, 120, 3600e3);
     const row = { day: b?.day, start: b?.start, stop: b?.stop, tz: b?.tz, sport: "ride", source: "set" };
     if (Number.isSafeInteger(row.stop) && row.stop <= t) throw new HttpError(409, "That time has passed.");
     if (Number.isSafeInteger(row.start) && row.start > t + WEEK + 86400e3) throw new HttpError(400, "Choose a time in the coming week.");
@@ -318,7 +318,7 @@ const ROUTES = {
   "DELETE time": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024);
-    await limit(env, `fxtime:${u.id}`, 120, 3600e3);
+    await pace(env, `fxtime:${u.id}`, 120, 3600e3);
     if (typeof b?.day !== "string" || !/^\d{4}-\d\d-\d\d$/.test(b.day)) throw new HttpError(400, "Bad request.");
     await dropTime(env, u.id, b.day);
     return json({ ok: true });

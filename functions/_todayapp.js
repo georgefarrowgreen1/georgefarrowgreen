@@ -33,7 +33,7 @@
 //   DELETE /api/account/today/devices       …one stopped there, never signed out (functions/_devices.js)
 // (a device is named in an address only by its hash, never its push address: an address ends up in logs)
 
-import { HttpError, db, hex, sha256, issueSession, limit, randomToken, logError } from "./_pigeon.js";
+import { HttpError, db, hex, sha256, issueSession, limit, randomToken, logError, pace } from "./_pigeon.js";
 import { cookieUser, withCookie, withSession, withoutSession } from "./_account.js";
 import { takeHandback } from "./_handback.js";
 import { json, body, signedIn } from "./_accountapi.js";
@@ -176,7 +176,7 @@ export const TODAY_ROUTES = {
   "GET today/cards": async ({ request, env, waitUntil }) => {
     fromToday(request, env);
     const u = await signedIn(request, env), q = new URL(request.url).searchParams;
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const asked = String(q.get("only") || "").split(",").filter((k) => CARD_KEYS.includes(k)), only = asked.length ? [...new Set(asked)] : null;
     const row = await todayPrefs(env, u.id), envW = withWait(env, waitUntil), t = momentOf(request, env), v = q.get("v") === "2" ? 2 : 1;
     if (only) return json(await cardsFor(envW, u, { only, t, request, tz: morningTz(u, row), links: todayLinks(env, request) }));
@@ -188,13 +188,13 @@ export const TODAY_ROUTES = {
   "PUT today/prefs": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env), b = await body(request, 4096);
-    await limit(env, "todayprefs:" + u.id, 240, 3600e3);
+    await pace(env, "todayprefs:" + u.id, 240, 3600e3);
     return json({ prefs: (await savePrefs(env, u.id, { order: b.order, hidden: b.hidden })).cards });
   },
   "GET today/morning": async ({ request, env, waitUntil }) => {
     fromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const row = await todayPrefs(env, u.id);
     return json(await morningView(withWait(env, waitUntil), u, row, { t: Date.now(), device: new URL(request.url).searchParams.get("device"), request }));
   },
@@ -203,7 +203,7 @@ export const TODAY_ROUTES = {
   "PUT today/morning": async ({ request, env, waitUntil }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env), b = await body(request, 4096);
-    await limit(env, "todayprefs:" + u.id, 240, 3600e3);
+    await pace(env, "todayprefs:" + u.id, 240, 3600e3);
     let at = b.at;
     if (b.on === true && at === undefined && firstTime(await todayPrefs(env, u.id))) at = await firstMorningAt(env, u);
     const row = await saveMorning(env, u.id, { on: b.on, at, lines: b.lines, tz: b.tz });
@@ -229,14 +229,14 @@ export const TODAY_ROUTES = {
   "POST today/push": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env), b = await body(request, 8192);
-    await limit(env, "todaypush:" + u.id, 60, 3600e3);
+    await pace(env, "todaypush:" + u.id, 60, 3600e3);
     return json(await addDevice(env, u, b.sub));
   },
   // { sub, was: the endpoint before } → { moved }
   "POST today/push-move": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env), b = await body(request, 8192);
-    await limit(env, "todaypush:" + u.id, 60, 3600e3);
+    await pace(env, "todaypush:" + u.id, 60, 3600e3);
     return json(await moveDevice(env, u, { sub: b.sub, was: b.was }));
   },
   // { endpoint } → { ok, devices }
@@ -260,7 +260,7 @@ export const TODAY_ROUTES = {
   "GET today/avatar": async ({ request, env }) => {
     fromToday(request, env);
     const u = await signedIn(request, env), id = new URL(request.url).searchParams.get("id") || "";
-    await limit(env, "todayav:" + u.id, 1200, 3600e3);
+    await pace(env, "todayav:" + u.id, 1200, 3600e3);
     const res = /^[A-Za-z0-9-]{1,64}$/.test(id) ? await avatarFor(env, u.id, id) : null;
     return res || json({ error: "No picture." }, 404);
   },
@@ -271,7 +271,7 @@ export const TODAY_ROUTES = {
   "POST today/act": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024), t = Date.now();
     return json(await actTake(env, u, b, { t }));
   },
@@ -279,7 +279,7 @@ export const TODAY_ROUTES = {
   "POST today/act/undo": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024), t = Date.now();
     return json(await actUndo(env, u, b, { t }));
   },
@@ -288,7 +288,7 @@ export const TODAY_ROUTES = {
   "POST today/plan": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 4 * 1024), t = Date.now();
     return json(await planChange(env, u, b, { t }));
   },
@@ -296,7 +296,7 @@ export const TODAY_ROUTES = {
   "GET today/rules": async ({ request, env }) => {
     fromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const t = Date.now();
     return json(await rulesGet(env, u, { t }));
   },
@@ -304,7 +304,7 @@ export const TODAY_ROUTES = {
   "PUT today/rules": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024), t = Date.now();
     return json(await rulesPut(env, u, b, { t }));
   },
@@ -312,14 +312,14 @@ export const TODAY_ROUTES = {
   "GET today/notify": async ({ request, env }) => {
     fromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     return json(await notifyGet(env, u));
   },
   // a change, as the account's page sends it → the same, after
   "PATCH today/notify": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024);
     return json(await notifyPatch(env, u, b));
   },
@@ -327,7 +327,7 @@ export const TODAY_ROUTES = {
   "POST today/device": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024);
     return json(await deviceAdd(env, u, b, { request }));
   },
@@ -335,7 +335,7 @@ export const TODAY_ROUTES = {
   "DELETE today/device": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024);
     return json(await deviceDrop(env, u, b));
   },
@@ -343,14 +343,14 @@ export const TODAY_ROUTES = {
   "GET today/devices": async ({ request, env }) => {
     fromToday(request, env);
     const u = await signedIn(request, env), q = new URL(request.url).searchParams;
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     return json(await devicesList(env, u, { device: q.get("device") }, { request }));
   },
   // { id } → { ok }
   "DELETE today/devices": async ({ request, env }) => {
     changeFromToday(request, env);
     const u = await signedIn(request, env);
-    await limit(env, "today:" + u.id, 600, 3600e3);
+    await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 8 * 1024);
     return json(await devicesStop(env, u, b));
   },

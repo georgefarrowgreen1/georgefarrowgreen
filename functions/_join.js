@@ -10,7 +10,7 @@
 //   with it: functions/_pigeon.js keyProofOk); otherwise the device makes a new key pair.
 
 import { HttpError, db, limit, clientIp, hex, sha256, fromB64url, HANDLE_RE, EMAIL_RE, handleTaken, cleanPub, SWIFT_MAX,
-  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL } from "./_pigeon.js";
+  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL, pace } from "./_pigeon.js";
 import { emailReady } from "./_email.js";
 import { cleanName } from "./_profile.js";
 import { proofHash, lockVault, openVault } from "./_atrest.js";
@@ -48,7 +48,7 @@ export function checkNewSecret(b) {
 
 // ---- a handle: free, or what's near it that is ----
 export async function handleFree(env, request, h) {
-  await limit(env, "hfree:" + clientIp(request), 150, 15 * 60e3);
+  await pace(env, "hfree:" + clientIp(request), 150, 15 * 60e3);
   h = String(h || "").trim().replace(/^@/, "").toLowerCase();
   if (!HANDLE_RE.test(h)) return { free: false, reason: "Handles use 3 to 20 letters, numbers or underscores." };
   const D = await db(env);

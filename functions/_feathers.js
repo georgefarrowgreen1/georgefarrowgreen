@@ -9,7 +9,7 @@
    Kept as a ledger, one row per thing earned or bought, each with its own
    reference, so nothing is ever counted twice. Everyone started with feathers
    for what their pigeons had already done. */
-import { json, db, body, limit, requireUser, HttpError, UUID_RE } from "./_pigeon.js";
+import { json, db, body, limit, requireUser, HttpError, UUID_RE, pace } from "./_pigeon.js";
 
 // [id, name, feathers, emoji]
 export const ITEMS = [
@@ -66,7 +66,7 @@ async function wallet({ request, env }) {
 }
 async function buy({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "feathers:" + u.id, 60, 3600e3);
+  await pace(env, "feathers:" + u.id, 60, 3600e3);
   const id = String((await body(request)).item || ""), it = ITEM.get(id), D = await db(env), t = Date.now();
   if (!it) throw new HttpError(404, "That isn’t in the shop.");
   await ensureFeathers(D);

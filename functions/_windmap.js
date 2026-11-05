@@ -7,7 +7,7 @@
 //
 // WEATHER_URL: tests only.
 
-import { HOUR, HttpError, json, requireUser, limit } from "./_pigeon.js";
+import { HOUR, HttpError, json, requireUser, limit, pace } from "./_pigeon.js";
 
 const STEPS = [0.25, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 24, 30, 36, 45];
 // Open-Meteo counts every point as a call (10,000 a day), so the grid is
@@ -20,7 +20,7 @@ const r = Math.PI / 180;
 
 async function windGrid({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "windmap:" + u.id, 300, 60 * 60e3);
+  await pace(env, "windmap:" + u.id, 300, 60 * 60e3);
   const q = new URL(request.url).searchParams, num = (k) => Number(q.get(k));
   let [s, n, w, e] = ["s", "n", "w", "e"].map(num);
   if (![s, n, w, e].every(Number.isFinite) || n <= s || e <= w) throw new HttpError(400, "That part of the map didn’t make sense.");

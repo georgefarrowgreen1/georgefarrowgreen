@@ -589,6 +589,22 @@ export async function limit(env, key, max, windowMs, n = 1) {
     RETURNING count, reset_at`).bind(key, t + windowMs, t, n).first();
   if (row.count > max) throw new HttpError(429, `Too many tries. Try again in ${waitText(row.reset_at - t)}.`);
 }
+// Too many of an everyday ask (loading Today's cards, a preference, a quote, a passkey prompt), counted where Cloudflare
+// serves the request (the Workers rate limiter: env.RL10 … env.RL320, wrangler.worker.jsonc), so the ask doesn't first
+// wait on a write to the main database, which no nearby copy of it can take. Each limiter allows so many a minute, for
+// each key; the one used is the first at four times this ceiling's own rate or more, so a burst is fine and only
+// something hammering away is held back. Counts are each location's, not the world's: so only for ceilings like these,
+// never a security count (wrong passwords, resets, sign-ups, confirmations), anything by the day, or an allowance of
+// someone else's we pay for or are held to (Garmin's, Strava's, a paid forecast), which keep limit() and its one count.
+// Where there's no limiter (the tests, an older copy), limit() itself; one that doesn't answer lets the ask through.
+export const PACES = [10, 20, 40, 80, 160, 320];
+export async function pace(env, key, max, windowMs) {
+  const perMin = (max * 60e3) / windowMs, tier = PACES.find((n) => n >= perMin * 4) || PACES.at(-1), rl = env?.[`RL${tier}`];
+  if (!rl || typeof rl.limit !== "function") return limit(env, key, max, windowMs);
+  let ok = true;
+  try { ok = (await rl.limit({ key })).success !== false; } catch (_) { return; }
+  if (!ok) throw new HttpError(429, "Too many tries. Try again in a minute.");
+}
 
 // A per-install random secret (used to fake salts for unknown emails).
 let secret = null;

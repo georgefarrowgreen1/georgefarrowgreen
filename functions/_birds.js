@@ -7,7 +7,7 @@
    Death on, a named pigeon can be lost, and it's remembered there too. Everyone
    it flies to sees its name and rank; only you see its career.
    For a message to a group, your named pigeon flies the longest of its routes. */
-import { HttpError, json, db, body, limit, requireUser, UUID_RE, HOUR } from "./_pigeon.js";
+import { HttpError, json, db, body, limit, requireUser, UUID_RE, HOUR, pace } from "./_pigeon.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { placeName } from "./_where.js";
 
@@ -110,7 +110,7 @@ async function settle(D, t, table, m) {
 
 async function create({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "birds:" + u.id, 30, HOUR);
+  await pace(env, "birds:" + u.id, 30, HOUR);
   const name = cleanName((await body(request)).name), D = await db(env), t = Date.now();
   const { results } = await D.prepare("SELECT name FROM pg_birds WHERE owner = ? AND retired_at IS NULL AND lost_at IS NULL").bind(u.id).all();
   if (results.length >= BIRDS_MAX) throw new HttpError(409, `You can have ${BIRDS_MAX} named pigeons at once. Retire a Legend to make room.`);
@@ -120,7 +120,7 @@ async function create({ request, env }) {
 }
 async function rename({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "birds:" + u.id, 30, HOUR);
+  await pace(env, "birds:" + u.id, 30, HOUR);
   const b = await body(request), id = String(b.id || ""), name = cleanName(b.name), D = await db(env), t = Date.now();
   if (!UUID_RE.test(id)) throw new HttpError(404, "That pigeon wasn’t found.");
   const dup = await D.prepare("SELECT 1 FROM pg_birds WHERE owner = ? AND id != ? AND LOWER(name) = LOWER(?) AND retired_at IS NULL AND lost_at IS NULL").bind(u.id, id, name).first();

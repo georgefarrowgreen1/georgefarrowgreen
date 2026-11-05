@@ -31,7 +31,7 @@
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
-import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
+import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf, pace } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail, markWrote } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -736,7 +736,7 @@ const ROUTES = {
   "PUT prefs": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096), now = { ...u };
-    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await pace(env, "prefs:" + u.id, 120, 3600e3);
     if (b.appearance !== undefined) {
       if (!["auto", "light", "dark"].includes(b.appearance)) throw new HttpError(400, "Choose Automatic, Light or Dark.");
       await (await db(env)).prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
@@ -767,7 +767,7 @@ const ROUTES = {
   "PATCH notify": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096);
-    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await pace(env, "prefs:" + u.id, 120, 3600e3);
     await setNotify(env, u, b);
     return json(await notifySettings(env, await (await db(env)).prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first()));
   },
@@ -785,7 +785,7 @@ const ROUTES = {
   "PATCH inflight": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096), D = await db(env);
-    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await pace(env, "prefs:" + u.id, 120, 3600e3);
     // (checked before anything changes)
     if (b.pigeons !== undefined && typeof b.pigeons !== "boolean") throw new HttpError(400, "Choose on or off.");
     if (b.newChats !== undefined && !["instant", "pigeon"].includes(b.newChats)) throw new HttpError(400, "Choose Instant or By Pigeon.");
@@ -811,7 +811,7 @@ const ROUTES = {
   "PATCH weather": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024), set = {};
-    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await pace(env, "prefs:" + u.id, 120, 3600e3);
     if (b.tune !== undefined) { if (typeof b.tune !== "boolean") throw new HttpError(400, "Choose on or off."); set.tune = b.tune; }
     if (b.commute !== undefined) {
       const c = b.commute && typeof b.commute === "object" ? b.commute : null, now = (await weatherSettings(env, u)).commute;
@@ -828,7 +828,7 @@ const ROUTES = {
   "PATCH fitness": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024), set = {};
-    await limit(env, "prefs:" + u.id, 120, 3600e3);
+    await pace(env, "prefs:" + u.id, 120, 3600e3);
     if (b.units !== undefined) { if (b.units !== "metric" && b.units !== "imperial") throw new HttpError(400, "Choose kilometres or miles."); set.units = b.units; }
     if (b.ask !== undefined) { if (typeof b.ask !== "boolean") throw new HttpError(400, "Choose on or off."); set.ask = b.ask; }
     if (b.maps !== undefined) { if (b.maps !== "tap" && b.maps !== "always") throw new HttpError(400, "Choose when you tap, or always."); set.maps = b.maps; }

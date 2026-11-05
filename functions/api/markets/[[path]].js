@@ -27,7 +27,7 @@
 //   POST   /api/markets/account-link  the account's page, opened signed in as you
 //   POST   /api/markets/signout       and the profile (your photo, name and handle), as on every page of the site
 import { tickHost } from "../../_sites.js";
-import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError } from "../../_pigeon.js";
+import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, pace } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -65,13 +65,13 @@ const ROUTES = {
   },
   "GET quotes": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkquotes:${u.id}`, 600, 3600e3);
+    await pace(env, `mkquotes:${u.id}`, 600, 3600e3);
     const by = Date.now() + ANSWER_BY, q = await quotes(env, symbolsOf(request, 64), by);
     return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur), by), at: Date.now() }, 20);
   },
   "GET chart": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkchart:${u.id}`, 600, 3600e3);
+    await pace(env, `mkchart:${u.id}`, 600, 3600e3);
     const p = new URL(request.url).searchParams, [s] = symbolsOf(request, 1), r = p.get("r") || "1d";
     if (!RANGE_NAMES.includes(r)) throw new HttpError(400, "Bad request.");
     const c = await chart(env, s, r);
@@ -80,28 +80,28 @@ const ROUTES = {
   },
   "GET years": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkyears:${u.id}`, 120, 3600e3);
+    await pace(env, `mkyears:${u.id}`, 120, 3600e3);
     const list = symbolsOf(request, 64), out = {};
     (await fewAtATime(list, (s) => yearOf(env, s))).forEach((y, i) => { if (y) out[list[i]] = y; });
     return shared({ years: out }, 600);
   },
   "GET news": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mknews:${u.id}`, 240, 3600e3);
+    await pace(env, `mknews:${u.id}`, 240, 3600e3);
     // (m=0: only what's about these, not the markets' too; each story with its key, to read it by: storyKey)
     const r = await news(env, symbolsOf(request, 12), { markets: new URL(request.url).searchParams.get("m") !== "0" });
     return shared({ ...r, news: await Promise.all(r.news.map(async (n) => ({ ...n, k: await storyKey(env, n.link) }))) }, 120);
   },
   "GET search": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mksearch:${u.id}`, 300, 3600e3);
+    await pace(env, `mksearch:${u.id}`, 300, 3600e3);
     return shared({ results: await search(env, new URL(request.url).searchParams.get("q")) }, 600);
   },
   // a story's preview, from its page (its title, summary and picture, as it gives them for link previews): only one
   // the news gave, with its key (k)
   "GET story": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkstory:${u.id}`, 300, 3600e3);
+    await pace(env, `mkstory:${u.id}`, 300, 3600e3);
     const p = new URL(request.url).searchParams, link = p.get("u") || "";
     if (!/^https?:\/\//.test(link) || link.length > 2048 || !(await storyKeyOk(env, link, p.get("k")))) throw new HttpError(400, "Bad request.");
     return json({ story: await story(env, link) });
@@ -109,7 +109,7 @@ const ROUTES = {
   // its picture, passed through: one of the search's own, or the one its preview gave (its story's key with it, k)
   "GET pic": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkpic:${u.id}`, 900, 3600e3);
+    await pace(env, `mkpic:${u.id}`, 900, 3600e3);
     const p = new URL(request.url).searchParams, src = p.get("u") || "", link = p.get("s") || "";
     if (!/^https?:\/\//.test(src) || src.length > 2048 || link.length > 2048) throw new HttpError(400, "Bad request.");
     const pic = await picture(env, src, link && (await storyKeyOk(env, link, p.get("k"))) ? link : "");
@@ -119,7 +119,7 @@ const ROUTES = {
   "PUT holding": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    await limit(env, `mkput:${u.id}`, 600, 3600e3);
+    await pace(env, `mkput:${u.id}`, 600, 3600e3);
     return json({ holdings: await putHolding(env, u.id, await body(request)) });
   },
   "DELETE holding": async ({ request, env }) => {
@@ -139,26 +139,26 @@ const ROUTES = {
   // every dividend one has paid, as far back as they go
   "GET divs": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkdivs:${u.id}`, 240, 3600e3);
+    await pace(env, `mkdivs:${u.id}`, 240, 3600e3);
     const [s] = symbolsOf(request, 1);
     return shared({ symbol: s, divs: (await dividends(env, s)) || [] }, 3600);
   },
   // what each holding's paid you since you bought it (its dividends)
   "GET paid": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkpaid:${u.id}`, 120, 3600e3);
+    await pace(env, `mkpaid:${u.id}`, 120, 3600e3);
     return json({ paid: await paidOf(env, u.id) });
   },
   // your income's history: each holding's dividends over the years, and each that's paid you (the Income sheet)
   "GET income": async ({ request, env }) => {
     const u = await signedIn(request, env);
-    await limit(env, `mkincome:${u.id}`, 120, 3600e3);
+    await pace(env, `mkincome:${u.id}`, 120, 3600e3);
     return json({ income: await incomeOf(env, u.id) });
   },
   "POST buy": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    await limit(env, `mkbuy:${u.id}`, 300, 3600e3);
+    await pace(env, `mkbuy:${u.id}`, 300, 3600e3);
     const b = await addBuy(env, u.id, await body(request));
     return json({ ...b, holdings: await holdings(env, u.id) });
   },
@@ -186,7 +186,7 @@ const ROUTES = {
   "POST push": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env);
-    await limit(env, `mkpush:${u.id}`, 60, 3600e3);
+    await pace(env, `mkpush:${u.id}`, 60, 3600e3);
     // (as InFlite's one device route keeps one too: functions/_devices.js; the answer as it always was)
     await keepPush(env, u, (await body(request)).sub);
     return json({ on: true });

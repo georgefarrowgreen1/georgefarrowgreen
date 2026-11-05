@@ -13,8 +13,7 @@ import { noteSeason, skinNow } from "./_seasons.js";
 import { vanishOk } from "./_vanish.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HttpError, json, chatJson, body, readCapped, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
-} from "./_pigeon.js";
+  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,pace } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded, groupMessageSent } from "./_notify.js";
 import { pokes, typingClear } from "./_pulse.js";
 import { windsAlong } from "./_weather.js";
@@ -398,7 +397,7 @@ async function send({ request, env, waitUntil }) {
   // a message (only when the phone says so: one from before always sends letters), on a limit of its own
   const instant = meta.instant === true;
   if (instant && meta.landAt != null) throw new HttpError(400, "Pick when it arrives in a chat with one friend.");
-  await limit(env, instant ? "msg:" + u.id : "send:" + u.id, instant ? 600 : 120, 60 * 60e3);
+  await pace(env, instant ? "msg:" + u.id : "send:" + u.id, instant ? 600 : 120, 60 * 60e3);
   const D = await db(env), t = Date.now(), g = await groupFor(D, u, meta.group);
   if (!instant && u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (await idTaken(D, id)) throw new HttpError(409, "That message was already sent.");
@@ -544,7 +543,7 @@ export async function groupWay(D, u, gid, way, t = Date.now()) {
 // (ones that already landed stay). If none had landed, its contents go too.
 async function recall({ request, env }) {
   const u = await requireUser(request, env);
-  await limit(env, "recall:" + u.id, 30, 60 * 60e3);
+  await pace(env, "recall:" + u.id, 30, 60 * 60e3);
   const id = String((await body(request)).id || ""), D = await db(env), t = Date.now();
   const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
   if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");

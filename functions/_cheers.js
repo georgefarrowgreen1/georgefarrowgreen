@@ -7,7 +7,7 @@
    ahead: it just flies on faster. In a group, the sender can cheer on every
    pigeon the message is still flying, and each member the one flying to them
    (all they can see). Whoever's on the other end is told. */
-import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, limit, requireUser, UUID_RE } from "./_pigeon.js";
+import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, limit, requireUser, UUID_RE, pace } from "./_pigeon.js";
 import { posAt, renear } from "./_moments.js";
 import { squeeze, passed } from "./_route.js";
 import { cheeredNote } from "./_notify.js";
@@ -44,7 +44,7 @@ const pigeonsOn = (u) => { if (!u.pigeons) throw new HttpError(409, "Turn on pig
 async function cheer({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   pigeonsOn(u);
-  await limit(env, "cheer:" + u.id, 120, HOUR);
+  await pace(env, "cheer:" + u.id, 120, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env);
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");
   for (let k = 0; k < 4; k++) {
@@ -71,7 +71,7 @@ async function cheer({ request, env, waitUntil }) {
 async function groupCheer({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   pigeonsOn(u);
-  await limit(env, "cheer:" + u.id, 120, HOUR);
+  await pace(env, "cheer:" + u.id, 120, HOUR);
   const b = await body(request), id = String(b.id || ""), D = await db(env);
   if (!UUID_RE.test(id)) throw new HttpError(400, "That pigeon wasn’t found.");
   const m = await D.prepare("SELECT m.* FROM pg_gmsgs m JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = ? WHERE m.id = ?").bind(u.id, id).first();

@@ -12,7 +12,7 @@
 //   as FIT, every sample kept, and gzipped by the phone (gz), so it's a fraction of the size.
 // Nothing here reads a file: the phone did that. What's kept is checked to be what it says, and limited in size.
 
-import { HttpError, limit } from "./_pigeon.js";
+import { HttpError, limit, pace } from "./_pigeon.js";
 import { dropShares } from "./_fitshare.js";
 import { dropTimes } from "./_fittimes.js";
 
@@ -229,7 +229,7 @@ export async function addActivity(env, userId, meta, u8) {
   if (!meta.type || !fileIs(meta.type, await headOf(u8))) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
   if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
   const D = await fitdb(env);
-  await limit(env, `fxup:${userId}`, 600, 3600e3);
+  await pace(env, `fxup:${userId}`, 600, 3600e3);
   const had = await D.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes, MAX(id = ?2) AS dup, MAX(start > ?3 - 60000 AND start < ?3 + 60000) AS near FROM fx_acts WHERE user_id = ?1").bind(userId, meta.id, meta.start).first();
   if (had?.dup || had?.near) return { kept: false, already: true };
   if (had?.n >= MAX_ACTS) throw new HttpError(413, `You can keep ${MAX_ACTS.toLocaleString("en-GB")} activities. Delete some old ones first.`);
@@ -252,7 +252,7 @@ export async function replaceFile(env, userId, id, meta, u8) {
   if (!["fit", "gpx", "tcx"].includes(meta.type) || !isGz(u8) || !fileIs(meta.type, await headOf(u8))) throw new HttpError(400, "That file isn’t a FIT, GPX or TCX file.");
   if (u8.length > MAX_FILE) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
   const D = await fitdb(env);
-  await limit(env, `fxsquash:${userId}`, 600, 3600e3);
+  await pace(env, `fxsquash:${userId}`, 600, 3600e3);
   const row = await D.prepare("SELECT size, (SELECT COALESCE(SUM(size), 0) FROM fx_acts WHERE user_id = ?1) AS bytes FROM fx_acts WHERE user_id = ?1 AND id = ?2").bind(userId, id).first();
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
   // (it's the same activity made smaller: never bigger than it was, and never past the account's space)

@@ -6,7 +6,7 @@
    hundred days, an accessory bought, a seasonal look kept.
    Two weeks of it, newest first. Anyone can stop sharing theirs (Privacy →
    Share My News); like being online, that works both ways. */
-import { json, db, requireUser, limit, DAY, haversineKm } from "./_pigeon.js";
+import { json, db, requireUser, limit, DAY, haversineKm, pace } from "./_pigeon.js";
 import { isSea } from "./_passport.js";
 import { countryNear } from "./_where.js";
 import { landmark } from "./_landmarks.js";
@@ -91,7 +91,7 @@ async function flightsOf(D, ids) {
 }
 async function news({ request, env }) {
   const u = await requireUser(request, env), t = Date.now();
-  await limit(env, "news:" + u.id, 120, 3600e3);
+  await pace(env, "news:" + u.id, 120, 3600e3);
   return json({ news: await newsFor(await db(env), u, t), sharing: !u.hide_news });
 }
 export const NEWS_ROUTES = { "GET news": news };

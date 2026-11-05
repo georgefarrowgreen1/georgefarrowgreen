@@ -5,7 +5,7 @@
 //
 // fx_push: one row a phone (its subscription's endpoint), the account it's for, the time (minutes after midnight, in its
 // time zone), the days' words ({ "2026-10-26": { title, body } }, a week or so ahead), and the last day it was sent.
-import { HttpError, limit, fromB64url } from "./_pigeon.js";
+import { HttpError, limit, fromB64url, pace } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
 import { tablesOnce } from "./_fitness.js";
 import { morningUsers } from "./_today.js";
@@ -61,7 +61,7 @@ export async function setMorning(env, userId, b, session = null) {
   if (!Number.isInteger(at) || at < 0 || at >= 24 * 60) throw new HttpError(400, "Bad request.");
   if (!tzOk(b.tz)) throw new HttpError(400, "Bad request.");
   const D = await tables(env);
-  await limit(env, `fxpush:${userId}`, 120, 3600e3);
+  await pace(env, `fxpush:${userId}`, 120, 3600e3);
   await D.prepare(`INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, days, sent, added, session) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)
     ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7, session = ?9`)
     .bind(sub.endpoint, userId, keys.p256dh, keys.auth, at, b.tz, JSON.stringify(cleanDays(b.days)), Date.now(), session).run();

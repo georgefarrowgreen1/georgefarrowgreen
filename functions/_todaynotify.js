@@ -12,7 +12,7 @@
 // u: the signed-in account, as the route's signedIn gives it (its pg_users row).
 // (The account's router is asked for when first needed, not imported here: it spreads Today's routes into its own,
 // and Today's routes import this, so a static import would have it run before Today's routes are there.)
-import { HttpError, db, limit } from "./_pigeon.js";
+import { HttpError, db, limit, pace } from "./_pigeon.js";
 import { prefsOf } from "./_notify.js";
 
 const account = () => import("./api/account/[[path]].js");
@@ -27,7 +27,7 @@ export async function notifyGet(env, u) {
 export async function notifyPatch(env, u, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Bad request.");
   // (the account page's own limit on its changes: You's and that page's together)
-  await limit(env, "prefs:" + u.id, 120, 3600e3);
+  await pace(env, "prefs:" + u.id, 120, 3600e3);
   const { notifySettings, setNotify } = await account();
   const { mail, ...rest } = body;
   if (mail !== undefined) {

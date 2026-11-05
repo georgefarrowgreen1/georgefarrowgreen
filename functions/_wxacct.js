@@ -12,7 +12,7 @@
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
-import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet, issueSession } from "./_pigeon.js";
+import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet, issueSession, pace } from "./_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession, cookieToken } from "./_account.js";
 import { takeHandback } from "./_handback.js";
 import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
@@ -65,7 +65,7 @@ export const ACCOUNT_ROUTES = {
   "PUT me": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
-    await limit(env, `wxacct:${u.id}`, 240, 3600e3);
+    await pace(env, `wxacct:${u.id}`, 240, 3600e3);
     const data = cleanData(b.data), base = Number.isInteger(b.base) ? b.base : -1, D = await wxdb(env), t = Date.now();
     const was = await kept(env, u.id);
     if (base !== was.ver) return json({ conflict: true, ver: was.ver, data: was.data }, 409);
