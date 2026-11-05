@@ -57,8 +57,9 @@ made, so every address went dark until the Workers took each as a custom domain 
 `"custom_domain": true`), which made each its own DNS record again. (While the Pages project was there, a custom domain
 couldn't take over a record it had made: Cloudflare refuses.) And a Worker's fetch to an address in its own zone skips
 the zone's routes, so Today and Mail (the inflite repo) reach inflite-apps through a service binding (`APPS`).
-Left: the Pages-only bits of the code (`PAGES_HOST` in `functions/_sites.js`, `wrangler.toml`, the scheduled jobs'
-fallback to `georgefarrowgreen.pages.dev`). Changing a secret from now on is done on the Worker.
+Then the Pages-only bits went from the code: `PAGES_HOST` (ticks only at the Worker's `TICK_HOST`), the scheduled
+jobs' fallback to `georgefarrowgreen.pages.dev`, and keeping the secrets (the Workers open the copy already kept).
+`wrangler.toml` stays as the local test stack's config. Changing a secret from now on is done on the Worker.
 
 ## What's ready in the code
 

@@ -7,7 +7,8 @@
 //     (one set on the Worker always wins).
 // They never leave the account's database, nor are they ever written anywhere readable; a copy of the database alone
 // opens nothing. Not carried: the pepper (functions/_atrest.js carries that), the key itself, and Pages' own (CF_PAGES*).
-//   keepSecrets(env)    on the Pages project, once per copy of the server: what it has, kept
+//   keepSecrets(env)    what the Pages project ran, once per copy of its server, to keep them (it's gone: kept for
+//                       the tests, and should they ever need keeping afresh from somewhere with PIGEON_PEPPER)
 //   fillSecrets(env)    on a Worker, first thing for every request: what it hasn't got, given (opened once, then held)
 //   keptCount(env)      how many are kept (for Admin's Insights; never a name or a value)
 import { hex, sha256, b64url, fromB64url, db } from "./_pigeon.js";

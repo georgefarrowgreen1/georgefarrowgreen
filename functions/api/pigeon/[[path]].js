@@ -1759,7 +1759,7 @@ const hostOk = (h, env) => HOSTS.test(h) || isChat({ hostname: h }, env);
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
-  // (the scheduled notify job calls the site's .pages.dev address, past the custom domain's bot checks: only that, there)
+  // (the scheduled notify job calls the site's workers.dev address (TICK_HOST), past the custom domains' bot checks: only that, there)
   if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && tickHost(url.hostname, ctx.env))) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)

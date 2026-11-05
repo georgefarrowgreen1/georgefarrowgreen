@@ -1,15 +1,7 @@
-# Cloudflare Pages configuration.
-# Lets you create/bind KV and deploy from the terminal, bypassing the dashboard.
-#
-# Setup:
-#   1. npm install -g wrangler
-#   2. wrangler login
-#   3. wrangler kv namespace create bio   # copy the printed id below
-#   4. paste the id into `id =` under [[kv_namespaces]]
-#   5. wrangler pages deploy .
-#
-# `name` must match your Pages project name in Cloudflare. If you haven't
-# created the project yet, `wrangler pages deploy .` will offer to create it.
+# The local test stack's copy of the site (.tools/tests/server.sh: `wrangler pages dev`, which compiles functions/ as
+# the Workers' build does). The live site is the two Workers, inflite-apps and gfg (wrangler.worker.jsonc,
+# wrangler.gfg.jsonc, deployed by .github/workflows/worker-deploy.yml); the Pages project this once deployed is gone
+# (.tools/workers/README.md). Its bindings are the Workers' own, which tickhost.test.mjs checks.
 
 name = "georgefarrowgreen"
 pages_build_output_dir = "."

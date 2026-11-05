@@ -70,7 +70,9 @@ await ad.waitForSelector('#sheet .adm-chart', { timeout: 15000 }); await ad.wait
 const txt = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
 ok(/today/.test(txt) && /50%/.test(txt) && /Pigeons sent 5 in 30 days/.test(txt) && /Joined 1–2 weeks ago 0 of 1/.test(txt) && /Joined 2–3 weeks ago 1 of 1/.test(txt) && /Landings not told yet 1/.test(txt),
   'Insights, on the admin’s account page: the figures, the charts, coming back by week, the late landing', txt.slice(0, 400));
-ok(await ad.locator('#sheet .adm-chart').count() === 3 && await ad.locator('#sheet .adm-bars i').count() === 90, 'three charts of 30 days each');
+// (Chat's three, by their names; Signing in's two are its own, above them)
+{ const chat = ad.locator('#sheet .adm-chart').filter({ hasText: /Pigeons sent|People active|New accounts/ });
+  ok(await chat.count() === 3 && await chat.locator('.adm-bars i').count() === 90 && await ad.locator('#sheet .adm-chart').filter({ hasText: /Signed in|Went wrong/ }).count() === 2, 'three charts of 30 days each (and Signing in’s two)'); }
 const hs = await ad.evaluate(() => [...document.querySelector('#sheet .adm-chart .adm-bars').children].map((i) => Math.round(i.offsetHeight / i.parentElement.offsetHeight * 100)));
 ok(hs[29] === 100 && hs[24] === 33 && hs[17] === 33 && hs[0] <= 3, 'each column as tall as its day’s figure (today 3 of a scale of 3, the others 1)', hs.join(','));
 const mw = await ad.evaluate(() => { const i = [...document.querySelectorAll('#sheet .adm-meter')].find((m) => /Swift/.test(m.textContent)).querySelector('.mbar i'); return Math.round(i.offsetWidth / i.parentElement.offsetWidth * 100); });

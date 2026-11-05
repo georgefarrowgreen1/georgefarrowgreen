@@ -7,8 +7,7 @@ name = "georgefarrowgreen-ticker"
 main = "index.js"
 compatibility_date = "2026-09-01"
 
-# (the site's address past the custom domains' bot checks: since the move off Pages, the inflite-apps Worker's
-# workers.dev address; index.js falls back to the Pages project's if it doesn't answer, until Pages is gone)
+# (the site's address past the custom domains' bot checks: the inflite-apps Worker's workers.dev address)
 [vars]
 TICK_SITE = "https://inflite-apps.georgefarrowgreen.workers.dev"
 

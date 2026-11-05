@@ -1,14 +1,14 @@
 // The site's address past the custom domains' bot checks, where the scheduled jobs may call (functions/_sites.js
-// tickHost): the Pages project's, and the Worker's once the site's moved (TICK_HOST); never any other address, so a
-// tick route stays shut everywhere else. And the jobs call TICK_SITE when it's set, else the Pages project as now.
+// tickHost): the inflite-apps Worker's workers.dev address (TICK_HOST); never any other, so a tick route stays shut
+// everywhere else. And the jobs call that address (or TICK_SITE, when it's set), never the Pages project's, which is gone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { tickHost, PAGES_HOST } from '../../../functions/_sites.js';
+import { tickHost } from '../../../functions/_sites.js';
 const read = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 
-test('the Pages project’s address, and the Worker’s once it’s said; nothing else', () => {
-  assert.equal(tickHost(PAGES_HOST, {}), true);
+test('the Worker’s address, once TICK_HOST says it; nothing else, not the Pages project’s', () => {
+  assert.equal(tickHost('georgefarrowgreen.pages.dev', {}), false, 'the Pages project’s address is gone');
   assert.equal(tickHost('georgefarrowgreen-site.example.workers.dev', {}), false, 'not till TICK_HOST says it');
   assert.equal(tickHost('georgefarrowgreen-site.example.workers.dev', { TICK_HOST: 'georgefarrowgreen-site.example.workers.dev' }), true);
   for (const h of ['chat.inflite.ai', 'georgefarrowgreen.com', 'evil.pages.dev', 'x.georgefarrowgreen.pages.dev', ''])
@@ -22,9 +22,9 @@ test('every tick route asks tickHost, and no route names the Pages address itsel
     assert.doesNotMatch(s, /=== "georgefarrowgreen\.pages\.dev"/, f);
   }
 });
-test('the jobs call the Worker (or TICK_SITE), then the Pages project if it didn’t do it', () => {
-  for (const f of ['.github/workflows/weather-tick.yml', '.github/workflows/inflight-notify.yml']) { const s = read(f); assert.match(s, /\$\{TICK_SITE:-https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev\}" https:\/\/georgefarrowgreen\.pages\.dev/, f); assert.match(s, /"\$site"\/api\//, f); }
-  assert.match(read('workers/ticker/index.js'), /env\.TICK_SITE \|\| PAGES_SITE/); assert.match(read('workers/ticker/wrangler.toml'), /TICK_SITE = "https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev"/);
+test('the jobs call the Worker (or TICK_SITE), and never the Pages project’s address', () => {
+  for (const f of ['.github/workflows/weather-tick.yml', '.github/workflows/inflight-notify.yml']) { const s = read(f); assert.match(s, /\$\{TICK_SITE:-https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev\}"/, f); assert.doesNotMatch(s, /pages\.dev/, f); }
+  assert.match(read('workers/ticker/index.js'), /env\.TICK_SITE \|\| APPS_SITE/); assert.doesNotMatch(read('workers/ticker/index.js'), /pages\.dev/); assert.match(read('workers/ticker/wrangler.toml'), /TICK_SITE = "https:\/\/inflite-apps\.georgefarrowgreen\.workers\.dev"/);
 });
 test('the Worker’s config: the site’s files through the Worker first, the same bindings as Pages, and only InFlite’s app addresses, each its own custom domain', () => {
   const w = read('wrangler.worker.jsonc'), p = read('wrangler.toml');
