@@ -22,7 +22,7 @@
 import { HttpError, db, pace, clientIp, fromB64url } from "./_pigeon.js";
 import { appsSite, homeSite, tickHost, siteFetch, appOrigin } from "./_sites.js";
 import { tickAuthOk, pushTo, pushToSub, pushEndpointOk, vapid } from "./_notify.js";
-import { emailReady, sendEmail } from "./_email.js";
+import { emailReady, sendEmail, emailBody } from "./_email.js";
 import { buildOf } from "./_version.js";
 import { assets } from "./_min.js";
 import { notFound } from "./_app.js";
@@ -99,6 +99,22 @@ export async function setAlertPrefs(env, b) {
   await (await db(env)).prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('status_alerts', ?)").bind(JSON.stringify(p)).run();
   return p;
 }
+// The owner's email about an incident (from "InFlite Status", status@): opened, what and since when, and the Incident
+// Desk's own page for it; closed, how long it lasted and a nudge to write it up
+export function incidentMail(env, e) {
+  const desk = `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, names = and((e.svcs || []).map(nameOf).filter(Boolean));
+  const hm = (t) => ukHM.format(t), up = e.title.replace(/ not (answering|running|working)$/, "");
+  const { text, html } = e.open
+    ? emailBody({ brand: "status", icon: "warn-red", title: e.byHand ? `You started: ${e.title}` : e.title, preheader: `Since ${hm(e.started)}. ${e.text}`,
+      notice: { tone: "red", lead: `Since ${hm(e.started)}.`, text: e.text },
+      lines: [e.byHand ? "It’s on the status page now, with what you wrote." : "It’s on the status page as an incident. Add the first update, so people know you’re on it."],
+      rows: [...(names ? [["What", names, "grid"]] : []), ["Status page", e.byHand ? "Posted" : "Investigating", "link"]], button: { label: "Open in Incident Desk", url: desk } })
+    : emailBody({ brand: "status", icon: "check", title: `${up} working again`, preheader: e.text,
+      lines: [e.text, "Add a short write-up while it’s fresh: what went wrong, and what’s changed."],
+      rows: [["Down for", lasted(e.ended - e.started), "clock"], ["From", `${hm(e.started)} to ${hm(e.ended)}`, "clock"], ["Updates posted", String(e.said || 0), "star"]],
+      button: { label: "Write it up", url: desk } });
+  return { subject: e.open ? `Down: ${e.title}` : `Resolved: ${up} (down ${lasted(e.ended - e.started)})`, text, html };
+}
 // (an incident opened or closed: a notification on the owner's phone and an email, whatever the hour; never stops what's kept)
 async function tell(env, events) {
   if (!events.length) return;
@@ -109,7 +125,7 @@ async function tell(env, events) {
     await Promise.allSettled(events.flatMap((e) => [
       // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
       admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
-      to && sendEmail(env, { brand: "account", to, subject: `${e.open ? "Incident" : "Resolved"}: ${e.title}`, text: `${e.text}\n\n${page}\n\nAdd an update from Admin, on your account page.` }),
+      to && sendEmail(env, { brand: "status", to, ...incidentMail(env, e) }),
       tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/ not (answering|running|working)$/, "")}: working again`, body: e.text, id: e.id }),
     ].filter(Boolean)));
   } catch (e) { console.error("status tell", e && e.message); }
@@ -270,8 +286,9 @@ async function incidents(D, rows, t) {
         x.ended = t; x.updates.unshift({ at: t, k: "Resolved", w: x.svcs.length > 1 ? "Everything is working again." : `${nameOf(x.svcs[0])} is working again.` }); x.changed = true; x.closedNow = true;
       }
     }
-    if (x.fresh) events.push({ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[x.updates.length - 1].w });
-    else if (x.closedNow) events.push({ open: false, id: x.id, title: x.title, svcs: x.svcs, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.` });
+    if (x.fresh) events.push({ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[x.updates.length - 1].w, started: x.started });
+    else if (x.closedNow) events.push({ open: false, id: x.id, title: x.title, svcs: x.svcs, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.`, started: x.started, ended: t,
+      said: x.updates.filter((u) => u.by === "owner").length });
     if (x.changed) out.push(put(D, x));
   }
   return { writes: out, events };
@@ -300,7 +317,7 @@ export async function burstCheck(env, code, app, t = Date.now()) {
     title: `${svc ? nameOf(svc) : "The site"}: the same error over and over`, updates: [{ at: t, k: "Spotted", w: `${n} reports of the same error (${code}) in ten minutes.` }] };
   await put(D, x).run();
   await forget(env);
-  await tell(env, [{ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[0].w }]);
+  await tell(env, [{ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[0].w, started: x.started, byHand: true }]);
   return x.id;
 }
 

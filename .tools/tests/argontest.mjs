@@ -29,11 +29,13 @@ await signInChat(O.p, K.URL, { email: 'olive@example.com', password: PW });
 ok(await O.p.waitForSelector('.tabs', { timeout: 20000 }).then(() => true, () => false), 'it signs in with its password (PBKDF2)');
 let after = before; for (let k = 0; k < 30 && !after.salt.startsWith('a2:'); k++) { await O.p.waitForTimeout(300); after = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0]; }
 ok(after.salt.startsWith('a2:') && after.proof_hash !== before.proof_hash, 'and moves on to Argon2id quietly', after.salt.slice(0, 6));
-// (but not unseen: the server can't tell it's the same password, so it's in Recent activity, and emailed)
+// (but not unseen: it's in Recent activity. Not emailed: it's housekeeping she didn't do, and a sign-in from a device the
+// account hasn't seen has its own email)
 const mails = () => { try { return readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m); } catch (_) { return []; } };
-let told = null; for (let k = 0; k < 30 && !told; k++) { told = mails().find((m) => [].concat(m.to).includes('olive@example.com') && /protection was strengthened/.test(m.subject || '')); if (!told) await O.p.waitForTimeout(300); }
+await O.p.waitForTimeout(2500);
+const told = mails().find((m) => [].concat(m.to).includes('olive@example.com') && /protection was strengthened/.test(m.subject || ''));
 const noted = one("SELECT COUNT(*) AS n FROM pg_events e JOIN pg_users u ON u.id = e.user_id WHERE u.handle = 'olive' AND e.kind = 'upgrade'")[0].n;
-ok(Number(noted) === 1 && !!told && /get a reset link/.test(told.text || '') && !/change your password/.test(told.text || ''), 'noted in Recent activity, and emailed (a reset the way back, if it wasn\'t you), as the server can\'t tell it\'s the same password', `${noted} ${told?.subject}`);
+ok(Number(noted) === 1 && !told, 'noted in Recent activity, and not emailed (housekeeping she didn’t do)', `${noted} ${told?.subject}`);
 // ---- and signs in again, now with Argon2id, on another phone ----
 const O2 = await K.phone('olive2');
 const t0 = Date.now(); await signInChat(O2.p, K.URL, { email: 'olive@example.com', password: PW });

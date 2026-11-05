@@ -33,7 +33,8 @@ export function linkOrigin(request) {
 // "12 Oct 2026, 22:15" in UK time, for "when" rows
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
 
-// Each app that sends email. tile: its usual picture. art (for mailicons.mjs): its icon, the badge on each tile's
+// Each app that sends email. name: the app's, said after "InFlite" as the sender's (sender: one of its own instead).
+// tile: its usual picture. art (for mailicons.mjs): its icon, the badge on each tile's
 // corner; its symbols' colour (and any symbols of its own, syms); and its tiles, each a symbol on a gradient (top,
 // foot), by what an email's about (a tile "warn-amber" is the symbol "warn").
 // foot: what's said under each of its emails, and a link (the rest of a foot is the email's own: why it came, a
@@ -46,7 +47,7 @@ export const BRANDS = {
     ink: "#5a4fe0", inkDark: "#a7acff", btn: ["#7d8aff", "#4a45dc"], glow: "rgba(74,69,220,.75)", pill: "#eef0ff", pillDark: "#262a55",
     sky: ["#e9eefc", "#f3f0fb", "#f7f8fc"], night: ["#1a2350", "#0a0f26", "#05060e"], card: "#16182b", box: "#20233a", sep: "#2d3150",
     art: { badge: "account/icon-512.png", ink: "#6a64f2",
-      tiles: { shield: ["#8a93ff", "#5a4fe0"], key: ["#8a93ff", "#5a4fe0"], mail: ["#8a93ff", "#5a4fe0"], passkey: ["#8a93ff", "#5a4fe0"], trash: ["#ff8a7a", "#e5372c"] } },
+      tiles: { shield: ["#8a93ff", "#5a4fe0"], key: ["#8a93ff", "#5a4fe0"], mail: ["#8a93ff", "#5a4fe0"], passkey: ["#8a93ff", "#5a4fe0"], trash: ["#ff8a7a", "#e5372c"], check: ["#4ad471", "#1f9d4b"] } },
     foot: (origin) => ({ line: "About your inflite.ai account", label: "Manage your account", url: `${accountLink(origin)}/` }),
   },
   // (Chat's brand is still "inflight", its old name, as its pictures in mail/ are; it sends from chat@)
@@ -65,6 +66,14 @@ export const BRANDS = {
     art: { badge: "weather/icon-512.png", ink: "#2b6fe0", syms: ["warn", "wind", "temp", "rain", "sunrise"],
       tiles: { sky: ["#5fa4fb", "#2b69de"], "warn-yellow": ["#ffd84d", "#f5b400"], "warn-amber": ["#ffb547", "#ff8a00"], "warn-red": ["#ff7a6e", "#e5302a"] } },
   },
+  // the status checks' word to the site's owner (functions/_status.js: an incident opened, and closed), from status@
+  status: {
+    name: "Status", tile: "warn-red",
+    ink: "#2f5bd3", inkDark: "#9db7ff", btn: ["#5b86f0", "#2f5bd3"], glow: "rgba(47,91,211,.7)", pill: "#e9effd", pillDark: "#1c2a4f",
+    sky: ["#e6ecf8", "#eff2f9", "#f7f8fc"], night: ["#16244a", "#0a1024", "#05060e"], card: "#151a2b", box: "#1f2539", sep: "#2c3450",
+    art: { badge: "status/icon-180.png", ink: "#3a63d8", syms: ["warn"], tiles: { "warn-red": ["#ff7a6e", "#e5302a"], check: ["#4ad471", "#1f9d4b"] } },
+    foot: () => ({ line: "From the status checks, for the site’s owner", label: "Open the status page", url: "https://status.inflite.ai/" }),
+  },
   // the site's own page (its contact form, to its owner)
   website: {
     name: "Website", tile: "mail",
@@ -72,6 +81,8 @@ export const BRANDS = {
     sky: ["#ebe8fd", "#f4f0fb", "#f8f7fc"], night: ["#231a50", "#0f0a26", "#06050e"], card: "#18162b", box: "#221f3a", sep: "#302c50",
     art: { badge: "favicon.svg", ink: "#7a5af0", tiles: { mail: ["#8fb0ff", "#9461f2"] } },
     foot: () => ({ line: "From the contact form on georgefarrowgreen.com" }),
+    // (the home page's own, not one of InFlite's apps)
+    sender: "Website",
   },
 };
 const brandOf = (brand) => { const B = Object.hasOwn(BRANDS, brand) && BRANDS[brand]; if (!B) throw new Error(`No email brand "${brand}"`); return B; };
@@ -90,13 +101,15 @@ const senderAddress = (env, brand) => {
   const domain = a.split("@")[1];
   return !domain || /(^|\.)resend\.dev$/i.test(domain) ? a : `${brandOf(brand).from || brand}@${domain}`;
 };
-export const emailFrom = (env, brand) => `${brandOf(brand).name} <${senderAddress(env, brand)}>`;
+// the sender's name: "InFlite Account", "InFlite Chat", … (an app's name alone reads like anyone's), or a brand's own
+export const senderName = (brand) => brandOf(brand).sender || `InFlite ${brandOf(brand).name}`;
+export const emailFrom = (env, brand) => `${senderName(brand)} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)
 export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false } = {}) {
   const cf = viaCloudflare(env, brand), service = cf ? "Cloudflare" : "Resend";
   if (!(cf || env.RESEND_API_KEY)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const body = cf
-    ? { from: { address: senderAddress(env, brand), name: brandOf(brand).name }, to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }
+    ? { from: { address: senderAddress(env, brand), name: senderName(brand) }, to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) }
     : { from: emailFrom(env, brand), to, subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}), ...(headers ? { headers } : {}) };
   const r = await fetch(cf ? `${env.CF_EMAIL_API || "https://api.cloudflare.com/client/v4"}/accounts/${env.CF_ACCOUNT_ID}/email/sending/send` : env.RESEND_API_URL || "https://api.resend.com/emails", {
     method: "POST",
@@ -159,7 +172,7 @@ function barRow(bar, cols) {
 // a link that only opens an app); the foot. asOf: a quiet line under the lines (when a forecast was); compact: a smaller
 // picture and title, so what's said sits higher. Tables and inline styles, so it holds up in Gmail and Outlook
 // (gradients and glows there are flat colours), with a dark version, in the app's night sky.
-export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip = [], bar, button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader, compact = false, fallback = true }) {
+export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip = [], bar, button, icon, rows = [], pill, footer, unsub, more, origin = SITE, preheader, compact = false, fallback = true }) {
   const B = brandOf(brand), foot = B.foot?.(origin), e = escHtml;
   const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
   const pic = (f) => e(`${origin === SITE && brand !== "website" ? APPS_PICS : origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
@@ -169,7 +182,7 @@ export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip
   const text = [title, pill ? pill[1] : "", ...lines, asOf || "", quote || "", notice ? `${notice.lead} ${notice.text}` : "", strip.map(([k, , big, small]) => `${k}: ${big}${small ? `, ${small}` : ""}`).join("\n"),
     ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
     footer || "", foot ? [foot.line, foot.url ? `${foot.label}: ${foot.url}` : ""].filter(Boolean).join("\n") : "",
-    unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
+    more ? `${more.label}: ${more.url}` : "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
   const sky = (c) => `radial-gradient(120% 70% at 50% -10%,${c[0]},${c[1]} 52%,${c[2]})`;
   const row = ([k, v, s], i) => { const sep = i ? `border-top:1px solid #e6e6ef;` : "";
     return `<tr><td width="29" style="width:17px;padding:0 0 0 16px;vertical-align:middle">${sym(s || SYMBOL[k] || "dot", 17, "display:block")}</td>
@@ -219,7 +232,7 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
     ${web ? `<p class="ml-f" style="margin:14px 4px 0;font-size:11.5px;line-height:16px;color:#8e8e93;word-break:break-all">Button not working? Paste this link into your browser:<br><a class="ml-a" href="${e(button.url)}" style="color:${B.ink}">${e(button.url)}</a></p>` : ""}
   </td></tr>
   <tr><td align="center" class="ml-f" style="padding:18px 22px 0;font-size:12px;line-height:18px;color:#8e8e93">
-    ${footer ? `${e(footer)}<br>` : ""}${foot ? `${e(foot.line)}${foot.url ? `<br>${link(foot.url, foot.label)}` : ""}` : ""}${unsub ? link(unsub, "Turn these emails off") : ""}
+    ${footer ? `${e(footer)}<br>` : ""}${foot ? `${e(foot.line)}${foot.url ? `<br>${link(foot.url, foot.label)}` : ""}` : ""}${more ? `${link(more.url, more.label)}${unsub ? " · " : ""}` : ""}${unsub ? link(unsub, "Turn these emails off") : ""}
   </td></tr>
 </table></td></tr></table></body></html>`;
   return { text, html };

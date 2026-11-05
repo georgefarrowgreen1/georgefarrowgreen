@@ -445,10 +445,26 @@ await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#keep=${tokenIn(km2, 'kee
 ok(user('rowan_h').delete_at && /Keep your account\?/.test(await text(D)), 'the email\'s link, opened: asks first (a mail scanner opening it doesn\'t keep it)', (await text(D)).slice(0, 80));
 await D.p.click('main .btn:has-text("Keep my account")'); await waitText(D, /staying/, '#toast');
 ok(!user('rowan_h').delete_at && /staying/.test(await text(D, '#toast')), 'kept by the email\'s link, once tapped, signed out', await text(D, '#toast'));
+// "This wasn't me", from the word to the old address about the new email: asks first, then every device out and a
+// reset link to the account's email
+const resets0 = mails().length;
+await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#secure=${tokenIn(om, 'secure')}`); await D.p.waitForSelector('main:not([aria-busy])'); await settle(D);
+ok(/Secure your account/.test(await text(D)) && /Sign out everywhere/.test(await text(D)), 'This wasn’t me, opened: asks first', (await text(D)).slice(0, 80));
+await shot(D, '22-secure');
+await D.p.click('main .btn:has-text("Sign out everywhere")'); await waitText(D, /signed out/, '#toast');
+const reset1 = await waitMail('rowan.hale@example.com', /Reset your password/, 15000, resets0);
+ok(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${user('rowan_h').id}'`).length === 0 && /signed out/.test(await text(D, '#toast')) && tokenIn(reset1, 'reset'),
+  'tapped: every device signed out, and a reset link sent', await text(D, '#toast'));
+// the new email undone, from the old address's link: back to it, and a reset link sent there
+await D.p.goto('about:blank'); await D.p.goto(`${ACCT}/#undo=${tokenIn(changed, 'undo')}`); await D.p.waitForSelector('main:not([aria-busy])'); await settle(D);
+ok(/Undo the email change\?/.test(await text(D)), 'Undo, opened: asks first', (await text(D)).slice(0, 80));
+await D.p.click('main .btn:has-text("Undo the change")'); await waitText(D, /again/, '#toast');
+ok(user('rowan_h').email === 'rowan@example.com' && /rowan@|r•+@example\.com/.test(await text(D, '#toast')) && tokenIn(await waitMail('rowan@example.com', /Reset your password/, 15000, resets0), 'reset'),
+  'tapped: the old email back, and a reset link sent to it', await text(D, '#toast'));
 // asked a third time, and the week up: gone (signed in again from the account's page: Sign in, on the sign-in page)
 await L.p.waitForSelector('main .welcome .btn:has-text("Sign in")', { timeout: 20000 }); await L.p.click('main .welcome .btn:has-text("Sign in")');
 await L.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 }); await L.p.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 20000 }); await settle(L, 600);
-await signInPw(L, 'rowan.hale@example.com', PW2);
+await signInPw(L, 'rowan@example.com', PW2);
 await waitText(L, /Rowan Ash Hale/);
 await delete1();
 sql(`UPDATE pg_users SET delete_at = ${Date.now() - 1000} WHERE handle = 'rowan_h'`);

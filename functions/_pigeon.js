@@ -456,6 +456,12 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_notgot ON pg_gdeliv(user_id) WHERE got_at IS NULL",
   // (a device InFlite's one route fanned out (functions/_devices.js): "hub"; Chat's own rows and the hub's kept apart)
   "ALTER TABLE pg_push ADD COLUMN via TEXT",
+  // the account's emails' one-time links (functions/_account.js oneLink): "This wasn't me" (secure) and undoing a new
+  // email (undo, data: the address to put back); each good once, for 7 days
+  "CREATE TABLE IF NOT EXISTS pg_onelinks (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)",
+  "CREATE INDEX IF NOT EXISTS pg_onelinks_user ON pg_onelinks(user_id)",
+  // an unused account's reminders (functions/_retention.js): how many it's had, and the day it goes (idle_due)
+  "ALTER TABLE pg_users ADD COLUMN warn_n INTEGER", "ALTER TABLE pg_users ADD COLUMN idle_due INTEGER",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

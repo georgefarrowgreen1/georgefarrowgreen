@@ -41,13 +41,15 @@ export const table = (env) => (ready ||= db(env).then((D) => D.batch([
   D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_unfiled ON pg_bugs(filed_at, at)"),
   D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_code ON pg_bugs(code, at)"),
   // (a server error's detail, for the Incident Desk: { sev: "slow" | "failed", limit, steps: [{ name, ms, done }] })
-]).then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN detail TEXT").run().catch(() => {})).then(() => D)).catch((e) => { ready = null; throw e; }));
+]).then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN detail TEXT").run().catch(() => {}))
+  // (who sent it from the window, where they were signed in: told when it's fixed, functions/_desk.js tellFixed)
+  .then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN user_id TEXT").run().catch(() => {})).then(() => D)).catch((e) => { ready = null; throw e; }));
 const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => ALPHA[b % 32]).join("");
 
 async function keep(env, r) {
   const D = await table(env), id = newId();
-  await D.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, version, words, at_where, stack, path, device, note, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null, r.detail ? JSON.stringify(r.detail) : null).run();
+  await D.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, version, words, at_where, stack, path, device, note, detail, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null, r.detail ? JSON.stringify(r.detail) : null, r.user || null).run();
   // (the same code five times in ten minutes: an incident on status.inflite.ai, where the owner has that on)
   await import("./_status.js").then((m) => m.burstCheck(env, r.code, r.app)).catch((e) => console.error("status burst", e && e.message));
   return id;
@@ -97,7 +99,9 @@ export async function bugsRoute(ctx, url) {
       const kind = ["crash", "server", "manual"].includes(r.kind) ? r.kind : "crash";
       const code = typeof r.code === "string" && CODE.test(r.code) ? r.code : issueCode(app, kind, r.words, r.where);
       await limit(env, "bugs:" + clientIp(req), 12, 3600e3);
-      const id = await keep(env, { code, app, kind, version: text(r.version, 20), words: text(r.words, 500), where: text(r.where, 200),
+      // (who's signed in here, if anyone: only so they can be told when it's fixed)
+      const who = await import("./_account.js").then((m) => m.cookieUser(req, env)).catch(() => null);
+      const id = await keep(env, { code, app, kind, user: who?.id || null, version: text(r.version, 20), words: text(r.words, 500), where: text(r.where, 200),
         stack: text(r.stack, 1500), path: text(r.path, 200).replace(/[?#].*$/, ""), device: text(r.device, 120), note: text(r.note, 1000) });
       // (and where it stands, on the status page, for the window's "See where this stands")
       return json({ ok: true, id, code, status: `https://${env.STATUS_HOST || `status.${appsSite(env)}`}/#${code}` });

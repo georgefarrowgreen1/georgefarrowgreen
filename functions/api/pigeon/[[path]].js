@@ -1597,22 +1597,30 @@ async function adminDelete({ request, env }) {
   await adminLog(env, "deleted", u.id, `@${u.handle}`);
   return json({ message: `@${u.handle} and their scrolls were deleted.` });
 }
-// Resend's "first email": proves the key and sender work, to the owner's own inbox.
+// "Send me one of each": one email from every sender the apps use (InFlite Account, Chat, Weather and Status), each in
+// its own look and from its own address, to the owner's own inbox: proves the sending works for all of them.
 const ownerEmail = (env) => env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO || "georgefarrowgreen@icloud.com";
 async function adminTestEmail({ request, env }) {
   await requireAdmin(request, env, true);
   if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
-  const to = ownerEmail(env);
-  const { text, html } = emailBody({
-    brand: "inflight", origin: linkOrigin(request), icon: "bird", title: "Email is working",
-    preheader: "Chat can send password resets and notifications.",
-    lines: ["This is a test from the site’s admin. Password resets and notifications will arrive just like this."],
-    pill: ["mail", emailFrom(env, "inflight").replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
-    button: { label: "Back to admin", url: `${accountPage(request, env)}/#admin` },
-  });
-  await sendEmail(env, { brand: "inflight", to, subject: "Chat email is working", text, html }, { explain: true });
+  const to = ownerEmail(env), origin = linkOrigin(request), at = ukTime(Date.now()), back = { label: "Back to admin", url: `${accountPage(request, env)}/#admin` };
+  const EACH = [
+    ["account", "Password resets, sign-in alerts and the account’s notes come from here.", "shield"],
+    ["inflight", "Chat’s notifications by email come from here: new messages, friend requests and the week in flight.", "bird"],
+    ["weather", "Weather’s morning briefings and official warnings come from here.", "sky"],
+    ["status", "Incident alerts for you come from here, when a check fails and when it’s fixed.", "check"],
+  ];
+  const sent = [], failed = [];
+  for (const [brand, line, icon] of EACH) {
+    const from = emailFrom(env, brand);
+    const { text, html } = emailBody({ brand, origin, icon, title: "Email is working", preheader: line, lines: [`A test from the site’s admin. ${line}`],
+      pill: ["mail", from.replace(/^.*<|>$/g, "")], rows: [["Sent", at]], button: back });
+    try { await sendEmail(env, { brand, to, subject: `${from.replace(/ <.*$/, "")}: email is working`, text, html }, { explain: true }); sent.push(from.replace(/ <.*$/, "")); }
+    catch (e) { failed.push(`${from.replace(/ <.*$/, "")}: ${e.message}`); }
+  }
   await adminLog(env, "test-email", null, to);
-  return json({ message: `Test email sent to ${to} from ${emailFrom(env, "inflight")}. Check your inbox.` });
+  if (!sent.length) throw new HttpError(502, failed.join(" · "));
+  return json({ message: `Sent ${sent.length} of ${EACH.length} to ${to}${failed.length ? `. Not sent: ${failed.join(" · ")}` : ": one from each sender"}. Check your inbox.` });
 }
 async function adminInvite({ request, env }) {
   await requireAdmin(request, env, true);

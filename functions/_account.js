@@ -196,20 +196,58 @@ export async function passkeyUser(env, request, b, { deleting = false } = {}) {
 // look, whichever app it happened in. To the account's email once it's confirmed, or to another address (to). A send
 // that fails is said (as to an admin, explain), so callers that don't mind catch it. (when: false, for a link, which
 // needs no time it happened: confirming, a reset, keeping it)
-export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button, pill, when = true }, origin, opts) {
+// (notice: a box in its own colour, for what mustn't be missed: { tone, lead, text }; footer: a quiet line under it;
+// after: false, no second line)
+export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button, pill, notice, footer, when = true }, origin, opts) {
   if (!emailReady(env) || (!to && !u.email_ok)) return false;
-  const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button, pill,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.inflite.ai."],
+  const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button, pill, notice, footer,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, tap below straight away."].filter(Boolean),
     rows: [["Account", `@${u.handle}`], ...rows, ...(when ? [["When", ukTime(Date.now())]] : [])] });
   await sendEmail(env, { to: to || u.email, subject, text, html, brand: "account" }, opts);
   return true;
 }
 
+// Where a request came from, for an email's details: "iPhone · Bristol, UK" (the device, then the town and country as
+// Cloudflare has them: often the nearest big town, never closer), or as much as is known
+const SHORT = { "United Kingdom": "UK", "United States": "US", "United Arab Emirates": "UAE" };
+export function placeOf(request) {
+  const cf = cfOf(request), country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
+  return [city, SHORT[country] || country].filter(Boolean).join(", ");
+}
+export const whereFrom = (request) => [deviceOf(request), placeOf(request)].filter(Boolean).join(" · ") || "Not known";
+
+// "This wasn't me", on every email about a change to the account: a link (good for 7 days, until it's used) to a page
+// that signs out every device and sends a reset link to the account's email (functions/api/account POST secure). It
+// needs nothing but the link: all it can do is lock the account down for its owner, and the reset goes only to them.
+export const LINK_TTL = 7 * 24 * 3600e3;
+export async function oneLink(env, u, kind, data = null) {
+  const token = randomToken(32), D = await db(env), t = Date.now();
+  await D.batch([
+    D.prepare("DELETE FROM pg_onelinks WHERE expires_at < ?").bind(t),
+    D.prepare("INSERT INTO pg_onelinks (hash, user_id, kind, data, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)").bind(hex(await sha256(token)), u.id, kind, data, t, t + LINK_TTL),
+  ]);
+  return token;
+}
+// (the link's row, once, as it's used: null if it's not one, used, or too old)
+export async function useLink(env, token, kind) {
+  const D = await db(env), hash = hex(await sha256(String(token || ""))), t = Date.now();
+  const row = await D.prepare("SELECT * FROM pg_onelinks WHERE hash = ? AND kind = ?").bind(hash, kind).first();
+  if (!row || row.used_at || row.expires_at < t) return null;
+  const r = await D.prepare("UPDATE pg_onelinks SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, hash).run();
+  return r.meta?.changes ? row : null;
+}
+export async function secureButton(env, u, request) {
+  return { label: "This wasn’t me", url: `${accountPage(request, env)}/#secure=${await oneLink(env, u, "secure")}` };
+}
+
 // "A new sign-in", to the account's phones (in Chat, as Chat says it, with where to sign it out) and by email,
 // from the account, saying which app it was in (or for, signed in on the account's page for an app: inflight, or
 // forApp "weather", "fitness", "markets" or "today")
+// Only for a device the account hasn't seen: one without the account's signed word that it's been signed in here before
+// (withKnown), so your own phones don't send one every time and the one that matters stands out.
 export async function tellSignIn(env, u, request, how, origin, inflight = true, forApp = null) {
   await logEvent(env, u.id, "signin", request, how);
+  if (u.email && (await knownHere(request, env, await emailKey(u.email), u).catch(() => null))) return false;
   const device = deviceOf(request) || "a new phone";
   // (where: the country the sign-in came from, as Cloudflare has it, or as InFlite's hub passed it on: functions/_sites.js cfOf)
   let where = regionOf(cfOf(request).country);
@@ -218,10 +256,13 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true, 
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   const host = new URL(request.url).hostname;
   const app = inflight ? "Chat" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : forApp === "markets" || host.startsWith("finance.") ? "Markets" : forApp === "today" ? "Today" : "Account page";
-  // (where it was, once, in the pill: the words and the details don't say it again)
-  await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account", pill: ["phone", [device, where.replace(/^the /, "")].filter(Boolean).join(" · ")],
-    line: "someone just signed in to your account. If it was you, there’s nothing to do.",
-    after: "If it wasn’t, sign out the devices you don’t know in Signed-in devices and change your password.",
-    rows: [["Signed in to", app], ["How", how]],
-    button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, origin || linkOrigin(request)).catch(() => {});
+  // (the device in the title, where it was in the pill: the words and the details don't say them again)
+  const place = placeOf(request), dev = deviceOf(request);
+  await accountMail(env, u, { title: dev ? `New sign-in on ${dev}` : "A new sign-in", subject: `New sign-in${dev ? ` on ${dev}` : ""}${place ? ` in ${place.split(",")[0]}` : ""}`,
+    ...(place ? { pill: ["pin", place] } : {}),
+    line: "your account was signed in to on a device we haven’t seen before.",
+    after: "If this was you, there’s nothing to do. If not, tap below: we’ll sign out every device and help you choose a new password.",
+    rows: [["Signed in to", app, "grid"], ["How", how]], footer: "We only email when a device we don’t recognise signs in.",
+    button: await secureButton(env, u, request) }, origin || linkOrigin(request)).catch(() => {});
+  return true;
 }

@@ -19,7 +19,7 @@ import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
 import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
-import { sendEmail, emailReady, emailBody } from "./_email.js";
+import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
 import { housekeeping, WAY_PARTS } from "./_retention.js";
@@ -205,7 +205,9 @@ async function notifyEmail(env, origin, u, subject, mail) {
   const st = await (await db(env)).prepare("SELECT email_ok, delete_at FROM pg_users WHERE id = ?").bind(u.id).first();
   if (!st?.email_ok || st.delete_at) return false;
   const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
-  const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: "You get these because you turned on email notifications in Chat.", unsub });
+  // (and beside turning them all off, choosing which: Chat's folder on the account's Notifications page)
+  const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: "You get these because you turned on email notifications in Chat.", unsub,
+    more: { label: "Choose which emails", url: `${accountLink(origin)}/#from=inflight&open=notify-inflight` } });
   await sendEmail(env, { brand: "inflight", to: u.email, subject, text, html,
     headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
   await (await db(env)).prepare("UPDATE pg_users SET email_at = ? WHERE id = ?").bind(Date.now(), u.id).run();

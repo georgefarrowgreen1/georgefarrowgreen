@@ -86,25 +86,26 @@ ok(!one(`SELECT 1 FROM pg_gevents WHERE at < ${now() - 35 * DAY}`).length, 'a gr
 const logs = one(`SELECT detail FROM pg_admin_log WHERE action = 'test-email'`).map((r) => r.detail);
 ok(!logs.includes('old') && logs.includes('new'), 'the admin log keeps six months', JSON.stringify(logs));
 
-// 5. an account unused for a year: an email a week before, then gone
+// 5. an account unused for a year: emails 30 days, 7 days and a day before, then gone
 // (their phones closed first: an open app checking in is someone using it)
 for (const P of [B, C]) await P.ctx.close();
 const yr = 365 * DAY, nearly = now() - yr + 6 * DAY;
 one(`UPDATE pg_users SET seen_at = ${nearly}, created_at = ${nearly - DAY} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${nearly} WHERE user_id = '${cs.me.id}'`);
 const m0 = mails().length; await housekeep();
-const warn = mails().slice(m0).filter((m) => /will be deleted soon/.test(m.subject || '') && JSON.stringify(m.to).includes('cal@example.com'));
-ok(warn.length === 1 && /sign in before then/.test(warn[0].text || ''), 'almost a year unused: an email says the account will be deleted, and how to keep it', warn.map((m) => m.subject).join(' | '));
+const warn = mails().slice(m0).filter((m) => /will be deleted on /.test(m.subject || '') && JSON.stringify(m.to).includes('cal@example.com'));
+ok(warn.length === 1 && /sign in once before then/.test(warn[0].text || ''), 'almost a year unused: an email says the account will be deleted, and how to keep it', warn.map((m) => m.subject).join(' | '));
 // (a much older one, warned only now, is given a date at least a week away, never one gone by)
 ok(!!one(`SELECT 1 FROM pg_users WHERE id = '${cs.me.id}'`).length, 'it isn’t deleted yet');
 await housekeep();
-ok(mails().slice(m0).filter((m) => /will be deleted soon/.test(m.subject || '')).length === 1, 'and only one email');
+ok(mails().slice(m0).filter((m) => /will be deleted/.test(m.subject || '')).length === 1, 'and only one email (the next, 7 days before its day)');
 // (and a pigeon Ann sent Cal three days ago, landed, plus one still flying to Cal)
 one(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, notified_at, pigeon) VALUES ('tocal', '${as.me.id}', '${cs.me.id}', 'x', 340, ${now() - 3 * DAY}, ${now() - 3 * DAY + 3600e3}, ${now() - 3 * DAY + 3600e3}, 'standard'),
   ('tocal2', '${as.me.id}', '${cs.me.id}', 'x', 340, ${now() - 3600e3}, ${now() + 3600e3}, NULL, 'standard')`);
-// a week on, still unused: deleted
-one(`UPDATE pg_users SET warned_at = ${now() - 7 * DAY}, seen_at = ${now() - yr - DAY}, created_at = ${now() - yr - 2 * DAY} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${now() - yr - DAY} WHERE user_id = '${cs.me.id}'`);
+// its day come, still unused: deleted, and a last email says so
+one(`UPDATE pg_users SET warned_at = ${now() - 30 * DAY}, idle_due = ${now() - 60e3}, seen_at = ${now() - yr - DAY}, created_at = ${now() - yr - 2 * DAY} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${now() - yr - DAY} WHERE user_id = '${cs.me.id}'`);
 await housekeep();
-ok(!one(`SELECT 1 FROM pg_users WHERE id = '${cs.me.id}'`).length && !one(`SELECT 1 FROM pg_links WHERE a = '${cs.me.id}' OR b = '${cs.me.id}'`).length, 'a year unused and a week after the email: the account is deleted');
+ok(!one(`SELECT 1 FROM pg_users WHERE id = '${cs.me.id}'`).length && !one(`SELECT 1 FROM pg_links WHERE a = '${cs.me.id}' OR b = '${cs.me.id}'`).length, 'a year unused and its day come: the account is deleted');
+ok(mails().slice(m0).some((m) => m.subject === 'Your account has been deleted' && JSON.stringify(m.to).includes('cal@example.com')), 'and a last email says so');
 ok(!!one(`SELECT 1 FROM pg_admin_log WHERE action = 'idle-deleted'`).length, 'the admin log says so');
 ok(!!one(`SELECT 1 FROM pg_flights WHERE id = '${oldG}:${cs.me.id}' AND recipient IS NULL`).length, 'Ann’s pigeon to Cal stays in her log, unnamed');
 ok(!!one(`SELECT 1 FROM pg_flights WHERE id = 'tocal' AND recipient IS NULL AND sender = '${as.me.id}'`).length && !one(`SELECT 1 FROM pg_flights WHERE id = 'tocal2'`).length && !one(`SELECT 1 FROM pg_msgs WHERE id IN ('tocal', 'tocal2')`).length,

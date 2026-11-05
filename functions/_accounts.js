@@ -47,6 +47,7 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_active WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_onelinks WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_events WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_handoff WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_handback WHERE user_id = ?").bind(id),

@@ -11,17 +11,17 @@ const ROOT = new URL('../../../', import.meta.url).pathname;
 test('each app from its own address: at inflite.ai by Cloudflare where that\'s set up, the home page\'s at georgefarrowgreen.com', () => {
   const CF = { CF_EMAIL_TOKEN: 't', CF_ACCOUNT_ID: 'a' };
   for (const from of ['Chat <noreply@georgefarrowgreen.com>', 'noreply@georgefarrowgreen.com', ' noreply@georgefarrowgreen.com ']) {
-    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'inflight'), 'Chat <chat@inflite.ai>', from);
-    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'account'), 'Account <account@inflite.ai>', from);
-    assert.equal(emailFrom({ PIGEON_FROM: from }, 'account'), 'Account <account@georgefarrowgreen.com>', 'without Cloudflare: by Resend, from its domain, as before');
+    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'inflight'), 'InFlite Chat <chat@inflite.ai>', from);
+    assert.equal(emailFrom({ PIGEON_FROM: from, ...CF }, 'account'), 'InFlite Account <account@inflite.ai>', from);
+    assert.equal(emailFrom({ PIGEON_FROM: from }, 'account'), 'InFlite Account <account@georgefarrowgreen.com>', 'without Cloudflare: by Resend, from its domain, as before');
   }
-  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', ...CF }, 'weather'), 'Weather <weather@inflite.ai>');
+  assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', ...CF }, 'weather'), 'InFlite Weather <weather@inflite.ai>');
   assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', ...CF }, 'website'), 'Website <website@georgefarrowgreen.com>', 'the bio site\'s own, from its own domain');
   assert.equal(emailFrom({ PIGEON_FROM: 'noreply@georgefarrowgreen.com', CONTACT_FROM: 'Website <noreply@gfg.example>' }, 'website'), 'Website <website@gfg.example>', 'the contact form\'s domain, where it has one of its own');
-  assert.equal(emailFrom({ CONTACT_FROM: 'Website <noreply@georgefarrowgreen.com>' }, 'account'), 'Account <account@georgefarrowgreen.com>');
-  assert.equal(emailFrom({ ...CF, APPS_MAIL_DOMAIN: 'mail.example.com' }, 'account'), 'Account <account@mail.example.com>', 'APPS_MAIL_DOMAIN, to say otherwise');
-  assert.equal(emailFrom({}, 'account'), 'Account <onboarding@resend.dev>', 'Resend\'s test sender until a domain\'s set up (the one address it allows)');
-  assert.equal(emailFrom({ PIGEON_FROM: 'Chat <onboarding@resend.dev>' }, 'inflight'), 'Chat <onboarding@resend.dev>');
+  assert.equal(emailFrom({ CONTACT_FROM: 'Website <noreply@georgefarrowgreen.com>' }, 'account'), 'InFlite Account <account@georgefarrowgreen.com>');
+  assert.equal(emailFrom({ ...CF, APPS_MAIL_DOMAIN: 'mail.example.com' }, 'account'), 'InFlite Account <account@mail.example.com>', 'APPS_MAIL_DOMAIN, to say otherwise');
+  assert.equal(emailFrom({}, 'account'), 'InFlite Account <onboarding@resend.dev>', 'Resend\'s test sender until a domain\'s set up (the one address it allows)');
+  assert.equal(emailFrom({ PIGEON_FROM: 'Chat <onboarding@resend.dev>' }, 'inflight'), 'InFlite Chat <onboarding@resend.dev>');
   assert.throws(() => emailFrom({}, 'nobody'), /No email brand "nobody"/, 'an app that isn\'t a brand doesn\'t send');
 });
 test('by Cloudflare: its API, the sender named, a reply-to and the unsubscribe headers; a refusal or a bounce is a failure', async () => {
@@ -33,7 +33,7 @@ test('by Cloudflare: its API, the sender named, a reply-to and the unsubscribe h
     await sendEmail(env, { brand: 'account', to: 'rowan@example.com', replyTo: 'help@example.com', subject: 'S', text: 't', html: 'h', headers: { 'List-Unsubscribe': '<https://x/>' } });
     assert.equal(sent[0].url, 'https://api.cloudflare.com/client/v4/accounts/acc/email/sending/send');
     assert.equal(sent[0].auth, 'Bearer cft');
-    assert.deepEqual(sent[0].body.from, { address: 'account@inflite.ai', name: 'Account' });
+    assert.deepEqual(sent[0].body.from, { address: 'account@inflite.ai', name: 'InFlite Account' });
     assert.equal(sent[0].body.reply_to, 'help@example.com'); assert.equal(sent[0].body.headers['List-Unsubscribe'], '<https://x/>');
     await sendEmail(env, { brand: 'website', to: 'me@example.com', subject: 'S', text: 't', html: 'h' });
     assert.equal(sent[1].url, 'https://api.resend.com/emails', 'the home page\'s still by Resend');
@@ -93,7 +93,7 @@ test('every app has the look: Weather, and the site\'s own page (its contact for
   assert.match(site.text, /^A message from Rowan Hale\n\nrowan@example\.com\n\nHello <there>,\n\nA second paragraph\.\n\nSent: 23 Oct 2026, 10:11/);
 });
 
-test('the account\'s emails are sent from "Account"; Chat\'s from "Chat"; a reply goes where it\'s asked', async () => {
+test('the account\'s emails are sent from "InFlite Account"; Chat\'s from "InFlite Chat"; a reply goes where it\'s asked', async () => {
   const sent = [], was = globalThis.fetch;
   globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response('{}', { status: 200 }); };
   try {
@@ -103,7 +103,7 @@ test('the account\'s emails are sent from "Account"; Chat\'s from "Chat"; a repl
     assert.equal(await accountMail(env, { ...u, email_ok: 0 }, { title: 'x', subject: 'x', line: 'x' }), false, 'nothing to an email not yet confirmed');
     await sendEmail(env, { brand: 'inflight', to: u.email, subject: 'A pigeon landed', text: 't', html: 'h' });
     await sendEmail(env, { brand: 'website', to: 'me@example.com', replyTo: u.email, subject: 'A message', text: 't', html: 'h' });
-    assert.deepEqual(sent.map((s) => s.from), ['Account <account@georgefarrowgreen.com>', 'Chat <chat@georgefarrowgreen.com>', 'Website <website@georgefarrowgreen.com>']);
+    assert.deepEqual(sent.map((s) => s.from), ['InFlite Account <account@georgefarrowgreen.com>', 'InFlite Chat <chat@georgefarrowgreen.com>', 'Website <website@georgefarrowgreen.com>']);
     assert.equal(sent[2].reply_to, 'rowan@example.com');
     assert.equal('reply_to' in sent[1], false);
     assert.match(sent[0].text, /^Your password was changed\n\nHi Rowan, it was\./);

@@ -12,7 +12,7 @@
 // email (confirming it, changing it), recent activity, passkeys' names and where they're saved, preferences for every app
 // (appearance; Weather's units), your data as a PDF (datapdf.js) or a JSON file, and deleting the account in 7 days unless it's kept. The page keeps
 // up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
-// #keep=).
+// #keep=, #secure=, #undo=).
 //
 // And: your photo changed by tapping it; your code (a QR code of the link that adds you in Chat); each app's card, a
 // way into it and what you have there (what it keeps of yours in its own sheet, behind ⓘ); the check-up kept in Sign-in
@@ -1110,8 +1110,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.94";
-const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+const BUILD = "1.95";
+const NEWS = "Emails about your account have a “This wasn’t me” button: one tap signs out every device and sends you a reset link. A changed email can be undone from the old address for 7 days";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1622,15 +1622,16 @@ function fromGate() {
   else { S.reset = { token: m[3] }; resetCheck(); }
   return true;
 }
-// A link from one of the account's emails: confirming the email, a new email, or keeping the account. The link's own
-// token is what counts, so it works signed in or not, in whichever browser the email opens it in. (Keeping it waits
-// for a tap: keepPage, so a mail scanner that opens the link to see where it goes doesn't keep it.)
+// A link from one of the account's emails: confirming the email, a new email, keeping the account, "This wasn't me"
+// (secure), or undoing a new email (undo). The link's own token is what counts, so it works signed in or not, in
+// whichever browser the email opens it in. (The last three wait for a tap: keepPage, so a mail scanner that opens the
+// link to see where it goes doesn't act on it.)
 async function fromLink() {
-  const m = /^#(confirm|email|keep)=([A-Za-z0-9_-]{40,50})$/.exec(location.hash);
+  const m = /^#(confirm|email|keep|secure|undo)=([A-Za-z0-9_-]{40,50})$/.exec(location.hash);
   if (!m) return;
   history.replaceState(null, "", location.pathname + location.search);
   const [, kind, token] = m;
-  if (kind === "keep") { S.keep = { token }; return; }
+  if (kind === "keep" || kind === "secure" || kind === "undo") { S.keep = { token, kind }; return; }
   try {
     const r = await post({ confirm: "email/confirm", email: "email/change-confirm" }[kind], { token });
     S.said = { kind, text: kind === "confirm" ? "Your email is confirmed." : `Your account’s email is now ${r.email}.` };
@@ -1642,7 +1643,7 @@ addEventListener("hashchange", async () => {
   Sheet.hist = 0;          // (a link arrived over an open sheet: its steps are behind this one now, and stay there)
   if (takeQr(location.hash)) { if (qrNext()) return openSheet(qrView); return anew(() => { S.settled = false; render(); }); }
   if (fromGate()) return anew(() => { S.settled = false; render(); });
-  if (!/^#(confirm|email|keep)=/.test(location.hash)) return;
+  if (!/^#(confirm|email|keep|secure|undo)=/.test(location.hash)) return;
   await fromLink();
   let m = S.me;
   try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
@@ -2321,20 +2322,32 @@ function gonePage(r) {
     r(h("p", { text: `Changed your mind? Sign in before then to keep it${g.email ? `, or use the link we’re emailing to ${g.email}` : ""}.` })),
     r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: signIn }, icon("signin", 20, 1.9), "Sign In to Keep It"))))];
 }
-// The email's link to keep it (#keep=): kept once that's tapped, not as the link's opened. (A link that won't work is
-// put away, said why; offline, or the server not answering, it stays, to try again.)
+// An email's link that does something (S.keep.kind): keeping the account (#keep=), "This wasn't me" (#secure=), or
+// undoing a new email (#undo=). Done once it's tapped, not as the link's opened. (A link that won't work is put away,
+// said why; offline, or the server not answering, it stays, to try again.)
+const LINKS = {
+  keep: { mark: ["trash", "red"], title: "Keep your account?", text: "It’s being deleted. Tap below to keep it.", go: ["undo", "Keep my account", "Keeping it…"], path: "delete/keep",
+    done: () => "Your account is staying. Sign in to carry on." },
+  secure: { mark: ["shield", ""], title: "Secure your account", text: "We’ll sign out every device, remove anything added since the change, like a passkey, and email you a link to choose a new password.",
+    go: ["shield", "Sign out everywhere", "Securing it…"], path: "secure",
+    done: (r) => `Every device is signed out.${r.email ? ` We’ve sent a link to ${r.email} to choose a new password.` : " Use “Forgot password?” to choose a new password."}` },
+  undo: { mark: ["undo", ""], title: "Undo the email change?", text: "Your account’s email goes back to this address, every device is signed out, and we’ll email you a link to choose a new password.",
+    go: ["undo", "Undo the change", "Undoing it…"], path: "email/undo",
+    done: (r) => `Your account’s email is ${r.email} again.${r.sent ? " Check it for a link to choose a new password." : ""}` },
+};
 function keepPage(r) {
+  const L = LINKS[S.keep.kind] || LINKS.keep;
   const go = h("button.btn", { type: "button", onclick: async () => {
-    try { await busy(go, "Keeping it…", () => post("delete/keep", { token: S.keep.token })); S.said = { text: "Your account is staying. Sign in to carry on." }; }
-    catch (err) { if (err.status !== 400) return toast(err.message, true); S.said = { text: err.message, bad: true }; }
+    try { const res = await busy(go, L.go[2], () => post(L.path, { token: S.keep.token })); S.said = { text: L.done(res || {}) }; }
+    catch (err) { if (err.status !== 400 && err.status !== 409) return toast(err.message, true); S.said = { text: err.message, bad: true }; }
     let m = S.me;
     try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
     anew(() => { S.keep = null; S.me = m; S.settled = false; render(); });
-  } }, icon("undo", 20, 2.2), "Keep my account");
+  } }, icon(L.go[0], 20, 2.2), L.go[1]);
   return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
-    r(h("h1", { text: "Keep your account?" })),
-    r(h("p", { text: "It’s being deleted. Tap below to keep it." })),
+    r(h("div", {}, h(`div.mark${L.mark[1] ? `.${L.mark[1]}` : ""}`, {}, icon(L.mark[0], 44, 1.7)))),
+    r(h("h1", { text: L.title })),
+    r(h("p", { text: L.text })),
     r(h("div.signin.glass", {}, go,
       h("button.btn.quiet", { type: "button", onclick: () => anew(() => { S.keep = null; S.settled = false; render(); }) }, "Not now")))),
   ];

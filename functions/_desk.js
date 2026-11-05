@@ -9,6 +9,8 @@
 //   incidentNote(env, b) (private) · incidentAffects(env, b) · incidentUnnote(env, b) (a public update just posted)
 //   recordDeploy(env, { what, version, note }, t) (the site's workflow, after each deploy)
 import { HttpError } from "./_pigeon.js";
+import { SITE } from "./_email.js";
+import { appsSite } from "./_sites.js";
 import { statusTable, parse, nameOf, forgetStatus, jobsNow, STATE, lastDays } from "./_status.js";
 import { table as bugsTable } from "./_bugs.js";
 import { STATUS_SERVICES, STATUS_JOBS, STATUS_DEPS } from "./_statuslist.js";
@@ -124,6 +126,36 @@ function weekOf(incs, days, t) {
     notOutages: week.filter((x) => x.outage === false).length, causes: Object.entries(causes).map(([cause, n]) => ({ cause, n })).sort((a, b) => b.n - a.n) };
 }
 
+// Each person who sent a report of it from the window while signed in (pg_bugs user_id), in the last 60 days, told once
+// by email that it's fixed, with a link to where it stands. Never in the way of marking it.
+const APP_NAMES = { chat: "Chat", chats: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", finance: "Markets", account: "Account", auth: "Account", today: "Today", mail: "Mail", email: "Mail", home: "Home page" };
+const ukDate = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }).format(t);
+export async function tellFixed(env, code, t = Date.now()) {
+  let told = 0;
+  try {
+    const D = await bugsTable(env);
+    await D.prepare("CREATE TABLE IF NOT EXISTS desk_told (code TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (code, user_id))").run();
+    const { results } = await D.prepare(`SELECT b.user_id, MIN(b.at) AS first, MAX(b.app) AS app, MAX(b.version) AS version, u.name, u.handle, u.email, u.email_ok, u.delete_at
+      FROM pg_bugs b JOIN pg_users u ON u.id = b.user_id WHERE b.code = ?1 AND b.user_id IS NOT NULL AND b.at > ?2
+        AND NOT EXISTS (SELECT 1 FROM desk_told d WHERE d.code = b.code AND d.user_id = b.user_id) GROUP BY b.user_id LIMIT 50`).bind(code, t - 60 * DAY).all();
+    if (!results.length) return 0;
+    const { accountMail } = await import("./_account.js"), page = `https://${env.STATUS_HOST || `status.${appsSite(env)}`}/#${code}`;
+    for (const r of results) {
+      if (!r.email || !r.email_ok || r.delete_at) continue;
+      if (!(await D.prepare("INSERT OR IGNORE INTO desk_told (code, user_id, at) VALUES (?, ?, ?)").bind(code, r.user_id, t).run()).meta?.changes) continue;
+      const app = APP_NAMES[r.app] || "The site";
+      const sent = await accountMail(env, { id: r.user_id, name: r.name, handle: r.handle, email: r.email, email_ok: r.email_ok }, {
+        icon: "check", title: "The problem you reported is fixed", subject: `Fixed: the problem you reported (${code})`, pill: ["link", code],
+        line: "thanks for reporting it. A fix is in, and it’s watched in case it comes back.", after: false, when: false,
+        rows: [["In", `${app}${r.version ? ` ${r.version}` : ""}`, "grid"], ["Reported", ukDate(r.first), "clock"], ["Fixed", ukDate(t), "star"]],
+        footer: "You get this because you sent this report while signed in.", button: { label: "See where it stands", url: page } }, SITE).catch(() => false);
+      if (sent) told++;
+      else await D.prepare("DELETE FROM desk_told WHERE code = ? AND user_id = ?").bind(code, r.user_id).run().catch(() => {});
+    }
+  } catch (e) { console.error("desk tell fixed", e && e.message); }
+  return told;
+}
+
 // ---- a code: fixed, muted a day, or back to new ----
 const CODE = /^IF-[A-Z]-[0-9A-Z]{4,6}$/;
 export async function codeState(env, b, t = Date.now()) {
@@ -131,7 +163,7 @@ export async function codeState(env, b, t = Date.now()) {
   if (!CODE.test(code)) throw new HttpError(400, "Which code?");
   const D = await statusTable(env);
   if (state === "new") await D.prepare("DELETE FROM desk_codes WHERE code = ?").bind(code).run();
-  else if (state === "fixed") await D.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at, until) VALUES (?, 'fixed', ?, NULL)").bind(code, t).run();
+  else if (state === "fixed") { await D.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at, until) VALUES (?, 'fixed', ?, NULL)").bind(code, t).run(); await tellFixed(env, code, t); }
   else if (state === "muted") await D.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at, until) VALUES (?, 'muted', ?, ?)").bind(code, t, t + DAY).run();
   else throw new HttpError(400, "Fixed, muted or new?");
   // (the status page shows where each code stands: its copy let go of, so it says so at once)

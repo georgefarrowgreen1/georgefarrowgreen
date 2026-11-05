@@ -858,7 +858,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("p.hint", { text: "The database’s size is for the whole site: each app’s is its share of what’s in it, so an estimate. Files are exact." })] };
   }
 
-  // Email: whether it's on, who it's from, and a test to your own inbox
+  // Email: whether it's on, who it's from, and a test of every sender to your own inbox
   function admEmailView() {
     const s = admAsk("summary"), said = h("p.said", { role: "alert" });
     if (!s) return { title: "Email", body: [admWait("summary")] };
@@ -872,7 +872,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         say(said, "");
         try { const r = await admPost(e.currentTarget, "Sending…", "test-email", {}); admChanged(); toast(r.message, false, 4500); }
         catch (err) { if (!err.quiet) say(said, err.message); }
-      } }, "Send a test email")) : h("p.hint", { text: "Add RESEND_API_KEY in Cloudflare to switch emails on." }),
+      } }, "Send me one of each")) : h("p.hint", { text: "Add RESEND_API_KEY in Cloudflare to switch emails on." }),
       said] };
   }
 

@@ -10,8 +10,9 @@
    - A group's history (joins, leaves, renames) goes after 30 days, with its messages; the admin log after 180.
    - Files in storage (R2) that nothing points to any more (a photo whose message was never saved, an old profile
      picture) are found and deleted, a page at a time.
-   - An account nobody has signed in to for a year is deleted, after an email a week before saying so. Signing in
-     (or the app checking in) in that week keeps it. */
+   - An account nobody has signed in to for a year is deleted, after emails 30 days, 7 days and a day before saying
+     so. Signing in (or the app checking in) before then keeps it. Once it's gone (or one its owner asked to delete
+     is), a last email says so. */
 import { DAY, MIN, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
 import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { stampPassports } from "./_passport.js";
@@ -20,7 +21,10 @@ import { removeAccount } from "./_accounts.js";
 
 export const KEEP_MS = 30 * DAY;
 const GRACE_MS = 45 * DAY, GEVENTS_MS = 30 * DAY, ADMIN_LOG_MS = 180 * DAY;
-export const IDLE_MS = 365 * DAY, WARN_MS = 7 * DAY;
+export const IDLE_MS = 365 * DAY, WARN_MS = 30 * DAY;
+// (the reminders after the first: how long before the day each goes; and the old single week's warning, for an account
+// warned before there were three, which keeps the day it was given)
+const AGAIN = [7 * DAY, DAY], OLD_WARN = 7 * DAY;
 const EVERY = 10 * MIN, BATCH = 100;
 
 // (pg_flights, one line per pigeon kept after its message has gone: its table is in functions/_pigeon.js)
@@ -134,46 +138,84 @@ export async function sweepFiles(env, D, t, page = 500) {
 // When someone was last about: the app checking in, or any of their sign-ins being used (or signing up)
 const lastOf = (u) => `MAX(COALESCE(${u}.seen_at, 0), COALESCE(${u}.created_at, 0), COALESCE((SELECT MAX(s.seen_at) FROM pg_sessions s WHERE s.user_id = ${u}.id), 0))`;
 const LAST = lastOf("u");
-// Due to go: a year unused, warned a full week ago (the date its email gave is that day's, so never before it), and not
-// back since
+// The day an unused account goes: the one its first email gave (idle_due), or, warned before that was kept, a week on
+const DUE = (u) => `COALESCE(${u}.idle_due, ${u}.warned_at + ${OLD_WARN})`;
+const ukDate = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(t);
+const ukDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
+// Due to go: a year unused, its day come (the date its emails gave is that day's, so never before it), and not back since
 export async function idleDue(D, t, n = 1) {
-  return (await D.prepare(`SELECT u.id, u.handle FROM pg_users u WHERE u.warned_at IS NOT NULL AND u.warned_at <= ?1 AND ${LAST} < ?2 AND ${LAST} < u.warned_at LIMIT ?3`)
-    .bind(t - WARN_MS, t - IDLE_MS, n).all()).results;
+  return (await D.prepare(`SELECT u.id, u.handle, u.name, u.email FROM pg_users u WHERE u.warned_at IS NOT NULL AND ${DUE("u")} <= ?1 AND ${LAST} < ?2 AND ${LAST} < u.warned_at LIMIT ?3`)
+    .bind(t, t - IDLE_MS, n).all()).results;
+}
+// One of an unused account's emails: n, the first (30 days to go), the second (7) or the last (1)
+function idleMail(u, due, n, origin) {
+  const first = String(u.name || "").split(/\s+/)[0] || "there", day = ukDay(due), left = n === 1 ? "" : n === 2 ? "in 7 days" : "tomorrow";
+  const title = n === 1 ? "Keep your account?" : `Your account will be deleted ${left}`;
+  const { text, html } = emailBody({ origin, icon: "trash", brand: "account", title,
+    preheader: n === 1 ? `Not used for 11 months. Sign in once before ${day} to keep it.` : `On ${day}, unless you sign in before then.`,
+    lines: [`Hi ${first}, ${n === 1 ? "you haven’t signed in for 11 months, so" : "you still haven’t signed in, so"} your account and everything kept with it, in every app on the site, will be deleted on ${day}.`,
+      "To keep it, sign in once before then, to your account or to any app on the site."],
+    pill: ["clock", `Deleted on ${day}`],
+    rows: [["Account", `@${u.handle}`], ...(u.last ? [["Last signed in", ukDate(u.last), "clock"]] : []), ...(n < 3 ? [["Reminders", n === 1 ? "7 days and 1 day before" : "1 day before", "clock"]] : [])],
+    button: { label: "Keep my account", url: `${accountLink(origin)}/` }, footer: "If you’d like it deleted, there’s nothing to do." });
+  return { subject: `Your account will be deleted ${n === 1 ? `on ${day}` : left}`, text, html };
+}
+// The last email: the account's gone (asked: its owner asked; else a year unused), to the address it had
+async function goneMail(env, u, asked, origin) {
+  if (!emailReady(env) || !u.email) return;
+  const first = String(u.name || "").split(/\s+/)[0] || "there";
+  const { text, html } = emailBody({ origin, icon: "trash", brand: "account", title: "Your account has been deleted", preheader: "Everything kept with it in every app is gone.",
+    lines: [`Hi ${first}, your account and everything kept with it, in every app on the site, has now been deleted${asked ? ", as you asked" : ", as it hadn’t been used for a year"}.`,
+      "This is the last email you’ll get from us. You’re welcome back any time with a new account."],
+    rows: [["Account", `@${u.handle}`], ["Deleted on", ukDate(Date.now()), "clock"]] });
+  await sendEmail(env, { to: u.email, subject: "Your account has been deleted", text, html, brand: "account" }).catch(() => {});
 }
 export async function idleAccounts(env, D, t, origin) {
   let warned = 0, deleted = 0;
-  // a week to go: an email, once
   if (emailReady(env)) {
+    // the first, 30 days to go: the day it goes is kept, never one already gone (one long unused, or with emails off
+    // for a while, still gets its 30 days)
     const { results } = await D.prepare(`SELECT u.id, u.name, u.handle, u.email, ${LAST} AS last FROM pg_users u
       WHERE u.warned_at IS NULL AND u.email IS NOT NULL AND ${LAST} < ?1 LIMIT 10`).bind(t - (IDLE_MS - WARN_MS)).all();
     for (const u of results) {
-      // (never a day already gone: one long unused, or emails that were off for a while, still gets its week)
-      const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(Math.max(u.last + IDLE_MS, t + WARN_MS));
-      // (the account's, so from "Account": it goes with everything every app keeps)
-      const { text, html } = emailBody({ origin, icon: "trash", brand: "account", title: "Your account will be deleted soon",
-        preheader: `It hasn’t been used for almost a year, so it will be deleted on ${when}.`,
-        lines: [`Hi ${String(u.name || "").split(/\s+/)[0] || "there"}, nobody has signed in to your account for almost a year, so it will be deleted on ${when}, with everything kept with it in every app on the site.`,
-          "To keep it, just sign in before then, to your account or to any app on the site."],
-        pill: ["clock", `On ${when}`], rows: [["Account", `@${u.handle}`]],
-        button: { label: "Keep my account", url: `${accountLink(origin)}/` }, footer: "If you’d like it deleted, you don’t need to do anything." });
-      try { await sendEmail(env, { to: u.email, subject: "Your account will be deleted soon", text, html, brand: "account" }); }
+      const due = Math.max(u.last + IDLE_MS, t + WARN_MS), m = idleMail(u, due, 1, origin);
+      try { await sendEmail(env, { to: u.email, subject: m.subject, text: m.text, html: m.html, brand: "account" }); }
       catch (_) { continue; }                                     // (not warned, so not deleted: tried again next time)
-      await D.prepare("UPDATE pg_users SET warned_at = ? WHERE id = ?").bind(t, u.id).run();
+      await D.prepare("UPDATE pg_users SET warned_at = ?, idle_due = ?, warn_n = 1 WHERE id = ?").bind(t, due, u.id).run();
       await adminLog(env, "idle-warned", u.id, `@${u.handle}`).catch(() => {});
       warned++;
     }
+    // then 7 days and a day before (only those warned since there were three: warn_n), and not back since
+    for (const [n, before] of [[2, AGAIN[0]], [3, AGAIN[1]]]) {
+      const { results: again } = await D.prepare(`SELECT u.id, u.name, u.handle, u.email, u.idle_due, ${LAST} AS last FROM pg_users u
+        WHERE u.warn_n = ?1 AND u.idle_due IS NOT NULL AND u.idle_due - ?2 <= ?3 AND u.idle_due > ?3 AND u.email IS NOT NULL AND ${LAST} < u.warned_at LIMIT 10`).bind(n - 1, before, t).all();
+      for (const u of again) {
+        const m = idleMail(u, u.idle_due, n, origin);
+        // (claimed first, so two ticks can't both send it; given back if it couldn't be)
+        if (!(await D.prepare("UPDATE pg_users SET warn_n = ?1 WHERE id = ?2 AND warn_n = ?3").bind(n, u.id, n - 1).run()).meta?.changes) continue;
+        try { await sendEmail(env, { to: u.email, subject: m.subject, text: m.text, html: m.html, brand: "account" }); warned++; }
+        catch (_) { await D.prepare("UPDATE pg_users SET warn_n = ?1 WHERE id = ?2 AND warn_n = ?3").bind(n - 1, u.id, n).run().catch(() => {}); }
+      }
+    }
   }
   const idle = await idleDue(D, t);
-  for (const u of idle) { await removeAccount(env, u.id); await adminLog(env, "idle-deleted", u.id, `@${u.handle}`).catch(() => {}); deleted++; }
-  // back in time: the warning is forgotten, so a later year away warns again
-  await D.prepare(`UPDATE pg_users SET warned_at = NULL WHERE warned_at IS NOT NULL AND ${lastOf("pg_users")} > warned_at`).run().catch(() => {});
+  for (const u of idle) {
+    await removeAccount(env, u.id); await adminLog(env, "idle-deleted", u.id, `@${u.handle}`).catch(() => {}); deleted++;
+    await goneMail(env, u, false, origin);
+  }
+  // back in time: the warnings are forgotten, so a later year away warns again
+  await D.prepare(`UPDATE pg_users SET warned_at = NULL, warn_n = NULL, idle_due = NULL WHERE warned_at IS NOT NULL AND ${lastOf("pg_users")} > warned_at`).run().catch(() => {});
   return { warned, deleted };
 }
 
 // Accounts whose owners asked for them to be deleted, a week on (functions/api/account), and not kept since
-export async function dueDeletions(env, D, t) {
-  const { results } = await D.prepare("SELECT id, handle FROM pg_users WHERE delete_at IS NOT NULL AND delete_at <= ? LIMIT 5").bind(t).all();
-  for (const u of results) { await removeAccount(env, u.id); await adminLog(env, "deleted", u.id, `@${u.handle}`).catch(() => {}); }
+// (and a last email to say it's done, to an address that was shown to be theirs)
+export async function dueDeletions(env, D, t, origin) {
+  const { results } = await D.prepare("SELECT id, handle, name, email, email_ok FROM pg_users WHERE delete_at IS NOT NULL AND delete_at <= ? LIMIT 5").bind(t).all();
+  for (const u of results) {
+    await removeAccount(env, u.id); await adminLog(env, "deleted", u.id, `@${u.handle}`).catch(() => {});
+    if (u.email_ok) await goneMail(env, u, true, origin);
+  }
   return results.length;
 }
 
@@ -186,7 +228,7 @@ export async function housekeeping(env, D, t, origin) {
   const purged = await keepMonth(env, D, t).catch((e) => { console.error("pigeon keep", e && e.message); return 0; });
   const files = await sweepFiles(env, D, t).catch((e) => { console.error("pigeon files", e && e.message); return 0; });
   const accounts = await idleAccounts(env, D, t, origin).catch((e) => { console.error("pigeon idle", e && e.message); return {}; });
-  const asked = await dueDeletions(env, D, t).catch((e) => { console.error("pigeon deletions", e && e.message); return 0; });
+  const asked = await dueDeletions(env, D, t, origin).catch((e) => { console.error("pigeon deletions", e && e.message); return 0; });
   return { purged, files, ...accounts, asked };
 }
 

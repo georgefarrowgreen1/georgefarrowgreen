@@ -16,6 +16,8 @@
 //   POST /api/account/export          everything kept with the account that can be read, as a file
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
+//   POST /api/account/secure          "This wasn't me", from an email about a change: every device out, a reset link sent
+//   POST /api/account/email/undo      a new email undone, from the old address's link (7 days): put back, a reset link sent
 //   POST /api/account/handoff         signed in by a code from Chat (good once, for a minute): to edit your profile
 //   POST /api/account/handback        a sign-in made here for an app that sent you here, handed back to it: a code (good
 //                                     once, for two minutes, and only in the tab that asked: functions/_handback.js)
@@ -33,7 +35,7 @@
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf, pace } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail, markWrote } from "../../_account.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail, markWrote, whereFrom, secureButton, oneLink, useLink } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount, isAuth } from "../../_acctapp.js";
@@ -45,6 +47,7 @@ import { prefsOf, savePrefs, pushTo } from "../../_notify.js";
 import { morningOf, setMorningFor } from "../../_fitpush.js";
 import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap, holdings as marketHoldings, isaOf, mkdb } from "../../_markets.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
+import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
@@ -333,6 +336,19 @@ async function allActs(env, id) {
 }
 // a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
 const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
+// …and one about a change to the account, with "This wasn't me" on it (functions/_account.js secureButton: a page that
+// signs out every device and sends a reset link), its link made only if the email's going
+const tellSecure = (env, u, request, mail, origin) => (async () => {
+  if (!emailReady(env) || (!mail.to && !u.email_ok)) return;
+  await accountMail(env, u, { ...mail, button: await secureButton(env, u, request) }, origin);
+})().catch(() => {});
+// A reset link's email (asked for with "Forgot password?", or sent by "This wasn't me" and by undoing a new email),
+// saying where it was asked from
+const resetMail = (env, request, u, token, { to = u.email, line = "someone asked to reset your password. Choose a new one with the button below.",
+  after = "Didn’t ask? Ignore this email and your password stays the same." } = {}) => accountMail(env, u, {
+  icon: "key", title: "Reset your password", subject: "Reset your password", to, line, after,
+  pill: ["link", "Works once, for 1 hour"], rows: [["Asked from", whereFrom(request), "phone"]],
+  button: { label: "Choose a new password", url: `${authOf(request, env)}/#reset=${token}` } }, linkOrigin(request));
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
 const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin.replace("//auth.", "//account.") : ACCOUNT_APP);
 // (a reset link's: the sign-in page's, where it's asked for)
@@ -440,10 +456,7 @@ const ROUTES = {
   // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
   "POST reset/request": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
-    return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
-      icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
-      line: "someone asked to reset the password for your inflite.ai account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
-      pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${authOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
+    return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => resetMail(env, request, u, token).catch(() => {})));
   },
   "POST reset/check": async ({ request, env }) => {
     sameOrigin(request);
@@ -457,8 +470,9 @@ const ROUTES = {
     sameOrigin(request);
     const { u, kept } = await completeReset(env, request, await body(request));
     waitUntil(logEvent(env, u.id, "reset", request));
-    waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
-      rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"], ["Passkeys", "Removed: add one again in Sign-in and security"]] }, linkOrigin(request)));
+    waitUntil(tellSecure(env, u, request, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "your password was changed with a reset link, and every other device was signed out.",
+      notice: { tone: "yellow", lead: "Passkeys were removed.", text: "Add one again in Sign-in and security to sign in without your password." },
+      rows: [["Your messages", kept ? "Kept" : "A new key: older ones can’t be opened", "lock"], ["Changed on", whereFrom(request), "phone"]] }, linkOrigin(request)));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     return withKnown(await withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash), request, env, u);
   },
@@ -509,10 +523,7 @@ const ROUTES = {
       .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
     if (r.meta?.changes) {
       waitUntil(logEvent(env, u.id, "upgrade", request));
-      waitUntil(tell(env, u, { icon: "key", title: "Your password’s protection was strengthened", subject: "Your password’s protection was strengthened",
-        line: "your account’s password is now kept with a stronger kind of protection.",
-        // (not "change your password": that needs the password as it is now, which, if it wasn't them, someone else chose)
-        after: "If you didn’t just sign in, someone may have set a password of their own: get a reset link with “Forgot password?” at account.inflite.ai. A reset signs out every other device." }, linkOrigin(request)));
+      // (no email: it's housekeeping the person didn't do, and a sign-in from a device we don't know has its own)
     }
     return json({ ok: true, salt: b.salt });
   },
@@ -533,7 +544,8 @@ const ROUTES = {
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
-    waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
+    waitUntil(tellSecure(env, u, request, { icon: "key", title: "Your password was changed", line: "your password was just changed, and every other device was signed out.", subject: "Your password was changed",
+      rows: [["Changed on", whereFrom(request), "phone"]] }, linkOrigin(request)));
     // (and this device, which has just shown it knows the password, given a new word that it's signed in to the account
     // before, as the one it had counts for nothing with the new password: functions/_account.js withKnown)
     const now = { ...u, salt: b.salt, pw_at: t, pw_leaked: 0, pw_checked_at: ck, email_new: null, email_new_at: null };
@@ -582,7 +594,7 @@ const ROUTES = {
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
     await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count, rp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now(), count, newRpFor(request, env)).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
-    waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
+    waitUntil(tellSecure(env, u, request, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account", rows: [["Added on", whereFrom(request), "phone"]] }, linkOrigin(request)));
     return json(await view(env, u));
   },
   // a passkey's own copy of the key to Chat's messages, locked with what only that passkey can work out (its PRF
@@ -606,6 +618,9 @@ const ROUTES = {
     if (pk) {
       await D.prepare("DELETE FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id || ""), u.id).run();
       waitUntil(logEvent(env, u.id, "passkey-remove", request, pk.label || pk.provider || "Passkey"));
+      const name = pk.provider || pk.label || "Passkey";
+      waitUntil(tellSecure(env, u, request, { icon: "passkey", pill: ["passkey", name], title: "A passkey was removed", subject: "A passkey was removed from your account",
+        line: `the passkey “${name}” was removed, so it can’t sign in to your account any more.`, rows: [["Removed on", whereFrom(request), "phone"]] }, linkOrigin(request)));
     }
     return json(await view(env, u));
   },
@@ -694,8 +709,8 @@ const ROUTES = {
     await sendLink(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
       after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
     // (to the address as it is, confirmed or not, with how to call it off)
-    waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
-      after: "If this wasn’t you, sign in now and change your password. That calls the change off and signs out every other device.", to: u.email, pill: ["mail", hide(email)] }, origin));
+    waitUntil(tellSecure(env, u, request, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
+      after: "If this wasn’t you, tap below: that calls the change off, signs out every device and sends you a reset link.", to: u.email, pill: ["mail", hide(email)] }, origin));
     waitUntil(logEvent(env, u.id, "email-change-asked", request, hide(email)));
     return json(await view(env, { ...u, email_new: email, email_new_at: t }));
   },
@@ -716,9 +731,13 @@ const ROUTES = {
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
     // (and what to do if it wasn't them: password sign-ins and resets go by the new address now, so the site's admin)
-    waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
-      after: "If this wasn’t you, you can no longer sign in or reset your password with this address. Ask the person who runs the site for a reset link, and you can put your email back.",
-      to: u.email, pill: ["mail", hide(u.email_new)] }, linkOrigin(request)));
+    // (with a link that puts it back, for 7 days: POST email/undo)
+    waitUntil((async () => {
+      const undo = await oneLink(env, u, "undo", JSON.stringify({ old: u.email, now: u.email_new }));
+      await accountMail(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}, so emails about it go there from now on.`,
+        after: "If this wasn’t you, undo it: your email goes back to this address, every device is signed out, and we’ll send you a reset link.",
+        to: u.email, pill: ["mail", hide(u.email_new)], rows: [["Undo link works", "For 7 days", "link"]], button: { label: "Undo this change", url: `${pageOf(request, env)}/#undo=${undo}` } }, linkOrigin(request));
+    })().catch(() => {}));
     // (opened in a browser signed in to the account: its word that it's signed in to it before given anew, for the new
     // address, as the one it had is named by the old: functions/_account.js withKnown)
     const res = json({ ok: true, email: u.email_new });
@@ -1039,6 +1058,58 @@ const ROUTES = {
     await D.prepare("UPDATE pg_users SET delete_at = NULL, delete_code = NULL WHERE id = ?").bind(u.id).run();
     waitUntil(logEvent(env, u.id, "delete-cancelled", request));
     return json({ ok: true, handle: u.handle });
+  },
+
+  // ---- "This wasn't me", from an email about a change to the account (functions/_account.js secureButton): every
+  // device signed out, a new email waiting called off, any passkey added since just before the email removed, and a
+  // reset link sent to the account's email. Only the link's needed: all it does is lock the account down for its owner ----
+  "POST secure": async ({ request, env, waitUntil }) => {
+    sameOrigin(request);
+    await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
+    const token = String((await body(request)).token || "");
+    if (!tokenOk(token)) throw new HttpError(400, "This link isn’t valid.");
+    const row = await useLink(env, token, "secure");
+    if (!row) throw new HttpError(400, "This link has already been used, or it’s more than 7 days old. To secure your account, use “Forgot password?” on the sign-in page.");
+    const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
+    if (!u) throw new HttpError(400, "This account no longer exists.");
+    await D.batch([
+      D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
+      D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id),
+      D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, row.created_at - 10 * 60e3),
+    ]);
+    waitUntil(logEvent(env, u.id, "secured", request));
+    let sent = false;
+    if (u.email && emailReady(env)) sent = await resetMail(env, request, u, await createReset(env, u.id, "user", RESET_TTL_EMAIL), {
+      line: "you told us a change to your account wasn’t you, so every device was signed out. Choose a new password to sign in again.",
+      after: "Anything added since the change, like a passkey, was removed too." }).then(() => true, () => false);
+    return withoutSession(json({ ok: true, email: sent ? hide(u.email) : null }), request, env);
+  },
+  // ---- an email change undone, from the old address's link (good for 7 days): the old address back, every device signed
+  // out, any passkey added in the hour before removed, and a reset link sent to it ----
+  "POST email/undo": async ({ request, env, waitUntil }) => {
+    sameOrigin(request);
+    await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
+    const token = String((await body(request)).token || "");
+    if (!tokenOk(token)) throw new HttpError(400, "This link isn’t valid.");
+    const row = await useLink(env, token, "undo");
+    if (!row) throw new HttpError(400, "This link has already been used, or it’s more than 7 days old. Ask the person who runs the site for help.");
+    let old = ""; try { old = String(JSON.parse(row.data || "{}").old || ""); } catch (_) {}
+    const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
+    if (!u || !EMAIL_RE.test(old)) throw new HttpError(400, "This account no longer exists.");
+    if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ? AND id != ?").bind(old, u.id).first()) throw new HttpError(409, "That email is now used by another account.");
+    try {
+      await D.batch([
+        D.prepare("UPDATE pg_users SET email = ?, email_ok = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL, email_code = NULL WHERE id = ?").bind(old, Date.now(), u.id),
+        D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
+        D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
+        D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, row.created_at - 60 * 60e3),
+      ]);
+    } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
+    waitUntil(logEvent(env, u.id, "email-undone", request, hide(old)));
+    const back = { ...u, email: old, email_ok: Date.now() };
+    const sent = emailReady(env) ? await resetMail(env, request, back, await createReset(env, u.id, "user", RESET_TTL_EMAIL), {
+      line: "your account’s email is back to this address, and every device was signed out. Choose a new password to sign in again." }).then(() => true, () => false) : false;
+    return withoutSession(json({ ok: true, email: hide(old), sent }), request, env);
   },
 };
 

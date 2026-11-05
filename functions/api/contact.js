@@ -66,7 +66,8 @@ export async function onRequestPost({ request, env }) {
     catch (e) { if (!(e instanceof HttpError && e.status === 429)) throw e; return saved ? json({ ok: true }) : json({ error: BUSY }, 429); }
   }
 
-  const subject = `New enquiry from ${name} via your site`;
+  // (one wording, the subject's and the email's title alike)
+  const subject = `A message from ${name} via your site`;
 
   // --- Web3Forms (preferred: no domain verification) ---
   if (env.WEB3FORMS_KEY) {

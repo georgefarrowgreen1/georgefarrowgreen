@@ -40,8 +40,8 @@ await signInChat(G2.p, K.URL, { email: 'george@example.com' }); await G2.p.waitF
 let push = null; for (let k = 0; k < 20 && !push; k++) { await G2.p.waitForTimeout(400); push = await K.lastPush(gKeys, t0); }
 ok(push && push.msg.title === 'New sign-in' && /signed in on .+(Android|iPhone|Safari|Chrome)/.test(push.msg.body), 'the first phone is told of the new sign-in', push?.msg.body);
 let mail = null; for (let k = 0; k < 20 && !mail; k++) { await G2.p.waitForTimeout(300); mail = mails().slice(m0).find((m) => /new sign-in/i.test(m.subject || '')); }
-ok(mail && mail.from === 'Account <account@georgefarrowgreen.com>' && /Signed in to: Chat/.test(mail.text || '') && /Signed-in devices/.test(mail.text || '') && /@geo/.test(mail.text || ''),
-  'and an email, from the account (the same address, its own name), says where and how to sign it out', `${mail?.from} · ${mail?.subject}`);
+ok(mail && mail.from === 'InFlite Account <account@georgefarrowgreen.com>' && /Signed in to: Chat/.test(mail.text || '') && /This wasn’t me: .+#secure=/.test(mail.text || '') && /@geo/.test(mail.text || ''),
+  'and an email, from the account (the same address, its own name), says where, with This wasn’t me (a device it hasn’t seen)', `${mail?.from} · ${mail?.subject}`);
 
 // ---- 7. approximate location ----
 const where = () => one("SELECT lat, lon, loc_approx FROM pg_users WHERE handle = 'geo'")[0];
