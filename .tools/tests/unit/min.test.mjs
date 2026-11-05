@@ -19,3 +19,14 @@ test("the server sends the minified copy for exactly those files", () => {
   for (const f of ["/pigeon/sw.js", "/weather/vendor/maplibre-gl.mjs", "/weather/index.html", "/min/manifest.json"])
     assert.ok(!MINIFIED.test(f) || f.endsWith("/sw.js"), `${f} would be sent minified`);
 });
+
+// (the Workers' build knows which copies are current and bakes the list in; the repository's own is "not known", so the
+// local test stack, and a copy built any other way, check each file as before)
+test('which copies are current: worked out at the Workers’ build, "not known" as kept', async () => {
+  const { readFileSync } = await import('node:fs');
+  const at = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
+  assert.match(at('functions/_minfresh.js'), /^export const FRESH = null;$/m, 'kept as null: the build writes the list, then puts this back');
+  const b = at('.tools/workers/build.mjs');
+  assert.match(b, /finally \{ writeFileSync\(FRESH_JS, was\); \}/, 'the build puts it back whatever happens');
+  assert.match(at('functions/_min.js'), /if \(FRESH\) return FRESH\.has\(path\.slice\(1\)\);/);
+});

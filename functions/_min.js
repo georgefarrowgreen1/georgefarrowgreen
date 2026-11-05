@@ -3,6 +3,8 @@
 // original's fingerprint (min/manifest.json). A minified copy is sent only while it's still of the file as it is: one
 // that's changed since (the script not run again) is sent as it is, never an old copy in a new page.
 // Every app's files are read through this (assets(env).fetch, in place of env.ASSETS.fetch).
+import { FRESH } from "./_minfresh.js";
+
 export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
 const SKIP = /\/sw\.js$/;
 
@@ -18,6 +20,8 @@ function listOf(env, url) {
 }
 // (is the minified copy still of the file as it is? Worked out once per copy of the server, for each file)
 function current(env, url, path) {
+  // (known at the build: .tools/workers/build.mjs)
+  if (FRESH) return FRESH.has(path.slice(1));
   const fresh = of(env).fresh;
   let p = fresh.get(path);
   if (!p) {

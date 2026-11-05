@@ -3,13 +3,25 @@
 // the static assets (env.ASSETS), as on Pages. → .tools/workers/dist/index.js (not kept in the repository)
 //   node .tools/workers/build.mjs
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, readFileSync } from "node:fs";
+import { existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 const ROOT = new URL("../../", import.meta.url).pathname, OUT = `${ROOT}.tools/workers/dist`;
 const local = `${ROOT}.tools/tests/node_modules/.bin/wrangler`;
 const [cmd, pre] = existsSync(local) ? [local, []] : ["npx", ["--yes", "wrangler@4.149.0"]];
 const date = /compatibility_date\s*=\s*"([^"]+)"/.exec(readFileSync(`${ROOT}wrangler.toml`, "utf8"))?.[1];
-const r = spawnSync(cmd, [...pre, "pages", "functions", "build", "--outdir", OUT, "--compatibility-date", date], { cwd: ROOT, stdio: "inherit" });
+// (which minified copies are still of their files, known now, for the Worker: functions/_minfresh.js, put back after)
+const FRESH_JS = `${ROOT}functions/_minfresh.js`, was = readFileSync(FRESH_JS, "utf8");
+const manifest = existsSync(`${ROOT}min/manifest.json`) ? JSON.parse(readFileSync(`${ROOT}min/manifest.json`, "utf8")) : {};
+const fresh = Object.entries(manifest).filter(([f, sum]) => existsSync(`${ROOT}min/${f}`) && existsSync(`${ROOT}${f}`)
+  && createHash("sha256").update(readFileSync(`${ROOT}${f}`)).digest("hex") === sum).map(([f]) => f).sort();
+const stale = Object.keys(manifest).length - fresh.length;
+let r;
+try {
+  writeFileSync(FRESH_JS, was.replace(/^export const FRESH = null;$/m, `export const FRESH = new Set(${JSON.stringify(fresh)});`));
+  r = spawnSync(cmd, [...pre, "pages", "functions", "build", "--outdir", OUT, "--compatibility-date", date], { cwd: ROOT, stdio: "inherit" });
+} finally { writeFileSync(FRESH_JS, was); }
 if (r.status !== 0) process.exit(r.status || 1);
+console.log(`Minified copies sent: ${fresh.length}${stale ? ` (${stale} out of date, sent as they are: node .tools/minify.mjs)` : ""}`);
 const js = `${OUT}/index.js`, size = statSync(js).size, gz = gzipSync(readFileSync(js)).length;
 console.log(`The site's Worker: ${js} (${(size / 1048576).toFixed(2)} MB, ${(gz / 1048576).toFixed(2)} MB gzipped; a Worker may be 10 MB gzipped)`);
