@@ -74,3 +74,25 @@ jobs' fallback to `georgefarrowgreen.pages.dev`, and keeping the secrets (the Wo
   working, and a copy of the database alone is still useless.
 - **The scheduled jobs:** `tickHost` and `TICK_HOST`/`TICK_SITE`, so the jobs can call the Workers' address instead
   of `georgefarrowgreen.pages.dev`.
+
+## Speed (5 November)
+
+- **Direct links between the Workers** (service bindings), in place of out through the internet and back: Today and
+  Mail reach `inflite-apps` (`APPS`); Today reaches Mail (`MAIL`); `inflite-apps` and `gfg` reach Mail and Today
+  (`MAIL_APP`, `TODAY_APP`: `functions/_sites.js` `siteFetch`). A Worker's fetch to its own zone also skips the zone's
+  routes, so these are needed, not only quicker.
+- **A new server copy's first request without trips to the database:** the schema's fingerprint and the kept secrets'
+  locked text are read from KV's nearest copy (`site:schema_fp`, `site:kept_secrets`), the database only when KV
+  hasn't them. On a quiet site most requests start a new copy, and the database is in one place.
+- **Minified copies:** which are current is worked out at the build (`build.mjs` → `functions/_minfresh.js`), not by
+  reading and fingerprinting each file in every new copy.
+
+Next, if wanted (each needs a look in the dashboard first):
+- **Where the database is:** Storage & Databases → D1 → bio-db shows its location. Every request that reads it waits
+  a round trip there; if it's far from where people are (it should be Western Europe), a new database there is the fix.
+- **D1 read replication:** copies of the database near each visitor for reads (Settings → Read replication), with the
+  site's reads moved onto D1's Sessions API so a visitor never reads older than what they wrote. The biggest win left
+  for anyone far from the database, and a careful change (every read).
+- **Smart Placement** (`"placement": { "mode": "smart" }`): runs the Worker near the database when that's quicker.
+  Worth trying only once the database's location is known: with every request through the Worker, it can slow pages
+  that don't touch the database.
