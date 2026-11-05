@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.78";
-export const NEWS = "A new passkey belongs to inflite.ai itself: Chat's lock opens with no signal";
+export const BUILD = "1.79";
+export const NEWS = "Icons back where they were missing at inflite.ai (Chats’ send and voice buttons, the Chats crumb, Info), the tab bar fully away in a chat, and your own view-once photos say who’s opened them";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

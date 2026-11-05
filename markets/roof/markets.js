@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.06";
-export const NEWS = "Signing in from a browser comes straight back: no code to swap, the sign-in's already shared";
+export const BUILD = "2.07";
+export const NEWS = "Icons back where they were missing at inflite.ai (Chats’ send and voice buttons, the Chats crumb, Info), the tab bar fully away in a chat, and your own view-once photos say who’s opened them";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

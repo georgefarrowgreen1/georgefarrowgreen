@@ -93,7 +93,7 @@ function build(host, ctx) {
   };
   function bubbleEl(m) {
     const mine = m.from === "me", fl = m.flight, w = who(), group = w.kind === "group";
-    const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0].join("|");
+    const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0, m.opened || 0].join("|");
     const row = el("div", { class: `ch-m${mine ? " me" : " them"}`, data: { k: "msg", id: m.id, from: m.from, mid: m.id, sig } });
     if (m.kind === "system" || m.recalled) {
       row.className = "ch-m sys";
@@ -117,8 +117,14 @@ function build(host, ctx) {
     if (group && !mine) b.append(el("span", { class: "ch-from", text: nameOf(m.from) }));
     if (m.replyTo) b.append(el("span", { class: "ch-quote", text: "Reply" }));
     switch (m.kind) {
-      case "photo": case "viewonce":
-        b.append(el("button", { type: "button", class: "ch-photo", data: { act: "view", id: m.id }, text: m.kind === "viewonce" ? (mine ? "Photo · view once" : "View photo, once") : "Photo" }));
+      case "photo":
+        b.append(el("button", { type: "button", class: "ch-photo", data: { act: "view", id: m.id }, text: "Photo" }));
+        break;
+      case "viewonce":
+        // (as the full app has it: yours, what became of it, never to open (it isn't kept on this phone); theirs, a button
+        // until it's opened, then only that it was)
+        if (mine || m.opened) b.append(el("span", { class: "ch-photo done", text: mine ? (group && m.opened ? `Opened by ${m.opened}` : m.opened ? "Opened" : "Photo · view once") : "Opened" }));
+        else b.append(el("button", { type: "button", class: "ch-photo", data: { act: "view", id: m.id }, text: "View photo, once" }));
         break;
       case "voice":
         b.append(el("button", { type: "button", class: "ch-vn", data: { act: "play", id: m.id }, text: `Voice pigeon${m.media?.secs ? ` · ${Math.floor(m.media.secs / 60)}:${String(Math.round(m.media.secs % 60)).padStart(2, "0")}` : ""}` }));

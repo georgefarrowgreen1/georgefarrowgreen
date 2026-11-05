@@ -92,6 +92,8 @@
 .m-chats .ch-quote { display: block; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid currentColor; opacity: 0.75; font-size: 13.5px; }
 .m-chats .ch-ft { display: block; margin-top: 3px; font-size: 12px; opacity: 0.8; font-variant-numeric: tabular-nums; }
 .m-chats .ch-photo, .m-chats .ch-vn { display: block; min-width: 160px; min-height: 44px; margin: -2px -6px 4px; padding: 10px 12px; border: 0; border-radius: 16px; background: var(--glass-ctl); color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+/* (a view-once photo that can't be opened here: yours, or theirs once opened. What became of it, not a button) */
+.m-chats .ch-photo.done { color: var(--label-2); font-style: italic; cursor: default; }
 .m-chats .ch-card { margin: 2px -4px 4px; }
 .m-chats .ch-rx { display: flex; gap: 4px; margin: -4px 8px 2px; }
 .m-chats .ch-r { padding: 1px 6px; border-radius: var(--r-pill, 999px); background: var(--glass-strong); box-shadow: var(--edge); font-size: 13px; }

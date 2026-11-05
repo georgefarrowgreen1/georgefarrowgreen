@@ -944,6 +944,8 @@ function msgView(chatId, m, g) {
     if (pp?.card) v.card = pp.card;
     if (p.p || p.v) v.media = { ref: m.id, kind: p.v ? "voice" : "photo", ...(p.v && Number.isFinite(p.v.d) ? { secs: Math.round(p.v.d / 100) / 10 } : {}) };
   } else if (S.plain.get(m.id)?.bad && !hidden) v.kind = "system";
+  // (a view-once photo: how many have opened it, yours (a group's, each one who has), or whether you have, theirs)
+  if (v.kind === "viewonce") v.opened = mine ? (g ? (m.flock || []).filter((x) => x.viewedAt).length : m.viewedAt ? 1 : 0) : m.viewedAt ? 1 : 0;
   if (m.vanish && Number.isFinite(m.readAt)) v.expires = m.readAt + m.vanish;
   if (typeof m.postmark === "string") v.postmark = m.postmark;
   return v;

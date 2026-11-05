@@ -281,7 +281,7 @@ export function openView(ctx, msgId) {
   const x = k.msgOf(msgId), ref = x?.m?.media?.ref || msgId;
   Promise.all([k.svc.call("photo", ref), k.fw.lazy((q) => import("./media.js" + q))]).then(([blob, M]) => {
     if (h.closed) return;
-    if (!blob) { box.replaceChildren(ui.empty({ title: "This photo isn’t on this phone any more" })); return; }
+    if (!blob) { box.replaceChildren(ui.empty({ title: "This photo isn’t on this phone any more", body: "A photo sent to be seen once is opened once, then let go of, and one that’s been kept 30 days goes too." })); return; }
     url = M.blobUrl(blob);
     box.replaceChildren(el("img", { src: url.url, alt: "Photo", class: "chs-photo" }), el("p", { class: "chs-foot", text: "Decrypted on this phone." }));
   }, (e) => { if (!h.closed) box.replaceChildren(ui.error({ title: "Can’t open the photo", body: e?.why === "offline" ? "No signal." : "Try again in a moment." })); });
