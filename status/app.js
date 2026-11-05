@@ -108,6 +108,9 @@
   function row(s, keys) {
     const el = document.createElement("div"); el.className = "item"; el.dataset.svc = s.id;
     const up = s.up90 == null ? "" : `${s.up90.toFixed(2)}%`;
+    // (uptime's period: 90 days once there are, else since the first day checked)
+    const first = s.days.findIndex(Boolean), full = first === 0 && s.days.filter(Boolean).length >= 89;
+    const since = first < 0 ? "" : full ? "90 days" : `since ${dm(new Date(`${keys[first]}T12:00:00`))}`;
     el.innerHTML = `<div class="row" role="button" tabindex="0" aria-expanded="false" aria-label="${esc(`${s.name}: ${SAY[s.s]}`)}">
         ${icon(s.id)}
         <span class="nm"><b>${esc(s.name)}</b><small>${esc(s.address)}</small></span>
@@ -115,9 +118,17 @@
         <span class="bars" aria-hidden="true">${s.days.map((d, i) => `<i data-s="${d ? esc(d.s) : "none"}" data-i="${i}"></i>`).join("")}</span>
       </div>
       <div class="more"><div><div class="inner">
-        <div class="facts num"><div><span>Response now</span><b>${s.s === "down" ? "No answer" : s.ms != null ? `${s.ms} ms` : "–"}</b></div><div><span>Uptime</span><b>${up || "–"}</b></div><div><span>${s.version ? "Version" : "Address"}</span><b>${esc(s.version || s.address)}</b></div></div>
+        <div class="stats num">
+          <div data-s="${esc(s.s)}"><span>Now</span><b>${s.s === "down" ? "No answer" : s.ms != null ? `${s.ms}<small> ms</small>` : esc(SAY[s.s])}</b><em>${s.at ? `at ${esc(hm(s.at))}` : "&nbsp;"}</em></div>
+          <div><span>Typical</span><b class="typ">–</b><em class="typw">&nbsp;</em></div>
+          <div><span>Uptime</span><b>${up || "–"}</b><em>${since ? esc(since) : "&nbsp;"}</em></div>
+        </div>
         ${(s.checks || []).length > 1 ? `<div class="checks num">${s.checks.map((c) => `<div data-s="${esc(c.s)}"><span class="dot"></span><span>${esc(c.k)}</span><em>${c.s === "down" ? esc(c.why || "Failing") : c.at ? `ran ${esc(hm(c.at))}` : c.ms != null ? `${c.ms} ms` : esc(SAY[c.s])}</em></div>`).join("")}</div>` : ""}
-        <div class="day"></div>
+        <div class="rt">
+          <div class="rt-h"><b>Response time</b><span class="rt-when"></span></div>
+          <div class="day"></div>
+        </div>
+        <p class="meta num">${s.version ? `Version ${esc(s.version)} · ` : ""}${esc(s.address)}</p>
       </div></div></div>`;
     const r = el.querySelector(".row");
     const flip = (open) => { el.classList.toggle("open", open); r.setAttribute("aria-expanded", String(open)); if (open) { opened.add(s.id); chart(el, s); } else opened.delete(s.id); };
@@ -130,45 +141,79 @@
     return el;
   }
   function tipAt(e, key, d) {
+    tipShow(e.clientX, e.clientY, `${esc(dayName(key))}<span>${!d ? "Not checked" : d.s === "ok" ? `No problems · ${d.up}%` : d.s === "warn" ? `Slow or briefly down · ${d.up}%` : `Down for a while · ${d.up}%`}</span>`);
+  }
+  function tipShow(cx, cy, html) {
     const tip = $("tip");
-    tip.innerHTML = `${esc(dayName(key))}<span>${!d ? "Not checked" : d.s === "ok" ? `No problems · ${d.up}%` : d.s === "warn" ? `Slow or briefly down · ${d.up}%` : `Down for a while · ${d.up}%`}</span>`;
-    tip.hidden = false;
+    tip.innerHTML = html; tip.hidden = false;
     const w = tip.offsetWidth;
-    tip.style.left = `${Math.min(innerWidth - w - 12, Math.max(12, e.clientX - w / 2))}px`; tip.style.top = `${e.clientY - tip.offsetHeight - 14}px`;
+    tip.style.left = `${Math.min(innerWidth - w - 12, Math.max(12, cx - w / 2))}px`; tip.style.top = `${Math.max(8, cy - tip.offsetHeight - 14)}px`;
   }
 
-  // An open row's 24 hours: its response times, and where it was down
+  // An open row's response times: the last 24 hours, or since checks began where that's less, every check a point, and
+  // where it didn't answer shaded. Drawn at the width it's shown at; touch or point along it for any moment's
   async function chart(el, s) {
     const box = el.querySelector(".day");
     const have = days.get(s.id);
-    if (have && Date.now() - have.got < 60e3) { box.innerHTML = svgOf(s, have.d); return; }
-    if (!have) box.innerHTML = '<p class="chart-note">Loading the last 24 hours…</p>';
+    if (have && Date.now() - have.got < 60e3) return draw24(el, s, have.d);
+    if (!have) box.innerHTML = '<p class="chart-note">Loading…</p>';
     try {
       const r = await fetch(`/api/status/day?svc=${encodeURIComponent(s.id)}`);
       if (!r.ok) throw new Error();
       const d = await r.json();
       days.set(s.id, { d, got: Date.now() });
-      box.innerHTML = svgOf(s, d);
-    } catch (_) { if (!have) box.innerHTML = '<p class="chart-note">The last 24 hours couldn’t be loaded.</p>'; }
+      draw24(el, s, d);
+    } catch (_) { if (!have) box.innerHTML = '<p class="chart-note">The response times couldn’t be loaded.</p>'; }
   }
-  function svgOf(s, d) {
-    const pts = d.points.filter((p) => p[1] !== "none");
-    if (pts.length < 2) return '<p class="chart-note">Not enough checks yet to draw the last 24 hours.</p>';
-    const W = 600, H = 112, L = 40, B = 18, T = 6, from = d.from, to = d.to;
-    const top = Math.max(100, Math.ceil(Math.max(...pts.map((p) => p[2] || 0)) / 50) * 50);
-    const x = (t) => L + ((t - from) / (to - from)) * (W - L - 8), y = (v) => T + (1 - Math.min(v, top) / top) * (H - T - B);
-    let line = "", pen = false, gaps = "";
+  function draw24(el, s, d) {
+    const box = el.querySelector(".day"), when = el.querySelector(".rt-when"), typ = el.querySelector(".typ");
+    const pts = d.points.filter((p) => p[1] !== "none"), known = pts.filter((p) => p[2] != null).map((p) => p[2]).sort((a, b) => a - b);
+    const mid = known.length ? known[Math.floor(known.length / 2)] : null, worst = known.length ? known[known.length - 1] : null;
+    const downs = pts.filter((p) => p[1] === "down").length;
+    if (typ) typ.innerHTML = mid != null ? `${mid}<small> ms</small>` : "–";
+    const typw = el.querySelector(".typw");
+    if (pts.length < 2) { when.textContent = ""; box.innerHTML = '<p class="chart-note">A line appears after a few more checks, every five minutes.</p>'; return; }
+    // (the span: the last 24 hours, or from the first check where that's later)
+    const to = d.to, from = Math.max(d.from, pts[0][0] - 5 * 60e3), hrs = (to - from) / 3600e3;
+    when.textContent = hrs > 23 ? "Last 24 hours" : `Since ${hm(from)}`;
+    if (typw) typw.textContent = hrs > 23 ? "last 24 hours" : `since ${hm(from)}`;
+    const W = Math.max(260, Math.round(box.clientWidth || 600)), H = 132, T = 18, B = 22, L = 2, R = 6;
+    const top = Math.max(100, Math.ceil((worst || 0) * 1.1 / 50) * 50);
+    const x = (t) => L + ((t - from) / (to - from)) * (W - L - R), y = (v) => T + (1 - Math.min(v, top) / top) * (H - T - B);
+    let line = "", area = "", seg = [], gaps = "";
+    const close = () => { if (seg.length > 1) { line += `M${seg.join("L")}`; area += `M${seg[0].split(",")[0]},${y(0)}L${seg.join("L")}L${seg[seg.length - 1].split(",")[0]},${y(0)}Z`; } else if (seg.length === 1) line += `M${seg[0]}l0.1,0`; seg = []; };
+    const step = Math.max(2, x(from + 5 * 60e3) - x(from));
     for (const [t, st, ms] of pts) {
-      if (st === "down" || ms == null) { if (st === "down") gaps += `<rect class="gap" x="${x(t - 150e3).toFixed(1)}" y="${T}" width="${Math.max(2, x(t + 150e3) - x(t - 150e3)).toFixed(1)}" height="${H - T - B}"/>`; pen = false; continue; }
-      line += `${pen ? "L" : "M"}${x(t).toFixed(1)},${y(ms).toFixed(1)}`; pen = true;
+      if (st === "down" || ms == null) { close(); if (st === "down") gaps += `<rect class="gap" x="${(x(t) - step / 2).toFixed(1)}" y="${T}" width="${step.toFixed(1)}" height="${H - T - B}" rx="2"/>`; continue; }
+      seg.push(`${x(t).toFixed(1)},${y(ms).toFixed(1)}`);
     }
-    const ticks = [0, top / 2, top].map((v) => `<line class="grid" x1="${L}" x2="${W - 8}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 8}" y="${y(v) + 3}" text-anchor="end">${v}ms</text>`).join("");
-    const hours = [0, 6, 12, 18, 24].map((h) => { const t = from + h * 3600e3; return `<text x="${x(t)}" y="${H - 3}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h === 24 ? "Now" : esc(hm(t))}</text>`; }).join("");
+    close();
+    const id = `rt-${esc(s.id)}`;
+    const grid = [top, top / 2].map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="yl" x="${L + 2}" y="${y(v) - 5}">${v} ms</text>`).join("") + `<line class="base" x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}"/>`;
+    const ticks = [from, from + (to - from) / 2, to].map((t, i) => `<text class="xl" x="${x(t)}" y="${H - 5}" text-anchor="${["start", "middle", "end"][i]}">${i === 2 ? "Now" : esc(hm(t))}</text>`).join("");
     const last = pts[pts.length - 1], end = last[1] !== "down" && last[2] != null ? `<circle class="end" cx="${x(last[0])}" cy="${y(last[2])}" r="3.5"/>` : "";
-    const known = pts.filter((p) => p[2] != null).map((p) => p[2]).sort((a, b) => a - b), mid = known.length ? known[Math.floor(known.length / 2)] : null;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(s.name)}: response time over the last 24 hours">${ticks}${gaps}<path class="line" d="${line}"/>${end}${hours}</svg>`
-      + `<p class="chart-note num">${mid != null ? `Typically ${mid} ms` : "Checked from inside"}${pts.some((p) => p[1] === "down") ? " · red where it didn’t answer" : ""}</p>`;
+    box.innerHTML = `<div class="plot"><svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`${s.name}: response time, ${when.textContent.toLowerCase()}; typically ${mid ?? "–"} ms`)}">`
+      + `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient></defs>`
+      + `${grid}${gaps}<path class="area" fill="url(#${id})" d="${area}"/><path class="line" d="${line}"/>${end}${ticks}`
+      + `<line class="cursor" x1="0" x2="0" y1="${T}" y2="${y(0)}" visibility="hidden"/><circle class="cdot" r="4" visibility="hidden"/></svg></div>`
+      + `<p class="chart-note num">${[worst != null ? `Slowest ${worst} ms` : "", downs ? `<span class="nd">No answer ${downs}×</span>` : "No missed checks"].filter(Boolean).join(" · ")}</p>`;
+    // (any moment's: the nearest check to where you touch or point)
+    const svgEl = box.querySelector("svg"), cur = svgEl.querySelector(".cursor"), dot = svgEl.querySelector(".cdot");
+    const at = (e) => {
+      const rc = svgEl.getBoundingClientRect(), t = from + ((e.clientX - rc.left) / rc.width) * (to - from);
+      let best = pts[0]; for (const p of pts) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+      const px = x(best[0]), down = best[1] === "down" || best[2] == null;
+      cur.setAttribute("x1", px); cur.setAttribute("x2", px); cur.setAttribute("visibility", "visible");
+      if (down) dot.setAttribute("visibility", "hidden"); else { dot.setAttribute("cx", px); dot.setAttribute("cy", y(best[2])); dot.setAttribute("visibility", "visible"); }
+      tipShow(rc.left + (px / W) * rc.width, rc.top + 10, `${esc(hm(best[0]))}<span>${down ? "No answer" : `${best[2]} ms${best[1] === "warn" ? " · slow" : ""}`}</span>`);
+    };
+    const off = () => { cur.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); $("tip").hidden = true; };
+    svgEl.addEventListener("pointermove", at); svgEl.addEventListener("pointerdown", at);
+    svgEl.addEventListener("pointerleave", off); svgEl.addEventListener("pointercancel", off);
   }
+  // (drawn again at the new width when the window's resized)
+  let rz = 0;
+  addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { for (const id of opened) { const el = document.querySelector(`.item[data-svc="${id}"]`), h = days.get(id); const sv = data?.services.find((x) => x.id === id); if (el && h && sv) draw24(el, sv, h.d); } }, 150); });
 
   // planned maintenance: going on now, or coming up in the next fortnight
   function maint(d) {

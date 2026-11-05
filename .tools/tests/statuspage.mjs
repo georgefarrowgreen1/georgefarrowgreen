@@ -56,7 +56,7 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   await p.locator('.item[data-svc="chat"] .row').click();
   await p.waitForFunction(() => { const d = document.querySelector('.item[data-svc="chat"] .day'); return d && d.textContent && !/Loading/.test(d.textContent); }, null, { timeout: 10000 }).catch(() => {});
   const day = await p.textContent('.item[data-svc="chat"] .day');
-  ok(/Not enough checks yet/.test(day), `${w} ${scheme}: Chat’s row open, its 24 hours (one check so far)`, day);
+  ok(/A line appears after a few more checks/.test(day), `${w} ${scheme}: Chat’s row open, its 24 hours (one check so far)`, day);
   const cks = await p.locator('.item[data-svc="chat"] .checks > div').allInnerTexts();
   ok(cks.length === 3 && /Answers/.test(cks[0]) && /Database and storage/.test(cks[1]) && /Chat notifications/.test(cks[2]), `${w} ${scheme}: and its checks: it answers, the database, its job`, cks.join(' | '));
   ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w} ${scheme}: nothing sideways`);
