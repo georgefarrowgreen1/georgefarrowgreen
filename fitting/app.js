@@ -197,17 +197,20 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(_){} };
 // (an index of the fits here, kept with every write: the fits list and the returning-rider check read it, never every
 // fit's photos. m: something measured after, a real fit rather than one only started)
 const IDX = 'pr-fitting-index';
+// (a fit with nothing in it yet: no rider, no bike, nothing measured, no photos. Not sent to the Drive)
+const blankFit = r => !['first','last','email','bike'].some(k => filled(r.v[k])) && !Object.keys(r.v).some(k => /_(pre|post)$/.test(k) && filled(r.v[k])) && !(r.photos || []).length;
 const summary = r => ({id:r.id, updated:r.updated || 0, fit:r.fit, follow:r.follow || null,
+  dfolder:r.dfolder || null, djson:r.djson || null, dsynced:r.dsynced || 0, pend:(r.photos || []).some(p => p.src && !p.drive), b:blankFit(r),
   m:Object.keys(r.v).some(k => k.endsWith('_post') && filled(r.v[k])), v:Object.fromEntries(['first','last','email','bike','date','fitter'].map(k => [k, r.v[k] || '']))});
 let INDEX = null;
 async function index(){
   if (INDEX) return INDEX;
-  try { const j = JSON.parse(lsGet(IDX) || 'null'); if (j && j.n === 2){ INDEX = new Map(j.fits.map(f => [f.id, f])); return INDEX; } } catch(_){}
+  try { const j = JSON.parse(lsGet(IDX) || 'null'); if (j && j.n === 4){ INDEX = new Map(j.fits.map(f => [f.id, f])); return INDEX; } } catch(_){}
   INDEX = new Map();
   try { for (const r of await tx('readonly', st => st.getAll())) if (r && r.v) INDEX.set(r.id, summary(r)); } catch(_){}
   keepIndex(); return INDEX;
 }
-const keepIndex = () => lsSet(IDX, JSON.stringify({n:2, fits:[...INDEX.values()]}));
+const keepIndex = () => lsSet(IDX, JSON.stringify({n:4, fits:[...INDEX.values()]}));
 const dbGet = id => tx('readonly', st => st.get(id));
 const dbPut = rec => tx('readwrite', st => st.put(rec)).then(r => { if (INDEX && rec.v){ INDEX.set(rec.id, summary(rec)); keepIndex(); } return r; });
 const dbDel = id => tx('readwrite', st => st.delete(id)).then(r => { if (INDEX && INDEX.delete(id)) keepIndex(); return r; });
@@ -225,20 +228,258 @@ async function writeNow(){
   clearTimeout(saveT); saveT = null;
   try {
     await dbPut(record()); lsSet(CUR, S.id);
-    const t = new Date();
-    $('#saved').textContent = `Saved ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    SAVED_AT = hhmm(new Date()); driveSoon(); showSaved();
   } catch(e){
     $('#saved').textContent = e && e.name === 'QuotaExceededError' ? 'Not saved: this device is out of space' : 'Not saved: this browser is blocking storage';
   }
 }
 
 function save(){ clearTimeout(saveT); saveT = setTimeout(writeNow, 350); }
-const deleteFit = id => dbDel(id).catch(() => {});
+const hhmm = t => `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+let SAVED_AT = '';
+// the line in the header: saved here, and where it stands with the shop's Drive (signed out there: a tap to sign in again)
+function showSaved(){
+  const el = $('#saved'); if (!el || !S) return;
+  let st = '';
+  if (DRIVE.on){
+    if (!tokenOk()) st = ' · <button type="button" class="linkbtn" data-act="drive-connect">Reconnect Google Drive</button>';
+    else if (DNET === 'off') st = ' · Drive waits for a connection';
+    else if (dSyncT || DSYNC) st = ' · saving to Drive…';
+    else if (DNET === 'ok') st = ' · in Drive';
+    else if (DNET === 'err') st = ' · not in Drive yet';
+  }
+  el.innerHTML = SAVED_AT ? `Saved ${SAVED_AT}${st}` : st.replace(/^ · /, '');
+  const fb = $('#btn-fits'); if (fb) fb.classList.toggle('warn', !!(DRIVE.on && !tokenOk()));
+}
+async function deleteFit(id){
+  let rec = null; try { rec = await dbGet(id); } catch(_){}
+  await dbDel(id).catch(() => {});
+  // (in the Drive: its folder to the Drive's bin, now or once there's a connection)
+  if (rec && rec.dfolder){ dDelsSet([...new Set([...dDelsGet(), rec.dfolder])]); driveSyncAll(); }
+}
+
+/* ---------------- the shop's Google Drive ----------------
+   Connected (Fits: Connect Google Drive, signed in with the shop's Google account in Google's own window), each fit is
+   kept in the shop's Drive as well as here: a folder "Pedal Revolution – Fits", in it a folder for each fit (date · rider
+   · fit) holding fit.json (what the app reopens), a photos folder, and the client's report as a PDF once it's made. Sent
+   straight from this device to Google: nothing passes through georgefarrowgreen.com. The app can only see the files it
+   made itself (Google's drive.file permission). Every device signed in to the same Google account has every fit; the
+   newer copy of a fit wins; a fit deleted goes to the Drive's bin. Google's sign-in lasts an hour; after that a tap signs
+   in again (no password, as a rule). The app's Google client ID comes from api/me (FITTING_GOOGLE_CLIENT_ID). */
+const GDAPI = 'https://www.googleapis.com/', GSCOPE = 'https://www.googleapis.com/auth/drive.file', GSI = 'https://accounts.google.com/gsi/client';
+const ROOT_NAME = 'Pedal Revolution – Fits', FOLDER = 'application/vnd.google-apps.folder';
+const DKEY = 'pr-fitting-drive', DDELS = 'pr-fitting-drive-bin', TKEY = 'pr-fitting-gtoken';
+let GCLIENT = '';   // the shop's Google client ID (none: Drive isn't set up)
+let DRIVE = (() => { try { return JSON.parse(lsGet(DKEY) || 'null') || {}; } catch(_){ return {}; } })();   // {on, email, root}
+const keepDrive = () => lsSet(DKEY, JSON.stringify(DRIVE));
+let TOKEN = (() => { try { const t = JSON.parse(sessionStorage.getItem(TKEY) || 'null'); return t && t.exp > Date.now() ? t : null; } catch(_){ return null; } })();
+const tokenOk = () => !!(TOKEN && TOKEN.exp > Date.now());
+let DNET = '', TC = null, dSyncT = null, DSYNC = null, DLAST = '';   // DNET: how the last call to the Drive went (ok, off, err)
+const dDelsGet = () => { try { return JSON.parse(lsGet(DDELS) || '[]'); } catch(_){ return []; } };
+const dDelsSet = a => lsSet(DDELS, JSON.stringify(a));
+const gsiReady = () => !!(window.google && google.accounts && google.accounts.oauth2);
+const loadGsi = () => GCLIENT ? loadScript(GSI).catch(() => {}) : Promise.resolve();
+// (Google's window opens only from a tap, as browsers allow: its script is loaded beforehand)
+function driveConnect(){
+  if (!GCLIENT) return;
+  if (!gsiReady()){ DNET = 'loading'; renderDriveCard(); loadGsi().then(() => { DNET = ''; renderDriveCard(); }); return; }
+  if (!TC) TC = google.accounts.oauth2.initTokenClient({client_id:GCLIENT, scope:GSCOPE, callback:onToken,
+    error_callback:() => { renderDriveCard(); showSaved(); }});
+  TC.requestAccessToken(DRIVE.on ? {prompt:'', login_hint:DRIVE.email || undefined} : {prompt:'consent'});
+}
+async function onToken(r){
+  const granted = r && r.access_token && (!google.accounts.oauth2.hasGrantedAllScopes || google.accounts.oauth2.hasGrantedAllScopes(r, GSCOPE));
+  if (!granted){ DNET = r && r.access_token ? 'scope' : 'err'; renderDriveCard(); showSaved(); return; }
+  TOKEN = {t:r.access_token, exp:Date.now() + (Number(r.expires_in) || 3600) * 1000 - 120000};
+  try { sessionStorage.setItem(TKEY, JSON.stringify(TOKEN)); } catch(_){}
+  try {
+    const a = await (await gd('drive/v3/about?fields=user(emailAddress)')).json(), email = (a.user && a.user.emailAddress) || '';
+    if (DRIVE.email && email && email !== DRIVE.email) DRIVE = {};   // (another Google account: its own folder)
+    DRIVE.on = true; DRIVE.email = email; keepDrive();
+    await ensureRoot();
+  } catch(_){ DRIVE.on = true; keepDrive(); }
+  renderDriveCard(); showSaved();
+  await driveSyncAll(); if (!$('#fits').hidden){ await listFits(); renderFits(); }
+  if (S && await hydrate(S)){ await markPhotos(); renderMain(); }
+}
+function driveOff(){
+  try { if (TOKEN && gsiReady()) google.accounts.oauth2.revoke(TOKEN.t, () => {}); } catch(_){}
+  TOKEN = null; DRIVE = {}; keepDrive(); DNET = ''; try { sessionStorage.removeItem(TKEY); } catch(_){}
+  renderDriveCard(); showSaved(); listFits().then(renderFits);
+}
+async function gd(path, o = {}){
+  if (!tokenOk()) throw new Error('Google Drive: sign in again');
+  let r;
+  try { r = await fetch(path.startsWith('https:') ? path : GDAPI + path, {...o, cache:'no-store', headers:{...(o.headers || {}), Authorization:'Bearer ' + TOKEN.t}}); }
+  catch(e){ DNET = 'off'; throw e; }
+  if (r.status === 401){ TOKEN = null; throw new Error('Google Drive: sign in again'); }
+  if (r.status === 404){ const e = new Error('Google Drive: not there'); e.gone = true; throw e; }
+  if (!r.ok){ DNET = r.status >= 500 || r.status === 429 || r.status === 403 ? 'off' : 'err'; throw new Error('Google Drive ' + r.status); }
+  DNET = 'ok'; return r;
+}
+const gjson = (path, method, body) => gd(path, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
+async function gup(meta, blob, id){
+  const fd = new FormData();
+  fd.append('metadata', new Blob([JSON.stringify(meta)], {type:'application/json'})); fd.append('file', blob);
+  return (await gd(`upload/drive/v3/files${id ? '/' + id : ''}?uploadType=multipart&fields=id`, {method:id ? 'PATCH' : 'POST', body:fd})).json();
+}
+async function gfind(query){
+  const out = []; let page = '';
+  do {
+    const j = await (await gd(`drive/v3/files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,appProperties)&pageSize=1000&spaces=drive${page ? '&pageToken=' + page : ''}`)).json();
+    out.push(...(j.files || [])); page = j.nextPageToken || '';
+  } while (page);
+  return out;
+}
+async function ensureRoot(){
+  if (DRIVE.root) return DRIVE.root;
+  const f = await gfind(`appProperties has { key='pfKind' and value='root' } and trashed = false`);
+  DRIVE.root = f.length ? f[0].id : (await gjson('drive/v3/files?fields=id', 'POST', {name:ROOT_NAME, mimeType:FOLDER, appProperties:{pfKind:'root'}})).id;
+  keepDrive(); return DRIVE.root;
+}
+const fitFolderName = r => [r.v.date || 'No date', [r.v.first, r.v.last].filter(Boolean).join(' ') || 'Rider not named',
+  ((FITS[r.fit] || {}).name || 'Fit') + (r.follow ? ' follow-up' : '')].join(' · ');
+const dataToBlob = src => { const i = src.indexOf(','), type = (/^data:([^;,]+)/.exec(src) || [])[1] || 'image/jpeg', bin = atob(src.slice(i + 1)), u = new Uint8Array(bin.length);
+  for (let j = 0; j < bin.length; j++) u[j] = bin.charCodeAt(j); return new Blob([u], {type}); };
+const blobToData = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+// what goes in fit.json: the fit, its photos without their pictures (those are files of their own)
+const cloudCopy = rec => { const {dsynced, ...c} = rec; c.photos = (rec.photos || []).map(({src, _comp, ...p}) => p); return c; };
+const DIDS = ['dfolder', 'dname', 'dphotos', 'djson', 'dfiles', 'dpdf'];
+const unDrive = r => { for (const k of DIDS) r[k] = null; r.dfiles = {}; r.dsynced = 0; for (const p of r.photos || []) p.drive = null; };
+// (the Drive's file ids, noted on the copy here and on the open fit, so nothing is sent twice; `synced`: sent as it stood then)
+async function keepDriveIds(rec, synced){
+  const ids = Object.fromEntries(DIDS.map(k => [k, rec[k]])), pd = new Map((rec.photos || []).map(p => [p.id, p.drive]));
+  const mark = r => { Object.assign(r, ids); for (const p of r.photos || []) if (pd.get(p.id)) p.drive = pd.get(p.id); if (synced && r.updated === synced) r.dsynced = synced; };
+  try { const l = await dbGet(rec.id); if (l){ mark(l); await dbPut(l); } } catch(_){}
+  if (S && S.id === rec.id) mark(S);
+}
+// one fit to the Drive: its folder (named again if the rider's name changed), each photo it hasn't got, then fit.json
+async function drivePush(rec, again){
+  try {
+    const root = await ensureRoot(), name = fitFolderName(rec);
+    if (!rec.dfolder){ rec.dfolder = (await gjson('drive/v3/files?fields=id', 'POST', {name, mimeType:FOLDER, parents:[root], appProperties:{pfKind:'fitdir', pfFit:rec.id}})).id; rec.dname = name; }
+    else if (rec.dname !== name){ await gjson(`drive/v3/files/${rec.dfolder}?fields=id`, 'PATCH', {name}); rec.dname = name; }
+    rec.dfiles = rec.dfiles || {};
+    for (const p of rec.photos || []) if (p.src && !p.drive){
+      if (!rec.dphotos) rec.dphotos = (await gjson('drive/v3/files?fields=id', 'POST', {name:'photos', mimeType:FOLDER, parents:[rec.dfolder], appProperties:{pfKind:'photodir', pfFit:rec.id}})).id;
+      p.drive = (await gup({name:`${p.tag}.jpg`, parents:[rec.dphotos], appProperties:{pfKind:'photo', pfFit:rec.id, pfPhoto:p.id}}, dataToBlob(p.src))).id;
+      rec.dfiles[p.id] = p.drive;
+    }
+    // (a photo taken out of the fit: its file to the bin)
+    for (const [pid, fid] of Object.entries(rec.dfiles)) if (!(rec.photos || []).some(p => p.id === pid)){
+      await gjson(`drive/v3/files/${fid}?fields=id`, 'PATCH', {trashed:true}).catch(() => {}); delete rec.dfiles[pid]; }
+    const meta = {name:'fit.json', appProperties:{pfKind:'fit', pfFit:rec.id, pfUpd:String(rec.updated || 0)}};
+    rec.djson = (await gup(rec.djson ? meta : {...meta, parents:[rec.dfolder]}, new Blob([JSON.stringify(cloudCopy(rec))], {type:'application/json'}), rec.djson)).id;
+  } catch(e){
+    // (its folder or file gone from the Drive, or another account's: made afresh, once)
+    if (e.gone && !again){ unDrive(rec); return drivePush(rec, true); }
+    await keepDriveIds(rec); throw e;
+  }
+  await keepDriveIds(rec, rec.updated);
+}
+// one fit from the Drive: kept here, with any of its photos already here
+async function drivePull(fileId){
+  const fit = await (await gd(`drive/v3/files/${fileId}?alt=media`)).json();
+  if (!fit || !fit.id || !fit.v) return null;
+  const mine = await dbGet(fit.id).catch(() => null), had = new Map(((mine && mine.photos) || []).map(p => [p.id, p.src]));
+  fit.photos = (fit.photos || []).map(p => ({...p, src:had.get(p.id) || ''}));
+  fit.djson = fileId; fit.dsynced = fit.updated; await dbPut(fit); return fit;
+}
+// a fit's photos that are in the Drive but not on this device yet, brought down (and kept here)
+async function hydrate(rec){
+  const want = (rec.photos || []).filter(p => !p.src && p.drive); if (!want.length || !DRIVE.on || !tokenOk()) return 0;
+  let n = 0;
+  for (const p of want){ try { p.src = await blobToData(await (await gd(`drive/v3/files/${p.drive}?alt=media`)).blob()); n++; } catch(_){ break; } }
+  if (n){ try { const l = await dbGet(rec.id); if (l){ for (const q of l.photos || []){ const h = rec.photos.find(x => x.id === q.id); if (h && h.src && !q.src) q.src = h.src; } await dbPut(l); } } catch(_){} }
+  return n;
+}
+// (gone from the Drive: its fit.json in the bin, or not there at all)
+async function goneFromDrive(l){
+  if (!l.djson) return false;
+  try { return !!(await (await gd(`drive/v3/files/${l.djson}?fields=trashed`)).json()).trashed; } catch(e){ return !!e.gone; }
+}
+const busyHere = id => S && S.id === id && (saveT || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)));
+function driveSoon(){ if (!DRIVE.on || !S) return; const id = S.id; clearTimeout(dSyncT); dSyncT = setTimeout(() => { dSyncT = null; driveSyncOne(id); }, 2500); }
+async function driveRun(fn){
+  if (DSYNC) await DSYNC.catch(() => {});
+  DSYNC = fn(); showSaved();
+  try { return await DSYNC; } catch(_){ return 0; } finally { DSYNC = null; showSaved(); renderDriveCard(); }
+}
+const driveSyncOne = id => (!DRIVE.on || !tokenOk()) ? showSaved() : driveRun(async () => {
+  const rec = await dbGet(id);
+  if (rec && rec.v && !blankFit(rec) && (!(rec.dsynced >= rec.updated) || (rec.photos || []).some(p => p.src && !p.drive))) await drivePush(rec);
+  DLAST = hhmm(new Date());
+});
+// everything: fits deleted here to the bin, each fit the Drive has newer brought here, each one here it hasn't got sent
+const driveSyncAll = () => (!DRIVE.on || !tokenOk()) ? (showSaved(), renderDriveCard(), Promise.resolve(0)) : driveRun(async () => {
+  let got = 0;
+  for (const fid of dDelsGet()){
+    try { await gjson(`drive/v3/files/${fid}?fields=id`, 'PATCH', {trashed:true}); } catch(e){ if (!e.gone) throw e; }
+    dDelsSet(dDelsGet().filter(x => x !== fid));
+  }
+  await ensureRoot();
+  const remote = new Map();
+  for (const f of await gfind(`appProperties has { key='pfKind' and value='fit' } and trashed = false`)){
+    const a = f.appProperties || {}, upd = Number(a.pfUpd) || 0, was = remote.get(a.pfFit);
+    if (a.pfFit && (!was || was.upd < upd)) remote.set(a.pfFit, {file:f.id, upd});
+  }
+  const IX = await index();
+  for (const [id, x] of remote){
+    const l = IX.get(id);
+    if ((l && l.updated >= x.upd) || busyHere(id)) continue;
+    const fit = await drivePull(x.file); if (!fit) continue; got++;
+    if (S && S.id === id){ S = Object.assign(blank(), upgrade(fit)); renderMain(); hydrate(S).then(n => { if (n) markPhotos().then(renderMain); }); }
+  }
+  for (const l of [...IX.values()]){
+    const x = remote.get(l.id), changed = !(l.dsynced >= l.updated);
+    if (!x && l.dfolder){
+      // in the Drive before, not now: deleted on another device (or in the Drive). Changed here since: kept, and sent again
+      if (!await goneFromDrive(l)) { if (changed || l.pend){ const rec = await dbGet(l.id); if (rec && rec.v) await drivePush(rec); } continue; }
+      if (changed){ const rec = await dbGet(l.id); if (rec && rec.v){ unDrive(rec); await dbPut(rec); await drivePush(rec); } }
+      else if (!(S && S.id === l.id)){ await dbDel(l.id).catch(() => {}); got++; }
+      continue;
+    }
+    if ((changed || l.pend) && !l.b){ const rec = await dbGet(l.id); if (rec && rec.v && !blankFit(rec)) await drivePush(rec); }
+  }
+  DLAST = hhmm(new Date());
+  return got;
+});
+// the client's report, kept in the fit's folder (the same file again each time it's made)
+async function drivePDF(file){
+  if (!DRIVE.on || !tokenOk()) return false;
+  if (saveT) await writeNow();
+  return driveRun(async () => {
+    let rec = await dbGet(S.id); if (!rec) return false;
+    if (!rec.dfolder || !(rec.dsynced >= rec.updated)) { await drivePush(rec); rec = await dbGet(S.id); }
+    const meta = {name:file.name, appProperties:{pfKind:'report', pfFit:rec.id}};
+    try { rec.dpdf = (await gup(rec.dpdf ? meta : {...meta, parents:[rec.dfolder]}, file, rec.dpdf)).id; }
+    catch(e){ if (!e.gone) throw e; rec.dpdf = (await gup({...meta, parents:[rec.dfolder]}, file)).id; }
+    await keepDriveIds(rec); DLAST = hhmm(new Date()); return true;
+  });
+}
+const ICON_CLOUD = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8a4 4 0 0 1 0 8"/><path d="M12 12v8"/><path d="m9 15 3-3 3 3"/></svg>';
+function driveCardHTML(){
+  const card = (cls, title, sub, btns) => `<div class="gd${cls}"><span class="ic">${ICON_CLOUD}</span><span class="tx"><b>${title}</b><span>${sub}</span></span>${btns}</div>`;
+  if (!GCLIENT) return card('', 'Google Drive isn’t set up yet', 'Once the shop’s Google sign-in is set up, every fit can be kept in the shop’s Google Drive, on every device.', '');
+  if (!DRIVE.on) return card('', 'Google Drive: not connected',
+    DNET === 'scope' ? 'Google wasn’t given leave to keep the app’s files. Connect again and allow it.' : 'Keep every fit in the shop’s Google Drive, photos and reports too, on every iPad and the Mac. Sign in once with the shop’s Google account.',
+    `<button type="button" class="btn dark" data-act="drive-connect"${DNET === 'loading' ? ' disabled' : ''}>${DNET === 'loading' ? 'One moment…' : 'Connect Google Drive'}</button>`);
+  const live = tokenOk(), where = `${esc(DRIVE.email || 'The shop’s Google account')} · folder “${ROOT_NAME}”`;
+  return card(live ? ' on' : ' warn', live ? 'Google Drive: connected' : 'Google Drive: signed out',
+    live ? `${where}${DSYNC ? ' · saving…' : DNET === 'off' ? ' · waiting for a connection' : DLAST ? ' · up to date ' + DLAST : ''}` : `${where} · Google’s sign-in lasts an hour: reconnect to carry on saving there.`,
+    `${live && DRIVE.root ? `<a class="btn" href="https://drive.google.com/drive/folders/${encodeURIComponent(DRIVE.root)}" target="_blank" rel="noopener">Open folder</a>` : ''}${live ? '' : '<button type="button" class="btn dark" data-act="drive-connect">Reconnect</button>'}<button type="button" class="btn ghost" data-act="drive-off">Disconnect</button>`);
+}
+function renderDriveCard(){
+  const c = $('#drive-card'); if (c) c.innerHTML = driveCardHTML();
+  const tt = $('#fits .ttl'); if (tt) tt.textContent = DRIVE.on ? 'Fits' : 'Fits on this device';
+  const n = $('#fits-note'); if (n) n.textContent = DRIVE.on ? 'Each fit is kept on this device and in the shop’s Google Drive, so every device signed in to it has them all. A fit deleted goes to the Drive’s bin, where it stays for 30 days.'
+    : 'Fits are kept in this browser on this device only. Nothing is sent anywhere until you share a report.';
+}
 async function openFit(rec){
   if (saveT) await writeNow();
   S = Object.assign(blank(), upgrade(rec));
-  lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0);
-  await markPhotos(); renderMain();
+  lsSet(CUR, S.id); $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0); showSaved();
+  await hydrate(S); await markPhotos(); renderMain();
 }
 async function newFit(){
   if (saveT) await writeNow();
@@ -252,6 +493,7 @@ async function newFit(){
 const FRESH = new Set(['date', 'summary', 'fitNotes', 'since', 'sinceNote']);
 async function startFollowUp(prev){
   if (saveT) await writeNow();
+  await hydrate(prev);
   const S2 = blank(), v = {};
   for (const [k, x] of Object.entries(prev.v || {})){
     if (FRESH.has(k) || k.endsWith('_pre') || k === 'fitter') continue;
@@ -262,7 +504,7 @@ async function startFollowUp(prev){
   S2.fit = prev.fit; S2.v = Object.assign(S2.v, v); S2.pain = {...(prev.pain || {})}; S2.step = 1;
   S2.follow = {of:prev.id, date:prev.v.date || '', fitter:prev.v.fitter || ''};
   S2.photos = (prev.photos || []).filter(p => p.src && /^After · (right side|left side|front)$/.test(p.tag))
-    .map(p => ({...p, id:uid(), tag:p.tag.replace('After', 'Before'), cap:p.cap ? `At the last fit: ${p.cap}` : 'At the last fit', _comp:undefined}));
+    .map(p => ({...p, id:uid(), tag:p.tag.replace('After', 'Before'), cap:p.cap ? `At the last fit: ${p.cap}` : 'At the last fit', _comp:undefined, drive:null}));
   S = S2; await writeNow();
   $('#fits').hidden = true; renderMain(); window.scrollTo(0, 0); await markPhotos();
 }
@@ -282,7 +524,9 @@ let FITLIST = [];
 const listFits = async () => { FITLIST = [...(await index()).values()].sort((a, b) => (b.updated || 0) - (a.updated || 0)); };
 async function openFits(){
   if (saveT) await writeNow();
-  await listFits(); $('#fits-q').value = ''; renderFits(); $('#fits').hidden = false;
+  await listFits(); $('#fits-q').value = ''; renderFits(); renderDriveCard(); $('#fits').hidden = false;
+  loadGsi().then(renderDriveCard);
+  if (DRIVE.on && tokenOk()){ await driveSyncAll(); await listFits(); if (!$('#fits').hidden) renderFits(); }
 }
 /* a rider fitted here before (by their email, or their first and last name): their fits, newest first. Offered on a new
    fit's Rider section: start it as a follow-up to the last one, or bring across what doesn't change between visits. */
@@ -333,7 +577,7 @@ function renderFits(){
     const st = followState(f, FITLIST);
     return `<div class="fit-row${open ? ' open' : ''}"><div class="fr-main"><b>${esc(name)}${f.follow ? ' <span class="pill n">Follow-up</span>' : ''}</b>
       <span>${esc([FITS[f.fit] ? FITS[f.fit].name : '', f.v.bike, when].filter(Boolean).join(' · '))}</span>
-      ${st ? `<span class="fr-state"><span class="pill ${st.cls}">${esc(st.txt)}</span></span>` : ''}</div>
+      ${st || (DRIVE.on && !f.b) ? `<span class="fr-state">${st ? `<span class="pill ${st.cls}">${esc(st.txt)}</span>` : ''}${DRIVE.on && !f.b ? (f.dsynced >= f.updated && !f.pend ? '<span class="pill g">In Drive</span>' : '<span class="pill n">Not in Drive yet</span>') : ''}</span>` : ''}</div>
       <button type="button" class="btn sm" data-act="fit-follow" data-id="${esc(f.id)}">Start follow-up</button>
       ${open ? '<span class="pill g">Open</span>' : `<button type="button" class="btn sm dark" data-act="fit-open" data-id="${esc(f.id)}">Open</button>`}
       <button type="button" class="btn sm ghost" data-act="fit-del" data-id="${esc(f.id)}">Delete</button></div>`;
@@ -596,7 +840,8 @@ function photosHTML(){
     return `<div class="slot-row"><h3 class="slot-g">${esc(name)}${note ? ` <small>${esc(note)}</small>` : ''}</h3><div class="slots pair">${ts.map(slot).join('')}</div></div>`; }).join('');
   const got = SLOTS[S.fit].filter(t => S.photos.some(p => p.src && p.tag === t)).length, all = SLOTS[S.fit].length;
   const extra = S.photos.filter(p => p.src && !used.has(p.id));
-  return `<div class="sec"><div class="sec-h"><h2>Shot list</h2><div class="right">${canCompare() ? '<button type="button" class="btn sm dark" data-act="compare">Compare before &amp; after</button>' : ''}<span class="sec-count${got === all ? ' ok' : ''}">${got === all ? '✓ ' : ''}${got} of ${all}${S.fit === 'std' ? ' · optional' : ''}</span></div></div>
+  const away = S.photos.filter(p => !p.src && p.drive).length;
+  return `${away ? `<div class="msg" style="margin-bottom:14px">${away} photo${away > 1 ? 's are' : ' is'} in Google Drive but not on this device yet. <button type="button" class="linkbtn" data-act="drive-connect">${tokenOk() ? 'Bring them here' : 'Reconnect Google Drive'}</button></div>` : ''}<div class="sec"><div class="sec-h"><h2>Shot list</h2><div class="right">${canCompare() ? '<button type="button" class="btn sm dark" data-act="compare">Compare before &amp; after</button>' : ''}<span class="sec-count${got === all ? ' ok' : ''}">${got === all ? '✓ ' : ''}${got} of ${all}${S.fit === 'std' ? ' · optional' : ''}</span></div></div>
     ${slots}</div>
   <div class="sec"><div class="sec-h"><h2>More photos</h2><span class="sec-note">Pressure maps, posture, anything else worth showing</span></div>
     <label class="drop" id="drop">${ICON_CAM}<b>Add more photos</b><span class="hint">Take a photo or choose several from the library. You can also drag photos here.</span>
@@ -1240,7 +1485,9 @@ async function savePDF(msgEl){
     lastPDF = new File([blob], fname, {type:'application/pdf'});
     let share = false; try { share = !!(navigator.canShare && navigator.canShare({files:[lastPDF]})); } catch(_){}
     say(`<b>${esc(fname)}</b> is ready (${Math.round(blob.size / 1024)} KB).${share ? ' Share it to Mail and it goes as an attachment, with the message already written.' : ''}
-      <div class="row-btns" style="margin-top:10px">${share ? '<button type="button" class="btn primary" data-act="share-pdf">Share or email…</button>' : ''}<button type="button" class="btn${share ? '' : ' primary'}" data-act="dl-pdf">Download</button></div>`);
+      <div class="row-btns" style="margin-top:10px">${share ? '<button type="button" class="btn primary" data-act="share-pdf">Share or email…</button>' : ''}<button type="button" class="btn${share ? '' : ' primary'}" data-act="dl-pdf">Download</button></div>
+      ${DRIVE.on ? `<div class="hint" id="pdf-drive" style="margin-top:8px">${tokenOk() ? 'Keeping a copy in Google Drive…' : 'Reconnect Google Drive (Fits) to keep a copy there.'}</div>` : ''}`);
+    if (DRIVE.on && tokenOk()) drivePDF(lastPDF).then(ok => { const d = $('#pdf-drive'); if (d) d.textContent = ok ? 'A copy is in the fit’s folder in Google Drive.' : 'The copy for Google Drive didn’t go: it goes when the report is made again.'; });
   } catch(e){
     say(esc((e && e.message) || 'The PDF could not be made.'), 'err');
   } finally { btns.forEach(b => b.disabled = false); }
@@ -1464,6 +1711,10 @@ document.addEventListener('click', e => {
     save(); renderMain(); const m = $('#copy-msg');
     if (m) m.innerHTML = `<div class="msg${n ? ' ok' : ''}" style="margin-bottom:12px">${n ? `Copied ${n} unchanged value${n > 1 ? 's' : ''} to After. Edit any that did change.` : 'Every After value with a Before value is already filled in.'}</div>`; return; }
   case 'new': return newFit();
+  case 'drive-connect': if (DRIVE.on && tokenOk() && S){ hydrate(S).then(n => { if (n) markPhotos().then(renderMain); }); return; } return driveConnect();
+  case 'drive-off': {
+    if (t.dataset.arm !== '1'){ t.dataset.arm = '1'; t.textContent = 'Tap to disconnect'; setTimeout(() => { if (t.isConnected){ t.dataset.arm = ''; t.textContent = 'Disconnect'; } }, 3000); return; }
+    return driveOff(); }
   case 'hist-use': return useDetails(d.id);
   case 'hist-follow': t.disabled = true; return followFromHistory(d.id);
   case 'hist-no': S.histNo = d.id; save(); refresh(); return;
@@ -1542,7 +1793,7 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   try {
     const r = await fetch('api/me', {credentials:'same-origin', cache:'no-store'});
     if (r.status === 401){ location.replace('login'); return; }
-    if (r.ok) ME = (await r.json()).name || '';
+    if (r.ok){ const j = await r.json(); ME = j.name || ''; GCLIENT = j.google || ''; }
   } catch(_){}
   $('#who-me').textContent = ME ? `Signed in as ${ME}` : '';
   await index();
@@ -1551,4 +1802,8 @@ document.addEventListener('input', e => { if (e.target.id === 'fits-q') renderFi
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   try { if (document.fonts) await Promise.race([document.fonts.load("italic 800 46px 'Barlow Condensed'"), new Promise(r => setTimeout(r, 2500))]); } catch(_){}
   await markPhotos();
+  // (the shop's Drive: Google's sign-in readied for a tap; signed in still, brought up to date)
+  if (GCLIENT && DRIVE.on){ loadGsi(); if (tokenOk()){ await driveSyncAll(); if (await hydrate(S)){ await markPhotos(); renderMain(); } refresh(); } }
+  showSaved();
+  addEventListener('online', () => driveSyncAll());
 })();

@@ -10,7 +10,10 @@
 // Without FITTING_USERS no one can sign in. Every file but the sign-in page and what it shows (its styles, typefaces,
 // logo and icons) is only for someone signed in.
 //
-// Every fit itself stays in the browser that recorded it (IndexedDB), until the fitter shares the client's report.
+// Every fit is kept in the browser that recorded it (IndexedDB). Connected to the shop's Google Drive (signed in there
+// with the shop's Google account, in Google's own window), each fit is kept in that Drive too, sent straight from the
+// device to Google: nothing of it passes through here. The app's Google client ID is FITTING_GOOGLE_CLIENT_ID
+// (Cloudflare, Variables and Secrets; not a secret), handed to the app by api/me; without it the app offers no Drive.
 
 import { notFound } from "./_app.js";
 export const FITTING_HOST = "fitting.georgefarrowgreen.com";
@@ -18,16 +21,18 @@ export const FITTING_HOST = "fitting.georgefarrowgreen.com";
 export const isFitting = (url, env) => (env.FITTING_HOST || FITTING_HOST).split(",").includes(url.hostname);
 
 // (styles inline as well as its own: the form and the report place their gauges and photos with style attributes.
-// Scripts only its own, so nothing a rider's name or note holds can ever run.)
+// Scripts only its own, and Google's sign-in, so nothing a rider's name or note holds can ever run. The shop's Google
+// Drive: Google's sign-in window (a popup, so the page's opener rule lets popups talk back) and its Drive API.)
+const GSI = "https://accounts.google.com/gsi/";
 export const FIT_SECURITY = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' ${GSI}client https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' ${GSI}style; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://www.googleapis.com ${GSI} https://cloudflareinsights.com; frame-src ${GSI}; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   "Referrer-Policy": "no-referrer",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "X-Robots-Tag": "noindex, nofollow",
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // the app's pages (as stored, under /fitting/): the app, and the sign-in
@@ -99,7 +104,7 @@ async function api(ctx, url, what) {
   if (what === "me") {
     if (req.method !== "GET") return plain(405, "GET only.");
     const me = await signedIn(req, env);
-    return me ? json(200, { name: me }) : json(401, { error: "Not signed in." });
+    return me ? json(200, { name: me, google: String(env.FITTING_GOOGLE_CLIENT_ID || "").trim() }) : json(401, { error: "Not signed in." });
   }
   if (what !== "login" && what !== "logout") return notFound();
   if (req.method !== "POST") return plain(405, "POST only.");

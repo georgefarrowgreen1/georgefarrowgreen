@@ -2,7 +2,7 @@
 // own rules (its scripts only, no frames, not for search) and behind its own sign-in (FITTING_USERS: a hashed password or a
 // plain one; a cookie for this address alone; a wrong password limited; a changed FITTING_USERS signs everyone out);
 // nothing but its files there; georgefarrowgreen.com/fitting/ sends you on to it, a preview's serves it in place behind
-// the same sign-in; and the app asks nothing of anywhere else.
+// the same sign-in; and the app asks nothing of anywhere else but Google, for the shop's Drive.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -57,7 +57,7 @@ test('the sign-in page and what it shows are open, under the app’s rules', asy
   // (its styles and script asked for by what they hold, so an older copy kept anywhere is never used with it)
   assert.match(html, /href="styles\.css\?v=[0-9a-f]{12}"/); assert.match(html, /src="login\.js\?v=[0-9a-f]{12}"/);
   assert.equal(res.headers.get('etag'), null);
-  assert.match(res.headers.get('content-security-policy'), /script-src 'self'( https:\/\/static\.cloudflareinsights\.com)?;/);
+  assert.match(res.headers.get('content-security-policy'), /script-src 'self' https:\/\/accounts\.google\.com\/gsi\/client( https:\/\/static\.cloudflareinsights\.com)?;/);
   assert.equal(res.headers.get('x-robots-tag'), 'noindex, nofollow');
   for (const f of ['/styles.css', '/login.js', '/logo.png', '/fonts/barlow-400.woff2', '/icon-180.png', '/manifest.webmanifest']) assert.equal((await ask(HOST + f)).status, 200, f);
 });
@@ -84,7 +84,11 @@ test('signed in: the app, its files and who’s signed in; the sign-in page goes
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   for (const f of ['/app.js', '/sw.js']) { const r = await ask(HOST + f, { cookie }); assert.equal(r.status, 200, f); assert.equal(r.headers.get('cache-control'), 'private, no-cache', f); }
   const lib = await ask(HOST + '/vendor/jspdf.umd.min.js', { cookie }); assert.equal(lib.status, 200); assert.equal(lib.headers.get('cache-control'), 'private, max-age=2592000');
-  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie })).json(), { name: 'Kate' });
+  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie })).json(), { name: 'Kate', google: '' });
+  // (the shop's Google client ID, for its Drive, when it's set)
+  assert.deepEqual(await (await ask(HOST + '/api/me', { cookie, env: envOf({ FITTING_GOOGLE_CLIENT_ID: ' 123-abc.apps.googleusercontent.com ' }) })).json(), { name: 'Kate', google: '123-abc.apps.googleusercontent.com' });
+  assert.equal(page.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+  assert.match(page.headers.get('content-security-policy'), /connect-src 'self' https:\/\/www\.googleapis\.com https:\/\/accounts\.google\.com\/gsi\/ /);
   const login = await ask(HOST + '/login', { cookie }); assert.equal(login.status, 302); assert.equal(login.headers.get('location'), HOST + '/');
   for (const f of ['/api/markets/quotes', '/nothing-here', '/README.md', '/wrangler.toml', '/.tools/minify.mjs', '/weather/']) assert.equal((await ask(HOST + f, { cookie })).status, 404, f);
   const old = await ask(HOST + '/fitting/app.js', { cookie }); assert.equal(old.status, 301); assert.equal(old.headers.get('location'), HOST + '/app.js');
@@ -140,7 +144,11 @@ test('the app asks nothing of anywhere else, and its worker keeps only files tha
     assert.doesNotMatch(html, /<script>|\son[a-z]+="/, `${f}: no inline script, the page’s rules allow only its own files`);
   }
   assert.doesNotMatch(read('styles.css'), /url\((https?:)?\/\//);
-  assert.doesNotMatch(read('app.js'), /loadScript\('https?:/);
+  // (the one script from elsewhere: Google's sign-in, for the shop's Drive, and only Google's API asked for data)
+  const app = read('app.js');
+  assert.deepEqual([...new Set(app.match(/https:\/\/[a-z.]+\.google(apis)?\.com\/[\w/.]*/g))].sort(),
+    ['https://accounts.google.com/gsi/client', 'https://drive.google.com/drive/folders/', 'https://www.googleapis.com/', 'https://www.googleapis.com/auth/drive.file']);
+  assert.doesNotMatch(app.replace(/https:\/\/(accounts|drive)\.google\.com\/|https:\/\/www\.googleapis\.com\//g, ''), /https?:\/\/(?!www\.w3\.org)/);
   const shell = JSON.parse(read('sw.js').match(/const SHELL = (\[[\s\S]*?\]);/)[1].replace(/'/g, '"'));
   for (const f of shell) assert.ok(existsSync(new URL('fitting/' + (f === './' ? 'index.html' : f), ROOT)), f);
 });

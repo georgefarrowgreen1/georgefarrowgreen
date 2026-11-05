@@ -2315,9 +2315,17 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
   the client's report.
 - **Report:** a branded A4 PDF made in the browser (html2canvas and jsPDF, our own copies in `fitting/vendor/`).
   On iPad, Share or email opens the share sheet, so Mail gets the PDF as an attachment; Download everywhere else.
-- **Storage:** every fit stays in the browser that recorded it (IndexedDB), listed under Fits. Nothing is sent to the
-  server: the app has no API. A service worker keeps it working without a connection. A small index of the fits
+- **Storage:** every fit is kept in the browser that recorded it (IndexedDB), listed under Fits; nothing is sent to
+  this site's server. A service worker keeps it working without a connection. A small index of the fits
   (localStorage) is kept with every save, so the list never reads every fit's photos.
+- **The shop's Google Drive:** Fits → **Connect Google Drive**, signed in once on each device with the shop's Google
+  account. Each fit is then kept in that Drive too, sent straight from the device to Google: a folder "Pedal
+  Revolution – Fits", in it a folder for each fit (date · rider · fit) with `fit.json` (what the app reopens), a
+  `photos` folder and the client's report PDF once it's made. Every device signed in to the same account has every
+  fit (photos come down when a fit is opened); the newer copy of a fit wins; a fit deleted goes to the Drive's bin; a
+  fit with nothing in it isn't sent. The app asks Google only for the files it makes itself (`drive.file`). Google's
+  sign-in lasts an hour, then the header and the Fits button offer a tap to reconnect. Without
+  `FITTING_GOOGLE_CLIENT_ID` the app offers no Drive.
 - **Returning riders:** on a new fit, a name or email that matches an earlier fit on the iPad offers to start it as a
   follow-up to the last one, or to bring across their contact details, riding background and injuries.
 - **Guide ranges** for the angles are in `TARGETS` at the top of `fitting/app.js`; the traffic-light thresholds in
@@ -2332,6 +2340,23 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
 **Sign-in setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables
 and Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
 the hashed lines from the tool) → **Save**, then redeploy (Deployments → … → Retry deployment, or push any commit).
+
+**Google Drive setup (the shop, once, ~15 minutes):** signed in to Google as the shop's account:
+1. [console.cloud.google.com](https://console.cloud.google.com) → project menu → **New project**, e.g. "Pedal
+   Revolution Fit Studio" → **Create**, and select it.
+2. **APIs & Services → Library** → "Google Drive API" → **Enable**.
+3. **Google Auth Platform** (or **OAuth consent screen**) → **Get started**: app name "Pedal Revolution Fit Studio",
+   support email the shop's; audience **External**; contact email; agree → **Create**. Then **Audience → Test users →
+   Add users** → the shop's Google address (or **Publish app**: the app asks only for `drive.file`, which needs no
+   Google review). Until it's published, Google's window says the app isn't verified: **Continue**.
+4. **Clients → Create client** → type **Web application**, name "Fit Studio", **Authorised JavaScript origins** →
+   `https://fitting.georgefarrowgreen.com` → **Create**, and copy the **Client ID** (`….apps.googleusercontent.com`).
+5. Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Settings → Variables and Secrets** →
+   **Add** → type **Text**, name `FITTING_GOOGLE_CLIENT_ID`, value the Client ID → **Save**, then redeploy.
+6. On each iPad and the Mac: Fits → **Connect Google Drive** → choose the shop's account → **Allow**.
+
+The fits are then the shop's, in its Google account. A Google Workspace account comes with Google's data processing
+terms; a free Gmail account doesn't, so for a business's client records Workspace is the safer home.
 
 **One-time setup:** Cloudflare dashboard → Workers & Pages → the `georgefarrowgreen` project → **Custom domains** →
 **Set up a custom domain** → `fitting.georgefarrowgreen.com`. Cloudflare adds the DNS record itself when the domain's
