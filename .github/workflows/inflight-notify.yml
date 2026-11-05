@@ -31,7 +31,7 @@ jobs:
               -H "Authorization: Bearer $SECRET" -H "User-Agent: Chat-Notify/1.0 (+https://chat.inflite.ai/)")
             [ "$code" = "200" ] && break
           done
-          echo "HTTP $code"; head -c 400 reply.txt; echo
+          echo "$site: HTTP $code"; head -c 400 reply.txt; echo
           # 404: PIGEON_TICK_SECRET isn't set in Cloudflare; 401: the two secrets differ;
           # 403 with an HTML page: Cloudflare's bot protection stopped the request.
           # warn rather than fail, so a setup problem doesn't send a failure email every 5 minutes
