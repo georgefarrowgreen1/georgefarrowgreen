@@ -9,7 +9,7 @@ export const STATUS_SERVICES = [
   { id: "weather", name: "Weather", group: "apps", address: "weather.inflite.ai", probe: "https://weather.inflite.ai/version", app: "weather" },
   { id: "fitness", name: "Fitness", group: "apps", address: "fitness.inflite.ai", probe: "https://fitness.inflite.ai/version", app: "fitness" },
   { id: "markets", name: "Markets", group: "apps", address: "finance.inflite.ai", probe: "https://finance.inflite.ai/version", app: "markets" },
-  { id: "mail", name: "Mail", group: "apps", address: "email.inflite.ai", probe: "https://email.inflite.ai/api/version" },
+  { id: "mail", name: "Mail", group: "apps", address: "email.inflite.ai", probe: "https://email.inflite.ai/version" },
   { id: "auth", name: "Signing in", group: "account", address: "auth.inflite.ai", probe: "https://auth.inflite.ai/version", app: "account" },
   { id: "account", name: "Account", group: "account", address: "account.inflite.ai", probe: "https://account.inflite.ai/version", app: "account" },
   { id: "home", name: "Home page", group: "home", address: "georgefarrowgreen.com", probe: "https://georgefarrowgreen.com/" },

@@ -74,7 +74,7 @@ async function inside(env) {
   };
   await Promise.all([
     linked("today", env.TODAY_APP, `https://${site}/version`),
-    linked("mail", env.MAIL_APP, `https://email.${site}/api/version`),
+    linked("mail", env.MAIL_APP, `https://email.${site}/version`),
     ...STATUS_SERVICES.filter((s) => s.app).map(async (s) => {
       const version = env.ASSETS ? await buildOf({ env }, new URL(`https://${s.address}/`), s.app).catch(() => null) : null;
       out[s.id] = { s: "ok", ms: null, version };
