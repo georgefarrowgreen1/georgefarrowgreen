@@ -1721,7 +1721,8 @@ async function pushSubscribe({ request, env }) {
 async function pushUnsubscribe({ request, env }) {
   const u = await requireUser(request, env);
   const endpoint = String((await body(request)).endpoint || "");
-  await (await db(env)).prepare("DELETE FROM pg_push WHERE user_id = ? AND (endpoint = ? OR session = ?)").bind(u.id, endpoint, u.sessionHash).run();
+  // (this browser's, and this sign-in's own; the hub's (via 'hub') is the hub's to undo, from You)
+  await (await db(env)).prepare("DELETE FROM pg_push WHERE user_id = ? AND (endpoint = ? OR (session = ? AND via IS NULL))").bind(u.id, endpoint, u.sessionHash).run();
   return json({ ok: true });
 }
 async function pushTest({ request, env }) {

@@ -454,6 +454,8 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gmsgs_letters ON pg_gmsgs(group_id, sender, sent_at) WHERE instant IS NULL",
   "ALTER TABLE pg_gdeliv ADD COLUMN got_at INTEGER",
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_notgot ON pg_gdeliv(user_id) WHERE got_at IS NULL",
+  // (a device InFlite's one route fanned out (functions/_devices.js): "hub"; Chat's own rows and the hub's kept apart)
+  "ALTER TABLE pg_push ADD COLUMN via TEXT",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

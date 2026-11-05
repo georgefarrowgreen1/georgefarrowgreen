@@ -5,7 +5,8 @@
 // a move takes it everywhere (Fitness's morning too), a delete only this endpoint; today/devices lists the account's other
 // sign-ins with a push row in any of the five tables (Weather's by sess), by an opaque id ("InFlite on iPad" for one
 // used in InFlite's window), and Stop There drops only that sign-in's rows, signing nothing out; §15.4's four rollback
-// DELETEs leave every row not fanned out, and the first of them has its column wherever Chat's tick has run; and
+// DELETEs leave every row not fanned out, and the first of them has its column wherever Chat's set up; Chat's own push
+// and the hub's, on one sign-in, never take each other's; and
 // Weather's ended() deletes a hub-made device whose sign-in has ended, where it only unlinks the others.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,7 +15,7 @@ import { db } from "../../../functions/_pigeon.js";
 import { deviceAdd, deviceDrop, devicesList, devicesStop, otherDevices, stopDevice, ready } from "../../../functions/_devices.js";
 import { deviceHash } from "../../../functions/_today.js";
 import { keepPush } from "../../../functions/_markets.js";
-import { tick } from "../../../functions/_notify.js";
+import { tick, keepSub } from "../../../functions/_notify.js";
 import { unlinkEnded, subscribe } from "../../../functions/_wxpush.js";
 
 function d1() {
@@ -125,6 +126,20 @@ test("each table's own rules: Chat's one a sign-in and ten an account, Markets' 
   assert.equal(one("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ?", me).n, 10);
   assert.equal(one("SELECT COUNT(*) AS n FROM mk_push WHERE user_id = ?", me).n, 10);
   assert.equal(one("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ? AND created_at = 0", me).n, 0, "the oldest went");
+});
+
+test("Chat's own push and the hub's, on one sign-in: neither takes the other's, so Get Every App's Here stays", async () => {
+  const me = person("Dee"), sess = signIn(me), u = userOf(me, sess), hub = await sub("dee-hub"), chat = await sub("dee-chat"), chat2 = await sub("dee-chat");
+  await deviceAdd(env, u, { sub: hub, fan: true });
+  await keepSub(env.DB, me, sess, chat);                    // (Chat's own, on another of the site's pages: pushSubscribe)
+  assert.equal(where(hub.endpoint).pg?.via, "hub", "the hub's kept as Chat's own comes");
+  assert.equal(where(chat.endpoint).pg?.via, null);
+  await keepSub(env.DB, me, sess, chat2);                   // (Chat's newer one replaces only its own)
+  assert.equal(where(chat.endpoint).pg, null);
+  assert.equal(where(hub.endpoint).pg?.via, "hub");
+  await deviceAdd(env, u, { sub: hub, fan: true });         // (and the hub's again leaves Chat's)
+  assert.equal(where(chat2.endpoint).pg?.via, null);
+  assert.equal(one("SELECT COUNT(*) AS n FROM pg_push WHERE user_id = ?", me).n, 2);
 });
 
 test("never another account's row while it's still signed in there; one whose sign-in has ended is taken", async () => {
@@ -266,13 +281,13 @@ test("the four rollback DELETEs of spec §15.4 take back exactly what was fanned
   assert.ok(where(own.endpoint).pg && where(own.endpoint).mk && where(wxOwn.endpoint).wx);
 });
 
-test("the rollback's pg_push line can be run on a database no device route has been used on, once Chat's tick has run there", async () => {
+test("the rollback's pg_push line can be run on a database no device route has been used on: Chat's setup makes its column", async () => {
   const e = { DB: d1(), PIGEON_PUSH_URL: PUSH, PIGEON_SECRET: "devices-test-secret" }, cols = () => e.DB.sql.prepare("PRAGMA table_info(pg_push)").all().map((c) => c.name);
   // (Chat's tables made in it, by a copy of Chat's setup of its own: this copy's is done once, for the first database)
   await (await import(`../../../functions/_pigeon.js?setup=devices-${Date.now()}`)).db(e);
-  assert.ok(!cols().includes("via"), "Chat's own tables: no via");
+  assert.ok(cols().includes("via"), "Chat's own setup makes it now (its own rows and the hub's kept apart: keepSub)");
   await tick(e, "http://localhost");
-  assert.ok(cols().includes("via"), "made by the tick");
+  assert.ok(cols().includes("via"), "and the tick's own making of it, there already, is nothing");
   assert.doesNotThrow(() => e.DB.sql.exec("DELETE FROM pg_push WHERE via = 'hub'"));
   await assert.doesNotReject(tick(e, "http://localhost"), "and the next tick, where it's there, is as ever");
 });

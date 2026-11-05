@@ -174,7 +174,9 @@ export async function keepSub(D, userId, session, sub, { via = null } = {}) {
   if (!ok) throw new HttpError(400, "That push subscription was malformed.");
   if (typeof userId !== "string" || !userId || typeof session !== "string" || !session) throw new HttpError(400, "Bad request.");
   const v = via == null ? null : String(via).slice(0, 16);
-  await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ?").bind(userId, session, endpoint).run();
+  // (one of Chat's own a sign-in, and one of the hub's: neither takes the other's, so Chat's own push on another of the
+  // site's pages never undoes Get Every App's Notifications Here)
+  await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ? AND via IS ?").bind(userId, session, endpoint, v).run();
   const w = v == null
     ? await D.prepare(`INSERT INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, session = ?3, p256dh = ?4, auth = ?5, created_at = ?6

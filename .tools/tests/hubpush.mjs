@@ -5,7 +5,8 @@
 //   0. an old Today install with a Weather device on the same sign-in: Chat's first hand-back at the hub moves the
 //      sign-in, and Today's subscription and Weather's device go with it (td_push alive, wx_devs still the account's)
 //   1. On This Phone on, in You's Notifications: Today's morning only (td_push), and nothing posted to the device route before that tap
-//   2. Get Every App's Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'
+//   2. Get Every App's Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'; remembered,
+//      and sent again by itself where Chat's row is lost
 //   3. a Chat message, a Markets alert and the morning: each in the push box, opened, each saying its app
 //   4. the root worker's pulse: a push of Chat's handed to the root worker (as the browser would) with no Chat open,
 //      and Mira's tick turns delivered
@@ -223,6 +224,16 @@ ok(mk.length === 1 && mk[0].user_id === GID && mk[0].via === 'hub', 'Markets’:
 ok(wd.length === 1 && wd[0].user_id === GID && liveNow.includes(wd[0].sess) && wd[0].via === 'hub' && ws.some((x) => x.name === 'London' && x.warn === 1), 'Weather’s: one wx_devs row (this sign-in, via the hub), with London’s place', JSON.stringify({ wd, ws }));
 ok(!!rows(`SELECT endpoint FROM td_push WHERE endpoint = '${ep}'`)[0] && !rows(`SELECT endpoint FROM fx_push WHERE endpoint = '${ep}'`).length, 'Today’s still; Fitness’s not (its line is in Today’s morning)');
 ok(/every app notifies here/i.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'Notifications says every app notifies here now', await textOf('#youNotify'));
+// (remembered: on this phone for this account; and where the account's lost Chat's row (a sign-in that ended takes it),
+// You sends it again by itself, the row never coming back)
+ok(await G.p.evaluate((id) => localStorage.getItem('today:every') === id, GID), 'the tap remembered on this phone, for this account');
+run(`DELETE FROM pg_push WHERE endpoint = '${ep}'`);
+const fansBefore = deviceCalls().filter((x) => x.fan === true).length;
+await G.p.goto(`${HUB}/#you`); await G.p.waitForSelector('#you #youPhone', { timeout: 30000 }).catch(() => {});
+const back = await until(() => rows(`SELECT via FROM pg_push WHERE endpoint = '${ep}'`)[0], 15000);
+ok(back?.via === 'hub' && deviceCalls().filter((x) => x.fan === true).length === fansBefore + 1, 'Chat’s row lost: sent again by itself, once, via the hub', JSON.stringify({ back, fans: deviceCalls().filter((x) => x.fan === true).length - fansBefore }));
+await wait(800);
+ok(/every app notifies here/i.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'and Get Every App’s Here never back to tap', await textOf('#youNotify'));
 
 // ======================================================================================================================
 step(3, 'a Chat message, a Markets alert and the morning: each pushed, opened, saying its app', '§11.3, §11.4');
