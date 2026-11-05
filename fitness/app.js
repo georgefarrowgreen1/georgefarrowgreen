@@ -514,8 +514,8 @@ const IFL = (() => {
   //                      way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
   //                      here" said) or that its sheet's shut (put away)
-  //   signIn()           a signed-out app at the hub signs in through Chats (on a computer, Today's own trip, as Chat
-  //                      doesn't open there), and comes back here. → true; off the hub,
+  //   signIn()           a signed-out app at the hub signs in by Today's own trip (never waiting on Chat's key, which
+  //                      only Chats needs), and comes back here. → true; off the hub,
   //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
   //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
@@ -672,12 +672,9 @@ const IFL = (() => {
     closed() { hide(); },
     signIn() {
       if (!hub.on || hub.degraded) return false;
-      // (on a computer, Today's own trip, and back here: Chat doesn't open on one (pigeon/theme.js), so its trip can't
-      // sign you in there. An iPad calls itself a Mac, but it's touched; a Mac never is)
-      const ua = navigator.userAgent || "", touched = navigator.maxTouchPoints > 1;
-      const computer = !(/iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches));
-      if (computer) { location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash)); return true; }
-      location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
+      // (Today's own trip, on every device, and back here: no app but Chats needs Chat's key, and Chats asks to unlock
+      // itself the first time it's opened)
+      location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
     moved(app, { off } = {}) {
@@ -1539,8 +1536,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.93";
-const NEWS = "Signing in, already signed in to InFlite: straight back here, with no sign-in page on the way";
+const BUILD = "1.94";
+const NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

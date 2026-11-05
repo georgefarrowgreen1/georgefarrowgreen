@@ -512,7 +512,7 @@ await part(10, 'a 401 at /api/weather/me with the session alive: no sign-out; si
   await D.p.goto(`${HUB}/weather/#radar`);
   const way = await shown(D.p, EXCEPT.SIGNIN, 30000);
   const href = await attrOf(D.p, EXCEPT.SIGNIN, 'href');
-  ok(way && href === `/chats/#signin-start&then=${encodeURIComponent('/weather/#radar')}`, '10. signed out at /weather/#radar: InFlite’s way in, its Sign In back to /weather/#radar (D12, RI15)', href);
+  ok(way && href === `/#signin-today&then=${encodeURIComponent('/weather/#radar')}`, '10. signed out at /weather/#radar: InFlite’s way in, its Sign In back to /weather/#radar (D12, RI15)', href);
   ok(!(await shown(D.p, H.M_WEATHER, 1000)) && !g.hits.length, '10. …no Weather drawn signed out, nothing sent to Weather’s own address (D12, D23)', js(g.hits));
   await D.ctx.close();
 });

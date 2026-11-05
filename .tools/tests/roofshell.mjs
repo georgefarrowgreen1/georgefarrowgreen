@@ -405,11 +405,11 @@ await part('warning chip', async () => {
 await part('signed out at a weather address', async () => {
   await mode({ mode: 'out' });
   const { ctx, p } = await open({ signedIn: false, path: '/weather/#radar' });
-  const THEN = `/chats/#signin-start&then=${encodeURIComponent('/weather/#radar')}`;
+  const THEN = `/#signin-today&then=${encodeURIComponent('/weather/#radar')}`;
   same(await p.$eval('#signin', (a) => a.getAttribute('href')), THEN, 'the way in: Sign in back to /weather/#radar (its href)');
-  await p.click('#signin');
-  await p.waitForURL(/\/chats\//);
-  same(new URL(p.url()).pathname + new URL(p.url()).hash, THEN, 'and its click');
+  // (its click: Today's own trip at once, to the sign-in page's /go, the way back kept in this tab)
+  const [go] = await Promise.all([p.waitForRequest((r) => /\/go\?signin=today/.test(r.url()), { timeout: 15000 }), p.click('#signin')]);
+  ok(!!go, 'and its click: Today’s own trip, to the sign-in page’s /go', go?.url());
   await ctx.close();
 });
 
@@ -489,14 +489,14 @@ await part('signed out after a move', async () => {
   await mode({ phase: 'midday' });
   const { ctx, p } = await open({ path: '/#apps', module: 'missing' });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
-  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/chats/#signin-start&then=${encodeURIComponent('/#apps')}`, 'at boot: Sign in back to /#apps');
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/#signin-today&then=${encodeURIComponent('/#apps')}`, 'at boot: Sign in back to /#apps');
   await p.locator(H.appTile('weather')).locator('a[href="/weather/"]').first().click();
   await p.waitForSelector(`${H.M_WEATHER}:not([hidden])`, { timeout: 15000 });
   await mode({ mode: 'out' });
   await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await p.waitForSelector('#out:not([hidden]) #signin', { timeout: 10000 });
   const at = await p.evaluate(() => location.pathname + location.hash);
-  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/chats/#signin-start&then=${encodeURIComponent(at)}`, `the session lost at ${at}: Sign in’s href back to there, not the boot’s /#apps`);
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), `/#signin-today&then=${encodeURIComponent(at)}`, `the session lost at ${at}: Sign in’s href back to there, not the boot’s /#apps`);
   ok(at.startsWith('/weather/'), 'still at Weather’s address', at);
   await ctx.close();
 });

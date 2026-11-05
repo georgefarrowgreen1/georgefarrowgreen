@@ -491,8 +491,8 @@ const IFL = (() => {
   //                      way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
   //                      here" said) or that its sheet's shut (put away)
-  //   signIn()           a signed-out app at the hub signs in through Chats (on a computer, Today's own trip, as Chat
-  //                      doesn't open there), and comes back here. → true; off the hub,
+  //   signIn()           a signed-out app at the hub signs in by Today's own trip (never waiting on Chat's key, which
+  //                      only Chats needs), and comes back here. → true; off the hub,
   //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
   //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
@@ -649,12 +649,9 @@ const IFL = (() => {
     closed() { hide(); },
     signIn() {
       if (!hub.on || hub.degraded) return false;
-      // (on a computer, Today's own trip, and back here: Chat doesn't open on one (pigeon/theme.js), so its trip can't
-      // sign you in there. An iPad calls itself a Mac, but it's touched; a Mac never is)
-      const ua = navigator.userAgent || "", touched = navigator.maxTouchPoints > 1;
-      const computer = !(/iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches));
-      if (computer) { location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash)); return true; }
-      location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
+      // (Today's own trip, on every device, and back here: no app but Chats needs Chat's key, and Chats asks to unlock
+      // itself the first time it's opened)
+      location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
     moved(app, { off } = {}) {
@@ -1119,8 +1116,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.80";            // shown in InFlite's menu
-const APP_NEWS = "If something touching this app isn’t working, a banner under its header says so, with a link to status.inflite.ai";       // (said once it's in)
+const APP_VERSION = "1.81";            // shown in InFlite's menu
+const APP_NEWS = "Signing in from here no longer goes through Chats first: one sign-in, and Chats asks to unlock itself the first time you open it";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

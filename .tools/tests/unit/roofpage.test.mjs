@@ -58,7 +58,7 @@ test('its page is InFlite’s one page: the hub’s marker, the views and the ta
   const today = inner.slice(inner.indexOf('id="today"'), inner.indexOf('id="apps"'));
   assert.ok(!/<(input|textarea|select)\b/.test(today), 'nothing to type in on Today');
   // (the way in: Sign in, Chats' trip where the hub serves it, and quietly, Today's own)
-  assert.match(html, /id="signinToday"[^>]*>Sign In Without Chats</);
+  assert.ok(!/signinToday|Sign In Without Chats/.test(html), 'one way in: Sign in is Today’s own trip, never through Chats, so no second line');
 });
 
 test('under the roof, its page is the framework’s: the marker, the frame’s hosts (#hd, #views with Today, Apps and You, #tabs), roof.css, and the way in', { skip: roofOnly }, () => {
@@ -80,7 +80,7 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   assert.match(inner, /<main id="you" class="view ifl-screen" aria-label="You" hidden>/);
   const today = inner.slice(inner.indexOf('id="today"'), inner.indexOf('id="apps"'));
   assert.ok(!/<(input|textarea|select)\b/.test(today), 'nothing to type in on Today');
-  assert.match(html, /id="signinToday"[^>]*>Sign In Without Chats</);
+  assert.ok(!/signinToday|Sign In Without Chats/.test(html), 'one way in: Sign in is Today’s own trip, never through Chats, so no second line');
   assert.ok(!/class="bsheet"|class="dimmer"/.test(html), 'none of the page’s old sheets');
 });
 
@@ -134,7 +134,8 @@ test('under the roof, app.js: the hub three ways with roof read as roof === true
   assert.match(js, /"ifl-hub-ready"/); assert.match(js, /"ifl-roof"/); assert.match(js, /"ifl-roof-bounce"/);
   assert.ok(/"yes"/.test(js) && /"no"/.test(js) && /"unknown"/.test(js), 'three ways: yes, no, unknown (D23)');
   assert.ok(!/then=\/["'`]/.test(js), 'Sign in never comes back to / alone: then= is the screen’s path and hash (RI15)');
-  assert.equal((js.match(/#signin-start&then=\$\{thenHere\(\)\}/g) || []).length, 2, 'then= in the way in’s href and in its click');
+  assert.equal((js.match(/\/#signin-today&then=\$\{thenHere\(\)\}/g) || []).length, 1, 'then= in the way in’s href (Today’s own trip)');
+  assert.match(js, /signInHere\(location\.pathname \+ location\.hash\)/, 'and in its click: Today’s own trip, back to this screen');
   assert.match(js, /const thenHere = \(\) => encodeURIComponent\(location\.pathname \+ location\.hash\)/, 'its path and hash, never its query');
   assert.ok(!/replaceState\(\s*null/.test(js), 'history.state kept (the frame’s), never wiped by Today’s own code (RI1)');
   assert.ok((js.match(/F\?\.restamp\(\)/g) || []).length >= 2, 'and the frame asked to stamp its entry again after');
@@ -238,7 +239,7 @@ test('stage 3, app.js: the sign-in hop to /chats/in/ is start()’s first line, 
   assert.equal(at('/chats/index.html', '#signin=abc'), '/chats/in/#signin=abc');
   for (const h of ['#verify=x', '#invite=y', '#reset=z']) assert.equal(at('/chats/', h), '/chats/in/' + h);
   for (const [p, h] of [['/chats/', '#open=pat_1'], ['/chats/', '#share=x'], ['/', '#signin=abc'], ['/weather/', '#signin=1'], ['/chats/', '#verifyx']]) assert.equal(at(p, h), null, `${p}${h} stays`);
-  assert.equal((js.match(/#signin-start&then=\$\{thenHere\(\)\}/g) || []).length, 2, 'Sign In’s href and click, as before');
+  assert.ok(!/#signin-start&then=\$\{thenHere/.test(js), 'Sign In never goes through Chats: Today’s own trip (Chats unlocks itself when opened)');
   assert.ok(!/\/chats\/in\/#signin/.test(js), 'no link of Today’s goes to /chats/in/ itself');
 });
 

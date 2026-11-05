@@ -5,7 +5,7 @@
 // really restores everything even if MAIN's /chats/in/ were broken. todayauth.mjs (the API-level proof of Today's
 // sign-in, which doesn't touch /chats/) is unchanged: this is the browser trip beside it.
 //   - /api/hub apps.chats false; /chats/ is Chat's own page (no framework, no Chats module), /chats/roof/* 404 (§8)
-//   - Today signed out: its Sign In link is the trip, unchanged (/chats/#signin-start&then=…, S3-D8)
+//   - Today signed out: its Sign In link is Today's own trip (/#signin-today&then=…), never through Chats
 //   - the trip: an account, then /chats/#signin-start&then=/ → the account's page → /chats/#signin=<code> (milestone 1's
 //     page, never /chats/in/) → back on Today, signed in, Chat's session and key on this phone
 //   - Today then: the engine (milestone 1's IFL.hub.chat) ready; no chats-core Worker anywhere
@@ -33,11 +33,11 @@ await part(1, 'the switch off: the hub’s word, milestone 1’s page at /chats/
   ok(workers(A.p).core === 0, '1. no chats-core Worker', js(workers(A.p)));
 });
 
-await part(2, 'Today signed out: Sign In is the trip, its href unchanged', 'S3-D8, risk B1', async () => {
+await part(2, 'Today signed out: Sign In is Today’s own trip, not through Chats', 'S3-D8, risk B1', async () => {
   await A.p.goto(`${HUB}/`);
   const up = await shown(A.p, EXCEPT.SIGNIN, 30000);
   const href = await attrOf(A.p, EXCEPT.SIGNIN, 'href');
-  ok(up && /^\/chats\/#signin-start&then=/.test(href || ''), '2. Today’s Sign In: /chats/#signin-start&then=… (unchanged)', String(href));
+  ok(up && /^\/#signin-today&then=/.test(href || ''), '2. Today’s Sign In: /#signin-today&then=… (its own trip)', String(href));
 });
 
 await part(3, 'the trip through milestone 1’s /chats/, back on Today signed in', 'S3-D8, risk B1, §8', async () => {

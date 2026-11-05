@@ -38,7 +38,7 @@ process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 
 // ---- selectors that aren't in roofhooks.mjs yet (declared exceptions, §3.14: asked of B0's owner as hooks) ----
 export const EXCEPT = Object.freeze({
-  SIGNIN: 'a[href*="#signin-start&then="]',          // TD: the signed-out way in (index.html #signin; hubSays writes its href)
+  SIGNIN: 'a[href*="#signin-today&then="]',          // TD: the signed-out way in (index.html #signin; signinHref writes its href: Today's own trip)
   ZOOM_CLONE: 'main#m-weather .ifl-zoom-slot',        // FW: the card's clone in Weather's hero slot while a zoom runs (frame.js clone())
   // TD/FW: Apps' tile's link (ui.tile: the tile itself when it's a link, else its main link; §4.2: tiles keep their hrefs)
   tileLink: (app) => `a.ifl-tile[data-app="${app}"], .ifl-tile[data-app="${app}"] > a.ifl-tile-main`,

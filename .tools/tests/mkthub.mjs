@@ -254,9 +254,10 @@ await so.waitForSelector('.welcome #sign-in', { timeout: 30000 }); await settle(
 await so.screenshot({ path: `${out}/10-signedout.png` });
 ok(!(await so.isDisabled('#sign-in')) && await so.locator('.welcome .ifl-back').count() === 1 && !/finance\.inflite\.ai/.test(await text(so, '.ifl-cta')),
   'signed out at the hub: Sign in ready, with Back, and no word of Markets’ own address', await text(so, '.ifl-cta'));
-await Promise.all([so.waitForURL((u) => u.pathname === '/chats/', { timeout: 20000 }), so.click('#sign-in')]);
-const toChats = soNavs.find((u) => new URL(u).pathname === '/chats/') || so.url();
-ok(pathOf(toChats) === `/chats/#signin-start&then=${encodeURIComponent('/markets/')}`, 'Sign in goes to the hub’s: Chats’ sign-in, then back to /markets/', toChats);
+// (Today's own trip, not through Chats: /#signin-today&then=…, and on from there to the sign-in page's /go)
+await Promise.all([so.waitForRequest((r) => /\/go\?signin=today/.test(r.url()), { timeout: 20000 }), so.click('#sign-in')]);
+const toChats = soNavs.find((u) => /#signin-today/.test(u)) || so.url();
+ok(pathOf(toChats) === `/#signin-today&then=${encodeURIComponent('/markets/')}`, 'Sign in goes to the hub’s: Today’s own trip, then back to /markets/', toChats);
 ok(out2.pages.length === 1 && soNavs.every((u) => new URL(u).host === 'ifl.test:8788'), 'in the same window, at the hub', JSON.stringify(soNavs));
 // (a stock asked for, signed out, on a phone George signed out of in You: his copy of Markets still here, InFlite's own
 // kept sign-in gone. Nothing of it drawn, ever; it's let go; and the stock kept through Sign in)
@@ -271,9 +272,9 @@ const leftover = await so.evaluate(() => ({ saw: window.__sawKept, kept: localSt
 ok(leftover.saw === false && leftover.kept === null, 'signed out at the hub with another’s copy of Markets left here: none of it drawn, and it’s let go', JSON.stringify({ saw: leftover.saw, kept: !!leftover.kept }));
 ok(leftover.hash === '#s=TSCO.L', 'the stock asked for stays in the address while signed out', leftover.hash);
 soNavs.length = 0;
-await Promise.all([so.waitForURL((u) => u.pathname === '/chats/', { timeout: 20000 }), so.click('#sign-in')]);
-const toChats2 = soNavs.find((u) => new URL(u).pathname === '/chats/') || so.url();
-ok(pathOf(toChats2) === `/chats/#signin-start&then=${encodeURIComponent('/markets/#s=TSCO.L')}`, 'Sign in comes back to that stock: then=/markets/#s=TSCO.L', toChats2);
+await Promise.all([so.waitForRequest((r) => /\/go\?signin=today/.test(r.url()), { timeout: 20000 }), so.click('#sign-in')]);
+const toChats2 = soNavs.find((u) => /#signin-today/.test(u)) || so.url();
+ok(pathOf(toChats2) === `/#signin-today&then=${encodeURIComponent('/markets/#s=TSCO.L')}`, 'Sign in comes back to that stock: then=/markets/#s=TSCO.L', toChats2);
 await out2.ctx.close();
 
 // ---- what's left: no page or console error on Markets' pages ----

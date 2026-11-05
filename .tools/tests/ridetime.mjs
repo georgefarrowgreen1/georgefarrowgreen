@@ -259,15 +259,15 @@ await p.waitForSelector('.fhead .ifl-back', { timeout: 30000 }); await settle(p,
 await Promise.all([p.waitForURL((u) => u.pathname === '/' && u.hash === '#apps', { timeout: 20000 }), p.click('.fhead .ifl-back')]);
 ok(pathOf(p.url()) === '/#apps', `opened from Apps${tile ? '’ Fitness tile' : ''}: Back to Apps`, p.url());
 
-// ---- 7. signed out at the hub: Sign In through Chats, coming back to Fitness ----
+// ---- 7. signed out at the hub: Sign In by Today's own trip (not through Chats), coming back to Fitness ----
 const out2 = await hubPhone('rhea-out', null, { path: '/fitness/' });
 await out2.p.waitForSelector('#sign-in:not([disabled])', { timeout: 30000 });
 ok(await out2.p.locator('.w-back .ifl-back').count() === 1, 'signed out: Back over the morning too');
-// (the address as the window arrives at /chats/: Chats reads its #signin-start at once and takes it off the address as
-// the trip starts, so the address read a moment later may already be bare)
-let toChats = '';
-await Promise.all([out2.p.waitForURL((u) => { if (u.pathname !== '/chats/') return false; toChats = u.pathname + u.hash; return true; }, { timeout: 20000 }), out2.p.click('#sign-in')]);
-ok(toChats === '/chats/#signin-start&then=%2Ffitness%2F', 'Sign In: the hub’s, through Chats, and back to /fitness/', `${toChats} (now ${out2.p.url()})`);
+// (the address as the window arrives at Today: it takes #signin-today off at once and goes on to the sign-in page's /go)
+const navs2 = []; out2.p.on('framenavigated', (f) => { if (f === out2.p.mainFrame()) navs2.push(f.url()); });
+await Promise.all([out2.p.waitForRequest((r) => /\/go\?signin=today/.test(r.url()), { timeout: 20000 }), out2.p.click('#sign-in')]);
+const toChats = (navs2.map((u) => { const x = new URL(u); return x.pathname + x.hash; }).find((p) => /#signin-today/.test(p))) || '';
+ok(toChats === '/#signin-today&then=%2Ffitness%2F', 'Sign In: the hub’s, Today’s own trip, and back to /fitness/', `${toChats} (now ${out2.p.url()})`);
 await out2.ctx.close();
 
 // ---- 8. #act= on a phone new to the account, the ride beyond the first page of activities: opened once the older ones

@@ -215,7 +215,7 @@ test("tabs(): Today · Chats · Apps · You as links, the one you're on marked, 
   assert.equal(q.store.get("ifl-crumb"), "/markets/#s=TSCO");
 });
 
-test("send() goes through Chats' own sheet while there's no engine, and comes back here; signIn() through Chats too", async () => {
+test("send() goes through Chats' own sheet while there's no engine, and comes back here; signIn() by Today's own trip", async () => {
   const p = page("https://inflite.ai/weather/#radar", { marker: "/weather/" });
   const wait = p.hub.chat();
   p.run(15e3);
@@ -232,12 +232,12 @@ test("send() goes through Chats' own sheet while there's no engine, and comes ba
   assert.equal(p.assigned[2], "/chats/#share=Just%20words&back=%2Fweather%2F%23radar");
   const s = page("https://inflite.ai/markets/#s=TSCO", { marker: "/markets/" });
   assert.equal(s.hub.signIn(), true);
-  assert.deepEqual(s.assigned, ["/chats/#signin-start&then=%2Fmarkets%2F%23s%3DTSCO"]);
-  // (an iPad, calling itself a Mac but touched: Chats' trip too)
+  assert.deepEqual(s.assigned, ["/#signin-today&then=%2Fmarkets%2F%23s%3DTSCO"], "a phone: Today's own trip, never through Chats");
+  // (an iPad, calling itself a Mac but touched: the same)
   const ipad = page("https://inflite.ai/markets/", { marker: "/markets/", ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15" });
   assert.equal(ipad.hub.signIn(), true);
-  assert.deepEqual(ipad.assigned, ["/chats/#signin-start&then=%2Fmarkets%2F"]);
-  // (a computer: Chat doesn't open on one, so Today's own trip, and back to where it was)
+  assert.deepEqual(ipad.assigned, ["/#signin-today&then=%2Fmarkets%2F"]);
+  // (a computer: the same, and back to where it was)
   const mac = page("https://inflite.ai/markets/#s=TSCO", { marker: "/markets/", ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", touch: 0 });
   assert.equal(mac.hub.signIn(), true);
   assert.deepEqual(mac.assigned, ["/#signin-today&then=%2Fmarkets%2F%23s%3DTSCO"]);

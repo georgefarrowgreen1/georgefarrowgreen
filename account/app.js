@@ -502,8 +502,8 @@ const IFL = (() => {
   //                      way, chat.<site>/#share=…, as it always has)
   //   sent(say), closed()           the engine's word that it's sent (the frame put away, and "Sent to Pat. You’re still
   //                      here" said) or that its sheet's shut (put away)
-  //   signIn()           a signed-out app at the hub signs in through Chats (on a computer, Today's own trip, as Chat
-  //                      doesn't open there), and comes back here. → true; off the hub,
+  //   signIn()           a signed-out app at the hub signs in by Today's own trip (never waiting on Chat's key, which
+  //                      only Chats needs), and comes back here. → true; off the hub,
   //                      nothing done: false
   //   moved(app, { off })           an old Home Screen icon (off the hub, opened from the Home Screen, filling it: never
   //                      iOS's small browser, which a link from another Home Screen app opens): once, the card saying
@@ -660,12 +660,9 @@ const IFL = (() => {
     closed() { hide(); },
     signIn() {
       if (!hub.on || hub.degraded) return false;
-      // (on a computer, Today's own trip, and back here: Chat doesn't open on one (pigeon/theme.js), so its trip can't
-      // sign you in there. An iPad calls itself a Mac, but it's touched; a Mac never is)
-      const ua = navigator.userAgent || "", touched = navigator.maxTouchPoints > 1;
-      const computer = !(/iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches));
-      if (computer) { location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash)); return true; }
-      location.assign("/chats/#signin-start&then=" + encodeURIComponent(location.pathname + location.hash));
+      // (Today's own trip, on every device, and back here: no app but Chats needs Chat's key, and Chats asks to unlock
+      // itself the first time it's opened)
+      location.assign("/#signin-today&then=" + encodeURIComponent(location.pathname + location.hash));
       return true;
     },
     moved(app, { off } = {}) {
@@ -1084,8 +1081,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.88";
-const NEWS = "Signing in quicker: an app you open while signed in comes straight back without the sign-in page, which itself now loads less than half as much; a passkey goes straight to Face ID; and checking a password takes fewer trips to the server";
+const BUILD = "1.89";
+const NEWS = "Apps opened inside InFlite sign in without going through Chats first; Chats asks to unlock itself the first time you open it";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
