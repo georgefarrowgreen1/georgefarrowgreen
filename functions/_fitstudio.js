@@ -10,7 +10,11 @@
 // Without FITTING_USERS no one can sign in. Every file but the sign-in page and what it shows (its styles, typefaces,
 // logo and icons) is only for someone signed in.
 //
-// Every fit itself stays in the browser that recorded it (IndexedDB), until the fitter shares the client's report.
+// Every fit is kept in the browser that recorded it (IndexedDB). Connected to the shop's Google Drive (signed in there
+// with the shop's Google account, in Google's own window), each fit is kept in that Drive too, sent straight from the
+// device to Google: nothing of it passes through here. The app's Google client ID (not a secret) is pasted into the
+// app's Fits list by a fitter (api/google, kept in KV), or set as FITTING_GOOGLE_CLIENT_ID on the Worker, which wins;
+// api/me hands it to the app. Without one the app offers no Drive.
 
 import { notFound } from "./_app.js";
 export const FITTING_HOST = "fitting.georgefarrowgreen.com";
@@ -18,16 +22,18 @@ export const FITTING_HOST = "fitting.georgefarrowgreen.com";
 export const isFitting = (url, env) => (env.FITTING_HOST || FITTING_HOST).split(",").includes(url.hostname);
 
 // (styles inline as well as its own: the form and the report place their gauges and photos with style attributes.
-// Scripts only its own, so nothing a rider's name or note holds can ever run.)
+// Scripts only its own, and Google's sign-in, so nothing a rider's name or note holds can ever run. The shop's Google
+// Drive: Google's sign-in window (a popup, so the page's opener rule lets popups talk back) and its Drive API.)
+const GSI = "https://accounts.google.com/gsi/";
 export const FIT_SECURITY = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' ${GSI}client https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' ${GSI}style; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://www.googleapis.com ${GSI} https://cloudflareinsights.com; frame-src ${GSI}; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   "Referrer-Policy": "no-referrer",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "X-Robots-Tag": "noindex, nofollow",
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // the app's pages (as stored, under /fitting/): the app, and the sign-in
@@ -92,14 +98,33 @@ async function stamped(ctx, url, res) {
   return out;
 }
 
-// ---- the API: api/login, api/logout, api/me ----
+// ---- the API: api/login, api/logout, api/me, api/google ----
 const COOKIE = "__Host-fit", DAYS = 30, TRIES = 8, TRIES_FOR = 900;
+// the shop's Google client ID: the Worker's own setting, else the one a fitter pasted in
+const GKEY = "fitting:google-client", GID = /^\d{6,}-[a-z0-9]{8,}\.apps\.googleusercontent\.com$/;
+async function googleClient(env) {
+  const fixed = String(env.FITTING_GOOGLE_CLIENT_ID || "").trim();
+  if (fixed) return { google: fixed, googleFixed: true };
+  let kept = ""; try { kept = (env.BIO_KV && await env.BIO_KV.get(GKEY)) || ""; } catch (_) {}
+  return { google: kept, googleFixed: false };
+}
 async function api(ctx, url, what) {
   const req = ctx.request, env = ctx.env;
   if (what === "me") {
     if (req.method !== "GET") return plain(405, "GET only.");
     const me = await signedIn(req, env);
-    return me ? json(200, { name: me }) : json(401, { error: "Not signed in." });
+    return me ? json(200, { name: me, ...await googleClient(env) }) : json(401, { error: "Not signed in." });
+  }
+  if (what === "google") {
+    if (req.method !== "PUT") return plain(405, "PUT only.");
+    if (req.headers.get("Origin") !== url.origin) return json(403, { error: "Only from the Fit Studio’s own pages." });
+    if (!await signedIn(req, env)) return json(401, { error: "Sign in first." });
+    if (String(env.FITTING_GOOGLE_CLIENT_ID || "").trim()) return json(409, { error: "The Client ID is set on the server, so it’s changed there." });
+    let id = ""; try { id = String((await req.json()).id || "").trim(); } catch (_) {}
+    if (id && !GID.test(id)) return json(400, { error: "That doesn’t look like a Google Client ID: it ends .apps.googleusercontent.com." });
+    if (!env.BIO_KV) return json(503, { error: "The site can’t keep it just now." });
+    if (id) await env.BIO_KV.put(GKEY, id); else await env.BIO_KV.delete(GKEY);
+    return json(200, { google: id });
   }
   if (what !== "login" && what !== "logout") return notFound();
   if (req.method !== "POST") return plain(405, "POST only.");

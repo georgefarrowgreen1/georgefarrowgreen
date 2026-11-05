@@ -622,3 +622,25 @@ body.signin::before{display:none}
 .hist-t span{font-size:13.5px;color:var(--ink-2)}
 .hist-t .hist-ok{color:var(--good);font-weight:600}
 .hist-a{display:flex;flex-wrap:wrap;gap:8px}
+
+/* the shop's Google Drive: its card on the fits list, the header's reconnect */
+.gd{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:center;padding:16px 18px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.gd .ic{flex:none;width:44px;height:44px;border-radius:12px;background:var(--field);display:grid;place-items:center;color:var(--ink-2)}
+.gd .tx{flex:1 1 260px;min-width:0}
+.gd .tx b{display:block;font-size:16.5px}
+.gd .tx span{display:block;font-size:13.5px;color:var(--mute);margin-top:2px;overflow-wrap:anywhere}
+.gd.on{border-color:var(--good);box-shadow:0 0 0 3px var(--good-soft)}
+.gd.on .ic{color:var(--good)}
+.gd.warn{border-color:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+.gd.warn .ic{color:var(--warn)}
+.linkbtn{border:0;background:none;padding:0;font:inherit;font-weight:700;color:var(--red-ink);text-decoration:underline;cursor:pointer}
+#btn-fits.warn{position:relative}
+#btn-fits.warn::after{content:"";position:absolute;top:6px;right:6px;width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--card)}
+.gd-id{flex:1 1 100%;display:flex;gap:8px;flex-wrap:wrap}
+.gd-id input{flex:1 1 320px;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+#gd-id-msg{flex:1 1 100%}
+#gd-id-msg:empty{display:none}
+.gd-how{flex:1 1 100%;font-size:13.5px;color:var(--ink-2)}
+.gd-how summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.gd-how ol{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
+.gd-cid{flex:1 1 100%;margin:-4px 0 0 58px;font-size:12.5px;color:var(--mute)}
