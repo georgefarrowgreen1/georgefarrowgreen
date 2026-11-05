@@ -258,7 +258,10 @@ ok(!(await so.isDisabled('#sign-in')) && await so.locator('.welcome .ifl-back').
 await Promise.all([so.waitForRequest((r) => /\/go\?signin=today/.test(r.url()), { timeout: 20000 }), so.click('#sign-in')]);
 const toChats = soNavs.find((u) => /#signin-today/.test(u)) || so.url();
 ok(pathOf(toChats) === `/#signin-today&then=${encodeURIComponent('/markets/')}`, 'Sign in goes to the hub’s: Today’s own trip, then back to /markets/', toChats);
-ok(out2.pages.length === 1 && soNavs.every((u) => new URL(u).host === 'ifl.test:8788'), 'in the same window, at the hub', JSON.stringify(soNavs));
+ok(out2.pages.length === 1 && soNavs.filter((u) => !/^https?:\/\/auth\./.test(u)).every((u) => new URL(u).host === 'ifl.test:8788'), 'in the same window, at the hub (then the sign-in page)', JSON.stringify(soNavs));
+// (back at the hub before anything's kept there: the trip's gone on to the sign-in page)
+await so.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 }).catch(() => {});
+await so.goto(HUB + '/markets/'); await so.waitForSelector('.welcome #sign-in', { timeout: 30000 });
 // (a stock asked for, signed out, on a phone George signed out of in You: his copy of Markets still here, InFlite's own
 // kept sign-in gone. Nothing of it drawn, ever; it's let go; and the stock kept through Sign in)
 await so.evaluate((v) => { localStorage.setItem('markets:last', v); localStorage.removeItem('today:session'); }, JSON.stringify(kept.last));
