@@ -157,11 +157,13 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 
 // (stage 1 left roof/*.js at 20,452 of 20,480 B; stages 2–4 raise the cap to 24 KB once, for the per-app switch, the
 // reload rules, flush, the stay keys and the connector providers they all need (s24-contracts §13; s4 spec §5). j0, which
-// did most of stage 2's framework parts too, left 22,350 B: stage 2's FW ≤ 850 B more, stage 3 ≤ 1,300 B, ~75 B slack)
-test('roof/*.js together: at most 24 KB gzipped, comments stripped', { skip: roofSkip }, () => {
+// did most of stage 2's framework parts too, left 22,350 B: stage 2's FW ≤ 850 B more, stage 3 ≤ 1,300 B, ~75 B slack.
+// 5 November: 128 B more, for a sheet lifted above the keyboard (sheet.js; search's field was under it) and no broken
+// app icon (ui.js))
+test('roof/*.js together: at most 24 KB and 128 B gzipped, comments stripped', { skip: roofSkip }, () => {
   const all = files().map((f) => strip(read(f))).join('\n');
   const gz = gzipSync(all).length;
-  assert.ok(gz <= 24 * 1024, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 24576`);
+  assert.ok(gz <= 24 * 1024 + 128, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 24704`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 
