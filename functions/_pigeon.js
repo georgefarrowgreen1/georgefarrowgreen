@@ -698,9 +698,17 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
+  const look = (X) => X.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
+  // (asked of the nearest copy of the database, where D1 keeps copies near the visitor (its read replicas), as every
+  // request starts here: but only for a request that changes nothing (GET), from a browser that hasn't just changed its
+  // sign-in (functions/_account.js markWrote); and asked again of the main copy whenever the nearby one hasn't it, or has
+  // it as handed over (which showing it's you ends), as a copy can be a moment behind. Without copies, it's the main one)
+  const near = env.DB?.withSession && /^(GET|HEAD)$/.test(request?.method || "") && !/(?:^|;\s*)ifl_rw=1(?:;|$)/.test(request.headers.get("Cookie") || "")
+    ? env.DB.withSession("first-unconstrained") : null;
+  let u = near ? await look(near).catch(() => null) : null;
+  if (!u || u.s_handed) u = await look(D);
   // (a sign-in lasts while it's used, up to a year from when it was made: then it's asked for again, wherever it's in use)
   const over = u && t - (u.s_made || t) > SESSION_MAX;
   if (u && (!u.s_held || over)) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();

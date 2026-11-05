@@ -65,7 +65,7 @@ async function call(method, path, { cookie, origin = ORIGIN, body, site, host = 
   const later = [], res = await onRequest({ request, env, params: { path: ["today", ...path.split("?")[0].split("/")] }, waitUntil: (p) => later.push(p) });
   await Promise.allSettled(later);
   const type = res.headers.get("Content-Type") || "";
-  return { s: res.status, j: type.includes("json") ? await res.json() : null, set: res.headers.get("Set-Cookie") };
+  return { s: res.status, j: type.includes("json") ? await res.json() : null, set: res.headers.getSetCookie().filter((c) => !c.startsWith("ifl_rw=")).join(", ") || null };      // (the sign-in's, without the mark that comes with it: markWrote)
 }
 const err = (status, words) => (e) => e.status === status && (!words || e.message === words);
 

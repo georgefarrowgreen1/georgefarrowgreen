@@ -28,7 +28,7 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { maybeWxTick } from "../../_wxpush.js";
-import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, accountMail } from "../../_account.js";
+import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, accountMail, markWrote } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
@@ -440,7 +440,7 @@ async function reauth({ request, env }) {
   }
   if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
   await D.prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
-  return json({ ok: true });
+  return markWrote(json({ ok: true }), request, env);
 }
 
 // A passkey's own copy of the private key, locked with that passkey's PRF secret.

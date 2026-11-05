@@ -90,7 +90,7 @@ test("a device's notifications: a place each, and the app from before's one plac
 
 test("the site's sign-in, as a cookie: the whole site's where the address is the site's, out of any page's reach", () => {
   const req = (url, cookie) => new Request(url, { headers: cookie ? { Cookie: cookie } : {} });
-  const set = (url, env = {}) => withCookie(new Response("{}"), req(url), env, "t".repeat(43)).headers.get("Set-Cookie");
+  const set = (url, env = {}) => withCookie(new Response("{}"), req(url), env, "t".repeat(43)).headers.getSetCookie()[0];
   assert.match(set("https://weather.georgefarrowgreen.com/api/weather/me"), /^__Secure-account=t{43}; Path=\/; Domain=georgefarrowgreen\.com; HttpOnly; SameSite=Lax; Secure; Max-Age=15552000$/);
   assert.match(set("https://chat.georgefarrowgreen.com/api/pigeon/login"), /Domain=georgefarrowgreen\.com/);
   // the site's own addresses: Secure whatever the request came over

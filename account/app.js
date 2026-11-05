@@ -1105,8 +1105,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.90";
-const NEWS = "Tidier behind the scenes: InFlite’s shared menu, as every app has it, now also gets Sign in ready ahead";
+const BUILD = "1.91";
+const NEWS = "Signing in to Today on a phone with your password, or a passkey that can, now opens Chats in the same go";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1189,6 +1189,9 @@ const SIGN_FOR = (() => {
   history.replaceState(null, "", location.pathname + location.search);
   const p = new URLSearchParams(ARRIVED.slice(1)), word = (k, n) => (new RegExp(`^[A-Za-z0-9_-]{${n}}$`).test(p.get(k) || "") ? p.get(k) : null);
   const a = { app: m[2], join: m[1] === "join", ask: word("ask", 43), seal: word("seal", 87), back: backFor(m[2], p.get("back")), at: Date.now(),
+    // (Today, signing in on a phone where Chats runs beside it: Chats' own word too, with the key pair's public half in
+    // seal, so the key that opens Chats goes back in the same trip, sealed to Today's tab: chatBack)
+    chat: m[2] === "today" ? word("chat", 43) : null,
     // (an app in a browser's tab, which shares this page's sign-in: straight back, nothing to swap. Weather, Fitness and
     // Markets only; Chat needs its key handed over, and Mail and Today make their own trips)
     shared: p.get("jar") === "shared" && ["weather", "fitness", "markets"].includes(m[2]) };
@@ -1412,6 +1415,8 @@ async function signalPasskeys(m) {
 // (a passkey the account doesn't have any more, used to sign in: its password manager told, so it stops offering it)
 function signalGone(id) { try { if (RP && id) PublicKeyCredential.signalUnknownCredential?.({ rpId: RP, credentialId: id }).catch(() => {}); } catch (_) {} }
 // (one passkey asked for at a time: one offered in the keyboard put away first)
+// (whether a passkey asked for here is asked for its secret too: for Chat, or for Today taking Chats along: chatBack)
+const wantsPrf = () => S.signFor?.app === "inflight" || (S.signFor?.app === "today" && !!S.signFor.chat && !!S.signFor.seal);
 const passkeyAsk = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.get(o); };
 const passkeyMake = async (o) => { stopAutofill(); await new Promise((r) => setTimeout(r)); return navigator.credentials.create(o); };
 // A passkey offered in the keyboard (passkey autofill): asked for, quietly, as soon as a sign-in card with an email field
@@ -1436,7 +1441,7 @@ async function startAutofill(field, picked) {
     };
     setTimeout(renew, 4 * 60e3);
     const a = await navigator.credentials.get({ mediation: "conditional", signal: ac.signal, publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required",
-      extensions: S.signFor?.app === "inflight" ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } });
+      extensions: wantsPrf() ? { prf: { eval: { first: await E2E.prfSalt() } } } : undefined } });
     if (!a || ac.signal.aborted) return;
     autofill = null;
     await picked(o, a);
@@ -2537,9 +2542,9 @@ async function handBack(m, way, btn) {
     // (its code asked for as the page lets go, not before: so the one's done as the other is)
     // (one that fails is said once the page has let go, so it can come back whole)
     const asked = post("handback", { app: a.app, ask: a.ask, ...key }).then((r) => r, (e) => ({ e }));
-    const [face, { code, e }] = await Promise.all([leaving(btn, m), asked]);
+    const [face, { code, e }, chat] = await Promise.all([leaving(btn, m), asked, chatBack(m, way)]);
     if (e) throw e;
-    leaveFor(`${a.back}#signin=${code}${faceHint(m, face)}`);
+    leaveFor(`${a.back}#signin=${code}${chat ? `&chat=${chat}` : ""}${faceHint(m, face)}`);
     await new Promise(() => {});             // (going: you, there, until the app's there)
   };
   try { await (!btn?.isConnected ? go() : btn.classList.contains("working") ? go() : working(btn, `Opening ${APPS[a.app].name}`, go)); }
@@ -2554,6 +2559,18 @@ const shownHere = () => new Promise((ok) => {
   Sheet.cancel = () => ok(false);
   openSheet(() => confirmView(() => { Sheet.cancel = null; closeSheet(); ok(true); }, closeSheet));
 });
+// Today, on a phone where Chats runs beside it, signed in with what opens Chat's key (the password just typed, or a
+// passkey with its own copy of the key): a code for Chat too, made for Chats' word, with that sealed to the key pair
+// Today's tab made for it, so Chats is open as soon as Today is, with no trip of its own. → the code, or null (signed in
+// any other way, or anything not so: Chats asks to be unlocked when it's opened, as before)
+async function chatBack(m, way) {
+  const a = S.signFor;
+  if (a?.app !== "today" || !a.chat || !a.seal) return null;
+  try {
+    const key = await keyFor(m, way);
+    return key ? (await post("handback", { app: "inflight", ask: a.chat, ...key })).code || null : null;
+  } catch (_) { return null; }
+}
 // what opens Chat's key there, sealed to its tab: the password's first half; or the PRF secret of the passkey just
 // used, if it has its own copy of the key; else nothing (the password's needed)
 async function keyFor(m, way) {
@@ -3000,7 +3017,7 @@ function passkeyOptions(only) {
   return e && Date.now() - e.at < 4 * 60e3 ? e.p.catch(again) : again();
 }
 async function signInWithPasskey(only) {
-  const o = await passkeyOptions(only), inflight = S.signFor?.app === "inflight";
+  const o = await passkeyOptions(only), inflight = wantsPrf();
   RP = o.rpId;
   let a;
   try { a = await passkeyAsk({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
@@ -3015,7 +3032,7 @@ async function passkeySignedIn(o, a) {
   const m = await post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature), app: S.signFor?.app })
     .catch((e) => { if (e.field === "unknownpasskey") signalGone(a.id); throw e; });
-  return { m, prf: S.signFor?.app === "inflight" ? prfOf(a) : null, id: a.id };
+  return { m, prf: wantsPrf() ? prfOf(a) : null, id: a.id };
 }
 // Signed in, with a passkey (get: asked for, or picked from the keyboard) or a password: who it was kept here, then back to
 // the app that sent you, or this page as yours

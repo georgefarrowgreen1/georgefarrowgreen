@@ -57,6 +57,15 @@ export async function withSession(res, request, env, sessionHash, sure = false) 
 export function withCookie(res, request, env, token) {
   const { name, attrs } = cookieOf(request, env);
   res.headers.append("Set-Cookie", `${name}=${token}; ${attrs}; Max-Age=${Math.floor(SESSION_TTL / 1000)}`);
+  return markWrote(res, request, env);
+}
+// A mark that this browser has just changed its sign-in (made one, renewed it, or shown it's you again), for a minute:
+// until then its requests ask the main copy of the database who's signed in, never a nearby one that may not have the
+// change yet (functions/_pigeon.js sessionUser). For the whole site, as the sign-in's cookie is.
+export const WROTE = "ifl_rw";
+export function markWrote(res, request, env) {
+  const { attrs } = cookieOf(request, env);
+  res.headers.append("Set-Cookie", `${WROTE}=1; ${attrs}; Max-Age=60`);
   return res;
 }
 export function withoutSession(res, request, env) {

@@ -33,7 +33,7 @@
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
 import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail } from "../../_account.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail, markWrote } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount, isAuth } from "../../_acctapp.js";
@@ -482,7 +482,7 @@ const ROUTES = {
     if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
     // (and one handed over from an app, shown to be yours, is the browser's own from now on)
     await D.prepare("UPDATE pg_sessions SET auth_at = ?, handed = NULL WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
-    return json({ ok: true });
+    return markWrote(json({ ok: true }), request, env);
   },
   // the password-locked key, for the password itself (its proof is the check): the page unlocks it, to lock it anew
   "POST password/vault": async ({ request, env }) => {

@@ -124,7 +124,8 @@ test('under the roof, each of the framework’s static files is asked for ahead 
   assert.ok(roof.includes('/roof/frame.js'), 'the frame');
   // (modules.js and connectors.js: dynamic only, and no module's own file from the page)
   const dyn = [...js.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]);
-  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/swipe.js', '/roof/modules.js', '/roof/connectors.js'].includes(d), `import("${d}")`);
+  // (and Chat's own crypto, for the key pair a sign-in on a phone takes along for Chats: chatTrip, unlockChats)
+  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/swipe.js', '/roof/modules.js', '/roof/connectors.js', '/chats/crypto.js'].includes(d), `import("${d}")`);
   assert.ok(!/\/weather\/roof\//.test(own()), 'the page never names a module’s file itself: the router’s registry does');
 });
 
@@ -144,7 +145,7 @@ test('under the roof, app.js: the hub three ways with roof read as roof === true
   assert.match(js, /createFrame\(/); assert.match(js, /F\.screen\(/);
   for (const k of ['session:', 'lost:', 'checkSession', 'hubAgain:', 'save', 'onMe:', 'me:']) assert.ok(js.includes(k), `createFrame's opts: ${k}`);
   // (sessionStorage written only under the framework's and the hub's own keys, never with words of anyone's)
-  for (const [, k] of js.matchAll(/sessionStorage\.setItem\(\s*([^,]+),/g)) assert.match(k.trim(), /^(VERIFIER_KEY|THEN_KEY|k)$/, `sessionStorage.setItem(${k})`);
+  for (const [, k] of js.matchAll(/sessionStorage\.setItem\(\s*([^,]+),/g)) assert.match(k.trim(), /^(VERIFIER_KEY|THEN_KEY|CHAT_TRIP|k)$/, `sessionStorage.setItem(${k})`);
 });
 
 // ---- stages 2–4 (s24-contracts §2, §10): the switches per module, and sign-out (C10) ----
