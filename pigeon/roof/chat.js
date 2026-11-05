@@ -213,7 +213,11 @@ function build(host, ctx) {
     }
   };
   const fit = () => {
-    const h = vv ? vv.height : globalThis.innerHeight;
+    // (to the screen's own foot, on a Home Screen that lays the page out short of it: the shared menu's --fix-gap; never
+    // with the keyboard up, which the visual viewport is short by)
+    const ih = globalThis.innerHeight, kb = !!vv && vv.height < ih - 80;
+    let gap = 0; try { gap = kb ? 0 : parseFloat(getComputedStyle(doc.documentElement).getPropertyValue("--fix-gap")) || 0; } catch (_) {}
+    const h = (vv ? vv.height : ih) + gap;
     box.style.setProperty("--ch-vvh", `${Math.round(h)}px`);
     if (vv) box.style.setProperty("--ch-vvtop", `${Math.round(vv.offsetTop || 0)}px`);
     if (stick) toBottom();

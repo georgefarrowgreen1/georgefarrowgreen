@@ -101,7 +101,7 @@ dialog.sheet [tabindex="-1"]:focus { outline: none; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* ---- the sky: three slow lights drifting over the gradient (the account page's, one warmer) ---- */
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
+.sky { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: -1; overflow: hidden; background: radial-gradient(120% 80% at 50% -10%, var(--sky-a), var(--sky-b) 52%, var(--sky-c)) var(--sky-top); }
 @media (hover: none) {
   .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent); }
 }
@@ -2237,7 +2237,7 @@ img, svg, a { -webkit-user-drag: none; }
    here, of every page (an at-rule can't be kept to html.ifl-hub); off the hub menu.js lets it go as a page is left */
 @view-transition { navigation: auto; }
 .ifl-tabs { --ifl-tab-ink: #3f4250; --ifl-tab-on: #1d55c4; --ifl-tabs-glass: rgba(250, 250, 253, 0.8);
-  position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
+  position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
   width: calc(100% - 32px); max-width: var(--ift-max); height: var(--ift-h); margin: 0 auto; padding: var(--ift-pad); border-radius: 999px;
   background: var(--ifl-tabs-glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px var(--ifm-line), 0 10px 28px -14px rgba(20, 30, 70, 0.45);

@@ -182,7 +182,7 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
 @property --p3 { syntax: "<percentage>"; inherits: false; initial-value: 80%; }
 @property --glow { syntax: "<color>"; inherits: true; initial-value: rgba(255, 255, 255, 0.12); }
 @property --glow-2 { syntax: "<color>"; inherits: true; initial-value: rgba(120, 160, 255, 0.12); }
-.sky { position: fixed; inset: 0; z-index: -1; overflow: hidden;
+.sky { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: -1; overflow: hidden;
   --s1: #3f5670; --s2: #5d7189; --p2: 60%; --s3: #6c7f95; --p3: 80%; --s4: #7b8ca0;
   background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%);
   transition: --s1 1s var(--ease), --s2 1s var(--ease), --s3 1s var(--ease), --s4 1s var(--ease), --p2 1s var(--ease), --p3 1s var(--ease), --glow 1s var(--ease), --glow-2 1s var(--ease); }
@@ -2250,7 +2250,7 @@ img, svg, a { -webkit-user-drag: none; }
    here, of every page (an at-rule can't be kept to html.ifl-hub); off the hub menu.js lets it go as a page is left */
 @view-transition { navigation: auto; }
 .ifl-tabs { --ifl-tab-ink: #3f4250; --ifl-tab-on: #1d55c4; --ifl-tabs-glass: rgba(250, 250, 253, 0.8);
-  position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
+  position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
   width: calc(100% - 32px); max-width: var(--ift-max); height: var(--ift-h); margin: 0 auto; padding: var(--ift-pad); border-radius: 999px;
   background: var(--ifl-tabs-glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px var(--ifm-line), 0 10px 28px -14px rgba(20, 30, 70, 0.45);

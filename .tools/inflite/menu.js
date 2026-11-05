@@ -528,6 +528,38 @@ const IFL = (() => {
       return inset > 0;
     } catch (_) { return true; }
   };
+  // The screen's foot, on an iPhone's or iPad's Home Screen: iOS can lay the page out shorter than the screen (by about
+  // the status bar's height, after a while away, or from the start), and what's fixed to its foot (a background, the tab
+  // bar, a sheet) then stops that much above the screen's bottom, with the page's own colour showing under it. The gap,
+  // measured against the screen itself, is --fix-gap on html, for each app's styles to take back (markets/app.js did it
+  // first). Only filling the screen, behind the status bar (not iOS's small browser, short of it by its own bars); never
+  // the keyboard (that shortens the visual viewport, not innerHeight).
+  const fitScreen = () => {
+    if (navigator.standalone !== true || !window.screen?.width || !window.screen?.height) return;
+    const doc = document.documentElement;
+    const behind = () => {
+      if (!matchMedia("(orientation: portrait)").matches) return true;
+      const p = document.createElement("div");
+      p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none";
+      document.body.append(p);
+      const t = p.offsetHeight;
+      p.remove();
+      return t > 0;
+    };
+    const fit = () => {
+      try {
+        const portrait = matchMedia("(orientation: portrait)").matches, a = screen.width, b = screen.height;
+        const w = portrait ? Math.min(a, b) : Math.max(a, b), h = portrait ? Math.max(a, b) : Math.min(a, b);
+        const gap = Math.abs(innerWidth - w) < 2 && behind() ? Math.round(h - innerHeight) : 0;
+        doc.style.setProperty("--fix-gap", `${gap > 0 && gap < 120 ? gap : 0}px`);
+      } catch (_) {}
+    };
+    fit();
+    for (const ev of ["resize", "pageshow", "focus"]) addEventListener(ev, fit);
+    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && fit());
+    addEventListener("orientationchange", () => setTimeout(fit, 300));
+  };
+  if (document.body) fitScreen(); else document.addEventListener("DOMContentLoaded", fitScreen, { once: true });
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;

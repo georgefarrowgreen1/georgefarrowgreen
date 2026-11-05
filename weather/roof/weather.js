@@ -41,7 +41,7 @@ import * as I from "../insights.js";
 
 export const CONTRACT = 1;
 export const BUILD = "1.81";
-export const NEWS = "Icons back where they were missing at inflite.ai (Chats’ send and voice buttons, the Chats crumb, Info), the tab bar fully away in a chat, and your own view-once photos say who’s opened them";
+export const NEWS = "Drawn to the bottom of the screen on the Home Screen (no dark band under the tab bar), icons back where they were missing, the tab bar fully away in a chat, and your own view-once photos say who’s opened them";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
