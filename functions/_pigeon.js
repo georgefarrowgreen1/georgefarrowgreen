@@ -394,6 +394,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_passkeys ADD COLUMN rp TEXT",
   // (how signing in is going, in counts only: per London day, each kind's number: functions/_signincount.js)
   "CREATE TABLE IF NOT EXISTS pg_signin_counts (day INTEGER NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, kind))",
+  // (how fast the apps are on people's own devices, in numbers only: per London day, app, kind of device and measure,
+  // a count in each band: functions/_vitals.js)
+  "CREATE TABLE IF NOT EXISTS pg_vitals (day INTEGER NOT NULL, app TEXT NOT NULL, dev TEXT NOT NULL, metric TEXT NOT NULL, b INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, app, dev, metric, b))",
   "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",

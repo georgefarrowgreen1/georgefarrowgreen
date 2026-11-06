@@ -6,6 +6,7 @@
 //   quiet   cards.quiet.json   slow    cards.json, three seconds late
 //   clean   cards.json with its hostile names made plain (for comparing what's drawn)
 //   down    the account not answering as itself (a host's error page, for every route)
+// GET today/boot: today/me's answer as view and today/cards?v=2&with=morning's as cards, at once (404 with v1).
 // GET today/cards?with=morning (with no only) adds morning.json as `morning`; ?only= gives just those cards. Like the
 // account, it refuses a request whose Origin isn't Today's (EXPECT_ORIGIN, default http://localhost:8787).
 // Control, on the same port: POST /__mode {mode}, POST /__morning {…} (merged into what morning.json says, until the
@@ -128,6 +129,16 @@ createServer(async (req, res) => {
   const out = mode === 'out', key = `${req.method} ${route}`;
   const b = body ? (() => { try { return JSON.parse(body); } catch { return null; } })() : {};
   if (key === 'GET me') return out ? json(res, { signedIn: false, links: session().links }) : json(res, session(), 200, { 'Set-Cookie': COOKIE });
+  // (who and the day in one trip, as Today's page opens where someone was signed in last time: none on an account side
+  // from before it (v1), as the page then asks today/me and today/cards apart)
+  if (key === 'GET boot') {
+    if (v1) return json(res, { error: 'Not found.' }, 404);
+    if (out) return json(res, { view: { signedIn: false, links: session().links }, cards: null });
+    const a = phase ? dayAnswer(url.searchParams.get('v') === '2') : cards(null);
+    a.morning = morning();
+    if (mode === 'slow') await new Promise((ok) => setTimeout(ok, 3000));
+    return json(res, { view: session(), cards: a }, 200, { 'Set-Cookie': COOKIE });
+  }
   if (key === 'POST handback') {
     if (!b?.code || !b?.verifier) return json(res, { error: 'That sign-in didn’t work. Try again.' }, 400);
     if (b.code === 'used') return json(res, { error: 'That sign-in has already been used. Try again.' }, 400);

@@ -45,7 +45,7 @@ const isList = (want) => (v, at) => assert.deepEqual(v, want, at);
 // (Today First's, from spec §6.1, §7, §8.7, §11.3 and §12: made by its first batch, each with its final name and
 // arguments, then written by the batch that owns it; a trailing { … } = {} is an options bag, which may be left out)
 const TODAY_ROUTE_KEYS = [
-  "GET today/me", "POST today/handback", "POST today/signout", "GET today/cards", "PUT today/prefs", "GET today/morning", "PUT today/morning",
+  "GET today/me", "GET today/boot", "POST today/handback", "POST today/signout", "GET today/cards", "PUT today/prefs", "GET today/morning", "PUT today/morning",
   "POST today/morning/try", "GET today/push-key", "POST today/push", "POST today/push-move", "DELETE today/push", "POST today/account-link", "GET today/avatar",
   "POST today/act", "POST today/act/undo", "POST today/plan", "GET today/rules", "PUT today/rules", "GET today/notify", "PATCH today/notify",
   "POST today/device", "DELETE today/device", "GET today/devices", "DELETE today/devices",

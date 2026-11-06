@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.86";
-export const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+export const BUILD = "1.87";
+export const NEWS = "Measures how fast it opens and answers on your device, numbers only, so it can be made faster";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

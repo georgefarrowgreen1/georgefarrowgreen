@@ -10,6 +10,7 @@
    (functions/_retention.js), so the last 30 days are the live tables plus anything already moved over. */
 import { DAY, MIN, londonOffset } from "./_pigeon.js";
 import { counts as signinCounts } from "./_signincount.js";
+import { speed } from "./_vitals.js";
 import { pepperState } from "./_atrest.js";
 import { keptCount } from "./_kept.js";
 
@@ -100,6 +101,8 @@ export async function insights(env, D, t = Date.now()) {
     messages: msgs[0]?.n || 0,
     // (signing in, per day, each kind: functions/_signincount.js)
     signin: await signinCounts(D, first, today).catch(() => null),
+    // (how fast the apps are on people's own devices, numbers only: functions/_vitals.js)
+    speed: await speed(D, first, today).catch(() => null),
     // (whether the passwords' pepper is kept for the move off Pages, never the pepper: functions/_atrest.js)
     pepper: await pepperState(env).catch(() => null),
     // (how many of the Pages project's variables and secrets are kept for the move: a number, never a name: _kept.js)

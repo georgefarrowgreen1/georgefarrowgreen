@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.97";
-export const NEWS = "Opens properly again after an update, where it could stop with an error";
+export const BUILD = "1.98";
+export const NEWS = "Measures how fast it opens and answers on your device, numbers only, so it can be made faster";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

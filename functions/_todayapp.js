@@ -9,6 +9,7 @@
 //   GET    /api/account/today/me            who the cookie's account is, as Today's page needs it (the session view)
 //   POST   /api/account/today/handback      the code Today was handed back with, and its word: the sign-in, as the cookie
 //   POST   /api/account/today/signout       the site's sign-in ended (so everywhere it was shared), and this sign-in's devices
+//   GET    /api/account/today/boot          the two at once, as Today's page opens: { view, cards } (cards null if not had)
 //   GET    /api/account/today/cards         the cards (?only=weather,chat), and the Morning section with them (?with=morning)
 //   PUT    /api/account/today/prefs         Edit's: the cards' order, and those hidden
 //   GET    /api/account/today/morning       the Morning section: its settings, and what it says
@@ -148,6 +149,23 @@ export const TODAY_ROUTES = {
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false, links: todayLinks(env, request) });
     return withCookie(json(await todayView(env, u, request)), request, env, u.token);
+  },
+  // Today's way in, in one trip, as its page opens where someone was signed in last time: who (as today/me, the cookie's
+  // life renewed with it) and, signed in, the day (as today/cards?v=2&with=morning, with ?device= where the page knew it
+  // in time), so the account's asked once and the sign-in looked up once. A day that can't be had is left out (cards:
+  // null: the page asks for it on its own); who's signed in is never held up by it
+  "GET today/boot": async ({ request, env, waitUntil }) => {
+    fromToday(request, env);
+    const u = await cookieUser(request, env);
+    if (!u) return json({ view: { signedIn: false, links: todayLinks(env, request) }, cards: null });
+    const q = new URL(request.url).searchParams, envW = withWait(env, waitUntil), t = momentOf(request, env);
+    const day = (async () => {
+      await pace(env, "today:" + u.id, 600, 3600e3);
+      const row = await todayPrefs(env, u.id), answer = await freshCards(envW, u, row, request, t, { v: 2 });
+      return { ...answer, morning: await morningView(envW, u, row, { t, device: q.get("device"), cards: answer.cards, request }) };
+    })().catch(() => null);
+    const [view, cards] = await Promise.all([todayView(env, u, request), day]);
+    return withCookie(json({ view, cards }), request, env, u.token);
   },
   // (as Mail's: where the browser shares the site's sign-in, it's the one the page just made; where it doesn't (a Home
   // Screen app, with cookies of its own), one of Today's own, no fresher than the page's)

@@ -29,6 +29,7 @@ import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
 import { fillSecrets } from "./_kept.js";
 import { bugsRoute } from "./_bugs.js";
+import { vitalsRoute } from "./_vitals.js";
 import { statusRoute, isStatus, statusHost } from "./_status.js";
 
 export async function onRequest(ctx0) {
@@ -40,6 +41,8 @@ export async function onRequest(ctx0) {
   const url = new URL(ctx.request.url);
   // (bug reports, at every address, each app's own: functions/_bugs.js)
   if (url.pathname.startsWith("/api/bugs") || url.pathname === "/api/account/bugs") { const r = await bugsRoute(ctx, url); if (r) return r; }
+  // (how fast each page was on the device it was on, numbers only, at every address: functions/_vitals.js)
+  if (url.pathname === "/api/vitals" || url.pathname === "/api/account/vitals") return vitalsRoute(ctx);
   // (status.inflite.ai, its page and its answers; and the ticker's report of what it found, at the workers.dev address:
   // functions/_status.js. Its page's files are its address's alone)
   if (isStatus(url, ctx.env)) return statusHost(ctx, url);

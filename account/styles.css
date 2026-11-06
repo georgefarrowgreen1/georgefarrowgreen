@@ -1673,3 +1673,14 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 
 /* Notifications: each app's folder, its own icon */
 .app-row .ic-img { width: 32px; height: 32px; border-radius: 8px; flex: none; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12); }
+
+/* Admin → Insights → Speed (admin.js speedPart): an app and device a row, its measures as chips, each judged */
+.spd-row { flex-wrap: wrap; row-gap: 8px; }
+.spds { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-left: auto; }
+.spd { display: inline-grid; justify-items: center; gap: 1px; min-width: 76px; padding: 5px 9px; border-radius: 12px; background: var(--field); }
+.spd small { font-size: 11px; color: var(--text-2); }
+.spd b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.spd.good b { color: var(--good-text); }
+.spd.meh b { color: var(--warn); }
+.spd.poor b { color: var(--danger); }
+.spd-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: var(--text-3); line-height: 1.4; }

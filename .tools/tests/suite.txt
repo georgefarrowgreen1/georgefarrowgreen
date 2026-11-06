@@ -67,6 +67,7 @@ todaypage
 todayshell
 todayphases
 todaydesk
+todayfast
 hubserve
 wxhub
 mkthub

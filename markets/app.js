@@ -1083,8 +1083,47 @@ const IFL = (() => {
     return warm;
   })();
 
+  // ---- How fast this page was, on this device: numbers only, sent once as it's left (POST /api/vitals, functions/_vitals.js)
+  // The time to its first answer (ttfb), to anything on the screen (fcp), to its largest part drawn (lcp: not Safari's
+  // to give, before 26), its slowest tap's answer (inp: the longest event that tap ran, from the press to the next frame)
+  // and how much it jumped about (cls: the worst burst of shifts no tap caused). With the app (at the hub, the part of it
+  // that's open) and whether it's a phone or tablet (a finger's the pointer) or a computer, nothing else: no account, page,
+  // address or time of day. Never from a frame (the page around it counts), nor a page first opened out of sight (its
+  // drawing waited on nothing of its own). VITALS.sent() → what went, for a test; VITALS.now() → what's been seen so far.
+  const VITALS = (() => {
+    const out = {};
+    let sent = null, shown = true;
+    if (typeof window === "undefined" || typeof PerformanceObserver === "undefined" || typeof performance === "undefined") return { now: () => out, sent: () => sent };
+    try { if (window.top !== window) return { now: () => out, sent: () => sent }; } catch (_) { return { now: () => out, sent: () => sent }; }
+    shown = document.visibilityState !== "hidden";
+    const watch = (type, fn, more = {}) => { try { new PerformanceObserver((l) => l.getEntries().forEach(fn)).observe({ type, buffered: true, ...more }); } catch (_) {} };
+    try { const n = performance.getEntriesByType("navigation")[0]; if (n && n.responseStart > 0) out.ttfb = Math.round(n.responseStart); } catch (_) {}
+    watch("paint", (e) => { if (e.name === "first-contentful-paint" && shown) out.fcp = Math.round(e.startTime); });
+    let tapped = false;
+    watch("largest-contentful-paint", (e) => { if (shown && !tapped) out.lcp = Math.round(e.startTime); });
+    for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { tapped = true; }, { capture: true, once: true, passive: true });
+    watch("event", (e) => { if (e.interactionId) out.inp = Math.max(out.inp || 0, Math.round(e.duration)); }, { durationThreshold: 40 });
+    let burst = 0, first = 0, last = 0;
+    watch("layout-shift", (e) => {
+      if (e.hadRecentInput) return;
+      if (burst && e.startTime - last < 1000 && e.startTime - first < 5000) burst += e.value;
+      else { burst = e.value; first = e.startTime; }
+      last = e.startTime;
+      out.cls = Math.max(out.cls || 0, Math.round(burst * 1000) / 1000);
+    });
+    addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") send(); }, { capture: true });
+    addEventListener("pagehide", () => send(), { capture: true });
+    function send() {
+      if (sent || !Object.keys(out).length || typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return;
+      const coarse = (() => { try { return matchMedia("(pointer: coarse)").matches; } catch (_) { return false; } })();
+      sent = { app: BUG.app(), dev: coarse ? "phone" : "computer", m: { ...out } };
+      try { navigator.sendBeacon("/api/vitals", new Blob([JSON.stringify(sent)], { type: "text/plain" })); } catch (_) {}
+    }
+    return { now: () => out, sent: () => sent };
+  })();
+
   const api = { bug: BUG, banner: BANNER, header, headerHtml, watch, settle, glyph, APPS, NAME, menu, close, redraw, isOpen: () => !!open, built, note, iconUrl, allow, wantsAllow,
-    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub, warm: WARM };
+    updates, offer, here, update: () => apply(true), updateReady: () => !!U.ready, hub, warm: WARM, vitals: VITALS };
   // (at the hub, the page's IFL on its window too: so Chat's engine, a frame of this page's, can say it's sent or shut its
   // sheet (parent.IFL.hub.sent(say), parent.IFL.hub.closed(), §8.2), and Today's day and cards find the page's own hub.
   // A const at the top of a module or a script is never the window's own. It can be taken back (configurable), so a
@@ -1095,8 +1134,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.13";
-const NEWS = "Opens properly again after an update, where it could stop with an error";
+const BUILD = "2.14";
+const NEWS = "Measures how fast it opens and answers on your device, numbers only, so it can be made faster";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)

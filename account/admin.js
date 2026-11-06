@@ -793,6 +793,27 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     return [h("h4.app-k", { text: "Signing in" }), admBars("Signed in", made, grow), admBars("Went wrong", add(bad), grow),
       wrong.length ? h("div.group.adm-meters" + g, {}, wrong.sort((a, b) => b[1] - a[1]).map(([l, n], j) => admMeter(l, n, wrongN, null, j))) : h("div.group", {}, h("div.empty", { text: "Nothing’s gone wrong signing in." }))];
   }
+  // Speed, from people's own phones and computers, in numbers only (functions/_vitals.js): for each app and kind of device,
+  // the time 3 visits in 4 beat over the last 30 days, each judged as the web's own measures are (good, needs work, poor)
+  const SPEED_APPS = { hub: "Today", chats: "Chats", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account", auth: "Sign in", home: "georgefarrowgreen.com" };
+  const SPEED_BARS = { lcp: [2500, 4000], fcp: [1800, 3000], ttfb: [800, 1800], inp: [200, 500], cls: [0.1, 0.25] };
+  const msOf = (v) => (v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
+  function speedPart(sp) {
+    if (!sp) return [];
+    const chip = (k, label, v) => {
+      if (v == null) return null;
+      const [ok, meh] = SPEED_BARS[k], how = v <= ok ? "good" : v <= meh ? "meh" : "poor";
+      return h(`span.spd.${how}`, { title: { good: "Good", meh: "Needs work", poor: "Poor" }[how] }, h("small", { text: label }), h("b", { text: k === "cls" ? v.toFixed(2) : msOf(v) }));
+    };
+    const rows = (sp.rows || []).map((r) => {
+      const m = r.m, n = Math.max(0, ...Object.values(m).map((x) => x.n || 0)), drawn = m.lcp?.p75 != null ? ["lcp", m.lcp.p75] : ["fcp", m.fcp?.p75];
+      return h("div.row.plain.spd-row", {}, h("span.tx", {}, h("b", { text: `${SPEED_APPS[r.app] || r.app} · ${r.dev === "phone" ? "Phone" : "Computer"}` }), h("small", { text: `${num(n)} visit${n === 1 ? "" : "s"}` })),
+        h("span.spds", {}, chip(drawn[0], "Appears", drawn[1]), chip("inp", "Answers a tap", m.inp?.p75), chip("cls", "Jumps", m.cls?.p75), chip("ttfb", "First answer", m.ttfb?.p75)));
+    });
+    return [h("h4.app-k", { text: "Speed, on people’s own devices" }),
+      rows.length ? h("div.group.spd-list", {}, rows, h("p.spd-note", { text: "What 3 visits in 4 beat, over the last 30 days. Phones include tablets. Appears is when the largest part of the first screen was drawn (Safari: when anything was)." }))
+        : h("div.group", {}, h("div.empty", { text: "No visits measured yet." }))];
+  }
   function admInsightsView() {
     const x = admAsk("insights");
     if (!x) return { title: "Insights", body: [admWait("insights")] };
@@ -820,6 +841,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       meters([["Have a friend", U.friends], ["In a group", U.groups], ["Notifications on", U.push], ["Email confirmed", U.email], ["Passkey", U.passkey],
         ["Named pigeons", U.birds], ["Pigeon Death on", U.risky], ["Approximate location", U.approx], ["Living in space", U.space]], P.total),
       ...signinPart(x.signin, grow, g),
+      ...speedPart(x.speed),
       ...(x.pepper?.on ? [h("div.group", {}, admInfo("Passwords’ pepper, kept for the move", x.pepper.kept ? "Yes" : x.pepper.key ? "Not yet" : "Needs PIGEON_PEPPER_KEY", !x.pepper.kept),
         x.pepper.key ? admInfo("Settings and secrets, kept for the move", x.keptSecrets ? String(x.keptSecrets) : "Not yet", !x.keptSecrets) : null)] : []),
       h("h4.app-k", { text: "Landing on time" }),
