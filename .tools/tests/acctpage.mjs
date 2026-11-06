@@ -402,6 +402,24 @@ await D.p.setViewportSize({ width: 1280, height: 860 }); await settle(D, 400);
 await shot(D, '19-wide');
 await D.p.emulateMedia({ colorScheme: 'dark' }); await settle(D, 400); await shot(D, '19b-wide-dark');
 await D.p.setViewportSize({ width: 1500, height: 940 }); await settle(D, 400); await shot(D, '19c-wider-dark');
+// (on a computer, two panes: the account's parts listed under your card, each opening beside it, the page still in reach)
+{
+  const navs = await D.p.$$eval('.acct-nav .nav-it', (bs) => bs.map((b) => b.querySelector('.nav-t').textContent));
+  ok(['Your Apps', 'Sign-in and Security', 'Your Data', 'Appearance', 'Units', 'Notifications'].every((t) => navs.includes(t)), 'wide: the account’s parts listed under your card', navs.join(', '));
+  const apps = await D.p.$$eval('.col-b .apps > .app', (as) => [...new Set(as.map((a) => Math.round(a.getBoundingClientRect().top)))].length);
+  ok(apps === 1, 'wide: your apps in one row', `${apps} rows`);
+  await D.p.click('.acct-nav .nav-it:has-text("Sign-in and Security")'); await D.p.waitForSelector('#sheet.pane[open] .sheet-body'); await settle(D, 500);
+  const pane = await D.p.evaluate(() => { const d = document.querySelector('#sheet'), b = d.getBoundingClientRect(), c = document.querySelector('.col-b').getBoundingClientRect(), a = document.querySelector('.col-a').getBoundingClientRect();
+    return { modal: d.matches(':modal'), left: Math.round(b.left - c.left), clear: b.left >= a.right, cur: document.querySelector('.acct-nav [aria-current]')?.textContent || '', title: document.querySelector('#sheet-title')?.textContent }; });
+  ok(!pane.modal && Math.abs(pane.left) <= 2 && pane.clear, 'wide: a part opens as a pane where the right-hand column is, not over the page', JSON.stringify(pane));
+  ok(/Sign-in and Security/.test(pane.cur) && /Sign-in and Security|Security/.test(pane.title || ''), 'wide: its item marked in the list, its title in the pane', JSON.stringify(pane));
+  await shot(D, '19d-wide-pane');
+  await D.p.click('.acct-nav .nav-it:has-text("Appearance")'); await D.p.waitForSelector('#sheet.pane[open] #sheet-title:text-is("Appearance")'); await settle(D, 400);
+  ok(/Appearance/.test(await D.p.$eval('.acct-nav [aria-current]', (e) => e.textContent).catch(() => '')), 'wide: another part, from the list, in the same pane');
+  await D.p.keyboard.press('Escape'); await D.p.waitForFunction(() => !document.querySelector('#sheet').open, null, { timeout: 3000 }).catch(() => {});
+  ok(await D.p.evaluate(() => !document.querySelector('#sheet').open && /Your Apps/.test(document.querySelector('.acct-nav [aria-current]')?.textContent || '')), 'wide: Escape closes the pane, back to Your Apps');
+  await D.p.setViewportSize({ width: 1280, height: 860 }); await settle(D, 300);
+}
 await D.p.emulateMedia({ colorScheme: 'light' });
 
 // ---- 9. Deleting the account: typed to confirm; then in 7 days, unless it's kept ----

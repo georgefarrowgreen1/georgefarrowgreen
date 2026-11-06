@@ -1110,8 +1110,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.96";
-const NEWS = "Emails: one page lists every email the apps can send you, with a switch for each kind, under Notifications. Each email’s link turns off just its kind";
+const BUILD = "1.97";
+const NEWS = "On a computer: your account in two panes, its parts listed under your card and each opening beside it, and your apps in one row";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1840,7 +1840,27 @@ function signedIn(r) {
     // #admin, from the old dashboard or its email, opens it, once the page has settled)
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
   ];
-  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean)), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
+  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean), acctNav([account, prefs, ...ending])), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
+}
+// On a computer (from 1100 px, styles.css) the account is two panes: under your card, a list of its parts (Your Apps,
+// then each row of Account and Preferences, and Admin), and beside it the one you're on, its sheet drawn there rather
+// than over the page (pane()). Each item does just what its row does. Not shown at a phone's or a tablet's size.
+const PANE_MQ = matchMedia("(min-width: 1100px)");
+const pane = () => PANE_MQ.matches;
+function acctNav(groups) {
+  const rows = groups.filter(Boolean).flatMap((g) => [...g.querySelectorAll("button.row[data-k], .row[data-k]")]).filter((x, i, a) => a.indexOf(x) === i);
+  const it = (k, ic, title, value, run) => h("button.nav-it", { type: "button", "data-nav": k, "aria-current": (sheetEl.open ? navK : "") === k ? "page" : null, onclick: () => { run(); navOn(k); } },
+    ic, h("span.nav-t", { text: title }), value ? h("span.nav-v", { text: value }) : null);
+  return h("nav.acct-nav.group.glass", { "aria-label": "Your account’s parts" },
+    it("", h("span.ic.blue", {}, icon("home", 19)), "Your Apps", "", () => { if (sheetEl.open) closeSheet(); }),
+    ...rows.map((rw) => it(rw.dataset.k, rw.querySelector(".ic")?.cloneNode(true) || null, rw.querySelector(".tx b")?.textContent || rw.dataset.k,
+      rw.querySelector(".val")?.textContent || "", () => rw.click())));
+}
+// (the part you're on, in the list: its item marked; none open, Your Apps)
+let navK = "";
+function navOn(k) {
+  navK = k || "";
+  for (const b of document.querySelectorAll(".acct-nav .nav-it")) { if (b.dataset.nav === (k || "")) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
 }
 // (all done: a small green padlock after the handle, said as "secure")
 const SECURE = `<span class="ifh-secure" role="img" aria-label="secure"><svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M3.4 5.6V4a2.6 2.6 0 0 1 5.2 0v1.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="1.3" y="5.4" width="9.4" height="7" rx="2" fill="currentColor"/></svg></span>`;
@@ -3507,9 +3527,32 @@ function openSheet(view) {
   // nor a button, with a ring round it; the row it was opened from has it back when it closes)
   Sheet.from = document.activeElement?.closest?.("[data-k]")?.dataset.k || null; Sheet.at = performance.now();
   $("#page").style.setProperty("--sy", `${scrollY}px`);       // (the page steps back where it's scrolled to)
-  sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); histPush();
+  // (on a computer: beside the list of the account's parts, in place of the page's right-hand column, the page still
+  // there and in reach; elsewhere over the page, which steps back)
+  if (pane()) { paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); navOn(Sheet.from && document.querySelector(`.acct-nav [data-nav="${CSS.escape(Sheet.from)}"]`) ? Sheet.from : null); }
+  else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); }
+  sheetEl.focus({ preventScroll: true }); histPush();
   toastOnTop();
 }
+// (the pane over the right-hand column, wherever that is on the page: where it starts, how wide it is, below the header)
+function paneAt() {
+  const b = $(".col-b", main)?.getBoundingClientRect();
+  if (!b) return;
+  const top = Math.max(16, ($(".ifh", main)?.getBoundingClientRect().bottom ?? 0) + 8);
+  sheetEl.style.setProperty("--pl", `${Math.round(b.left)}px`);
+  sheetEl.style.setProperty("--pw", `${Math.round(b.width)}px`);
+  sheetEl.style.setProperty("--pt", `${Math.round(Math.min(top, 140))}px`);
+}
+addEventListener("resize", () => { if (sheetEl.open && sheetEl.classList.contains("pane")) paneAt(); });
+// (the window made narrower or wider past where the panes start, with a sheet up: drawn again the other way, as it is)
+PANE_MQ.addEventListener?.("change", () => {
+  if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
+  sheetEl.close();
+  if (pane()) { document.body.classList.remove("sheet-up"); paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); }
+  else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); navOn(""); }
+});
+// (Escape closes the pane, as it closes a sheet: a pane isn't modal, so the dialog doesn't hear it itself)
+addEventListener("keydown", (e) => { if (e.key === "Escape" && sheetEl.open && sheetEl.classList.contains("pane") && !e.defaultPrevented) { e.preventDefault(); closeSheet(); } });
 sheetEl.tabIndex = -1;
 function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw("push"); histPush(); }
 function popSheet() { if (Sheet.hist > 1) histDrop(1); stepBack(); }
@@ -3602,7 +3645,7 @@ function closeSheet() {
     clearTimeout(t); sheetEl.removeEventListener("animationend", end); Sheet.shut = null;
     sheetEl.classList.remove("closing");
     for (const p of ["--from-tf", "--from-o", "--dim-o", "transform", "opacity"]) sheetEl.style.removeProperty(p);
-    sheetEl.close(); sheetEl.replaceChildren(); Sheet.stack = []; Sheet.ck = null; cancel?.();
+    sheetEl.close(); sheetEl.replaceChildren(); sheetEl.classList.remove("pane"); Sheet.stack = []; Sheet.ck = null; cancel?.(); navOn("");
     // (the page may have been drawn again meanwhile: the row it was opened from, found again by what it says)
     const back = from && [...main.querySelectorAll("[data-k]")].find((el) => el.dataset.k === from);
     if (back && (document.activeElement === document.body || !document.activeElement)) back.focus({ preventScroll: true });
@@ -3634,7 +3677,7 @@ sheetEl.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(); })
   let free = false;
   sheetEl.addEventListener("touchstart", (e) => { free = e.touches.length > 1 || scrollsIn(e.target, sheetEl); }, { passive: true });
   sheetEl.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
-  sheetEl.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, sheetEl) && e.cancelable) e.preventDefault(); }, { passive: false });
+  sheetEl.addEventListener("wheel", (e) => { if (!sheetEl.classList.contains("pane") && !scrollsIn(e.target, sheetEl) && e.cancelable) e.preventDefault(); }, { passive: false });
 }
 // (whether what's under a finger, inside a sheet, would scroll: a list longer than it is, a row wider; or a field,
 // which has its own)
@@ -3652,7 +3695,7 @@ function scrollsIn(el, top) {
 {
   let y0 = null, dy = 0, t0 = 0, at = "";
   sheetEl.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a")) return;
+    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a") || sheetEl.classList.contains("pane")) return;
     const rising = sheetEl.getAnimations().find((a) => a.animationName === "sheet-in");
     at = "";
     if (rising) { const cs = getComputedStyle(sheetEl); at = cs.transform === "none" ? "" : cs.transform; sheetEl.style.opacity = cs.opacity; rising.cancel(); sheetEl.style.transform = at; }

@@ -931,6 +931,50 @@ a.btn { text-decoration: none; }
   .col-b .apps:has(> .app:nth-child(5)) > .app:nth-child(n+4) { grid-column: span 3; }
 }
 
+/* ---- on a computer (from 1100 px): two panes. Under your card, the account's parts (.acct-nav, app.js acctNav); beside
+   it, your apps in one row and the rest, or, with a part open, its sheet as a pane in that column's place (dialog.sheet
+   .pane, shown without dimming the page, which stays in reach) ---- */
+.acct-nav { display: none; }
+@media (min-width: 1100px) {
+  main:has(.cols) { max-width: 1200px; }
+  .cols { grid-template-columns: 340px minmax(0, 1fr); gap: 36px; }
+  .acct-nav { display: block; margin-top: 18px; padding: 6px; }
+  .nav-it { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 6px 10px; border: 0; border-radius: 14px; background: none; color: var(--text);
+    font: 500 15px/1.2 var(--font); text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .nav-it .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
+  .nav-it .ic svg { width: 16px; height: 16px; }
+  .nav-t { flex: 1; min-width: 0; }
+  .nav-v { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-3); }
+  .nav-it:hover { background: var(--press); }
+  .nav-it[aria-current] { background: color-mix(in srgb, var(--tint) 14%, transparent); }
+  .nav-it[aria-current] .nav-t { color: var(--tint-text); font-weight: 650; }
+  .nav-it:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+  /* (your apps, all in one row: five, or six with the admin's Mail) */
+  .col-b .apps, .col-b .apps:has(> .app:nth-child(4)), .col-b .apps:has(> .app:nth-child(5)) { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .col-b .apps:has(> .app:nth-child(6)) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .col-b .apps:has(> .app:nth-child(5)) > .app, .col-b .apps:has(> .app:nth-child(5)) > .app:nth-child(n+4) { grid-column: auto; }
+  /* (Account and Preferences side by side under them) */
+  .col-b:has(> [data-sec="account"]) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 20px; align-items: start; }
+  .col-b > * { grid-column: 1 / -1; min-width: 0; }
+  .col-b > [data-sec="account"] { grid-column: 1; }
+  .col-b > [data-sec="prefs"] { grid-column: 2; }
+  .col-b > [data-sec="account"] ~ [data-sec="prefs"] { margin-top: 0; }
+  /* (the pane: a part's sheet, where the right-hand column is (--pl, --pw, --pt from app.js paneAt), its own height down
+     to the window's foot, scrolling inside; no dim, no swipe down; it fades in and out) */
+  dialog.sheet.pane { position: fixed; inset: var(--pt, 96px) auto 24px var(--pl, 50%); z-index: 60; width: var(--pw, 760px); max-width: none; height: auto; max-height: none; margin: 0;
+    border-radius: 28px; box-shadow: var(--edge), 0 24px 60px -24px rgba(0, 0, 0, 0.45); }
+  dialog.sheet.pane[open] { animation: pane-in 0.26s var(--glide) both; }
+  dialog.sheet.pane.closing { animation: pane-out 0.18s ease forwards; }
+  dialog.sheet.pane .grab { display: none; }
+  dialog.sheet.pane .sheet-head { padding: 14px 18px 6px; }
+  dialog.sheet.pane .sheet-head h2 { font-size: 19px; }
+  dialog.sheet.pane .sheet-body { padding: 10px 24px 28px; }
+  body:has(dialog.sheet.pane[open]) .col-b { visibility: hidden; }
+  @keyframes pane-in { from { opacity: 0; transform: translateX(10px); } }
+  @keyframes pane-out { to { opacity: 0; transform: translateX(10px); } }
+}
+@media (min-width: 1100px) and (prefers-reduced-motion: reduce) { dialog.sheet.pane[open], dialog.sheet.pane.closing { animation-duration: 0.01s; } }
+
 /* (who you are, kept in view beside the rest as it's scrolled, where the window's tall enough for all of it) */
 @media (min-width: 1000px) and (min-height: 760px) { .col-a { position: sticky; top: calc(var(--top) + 96px); } }
 

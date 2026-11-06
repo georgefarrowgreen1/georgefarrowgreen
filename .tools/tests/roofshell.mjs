@@ -149,6 +149,8 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = { ready: true, ro
 const text = (p, s) => p.$eval(s, (e) => e.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
 const shown = (p) => p.evaluate(() => ['today', 'apps', 'you'].filter((k) => !document.getElementById(k).hidden));
 const ONLY = process.env.ONLY?.split(',');
+// (You drawn, with its rules in: their folder's row says how many, W3)
+const youReady = (p) => p.waitForFunction(() => /\d+ rules?/.test(document.querySelector('#you [data-folder=rules] small')?.textContent || ''), null, { timeout: 30000 });
 async function part(name, fn) { if (ONLY && !ONLY.some((o) => name.includes(o))) return; try { await fn(); } catch (e) { ok(false, name, e.stack?.split('\n').slice(0, 3).join(' | ')); } }
 
 // ======================================================================= the framework on Today: header, menu, tabs
@@ -160,7 +162,7 @@ await part('header and tabs', async () => {
   await p.waitForSelector(`${H.TODAY}[data-phase="midday"]`, { timeout: 10000 });
   same(await p.evaluate(() => [document.documentElement.dataset.app, document.documentElement.dataset.route]), ['inflite', '/'], 'html[data-app=inflite], html[data-route=/]');
   same(await text(p, H.HD_TITLE), 'Today', 'the header: Today');
-  same(await text(p, H.HD_CRUMB), 'Monday 2 November', 'its crumb: the date');
+  same(await text(p, H.HD_CRUMB), '', 'no crumb above Today’s title (Today 1.32)');
   same(await text(p, H.HD_LINE), '12:30 · what’s next', 'its line: the phase’s (day.js)');
   ok(await p.$(H.HD_EDIT), 'Edit, an act of Today’s');
   ok(await p.$(H.HD_SEARCH), 'Search, always');
@@ -174,7 +176,7 @@ await part('header and tabs', async () => {
   ok(!(await p.$(H.HD_EDIT)), 'no Edit on Apps');
   same(new URL(p.url()).hash, '#apps', 'at /#apps');
   await p.click(H.tab('you'));
-  await p.waitForSelector('#youRules [data-rulepick]');
+  await youReady(p);
   same(await text(p, H.HD_TITLE), 'You', 'You: its title');
   same(await p.$$eval(H.TAB, (as) => as.map((a) => a.getAttribute('aria-current'))), [null, null, null, 'page'], 'You current');
   await p.goBack();
@@ -188,9 +190,10 @@ await part('header and tabs', async () => {
   await p.waitForSelector('.ifm-pop.open');
   has(await text(p, '.ifm-pop'), 'Connected Apps', 'your photo: InFlite’s menu, with Connected Apps');
   await p.click('.ifm-pop [data-k=apps]');
-  await p.waitForSelector(`${H.YOU}:not([hidden]) ${H.YOU_APP_ROW}`, { timeout: 10000 });
+  await p.waitForSelector(`dialog#sh-youfolder[open] ${H.YOU_APP_ROW}`, { timeout: 10000 });
   same(new URL(p.url()).hash, '#you=apps', 'Connected Apps: /#you=apps');
-  ok(await p.waitForFunction((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return r.top < innerHeight * 0.6 && r.bottom > 0 && scrollY > 0; }, H.YOU_APPS, { timeout: 4000 }).then(() => true, () => false), 'scrolled to Connected Apps');
+  ok(await p.$eval('#sh-youfolder-t', (t) => t.textContent === 'Connected Apps'), 'Connected Apps, in its folder’s sheet (W3)');
+  await p.click('dialog#sh-youfolder[open] [data-close]'); await p.waitForFunction(() => !document.querySelector('dialog#sh-youfolder[open]'));
   await p.screenshot({ path: `${OUT}/you-apps-390-dark.png` });
   // (#morning, then Back: the sheet opened and the address tidied; Back shuts it, still in the page)
   await p.click(H.tab('today'));
@@ -227,7 +230,9 @@ const WORDS = { weather: 'Cards · Search · Notifications · Actions · Screens
 await part('connected apps', async () => {
   await mode({ phase: 'midday', admin: true });
   const { ctx, p } = await open({ path: '/#you' });
-  await p.waitForFunction(() => /Cards/.test(document.querySelector('#youApps [data-app="weather"] small')?.textContent || ''), null, { timeout: 10000 });
+  // (in its folder's sheet, W3)
+  await p.click('#you [data-folder=apps]'); await p.waitForSelector('dialog#sh-youfolder[open]');
+  await p.waitForFunction(() => /Cards/.test(document.querySelector('#yfBody #youApps [data-app="weather"] small')?.textContent || ''), null, { timeout: 10000 });
   const rows = await p.$$eval(H.YOU_APP_ROW, (rs) => rs.map((r) => [r.dataset.app, r.querySelector('b').textContent, r.querySelector('small').textContent]));
   same(rows, [['weather', 'Weather', WORDS.weather], ['chats', 'Chats', WORDS.chats], ['fitness', 'Fitness', WORDS.fitness], ['markets', 'Markets', WORDS.markets], ['mail', 'Mail', WORDS.mail]], 'Connected Apps: each app, and only the words its connector fills (Mail for its account)');
   ok(await p.$$eval(H.YOU_APP_ROW, (rs) => rs.every((r) => r.getBoundingClientRect().height >= 44)), 'each row at least 44 points');
@@ -338,7 +343,7 @@ await part('search', async () => {
 await part('sheets and toasts', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you' });
-  await p.waitForSelector('#youRules [data-rulepick]');
+  await youReady(p);
   await p.click(H.tab('today'));
   await p.waitForFunction(() => !document.getElementById('today').hidden);
   await p.click(H.HD_EDIT);
@@ -434,7 +439,7 @@ await part('degraded', async () => {
   let { ctx, p } = await open({ hub: { ready: false, roof: true }, path: '/#apps', setup: (c) => c.on('request', (r) => { if (/^\/weather\/(roof\/)?[\w-]+\.(js|css)$/.test(new URL(r.url()).pathname)) wxAsked.push(new URL(r.url()).pathname); }) });
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
   await p.click(H.tab('you'));
-  await p.waitForSelector('#youRules [data-rulepick]');
+  await youReady(p);
   await p.click(H.tab('apps'));
   await p.waitForSelector(`${H.APPS}:not([hidden]) ${H.APP_TILE}`);
   await p.waitForTimeout(1500);
@@ -697,7 +702,7 @@ await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[320, 568], [390, 844], [768, 1024], [1280, 800]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules [data-rulepick]')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app]')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || /\d+ rules?/.test(document.querySelector('#you [data-folder=rules] small')?.textContent || '')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app]')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(400);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);

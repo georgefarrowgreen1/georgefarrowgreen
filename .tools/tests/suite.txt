@@ -65,6 +65,7 @@ ridehold
 todaypage
 todayshell
 todayphases
+todaydesk
 hubserve
 wxhub
 mkthub

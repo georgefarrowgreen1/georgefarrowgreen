@@ -49,9 +49,9 @@ export const ERROR_RELOAD = '.ifl-error [data-act=reload]'; // FW: Reload (after
 export const TODAY = 'main#today';                        // TD
 export const APPS = 'main#apps';                          // TD
 export const YOU = 'main#you';                            // TD
-export const YOU_APPS = '#youApps';                       // TD: Connected Apps
-export const YOU_APP_ROW = '#youApps [data-app]';         // TD: a Connected Apps row (tap → connectors.openConnector → CONNECTOR_SHEET)
-export const youAppRow = (app) => `#youApps [data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
+export const YOU_APPS = '#yfBody #youApps';               // TD: Connected Apps (W3: in its folder's sheet, #sh-youfolder)
+export const YOU_APP_ROW = '#yfBody #youApps [data-app]'; // TD: a Connected Apps row (tap → connectors.openConnector → CONNECTOR_SHEET)
+export const youAppRow = (app) => `#yfBody #youApps [data-app="${app}"]`; // TD: weather, chats, fitness, markets, mail
 export const YOU_NOTIFY = '#youApps2';                    // TD: From Each App (each app's notifications; Today 1.19's #youNotify is this phone's, the morning's and quiet hours')
 export const SH_WXNOTIFY = 'dialog#sh-wxnotify';          // TD: Weather Notifications
 export const APP_TILE = '.ifl-tile[data-app]';            // TD: Apps tiles

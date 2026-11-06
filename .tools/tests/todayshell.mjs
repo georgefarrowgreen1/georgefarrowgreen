@@ -173,9 +173,13 @@ const readApps = async (ctx) => {
   await q.close();
   return got;
 };
-const tabs = (p) => p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), a.getAttribute('aria-current')]));
+const tabs = (p) => p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.querySelector('.ifl-tab-l').textContent.trim(), a.getAttribute('href'), a.getAttribute('aria-current')]));
 const shown = (p) => p.evaluate(() => ['today', 'apps', 'you'].filter((k) => !document.getElementById(k).hidden));
 const ONLY = process.env.ONLY?.split(',');
+// (You drawn, with its rules in: their folder's row says how many; a folder (W3: its own sheet) opened, and shut)
+const youReady = (p) => p.waitForFunction(() => /\d+ rules?/.test(document.querySelector('#you [data-folder=rules] small')?.textContent || ''), null, { timeout: 30000 });
+const folder = async (p, k) => { await p.click(`#you [data-folder="${k}"]`); await p.waitForSelector('dialog#sh-youfolder[open] #yfBody .you-sec'); };
+const shut = async (p) => { await p.click('dialog#sh-youfolder[open] [data-close]'); await p.waitForFunction(() => !document.querySelector('dialog#sh-youfolder[open]')); };
 async function part(name, fn) { if (ONLY && !ONLY.some((o) => name.includes(o))) return; try { await fn(); } catch (e) { ok(false, name, e.stack?.split('\n').slice(0, 3).join(' | ')); } }
 
 // ======================================================================= the tab bar, and the views in one page
@@ -364,19 +368,21 @@ await part('apps', async () => {
 await part('you: drawn from the account', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
-  await p.waitForSelector('#youRules [data-rulepick]');
+  await youReady(p);
   // (Today 1.19: notifications first and together, then each app's, then the rules, Connected Apps, Other Devices, Chat,
   // About InFlite and Sign Out as a row)
-  same(await p.$$eval('#you section.you-sec', (ss) => ss.map((x) => x.id ? [x.id, x.querySelector('.you-h')?.textContent] : [x.className])),
+  same(await p.$$eval('#you section.you-sec:not(.you-fold)', (ss) => ss.map((x) => x.id ? [x.id, x.querySelector('.you-h')?.textContent] : [x.className])),
     [['youAccount', undefined], ['youNotify', 'Notifications'], ['youApps2', 'From Each App'], ['youDevices', 'Other Devices'], ['youMore', 'General'], ['you-sec you-out']],
     'You’s sections, in order: Account, Notifications, From Each App, What Today Does for You, Connected Apps, Other Devices, Chat, About InFlite, Sign Out');
+  await folder(p, 'rules');
   // (the rules: each a picker of Do, Suggest or Quiet on one line, with its record; the ones still to come left out)
-  const rules = await p.$$eval('#youRules .row.pick[data-rule]', (rs) => rs.map((r) => [r.dataset.rule, r.querySelector('b').textContent, r.querySelector('small')?.textContent || '', r.querySelector('select[data-rulepick]')?.value, r.querySelector('.val > span')?.textContent, [...r.querySelectorAll('option')].map((o) => o.textContent).join('/')]));
+  const rules = await p.$$eval('#yfBody #youRules .row.pick[data-rule]', (rs) => rs.map((r) => [r.dataset.rule, r.querySelector('b').textContent, r.querySelector('small')?.textContent || '', r.querySelector('select[data-rulepick]')?.value, r.querySelector('.val > span')?.textContent, [...r.querySelectorAll('option')].map((o) => o.textContent).join('/')]));
   same(rules, RULES.rules.filter((r) => !r.soon).map((r) => [r.rule, r.name, r.line, 'do', 'Do', 'Do/Suggest/Quiet']), 'What Today Does for You: each rule a picker (Do, Suggest, Quiet) at its level, with its record');
-  const youRules = await text(p, '#youRules');
+  const youRules = await text(p, '#yfBody #youRules');
   ok(RULES.rules.filter((r) => r.soon).length === 2 && !youRules.includes('Deliver when a friend is free') && !youRules.includes('Arrange group rides') && !youRules.includes('Coming'), 'the rules still to come left out (later, arrange)', youRules);
-  same(await p.$$eval('#youRules [data-rule="later"], #youRules [data-rule="arrange"]', (xs) => xs.length), 0, 'no row for either');
-  has(await text(p, '#youRules'), 'Do: it acts and tells you. Suggest: it asks first. Quiet: it leaves it. Undo one and it drops a level; ten kept and it climbs.', 'the rules’ note: what each level does');
+  same(await p.$$eval('#yfBody #youRules [data-rule="later"], #yfBody #youRules [data-rule="arrange"]', (xs) => xs.length), 0, 'no row for either');
+  has(await text(p, '#yfBody #youRules'), 'Do: it acts and tells you. Suggest: it asks first. Quiet: it leaves it. Undo one and it drops a level; ten kept and it climbs.', 'the rules’ note: what each level does');
+  await shut(p);
   // (Notifications: this phone, every app's here, Today's morning, quiet hours)
   const notify = await text(p, '#youNotify');
   for (const w of ['On This Phone', 'Get Every App’s Here', 'Chats, Weather and Markets as well as Today', 'Today’s Morning', 'One notification, from all your apps', '07:00', 'Quiet Hours', 'Everything waits, except warnings']) has(notify, w, `Notifications: “${w}”`);
@@ -391,8 +397,10 @@ await part('you: drawn from the account', async () => {
   same(await text(p, '#youWx .val'), 'On', 'Weather: rain on (in its own sheet)');
   same(await p.$$eval('#youDevices .dev', (rs) => rs.map((r) => [r.querySelector('b').textContent, r.querySelector('[data-stop]').textContent])), DEVICES.devices.map((d) => [d.label, 'Stop There']), 'Other Devices, each with Stop There');
   has(await text(p, '#youChatGo'), 'Typing, Pigeons, Names on the Lock Screen', 'Chat’s own settings');
-  same(await p.$$eval('#youVersions .row', (rs) => rs.map((r) => [r.querySelector('b').textContent, /^V\d+\.\d\d$/.test(r.querySelector('.val').textContent) ? 'V' : r.querySelector('.val').textContent])),
+  await folder(p, 'versions');
+  same(await p.$$eval('#yfBody #youVersions .row', (rs) => rs.map((r) => [r.querySelector('b').textContent, /^V\d+\.\d\d$/.test(r.querySelector('.val').textContent) ? 'V' : r.querySelector('.val').textContent])),
     [['Today', 'V'], ['Chat', '—'], ['Weather', '—'], ['Fitness', '—'], ['Markets', '—']], 'About InFlite: Today’s version, and “—” for each app not opened here yet');
+  await shut(p);
   ok(await p.isVisible('#you section.you-out button#youOut.you-signout.row'), 'Sign Out, a row of its own');
   await p.waitForTimeout(1500);
   same((await reqs()).filter((e) => e.path.endsWith('/today/device')).length, 0, 'nothing posted to /api/device on first run');
@@ -403,11 +411,12 @@ await part('you: drawn from the account', async () => {
 await part('you: its writes', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
-  await p.waitForSelector('#youRules [data-rulepick]');
-  await p.selectOption('#youRules select[data-rulepick="moveRide"]', 'suggest');
-  await p.waitForFunction(() => document.querySelector('#youRules [data-rule="moveRide"] .val > span')?.textContent === 'Suggest');
+  await youReady(p); await folder(p, 'rules');
+  await p.selectOption('#yfBody #youRules select[data-rulepick="moveRide"]', 'suggest');
+  await p.waitForFunction(() => document.querySelector('#yfBody #youRules [data-rule="moveRide"] .val > span')?.textContent === 'Suggest');
   await p.waitForTimeout(400);
   same(await sent('PUT', 'rules'), [{ rule: 'moveRide', level: 'suggest' }], 'a rule’s level, picked: PUT /api/rules, and the picker says Suggest');
+  await shut(p);
   await p.click('#youApps2 input[data-k="chat"]');
   await p.waitForTimeout(500);
   const chat = (await sent('PATCH', 'notify'))[0]?.chat || {};
@@ -592,10 +601,10 @@ await part('degraded', async () => {
   same(own.map((t) => t.href), ['https://weather.inflite.ai/', 'https://fitness.inflite.ai/', 'https://finance.inflite.ai/'], 'the tiles: the apps’ own addresses');
   same(own[0].chips[0]?.[1], 'https://weather.inflite.ai/#radar', 'and their sections');
   await p.click('#tabs [data-tab="you"]');
-  await p.waitForSelector('#youRules [data-rulepick]');
+  await youReady(p);
   ok(!(await p.$('#youEvery')) && !(await text(p, '#you')).includes('Every App'), 'You: no Get Every App’s Here');
   ok(!(await p.$('#youDevices')), 'You: no Other Devices');
-  ok(await p.$('#youNotify #youPhone') && await p.$('#youApps2') && await p.$('#youRules'), 'the rest of You as ever');
+  ok(await p.$('#youNotify #youPhone') && await p.$('#youApps2') && await p.$('#you [data-folder=rules]'), 'the rest of You as ever');
   ok(await p.evaluate(() => sessionStorage.getItem('ifl-hub-ready') === '0'), 'the answer kept for the visit');
   // (Sign Out with no engine to sign Chat out: Today lets go of Chat's sign-in and its kept chats here itself, as
   // Chat's forget does; what was written and not sent stays, sealed)
@@ -628,7 +637,7 @@ await part('v1', async () => {
   await p.click('#tabs [data-tab="you"]');
   await p.waitForSelector('#youPhone');
   await p.waitForTimeout(1200);
-  ok(!(await p.$('#youRules')), 'v1: no Rules');
+  ok(!(await p.$('#you [data-folder=rules]')) && !(await p.$('#youRules-pane')), 'v1: no Rules');
   ok(!(await p.$('#youDevices')), 'v1: no Other Devices');
   ok(!(await p.$('#youApps2')) && !(await p.$('#youQuiet')), 'v1: no From Each App or Quiet Hours');
   ok(await p.$('#youNotify #youPhoneRow') && await p.$('#youNotify #youMorning'), 'v1: Notifications with On This Phone and Today’s Morning alone');
@@ -747,7 +756,7 @@ await part('sizes', async () => {
   await mode({ phase: 'midday' });
   for (const [w, h] of [[390, 844], [320, 568], [844, 390]]) for (const scheme of ['light', 'dark']) for (const view of ['today', 'apps', 'you']) {
     const { ctx, p } = await open({ w, h, scheme, path: view === 'today' ? '/' : `/#${view}` });
-    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || document.querySelector('#youRules [data-rulepick]')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app], .atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
+    await p.waitForFunction((v) => !document.getElementById(v).hidden && (v !== 'you' || /\d+ rules?/.test(document.querySelector('#you [data-folder=rules] small')?.textContent || '')) && (v !== 'apps' || document.querySelector('.ifl-tile[data-app], .atile')) && (v !== 'today' || document.querySelector('#today[data-phase]')), view);
     await p.waitForTimeout(300);
     const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(over <= 0, `${w}×${h} ${scheme} ${view}: no sideways scroll`, `${over}px`);

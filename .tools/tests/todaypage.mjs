@@ -120,8 +120,10 @@ await part('signed out', async () => {
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
   await p.click('#signin');
   await p.waitForURL(/auth\.inflite\.ai/);
-  let h = new URLSearchParams(new URL(p.url()).hash.slice(1));
-  same([h.get('signin'), h.get('back'), /^[\w-]{43}$/.test(h.get('ask') || '')], ['today', `${BASE}/`, true], 'Sign in goes to …/#signin=today&ask=<43>&back=<Today>/');
+  // (by /go, the fast way in (signed in there already: straight back), its words in the query; Join's by the hash)
+  const signU = new URL(p.url());
+  let h = new URLSearchParams(signU.pathname === '/go' ? signU.search : signU.hash.slice(1));
+  same([signU.pathname, h.get('signin'), h.get('back'), /^[\w-]{43}$/.test(h.get('ask') || '')], ['/go', 'today', `${BASE}/`, true], 'Sign in goes to …/go?signin=today&ask=<43>&back=<Today>/');
   const ask = h.get('ask');
   await p.goto(`${BASE}/`);
   const verifier = await p.evaluate(() => sessionStorage.getItem('inflite:signin-verifier'));
@@ -259,7 +261,7 @@ await part('cards: ok', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   const heads = await p.$$eval('.tcard', (cs) => cs.map((c) => [c.dataset.app, c.querySelector('.tc-head').getAttribute('href')]));
   same(heads, KEYS.map((k) => [k, CARDS.cards[k].href]), 'each card’s head links to its app at the fixture’s href');
-  same(await p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')])), [['Today', '/'], ['Chats', 'https://chat.inflite.ai/'], ['Apps', '/#apps'], ['You', '/#you']], 'InFlite’s tab bar under the day (Chats at its own address while the hub isn’t ready)');
+  same(await p.$$eval('#tabs .ifl-tab', (as) => as.map((a) => [a.querySelector('.ifl-tab-l').textContent.trim(), a.getAttribute('href')])), [['Today', '/'], ['Chats', 'https://chat.inflite.ai/'], ['Apps', '/#apps'], ['You', '/#you']], 'InFlite’s tab bar under the day (Chats at its own address while the hub isn’t ready)');
   ok(await p.evaluate(() => !document.getElementById('today').hidden && document.getElementById('apps').hidden && document.getElementById('you').hidden), 'opened on Today');
   // (Today 1.15–1.17: no Send to a friend on any card, though each card's answer still carries its words (share), and no
   // Open in the heads: each head is itself the link to its app, named for it. Send is each app's own, in its own screens)
@@ -270,7 +272,9 @@ await part('cards: ok', async () => {
   same(await p.$$eval('.tcard', (cs) => cs.map((c) => { const a = c.querySelector('a.tc-head'); return [c.dataset.app, (a.getAttribute('aria-label') || '').split(' for ')[0], a.querySelector('.tc-app')?.textContent]; })),
     KEYS.map((k) => [k, `Open ${APPNAME[k]}`, APPNAME[k]]), 'each head the link to its app, named for it (“Open Weather for London”, …), its app’s name in it');
   const fit = await p.$$eval('.tcard[data-app=fitness] .tc-foot a', (as) => as.map((a) => [a.textContent.trim(), a.href]));
-  same(fit.slice(0, 2), [['Details', 'https://fitness.inflite.ai/#today'], ['Change', 'https://fitness.inflite.ai/#today']], 'Fitness: Details and Change, in Fitness’s words, to Fitness’s #today');
+  // (Today 1.5x, acting from the cards: Details to Fitness's #today, and Rest Today and Move to Tomorrow done here)
+  same(fit.slice(0, 1), [['Details', 'https://fitness.inflite.ai/#today']], 'Fitness: Details, in Fitness’s words, to Fitness’s #today');
+  same(await p.$$eval('.tcard[data-app=fitness] .tc-foot button.pill', (bs) => bs.map((b) => b.textContent.trim())), ['Rest Today', 'Move to Tomorrow'], 'Fitness: Rest Today and Move to Tomorrow beside it');
   ok(!(await text(p, '.tcard[data-app=fitness]')).includes('Open Fitness'), 'Fitness: no Open Fitness (its head opens it)', JSON.stringify(fit));
   ok(await p.$eval('.tcard[data-app=fitness] .tc-foot .pill.primary', (a) => a.textContent === 'Details' && !a.querySelector('svg')), 'Fitness: no play glyph, as nothing starts a session');
   same(await p.$$eval('.tcard[data-app=fitness] .ft-bt-key span', (ss) => ss.map((x) => x.textContent)), ['Great', 'Good', 'Fair', 'Poor'], 'Fitness: the hours’ colours, with their key');
@@ -296,7 +300,8 @@ await part('cards: ok', async () => {
     'London open · closes in 8h 20m', '+£61.20', '+0.29%', 'Rolls-Royce did most of the work, adding £48.10.', 'Tesco gave back £12.40.', 'Dividend, around 6 Nov', 'Tesco: about £43.20', '£12,000 of your ISA allowance left', '£8,000 of £20,000 used · till 5 April'])
     has(words, w, `ok: “${w}”`);
   if (ROOF) {
-    has(await text(p, '#hd .ifh-crumb'), 'Monday 2 November', 'the header’s crumb: the day');
+    // (Today 1.32: no date above Today's title)
+    same(await text(p, '#hd .ifh-crumb'), '', 'no crumb above Today’s title');
     has(await text(p, '#hd .ifh-line'), 'London', 'the header’s line: the Weather place');
   } else has(await text(p, '#hd .ifh-line'), 'Monday 2 November · London', 'the header’s line: the day, and the Weather place');
   const av = (await reqs()).find((e) => e.path.endsWith('/avatar'));
@@ -437,7 +442,7 @@ await part('cards: words across a clock change, a day out, and a dividend of £1
   ok(/^Each daylight hour for a run:/.test(c5.bt), 'Fitness: a run’s hours, said as a run’s', c5.bt.slice(0, 80));
   // Fitness: a rest day, with the reason Fitness gave for it (the card's own why)
   [said] = await draw('fitness', { ...fit, kind: 'rest', session: null, best: null, why: 'Hard days yesterday: let it sink in.' }, T0);
-  ok(said.includes('Rest, and let it sink in') && said.includes('Hard days yesterday: let it sink in.'), 'Fitness: a rest day, with Fitness’s reason for it', said.slice(0, 200));
+  ok(said.includes('Rest') && said.includes('Hard days yesterday: let it sink in.'), 'Fitness: a rest day, with Fitness’s reason for it', said.slice(0, 200));
   // Markets: an expected dividend of £100 or more without the pence, under £100 with them
   const mk = CARDS.cards.markets;
   [said] = await draw('markets', { ...mk, dividend: { ...mk.dividend, value: 143.2 } }, T0);
@@ -632,7 +637,8 @@ await part('menu and sign out', async () => {
   await p.click('#hd .ifh-me');
   await p.waitForSelector('.ifm-pop.open');
   const rows = await p.$$eval('.ifm-rows .ifm-row', (rs) => rs.map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
-  same(rows, ROOF ? ['Notifications', 'Morning Notification 07:00', 'Connected Apps', 'Edit Today'] : ['Notifications', 'Morning Notification 07:00', 'Edit Today'], 'the menu’s rows (Connected Apps under the roof, D24)');
+  // (and the shared menu's Report a Problem, in every app, at the foot)
+  same(rows, ROOF ? ['Notifications', 'Morning Notification 07:00', 'Connected Apps', 'Edit Today', 'Report a Problem'] : ['Notifications', 'Morning Notification 07:00', 'Edit Today', 'Report a Problem'], 'the menu’s rows (Connected Apps under the roof, D24; Report a Problem)');
   has(await text(p, '.ifm-pop .ifm-who'), 'Alex Morgan', 'the menu: you');
   has(await text(p, '.ifm-foot'), `Today ${BUILD}`, 'the menu’s foot: Today and its version');
   ok(await p.$eval('.ifm-foot-ic', (i) => i.complete && i.naturalWidth > 0), 'and Today’s icon beside it');

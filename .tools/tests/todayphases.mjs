@@ -214,9 +214,10 @@ await part('a boundary crossed', async () => {
   const preride = F.preride.at, { ctx, p } = await open('midday', { time: preride - 60e3 });
   same(await text(p, '#hd .ifh-line'), '16:04 · what’s next', 'a minute before the ride’s 40: midday');
   await reset();
-  // (any request the page might make held, never answered, so the switch can't lean on one)
+  // (any request the page might make held, never answered, so the switch can't lean on one; the shared menu's own look
+  // at the site's status, every five minutes the page is on screen, isn't the day's, and is let through)
   const held = [];
-  await p.route('**/api/**', (r) => { held.push(r.request().url()); });
+  await p.route('**/api/**', (r) => { if (new URL(r.request().url()).pathname === '/api/status-banner') return r.continue(); held.push(r.request().url()); });
   await p.clock.runFor(2 * 60e3);
   await p.waitForSelector(`${DAY}[data-phase="preride"] #top .day-top[data-phase="preride"]`, { timeout: 5000 });
   same(held, [], 'the ride took over at its minute, with no request made by the page');
