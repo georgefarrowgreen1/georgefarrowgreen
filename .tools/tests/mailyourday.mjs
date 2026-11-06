@@ -286,6 +286,15 @@ const roofSw = await until(() => p.evaluate(() => { const sh = document.querySel
 ok(roofSw && JSON.stringify(roofSw.map((x) => x.t)) === JSON.stringify(['Trips and bookings', 'Parcels and returns', 'Bills and subscriptions']) && roofSw.every((x) => x.on), 'Mail Settings inside Today: the three switches, on', js(roofSw));
 await p.screenshot({ path: `${out}/hub-settings.png` });
 
+// ---- the whole way, stage 2: the bill and the parcel from real Mail, through the account, in Today's own day ----
+await p.goto('http://ifl.test:8788/');
+await p.waitForSelector('#today[data-phase]', { timeout: 30000 }).catch(() => {});
+const dayOf = () => p.evaluate(() => fetch('/api/today?v=2', { credentials: 'include', cache: 'no-store' }).then((r) => r.json()).catch(() => null));
+const whole = await until(async () => { const d = await dayOf(); return d?.money && d?.owed ? d : null; }, 30000);
+const oeRow = whole?.owed?.find((r) => /Octopus/.test(JSON.stringify(r)));
+ok(!!oeRow && /84\.20/.test(JSON.stringify(oeRow)), 'the whole way: Octopus’s bill from real Mail is a Waiting for You row in Today’s day', js(whole?.owed));
+ok(whole?.money && whole.money.month > 0 && Array.isArray(whole.money.months) && whole.money.months.length === 6, 'and the Bills sheet has its month and six months', js(whole?.money));
+
 const mine = errs.slice(errs0).filter((e) => e.startsWith('george:'));
 ok(!mine.length, 'no error on Mail’s page or in Mail inside Today', js(mine));
 await ctx.close();
