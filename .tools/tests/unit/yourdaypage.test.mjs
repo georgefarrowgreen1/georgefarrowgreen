@@ -1,10 +1,13 @@
 // Mail on Your Day on Today's page (the inflite repo's today/public/trip.js, and day.js drawing it), its parts that need
 // no browser: the answer's trip checked field by field on the page too (anything else dropped); the trip card's words
 // (where, when, the time there against home's, the next booking, four days of weather); the trip day by day (each of
-// its days, "Nothing booked" on one with nothing); Coming Up's rows from Mail ("from Mail", a tap for the booking's
-// sheet, its email the link without one); the trip shown wherever Coming Up is and never beside a ride; nothing drawn
-// unescaped, and no inline style, handler or box to type in. (The sheets, Hide and its Undo, in Chromium against the
-// account and a stand-in for Mail: yourday.mjs.)
+// its days, "Nothing booked" on one with nothing); Coming Up's rows from Mail (Mail's teal icon with its envelope, the
+// time on the right, a tap for the booking's sheet, its email the link without one); the trip shown wherever Coming Up is
+// and never beside a ride; nothing drawn unescaped, and no inline style, handler or box to type in. Stages 2 and 3
+// (mailday.js): Waiting for You's rows from Mail (the number on the right, a change marked) and the quiet paid line; a
+// parcel's row with its four-part bar; the Bills sheet's inside; a hidden booking in its day with Put Back, and the
+// trip's "1 hidden"; a repeating invite's next dates (one struck through, one moved). (The sheets, Hide and its Undo, Put
+// Back, in Chromium against the account and a stand-in for Mail: yourday.mjs.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -37,6 +40,7 @@ globalThis.document = { createElement: (t) => new El(t), querySelector: (s) => (
 globalThis.location = { protocol: "https:", hostname: "inflite.ai", port: "", origin: "https://inflite.ai" };
 globalThis.fetch = async () => { throw new Error("no requests here"); };
 const trip = skip ? {} : await import(new URL("trip.js", PUB).href);
+const mailday = skip || !existsSync(new URL("mailday.js", PUB)) ? {} : await import(new URL("mailday.js", PUB).href);
 const day = skip ? {} : await import(new URL("day.js", PUB).href);
 const LINKS = { chat: "https://chat.inflite.ai", weather: "https://weather.inflite.ai", fitness: "https://fitness.inflite.ai", finance: "https://finance.inflite.ai", email: "https://email.inflite.ai" };
 
@@ -127,8 +131,9 @@ test("drawDay: the trip above Waiting for You and Mail's rows in Coming Up (from
   assert.match(sec("trip").innerHTML, /Lisbon tomorrow/);
   const coming = sec("coming").innerHTML;
   assert.match(coming, /<div class="dc-row dc-mail" data-due="\d+">\s*<a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=rock" data-do="booking" data-bid="rock-0211" aria-haspopup="dialog">/);
-  assert.match(coming, /<b>Table at Rockfish<\/b><small>2 people · Exeter Quay<\/small><span class="dc-from"><i><\/i>from Mail<\/span>/);
-  assert.match(coming, /<span class="dc-ic bk-ic"><svg/);
+  assert.match(coming, /<b>Table at Rockfish<\/b><small>2 people · Exeter Quay<\/small><\/span><span class="ml-amt"><b>19:30<\/b><small>today<\/small><\/span>/, "the time on the right, its day under it");
+  assert.ok(!/from Mail/.test(coming), "no “from Mail” line: the envelope on its icon says it");
+  assert.match(coming, /<span class="ml-ic dc-ic"><svg[\s\S]*?<\/svg><i class="ml-via"><svg/);
   // (at the hub, its email by the hub's own path)
   const hub = { on: true, base: "/", go: (u) => (u.startsWith(`${OWN}/`) ? `/mail/${u.slice(OWN.length + 1)}` : u), send: () => Promise.resolve(true), chat: () => Promise.resolve(null) };
   assert.match(drawn(a, a.at, { hub }).sec("coming").innerHTML, /href="\/mail\/#thread=rock" data-do="booking"/);
@@ -152,5 +157,106 @@ test("trip.js: no inline style, handler, box to type in or storage; its file kep
   assert.ok(!/style=\\?["']|setAttribute\(\s*["']style|\son[a-z]+=\\?["']|<input|<textarea|localStorage|sessionStorage|indexedDB/i.test(js));
   assert.ok(!/\b(openai|anthropic|llm|gpt)\b/i.test(js), "no AI anywhere");
   assert.match(readFileSync(new URL("sw.js", PUB), "utf8"), /"\/trip\.js"/);
+  assert.ok(!/read by Mail|from the booking’s email/i.test(js), "no explanations: labels, values and buttons only");
   assert.match(readFileSync(new URL("index.html", PUB), "utf8"), /<div class="day-side" id="side"><section id="trip" hidden><\/section><section id="waiting"><\/section>/);
+});
+
+// ---- stages 2 and 3 ----
+const OWED = [
+  { id: "mail-str-1", item: "str-1", kind: "trial", title: "Strava trial ends", sub: "Then £8.99", chg: null, amt: "£8.99", when: "Sun 8", at: at(8, 9), href: `${OWN}/#thread=str` },
+  { id: "mail-oct-2611", item: "oct-2611", kind: "bill", title: "Octopus Energy", sub: "To pay · +18% on your usual £71", chg: "+18%", amt: "£84.20", when: "Thu 12", at: at(12, 9), href: `${OWN}/#thread=oct`, auto: false },
+  { id: "mail-adm", item: "adm-2611", kind: "renewal", title: "Car insurance renews", sub: "Admiral · +£23.60 on last year", chg: "+£23.60", amt: "£412.60", when: "16 Nov", at: at(16, 0), href: null },
+  { id: "mail-zara", item: "zara-9001", kind: "return", title: "Return to Zara", sub: "Order 9001", chg: null, amt: "Mon 9", when: "last day", at: at(9, 23), href: `${OWN}/#thread=zara` },
+];
+const PARCEL = { at: at(2, 11), app: "mail", title: "Parcel from Wiggle", sub: "Out for delivery · Evri", href: `${OWN}/#thread=evri`, id: "mail-evri-1", parcel: "evri-1", stage: 2, until: at(2, 13), amt: "11–13", when: "today",
+  carrier: "Evri", track: "https://www.evri.com/track/parcel/H01AA2B3C4D5/details", ref: "H01AA2B3C4D5" };
+const MONEY = { month: "£186.40", n: "11 bills and subscriptions", tag: "+£14.99 on June",
+  bars: ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov"].map((label, i) => ({ label, pct: [92, 95, 94, 98, 98, 100][i], ...(i === 5 ? { said: "£186" } : {}) })),
+  cats: [{ name: "Home", pence: 11240, said: "Home £112" }, { name: "Phone and internet", pence: 4600, said: "Phone and internet £46" }, { name: "Subscriptions", pence: 2800, said: "Subscriptions £28" }],
+  needs: OWED.slice(0, 3), paid: [{ id: "mail-ee", item: "ee-2611", kind: "bill", title: "EE", sub: "Same as usual", chg: null, amt: "£24.00", when: "Thu 12", at: at(12, 6), href: null, auto: true }] };
+const mskip = skip || (!mailday.owedOf && "the inflite repo beside has no mailday.js (Mail on Your Day, stage 2) yet");
+
+test("Waiting for You: Mail's rows after who's waiting, the number on the right, a change marked; the quiet paid line", { skip: mskip }, () => {
+  const a = answerWith("midday", { owed: OWED, paidSelf: { n: 3, pence: 3600, said: "3 paid by themselves · £36.00" }, money: MONEY });
+  const w = drawn(a, a.at, { sheet: () => null }).sec("waiting");
+  assert.equal(w.hidden, false);
+  const html = w.innerHTML;
+  const rows = [...html.matchAll(/<div class="dw-row dm-row">[\s\S]*?data-iid="([^"]+)"[\s\S]*?<b>([^<]+)<\/b>[\s\S]*?<span class="ml-amt"><b>([^<]+)<\/b><small>([^<]+)<\/small>/g)].map((m) => [m[1], m[2], m[3], m[4]]);
+  assert.deepEqual(rows, [["str-1", "Strava trial ends", "£8.99", "Sun 8"], ["oct-2611", "Octopus Energy", "£84.20", "Thu 12"], ["adm-2611", "Car insurance renews", "£412.60", "16 Nov"], ["zara-9001", "Return to Zara", "Mon 9", "last day"]]);
+  assert.match(html, /<small>To pay · <span class="chg">\+18%<\/span> on your usual £71<\/small>/);
+  assert.match(html, /<small>Admiral · <span class="chg">\+£23\.60<\/span> on last year<\/small>/);
+  assert.match(html, /<a class="row dm-main" href="https:\/\/email\.inflite\.ai\/#thread=oct" data-do="mailitem" data-iid="oct-2611" aria-haspopup="dialog"><span class="ml-ic"><svg/);
+  assert.match(html, /<button type="button" class="row dm-main" data-do="mailitem" data-iid="adm-2611"/, "no email to link to: a button for its sheet");
+  assert.match(html, /<button type="button" class="dm-quiet" data-do="bills" aria-haspopup="dialog">3 paid by themselves · £36\.00<\/button><\/div>$/, "the quiet line last, a tap for the Bills sheet");
+  assert.ok(html.indexOf("dm-row") > html.lastIndexOf("data-wid="), "after who's waiting");
+  // (with nobody waiting, Mail's rows alone; no Bills sheet to open, the line just words)
+  const b = drawn({ ...answerWith("midday", { owed: OWED.slice(0, 1), paidSelf: { n: 1, said: "1 paid by themselves · £24.00" } }), waiting: [] }, a.at).sec("waiting");
+  assert.equal(b.hidden, false);
+  assert.match(b.innerHTML, /<p class="dm-quiet">1 paid by themselves · £24\.00<\/p>/);
+  // (malformed rows dropped; escaped)
+  const evil = drawn({ ...a, owed: [{ ...OWED[1], title: "<img src=x>", sub: "<b>x</b> +18%", chg: "+18%" }, { ...OWED[0], item: "a b" }, { ...OWED[0], kind: "invoice" }, null] }, a.at).sec("waiting").innerHTML;
+  assert.ok(!/<img src=x|<b>x<\/b>/.test(evil) && /&lt;img src=x&gt;/.test(evil));
+  assert.equal([...evil.matchAll(/dm-row/g)].length, 1);
+  // (before a ride: no Waiting for You)
+  assert.equal(drawn(answerWith("preride", { owed: OWED }), answerWith("preride").at).sec("waiting").hidden, true);
+});
+
+test("Coming Up: a parcel's row, its window on the right and its four-part bar, there until its window's end", { skip: mskip }, () => {
+  const a = answerWith("midday", { upcoming: [...FIX("midday").upcoming, PARCEL].sort((x, y) => x.at - y.at) });
+  const html = drawn(a, a.at).sec("coming").innerHTML;
+  assert.match(html, /<div class="dc-row dc-mail dc-parcel" data-due="\d+"><a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=evri" data-do="mailitem" data-pid="evri-1" aria-haspopup="dialog"><span class="dc-tm" aria-hidden="true"><\/span><span class="ml-ic dc-ic">/);
+  assert.match(html, /<b>Parcel from Wiggle<\/b><small>Out for delivery · Evri<\/small><span class="ml-track" role="img" aria-label="Out Today"><i class="on"><\/i><i class="on"><\/i><i class="now"><\/i><i class=""><\/i><\/span><\/span><span class="ml-amt"><b>11–13<\/b><small>today<\/small><\/span>/);
+  assert.match(html, new RegExp(`data-due="${at(2, 13)}"`), "taken away at its window's end, not its start");
+  assert.deepEqual(day.comingAt([PARCEL], at(2, 12), "midday").map((r) => r.id), ["mail-evri-1"], "inside its window: still there");
+  assert.deepEqual(day.comingAt([PARCEL], at(2, 13, 1), "midday"), []);
+  assert.equal(mailday.trackHtml(3, true).match(/class="on"/g).length, 8, "delivered: every part, every label");
+  assert.match(mailday.trackHtml(0, true), /aria-label="Ordered"><i class="now"><\/i><i class=""><\/i><i class=""><\/i><i class=""><\/i><\/span><span class="ml-tracklab" aria-hidden="true"><span class="on">Ordered<\/span><span>Shipped<\/span><span>Out Today<\/span><span>Delivered<\/span>/);
+  assert.equal(mailday.parcelOfRow({ ...PARCEL, track: "javascript:alert(1)" }).track, null, "a tracking page that isn't https: none");
+  assert.equal(mailday.parcelOfRow({ ...PARCEL, parcel: "a b" }), null);
+});
+
+test("the Bills sheet: the month big, its change, six bars (the last with its amount), the split by kind, Needs You and Paid by Themselves; no footer", { skip: mskip }, () => {
+  const m = mailday.moneyOf({ money: MONEY });
+  const html = mailday.billsHtml(m);
+  assert.match(html, /<small>Every Month<\/small><b>£186\.40<\/b>\s*<span class="ml-n">11 bills and subscriptions · <span class="chg">\+£14\.99<\/span> on June<\/span>/);
+  const bars = [...html.matchAll(/<i class="(now)?" data-pct="(\d+)">(?:<em>([^<]+)<\/em>)?<\/i>/g)].map((x) => [x[2], x[3] || ""]);
+  assert.deepEqual(bars, [["92", ""], ["95", ""], ["94", ""], ["98", ""], ["98", ""], ["100", "£186"]]);
+  assert.match(html, /<div class="ml-barlab" aria-hidden="true"><span>Jun<\/span><span>Jul<\/span><span>Aug<\/span><span>Sep<\/span><span>Oct<\/span><span>Nov<\/span><\/div>/);
+  assert.match(html, /<div class="ml-split" aria-hidden="true"><i class="t-mail" data-share="11240"><\/i><i class="t-weather" data-share="4600"><\/i><i class="t-trip" data-share="2800"><\/i><\/div>/);
+  assert.match(html, /<span><i class="t-mail"><\/i>Home £112<\/span>/);
+  assert.match(html, /<h3 class="slabel">Needs You<\/h3><div class="group glass">(<button type="button" class="row dm-main" data-bill="[^"]+"[\s\S]*?<\/button>){3}<\/div>/);
+  assert.match(html, /<h3 class="slabel">Paid by Themselves<\/h3><div class="group glass"><button type="button" class="row dm-main" data-bill="ee-2611"/);
+  assert.ok(!/<p\b/.test(html), "no footer, no explanations");
+  assert.equal(mailday.moneyOf({ money: { month: 7 } }), null);
+  assert.deepEqual(mailday.moneyOf({ money: { ...MONEY, bars: [{ label: "Jun", pct: 900 }, { label: "", pct: 3 }], cats: [{ name: "Home", pence: 0, said: "Home £0" }] } }).bars, [{ label: "Jun", pct: 100, said: "" }]);
+});
+
+test("the trip: a hidden booking stays in its day, faded, with Put Back; Mail's hidden there too; a repeating invite's next dates", { skip: mskip }, () => {
+  const t = trip.tripOf({ trip: { ...TRIP, items: TRIP.items.filter((b) => b.id !== "gyg-1"), hidden: [{ id: "gyg-1", title: "Sintra day trip", sub: "Meet 09:00, Rossio station", start: at(4, 9) }, { id: "K7QX2M-1", title: "dupe", start: at(3, 7) }, { id: "a b", title: "x", start: 1 }] } });
+  assert.deepEqual(t.hidden.map((b) => b.id), ["gyg-1"], "Mail's hidden, each once, none also shown, none malformed");
+  const html = trip.tripDaysHtml(t, { now: at(2, 12, 30), tz: "Europe/London" });
+  assert.match(html, /Wednesday 4<\/span>[\s\S]*?<div class="row tv-row tv-hid" data-hid="gyg-1"><span class="bk-ic"><svg[\s\S]*?<\/svg><\/span><span class="tx"><b>Sintra day trip<\/b><small>Hidden<\/small><\/span><button type="button" class="tv-back" data-tv="back" data-bid="gyg-1">Put Back<\/button><\/div>/);
+  assert.ok(!/<p class="tv-none">Nothing booked<\/p><\/h3>|Wednesday 4<\/span>[^]*?Nothing booked[^]*?Thursday 5/.test(html.replace(/Thursday 5<\/span>[\s\S]*$/, "Thursday 5")), "its day isn't “Nothing booked”");
+  assert.match(html, /<button type="button" class="row tv-row" data-do="booking" data-bid="K7QX2M-1"><span class="ml-ic bk-ic"><svg[\s\S]*?<i class="ml-via">/, "the rest with Mail's envelope");
+  // (a trip whose every booking's hidden: no card)
+  assert.equal(trip.tripOf({ trip: { ...TRIP, items: [], hidden: [{ id: "gyg-1", title: "Sintra day trip", start: at(4, 9) }] } }), null);
+  // (a repeating invite's next dates)
+  const dec = (d, hh, mm = 0) => Date.UTC(2026, 11, d, hh, mm);
+  const b = trip.bookingOfRow({ at: at(12, 19), app: "mail", title: "Book club", sub: "The Old Firehouse · every other Thursday", booking: "club~20261112", kind: "event", repeat: "every other Thursday",
+    next: [{ start: at(12, 19) }, { start: at(26, 19), cancelled: true }, { start: dec(10, 19, 30), was: dec(10, 19) }, { start: dec(24, 19) }, { start: Date.UTC(2027, 0, 7, 19) }, { start: Date.UTC(2027, 0, 21, 19) }] });
+  assert.equal(b.id, "club~20261112", "an id with ~ kept");
+  assert.equal(b.next.length, 5);
+  const occ = trip.seriesHtml(b, "Europe/London");
+  const rows = [...occ.matchAll(/<div class="bk-o( off)?"><span class="bk-od"><small>([^<]+)<\/small><b>(\d+)<\/b><\/span><span class="tx"><b>([^<]+)<\/b>( <span class="chg">moved<\/span>)?(?:<small>([^<]+)<\/small>)?<\/span>(?:<span class="bk-pill(?: off)?">(\w+)<\/span>)?/g)]
+    .map((m) => [m[3], m[2], m[4], !!m[1], !!m[5], m[6] || "", m[7] || ""]);
+  assert.deepEqual(rows, [["12", "Thu Nov", "19:00", false, false, "", "Next"], ["26", "Thu Nov", "19:00", true, false, "", "Off"], ["10", "Thu Dec", "19:30", false, true, "was 19:00", ""], ["24", "Thu Dec", "19:00", false, false, "", ""], ["7", "Thu Jan", "19:00", false, false, "", ""]]);
+  assert.equal(trip.seriesHtml({ ...b, repeat: "" }, "Europe/London"), "");
+});
+
+test("mailday.js: no inline style attribute, handler, box to type in or storage; kept by Today's service worker", { skip: mskip }, () => {
+  const js = readFileSync(new URL("mailday.js", PUB), "utf8");
+  assert.ok(!/style=\\?["']|setAttribute\(\s*["']style|\son[a-z]+=\\?["']|<input|<textarea|localStorage|sessionStorage|indexedDB/i.test(js));
+  assert.ok(!/\b(openai|anthropic|llm|gpt)\b/i.test(js), "no AI anywhere");
+  assert.match(readFileSync(new URL("sw.js", PUB), "utf8"), /"\/mailday\.js"/);
+  assert.ok(!/<p class="[^"]*(foot|how|hint)/.test(js), "no footers or hints");
 });

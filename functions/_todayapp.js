@@ -51,7 +51,7 @@ import { actTake, actUndo, rulesGet, rulesPut } from "./_todayacts.js";
 import { planChange } from "./_todayfit.js";
 import { notifyGet, notifyPatch } from "./_todaynotify.js";
 import { deviceAdd, deviceDrop, devicesList, devicesStop } from "./_devices.js";
-import { mailHide } from "./_todaymail.js";
+import { mailHide, mailUnhide } from "./_todaymail.js";
 
 // (only from Today's own page: its server passes the page's Origin on, which a page elsewhere can't make Today's)
 function fromToday(request, env) {
@@ -374,6 +374,16 @@ export const TODAY_ROUTES = {
     await pace(env, "today:" + u.id, 600, 3600e3);
     const b = await body(request, 4 * 1024);
     return json(await mailHide(env, u, b.id, request));
+  },
+  // Mail on Your Day (stage 3): { id } (a hidden booking's, from the trip's hidden) → { ok }: put back in Mail, Today's
+  // Put back, for Mail's owner alone (Mail's POST /api/connector/unhide, with the key the two share: functions/_todaymail.js
+  // mailUnhide). Sent at once, Undo-free
+  "POST today/mail/unhide": async ({ request, env }) => {
+    changeFromToday(request, env);
+    const u = await signedIn(request, env);
+    await pace(env, "today:" + u.id, 600, 3600e3);
+    const b = await body(request, 4 * 1024);
+    return json(await mailUnhide(env, u, b.id, request));
   },
   // { id } → { ok }
   "DELETE today/devices": async ({ request, env }) => {

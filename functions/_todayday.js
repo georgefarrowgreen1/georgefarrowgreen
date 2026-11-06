@@ -4,12 +4,13 @@
 //     eveningAt, rides (today's explicit rides only: functions/_fittimes.js explicitRide), dones (functions/_fitshare.js
 //     donesIn) }
 //   dayFor(env, u, t, cards, { request, tz, deps }) → { v: 2, phase, since, until, timeline, tops, waiting, upcoming,
-//     acts, planning?, ride, quiet, apps, trip? }, merged into the answer (and Mail's card put among the cards given, cards.mail,
+//     acts, planning?, ride, quiet, apps, trip?, owed?, paidSelf?, money? }, merged into the answer (and Mail's card put among the cards given, cards.mail,
 //     where Mail answered for its admin: functions/_todaymail.js), and, held apart (not one of its keys), fitnessCard:
 //     the Fitness card as the acts leave it, where they change it (an add undone), for the answer's cards. Never words
-//     of a message (waiting names who and when); never an amount (Markets' cards carry percents). The day's plan
-//     (functions/_todayacts.js planDay; deps.planDay: a stand-in, for tests) runs inside env.waitUntil on the first read
-//     after dayStart, never awaited, and the answer says planning: true meanwhile.
+//     of a message (waiting names who and when); never an amount of Markets' (its cards carry percents; Mail's bills,
+//     the admin's own, say theirs). The day's plan (functions/_todayacts.js planDay; deps.planDay: a stand-in, for
+//     tests) runs inside env.waitUntil on the first read after dayStart, never awaited, and the answer says planning:
+//     true meanwhile.
 // The day's walls: dayStart is quiet hours' end where they're on, else the morning notification's time where that's on,
 // else 05:00; eveningAt is 19:00, or 5 minutes after the last close of a market you hold where that's later, but no
 // later than quiet hours' start. The day is the calendar day once its dayStart has come; before it (the small hours)
@@ -34,13 +35,18 @@
 // ahead of the account's at the trip's start, or null where its zone isn't known), href (Weather on the destination),
 // items: [{ id, kind, title, sub, start, end, tz, place, ref, href (its email in Mail), wx? (Weather there, that day) }],
 // days: [{ day, hi?, lo?, icon?, label?, said? }] (each of its days on the destination's clock, with Weather's forecast
-// there where it reaches: functions/_todaywx.js tripWeather, TRIP_WX_MS at most) }. Its bookings aren't Coming Up rows too.
+// there where it reaches: functions/_todaywx.js tripWeather, TRIP_WX_MS at most), hidden?: [{ id, title, sub, start }]
+// (its bookings hidden, for Put back) }. Its bookings aren't Coming Up rows too.
+// owed, paidSelf, money (Mail on Your Day, stage 2, the admin's alone, where Mail's "Bills and subscriptions" or "Parcels
+// and returns" is on: functions/_todaycoming.js mailWaiting, moneyFor): Waiting for You's rows from Mail ({ id, item,
+// kind, title, sub, chg, amt, when, at, href }), the quiet line of what paid itself ({ n, pence, said }), and the Bills
+// sheet (its words and rows). Each left out where there's none.
 // Every word is plain text (the page draws it escaped); every card for Chat is built by the module whose data it is
 // (functions/_todaywx.js, _todayfit.js, _todaymkt.js), packed here (pigeon/cards.js packCard), and its line cut by
 // shareCut. The links are the hub's own paths (/weather/#radar, /fitness/#today, /chats/#open=…).
 import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer, offsetAt } from "./_todaycards.js";
 import { phaseOf, ridesWithDones, wallAt, DAY_START, EVENING_AT } from "./_todayphase.js";
-import { upcomingFor } from "./_todaycoming.js";
+import { upcomingFor, mailWaiting, moneyFor } from "./_todaycoming.js";
 import { rideWx } from "./_todayride.js";
 import { waitingFor, wroteWhile } from "./_todaychat.js";
 import { rideSend, doneSend, ctlOf, loadOf, REST_SHARE } from "./_todayfit.js";
@@ -252,6 +258,8 @@ export async function dayFor(env, u, t, cards, opts = {}) {
     sub: wxOf(m)?.short || "", ...rideCard(m) }));
   const upcoming = upcomingFor(cards, { tz: zone, rides: forComing, offers: g.offers, times: g.times, hide: [...g.hide], tomorrow: ph.phase === "evening" ? cards?.weather?.forDay?.tomorrow || null : null, tripId: trip?.id || null }, t);
   x.upcoming = upcoming;
+  // (Mail's for Waiting for You and the Bills sheet: bills, renewals, trials and returns; what paid itself this week)
+  const owed = mail ? mailWaiting(cards, { tz: zone }, t) : null, money = mail ? moneyFor(cards, { tz: zone }, t) : null;
 
   // the top cards: the current phase's, and each later one's that needs no new data
   const tops = {}, line = ph.timeline.length > 1 ? ph.timeline.slice(0, -1) : ph.timeline;
@@ -273,6 +281,9 @@ export async function dayFor(env, u, t, cards, opts = {}) {
     quiet: { on: g.quietOn, from: g.p.quietFrom, to: g.p.quietTo },
     apps: appsOf(x),
     ...(trip ? { trip } : {}),
+    ...(owed?.rows.length ? { owed: owed.rows } : {}),
+    ...(owed?.paid ? { paidSelf: owed.paid } : {}),
+    ...(money ? { money } : {}),
   };
   // (the Fitness card as the acts leave it, for the answer's cards: held apart, never one of the day's keys)
   if (g.overlay) Object.defineProperty(out, "fitnessCard", { value: g.overlay, enumerable: false, configurable: true });
@@ -299,6 +310,8 @@ function tripOf(trip, w, zone) {
     id: trip.id, name: trip.name, start: trip.start, end: trip.end, destination: dest, tz,
     apart: tz ? Math.round((offsetAt(tz, trip.start) - offsetAt(zone, trip.start)) / MIN) : null,
     ...(at ? { href: weatherAt(dest) } : {}), items, days,
+    // (its bookings hidden, each still in its day, for Put back)
+    ...(trip.hidden?.length ? { hidden: trip.hidden.map((b) => ({ id: b.id, title: b.title, sub: b.sub, start: b.start })) } : {}),
   };
 }
 

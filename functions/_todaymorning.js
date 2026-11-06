@@ -175,14 +175,29 @@ const bookingName = (b) => {
   const t = text(b.title);
   return [...(b.kind === "restaurant" ? t.replace(/^table\s+(for\s+\d+\s+)?at\s+/i, "") || t : t)].slice(0, 40).join("");
 };
+// Stage 2, in the same line (the notification's budget is the same): a parcel coming today ("Parcel 11:00–13:00", or
+// "Parcel today" with no window) and a bill to pay due today or tomorrow, not one that pays itself ("Octopus £84.20 due
+// tomorrow"); then today's bookings make room for them, at most four parts in all
+// (a sender's name, short: "Octopus Energy" is Octopus, "British Gas" stays)
+const senderShort = (s) => [...(text(s).replace(/\s+(energy|ltd|limited|plc|uk|group)\.?$/i, "") || text(s))].slice(0, 30).join("");
+const pounds = (p) => `£${(p / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export function mailLine(c, tz, t) {
-  if (!ok(c) || !Array.isArray(c.ahead)) return null;
-  const zone = zoneOf(tz), today = localNow(zone, t).day, tomorrow = nextDay(today);
-  const list = c.ahead.filter((b) => b && Number.isFinite(b.start) && text(b.title)).sort((a, b) => a.start - b.start);
+  if (!ok(c) || (!Array.isArray(c.ahead) && !Array.isArray(c.parcels) && !Array.isArray(c.bills))) return null;
+  const zone = zoneOf(tz), today = localNow(zone, t).day, tomorrow = nextDay(today), dayOf = (ms) => localNow(zone, ms).day;
+  const list = (Array.isArray(c.ahead) ? c.ahead : []).filter((b) => b && Number.isFinite(b.start) && text(b.title)).sort((a, b) => a.start - b.start);
   const said = (b, when) => (TRAVEL[b.kind] ? `${TRAVEL[b.kind]}${when} ${hhmm(zone, b.start)}` : `${bookingName(b)}${when} at ${hhmm(zone, b.start)}`);
-  const now = list.filter((b) => b.start >= t && localNow(zone, b.start).day === today).slice(0, 3).map((b) => said(b, ""));
-  const next = list.find((b) => localNow(zone, b.start).day === tomorrow);
-  const parts = [...now, ...(next ? [said(next, " tomorrow")] : [])];
+  // (the parcel: out for delivery, or due today; its window where it has one)
+  const pc = (Array.isArray(c.parcels) ? c.parcels : []).find((p) => p && p.stage < 3 && (p.window ? dayOf(p.window.from) === today && p.window.to > t : p.stage === 2 || (Number.isFinite(p.due) && dayOf(p.due) === today)));
+  const parcel = pc ? (pc.window ? `Parcel ${hhmm(zone, pc.window.from)}–${hhmm(zone, pc.window.to)}` : "Parcel today") : null;
+  // (the bill: to pay, due today or tomorrow, the soonest)
+  const bl = (Array.isArray(c.bills) ? c.bills : []).filter((b) => b && b.kind === "bill" && !b.auto && Number.isFinite(b.due) && Number.isInteger(b.amount) && [today, tomorrow].includes(dayOf(b.due)))
+    .sort((a, b) => a.due - b.due)[0];
+  const bill = bl ? `${senderShort(bl.sender)} ${pounds(bl.amount)} due ${dayOf(bl.due) === today ? "today" : "tomorrow"}` : null;
+  const extra = [parcel, bill].filter(Boolean);
+  const next = list.find((b) => dayOf(b.start) === tomorrow);
+  const room = Math.max(1, 4 - extra.length - (next ? 1 : 0));
+  const now = list.filter((b) => b.start >= t && dayOf(b.start) === today).slice(0, Math.min(3, room)).map((b) => said(b, ""));
+  const parts = [...now, ...extra, ...(next ? [said(next, " tomorrow")] : [])];
   return parts.length ? parts.join(" · ") : null;
 }
 
