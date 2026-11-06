@@ -27,8 +27,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.83";
-export const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+export const BUILD = "1.84";
+export const NEWS = "Opens quicker: your chats come first, and what you open later loads as it’s needed. It also measures how fast it is on your device, numbers only";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
