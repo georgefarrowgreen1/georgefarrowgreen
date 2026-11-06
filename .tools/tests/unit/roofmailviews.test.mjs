@@ -497,7 +497,10 @@ test('reader: cards from api.meta (no body asked for), pictures by api.picture f
 
 test('reader: Mail on Your Day’s strip above the messages, as Mail’s own page has it (a parcel, a bill, a booking); Remove asks api.spot and draws what Mail answers', { skip }, async () => {
   const now = Date.now();
-  const parcel = { id: 'parcel-1', kind: 'parcel', shop: 'Wiggle', carrier: 'Evri', stage: 2, window: { from: now + 3600e3, to: now + 3 * 3600e3 }, due: now, deliveredAt: null, note: '', track: 'https://www.evri.com/track/parcel/H01AA2B3C4D5', ref: 'H01AA2B3C4D5', order: '8817205', thread: 't-s', returnBy: null, hidden: false, sender: 'Evri' };
+  // (the window later today whatever the clock says: halfway to midnight, so a run at 23:30 still says "today")
+  const midnight = new Date(now); midnight.setHours(24, 0, 0, 0);
+  const half = (midnight - now) / 2;
+  const parcel = { id: 'parcel-1', kind: 'parcel', shop: 'Wiggle', carrier: 'Evri', stage: 2, window: { from: now + half, to: now + half * 1.5 }, due: now, deliveredAt: null, note: '', track: 'https://www.evri.com/track/parcel/H01AA2B3C4D5', ref: 'H01AA2B3C4D5', order: '8817205', thread: 't-s', returnBy: null, hidden: false, sender: 'Evri' };
   const bill = { id: 'bill-1', kind: 'bill', sender: 'Octopus Energy', cat: 'Home', amount: 8420, due: now + 6 * 864e5, auto: false, usual: 7100, was: null, last: [6800, 7100, 7400, 7050, 7200, 8420], thread: 't-s', hidden: false, account: 'A-3F9E21' };
   const flight = { id: 'flight-1', kind: 'flight', title: 'Flight to Lisbon', sub: '', facts: [['From', 'LHR T2 07:40'], ['To', 'LIS 10:15']], start: now + 864e5, end: null, tz: 'Europe/London', ref: 'K7QX2M', status: 'confirmed', hidden: false, sender: 'TAP Air Portugal', trip: null };
   const T = { id: 't-s', subject: 'Your parcel', people: [{ name: 'Evri', email: 'noreply@evri.com' }], count: 1, unread: 0, spots: [parcel, bill, flight],
