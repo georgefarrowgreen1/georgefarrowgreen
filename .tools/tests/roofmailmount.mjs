@@ -99,7 +99,9 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.evaluate(() => JSON.parse(localStorage.getItem('mail:lens'))) === 'people', 'the lens remembered: mail:lens');
   // the header
   const head = await page.evaluate(({ T, C, L, P }) => ({ title: document.querySelector(T)?.getAttribute('aria-label'), crumb: document.querySelector(C)?.textContent.trim(), line: document.querySelector(L)?.textContent.trim(), pick: !!document.querySelector(P) }), { T: H.HD_TITLE, C: H.HD_CRUMB, L: H.HD_LINE, P: H.HD_PICK });
-  ok(head.title === 'All Mail', 'title: the view (All Mail)', head.title);
+  // (Mail 1.53: inside InFlite the title is the lens, People or Updates, as its tab says, unless a filter's chosen;
+  // it was the filter's, All Mail, before)
+  ok(head.title === 'People', 'title: the lens (People)', head.title);
   ok(head.crumb === 'Mail', 'crumb: Mail', head.crumb);
   ok(/^\d+ unread$|^All caught up$/.test(head.line), 'line: “N unread” or “All caught up”', head.line);
   ok(head.pick, 'the title has its ▾');
@@ -135,9 +137,9 @@ async function swipe(page, sel, x0, dx) {
   ok(mail.log.some((x) => x.path === '/api/threads' && qs(x).get('view') === 'trash'), 'Trash: view=trash');
   await page.click(H.HD_PICK);
   await page.click(`${H.mailSheet('views')} [data-act="back"]`);
-  await page.waitForFunction((T) => document.querySelector(T)?.getAttribute('aria-label') === 'All Mail', H.HD_TITLE, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction((T) => document.querySelector(T)?.getAttribute('aria-label') === 'People', H.HD_TITLE, { timeout: 5000 }).catch(() => {});
   await page.waitForSelector(ROW, { timeout: 5000 }).catch(() => {});
-  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'back to People’s All Mail');
+  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'People', 'back to People, all of it (titled People, Mail 1.53)');
 
   // swipe right: Done, with Undo
   const first = await page.$eval(ROW, (r) => r.dataset.thread);
@@ -249,7 +251,7 @@ async function swipe(page, sel, x0, dx) {
   await page.waitForFunction(() => !location.hash, null, { timeout: 5000 }).catch(() => {});
   await settled(page);
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'Back returns to the list');
-  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'and the header is the lens’s again, no subject left');
+  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'People', 'and the header is the lens’s again, no subject left');
 
   // keys: j moves to a row, e acts on it
   await page.evaluate(() => document.activeElement?.blur());
@@ -271,7 +273,7 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.evaluate(() => location.pathname + location.hash) === '/mail/', 'Done on the open conversation goes back to the list (phone)', await page.evaluate(() => location.href));
   ok(!(await page.$(`${ROW}[data-thread="${doneId}"]`)) && await page.$eval(`${M_MAIL} .ml-list`, (l) => !l.hidden && !l.closest('[inert]')), 'the list shown, without it');
   ok(batches(mail).some((x) => x.action === 'done' && x.ids?.[0] === doneId), 'and Done sent for it');
-  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'All Mail', 'the header the lens’s');
+  ok(await page.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')) === 'People', 'the header the lens’s');
 
   // the static bytes of the first open, and the requests
   const own = urls.filter((u) => u.startsWith(`${KIT}/mail/roof/`)).map((u) => new URL(u).pathname);

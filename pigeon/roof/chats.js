@@ -18,7 +18,6 @@
 // the air", the switcher Chats · Friends, acts New Chat and Chat Settings (none while locked or not ready); a chat:
 // chat.js's (Back "Back to Chats", no switcher, Info). The Chats tab's badge: the unread count (fw.tabs.badge).
 // While shown and visible: start({ visible, screen: true }) on show, a sync every 15 s (S3-D10); hidden, none.
-import { connector } from "./connector.js";
 import { createStore } from "./store.js";
 import { view as listView, openNewChat, openNewGroup } from "./list.js";
 import { view as friendsView, openRequests, openAddFriend } from "./friends.js";
@@ -33,7 +32,9 @@ export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
 const SYNC_MS = 15e3;
-void connector;   // (the connector is part of the entry's graph: connector.files keeps it offline with the rest)
+// (never connector.js, as Mail's mail.js: the framework asks for it unstamped, REGISTRY.chats.connector, and an
+// import here is stamped as it's sent ("./connector.js?v=…", functions/_app.js), so it was fetched and run twice;
+// connector.files names it all the same, to keep it offline)
 
 // (theme.js's rule, as it has it: Chat is for phones and iPads; anything else is a computer, shown "Chats is on your
 // phone" with a code, and the core never starts there, S3-D13; roofcontract pins the copy)

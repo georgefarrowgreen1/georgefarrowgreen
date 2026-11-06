@@ -117,7 +117,8 @@ await part(1, 'the Chats tab: in the page, the framework’s header, InFlite’s
   ok(w.core === 1 && w.all === 1, '1. one Worker on the page, chats-core (S3-D3, risk B2, §9.5)', js(w));
   ok((await engines(p)) === 0, '1. no engine frame on the page (S3-D6)');
   const f = await facade(p);
-  ok(js(f?.keys) === js(['refresh', 'sendTo', 'share', 'signOut', 'since', 'state', 'waiting']) && f.frozen && !f.call && !f.on && f.state === 'ready', '1. IFL.hub.chat() is the frozen facade of makeIFLChat’s seven keys, no call or on, ready (S3-D6, risk I1)', js(f));
+  // (Chat 1.75 gave makeIFLChat an eighth key, reply: a reply from Today's card, sealed in the core, only from a tap)
+  ok(js(f?.keys) === js(['refresh', 'reply', 'sendTo', 'share', 'signOut', 'since', 'state', 'waiting']) && f.frozen && !f.call && !f.on && f.state === 'ready', '1. IFL.hub.chat() is the frozen facade of makeIFLChat’s eight keys, no call or on, ready (S3-D6, risk I1)', js(f));
   await p.click(H.hdSec('friends'));
   ok((await shown(p, hk('chSec', 'friends'))) && (await at(p, '/chats/#friends')), '1. Friends from the switcher: /chats/#friends (§2.1)', here(p));
   await p.click(H.tab('chats'));
@@ -249,6 +250,12 @@ await part(5, 'Today’s Waiting for You: Pat’s words with no iframe, quiet=1,
   await patSays(P, G.id, SENT.pat2);
   await until(() => unreadFrom(P.id, G.id) >= 1, 15000);
   const u0 = unreadFrom(P.id, G.id), k0 = await kept(p), s0 = G.seen.length;
+  // (Waiting for You is the morning's and the afternoon's, never the evening's: from 19:00 to the next day's start Today
+  // draws none (day.js BELOW, Today First). So for this part George's day is where it's 16:00 now, by his
+  // zone (notify_prefs.tz, which morningTz reads first), and put back after, whatever the hour the test runs at)
+  const tz0 = one(`SELECT json_extract(notify_prefs, '$.tz') AS tz FROM pg_users WHERE id = '${G.id}'`)[0]?.tz ?? null;
+  const ahead = ((14 - new Date().getUTCHours() + 36) % 24) - 10, zone = ahead ? `Etc/GMT${ahead > 0 ? '-' : '+'}${Math.abs(ahead)}` : 'Etc/GMT';
+  K.sql(`UPDATE pg_users SET notify_prefs = json_set(COALESCE(notify_prefs, '{}'), '$.tz', '${zone}') WHERE id = '${G.id}'`);
   await p.goto(`${HUB}/`); await todayUp(p);
   const words = await p.waitForFunction(([s, t]) => [...document.querySelectorAll(s)].some((x) => x.textContent.includes(t)), [SAID, SENT.pat2], { timeout: 40000 }).then(() => true, () => false);
   ok(words, '5. Today’s Waiting for You shows Pat’s words (the facade’s waiting/since, §2.5)', await textOf(p, H.TODAY));
@@ -270,6 +277,7 @@ await part(5, 'Today’s Waiting for You: Pat’s words with no iframe, quiet=1,
   await patSays(P, G.id, SENT.late);
   const sn = await until(() => p.evaluate(({ id, t }) => window.IFL.hub.chat().then((c) => c.since(id, t)), { id: P.id, t: t5 }), 20000);
   ok(!!sn && (sn.said || '').includes(SENT.late) && !(sn.said || '').includes(SENT.pat2), '5. since(t): only what she said after it', js(sn));
+  K.sql(`UPDATE pg_users SET notify_prefs = ${tz0 ? `json_set(notify_prefs, '$.tz', '${tz0}')` : "json_remove(notify_prefs, '$.tz')"} WHERE id = '${G.id}'`);
 });
 
 // ======================================================================================================================
@@ -381,15 +389,18 @@ await part(10, 'budgets: the first Chats open and Today’s idle start', '§5.6,
   const B = await chatPhone('george-cold', { then: '/robots.txt', join: { name: 'Cold George', handle: `cold${Date.now() % 1e6}` } });
   everyone.push(B);
   // (as on a phone where Chats was never opened: its sign-in trip may have mounted it once, and Today's idle preload of the
-  // module's entry (spec §4.2, where ifl-build:chat is kept) isn't the idle start measured here)
+  // module's entry (spec §4.2, where ifl-build:chat is kept) isn't the idle start measured here; since Today 1.27 the
+  // entry itself is preloaded either way, below)
   await B.p.evaluate(() => { try { localStorage.removeItem('ifl-build:chat'); } catch (_) {} }).catch(() => {});
   const today = meter(B.p, 'chats');
   await B.p.goto(`${HUB}/`); await todayUp(B.p); await wait(8000);
   const t = await today.report(); today.stop();
-  // (cards.js and links.js are the core's graph as well as the page's: the Worker's are Today's idle start's, §5.6)
-  const ui = t.rows.filter((r) => CHAT_PAGE.test(r.path) && !/connector\.js$/.test(r.path) && !/^\/chats\/(cards|links)\.js$/.test(r.path));
+  // (cards.js and links.js are the core's graph as well as the page's: the Worker's are Today's idle start's, §5.6. Since
+  // Today 1.27 the module's entry is preloaded at idle too, used here before or not (app.js preloadSoon: the Chats tab
+  // opens on your chats at once), as connector.preload has it: chats.js alone, none of the UI it imports)
+  const ui = t.rows.filter((r) => CHAT_PAGE.test(r.path) && !/connector\.js$/.test(r.path) && !/^\/chats\/(cards|links)\.js$/.test(r.path) && r.path !== '/chats/roof/chats.js');
   const idle = t.rows.filter((r) => CHAT_CORE.test(r.path) || /\/chats\/roof\/service\.js$/.test(r.path) || /\/chats\/(cards|links)\.js$/.test(r.path)).reduce((a, r) => a + r.gz, 0);
-  ok(!ui.length, '10. Today’s idle start loads no Chats UI (service.js and the core graph only, §2.5)', js(ui.map((r) => r.path)));
+  ok(!ui.length, '10. Today’s idle start loads no Chats UI (service.js, the core graph and the preloaded entry only, §2.5)', js(ui.map((r) => r.path)));
   ok(idle > 0 && idle <= 58 * 1024, `10. Today’s idle start: service.js + the core graph ${(idle / 1024).toFixed(1)} KB gz (≤ 58, §5.6; the engine was ≈ 270)`, js(t.rows.map((r) => `${r.path} ${r.gz}`)));
   const m = meter(B.p, 'chats');
   await B.p.goto(`${HUB}/robots.txt`);
@@ -404,7 +415,11 @@ await part(10, 'budgets: the first Chats open and Today’s idle start', '§5.6,
   ok(own > 0 && own <= 36 * 1024, `10. the core’s own code (core.js + idb.js) ${kb(own)} gz (≤ 36 KB)`);
   ok(core > 0 && core <= 55 * 1024, `10. the core graph ${kb(core)} gz (≤ 55 KB)`);
   ok(!r.rows.some((x) => CHAT_LAZY.test(x.path)) && !r.lazy.length, '10. no lazy file (send, sheets, flight, media, scan, settings, rank, geodata) in the first open', js(r.lazy));
-  ok(!r.twice.length, '10. no URL fetched twice', js(r.twice));
+  // (cards.js and links.js at one address each, twice: once for the page's module graph and once for the core Worker's,
+  // which has its own; the phone's HTTP cache answers the second, as meter's note has it, and Playwright turns that off
+  // for a context with routes. A file at two addresses (stamped and not) is fetched twice anywhere, and isn't let off)
+  const twice = r.twice.filter((x) => !/^\/chats\/(?:cards|links)\.js ×2 \(\?v=[0-9a-f]{12}\)$/.test(x));
+  ok(!twice.length, '10. no URL fetched twice', js(r.twice));
   const files = (() => { try { return connectorFiles('chats'); } catch (_) { return []; } })(), lazy = (() => { try { return connectorLazy('chats'); } catch (_) { return []; } })();
   const fetched = r.rows.map((x) => x.path).filter((x) => !/\/chats\/roof\/service\.js$/.test(x));
   ok(files.length > 0 && fetched.every((x) => files.includes(x)) && files.length + lazy.length <= 60, '10. every file of the first open is in connector.files (kept offline), files ∪ lazy ≤ 60 (§5.3)', js({ notIn: fetched.filter((x) => !files.includes(x)), n: files.length + lazy.length }));

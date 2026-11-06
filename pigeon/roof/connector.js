@@ -1,7 +1,8 @@
 // Chats' connector (One roof, stage 3: roof/s3/spec.md §5.3; s24-contracts §5, §8): what Chats shares with InFlite, read
 // by the framework without loading the module. No imports, ≤ 4096 bytes. Frozen by B0 (shares' words, sections,
 // aliases, the shape); UI-A keeps files exact as the graphs change (roofcontract checks):
-//   files   = the static graph of chats.js + service.js + the core's static graph (core.js) + REGISTRY's CSS
+//   files   = the static graph of chats.js + service.js + the core's static graph (core.js) + REGISTRY's CSS + this
+//             file (the framework's, never imported by chats.js: an import there is stamped, so fetched twice)
 //   lazy    = the closure of every literal fw.lazy import (and the core's one import("../rank.js")), less files, less the
 //             network-only files (flight.js, scan.js, geodata, jsqr.js) and crypto.js's Argon2
 //   preload = only the entry and this file (the rest is fetched under stamped URLs, S3-D1, risk I12)

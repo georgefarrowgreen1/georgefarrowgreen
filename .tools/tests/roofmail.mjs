@@ -200,7 +200,8 @@ await part(1, 'Apps’ tile → Mail in the same document: the header, People’
 
   // the header (§2.1, S4-D26)
   ok(/^Mail$/.test((await textOf(p, H.HD_CRUMB)) || ''), '1. the crumb: Mail (§2.1)', await textOf(p, H.HD_CRUMB));
-  ok(await titleIs(p, 'All Mail'), '1. the title: the view, All Mail (§2.1)', await textOf(p, H.HD_TITLE));
+  // (Mail 1.53: inside InFlite the title is the lens, People, unless a filter's chosen; it was the filter's, All Mail)
+  ok(await titleIs(p, 'People'), '1. the title: the lens, People (§2.1, Mail 1.53)', await textOf(p, H.HD_TITLE));
   ok((await count(p, H.HD_PICK)) === 1, '1. the title’s ▾ (the Views sheet, §2.2)');
   const c = await countsNow(), unread = c?.people?.unread ?? null;
   const line = (await textOf(p, H.HD_LINE)) || '';
