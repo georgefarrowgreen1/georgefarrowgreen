@@ -161,6 +161,7 @@ export async function mailHide(env, u, id, request = null) {
     });
   } catch (_) { throw new HttpError(502, "Couldn’t reach Mail just now. Try again in a moment."); }
   res.body?.cancel?.().catch?.(() => {});
-  if (res.status < 200 || res.status >= 300) throw new HttpError(502, "Mail didn’t take it off just now. Try again in a moment.");
+  // (a booking Mail no longer has, 404, is as good as hidden: gone from Mail, gone from Today)
+  if ((res.status < 200 || res.status >= 300) && res.status !== 404) throw new HttpError(502, "Mail didn’t take it off just now. Try again in a moment.");
   return { ok: true };
 }

@@ -317,6 +317,8 @@ test("Hide: the account's route asks Mail's POST /api/connector/hide with the ke
   assert.equal((await call("POST", "today/mail/hide", { cookie: gf, body: { id: "K7QX2M-1" } })).s, 502, "Mail not taking it: said");
   hideSays = () => { throw new TypeError("connection refused"); };
   assert.equal((await call("POST", "today/mail/hide", { cookie: gf, body: { id: "K7QX2M-1" } })).s, 502);
+  hideSays = () => new Response(JSON.stringify({ error: "Not found." }), { status: 404 });
+  assert.equal((await call("POST", "today/mail/hide", { cookie: gf, body: { id: "K7QX2M-1" } })).s, 200, "a booking Mail no longer has (404): as good as hidden");
   hideSays = () => new Response(null, { status: 204 });
   await assert.rejects(mailHide({ ...env, MAIL_KEY: "" }, GF, "K7QX2M-1"), (e) => e.status === 503, "no key: Mail isn't connected");
 });
