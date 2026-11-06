@@ -97,9 +97,15 @@ test('the sheet: Apps on an empty field, options as you type, Enter opens the fi
   assert.ok(listbox, 'aria-controls names the results');
   await sleep(450);
   const titles = () => doc.querySelectorAll('[role=option]').map((o) => o.querySelector('b').textContent);
-  assert.deepEqual(titles(), ['Weather', 'Weather · 16 Days', 'Weather · Radar', 'Weather · Warnings', 'Chats', 'Fitness', 'Fitness · Today', 'Fitness · Activities', 'Fitness · Progress', 'Markets', 'Markets · Today', 'Markets · Holdings', 'Markets · News', 'Mail'], 'an empty field: every app and its sections (the Apps provider, all of them, past the 8 a group a query gets), no other provider asked');
+  assert.deepEqual(titles(), ['Weather', 'Weather · 16 Days', 'Weather · Radar', 'Weather · Warnings', 'Chats', 'Fitness', 'Fitness · Today', 'Fitness · Activities', 'Fitness · Progress', 'Markets', 'Markets · Today', 'Markets · Holdings', 'Markets · News'], 'an empty field: every app and its sections (the Apps provider, all of them, past the 8 a group a query gets), no other provider asked; Mail, the admin’s alone, not listed for anyone else');
   assert.equal(listbox.getAttribute('role'), 'listbox');
   const type = async (v) => { input.value = v; input.dispatch('input'); await sleep(450); };
+  await type('mail');
+  assert.deepEqual(titles(), [], 'Mail, searched for by an account not the admin’s: nothing');
+  F.session = { view: { apps: { mail: true } } };
+  await type('mail');
+  assert.deepEqual(titles(), ['Mail'], 'the admin’s: Mail, there');
+  delete F.session;
   await type('lon');
   assert.deepEqual(titles(), ['London'], 'typed: Places’ London; the throwing provider left out');
   assert.equal(doc.querySelector('[role=option]').getAttribute('href'), '/weather/?lat=1&lon=2&name=London', 'a result is a link to its place');

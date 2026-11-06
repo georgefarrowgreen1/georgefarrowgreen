@@ -102,6 +102,7 @@ await part('1440: the rail, Today in columns, Your Day beside it', async () => {
   same(await p.$$eval('#tabs .ifl-tab .ifl-tab-k', (ks) => ks.map((k) => k.textContent)), ['1', '2', '3', '4'], 'each tab with its key, 1–4');
   const apps = await p.$$eval('#tabs .ifl-rail-app', (as) => as.map((a) => a.dataset.app));
   ok(apps.includes('weather'), 'your apps in the page under the tabs (Weather, with the roof on)', apps.join(','));
+  ok(!apps.includes('mail'), 'and never Mail, the admin’s alone, for an account not theirs', apps.join(','));
   const me = await box(p, '#tabs .ifl-rail-me');
   ok(me?.shown && me.y + me.h > 900 - 40, 'you, at the rail’s foot', JSON.stringify(me));
   const top = await box(p, '#top'), side = await box(p, '#side'), rest = await box(p, '#rest');
