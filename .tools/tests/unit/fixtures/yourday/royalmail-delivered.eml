@@ -1,0 +1,15 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=royalmail.com header.s=s1; spf=pass smtp.mailfrom=royalmail.com; dmarc=pass header.from=royalmail.com
+From: Royal Mail <no-reply@royalmail.com>
+To: hello@inflite.ai
+Subject: Your item has been delivered
+Message-ID: <rm-del-ab123456789gb@royalmail.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello,
+
+Your item AB123456789GB from Next was delivered today at 08:05.
+It was left in your safe place.
+
+Thank you for using Royal Mail.

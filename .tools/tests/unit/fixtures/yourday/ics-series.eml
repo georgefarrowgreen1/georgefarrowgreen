@@ -1,0 +1,60 @@
+From: Priya Shah <priya@example.com>
+To: hello@inflite.ai
+Subject: Invitation: Book club (every other Thursday)
+Message-ID: <bookclub-series-7f3a@example.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="bk1"
+
+--bk1
+Content-Type: text/plain; charset=utf-8
+
+Book club, every other Thursday at the Old Firehouse. The next one's at 19:30, not 19:00.
+
+--bk1
+Content-Type: text/calendar; charset=utf-8; method=REQUEST
+Content-Transfer-Encoding: 7bit
+
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+METHOD:REQUEST
+BEGIN:VTIMEZONE
+TZID:Europe/London
+BEGIN:DAYLIGHT
+TZOFFSETFROM:+0000
+TZOFFSETTO:+0100
+DTSTART:19700329T010000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0000
+DTSTART:19701025T020000
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+DTSTART;TZID=Europe/London:@THU-28@T190000
+DTEND;TZID=Europe/London:@THU-28@T210000
+RRULE:FREQ=WEEKLY;WKST=MO;INTERVAL=2;BYDAY=TH;UNTIL=@THU+140@T235959Z
+EXDATE;TZID=Europe/London:@THU+28@T190000
+UID:bookclub-7f3a@example.com
+SUMMARY:Book club
+LOCATION:The Old Firehouse\, 50 New North Road\, Exeter
+SEQUENCE:0
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=Europe/London:@THU+0@T193000
+DTEND;TZID=Europe/London:@THU+0@T213000
+UID:bookclub-7f3a@example.com
+RECURRENCE-ID;TZID=Europe/London:@THU+0@T190000
+SUMMARY:Book club
+LOCATION:The Old Firehouse\, 50 New North Road\, Exeter
+SEQUENCE:1
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+
+--bk1--

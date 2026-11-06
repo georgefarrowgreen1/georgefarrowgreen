@@ -1,0 +1,16 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=strava.com header.s=s1; spf=pass smtp.mailfrom=strava.com; dmarc=pass header.from=strava.com
+From: Strava <no-reply@strava.com>
+To: hello@inflite.ai
+Subject: Your free trial ends soon
+Message-ID: <strava-trial-ends-882011@strava.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hi George,
+
+Your free trial of Strava subscription ends on @L+2@.
+After that, it's £8.99 a month, charged to your card.
+
+Keep going,
+Strava

@@ -1,0 +1,29 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=evri.com header.s=s1; spf=pass smtp.mailfrom=evri.com; dmarc=pass header.from=evri.com
+From: Evri <noreply@evri.com>
+To: hello@inflite.ai
+Subject: Your Wiggle parcel is out for delivery
+Message-ID: <evri-ofd-h01aa2b3c4d5@evri.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="ev1"
+
+--ev1
+Content-Type: text/plain; charset=utf-8
+
+Good news! Your parcel from Wiggle is with your courier and on its way to you today.
+
+Tracking number: H01AA2B3C4D5
+Expected today, between 11:00 and 13:00
+For Wiggle's order 8817205
+
+Not going to be in? Choose a safe place on the Evri app.
+
+--ev1
+Content-Type: text/html; charset=utf-8
+
+<html><body><h1>Your parcel is out for delivery</h1>
+<p>Good news! Your parcel from <b>Wiggle</b> is with your courier and on its way to you today.</p>
+<table><tr><td>Tracking number</td><td><b>H01AA2B3C4D5</b></td></tr>
+<tr><td>Expected</td><td><b>today, 11:00&ndash;13:00</b></td></tr></table>
+<p><a href="https://evri-track.example/H01AA2B3C4D5">Track it</a></p></body></html>
+--ev1--

@@ -1,0 +1,33 @@
+From: Priya Shah <priya@example.com>
+To: hello@inflite.ai
+Subject: Cancelled: Book club
+Message-ID: <bookclub-cancel-7f3a@example.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="bk2"
+
+--bk2
+Content-Type: text/plain; charset=utf-8
+
+This date of Book club has been cancelled.
+
+--bk2
+Content-Type: text/calendar; charset=utf-8; method=CANCEL
+Content-Transfer-Encoding: 7bit
+
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+METHOD:CANCEL
+BEGIN:VEVENT
+DTSTART;TZID=Europe/London:@THU+14@T190000
+DTEND;TZID=Europe/London:@THU+14@T210000
+UID:bookclub-7f3a@example.com
+RECURRENCE-ID;TZID=Europe/London:@THU+14@T190000
+SUMMARY:Book club
+SEQUENCE:2
+STATUS:CANCELLED
+END:VEVENT
+END:VCALENDAR
+
+--bk2--

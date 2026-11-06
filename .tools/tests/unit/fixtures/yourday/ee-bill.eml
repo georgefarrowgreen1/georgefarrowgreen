@@ -1,0 +1,17 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=ee.co.uk header.s=s1; spf=pass smtp.mailfrom=ee.co.uk; dmarc=pass header.from=ee.co.uk
+From: EE <noreply@ee.co.uk>
+To: hello@inflite.ai
+Subject: Your EE bill is ready
+Message-ID: <ee-bill-1234567890@ee.co.uk>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hi George,
+
+Your bill for this month is £45.00.
+We'll collect it by Direct Debit on or around @L+4@.
+
+Account number: 1234567890
+
+EE

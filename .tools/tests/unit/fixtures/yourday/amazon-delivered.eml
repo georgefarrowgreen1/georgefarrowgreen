@@ -1,0 +1,18 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=amazon.co.uk header.s=s1; spf=pass smtp.mailfrom=amazon.co.uk; dmarc=pass header.from=amazon.co.uk
+From: "Amazon.co.uk" <shipment-tracking@amazon.co.uk>
+To: hello@inflite.ai
+Subject: Delivered: Your Amazon.co.uk package has been delivered
+Message-ID: <0102018f-amzn-del-5512093@email.amazon.co.uk>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello George,
+
+Your package has been delivered. It was left in your porch.
+
+Order # 204-5512093-7731526
+Tracking ID: TBA304512345678
+
+Return or replace items in Your Orders.
+Amazon.co.uk

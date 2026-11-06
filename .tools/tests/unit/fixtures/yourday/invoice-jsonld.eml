@@ -1,0 +1,33 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=bristolenergy.coop header.s=s1; spf=pass smtp.mailfrom=bristolenergy.coop; dmarc=pass header.from=bristolenergy.coop
+From: Bristol Energy Co-op <billing@bristolenergy.coop>
+To: hello@inflite.ai
+Subject: Your invoice BEC-20419-11
+Message-ID: <bec-20419-11@bristolenergy.coop>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="bec1"
+
+--bec1
+Content-Type: text/plain; charset=utf-8
+
+Your monthly invoice is attached.
+
+--bec1
+Content-Type: text/html; charset=utf-8
+
+<html><head>
+<script type="application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@type": "Invoice",
+  "accountId": "BEC-20419",
+  "provider": { "@type": "Organization", "name": "Bristol Energy Co-op" },
+  "billingPeriod": "P1M",
+  "totalPaymentDue": { "@type": "PriceSpecification", "price": "32.50", "priceCurrency": "GBP" },
+  "paymentDueDate": "@D+5@",
+  "paymentStatus": "http://schema.org/PaymentDue",
+  "url": "https://bristolenergy-pay.example/BEC-20419"
+}
+</script>
+</head><body><p>Your monthly invoice: &pound;32.50.</p></body></html>
+--bec1--

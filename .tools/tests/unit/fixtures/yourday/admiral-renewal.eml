@@ -1,0 +1,21 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=admiral.com header.s=s1; spf=pass smtp.mailfrom=admiral.com; dmarc=pass header.from=admiral.com
+From: Admiral <renewals@admiral.com>
+To: hello@inflite.ai
+Subject: Your car insurance renewal
+Message-ID: <adm-p71-0045123-renewal@admiral.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Dear George,
+
+It's time to renew your car insurance.
+
+Policy number: P71-0045123
+Your policy renews on @L+10@.
+Your renewal price is £412.60 a year.
+Last year's price: £389.00
+
+To renew, log in to MyAccount or call us before then.
+
+Admiral

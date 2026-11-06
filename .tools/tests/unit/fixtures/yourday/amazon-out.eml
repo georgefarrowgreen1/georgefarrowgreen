@@ -1,0 +1,19 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=amazon.co.uk header.s=s1; spf=pass smtp.mailfrom=amazon.co.uk; dmarc=pass header.from=amazon.co.uk
+From: "Amazon.co.uk" <shipment-tracking@amazon.co.uk>
+To: hello@inflite.ai
+Subject: Out for delivery: Your Amazon.co.uk order of "Garmin Varia RTL515 Rear Radar"
+Message-ID: <0102018f-amzn-ofd-5512093@email.amazon.co.uk>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello George,
+
+Your package is out for delivery.
+
+Arriving today between 10:00 and 14:00
+
+Order # 204-5512093-7731526
+Tracking ID: TBA304512345678
+
+Amazon.co.uk

@@ -1,0 +1,9 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=dpd.co.uk header.s=s1; spf=pass smtp.mailfrom=dpd.co.uk; dmarc=pass header.from=dpd.co.uk
+From: DPD <noreply@dpd.co.uk>
+To: hello@inflite.ai
+Subject: 
+Message-ID: <dpd-empty-1@dpd.co.uk>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+

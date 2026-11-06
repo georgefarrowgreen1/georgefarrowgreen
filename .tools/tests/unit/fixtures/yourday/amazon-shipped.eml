@@ -1,0 +1,38 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=amazon.co.uk header.s=s1; spf=pass smtp.mailfrom=amazon.co.uk; dmarc=pass header.from=amazon.co.uk
+From: "Amazon.co.uk" <shipment-tracking@amazon.co.uk>
+To: hello@inflite.ai
+Subject: Dispatched: Your Amazon.co.uk order of "Garmin Varia RTL515 Rear Radar"
+Message-ID: <0102018f-amzn-shipped-5512093@email.amazon.co.uk>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="amz1"
+
+--amz1
+Content-Type: text/plain; charset=utf-8
+
+Hello George,
+
+Your package has been dispatched and will be delivered by Amazon.
+
+Arriving: @L+2@
+
+Order # 204-5512093-7731526
+Order placed: @L-1@
+Garmin Varia RTL515 Rear Radar
+Quantity: 1
+
+Tracking ID: TBA304512345678
+
+Track your package at amazon.co.uk/your-orders
+
+We hope to see you again soon.
+Amazon.co.uk
+
+--amz1
+Content-Type: text/html; charset=utf-8
+
+<html><body><table><tr><td><h2>Your package has been dispatched</h2></td></tr>
+<tr><td>Arriving: <b>@L+2@</b></td></tr>
+<tr><td>Order # <a href="https://www.amazon.co.uk/gp/r.html?C=1&amp;U=x">204-5512093-7731526</a></td></tr>
+<tr><td><a href="https://track.amazon-delivery-help.example/TBA304512345678">Track package</a></td></tr></table></body></html>
+--amz1--

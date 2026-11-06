@@ -1,0 +1,16 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=netflix.com header.s=s1; spf=pass smtp.mailfrom=netflix.com; dmarc=pass header.from=netflix.com
+From: Netflix <info@account.netflix.com>
+To: hello@inflite.ai
+Subject: Your Netflix receipt
+Message-ID: <nf-receipt-2026-11@account.netflix.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Thanks for your payment.
+
+Amount charged: £10.99
+Date: @L-2@
+Standard plan, billed monthly.
+
+Netflix

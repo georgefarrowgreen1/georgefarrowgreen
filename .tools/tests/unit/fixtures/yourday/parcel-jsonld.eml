@@ -1,0 +1,39 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=zara.com header.s=s1; spf=pass smtp.mailfrom=zara.com; dmarc=pass header.from=zara.com
+From: ZARA <noreply@zara.com>
+To: hello@inflite.ai
+Subject: Your order has been delivered
+Message-ID: <zr-58210044-delivered@zara.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="zr1"
+
+--zr1
+Content-Type: text/plain; charset=utf-8
+
+Your Zara order ZR-58210044 has been delivered by DPD.
+
+--zr1
+Content-Type: text/html; charset=utf-8
+
+<html><head>
+<script type="application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@type": "ParcelDelivery",
+  "deliveryAddress": { "@type": "PostalAddress", "addressLocality": "Exeter" },
+  "carrier": { "@type": "Organization", "name": "DPD" },
+  "trackingNumber": "15501234567890",
+  "trackingUrl": "https://zara-dpd-tracking.example/15501234567890",
+  "itemShipped": { "@type": "Product", "name": "Wool blend coat" },
+  "partOfOrder": {
+    "@type": "Order",
+    "orderNumber": "ZR-58210044",
+    "orderDate": "@D-28@T19:12:00+00:00",
+    "orderStatus": "http://schema.org/OrderDelivered",
+    "seller": { "@type": "Organization", "name": "Zara" },
+    "acceptedOffer": [{ "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Wool blend coat" } }]
+  }
+}
+</script>
+</head><body><p>Your order ZR-58210044 has been delivered.</p></body></html>
+--zr1--

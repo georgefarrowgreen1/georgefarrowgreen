@@ -1,0 +1,36 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=octopus.energy header.s=s1; spf=pass smtp.mailfrom=octopus.energy; dmarc=pass header.from=octopus.energy
+From: Octopus Energy <hello@octopus.energy>
+To: hello@inflite.ai
+Subject: Your bill for October is ready
+Message-ID: <oe-bill-a3f9e21-oct@octopus.energy>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="oe1"
+
+--oe1
+Content-Type: text/plain; charset=utf-8
+
+Hi George,
+
+Your bill for 1 to 31 October is ready.
+
+Account number: A-3F9E21
+
+Electricity 312 kWh: £61.48
+Gas 41 kWh: £18.72
+Standing charges: £4.00
+
+Amount due: £84.20
+Please pay by card by @L+6@.
+
+Thanks,
+Octopus Energy
+
+--oe1
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Hi George,</p><p>Your bill for 1 to 31 October is ready.</p>
+<table><tr><td>Electricity 312 kWh</td><td>&pound;61.48</td></tr><tr><td>Gas 41 kWh</td><td>&pound;18.72</td></tr>
+<tr><td>Standing charges</td><td>&pound;4.00</td></tr><tr><td><b>Amount due</b></td><td><b>&pound;84.20</b></td></tr></table>
+<p>Please pay by card by @L+6@.</p></body></html>
+--oe1--

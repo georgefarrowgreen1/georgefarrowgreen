@@ -1,0 +1,16 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=spotify.com header.s=s1; spf=pass smtp.mailfrom=spotify.com; dmarc=pass header.from=spotify.com
+From: Spotify <no-reply@spotify.com>
+To: hello@inflite.ai
+Subject: An update on your Premium price
+Message-ID: <spotify-price-2026@spotify.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hi George,
+
+We're updating the price of Premium Individual.
+Your price is changing from £10.99 to £11.99 a month, starting on @L+12@.
+We'll charge the payment method on file. You don't need to do anything.
+
+Spotify

@@ -1,0 +1,13 @@
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=evri-redelivery.top header.s=s1; spf=pass smtp.mailfrom=evri-redelivery.top; dmarc=pass header.from=evri-redelivery.top
+From: "Evri" <tracking@evri-redelivery.top>
+To: hello@inflite.ai
+Subject: Evri: we missed you - your parcel is on hold
+Message-ID: <hold-9921@evri-redelivery.top>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+We missed you! Your parcel H01AA2B3C4D5 could not be delivered.
+Your parcel from Wiggle is on hold.
+Pay the redelivery fee of £1.45 by @L+1@ or it will be returned.
+Amount due: £1.45. Pay now: http://evri-redelivery.top/pay

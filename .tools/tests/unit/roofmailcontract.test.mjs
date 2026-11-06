@@ -131,7 +131,7 @@ test('each file exports its frozen names: openers, views, the store’s keys, th
   assert.match(store, /export const SESSION = \{ verifier: "mail:signin-verifier" \};/);
   // (the API: §4.7's methods, each in createApi's answer; MAIL by modules.js's rule)
   const api = src('api.js');
-  const METHODS = ['session', 'me', 'version', 'counts', 'settings', 'handback', 'threads', 'search', 'thread', 'meta', 'draft', 'batch', 'emptyTrash', 'unsubInfo', 'unsubscribe', 'remove', 'saveSettings', 'updateAddress', 'findContacts', 'saveDraft', 'sendDraft', 'sent', 'picture', 'fileUrl', 'rawUrl'];
+  const METHODS = ['session', 'me', 'version', 'counts', 'settings', 'handback', 'threads', 'search', 'thread', 'meta', 'draft', 'batch', 'emptyTrash', 'unsubInfo', 'unsubscribe', 'remove', 'saveSettings', 'updateAddress', 'findContacts', 'saveDraft', 'sendDraft', 'sent', 'picture', 'fileUrl', 'rawUrl', 'spot'];
   assert.deepEqual(literalOf(api, 'METHODS'), METHODS);
   for (const k of METHODS) assert.match(uncomment(api), new RegExp(String.raw`\b${k}\s*(?::|\()`), `api has ${k}`);
   for (const k of ['checkAddress', 'logout', 'pushKey', 'pushSubscribe', 'pushUnsubscribe', 'message', 'send', 'createAddress', 'deleteAddress', 'contacts', 'count', 'threadAction']) assert.ok(!new RegExp(String.raw`(?<![\w.])${k}\s*:\s*(?:async\s*)?(?:\(|[\w$]+\s*=>|function\b)`).test(uncomment(api)), `api has no ${k} (§4.7)`);

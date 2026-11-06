@@ -277,7 +277,7 @@ test('the switch off (as it starts): mail is kept and nothing is read from it; t
   assert.deepEqual(Object.keys(c.data).sort(), ['later', 'people', 'updates'], 'absent, not empty');
   const s = await ask('/api/settings');
   assert.equal(s.status, 200);
-  assert.deepEqual(s.data.spot, { trips: false, reading: false });
+  assert.deepEqual(s.data.spot, { trips: false, parcels: false, bills: false, reading: false });
   assert.ok(Array.isArray(s.data.addresses), 'and the rest of Settings as it was');
   const t = await ask(`/api/threads/${threadOf('k7qx2m-1@flytap.com')}`);
   assert.equal(t.status, 200);
@@ -303,7 +303,7 @@ test('turned on: the last 60 days read back (a few at a time), oldest first; wha
   assert.deepEqual(got.map((s) => s.title), ['Flight to Lisbon', 'Flight to London'], 'TAP’s two legs, read back; the old table and the past flight not');
   assert.ok(got.every((s) => s.source === 'schema' && s.status === 'confirmed' && s.thread_id === threadOf('k7qx2m-1@flytap.com') && s.sender === 'bookings@flytap.com'));
   assert.equal(sql.prepare(`SELECT COUNT(*) AS n FROM meta WHERE k = 'spot_back'`).get().n, 0, 'done: nothing left to read back');
-  assert.deepEqual((await ask('/api/settings')).data.spot, { trips: true, reading: false });
+  assert.deepEqual((await ask('/api/settings')).data.spot, { trips: true, parcels: false, bills: false, reading: false });
   // (a few at a time: a read-back left part-way goes on from where it was)
   const { readBack } = await load('src/spot.js');
   sql.prepare(`INSERT INTO meta (k, v) VALUES ('spot_back', ?)`).run(JSON.stringify({ from: Date.now() - 60 * DAY, until: Date.now(), at: 0, id: '' }));
@@ -335,7 +335,8 @@ test('on: mail as it comes is read; one row a leg; a trip; Today’s card gains 
   }
   assert.equal(trips.length, 2);
   const [lis, gva] = trips;
-  assert.deepEqual(Object.keys(lis).sort(), ['destination', 'end', 'id', 'items', 'name', 'start']);
+  assert.deepEqual(Object.keys(lis).sort(), ['destination', 'end', 'hidden', 'id', 'items', 'name', 'start']);
+  assert.deepEqual(lis.hidden, [], 'nothing of it taken off');
   assert.equal(lis.name, 'Lisbon');
   assert.deepEqual(lis.destination, { name: 'Lisbon', lat: 38.7114, lon: -9.1302 });
   assert.equal(lis.start, Date.parse(`${iso(1)}T07:40:00Z`));
@@ -463,7 +464,7 @@ test('turned off: what was spotted goes (what was taken off stays taken off), th
   await ask(`/api/spots/${hiddenId}`, { method: 'POST', body: { hidden: true } });
   const off = await ask('/api/settings', { method: 'PATCH', body: { spot: { trips: false } } });
   assert.equal(off.status, 200);
-  assert.deepEqual(off.data.spot, { trips: false, reading: false });
+  assert.deepEqual(off.data.spot, { trips: false, parcels: false, bills: false, reading: false });
   assert.deepEqual(spots().map((s) => s.id), [hiddenId], 'only what was taken off');
   assert.deepEqual(Object.keys((await card()).data).sort(), ['later', 'people', 'updates']);
   assert.ok(!('spots' in (await ask(`/api/threads/${threadOf('k7qx2m-1@flytap.com')}`)).data));

@@ -494,3 +494,40 @@ test('reader: cards from api.meta (no body asked for), pictures by api.picture f
   assert.ok(!/<iframe[^>]*srcdoc/i.test(el.outerHTML), 'no body in the page');
   v.destroy();
 });
+
+test('reader: Mail on Your Day’s strip above the messages, as Mail’s own page has it (a parcel, a bill, a booking); Remove asks api.spot and draws what Mail answers', { skip }, async () => {
+  const now = Date.now();
+  const parcel = { id: 'parcel-1', kind: 'parcel', shop: 'Wiggle', carrier: 'Evri', stage: 2, window: { from: now + 3600e3, to: now + 3 * 3600e3 }, due: now, deliveredAt: null, note: '', track: 'https://www.evri.com/track/parcel/H01AA2B3C4D5', ref: 'H01AA2B3C4D5', order: '8817205', thread: 't-s', returnBy: null, hidden: false, sender: 'Evri' };
+  const bill = { id: 'bill-1', kind: 'bill', sender: 'Octopus Energy', cat: 'Home', amount: 8420, due: now + 6 * 864e5, auto: false, usual: 7100, was: null, last: [6800, 7100, 7400, 7050, 7200, 8420], thread: 't-s', hidden: false, account: 'A-3F9E21' };
+  const flight = { id: 'flight-1', kind: 'flight', title: 'Flight to Lisbon', sub: '', facts: [['From', 'LHR T2 07:40'], ['To', 'LIS 10:15']], start: now + 864e5, end: null, tz: 'Europe/London', ref: 'K7QX2M', status: 'confirmed', hidden: false, sender: 'TAP Air Portugal', trip: null };
+  const T = { id: 't-s', subject: 'Your parcel', people: [{ name: 'Evri', email: 'noreply@evri.com' }], count: 1, unread: 0, spots: [parcel, bill, flight],
+    messages: [{ id: 'm-s', folder: 'inbox', threadId: 't-s', mailbox: 'hello@inflite.ai', from: { name: 'Evri', email: 'noreply@evri.com' }, to: [], subject: 'Your parcel', snippet: 'On its way', date: now - 6e4, unread: false }] };
+  const r = rig({ api: { thread: async () => T, meta: async (id) => ({ ...T.messages[0], id, attachments: [] }), spot: async (id, body) => (r.calls.push(['spot', id, body]), { ok: true, spots: [{ ...parcel, hidden: true }, bill, flight] }) } });
+  r.store.set({ threadId: 't-s', list: { rows: [{ id: 't-s', latestId: 'm-s', from: T.people[0], date: now }], more: false, loading: false, err: null } });
+  const el = ui.el('section', { class: 'ml-reader' });
+  const v = M.reader.view(el, r.ctx);
+  v.draw();
+  await tick(10);
+  const cards = el.querySelectorAll('.mr-spot');
+  assert.equal(cards.length, 3, 'one for each');
+  const [p, b, f] = cards;
+  assert.equal(text(p.querySelector('.mr-spot-tx b')), 'Parcel from Wiggle · today');
+  assert.equal(text(p.querySelector('.mr-spot-state')), 'On Your Day');
+  assert.equal(p.querySelector('a.mr-spot-track').getAttribute('href'), 'https://www.evri.com/track/parcel/H01AA2B3C4D5');
+  assert.equal(p.querySelectorAll('.mr-spot-steps i.on').length, 2);
+  assert.equal(text(p.querySelector('.mr-spot-how')), 'Evri · ref H01AA2B3C4D5', 'who it’s from and its reference, no more');
+  assert.match(text(b.querySelector('.mr-spot-tx b')), /^£84\.20 due \w+$/);
+  assert.match(text(b.querySelector('.mr-spot-spark')), /£68–£74, now \+18%/);
+  assert.equal(b.querySelectorAll('.mr-spot-bars i').length, 6);
+  assert.equal(text(b.querySelector('.mr-spot-how')), 'Octopus Energy · account A-3F9E21');
+  assert.match(text(f.querySelector('.mr-spot-tx b')), /^Flight to Lisbon · \w+day \d\d:\d\d$/);
+  assert.equal(text(f.querySelector('.mr-spot-how')), 'TAP Air Portugal · ref K7QX2M');
+  p.querySelector('[data-act=remove]').click();
+  await tick(6);
+  assert.deepEqual(r.calls.filter((c) => c[0] === 'spot').map((c) => c.slice(1)), [['parcel-1', { hidden: true }]]);
+  assert.ok(r.toasts.includes('Hidden'), r.toasts.join(' | '));
+  const again = el.querySelector('.mr-spot');
+  assert.equal(text(again.querySelector('.mr-spot-state')), 'Not on Your Day', 'drawn again from Mail’s answer');
+  assert.ok(again.querySelector('[data-act=back]') && !again.querySelector('[data-act=wrong]'), 'Put It Back');
+  v.destroy();
+});
