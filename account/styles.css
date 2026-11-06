@@ -503,7 +503,16 @@ button.row.dk-row:active { background-color: var(--dk-solid); box-shadow: inset 
 .or::before, .or::after { content: ""; flex: 1; height: 0.5px; background: var(--line); }
 /* signing in with your phone (app.js qrCard, qrView; functions/_qrsign.js): on a computer, the usual card and a QR code
    side by side, "or" between them; on the phone, the computer that's asking, and the number to tap */
-.signpair { display: grid; grid-template-columns: 400px auto 300px; align-items: center; gap: 22px; margin-top: 14px; }
+/* (the pair is wider than the page's column: centred on it, past both its edges alike, so the column, and the title above,
+   stay in the middle of the window rather than the pair pushing them to the right) */
+.signpair { display: grid; grid-template-columns: 400px 24px 300px; align-items: center; gap: 22px; margin-top: 14px;
+  width: 768px; margin-inline: min(0px, (100% - 768px) / 2); }
+.welcome:has(> .signpair) { grid-template-columns: minmax(0, 1fr); }
+/* (on a computer, signed out: the page in the middle of the window, up and down, where it fits; from the top where not) */
+@media (min-width: 960px) {
+  main:has(> .welcome) { display: flex; flex-direction: column; min-height: 100dvh; }
+  main:has(> .welcome) > .welcome { margin-block: auto; padding-top: 0; }
+}
 .signpair > .signin { margin-top: 0; }
 .vor { align-self: stretch; display: grid; grid-template-rows: 1fr auto 1fr; justify-items: center; gap: 10px; color: var(--text-3); font-size: 13px; }
 .vor::before, .vor::after { content: ""; width: 0.5px; background: var(--line); }
