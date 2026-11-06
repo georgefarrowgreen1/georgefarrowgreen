@@ -795,7 +795,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
   // Speed, from people's own phones and computers, in numbers only (functions/_vitals.js): for each app and kind of device,
   // the time 3 visits in 4 beat over the last 30 days, each judged as the web's own measures are (good, needs work, poor)
-  const SPEED_APPS = { hub: "Today", chats: "Chats", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account", auth: "Sign in", home: "georgefarrowgreen.com" };
+  const SPEED_APPS = { today: "Today", hub: "InFlite", chats: "Chats", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account", auth: "Sign in", home: "georgefarrowgreen.com" };
   const SPEED_BARS = { lcp: [2500, 4000], fcp: [1800, 3000], ttfb: [800, 1800], inp: [200, 500], cls: [0.1, 0.25] };
   const msOf = (v) => (v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
   function speedPart(sp) {

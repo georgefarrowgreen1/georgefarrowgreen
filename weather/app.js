@@ -1088,7 +1088,6 @@ const IFL = (() => {
     try { if (window.top !== window) return { now: () => out, sent: () => sent }; } catch (_) { return { now: () => out, sent: () => sent }; }
     shown = document.visibilityState !== "hidden";
     const watch = (type, fn, more = {}) => { try { new PerformanceObserver((l) => l.getEntries().forEach(fn)).observe({ type, buffered: true, ...more }); } catch (_) {} };
-    try { const n = performance.getEntriesByType("navigation")[0]; if (n && n.responseStart > 0) out.ttfb = Math.round(n.responseStart); } catch (_) {}
     watch("paint", (e) => { if (e.name === "first-contentful-paint" && shown) out.fcp = Math.round(e.startTime); });
     let tapped = false;
     watch("largest-contentful-paint", (e) => { if (shown && !tapped) out.lcp = Math.round(e.startTime); });
@@ -1105,6 +1104,7 @@ const IFL = (() => {
     addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") send(); }, { capture: true });
     addEventListener("pagehide", () => send(), { capture: true });
     function send() {
+      try { const n = performance.getEntriesByType("navigation")[0]; if (n && n.responseStart > 0) out.ttfb = Math.round(n.responseStart); } catch (_) {}
       if (sent || !Object.keys(out).length || typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return;
       const coarse = (() => { try { return matchMedia("(pointer: coarse)").matches; } catch (_) { return false; } })();
       sent = { app: BUG.app(), dev: coarse ? "phone" : "computer", m: { ...out } };

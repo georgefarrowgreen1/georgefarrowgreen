@@ -6,7 +6,8 @@
 //   b an account from before today/boot (the stand-in's v1: 404): who and the day asked apart, as before; the day drawn
 //   c opened again with the root worker in charge: the page and its files from what it keeps, none fetched; the
 //     updater's renew fetches every one of them again, past the browser's copy, and says renewed
-//   d how fast it was, sent as the page is left (a beacon to /api/vitals: the app, phone or computer, and numbers only)
+//   d how fast it was, sent as the page is left (a beacon to /api/vitals: the app (Today's own name for itself, today),
+//     phone or computer, and numbers only)
 //     and passed on to the account by Today's Worker (POST /api/account/today/../vitals: /api/account/vitals)
 //   node .tools/tests/todayfast.mjs [state dir] [screenshots dir]     (or ./run.sh todayfast)
 import { chromium } from 'playwright';
@@ -44,16 +45,18 @@ const asked = async () => (await reqs()).filter((e) => e.path.startsWith('/api/a
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const errs = [];
-async function context({ workers = false } = {}) {
+async function context({ workers = false, clock = true } = {}) {
   const ctx = await b.newContext({ viewport: { width: 1280, height: 860 }, locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: workers ? 'allow' : 'block' });
   await ctx.addCookies([{ name: 'account', value: SESSION, url: BASE }]);
-  await ctx.clock.install({ time: new Date(MORNING.at) });
+  // (the page's clock at the morning's moment; not where the page's own timing is checked: a faked clock hides it)
+  if (clock) await ctx.clock.install({ time: new Date(MORNING.at) });
   await ctx.route((u) => new URL(u).pathname === '/api/hub', (r) => r.fulfill({ json: { ready: true, roof: true }, headers: { 'Cache-Control': 'no-store' } }));
   await ctx.route((u) => new URL(u).pathname.startsWith('/chats/'), (r) => r.fulfill({ body: '<!doctype html><title>Chats</title>', contentType: 'text/html' }));
   await ctx.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
   return ctx;
 }
 const watch = (p, tag) => {
+  p.on('response', (r) => { if (r.status() >= 500) console.log(`(${tag}: ${r.status()} ${r.url()})`); });
   p.on('pageerror', (e) => errs.push(`${tag}: pageerror: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (40[134]|50[12])/.test(m.text())) errs.push(`${tag}: ${m.text()}`); });
 };
@@ -87,7 +90,7 @@ await part('b. an account from before today/boot', async () => {
   await p.goto(BASE + '/'); await drawn(p);
   await p.waitForTimeout(500); await reset();
   await p.goto(BASE + '/');
-  ok(await p.waitForSelector('#today #top', { timeout: 15000 }).then(() => true, () => false), 'b. opened again: the day drawn');
+  ok(await p.waitForSelector('#in:not([hidden]) .tcard', { timeout: 15000 }).then(() => true, () => false), 'b. opened again: the day drawn (an account from before Today First: its cards)');
   await p.waitForTimeout(800);
   const a = await asked();
   ok(a.includes('GET today/boot') && a.includes('GET today/me') && a.includes('GET today/cards'), 'b. today/boot not there (404): who and the day asked apart, as before', a.join(', '));
@@ -97,7 +100,7 @@ await part('b. an account from before today/boot', async () => {
 
 await part('c. opened from what the root worker keeps; renewed by the updater', async () => {
   await ctl('/__mode', { phase: 'morning' }); await reset();
-  const ctx = await context({ workers: true }), p = await ctx.newPage(); watch(p, 'c');
+  const ctx = await context({ workers: true, clock: false }), p = await ctx.newPage(); watch(p, 'c');
   const fromWorker = [];
   ctx.on('request', (r) => { if (r.serviceWorker()) fromWorker.push(new URL(r.url()).pathname); });
   await p.goto(BASE + '/'); await drawn(p);
@@ -126,7 +129,7 @@ await part('c. opened from what the root worker keeps; renewed by the updater', 
 
 await part('d. how fast it was, sent as the page is left', async () => {
   await ctl('/__mode', { phase: 'morning' }); await reset();
-  const ctx = await context(), p = await ctx.newPage(); watch(p, 'd');
+  const ctx = await context({ clock: false }), p = await ctx.newPage(); watch(p, 'd');
   await p.goto(BASE + '/'); await drawn(p);
   await p.waitForTimeout(600);
   const beacon = p.waitForRequest((r) => new URL(r.url()).pathname === '/api/vitals', { timeout: 8000 }).catch(() => null);
@@ -134,13 +137,13 @@ await part('d. how fast it was, sent as the page is left', async () => {
   const r = await beacon;
   let body = null; try { body = JSON.parse(r?.postData() || 'null'); } catch {}
   ok(!!r && r.method() === 'POST', 'd. a beacon to /api/vitals as the page goes out of sight');
-  ok(body?.app === 'hub' && body?.dev === 'computer' && typeof body?.m?.fcp === 'number' && typeof body?.m?.ttfb === 'number', 'd. the app (Today: hub), the kind of device, and the numbers', JSON.stringify(body));
+  ok(body?.app === 'today' && body?.dev === 'computer' && typeof body?.m?.fcp === 'number' && typeof body?.m?.ttfb === 'number', 'd. the app (Today), the kind of device, and the numbers', JSON.stringify(body));
   ok(body && Object.keys(body).sort().join() === 'app,dev,m' && Object.keys(body.m).every((k) => ['ttfb', 'fcp', 'lcp', 'inp', 'cls'].includes(k)), 'd. nothing else: no account, page or address', JSON.stringify(body));
   await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await p.waitForTimeout(1500);
   const passed = (await reqs()).filter((e) => e.method === 'POST' && e.path === '/api/account/vitals');
   ok(passed.length === 1, 'd. passed on to the account by Today’s Worker, once', `${passed.length} passed on`);
-  ok(passed[0] && JSON.parse(passed[0].body || '{}').app === 'hub', 'd. as the page sent it', passed[0]?.body);
+  ok(passed[0] && JSON.parse(passed[0].body || '{}').app === 'today', 'd. as the page sent it', passed[0]?.body);
   await ctx.close();
 });
 

@@ -42,7 +42,7 @@ one(`UPDATE pg_users SET created_at = ${now - 12 * DAY}, seen_at = ${now - 12 * 
 // that isn't one of the site's, and one with something else in it, kept only as far as the known numbers go
 const beacon = (b) => fetch(K.BASE + '/api/vitals', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(b) }).then((r) => r.status);
 const sentV = [];
-for (const lcp of [1800, 1800, 1800, 5200]) sentV.push(await beacon({ app: 'hub', dev: 'phone', m: { lcp, fcp: 700, inp: 90, cls: 0.01, ttfb: 150 } }));
+for (const lcp of [1800, 1800, 1800, 5200]) sentV.push(await beacon({ app: 'today', dev: 'phone', m: { lcp, fcp: 700, inp: 90, cls: 0.01, ttfb: 150 } }));
 sentV.push(await beacon({ app: 'weather', dev: 'computer', m: { fcp: 900, inp: 640, cls: 0.3, who: 'ann@example.com' } }));
 sentV.push(await beacon({ app: 'fitting', dev: 'phone', m: { lcp: 100 } }));
 ok(sentV.every((s) => s === 204), 'speed: each page’s beacon answered 204, whatever came of it', sentV.join(','));
@@ -67,7 +67,7 @@ ok(x.features.total === 5 && x.features.group === 1, 'of 5 pigeons, 1 to a group
 ok(x.adoption.friends === 3 && x.adoption.groups === 3, 'all three have a friend, and are in a group', JSON.stringify(x.adoption));
 ok(x.health.late === 1, 'one landing not told after 15 minutes', JSON.stringify(x.health));
 ok(!/Ann|Ben|Cal|ann@|One|Two|London|New York/.test(JSON.stringify(x)), 'no names, words or places anywhere in it');
-{ const rows = x.speed?.rows || [], hub = rows.find((r) => r.app === 'hub' && r.dev === 'phone'), wx = rows.find((r) => r.app === 'weather' && r.dev === 'computer');
+{ const rows = x.speed?.rows || [], hub = rows.find((r) => r.app === 'today' && r.dev === 'phone'), wx = rows.find((r) => r.app === 'weather' && r.dev === 'computer');
   ok(rows.length === 2 && !rows.some((r) => r.app === 'fitting'), 'speed: Today on phones and Weather on computers, never an app that isn’t the site’s', JSON.stringify(rows.map((r) => [r.app, r.dev])));
   ok(hub?.m.lcp.n === 4 && Math.abs(hub.m.lcp.p75 - 1800) / 1800 < 0.12 && hub.m.lcp.days.at(-1) === hub.m.lcp.p75, 'speed: Today’s largest part drawn, 3 visits in 4 by 1.8 s (today’s figure the same)', JSON.stringify(hub?.m.lcp));
   ok(wx && !wx.m.lcp && Math.abs(wx.m.inp.p75 - 640) / 640 < 0.12 && Math.abs(wx.m.cls.p75 - 0.3) < 0.04, 'speed: Weather’s tap at 640 ms, its jumps 0.3, no largest part (none sent)', JSON.stringify(wx?.m)); }

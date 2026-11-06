@@ -11,8 +11,9 @@
 //   band(v) / bandValue(b)    the band a number's in, and the number a band stands for (its geometric middle)
 import { db, DAY, londonOffset, pace, clientIp } from "./_pigeon.js";
 
-// (the apps that send: at InFlite's hub, the hub itself, and each app as a part of it; the sign-in page; the home site)
-export const APPS = ["hub", "chat", "chats", "weather", "fitness", "markets", "mail", "account", "auth", "home"];
+// (the apps that send: Today, and each app as a part of it at InFlite's hub; the hub's other pages; the sign-in page;
+// the home site)
+export const APPS = ["today", "hub", "chat", "chats", "weather", "fitness", "markets", "mail", "account", "auth", "home"];
 export const DEVS = ["phone", "computer"];
 // (each in milliseconds but cls, a score: kept as thousandths. The upper end refused, not kept: a tab left in the back)
 export const METRICS = { ttfb: 60e3, fcp: 60e3, lcp: 60e3, inp: 30e3, cls: 10 };
