@@ -49,6 +49,8 @@ const TODAY_ROUTE_KEYS = [
   "POST today/morning/try", "GET today/push-key", "POST today/push", "POST today/push-move", "DELETE today/push", "POST today/account-link", "GET today/avatar",
   "POST today/act", "POST today/act/undo", "POST today/plan", "GET today/rules", "PUT today/rules", "GET today/notify", "PATCH today/notify",
   "POST today/device", "DELETE today/device", "GET today/devices", "DELETE today/devices",
+  // (Mail on Your Day, stage 1: Today's Hide on a booking from Mail)
+  "POST today/mail/hide",
 ];
 const SHARED = {
   "functions/_sites.js": { todayOrigin: "env, request", todayLinks: "env, request", cfOf: "request" },

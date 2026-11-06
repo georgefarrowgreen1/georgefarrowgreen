@@ -19,6 +19,7 @@ import { CARDS, tddb, todayPrefs, morningTz, todayDevices, deviceOk, deviceGone,
 import { cardsFor, cardsMemo, Quiet } from "./_todaycards.js";
 import { moneySaid, andSaid } from "./_markets.js";
 import { planDay, actsFor, pushLine, hasPlanned, tidyOffers } from "./_todayacts.js";
+import { mailCard } from "./_todaymail.js";
 
 // how long a tick goes on beginning things (an account planned, composed, claimed and sent), from its start: the
 // scheduler gives it 55 seconds, and a plan (PLAN_MS at most: its waits on the weather, hoursAt's and pastWet's, cut
@@ -164,8 +165,30 @@ function marketsLine(c) {
   return `Your portfolio is at ${money}, as it closed`;
 }
 
+// Mail's (Mail on Your Day, stage 1, the admin's alone: the card's ahead, functions/_todaymail.js cardOf): today's
+// bookings still to come and the first of tomorrow's, in a line: "Rockfish at 19:30 · Flight tomorrow 07:40". Travel by
+// its kind ("Flight 07:40"), a table by where ("Table at Rockfish" is Rockfish), anything else by its name; at most
+// three of today's. None today or tomorrow, no line
+const TRAVEL = { flight: "Flight", train: "Train", bus: "Bus" };
+const bookingName = (b) => {
+  if (b.kind === "car") return "Car hire";
+  const t = text(b.title);
+  return [...(b.kind === "restaurant" ? t.replace(/^table\s+(for\s+\d+\s+)?at\s+/i, "") || t : t)].slice(0, 40).join("");
+};
+export function mailLine(c, tz, t) {
+  if (!ok(c) || !Array.isArray(c.ahead)) return null;
+  const zone = zoneOf(tz), today = localNow(zone, t).day, tomorrow = nextDay(today);
+  const list = c.ahead.filter((b) => b && Number.isFinite(b.start) && text(b.title)).sort((a, b) => a.start - b.start);
+  const said = (b, when) => (TRAVEL[b.kind] ? `${TRAVEL[b.kind]}${when} ${hhmm(zone, b.start)}` : `${bookingName(b)}${when} at ${hhmm(zone, b.start)}`);
+  const now = list.filter((b) => b.start >= t && localNow(zone, b.start).day === today).slice(0, 3).map((b) => said(b, ""));
+  const next = list.find((b) => localNow(zone, b.start).day === tomorrow);
+  const parts = [...now, ...(next ? [said(next, " tomorrow")] : [])];
+  return parts.length ? parts.join(" · ") : null;
+}
+
 // The notification's words, from the cards ({ weather, chat, fitness, markets }, each as functions/_todaycards.js gives
-// it): { title, lines, out (apps whose line is on with nothing to say) }. names: Chat's names preference; tz: the
+// it; and Mail's, where it's the admin's, whose bookings are a line after the weather's): { title, lines, out (apps whose
+// line is on with nothing to say) }. names: Chat's names preference; tz: the
 // account's zone; lines: { weather: false, … }, false turning one off; acts: what Today did or offers this morning, a
 // sentence each (functions/_todayacts.js pushLine), said in the Fitness line, after the session (and said even where
 // that line's off: it's Today's own doing, with an Undo that doesn't wait)
@@ -174,8 +197,11 @@ export function morningLines(cards, { names, tz, t, lines, acts = [] }) {
   const said = { weather: weatherLine(c.weather), fitness: fitnessLine(c.fitness), chat: chatLine(c.chat, !!names, tz, t), markets: marketsLine(c.markets) };
   const doing = (Array.isArray(acts) ? acts : []).filter((x) => typeof x === "string" && x).join(" ");
   if (doing) said.fitness = [on("fitness") ? said.fitness : null, doing].filter(Boolean).join(". ");
-  const out = [], got = [];
-  for (const k of LINES) if (on(k) || (k === "fitness" && doing)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
+  const out = [], got = [], booked = mailLine(c.mail, tz, t);
+  for (const k of LINES) {
+    if (on(k) || (k === "fitness" && doing)) { if (said[k]) got.push(said[k]); else out.push(NAMES[k]); }
+    if (k === "weather" && booked) got.push(booked);
+  }
   const brief = on("weather") && ok(c.weather) ? text(c.weather.brief?.title) : "";
   return { title: brief || `Your ${localNow(tz, t).weekday}`, lines: got, out };
 }
@@ -189,7 +215,11 @@ export async function composeMorning(env, u, row, t, { memo, cards, purpose = "m
   const only = CARDS.filter((k) => lines[k] !== false);
   // (the page's own answer, or its cards alone)
   const have = cards && typeof cards === "object" ? (cards.cards && typeof cards.cards === "object" ? cards.cards : cards) : null;
-  const got = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: purpose === "page" ? "page" : "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
+  const got0 = have || (only.length ? (await cardsFor(env, u, { only, t, purpose: purpose === "page" ? "page" : "morning", tz, links: todayLinks(env, null), memo: memo || null })).cards : {});
+  // (Mail's card, for its bookings' line: the page's where it has it, else asked of Mail as the page's day asks it, the
+  // admin's alone and 700 ms at most (functions/_todaymail.js); not where Today's Edit hid it)
+  const mailHidden = Array.isArray(row?.cards?.hidden) && row.cards.hidden.includes("mail");
+  const got = got0.mail || mailHidden || !env?.MAIL_KEY ? got0 : { ...got0, mail: await mailCard(env, u, null, t).catch(() => null) };
   const names = !!prefsOf(u).names, today = localNow(tz, t).day;
   // (what Today did or offers this morning: the day's acts, as planned just before; none to be had, none said; nor any
   // while TODAY_ACTS is "0")

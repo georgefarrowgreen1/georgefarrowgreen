@@ -12,6 +12,10 @@
 //   times    functions/_times.js timesFor's rows (agreed calls and meetings, 'yes' only)
 //   hide     offer ids not to show (an add undone, functions/_todayday.js's overlay)
 //   tomorrow the weather at 07:00 tomorrow ({ at, day, said, good }; the evening's), or null
+//   tripId   the trip the answer shows as a card (functions/_todaymail.js tripFor): its bookings aren't rows as well
+// Mail's bookings (the admin's, cards.mail.ahead where Mail's "Trips and bookings" is on: functions/_todaymail.js cardOf)
+// starting in the next 24 hours are rows of app "mail", each with Mail's own address for its email (href), and for the
+// page's sheet, the booking's id, kind and reference, and Weather on its place that day where it has one (wx).
 // Every row is what it says and when, never a word of a message and never a Chat place (a pigeon's row says when it
 // left, not where from). Rows with a card worth sending (the rain, the ride) carry share and sendCard. Nothing more than
 // 24 hours ahead, but rides offered for the next three days (to the end of Thursday, on a Monday); nothing past, but a
@@ -27,12 +31,14 @@ const zone = (tz) => { try { clock(tz); return tz; } catch (_) { return "Europe/
 const cap1 = (s) => String(s || "").replace(/^\w/, (c) => c.toUpperCase());
 const signed = (p) => `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%`;
 // (the order of rows at the same moment)
-const ORDER = { weather: 0, markets: 1, fitness: 2, chat: 3 };
+const ORDER = { weather: 0, markets: 1, fitness: 2, chat: 3, mail: 4 };
+// (Weather on a place, on a day: its own address for a place, ?lat=&lon=&name=, and the day, #day=)
+export const weatherAt = (p, day) => `/weather/?lat=${p.lat}&lon=${p.lon}&name=${encodeURIComponent(p.name)}${day ? `#day=${day}` : ""}`;
 
 export function upcomingFor(cards, extra, t) {
   const x = extra || {}, tz = zone(x.tz || "Europe/London"), hm = (ms) => clock(tz).format(new Date(ms)), day = (ms) => dayKey(tz).format(new Date(ms));
   const lastDay = dayAfter(day(t), OFFERS_DAYS), rows = [], soon = (at, ahead = AHEAD) => Number.isFinite(at) && at > t && at <= t + ahead;
-  const keep = (o) => { const r = { at: o.at, app: o.app, title: o.title, sub: o.sub || "", href: o.href, id: o.id }; if (o.share) r.share = o.share; if (o.sendCard) r.sendCard = o.sendCard; if (o.late) r.late = true; rows.push(r); };
+  const keep = (o) => { const r = { at: o.at, app: o.app, title: o.title, sub: o.sub || "", href: o.href, id: o.id }; if (o.share) r.share = o.share; if (o.sendCard) r.sendCard = o.sendCard; if (o.late) r.late = true; if (o.booking) Object.assign(r, o.booking); rows.push(r); };
 
   // the rain reaching the place, and its heaviest hour
   const w = cards?.weather;
@@ -87,6 +93,16 @@ export function upcomingFor(cards, extra, t) {
       const id = seen.has(p.who.id) ? `pigeon:${p.who.id}:${p.landsAt}` : `pigeon:${p.who.id}`;
       seen.add(p.who.id);
       keep({ at: p.landsAt, app: "chat", title: `Pigeon from ${p.who.first || "a friend"} lands`, sub: Number.isFinite(p.sentAt) ? `On its way since ${hm(p.sentAt)}` : "", href: `/chats/#open=${p.who.id}`, id });
+    }
+  }
+  // Mail's bookings in the next 24 hours (those of the trip shown as a card are in it, not here)
+  const mc = cards?.mail;
+  if (mc?.state === "ok" && Array.isArray(mc.ahead)) {
+    for (const b of mc.ahead) {
+      if (!b || typeof b.id !== "string" || !soon(b.start) || (x.tripId && b.trip === x.tripId)) continue;
+      const p = b.place, at = p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+      keep({ at: b.start, app: "mail", title: b.title, sub: b.sub || p?.name || "", href: b.href, id: `mail-${b.id}`,
+        booking: { booking: b.id, kind: b.kind, ...(b.ref ? { ref: b.ref } : {}), ...(at ? { wx: weatherAt(p, dayKey(zone(b.tz || tz)).format(new Date(b.start))), place: p.name } : {}) } });
     }
   }
   // tomorrow's first: the weather at 07:00 (the evening's)

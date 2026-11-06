@@ -10,9 +10,9 @@ import { wxdb, allowance, COST_FULL, OM_KEEP } from "./_wxpush.js";
 import { warningsAt } from "./_wxwarn.js";
 import { withDeadline, cardMs, couldnt, Quiet, zoneOk, offsetAt, withSend, withForDay } from "./_todaycards.js";
 import { logError } from "./_pigeon.js";
-import { shapeForecast, forecastQuery } from "../weather/data.js";
+import { shapeForecast, forecastQuery, placesFound } from "../weather/data.js";
 import { makeFormat, nowWall, dayStart, HOUR, DAY } from "../weather/format.js";
-import { headline, hoursFrom, hourAt, dayOf } from "../weather/insights.js";
+import { headline, hoursFrom, hourAt, dayOf, phrase, hoursBetween } from "../weather/insights.js";
 import { briefing } from "../weather/alerts.js";
 import { codeInfo, label, iconOf } from "../weather/codes.js";
 import { inForce, colourOf, titleOf, badgeOf, spanOf } from "../weather/official.js";
@@ -53,8 +53,8 @@ async function charge(env, t, purpose) {
 // The forecast for a place's cell (the JSON as Open-Meteo gives it): the tick's memo first, then this data centre's
 // copy, then Open-Meteo itself, paid for (charge, as purpose allows). userId: for Chat's live cards and the like
 // (functions/_share.js liveMiss), whose paid asks are counted for the account and for everyone, before any is made
-async function forecastJson(env, slat, slon, t, purpose, userId = null) {
-  const url = `${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${forecastQuery(slat, slon, 3)}`;
+async function forecastJson(env, slat, slon, t, purpose, userId = null, days = 3) {
+  const url = `${env.WXAPP_URL || "https://api.open-meteo.com"}/v1/forecast?${forecastQuery(slat, slon, days)}`;
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null, key = cache && new Request(url);
   if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
   if (userId) await liveMiss(env, userId);
@@ -277,4 +277,79 @@ export function skyFor(wx, now) {
   else if (kind === "partly") s = day ? "partly-day" : "partly-night";
   else s = day ? "cloudy-day" : "cloudy-night";
   return s;
+}
+
+
+// ---- Mail on Your Day (stage 1): the weather where a trip goes, day by day ----
+// A trip's destination (functions/_todaymail.js tripFor), found by Weather's own place search where Mail gave no
+// latitude and longitude (Open-Meteo's geocoding, as weather/data.js searchPlaces asks it, its first place, kept a week
+// in this data centre), and Weather's own forecast for its cell, 10 days of it (paid for as a page's: functions/_todaywx.js
+// charge), shaped by Weather's code (weather/data.js shapeForecast) and said in Weather's words (weather/insights.js
+// phrase, weather/codes.js label and iconOf), with temperatures as Weather's settings say them (deg).
+//   tripWeather(env, trip, t, { memo, deg }) → { destination: { name, lat, lon }, tz, href, days: [{ day, hi, lo, icon,
+//     label, said }] } (each day of the trip in the forecast, on the destination's clock), or null where the place can't be
+//     found. Throws Quiet where the forecast can't be had
+//   placeNamed(env, name) → { name, region, country, lat, lon } or null
+export const TRIP_DAYS = 10;
+const PLACE_KEEP_S = 7 * 86400;
+export async function placeNamed(env, name) {
+  const q = String(name || "").trim().slice(0, 60);
+  if (!q) return null;
+  // (as Weather's own search asks: weather/data.js searchPlaces)
+  const url = `${env.WXAPP_URL || "https://geocoding-api.open-meteo.com"}/v1/search?${new URLSearchParams({ name: q, count: "8", language: "en", format: "json" })}`;
+  const cache = typeof caches !== "undefined" && caches.default ? caches.default : null, key = cache && new Request(url);
+  let j = null;
+  if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) j = await hit.json().catch(() => null); }
+  if (!j) {
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000), headers: { Accept: "application/json" } }).catch(() => null);
+    if (!r?.ok) return null;
+    const text = await r.text();
+    try { j = JSON.parse(text); } catch (_) { return null; }
+    if (cache) {
+      const put = cache.put(key, new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${PLACE_KEEP_S}` } })).catch(() => {});
+      if (env.waitUntil) env.waitUntil(put); else await put;
+    }
+  }
+  const p = placesFound(j?.results)[0];
+  return p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 ? p : null;
+}
+// (a day's weather in a few words, its daytime hours (08:00 to 21:00 there): Weather's phrase, or where it turns wet part
+// way, when: "rain from 13:00")
+function dayWords(wx, d) {
+  const hours = hoursBetween(wx, d.date + 8 * HOUR, d.date + 21 * HOUR);
+  if (!hours.length) return label(d.code, true).toLowerCase();
+  const i = hours.findIndex((h) => isWet(h));
+  if (i > 0 && hours.slice(i).filter((h) => isWet(h)).length >= 2) {
+    // (an hour's rain is the hour up to its time, as Open-Meteo gives it: a wet 14:00 is rain from 13:00)
+    const from = new Date(hours[i].t - HOUR).getUTCHours();
+    return `${phrase(hours.slice(i).filter((h) => isWet(h)))} from ${String(from).padStart(2, "0")}:00`;
+  }
+  return phrase(hours);
+}
+export async function tripWeather(env, trip, t, { memo = null, deg = null } = {}) {
+  let dest = trip?.destination;
+  if (!dest || typeof dest.name !== "string") return null;
+  if (!Number.isFinite(dest.lat) || !Number.isFinite(dest.lon)) {
+    const k = `place:${dest.name.toLowerCase()}`;
+    const found = memo?.get(k) || placeNamed(env, dest.name);
+    memo?.set(k, found);
+    const p = await found;
+    if (!p) return null;
+    dest = { name: dest.name, lat: p.lat, lon: p.lon };
+  }
+  const slat = snap(dest.lat), slon = snap(dest.lon), k = `wxtrip:${slat},${slon}`;
+  const ask = memo?.get(k) || forecastJson(env, slat, slon, t, "page", null, TRIP_DAYS);
+  memo?.set(k, ask);
+  const wx = shapeForecast(await ask, { name: dest.name, lat: dest.lat, lon: dest.lon });
+  if (!wx.daily.length) throw new Quiet("No days.");
+  const offset = wx.place.offset || 0, keyAt = (ms) => new Date(ms + offset * 1000).toISOString().slice(0, 10);
+  const say = typeof deg === "function" ? deg : (c) => `${Math.round(c) < 0 ? "−" : ""}${Math.abs(Math.round(c))}°`;
+  const first = keyAt(trip.start), last = keyAt(Math.max(trip.start, trip.end ?? trip.start)), days = [];
+  for (let d = first, n = 0; d <= last && n < 21; n++) {
+    const x = wx.daily.find((y) => y.key === d);
+    days.push(x ? { day: d, hi: say(x.tmax), lo: say(x.tmin), icon: iconOf(x.code, true), label: label(x.code, true), said: dayWords(wx, x) } : { day: d });
+    const [y, m, dd] = d.split("-").map(Number);
+    d = new Date(Date.UTC(y, m - 1, dd + 1)).toISOString().slice(0, 10);
+  }
+  return { destination: dest, tz: zoneOk(wx.place.tz) ? wx.place.tz : null, href: `/weather/?lat=${dest.lat}&lon=${dest.lon}&name=${encodeURIComponent(dest.name)}`, days };
 }

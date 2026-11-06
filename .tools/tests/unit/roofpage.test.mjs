@@ -68,11 +68,11 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   // (the stylesheets: Today's own, then the framework's (its tokens and components over app.css's), then the day's)
   const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]);
   assert.deepEqual(sheets, ['/app.css', '/roof/roof.css', '/day.css'], 'app.css, roof.css, day.css, in that order');
-  // (#in: the header's host, #views (#today, #apps, #you: screens) and the tab bar's; #today: its top card, Waiting, Coming
+  // (#in: the header's host, #views (#today, #apps, #you: screens) and the tab bar's; #today: its top card, Mail's trip, Waiting, Coming
   // Up, the rest. Weather's screen is made in #views by the frame on first open)
   const inner = html.slice(html.indexOf('<div class="today-in"'), html.indexOf('<!-- The page'));
   const ids = [...inner.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(ids, ['in', 'hd', 'views', 'today', 'kept', 'top', 'side', 'waiting', 'coming', 'rest', 'apps', 'you', 'tabs']);
+  assert.deepEqual(ids, ['in', 'hd', 'views', 'today', 'kept', 'top', 'side', 'trip', 'waiting', 'coming', 'rest', 'apps', 'you', 'tabs']);
   assert.match(inner, /<div id="hd"><\/div>/, 'the header’s host, empty: the frame builds the header in it');
   assert.match(inner, /<nav class="ifl-tabs" id="tabs" aria-label="InFlite"><\/nav>/, 'the tab bar’s host, empty: the frame’s');
   assert.match(inner, /<main id="today" class="view ifl-screen" aria-label="Today">/);

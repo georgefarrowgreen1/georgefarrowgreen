@@ -4,7 +4,7 @@
 //     eveningAt, rides (today's explicit rides only: functions/_fittimes.js explicitRide), dones (functions/_fitshare.js
 //     donesIn) }
 //   dayFor(env, u, t, cards, { request, tz, deps }) → { v: 2, phase, since, until, timeline, tops, waiting, upcoming,
-//     acts, planning?, ride, quiet, apps }, merged into the answer (and Mail's card put among the cards given, cards.mail,
+//     acts, planning?, ride, quiet, apps, trip? }, merged into the answer (and Mail's card put among the cards given, cards.mail,
 //     where Mail answered for its admin: functions/_todaymail.js), and, held apart (not one of its keys), fitnessCard:
 //     the Fitness card as the acts leave it, where they change it (an add undone), for the answer's cards. Never words
 //     of a message (waiting names who and when); never an amount (Markets' cards carry percents). The day's plan
@@ -28,10 +28,17 @@
 //     sendTo?: { id, first, why }, wrote?: [{ id, first, at }] }
 //   (take: an offered act done on your word, POST /api/act; keep: a ride Today added, kept with a tap, the same POST;
 //   undo: POST /api/act/undo. Each names its act's id, which the answer's acts list)
+// trip (Mail on Your Day, stage 1, the admin's alone: functions/_todaymail.js tripFor): the soonest of Mail's trips that
+// starts within 48 hours or is under way, as Today's trip card and its day-by-day view draw it: { id, name, start, end,
+// destination: { name, lat?, lon? }, tz (the destination's zone, or null), apart (minutes the destination's clocks are
+// ahead of the account's at the trip's start, or null where its zone isn't known), href (Weather on the destination),
+// items: [{ id, kind, title, sub, start, end, tz, place, ref, href (its email in Mail), wx? (Weather there, that day) }],
+// days: [{ day, hi?, lo?, icon?, label?, said? }] (each of its days on the destination's clock, with Weather's forecast
+// there where it reaches: functions/_todaywx.js tripWeather, TRIP_WX_MS at most) }. Its bookings aren't Coming Up rows too.
 // Every word is plain text (the page draws it escaped); every card for Chat is built by the module whose data it is
 // (functions/_todaywx.js, _todayfit.js, _todaymkt.js), packed here (pigeon/cards.js packCard), and its line cut by
 // shareCut. The links are the hub's own paths (/weather/#radar, /fitness/#today, /chats/#open=…).
-import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer } from "./_todaycards.js";
+import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer, offsetAt } from "./_todaycards.js";
 import { phaseOf, ridesWithDones, wallAt, DAY_START, EVENING_AT } from "./_todayphase.js";
 import { upcomingFor } from "./_todaycoming.js";
 import { rideWx } from "./_todayride.js";
@@ -45,7 +52,9 @@ import { offersFor, donesIn } from "./_fitshare.js";
 import { timesFor } from "./_times.js";
 import { heldCount, rideHoldOn } from "./_busy.js";
 import { todayPrefs } from "./_today.js";
-import { mailCard } from "./_todaymail.js";
+import { mailCard, tripFor } from "./_todaymail.js";
+import { tripWeather } from "./_todaywx.js";
+import { weatherAt } from "./_todaycoming.js";
 import { prefsOf } from "./_notify.js";
 import { logError } from "./_pigeon.js";
 import { packCard } from "../pigeon/cards.js";
@@ -55,6 +64,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 // a ride's weather has this long (the cards have had theirs, and the day itself has 3 seconds: functions/_todaycards.js);
 // the holds start this long before a ride (functions/_busy.js)
 const WX_MS = 2000, HOLD_EARLY = 10 * MIN;
+// (a trip's weather has this long, once Mail's answered: functions/_todaywx.js tripWeather)
+export const TRIP_WX_MS = 1500;
 const NOUN = { ride: "Ride", run: "Run", swim: "Swim", walk: "Walk", row: "Row", strength: "Strength" };
 
 // ---- words ----
@@ -208,10 +219,14 @@ export async function dayFor(env, u, t, cards, opts = {}) {
     // (who wrote while you rode: from the ride's start to the activity's end)
     afterOf ? T.time("Who wrote", soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), [])) : [],
     wantCtl ? T.time("Fitness load", soft(env, "load", loadOf(env, u.id, t), [])) : [],
-    mailHidden ? null : T.time("Mail’s numbers", soft(env, "mail", mailCard(env, u, opts.request || null), null)),
+    mailHidden ? null : T.time("Mail’s numbers", soft(env, "mail", mailCard(env, u, opts.request || null, t), null)),
   ]);
   // (Mail's card among the answer's cards, as the other four are: only where Mail answered)
   if (mail && cards && typeof cards === "object") cards.mail = mail;
+  // (Mail's trip shown as a card, with the weather where it goes: none where there's none in time, or it can't be had)
+  const trip0 = mail ? tripFor(mail, t) : null;
+  const twx = trip0 ? await T.time("Trip weather", withDeadline(tripWeather(env, trip0, t, { deg: cards?.weather?.forDay?.deg || null }), TRIP_WX_MS).catch(() => null)) : null;
+  const trip = trip0 ? tripOf(trip0, twx, zone) : null;
   // (Fitness (CTL) as of the day's end at the latest: in the small hours, the day before's, as it was at 23:59)
   const ctl = wantCtl ? ctlOf(load, Math.min(t, today.end - 1), { start: doneToday.start }) : null;
   const wxOf = (x) => (x ? wxs[matched.indexOf(x)] || null : null);
@@ -235,7 +250,7 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   const x = { t, zone, hm, D, today, cards, g, ph, matched, next, last, afterOf, doneToday, wxOf, waiting, held, wrote, ctl, units, fc, fcDay, rideCard, sendTo };
   const forComing = matched.map((m) => ({ start: m.ride.start, stop: m.ride.stop, name: m.ride.name, sport: m.ride.sport, offerId: m.ride.offerId, who: m.ride.who, arrival: m.arrival, cap: m.cap,
     sub: wxOf(m)?.short || "", ...rideCard(m) }));
-  const upcoming = upcomingFor(cards, { tz: zone, rides: forComing, offers: g.offers, times: g.times, hide: [...g.hide], tomorrow: ph.phase === "evening" ? cards?.weather?.forDay?.tomorrow || null : null }, t);
+  const upcoming = upcomingFor(cards, { tz: zone, rides: forComing, offers: g.offers, times: g.times, hide: [...g.hide], tomorrow: ph.phase === "evening" ? cards?.weather?.forDay?.tomorrow || null : null, tripId: trip?.id || null }, t);
   x.upcoming = upcoming;
 
   // the top cards: the current phase's, and each later one's that needs no new data
@@ -257,10 +272,34 @@ export async function dayFor(env, u, t, cards, opts = {}) {
       hold: r.hold, ...(rm.arrival != null && rm.arrival <= t ? { doneAt: rm.arrival } : {}) } : null,
     quiet: { on: g.quietOn, from: g.p.quietFrom, to: g.p.quietTo },
     apps: appsOf(x),
+    ...(trip ? { trip } : {}),
   };
   // (the Fitness card as the acts leave it, for the answer's cards: held apart, never one of the day's keys)
   if (g.overlay) Object.defineProperty(out, "fitnessCard", { value: g.overlay, enumerable: false, configurable: true });
   return out;
+}
+
+// ---- Mail's trip, as the answer has it (above, dayFor's trip) ----
+// trip: functions/_todaymail.js tripFor's; w: functions/_todaywx.js tripWeather's, or null; zone: the account's
+function tripOf(trip, w, zone) {
+  const dest = w?.destination || trip.destination, at = Number.isFinite(dest.lat) && Number.isFinite(dest.lon);
+  // (the destination's zone: the forecast's, else a stay's or a table's there, else none)
+  const tz = w?.tz || trip.items.find((b) => b.tz && ["hotel", "restaurant", "event"].includes(b.kind))?.tz || null;
+  const dk = (ms) => dayOf(tz || zone).format(new Date(ms));
+  let days = w?.days;
+  if (!days) {
+    days = [];
+    for (let d = dk(trip.start), last = dk(Math.max(trip.start, trip.end)); d <= last && days.length < 21; d = dayAfter(d, 1)) days.push({ day: d });
+  }
+  const items = trip.items.map((b) => {
+    const p = b.place && Number.isFinite(b.place.lat) ? b.place : at ? dest : null;
+    return { id: b.id, kind: b.kind, title: b.title, sub: b.sub, start: b.start, end: b.end, tz: b.tz, place: b.place, ref: b.ref, href: b.href, ...(p ? { wx: weatherAt(p, dk(b.start)) } : {}) };
+  });
+  return {
+    id: trip.id, name: trip.name, start: trip.start, end: trip.end, destination: dest, tz,
+    apart: tz ? Math.round((offsetAt(tz, trip.start) - offsetAt(zone, trip.start)) / MIN) : null,
+    ...(at ? { href: weatherAt(dest) } : {}), items, days,
+  };
 }
 
 // "today", "tomorrow", or the weekday ("Thursday")
