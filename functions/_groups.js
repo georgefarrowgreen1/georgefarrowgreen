@@ -187,7 +187,7 @@ export function groupQs(D, u, t) {
     // (with my way there: my own, else how my new chats start)
     D.prepare("SELECT g.*, m.muted, COALESCE(m.way, ?2) AS way FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ?1 ORDER BY g.created_at").bind(u.id, u.new_way === "instant" ? "instant" : "pigeon"),
     turnQ(D, u.id, t), mineDelsQ(D, u.id),
-    D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id, status FROM pg_links WHERE status IN ('ok', 'blocked') AND (a = ?1 OR b = ?1)").bind(u.id),
+    D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id, status, a FROM pg_links WHERE status IN ('ok', 'blocked') AND (a = ?1 OR b = ?1)").bind(u.id),
     D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.moon, u.loc_at, u.seen_at, u.hide_online
       FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
       WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id),
@@ -205,8 +205,9 @@ export function groupsFrom(res, u, t) {
   const [{ results: gs }, { results: turns }, { results: mineDels }, { results: links }, { results: allMem }, { results: unreads }, { results: lasts }, { results: lastDels }, { results: offRows }] = res;
   if (!gs.length) return [];
   const friends = new Set(links.filter((l) => l.status === "ok").map((l) => l.id));
-  // anyone either of you has blocked, in a group you share: their name stays (so you know who wrote), nothing else of them
-  const blocked = new Set(links.filter((l) => l.status === "blocked").map((l) => l.id));
+  // anyone you've blocked, in a group you share: their name stays (so you know who wrote), nothing else of them. (Only
+  // yours: someone who's blocked you shows as anyone else who isn't a friend does, so a group never tells you that)
+  const blocked = new Set(links.filter((l) => l.status === "blocked" && l.a === u.id).map((l) => l.id));
   const unreadIn = new Map(unreads.map((r) => [r.group_id, r.n])), turnOf = new Map(turns.map((r) => [r.group_id, r]));
   const lastOf = new Map(lasts.map((m) => [m.group_id, m])), off = new Map(offRows.map((r) => [r.id, r.no_receipts_at || 0]));
   const dels = new Map(lasts.filter((m) => m.sender === u.id).map((m) => [m.id, []]));
@@ -230,9 +231,11 @@ export function groupsFrom(res, u, t) {
 
 // A line in the group's chat for each change to who's in it (and its name).
 // The server can't add anyone without it showing to everyone.
-function event(D, gid, t, kind, actor, target = null) {
+// (joined: only if the one added is in it now, added by them just then: joinQ, which may have found no room)
+function event(D, gid, t, kind, actor, target = null, joined = false) {
   return D.prepare(`INSERT INTO pg_gevents (group_id, at, kind, actor, actor_name, target, target_name)
-    SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${said(kind) ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4`)
+    SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${said(kind) ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4
+    ${joined ? "AND EXISTS (SELECT 1 FROM pg_group_members WHERE group_id = ?1 AND user_id = ?5 AND added_by = ?4 AND joined_at = ?2)" : ""}`)
     .bind(...[gid, t, kind, actor.id || actor, said(kind) ? null : target].concat(said(kind) ? [target] : []));
 }
 // (a new name, how long messages last, or how someone's messages go: words, not someone)
@@ -255,15 +258,28 @@ async function cleanMembers(D, u, ids, current) {
   if (!out.length) throw new HttpError(400, "Choose at least one friend.");
   const friends = await friendIds(D, u.id);
   if (out.some((id) => !friends.has(id))) throw new HttpError(403, "You can only add your own friends.");
-  // never into a group with someone who has blocked them, or whom they've blocked (nor two new members who have)
-  if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, `Groups can have up to ${GROUP_MAX} people.`);
-  const all = [...new Set([...have, ...out])], ph = (a) => a.map(() => "?").join(",");
-  if (all.length > 1 && await D.prepare(`SELECT 1 FROM pg_links WHERE status = 'blocked' AND a IN (${ph(all)}) AND b IN (${ph(all)}) AND (a IN (${ph(out)}) OR b IN (${ph(out)})) LIMIT 1`)
-    .bind(...all, ...all, ...out, ...out).first()) throw new HttpError(403, "Someone you chose can’t be added to this group.");
+  if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, FULL);
+  // (two in it who've blocked each other are still added, and said nothing of: no pigeon ever goes between them, as in a
+  // group made before a block (send), and neither sees more of the other than a name. Refusing would tell whoever chose
+  // them, someone outside it, of a block)
+  const ph = (a) => a.map(() => "?").join(",");
   if (await D.prepare(`SELECT 1 FROM pg_group_members WHERE user_id IN (${ph(out)}) GROUP BY user_id HAVING COUNT(*) >= ${GROUPS_EACH} LIMIT 1`).bind(...out).first())
-    throw new HttpError(409, `Someone you chose is already in ${GROUPS_EACH} groups, the most anyone can be in.`);
+    throw new HttpError(409, EACH);
   return out;
 }
+// Someone added, only while there's room, in the group and among their own groups, as the database has them as it
+// writes: so two adding at once (cleanMembers counted before either) can't take either past its most. (Each member's way
+// there starts as their new chats do)
+const joinQ = (D, gid, m, by, t) => D.prepare(`INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at, way)
+  SELECT ?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2)
+  WHERE (SELECT COUNT(*) FROM pg_group_members WHERE group_id = ?1) < ${GROUP_MAX} AND (SELECT COUNT(*) FROM pg_group_members WHERE user_id = ?2) < ${GROUPS_EACH}`).bind(gid, m, by, t);
+// …and which of them were
+async function joined(D, gid, by, t, ids) {
+  const { results } = await D.prepare("SELECT user_id FROM pg_group_members WHERE group_id = ? AND added_by = ? AND joined_at = ?").bind(gid, by, t).all();
+  const got = new Set(results.map((r) => r.user_id));
+  return ids.filter((m) => got.has(m));
+}
+const FULL = `Groups can have up to ${GROUP_MAX} people.`, EACH = `Someone you chose is already in ${GROUPS_EACH} groups, the most anyone can be in.`;
 async function groupView(env, u, gid) {
   return (await groupsForSync(env, u, Date.now())).find((g) => g.id === gid);
 }
@@ -277,10 +293,14 @@ async function createGroup({ request, env, waitUntil }) {
   await D.batch([
     D.prepare("INSERT INTO pg_groups (id, name, created_by, created_at) VALUES (?, ?, ?, ?)").bind(id, name, u.id, t),
     // (each member's way there starts as their new chats do)
-    ...[u.id, ...ids].map((m) => D.prepare("INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at, way) VALUES (?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2))").bind(id, m, u.id, t)),
-    event(D, id, t, "create", u), ...ids.map((m) => event(D, id, t, "add", u, m)),
+    D.prepare("INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at, way) VALUES (?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2))").bind(id, u.id, u.id, t),
+    ...ids.map((m) => joinQ(D, id, m, u.id, t)),
+    event(D, id, t, "create", u), ...ids.map((m) => event(D, id, t, "add", u, m, true)),
   ]);
-  waitUntil(groupAdded(env, u, ids, { id, name }).catch(() => {}));
+  // (no one else had room for it after all: no group of one)
+  const got = await joined(D, id, u.id, t, ids);
+  if (!got.length) { await leaveGroup(env, u.id, id); throw new HttpError(409, EACH); }
+  waitUntil(groupAdded(env, u, got, { id, name }).catch(() => {}));
   return json({ group: await groupView(env, u, id) });
 }
 async function addMembers({ request, env, waitUntil }) {
@@ -288,9 +308,11 @@ async function addMembers({ request, env, waitUntil }) {
   await limit(env, "groupadd:" + u.id, 60, 24 * 3600e3);
   const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id), t = Date.now();
   const ids = await cleanMembers(D, u, b.members, await membersOf(D, g.id));
-  await D.batch(ids.flatMap((m) => [D.prepare("INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at, way) VALUES (?1, ?2, ?3, ?4, (SELECT new_way FROM pg_users WHERE id = ?2))").bind(g.id, m, u.id, t),
-    event(D, g.id, t, "add", u, m)]));
-  waitUntil(groupAdded(env, u, ids, g).catch(() => {}));
+  await D.batch(ids.flatMap((m) => [joinQ(D, g.id, m, u.id, t), event(D, g.id, t, "add", u, m, true)]));
+  // (someone else filled it first: as many as there was room for, else none, and said why)
+  const got = await joined(D, g.id, u.id, t, ids);
+  if (!got.length) throw new HttpError(409, (await membersOf(D, g.id)).length >= GROUP_MAX ? FULL : EACH);
+  waitUntil(groupAdded(env, u, got, g).catch(() => {}));
   return json({ group: await groupView(env, u, g.id) });
 }
 // Leaving takes you out; the last one out takes the group, its messages and photos with them.

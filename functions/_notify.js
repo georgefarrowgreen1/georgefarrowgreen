@@ -18,7 +18,7 @@ import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
-import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
+import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink, limit } from "./_pigeon.js";
 import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -322,6 +322,14 @@ export async function friendRequested(env, origin, from, toId) {
       ...(r.p.names ? { pill: ["at", `@${from.handle}`] } : {}),
       button: { label: "See request", url: appLink(origin, "#requests") },
     }, "requests").catch(() => {});
+}
+// A request as it's sent: said (friendRequested) the first time in a day one person asks another, and not again, so one
+// taken back and sent again, over and over, isn't a push (or an email) each time. (Counted as limit() counts, in one
+// statement, so two at once can't both be the first.) → whether it was said
+export async function friendAsked(env, origin, from, toId) {
+  try { await limit(env, `asked:${from.id}:${toId}`, 1, DAY); } catch (e) { if (e?.status === 429) return false; throw e; }
+  await friendRequested(env, origin, from, toId);
+  return true;
 }
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted) return;

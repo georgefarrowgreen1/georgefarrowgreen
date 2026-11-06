@@ -355,6 +355,22 @@ const tellSecure = (env, u, request, mail, origin) => (async () => {
   if (!emailReady(env) || (!mail.to && !u.email_ok)) return;
   await accountMail(env, u, { ...mail, button: await secureButton(env, u, request) }, origin);
 })().catch(() => {});
+// When a change wasn't you ("This wasn't me", a new email undone): from when passkeys go, every one added since the
+// owner last showed the password (set it, or signed in with it) before then (at: the change, less the time before it
+// someone might have been in already), so one added days before by someone in with a sign-in that wasn't theirs goes
+// too, not just one from the last hour; with nothing to go on, every one. (The password, as it's what a sign-in alone
+// never gives: a passkey can be added on showing another, but a password's only changed with the old one)
+async function ownerSince(D, u, at) {
+  const ev = await D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ? AND at < ? AND (kind IN ('signup', 'password', 'reset') OR (kind = 'signin' AND detail = 'Password'))").bind(u.id, at).first();
+  return Math.min(at, Math.max(u.pw_at && u.pw_at < at ? u.pw_at : 0, ev?.at || 0));
+}
+// …and those that stay, said in its email, so one that isn't theirs can still be seen to and taken off (by their names,
+// with nothing in them an email could make a link of)
+async function keptPasskeys(D, u) {
+  const { results } = await D.prepare("SELECT label FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
+  return results.map((r) => String(r.label || "").replace(/[@/\\:<>.]/g, " ").replace(/\s+/g, " ").trim() || "Passkey");
+}
+const keptLine = (kept) => (kept.length ? ` Passkeys still on your account: ${kept.join(", ")}. If one isn’t yours, remove it on your account’s page once you’re back in.` : "");
 // A reset link's email (asked for with "Forgot password?", or sent by "This wasn't me" and by undoing a new email),
 // saying where it was asked from
 const resetMail = (env, request, u, token, { to = u.email, line = "someone asked to reset your password. Choose a new one with the button below.",
@@ -368,6 +384,8 @@ const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SI
 const authOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : AUTH_APP);
 const saltOk = (s) => { const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || "")); return !!m && fromB64url(m[2]).length === 16; };
 const tokenOk = (s) => /^[A-Za-z0-9_-]{40,50}$/.test(String(s || ""));
+// (a sign-in an app handed over (handoff), which hasn't shown it's you here: refused, and asked to)
+const unhanded = (u) => { if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth"); return u; };
 const hide = (email) => String(email).replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) => a + "•".repeat(Math.min(6, b.length)) + c);
 const cleanLabel = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/\s+/g, " ").slice(0, 40);
 const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(t);
@@ -448,8 +466,7 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     // (one handed over from an app goes on to none until it's shown it's you here)
-    if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth");
-    return json(await makeHandback(env, u, await body(request, 8192)));
+    return json(await makeHandback(env, unhanded(u), await body(request, 8192)));
   },
   // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
   // (the invite in the body, never the address: an address ends up in logs)
@@ -874,10 +891,11 @@ const ROUTES = {
     throw new HttpError(409, "Fitness was changing that on another device. Try again.");
   },
   // ---- where Fitness's rides and nights come from, connected here as in the app (functions/_garmin.js, _strava.js,
-  // _health.js); the app reads what each brings in as it next opens ----
+  // _health.js); the app reads what each brings in as it next opens. (Connecting one: never from a sign-in handed over
+  // from an app, until it's shown it's you here: unhanded) ----
   "POST fitness/garmin": async ({ request, env }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 8 * 1024);
+    const u = unhanded(await signedIn(request, env)), b = await body(request, 8 * 1024);
     await garminConnect(env, u.id, b.key);
     return json(await fitnessSettings(env, u));
   },
@@ -898,7 +916,7 @@ const ROUTES = {
   // (Strava's page to say yes on, which sends you back to Fitness: its address is the one Strava knows)
   "POST fitness/strava": async ({ request, env }) => {
     sameOrigin(request);
-    return json(await stravaUrl(env, (await signedIn(request, env)).id, fitnessOrigin(request)));
+    return json(await stravaUrl(env, unhanded(await signedIn(request, env)).id, fitnessOrigin(request)));
   },
   "POST fitness/strava/all": async ({ request, env }) => {
     sameOrigin(request);
@@ -916,7 +934,7 @@ const ROUTES = {
   // (a new key for the Shortcut, shown this once, with the address it goes in: Fitness's)
   "POST fitness/health": async ({ request, env }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), r = await healthKey(env, u.id);
+    const u = unhanded(await signedIn(request, env)), r = await healthKey(env, u.id);
     return json({ ...(await fitnessSettings(env, u)), key: r.key, address: `${fitnessOrigin(request)}/api/fitness/health/${r.key}` });
   },
   "DELETE fitness/health": async ({ request, env }) => {
@@ -1074,8 +1092,9 @@ const ROUTES = {
   },
 
   // ---- "This wasn't me", from an email about a change to the account (functions/_account.js secureButton): every
-  // device signed out, a new email waiting called off, any passkey added since just before the email removed, and a
-  // reset link sent to the account's email. Only the link's needed: all it does is lock the account down for its owner ----
+  // device signed out, a new email waiting called off, any passkey added since the owner last showed the password before
+  // it removed (ownerSince), and a reset link sent to the account's email, saying which stay. Only the link's needed: all
+  // it does is lock the account down for its owner ----
   "POST secure": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
@@ -1085,20 +1104,23 @@ const ROUTES = {
     if (!row) throw new HttpError(400, "This link has already been used, or it’s more than 7 days old. To secure your account, use “Forgot password?” on the sign-in page.");
     const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
     if (!u) throw new HttpError(400, "This account no longer exists.");
+    const from = await ownerSince(D, u, row.created_at - 10 * 60e3);
     await D.batch([
       D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
       D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id),
-      D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, row.created_at - 10 * 60e3),
+      D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, from),
     ]);
     waitUntil(logEvent(env, u.id, "secured", request));
+    const kept = await keptPasskeys(D, u);
     let sent = false;
     if (u.email && emailReady(env)) sent = await resetMail(env, request, u, await createReset(env, u.id, "user", RESET_TTL_EMAIL), {
       line: "you told us a change to your account wasn’t you, so every device was signed out. Choose a new password to sign in again.",
-      after: "Anything added since the change, like a passkey, was removed too." }).then(() => true, () => false);
-    return withoutSession(json({ ok: true, email: sent ? hide(u.email) : null }), request, env);
+      after: "Anything added since you last used your password, like a passkey, was removed too." + keptLine(kept) }).then(() => true, () => false);
+    return withoutSession(json({ ok: true, email: sent ? hide(u.email) : null, kept }), request, env);
   },
   // ---- an email change undone, from the old address's link (good for 7 days): the old address back, every device signed
-  // out, any passkey added in the hour before removed, and a reset link sent to it ----
+  // out, any passkey added since the owner last showed the password (before the hour before the change: ownerSince)
+  // removed, and a reset link sent to it, saying which stay ----
   "POST email/undo": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
@@ -1110,19 +1132,21 @@ const ROUTES = {
     const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
     if (!u || !EMAIL_RE.test(old)) throw new HttpError(400, "This account no longer exists.");
     if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ? AND id != ?").bind(old, u.id).first()) throw new HttpError(409, "That email is now used by another account.");
+    const from = await ownerSince(D, u, row.created_at - 60 * 60e3);
     try {
       await D.batch([
         D.prepare("UPDATE pg_users SET email = ?, email_ok = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL, email_code = NULL WHERE id = ?").bind(old, Date.now(), u.id),
         D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
         D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
-        D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, row.created_at - 60 * 60e3),
+        D.prepare("DELETE FROM pg_passkeys WHERE user_id = ? AND created_at >= ?").bind(u.id, from),
       ]);
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-undone", request, hide(old)));
-    const back = { ...u, email: old, email_ok: Date.now() };
+    const back = { ...u, email: old, email_ok: Date.now() }, kept = await keptPasskeys(D, u);
     const sent = emailReady(env) ? await resetMail(env, request, back, await createReset(env, u.id, "user", RESET_TTL_EMAIL), {
-      line: "your account’s email is back to this address, and every device was signed out. Choose a new password to sign in again." }).then(() => true, () => false) : false;
-    return withoutSession(json({ ok: true, email: hide(old), sent }), request, env);
+      line: "your account’s email is back to this address, and every device was signed out. Choose a new password to sign in again.",
+      after: "Any passkey added since you last used your password was removed too." + keptLine(kept) }).then(() => true, () => false) : false;
+    return withoutSession(json({ ok: true, email: hide(old), sent, kept }), request, env);
   },
 };
 

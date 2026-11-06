@@ -8,12 +8,14 @@
 // link only if it went (not if Resend refused it or didn't answer in time); a sign-in carried to the other site, or
 // given a computer by a phone, only while the sign-in it came from is still on; an account being deleted kept from the
 // sign-in page too; an app opening the account's page takes in a window it handed over before, never a sign-in made
-// there; and the account's Quiet Hours said with it, for its page.
+// there; and the account's Quiet Hours said with it, for its page. A sign-in handed over connects nothing to Fitness until
+// it's shown it's you; and "This wasn't me" and undoing a new email take off every passkey added since the owner last
+// used the password, not just those of the last few minutes, and say which stay.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession } from '../../../functions/_pigeon.js';
-import { passwordUser, cookieUser, withKnown } from '../../../functions/_account.js';
+import { passwordUser, cookieUser, withKnown, oneLink } from '../../../functions/_account.js';
 import { onRequest as accountApi } from '../../../functions/api/account/[[path]].js';
 import { hop } from '../../../functions/_hop.js';
 import { qrStart, qrLook, qrAnswer, qrTake } from '../../../functions/_qrsign.js';
@@ -367,4 +369,52 @@ test('account routes: inflight carries pigeons, newChats, showTyping; bad values
   // the notifications' folder: messages first, and whether pigeons are on
   const n = await (await accountApi({ request: req('/api/account/notify', { cookie }), env: PAGE_ENV, params: { path: ['notify'] }, waitUntil: () => {} })).json();
   assert.equal(Object.keys(n.chat.kinds)[0], 'messages'); assert.equal(n.chat.kinds.messages, true); assert.equal(n.chat.pigeons, false);
+});
+
+// (a sign-in handed over from an app, signed in to nothing else: as POST handoff makes it)
+async function handedHere(u) {
+  const from = hex(await sha256(await issueSession(env, u.id, req('/api/weather/me')))), site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const hash = hex(await sha256(await issueSession(env, u.id, req('/api/account/handoff'))));
+  await D.prepare('UPDATE pg_sessions SET auth_at = 0, parent = ?, handed = 1, site_hash = ? WHERE hash = ?').bind(from, hex(await sha256(site)), hash).run();
+  return { cookie: `account=${site}`, hash };
+}
+test('a sign-in handed over connects nothing to Fitness (Garmin, Strava, Apple Health) until it’s shown it’s you', async () => {
+  const u = await account('hal', 'a long test password'), { cookie, hash } = await handedHere(u);
+  for (const [path, data] of [['fitness/garmin', { key: 'k'.repeat(40) }], ['fitness/strava', {}], ['fitness/health', {}]]) {
+    const r = await onPage(path, data, { cookie });
+    assert.equal(r.status, 403, path);
+    assert.deepEqual(await r.json(), { error: 'Confirm it’s you first.', field: 'reauth' }, path);
+  }
+  // shown it's you (reauth): no longer refused for that
+  await D.prepare('UPDATE pg_sessions SET auth_at = ?, handed = NULL WHERE hash = ?').bind(Date.now(), hash).run();
+  assert.notEqual((await onPage('fitness/health', {}, { cookie })).status, 403);
+});
+
+// (passkeys of theirs, made when: [label, ms ago])
+async function passkeysOf(u, list) {
+  for (const [label, ago] of list) await D.prepare('INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count, rp) VALUES (?, ?, ?, -7, ?, NULL, ?, 0, NULL)')
+    .bind(b64url(crypto.getRandomValues(new Uint8Array(16))), u.id, 'pk', label, Date.now() - ago).run();
+}
+const passkeyNames = async (u) => (await D.prepare('SELECT label FROM pg_passkeys WHERE user_id = ? ORDER BY created_at').bind(u.id).all()).results.map((r) => r.label);
+const DAYS = 24 * 3600e3;
+test('“This wasn’t me”: every passkey added since the owner last used their password goes, not just those of the last few minutes, and those that stay are said', async () => {
+  const u = await account('ivy', 'a long test password');
+  await D.prepare('UPDATE pg_users SET pw_at = ? WHERE id = ?').bind(Date.now() - 30 * DAYS, u.id).run();
+  await D.prepare("INSERT INTO pg_events (user_id, at, kind, detail) VALUES (?, ?, 'signin', 'Password'), (?, ?, 'signin', 'Passkey')").bind(u.id, Date.now() - 5 * DAYS, u.id, Date.now() - 1 * DAYS).run();
+  // (theirs from before; one added two days ago, by someone in with a sign-in of theirs; one minutes ago)
+  await passkeysOf(u, [['Ivy’s iPhone', 10 * DAYS], ['Not hers', 2 * DAYS], ['Just now', 60e3]]);
+  const r = await onPage('secure', { token: await oneLink(env, u, 'secure') });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.deepEqual(await passkeyNames(u), ['Ivy’s iPhone']);
+  assert.deepEqual((await r.json()).kept, ['Ivy’s iPhone'], 'and those that stay said');
+});
+test('a new email undone: every passkey added since the owner last used their password goes too', async () => {
+  const u = await account('jem', 'a long test password');
+  await D.prepare('UPDATE pg_users SET pw_at = ?, email = ? WHERE id = ?').bind(Date.now() - 3 * DAYS, 'jem-new@example.com', u.id).run();
+  await passkeysOf(u, [['Jem’s Mac', 9 * DAYS], ['Before the change', 2 * DAYS], ['In the hour', 30 * 60e3]]);
+  const r = await onPage('email/undo', { token: await oneLink(env, u, 'undo', JSON.stringify({ old: 'jem@example.com', now: 'jem-new@example.com' })) });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.deepEqual(await passkeyNames(u), ['Jem’s Mac']);
+  assert.deepEqual((await r.json()).kept, ['Jem’s Mac']);
+  assert.equal((await D.prepare('SELECT email FROM pg_users WHERE id = ?').bind(u.id).first()).email, 'jem@example.com');
 });
