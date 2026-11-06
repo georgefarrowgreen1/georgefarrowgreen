@@ -920,18 +920,12 @@ a.btn { text-decoration: none; }
 
   .col-a .large { margin-bottom: 18px; }
   .col-b > .section:first-child { margin-top: 0; }
-  /* (your apps, at the top of the right-hand column: all three side by side, nothing to swipe) */
-  .col-b .apps { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0;
+  /* (your apps, at the top of the right-hand column, nothing to swipe: three to a row, every tile the same size however
+     many there are, five as three and two, six (the admin's, with Mail) as three and three; the tiles in a row as tall as
+     each other) */
+  .col-b .apps { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; align-items: stretch; overflow: visible; margin: 0; padding: 0;
     -webkit-mask-image: none; mask-image: none; }
-  /* (four, with the admin's Mail: two by two, rather than one left on a row of its own) */
-  .col-b .apps:has(> .app:nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* (five, the admin's with Mail: three above, two wider below, rather than one on its own) */
-  .col-b .apps:has(> .app:nth-child(5)) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .col-b .apps:has(> .app:nth-child(5)) > .app { grid-column: span 2; }
-  .col-b .apps:has(> .app:nth-child(5)) > .app:nth-child(n+4) { grid-column: span 3; }
-  /* (six, the admin's with Mail: three and three) */
-  .col-b .apps:has(> .app:nth-child(6)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .col-b .apps:has(> .app:nth-child(6)) > .app:nth-child(n) { grid-column: auto; }
+  .col-b .apps > .app { grid-column: auto; }
 }
 
 /* ---- on a computer (from 1100 px): two panes. Under your card, the account's parts (.acct-nav, app.js acctNav); beside
@@ -954,7 +948,7 @@ a.btn { text-decoration: none; }
   .nav-it[aria-current] .nav-t { color: var(--tint-text); font-weight: 650; }
   .nav-it:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
   /* (your apps: the Your Apps pane, three to a row, wide enough for their words and buttons: five as three and two,
-     six (the admin's, with Mail) as three and three, as above. Account, Preferences and Admin are in the list on the left, with
+     six (the admin's, with Mail) as three and three, each the same size, as above. Account, Preferences and Admin are in the list on the left, with
      what each says, so they aren't drawn here a second time) */
   .col-b > [data-sec="account"], .col-b > [data-sec="prefs"], .col-b > [data-sec="admin"] { display: none; }
   /* (the pane: a part's sheet, where the right-hand column is (--pl, --pw, --pt from app.js paneAt), its own height down
