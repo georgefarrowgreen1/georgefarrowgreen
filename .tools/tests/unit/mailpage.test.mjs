@@ -46,7 +46,9 @@ test('a tap on an email address, in a message’s frame or its text, writes the 
 
 test('a send that fails: Try Again, as the same message, wherever it may have gone; Edit only where Mail refused it, or it never left', { skip }, () => {
   // (what runSend makes of a failure, taken from it: Mail refused it (to be changed), and whether to ask again)
-  const line = (k) => new RegExp(`\\n\\s+const ${k} = (.+);\\n`).exec(/async function runSend\(job[\s\S]*?\n {2}\}\n/.exec(src)?.[0] || '')?.[1] || assert.fail(`runSend: ${k}`);
+  // (runSend: in the compose sheet's part, where Mail's page has its later parts in public/parts/)
+  const compose = new URL('parts/compose.js', APP), sending = src + (existsSync(compose) ? readFileSync(compose, 'utf8') : '');
+  const line = (k) => new RegExp(`\\n\\s+const ${k} = (.+);\\n`).exec(/async function runSend\(job[\s\S]*?\n {2}\}\n/.exec(sending)?.[0] || '')?.[1] || assert.fail(`runSend: ${k}`);
   const choice = vm.runInNewContext(`(err) => { const refused = ${line('refused')}; const again = ${line('again')}; return again ? 'Try Again' : 'Edit'; }`, {});
   const said = (status) => choice(Object.assign(new Error('x'), status === undefined ? {} : { status }));
   // (no answer at all, Mail or the way to it failing, still sending it from the time before, or signed out)
