@@ -126,17 +126,16 @@ await part('c. opened from what the root worker keeps; renewed by the updater', 
   ok(fromNet.length === 0, 'c. its files from what the worker keeps, every one', `not from the worker: ${fromNet.map((f) => `${f} (${seen.has(f) ? 'network' : 'not asked'})`).join(', ')}`);
   ok(doc?.fromServiceWorker() === true, 'c. the page itself answered by the root worker');
   console.log(`(c: opened again in ${Date.now() - t0} ms)`);
-  // (the updater, before it loads a new Today: { ifl: "renew" }, as IFL.updates sends it). Each kept copy's Date, before
-  // and after: every one fetched again (the worker's own fetches aren't Playwright's to see)
+  // (the updater, before it loads a new Today: { ifl: "renew" }, as IFL.updates sends it). Every kept copy let go of
+  // first: all of them there again after (the worker's own fetches aren't Playwright's to see)
   const files = [...(/const FILES = (\[[\s\S]*?\]);/.exec(readFileSync(`${IFL}today/public/sw.js`, 'utf8'))?.[1] || '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  const dates = () => p.evaluate(async (fs) => { const c = await caches.open('today-app-4'); const o = {}; for (const f of fs) o[f] = (await c.match(f))?.headers.get('date') || null; return o; }, files);
-  const before = await dates();
-  await p.waitForTimeout(1100);
+  const keptNow = () => p.evaluate(async (fs) => { const c = await caches.open('today-app-4'); const o = []; for (const f of fs) if (await c.match(f)) o.push(f); return o; }, files);
+  await p.evaluate(async (fs) => { const c = await caches.open('today-app-4'); for (const f of fs) await c.delete(f); }, files);
+  const gone = await keptNow();
   const renewed = await p.evaluate(() => new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = (e) => ok(e.data); navigator.serviceWorker.controller.postMessage({ ifl: 'renew' }, [ch.port2]); setTimeout(() => ok(null), 12000); }));
   ok(renewed?.ifl === 'renewed', 'c. renew: the worker says renewed', JSON.stringify(renewed));
-  const after = await dates();
-  const stale = files.filter((f) => !after[f] || after[f] === before[f]);
-  ok(files.length > 20 && stale.length === 0, `c. renew: every one of Today’s ${files.length} files fetched again and kept afresh`, `not renewed: ${stale.join(', ')}`);
+  const back = await keptNow(), missing = files.filter((f) => !back.includes(f));
+  ok(files.length > 20 && gone.length === 0 && missing.length === 0, `c. renew: every one of Today’s ${files.length} files fetched again and kept`, `missing after: ${missing.join(', ')}; there before: ${gone.length}`);
   await ctx.close();
 });
 

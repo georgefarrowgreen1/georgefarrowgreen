@@ -595,7 +595,8 @@ await part('morning', async () => {
   await reset();
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
-  const q = (await reqs()).find((e) => e.path.endsWith('/cards'))?.query || {};
+  // (the day's asked with who in one trip, opened again here: today/boot, else today/cards)
+  const q = (await reqs()).find((e) => e.path.endsWith('/boot') || e.path.endsWith('/cards'))?.query || {};
   same(q.device, sha(FAKE_ENDPOINT).slice(0, 16), 'the device’s name: the first 16 of b64url(SHA-256(endpoint))');
   // (turned on from Account, on no device yet)
   await ctl('/__morning', { on: true, devices: 0, thisDevice: false });
@@ -619,6 +620,8 @@ await part('morning', async () => {
   same(await chatLine(), 'Pigeons on their way to you', 'morning: Chat’s line, pigeons on');
   const offCards = (r) => r.fetch().then(async (res) => { const a = await res.json(); if (a.cards?.chat) a.cards.chat.pigeons = false; return r.fulfill({ response: res, json: a }); });
   await p.route((u) => new URL(u).pathname === '/api/today', offCards);
+  // (and in the one trip of who and the day, as it's opened again: its cards)
+  await p.route((u) => new URL(u).pathname === '/api/boot', (r) => r.fetch().then(async (res) => { const a = await res.json(); if (a.cards?.cards?.chat) a.cards.cards.chat.pigeons = false; return r.fulfill({ response: res, json: a }); }));
   await p.reload();
   await p.waitForFunction(() => document.querySelectorAll('.tcard[data-state="ok"]').length === 4);
   await p.waitForTimeout(300);
