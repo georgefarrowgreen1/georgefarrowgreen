@@ -247,8 +247,8 @@ if (own && !ownSeen?.stuck) {
   ok(sheet === 'To', 'New Message: the sheet, To focused, at the tap', String(sheet));
   await own.keyboard.press('Escape').catch(() => {});
   const kept = await (async () => { for (let i = 0; i < 40; i++) { const k = await own.evaluate(() => caches.open('mail-app-2').then((c) => c.keys()).then((ks) => ks.map((r) => new URL(r.url)).map((u) => u.pathname + u.search).filter((x) => x.startsWith('/parts/')).sort())).catch(() => []);
-    if (k.length >= 5) return k; await wait(500); } return own.evaluate(() => caches.open('mail-app-2').then((c) => c.keys()).then((ks) => ks.map((r) => new URL(r.url).pathname + new URL(r.url).search))).catch((e) => String(e)); })();
-  ok(JSON.stringify(kept) === JSON.stringify(['/parts/compose.js', '/parts/search.js', '/parts/sheets.js', '/parts/viewer.js'].map((x) => `${x}?b=${build}`).concat('/parts/kept').sort()),
+    if (k.length >= 6) return k; await wait(500); } return own.evaluate(() => caches.open('mail-app-2').then((c) => c.keys()).then((ks) => ks.map((r) => new URL(r.url).pathname + new URL(r.url).search))).catch((e) => String(e)); })();
+  ok(JSON.stringify(kept) === JSON.stringify(['/parts/compose.js', '/parts/search.js', '/parts/sheets.js', '/parts/spot.js', '/parts/viewer.js'].map((x) => `${x}?b=${build}`).concat('/parts/kept').sort()),
     'Mail’s worker keeps this Mail’s parts by its build, for opening offline', JSON.stringify(kept));
   const [mineAsk, oldAsk, noneAsk] = await Promise.all([`/parts/compose.js?b=${build}`, '/parts/compose.js?b=0.01', `/parts/nothing.js?b=${build}`].map((u) => hostAsk('email.ifl.test:8788', u)));
   ok(mineAsk.status === 200 && /javascript/.test(mineAsk.headers['content-type']) && mineAsk.headers['cache-control'] === 'no-cache' && oldAsk.status === 409 && noneAsk.status === 404,

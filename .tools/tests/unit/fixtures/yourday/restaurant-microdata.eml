@@ -1,0 +1,27 @@
+From: OpenTable <no-reply@opentable.com>
+To: hello@inflite.ai
+Subject: Your reservation at Taberna da Rua das Flores
+Message-ID: <ot-55120@opentable.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<div itemscope itemtype="http://schema.org/FoodEstablishmentReservation">
+  <meta itemprop="reservationNumber" content="OT55120">
+  <link itemprop="reservationStatus" href="http://schema.org/ReservationConfirmed">
+  <div itemprop="underName" itemscope itemtype="http://schema.org/Person"><meta itemprop="name" content="George"></div>
+  <table><tr><td>
+  <div itemprop="reservationFor" itemscope itemtype="http://schema.org/FoodEstablishment">
+    <h2 itemprop="name">Taberna da Rua das Flores</h2>
+    <div itemprop="address" itemscope itemtype="http://schema.org/PostalAddress">
+      <span itemprop="streetAddress">Rua das Flores 103</span>,
+      <span itemprop="addressLocality">Lisbon</span>
+    </div>
+  </div>
+  </td><td>
+  <p>Table for <span itemprop="partySize">2</span> on <time itemprop="startTime" datetime="@D+2@T20:00:00+00:00">the evening</time></p>
+  </td></tr></table>
+</div>
+<p>We look forward to seeing you<br>— the OpenTable team</p>
+</body></html>

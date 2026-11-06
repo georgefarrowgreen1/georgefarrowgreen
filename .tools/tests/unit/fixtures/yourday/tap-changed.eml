@@ -1,0 +1,26 @@
+From: TAP Air Portugal <bookings@flytap.com>
+To: hello@inflite.ai
+Subject: Your flight time has changed: TP1366
+Message-ID: <k7qx2m-2@flytap.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><head><script type="application/ld+json">
+[{
+  "@context": "http://schema.org",
+  "@type": "FlightReservation",
+  "reservationNumber": "K7QX2M",
+  "reservationStatus": "http://schema.org/ReservationConfirmed",
+  "modifiedTime": "@D+0@T09:00:00+00:00",
+  "reservationFor": {
+    "@type": "Flight",
+    "flightNumber": "1366",
+    "airline": { "@type": "Airline", "name": "TAP Air Portugal", "iataCode": "TP" },
+    "departureAirport": { "@type": "Airport", "name": "Lisbon Humberto Delgado", "iataCode": "LIS" },
+    "departureTime": "@D+4@T19:35:00+00:00",
+    "arrivalAirport": { "@type": "Airport", "name": "London Heathrow", "iataCode": "LHR" },
+    "arrivalTime": "@D+4@T22:10:00+00:00"
+  }
+}]
+</script></head><body><p>Your flight TP1366 now leaves Lisbon at 19:35.</p></body></html>

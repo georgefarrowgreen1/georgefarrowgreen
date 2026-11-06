@@ -1,0 +1,19 @@
+From: Rowan Ash <rowan@example.com>
+To: hello@inflite.ai
+Subject: Lunch on Thursday?
+Message-ID: <lunch-1@example.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="p1"
+
+--p1
+Content-Type: text/plain; charset=utf-8
+
+Shall we meet at noon by the river? I booked us a table, flight of fancy aside.
+
+--p1
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Shall we meet at noon by the river? I booked us a table: <code>{"@type": "FoodEstablishmentReservation"}</code></p></body></html>
+
+--p1--

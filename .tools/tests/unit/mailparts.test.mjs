@@ -1,6 +1,6 @@
 // Mail's page in parts (the inflite repo's email/public/, where it's checked out beside this one): app.js is what Mail
 // opens to (signing in, the list, a conversation read, Done and Later), and what's used later is a module of its own in
-// public/parts/ (the compose sheet, the viewer, search's help, the sheets used now and then, the demo), loaded the first
+// public/parts/ (the compose sheet, the viewer, search’s help, the sheets used now and then, a booking’s strip, the demo), loaded the first
 // time it's needed as /parts/<name>.js?b=<BUILD>. Checked here: app.js stays small (gzipped, under its budget); every
 // part it asks for is there, given all it uses of Mail's own and giving back what app.js calls; Mail's Worker gives a
 // part only to a page of the Mail deployed (another's turned away: 409; none that isn't there: 404, never the page);
@@ -139,7 +139,7 @@ function sw(net) {
   const parts = () => [...kept.keys()].map((u) => new URL(u)).filter((u) => u.pathname.startsWith('/parts/') && u.search).map((u) => u.pathname + u.search).sort();
   return { send, get, kept, asked, parts };
 }
-const PARTS = ['compose', 'search', 'sheets', 'viewer'];
+const PARTS = ['compose', 'search', 'sheets', 'spot', 'viewer'];
 
 test('Mail’s service worker keeps a Mail’s parts by its build as it keeps that Mail’s app.js; gives a page its own Mail’s, kept first, offline too', { skip }, async () => {
   let build = '1.70', down = false, deployed = '1.70';

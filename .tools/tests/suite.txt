@@ -73,6 +73,7 @@ wxhub
 mkthub
 ridetime
 hubmail
+mailyourday
 chats
 hubshare
 hubpush

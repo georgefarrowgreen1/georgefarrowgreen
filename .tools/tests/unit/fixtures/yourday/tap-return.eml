@@ -1,0 +1,68 @@
+From: TAP Air Portugal <bookings@flytap.com>
+To: hello@inflite.ai
+Subject: Your booking is confirmed: London - Lisbon
+Message-ID: <k7qx2m-1@flytap.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="tap1"
+
+--tap1
+Content-Type: text/plain; charset=utf-8
+
+Olá George, thank you for choosing TAP.
+TP1351 London Heathrow T2 07:40 -> Lisbon T1 10:15
+TP1366 Lisbon T1 18:05 -> London Heathrow T2 20:40
+Booking reference K7QX2M
+
+--tap1
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><head>
+<script type=3D"application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@graph": [
+    {
+      "@type": "FlightReservation",
+      "reservationNumber": "K7QX2M",
+      "reservationStatus": "http://schema.org/ReservationConfirmed",
+      "underName": { "@type": "Person", "name": "George Farrow-Green" },
+      "reservationFor": { "@id": "#out" }
+    },
+    {
+      "@id": "#out",
+      "@type": "Flight",
+      "flightNumber": "1351",
+      "airline": { "@type": "Airline", "name": "TAP Air Portugal", "iataCode": "TP" },
+      "departureAirport": { "@type": "Airport", "name": "London Heathrow", "iataCode": "LHR" },
+      "departureTerminal": "2",
+      "departureTime": "@D+1@T07:40:00+00:00",
+      "arrivalAirport": { "@type": "Airport", "name": "Lisbon Humberto Delgado", "iataCode": "LIS",
+        "geo": { "@type": "GeoCoordinates", "latitude": 38.7742, "longitude": -9.1342 } },
+      "arrivalTime": "@D+1@T10:15:00+00:00"
+    },
+    {
+      "@type": "FlightReservation",
+      "reservationNumber": "K7QX2M",
+      "reservationStatus": "http://schema.org/ReservationConfirmed",
+      "reservationFor": {
+        "@type": "Flight",
+        "flightNumber": "TP1366",
+        "airline": { "@type": "Airline", "name": "TAP Air Portugal", "iataCode": "TP" },
+        "departureAirport": { "@type": "Airport", "name": "Lisbon Humberto Delgado", "iataCode": "LIS" },
+        "departureTime": "@D+4@T18:05:00+00:00",
+        "arrivalAirport": { "@type": "Airport", "name": "London Heathrow", "iataCode": "LHR" },
+        "arrivalTerminal": "2",
+        "arrivalTime": "@D+4@T20:40:00+00:00"
+      }
+    }
+  ]
+}
+</script></head>
+<body><p>Ol=C3=A1 George, thank you for choosing TAP. Your e-ticket and booking details are below.</p>
+<p><b>TP1351</b> =C2=B7 London Heathrow T2 07:40 =E2=86=92 Lisbon T1 10:15</p>
+<p><b>TP1366</b> =C2=B7 Lisbon T1 18:05 =E2=86=92 London Heathrow T2 20:40</p>
+<p>Booking reference <b>K7QX2M</b></p></body></html>
+
+--tap1--

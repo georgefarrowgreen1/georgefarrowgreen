@@ -1,0 +1,16 @@
+From: Some Airline <bookings@some-airline.example>
+To: hello@inflite.ai
+Subject: Booking confirmation ABC123
+Message-ID: <abc123@some-airline.example>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><head>
+<script type="application/ld+json">
+{ "@context": "http://schema.org", "@type": "FlightReservation", "reservationNumber": "ABC123",
+  "reservationFor": { "@type": "Flight", "flightNumber": "SA100" "departureTime": "@D+2@T10:00:00Z"
+</script>
+<script type="application/ld+json">{ "@type": "FlightReservation", "reservationNumber": "ABC124", "reservationFor": { "@type": "Flight", "flightNumber": "SA101", "departureTime": "not a time" } }</script>
+<script type="application/ld+json">{ "@type": "Organization", "name": "Some Airline", "url": "https://some-airline.example" }</script>
+</head><body><p>Thanks for booking.</p></body></html>

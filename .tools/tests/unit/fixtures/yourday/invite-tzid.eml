@@ -1,0 +1,49 @@
+From: Lisbon Food Tours <hello@lisbonfoodtours.pt>
+To: hello@inflite.ai
+Subject: Invitation: Alfama food walk
+Message-ID: <lft-2211@lisbonfoodtours.pt>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="ics1"
+
+--ics1
+Content-Type: text/plain; charset=utf-8
+
+You're booked on the Alfama food walk.
+
+--ics1
+Content-Type: text/calendar; charset=utf-8; method=REQUEST
+Content-Transfer-Encoding: 7bit
+
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Lisbon Food Tours//Bookings//EN
+METHOD:REQUEST
+BEGIN:VTIMEZONE
+TZID:Europe/Lisbon
+BEGIN:STANDARD
+DTSTART:19701025T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0000
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:walk-2211@lisbonfoodtours.pt
+DTSTAMP:20261101T120000Z
+DTSTART;TZID=Europe/Lisbon:@C+3@T110000
+DTEND;TZID=Europe/Lisbon:@C+3@T133000
+SUMMARY:Alfama food walk
+LOCATION:Largo do Chafariz de Dentro\, Alfama\, Lisbon - meet by the fou
+ ntain
+DESCRIPTION:Bring comfortable shoes.\nWe walk about 3 km.
+GEO:38.7115;-9.1276
+STATUS:CONFIRMED
+BEGIN:VALARM
+TRIGGER:-PT1H
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+--ics1--
