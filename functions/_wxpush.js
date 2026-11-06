@@ -53,8 +53,9 @@ import { busyMap, holdsFor } from "./_busy.js";
 const pushToSub = (env, sub, note) => pushOne(env, sub, { ...note, app: "weather" });
 
 // (MAX_SUBS: devices not signed in, at most, and NET_DAY of them a day from one network; MAX_ALL: every device, the
-// account's included: accounts are by invite, so theirs aren't held back by anyone else's)
-const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46;
+// account's included: accounts are by invite, so theirs aren't held back by anyone else's; MAX_DEVS: one account's, at
+// most, as Markets keeps (the oldest let go for a new one: keepFew), so no one account fills the whole)
+const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, MAX_DEVS = 10, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46;
 // (a device's places with notifications: as many as a list of saved places is likely to want)
 export const MAX_PLACES = 12;
 // what Open-Meteo is asked, in its own measure: a place's rain is one call, its whole forecast about seven (its free
@@ -364,7 +365,14 @@ export async function subscribe(env, b, user = null, account = null, label = "",
   }
   dv = { dev, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, units };
   await setRows(D, dv, w, t);
+  if (user) await keepFew(D, user.id, dev);
   return { ok: true, on: true, id: dev };
+}
+// An account's devices kept to MAX_DEVS (its email aside): those heard from least lately let go, with their places, never
+// the one just made the account's (dev)
+async function keepFew(D, userId, dev) {
+  const old = `SELECT dev FROM wx_devs WHERE user_id = ?1 AND dev NOT LIKE '${MAIL}%' ORDER BY dev = ?3 DESC, coalesce(updated, 0) DESC, coalesce(created, 0) DESC LIMIT -1 OFFSET ?2`;
+  await D.batch([D.prepare(`DELETE FROM wx_subs WHERE dev IN (${old})`).bind(userId, MAX_DEVS, dev), D.prepare(`DELETE FROM wx_devs WHERE dev IN (${old})`).bind(userId, MAX_DEVS, dev)]);
 }
 // A device InFlite's one device route makes one of the account's (functions/_devices.js, after the person's tap on Get
 // Every App's Notifications Here): the root subscription (sub: the browser's) as a device of Weather's, signed in to the
@@ -386,6 +394,7 @@ export async function deviceFor(env, userId, sub, { sess = null, via = null } = 
     .bind(dev, s.endpoint, s.p256dh, s.auth, userId, label, units, w.briefAt, t, sess, v, MAX_ALL).run();
   if (!ins.meta?.changes) return false;
   await setRows(D, { dev, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, units }, w, t);
+  await keepFew(D, userId, dev);
   return true;
 }
 // …and the same device, by its push address, moved to a new one by the browser (was: the old), or taken off (endpoint),
@@ -595,12 +604,16 @@ async function tick(env, D, t, origin, until = Infinity) {
 // warnings or panels (nothing else looks at them), so their clock's kept right when it changes in spring and autumn (the
 // forecast says it: notify), for saying when a warning ends and holding a yellow one overnight. Briefings first (they're
 // kept to their time), and only so many a tick: the rest wait for a later tick, in a different order each time (so the
-// same ones aren't always left out)
+// same ones aren't always left out), a place from each device before a second from any (so one with many places
+// doesn't crowd out the rest), and no more than MAX_PLACES of one device's a tick
 export function toLook(subs, t, most = PER_TICK, rnd = Math.random) {
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
   const night = (s) => { if (!s.warn && !s.solar) return false; const at = new Date(local(s)); return at.getUTCHours() === 3 && at.getUTCMinutes() < 10; };
+  const nth = new Map();
   return subs.filter((s) => s.tz_off == null || (s.rain && !isQuiet(local(s))) || due(s) || night(s))
-    .map((s) => [s, due(s) ? -1 : rnd()]).sort((a, b) => a[1] - b[1]).map(([s]) => s).slice(0, most);
+    .map((s) => [s, rnd()]).sort((a, b) => a[1] - b[1])
+    .map(([s, r]) => { const d = s.dev || s.id, n = nth.get(d) || 0; nth.set(d, n + 1); return [s, due(s) ? -1 : n, r, n]; })
+    .filter((e) => e[1] < 0 || e[3] < MAX_PLACES).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([s]) => s).slice(0, most);
 }
 // What's kept of Open-Meteo's allowance for the ticks (left: what the last tick that asked left, { n, at }): that, and
 // what's been earned since (OM_DAY a day), up to OM_KEEP; the whole of OM_KEEP the first time. (A tick asks for no more

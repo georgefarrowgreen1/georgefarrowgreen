@@ -44,7 +44,7 @@
 // Every word is plain text (the page draws it escaped); every card for Chat is built by the module whose data it is
 // (functions/_todaywx.js, _todayfit.js, _todaymkt.js), packed here (pigeon/cards.js packCard), and its line cut by
 // shareCut. The links are the hub's own paths (/weather/#radar, /fitness/#today, /chats/#open=…).
-import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer, offsetAt } from "./_todaycards.js";
+import { localDay, dayAfter, weekdayOf, zoneOk, shareCut, withDeadline, stepTimer, offsetAt, DAY_LIMIT_MS } from "./_todaycards.js";
 import { phaseOf, ridesWithDones, wallAt, DAY_START, EVENING_AT } from "./_todayphase.js";
 import { upcomingFor, mailWaiting, moneyFor } from "./_todaycoming.js";
 import { rideWx } from "./_todayride.js";
@@ -70,8 +70,10 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 // a ride's weather has this long (the cards have had theirs, and the day itself has 3 seconds: functions/_todaycards.js);
 // the holds start this long before a ride (functions/_busy.js)
 const WX_MS = 2000, HOLD_EARLY = 10 * MIN;
-// (a trip's weather has this long, once Mail's answered: functions/_todaywx.js tripWeather)
+// (a trip's weather has this long, once Mail's answered: functions/_todaywx.js tripWeather; and never past the day's own
+// time, less TRIP_SPARE for what's still to do after it, so a slow forecast loses only the trip's weather, not the day)
 export const TRIP_WX_MS = 1500;
+const TRIP_SPARE = 300;
 const NOUN = { ride: "Ride", run: "Run", swim: "Swim", walk: "Walk", row: "Row", strength: "Strength" };
 
 // ---- words ----
@@ -193,7 +195,7 @@ export async function dayInputs(env, u, t, tz, cards) {
 }
 
 export async function dayFor(env, u, t, cards, opts = {}) {
-  const zone = zoneOk(opts.tz) ? opts.tz : "Europe/London", hm = (ms) => clockOf(zone).format(new Date(ms));
+  const zone = zoneOk(opts.tz) ? opts.tz : "Europe/London", hm = (ms) => clockOf(zone).format(new Date(ms)), begun = Date.now();
   // (each part timed, so a day that runs out of time says which part was slow: opts.steps, _todaycards.js stepTimer)
   const T = opts.steps || stepTimer();
   const g = await T.time("Your day’s data", gather(env, u, t, zone, cards)), { today, D, rides, dones } = g;
@@ -218,20 +220,26 @@ export async function dayFor(env, u, t, cards, opts = {}) {
   // (and Mail's card, the admin's alone: numbers asked of Mail, 700 ms at most from here, who the admin is included,
   // functions/_todaymail.js; none, no card; and not asked at all where the account's Edit hid it)
   const mailHidden = Array.isArray(g.row?.cards?.hidden) && g.row.cards.hidden.includes("mail");
-  const [wxs, waiting, held, wrote, load, mail] = await Promise.all([
+  const mailing = mailHidden ? null : T.time("Mail’s numbers", soft(env, "mail", mailCard(env, u, opts.request || null, t), null));
+  // (Mail's trip shown as a card, with the weather where it goes: asked for as soon as Mail's answered, alongside the
+  // rides' weather and the rest, not after them; none where there's none in time, or it can't be had)
+  let trip0 = null;
+  const tripping = Promise.resolve(mailing).then((mail) => {
+    trip0 = mail ? tripFor(mail, t) : null;
+    const ms = Math.max(0, Math.min(TRIP_WX_MS, begun + DAY_LIMIT_MS - TRIP_SPARE - Date.now()));
+    return trip0 ? T.time("Trip weather", withDeadline(tripWeather(env, trip0, t, { deg: cards?.weather?.forDay?.deg || null }), ms).catch(() => null)) : null;
+  });
+  const [wxs, waiting, held, wrote, load, mail, twx] = await Promise.all([
     Promise.all(matched.map((x) => (over(x) ? null : T.time("Ride forecast", withDeadline(rideWx(env, u, x.ride, t), WX_MS).catch(() => null))))),
     T.time("Who’s waiting", soft(env, "waiting", waitingFor(env, u, t), [])),
     ph.phase === "riding" && next ? T.time("Held messages", soft(env, "held", heldCount(env, u.id, next.ride.start - HOLD_EARLY, { t }), 0)) : 0,
     // (who wrote while you rode: from the ride's start to the activity's end)
     afterOf ? T.time("Who wrote", soft(env, "wrote", wroteWhile(env, u, afterOf.ride.start, Math.min(afterOf.end, afterOf.arrival)), [])) : [],
     wantCtl ? T.time("Fitness load", soft(env, "load", loadOf(env, u.id, t), [])) : [],
-    mailHidden ? null : T.time("Mail’s numbers", soft(env, "mail", mailCard(env, u, opts.request || null, t), null)),
+    mailing, tripping,
   ]);
   // (Mail's card among the answer's cards, as the other four are: only where Mail answered)
   if (mail && cards && typeof cards === "object") cards.mail = mail;
-  // (Mail's trip shown as a card, with the weather where it goes: none where there's none in time, or it can't be had)
-  const trip0 = mail ? tripFor(mail, t) : null;
-  const twx = trip0 ? await T.time("Trip weather", withDeadline(tripWeather(env, trip0, t, { deg: cards?.weather?.forDay?.deg || null }), TRIP_WX_MS).catch(() => null)) : null;
   const trip = trip0 ? tripOf(trip0, twx, zone) : null;
   // (Fitness (CTL) as of the day's end at the latest: in the small hours, the day before's, as it was at 23:59)
   const ctl = wantCtl ? ctlOf(load, Math.min(t, today.end - 1), { start: doneToday.start }) : null;

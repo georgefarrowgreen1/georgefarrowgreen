@@ -83,7 +83,7 @@ function booked(t = FRI) {
 
 // ---- the stand-ins: Mail's Worker (its card, and Hide), Open-Meteo (the forecast, and Weather's place search) ----
 let mailSays = () => Response.json(booked()), hideSays = () => new Response(null, { status: 204 }), unhideSays = () => new Response(null, { status: 204 });
-let asked = [], omTz = "Europe/Lisbon", omDown = false, places = { lisbon: [{ name: "Lisbon", latitude: 38.71667, longitude: -9.13333, country_code: "PT", admin1: "Lisbon", country: "Portugal" }] };
+let asked = [], omTz = "Europe/Lisbon", omDown = false, omSlow = () => 0, places = { lisbon: [{ name: "Lisbon", latitude: 38.71667, longitude: -9.13333, country_code: "PT", admin1: "Lisbon", country: "Portugal" }] };
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, o = {}) => {
   const u = new URL(String(url)), h = new Headers(o.headers || {});
@@ -98,6 +98,8 @@ globalThis.fetch = async (url, o = {}) => {
   if (u.origin === OM && u.pathname === "/v1/forecast") {
     asked.push({ path: u.pathname, lat: +u.searchParams.get("latitude"), lon: +u.searchParams.get("longitude"), days: +u.searchParams.get("forecast_days") });
     if (omDown) return new Response("down", { status: 503 });
+    const slow = omSlow(+u.searchParams.get("latitude"));
+    if (slow) await new Promise((ok) => setTimeout(ok, slow));
     const f = omForecast(FRI);
     return Response.json({ ...f, timezone: omTz, timezone_abbreviation: omTz === "Europe/Paris" ? "CET" : "WET", utc_offset_seconds: omTz === "Europe/Paris" ? 3600 : 0 });
   }
@@ -303,6 +305,29 @@ test("the day: Mail's trip with its weather, its zone and how far from home; its
   const d6 = await dayFor(env, GF, FRI, {}, { tz: "Europe/London" });
   assert.ok(!("trip" in d6) && !d6.upcoming.some((r) => r.app === "mail"));
   mailSays = () => Response.json(booked());
+});
+
+// The trip's weather is asked for as soon as Mail's answered, alongside a ride's weather, not after it: each well within
+// its own time, they'd have run past the day's three seconds one after the other, and the page lost the day for the
+// plain cards
+test("the day: the trip's weather asked for alongside the ride's, not after it, so both slow ones fit the day's time", async () => {
+  mailSays = () => { const b = booked(); b.trips[0].destination = { name: "Lisbon", lat: 38.7223, lon: -9.1393 }; return Response.json(b); };
+  omTz = "Europe/Lisbon"; omDown = false;
+  // (a ride this afternoon, and London for its weather; each forecast 1.2 seconds coming)
+  run("INSERT INTO fx_times (user_id, day, start, stop, tz, sport, source, made) VALUES ('gf', '2026-11-06', ?, ?, 'Europe/London', 'ride', 'set', ?)", at(6, 16), at(6, 17), FRI - H);
+  run("INSERT OR REPLACE INTO wx_accts (user_id, data, ver, updated) VALUES ('gf', ?, 1, 0)", JSON.stringify({ places: [{ name: "London", lat: 51.5072, lon: -0.1276 }], settings: {}, notify: {} }));
+  omSlow = (lat) => (Math.round(lat) === 52 || Math.round(lat) === 39 ? 1200 : 0);
+  try {
+    asked = [];
+    const began = Date.now(), d = await dayFor(env, GF, FRI, {}, { tz: "Europe/London" }), took = Date.now() - began;
+    assert.ok(asked.some((a) => Math.round(a.lat) === 52) && asked.some((a) => Math.round(a.lat) === 39), "both forecasts asked for");
+    assert.ok(d.trip?.days?.[0]?.hi, "the trip with its weather");
+    assert.ok(took < 2000, `the two at once (${took} ms; one after the other, 2,400)`);
+  } finally {
+    omSlow = () => 0;
+    run("DELETE FROM fx_times WHERE user_id = 'gf'"); run("DELETE FROM wx_accts WHERE user_id = 'gf'");
+    mailSays = () => Response.json(booked());
+  }
 });
 
 // ---- Hide ----

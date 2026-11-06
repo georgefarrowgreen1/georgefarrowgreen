@@ -79,12 +79,13 @@ async function fetchJson(env, path) {
 // than nothing where the source can't be reached (said as such: stale). While it can't be (down, or turning requests
 // away), it isn't asked again on every request, which only keeps it so: the old one's given for a minute without
 // asking, or where there's none, the failure for a few seconds. kept: what's kept only, never asked for (a request
-// that's waited long enough: quotes)
+// that's waited long enough: quotes); ask: said first, where the source would be asked (not kept, or kept too long),
+// whether it may be (no: what's kept, if anything, as if kept were set: a request's share of the source, its route's)
 const memory = new Map();
 const remember = (key, m) => { memory.set(key, m); if (memory.size > 2000) memory.delete(memory.keys().next().value); };
 const staleOf = (v) => (v == null ? null : Array.isArray(v) ? v : { ...v, stale: true });
 // (MARKETS_TTL in the environment: how long each is kept, as a part of its usual time; tests, 0, so a price they move is seen at once)
-async function cached(env, key, ttl0, make, { kept = false } = {}) {
+async function cached(env, key, ttl0, make, { kept = false, ask = null } = {}) {
   const ttl = env.MARKETS_TTL != null ? ttl0 * Number(env.MARKETS_TTL) : ttl0, t = Date.now(), m = memory.get(key);
   if (m && t < (m.until ?? m.at + ttl)) { if (m.fail) throw m.fail; return m.until ? staleOf(m.v) : m.v; }
   const D = await mkdb(env);
@@ -93,7 +94,7 @@ async function cached(env, key, ttl0, make, { kept = false } = {}) {
   const saved = row ? { at: row.at, v: JSON.parse(row.v) } : null, mine = m && !m.fail ? m : null;
   const old = saved && !(mine?.at > saved.at) ? saved : mine;
   if (old && t - old.at < ttl) { remember(key, { at: old.at, v: old.v }); return old.v; }
-  if (kept) return old ? staleOf(old.v) : null;
+  if (kept || (ask && !(await ask()))) return old ? staleOf(old.v) : null;
   try {
     const v = await make();
     // (kept for the other copies: written after the answer's gone, where the request lets it (env.waitUntil, the
@@ -198,15 +199,15 @@ export async function quote(env, symbol, opt) {
   return { ...rest, chg: rest.price != null && rest.prev ? rest.price - rest.prev : null, chgPct: rest.price != null && rest.prev ? (rest.price / rest.prev - 1) * 100 : null, spark, sparkT };
 }
 // one quote by a time (by, ms): where the source is slow to answer, what's kept is given in its place (said as stale),
-// and the answer, once it comes, kept for the next; past it, what's kept, without asking
-function quoteBy(env, s, by = Infinity) {
+// and the answer, once it comes, kept for the next; past it, what's kept, without asking (opt: cached's ask)
+function quoteBy(env, s, by = Infinity, opt = {}) {
   const kept = () => quote(env, s, { kept: true }).catch(() => null), left = by - Date.now();
   if (left <= 0) return kept();
-  if (!Number.isFinite(left)) return quote(env, s).catch(() => null);
+  if (!Number.isFinite(left)) return quote(env, s, opt).catch(() => null);
   let timer;
   const late = new Promise((ok) => { timer = setTimeout(ok, left); }).then(kept);
   // (carried on past the answer, where the request lets it (env.waitUntil), or it'd be cut off with it, and not kept)
-  const fresh = quote(env, s).catch(() => null).finally(() => clearTimeout(timer));
+  const fresh = quote(env, s, opt).catch(() => null).finally(() => clearTimeout(timer));
   env.waitUntil?.(fresh);
   return Promise.race([fresh, late]);
 }
@@ -218,10 +219,10 @@ export async function fewAtATime(list, f, n = 6) {
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (next < list.length) { const i = next++; out[i] = await f(list[i], i); } }));
   return out;
 }
-// several at once, six at a time (by: a time to answer by, for a request that's waiting: quoteBy)
-export async function quotes(env, symbols, by = Infinity) {
+// several at once, six at a time (by: a time to answer by, for a request that's waiting: quoteBy; opt: cached's ask)
+export async function quotes(env, symbols, by = Infinity, opt = {}) {
   const out = {}, list = [...new Set(symbols)];
-  (await fewAtATime(list, (s) => quoteBy(env, s, by))).forEach((q, i) => { if (q) out[list[i]] = q; });
+  (await fewAtATime(list, (s) => quoteBy(env, s, by, opt))).forEach((q, i) => { if (q) out[list[i]] = q; });
   return out;
 }
 // A year of a holding, for what's worth knowing: its week, a year of its dividends to expect again (each, and all
@@ -509,17 +510,18 @@ export async function orderHoldings(env, userId, list) {
 // ---------------- buys and sales ----------------
 // A holding's buys and sales, oldest first, and what they come to: { buys: [{ id, qty, price, at }], qty, cost (the
 // average, where every buy's price is known), made (what sales made over the average, where known) }
+// (a sale whose price isn't known leaves what it made unknown, not the average: what's left cost what it did)
 export function pooled(buys) {
-  let qty = 0, total = 0, known = true, made = 0, sold = false;
+  let qty = 0, total = 0, known = true, madeKnown = true, made = 0, sold = false;
   for (const b of buys) {
-    if (b.qty > 0) { qty += b.qty; if (b.price == null) known = false; else total += b.qty * b.price; continue; }
+    if (b.qty > 0) { qty += b.qty; if (b.price == null) known = madeKnown = false; else total += b.qty * b.price; continue; }
     const out = Math.min(qty, -b.qty), avg = qty ? total / qty : 0;
     sold = true;
-    if (known && b.price != null) made += out * (b.price - avg); else known = false;
+    if (known && madeKnown && b.price != null) made += out * (b.price - avg); else madeKnown = false;
     total -= out * avg; qty -= out;
     if (qty <= 1e-9) { qty = 0; total = 0; }
   }
-  return { qty: +qty.toFixed(6), cost: known && qty > 0 ? +(total / qty).toPrecision(10) : null, made: sold && known ? +made.toFixed(2) : null };
+  return { qty: +qty.toFixed(6), cost: known && qty > 0 ? +(total / qty).toPrecision(10) : null, made: sold && known && madeKnown ? +made.toFixed(2) : null };
 }
 export async function buysOf(env, userId, symbol) {
   const D = await mkdb(env), s = cleanSymbol(symbol);
