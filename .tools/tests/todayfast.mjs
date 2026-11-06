@@ -55,10 +55,17 @@ async function context({ workers = false, clock = true } = {}) {
   await ctx.route((u) => /^\/weather\/.+/.test(new URL(u).pathname), (r) => r.fulfill({ status: 404, body: 'Not found', contentType: 'text/plain' }));
   return ctx;
 }
+// (Weather's module files aren't served by this stack: the root worker's own fetches of them, which no route can stand
+// in for, answer 503, as the console says; anything else's is an error)
 const watch = (p, tag) => {
-  p.on('response', (r) => { if (r.status() >= 500) console.log(`(${tag}: ${r.status()} ${r.url()})`); });
+  const bad = [];
+  p.on('response', (r) => { if (r.status() >= 500) { console.log(`(${tag}: ${r.status()} ${r.url()})`); if (!/\/weather\//.test(r.url())) bad.push(r.url()); } });
   p.on('pageerror', (e) => errs.push(`${tag}: pageerror: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (40[134]|50[12])/.test(m.text())) errs.push(`${tag}: ${m.text()}`); });
+  p.on('console', (m) => {
+    if (m.type() !== 'error' || /Failed to load resource: the server responded with a status of (40[134]|50[12])/.test(m.text())) return;
+    if (/status of 503/.test(m.text()) && !bad.length) return;
+    errs.push(`${tag}: ${m.text()}`);
+  });
 };
 const drawn = (p) => p.waitForSelector('#today[data-phase] #top .day-top', { timeout: 15000 }).then(() => true, () => false);
 async function part(name, fn) { try { await fn(); } catch (e) { ok(false, name, e.stack?.split('\n').slice(0, 3).join(' | ')); } }
@@ -100,7 +107,7 @@ await part('b. an account from before today/boot', async () => {
 
 await part('c. opened from what the root worker keeps; renewed by the updater', async () => {
   await ctl('/__mode', { phase: 'morning' }); await reset();
-  const ctx = await context({ workers: true, clock: false }), p = await ctx.newPage(); watch(p, 'c');
+  const ctx = await context({ workers: true }), p = await ctx.newPage(); watch(p, 'c');
   const fromWorker = [];
   ctx.on('request', (r) => { if (r.serviceWorker()) fromWorker.push(new URL(r.url()).pathname); });
   await p.goto(BASE + '/'); await drawn(p);
@@ -109,19 +116,20 @@ await part('c. opened from what the root worker keeps; renewed by the updater', 
   // (its files all kept, as it installs or as the page asks for them)
   await p.waitForFunction(async () => { const c = await caches.open('today-app-4'); return !!(await c.match('/')) && !!(await c.match('/app.js')) && !!(await c.match('/roof/frame.js')); }, null, { timeout: 15000 }).catch(() => {});
   fromWorker.length = 0;
+  // (by way of another page: the same address typed again is a reload to Chrome, which goes past what's kept on purpose)
+  await p.goto('about:blank');
   const t0 = Date.now();
-  await p.goto(BASE + '/');
+  const doc = await p.goto(BASE + '/');
   ok(await drawn(p), 'c. opened again: the day drawn');
   const shell = fromWorker.filter((x) => ['/', '/index.html', '/app.js', '/cards.js', '/app.css', '/day.css', '/roof/frame.js', '/roof/router.js'].includes(x));
   ok(shell.length === 0, 'c. the page and its files from what’s kept: none fetched by the worker', shell.join(', '));
-  const nav = await p.evaluate(() => { const n = performance.getEntriesByType('navigation')[0]; return { workerStart: n.workerStart, responseStart: Math.round(n.responseStart), transfer: n.transferSize }; });
-  ok(nav.workerStart > 0 && nav.transfer === 0, 'c. the page itself answered by the worker, nothing over the network', JSON.stringify(nav));
-  console.log(`(c: opened again in ${Date.now() - t0} ms; first answer at ${nav.responseStart} ms)`);
+  ok(doc?.fromServiceWorker() === true, 'c. the page itself answered by the root worker');
+  console.log(`(c: opened again in ${Date.now() - t0} ms)`);
   // (the updater, before it loads a new Today: { ifl: "renew" }, as IFL.updates sends it)
   fromWorker.length = 0;
   const renewed = await p.evaluate(() => new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = (e) => ok(e.data); navigator.serviceWorker.controller.postMessage({ ifl: 'renew' }, [ch.port2]); setTimeout(() => ok(null), 12000); }));
   ok(renewed?.ifl === 'renewed', 'c. renew: the worker says renewed', JSON.stringify(renewed));
-  const files = await p.evaluate(async () => { const r = await fetch('/sw.js'); const t = await r.text(); const m = /const FILES = (\[[\s\S]*?\]);/.exec(t); return m ? Function(`return ${m[1]}`)() : []; });
+  const files = [...(/const FILES = (\[[\s\S]*?\]);/.exec(readFileSync(`${IFL}today/public/sw.js`, 'utf8'))?.[1] || '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const missing = files.filter((f) => !fromWorker.includes(f));
   ok(files.length > 20 && missing.length === 0, `c. renew: every one of Today’s ${files.length} files fetched again`, `not fetched: ${missing.join(', ')}`);
   await ctx.close();

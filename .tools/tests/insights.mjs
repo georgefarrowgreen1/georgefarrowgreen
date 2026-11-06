@@ -40,7 +40,8 @@ one(`UPDATE pg_users SET created_at = ${now - 12 * DAY}, seen_at = ${now - 12 * 
 
 // how fast the apps were on people's own devices (functions/_vitals.js): pages' beacons, numbers only; one from an app
 // that isn't one of the site's, and one with something else in it, kept only as far as the known numbers go
-const beacon = (b) => fetch(K.BASE + '/api/vitals', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(b) }).then((r) => r.status);
+// (a fresh connection each, once more if the server had let a kept one go: wrangler closes idle ones)
+const beacon = (b) => { const go = () => fetch(K.BASE + '/api/vitals', { method: 'POST', headers: { 'Content-Type': 'text/plain', Connection: 'close' }, body: JSON.stringify(b) }).then((r) => r.status); return go().catch(go); };
 const sentV = [];
 for (const lcp of [1800, 1800, 1800, 5200]) sentV.push(await beacon({ app: 'today', dev: 'phone', m: { lcp, fcp: 700, inp: 90, cls: 0.01, ttfb: 150 } }));
 sentV.push(await beacon({ app: 'weather', dev: 'computer', m: { fcp: 900, inp: 640, cls: 0.3, who: 'ann@example.com' } }));
