@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const ROOT = new URL("../../../", import.meta.url);
-const APP = readFileSync(new URL("pigeon/app.js", ROOT), "utf8");
+// (app.js, and later.js, the part of it loaded once the first screen is up: the engine loads it before it's ready)
+const APP = readFileSync(new URL("pigeon/app.js", ROOT), "utf8") + "\n" + readFileSync(new URL("pigeon/later.js", ROOT), "utf8");
 const THEME = readFileSync(new URL("pigeon/theme.js", ROOT), "utf8");
 const START = "// ==== the hub's rules (engine.test.mjs runs this block on its own", END = "// ==== end of the hub's rules ====";
 const block = (() => {

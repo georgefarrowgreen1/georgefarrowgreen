@@ -495,7 +495,8 @@ const CH = CHATS_ROOF;
 const chRead = (f) => read(new URL(f, CH));
 const chFiles = () => existsSync(CH) ? readdirSync(CH).filter((f) => f.endsWith('.js')) : [];
 const WORKER_FILES = ['core.js', 'idb.js'];
-const PIGEON_APP = read(new URL('pigeon/app.js', MAIN));
+// (with later.js, the part of app.js loaded once the first screen is up)
+const PIGEON_APP = read(new URL('pigeon/app.js', MAIN)) + '\n' + read(new URL('pigeon/later.js', MAIN));
 // (the frozen names of each file, spec §2.2, §3.1, §5.4; the openers' first parameter: ctx, or (ui, svc) for openSend)
 const CH_FROZEN = {
   'chats.js': ['CONTRACT', 'BUILD', 'NEWS', 'PROTOCOL', 'SECTIONS', 'mount', 'deviceOf'],
