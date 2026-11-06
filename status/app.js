@@ -47,14 +47,30 @@
 
   // ---- asking ----
   function seed() { try { const el = $("seed"); return el ? JSON.parse(el.textContent) : null; } catch (_) { return null; } }
-  async function load() {
-    try {
-      const r = await fetch("/api/status", { headers: { Accept: "application/json" } });
-      if (!r.ok) throw new Error(String(r.status));
-      data = await r.json(); data.fetched = Date.now();
-      draw();
-    } catch (_) { if (!data) unreachable(); }
+  // (one ask at a time; one that fails keeps what's shown, says the page is behind rather than the checks, and tries again
+  // in 15 seconds, as a phone that's just woken often has no connection for its first few)
+  let loading = null, retryT = 0;
+  function load() {
+    if (loading) return loading;
+    clearTimeout(retryT);
+    return (loading = (async () => {
+      try {
+        const r = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        data = await r.json(); data.fetched = Date.now();
+        draw();
+      } catch (_) {
+        if (!data) unreachable(); else { data.failed = Date.now(); verdict(); }
+        retryT = setTimeout(load, 15e3);
+      } finally { loading = null; }
+    })());
   }
+  // (back on the page: asked again where what's shown is over half a minute old, or the last ask failed)
+  const freshen = () => {
+    if (document.visibilityState === "hidden" || !(!data || data.failed || Date.now() - (data.fetched || 0) > 30e3)) return;
+    if (data?.services) verdict();   // (the old copy said to be one while it's asked)
+    load();
+  };
   function unreachable() {
     const v = $("verdict"); v.dataset.s = "warn";
     v.innerHTML = `<span class="halo"><b>${ICON.alert}</b></span><div><h2>The checks can’t be read just now</h2><p>This page couldn’t reach the status checks. Try again in a minute.</p></div>`;
@@ -69,6 +85,9 @@
   const maintNow = () => (data.maint || []).find((m) => m.starts <= Date.now() && m.ends > Date.now());
   const incOn = (id, key) => (data.incidents || []).filter((x) => x.svcs.includes(id) && keyOf(x.started) <= key && keyOf(x.ended || Date.now()) >= key);
   const stale = () => !data.at || Date.now() - data.at > STALE;
+  // (what's shown is the page's own old copy, not the checks' latest: its last ask failed, or it's not been asked since
+  // the phone slept or the tab came back from the browser's cache)
+  const behind = () => !!data.failed || Date.now() - (data.fetched || 0) > 2 * MIN;
   function stateOf(s) {
     const l = live().find((x) => x.svcs.includes(s.id));
     if (s.s === "down") return ["down", l ? `Down since ${hm(l.started)}` : "Down"];
@@ -89,6 +108,7 @@
     const l = live()[0], m = maintNow();
     let st, title, sub;
     if (!d.at) [st, title, sub] = ["none", "Checks starting", "The first checks run within five minutes of this page going up."];
+    else if (stale() && behind()) [st, title, sub] = ["warn", "This page is out of date", `It couldn’t reach the checks just now, so what’s below is from ${ago(d.at)}. Trying again…`];
     else if (stale()) [st, title, sub] = ["warn", "The checks are running late", `The last check was ${ago(d.at)}. What’s below is from then.`];
     else if (down.length) [st, title, sub] = ["down", `${and(down.map((x) => x.name))} ${down.length > 1 ? "aren’t" : "isn’t"} answering`, l ? updateLine(l) : "We’re looking into it."];
     else if (l) [st, title, sub] = ["down", l.title, updateLine(l)];
@@ -408,5 +428,10 @@
   if (s0) { data = { ...s0, fetched: Date.now() }; draw(); route(); }
   load().then(() => { if (!s0) route(); });
   setInterval(() => { if (document.visibilityState === "visible") load(); }, 60e3);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && data && Date.now() - (data.fetched || 0) > 30e3) load(); });
+  document.addEventListener("visibilitychange", freshen);
+  // (Safari's back-forward cache brings the page back as it was, often with no visibilitychange; and a phone that's woken
+  // gets its connection back after the page is shown)
+  addEventListener("pageshow", (e) => { if (e.persisted) freshen(); });
+  addEventListener("focus", freshen);
+  addEventListener("online", freshen);
 })();
