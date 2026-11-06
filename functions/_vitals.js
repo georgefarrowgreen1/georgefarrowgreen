@@ -7,9 +7,9 @@
 //   record(env, body)         one page's numbers (POST /api/vitals; Today's and Mail's own addresses pass theirs on)
 //   speed(D, first, last)     → { rows: [{ app, dev, m: { metric: { p75, n, days: [p75 or null, oldest first] } } }] }
 //   vitalsRoute(ctx)          POST /api/vitals (and /api/account/vitals, as Today's Worker asks it): a page's own, from its
-//                             own address (Sec-Fetch-Site), a few a minute from each; 204 whatever came of it
+//                             own address (Sec-Fetch-Site), a few a minute from each network; 204 whatever came of it
 //   band(v) / bandValue(b)    the band a number's in, and the number a band stands for (its geometric middle)
-import { db, DAY, londonOffset, pace, clientIp } from "./_pigeon.js";
+import { db, DAY, londonOffset, pace, clientNet, readCapped } from "./_pigeon.js";
 
 // (the apps that send: Today, and each app as a part of it at InFlite's hub; the hub's other pages; the sign-in page;
 // the home site)
@@ -18,6 +18,9 @@ export const DEVS = ["phone", "computer"];
 // (each in milliseconds but cls, a score: kept as thousandths. The upper end refused, not kept: a tab left in the back)
 export const METRICS = { ttfb: 60e3, fcp: 60e3, lcp: 60e3, inp: 30e3, cls: 10 };
 const STEP = 1.2, TOP = 70;
+// (the most kept of one measure for one app and kind of device in a day: past it, a day's figures are what they are, and
+// anyone sending made-up numbers can't swamp them)
+export const DAY_CAP = 20000;
 export const band = (v) => (v < 1 ? 0 : Math.min(TOP, 1 + Math.floor(Math.log(v) / Math.log(STEP))));
 export const bandValue = (b) => (b <= 0 ? 0 : STEP ** (b - 0.5));
 
@@ -33,7 +36,9 @@ export async function record(env, body, t = Date.now()) {
   if (!rows.length) return false;
   const D = await db(env);
   await D.batch([
-    ...rows.map(([k, b]) => D.prepare("INSERT INTO pg_vitals (day, app, dev, metric, b, n) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT (day, app, dev, metric, b) DO UPDATE SET n = n + 1").bind(day, app, dev, k, b)),
+    ...rows.map(([k, b]) => D.prepare(`INSERT INTO pg_vitals (day, app, dev, metric, b, n) SELECT ?1, ?2, ?3, ?4, ?5, 1
+      WHERE (SELECT COALESCE(SUM(n), 0) FROM pg_vitals WHERE day = ?1 AND app = ?2 AND dev = ?3 AND metric = ?4) < ${DAY_CAP}
+      ON CONFLICT (day, app, dev, metric, b) DO UPDATE SET n = n + 1`).bind(day, app, dev, k, b)),
     // (now and then, the days past 60 let go)
     ...(Math.random() < 0.01 ? [D.prepare("DELETE FROM pg_vitals WHERE day < ?").bind(day - 60)] : []),
   ]);
@@ -75,11 +80,11 @@ export async function vitalsRoute(ctx) {
   const site = req.headers.get("Sec-Fetch-Site");
   if (site && site !== "same-origin") return none(403);
   try {
-    const raw = await req.text();
-    if (raw.length > 600) return none(413);
-    await pace(ctx.env, "vitals:" + clientIp(req), 40, 15 * 60e3);
+    // (a few hundred bytes at most: more refused before it's read, by what it says it is, and never read past)
+    const raw = new TextDecoder().decode(await readCapped(req, 600));
+    await pace(ctx.env, "vitals:" + clientNet(req), 40, 15 * 60e3);
     const work = record(ctx.env, JSON.parse(raw)).catch(() => {});
     if (typeof ctx.waitUntil === "function") ctx.waitUntil(work); else await work;
-  } catch (_) { /* a page's numbers missed, never anything else */ }
+  } catch (e) { if (e?.status === 413) return none(413); /* else a page's numbers missed, never anything else */ }
   return none();
 }

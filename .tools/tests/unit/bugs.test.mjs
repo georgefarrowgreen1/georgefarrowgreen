@@ -35,10 +35,11 @@ test("nothing of anyone's: emails, long keys and any address's query taken out",
   assert.equal(scrub("from ann@example.com: token AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA at https://chat.inflite.ai/x?code=1#k"), "from <email>: token <long> at https://chat.inflite.ai/x");
 });
 
+const CHAT = issueCode("chat", "crash", "TypeError: x of bob@example.com", "/pigeon/app.js:12");
 test("a report from the window: kept under its code, the page's path alone, a few an hour from one address", async () => {
-  const r = await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ code: "IF-C-ABCDE", app: "chat", kind: "crash", version: "1.79", words: "TypeError: x of bob@example.com", where: "/pigeon/app.js:12", path: "/chats/x?with=1#secret", device: "iPhone · Safari 18", note: "Tapped send" }));
-  assert.equal(r.status, 200); assert.equal(r.json.code, "IF-C-ABCDE");
-  assert.match(r.json.status, /^https:\/\/status\.[^/]+\/#IF-C-ABCDE$/, "and where it stands, for the window's link");
+  const r = await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ code: CHAT, app: "chat", kind: "crash", version: "1.79", words: "TypeError: x of bob@example.com", where: "/pigeon/app.js:12", path: "/chats/x?with=1#secret", device: "iPhone · Safari 18", note: "Tapped send" }));
+  assert.equal(r.status, 200); assert.equal(r.json.code, CHAT);
+  assert.equal(r.json.status, `https://status.inflite.ai/#${CHAT}`, "and where it stands, for the window's link");
   const row = DB.sql.prepare("SELECT * FROM pg_bugs WHERE id = ?").get(r.json.id);
   assert.equal(row.path, "/chats/x"); assert.equal(row.words, "TypeError: x of <email>"); assert.equal(row.note, "Tapped send"); assert.equal(row.filed_at, null);
   assert.equal((await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ app: "nope" }))).status, 400, "an app it knows");
@@ -61,7 +62,7 @@ test("the new ones for the GitHub Action, then filed: its address and its key al
   const f = await call("POST", `https://${TICK}/api/bugs/filed`, JSON.stringify({ ids: p.json.bugs.map((b) => b.id), issue: 42 }), { Authorization: "Bearer tick-secret" });
   assert.equal(f.json.filed, p.json.bugs.length);
   assert.equal((await call("GET", `https://${TICK}/api/bugs/pending`, undefined, { Authorization: "Bearer tick-secret" })).json.bugs.length, 0);
-  assert.equal(DB.sql.prepare("SELECT issue FROM pg_bugs WHERE code = 'IF-C-ABCDE'").get().issue, 42);
+  assert.equal(DB.sql.prepare("SELECT issue FROM pg_bugs WHERE code = ?").get(CHAT).issue, 42);
 });
 
 test("a server error: filed under its code, which logError hands back for the API's answer", async () => {
@@ -71,6 +72,36 @@ test("a server error: filed under its code, which logError hands back for the AP
   assert.equal(await logError(env, "pigeon api", new Error("D1_ERROR: no such column: x at 9")), code, "the same issue, the same code");
   assert.ok(DB.sql.prepare("SELECT COUNT(*) AS n FROM pg_bugs WHERE code = ? AND app = 'server'").get(code).n >= 2);
   for (const f of ["account", "fitness", "markets", "pigeon", "today", "weather"]) assert.match(readFileSync(new URL(`../../../functions/api/${f}/[[path]].js`, import.meta.url), "utf8"), /const code = await logError\([^)]*\);\n\s*return json\(\{ error: "[^"]+", code \}, 500\);/, f);
+});
+
+// (review: anyone can send anything, and a code opens an incident, says a fixed bug's back, and is commented on in its
+// public issue; so the code's worked out here, and each report keeps where it came from as a key that can't be read back)
+test("a report's code never taken on the sender's word: a crash's worked out, a server error's only where the site filed it", async () => {
+  const ids = [], send = async (o, ip = "192.0.2.10") => { const r = await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ app: "chat", ...o }), { "CF-Connecting-IP": ip }); if (ip === "192.0.2.10") ids.push(r.json.id); return r; };
+  const crash = await send({ code: "IF-C-AAAAA", kind: "crash", words: "TypeError: y", where: "/pigeon/app.js:9" });
+  assert.equal(crash.json.code, issueCode("chat", "crash", "TypeError: y", "/pigeon/app.js:9"), "a crash: the code from what went wrong and where, not the one sent");
+  const fake = await send({ code: "IF-S-ZZZZZ", kind: "server", words: "Something went wrong on our side.", where: "/api/pigeon/sync" });
+  assert.equal(fake.json.code, issueCode("chat", "server", "Something went wrong on our side.", "/api/pigeon/sync"), "a server code the site never filed: worked out instead");
+  const real = await fileServerBug(env, "pigeon sync", new Error("D1_ERROR: busy"));
+  assert.equal((await send({ code: real, kind: "server", words: "Something went wrong on our side.", where: "/api/pigeon/sync" })).json.code, real, "one it filed itself: kept, its burst and its issue");
+  const mine = await send({ code: "IF-C-R7K2M", kind: "manual", note: "It froze" });
+  assert.equal(mine.json.code, "IF-C-R7K2M", "reported by hand: the window's own code, as it showed it");
+  for (const code of ["IF-C-R7K2M", crash.json.code, "IF-W-R1234", "IF-C-RABCDE"]) assert.match((await send({ code, kind: "manual", note: "x" })).json.code, /^IF-C-R[0-9A-Z]{4}$/);
+  assert.notEqual((await send({ code: "IF-C-R7K2M", kind: "manual", note: "x" })).json.code, "IF-C-R7K2M", "never one another report has");
+  const rows = ids.map((id) => DB.sql.prepare("SELECT reporter FROM pg_bugs WHERE id = ?").get(id).reporter);
+  assert.ok(rows.length >= 4 && rows.every((k) => /^[0-9a-f]{16}$/.test(k) && k === rows[0]), "one network, one reporter's key, the address unreadable in it");
+  const other = (await send({ kind: "crash", words: "z" }, "192.0.2.11")).json.id;
+  assert.notEqual(DB.sql.prepare("SELECT reporter FROM pg_bugs WHERE id = ?").get(other).reporter, rows[0], "another network, another key");
+});
+
+test("a few an hour from each network (an IPv6 /48, not each /64), and a few hundred an hour in all", async () => {
+  const send = (ip) => call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ app: "chat", words: "q" }), { "CF-Connecting-IP": ip });
+  for (let i = 0; i < 12; i++) assert.equal((await send(`2001:db8:77:${i.toString(16)}::1`)).status, 200);
+  assert.equal((await send("2001:db8:77:ff::9")).status, 429, "the thirteenth from the same /48, whatever its /64");
+  assert.equal((await send("2001:db8:78::1")).status, 200, "another /48: its own");
+  DB.sql.prepare("UPDATE pg_limits SET count = 300 WHERE key = 'bugs:all'").run();
+  assert.equal((await send("198.51.100.200")).status, 429, "three hundred in an hour from everyone: no more till it's past");
+  DB.sql.prepare("DELETE FROM pg_limits WHERE key = 'bugs:all'").run();
 });
 
 test("the window's code-maker, in the shared menu, works it out as the server does", async () => {

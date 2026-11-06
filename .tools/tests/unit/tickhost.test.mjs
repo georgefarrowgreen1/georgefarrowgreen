@@ -38,3 +38,13 @@ test('the Worker’s config: the site’s files through the Worker first, the sa
   for (const k of ['functions', 'workers', '.tools', '.git']) assert.ok(ignore.includes(k), k);
   assert.ok(!ignore.includes('min'), 'the minified copies are the Worker’s to read (functions/_min.js)');
 });
+
+// (review: the nightly sign-in check's screenshots show the test account's email, and a public repository's artifacts are
+// anyone's to download)
+test('the sign-in check’s screenshots: never a public artifact, and a private one kept a day', () => {
+  const s = read('.github/workflows/signin-check.yml'), up = s.slice(s.indexOf('uses: actions/upload-artifact'));
+  const step = s.slice(s.lastIndexOf('- name:', s.indexOf('uses: actions/upload-artifact')), s.indexOf('uses: actions/upload-artifact'));
+  assert.match(step, /if: failure\(\) && github\.event\.repository\.private\n/, 'only while the repository’s private');
+  assert.match(up, /retention-days: 1\n/);
+  assert.equal(s.match(/upload-artifact/g).length, 1, 'no other upload');
+});

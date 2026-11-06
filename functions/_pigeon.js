@@ -600,21 +600,26 @@ export async function limit(env, key, max, windowMs, n = 1) {
     RETURNING count, reset_at`).bind(key, t + windowMs, t, n).first();
   if (row.count > max) throw new HttpError(429, `Too many tries. Try again in ${waitText(row.reset_at - t)}.`);
 }
-// Too many of an everyday ask (loading Today's cards, a preference, a quote, a passkey prompt), counted where Cloudflare
-// serves the request (the Workers rate limiter: env.RL10 … env.RL320, wrangler.worker.jsonc), so the ask doesn't first
-// wait on a write to the main database, which no nearby copy of it can take. Each limiter allows so many a minute, for
-// each key; the one used is the first at four times this ceiling's own rate or more, so a burst is fine and only
-// something hammering away is held back. Counts are each location's, not the world's: so only for ceilings like these,
-// never a security count (wrong passwords, resets, sign-ups, confirmations), anything by the day, or an allowance of
-// someone else's we pay for or are held to (Garmin's, Strava's, a paid forecast), which keep limit() and its one count.
-// Where there's no limiter (the tests, an older copy), limit() itself; one that doesn't answer lets the ask through.
+// Too many of an everyday ask (loading Today's cards, a preference, a quote, a passkey prompt). The ceiling as written is
+// the most it ever lets through, never more. The Workers rate limiter (env.RL10 … env.RL320, wrangler.worker.jsonc) counts
+// where Cloudflare serves the request, with no write to the main database (which no nearby copy of it can take), but
+// only so many a minute for each key, and a minute can't hold an hour's count. So: the limiter at four times this
+// ceiling's rate or more first turns away something hammering (a burst is fine) before anything's counted; then, where
+// there's one at half the ceiling's rate or under (the busiest ceilings), it lets the everyday asks through with nothing
+// written; past it, or with none that slow (most ceilings), limit() counts them, up to the ceiling less what that
+// limiter could have let through in the window. The limiter's counts are each location's, not the world's: so only for
+// ceilings like these, never a security count (wrong passwords, resets, sign-ups, confirmations), anything by the day,
+// or an allowance of someone else's we pay for or are held to (Garmin's, Strava's, a paid forecast), which keep limit()
+// and its one count. Where there's no limiter (the tests, an older copy), limit() alone; one that doesn't answer is passed by.
 export const PACES = [10, 20, 40, 80, 160, 320];
 export async function pace(env, key, max, windowMs) {
-  const perMin = (max * 60e3) / windowMs, tier = PACES.find((n) => n >= perMin * 4) || PACES.at(-1), rl = env?.[`RL${tier}`];
-  if (!rl || typeof rl.limit !== "function") return limit(env, key, max, windowMs);
-  let ok = true;
-  try { ok = (await rl.limit({ key })).success !== false; } catch (_) { return; }
-  if (!ok) throw new HttpError(429, "Too many tries. Try again in a minute.");
+  const perMin = (max * 60e3) / windowMs, rl = (n) => (n && typeof env?.[`RL${n}`]?.limit === "function" ? env[`RL${n}`] : null);
+  const says = async (r) => { try { return (await r.limit({ key })).success !== false; } catch (_) { return null; } };
+  const top = PACES.find((n) => n >= perMin * 4) || PACES.at(-1), burst = rl(top);
+  if (burst && (await says(burst)) === false) throw new HttpError(429, "Too many tries. Try again in a minute.");
+  const slow = PACES.findLast((n) => n <= perMin / 2 && n < top), quick = rl(slow);
+  if (quick && (await says(quick)) === true) return;
+  return limit(env, key, quick ? max - slow * Math.ceil(windowMs / 60e3) : max, windowMs);
 }
 
 // A per-install random secret (used to fake salts for unknown emails).

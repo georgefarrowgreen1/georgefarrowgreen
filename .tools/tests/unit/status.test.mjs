@@ -182,24 +182,80 @@ test("an incident started by hand stays until it's resolved by hand, and shows a
   assert.equal((await bannerFor(env, "weather", t + 21 * 60e3)).banner, null, "gone once it's resolved");
 });
 
-test("the same bug five times in ten minutes opens an incident (where that's on), and an hour without it closes it", async () => {
+test("the site's own error five times in ten minutes opens an incident (where that's on), and an hour without it closes it", async () => {
   const t = T0 + 15 * 3600e3;
   DB.sql.exec("CREATE TABLE IF NOT EXISTS pg_bugs (id TEXT PRIMARY KEY, code TEXT NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL, version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)");
-  for (let i = 0; i < 4; i++) DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES (?, 'IF-C-AAAAA', 'chat', 'crash', ?)").run(`b${i}`, t - i * 60e3);
-  assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "four isn't a burst");
-  DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES ('b9', 'IF-C-AAAAA', 'chat', 'crash', ?)").run(t);
+  for (let i = 0; i < 4; i++) DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES (?, 'IF-S-AAAAA', 'server', 'pigeon api', ?)").run(`b${i}`, t - i * 60e3);
+  assert.equal(await burstCheck(env, "IF-S-AAAAA", "server", t), null, "four isn't a burst");
+  DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at) VALUES ('b9', 'IF-S-AAAAA', 'server', 'pigeon api', ?)").run(t);
   await setAlertPrefs(env, { burst: false });
-  assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "off: nothing");
+  assert.equal(await burstCheck(env, "IF-S-AAAAA", "server", t), null, "off: nothing");
   assert.equal((await setAlertPrefs(env, { burst: true, nope: 1 })).burst, true);
   assert.deepEqual(Object.keys(await alertPrefs(env)).sort(), ["burst", "email", "push"]);
-  const id = await burstCheck(env, "IF-C-AAAAA", "chat", t);
-  assert.ok(id); assert.equal(await burstCheck(env, "IF-C-AAAAA", "chat", t), null, "one at a time");
+  const id = await burstCheck(env, "IF-S-AAAAA", "server", t);
+  assert.ok(id); assert.equal(await burstCheck(env, "IF-S-AAAAA", "server", t), null, "one at a time");
   let x = (await summary(env, t)).incidents.find((i) => i.id === id);
-  assert.equal(x.kind, "burst"); assert.deepEqual(x.svcs, ["chat"]); assert.deepEqual(x.codes, ["IF-C-AAAAA"]);
+  assert.equal(x.kind, "burst"); assert.deepEqual(x.codes, ["IF-S-AAAAA"]);
   await keepReport(env, report(), t + 30 * 60e3);
   assert.equal((await summary(env, t + 30 * 60e3)).incidents.find((i) => i.id === id).ended, null);
   await keepReport(env, report(), t + 75 * 60e3);
   assert.ok((await summary(env, t + 75 * 60e3)).incidents.find((i) => i.id === id).ended, "an hour quiet: closed");
+});
+
+// (review: anyone could send five reports of one code and open an incident on the public page, pushed to everyone who
+// asked to be told; and one report of a fixed code said publicly that it was back)
+test("people's reports of one code: from three places or more, an incident the owner's alone, on the page only once they say so", async () => {
+  const t = T0 + 17 * 3600e3, add = (id, code, rep, at = t) => DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, reporter) VALUES (?, ?, 'chat', 'crash', ?, ?)").run(id, code, at, rep);
+  await burstCheck(env, "IF-C-PPPPP", "chat", t - 3600e3);     // (the reporter column, added as the site does)
+  for (let i = 0; i < 9; i++) add(`p${i}`, "IF-C-PPPPP", "aaaa", t - i * 30e3);
+  assert.equal(await burstCheck(env, "IF-C-PPPPP", "chat", t), null, "nine from one place: nothing");
+  add("p10", "IF-C-PPPPP", "bbbb");
+  assert.equal(await burstCheck(env, "IF-C-PPPPP", "chat", t), null, "from two: nothing");
+  // (a device asking to be told about Chat, and every push counted)
+  const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]), b64 = (u) => Buffer.from(u).toString("base64url");
+  DB.sql.prepare("INSERT OR REPLACE INTO status_subs (endpoint, p256dh, auth, apps, maint, created) VALUES ('https://fcm.googleapis.com/fcm/send/held', ?, ?, '[\"chat\"]', 0, ?)")
+    .run(b64(new Uint8Array(await crypto.subtle.exportKey("raw", k.publicKey))), b64(crypto.getRandomValues(new Uint8Array(16))), t);
+  const pushes = [], was = globalThis.fetch, pushEnv = { ...env, PIGEON_PUSH_URL: "http://push.test/" };
+  globalThis.fetch = async (u, init = {}) => { if (String(u) === "http://push.test/") { pushes.push(new Headers(init.headers).get("X-Endpoint")); return new Response(null, { status: 201 }); } return was(u, init); };
+  try {
+    add("p11", "IF-C-PPPPP", "cccc");
+    const id = await burstCheck(pushEnv, "IF-C-PPPPP", "chat", t);
+    assert.ok(id, "three places: opened");
+    assert.deepEqual(pushes, [], "no one who asked to be told is told");
+    assert.ok(!(await summary(env, t)).incidents.some((i) => i.id === id), "not on the page");
+    assert.equal((await bannerFor(env, "chat", t)).banner, null, "no banner in the app");
+    const feed = await (await statusHost({ env, request: new Request("https://status.inflite.ai/feed.xml?held") }, new URL("https://status.inflite.ai/feed.xml"))).text();
+    assert.ok(!feed.includes(id));
+    const mine = (await adminIncidents(env, t)).find((i) => i.id === id);
+    assert.equal(mine.held, true, "the owner's to see, as held");
+    // (the owner's first update puts it on the page, and tells those who asked)
+    await noteIncident(pushEnv, { id, kind: "Investigating", text: "Looking into Chat crashing on open." }, t + 60e3);
+    assert.ok((await summary(env, t + 60e3)).incidents.some((i) => i.id === id), "on the page once they say so");
+    assert.equal((await bannerFor(env, "chat", t + 60e3)).banner?.id, id);
+    assert.deepEqual(pushes, ["https://fcm.googleapis.com/fcm/send/held"]);
+    await noteIncident(pushEnv, { id, kind: "Resolved", text: "Fixed." }, t + 120e3);
+    // (another, resolved by the owner without a word on the page: never shown, no one told)
+    for (const [i, r] of ["x", "y", "z", "x", "y"].entries()) add(`q${i}`, "IF-C-QQQQQ", r, t + 200e3);
+    const q = await burstCheck(pushEnv, "IF-C-QQQQQ", "chat", t + 200e3);
+    await noteIncident(pushEnv, { id: q, kind: "Resolved", text: "Not a real problem." }, t + 260e3);
+    assert.ok(!(await summary(env, t + 300e3)).incidents.some((i) => i.id === q), "dismissed: never on the page");
+    assert.equal(pushes.length, 2, "and no one told of it");
+  } finally { globalThis.fetch = was; DB.sql.exec("DELETE FROM status_subs"); }
+});
+
+test("a fixed code back again, publicly, only when the site's servers or three places or more see it after the fix", async () => {
+  const t = T0 + 19 * 3600e3, add = (id, code, app, rep, at) => DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, reporter) VALUES (?, ?, ?, 'crash', ?, ?)").run(id, code, app, at, rep);
+  for (const code of ["IF-C-FFFFF", "IF-S-FFFFF"]) DB.sql.prepare("INSERT OR REPLACE INTO desk_codes (code, state, at) VALUES (?, 'fixed', ?)").run(code, t - 3600e3);
+  add("f0", "IF-C-FFFFF", "chat", "aaaa", t - 2 * 3600e3);
+  add("f1", "IF-C-FFFFF", "chat", "dddd", t - 60e3); add("f2", "IF-C-FFFFF", "chat", "dddd", t - 50e3); add("f3", "IF-C-FFFFF", "chat", "eeee", t - 40e3);
+  assert.equal((await codeLookup(env, "IF-C-FFFFF", t)).state, "fixed", "one or two senders after the fix: still fixed");
+  add("f4", "IF-C-FFFFF", "chat", "ffff", t - 30e3);
+  assert.equal((await codeLookup(env, "IF-C-FFFFF", t)).state, "back", "three: back");
+  assert.equal((await summary(env, t)).bugs.find((b) => b.code === "IF-C-FFFFF").state, "back", "and on the page");
+  add("s0", "IF-S-FFFFF", "server", null, t - 2 * 3600e3);
+  assert.equal((await codeLookup(env, "IF-S-FFFFF", t)).state, "fixed");
+  add("s1", "IF-S-FFFFF", "server", null, t - 60e3);
+  assert.equal((await codeLookup(env, "IF-S-FFFFF", t)).state, "back", "the site's own servers: back");
 });
 
 test("the outside check, the feed, and the banner at every app's address (and Today's and Mail's way to it)", async () => {
