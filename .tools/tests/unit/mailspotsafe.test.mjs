@@ -30,11 +30,17 @@ const val = (a) => a.map((x) => (typeof x === 'boolean' ? +x : x === undefined ?
 const st = (q, a = []) => ({ bind: (...b) => st(q, b), first: async () => sql.prepare(q).get(...val(a)) ?? null,
   all: async () => ({ results: sql.prepare(q).all(...val(a)), meta: {} }), run: async () => ({ meta: { changes: Number(sql.prepare(q).run(...val(a)).changes) } }),
   exec: async () => { if (/^\s*(SELECT|WITH)\b/i.test(q)) return { results: sql.prepare(q).all(...val(a)), meta: {} }; return { results: [], meta: { changes: Number(sql.prepare(q).run(...val(a)).changes) } }; } });
-const DB = { prepare: (q) => st(q), batch: async (list) => {
-  sql.exec('BEGIN');
-  const out = [];
-  try { for (const s of list) out.push(await s.exec()); sql.exec('COMMIT'); } catch (e) { sql.exec('ROLLBACK'); throw e; }
-  return out;
+// (each batch one transaction, one after another, as D1's)
+let line = Promise.resolve();
+const DB = { prepare: (q) => st(q), batch: (list) => {
+  const run = line.then(async () => {
+    sql.exec('BEGIN');
+    const out = [];
+    try { for (const s of list) out.push(await s.exec()); sql.exec('COMMIT'); } catch (e) { sql.exec('ROLLBACK'); throw e; }
+    return out;
+  });
+  line = run.catch(() => {});
+  return run;
 } };
 const r2 = new Map();
 const R2 = {
@@ -265,4 +271,17 @@ test('one email holds 20 bookings at most (60 reservations of 12 legs each: 20);
   const card = await parcelsCard(env, now);
   assert.ok(firstIn.startsWith('parcel-a-old'), 'in the table’s own order, the old ones first');
   assert.deepEqual(card.slice(0, 3).map((x) => x.shop), ['New', 'New', 'New'], 'those due soonest, the newest heard of, on the card');
+});
+
+// =====================================================================================================================
+// (found by the end-to-end test: two switches turned on at once)
+// =====================================================================================================================
+test('two switches turned on at once, each before the other’s written: both read back', { skip }, async () => {
+  await ready();
+  const { setSpot } = await load('src/spot.js');
+  sql.exec(`DELETE FROM meta WHERE k IN ('spot_back', 'spot_trips', 'spot_parcels', 'spot_bills')`);
+  await Promise.all([setSpot(env, null, { parcels: true }), setSpot(env, null, { bills: true })]);
+  assert.deepEqual(JSON.parse(sql.prepare(`SELECT v FROM meta WHERE k = 'spot_back'`).get().v).kinds.sort(), ['bills', 'parcels']);
+  await setSpot(env, null, { trips: true });
+  assert.deepEqual(JSON.parse(sql.prepare(`SELECT v FROM meta WHERE k = 'spot_back'`).get().v).kinds.sort(), ['bills', 'parcels', 'trips'], 'and one more after');
 });
