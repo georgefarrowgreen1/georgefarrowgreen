@@ -39,12 +39,13 @@ one(`INSERT INTO pg_active (day, user_id) VALUES (${today - 16}, '${bs.me.id}'),
 one(`UPDATE pg_users SET created_at = ${now - 12 * DAY}, seen_at = ${now - 12 * DAY + 3600e3} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${now - 12 * DAY + 3600e3} WHERE user_id = '${cs.me.id}'`);
 
 // how fast the apps were on people's own devices (functions/_vitals.js): pages' beacons, numbers only; one from an app
-// that isn't one of the site's, and one with something else in it, kept only as far as the known numbers go
+// that isn't one of the site's, and one with something else in it, kept only as far as the known numbers go. (Markets
+// and Fitness, which nothing else here opens: the pages this test does open send their own as they're left)
 // (a fresh connection each, once more if the server had let a kept one go: wrangler closes idle ones)
 const beacon = (b) => { const go = () => fetch(K.BASE + '/api/vitals', { method: 'POST', headers: { 'Content-Type': 'text/plain', Connection: 'close' }, body: JSON.stringify(b) }).then((r) => r.status); return go().catch(go); };
 const sentV = [];
-for (const lcp of [1800, 1800, 1800, 5200]) sentV.push(await beacon({ app: 'today', dev: 'phone', m: { lcp, fcp: 700, inp: 90, cls: 0.01, ttfb: 150 } }));
-sentV.push(await beacon({ app: 'weather', dev: 'computer', m: { fcp: 900, inp: 640, cls: 0.3, who: 'ann@example.com' } }));
+for (const lcp of [1800, 1800, 1800, 5200]) sentV.push(await beacon({ app: 'markets', dev: 'phone', m: { lcp, fcp: 700, inp: 90, cls: 0.01, ttfb: 150 } }));
+sentV.push(await beacon({ app: 'fitness', dev: 'computer', m: { fcp: 900, inp: 640, cls: 0.3, who: 'ann@example.com' } }));
 sentV.push(await beacon({ app: 'fitting', dev: 'phone', m: { lcp: 100 } }));
 ok(sentV.every((s) => s === 204), 'speed: each page’s beacon answered 204, whatever came of it', sentV.join(','));
 
@@ -68,10 +69,10 @@ ok(x.features.total === 5 && x.features.group === 1, 'of 5 pigeons, 1 to a group
 ok(x.adoption.friends === 3 && x.adoption.groups === 3, 'all three have a friend, and are in a group', JSON.stringify(x.adoption));
 ok(x.health.late === 1, 'one landing not told after 15 minutes', JSON.stringify(x.health));
 ok(!/Ann|Ben|Cal|ann@|One|Two|London|New York/.test(JSON.stringify(x)), 'no names, words or places anywhere in it');
-{ const rows = x.speed?.rows || [], hub = rows.find((r) => r.app === 'today' && r.dev === 'phone'), wx = rows.find((r) => r.app === 'weather' && r.dev === 'computer');
-  ok(rows.length === 2 && !rows.some((r) => r.app === 'fitting'), 'speed: Today on phones and Weather on computers, never an app that isn’t the site’s', JSON.stringify(rows.map((r) => [r.app, r.dev])));
-  ok(hub?.m.lcp.n === 4 && Math.abs(hub.m.lcp.p75 - 1800) / 1800 < 0.12 && hub.m.lcp.days.at(-1) === hub.m.lcp.p75, 'speed: Today’s largest part drawn, 3 visits in 4 by 1.8 s (today’s figure the same)', JSON.stringify(hub?.m.lcp));
-  ok(wx && !wx.m.lcp && Math.abs(wx.m.inp.p75 - 640) / 640 < 0.12 && Math.abs(wx.m.cls.p75 - 0.3) < 0.04, 'speed: Weather’s tap at 640 ms, its jumps 0.3, no largest part (none sent)', JSON.stringify(wx?.m)); }
+{ const rows = x.speed?.rows || [], hub = rows.find((r) => r.app === 'markets' && r.dev === 'phone'), wx = rows.find((r) => r.app === 'fitness' && r.dev === 'computer');
+  ok(hub && wx && !rows.some((r) => r.app === 'fitting'), 'speed: Markets on phones and Fitness on computers (with the pages this test opened), never an app that isn’t the site’s', JSON.stringify(rows.map((r) => [r.app, r.dev])));
+  ok(hub?.m.lcp.n === 4 && Math.abs(hub.m.lcp.p75 - 1800) / 1800 < 0.12 && hub.m.lcp.days.at(-1) === hub.m.lcp.p75, 'speed: Markets’ largest part drawn, 3 visits in 4 by 1.8 s (today’s figure the same)', JSON.stringify(hub?.m.lcp));
+  ok(wx && !wx.m.lcp && Math.abs(wx.m.inp.p75 - 640) / 640 < 0.12 && Math.abs(wx.m.cls.p75 - 0.3) < 0.04, 'speed: Fitness’s tap at 640 ms, its jumps 0.3, no largest part (none sent)', JSON.stringify(wx?.m)); }
 
 // the sheet, on the admin's account page
 const actx = await K.b.newContext({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 2, colorScheme: 'light' });
@@ -92,10 +93,11 @@ ok(hs[29] === 100 && hs[24] === 33 && hs[17] === 33 && hs[0] <= 3, 'each column 
 const mw = await ad.evaluate(() => { const i = [...document.querySelectorAll('#sheet .adm-meter')].find((m) => /Swift/.test(m.textContent)).querySelector('.mbar i'); return Math.round(i.offsetWidth / i.parentElement.offsetWidth * 100); });
 ok(mw === 20, 'and each row’s bar as long as its share (swift: 1 of 5)', String(mw));
 { const sp = ad.locator('#sheet .spd-list'), rowsT = await sp.locator('.spd-row').allInnerTexts().catch(() => []);
-  ok(await sp.count() === 1 && rowsT.length === 2, 'Speed, on people’s own devices: a row for each app and device', rowsT.join(' | '));
-  ok(/Today · Phone/.test(rowsT[0] || '') && /Appears\s*1\.\d s/.test(rowsT[0] || '') && /4 visits/.test(rowsT[0] || ''), 'Today on phones: Appears 1.x s, 4 visits', rowsT[0]);
-  const how = await sp.locator('.spd-row').nth(1).locator('.spd').evaluateAll((es) => es.map((e) => `${e.querySelector('small').textContent}:${e.className.split(' ').pop()}`)).catch(() => []);
-  ok(how.includes('Appears:good') && how.includes('Answers a tap:poor') && how.includes('Jumps:poor'), 'Weather on computers: each judged (appears good, a tap poor, jumps poor)', how.join(', '));
+  const mk = rowsT.find((t) => /Markets · Phone/.test(t)) || '', fi = sp.locator('.spd-row', { hasText: 'Fitness · Computer' });
+  ok(await sp.count() === 1 && rowsT.length >= 2, 'Speed, on people’s own devices: a row for each app and device', rowsT.join(' | '));
+  ok(/Appears\s*1\.\d s/.test(mk) && /4 visits/.test(mk), 'Markets on phones: Appears 1.x s, 4 visits', mk);
+  const how = await fi.locator('.spd').evaluateAll((es) => es.map((e) => `${e.querySelector('small').textContent}:${e.className.split(' ').pop()}`)).catch(() => []);
+  ok(how.includes('Appears:good') && how.includes('Answers a tap:poor') && how.includes('Jumps:poor'), 'Fitness on computers: each judged (appears good, a tap poor, jumps poor)', how.join(', '));
   await sp.scrollIntoViewIfNeeded().catch(() => {}); await ad.waitForTimeout(300);
   await ad.screenshot({ path: `${out}/insights-speed.png` }); }
 await ad.screenshot({ path: `${out}/insights.png` });

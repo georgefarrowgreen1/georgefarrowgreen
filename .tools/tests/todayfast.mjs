@@ -108,30 +108,35 @@ await part('b. an account from before today/boot', async () => {
 await part('c. opened from what the root worker keeps; renewed by the updater', async () => {
   await ctl('/__mode', { phase: 'morning' }); await reset();
   const ctx = await context({ workers: true }), p = await ctx.newPage(); watch(p, 'c');
-  const fromWorker = [];
-  ctx.on('request', (r) => { if (r.serviceWorker()) fromWorker.push(new URL(r.url()).pathname); });
+  // (each of Today's own files as it reached the page, and whether the worker answered it)
+  const SHELL = ['/app.js', '/cards.js', '/app.css', '/day.css', '/roof/frame.js', '/roof/router.js'], seen = new Map();
+  p.on('response', (r) => { const u = new URL(r.url()); if (u.origin === BASE && SHELL.includes(u.pathname)) seen.set(u.pathname, r.fromServiceWorker()); });
   await p.goto(BASE + '/'); await drawn(p);
   const controlled = await p.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 15000 }).then(() => true, () => false);
   ok(controlled, 'c. the root worker in charge of the page');
   // (its files all kept, as it installs or as the page asks for them)
   await p.waitForFunction(async () => { const c = await caches.open('today-app-4'); return !!(await c.match('/')) && !!(await c.match('/app.js')) && !!(await c.match('/roof/frame.js')); }, null, { timeout: 15000 }).catch(() => {});
-  fromWorker.length = 0;
+  seen.clear();
   // (by way of another page: the same address typed again is a reload to Chrome, which goes past what's kept on purpose)
   await p.goto('about:blank');
   const t0 = Date.now();
   const doc = await p.goto(BASE + '/');
   ok(await drawn(p), 'c. opened again: the day drawn');
-  const shell = fromWorker.filter((x) => ['/', '/index.html', '/app.js', '/cards.js', '/app.css', '/day.css', '/roof/frame.js', '/roof/router.js'].includes(x));
-  ok(shell.length === 0, 'c. the page and its files from what’s kept: none fetched by the worker', shell.join(', '));
+  const fromNet = SHELL.filter((f) => seen.get(f) !== true);
+  ok(fromNet.length === 0, 'c. its files from what the worker keeps, every one', `not from the worker: ${fromNet.map((f) => `${f} (${seen.has(f) ? 'network' : 'not asked'})`).join(', ')}`);
   ok(doc?.fromServiceWorker() === true, 'c. the page itself answered by the root worker');
   console.log(`(c: opened again in ${Date.now() - t0} ms)`);
-  // (the updater, before it loads a new Today: { ifl: "renew" }, as IFL.updates sends it)
-  fromWorker.length = 0;
+  // (the updater, before it loads a new Today: { ifl: "renew" }, as IFL.updates sends it). Each kept copy's Date, before
+  // and after: every one fetched again (the worker's own fetches aren't Playwright's to see)
+  const files = [...(/const FILES = (\[[\s\S]*?\]);/.exec(readFileSync(`${IFL}today/public/sw.js`, 'utf8'))?.[1] || '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const dates = () => p.evaluate(async (fs) => { const c = await caches.open('today-app-4'); const o = {}; for (const f of fs) o[f] = (await c.match(f))?.headers.get('date') || null; return o; }, files);
+  const before = await dates();
+  await p.waitForTimeout(1100);
   const renewed = await p.evaluate(() => new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = (e) => ok(e.data); navigator.serviceWorker.controller.postMessage({ ifl: 'renew' }, [ch.port2]); setTimeout(() => ok(null), 12000); }));
   ok(renewed?.ifl === 'renewed', 'c. renew: the worker says renewed', JSON.stringify(renewed));
-  const files = [...(/const FILES = (\[[\s\S]*?\]);/.exec(readFileSync(`${IFL}today/public/sw.js`, 'utf8'))?.[1] || '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  const missing = files.filter((f) => !fromWorker.includes(f));
-  ok(files.length > 20 && missing.length === 0, `c. renew: every one of Today’s ${files.length} files fetched again`, `not fetched: ${missing.join(', ')}`);
+  const after = await dates();
+  const stale = files.filter((f) => !after[f] || after[f] === before[f]);
+  ok(files.length > 20 && stale.length === 0, `c. renew: every one of Today’s ${files.length} files fetched again and kept afresh`, `not renewed: ${stale.join(', ')}`);
   await ctx.close();
 });
 
