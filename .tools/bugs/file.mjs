@@ -14,7 +14,14 @@ const gh = async (path, init = {}) => {
   if (!r.ok && r.status !== 422) throw new Error(`GitHub ${init.method || "GET"} ${path}: ${r.status} ${(await r.text()).slice(0, 300)}`);
   return r.status === 204 ? null : r.json();
 };
-const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " · ").slice(0, 300) || "–";
+// (what a report says is anyone's words: in the public issue they never make a link or a heading, mention anyone (@), point
+// at another issue (#12, owner/repo#12, GH-12), or break out of the table, the code or the fence they're in)
+const line = (s, n = 300) => String(s ?? "").replace(/\r?\n/g, " · ").slice(0, n);
+const inert = (s) => s.replace(/[@#]/g, "$&\u200b").replace(/\bGH-/gi, "GH\u200b-");
+const cell = (s, n) => inert(line(s, n)).replace(/[\\`*_{}[\]()<>!|~&:.+=#-]/g, "\\$&") || "–";
+// (as it was, in code: inside more backticks than any run of them in it)
+const tick = (s) => { const t = line(s) || "–", f = "`".repeat(Math.max(0, ...(t.match(/`+/g) || []).map((m) => m.length)) + 1); return `${f} ${t} ${f}`; };
+const fence = (s) => { const t = String(s).slice(0, 1500), f = "`".repeat(Math.max(2, ...(t.match(/`+/g) || []).map((m) => m.length)) + 1); return `${f}\n${t}\n${f}`; };
 const when = (t) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
 const r = await site("/api/bugs/pending");
@@ -41,23 +48,25 @@ for (const name of ["bug-report"]) await gh(`/repos/${REPO}/labels`, { method: "
 
 for (const [code, list] of byCode) {
   const first = list[0], app = APP[first.app] || first.app, notes = list.filter((b) => b.note).length;
-  const rows = list.map((b) => `| ${when(b.at)} | ${cell(APP[b.app] || b.app)} ${cell(b.version)} | ${cell(b.kind)} | \`${cell(b.path)}\` | ${cell(b.device)} | ${b.note ? "yes" : ""} |`).join("\n");
+  const rows = list.map((b) => `| ${when(b.at)} | ${cell(APP[b.app] || b.app)} ${cell(b.version)} | ${cell(b.kind)} | ${cell(b.path)} | ${cell(b.device)} | ${b.note ? "yes" : ""} |`).join("\n");
   const stack = list.find((b) => b.stack)?.stack;
   const body = [
     `**${code}** · ${app} · seen ${list.length === 1 ? "once" : `${list.length} times`} in this batch${notes ? ` · ${notes} with a note (read it in Admin → Server → Bug reports)` : ""}`, "",
-    first.kind === "manual" ? "Reported by hand from Report a Problem." : `**What:** \`${cell(first.words)}\``,
-    first.at_where ? `**Where:** \`${cell(first.at_where)}\`` : "", "",
+    first.kind === "manual" ? "Reported by hand from Report a Problem." : `**What:** ${tick(first.words)}`,
+    first.at_where ? `**Where:** ${tick(first.at_where)}` : "", "",
     "| When | App | Kind | Page | Device | Note |", "|---|---|---|---|---|---|", rows,
-    stack ? `\n<details><summary>Stack</summary>\n\n\`\`\`\n${String(stack).slice(0, 1500)}\n\`\`\`\n</details>` : "",
+    stack ? `\n<details><summary>Stack</summary>\n\n${fence(stack)}\n</details>` : "",
   ].filter((l) => l !== null).join("\n");
   let number;
-  const had = filed.get(code);
+  // (a problem reported by hand is its own: its code's the window's, so it never comments on, or reopens, one filed before;
+  // every other code's worked out by the site, functions/_bugs.js codeFor)
+  const had = first.kind === "manual" ? null : filed.get(code);
   if (had) {
     number = had.number;
     if (had.state === "closed") await gh(`/repos/${REPO}/issues/${number}`, { method: "PATCH", body: JSON.stringify({ state: "open" }) });
     await gh(`/repos/${REPO}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body: (had.state === "closed" ? "Seen again after it was closed, so reopened.\n\n" : "Seen again.\n\n") + body }) });
   } else {
-    const title = `[${code}] ${app}: ${first.kind === "manual" ? "a problem reported by hand" : cell(first.words).slice(0, 80)}`;
+    const title = `[${code}] ${app}: ${first.kind === "manual" ? "a problem reported by hand" : inert(line(first.words, 80))}`;
     const made = await gh(`/repos/${REPO}/issues`, { method: "POST", body: JSON.stringify({ title, body, labels: ["bug-report"] }) });
     number = made?.number;
   }

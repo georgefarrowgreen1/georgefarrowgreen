@@ -4,11 +4,12 @@
 // hundred; the route only from the page's own address; and Today's and Mail's servers pass it on, nothing kept there.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { record, speed, vitalsRoute, band, bandValue, APPS, METRICS } from '../../../functions/_vitals.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { record, speed, vitalsRoute, band, bandValue, APPS, METRICS, DAY_CAP } from '../../../functions/_vitals.js';
 
 const fakeDb = (sent) => ({
-  prepare: (sql) => ({ bind: (...a) => ({ sql, a, first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }), first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }),
+  prepare: (sql) => ({ bind: (...a) => ({ sql, a, first: async () => (/pg_limits/.test(sql) ? { count: 1, reset_at: Date.now() + 1000 } : null), all: async () => ({ results: [] }), run: async () => ({}) }), first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }),
   batch: async (xs) => { sent.push(...xs.filter((x) => /pg_vitals/.test(x.sql))); return xs.map(() => ({ results: [] })); }, exec: async () => ({}),
 });
 
@@ -81,6 +82,70 @@ test('the route: a page’s own, a few a minute; never anything back but 204', a
   res = await vitalsRoute({ request: req({ 'Sec-Fetch-Site': 'same-origin' }), env: envOf() });
   assert.equal(res.status, 204);
   assert.equal(sent.length, 1, 'kept');
+});
+
+function d1() {
+  const s = new DatabaseSync(':memory:');
+  // (the site's own tables, as functions/_pigeon.js makes them: its setup's run once in these tests, on the stand-in above)
+  s.exec('CREATE TABLE pg_vitals (day INTEGER NOT NULL, app TEXT NOT NULL, dev TEXT NOT NULL, metric TEXT NOT NULL, b INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, app, dev, metric, b))');
+  s.exec('CREATE TABLE pg_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
+  const exec = (sql, args) => { const p = s.prepare(sql); if (p.columns().length) return { results: p.all(...args), success: true, meta: { changes: 0 } }; const r = p.run(...args); return { results: [], success: true, meta: { changes: Number(r.changes) } }; };
+  const st = (sql, args = []) => ({ sql, a: args, bind: (...a) => st(sql, a), first: async () => s.prepare(sql).get(...args) ?? null, all: async () => exec(sql, args), run: async () => exec(sql, args), now: () => exec(sql, args) });
+  return { sql: s, prepare: (q) => st(q), async batch(list) { s.exec('BEGIN'); try { const r = list.map((x) => x.now()); s.exec('COMMIT'); return r; } catch (e) { s.exec('ROLLBACK'); throw e; } }, exec: async (q) => s.exec(q) };
+}
+
+test('a day’s numbers for one app and device: kept up to a cap, so made-up ones can’t swamp them', async () => {
+  const DB = d1(), env = { DB }, t = Date.UTC(2026, 10, 6, 12);
+  await record(env, { app: 'hub', dev: 'phone', m: { lcp: 900 } }, t);
+  const day = DB.sql.prepare("SELECT day FROM pg_vitals").get().day;
+  DB.sql.prepare("UPDATE pg_vitals SET n = ?").run(DAY_CAP - 1);
+  await record(env, { app: 'hub', dev: 'phone', m: { lcp: 900, fcp: 300 } }, t);
+  await record(env, { app: 'hub', dev: 'phone', m: { lcp: 50000 } }, t);
+  const sum = (metric, dev = 'phone') => DB.sql.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM pg_vitals WHERE day = ? AND app = 'hub' AND dev = ? AND metric = ?").get(day, dev, metric).n;
+  assert.equal(sum('lcp'), DAY_CAP, 'up to the cap, then no more, in any band');
+  assert.equal(sum('fcp'), 1, 'each measure its own');
+  await record(env, { app: 'hub', dev: 'computer', m: { lcp: 900 } }, t);
+  assert.equal(sum('lcp', 'computer'), 1, 'each kind of device its own');
+  await record(env, { app: 'hub', dev: 'phone', m: { lcp: 900 } }, t + 864e5);
+  assert.equal(DB.sql.prepare("SELECT SUM(n) AS n FROM pg_vitals WHERE day = ? AND metric = 'lcp'").get(day + 1).n, 1, 'and each day');
+});
+
+test('the route: a few from each network (an IPv6 /48, not each /64), and too big refused before it’s read', async () => {
+  const DB = d1(), env = { DB };
+  const req = (ip, body = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } }), h = {}) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'CF-Connecting-IP': ip, ...h }, body });
+  let last;
+  for (let i = 0; i < 41; i++) last = await vitalsRoute({ request: req(`2001:db8:aa:${i.toString(16)}::1`), env });
+  assert.equal(last.status, 204);
+  assert.equal(DB.sql.prepare("SELECT SUM(n) AS n FROM pg_vitals").get().n, 40, 'forty a quarter of an hour from one /48, however many /64s');
+  assert.equal(DB.sql.prepare("SELECT key FROM pg_limits WHERE key LIKE 'vitals:%'").get().key, 'vitals:2001:db8:aa::/48');
+  let read = false;
+  const stream = new ReadableStream({ pull(c) { read = true; c.enqueue(new TextEncoder().encode('x'.repeat(100))); } }, { highWaterMark: 0 });
+  const big = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'Content-Length': '5000000', 'CF-Connecting-IP': '203.0.113.5' }, body: stream, duplex: 'half' });
+  assert.equal((await vitalsRoute({ request: big, env })).status, 413);
+  assert.equal(read, false, 'never read');
+  const sly = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.5' }, body: new ReadableStream({ pull(c) { c.enqueue(new TextEncoder().encode('x'.repeat(400))); } }), duplex: 'half' });
+  assert.equal((await vitalsRoute({ request: sly, env })).status, 413, 'saying nothing of its size: read no further than the cap');
+});
+
+// (Today's Worker, where the inflite repo's checked out beside this one)
+const TODAY = new URL('../../../../inflite/today/src/index.js', import.meta.url);
+test('Today’s server passes on a page’s few hundred bytes, never more: too big by what it says, or as it’s read, refused unread', { skip: !existsSync(TODAY) && 'no inflite repo beside' }, async () => {
+  const worker = (await import(TODAY)).default, sent = [], was = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => { sent.push({ url: String(url), body: init.body }); return new Response(null, { status: 204 }); };
+  try {
+    const env = { ACCOUNT_ORIGIN: 'https://account.inflite.ai', ASSETS: { fetch: async () => new Response('') } };
+    const at = (body, h = {}) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin', ...h }, body, duplex: 'half' });
+    const ok = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } });
+    assert.equal((await worker.fetch(at(ok), env, {})).status, 204);
+    assert.equal(sent.length, 1); assert.match(sent[0].url, /\/api\/account\/vitals$/); assert.equal(sent[0].body, ok);
+    let read = false;
+    const big = at(new ReadableStream({ pull(c) { read = true; c.enqueue(new Uint8Array(100)); } }, { highWaterMark: 0 }), { 'Content-Length': '9000000' });
+    assert.equal((await worker.fetch(big, env, {})).status, 413);
+    assert.equal(read, false, 'never read');
+    const sly = at(new ReadableStream({ pull(c) { c.enqueue(new Uint8Array(400)); } }));
+    assert.equal((await worker.fetch(sly, env, {})).status, 413, 'saying nothing of its size: read no further than the cap');
+    assert.equal(sent.length, 1, 'neither passed on');
+  } finally { globalThis.fetch = was; }
 });
 
 test('every address takes them: the site’s middleware, and Today’s and Mail’s servers pass them on, nothing kept there', () => {

@@ -10,7 +10,9 @@
 //   status_now      each address's, job's and outside service's latest, and how many in a row have failed or been fine
 //   status_incidents  opened by itself after two failed checks in a row (one incident for what fails together), closed
 //                   after two fine ones (kind auto); started from Admin (manual), closed from there; opened by a burst of
-//                   one bug code (burst), closed after an hour without it. Kept 120 days
+//                   one bug code (burst), closed after an hour without it: the site's own server errors, on the page at
+//                   once; people's reports alone (from three places or more), the owner's to see first, held off the page
+//                   and its banners until they post an update on it (held). Kept 120 days
 //   status_maint    maintenance planned from Admin: announced on the page; while it lasts, what it covers failing opens
 //                   nothing and doesn't count against its uptime
 // The owner's told when an incident opens or closes by itself (a notification on their phone, and email), whatever the
@@ -83,7 +85,8 @@ const table = (env) => (ready ||= db(env).then(async (D) => {
   ]);
   // (what kind of incident, and a burst's bug code: added to a table made before them; and the Incident Desk's: whether it
   // was a real outage (null: not said), the uptime taken back for one that wasn't, the write-up, the owner's own notes)
-  for (const col of ["kind TEXT", "code TEXT", "outage INTEGER", "fixup TEXT", "writeup TEXT", "notes TEXT"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(() => {});
+  // (and held: a burst of people's reports, not shown until the owner says so)
+  for (const col of ["kind TEXT", "code TEXT", "outage INTEGER", "fixup TEXT", "writeup TEXT", "notes TEXT", "held INTEGER"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(() => {});
   return D;
 }).catch((e) => { ready = null; throw e; }));
 
@@ -104,7 +107,12 @@ export async function setAlertPrefs(env, b) {
 export function incidentMail(env, e) {
   const desk = `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, names = and((e.svcs || []).map(nameOf).filter(Boolean));
   const hm = (t) => ukHM.format(t), up = e.title.replace(/ not (answering|running|working)$/, "");
-  const { text, html } = e.open
+  const { text, html } = e.open && e.held
+    ? emailBody({ brand: "status", icon: "warn-red", title: e.title, preheader: `Since ${hm(e.started)}. ${e.text}`,
+      notice: { tone: "red", lead: `Since ${hm(e.started)}.`, text: e.text },
+      lines: ["Only you’ve been told: people’s reports alone could be anyone’s, so it isn’t on the status page, and no one else is told, until you post an update on it."],
+      rows: [...(names ? [["What", names, "grid"]] : []), ["Status page", "Not shown yet", "link"]], button: { label: "Open in Incident Desk", url: desk } })
+    : e.open
     ? emailBody({ brand: "status", icon: "warn-red", title: e.byHand ? `You started: ${e.title}` : e.title, preheader: `Since ${hm(e.started)}. ${e.text}`,
       notice: { tone: "red", lead: `Since ${hm(e.started)}.`, text: e.text },
       lines: [e.byHand ? "It’s on the status page now, with what you wrote." : "It’s on the status page as an incident. Add the first update, so people know you’re on it."],
@@ -126,7 +134,8 @@ async function tell(env, events) {
       // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
       admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
       to && sendEmail(env, { brand: "status", to, ...incidentMail(env, e) }),
-      tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/ not (answering|running|working)$/, "")}: working again`, body: e.text, id: e.id }),
+      // (one held off the page, the owner's alone)
+      !e.held && tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/ not (answering|running|working)$/, "")}: working again`, body: e.text, id: e.id }),
     ].filter(Boolean)));
   } catch (e) { console.error("status tell", e && e.message); }
 }
@@ -287,7 +296,7 @@ async function incidents(D, rows, t) {
       }
     }
     if (x.fresh) events.push({ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[x.updates.length - 1].w, started: x.started });
-    else if (x.closedNow) events.push({ open: false, id: x.id, title: x.title, svcs: x.svcs, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.`, started: x.started, ended: t,
+    else if (x.closedNow) events.push({ open: false, held: !!x.held, id: x.id, title: x.title, svcs: x.svcs, text: `${x.updates[0].w} It lasted ${lasted(t - x.started)}.`, started: x.started, ended: t,
       said: x.updates.filter((u) => u.by === "owner").length });
     if (x.changed) out.push(put(D, x));
   }
@@ -295,9 +304,9 @@ async function incidents(D, rows, t) {
 }
 const lasted = (ms) => { const m = Math.max(1, Math.round(ms / MIN)); return m < 60 ? `${m} minute${m === 1 ? "" : "s"}` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 // (written over in place, so what the Desk keeps on it (outage, write-up, notes) stays)
-const put = (D, x) => D.prepare(`INSERT INTO status_incidents (id, title, svcs, started, ended, updates, kind, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(id) DO UPDATE SET title = excluded.title, svcs = excluded.svcs, started = excluded.started, ended = excluded.ended, updates = excluded.updates, kind = excluded.kind, code = excluded.code`)
-  .bind(x.id, x.title, JSON.stringify(x.svcs), x.started, x.ended ?? null, JSON.stringify(x.updates.slice(0, 40)), x.kind || "auto", x.code || null);
+const put = (D, x) => D.prepare(`INSERT INTO status_incidents (id, title, svcs, started, ended, updates, kind, code, held) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET title = excluded.title, svcs = excluded.svcs, started = excluded.started, ended = excluded.ended, updates = excluded.updates, kind = excluded.kind, code = excluded.code, held = excluded.held`)
+  .bind(x.id, x.title, JSON.stringify(x.svcs), x.started, x.ended ?? null, JSON.stringify(x.updates.slice(0, 40)), x.kind || "auto", x.code || null, x.held ? 1 : null);
 // (the page's copies at this edge, and every app's banner, let go of: so a change shows at once here, elsewhere within a minute)
 const forget = async (env) => {
   const paths = ["/api/status", "/feed.xml", ...["hub", ...Object.keys(APP_SVCS)].map((a) => `/api/status-banner?app=${a}`)];
@@ -305,19 +314,25 @@ const forget = async (env) => {
 };
 
 // A burst of one bug code (functions/_bugs.js calls this for each report kept): five in ten minutes opens an incident,
-// where the owner has it on, and tells them
+// where the owner has it on, and tells them. The site's own server errors (app server) are what they say: on the page at
+// once. Reports from the window could be anyone's, sent over and over: only from three places or more (each report's
+// reporter, its network's key; the site counts as one), and then held, the owner's alone, off the page and its
+// banners, no one else told, until they post an update on it (noteIncident)
 const BUG_SVC = { chat: "chat", chats: "chat", weather: "weather", fitness: "fitness", markets: "markets", finance: "markets", mail: "mail", email: "mail", account: "account", auth: "auth", today: "today", hub: "today", home: "home" };
 export async function burstCheck(env, code, app, t = Date.now()) {
   if (!/^IF-[A-Z]-[0-9A-Z]{4,6}$/.test(String(code || ""))) return null;
   const D = await table(env);
-  const n = (await D.prepare("SELECT COUNT(*) AS n FROM pg_bugs WHERE code = ? AND at > ?").bind(code, t - 10 * MIN).first())?.n || 0;
-  if (n < 5 || !(await alertPrefs(env)).burst) return null;
+  await import("./_bugs.js").then((m) => m.table(env));
+  const c = await D.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(app = 'server'), 0) AS site, COUNT(DISTINCT CASE WHEN app = 'server' THEN '' ELSE reporter END) AS who
+    FROM pg_bugs WHERE code = ? AND at > ?`).bind(code, t - 10 * MIN).first();
+  const n = c?.n || 0, held = (c?.site || 0) < 5;
+  if (n < 5 || (held && (c?.who || 0) < 3) || !(await alertPrefs(env)).burst) return null;
   if (await D.prepare("SELECT 1 FROM status_incidents WHERE code = ? AND ended IS NULL").bind(code).first()) return null;
-  const svc = BUG_SVC[app], x = { id: `b${t.toString(36)}`, kind: "burst", code, svcs: svc ? [svc] : [], started: t - 10 * MIN, ended: null,
+  const svc = BUG_SVC[app], x = { id: `b${t.toString(36)}`, kind: "burst", code, held, svcs: svc ? [svc] : [], started: t - 10 * MIN, ended: null,
     title: `${svc ? nameOf(svc) : "The site"}: the same error over and over`, updates: [{ at: t, k: "Spotted", w: `${n} reports of the same error (${code}) in ten minutes.` }] };
   await put(D, x).run();
-  await forget(env);
-  await tell(env, [{ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[0].w, started: x.started, byHand: true }]);
+  if (!held) await forget(env);
+  await tell(env, [{ open: true, id: x.id, title: x.title, svcs: x.svcs, text: x.updates[0].w, started: x.started, ...(held ? { held } : { byHand: true }) }]);
   return x.id;
 }
 
@@ -327,7 +342,7 @@ export async function summary(env, t = Date.now()) {
   const [now, counts, incs, mts] = await Promise.all([
     D.prepare("SELECT * FROM status_now").all(),
     D.prepare("SELECT * FROM status_days WHERE day >= ?").bind(days[0]).all(),
-    D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL OR started >= ? ORDER BY started DESC LIMIT 10").bind(t - 90 * DAY_MS).all(),
+    D.prepare("SELECT * FROM status_incidents WHERE (ended IS NULL OR started >= ?) AND held IS NOT 1 ORDER BY started DESC LIMIT 10").bind(t - 90 * DAY_MS).all(),
     D.prepare("SELECT * FROM status_maint WHERE cancelled IS NULL AND ends > ? AND starts < ? ORDER BY starts LIMIT 5").bind(t, t + 14 * DAY_MS).all(),
   ]);
   const latest = Object.fromEntries((now.results || []).map((r) => [r.svc, r]));
@@ -355,9 +370,10 @@ export async function summary(env, t = Date.now()) {
   // (the bug codes of the week, and the site's own server errors' codes during each incident: codes alone, no words)
   let bugs = [];
   try {
+    await import("./_bugs.js").then((m) => m.table(env));
     // (each with where it stands, as the Incident Desk has it: new, fixed, back again since it was fixed, or known
     // (muted there); and its name in words where it's the site's own (functions/_desk.js titleOf), never anyone's words)
-    const week = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, MAX(b.issue) AS issue, d.state, d.at AS said_at, d.until
+    const week = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, MAX(b.issue) AS issue, d.state, d.at AS said_at, d.until, ${SINCE}
       FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.at >= ? AND b.app != 'fitting' GROUP BY b.code, b.app ORDER BY MAX(b.at) DESC LIMIT 8`).bind(t - 7 * DAY_MS).all();
     bugs = await Promise.all((week.results || []).map(async (b) => ({ ...(await bugItem(b, t)), filed: !!b.issue })));
     if (list.length) {
@@ -381,7 +397,7 @@ export async function bannerFor(env, app, t = Date.now()) {
   const scope = APP_SVCS[app] || null, D = await table(env);
   // (an incident naming nothing, at the hub alone; maintenance naming nothing covers everything)
   const hits = (svcs, all) => !scope || (all && !svcs.length) || svcs.some((s) => scope.includes(s) || s === "db");
-  const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL ORDER BY started DESC LIMIT 10").all();
+  const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL AND held IS NOT 1 ORDER BY started DESC LIMIT 10").all();
   const inc = (results || []).map((x) => ({ ...x, svcs: JSON.parse(x.svcs || "[]"), updates: JSON.parse(x.updates || "[]") })).find((x) => hits(x.svcs));
   const page = `https://${statusHostOf(env)}/`;
   if (inc) return { banner: { kind: "incident", id: inc.id, title: inc.title, text: inc.updates[0]?.w || "", since: inc.started, url: page } };
@@ -395,7 +411,7 @@ export async function bannerFor(env, app, t = Date.now()) {
 export const NOTE_KINDS = ["Investigating", "Identified", "Update", "Monitoring", "Resolved"];
 const json1 = (v, or) => { try { return v ? JSON.parse(v) : or; } catch (_) { return or; } };
 export const parse = (x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: json1(x.svcs, []), started: x.started, ended: x.ended, updates: json1(x.updates, []),
-  code: x.code || null, outage: x.outage == null ? null : !!x.outage, writeup: json1(x.writeup, null), notes: json1(x.notes, []) });
+  code: x.code || null, outage: x.outage == null ? null : !!x.outage, writeup: json1(x.writeup, null), notes: json1(x.notes, []), held: x.held === 1 });
 // (what can be named as affected: every address, job and outside service, by name)
 export const CATALOGUE = [...STATUS_SERVICES, ...STATUS_JOBS, ...STATUS_DEPS].map((x) => ({ id: x.id, name: x.name }));
 export async function adminIncidents(env, t = Date.now()) {
@@ -433,7 +449,10 @@ export async function noteIncident(env, b, t = Date.now()) {
   const x = parse(row);
   x.updates.unshift({ at: t, k: kind, w: text, by: "owner" });
   if (kind === "Resolved" && !x.ended) x.ended = t;
-  await D.prepare("UPDATE status_incidents SET ended = ?, updates = ? WHERE id = ?").bind(x.ended, JSON.stringify(x.updates.slice(0, 40)), x.id).run();
+  // (one held off the page (people's reports alone) goes on it with the owner's first update; resolved first, it never does)
+  if (x.held && kind !== "Resolved") x.held = false;
+  await D.prepare("UPDATE status_incidents SET ended = ?, updates = ?, held = ? WHERE id = ?").bind(x.ended, JSON.stringify(x.updates.slice(0, 40)), x.held ? 1 : null, x.id).run();
+  if (x.held) return x;
   // (the page's copy at this edge let go of, so it's there at once; elsewhere within half a minute)
   await forget(env);
   await tellSubscribers(env, { svcs: x.svcs, title: kind === "Resolved" ? `${x.title.replace(/ not (answering|running|working)$/, "")}: working again` : x.title, body: text, id: x.id });
@@ -501,7 +520,8 @@ export async function codeLookup(env, code, t = Date.now()) {
   const c = String(code || "").toUpperCase();
   if (!CODE_RE.test(c)) throw new HttpError(400, "That doesn’t look like a code.");
   const D = await table(env);
-  const r = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, d.state, d.at AS said_at, d.until
+  await import("./_bugs.js").then((m) => m.table(env)).catch(() => {});
+  const r = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, d.state, d.at AS said_at, d.until, ${SINCE}
     FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.code = ? AND b.at >= ? GROUP BY b.code, b.app`).bind(c, t - 30 * DAY_MS).first().catch(() => null);
   if (!r) {
     const old = await D.prepare("SELECT MAX(at) AS at FROM pg_bugs WHERE code = ?").bind(c).first().catch(() => null);
@@ -509,9 +529,13 @@ export async function codeLookup(env, code, t = Date.now()) {
   }
   return { found: true, ...(await bugItem(r, t)) };
 }
+// (a fixed code seen since: by the site's own servers, or from three places or more; one sender alone, over and over,
+// never says a fixed bug's back)
+const SINCE = `SUM(b.app = 'server' AND b.at > d.at) AS since_site, COUNT(DISTINCT CASE WHEN b.at > d.at AND b.app != 'server' THEN b.reporter END) AS since_who`;
 async function bugItem(b, t) {
   const { titleOf } = await import("./_desk.js");
-  const state = b.state === "fixed" ? (b.last > b.said_at ? "back" : "fixed") : b.state === "muted" && b.until > t ? "known" : "new";
+  const back = b.last > b.said_at && (b.since_site > 0 || b.since_who >= 3);
+  const state = b.state === "fixed" ? (back ? "back" : "fixed") : b.state === "muted" && b.until > t ? "known" : "new";
   return { code: b.code, app: b.app, n: b.n, first: b.first, last: b.last, state, fixedAt: b.state === "fixed" ? b.said_at : null, title: b.app === "server" ? titleOf("server", b.kind, "") : null };
 }
 // (what each subscribed app covers: its own address, its job, what it relies on)
