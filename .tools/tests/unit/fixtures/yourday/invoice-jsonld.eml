@@ -1,18 +1,18 @@
-Authentication-Results: mx.cloudflare.net; dkim=pass header.d=bristolenergy.coop header.s=s1; spf=pass smtp.mailfrom=bristolenergy.coop; dmarc=pass header.from=bristolenergy.coop
-From: Bristol Energy Co-op <billing@bristolenergy.coop>
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=thameswater.co.uk header.s=s1; spf=pass smtp.mailfrom=thameswater.co.uk; dmarc=pass header.from=thameswater.co.uk
+From: Thames Water <billing@thameswater.co.uk>
 To: hello@inflite.ai
-Subject: Your invoice BEC-20419-11
-Message-ID: <bec-20419-11@bristolenergy.coop>
+Subject: Your invoice TW-20419-11
+Message-ID: <tw-20419-11@thameswater.co.uk>
 Date: @MAILDATE@
 MIME-Version: 1.0
-Content-Type: multipart/alternative; boundary="bec1"
+Content-Type: multipart/alternative; boundary="tw1"
 
---bec1
+--tw1
 Content-Type: text/plain; charset=utf-8
 
 Your monthly invoice is attached.
 
---bec1
+--tw1
 Content-Type: text/html; charset=utf-8
 
 <html><head>
@@ -20,14 +20,14 @@ Content-Type: text/html; charset=utf-8
 {
   "@context": "http://schema.org",
   "@type": "Invoice",
-  "accountId": "BEC-20419",
-  "provider": { "@type": "Organization", "name": "Bristol Energy Co-op" },
+  "accountId": "TW-20419",
+  "provider": { "@type": "Organization", "name": "Thames Water" },
   "billingPeriod": "P1M",
   "totalPaymentDue": { "@type": "PriceSpecification", "price": "32.50", "priceCurrency": "GBP" },
   "paymentDueDate": "@D+5@",
   "paymentStatus": "http://schema.org/PaymentDue",
-  "url": "https://bristolenergy-pay.example/BEC-20419"
+  "url": "https://thameswater-pay.example/TW-20419"
 }
 </script>
 </head><body><p>Your monthly invoice: &pound;32.50.</p></body></html>
---bec1--
+--tw1--

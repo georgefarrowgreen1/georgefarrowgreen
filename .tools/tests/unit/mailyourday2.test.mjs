@@ -5,7 +5,7 @@
 // written @D+n@ (ISO), @L+n@ ("Thursday 12 November") and @THU+n@ (the yyyymmdd n days after the next Thursday), so they
 // never go stale): Amazon's shipped, out-for-delivery and delivered set, Evri out for delivery with a window, Royal Mail
 // delivered, a ParcelDelivery in JSON-LD, a lookalike scam that's never read, Octopus's bill by card, EE's by direct debit,
-// an Invoice in JSON-LD, an insurance renewal with last year's price, a Strava trial ending, Spotify's price rise,
+// Thames Water's Invoice in JSON-LD, an insurance renewal with last year's price, a Strava trial ending, Spotify's price rise,
 // Netflix's receipt, a book club every other Thursday with an EXDATE and a moved date, the cancellation of one date, and
 // an email with nothing in it. Then, through Mail's Worker against a real database (node:sqlite as D1, Mail's own
 // schema) and R2 kept in memory: the two new switches (absent, not empty, while off); mail as it comes, one row a parcel
@@ -166,7 +166,7 @@ test('a lookalike never matches: evri-redelivery.top’s scam isn’t read, as a
 // =====================================================================================================================
 // Bills, read
 // =====================================================================================================================
-test('bills: Octopus by card (not paid by itself), EE by direct debit, an Invoice in JSON-LD (any sender), in pence, by the day', { skip }, async () => {
+test('bills: Octopus by card (not paid by itself), EE by direct debit, an Invoice in JSON-LD (from a sender it knows, by its own name), in pence, by the day', { skip }, async () => {
   const [o] = await read('octopus-bill.eml', 'bills');
   assert.deepEqual([o.kind, o.sender, o.cat, o.amount, o.auto, o.account, o.source, o.key], ['bill', 'Octopus Energy', 'Home', 8420, false, 'A-3F9E21', 'rules', 'octopus.energy']);
   assert.equal(o.due, await dayStart(6));
@@ -174,7 +174,7 @@ test('bills: Octopus by card (not paid by itself), EE by direct debit, an Invoic
   assert.deepEqual([e.kind, e.sender, e.cat, e.amount, e.auto], ['bill', 'EE', 'Phone and internet', 4500, true]);
   assert.equal(e.due, await dayStart(4));
   const [i] = await read('invoice-jsonld.eml', 'bills');
-  assert.deepEqual([i.kind, i.sender, i.cat, i.amount, i.auto, i.account, i.source, i.per], ['bill', 'Bristol Energy Co-op', 'Other', 3250, false, 'BEC-20419', 'schema', 'm']);
+  assert.deepEqual([i.kind, i.sender, i.cat, i.amount, i.auto, i.account, i.source, i.per], ['bill', 'Thames Water', 'Home', 3250, false, 'TW-20419', 'schema', 'm']);
 });
 
 test('a renewal with last year’s price, a trial ending and what it costs after, a price rise, a receipt', { skip }, async () => {
@@ -387,7 +387,7 @@ test('Today’s card: parcels exactly as the contract has them (on their way, de
 test('bills as they come, each sender’s history: the card’s bills (due in 14 days, 7 for one that pays itself) and money, exactly as the contract has them', { skip }, async () => {
   // (Octopus's five before, a month apart)
   for (const [p, d] of [['68.00', -144], ['71.00', -114], ['74.00', -84], ['70.50', -54], ['72.00', -24]]) await deliver(octopus(p, d, d - 10), 'hello@octopus.energy');
-  for (const [f, from] of [['ee-bill.eml', 'noreply@ee.co.uk'], ['invoice-jsonld.eml', 'billing@bristolenergy.coop'], ['admiral-renewal.eml', 'renewals@admiral.com'], ['strava-trial.eml', 'no-reply@strava.com'], ['spotify-price.eml', 'no-reply@spotify.com'], ['netflix-receipt.eml', 'info@account.netflix.com']]) await deliver(fixture(f), from);
+  for (const [f, from] of [['ee-bill.eml', 'noreply@ee.co.uk'], ['invoice-jsonld.eml', 'billing@thameswater.co.uk'], ['admiral-renewal.eml', 'renewals@admiral.com'], ['strava-trial.eml', 'no-reply@strava.com'], ['spotify-price.eml', 'no-reply@spotify.com'], ['netflix-receipt.eml', 'info@account.netflix.com']]) await deliver(fixture(f), from);
   const c = await card();
   assert.ok(Array.isArray(c.bills) && c.money && typeof c.money === 'object');
   for (const b of c.bills) {
@@ -399,7 +399,7 @@ test('bills as they come, each sender’s history: the card’s bills (due in 14
     assert.ok(Array.isArray(b.last) && b.last.length <= 6 && b.last.every(Number.isInteger));
     assert.equal(typeof b.auto, 'boolean');
   }
-  assert.deepEqual(c.bills.map((b) => b.sender), ['Strava', 'EE', 'Bristol Energy Co-op', 'Octopus Energy', 'Admiral'], 'soonest first; Spotify (pays itself, in 12 days) and Netflix (paid) not');
+  assert.deepEqual(c.bills.map((b) => b.sender), ['Strava', 'EE', 'Thames Water', 'Octopus Energy', 'Admiral'], 'soonest first; Spotify (pays itself, in 12 days) and Netflix (paid) not');
   const oe = c.bills.find((b) => b.sender === 'Octopus Energy');
   assert.deepEqual([oe.kind, oe.amount, oe.auto, oe.usual, oe.was, oe.cat], ['bill', 8420, false, 7100, null, 'Home']);
   assert.deepEqual(oe.last, [6800, 7100, 7400, 7050, 7200, 8420], 'its last six, oldest first, the newest this one');
@@ -410,14 +410,14 @@ test('bills as they come, each sender’s history: the card’s bills (due in 14
   assert.deepEqual([str.kind, str.amount, str.auto, str.last, str.usual], ['trial', 899, true, [], null]);
   const m = c.money;
   assert.deepEqual(Object.keys(m).sort(), ['cats', 'month', 'months', 'n', 'paidSelf']);
-  assert.equal(m.month, 8420 + 4500 + 3250 + 3438 + 1199 + 1099, 'Octopus, EE, the co-op, Admiral’s year by twelve, Spotify, Netflix (not the trial)');
+  assert.equal(m.month, 8420 + 4500 + 3250 + 3438 + 1199 + 1099, 'Octopus, EE, Thames Water, Admiral’s year by twelve, Spotify, Netflix (not the trial)');
   assert.equal(m.n, 6);
   assert.equal(m.months.length, 6);
   assert.ok(m.months.every((v) => v === null || Number.isInteger(v)) && m.months.some((v) => v === null), 'the months before the read-back unknown (null), the rest amounts');
   assert.equal(m.months[5], m.month);
-  assert.deepEqual(m.cats, [{ name: 'Home', pence: 8420 }, { name: 'Phone and internet', pence: 4500 }, { name: 'Car', pence: 3438 }, { name: 'Other', pence: 3250 }, { name: 'Subscriptions', pence: 2298 }]);
+  assert.deepEqual(m.cats, [{ name: 'Home', pence: 8420 + 3250 }, { name: 'Phone and internet', pence: 4500 }, { name: 'Car', pence: 3438 }, { name: 'Subscriptions', pence: 2298 }]);
   assert.deepEqual(m.paidSelf, { n: 1, pence: 1099 }, 'Netflix, paid by itself two days ago');
-  assert.doesNotMatch(JSON.stringify(c.bills), /<|>|bristolenergy-pay/);
+  assert.doesNotMatch(JSON.stringify(c.bills), /<|>|thameswater-pay/);
 });
 
 test('Hide and Put Back (POST /api/connector/hide, /unhide) for a parcel and a bill: the shared key alone; 204; 400, 404, 401 as Hide', { skip }, async () => {
