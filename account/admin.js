@@ -1,7 +1,7 @@
 // The site's admin, on its admin's account page (account/app.js): its own file, fetched only for the account that's the
 // site's admin, so no one else's page carries it. The page hands over what it draws with (setup), and gets back the
 // Admin row for the page and the Admin sheet.
-export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when }) {
+export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when, wide = () => false, cols = (...p) => p.flat() }) {
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
@@ -30,6 +30,14 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     ? h("div.group", {}, h("div.empty", { text: AD.err[key] }), h("button.row.action", { type: "button", onclick: () => { admAsk(key, true); redraw(); } }, "Try again"))
     : h("div.group.adm-wait", {}, h("div.empty", {}, h("span.spin")));
   const admInfo = (t, v, warn) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val" + (warn ? ".warn" : ""), { text: String(v) }));
+  // On a computer, Admin's lists are tables: a heading row, then a row each, its cells in columns (widths: tpl, a CSS
+  // grid-template-columns); a row that opens something is a button
+  function table(tpl, heads, rows) {
+    const line = (cells, open, cls = "") => { const el = h(open ? "button.at-row" + cls : "div.at-row" + cls, open ? { type: "button", onclick: open } : {}, ...cells.map((c) => h("span.at-c", {}, c ?? "")));
+      el.style.gridTemplateColumns = tpl; return el; };
+    return h("div.group.atable", {}, line(heads.map((t) => t), null, ".at-head"), ...(rows.length ? rows.map(([cells, open]) => line(cells, open)) : [h("div.empty", { text: "Nothing yet." })]));
+  }
+  const chipsOf = (opts, cur, pick) => h("div.at-chips", {}, opts.map(([k, label]) => h("button.at-chip" + (cur === k ? ".on" : ""), { type: "button", "aria-pressed": String(cur === k), onclick: () => pick(k) }, label)));
   const num = (n) => Number(n || 0).toLocaleString("en-GB"), pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const nOf = (n, one, many = one + "s") => `${num(n)} ${n === 1 ? one : many}`;
   const upper = (s) => s[0].toUpperCase() + s.slice(1);
@@ -220,6 +228,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const d = desk(), t = Date.now();
     const jobs = (d?.jobs || []).map((j) => ({ ...j, late: j.at && t - j.at > 20 * 60e3 }));
     const sub = (j) => !j.at ? "Not run yet" : j.s === "down" ? `Failed at ${clock(j.at)}` : j.late ? `Late · last ran ${whenShort(j.at)}` : `Every 5 min · ran ${clock(j.at)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}`;
+    if (wide()) return { title: "Scheduled jobs", body: [table("minmax(0, 1.4fr) 140px 120px 90px 110px", ["Job", "Last ran", "Every", "Took", ""],
+      jobs.map((j) => [[h("b", { text: j.name }), j.at ? clock(j.at) : "Not yet", "5 min", j.ms ? `${(j.ms / 1000).toFixed(1)} s` : "—",
+        h("span.at-tag" + (j.s === "down" || j.late ? ".bad" : j.s === "none" ? "" : ".ok"), { text: j.s === "down" ? "Failed" : j.late ? "Late" : j.s === "none" ? "Not run" : "OK" })]]))] };
     return { title: "Scheduled jobs", body: [h("div.group", {}, jobs.length ? jobs.map((j) => h("div.row.plain", {}, mark(j.s === "down" || j.late ? "bad" : j.s === "none" ? "grey" : "ok"), h("span.tx", {}, h("b", { text: j.name }), h("small", { text: sub(j) })))) : h("div.empty", { text: "No jobs have reported yet." }))] };
   }
   function admDeploysView() {
@@ -536,7 +547,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         s.unread ? tile(s.unread, s.unread === 1 ? "new message" : "new messages", ".new") : tile(s.messages, s.messages === 1 ? "message" : "messages")),
       ...admAlerts(s).map((a) => h("button.adm-alert", { type: "button", onclick: () => pushSheet(a.open) },
         icon("alert", 22, 2.2), h("span.tx", {}, h("b", { text: a.title }), h("small", { text: a.text })), h("span.mini", { text: "Check" }))),
-      h("h4.app-k", { text: "People" }),
+      ...((parts) => (wide() ? [cols([...parts[0], ...parts[2]], parts[1])] : parts.flat()))([[h("h4.app-k", { text: "People" }),
       h("div.group", {},
         row({ icon: "people", tint: "blue", title: "Accounts", sub: s.newWeek ? `${num(s.newWeek)} new this week` : null, value: num(s.accounts), onclick: () => pushSheet(admAccountsView) }),
         h("div.row-plus", {},
@@ -544,8 +555,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
           h("button.plus", { type: "button", "aria-label": "Make an invite", onclick: (e) => admQuickInvite(e.currentTarget) }, icon("plus", 18, 2.6))),
         row({ icon: "bubble", tint: "teal", title: "Messages", sub: s.lastMessage ? `${s.lastMessage.name} · ${seenAt(s.lastMessage.at)}` : "None yet",
           value: s.unread ? newCount(s.unread) : s.messages ? num(s.messages) : null,
-          onclick: () => { AD.data.messages = null; AD.err.messages = null; AD.fresh = new Set(); AD.msgOpen = null; pushSheet(admMessagesView); } })),
-      h("h4.app-k", { text: "The site" }),
+          onclick: () => { AD.data.messages = null; AD.err.messages = null; AD.fresh = new Set(); AD.msgOpen = null; pushSheet(admMessagesView); } }))],
+      [h("h4.app-k", { text: "The site" }),
       h("div.group", {},
         row({ icon: "chart", tint: "green", title: "Insights", value: s.online ? `${num(s.online)} online now` : null, onclick: () => pushSheet(admInsightsView) }),
         row({ icon: "db", tint: "grey", title: "Storage", value: s.storage == null ? null : bytes(s.storage), onclick: () => pushSheet(admStorageView) }),
@@ -554,13 +565,13 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         // (the Incident Desk: the server, the status page, bug reports and deploys, in one place)
         ((n, live) => row({ icon: "wave", tint: live ? "red" : n ? "amber" : "green", title: "Incident Desk", sub: live ? `${nOf(live, "incident")} going on` : null, subWarn: !!live,
           value: n ? `${num(n)} need${n === 1 ? "s" : ""} you` : h("span.adm-ok", {}, icon("check", 15, 3), "All clear"), warn: !!n, onclick: () => deskOpen() }))(s.deskNeeds ?? 0, s.statusOpen?.length || 0),
-        row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
-      h("h4.app-k", { text: "Home page" }),
+        row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) }))],
+      [h("h4.app-k", { text: "Home page" }),
       // (Edit: there signed in as you, carried over just now, as the home page's sign-in is a cookie of its own site's,
       // which may have ended or be someone else's; and having shown it's you here, it's straight into editing)
       h("div.group", {},
         row({ icon: "home", tint: "green", title: "Home page", sub: [nOf(home.photos || 0, "photo"), home.editedAt && `words changed ${when(home.editedAt)}`].filter(Boolean).join(" · "),
-          value: h("span.mini.go", { text: "Edit" }), onclick: () => { location.href = homeVia(siteUrl("") + "#edit", true); } })),
+          value: h("span.mini.go", { text: "Edit" }), onclick: () => { location.href = homeVia(siteUrl("") + "#edit", true); } }))]]),
     ] };
   }
   // + on Invites: a link made there and then, to share or copy (a name for it, and the list, are in Invites)
@@ -619,6 +630,14 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         into(e.currentTarget, o); o.focus({ preventScroll: true });
         o.querySelector(".adm-body").animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-base"), easing: tok("--ease-out") });
       } }, h("span.tx", {}, h("b", { text: m.name }), h("small", { text: m.body })), h("span.val", { text: seenAt(m.at) }));
+    // (on a computer: the list on the left, the one you're reading on the right)
+    if (wide()) {
+      const cur = x.messages.find((m) => m.id === AD.msgOpen) || x.messages[0];
+      return { title: "Messages", body: [h("div.inbox", {},
+        h("div.group.inbox-list", {}, x.messages.map((m) => h("button.inbox-it" + (m.id === cur.id ? ".on" : "") + (m.new && !AD.fresh.has(m.id) ? ".new" : ""), { type: "button", onclick: () => { AD.msgOpen = m.id; redraw(); } },
+          h("b", {}, m.name, h("small", { text: seenAt(m.at) })), h("span", { text: m.body })))),
+        h("div.group.inbox-read", {}, head(cur), h("p.adm-body", { text: cur.body }), acts(cur)))] };
+    }
     return { title: "Messages", body: [
       fresh.length > 0 && h("h4.app-k", { text: "New" }),
       ...fresh.map((m) => h("div.group.adm-msg", {}, head(m, true), h("p.adm-body", { text: m.body }), acts(m))),
@@ -640,6 +659,24 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         : [h("div.empty", { text: x.users.length ? "No accounts match." : "No one has signed up yet." })]));
     };
     q.addEventListener("input", () => { AD.q = q.value; fill(); });
+    // (on a computer: a table, filtered by what's chosen and what's typed)
+    if (wide()) {
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const F = { all: () => true, today: (u) => (u.last_seen || 0) >= day0.getTime(), week: (u) => Date.now() - u.created_at < 7 * 864e5, pw: (u) => !u.passkeys };
+      const n = (k) => x.users.filter(F[k]).length, f = F[AD.uf] ? AD.uf : "all";
+      const box = h("div");
+      const draw2 = () => {
+        const t = AD.q.trim().toLowerCase(), us = x.users.filter(F[f]).filter((u) => !t || [u.name, u.handle, u.email].some((v) => String(v || "").toLowerCase().includes(t)));
+        box.replaceChildren(table("minmax(0, 1fr) 84px 118px 124px 70px 18px", ["Name", "Joined", "Last online", "Signs in with", "Devices", ""],
+          us.map((u) => [[h("span.at-who", {}, admAvatar(u), h("span", {}, h("b", { text: u.name }), h("small", {}, `@${u.handle} · ${u.email}`))), day(u.created_at), isOn(u) ? h("span.adm-on", { text: "Online now" }) : seenAt(u.last_seen),
+            h("span.at-tag" + (u.passkeys ? ".ok" : ".warn"), { text: u.passkeys ? `${u.passkeys} passkey${u.passkeys === 1 ? "" : "s"}` : "Password only" }), String(u.sessions), icon("chev", 16, 2.4)],
+            () => { AD.link = null; pushSheet(() => admAccountView(u.id)); }])));
+      };
+      q.addEventListener("input", draw2);
+      draw2();
+      return { title: "Accounts", body: [h("div.at-bar", {}, chipsOf([["all", `All ${n("all")}`], ["today", `Active today ${n("today")}`], ["week", `New this week ${n("week")}`], ["pw", `Password only ${n("pw")}`]], f, (k) => { AD.uf = k; redraw(); }),
+        h("label.field.adm-search", {}, icon("search", 18, 2.2), q)), box] };
+    }
     fill();
     return { title: "Accounts", body: [h("label.field.adm-search", {}, icon("search", 18, 2.2), q), list] };
   }
@@ -655,7 +692,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       try { const r = await admPost(e.currentTarget, label, path, { id: u.id, ...body }); admChanged(); if (done) done(r); else toast(r.message); }
       catch (err) { if (!err.quiet) say(said, err.message); }
     };
-    return { title: u.name, body: [
+    const parts = [[
       h("div.adm-head", {}, admAvatar(u, true), h("b", { text: u.name }), h("small", {}, `@${u.handle}`, onNow(u))),
       h("div.group", {}, admInfo("Email", u.email), admInfo("Last online", isOn(u) ? "Now" : seenAt(u.last_seen)), admInfo("Joined", day(u.created_at)),
         admInfo("Friends", num(u.friends)), admInfo("Pigeons sent", num(u.sent)), admInfo("Groups", num(u.groups)),
@@ -664,7 +701,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("div.group", {}, GIFTS.map(([k, name, sub]) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: name }), h("small", { text: sub })),
         h("span.val", { text: String(u.pigeons?.[k] ?? 0) }),
         h("button.mini.go", { type: "button", "aria-label": `Give 1 ${name.toLowerCase()} pigeon`,
-          onclick: act("", "pigeons", { kind: k, add: 1 }, (r) => { u.pigeons = { ...u.pigeons, [k]: r.count }; toast(r.message); redraw(); }) }, "+1")))),
+          onclick: act("", "pigeons", { kind: k, add: 1 }, (r) => { u.pigeons = { ...u.pigeons, [k]: r.count }; toast(r.message); redraw(); }) }, "+1"))))], [
+      h("h4.app-k", { text: "Signing in" }),
       h("div.group", {},
         AD.sum?.email !== false && h("button.row.action", { type: "button", onclick: act("Sending…", "reset", { mode: "email" }) }, "Email a reset link"),
         h("button.row.action", { type: "button", onclick: act("Making it…", "reset", { mode: "link" }, (r) => {
@@ -674,7 +712,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         h("button.row.action", { type: "button", disabled: !u.sessions, onclick: act("Signing out…", "signout", {}, (r) => { u.sessions = 0; toast(r.message); redraw(); }) }, "Sign out everywhere")),
       link && admCopy(link, "Works once, for 24 hours. Send it to them privately."),
       said,
-      !me && h("div.group.apart", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(() => admDeleteView(u)) }, "Delete account…"))] };
+      !me && h("div.group.apart", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(() => admDeleteView(u)) }, "Delete account…"))]];
+    return { title: u.name, body: wide() ? [cols(...parts)] : parts.flat() };
   }
   function admDeleteView(u) {
     const said = h("p.said", { role: "alert" });
@@ -718,8 +757,15 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       } }, h("label.field", {}, note), make),
       AD.invite && admCopy(AD.invite, "Copy it now: it isn’t shown again. It makes one account, then stops working."),
       said,
-      // (the unused first, then those used; one cancelled isn't shown again)
-      !x ? admWait("invites") : ((list) => list.length > 0 && h("div.group", {}, list.map(item)))([...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 20)])] };
+      // (the unused first, then those used; one cancelled isn't shown again: on a computer, a table)
+      !x ? admWait("invites") : wide() ? table("minmax(0, 1.2fr) 130px 110px minmax(0, 1.2fr) 90px", ["For", "Made", "Status", "Used by", ""],
+        [...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 40)].map((i) => [[h("b", { text: i.note || "Invite" }), day(i.createdAt),
+          h("span.at-tag" + (i.usedAt ? ".ok" : ""), { text: i.usedAt ? "Used" : "Waiting" }), i.usedAt ? `${i.by?.handle ? "@" + i.by.handle : "An account since deleted"} · ${day(i.usedAt)}` : "—",
+          open(i) ? h("button.mini", { type: "button", onclick: async (e) => {
+            say(said, "");
+            try { await admPost(e.currentTarget, "", "invite-revoke", { id: i.id }); i.revokedAt = Date.now(); admChanged(); redraw(); toast("Invite cancelled."); }
+            catch (err) { if (!err.quiet) say(said, err.message); }
+          } }, "Cancel") : ""]])) : ((list) => list.length > 0 && h("div.group", {}, list.map(item)))([...x.invites.filter(open), ...x.invites.filter((i) => i.usedAt).slice(0, 20)])] };
   }
 
   // Insights: how Chat is used, in totals over everyone (functions/_insights.js), never who sent what to whom
@@ -756,7 +802,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const grow = !still.matches && (Sheet.mode !== "same" || Sheet.waited), g = grow ? ".grow" : "";
     const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
     const meters = (list, of) => h("div.group.adm-meters" + g, {}, list.map(([l, n], j) => admMeter(l, n, of, null, j)));
-    return { title: "Insights", body: [
+    const top = [h("div.stats", {}, stat(num(P.today), "today"), stat(num(P.week), "this week"), stat(num(P.month), "this month"), stat(R.old ? `${pct(R.back, R.old)}%` : "–", "came back"))];
+    const left = [admBars("Pigeons sent", x.days.sent, grow), admBars("People active", x.days.active, grow), admBars("New accounts", x.days.joined, grow)];
+    const body = [
       h("div.stats", {}, stat(num(P.today), "today"), stat(num(P.week), "this week"), stat(num(P.month), "this month"), stat(R.old ? `${pct(R.back, R.old)}%` : "–", "came back")),
       admBars("Pigeons sent", x.days.sent, grow), admBars("People active", x.days.active, grow), admBars("New accounts", x.days.joined, grow),
       h("h4.app-k", { text: "Coming back" }),
@@ -777,7 +825,11 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("h4.app-k", { text: "Landing on time" }),
       h("div.group", {}, admInfo("In the air now", num(H.flying)), admInfo("Landed today", num(H.landed)), admInfo("Lost to Pigeon Death today", num(H.lost)),
         admInfo("Landings not told yet", H.late ? num(H.late) : "None", !!H.late)),
-      h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("insights", true); redraw(); } }, AD.busy.insights ? "Counting…" : "Count again"))] };
+      h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("insights", true); redraw(); } }, AD.busy.insights ? "Counting…" : "Count again"))];
+    // (on a computer: the figures across the top, the charts and who's come back on the left, the rest on the right)
+    if (!wide()) return { title: "Insights", body };
+    const rest = body.slice(4).filter(Boolean), at = rest.findIndex((el) => el?.textContent?.startsWith?.("Pigeons, last 30 days")), split = at < 0 ? rest.length : at;
+    return { title: "Insights", body: [...top, cols([...left, ...rest.slice(0, split)], rest.slice(split))] };
   }
 
   // Storage: what's kept across the site, and how much, by app; each app's own page one tap on (functions/_retention.js)
@@ -824,7 +876,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const s = admAsk("storage");
     if (!s) return { title: "Storage", body: [admWait("storage")] };
     const apps = storageApps(s), total = apps.reduce((a, x) => a + x.total, 0), files = s.files.reduce((a, f) => ({ n: a.n + f.n, b: a.b + f.bytes }), { n: 0, b: 0 });
-    return { title: "Storage", body: [
+    const body = [
       h("div.st-total", {},
         h("div.st-big", {}, h("b", { text: bytes(total) }), h("span", { text: "across the site" })),
         h("div.st-stack", { "aria-hidden": "true" }, apps.filter((a) => a.total > 0).map((a) => painted(h("i"), { flex: `${a.total} 0 0`, background: a.colour }))),
@@ -838,7 +890,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         h("span.val", { text: bytes(a.total) }), h("span.chev", {}, icon("chev", 16, 2.4))))),
       h("h4.app-k", { text: "Cleaning up" }),
       h("div.group", {}, admInfo("Last run", s.keptAt ? seenAt(s.keptAt) : "Not yet"), admInfo(`Messages over ${s.keepDays} days`, num(s.due)), admInfo("Unused accounts warned", num(s.warned))),
-      countAgain()] };
+      countAgain()];
+    // (on a computer: the whole site's on the left, each app's on the right)
+    return { title: "Storage", body: wide() ? [cols([body[0]], body.slice(1))] : body };
   }
   // one app's: its total and share, its database and files, its files by kind, and its tables' rows
   function admStorageApp(id) {
@@ -884,10 +938,20 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   function admLogView() {
     const x = admAsk("log");
     if (!x) return { title: "Admin log", body: [admWait("log")] };
+    if (wide()) {
+      const KIND = { status: ["status-update", "status-incident", "status-maint", "status-maint-off"], people: ["pigeons-added", "reset-link", "reset-used", "signed-out", "deleted", "idle-warned", "idle-deleted"],
+        invites: ["invite-made", "invite-cancelled"], email: ["test-email"] };
+      const f = KIND[AD.lf] ? AD.lf : "all", list = x.log.filter((l) => f === "all" || KIND[f].includes(l.action));
+      return { title: "Admin log", body: [chipsOf([["all", "All"], ["people", "Accounts"], ["invites", "Invites"], ["status", "Status page"], ["email", "Email"]], f, (k) => { AD.lf = k; redraw(); }),
+        table("150px 220px minmax(0, 1fr)", ["When", "What", "Details"], list.map((l) => { const [label, ic, tint] = LOG[l.action] || [l.action, "clock", "grey"];
+          return [[seenAt(l.at), h("span.at-what", {}, h(`span.ic.${tint}`, {}, icon(ic, 16)), label), l.detail || ""]]; }))] };
+    }
     return { title: "Admin log", body: [h("div.group", {}, x.log.length ? x.log.map((l) => { const [label, ic, tint] = LOG[l.action] || [l.action, "clock", "grey"];
       return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 19)), h("span.tx", {}, h("b", { text: label }), h("small", { text: [l.detail, seenAt(l.at)].filter(Boolean).join(" · ") })));
     }) : h("div.empty", { text: "Nothing yet." }))] };
   }
 
-  return { adminRow, adminView, openTo };
+  const parts = { admin: adminView, "admin/accounts": admAccountsView, "admin/invites": admInvitesView, "admin/messages": admMessagesView, "admin/insights": admInsightsView,
+    "admin/storage": admStorageView, "admin/email": admEmailView, "admin/desk": admDeskView, "admin/log": admLogView, "admin/jobs": admJobsView };
+  return { adminRow, adminView, openTo, parts };
 }

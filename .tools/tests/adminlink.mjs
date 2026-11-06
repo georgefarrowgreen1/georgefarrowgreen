@@ -15,6 +15,7 @@ const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
+const same = (a, b, l) => ok(JSON.stringify(a) === JSON.stringify(b), l, `got ${JSON.stringify(a)}, wanted ${JSON.stringify(b)}`);
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
   args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${SITE},${CHAT},${ACCT}`] });
@@ -205,5 +206,26 @@ r = await req(G, `${ACCT}/api/account/admin/invite`, { method: 'POST', headers: 
 ok(r.status === 403, 'a change sent from another site: refused', String(r.status));
 
 await G.p.screenshot({ path: `${out}/admin.png` });
+
+// ---- 9. On a computer: Admin's pages under it in the list, each in the pane, its lists as tables ----
+await G.p.setViewportSize({ width: 1500, height: 940 }); await account(G);
+await G.p.click('.acct-nav .nav-it:has-text("Admin")'); await G.p.waitForSelector('#sheet.pane[open] #sheet-title:text-is("Admin")', { timeout: 15000 }); await settle(G, 600);
+const subs = await G.p.$$eval('.acct-nav .nav-sub', (bs) => bs.filter((b) => b.getClientRects().length).map((b) => b.textContent));
+ok(['Accounts', 'Invites', 'Messages', 'Insights', 'Storage', 'Admin log', 'Scheduled jobs'].every((t) => subs.includes(t)), 'wide: Admin’s pages under it in the list', subs.join(', '));
+ok(await G.p.evaluate(() => getComputedStyle(document.querySelector('#sheet .pcols')).display === 'grid'), 'wide: Admin’s groups side by side');
+await G.p.screenshot({ path: `${out}/wide-admin.png` });
+for (const [label, k, sel] of [['Accounts', 'accounts', '.atable'], ['Invites', 'invites', '.atable, .empty'], ['Messages', 'messages', '.inbox, .empty'], ['Admin log', 'log', '.atable'], ['Insights', 'insights', '.pcols'], ['Storage', 'storage', '.pcols'], ['Scheduled jobs', 'jobs', '.atable']]) {
+  await G.p.click(`.acct-nav .nav-sub:has-text("${label}")`); await G.p.waitForSelector(`#sheet.pane[open] #sheet-title:text-is("${label}")`, { timeout: 10000 }).catch(() => {});
+  await G.p.waitForSelector(`#sheet .sheet-body:not(.going) :is(${sel})`, { timeout: 15000 }).catch(() => {}); await settle(G, 500);
+  ok(await G.p.evaluate((x) => !!document.querySelector(`#sheet .sheet-body:not(.going) :is(${x})`), sel), `wide: Admin’s ${label} in the pane`);
+  same(await G.p.evaluate(() => location.hash), `#open=admin/${k}`, `wide: ${label}’s address`);
+  await G.p.screenshot({ path: `${out}/wide-admin-${k}.png` });
+}
+const rowsN = await G.p.$$eval('#sheet .atable .at-row:not(.at-head)', (r) => r.length).catch(() => 0);
+await G.p.click('.acct-nav .nav-sub:has-text("Accounts")'); await G.p.waitForSelector('#sheet .atable button.at-row', { timeout: 10000 }).catch(() => {});
+ok((await G.p.$$('#sheet .atable button.at-row')).length >= 2, 'wide: Accounts a table, a row each', String(rowsN));
+await G.p.click('#sheet .atable button.at-row:has-text("Gail Admin")'); await waitSheet(G, /gail@example\.com/);
+ok(await G.p.evaluate(() => getComputedStyle(document.querySelector('#sheet .sheet-body:not(.going) .pcols')).display === 'grid'), 'wide: an account’s details beside what can be done');
+await G.p.screenshot({ path: `${out}/wide-admin-person.png` });
 ok(!errs.length, 'no errors', errs.join(' | '));
 console.log(`FAILS ${fails}`); await b.close(); process.exit(0);

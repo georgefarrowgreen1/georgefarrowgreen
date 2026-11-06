@@ -422,8 +422,29 @@ await D.p.setViewportSize({ width: 1500, height: 940 }); await settle(D, 400); a
   await shot(D, '19d-wide-pane');
   await D.p.click('.acct-nav .nav-it:has-text("Appearance")'); await D.p.waitForSelector('#sheet.pane[open] #sheet-title:text-is("Appearance")'); await settle(D, 400);
   ok(/Appearance/.test(await D.p.$eval('.acct-nav [aria-current]', (e) => e.textContent).catch(() => '')), 'wide: another part, from the list, in the same pane');
+  ok(await D.p.evaluate(() => location.hash) === '#open=appearance', 'wide: the address follows the part you’re on', await D.p.evaluate(() => location.hash));
   await D.p.keyboard.press('Escape'); await D.p.waitForFunction(() => !document.querySelector('#sheet').open, null, { timeout: 3000 }).catch(() => {});
   ok(await D.p.evaluate(() => !document.querySelector('#sheet').open && /Your Apps/.test(document.querySelector('.acct-nav [aria-current]')?.textContent || '')), 'wide: Escape closes the pane, back to Your Apps');
+  ok(await D.p.evaluate(() => !location.hash), 'wide: closed, the address back to the page’s');
+  // (each part laid out for the width; At a glance under your apps)
+  ok(await D.p.$eval('.glance-sec', (e) => e.getClientRects().length > 0).catch(() => false), 'wide: At a glance under your apps');
+  for (const [label, k] of [['Sign-in and Security', 'security'], ['Your Data', 'data'], ['Notifications', 'notify']]) {
+    await D.p.click(`.acct-nav .nav-it:has-text("${label}")`); await D.p.waitForSelector('#sheet.pane[open] .sheet-body'); await settle(D, 900);
+    ok(await D.p.evaluate(() => [...document.querySelectorAll('#sheet .sheet-body:not(.going) .pcols')].some((c) => getComputedStyle(c).display === 'grid') || !!document.querySelector('#sheet .dtable')), `wide: ${label} side by side`);
+    await shot(D, `19e-wide-${k}`);
+  }
+  // ("/" searches every setting; Enter opens the first)
+  await D.p.keyboard.press('Escape'); await settle(D, 400);
+  await D.p.keyboard.press('/'); await D.p.keyboard.type('passk'); await settle(D, 200);
+  const hits = await D.p.$$eval('.acct-nav .nav-hit', (bs) => bs.map((b) => b.textContent));
+  ok(hits.includes('Passkeys'), 'wide: “/” searches every setting', hits.join(', '));
+  await D.p.keyboard.press('Enter'); await D.p.waitForSelector('#sheet.pane[open] #sheet-title:text-is("Passkeys")', { timeout: 4000 }).catch(() => {});
+  ok(await D.p.evaluate(() => document.querySelector('#sheet-title')?.textContent === 'Passkeys'), 'wide: Enter opens what it found');
+  await D.p.keyboard.press('Escape'); await settle(D, 300); await D.p.keyboard.press('Escape'); await settle(D, 400);
+  // (an address opens its part)
+  await D.p.goto(`${ACCT}/#open=units`); await D.p.waitForSelector('#sheet.pane[open] #sheet-title:text-is("Units")', { timeout: 15000 }).catch(() => {});
+  ok(await D.p.evaluate(() => document.querySelector('#sheet-title')?.textContent === 'Units' && location.hash === '#open=units'), 'wide: #open=units opens Units', await D.p.evaluate(() => location.hash));
+  await D.p.keyboard.press('Escape'); await settle(D, 400);
   await D.p.setViewportSize({ width: 1280, height: 860 }); await settle(D, 300);
 }
 await D.p.emulateMedia({ colorScheme: 'light' });

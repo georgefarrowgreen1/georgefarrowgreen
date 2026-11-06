@@ -1110,8 +1110,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "1.99";
-const NEWS = "On a computer: every app’s tile the same size, three to a row";
+const BUILD = "2.00";
+const NEWS = "On a computer: every part laid out side by side, with its own address; At a glance under your apps; search with /; Admin as tables and an inbox";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1590,6 +1590,7 @@ async function load() {
   if (S.me?.signedIn && (opens() || (S.me.admin && ADMIN_HASH.test(location.hash)) || homeEdit())) S.settled = true;
   await anew(render);
   if (opens() && S.me?.signedIn) openSheet(opens());
+  else if (S.me?.signedIn && OPEN_HASH.test(location.hash)) { const k = OPEN_HASH.exec(location.hash)[1]; partAddress(null); openPart(k); }
   else if (qrNext()) openSheet(qrView);
   confirmForHome();
   // (back from signing in: greeted, the browser's passkeys put in step, and a passkey offered if there's none)
@@ -1780,7 +1781,7 @@ function signedIn(r) {
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
   // (an app's settings that are the account's, a tap from its card: inflightView, weatherSetView, fitnessSetView; and
   // InFlite Today's morning notification, todayNotifyView)
-  const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView, today: todayNotifyView };
+  const SETS = { inflight: inflightView, weather: weatherSetView, fitness: fitnessSetView, today: todayNotifyView, markets: marketsNotifyView };
   // (and those kept in the app itself: Mail's addresses are its own, so its settings button opens Mail at them)
   const SET_LINKS = { mail: "#settings" };
   const open = (id, name) => h("a.open-app", { href: siteUrl(APPS[id].sub), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6));
@@ -1840,26 +1841,107 @@ function signedIn(r) {
     // #admin, from the old dashboard or its email, opens it, once the page has settled)
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
   ];
-  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean), acctNav([account, prefs, ...ending])), h("div.col-b", {}, [apps, account, prefs, ...ending].filter(Boolean)))];
+  return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean), acctNav([account, prefs, ...ending], !!m.admin)), h("div.col-b", {}, [apps, pane() && glanceSec(m), account, prefs, ...ending].filter(Boolean)))];
+}
+// At a glance, under your apps on a computer (styles.css shows it only there): your account's recent activity, and what
+// notifies you, each with the way into its part
+let glanceAct = null;
+function glanceSec(m) {
+  const td = m.apps?.today || {};
+  const act = h("div.gl-rows", {}, h("div.empty", {}, h("span.spin")));
+  const fill = (evs) => act.replaceChildren(...(evs.length ? evs.slice(0, 3).map((e) => h("div.row.plain.info", {},
+    h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }), h("small", { text: [e.device || e.app, `${dayWord(e.at)} ${new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`].filter(Boolean).join(" · ") }))))
+    : [h("div.empty", { text: "Nothing in the last 30 days." })]));
+  if (glanceAct) fill(glanceAct);
+  else if (pane()) call("activity").then((r) => { glanceAct = r.events || []; fill(glanceAct); }, () => act.replaceChildren(h("div.empty", { text: "Couldn’t get your recent activity." })));
+  const go = (label, part) => h("button.gl-go", { type: "button", onclick: () => openPart(part) }, label);
+  const info = (t, sub, v, part) => h("button.row", { type: "button", onclick: () => openPart(part) }, h("span.tx", {}, h("b", { text: t }), sub && h("small", { text: sub })), v && h("span.val", { text: v }), h("span.chev", {}, icon("chev", 16, 2.4)));
+  return h("section.section.glance-sec", { "data-sec": "glance" }, h("h3", { text: "At a glance" }),
+    h("div.glance", {},
+      h("div.group.glass.gl-box", {}, h("h4.gl-h", {}, "Recent activity", go("See all", "security")), act),
+      h("div.group.glass.gl-box", {}, h("h4.gl-h", {}, "What notifies you", go("Open", "notify")),
+        info("Quiet Hours", "Everything waits, except warnings", ntSaid(m.prefs)?.replace(/^Quiet /, "") || "Off", "notify"),
+        info("Today’s morning", "One notification, from all your apps", td.morning?.on ? hhmm(td.morning.at ?? 420) : "Off", "notify"),
+        info("Emails", "Security emails always come", NT ? emailsSaid() : null, "emails"))));
+}
+// Each part, by its address (#open=<part>): opened from the list, a link, or an app; the address follows the part you're
+// on, so Reload, Back and Forward keep your place
+const PARTS = { security: () => securityView, data: () => exportView, appearance: () => appearanceView, units: () => unitsView, notify: () => notifyView, emails: () => emailsView, profile: () => profileView };
+function partOf(fn) {
+  // (none on the sign-in page, whose script leaves the account's parts out: .tools/minify.mjs signinPage)
+  if (SIGNIN_PAGE) return null;
+  for (const [k, f] of Object.entries(PARTS)) if (f() === fn) return k;
+  if (ADM?.parts) for (const [k, f] of Object.entries(ADM.parts)) if (f === fn) return k;
+  return null;
+}
+function openPart(k) {
+  if (SIGNIN_PAGE) return;
+  const f = PARTS[k]?.();
+  if (f) return openSheet(f);
+  if ((k === "admin" || k.startsWith("admin/")) && S.me?.admin) return loadAdmin().then((a) => { const v = a.parts?.[k]; if (v) openSheet(v); }, () => toast("Admin couldn’t be loaded. Try again.", true));
+}
+const OPEN_HASH = /^#open=([\w/-]{1,40})$/;
+const partAddress = (k) => { try { history.replaceState(history.state, "", `${location.pathname}${location.search}${k ? `#open=${k}` : ""}`); } catch (_) {} };
+// (search: every part, and what's in each, by name: typed in the list's field, "/" from anywhere)
+const FINDS = () => [
+  ["Sign-in and Security", "security"], ["Password", "security", () => passwordView], ["Passkeys", "security", () => passkeysView], ["Email address", "security", () => emailView],
+  ["Signed-in devices", "security", () => devicesView], ["Recent activity", "security", () => activityView], ["Sign in on a computer", "security", () => scanView],
+  ["Your Data", "data"], ["Download your data (PDF)", "data"], ["Delete account", "data", () => deleteView],
+  ["Appearance", "appearance"], ["Dark mode", "appearance"], ["Light mode", "appearance"],
+  ["Units", "units"], ["Temperature (°C or °F)", "units"], ["Wind speed", "units"], ["Rain", "units"], ["Pressure", "units"], ["12 or 24-hour time", "units"],
+  ["Notifications", "notify"], ["Quiet Hours", "notify"], ["Today’s morning notification", "notify", () => todayNotifyView], ["Chat notifications", "notify", () => chatNotifyView],
+  ["Weather notifications", "notify", () => weatherNotifyView], ["Fitness notifications", "notify", () => fitnessNotifyView], ["Markets notifications", "notify", () => marketsNotifyView],
+  ["Emails", "emails"], ["Edit profile", "profile"],
+  ...(S.me?.admin ? ADMIN_PARTS.map(([k, t]) => [`Admin: ${t}`, k]) : []),
+];
+const ADMIN_PARTS = [["admin/accounts", "Accounts"], ["admin/invites", "Invites"], ["admin/messages", "Messages"], ["admin/insights", "Insights"], ["admin/storage", "Storage"],
+  ["admin/email", "Email"], ["admin/desk", "Incident Desk"], ["admin/log", "Admin log"], ["admin/jobs", "Scheduled jobs"]];
+function findGo([, part, sub]) {
+  const r = openPart(part);
+  if (sub) Promise.resolve(r).then(() => pushSheet(sub()));
 }
 // On a computer (from 1100 px, styles.css) the account is two panes: under your card, a list of its parts (Your Apps,
 // then each row of Account and Preferences, and Admin), and beside it the one you're on, its sheet drawn there rather
 // than over the page (pane()). Each item does just what its row does. Not shown at a phone's or a tablet's size.
 const PANE_MQ = matchMedia("(min-width: 1100px)");
 const pane = () => PANE_MQ.matches;
-function acctNav(groups) {
+// (a part's two columns in the pane, or three; on a phone, and in a sheet, the same things one after another: styles.css)
+const cols = (...parts) => h("div.pcols" + (parts.length > 2 ? ".three" : ""), {}, ...parts.map((p) => h("div.pcol", {}, ...[p].flat(Infinity).filter((x) => x != null && x !== false && x !== ""))));
+function acctNav(groups, admin) {
   const rows = groups.filter(Boolean).flatMap((g) => [...g.querySelectorAll("button.row[data-k], .row[data-k]")]).filter((x, i, a) => a.indexOf(x) === i);
-  const it = (k, ic, title, value, run) => h("button.nav-it", { type: "button", "data-nav": k, "aria-current": (sheetEl.open ? navK : "") === k ? "page" : null, onclick: () => { run(); navOn(k); } },
+  const cur = sheetEl.open ? navK : "";
+  const it = (k, ic, title, value, run, cls = "") => h("button.nav-it" + cls, { type: "button", "data-nav": k, "aria-current": cur === k ? "page" : null, onclick: () => { run(); navOn(k); } },
     ic, h("span.nav-t", { text: title }), value ? h("span.nav-v", { text: value }) : null);
-  return h("nav.acct-nav.group.glass", { "aria-label": "Your account’s parts" },
-    it("", h("span.ic.blue", {}, icon("home", 19)), "Your Apps", "", () => { if (sheetEl.open) closeSheet(); }),
-    ...rows.map((rw) => it(rw.dataset.k, rw.querySelector(".ic")?.cloneNode(true) || null, rw.querySelector(".tx b")?.textContent || rw.dataset.k,
-      rw.querySelector(".val")?.textContent || "", () => rw.click())));
+  const items = [it("", h("span.ic.blue", {}, icon("home", 19)), "Your Apps", "", () => { if (sheetEl.open) closeSheet(); }),
+    ...rows.flatMap((rw) => [it(rw.dataset.k, rw.querySelector(".ic")?.cloneNode(true) || null, rw.querySelector(".tx b")?.textContent || rw.dataset.k,
+      rw.querySelector(".val")?.textContent || "", () => rw.click()),
+      // (Admin's own pages under it, shown while you're in Admin)
+      ...(admin && rw.dataset.k === "Admin" ? ADMIN_PARTS.map(([k, t]) => it(k, null, t, "", () => openPart(k), ".nav-sub")) : [])])];
+  // (search: what's typed narrows the list to what matches, in every part; Enter opens the first, Escape clears it)
+  const found = h("div.nav-found", { hidden: true });
+  const q = h("input.nav-q", { type: "search", placeholder: "Search settings", "aria-label": "Search settings", autocomplete: "off", spellcheck: "false" });
+  const nav = h("nav.acct-nav.group.glass" + (cur === "Admin" || cur.startsWith("admin/") ? ".adm-open" : ""), { "aria-label": "Your account’s parts" },
+    h("label.nav-search", {}, icon("search", 16, 2.2), q, h("kbd", { text: "/" })), found, ...items);
+  const show = () => {
+    const t = q.value.trim().toLowerCase();
+    nav.classList.toggle("finding", !!t); found.hidden = !t;
+    if (!t) return found.replaceChildren();
+    const hits = FINDS().filter(([label]) => label.toLowerCase().includes(t)).slice(0, 8);
+    found.replaceChildren(...(hits.length ? hits.map((f) => h("button.nav-it.nav-hit", { type: "button", onclick: () => { q.value = ""; show(); findGo(f); } }, h("span.nav-t", { text: f[0] })))
+      : [h("p.nav-none", { text: `Nothing for “${q.value.trim()}”` })]));
+  };
+  q.addEventListener("input", show);
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); found.querySelector(".nav-hit")?.click(); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); q.value = ""; show(); q.blur(); }
+  });
+  return nav;
 }
 // (the part you're on, in the list: its item marked; none open, Your Apps)
 let navK = "";
 function navOn(k) {
   navK = k || "";
+  for (const n of document.querySelectorAll(".acct-nav")) n.classList.toggle("adm-open", navK === "Admin" || navK.startsWith("admin/"));
   for (const b of document.querySelectorAll(".acct-nav .nav-it")) { if (b.dataset.nav === (k || "")) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
 }
 // (all done: a small green padlock after the handle, said as "secure")
@@ -2283,6 +2365,20 @@ function checks(m) {
 // sign in, and where and when; each row says how things are, and opens its own sheet
 function securityView() {
   const m = S.me, pw = m.password || {}, here = m.devices.find((d) => d.current);
+  // (on a computer: how you sign in, your passkeys, where you're signed in and what's happened, all in place, side by
+  // side; each a sheet of its own on a phone)
+  if (pane()) return { title: "Sign-in and Security", body: [
+    ...checkupView(true).body,
+    cols([h("h4.app-k", { text: "Signing in" }),
+      h("div.group", {},
+        row({ icon: "mail", tint: "blue", title: "Email", sub: m.email, value: m.emailOk ? "Confirmed" : "Not confirmed", warn: !m.emailOk, onclick: () => pushSheet(emailView) }),
+        row({ icon: "key", tint: "blue", title: "Password", sub: pw.leaked === false ? "Not in any known data breach" : pw.leaked ? "Found in a data breach" : null, subWarn: !!pw.leaked,
+          value: pw.setAt ? `${Math.abs(pw.setAt - m.since) < 5 * 60e3 ? "Set" : "Changed"} ${when(pw.setAt)}` : null, onclick: () => pushSheet(passwordView) })),
+      h("h4.app-k", { text: "Passkeys" }), ...passkeysView().body,
+      h("h4.app-k", { text: "Sign in on a computer" }),
+      h("div.group", {}, row({ icon: "qr", tint: "teal", title: "Scan a code", sub: "Open the sign-in page on the computer, and scan its code with your phone", onclick: () => pushSheet(scanView) }))],
+    [h("h4.app-k", { text: "Signed in on" }), ...devicesView().body,
+      h("h4.app-k", { text: "Recent activity" }), ...activityView().body.slice(1)])] };
   return { title: "Sign-in and Security", body: [
     ...checkupView(true).body,
     h("h4.app-k", { text: "Signing in" }),
@@ -3521,7 +3617,15 @@ addEventListener("popstate", () => {
 function openSheet(view) {
   if (sheetEl.classList.contains("closing")) Sheet.shut?.();      // (opened again as one goes: that one's gone at once)
   // (one opened over another: on to it, as from one sheet to the next)
-  if (sheetEl.open) { Sheet.ask?.no(); Sheet.stack = [view]; draw("push"); histDrop(Sheet.hist - 1); return; }
+  if (sheetEl.open) {
+    Sheet.ask?.no(); Sheet.stack = [view]; draw("push");
+    const pk = partOf(view), n = Sheet.hist - 1;
+    if (n > 0 && pk) addEventListener("popstate", () => partAddress(pk), { once: true });
+    histDrop(n);
+    if (n <= 0) partAddress(pk);
+    if (pk) navOn(navFor(pk));
+    return;
+  }
   Sheet.stack = [view]; draw();
   // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
   // nor a button, with a ring round it; the row it was opened from has it back when it closes)
@@ -3532,8 +3636,13 @@ function openSheet(view) {
   if (pane()) { paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); navOn(Sheet.from && document.querySelector(`.acct-nav [data-nav="${CSS.escape(Sheet.from)}"]`) ? Sheet.from : null); }
   else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); }
   sheetEl.focus({ preventScroll: true }); histPush();
+  const pk = partOf(view);
+  if (pk) { partAddress(pk); if (pane()) navOn(navFor(pk)); }
   toastOnTop();
 }
+// (the list's item for a part: Admin's pages by their own key, the rest by their row's name)
+const NAV_OF = { security: "Sign-in and Security", data: "Your Data", appearance: "Appearance", units: "Units", notify: "Notifications", emails: "Notifications", admin: "Admin" };
+const navFor = (pk) => (pk.startsWith("admin/") ? pk : NAV_OF[pk] ?? navK);
 // (the pane over the right-hand column, wherever that is on the page: where it starts, how wide it is, below the header)
 function paneAt() {
   const b = $(".col-b", main)?.getBoundingClientRect();
@@ -3546,10 +3655,24 @@ function paneAt() {
 addEventListener("resize", () => { if (sheetEl.open && sheetEl.classList.contains("pane")) paneAt(); });
 // (the window made narrower or wider past where the panes start, with a sheet up: drawn again the other way, as it is)
 PANE_MQ.addEventListener?.("change", () => {
+  if (S.me?.signedIn) patch();      // (At a glance, only on a computer)
   if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
   sheetEl.close();
   if (pane()) { document.body.classList.remove("sheet-up"); paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); }
   else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); navOn(""); }
+});
+// (on a computer: "/" searches every setting; ↑ and ↓ move through the list, when you're not typing or in a part)
+addEventListener("keydown", (e) => {
+  if (!pane() || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+  const t = document.activeElement, typing = t?.closest?.("input, textarea, select, [contenteditable]");
+  if (e.key === "/" && !typing) { const q = document.querySelector(".acct-nav .nav-q"); if (q) { e.preventDefault(); q.focus(); } return; }
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !typing && !(sheetEl.contains(t) && t !== sheetEl)) {
+    const items = [...document.querySelectorAll(".acct-nav .nav-it:not(.nav-hit)")].filter((b) => b.getClientRects().length);
+    if (!items.length) return;
+    const i = items.findIndex((b) => b.hasAttribute("aria-current")), j = Math.min(items.length - 1, Math.max(0, (i < 0 ? 0 : i) + (e.key === "ArrowDown" ? 1 : -1)));
+    if (j === i) return;
+    e.preventDefault(); items[j].click(); items[j].focus({ preventScroll: true });
+  }
 });
 // (Escape closes the pane, as it closes a sheet: a pane isn't modal, so the dialog doesn't hear it itself)
 addEventListener("keydown", (e) => { if (e.key === "Escape" && sheetEl.open && sheetEl.classList.contains("pane") && !e.defaultPrevented) { e.preventDefault(); closeSheet(); } });
@@ -4176,7 +4299,7 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 let ADM = null, admComing = null;
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when, wide: pane, cols });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
@@ -4185,6 +4308,9 @@ function loadAdmin() {
 const ADMIN_HASH = /^#admin(?:=([\w:%.-]{1,80}))?$/;
 // (an incident's notification tapped with the page already open: the address's # changes, the page isn't loaded again)
 if (!SIGNIN_PAGE) addEventListener("hashchange", () => {
+  // (a part's address typed or followed with the page open: that part)
+  const part = S.me?.signedIn && OPEN_HASH.exec(location.hash);
+  if (part) { if (partOf(Sheet.stack[0]) !== part[1]) { partAddress(null); openPart(part[1]); } return; }
   const adm = S.me?.admin?.ready && ADMIN_HASH.exec(location.hash);
   if (!adm) return;
   history.replaceState(null, "", location.pathname + location.search);
@@ -4397,11 +4523,18 @@ function seg(name, opts, value, onpick) {
   place(value);
   return el;
 }
+// (each set of units at once: the UK's, metric, or the US's)
+const UNIT_SETS = [["uk", "UK", { temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" }], ["metric", "Metric", { temp: "c", wind: "kmh", precip: "mm", pressure: "hpa", clock: "24" }],
+  ["us", "US", { temp: "f", wind: "mph", precip: "in", pressure: "inhg", clock: "12" }]];
 function unitsView() {
   const m = S.me, u = { ...unitsHere(), ...(m.prefs.units || {}) };
+  const set = UNIT_SETS.find(([, , x]) => Object.entries(x).every(([k, v]) => u[k] === v))?.[0] || "";
+  const t = u.temp === "f" ? "52°F" : "11°", wind = { mph: "12 mph", kmh: "19 km/h", ms: "5 m/s", kn: "10 knots" }[u.wind], rain = u.precip === "in" ? "0.1 in" : "2 mm", at = u.clock === "12" ? "8:30 am" : "08:30";
   return { title: "Units", body: [
     h("p", { text: "For Weather, on every device it’s signed in on: forecasts, the map and notifications." }),
+    h("div.units", {}, h("div.unit", {}, h("span", { text: "All at once" }), ((el) => { if (!set) el.classList.add("none"); return el; })(seg("All at once", UNIT_SETS.map(([k, l]) => [k, l]), set, (v) => setPrefs({ units: UNIT_SETS.find(([k]) => k === v)[2] }, prefsOut.units, () => Sheet.stack.at(-1) === unitsView && redraw()))))),
     h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], (v) => setPrefs({ units: { [k]: v } }, prefsOut.units, () => Sheet.stack.at(-1) === unitsView && redraw()))))),
+    h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: `${t}, wind ${wind}, ${rain} of rain by ${at}` }), h("small", { text: "How Weather says it, with these" })))),
   ] };
 }
 
@@ -4499,14 +4632,22 @@ function notifyView() {
     sel.onchange = () => ntChange(sel, { quiet: { [k]: Number(sel.value), tz: tzHere() } });
     return pickRow(title, sel, hh(q[k]));
   };
-  return { title: "Notifications", body: [
+  // (the day, with Quiet Hours on it and the morning notification marked: on a computer)
+  const day = q.on && pane() && (() => {
+    const bar = h("div.day24", { role: "img", "aria-label": `Quiet from ${hh(q.from)} to ${hh(q.to)}` }), at = (x) => `${(x / 24) * 100}%`;
+    const band = (a, b) => { const i = h("i.q"); i.style.left = at(a); i.style.width = at(b - a); bar.append(i); };
+    if (q.from < q.to) band(q.from, q.to); else { band(q.from, 24); band(0, q.to); }
+    if (NT.today?.on) { const mk = h("i.m"); mk.style.left = `${((NT.today.at ?? 420) / 1440) * 100}%`; bar.append(mk); }
+    return h("div.row.plain.day-row", {}, bar, h("div.ax", {}, ["00", "06", "12", "18", "24"].map((x) => h("span", { text: x }))));
+  })();
+  return { title: "Notifications", body: [cols([
     h("div.group", {},
       switchRow({ icon: "moon", tint: "indigo", title: "Quiet Hours", sub: q.on ? `${hh(q.from)} to ${hh(q.to)}, every app` : "Nothing buzzes overnight, or whenever suits",
         input: ntSwitch("nt-quiet", q.on, (v) => ({ quiet: { on: v, tz: tzHere() } })) }),
-      q.on && hour("from", "From"), q.on && hour("to", "To")),
+      day, q.on && hour("from", "From"), q.on && hour("to", "To")),
     // (messages are held too, and told when they end; with pigeons off, letters rather than pigeons)
-    q.on && h("p.hint", { text: `Messages and ${NT.chat?.pigeons === false ? "letters" : "pigeons"} that come meanwhile buzz when they end; rain alerts, your panels and new mail stay quiet. Warnings still come.` }),
-    h("h4.app-k", { text: "Apps" }),
+    q.on && h("p.hint", { text: `Messages and ${NT.chat?.pigeons === false ? "letters" : "pigeons"} that come meanwhile buzz when they end; rain alerts, your panels and new mail stay quiet. Warnings still come.` })],
+    [h("h4.app-k", { text: "Apps" }),
     h("div.group", {},
       NT.today && appRow("today", "Today", todaySaid(NT.today), () => pushSheet(todayNotifyView)),
       appRow("inflight", "Chat", chatSaid(NT.chat), () => pushSheet(chatNotifyView)),
@@ -4517,7 +4658,7 @@ function notifyView() {
       NT.mail && appRow("mail", "Mail", "New mail, for each of your addresses", () => { if (MAILN?.error) MAILN = null; pushSheet(mailNotifyView); })),
     h("h4.app-k", { text: "By email" }),
     h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Emails", value: emailsSaid(), onclick: () => pushSheet(emailsView) })),
-    h("p.hint", { text: "Which emails each app sends you, in one list. Sign-in and security emails always come." })] };
+    h("p.hint", { text: "Which emails each app sends you, in one list. Sign-in and security emails always come." })])] };
 }
 // ---- Emails: every email the apps can send you, in one list. Those that always come, and why; each app's, a switch
 // for each kind (Chat's four, Weather's two, the account's word that a problem you reported is fixed); the apps that
@@ -4550,7 +4691,7 @@ function emailsView() {
   return { title: "Emails", body: [
     h("div.app-head.set", {}, h("span.mail-tile", {}, icon("mail", 38, 1.9)), h("b", { text: "Emails" }), h("span", { text: `To ${m.email}` })),
     !ok && h("div.group", {}, h("div.row.plain.info.confirm-row", {}, h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "Emails from the apps start once you have." })), send)),
-    h("h4.app-k", { text: "Always sent" }),
+    cols([h("h4.app-k", { text: "Always sent" }),
     h("div.group", {},
       always("A sign-in from a new device", "With “This wasn’t me”, in case it wasn’t"),
       always("Password, passkey and email changes", "And a link to reset a forgotten password"),
@@ -4562,8 +4703,8 @@ function emailsView() {
       sw("em-c-landed", off ? "A letter lands" : "A pigeon lands", "Still unread after 10 minutes", C.emails.landed, (v) => ({ chat: { emails: { landed: v } } })),
       sw("em-c-requests", "Friend requests", "When someone asks to be friends", C.emails.requests, (v) => ({ chat: { emails: { requests: v } } })),
       !off && sw("em-c-weekly", "Your week in flight", "Sunday evening: miles, pigeons, badges", C.emails.weekly, (v) => ({ chat: { emails: { weekly: v } } }))),
-    h("p.hint", { text: "At most one email every half hour, and none during Quiet Hours." }),
-    head("weather", "Weather", "weather"),
+    h("p.hint", { text: "At most one email every half hour, and none during Quiet Hours." })],
+    [head("weather", "Weather", "weather"),
     h("div.group", {},
       sw("em-w-warn", "Official warnings", warned.length ? `For ${and2(warned)}, as they’re issued` : "Turn warnings on for a place to get these", W.email.warn, (v) => ({ weather: { email: { warn: v } } })),
       sw("em-w-brief", "Morning briefing", W.brief ? `${W.briefAt} · ${W.brief.name}` : "Turn the briefing on in Weather’s notifications", W.email.brief, (v) => ({ weather: { email: { brief: v } } }))),
@@ -4571,7 +4712,7 @@ function emailsView() {
     h("div.group", {}, sw("em-a-fixed", "A problem you reported is fixed", "With a link to where it stands", NT.account?.fixed !== false, (v) => ({ account: { fixed: v } }))),
     h("h4.app-k", { text: "Phone only" }),
     h("div.group", {}, phoneOnly("today", "Today"), phoneOnly("fitness", "Fitness"), NT.markets && phoneOnly("markets", "Markets"), NT.mail && phoneOnly("mail", "Mail")),
-    h("p.hint", { text: "These only notify your phone. What they tell you is in each app’s Notifications." }),
+    h("p.hint", { text: "These only notify your phone. What they tell you is in each app’s Notifications." })]),
     ok && h("button.btn.quiet.all-off", { type: "button", onclick: (e) => ntChange(e.currentTarget, flip(!anyOn)) }, anyOn ? "Turn Off All of These" : "Turn All of These Back On"),
     h("p.hint.center", { text: "Every email also has a link at the bottom to turn its kind off." })] };
 }
@@ -5111,6 +5252,26 @@ function exportView() {
       toast("Your data is downloading.");
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
+  // (on a computer: what each app keeps of yours, in a table, beside the copy and deleting)
+  if (pane()) {
+    const ap = S.me.apps || {}, f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, mk = ap.markets || {}, td = ap.today || {};
+    const n = (x, one, many) => (x ? `${x.toLocaleString("en-GB")} ${x === 1 ? one : many}` : null);
+    const kept = [["inflight", "Chat", "Messages, letters, friends and places", [n(f.friends, "friend", "friends"), n(f.sent, "sent", "sent"), n(f.places, "place", "places")].filter(Boolean).join(" · ") || "Nothing yet"],
+      ["fitness", "Fitness", "Activities, your plan, routes and links", n(fx.activities, "activity", "activities") || "Nothing yet"],
+      ["weather", "Weather", "Places, alerts and the briefing", n(w.places, "place", "places") || "Nothing yet"],
+      ["markets", "Markets", "Holdings, buys and alerts", n(mk.holdings, "holding", "holdings") || "Nothing yet"],
+      ["today", "Today", "Its rules, Edit’s order, the morning", td.morning?.on ? `Morning at ${hhmm(td.morning.at ?? 420)}` : "Its settings"]];
+    return { title: "Your Data", body: [
+      h("h4.app-k", { text: "What each app keeps" }),
+      h("div.group.dtable", {}, h("div.dt-row.dt-head", {}, h("span", { text: "App" }), h("span", { text: "What" }), h("span", { text: "How much" })),
+        kept.map(([id, name, what, much]) => h("div.dt-row", {}, h("span.dt-app", {}, h("img.ic-img", { src: appImg(id), alt: "" }), h("b", { text: name })), h("span", { text: what }), h("span.dt-n", { text: much })))),
+      cols([h("h4.app-k", { text: "A copy of everything" }),
+        h("div.group", {}, h("button.row", { type: "button", onclick: get }, h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" }), h("small", { text: "Every app’s, to read or keep" })), h("span.get", {}, icon("download", 20, 2.2)))),
+        said],
+      [h("h4.app-k", { text: "Delete your account" }),
+        h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Everything, in every app" }), h("small", { text: "Deleted after 7 days. Sign in, or use the email’s link, to keep it." }))),
+          h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…"))])] };
+  }
   // (a list, as Settings has it: the download, then deleting the account apart, asked again in its own sheet)
   return { title: "Your Data", body: [
     h("div.group", {}, h("button.row", { type: "button", onclick: get },

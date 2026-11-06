@@ -967,6 +967,89 @@ a.btn { text-decoration: none; }
 }
 @media (min-width: 1100px) and (prefers-reduced-motion: reduce) { dialog.sheet.pane[open], dialog.sheet.pane.closing { animation-duration: 0.01s; } }
 
+/* ---- Admin on a computer (admin.js table, chipsOf, the inbox) ---- */
+@media (min-width: 1100px) {
+  .atable { padding: 0; }
+  .at-row { display: grid; gap: 14px; align-items: center; width: 100%; min-height: 50px; padding: 9px 18px; border: 0; background: none; text-align: left; color: var(--text); font: 400 14.5px/1.3 var(--font); }
+  .at-row + .at-row { box-shadow: 0 -0.5px 0 var(--line); }
+  button.at-row { cursor: pointer; } button.at-row:hover { background: var(--press); }
+  .at-head { min-height: 38px; font-size: 12px; font-weight: 650; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
+  .at-c { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .at-c .chev, .at-c > svg { color: var(--text-3); }
+  .at-who { display: flex; align-items: center; gap: 10px; min-width: 0; } .at-who > span { display: grid; min-width: 0; }
+  .at-who small, .at-c small { color: var(--text-3); font-size: 12.5px; }
+  .at-who .avatar, .at-who img { width: 30px !important; height: 30px !important; flex: none; }
+  .at-what { display: inline-flex; align-items: center; gap: 9px; } .at-what .ic { width: 24px; height: 24px; border-radius: 7px; }
+  .at-tag { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 650; background: var(--press); color: var(--text-2); }
+  .at-tag.ok { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .at-tag.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .at-tag.bad { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+  .at-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; } .at-bar .adm-search { flex: 0 1 300px; margin: 0 0 0 auto; }
+  .at-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .at-chip { border: 0; padding: 7px 13px; border-radius: 999px; background: var(--press); color: var(--text-2); font: 600 13.5px var(--font); cursor: pointer; }
+  .at-chip.on { background: color-mix(in srgb, var(--tint) 16%, transparent); color: var(--tint-text); }
+  .inbox { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .inbox-list { padding: 0; }
+  .inbox-it { display: grid; gap: 3px; width: 100%; padding: 11px 16px; border: 0; background: none; text-align: left; color: var(--text); font: 400 14px/1.3 var(--font); cursor: pointer; }
+  .inbox-it + .inbox-it { box-shadow: 0 -0.5px 0 var(--line); }
+  .inbox-it b { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; } .inbox-it b small { color: var(--text-3); font-weight: 500; font-size: 12.5px; }
+  .inbox-it > span { color: var(--text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inbox-it.on { background: color-mix(in srgb, var(--tint) 13%, transparent); }
+  .inbox-it.new b::before { content: ""; width: 8px; height: 8px; margin: 6px 0 0; border-radius: 50%; background: var(--tint); flex: none; order: -1; }
+  .inbox-read .adm-body { padding: 4px 18px 8px; font-size: 15px; line-height: 1.55; }
+}
+
+/* ---- a part's columns (app.js cols): in the pane on a computer, side by side; elsewhere the same things one after
+   another, as ever ---- */
+.pcols, .pcol { display: contents; }
+.glance-sec, .nav-search, .nav-found, .nav-sub { display: none; }
+.seg.none .thumb { opacity: 0; }
+@media (min-width: 1100px) {
+  dialog.sheet.pane .pcols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 22px; align-items: start; }
+  dialog.sheet.pane .pcols.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  dialog.sheet.pane .pcol { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  dialog.sheet.pane .pcol > .app-k { margin-bottom: -8px; }
+  dialog.sheet.pane .pcol > .app-k:first-child { margin-top: 2px; }
+  /* (the pane's title, large and to the left, as a page's is) */
+  dialog.sheet.pane .sheet-head { grid-template-columns: auto minmax(0, 1fr) auto; padding: 18px 22px 8px; }
+  dialog.sheet.pane .sheet-head h2 { text-align: left; font: 700 24px/1.2 var(--font); letter-spacing: -0.4px; }
+  dialog.sheet.pane .sheet-head h2.vh { position: static !important; width: auto; height: auto; clip: auto; clip-path: none; overflow: visible; white-space: normal; margin: 0; }
+  dialog.sheet.pane .app-head.set { display: none; }
+  /* (Appearance: the three pictures bigger, side by side) */
+  dialog.sheet.pane .appears { max-width: 620px; gap: 16px; }
+  dialog.sheet.pane .shot { width: 120px; height: 150px; }
+  /* (Your Data: what each app keeps, as a table) */
+  .dtable .dt-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 0.8fr); gap: 14px; align-items: center; padding: 11px 18px; font-size: 15px; }
+  .dtable .dt-row + .dt-row { box-shadow: 0 -0.5px 0 var(--line); }
+  .dtable .dt-head { font-size: 12px; font-weight: 650; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); padding-block: 9px; }
+  .dtable .dt-app { display: flex; align-items: center; gap: 10px; } .dtable .dt-app img { width: 26px; height: 26px; border-radius: 7px; }
+  .dtable .dt-n { color: var(--text-2); }
+  /* (Notifications: Quiet Hours on the day) */
+  .day-row { display: block; padding-block: 4px 10px; }
+  .day24 { position: relative; height: 30px; border-radius: 9px; background: var(--field); overflow: hidden; }
+  .day24 .q { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, #8c86ff 55%, transparent); }
+  .day24 .m { position: absolute; top: 4px; bottom: 4px; width: 3px; margin-left: -1px; border-radius: 2px; background: #ff9f0a; }
+  .day-row .ax { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
+  /* (At a glance, under your apps) */
+  .glance-sec { display: block; }
+  .glance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .gl-h { display: flex; align-items: center; margin: 0; padding: 13px 18px 4px; font: 650 13.5px var(--font); color: var(--text-2); }
+  .gl-go { margin-left: auto; border: 0; background: none; padding: 0; font: 600 13.5px var(--font); color: var(--tint-text); cursor: pointer; }
+  .gl-rows .empty { padding: 18px; }
+  /* (the list: a search field at its head, and Admin's pages under Admin while you're there) */
+  .nav-search { display: flex; align-items: center; gap: 8px; height: 38px; margin: 2px 2px 6px; padding: 0 10px; border-radius: 12px; background: var(--field); color: var(--text-3); }
+  .nav-search input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: 500 14.5px var(--font); outline: none; }
+  .nav-search input::-webkit-search-cancel-button { display: none; }
+  .nav-search kbd { font: 600 11px var(--font); padding: 1px 6px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); }
+  .nav-search:focus-within { box-shadow: 0 0 0 2px var(--tint); }
+  .acct-nav.finding > .nav-it { display: none; }
+  .nav-found { display: grid; gap: 2px; } .nav-found[hidden] { display: none; }
+  .nav-none { margin: 6px 10px 8px; color: var(--text-3); font-size: 14px; }
+  .acct-nav.adm-open:not(.finding) > .nav-sub { display: flex; }
+  .nav-it.nav-sub { min-height: 34px; padding-left: 50px; font-size: 14px; color: var(--text-2); }
+}
+
+
 /* (who you are, kept in view beside the rest as it's scrolled, where the window's tall enough for all of it) */
 @media (min-width: 1000px) and (min-height: 760px) { .col-a { position: sticky; top: calc(var(--top) + 96px); } }
 
