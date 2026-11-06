@@ -564,6 +564,9 @@ await part(6, 'search: the provider’s hit; “Search Mail for …” a POST, t
 // ======================================================================================================================
   await p.goto(`${HUB}/mail/`);
   await mailUp(p); await wait(800);
+  // (the provider searches what's loaded: after part 5's fresh sign-in the list can take longer than that to come, so
+  // its conversation's row is waited for first)
+  await p.waitForSelector(`${ROW}[data-thread="${FIG}"]`, { timeout: 15000 }).catch(() => {});
   const s0 = asked.length, st0 = await storage(p);
   await p.click(H.HD_SEARCH);
   await shown(p, `${H.SEARCH_SHEET}[open]`);
