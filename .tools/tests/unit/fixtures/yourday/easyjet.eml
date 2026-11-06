@@ -1,0 +1,25 @@
+From: easyJet <noreply@easyjet.com>
+To: hello@inflite.ai
+Subject: Your booking EJX4421 - Bristol to Geneva
+Message-ID: <ejx4421@easyjet.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><head><script type="application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@type": "FlightReservation",
+  "reservationNumber": "EJX4421",
+  "reservationStatus": "http://schema.org/ReservationConfirmed",
+  "reservationFor": {
+    "@type": "Flight",
+    "flightNumber": "U2 8331",
+    "airline": { "@type": "Airline", "name": "easyJet", "iataCode": "U2" },
+    "departureAirport": { "@type": "Airport", "name": "Bristol", "iataCode": "BRS" },
+    "departureTime": "@D+9@T06:30:00",
+    "arrivalAirport": { "@type": "Airport", "name": "Geneva", "iataCode": "GVA" },
+    "arrivalTime": "@D+9@T09:20:00"
+  }
+}
+</script></head><body><p>Bristol to Geneva, 06:30.</p></body></html>

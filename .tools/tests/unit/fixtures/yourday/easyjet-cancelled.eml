@@ -1,0 +1,23 @@
+From: easyJet <noreply@easyjet.com>
+To: hello@inflite.ai
+Subject: Your booking EJX4421 has been cancelled
+Message-ID: <ejx4421-c@easyjet.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><head><script type="application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@type": "FlightReservation",
+  "reservationNumber": "EJX4421",
+  "reservationStatus": "http://schema.org/ReservationCancelled",
+  "reservationFor": {
+    "@type": "Flight",
+    "flightNumber": "U2 8331",
+    "airline": { "@type": "Airline", "name": "easyJet", "iataCode": "U2" },
+    "departureAirport": { "@type": "Airport", "name": "Bristol", "iataCode": "BRS" },
+    "arrivalAirport": { "@type": "Airport", "name": "Geneva", "iataCode": "GVA" }
+  }
+}
+</script></head><body><p>Your booking EJX4421 has been cancelled.</p></body></html>

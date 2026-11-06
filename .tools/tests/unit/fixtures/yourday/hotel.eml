@@ -1,0 +1,39 @@
+From: Memmo Hotels <reservations@memmohotels.com>
+To: hello@inflite.ai
+Subject: Reservation confirmed - Memmo Alfama
+Message-ID: <mm-88213@memmohotels.com>
+Date: @MAILDATE@
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="mm"
+
+--mm
+Content-Type: text/plain; charset=utf-8
+
+Your stay at Memmo Alfama is confirmed. Confirmation 88213.
+
+--mm
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LodgingReservation",
+  "reservationNumber": "88213",
+  "reservationStatus": "https://schema.org/ReservationConfirmed",
+  "underName": { "@type": "Person", "name": "George" },
+  "reservationFor": {
+    "@type": "LodgingBusiness",
+    "name": "Memmo Alfama",
+    "address": { "@type": "PostalAddress", "streetAddress": "Travessa das Merceeiras 27", "addressLocality": "Lisbon", "addressCountry": "PT" },
+    "geo": { "@type": "GeoCoordinates", "latitude": "38.7114", "longitude": "-9.1302" },
+    "telephone": "+351 210 495 660"
+  },
+  "checkinDate": "@D+1@T15:00:00",
+  "checkoutDate": "@D+4@",
+}
+</script>
+<p>Your stay at <b>Memmo Alfama</b> is confirmed.</p>
+</body></html>
+
+--mm--
