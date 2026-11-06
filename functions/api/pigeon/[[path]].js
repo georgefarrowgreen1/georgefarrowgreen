@@ -46,7 +46,7 @@ import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
-import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet, setChatEmails, EMAIL_KINDS, KIND_SAID } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendAsked, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet, setChatEmails, EMAIL_KINDS, KIND_SAID } from "../../_notify.js";
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";
 import { repointSession } from "../../_sessions.js";
@@ -512,7 +512,7 @@ async function addFriend({ request, env, waitUntil }) {
       }
       await D.batch([D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ?").bind(u.id, t.id),
         D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now())]);
-      waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
+      waitUntil(friendAsked(env, linkOrigin(request), u, t.id).catch(() => {}));
       return json({ message: `Request sent to @${t.handle}.` });
     }
     // they said no: it looks like any request still waiting, and they hear nothing more
@@ -532,7 +532,7 @@ async function addFriend({ request, env, waitUntil }) {
   // (only if neither of you has asked in the meantime: two requests crossing make one)
   const ins = await D.prepare("INSERT INTO pg_links (a, b, status, created_at) SELECT ?1, ?2, 'pending', ?3 WHERE NOT EXISTS (SELECT 1 FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, t.id, Date.now()).run();
   if (!ins.meta.changes) return json({ message: `Something just changed with @${t.handle}. Try again.` });
-  waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
+  waitUntil(friendAsked(env, linkOrigin(request), u, t.id).catch(() => {}));
   return json({ message: `Request sent to @${t.handle}.` });
 }
 async function respondFriend({ request, env, waitUntil }) {
@@ -551,6 +551,7 @@ async function respondFriend({ request, env, waitUntil }) {
 }
 async function removeFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
+  await pace(env, "unfriend:" + u.id, 40, 60 * 60e3);
   const id = String((await body(request)).id), D = await db(env);
   await groundPhotos(env, D, u.id, id);
   const res = await D.batch([

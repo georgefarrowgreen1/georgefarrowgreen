@@ -963,8 +963,9 @@ export const newRpFor = (request, env) => passkeySites(request, env).apps;
 export const rpOf = (cred, request, env) => cred?.rp || (request ? rpIdFor(request, env) : env?.PASSKEY_SITE || homeSite(env));
 // Which site to ask a passkey of, as a sign-in asks (a browser can ask one site at a time): the one a passkey it names
 // belongs to (id: the one used here last); the one this browser last used one of (rp: "apps" or "home", or rpId); the account's,
-// where it's said (email), if its passkeys are all inflite.ai's; else the home site's, as nearly every passkey is,
-// unless the browser can't use a related site's (ror: false), where only inflite.ai's can work at all
+// where someone's signed in (user), if its passkeys are all inflite.ai's; else the home site's, as nearly every passkey is,
+// unless the browser can't use a related site's (ror: false), where only inflite.ai's can work at all. (Never from an
+// email it's sent: what came back would tell anyone which accounts there are, and whose passkeys are whose)
 export async function askRp(env, request, b = {}, user = null) {
   const s = passkeySites(request, env), D = await db(env);
   const id = typeof b.id === "string" && /^[A-Za-z0-9_-]{16,1400}$/.test(b.id) ? b.id : null;
@@ -972,8 +973,7 @@ export async function askRp(env, request, b = {}, user = null) {
   if (id) { const c = await D.prepare("SELECT rp FROM pg_passkeys WHERE id = ?").bind(id).first(); if (c) return rpOf(c, request, env) === s.apps || b.ror === false ? s.apps : s.home; }
   if (b.rp === "apps" || b.rp === "home") return s[b.rp];
   if (typeof b.rpId === "string" && (b.rpId === s.apps || b.rpId === s.home)) return b.rpId;
-  let uid = user?.id || null;
-  if (!uid && typeof b.email === "string" && EMAIL_RE.test(b.email.trim())) uid = (await D.prepare("SELECT id FROM pg_users WHERE email = ?").bind(b.email.trim().toLowerCase()).first())?.id || null;
+  const uid = user?.id || null;
   if (uid) {
     const { results } = await D.prepare("SELECT rp FROM pg_passkeys WHERE user_id = ?").bind(uid).all();
     const rps = new Set(results.map((r) => rpOf(r, request, env)));

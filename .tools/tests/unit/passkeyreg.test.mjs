@@ -79,19 +79,27 @@ function fakeDb({ pks = {}, users = {} } = {}) {
   });
   return { prepare: (sql) => st(sql), batch: async (xs) => xs.map(() => ({ results: [], meta: {} })), exec: async () => ({}) };
 }
-test('which site to ask: the passkey named, the browser’s last, the account’s, else the home site’s (or inflite.ai’s where a related site can’t be used)', async () => {
+test('which site to ask: the passkey named, the browser’s last, the signed-in account’s, else the home site’s (or inflite.ai’s where a related site can’t be used)', async () => {
   const env = { DB: fakeDb({ pks: { ['n'.repeat(22)]: { rp: 'inflite.ai', user: 'u1' }, ['o'.repeat(22)]: { rp: null, user: 'u2' }, ['p'.repeat(22)]: { rp: 'inflite.ai', user: 'u2' } }, users: { 'new@example.com': 'u1', 'both@example.com': 'u2' } }) };
   assert.equal(await askRp(env, AUTH, { id: 'n'.repeat(22) }), 'inflite.ai');
   assert.equal(await askRp(env, AUTH, { id: 'o'.repeat(22) }), 'georgefarrowgreen.com');
   assert.equal(await askRp(env, AUTH, { id: 'o'.repeat(22), ror: false }), 'inflite.ai', 'one of the home site’s can’t be used without related origins');
   assert.equal(await askRp(env, AUTH, { rpId: 'inflite.ai' }), 'inflite.ai');
   assert.equal(await askRp(env, AUTH, { rpId: 'evil.example' }), 'georgefarrowgreen.com', 'a site of neither: the usual');
-  assert.equal(await askRp(env, AUTH, { email: 'new@example.com' }), 'inflite.ai', 'an account whose passkeys are all inflite.ai’s');
-  assert.equal(await askRp(env, AUTH, { email: 'both@example.com' }), 'georgefarrowgreen.com', 'one with some of each: the home site’s, which works here too');
-  assert.equal(await askRp(env, AUTH, { email: 'both@example.com', ror: false }), 'inflite.ai');
+  assert.equal(await askRp(env, AUTH, {}, { id: 'u1' }), 'inflite.ai', 'signed in to an account whose passkeys are all inflite.ai’s');
+  assert.equal(await askRp(env, AUTH, {}, { id: 'u2' }), 'georgefarrowgreen.com', 'one with some of each: the home site’s, which works here too');
+  assert.equal(await askRp(env, AUTH, { ror: false }, { id: 'u2' }), 'inflite.ai');
   assert.equal(await askRp(env, AUTH, {}), 'georgefarrowgreen.com');
   assert.equal(await askRp(env, AUTH, { ror: false }), 'inflite.ai');
   assert.equal(await askRp(env, HOME, { rpId: 'inflite.ai' }), 'georgefarrowgreen.com', 'at the home page, only its own');
+});
+test('signed in to nothing, an email sent changes nothing: the answer never says whether there’s an account, or whose passkeys are whose', async () => {
+  const env = { DB: fakeDb({ pks: { ['n'.repeat(22)]: { rp: 'inflite.ai', user: 'u1' }, ['o'.repeat(22)]: { rp: null, user: 'u2' } }, users: { 'new@example.com': 'u1', 'old@example.com': 'u2', 'none@example.com': 'u3' } }) };
+  for (const ror of [true, false]) {
+    const usual = await askRp(env, AUTH, { ror });
+    for (const email of ['new@example.com', 'old@example.com', 'none@example.com', 'nobody@example.com'])
+      assert.equal(await askRp(env, AUTH, { email, ror }), usual, `${email}, ror ${ror}`);
+  }
 });
 // (a passkey's answer, signed with its key, for the site it says)
 async function signed(rpId) {

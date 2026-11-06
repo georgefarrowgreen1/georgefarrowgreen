@@ -77,7 +77,8 @@ test('“This wasn’t me”: every device out, a passkey added since removed, a
   await issueSession(env, u.id, req('/api/account/me')); await issueSession(env, u.id, req('/api/account/me', { ip: '203.0.113.9' }));
   await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, created_at, sign_count) VALUES ('old', ?, 'k', -7, 'Mine', ?, 0), ('new', ?, 'k', -7, 'Theirs', ?, 0)")
     .bind(u.id, t - 30 * 864e5, u.id, t).run();
-  await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?').bind('thief@example.com', 'c', t, u.id).run();
+  // (its password last set between the two: the one since is the one that goes)
+  await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ?, pw_at = ? WHERE id = ?').bind('thief@example.com', 'c', t, t - 20 * 864e5, u.id).run();
   const token = await oneLink(env, u, 'secure');
   sent.length = 0;
   const res = await onPage('secure', { token });
@@ -88,6 +89,7 @@ test('“This wasn’t me”: every device out, a passkey added since removed, a
   assert.equal((await D.prepare('SELECT email_new FROM pg_users WHERE id = ?').bind(u.id).first()).email_new, null, 'a new email waiting: called off');
   assert.equal(sent.length, 1); assert.equal(sent[0].to, u.email); assert.ok(tokenIn(sent[0].html, 'reset'), 'a reset link, to the account’s own address');
   assert.match(sent[0].html, /Asked from/);
+  assert.match(sent[0].html, /Passkeys still on your account: Mine\./, 'and those that stay, said');
   assert.equal((await onPage('secure', { token })).status, 400, 'once');
   assert.equal((await onPage('secure', { token: 'x'.repeat(43) })).status, 400, 'and not a made-up one');
 });
