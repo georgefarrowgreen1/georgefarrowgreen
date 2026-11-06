@@ -215,13 +215,13 @@ function billsOf(list, own, t) {
   }
   return out.sort((a, b) => (a.due ?? Infinity) - (b.due ?? Infinity) || (a.id < b.id ? -1 : 1)).slice(0, BILLS_MAX);
 }
-// money as the contract has it ({ month, n, months: [6], cats: [{ name, pence }], paidSelf: { n, pence } }), or null
+// money as the contract has it ({ month, n, months: [6, a month before Mail knew null], cats: [{ name, pence }], paidSelf: { n, pence } }), or null
 // where its month isn't an amount; a part that's malformed left empty, never the rest
 function moneyOf(m) {
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
   const month = pence(m.month);
   if (month == null) return null;
-  const months = Array.isArray(m.months) && m.months.length === 6 && m.months.every((v) => pence(v) != null) ? [...m.months] : [];
+  const months = Array.isArray(m.months) && m.months.length === 6 && m.months.every((v) => v === null || pence(v) != null) && m.months[5] !== null ? [...m.months] : [];
   const cats = [];
   for (const c of Array.isArray(m.cats) ? m.cats.slice(0, 20) : []) {
     if (!c || typeof c !== "object" || !BILL_CATS.includes(c.name) || pence(c.pence) == null || cats.some((x) => x.name === c.name)) continue;

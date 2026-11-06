@@ -216,6 +216,11 @@ test('a sender’s history: its usual (the median of its last five), last year�
   assert.equal(monthly([{ at: 0, pence: 3000, kind: 'bill', per: 'm' }], 400 * DAY), 0, 'none in 13 months: nothing');
   const m = moneyOf([{ sender_key: 'a', at: Date.now() - DAY, pence: 1000, kind: 'sub', per: 'm', cat: 'Subscriptions' }], [{ amount: 1000 }], Date.now(), Z);
   assert.deepEqual(m, { month: 1000, n: 1, months: [0, 0, 0, 0, 0, 1000].map((x, i) => (i === 4 && new Date().getUTCDate() === 1 ? 1000 : x)), cats: [{ name: 'Subscriptions', pence: 1000 }], paidSelf: { n: 1, pence: 1000 } });
+  // (bills known only from the read-back's start, 60 days ago: the months that began before it are unknown, not nothing)
+  const known = moneyOf([{ sender_key: 'a', at: Date.now() - DAY, pence: 1000, kind: 'sub', per: 'm', cat: 'Subscriptions' }], [], Date.now(), Z, Date.now() - 60 * DAY);
+  assert.equal(known.months.filter((v) => v === null).length >= 3, true, 'four or so months before it: null');
+  assert.equal(known.months[5], 1000, 'this month always counted');
+  assert.ok(known.months.slice(known.months.lastIndexOf(null) + 1).every(Number.isInteger), 'and those after it counted');
 });
 
 // =====================================================================================================================
@@ -408,7 +413,7 @@ test('bills as they come, each sender’s history: the card’s bills (due in 14
   assert.equal(m.month, 8420 + 4500 + 3250 + 3438 + 1199 + 1099, 'Octopus, EE, the co-op, Admiral’s year by twelve, Spotify, Netflix (not the trial)');
   assert.equal(m.n, 6);
   assert.equal(m.months.length, 6);
-  assert.ok(m.months.every(Number.isInteger));
+  assert.ok(m.months.every((v) => v === null || Number.isInteger(v)) && m.months.some((v) => v === null), 'the months before the read-back unknown (null), the rest amounts');
   assert.equal(m.months[5], m.month);
   assert.deepEqual(m.cats, [{ name: 'Home', pence: 8420 }, { name: 'Phone and internet', pence: 4500 }, { name: 'Car', pence: 3438 }, { name: 'Other', pence: 3250 }, { name: 'Subscriptions', pence: 2298 }]);
   assert.deepEqual(m.paidSelf, { n: 1, pence: 1099 }, 'Netflix, paid by itself two days ago');

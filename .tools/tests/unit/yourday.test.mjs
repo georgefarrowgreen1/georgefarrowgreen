@@ -540,6 +540,13 @@ test("stage 2, the Bills sheet: the month, its change since June, six months, th
   assert.deepEqual(m.needs.map((r) => r.item), ["str-1", "oct-2611", "adm-2611"]);
   assert.deepEqual(m.paid.map((r) => [r.item, r.sub]), [["ee-2611", "Same as usual"], ["spt-2611", "+9% on your usual £11"]]);
   assert.equal(moneyFor({ mail: cardOf(booked(), OWN, FRI) }, { tz: "Europe/London" }, FRI), null, "bills off: no sheet");
+  // (months from before Mail knew the bills: empty bars, and the change counted from the first month it knew)
+  const early = moneyFor({ mail: cardOf({ ...stage2(), money: { ...MONEY(), months: [null, null, null, null, 18000, 18640] } }, OWN, FRI) }, { tz: "Europe/London" }, FRI);
+  assert.deepEqual(early.bars.map((b) => b.pct), [0, 0, 0, 0, 97, 100]);
+  assert.equal(early.tag, "+£6.40 on October");
+  const fresh = moneyFor({ mail: cardOf({ ...stage2(), money: { ...MONEY(), months: [null, null, null, null, null, 18640] } }, OWN, FRI) }, { tz: "Europe/London" }, FRI);
+  assert.equal(fresh.tag, null, "only this month known: no change to say");
+  assert.deepEqual(cardOf({ ...stage2(), money: { ...MONEY(), months: [1, 2, 3, 4, 5, null] } }, OWN, FRI).money.months, [], "this month unknown: the months left out");
 });
 
 test("stages 2 and 3, the day: Waiting for You's rows from Mail, the paid line, the Bills sheet, the parcel's row and the trip's hidden", async () => {

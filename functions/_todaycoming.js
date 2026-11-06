@@ -205,13 +205,15 @@ export function moneyFor(cards, extra, t) {
   const m = mc.money, bills = Array.isArray(mc.bills) ? mc.bills : [];
   const [y, mo] = dayKey(tz).format(new Date(t)).split("-").map(Number);
   const monthAt = (back, o) => fmt("UTC", o).format(Date.UTC(y, mo - 1 - back, 15));
-  const top = Math.max(1, ...m.months);
-  const bars = m.months.map((v, i) => ({ label: monthAt(5 - i, { month: "short" }).slice(0, 3), pct: Math.max(4, Math.round((v / top) * 100)), ...(i === 5 ? { said: moneyRound(v) } : {}) }));
-  const diff = m.months.length === 6 ? m.months[5] - m.months[0] : 0;
+  // (a month from before Mail knew the bills: an empty bar, and the change counted from the first month it knew)
+  const top = Math.max(1, ...m.months.filter((v) => v != null));
+  const bars = m.months.map((v, i) => ({ label: monthAt(5 - i, { month: "short" }).slice(0, 3), pct: v == null ? 0 : Math.max(4, Math.round((v / top) * 100)), ...(i === 5 ? { said: moneyRound(v) } : {}) }));
+  const from = m.months.findIndex((v) => v != null);
+  const diff = m.months.length === 6 && from >= 0 && from < 5 ? m.months[5] - m.months[from] : 0;
   const rows = bills.map((b) => billRow(b, t, tz));
   const needs = (b) => b.kind === "renewal" || b.kind === "trial" || (b.kind === "bill" && !b.auto);
   return {
-    month: money(m.month), n: m.n === 1 ? "1 bill or subscription" : `${m.n} bills and subscriptions`, tag: diff ? `${signedMoney(diff)} on ${monthAt(5, { month: "long" })}` : null, bars,
+    month: money(m.month), n: m.n === 1 ? "1 bill or subscription" : `${m.n} bills and subscriptions`, tag: diff ? `${signedMoney(diff)} on ${monthAt(5 - from, { month: "long" })}` : null, bars,
     cats: m.cats.filter((c) => c.pence > 0).map((c) => ({ name: c.name, pence: c.pence, said: `${c.name} ${moneyRound(c.pence)}` })),
     needs: rows.filter((r, i) => needs(bills[i])), paid: rows.filter((r, i) => !needs(bills[i])),
   };

@@ -293,7 +293,9 @@ const dayOf = () => p.evaluate(() => fetch('/api/today?v=2', { credentials: 'inc
 const whole = await until(async () => { const d = await dayOf(); return d?.money && d?.owed ? d : null; }, 30000);
 const oeRow = whole?.owed?.find((r) => /Octopus/.test(JSON.stringify(r)));
 ok(!!oeRow && /84\.20/.test(JSON.stringify(oeRow)), 'the whole way: Octopus’s bill from real Mail is a Waiting for You row in Today’s day', js(whole?.owed));
-ok(whole?.money && whole.money.month > 0 && Array.isArray(whole.money.months) && whole.money.months.length === 6, 'and the Bills sheet has its month and six months', js(whole?.money));
+const mb = whole?.money;
+ok(/^£\d/.test(mb?.month || '') && mb.bars?.length === 6 && mb.bars[5].pct === 100 && mb.bars.slice(0, 2).every((x) => x.pct === 0), 'and the Bills sheet: its month, six bars, the months before Mail read back left empty', js(mb && { month: mb.month, tag: mb.tag, bars: mb.bars }));
+ok(!mb?.tag || !/ on (June|July)$/.test(mb.tag), 'its change counted only from a month Mail knew', mb?.tag);
 
 const mine = errs.slice(errs0).filter((e) => e.startsWith('george:'));
 ok(!mine.length, 'no error on Mail’s page or in Mail inside Today', js(mine));
