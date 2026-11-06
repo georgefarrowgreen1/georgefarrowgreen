@@ -1095,8 +1095,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.12";
-const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+const BUILD = "2.13";
+const NEWS = "Opens properly again after an update, where it could stop with an error";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3293,8 +3293,18 @@ const HUB_KEPT = "today:session";
 function hubKeptIs(id) {
   try { const k = JSON.parse(localStorage.getItem(HUB_KEPT) || "null"); return id != null && k?.id === id; } catch (_) { return false; }
 }
+// (a page whose files didn't all come from one version, an app.js newer than the account.js beside it, say: the files
+// fetched afresh together and the page opened again, once, rather than stopping where the two disagree)
+function mixed(app) {
+  try { if (sessionStorage.getItem(app + ":mixed")) return false; sessionStorage.setItem(app + ":mixed", "1"); } catch (_) { return false; }
+  const c = navigator.serviceWorker?.controller, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  (c ? Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]) : Promise.resolve())
+    .then(() => location.reload());
+  return true;
+}
 async function start() {
-  A.atHub(IFL.hub);
+  if (typeof A.atHub !== "function" && mixed("markets")) return;
+  A.atHub?.(IFL.hub);
   drawTabs();
   IFL.built("markets", BUILD, NEWS);
   IFL.watch(window);
