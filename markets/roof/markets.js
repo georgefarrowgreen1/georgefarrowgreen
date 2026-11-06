@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.12";
-export const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+export const BUILD = "2.13";
+export const NEWS = "Opens properly again after an update, where it could stop with an error";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

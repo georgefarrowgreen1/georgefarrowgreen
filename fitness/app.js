@@ -1110,8 +1110,18 @@ const IFL = (() => {
 // else Apps: IFL.hub.back), Fitness's own few under its settings button; signing in through Chats (account.js);
 // a session sent through Chats' sheet over this page (IFL.hub.send); and notifications InFlite's own, set in You: Fitness
 // never asks for them there, nor lets a subscription go. Off the hub, all as it ever was.
+// (a page whose files didn't all come from one version, an app.js newer than the account.js beside it, say: the files
+// fetched afresh together and the page opened again, once, rather than stopping where the two disagree)
+function mixed(app) {
+  try { if (sessionStorage.getItem(app + ":mixed")) return false; sessionStorage.setItem(app + ":mixed", "1"); } catch (_) { return false; }
+  const c = navigator.serviceWorker?.controller, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  (c ? Promise.race([new Promise((ok) => { const ch = new MessageChannel(); ch.port1.onmessage = ok; c.postMessage({ ifl: "renew" }, [ch.port2]); }), wait(8000)]) : Promise.resolve())
+    .then(() => location.reload());
+  return true;
+}
 const HUB = IFL.hub;
-A.atHub(HUB);
+if (typeof A.atHub !== "function") mixed("fitness");
+A.atHub?.(HUB);
 // (opened from the account's Notifications page to turn them on here: #notify, asked once you're in; never at the hub)
 let ASK_NOTIFY = !HUB.on && IFL.wantsAllow();
 
@@ -1565,8 +1575,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.96";
-const NEWS = "Report a problem: once it’s sent, a link shows where it stands on the status page";
+const BUILD = "1.97";
+const NEWS = "Opens properly again after an update, where it could stop with an error";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

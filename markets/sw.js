@@ -73,6 +73,14 @@ async function served(e, key) {
   const c = await caches.open(SHELL), hit = await c.match(key);
   const now = fetch(e.request.mode === "navigate" ? key : e.request, { cache: "no-cache" });
   if (!hit) {
+    // (one of the set missing while the rest is kept, say a file new in this version, or one the browser let go: the whole
+    // set fetched again together first, and this one served from it, never one new file beside the others kept from
+    // before (a new app.js asking an old account.js for what it hasn't got). Where that can't be done, as before)
+    if ((await c.keys()).length) {
+      await (renewing ||= fill().finally(() => { renewing = null; })).catch(() => {});
+      const fresh = await c.match(key);
+      if (fresh) { now.catch(() => {}); return fresh; }
+    }
     const res = await now;
     if (res.ok && res.type === "basic") await c.put(key, res.clone());
     return res;

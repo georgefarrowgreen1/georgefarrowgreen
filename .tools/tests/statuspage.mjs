@@ -91,6 +91,26 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   await p.screenshot({ path: `${OUT}/status-${w}-${scheme}.png`, fullPage: true });
   await p.close();
 }
+{
+  // (a phone that slept for hours and wakes with no connection: the page says it's behind, not that the checks are late;
+  // and once it's back, the latest)
+  const p = await b.newPage({ viewport: { width: 390, height: 900 }, deviceScaleFactor: 1 });
+  await p.clock.install();
+  await p.goto('http://status.ifl.test:8788/', { waitUntil: 'networkidle' });
+  await p.waitForSelector('.app');
+  await p.route('**/api/status', (r) => r.abort());
+  await p.clock.fastForward('03:00:00');
+  await p.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await p.waitForFunction(() => /out of date/.test(document.querySelector('#verdict h2')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  const behind = await p.textContent('#verdict');
+  ok(/This page is out of date/.test(behind) && /Trying again/.test(behind) && !/running late/.test(behind), 'woken with no connection: the page says it’s behind, not that the checks are late', behind);
+  await p.unroute('**/api/status');
+  await p.clock.fastForward('00:00:16');
+  await p.waitForFunction(() => !/out of date/.test(document.querySelector('#verdict h2')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  // (the page's clock is three hours on from the checks' here, so what it's then told is, rightly, the checks running late)
+  ok(/running late/.test(await p.textContent('#verdict h2')), 'and once it’s back, asked again by itself: the latest, judged as such', await p.textContent('#verdict h2'));
+  await p.close();
+}
 await b.close();
 console.log(`FAILS ${fails}`);
 process.exit(fails ? 1 : 0);
