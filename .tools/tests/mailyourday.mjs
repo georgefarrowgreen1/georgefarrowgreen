@@ -84,6 +84,16 @@ await p.screenshot({ path: `${out}/settings-on.png` });
 await p.click('.set-sheet button.ifs-btn[aria-label="Close"]').catch(() => {});
 await wait(800);
 
+// ---- the whole way: the same emails, from real Mail through the account, as the trip card on George's Today ----
+await p.goto('http://ifl.test:8788/');
+await p.waitForSelector('#today[data-phase]', { timeout: 30000 }).catch(() => {});
+const tripCard = await p.waitForSelector('#trip .trip-card', { timeout: 30000 }).then(() => p.$eval('#trip .trip-card', (c) => ({
+  head: c.querySelector('.tp-h')?.textContent, next: c.querySelector('.tp-next')?.innerText.replace(/\s+/g, ' ').trim() })), () => null);
+ok(/^Lisbon (today|tomorrow)$/.test(tripCard?.head || '') && /Flight to Lisbon/.test(tripCard?.next || ''), 'the whole way: real Mail’s bookings, through the account, as Lisbon’s trip card on George’s Today', js(tripCard));
+await p.screenshot({ path: `${out}/today-trip.png` });
+await p.goto(`${MAIL}/`);
+await p.waitForSelector('.pane.list .row-wrap[data-id] .row', { timeout: 30000 }).catch(() => {});
+
 // ---- the strip ----
 ok(await openRow('TAP Air Portugal'), 'TAP’s conversation again');
 const strips = await p.waitForSelector('.spot', { timeout: 15000 }).then(() => p.$$eval('.spot', (els) => els.map((e) => ({
