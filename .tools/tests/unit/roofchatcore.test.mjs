@@ -19,7 +19,8 @@ import { MAIN } from './fixtures/roof.mjs';
 import { E2E } from '../../../pigeon/crypto.js';
 import { padPayload } from '../../../pigeon/cards.js';
 
-const APP = readFileSync(new URL('pigeon/app.js', MAIN), 'utf8');
+// (app.js's, or later.js's: the part of app.js loaded once the first screen is up)
+const APP = readFileSync(new URL('pigeon/app.js', MAIN), 'utf8') + '\n' + readFileSync(new URL('pigeon/later.js', MAIN), 'utf8');
 const CORE = readFileSync(new URL('pigeon/roof/core.js', MAIN), 'utf8');
 
 // ---- a top-level declaration's source (function NAME, async function NAME, const NAME =), strings, templates,

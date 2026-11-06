@@ -2,35 +2,9 @@
 // pigeon on its way: to the Moon, across it, by laser to Mars, or round the Earth in orbit).
 // The numbers are pigeon/space.js, shared with the server (functions/_moon.js).
 import { LAND } from "./land.js";
-import { SITES, MARS_SITES, ABOUT, BODIES, MEAN_KM, EARTH_R, MOON_R, farSide, lunarKm, surfaceKm, distAt, arc, orbitWhere, orbitAt, ORBIT, inShadow } from "./space.js";
+import { SITES, MARS_SITES, ABOUT, BODIES, farSide, surfaceKm, distAt, arc, orbitWhere, orbitAt, ORBIT } from "./space.js";
 export * from "./space.js";
 const rad = Math.PI / 180;
-
-// Where it is now, in words (miles, like the rest of the app): "88,400 mi from Earth · 2,400 mph".
-// where(lat, lon): a name for a spot on Earth
-const MI = 0.621371, mi = (km) => Math.round(km * MI).toLocaleString("en-GB");
-export function spaceNow(mn, sentAt, deliverAt, t, where = null) {
-  const T = deliverAt - sentAt, f = Math.max(0, Math.min(1, (t - sentAt) / T)), H = T / 3600e3;
-  if (mn.k === "laser") {
-    if (mn.relay) return { f, line: "Bounced off an orbiter overhead" };
-    return { f, line: f >= 1 ? `${mi(mn.dist)} mi in ${Math.round(T / 1000)} seconds` : `${mi(mn.dist * (1 - f))} mi to go · at the speed of light` };
-  }
-  if (mn.k === "orbit") {
-    const [la, lo, ph] = orbitWhere(mn, t - sentAt), over = where ? where(la, lo) : null;
-    if (ph === "climb") return { f, line: "Climbing to orbit" };
-    if (ph === "down") return { f, line: `Coming down${over ? ` over ${over}` : ""}` };
-    const lap = Math.floor((t - sentAt - ORBIT.climb) / mn.T) + 1;
-    return { f, line: `${over ? `Over ${over} · ` : ""}lap ${lap} · 17,100 mph` };
-  }
-  if (mn.k === "surface") {
-    const km = lunarKm(mn.from.lat, mn.from.lon, mn.to.lat, mn.to.lon);
-    return { f, line: `${mi(km * (1 - f))} mi to go · ${mi(km / H)} mph` };
-  }
-  const d = (mn.dist || MEAN_KM) - EARTH_R - MOON_R, s = distAt(mn, f), e = 0.002;
-  const v = (Math.abs(distAt(mn, Math.min(1, f + e)) - distAt(mn, Math.max(0, f - e))) / (Math.min(1, f + e) - Math.max(0, f - e))) * d / H;
-  const fromEarth = mn.from.b === "earth" ? s * d : (1 - s) * d;
-  return { f, line: `${mi(fromEarth)} mi from Earth · ${mi(v)} mph${inShadow(t) ? " · in Earth’s shadow" : ""}` };
-}
 
 /* ---------- drawing ---------- */
 // the dark seas (maria) and a few craters, as [lat, lon, radius°]: enough to know it at a glance

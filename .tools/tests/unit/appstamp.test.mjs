@@ -47,9 +47,10 @@ test('each file comes stamped as the page names it: kept for good only then', as
   const page = await get('/pigeon/');
   const app = await get(`/pigeon/app.js?v=${stampIn(page.text, 'app.js')}`);
   assert.match(app.cache, /immutable/);
-  const land = stampIn(app.text, 'land.js');
-  assert.ok(land && stampIn(app.text, 'crypto.js'), 'its modules stamped');
-  if (stampIn(page.text, 'land.js')) assert.equal(stampIn(page.text, 'land.js'), land, 'the same stamp from the page and from app.js');
-  assert.match((await get(`/pigeon/land.js?v=${land}`)).cache, /immutable/);
-  assert.equal((await get('/pigeon/land.js?v=000000000000')).cache, 'no-store', 'asked for by another stamp: not kept');
+  const space = stampIn(app.text, 'space.js');
+  assert.ok(space && stampIn(app.text, 'crypto.js') && stampIn(app.text, 'later.js'), 'its modules stamped (and the one it loads later)');
+  if (stampIn(page.text, 'space.js')) assert.equal(stampIn(page.text, 'space.js'), space, 'the same stamp from the page and from app.js');
+  assert.equal(stampIn(page.text, 'later.js'), stampIn(app.text, 'later.js'), 'and later.js the same, named by the page and loaded by app.js');
+  assert.match((await get(`/pigeon/space.js?v=${space}`)).cache, /immutable/);
+  assert.equal((await get('/pigeon/space.js?v=000000000000')).cache, 'no-store', 'asked for by another stamp: not kept');
 });

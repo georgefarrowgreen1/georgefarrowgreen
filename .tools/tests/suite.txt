@@ -103,3 +103,4 @@ todayauthoff
 adminstatus
 signinfast
 chatsunlock
+chatsplit

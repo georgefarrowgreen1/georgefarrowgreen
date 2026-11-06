@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const IFL = join(ROOT, "../inflite");
-const APP = readFileSync(join(ROOT, "pigeon/app.js"), "utf8");
+// (Chat's page code: app.js, and later.js, the part it loads once the first screen is up)
+const APP = readFileSync(join(ROOT, "pigeon/app.js"), "utf8") + "\n" + readFileSync(join(ROOT, "pigeon/later.js"), "utf8");
 const walk = (dir, out = []) => {
   for (const f of readdirSync(dir)) {
     if (f === "node_modules" || f.startsWith(".")) continue;
