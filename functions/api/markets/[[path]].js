@@ -54,6 +54,11 @@ const symbolsOf = (request, max = 70) => {
   if (!list.length || list.length > max) throw new HttpError(400, "Bad request.");
   return list.map(cleanSymbol);
 };
+// (each symbol a request has to ask Yahoo for, not kept or kept too long, counted to the account: a few dozen symbols
+// a request, at the route's pace, would otherwise be thousands of Yahoo's a minute, for symbols no one else asks for.
+// A list of 60, refreshed every minute, asks for about 3,900 an hour. Past it, what's kept, or nothing, till it's
+// earned again)
+const yahoo = (env, u) => ({ ask: () => pace(env, `mkyahoo:${u.id}`, 6000, 3600e3).then(() => true, () => false) });
 // (the markets' answers: kept by the browser a little, as they're the same for everyone a minute at a time)
 const shared = (o, secs) => { const r = json(o); r.headers.set("Cache-Control", `private, max-age=${secs}`); return r; };
 
@@ -66,7 +71,7 @@ const ROUTES = {
   "GET quotes": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await pace(env, `mkquotes:${u.id}`, 600, 3600e3);
-    const by = Date.now() + ANSWER_BY, q = await quotes(env, symbolsOf(request, 64), by);
+    const by = Date.now() + ANSWER_BY, q = await quotes(env, symbolsOf(request, 64), by, yahoo(env, u));
     return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur), by), at: Date.now() }, 20);
   },
   "GET chart": async ({ request, env }) => {
@@ -81,8 +86,8 @@ const ROUTES = {
   "GET years": async ({ request, env }) => {
     const u = await signedIn(request, env);
     await pace(env, `mkyears:${u.id}`, 120, 3600e3);
-    const list = symbolsOf(request, 64), out = {};
-    (await fewAtATime(list, (s) => yearOf(env, s))).forEach((y, i) => { if (y) out[list[i]] = y; });
+    const list = symbolsOf(request, 64), out = {}, opt = yahoo(env, u);
+    (await fewAtATime(list, (s) => yearOf(env, s, opt))).forEach((y, i) => { if (y) out[list[i]] = y; });
     return shared({ years: out }, 600);
   },
   "GET news": async ({ request, env }) => {

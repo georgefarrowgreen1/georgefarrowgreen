@@ -247,7 +247,7 @@ const ROUTES = {
   // (Strava's word, from Strava: its check as the subscription's made, and each event after; answered at once)
   "GET strava/hook": async ({ request, env }) => json(await hookCheck(env, new URL(request.url).searchParams)),
   "POST strava/hook": async ({ request, env }) => {
-    await pace(env, `fxstravahook:${clientNet(request)}`, 2000, 3600e3);
+    await pace(env, `fxstravahook:${clientNet(request)}`, 300, 3600e3);
     await hookEvent(env, await body(request, 16 * 1024).catch(() => null)).catch((e) => console.error("strava hook", e.message));
     return json({ ok: true });
   },

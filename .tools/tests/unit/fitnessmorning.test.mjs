@@ -74,3 +74,19 @@ test("an account whose morning comes from InFlite Today isn't sent Fitness's rem
     assert.deepEqual(sent, ["https://web.push.apple.com/phone-6"]);
   } finally { globalThis.fetch = real; console.error = said; delete env.PIGEON_PUSH_URL; }
 });
+
+// A phone another account's still signed in on stays theirs, as Markets' phones do: anyone with its push address can't
+// take it over and put their own words on it; once that sign-in's gone, the next account to turn it on there has it
+test("a phone another account's signed in on isn't taken over, its words not replaced; one whose sign-in has gone is", async () => {
+  const sub = await phone(8), row = async () => ({ ...(await D.prepare("SELECT user_id, session, days FROM fx_push WHERE endpoint = ?").bind(sub.endpoint).first()) });
+  await setMorning(env, "u1", { sub, at: 7 * 60, tz: "Europe/London", days: {} }, "sB");
+  await setMorning(env, "u2", { sub, at: 7 * 60, tz: "Europe/London", days: { "2026-11-07": { title: "Anything u2 wants", body: "on u1's phone" } } }, "sC");
+  assert.deepEqual(await row(), { user_id: "u1", session: "sB", days: "{}" }, "still u1's, with u1's words");
+  // (its own account sends its words again: kept)
+  await setMorning(env, "u1", { sub, at: 7 * 60, tz: "Europe/London", days: { "2026-11-07": { title: "Rest", body: "" } } }, "sB");
+  assert.equal((await row()).days, JSON.stringify({ "2026-11-07": { title: "Rest", body: "" } }));
+  // signed out there: the next account's
+  await D.prepare("DELETE FROM pg_sessions WHERE hash = 'sB'").run();
+  await setMorning(env, "u2", { sub, at: 7 * 60, tz: "Europe/London", days: {} }, "sC");
+  assert.deepEqual(await row(), { user_id: "u2", session: "sC", days: "{}" });
+});

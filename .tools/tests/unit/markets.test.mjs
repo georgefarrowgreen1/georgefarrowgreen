@@ -179,6 +179,18 @@ test("a sale, checked against what was held on its day, and every sale after it"
   assert.equal(brokenSale(oversold(two), oversold(two.filter((b) => b.id !== 3))).b, two[3], "March's buy taken off: April's sale, not February's");
 });
 
+// A sale with no price says nothing of what the rest cost: the average is kept, only what the sale made is unknown;
+// a buy with no price leaves both unknown
+test("a sale whose price isn't known leaves the average cost as it was; what sales made, unknown", () => {
+  assert.deepEqual(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: null, at: 2 }]), { qty: 6, cost: 100, made: null });
+  assert.deepEqual(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: 120, at: 2 }]), { qty: 6, cost: 100, made: 80 });
+  // (bought again after it: the average of what's held, as ever)
+  assert.deepEqual(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: null, at: 2 }, { qty: 6, price: 120, at: 3 }]), { qty: 12, cost: 110, made: null });
+  // (and a priced sale after an unpriced one: still unknown, as the whole isn't known)
+  assert.equal(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: null, at: 2 }, { qty: -2, price: 130, at: 3 }]).made, null);
+  assert.deepEqual(pooled([{ qty: 10, price: null, at: 1 }, { qty: -4, price: 120, at: 2 }]), { qty: 6, cost: null, made: null }, "a buy with no price: neither known");
+});
+
 test("the first buy recorded keeps the shares already said where they were bought; a sale before then moves them back to its day", () => {
   const MAY24 = Date.UTC(2024, 4, 1), JAN23 = Date.UTC(2023, 0, 1), held = { qty: 100, cost: 2, since: MAY24, added: Date.UTC(2025, 0, 1) };
   const { start } = planBuy([], held, { qty: 50, price: 1.5, at: JAN23 });

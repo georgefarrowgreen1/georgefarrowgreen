@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { toLook, allowance, warningsFor, claim, LEASE } from "../../../functions/_wxpush.js";
+import { toLook, allowance, warningsFor, claim, LEASE, MAX_PLACES } from "../../../functions/_wxpush.js";
 import { warningAlert } from "../../../weather/alerts.js";
 import { makeFormat } from "../../../weather/format.js";
 
@@ -25,6 +25,24 @@ test("the places a tick looks at: briefings due first, then the rest in a differ
   const seen = new Set(one);
   for (let n = 0; n < 4; n++) toLook(subs, NOON).forEach((s) => seen.add(s));
   assert.ok(late([...seen]) > 150, `within a few ticks, nearly every later one (${late([...seen])} of 200)`);
+});
+
+// A device with many places has a place looked at before any device has a second, so one with a dozen (or a few
+// devices' worth) can't crowd the rest out of a tick; and no more than a list's worth (MAX_PLACES) of one device's
+test("the places a tick looks at: a place of every device's before a second of any, and no more than a list's worth of one", () => {
+  const row = (dev, i) => ({ id: `${dev}:${i}`, dev, lat: 50 + i / 100, lon: 0, rain: 1, brief: 0, warn: 0, tz_off: 0 });
+  // 150 devices with one place each, and 10 with 40 places each (more than any list, as rows from before might be)
+  const subs = [...Array.from({ length: 150 }, (_, d) => row(`one${d}`, 0)), ...Array.from({ length: 10 }, (_, d) => Array.from({ length: 40 }, (_, i) => row(`big${d}`, i))).flat()];
+  for (let n = 0; n < 5; n++) {
+    const got = toLook(subs, NOON);
+    assert.equal(got.length, 200);
+    assert.equal(got.filter((s) => s.dev.startsWith("one")).length, 150, "every one-place device looked at, every tick");
+    const per = new Map(); for (const s of got) per.set(s.dev, (per.get(s.dev) || 0) + 1);
+    assert.ok([...per.values()].every((c) => c <= 6), "the rest shared among the big ones, a few each");
+  }
+  const all = toLook(subs, NOON, Infinity), per = new Map();
+  for (const s of all) per.set(s.dev, (per.get(s.dev) || 0) + 1);
+  assert.equal(Math.max(...per.values()), MAX_PLACES, "no more than a list's worth of one device's in a tick");
 });
 
 // A place with only warnings or panels on is looked at once a night too, as 03:00 comes there (its clock as last known:

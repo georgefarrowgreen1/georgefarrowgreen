@@ -51,7 +51,8 @@ function cleanDays(d) {
 }
 
 // Turned on (or its time changed, or its words sent again) on this phone: { sub, at, tz, days }, with the sign-in it's
-// sent with (session: its hash)
+// sent with (session: its hash). A phone another account's still signed in on stays theirs, as Markets' phones do (only
+// one whose sign-in has ended is taken over), so no one can put their words on someone else's phone
 export async function setMorning(env, userId, b, session = null) {
   const sub = b?.sub, keys = await keysOk(sub);
   if (!sub || !pushEndpointOk(sub.endpoint) || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
@@ -63,7 +64,8 @@ export async function setMorning(env, userId, b, session = null) {
   const D = await tables(env);
   await pace(env, `fxpush:${userId}`, 120, 3600e3);
   await D.prepare(`INSERT INTO fx_push (endpoint, user_id, p256dh, auth, at, tz, days, sent, added, session) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)
-    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7, session = ?9`)
+    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5, tz = ?6, days = ?7, session = ?9
+    WHERE fx_push.user_id = ?2 OR fx_push.session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = fx_push.session)`)
     .bind(sub.endpoint, userId, keys.p256dh, keys.auth, at, b.tz, JSON.stringify(cleanDays(b.days)), Date.now(), session).run();
   // (ten phones an account at most: the oldest goes as an eleventh comes)
   await D.prepare("DELETE FROM fx_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM fx_push WHERE user_id = ?1 ORDER BY added DESC LIMIT ?2)").bind(userId, PHONES).run();

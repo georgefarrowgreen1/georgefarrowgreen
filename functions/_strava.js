@@ -304,6 +304,8 @@ export async function hookCheck(env, q) {
   if (!stravaOn(env) || q.get("hub.mode") !== "subscribe" || q.get("hub.verify_token") !== (await verifyToken(env))) throw new HttpError(403, "No.");
   return { "hub.challenge": String(q.get("hub.challenge") || "").slice(0, 200) };
 }
+// (what an event says checked with Strava, for one athlete: CHECKS times in CHECK_MS at most)
+const CHECKS = 3, CHECK_MS = 5 * 60e3;
 // (an event: only from our own subscription; whose it is, by the athlete)
 export async function hookEvent(env, e) {
   if (!stravaOn(env) || !e || typeof e !== "object") return;
@@ -313,8 +315,12 @@ export async function hookEvent(env, e) {
   if (!g) return;
   // (Strava doesn't sign its events, and the subscription's number and an athlete's are no secret: so what an event says
   // is checked with Strava itself before it's acted on. Disconnected: only once Strava refuses the tokens; a new name:
-  // the activity's own, as Strava has it. A new activity only marks them to be asked, which the scheduler paces anyway)
+  // the activity's own, as Strava has it. A new activity only marks them to be asked, which the scheduler paces anyway.
+  // Those checks are Strava's asks, out of the whole app's allowance: so a few an athlete in CHECK_MS at most, and
+  // anyone sending made-up events for them can't spend it)
+  const check = () => limit(env, `fxstravacheck:${g.athlete}`, CHECKS, CHECK_MS).then(() => true, () => false);
   if (e.object_type === "athlete" && String(e.updates?.authorized) === "false") {
+    if (!(await check())) return;
     const gone = await accessFor(env, D, g).then((t) => get(env, t, "/athlete").then(() => false), (err) => err.status === 401).catch((err) => err.status === 401);
     return gone ? forget(env, g.user_id) : undefined;
   }
@@ -323,7 +329,7 @@ export async function hookEvent(env, e) {
   // (renamed on Strava: renamed here, where it's in already and still has Strava's name)
   if (e.aspect_type === "update" && typeof e.updates?.title === "string") {
     const known = await D.prepare("SELECT 1 FROM fx_acts WHERE user_id = ? AND id = ? UNION ALL SELECT 1 FROM fx_strava_new WHERE user_id = ? AND id = ?").bind(g.user_id, `s${e.object_id}`, g.user_id, String(e.object_id)).first();
-    if (!known) return;
+    if (!known || !(await check())) return;
     const act = await accessFor(env, D, g).then((t) => get(env, t, `/activities/${e.object_id}`)).catch(() => null);
     const name = String(act?.name || "").trim().slice(0, 80);
     if (name) { await D.prepare("UPDATE fx_acts SET name = ?, changed = ? WHERE user_id = ? AND id = ?").bind(name, Date.now(), g.user_id, `s${e.object_id}`).run(); await D.prepare("UPDATE fx_strava_new SET name = ? WHERE user_id = ? AND id = ?").bind(name, g.user_id, String(e.object_id)).run(); }

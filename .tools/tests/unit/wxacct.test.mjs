@@ -134,11 +134,14 @@ function d1() {
   return { sql: s, prepare: (q) => st(q), async batch(list) { s.exec("BEGIN"); try { const r = list.map((x) => x.now()); s.exec("COMMIT"); return r; } catch (e) { s.exec("ROLLBACK"); throw e; } } };
 }
 
+// (one database for these: the server's tables are made once a copy of it)
+const wxEnv = { DB: d1(), PIGEON_PUSH_URL: "http://push.test/push" };
+
 test("a device InFlite made: the account's places, no welcome, never another account's; deleted with its places once its sign-in ends, where Weather's own is only unlinked", async () => {
   const PUSH = "http://push.test/push", pushed = [], real = globalThis.fetch;
   globalThis.fetch = async (url, o = {}) => { if (String(url) === PUSH) { pushed.push(o.headers["X-Endpoint"]); return new Response("", { status: 201 }); } return new Response("{}", { status: 404 }); };
   try {
-    const env = { DB: d1(), PIGEON_PUSH_URL: PUSH };
+    const env = wxEnv;
     await db(env); await wxdb(env);
     const run = (q, ...a) => env.DB.sql.prepare(q).run(...a), all = (q, ...a) => env.DB.sql.prepare(q).all(...a).map((r) => ({ ...r })), t = Date.now();
     for (const [id, hash] of [["kay", "s-hub"], ["kay", "s-wx"], ["lou", "s-lou"]]) {
@@ -172,5 +175,41 @@ test("a device InFlite made: the account's places, no welcome, never another acc
     assert.deepEqual(rowsOf(hub.endpoint), []);
     assert.deepEqual(all("SELECT user_id, sess FROM wx_devs WHERE endpoint = ?", own.endpoint), [{ user_id: null, sess: null }]);
     assert.equal(rowsOf(own.endpoint).length, 1);
+  } finally { globalThis.fetch = real; }
+});
+
+// One account's devices are kept to ten, as Markets' phones are: the one heard from least lately let go (with its
+// places) as another's turned on, by Weather or by InFlite, so no account fills the places every device shares
+test("an account's devices kept to ten: the least lately heard from let go, with its places, never the one just turned on", async () => {
+  const PUSH = "http://push.test/push", real = globalThis.fetch;
+  globalThis.fetch = async (url) => (String(url) === PUSH ? new Response("", { status: 201 }) : new Response("{}", { status: 404 }));
+  try {
+    const env = wxEnv;
+    await db(env); await wxdb(env);
+    const run = (q, ...a) => env.DB.sql.prepare(q).run(...a), all = (q, ...a) => env.DB.sql.prepare(q).all(...a).map((r) => ({ ...r })), t = Date.now();
+    run("INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES ('max', 'max', 'max', 'max@example.com', '{}', 's', 'p', 'v', 3, 0, 0)");
+    run("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, label) VALUES ('s-max', 'max', ?, ?, 'iPhone · Safari')", t, t);
+    const notify = { places: [{ ...london, rain: true }], brief: null, briefAt: "07:00" };
+    run("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('max', ?, 1, ?)", JSON.stringify({ places: [london], notify, settings: {} }), t);
+    const key = async (name) => { const k = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      return { endpoint: `https://fcm.googleapis.com/fcm/send/cap-${name}`, keys: { p256dh: Buffer.from(await crypto.subtle.exportKey("raw", k.publicKey)).toString("base64url"), auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url") } }; };
+    const subs = [];
+    for (let i = 0; i < 12; i++) {
+      subs.push(await key(i));
+      await subscribe(env, { sub: subs[i], units: {} }, { id: "max", sessionHash: "s-max" }, notify, `device ${i}`);
+      // (each heard from a minute after the last)
+      run("UPDATE wx_devs SET updated = ? WHERE endpoint = ?", t + i * 60e3, subs[i].endpoint);
+    }
+    const devs = () => all("SELECT endpoint FROM wx_devs WHERE user_id = 'max' ORDER BY updated").map((r) => r.endpoint.split("-").pop());
+    assert.deepEqual(devs(), ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11"], "the first two let go");
+    assert.equal(all("SELECT COUNT(*) AS n FROM wx_subs WHERE dev IN (SELECT dev FROM wx_devs WHERE user_id = 'max')").at(0).n, 10, "and their places with them");
+    // (InFlite's one device route: the same)
+    const hub = await key("hub");
+    assert.equal(await deviceFor(env, "max", hub, { sess: "s-max", via: "hub" }), true);
+    assert.equal(devs().length, 10);
+    assert.ok(devs().includes("hub") && !devs().includes("2"), "the hub's kept, the least lately heard from gone");
+    // (the account's email isn't one of them)
+    await applyAccount(env, "max", { ...notify, places: [{ ...london, warn: true }], email: { warn: true } }, {});
+    assert.equal(all("SELECT COUNT(*) AS n FROM wx_devs WHERE user_id = 'max'").at(0).n, 11, "ten devices and the email");
   } finally { globalThis.fetch = real; }
 });
