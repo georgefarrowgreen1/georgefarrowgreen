@@ -572,7 +572,7 @@ test('chats: the connector: no imports, ≤ 4 KB, its words, no search, mini fro
   assert.deepEqual(c.mini({ cards: { chat: { unread: [{ n: 2 }, { n: 3 }] } } }), { kind: 'num', num: '5', label: 'Unread' });
 });
 
-test('chats: connector.files = the static graphs of chats.js, service.js and core.js + REGISTRY’s CSS, exactly; lazy = the closure of the lazy imports less files and NET; none in both; ≤ 60; never Argon2, never rank.js in files', { skip: chatsSkip }, async () => {
+test('chats: connector.files = the static graphs of chats.js, service.js and core.js + REGISTRY’s CSS + the connector, exactly; lazy = the closure of the lazy imports less files and NET; none in both; ≤ 60; never Argon2, never rank.js in files', { skip: chatsSkip }, async () => {
   const { connector: c } = await import(new URL('connector.js', CH));
   const files = c.files, lazy = c.lazy || [];
   assert.ok(Array.isArray(files) && new Set(files).size === files.length, 'files: a list, no repeats');
@@ -584,7 +584,10 @@ test('chats: connector.files = the static graphs of chats.js, service.js and cor
   }
   const R3 = R.REGISTRY.chats;
   const graph = [...new Set([...await staticGraph('chats'), ...await staticGraph('chats', R3.service), ...await staticGraph('chats', '/chats/roof/core.js')])];
-  assert.deepEqual([...files].sort(), [...graph, ...R3.css].sort(), 'files: the three graphs and the CSS, no more, no less');
+  // (and the connector itself: the framework's (loadConnector, preload), never in chats.js's graph since an import there
+  // was stamped as it's sent, so the same file fetched and run at two addresses, as Mail's mail.js never imports its own)
+  assert.ok(!graph.includes(R3.connector), 'chats.js never imports connector.js');
+  assert.deepEqual([...files].sort(), [...graph, ...R3.css, R3.connector].sort(), 'files: the three graphs, the CSS and the connector, no more, no less');
   assert.deepEqual([...lazy].sort(), (await lazyClosure('chats', graph)).sort(), 'lazy: the closure, less files and NET');
   assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
   assert.ok(files.length + lazy.length <= 60, `${files.length + lazy.length} ≤ 60`);

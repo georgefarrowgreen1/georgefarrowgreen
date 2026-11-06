@@ -249,12 +249,15 @@ await part('B', 'every address of §2.3 with the switch on', '§2.3, S4-D5, S4-D
   if (entry) await q.locator(H.SEARCH_RESULT).filter({ hasText: 'Mail · Later' }).first().click().catch(() => {});
   const viaSearch = (await at(q, '/mail/#later')) && (await q.waitForFunction((s) => document.querySelector(s)?.getAttribute('aria-selected') === 'true', H.hdSec('later'), { timeout: 10000 }).then(() => true, () => false));
   ok(!!entry && viaSearch && (await lifeS.same()), 'B. Apps’ search, “Mail · Later”: /mail/#later, the Later lens, in the page (§2.3, §2.4)', js({ entry, url: here(q) }));
-  // (You's Connected Apps: Mail's row, its connector sheet's Open Mail)
+  // (You's Connected Apps: Mail's row, its connector sheet's Open Mail. Since Today 1.35 Connected Apps is a folder,
+  // a row under General with its rows in a sheet of their own, so the folder's opened first)
   await cold('/');
   await todayUp(q);
   await q.click(H.tab('you'));
   await shown(q, H.YOU, 30000);
   const lifeC = await alive(q);
+  await q.click('#you [data-folder="apps"]').catch(() => {});
+  await shown(q, `dialog#sh-youfolder[open] ${H.YOU_APP_ROW}[data-app="mail"]`, 10000);
   await q.click(`${H.YOU_APP_ROW}[data-app="mail"]`).catch(() => {});
   const csheet = await shown(q, `${H.CONNECTOR_SHEET}[open]`, 10000);
   await q.click(`${H.CONNECTOR_SHEET}[open] [data-act=open]`).catch(() => {});

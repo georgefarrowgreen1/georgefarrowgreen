@@ -14,7 +14,7 @@
 // off after a reload) and on again; Get Every App's Here sending fan: true only from its tap, and nothing
 // posted to /api/device on first run; Sign Out in §11.5's order, the engine's signOut included, and every app's copy of
 // you kept at this address let go (Chat's too where there's no engine); a notification tapped
-// while open; the ifl-sent toast; the way in (Sign in through Chats, Sign In Without Chats as Today's own trip); the hub
+// while open; the ifl-sent toast; the way in (Sign in: Today's own trip, the only one since Today 1.64); the hub
 // not ready (degraded: the apps' own addresses, no engine, no hub-only rows); an account side from before Today First
 // (v1: the four cards, Rules and Other Devices left out, This Phone through /api/push, on and off); nothing of Markets'
 // money or a Chat place kept in localStorage; pages off the hub never cross-fade (menu.css asks it of every page; menu.js
@@ -118,6 +118,9 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, apps = null
     if (!/^[\w-]+(\/[\w-]+)?\.(js|css)$/.test(f) || !existsSync(`${MAIN}weather/${f}`)) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' });
     return r.fulfill({ contentType: f.endsWith('.css') ? 'text/css' : 'text/javascript', body: readFileSync(`${MAIN}weather/${f}`, 'utf8') });
   });
+  // (the other apps' versions, which About InFlite asks of each since Today 1.41: none of their servers is here, so the
+  // Worker's forward to the hub's could only fail (503); as an app with no version to give, 404, and About says "—")
+  await ctx.route((u) => /^\/(fitness|markets|mail)\/version$/.test(new URL(u).pathname), (r) => r.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }));
   await setup?.(ctx);
   if (NO_DAY_CSS) await ctx.route((u) => new URL(u).pathname === '/day.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
   if (push) {
@@ -130,7 +133,7 @@ async function open({ w = 390, h = 844, scheme = 'dark', hub = true, apps = null
   }
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
-  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(m.text()); });
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: (the server responded with a status of (40[14]|501|502)|net::ERR_INTERNET_DISCONNECTED)/.test(m.text())) errs.push(`${m.text()}${/^Failed to load resource/.test(m.text()) && m.location()?.url ? ` (${m.location().url})` : ''}`); });
   await p.clock.setFixedTime(new Date(MIDDAY.at));
   await p.goto(BASE + path);
   if (wait) await (signedIn ? p.waitForSelector('#in:not([hidden]) #tabs .ifl-tab') : p.waitForSelector('#out:not([hidden]) #signin'));
@@ -347,11 +350,16 @@ await part('apps', async () => {
   await mode({ phase: 'midday' });
   let { ctx, p } = await open({ path: '/#apps' });
   await p.waitForSelector(`#apps:not([hidden]) ${TILE}`);
+  // (Today 1.28: a tile's line or its mini, not both. Weather's tile is drawn again once its connector's mini is in, its
+  // line then the mini's words rather than the day's "14°, …"; so the tiles are read once that's happened, not before)
+  if (ROOF) await p.waitForSelector(`${TILE.replace('[data-app]', '[data-app=weather]')} .ifl-mini`, { timeout: 10000 }).catch(() => {});
   const tiles = await tilesOf(p);
-  same(tiles.map((t) => [t.app, t.name, t.line, t.href]), [['weather', 'Weather', MIDDAY.apps.weather, '/weather/'], ['fitness', 'Fitness', MIDDAY.apps.fitness, '/fitness/'], ['markets', 'Markets', MIDDAY.apps.markets, '/markets/']], 'a tile for each app, its line from the day, opening it here; no Mail');
+  same(tiles.map((t) => [t.app, t.name, t.line, t.href]), [['weather', 'Weather', ROOF ? 'Rain from 15:00' : MIDDAY.apps.weather, '/weather/'], ['fitness', 'Fitness', MIDDAY.apps.fitness, '/fitness/'], ['markets', 'Markets', MIDDAY.apps.markets, '/markets/']], 'a tile for each app, its line from the day, opening it here; no Mail');
   same(tiles[0].chips, [['Radar', '/weather/#radar'], ['Warnings', '/weather/#warnings']], 'Weather’s sections');
-  same(tiles[2].chips.map((c) => c[1]), ['/markets/#today', '/markets/#holdings', '/markets/#news'], 'Markets’ sections');
-  has(await text(p, '.apps-note'), 'Their news reaches you on Today. Any card can be sent to a friend.', 'the word under the tiles');
+  // (Today 1.28: no Today chip, as the tile itself opens there, and the note says only what's true now, Send being each
+  // app's own, not the cards')
+  same(tiles[2].chips.map((c) => c[1]), ['/markets/#holdings', '/markets/#news'], 'Markets’ sections');
+  same(await text(p, '.apps-note'), 'Their news reaches you on Today.', 'the word under the tiles');
   ok(await p.$eval(`${TILE.replace('[data-app]', '[data-app=weather]')} img`, (i) => i.complete && i.naturalWidth > 0).catch(() => false), 'each tile’s icon');
   await p.screenshot({ path: `${OUT}/apps-390-dark.png` });
   await ctx.close();
@@ -568,21 +576,18 @@ await part('Chats in the page', async () => {
 
 // ======================================================================= the way in
 await part('the way in', async () => {
+  // (Today 1.64: Sign in never goes through Chats first: Today's own trip on every device, by /#signin-today&then= and on
+  // to the sign-in page's /go; Sign In Without Chats gone, as it's the only way now)
   await mode({ mode: 'out' });
-  let { ctx, p } = await open({ signedIn: false });
-  ok(await p.isVisible('#signinToday'), 'Sign In Without Chats, quietly, beside Sign in');
-  const THEN = ROOF ? '/chats/#signin-start&then=%2F' : '/chats/#signin-start&then=/';
-  same(await p.$eval('#signin', (a) => a.getAttribute('href')), THEN, 'Sign in: Chats’ trip, which signs in everything, back to here');
-  await p.click('#signin');
-  await p.waitForURL(/\/chats\//);
-  same(new URL(p.url()).pathname + new URL(p.url()).hash, THEN, `Sign in goes to ${THEN}`);
-  await ctx.close();
-  ({ ctx, p } = await open({ signedIn: false }));
+  const { ctx, p } = await open({ signedIn: false });
+  ok(!(await p.$('#signinToday')), 'no Sign In Without Chats: one way in');
+  const THEN = '/#signin-today&then=%2F';
+  same(await p.$eval('#signin', (a) => a.getAttribute('href')), THEN, 'Sign in: Today’s own trip, back to here');
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
-  await p.click('#signinToday');
+  await p.click('#signin');
   await p.waitForURL(/auth\.inflite\.ai/);
-  const h = new URLSearchParams(new URL(p.url()).hash.slice(1));
-  same([h.get('signin'), h.get('back'), /^[\w-]{43}$/.test(h.get('ask') || '')], ['today', `${BASE}/`, true], 'Sign In Without Chats: Today’s own trip (…/#signin=today&ask&back)');
+  const u = new URL(p.url()), q = u.searchParams;
+  same([u.pathname, q.get('signin'), q.get('back'), /^[\w-]{43}$/.test(q.get('ask') || '')], ['/go', 'today', `${BASE}/`, true], 'Sign in: Today’s own trip (the sign-in page’s /go?signin=today&ask&back)');
   await ctx.close();
 });
 
@@ -623,7 +628,8 @@ await part('degraded', async () => {
   await p.route('https://auth.inflite.ai/**', (r) => r.fulfill({ body: 'auth', contentType: 'text/html' }));
   await p.click('#signin');
   await p.waitForURL(/auth\.inflite\.ai/);
-  same(new URLSearchParams(new URL(p.url()).hash.slice(1)).get('signin'), 'today', 'Sign in: Today’s own trip, as Today 1.08');
+  // (by the sign-in page's /go since Today 1.64, its words in the query)
+  same(new URL(p.url()).searchParams.get('signin'), 'today', 'Sign in: Today’s own trip, as Today 1.08');
   await ctx.close();
 });
 

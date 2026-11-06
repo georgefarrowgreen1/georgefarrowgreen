@@ -17,7 +17,7 @@ import * as H from './roofhooks.mjs';
 import { kit } from './lib.mjs';
 import {
   HUB, CHAT, EXCEPT, checker, phone, chatPhone, befriend, workers, hunt, alive, loads, history, here, shown, gone, textOf, attrOf, count,
-  hide, show, route, tapNotification, rootWorker, wxServer, weatherAccount, PLACES, wait, until, js, closeAll,
+  hide, show, route, tapNotification, rootWorker, wxServer, weatherAccount, PLACES, wait, until, js, closeAll, hostCall,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;
@@ -120,8 +120,11 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
     if (!(R.off && r.request().isNavigationRequest())) return r.continue();
     // (Chat's hub copy as the hub forwards it, with its key and marker: /chats/in/ is the same page as /_hub/'s, S3-D8;
     // asked of Chat's host directly, the page has no hub marker and goes to Chat's own address)
-    const m1 = await r.fetch({ url: `${HUB}/chats/in/` });
-    return r.fulfill({ response: m1 });
+    // (asked of the hub's Worker from here, as Chromium's resolver rules send ifl.test: route.fetch has no name for it
+    // where there's no hosts entry, and the request went on to the framework's page, which then left for Chat's address)
+    const m1 = await hostCall('ifl.test:8788', '/chats/in/', undefined, { cookie: (await r.request().allHeaders()).cookie });
+    const headers = Object.fromEntries(Object.entries(m1.headers).filter(([k]) => !/^(content-length|transfer-encoding|connection|keep-alive|set-cookie|content-encoding)$/i.test(k)).map(([k, v]) => [k, String(v)]));
+    return r.fulfill({ status: m1.status, headers, body: m1.text });
   });
   // (the network failing for the core's sends: the letter stays in the sealed outbox, S3-D4)
   await route(R.ctx, /\/api\/pigeon\/(group-)?messages(\?|$)/, (r) => (R.fail && r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.continue()));
@@ -148,6 +151,8 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
   // b. Chats showing, a letter queued in the core while the network fails, then Chats switched off: one bounce to
   // milestone 1's page, which sends the queued letter (same data, S3-D4, risk I8)
   R.off = false;
+  // (by another page first: from milestone 1's page at /chats/, where the tab went, /chats/#open= is only a new hash)
+  await q.goto(`${HUB}/robots.txt`);
   await q.goto(`${HUB}/chats/#open=${P.id}`); await shown(q, hk('CH_COMPOSER'), 30000);
   const n0 = lettersTo(G.id, P.id);
   R.fail = true;
