@@ -150,7 +150,9 @@ test('mail that comes while the database is down: kept, and read in by the sched
 });
 
 test('a draft’s files are made files again from what was kept, never fetched (the page refuses fetch a data: address)', { skip }, async () => {
-  const src = readFileSync(new URL('public/app.js', MAIL), 'utf8');
+  // (Mail's page, and its compose sheet, where that's a part of its own loaded as it's needed: public/parts/)
+  const compose = new URL('public/parts/compose.js', MAIL);
+  const src = readFileSync(new URL('public/app.js', MAIL), 'utf8') + (existsSync(compose) ? readFileSync(compose, 'utf8') : '');
   const fn = /\n {2}function dataBlob\(url\) \{[\s\S]*?\n {2}\}\n/.exec(src)?.[0] || assert.fail('app.js: dataBlob');
   const dataBlob = vm.runInNewContext(`${fn}; dataBlob`, { Blob, atob, decodeURIComponent, Uint8Array });
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 255, 10]);

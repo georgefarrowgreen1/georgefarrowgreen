@@ -9,7 +9,7 @@
 // reason where the inflite repo beside has no Mail module.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import * as fx from './fixtures/roof.mjs';
 
 process.env.TZ = 'Europe/London';
@@ -18,7 +18,10 @@ const skip = fx.mailSkip ?? (!IFL ? 'the inflite repo isn’t beside this one'
   : !existsSync(new URL('mail.js', MOD)) ? 'the inflite repo beside has no Mail module yet (email/public/roof/mail.js): its live branch, while this repo goes live first'
   : false);
 const L = skip ? null : await import(new URL('logic.js', MOD));
-const APP = skip ? '' : readFileSync(new URL('email/public/app.js', IFL), 'utf8');
+// (Mail's page, with its later parts, where it has them: email/public/parts/, each part's own indented by two spaces too,
+// and read first, as what app.js has of a part's own is only what asks the part for it)
+const PARTS = !skip && existsSync(new URL('email/public/parts/', IFL)) ? readdirSync(new URL('email/public/parts/', IFL)).filter((f) => f.endsWith('.js')).sort() : [];
+const APP = skip ? '' : [...PARTS.map((f) => readFileSync(new URL(`email/public/parts/${f}`, IFL), 'utf8')), readFileSync(new URL('email/public/app.js', IFL), 'utf8')].join('\n');
 
 // ---- a function or a const out of app.js by name (app.js is one closure: its own are indented by two spaces)
 function sourceOf(name) {

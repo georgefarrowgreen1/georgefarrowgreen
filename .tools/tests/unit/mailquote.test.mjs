@@ -74,7 +74,9 @@ async function seed() {
 // bodyInner (the page's use a DOM, which a Worker has none of): it checks the wrapping only. What the server's two make
 // of an original is checked against fixed output below.
 const page = (q) => {
-  const src = readFileSync(new URL('public/app.js', MAIL), 'utf8');
+  // (buildPayload: the compose sheet's, a part of its own where Mail's page has them, public/parts/)
+  const compose = new URL('public/parts/compose.js', MAIL);
+  const src = readFileSync(new URL('public/app.js', MAIL), 'utf8') + (existsSync(compose) ? readFileSync(compose, 'utf8') : '');
   const fn = (name, pre = '') => new RegExp(`\\n {2}${pre}function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n {2}\\}\\n`).exec(src)?.[0] || assert.fail(`app.js: ${name}`);
   const esc = /\n {2}const escapeHtml = [\s\S]*?;\n/.exec(src)[0];
   return vm.runInNewContext(`${esc}; ${fn('linkify')}; ${fn('textToHtml')}; ${fn('buildPayload', 'async ')}; buildPayload`, { htmlToText: q.htmlToText, bodyInner: q.bodyInner });

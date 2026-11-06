@@ -225,6 +225,35 @@ await own?.waitForLoadState('domcontentloaded').catch(() => {});
 const ownSeen = own ? await own.waitForSelector('.pane.list .gbtn.profile', { timeout: 30000 }).then(() => own.evaluate(() => ({ at: location.href, embed: document.documentElement.classList.contains('embed'),
   back: !!document.querySelector('.gbtn.hub-back'), top: window.parent === window })), () => ({ at: own.url(), stuck: true })) : null;
 ok(ownSeen?.at === `${MAIL}/` && ownSeen.embed === false && !ownSeen.back && ownSeen.top, 'Open Mail on Its Own: Mail at its own address, as it always was (your photo, no Back)', JSON.stringify(ownSeen));
+// (Mail's later parts, the inflite repo's email/public/parts/: none asked for by the list; the compose sheet asked for
+// ahead once a conversation's open, and opening at a tap; each kept by Mail's service worker under its Mail's build, and
+// one asked for by another Mail than the one deployed turned away)
+if (own && !ownSeen?.stuck) {
+  await wait(2500);
+  const asked = () => own.evaluate(() => performance.getEntriesByType('resource').map((e) => new URL(e.name)).filter((u) => u.pathname.startsWith('/parts/')).map((u) => u.pathname + u.search));
+  const build = await own.evaluate(() => fetch('/api/version', { credentials: 'same-origin', headers: { 'X-Inflite': '1' } }).then((r) => r.json()).then((j) => j.app)).catch(() => null);
+  const atList = await asked();
+  ok(build && atList.length === 0, 'Mail’s list asks for none of its later parts', JSON.stringify({ build, atList }));
+  await own.click('.row-wrap[data-id] .row').catch(() => {});
+  await own.waitForSelector('.mcard', { timeout: 15000 }).catch(() => {});
+  await wait(3500);
+  const atRead = await asked();
+  ok(JSON.stringify(atRead) === JSON.stringify([`/parts/compose.js?b=${build}`]), 'a conversation open: the compose sheet asked for ahead (the reply likely), as this Mail’s, and nothing else', JSON.stringify(atRead));
+  // (back to the list, on a phone, where New Message is)
+  await own.evaluate(() => history.back()).catch(() => {});
+  await wait(900);
+  await own.click('.pane.list .gbtn[aria-label="New Message"]').catch(() => {});
+  const sheet = await own.waitForSelector('.sheet.open', { timeout: 5000 }).then(() => own.evaluate(() => document.activeElement?.getAttribute('aria-label')), () => null);
+  ok(sheet === 'To', 'New Message: the sheet, To focused, at the tap', String(sheet));
+  await own.keyboard.press('Escape').catch(() => {});
+  const kept = await (async () => { for (let i = 0; i < 40; i++) { const k = await own.evaluate(() => caches.open('mail-app-2').then((c) => c.keys()).then((ks) => ks.map((r) => new URL(r.url)).map((u) => u.pathname + u.search).filter((x) => x.startsWith('/parts/')).sort())).catch(() => []);
+    if (k.length >= 5) return k; await wait(500); } return own.evaluate(() => caches.open('mail-app-2').then((c) => c.keys()).then((ks) => ks.map((r) => new URL(r.url).pathname + new URL(r.url).search))).catch((e) => String(e)); })();
+  ok(JSON.stringify(kept) === JSON.stringify(['/parts/compose.js', '/parts/search.js', '/parts/sheets.js', '/parts/viewer.js'].map((x) => `${x}?b=${build}`).concat('/parts/kept').sort()),
+    'Mail’s worker keeps this Mail’s parts by its build, for opening offline', JSON.stringify(kept));
+  const [mineAsk, oldAsk, noneAsk] = await Promise.all([`/parts/compose.js?b=${build}`, '/parts/compose.js?b=0.01', `/parts/nothing.js?b=${build}`].map((u) => hostAsk('email.ifl.test:8788', u)));
+  ok(mineAsk.status === 200 && /javascript/.test(mineAsk.headers['content-type']) && mineAsk.headers['cache-control'] === 'no-cache' && oldAsk.status === 409 && noneAsk.status === 404,
+    'a part asked for as the Mail deployed: there; as another Mail: turned away (409); one that isn’t there: 404, never Mail’s page', `${mineAsk.status} ${mineAsk.headers['content-type']} ${mineAsk.headers['cache-control']} ${oldAsk.status} ${noneAsk.status}`);
+}
 await own?.screenshot({ path: `${out}/mail-own.png` }).catch(() => {});
 await own?.close().catch(() => {});
 
