@@ -929,6 +929,9 @@ a.btn { text-decoration: none; }
   .col-b .apps:has(> .app:nth-child(5)) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .col-b .apps:has(> .app:nth-child(5)) > .app { grid-column: span 2; }
   .col-b .apps:has(> .app:nth-child(5)) > .app:nth-child(n+4) { grid-column: span 3; }
+  /* (six, the admin's with Mail: three and three) */
+  .col-b .apps:has(> .app:nth-child(6)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .col-b .apps:has(> .app:nth-child(6)) > .app:nth-child(n) { grid-column: auto; }
 }
 
 /* ---- on a computer (from 1100 px): two panes. Under your card, the account's parts (.acct-nav, app.js acctNav); beside
@@ -944,21 +947,16 @@ a.btn { text-decoration: none; }
   .nav-it .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35); }
   .nav-it .ic svg { width: 16px; height: 16px; }
   .nav-t { flex: 1; min-width: 0; }
+  .nav-t, .nav-v { align-self: center; line-height: 20px; }
   .nav-v { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-3); }
   .nav-it:hover { background: var(--press); }
   .nav-it[aria-current] { background: color-mix(in srgb, var(--tint) 14%, transparent); }
   .nav-it[aria-current] .nav-t { color: var(--tint-text); font-weight: 650; }
   .nav-it:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
-  /* (your apps, all in one row: five, or six with the admin's Mail) */
-  .col-b .apps, .col-b .apps:has(> .app:nth-child(4)), .col-b .apps:has(> .app:nth-child(5)) { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-  .col-b .apps:has(> .app:nth-child(6)) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .col-b .apps:has(> .app:nth-child(5)) > .app, .col-b .apps:has(> .app:nth-child(5)) > .app:nth-child(n+4) { grid-column: auto; }
-  /* (Account and Preferences side by side under them) */
-  .col-b:has(> [data-sec="account"]) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 20px; align-items: start; }
-  .col-b > * { grid-column: 1 / -1; min-width: 0; }
-  .col-b > [data-sec="account"] { grid-column: 1; }
-  .col-b > [data-sec="prefs"] { grid-column: 2; }
-  .col-b > [data-sec="account"] ~ [data-sec="prefs"] { margin-top: 0; }
+  /* (your apps: the Your Apps pane, three to a row, wide enough for their words and buttons: five as three and two,
+     six (the admin's, with Mail) as three and three, as above. Account, Preferences and Admin are in the list on the left, with
+     what each says, so they aren't drawn here a second time) */
+  .col-b > [data-sec="account"], .col-b > [data-sec="prefs"], .col-b > [data-sec="admin"] { display: none; }
   /* (the pane: a part's sheet, where the right-hand column is (--pl, --pw, --pt from app.js paneAt), its own height down
      to the window's foot, scrolling inside; no dim, no swipe down; it fades in and out) */
   dialog.sheet.pane { position: fixed; inset: var(--pt, 96px) auto 24px var(--pl, 50%); z-index: 60; width: var(--pw, 760px); max-width: none; height: auto; max-height: none; margin: 0;

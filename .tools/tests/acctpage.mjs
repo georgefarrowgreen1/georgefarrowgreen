@@ -406,8 +406,12 @@ await D.p.setViewportSize({ width: 1500, height: 940 }); await settle(D, 400); a
 {
   const navs = await D.p.$$eval('.acct-nav .nav-it', (bs) => bs.map((b) => b.querySelector('.nav-t').textContent));
   ok(['Your Apps', 'Sign-in and Security', 'Your Data', 'Appearance', 'Units', 'Notifications'].every((t) => navs.includes(t)), 'wide: the account’s parts listed under your card', navs.join(', '));
-  const apps = await D.p.$$eval('.col-b .apps > .app', (as) => [...new Set(as.map((a) => Math.round(a.getBoundingClientRect().top)))].length);
-  ok(apps === 1, 'wide: your apps in one row', `${apps} rows`);
+  // (your apps three to a row, each wide enough that its buttons stay inside it; the rows in the list not drawn twice)
+  const apps = await D.p.$$eval('.col-b .apps > .app', (as) => ({ rows: [...new Set(as.map((a) => Math.round(a.getBoundingClientRect().top)))].length, n: as.length,
+    inside: as.every((a) => { const r = a.getBoundingClientRect(); return [...a.querySelectorAll('a, button')].every((b) => { const q = b.getBoundingClientRect(); return q.left >= r.left - 1 && q.right <= r.right + 1; }); }),
+    min: Math.min(...as.map((a) => Math.round(a.getBoundingClientRect().width))) }));
+  ok(apps.rows === Math.ceil(apps.n / 3) && apps.inside && apps.min >= 200, 'wide: your apps three to a row, every button inside its tile', JSON.stringify(apps));
+  ok(await D.p.evaluate(() => ['account', 'prefs'].every((k) => !document.querySelector(`.col-b > [data-sec="${k}"]`)?.getClientRects().length)), 'wide: Account and Preferences only in the list, not drawn twice');
   await D.p.click('.acct-nav .nav-it:has-text("Sign-in and Security")'); await D.p.waitForSelector('#sheet.pane[open] .sheet-body'); await settle(D, 500);
   const pane = await D.p.evaluate(() => { const d = document.querySelector('#sheet'), b = d.getBoundingClientRect(), c = document.querySelector('.col-b').getBoundingClientRect(), a = document.querySelector('.col-a').getBoundingClientRect();
     return { modal: d.matches(':modal'), left: Math.round(b.left - c.left), clear: b.left >= a.right, cur: document.querySelector('.acct-nav [aria-current]')?.textContent || '', title: document.querySelector('#sheet-title')?.textContent }; });
