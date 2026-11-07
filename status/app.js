@@ -1,7 +1,7 @@
 // status.inflite.ai's page: what /api/status says (functions/_status.js), drawn at once from what the page arrived with
 // (#seed) and asked again every minute while it's on screen. One calm column: the verdict, what's happening now, the
 // apps as compact rows with their days (a tap on a day opens it), the jobs and what they rely on, incidents, bug codes
-// with a lookup, and updates without an account (the browser's own push, sw.js). Links: #<incident>, #IF-…, #updates.
+// with a lookup. Links: #<incident>, #IF-….
 "use strict";
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -15,7 +15,6 @@
     left: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>',
     right: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
     x: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
-    bell: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-label="You get updates for this"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   };
   // (each app's own logo for the app, its job and the home page; what's outside InFlite keeps a plain glyph)
   const LOGO = { today: "today", morning: "today", chat: "chat", notify: "chat", weather: "weather", wxtick: "weather", fitness: "fitness", garmin: "fitness",
@@ -36,14 +35,11 @@
   const mins = (ms) => { const m = Math.max(1, Math.round(ms / MIN)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`; };
   const ago = (t) => { const m = Math.round((Date.now() - t) / MIN); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dm(t); };
   const pct = (v) => (v == null ? "–" : v >= 100 ? "100%" : `${(Math.floor(v * 100) / 100).toFixed(2)}%`);
-  const store = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (_) { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
 
   let data = null, period = 0, daySel = null;
   const opened = new Set(), expandedIncidents = new Set(), points = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
-  const SUB_APPS = ["today", "chat", "weather", "fitness", "markets", "mail"];
-  let sub = store.get("status:sub");   // ({ apps, maint } while this device gets updates)
 
   // ---- asking ----
   function seed() { try { const el = $("seed"); return el ? JSON.parse(el.textContent) : null; } catch (_) { return null; } }
@@ -104,7 +100,6 @@
     const selector = incident && active.tagName === "SUMMARY" ? `[data-incident="${CSS.escape(incident)}"] summary` : active?.dataset.copy ? `[data-copy="${CSS.escape(active.dataset.copy)}"]` : active?.dataset.copycode ? `[data-copycode="${CSS.escape(active.dataset.copycode)}"]` : null;
     verdict(); liveBlock(); groups(); incidents(); codes();
     if (selector && !active.isConnected) document.querySelector(selector)?.focus({ preventScroll: true });
-    $("subBtn").dataset.on = sub ? "1" : "0"; $("subBtn").lastElementChild.textContent = sub ? "Updates on" : "Get updates";
   }
   function verdict() {
     const d = data, v = $("verdict"), apps = d.services.filter((s) => s.group === "apps");
@@ -175,10 +170,9 @@
   }
   function appHtml(s, keys) {
     const [st, word] = stateOf(s), days = shownDays(s), open = opened.has(s.id), lastI = days.length - 1;
-    const mine = sub && SUB_APPS.includes(s.id) && sub.apps.includes(s.id);
     const checks = (s.checks || []).map((c) => `<div data-s="${esc(c.s)}"><i></i><span>${esc(c.k)}</span><em>${c.s === "down" ? esc(c.why || "Not answering") : c.at ? `ran ${hm(c.at)}` : c.ms != null ? `${c.ms} ms` : c.s === "none" ? "Not checked" : "Working"}</em></div>`).join("");
     return `<div class="app${open ? " open" : ""}" data-id="${esc(s.id)}">
-      <button class="arow" type="button" data-toggle="${esc(s.id)}" aria-expanded="${open}">${logo(s.id)}<b>${esc(s.name)}${mine ? ICON.bell : ""}</b><span class="st num" data-s="${st}"><i></i>${st === "ok" ? `<span>${esc(word.replace("%", ""))}<small>%</small></span>` : esc(word)}</span>${ICON.chev}</button>
+      <button class="arow" type="button" data-toggle="${esc(s.id)}" aria-expanded="${open}">${logo(s.id)}<b>${esc(s.name)}</b><span class="st num" data-s="${st}"><i></i>${st === "ok" ? `<span>${esc(word.replace("%", ""))}<small>%</small></span>` : esc(word)}</span>${ICON.chev}</button>
       <div class="days" data-n="${days.length}" data-svc="${esc(s.id)}">${days.map((x, i) => {
         const k = keys[i], ds = x ? x.s : "none", inc = incOn(s.id, k).length;
         return `<button type="button" data-k="${k}" data-s="${ds}" class="${[inc ? "inc" : "", i === lastI ? "today" : ""].join(" ").trim()}" aria-label="${esc(`${s.name}, ${dayLong(k)}${i === lastI ? " so far" : ""}: ${!x ? "not checked" : ds === "ok" ? "no problems" : ds === "warn" ? "slow or briefly down" : "down for a while"}${inc ? ", an incident" : ""}`)}"></button>`; }).join("")}</div>
@@ -316,52 +310,6 @@
     } catch (_) { box.innerHTML = `<p class="hint">The day’s hours couldn’t be loaded.</p>`; }
   }
 
-  // ---- updates without an account ----
-  const canPush = () => "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
-  const iosBrowser = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches && !navigator.standalone;
-  let pick = null;
-  function subSheet() {
-    pick ||= new Set(sub?.apps || ["today", "chat", "weather", "mail"]);
-    const apps = data ? data.services.filter((s) => SUB_APPS.includes(s.id)) : [];
-    const blocked = typeof Notification !== "undefined" && Notification.permission === "denied";
-    sheet(`<div class="grab"></div>
-      <div class="sh"><span></span><h3 id="sheetTitle">Get updates</h3><button class="ib" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
-      <p class="hint center">A notification on this device when an app you use stops working, and when it’s back. No account needed.</p>
-      <div class="chips" role="group" aria-label="Which apps">${apps.map((s) => `<button class="chip" type="button" data-pick="${esc(s.id)}" aria-pressed="${pick.has(s.id)}">${logo(s.id, 20)}${esc(s.name)}</button>`).join("")}</div>
-      <label class="sw"><span>Planned maintenance too</span><input type="checkbox" id="subMaint" ${sub?.maint ? "checked" : ""}></label>
-      ${!canPush() ? `<p class="said">${iosBrowser() ? "On iPhone and iPad, add this page to your Home Screen first (Share, then Add to Home Screen), and open it from there." : "This browser can’t show notifications from a web page."}</p>`
-        : blocked ? `<p class="said">Notifications are blocked for this page. Allow them in your browser’s settings, then try again.</p>` : ""}
-      <button class="big" type="button" data-sub="on" ${!canPush() || blocked || !pick.size ? "disabled" : ""}>${sub ? "Save" : "Notify me on this device"}</button>
-      ${sub ? `<button class="big g" type="button" data-sub="off">Turn updates off</button>` : ""}
-      <p class="said" id="subSaid" role="alert"></p>
-      <p class="hint">Sent when an incident opens, when there’s news, and when it’s over: never for a slow check alone. Or follow the feed in any news reader: <b>status.inflite.ai/feed.xml</b></p>`);
-  }
-  async function subscribe() {
-    const said = $("subSaid");
-    try {
-      said.textContent = "";
-      const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-      if (perm !== "granted") { said.textContent = "Notifications weren’t allowed, so nothing’s been turned on."; return; }
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      await navigator.serviceWorker.ready;
-      const { key } = await (await fetch("/api/status/push-key")).json();
-      const bytes = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((key.length + 3) % 4)), (c) => c.charCodeAt(0));
-      const s = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes }));
-      const maint = $("subMaint").checked, apps = [...pick];
-      const r = await fetch("/api/status/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sub: s.toJSON(), apps, maint }) });
-      const j = await r.json(); if (!r.ok) throw new Error(j.error);
-      sub = { apps: j.apps, maint: j.maint }; store.set("status:sub", sub);
-      closeSheet(); draw(); toast(`Updates on for ${and(sub.apps.map((id) => nameOf(id)))}`);
-    } catch (e) { said.textContent = e.message || "That couldn’t be turned on just now. Try again in a moment."; }
-  }
-  async function unsubscribe() {
-    try {
-      const reg = await navigator.serviceWorker.getRegistration("/"), s = await reg?.pushManager.getSubscription();
-      if (s) { await fetch("/api/status/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: s.endpoint }) }).catch(() => {}); await s.unsubscribe().catch(() => {}); }
-    } catch (_) {}
-    sub = null; pick = null; store.set("status:sub", null); closeSheet(); draw(); toast("Updates off on this device");
-  }
-
   // ---- sheets, toasts, links ----
   let lastFocus = null;
   function sheet(html) {
@@ -377,7 +325,7 @@
     for (const b of document.querySelectorAll(".days button.sel")) b.classList.remove("sel");
     document.querySelector(".wrap").inert = false; document.body.classList.remove("sheet-open");
     if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
-    else $("subBtn").focus({ preventScroll: true });
+    else $("verdict").focus({ preventScroll: true });
   }
   let toastT = 0;
   const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); };
@@ -386,7 +334,6 @@
   function route() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h || !data) return;
-    if (h === "updates") { subSheet(); return; }
     if (/^if-?[a-z]/i.test(h) && norm(h)) { $("lookIn").value = norm(h); lookup(); setTimeout(() => $("codesec").scrollIntoView({ behavior: still() ? "auto" : "smooth" }), 50); return; }
     closeSheet(); flash(h);
   }
@@ -409,11 +356,7 @@
     if (t.dataset.close) { closeSheet(); return; }
     if (t.dataset.copy) { const url = `${location.origin}/#${t.dataset.copy}`; navigator.clipboard?.writeText(url).then(() => toast("Link copied"), () => toast(url)); return; }
     if (t.dataset.copycode) { navigator.clipboard?.writeText(t.dataset.copycode).then(() => toast("Code copied"), () => toast(t.dataset.copycode)); return; }
-    if (t.dataset.pick) { const id = t.dataset.pick; pick.has(id) ? pick.delete(id) : pick.add(id); subSheet(); return; }
-    if (t.dataset.sub === "on") { subscribe(); return; }
-    if (t.dataset.sub === "off") { unsubscribe(); return; }
     if (t.dataset.cal) { calendar(t.dataset.cal); return; }
-    if (t.id === "subBtn") { subSheet(); return; }
     if (t.tagName === "A" && t.getAttribute("href")?.startsWith("#")) {
       e.preventDefault(); const h = t.getAttribute("href").slice(1);
       if (location.hash === "#" + h) route(); else location.hash = h;

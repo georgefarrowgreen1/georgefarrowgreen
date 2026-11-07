@@ -82,10 +82,7 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   await p.fill('#lookIn', 'if c zzzzz'); await p.press('#lookIn', 'Enter');
   await p.waitForFunction(() => /seen/.test(document.querySelector('#found')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
   ok(/IF-C-ZZZZZ/.test(await p.textContent('#found')) && (await p.inputValue('#lookIn')) === 'IF-C-ZZZZZ', `${w} ${scheme}: a code typed any way, looked up`, await p.textContent('#found'));
-  await p.click('#subBtn');
-  await p.waitForSelector('#sheet.on .chips', { timeout: 5000 }).catch(() => {});
-  ok((await p.locator('#sheet .chip').count()) === 6, `${w} ${scheme}: Get updates: the six apps to choose from`);
-  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  ok((await p.locator('#subBtn, a[href="#updates"]').count()) === 0, `${w} ${scheme}: no Get updates panel or entry points`);
   ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w} ${scheme}: nothing sideways`);
   ok(!errs.length, `${w} ${scheme}: no errors`, errs.join(' | '));
   await p.screenshot({ path: `${OUT}/status-${w}-${scheme}.png`, fullPage: true });

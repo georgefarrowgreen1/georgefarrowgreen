@@ -58,8 +58,6 @@ button { font: inherit; color: inherit; }
 .jump a { font-size: 12.5px; font-weight: 600; color: var(--text-2); text-decoration: none; padding: 5px 9px; border-radius: 99px; }
 .jump a:hover { background: var(--hover); color: var(--text); }
 @media (max-width: 380px) { .jump a:nth-child(3) { display: none; } }
-.subbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line-2); background: var(--card); border-radius: 99px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.subbtn[data-on="1"] { color: var(--tint); border-color: color-mix(in srgb, var(--tint) 45%, transparent); }
 
 /* the verdict: the state in words, three figures under it */
 .verdict { padding: 20px; display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 14px; align-items: center; scroll-margin-top: 70px; }
@@ -202,17 +200,9 @@ button { font: inherit; color: inherit; }
 .key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--text-3); }
 .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--b); }
 .sheet .card { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-.chips { display: flex; flex-wrap: wrap; gap: 7px; }
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px 6px 6px; border-radius: 99px; border: 1px solid var(--line-2); background: none; font-size: 13px; font-weight: 600; cursor: pointer; }
-.chip .lg { border-radius: 5px; }
-.chip[aria-pressed="true"] { border-color: var(--tint); background: color-mix(in srgb, var(--tint) 14%, transparent); }
 .big { border: 0; border-radius: 13px; padding: 13px; font-weight: 650; font-size: 15px; background: var(--tint); color: #fff; cursor: pointer; }
 .big.g { background: var(--hover); color: var(--text); border: 1px solid var(--line-2); }
-.big:disabled { opacity: 0.45; cursor: default; }
 .hint { color: var(--text-3); font-size: 12.5px; margin: 0; } .center { text-align: center; }
-.said { color: var(--warn); font-size: 13px; margin: 0; } .said:empty { display: none; }
-.sw { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
-.sw input { width: 22px; height: 22px; accent-color: var(--tint); }
 .toast { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translate(-50%, calc(100% + 40px + env(safe-area-inset-bottom, 0px))); visibility: hidden; transition: transform 0.3s, visibility 0s 0.3s; z-index: 41; background: var(--text); color: var(--bg); border-radius: 99px; padding: 9px 16px; font-size: 13px; font-weight: 600; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
 .toast.on { transform: translate(-50%, 0); visibility: visible; transition: transform 0.3s; }
 @media (prefers-reduced-motion: reduce) { .sheet, .toast, .scrim, .chev, .mini, .inc { transition: none; } .verdict[data-s="down"] .halo b { animation: none; } }
@@ -225,7 +215,6 @@ html { scroll-padding-top: 76px; }
 .head { padding: 0 4px; }
 .word { font-size: 19px; }
 .word span { color: var(--text-2); }
-.subbtn { min-height: 44px; }
 .page-nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--hover); border: 1px solid var(--line); border-radius: 14px; margin-top: -12px; }
 .page-nav a { flex: 1; text-align: center; padding: 10px 8px; border-radius: 10px; color: var(--text-2); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .page-nav a:hover { background: var(--card-solid); color: var(--text); }
@@ -282,7 +271,6 @@ button:disabled { opacity: .6; cursor: wait; }
 .sheet-open { overflow: hidden; }
 .ib { width: 40px; height: 40px; }
 .sh { grid-template-columns: 40px minmax(0, 1fr) 40px; }
-.chip { min-height: 44px; }
 @media (min-width: 640px) {
   .mini { padding-inline: max(24px, calc((100vw - 880px) / 2 + 16px)); }
   .verdict { padding: 30px; }
@@ -293,7 +281,6 @@ button:disabled { opacity: .6; cursor: wait; }
   .wrap { padding-top: 24px; --gap: 26px; }
   .head { gap: 8px; padding: 0; }
   .word { font-size: 16px; }
-  .subbtn { padding-inline: 10px; font-size: 12px; }
   .page-nav a { font-size: 11.5px; padding-inline: 4px; }
   .verdict { padding: 18px; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
   .halo { width: 38px; height: 38px; }

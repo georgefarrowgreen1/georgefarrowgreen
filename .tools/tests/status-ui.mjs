@@ -67,9 +67,10 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.step),'-1');
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.wrap').evaluate(x=>x.inert),false);
- await page.locator('#subBtn').click();await page.waitForSelector('#sheet.on');
- await page.keyboard.press('Escape');
- assert.equal(await page.evaluate(()=>document.activeElement.id),'subBtn');
+ assert.equal(await page.locator('#subBtn, a[href="#updates"]').count(),0);
+ assert(!await page.locator('body').innerText().then(t=>t.includes('Checked every 5 minutes from Cloudflare')));
+ await page.evaluate(()=>{location.hash='updates';});
+ assert.equal(await page.locator('#sheet.on').count(),0);
  await page.locator('#lookIn').fill('nonsense');await page.locator('#lookForm button').click();
  assert.match(await page.locator('#found').innerText(),/doesn’t look like a code/);
  await page.locator('#lookIn').fill('if c zzzzz');await page.locator('#lookForm button').click();
