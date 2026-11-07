@@ -122,7 +122,10 @@ test('a tap opens the app in full, at what it’s about, by its app (§11.4); an
   // (what the worker shows carries its place already made: tapped, the same place)
   const w = worker((p) => (p === '/api/pigeon/pulse' ? Response.json({}) : null));
   await w.push({ app: 'weather', title: 'Rain soon', body: 'From 15:00', tag: 'rain', url: './?lat=1&lon=2&name=Here' });
-  assert.deepEqual(plain(w.shown[0].data), { app: 'weather', url: '/weather/?lat=1&lon=2&name=Here' });
+  // (and its id in the log, for Today's bell: notelog.test.mjs)
+  const { id, ...data } = plain(w.shown[0].data);
+  assert.deepEqual(data, { app: 'weather', url: '/weather/?lat=1&lon=2&name=Here' });
+  assert.match(id, /^[a-z0-9]+-[a-z0-9]+$/);
   await w.tap(w.shown[0].data);
   assert.deepEqual(w.opened, [`${ORIGIN}/weather/?lat=1&lon=2&name=Here`]);
 });

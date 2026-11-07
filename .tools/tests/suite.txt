@@ -65,6 +65,7 @@ todayrules
 ridehold
 todaypage
 todayshell
+todaybell
 todayphases
 todaydesk
 todayfast

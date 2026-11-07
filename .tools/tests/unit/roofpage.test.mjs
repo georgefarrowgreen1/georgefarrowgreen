@@ -125,7 +125,7 @@ test('under the roof, each of the framework’s static files is asked for ahead 
   // (modules.js and connectors.js: dynamic only, and no module's own file from the page)
   const dyn = [...js.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]);
   // (and Chat's own crypto, for the key pair a sign-in on a phone takes along for Chats: chatTrip, unlockChats)
-  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/swipe.js', '/roof/modules.js', '/roof/connectors.js', '/chats/crypto.js'].includes(d), `import("${d}")`);
+  for (const d of dyn) assert.ok(['/apps.js', '/you.js', '/day.js', '/swipe.js', '/bell.js', '/roof/modules.js', '/roof/connectors.js', '/chats/crypto.js'].includes(d), `import("${d}")`);
   assert.ok(!/\/weather\/roof\//.test(own()), 'the page never names a module’s file itself: the router’s registry does');
 });
 
