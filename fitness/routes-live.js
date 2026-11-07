@@ -157,7 +157,7 @@ function createLiveRoutes(root, opts = {}) {
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     if (notice) locate.append(status);
-    locate.append(e("p", "fr-demo-foot", "Your location is sent to BRouter to calculate cycling routes. Only routes you save are kept with your account."));
+    locate.append(e("p", "fr-demo-foot", "Your location is used by InFlite’s UK routing service. Only routes you save are kept with your account."));
     root.append(locate);
     if (saved) {
       const card = e("section", "card glass fr-saved-link");
@@ -188,7 +188,7 @@ function createLiveRoutes(root, opts = {}) {
         h.focus({ preventScroll: true });
       }
     }
-    root.append(e("p", "fr-credit", "BRouter / OpenStreetMap contributors (ODbL). Check access and conditions before riding. Ride times are estimates."));
+    root.append(e("p", "fr-credit", "InFlite UK Routing · OpenStreetMap contributors (ODbL). Check access and conditions before riding. Ride times are estimates."));
   }
   function setupMap(r, host, fallback, message, retry) {
     if (!opts.map) return;
@@ -357,7 +357,7 @@ function createLiveRoutes(root, opts = {}) {
     }, { signal: events.signal });
     aside.append(form);
     const about = e("details", "fr-method");
-    about.append(e("summary", "", "About this route"), e("p", "", `Calculated by BRouter using OpenStreetMap contributors (ODbL). ${r.surface === "road" ? "Road-biased routing may include unpaved sections." : "Mixed-surface routing may include unpaved paths."} Check the map, local access and conditions before riding.`), e("p", "", `Time uses ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? "km/h" : "mph"}${opts.speedFromHistory ? " from recent outdoor rides" : ""}, with a climbing allowance and a five-minute pause. This is a route planner; follow your cycling computer for navigation.`));
+    about.append(e("summary", "", "About this route"), e("p", "", `Calculated by InFlite’s dedicated BRouter engine using OpenStreetMap contributors (ODbL). ${r.surface === "road" ? "Road-biased routing may include unpaved sections." : "Mixed-surface routing may include unpaved paths."} Check the map, local access and conditions before riding.`), e("p", "", `Time uses ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? "km/h" : "mph"}${opts.speedFromHistory ? " from recent outdoor rides" : ""}, with a climbing allowance and a five-minute pause. This is a route planner; follow your cycling computer for navigation.`));
     aside.append(about);
     setupMap(r, canvas, fallback, message, retry);
     h.tabIndex = -1;

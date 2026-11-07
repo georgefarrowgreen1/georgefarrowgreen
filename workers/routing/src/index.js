@@ -7,9 +7,9 @@ export class UKRouter extends Container {
   defaultPort=8080;
   sleepAfter='10m';
   enableInternet=false;
-  pingEndpoint='/health';
+  pingEndpoint='router/health';
   async fetch(request) {
-    await this.startAndWaitForPorts([8080],{instanceGetTimeoutMS:15000,portReadyTimeoutMS:30000,waitInterval:200});
+    if(!this.ctx.container.running) await this.startAndWaitForPorts([8080],{instanceGetTimeoutMS:15000,portReadyTimeoutMS:30000,waitInterval:200});
     return this.containerFetch(request);
   }
   onError(){console.warn('router_container_error');}

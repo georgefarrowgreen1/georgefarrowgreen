@@ -1614,8 +1614,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.04";
-const NEWS = "Cycling loops from your current location, saved with your account";
+const BUILD = "2.05";
+const NEWS = "UK cycling routes now use InFlite’s own routing service";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

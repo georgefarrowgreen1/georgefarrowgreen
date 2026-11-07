@@ -71,7 +71,7 @@ async function removeRoutePlan(owner, planToRemove, { signal } = {}) {
   return plan;
 }
 async function generateRoutes(query, { signal } = {}) {
-  const j = await call("generate", { method: "POST", body: query, signal, wait: 5e4 });
+  const j = await call("generate", { method: "POST", body: query, signal, wait: 9e4 });
   const routes = (j.routes || []).map(cleanRoute).filter(Boolean);
   if (!routes.length) throw Error("No suitable cycling loops were returned. Try another ride length.");
   return routes;

@@ -4,6 +4,12 @@ import java.time.Duration;
 public class Probe {
   public static void main(String[] args) throws Exception {
     var client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    if(args.length>0&&args[0].equals("route")){
+      byte[] body=System.in.readNBytes(4097);if(body.length>4096)throw new Exception("Probe body too large");
+      var r=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:8080/route")).timeout(Duration.ofSeconds(30)).header("Content-Type","application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(),HttpResponse.BodyHandlers.ofString());
+      System.out.println(r.statusCode());System.out.print(r.body());return;
+    }
+
     for(int i=0;;i++){
       try{var r=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:8080/health")).timeout(Duration.ofSeconds(4)).GET().build(),HttpResponse.BodyHandlers.ofString());if(r.statusCode()==200&&r.body().contains("\"ready\":true")){System.out.println(r.body());break;}}catch(Exception ignored){}
       if(i>=45)throw new Exception("Routing container did not become ready");Thread.sleep(1000);

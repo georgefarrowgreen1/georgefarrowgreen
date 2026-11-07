@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, codex/uk-routing-service]
-    paths: [workers/routing/**, .github/workflows/routing-service.yml]
+    paths: [workers/routing/**, functions/_fitloops.js, fitness/routes-geometry.js, .github/workflows/routing-service.yml]
 permissions:
   contents: read
 concurrency:
@@ -37,6 +37,7 @@ jobs:
         run: |
           docker run -d --name inflite-routing-check --network none --memory 1g --cpus 0.25 --pids-limit 128 --cap-drop ALL --security-opt no-new-privileges inflite-routing:check
           docker exec inflite-routing-check java -Xmx32m -cp /opt/router/classes Probe
+          node workers/routing/scripts/validate-container.mjs
       - name: Stop the test container
         if: always()
         run: docker rm -f inflite-routing-check 2>/dev/null || true

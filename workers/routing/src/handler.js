@@ -6,11 +6,13 @@ export async function routeInput(request) {
   if(!request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded'))return null;
   const text=await request.text();if(text.length>4096)return null;
   const form=new URLSearchParams(text);if([...form].length!==2||!['road','mixed'].includes(form.get('profile')))return null;
-  const points=form.get('lonlats')?.split('|').map(p=>p.split(',').map(Number));
+  const raw=form.get('lonlats')?.split('|');
+  if(!raw||raw.some(p=>p.split(',').some(v=>!/^[-]?\d+(?:\.\d+)?$/.test(v))))return null;
+  const points=raw.map(p=>p.split(',').map(Number));
   if(!points||points.length!==5||points.some(p=>p.length!==2||!p.every(Number.isFinite)||p[0]<-16||p[0]>4||p[1]<48||p[1]>63)||String(points[0])!==String(points[4]))return null;
   return {points,profile:form.get('profile'),body:form.toString()};
 }
-export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(key))}={}) {
+export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(key),{locationHint:'weur'})}={}) {
   if(new URL(request.url).pathname==='/health'&&request.method==='GET'){
     try{return await get('uk-primary').fetch('http://router/health');}catch{return json({ready:false,error:'warming'},503);}
   }
@@ -20,6 +22,7 @@ export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.
     try {
       const response=await get(key).fetch(new Request('http://router/route',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:input.body}));
       if(response.status<500)return response;
+      console.warn(JSON.stringify({event:'routing_failover',instance:key,status:response.status}));
       await response.body?.cancel();
     } catch { /* retry once on the other capped instance; never log coordinates */ }
   }
