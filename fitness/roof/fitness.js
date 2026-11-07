@@ -29,8 +29,8 @@ import { forgetRoutePlans } from "../routes-account.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.06";
-export const NEWS = "Plan cycling loops by distance with improved road routing";
+export const BUILD = "2.07";
+export const NEWS = "Improved cycling route distance controls";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
