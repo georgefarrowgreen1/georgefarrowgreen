@@ -257,11 +257,11 @@ button:disabled { opacity: .6; cursor: wait; }
 .inc + .inc { border-top: 1px solid var(--line); }
 .inc h3 { overflow-wrap: anywhere; text-wrap: pretty; }
 .inc .sub { margin: 0; line-height: 1.6; }
-.incident-detail { margin-top: 4px; }
-.incident-detail summary { display: flex; align-items: center; justify-content: space-between; list-style: none; min-height: 44px; cursor: pointer; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
-.incident-detail summary::-webkit-details-marker { display: none; }
-.incident-detail[open] summary { margin-bottom: 10px; }
-.incident-detail[open] summary .chev { transform: rotate(90deg); }
+:is(.incident-detail, .report-detail) { margin-top: 4px; }
+:is(.incident-detail, .report-detail) summary { display: flex; align-items: center; justify-content: space-between; list-style: none; min-height: 44px; cursor: pointer; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+:is(.incident-detail, .report-detail) summary::-webkit-details-marker { display: none; }
+:is(.incident-detail, .report-detail)[open] summary { margin-bottom: 10px; }
+:is(.incident-detail, .report-detail)[open] summary .chev { transform: rotate(90deg); }
 .copy, .cpy { min-height: 36px; }
 .steps span, .meta { overflow-wrap: anywhere; }
 .look { padding: 18px; }
@@ -299,3 +299,8 @@ button:disabled { opacity: .6; cursor: wait; }
 :root { --on-tint: #fff; }
 @media (prefers-color-scheme: dark) { :root { --on-tint: #101329; } }
 .look button, .big:not(.g), .halo b { color: var(--on-tint); }
+
+/* Reports keep their reference code visible and their timeline on demand. */
+.report-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.report-code .cpy { border: 0; background: var(--hover); padding: 6px 10px; min-height: 36px; }
+.report-detail .steps { padding-top: 2px; padding-bottom: 6px; }

@@ -17,13 +17,13 @@
 <body>
 <a class="skip-link" href="#verdict">Skip to system status</a>
 <main class="wrap">
-  <div class="mini" id="mini" aria-hidden="true" inert><span class="dot"></span><b id="miniT">Checking…</b><nav class="jump"><a href="#apps">Apps</a><a href="#incidents">Incidents</a><a href="#codesec">Codes</a></nav></div>
+  <div class="mini" id="mini" aria-hidden="true" inert><span class="dot"></span><b id="miniT">Checking…</b><nav class="jump"><a href="#apps">Apps</a><a href="#incidents">Incidents</a><a href="#codesec">Reports</a></nav></div>
   <header class="head">
     <span class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 40 40"><g stroke-linecap="round" stroke-width="7.5"><path d="M13 13l6.5 6.5" stroke="#5d9cff"/><path d="M27 13l-6.5 6.5" stroke="#ff7a59"/><path d="M13 27l6.5-6.5" stroke="#a78bfa"/><path d="M27 27l-6.5-6.5" stroke="#3fd6b7"/></g><circle cx="20" cy="20" r="4.6" fill="#ffd23f"/></svg></span>
     <h1 class="word">InFlite <span>Status</span></h1>
   </header>
 
-  <nav class="page-nav" aria-label="Status page sections"><a href="#apps">Apps</a><a href="#operations">Jobs &amp; APIs</a><a href="#incidents">Incidents</a><a href="#codesec">Bug codes</a></nav>
+  <nav class="page-nav" aria-label="Status page sections"><a href="#apps">Apps</a><a href="#operations">Jobs &amp; APIs</a><a href="#incidents">Incidents</a><a href="#codesec">Bug reports</a></nav>
 
   <section tabindex="-1" class="verdict glass" id="verdict" data-s="none" aria-live="polite">
     <span class="halo" aria-hidden="true"><b></b></span>
@@ -39,9 +39,9 @@
   </section>
 
   <section id="codesec" class="group">
-    <div class="gh"><h2>Bug codes</h2><span>Look up yours</span></div>
+    <div class="gh"><h2>Bug reports</h2><span>Find your report</span></div>
     <div class="glass">
-      <form class="look" id="lookForm"><input id="lookIn" aria-label="A bug code" placeholder="A code, like IF-T-RMS1H" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Find</button></form>
+      <form class="look" id="lookForm"><input id="lookIn" aria-label="Report code" placeholder="Enter a report code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Find</button></form>
       <div id="found" role="status" aria-live="polite"></div>
       <div class="list" id="codes"></div>
     </div>

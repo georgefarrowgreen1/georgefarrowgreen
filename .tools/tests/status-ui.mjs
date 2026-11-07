@@ -16,6 +16,7 @@ const fixture = {at:now,since:dayKeys[0],dayKeys,services,
   deps:['Weather API','Market API','Garmin API','Email API'].map((name,i)=>({id:['dep-weather','dep-prices','dep-garmin','dep-email'][i],name,s:'ok',ms:i===3?null:87})),
   incidents:[{id:'resolved-test',title:"Markets: TypeError: A.atHub is not a function. (In 'A.atHub(IFL.hub)'",svcs:['weather'],started:now-3600e3,ended:now-1800e3,updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
 fixture.incidents.push({...structuredClone(fixture.incidents[0]),id:'resolved-mail',title:'Mail not answering',svcs:['mail'],notOutage:true});
+fixture.bugs=['fixed','new','known','back'].map((state,i)=>({code:`IF-T-TEST${i}`,state,app:i===0?'server':'markets',title:i===0?'Today: building your day':null,first:now-864e5,last:now-3600e3,fixedAt:state==='fixed'||state==='back'?now-1800e3:null,n:i+1}));
 const browser = await chromium.launch({executablePath:process.env.CHROMIUM || undefined,args:['--no-sandbox']});
 const out = process.env.STATUS_SCREENSHOTS;
 if(out)mkdirSync(out,{recursive:true});
@@ -54,11 +55,17 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
 
  assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),false);
  await page.locator('.incident-detail summary').first().click();
+ assert.equal(await page.locator('#codesec h2').innerText(),'Bug reports');
+ assert.equal(await page.locator('#codes .report').count(),4);
+ assert(await page.locator('#codes .report-detail').evaluateAll(xs=>xs.every(x=>!x.open)));
+ await page.locator('#codes .report-detail summary').first().click();
+
  assert.equal(await page.locator('.status-tools, #refreshBtn').count(),0);
  const refreshed = page.waitForResponse(response=>response.url().endsWith('/api/status'));
  await page.clock.fastForward(60_000);
  await refreshed;
  await page.waitForFunction(()=>document.querySelector('.incident-detail').open);
+ assert.equal(await page.locator('#codes .report-detail').first().evaluate(x=>x.open),true);
  assert(requests>=2);assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),true);
  await page.locator('[data-period="2"]').click();
  assert.equal(await page.locator('[data-period="2"]').getAttribute('aria-pressed'),'true');
@@ -79,6 +86,8 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert(!await page.locator('body').innerText().then(t=>t.includes('Checked every 5 minutes from Cloudflare')));
  await page.evaluate(()=>{location.hash='updates';});
  assert.equal(await page.locator('#sheet.on').count(),0);
+ await page.locator('#lookIn').fill('if t test0');await page.locator('#lookForm button').click();
+ assert.equal(await page.locator('#IF-T-TEST0 .report-detail').evaluate(x=>x.open),true);
  await page.locator('#lookIn').fill('nonsense');await page.locator('#lookForm button').click();
  assert.match(await page.locator('#found').innerText(),/doesn’t look like a code/);
  await page.locator('#lookIn').fill('if c zzzzz');await page.locator('#lookForm button').click();

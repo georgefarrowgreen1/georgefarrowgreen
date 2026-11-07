@@ -37,7 +37,7 @@
   const pct = (v) => (v == null ? "–" : v >= 100 ? "100%" : `${(Math.floor(v * 100) / 100).toFixed(2)}%`);
 
   let data = null, period = 0, daySel = null;
-  const opened = new Set(), expandedIncidents = new Set(), points = new Map();
+  const opened = new Set(), expandedIncidents = new Set(), expandedReports = new Set(), points = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
 
@@ -97,7 +97,8 @@
   function draw() {
     const active = document.activeElement;
     const incident = active?.closest("[data-incident]")?.dataset.incident;
-    const selector = incident && active.tagName === "SUMMARY" ? `[data-incident="${CSS.escape(incident)}"] summary` : active?.dataset.copy ? `[data-copy="${CSS.escape(active.dataset.copy)}"]` : active?.dataset.copycode ? `[data-copycode="${CSS.escape(active.dataset.copycode)}"]` : null;
+    const report = active?.closest("[data-report]")?.dataset.report;
+    const selector = report && active.tagName === "SUMMARY" ? `[data-report="${CSS.escape(report)}"] summary` : incident && active.tagName === "SUMMARY" ? `[data-incident="${CSS.escape(incident)}"] summary` : active?.dataset.copy ? `[data-copy="${CSS.escape(active.dataset.copy)}"]` : active?.dataset.copycode ? `[data-copycode="${CSS.escape(active.dataset.copycode)}"]` : null;
     verdict(); liveBlock(); groups(); incidents(); codes();
     if (selector && !active.isConnected) document.querySelector(selector)?.focus({ preventScroll: true });
   }
@@ -240,19 +241,20 @@
   const CSTATE = { new: ["warn", "Looking into it"], fixed: ["ok", "Fixed"], back: ["down", "Back again"], known: ["none", "Known"] };
   function codeHtml(b) {
     const [s, tag] = CSTATE[b.state] || CSTATE.new, app = APPN[b.app] || b.app, first = b.first || b.last, last = b.last || first;
-    const title = b.title || `${app}: a problem someone reported`, steps = [];
+    const title = b.title || `${app} report`, steps = [];
     if (b.state === "back") steps.push([last, "Back again", "Seen again since it was fixed. We’re looking into it."]);
     if (b.fixedAt && (b.state === "fixed" || b.state === "back")) steps.push([b.fixedAt, "Fixed", b.state === "fixed" ? "A fix is in. It’s watched in case it comes back." : "A fix went in."]);
     if (b.state === "known") steps.push([last, "Known", "We know about it; it doesn’t stop anything working."]);
     if (b.n > 1 && last !== first && b.state !== "back") steps.push([last, "Seen again", `${b.n} times in all.`]);
     steps.push([first, b.app === "server" ? "Spotted" : "Reported", b.app === "server" ? "The site logged it as it happened." : "Sent from Report a Problem."]);
     steps.sort((a, c) => c[0] - a[0]);
-    return `<article class="inc" id="${esc(b.code)}" data-s="${s}"><header><h3>${esc(title)}</h3><div class="tags"><span class="tag">${esc(tag)}</span></div></header>
-      <p class="sub num"><span class="cd">${esc(b.code)}</span><button class="cpy" type="button" data-copycode="${esc(b.code)}" aria-label="Copy ${esc(b.code)}">Copy</button><span>${esc(app)} · ${esc(dm(first))}${keyOf(last) !== keyOf(first) ? `–${esc(dm(last))}` : ""} · ${b.n} time${b.n === 1 ? "" : "s"}</span></p>
-      <ol class="steps">${steps.map(([t, k, w]) => `<li><time>${esc(hm(t))}</time><span><b>${esc(k)}.</b> ${esc(w)}</span></li>`).join("")}</ol></article>`;
+    return `<article class="inc report" id="${esc(b.code)}" data-s="${s}"><header><h3>${esc(title)}</h3><div class="tags"><span class="tag">${esc(tag)}</span></div></header>
+      <p class="sub num">${esc(app)} · ${esc(dm(first))}${keyOf(last) !== keyOf(first) ? `–${esc(dm(last))}` : ""} · ${b.n} time${b.n === 1 ? "" : "s"}</p>
+      <div class="report-code"><span class="cd">${esc(b.code)}</span><button class="cpy" type="button" data-copycode="${esc(b.code)}" aria-label="Copy ${esc(b.code)}">Copy code</button></div>
+      <details class="report-detail" data-report="${esc(b.code)}"${expandedReports.has(b.code) ? " open" : ""}><summary>View report updates${ICON.chev}</summary><ol class="steps">${steps.map(([t, k, w]) => `<li><time>${esc(hm(t))}</time><span><b>${esc(k)}.</b> ${esc(w)}</span></li>`).join("")}</ol></details></article>`;
   }
   function codes() {
-    $("codes").innerHTML = data.bugs.length ? data.bugs.map(codeHtml).join("") : `<p class="empty">No bug codes this week.</p>`;
+    $("codes").innerHTML = data.bugs.length ? data.bugs.map(codeHtml).join("") : `<p class="empty">No bug reports this week.</p>`;
   }
   // (a code typed any way: lower case, spaces, no dashes; this week's on the page, older ones asked of the server)
   const norm = (v) => { const c = String(v).toUpperCase().replace(/[^0-9A-Z]/g, ""); const m = /^IF([A-Z])([0-9A-Z]{4,6})$/.exec(c); return m ? `IF-${m[1]}-${m[2]}` : null; };
@@ -269,6 +271,7 @@
       const r = await fetch(`/api/status/code?c=${encodeURIComponent(code)}`); const j = await r.json();
       if (requestId !== lookupId) return;
       if (!r.ok) throw new Error(j.error);
+      if (j.found) expandedReports.add(code);
       out.innerHTML = j.found ? `<div class="list">${codeHtml(j)}</div>`
         : `<p class="nf">${j.last ? `<b>${esc(code)}</b> was last seen on ${esc(dm(j.last))}, and not in the last 30 days.` : `We haven’t seen <b>${esc(code)}</b> in the last 30 days. If you’ve only just sent it, look again in a minute.`}</p>`;
     } catch (e) { if (requestId !== lookupId) return; out.innerHTML = `<p class="nf">${esc(e.message || "That couldn’t be looked up just now. Try again in a moment.")}</p>`; }
@@ -330,7 +333,7 @@
   let toastT = 0;
   const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); };
   const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; const detail = el.querySelector(".incident-detail"); if (detail) { detail.open = true; expandedIncidents.add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
+  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; const detail = el.querySelector(".incident-detail, .report-detail"); if (detail) { detail.open = true; (detail.dataset.report ? expandedReports : expandedIncidents).add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
   function route() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h || !data) return;
@@ -363,6 +366,8 @@
     }
   });
   document.addEventListener("toggle", (e) => {
+    const report = e.target.dataset?.report;
+    if (report) e.target.open ? expandedReports.add(report) : expandedReports.delete(report);
     const id = e.target.dataset?.incident;
     if (id) e.target.open ? expandedIncidents.add(id) : expandedIncidents.delete(id);
   }, true);
