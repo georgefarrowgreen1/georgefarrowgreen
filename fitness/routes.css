@@ -108,3 +108,25 @@
 .m-fitness .fr-saved-link > .link { text-align: left; min-height: 44px; line-height: 1.4; }
 /* Keep the entire outline visible when a street map is unavailable. */
 .m-fitness .fr-map .fr-route-outline { width: min(100%,280px); height: 100%; max-height: 280px; }
+
+/* Distance planning and an indeterminate route animation using Fitness's existing tint. */
+.m-fitness .fr-distance { display:flex; align-items:center; gap:8px; color:var(--text-2); }
+.m-fitness .fr-distance input { width:72px; min-width:0; min-height:44px; padding:0 4px; border:0; border-radius:8px; background:none; color:var(--text); text-align:right; font:500 17px/1.2 var(--font); }
+.m-fitness .fr-distance input:focus-visible { outline:2px solid var(--tint); outline-offset:2px; }
+.m-fitness .fr-loading { display:flex; align-items:center; gap:16px; min-height:100px; padding:10px 16px; border-radius:18px; background:var(--field); }
+.m-fitness .fr-loading > svg { flex:none; width:88px; height:64px; overflow:visible; }
+.m-fitness .fr-loading-track, .m-fitness .fr-loading-sweep { fill:none; stroke:var(--tint); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; }
+.m-fitness .fr-loading-track { opacity:.15; }
+.m-fitness .fr-loading-sweep { stroke-dasharray:22 78; animation:fr-route-search 2.4s linear infinite; }
+.m-fitness .fr-loading-start { fill:var(--tint); animation:fr-route-pulse 1.6s ease-in-out infinite; transform-box:fill-box; transform-origin:center; }
+.m-fitness .fr-loading-copy { display:grid; gap:5px; min-width:0; font-size:15px; line-height:1.4; }
+.m-fitness .fr-loading-copy b { font-weight:600; }
+.m-fitness .fr-loading-copy span { color:var(--text-3); font-size:13px; }
+.m-fitness .fr-credit a { color:inherit; text-decoration:none; }
+.m-fitness .fr-credit a:hover { text-decoration:underline; }
+@keyframes fr-route-search { to { stroke-dashoffset:-100; } }
+@keyframes fr-route-pulse { 50% { opacity:.45; transform:scale(.8); } }
+@media (prefers-reduced-motion:reduce) {
+  .m-fitness .fr-loading-sweep, .m-fitness .fr-loading-start { animation:none; }
+  .m-fitness .fr-loading-sweep { stroke-dasharray:none; opacity:.65; }
+}

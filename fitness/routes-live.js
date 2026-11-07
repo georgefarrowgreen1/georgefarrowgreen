@@ -22,7 +22,7 @@ function createLiveRoutes(root, opts = {}) {
     const d = new Date(n);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
-  let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, minutes = Math.min(240, Math.max(30, Math.round(Number(opts.workout?.minutes) || 90))), surface = "road", pending = false, saving = false, dirty = false, notice = "", saved = null;
+  let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, distance = metric ? 40 : 25, surface = "road", pending = false, saving = false, dirty = false, notice = "", saved = null;
   let draftDay = null, draftTime = null;
   const events = new AbortController();
   function btn(text, fn, cls = "pill") {
@@ -81,8 +81,9 @@ function createLiveRoutes(root, opts = {}) {
   function locationError(err) {
     return err?.code === 1 ? "Location access is off. Allow location for this site in your browser settings, then try again." : err?.code === 3 ? "Your location took too long to arrive. Try again with a clearer signal." : err?.message || "Your location could not be found. Please try again.";
   }
+  const validDistance = () => Number.isInteger(distance) && distance >= 5 && distance <= (metric ? 120 : 70);
   async function find(update = false) {
-    if (pending || !alive()) return;
+    if (pending || !alive() || !validDistance()) return;
     cancel();
     const turn = ticket;
     abort = new AbortController();
@@ -104,7 +105,7 @@ function createLiveRoutes(root, opts = {}) {
       if (!alive() || ticket !== turn) return;
       notice = "Finding cycling loops back to your start…";
       showList();
-      const found = await (opts.generate || generateRoutes)({ start: loc, minutes, surface, speed, seed: Math.floor(Math.random() * 1e6) }, { signal });
+      const found = await (opts.generate || generateRoutes)({ start: loc, metres: Math.round(distance * (metric ? 1000 : 1609.344)), surface, seed: Math.floor(Math.random() * 1e6) }, { signal });
       if (!alive() || ticket !== turn) return;
       routes = found;
       dirty = false;
@@ -134,18 +135,33 @@ function createLiveRoutes(root, opts = {}) {
     row.append(tile, copy);
     context.append(row, e("p", "fr-location", loc ? "Starts and finishes near your selected location." : "Use your current location as the start and finish."));
     const controls = e("div", "group glass fr-filters");
-    const times = [.../* @__PURE__ */ new Set([30, 45, 60, 75, 90, 120, 150, 180, 240, minutes])].sort((a, b) => a - b);
-    controls.append(pick("Time available", times.map((n) => [n, duration(n)]), minutes, (v) => {
-      minutes = +v;
-    }), pick("Surface", [["road", "Road-biased"], ["mixed", "Mixed surface"]], surface, (v) => {
-      surface = v;
-    }));
+    const rowDistance = e("label", "row plain fr-field"), txDistance = e("span", "tx"), wrapDistance = e("span", "pick fr-distance"), input = e("input");
+    txDistance.append(e("b", "", "Distance"));
+    input.type = "number"; input.inputMode = "numeric"; input.min = "5"; input.max = metric ? "120" : "70"; input.step = "1";
+    input.value = Number.isFinite(distance) ? String(distance) : "";
+    input.setAttribute("aria-label", metric ? "Distance in kilometres" : "Distance in miles");
+    input.setAttribute("aria-invalid", String(!validDistance()));
+    input.disabled = pending;
+    input.addEventListener("input", () => {
+      distance = input.value === "" ? NaN : Number(input.value);
+      dirty = true;
+      notice = validDistance() ? routes.length ? "Distance changed. Find new loops to update your routes." : "" : `Choose a distance from 5 to ${metric ? "120 km" : "70 mi"}.`;
+      input.setAttribute("aria-invalid", String(!validDistance()));
+      status.textContent = notice; status.hidden = !notice;
+      findButton.disabled = !validDistance();
+      const previous = root.querySelector(".fr-suggestions .aside");
+      if (previous) previous.textContent = "Previous results";
+    }, {signal:events.signal});
+    wrapDistance.append(input, e("span", "", metric ? "km" : "mi"));
+    rowDistance.append(txDistance, wrapDistance);
+    controls.append(rowDistance, pick("Surface", [["road", "Road cycling"], ["mixed", "Mixed surface"]], surface, v => { surface = v; }));
     overview.append(context, controls);
     root.append(overview);
     const locate = e("section", "card glass fr-locate");
     locate.append(title("Start & finish", "today"), e("p", "about", loc ? "Current location selected" : "Find a loop from your location"));
     const findButton = btn(pending ? "Finding loops…" : loc ? "Find new loops" : "Use current location", () => find(!loc), "btn");
-    findButton.disabled = pending;
+    findButton.disabled = pending || !validDistance();
+    findButton.setAttribute("aria-busy", String(pending));
     locate.append(findButton);
     if (loc && !pending) locate.append(btn("Update current location", () => find(true), "link fr-location-update"));
     if (pending) locate.append(btn("Cancel", () => {
@@ -154,10 +170,19 @@ function createLiveRoutes(root, opts = {}) {
       showList();
     }, "pill"));
     const status = e("p", "fr-demo-foot", notice);
+    if (pending) {
+      const loading = e("div", "fr-loading"), animation = svg("svg", {viewBox:"0 0 120 84", "aria-hidden":"true"});
+      const d = "M24 56C7 39 20 12 43 22S83 8 99 30S88 70 66 62S38 76 24 56Z";
+      animation.append(svg("path", {d, class:"fr-loading-track"}), svg("path", {d, pathLength:100, class:"fr-loading-sweep"}), svg("circle", {cx:24,cy:56,r:4,class:"fr-loading-start"}));
+      const copy = e("div", "fr-loading-copy");
+      copy.append(e("b", "", "Planning your loop"), e("span", "", `Around ${distance} ${metric ? "km" : "mi"} · ${surface === "road" ? "Road cycling" : "Mixed surface"}`));
+      loading.append(animation, copy);
+      locate.append(loading);
+    }
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    if (notice) locate.append(status);
-    locate.append(e("p", "fr-demo-foot", "Your location is used by InFlite’s UK routing service. Only routes you save are kept with your account."));
+    status.hidden = !notice;
+    locate.append(status);
     root.append(locate);
     if (saved) {
       const card = e("section", "card glass fr-saved-link");
@@ -173,8 +198,8 @@ function createLiveRoutes(root, opts = {}) {
         b.dataset.route = r.id;
         const tx = e("span", "tx fr-route-copy"), name = e("span", "fr-route-name"), meta = e("span", "fr-route-meta");
         name.append(e("b", "", r.name));
-        if (!i) meta.append(e("span", "badge plan", "Best fit"));
-        meta.append(e("span", "fr-surface", r.surface === "road" ? "Road-biased" : "Mixed surface"));
+        if (!i) meta.append(e("span", "badge plan", "Closest distance"));
+        meta.append(e("span", "fr-surface", r.surface === "road" ? "Road cycling" : "Mixed surface"));
         tx.append(name, e("small", "", `${km(r.metres)} · ${r.ascent == null ? "Elevation unavailable" : "↑ " + up(r.ascent)} · ≈ ${duration(estimate(r, speed))}`), meta);
         const chevron = e("span", "chev");
         chevron.append(icon("chev", 17, 2.4));
@@ -188,7 +213,9 @@ function createLiveRoutes(root, opts = {}) {
         h.focus({ preventScroll: true });
       }
     }
-    root.append(e("p", "fr-credit", "InFlite UK Routing · OpenStreetMap contributors (ODbL). Check access and conditions before riding. Ride times are estimates."));
+    const credit = e("p", "fr-credit"), attribution = e("a", "", "© OpenStreetMap contributors");
+    attribution.href = "https://www.openstreetmap.org/copyright"; attribution.target = "_blank"; attribution.rel = "noopener";
+    credit.append(attribution); root.append(credit);
   }
   function setupMap(r, host, fallback, message, retry) {
     if (!opts.map) return;
@@ -236,7 +263,7 @@ function createLiveRoutes(root, opts = {}) {
     root.replaceChildren(btn("‹ All routes", () => showList(true), "link fr-back"));
     const layout = e("div", "cols fr-detail-grid"), main = e("div", "fr-detail-main"), aside = e("div", "fr-detail-aside"), hero = e("section", "card glass session fr-route-hero"), kind = e("span", "sport"), tile = e("i", "s-ride");
     tile.append(sportIcon("ride", 14));
-    kind.append(tile, doc.createTextNode(r.surface === "road" ? "Ride · Road-biased" : "Ride · Mixed surface"));
+    kind.append(tile, doc.createTextNode(r.surface === "road" ? "Ride · Road cycling" : "Ride · Mixed surface"));
     const heading = e("div", "fr-detail-title"), h = e("h2", "", r.name);
     heading.append(kind, h, e("p", "about", "A cycling loop back to your starting point."));
     hero.append(heading);
@@ -357,7 +384,7 @@ function createLiveRoutes(root, opts = {}) {
     }, { signal: events.signal });
     aside.append(form);
     const about = e("details", "fr-method");
-    about.append(e("summary", "", "About this route"), e("p", "", `Calculated by InFlite’s dedicated BRouter engine using OpenStreetMap contributors (ODbL). ${r.surface === "road" ? "Road-biased routing may include unpaved sections." : "Mixed-surface routing may include unpaved paths."} Check the map, local access and conditions before riding.`), e("p", "", `Time uses ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? "km/h" : "mph"}${opts.speedFromHistory ? " from recent outdoor rides" : ""}, with a climbing allowance and a five-minute pause. This is a route planner; follow your cycling computer for navigation.`));
+    about.append(e("summary", "", "About this route"), e("p", "", `Calculated by InFlite’s dedicated BRouter engine using OpenStreetMap contributors (ODbL). ${r.surface === "road" ? "Road cycling favours paved through-roads; map surface data may be incomplete." : "Mixed-surface routing may include unpaved paths."} Check the map, local access and conditions before riding.`), e("p", "", `Time uses ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? "km/h" : "mph"}${opts.speedFromHistory ? " from recent outdoor rides" : ""}, with a climbing allowance and a five-minute pause. This is a route planner; follow your cycling computer for navigation.`));
     aside.append(about);
     setupMap(r, canvas, fallback, message, retry);
     h.tabIndex = -1;
@@ -378,9 +405,12 @@ function createLiveRoutes(root, opts = {}) {
   }, resume() {
     if (!alive()) return;
     if (active && !map) open(active);
+    else if (!active) showList();
     refreshPlan();
   }, hide() {
+    const wasPending = pending;
     cancel();
+    if (wasPending) { notice = "Route planning cancelled."; root.querySelector(".fr-loading")?.remove(); }
     clearMap();
   }, destroy() {
     dead = true;

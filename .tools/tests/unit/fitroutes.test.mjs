@@ -7,7 +7,7 @@ import {cleanQuery,waypoints,generateRoutes,cleanRoutePlan,saveRoutePlan,routePl
 import {onRequest} from '../../../functions/api/fitness/[[path]].js';
 import {db,issueSession,hex,sha256} from '../../../functions/_pigeon.js';
 import {fitdb} from '../../../functions/_fitness.js';
-const route=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),query={start:route.start,minutes:90,surface:'road',speed:22,seed:1};
+const route=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),query={start:route.start,metres:33000,surface:'road',seed:1};
 const sql=new DatabaseSync(':memory:'),val=a=>a.map(x=>x===undefined?null:x);
 const st=(q,a=[])=>({sql:q,bind:(...b)=>st(q,b),first:async()=>sql.prepare(q).get(...val(a))??null,all:async()=>({results:sql.prepare(q).all(...val(a)),meta:{}}),run:async()=>({meta:{changes:Number(sql.prepare(q).run(...val(a)).changes)}})});
 const env={DB:{prepare:q=>st(q),batch:async list=>{const out=[];for(const s of list)out.push(/^\s*(INSERT|UPDATE|DELETE)/i.test(s.sql)?await s.run():await s.all());return out;}},FITNESS_HOST:'fitness.localhost',ROUTING_APP:{fetch:request=>globalThis.fetch(request)}};
@@ -17,7 +17,7 @@ for(const id of ['ann','bo']){sql.prepare('INSERT INTO pg_users (id,handle,name,
 const api=(method,path,{who='ann',origin=FIT,data}={})=>onRequest({env,params:{path:path.split('/')},waitUntil(){},request:new Request(FIT+'/api/fitness/'+path,{method,headers:{...(who?{Cookie:'account='+cookies[who]}:{}),...(origin?{Origin:origin}:{}),'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})})}).then(async r=>({status:r.status,body:await r.json()}));
 const day=new Date(Date.now()+86400e3).toISOString().slice(0,10),plan={route,day,time:'09:00',tz:'UTC'};
 test('location and route filters are bounded; each waypoint loop starts and ends at the requested GPS point',()=>{
- assert.deepEqual(cleanQuery(query),query);for(const b of [{start:[181,51]},{minutes:0},{minutes:500},{speed:Infinity},{surface:'motorcar'},{seed:-1},{start:['-0.2',51]}])assert.throws(()=>cleanQuery({...query,...b}),{status:400});
+ assert.deepEqual(cleanQuery(query),query);for(const b of [{start:[181,51]},{metres:0},{metres:120001},{metres:5.5},{surface:'motorcar'},{seed:-1},{start:['-0.2',51]}])assert.throws(()=>cleanQuery({...query,...b}),{status:400});
  for(const bearing of [0,90,180,270]){const w=waypoints(query,bearing);assert.deepEqual(w[0],query.start);assert.deepEqual(w.at(-1),query.start);assert.equal(w.length,5);assert.ok(metresBetween(w[0],w[1])>1000);}
 });
 test('generated tracks are closed, near the GPS origin, continuous and carry real GPX elevations without recorded timestamps',()=>{
@@ -35,7 +35,7 @@ test('provider requests follow fixed bicycle profiles and return validated geome
  const c=new AbortController();c.abort();await assert.rejects(generateRoutes(query,{signal:c.signal,fetcher}),{status:503});
 });
 test('route generation requires the signed-in account and own origin; malformed input never reaches a provider',async()=>{
- assert.equal((await api('POST','routes/generate',{who:null,data:query})).status,401);assert.equal((await api('POST','routes/generate',{origin:'http://elsewhere.localhost',data:query})).status,403);assert.equal((await api('POST','routes/generate',{origin:null,data:query})).status,403);assert.equal((await api('POST','routes/generate',{data:{...query,minutes:0}})).status,400);
+ assert.equal((await api('POST','routes/generate',{who:null,data:query})).status,401);assert.equal((await api('POST','routes/generate',{origin:'http://elsewhere.localhost',data:query})).status,403);assert.equal((await api('POST','routes/generate',{origin:null,data:query})).status,403);assert.equal((await api('POST','routes/generate',{data:{...query,metres:0}})).status,400);
 });
 test('real route plans sync per account without changing training state; stale removal cannot erase a replacement',async()=>{
  const first=await api('PUT','routes/plan',{data:plan});assert.equal(first.status,200);assert.equal((await api('GET','routes/plan')).body.plan.route.id,route.id);assert.equal((await api('GET','routes/plan',{who:'bo'})).body.plan,null);
@@ -63,4 +63,17 @@ test('the signed-in generation endpoint bounds provider load and refuses duplica
   sql.prepare("UPDATE pg_limits SET count = 12 WHERE key = 'fxroutes:ann'").run();
   assert.equal((await api('POST','routes/generate',{data:query})).status,429);assert.equal(providerCalls,3,'a quota refusal never reaches the provider');
  } finally {globalThis.fetch=native;}
+});
+
+test('distance drives the loop geometry, recalibration and ranking independently of speed and climbing',async()=>{
+ const legacy=cleanQuery({start:query.start,minutes:90,speed:22,surface:'road',seed:1});assert.equal(legacy.metres,31167);
+ assert.deepEqual(cleanQuery({...query,speed:10,minutes:240}),query);
+ assert.deepEqual(waypoints(cleanQuery({...query,speed:40}),90),waypoints(query,90));
+ const coords=(factor,z=1)=>route.coords.map(c=>[query.start[0]+(c[0]-query.start[0])*factor,query.start[1]+(c[1]-query.start[1])*factor,c[2]*z]);
+ const calls=[];let n=0;
+ const got=await generateRoutes(query,{fetcher:async(url,init)=>{calls.push(new URLSearchParams(init.body).get('lonlats').split('|').map(p=>p.split(',').map(Number)));return Response.json({features:[{geometry:{type:'LineString',coordinates:coords([1.18,1.02,1.6][n],[1,4,1][n++])}}]});}});
+ assert.equal(got.routes.length,2);assert.ok(Math.abs(got.routes[0].metres-query.metres)<Math.abs(got.routes[1].metres-query.metres));
+ assert.ok(got.routes[0].ascent>got.routes[1].ascent,'closest distance wins even when it has more climbing');
+ assert.ok(metresBetween(calls[1][0],calls[1][1])<metresBetween(calls[0][0],calls[0][1]),'an overlong first candidate shrinks later waypoint radii');
+ await assert.rejects(generateRoutes({...query,metres:5000},{fetcher:async()=>Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]})}),{status:422});
 });

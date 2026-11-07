@@ -21,7 +21,11 @@ the Java gateway checks/restarts its engine after a crash, with a restart ceilin
 minutes. Container internet access is disabled: serving routes needs no public routing server, map download or
 external credential. The site's map tiles remain its existing OpenFreeMap renderer.
 
-The road profile derives from `fastbike-lowtraffic`, mixed from `trekking`. Intermediate waypoints can snap up to
+The owned road profile (`profiles/road.brf`) derives from BRouter `fastbike`, with a light traffic penalty, lower
+costs for paved primary/secondary/tertiary roads, and higher costs for residential/service shortcuts and unpaved
+sections. Steps and ferries are disabled; the upstream motorway, trunk and access restrictions are retained. Mixed
+still derives from `trekking`. Distance controls waypoint radius, adaptive scaling and ranking; speed/climbing never
+change route selection. Already-open 2.05 clients can still send their legacy time request during rollout. Intermediate waypoints can snap up to
 1 km to a cycling road, which avoids rejecting a loop merely because a proposed via point falls in a field.
 Fitness independently rejects a start snapped over 250 m away, invalid/discontinuous/open tracks, excessive
 backtracking and unsuitable durations. BRouter/OpenStreetMap access data is not a guarantee of current conditions.

@@ -20,7 +20,7 @@ export async function runProbes(fetcher,cases=PROBES,{loop=true}={}) {
  }
  let loops={ready:false,count:0};
  if(loop){const attempts=[];
-  try {const generated=await generateRoutes({start:PROBES[0].start,minutes:90,surface:'road',speed:22,seed:1},{fetcher:(url,init)=>fetcher(new Request(url,init)),onAttempt:a=>attempts.push(a)});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres)};}catch(e){loops.error={status:e.status||0,message:e.message};}
+  try {const generated=await generateRoutes({start:PROBES[0].start,metres:33000,surface:'road',seed:1},{fetcher:(url,init)=>fetcher(new Request(url,init)),onAttempt:a=>attempts.push(a)});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres)};}catch(e){loops.error={status:e.status||0,message:e.message};}
   loops.attempts=attempts;
  }
  return {ready:checks.every(c=>c.status===200&&c.closed&&c.points>5)&&(!loop||loops.ready),checks,...(loop?{loops}:{})};
