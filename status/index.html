@@ -15,18 +15,23 @@
 <script src="app.js" defer></script>
 </head>
 <body>
-<div class="wrap">
-  <div class="mini" id="mini" aria-hidden="true"><span class="dot"></span><b id="miniT">Checking…</b><nav class="jump"><a href="#apps">Apps</a><a href="#incidents">Incidents</a><a href="#codesec">Codes</a></nav></div>
+<a class="skip-link" href="#verdict">Skip to system status</a>
+<main class="wrap">
+  <div class="mini" id="mini" aria-hidden="true" inert><span class="dot"></span><b id="miniT">Checking…</b><nav class="jump"><a href="#apps">Apps</a><a href="#incidents">Incidents</a><a href="#codesec">Codes</a></nav></div>
   <header class="head">
     <span class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 40 40"><g stroke-linecap="round" stroke-width="7.5"><path d="M13 13l6.5 6.5" stroke="#5d9cff"/><path d="M27 13l-6.5 6.5" stroke="#ff7a59"/><path d="M13 27l6.5-6.5" stroke="#a78bfa"/><path d="M27 27l-6.5-6.5" stroke="#3fd6b7"/></g><circle cx="20" cy="20" r="4.6" fill="#ffd23f"/></svg></span>
     <h1 class="word">InFlite <span>Status</span></h1>
     <button class="subbtn" id="subBtn" type="button"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span>Get updates</span></button>
   </header>
 
-  <section class="verdict glass" id="verdict" data-s="none" aria-live="polite">
+  <nav class="page-nav" aria-label="Status page sections"><a href="#apps">Apps</a><a href="#operations">Jobs &amp; APIs</a><a href="#incidents">Incidents</a><a href="#codesec">Bug codes</a></nav>
+
+  <section tabindex="-1" class="verdict glass" id="verdict" data-s="none" aria-live="polite">
     <span class="halo" aria-hidden="true"><b></b></span>
     <div><h2 id="vtitle">Checking…</h2><p id="vsub">Asking each app how it’s doing.</p></div>
   </section>
+
+  <div class="status-tools"><p>Checks every 5 minutes · Page updates automatically</p><button class="pill" id="refreshBtn" type="button">Refresh now</button></div>
 
   <div id="live" class="stack" hidden></div>
   <div id="groups" class="stack"></div>
@@ -40,14 +45,14 @@
     <div class="gh"><h2>Bug codes</h2><span>Look up yours</span></div>
     <div class="glass">
       <form class="look" id="lookForm"><input id="lookIn" aria-label="A bug code" placeholder="A code, like IF-T-RMS1H" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Find</button></form>
-      <div id="found"></div>
+      <div id="found" role="status" aria-live="polite"></div>
       <div class="list" id="codes"></div>
     </div>
   </section>
 
   <p class="foot-note">Checked every 5 minutes from Cloudflare, and every hour from outside it.<br>Follow in a news reader: <a href="feed.xml">status.inflite.ai/feed.xml</a> · <a href="#updates">Get updates</a></p>
   <noscript><p class="foot-note">This page needs JavaScript to show the checks.</p></noscript>
-</div>
+</main>
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div>
 <div class="toast" id="toast" role="status"></div>

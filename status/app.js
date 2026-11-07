@@ -39,7 +39,7 @@
   const store = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (_) { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
 
   let data = null, period = 0, daySel = null;
-  const opened = new Set(), points = new Map();
+  const opened = new Set(), expandedIncidents = new Set(), points = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
   const SUB_APPS = ["today", "chat", "weather", "fitness", "markets", "mail"];
@@ -53,6 +53,7 @@
   function load() {
     if (loading) return loading;
     clearTimeout(retryT);
+    $("refreshBtn").disabled = true; $("refreshBtn").textContent = "Refreshing…";
     return (loading = (async () => {
       try {
         const r = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
@@ -62,7 +63,7 @@
       } catch (_) {
         if (!data) unreachable(); else { data.failed = Date.now(); verdict(); }
         retryT = setTimeout(load, 15e3);
-      } finally { loading = null; }
+      } finally { loading = null; $("refreshBtn").disabled = false; $("refreshBtn").textContent = "Refresh now"; }
     })());
   }
   // (back on the page: asked again where what's shown is over half a minute old, or the last ask failed)
@@ -99,12 +100,16 @@
 
   // ---- drawing ----
   function draw() {
+    const active = document.activeElement;
+    const incident = active?.closest("[data-incident]")?.dataset.incident;
+    const selector = incident && active.tagName === "SUMMARY" ? `[data-incident="${CSS.escape(incident)}"] summary` : active?.dataset.copy ? `[data-copy="${CSS.escape(active.dataset.copy)}"]` : active?.dataset.copycode ? `[data-copycode="${CSS.escape(active.dataset.copycode)}"]` : null;
     verdict(); liveBlock(); groups(); incidents(); codes();
+    if (selector && !active.isConnected) document.querySelector(selector)?.focus({ preventScroll: true });
     $("subBtn").dataset.on = sub ? "1" : "0"; $("subBtn").lastElementChild.textContent = sub ? "Updates on" : "Get updates";
   }
   function verdict() {
     const d = data, v = $("verdict"), apps = d.services.filter((s) => s.group === "apps");
-    const all = [...d.services, ...d.jobs, ...(d.deps || [])], down = all.filter((x) => x.s === "down"), slow = all.filter((x) => x.s === "warn");
+    const all = [...d.services, ...d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s })), ...(d.deps || [])], down = all.filter((x) => x.s === "down"), slow = all.filter((x) => x.s === "warn");
     const l = live()[0], m = maintNow();
     let st, title, sub;
     if (!d.at) [st, title, sub] = ["none", "Checks starting", "The first checks run within five minutes of this page going up."];
@@ -118,7 +123,7 @@
     const up = uptimeOf(apps.flatMap(shownDays)), last = d.incidents.filter((x) => x.ended)[0];
     v.dataset.s = st;
     v.innerHTML = `<span class="halo"><b>${st === "down" || st === "warn" ? ICON.alert : st === "none" || st === "plan" ? ICON.clock : ICON.check}</b></span>
-      <div><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>
+      <div><span class="eyebrow">System status</span><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>
       <div class="vstats num">
         ${l ? `<a class="hot" href="#${esc(l.id)}"><b data-since="${l.started}">${mins(Date.now() - l.started)}</b><span>so far</span></a>` : `<div><b>${pct(up)}</b><span>${period ? `up, last ${PERIODS[period][0]}` : `up since ${d.since ? dm(keyDate(d.since)) : "checks began"}`}</span></div>`}
         <div><b data-ago="${d.at || ""}">${d.at ? ago(d.at) : "–"}</b><span>last checked</span></div>
@@ -142,6 +147,8 @@
   const countdown = (t) => { const ms = t - Date.now(); if (ms <= 0) return "going on now"; const h = Math.floor(ms / 36e5), m = Math.floor((ms % 36e5) / MIN); return `in ${h >= 24 ? `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}, ${h % 24} h` : `${h} h ${m} min`}`; };
 
   function groups() {
+    const focused = document.activeElement;
+    const focusSelector = focused?.dataset.toggle ? `[data-toggle="${CSS.escape(focused.dataset.toggle)}"]` : focused?.dataset.period != null ? `[data-period="${focused.dataset.period}"]` : focused?.dataset.k ? `.days[data-svc="${CSS.escape(focused.parentElement.dataset.svc)}"] [data-k="${focused.dataset.k}"]` : null;
     const d = data, box = $("groups"), n = span(), keys = d.dayKeys.slice(-n);
     let html = "";
     GROUPS.forEach(([g, title], gi) => {
@@ -151,17 +158,19 @@
       html += `<section class="group"${gi === 0 ? ' id="apps"' : ""}><div class="gh"><h2>${esc(title)}</h2>${gi === 0
         ? `<div class="seg" role="group" aria-label="How far back">${PERIODS.map(([l], i) => `<button type="button" data-period="${i}" aria-pressed="${period === i}">${l}</button>`).join("")}</div>`
         : `<span>${bad ? `${bad} not working` : items.length > 1 ? `All ${items.length} working` : "Working"}</span>`}</div>
-        <div class="glass rows">${items.map((s) => appHtml(s, keys)).join("")}
+        ${gi === 0 ? `<p class="section-note">Select an app for response times, or a day to see its checks.</p>` : ""}<div class="glass rows">${items.map((s) => appHtml(s, keys)).join("")}
         <div class="dfoot num"><span>${period ? dm(keyDate(keys[0])) : `Since ${dm(keyDate(keys[0]))}`}</span><span>Today</span></div></div></section>`;
     });
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s }));
-    html += `<div class="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
+    html += `<div class="operations" id="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
       `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     const deps = d.deps || [];
     if (deps.length) html += `<section class="group"><div class="gh"><h2>API’s and Connectors</h2><span>${deps.filter((x) => x.s !== "ok").length ? "Needs attention" : "All working"}</span></div><ul class="glass status-list">${deps.map((x) =>
       `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}" title="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     html += `</div>`;
+    html += `<div class="status-legend" aria-label="Status key"><span data-s="ok"><i></i>Working</span><span data-s="warn"><i></i>Slow, late or pending</span><span data-s="down"><i></i>Not working</span><span data-s="none"><i></i>No history</span></div>`;
     box.innerHTML = html;
+    if (focusSelector) box.querySelector(focusSelector)?.focus({ preventScroll: true });
     for (const d of box.querySelectorAll(".days[data-n]")) d.style.gridTemplateColumns = `repeat(${d.dataset.n}, minmax(0, 1fr))`;
     wireDays(); for (const id of opened) chart(id);
   }
@@ -223,8 +232,8 @@
     return `<article class="inc" id="${esc(x.id)}" data-s="${open ? "down" : "ok"}"><header><h3>${esc(x.title)}</h3><div class="tags">${x.notOutage ? `<span class="tag" data-s="none">Not an outage</span>` : ""}<span class="tag">${open ? "Ongoing" : "Resolved"}</span></div></header>
       <p class="sub num"><span>${names.length ? `${esc(and(names))} · ` : ""}${dm(x.started)} · ${hm(x.started)}${open ? "" : `–${hm(x.ended)}`}</span><span class="dur">${open ? `<span data-since="${x.started}">${mins(Date.now() - x.started)}</span> so far` : mins(x.ended - x.started)}</span></p>
       ${stages && open ? `<div class="stages">${STAGES.map((n, i) => `<div class="${i < at ? "done" : i === at ? "now" : ""}"><i></i>${n}</div>`).join("")}</div>` : ""}
-      <ol class="steps">${x.updates.map((u) => `<li><time>${esc(hm(u.at))}</time><span><b>${esc(u.k)}.</b> ${esc(u.w)}</span></li>`).join("")}</ol>
-      <button class="copy" type="button" data-copy="${esc(x.id)}">Copy link to this incident</button></article>`;
+      ${!open ? `<details class="incident-detail" data-incident="${esc(x.id)}"${expandedIncidents.has(x.id) ? " open" : ""}><summary>View incident updates${ICON.chev}</summary>` : ""}<ol class="steps">${x.updates.map((u) => `<li><time>${esc(hm(u.at))}</time><span><b>${esc(u.k)}.</b> ${esc(u.w)}</span></li>`).join("")}</ol>
+      <button class="copy" type="button" data-copy="${esc(x.id)}">Copy link to this incident</button>${!open ? "</details>" : ""}</article>`;
   }
   const nameOf = (id) => [...data.services, ...data.jobs, ...(data.deps || [])].find((x) => x.id === id)?.name || (id === "db" ? "Database and storage" : null);
   function incidents() {
@@ -254,7 +263,9 @@
   }
   // (a code typed any way: lower case, spaces, no dashes; this week's on the page, older ones asked of the server)
   const norm = (v) => { const c = String(v).toUpperCase().replace(/[^0-9A-Z]/g, ""); const m = /^IF([A-Z])([0-9A-Z]{4,6})$/.exec(c); return m ? `IF-${m[1]}-${m[2]}` : null; };
+  let lookupId = 0;
   async function lookup() {
+    const requestId = ++lookupId;
     const raw = $("lookIn").value.trim(), code = norm(raw), out = $("found");
     if (!raw) { out.innerHTML = ""; return; }
     if (!code) { out.innerHTML = `<p class="nf">That doesn’t look like a code. They start IF-, then a letter and five more, like IF-T-RMS1H.</p>`; return; }
@@ -263,23 +274,19 @@
     out.innerHTML = `<p class="nf">Looking…</p>`;
     try {
       const r = await fetch(`/api/status/code?c=${encodeURIComponent(code)}`); const j = await r.json();
+      if (requestId !== lookupId) return;
       if (!r.ok) throw new Error(j.error);
       out.innerHTML = j.found ? `<div class="list">${codeHtml(j)}</div>`
         : `<p class="nf">${j.last ? `<b>${esc(code)}</b> was last seen on ${esc(dm(j.last))}, and not in the last 30 days.` : `We haven’t seen <b>${esc(code)}</b> in the last 30 days. If you’ve only just sent it, look again in a minute.`}</p>`;
-    } catch (e) { out.innerHTML = `<p class="nf">${esc(e.message || "That couldn’t be looked up just now. Try again in a moment.")}</p>`; }
+    } catch (e) { if (requestId !== lookupId) return; out.innerHTML = `<p class="nf">${esc(e.message || "That couldn’t be looked up just now. Try again in a moment.")}</p>`; }
   }
 
   // ---- a day, tapped: its counts, its quarter-hours (each check is kept two days), what happened ----
   function wireDays() {
-    for (const strip of document.querySelectorAll(".days")) {
-      let drag = false;
-      const at = (e) => { const b = document.elementFromPoint(e.clientX, e.clientY)?.closest(".days button"); if (b && b.parentElement === strip && b.dataset.k !== daySel?.k) openDay(strip.dataset.svc, b.dataset.k); };
-      strip.addEventListener("pointerdown", (e) => { drag = true; daySel = null; at(e); });
-      strip.addEventListener("pointermove", (e) => { if (drag && e.pointerType !== "mouse") at(e); });
-      strip.addEventListener("click", (e) => { if (e.detail === 0) { const b = e.target.closest("button"); if (b) openDay(strip.dataset.svc, b.dataset.k); } });
-    }
+    for (const strip of document.querySelectorAll(".days")) strip.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (b) openDay(strip.dataset.svc, b.dataset.k);
+    });
   }
-  addEventListener("pointerup", () => { for (const s of document.querySelectorAll(".days")) s.dataset.drag = ""; });
   async function openDay(id, k) {
     const s = data.services.find((x) => x.id === id), i = data.dayKeys.indexOf(k), d = s?.days[i];
     if (!s || i < 0) return;
@@ -361,6 +368,7 @@
   function sheet(html) {
     const el = $("sheet");
     if (!el.classList.contains("on")) lastFocus = document.activeElement;
+    document.querySelector(".wrap").inert = true; document.body.classList.add("sheet-open");
     el.innerHTML = html; el.classList.add("on"); $("scrim").classList.add("on");
     el.querySelector("button:not([disabled])")?.focus({ preventScroll: true });
   }
@@ -368,12 +376,14 @@
     if (!$("sheet").classList.contains("on")) return;
     $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); daySel = null;
     for (const b of document.querySelectorAll(".days button.sel")) b.classList.remove("sel");
-    lastFocus?.focus?.({ preventScroll: true });
+    document.querySelector(".wrap").inert = false; document.body.classList.remove("sheet-open");
+    if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
+    else $("subBtn").focus({ preventScroll: true });
   }
   let toastT = 0;
   const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); };
   const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
+  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; const detail = el.querySelector(".incident-detail"); if (detail) { detail.open = true; expandedIncidents.add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
   function route() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h || !data) return;
@@ -404,14 +414,26 @@
     if (t.dataset.sub === "on") { subscribe(); return; }
     if (t.dataset.sub === "off") { unsubscribe(); return; }
     if (t.dataset.cal) { calendar(t.dataset.cal); return; }
+    if (t.id === "refreshBtn") { load(); return; }
     if (t.id === "subBtn") { subSheet(); return; }
     if (t.tagName === "A" && t.getAttribute("href")?.startsWith("#")) {
       e.preventDefault(); const h = t.getAttribute("href").slice(1);
       if (location.hash === "#" + h) route(); else location.hash = h;
     }
   });
+  document.addEventListener("toggle", (e) => {
+    const id = e.target.dataset?.incident;
+    if (id) e.target.open ? expandedIncidents.add(id) : expandedIncidents.delete(id);
+  }, true);
   $("scrim").addEventListener("click", closeSheet);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeSheet();
+    if (e.key !== "Tab" || !$("sheet").classList.contains("on")) return;
+    const controls = [...$("sheet").querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), summary')].filter((x) => x.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+  });
   $("lookForm").addEventListener("submit", (e) => { e.preventDefault(); lookup(); });
   addEventListener("hashchange", route);
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.go) { location.hash = e.data.go; route(); } });
@@ -423,7 +445,7 @@
     const l = data && live()[0]; if (l) $("miniT").textContent = `${$("verdict").querySelector("h2").textContent} · ${mins(Date.now() - l.started)}`;
   }, 15e3);
   // (the bar at the top, once the verdict's scrolled out of sight)
-  if ("IntersectionObserver" in window) new IntersectionObserver(([e]) => { const m = $("mini"); const on = !e.isIntersecting && e.boundingClientRect.top < 0; m.classList.toggle("on", on); m.setAttribute("aria-hidden", String(!on)); }).observe($("verdict"));
+  if ("IntersectionObserver" in window) new IntersectionObserver(([e]) => { const m = $("mini"); const on = !e.isIntersecting && e.boundingClientRect.top < 0; m.classList.toggle("on", on); m.setAttribute("aria-hidden", String(!on)); m.inert = !on; }).observe($("verdict"));
   // what the page came with, drawn at once; then asked, and every minute while it's looked at
   const s0 = seed();
   if (s0) { data = { ...s0, fetched: Date.now() }; draw(); route(); }

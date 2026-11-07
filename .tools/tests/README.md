@@ -93,3 +93,9 @@ other test has open sign-up), for joining with an invite, a forgotten password a
 sign-in.
 
 This folder is part of the repository but not the site: `/.tools/*` is turned away in `_redirects`.
+
+Status-page UI checks can run independently of the Worker:
+`CHROMIUM=/usr/bin/chromium node .tools/tests/status-ui.mjs`.
+They use isolated fixtures, block external requests, and check both themes at 320, 390, 640 and 1100px,
+including healthy/failing states, refresh, period controls, incident disclosure, keyboard focus, sheets,
+lookup and section navigation. Set `STATUS_SCREENSHOTS=/tmp/status-ui` for full-page captures.
