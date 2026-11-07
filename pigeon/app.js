@@ -1182,8 +1182,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.87";            // shown in InFlite's menu
-const APP_NEWS = "The message box stays close to the keyboard in InFlite Chats";       // (said once it's in)
+const APP_VERSION = "1.88";            // shown in InFlite's menu
+const APP_NEWS = "A simpler Chat welcome screen";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -4963,8 +4963,6 @@ function vAuth() {
         <div class="wtop ifl-top">
           <div class="wlogo ifl-logo"><span class="appicon" aria-hidden="true">${I.bird}</span></div>
           <h1 class="wtitle ifl-title" aria-label="Chat">${[..."Chat"].map((c) => `<span aria-hidden="true">${c}</span>`).join("")}</h1>
-          <p class="whisper ifl-tagline">Messages, and letters by pigeon</p>
-          <p class="whisper wsub">Messages arrive at once. Letters by pigeon are a tap away.</p>
           ${S.ended ? `<p class="winvite">You’ve been signed out, as this sign-in was ended on another device or by a new password.${S.ended.waiting ? ` Sign in again and ${S.ended.waiting === 1 ? "the pigeon" : `the ${S.ended.waiting} pigeons`} waiting for signal will still go.` : ""}</p>` : ""}
           ${S.pendingAdd ? `<p class="winvite">@${esc(S.pendingAdd)} asked you to join. Sign in or make your account, and their request is ready to send.</p>` : ""}
         </div>
