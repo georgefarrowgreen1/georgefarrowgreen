@@ -16,6 +16,6 @@ test('caller cancellation bounds stalled private fetches and response bodies',as
  const {generateRoutes}=await import('../../../functions/_fitloops.js');
  for(const fetcher of [()=>new Promise(()=>{}),async()=>new Response(new ReadableStream({start(){}}))]){
   const controller=new AbortController(),at=Date.now(),timer=setTimeout(()=>controller.abort(),20);
-  try{await assert.rejects(generateRoutes({start:route.start,minutes:90,surface:'road',speed:22,seed:1},{fetcher,signal:controller.signal}),{status:503});assert.ok(Date.now()-at<1000);}finally{clearTimeout(timer);}
+  try{await assert.rejects(generateRoutes({start:route.start,metres:33000,surface:'road',seed:1},{fetcher,signal:controller.signal}),{status:503});assert.ok(Date.now()-at<1000);}finally{clearTimeout(timer);}
  }
 });

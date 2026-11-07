@@ -2,6 +2,8 @@ import { Container } from '@cloudflare/containers';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { handleRoute, json } from './handler.js';
 import lock from '../data.lock.json';
+import roadProfile from '../profiles/road.brf';
+import {profileFingerprint,engineMatches} from './engine-version.js';
 import { PROBES, runProbes } from './probes.js';
 export class UKRouter extends Container {
   defaultPort=8080;
@@ -9,8 +11,21 @@ export class UKRouter extends Container {
   enableInternet=false;
   pingEndpoint='router/health';
   async fetch(request) {
+    if(this.reloading)return json({error:'updating'},503);
     if(!this.ctx.container.running) await this.startAndWaitForPorts([8080],{instanceGetTimeoutMS:15000,portReadyTimeoutMS:30000,waitInterval:200});
     return this.containerFetch(request);
+  }
+  // Deployment-only RPC. Restart idle instances whose actual embedded profile is stale.
+  async ensureProfile(date,profile){
+    const start=()=>this.startAndWaitForPorts([8080],{instanceGetTimeoutMS:15000,portReadyTimeoutMS:30000,waitInterval:200});
+    const health=async()=>{const r=await this.ctx.container.getTcpPort(8080).fetch('http://router/health');return await r.json();};
+    if(!this.ctx.container.running)await start();
+    let current=await health();
+    if(engineMatches(current,date,profile))return {ready:true,snapshot:current.snapshot};
+    if(this.inflightRequests>0)return {ready:false,error:'busy'};
+    this.reloading=true;
+    try{await this.destroy();await start();current=await health();return {ready:engineMatches(current,date,profile),snapshot:current.snapshot};}
+    finally{this.reloading=false;}
   }
   onError(){console.warn('router_container_error');}
 }
@@ -31,6 +46,14 @@ export default {
     if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true,release:env.ROUTING_RELEASE_ID||null});
     if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN)){
       const mode=request.headers.get('X-Routing-Check'),region=PROBES.find(p=>p.name===mode);
+      if(mode==='release'){
+        const profile=await profileFingerprint(roadProfile),instances=[];
+        for(const name of ['uk-standby','uk-primary']){
+          try{const result=await env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(name),{locationHint:'weur'}).ensureProfile(lock.date,profile);instances.push({name,...result});}
+          catch{instances.push({name,ready:false,error:'warming'});}
+        }
+        return json({ready:instances.every(i=>i.ready),profile,instances});
+      }
       if(mode&&mode!=='loops'&&!region)return json({error:'invalid_check'},400);
       return json(await runProbes(r=>handleRoute(r,env),mode==='loops'?[]:region?[region]:PROBES,{loop:!region}));
     }

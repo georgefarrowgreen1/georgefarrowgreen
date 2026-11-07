@@ -8,7 +8,7 @@ export async function onRequest({request,env}) {
   try {
     tickAuthOk(request,env);
     if(!env.ROUTING_APP?.fetch)return json({ready:false},503);
-    const at=Date.now(),result=await generateRoutes({start:[-.296178,51.450117],minutes:90,surface:'road',speed:22,seed:1},{fetcher:(url,init)=>env.ROUTING_APP.fetch(new Request(url,init))});
+    const at=Date.now(),result=await generateRoutes({start:[-.296178,51.450117],metres:33000,surface:'road',seed:1},{fetcher:(url,init)=>env.ROUTING_APP.fetch(new Request(url,init))});
     return json({ready:result.routes.length>0,count:result.routes.length,metres:result.routes.map(r=>r.metres),ms:Date.now()-at});
   }catch(e){return json({ready:false,error:e.status?e.message:'Routing check failed.'},e.status||503);}
 }

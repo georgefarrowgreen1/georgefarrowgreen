@@ -24,15 +24,15 @@ with zipfile.ZipFile(archive) as z:
  (OUT/'brouter.jar').write_bytes(z.read(prefix+'brouter-'+engine['version']+'-all.jar'))
  (OUT/'profiles').mkdir(exist_ok=True)
  (OUT/'profiles/lookups.dat').write_bytes(z.read(prefix+'profiles2/lookups.dat'))
- for name,upstream in [('road','fastbike-lowtraffic'),('mixed','trekking')]:
-  text=z.read(prefix+'profiles2/'+upstream+'.brf').decode()
+ for name,upstream in [('road','fastbike'),('mixed','trekking')]:
+  text=(ROOT/'profiles/road.brf').read_text() if name=='road' else z.read(prefix+'profiles2/'+upstream+'.brf').decode()
   text=text.replace('---context:global','---context:global\n# InFlite: snap via points to a nearby cycleable road; the API separately limits the start to 250 m.\nassign waypointCatchingRange = 1000',1)
   (OUT/'profiles'/f'{name}.brf').write_text(text)
 def get(item):
  path=OUT/'segments'/item['file'];download(LOCK['source']+item['file'],path,item['sha256'])
  if path.stat().st_size!=item['bytes']:raise RuntimeError('Wrong segment length: '+item['file'])
 with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(get,LOCK['files']))
-version=LOCK['date']+'-'+hashlib.sha256((ROOT/'data.lock.json').read_bytes()).hexdigest()[:12]
+version=LOCK['date']+'-'+hashlib.sha256((ROOT/'data.lock.json').read_bytes()).hexdigest()[:12]+'-'+digest(ROOT/'profiles/road.brf')[:12]
 (OUT/'version.txt').write_text(version+'\n')
 files=[OUT/'brouter.jar',OUT/'version.txt',*sorted((OUT/'profiles').glob('*')),*sorted((OUT/'segments').glob('*.rd5'))]
 (OUT/'SHA256SUMS').write_text(''.join(digest(p)+'  '+str(p.relative_to(OUT))+'\n' for p in files))

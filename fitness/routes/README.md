@@ -1,16 +1,21 @@
 # Cycling routes in Fitness
 
 Fitness → Routes now generates road-following cycling loops from the device’s current location. Tap **Use current
-location**, allow the browser’s location prompt, choose 30 minutes to 4 hours and a road-biased or mixed-surface profile.
+location**, allow the browser’s location prompt, choose a distance (5–120 km or 5–70 mi) and road cycling or mixed surface.
 The same GPS coordinate is the first and last routing waypoint. The result uses BRouter’s snapped cycling-road point;
 if it is over 15 m away, the distance to the road is shown. Starts over 250 m away and GPS accuracy worse than 200 m
 are refused. There is no IP-location fallback and no sample-route fallback.
 
-The planner asks for up to three different directions, adjusts subsequent loop sizes using actual route duration,
-rejects open/discontinuous routes and excessive backtracking, ranks by estimated time, and keeps valid partial results.
+The planner asks for up to three different directions, adjusts subsequent loop sizes using actual track distance,
+rejects open/discontinuous routes, excessive backtracking and tracks over 25% away from the target, ranks by closest
+distance, and keeps valid partial results. Time estimates are secondary and never influence route selection.
 The route map and scrubbable elevation use Fitness’s existing renderer. GPX exports the returned coordinates and
 available elevations, with no fabricated activity timestamps. Missing elevation and unavailable maps have explicit
 fallbacks. Live Routes shows no sample weather and does not provide turn-by-turn guidance.
+
+An indeterminate route animation shows while obtaining location and generating loops. It uses CSS, stops when the
+request finishes or is cancelled, and becomes static for reduced-motion preferences. The planner shows only a compact
+linked OpenStreetMap attribution; the longer explanatory footer has been removed.
 
 ## Account and location handling
 
@@ -22,7 +27,7 @@ has since changed. The account’s JSON export includes the planned route, and a
 
 Location access happens only after a user tap; one-shot GPS is used, with no background watching. Coordinates travel
 in the body of an authenticated, same-origin POST to InFlite. They are processed by InFlite’s private UK routing service;
-the UI explains this before the location button. InFlite keeps the start/track only when the user saves a route.
+the browser asks permission before sharing location. InFlite keeps the start/track only when the user saves a route.
 No coordinates go into InFlite URLs, browser storage, shared caches or application logs. Account caches are in memory,
 scoped to the owner, expire after 30 seconds and are cleared on module unmount. Late GPS, map and account responses
 are guarded; hidden views cancel generation and release maps.
@@ -46,13 +51,13 @@ instances; idle instances sleep. Coverage errors, warming/busy status, no suitab
 explicit. Data snapshots are checksum verified, mirrored in owned R2 storage and embedded in immutable container images.
 A failed upstream data update cannot alter a running router. Details and rollback: [workers/routing/README.md](../../workers/routing/README.md).
 
-- `POST /api/fitness/routes/generate`: `{ start: [longitude, latitude], minutes, surface, speed, seed }` → routes.
+- `POST /api/fitness/routes/generate`: `{ start: [longitude, latitude], metres, surface, seed }` → routes.
 - `GET /api/fitness/routes/plan`: the account’s planned route, or null.
 - `PUT /api/fitness/routes/plan`: `{ route, day, time, tz }` → saved plan with an opaque version.
 - `DELETE /api/fitness/routes/plan`: `{ id, version }` → remaining plan, preserving a concurrent replacement.
 
 All endpoints require sign-in; generation and writes also require the app's own Origin. Responses are never cached.
-Fitness 2.05 retains the existing Routes tab; no companion navigation deployment is needed.
+Fitness 2.06 retains the existing Routes tab; no companion navigation deployment is needed.
 
 ## Checks
 
