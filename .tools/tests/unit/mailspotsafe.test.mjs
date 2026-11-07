@@ -181,7 +181,7 @@ test('schema.org from a lookalike is never read: a ParcelDelivery from evri-rede
 // =====================================================================================================================
 // A5: another sender, knowing a reference
 // =====================================================================================================================
-test('a booking, a date of a repeating one and a parcel are changed only by their own sender; a date for a series not known isn’t kept; an email dated ahead counts as now', { skip }, async () => {
+test('a booking, a date of a repeating one and a parcel are changed only by their own sender; a date for a series not read yet is kept for its own sender only; an email dated ahead counts as now', { skip }, async () => {
   await ready();
   const { spotEmail, keepBookings, spotStored } = await load('src/spot.js');
   const { keepParcels } = await load('src/parcels.js');
@@ -220,8 +220,17 @@ test('a booking, a date of a repeating one and a parcel are changed only by thei
   assert.equal(rows('spot_occ').length, 0, 'a stranger’s move: not kept');
   await moved('priya@example.com');
   assert.equal(rows('spot_occ').length, 1, 'its organiser’s');
-  await keepIcs(cal(vevent('nobody-knows@example.com', `RECURRENCE-ID:${thu(8)}T190000Z\r\nSTATUS:CANCELLED\r\nDTSTART:${thu(8)}T190000Z`)), 'x@evil.example');
-  assert.equal(rows('spot_occ').length, 1, 'a date of a series not known: not kept');
+  // (a date for a series not read yet (the read-back can meet a cancellation first): kept, then, once the series is read,
+  // only if it came from the series' own sender)
+  const msg = (id, from) => sql.prepare(`INSERT INTO messages (id, folder, from_email, date) VALUES (?, 'inbox', ?, ?)`).run(id, from, Date.now());
+  const keepFrom = async (attachments, sender, messageId) => (msg(messageId, sender), keepBookings(env, await spotEmail({ attachments, sender, zone: Z }), { threadId: 't2', messageId, sender, mailDate: Date.now() }));
+  await keepFrom(cal(vevent('later@example.com', `RECURRENCE-ID:${thu(8)}T190000Z\r\nSTATUS:CANCELLED\r\nDTSTART:${thu(8)}T190000Z`)), 'x@evil.example', 'o-evil');
+  await keepFrom(cal(vevent('later@example.com', `RECURRENCE-ID:${thu(15)}T190000Z\r\nSTATUS:CANCELLED\r\nDTSTART:${thu(15)}T190000Z`)), 'ana@example.com', 'o-ana');
+  assert.equal(rows('spot_occ', `series_id LIKE '%'`).filter((o) => !rows('spots').some((x) => x.id === o.series_id)).length, 2, 'both kept while the series isn’t known');
+  await keepFrom(cal(vevent('later@example.com', `DTSTART:${thu(-6)}T190000Z\r\nRRULE:FREQ=WEEKLY`)), 'ana@example.com', 'o-series');
+  const sid = rows('spots', 'rule IS NOT NULL').find((x) => x.sender === 'ana@example.com')?.id;
+  assert.deepEqual(rows('spot_occ', `series_id = '${sid}'`).map((o) => o.message_id), ['o-ana'], 'once read: its own sender’s date kept, the stranger’s let go');
+  sql.exec(`DELETE FROM spots WHERE id = '${sid}'; DELETE FROM spot_occ WHERE series_id = '${sid}'`);
   await keepIcs(cal(vevent('club2@example.com', `DTSTART:${thu(-6)}T180000Z\r\nRRULE:FREQ=WEEKLY`), vevent('club2@example.com', `RECURRENCE-ID:${thu(1)}T180000Z\r\nDTSTART:${thu(1)}T183000Z`)), 'sam@example.org');
   assert.equal(rows('spot_occ').length, 2, 'a series and its moved date in the same invite: both');
 
