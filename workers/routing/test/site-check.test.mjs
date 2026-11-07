@@ -11,3 +11,11 @@ test('deployment route checks require the scheduler host and credential before i
  assert.equal((await check('apps.example','POST','wrong')).status,401);assert.equal(calls,0);
  const r=await check('apps.example','POST','probe-key'),j=await r.json();assert.equal(r.status,200);assert.equal(j.ready,true);assert.equal(j.count,1);assert.equal(calls,3);assert.equal('routes' in j,false);
 });
+
+test('caller cancellation bounds stalled private fetches and response bodies',async()=>{
+ const {generateRoutes}=await import('../../../functions/_fitloops.js');
+ for(const fetcher of [()=>new Promise(()=>{}),async()=>new Response(new ReadableStream({start(){}}))]){
+  const controller=new AbortController(),at=Date.now(),timer=setTimeout(()=>controller.abort(),20);
+  try{await assert.rejects(generateRoutes({start:route.start,minutes:90,surface:'road',speed:22,seed:1},{fetcher,signal:controller.signal}),{status:503});assert.ok(Date.now()-at<1000);}finally{clearTimeout(timer);}
+ }
+});

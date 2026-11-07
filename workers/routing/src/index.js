@@ -29,7 +29,11 @@ export default {
     const url=new URL(request.url);
     // Public health describes the release without starting an idle container.
     if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true,release:env.ROUTING_RELEASE_ID||null});
-    if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN))return json(await runProbes((r)=>handleRoute(r,env),PROBES));
+    if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN)){
+      const mode=request.headers.get('X-Routing-Check'),region=PROBES.find(p=>p.name===mode);
+      if(mode&&mode!=='loops'&&!region)return json({error:'invalid_check'},400);
+      return json(await runProbes(r=>handleRoute(r,env),mode==='loops'?[]:region?[region]:PROBES,{loop:!region}));
+    }
     return json({error:'not_found'},404);
   }
 };

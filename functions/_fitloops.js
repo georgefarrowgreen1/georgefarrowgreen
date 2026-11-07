@@ -1,6 +1,5 @@
 // Pure loop planner shared by the Fitness API and the owned service’s deployment probes.
 import { HttpError } from "./_http.js";
-import { readCapped } from "./_pigeon.js";
 import { cleanRoute, pointOK, destination, metresBetween, estimate, MAX_POINTS } from "../fitness/routes-geometry.js";
 import { inUK } from "../workers/routing/src/coverage.js";
 const ROUTER_URL = "https://routing.internal/route";
@@ -26,7 +25,35 @@ function overlap(coords) {
   }
   return total ? repeated / total : 1;
 }
-async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal } = {}) {
+async function routeBytes(response, signal) {
+  const max = 3 * 1024 * 1024, said = response.headers.get("Content-Length");
+  if (said !== null && !(Number(said) <= max)) throw new HttpError(413, "Route response too large.");
+  if (!response.body) return new Uint8Array(0);
+  const reader = response.body.getReader(), parts = []; let size = 0;
+  const cancel = () => { reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) cancel();
+  try {
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (signal.aborted) throw new DOMException("Route request timed out.", "AbortError");
+      if (done) break;
+      if ((size += value.byteLength) > max) { cancel(); throw new HttpError(413, "Route response too large."); }
+      parts.push(value);
+    }
+    const out = new Uint8Array(size); let at = 0;
+    for (const part of parts) { out.set(part, at); at += part.byteLength; }
+    return out;
+  } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
+}
+// A private binding may not honour AbortSignal. Bound the whole fetch/body operation as well.
+function untilAbort(task, signal) {
+  if (signal.aborted) return Promise.reject(new DOMException("Route request timed out.", "AbortError"));
+  let cancel;
+  const aborted = new Promise((_, reject) => { cancel = () => reject(new DOMException("Route request timed out.", "AbortError")); signal.addEventListener("abort", cancel, { once: true }); });
+  return Promise.race([Promise.resolve().then(task), aborted]).finally(() => signal.removeEventListener("abort", cancel));
+}
+async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal, onAttempt } = {}) {
   const q = cleanQuery(body), base = new URL(endpoint);
   if (base.protocol !== "https:" || base.username || base.password) throw new HttpError(503, "Route planning is not configured.");
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
@@ -42,14 +69,22 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       if (abort.signal.aborted) cancelAttempt();
       const attemptTimer = setTimeout(cancelAttempt, 30000);
       const form = new URLSearchParams({lonlats: points.map(p => p.join(",")).join("|"), profile: q.surface});
+      let phase = "request", status = 0, response; const at = Date.now();
       try {
-        const r = await fetcher(base, {method: "POST", body: form.toString(), headers: {"Content-Type": "application/x-www-form-urlencoded", Accept: "application/geo+json, application/json"}, signal: attempt.signal, redirect: "manual"});
+        const bytes = await untilAbort(async () => {
+        const r = response = await fetcher(base, {method: "POST", body: form.toString(), headers: {"Content-Type": "application/x-www-form-urlencoded", Accept: "application/geo+json, application/json"}, signal: attempt.signal, redirect: "manual"});
+        status = r.status;
+        if (attempt.signal.aborted) { r.body?.cancel().catch(() => {}); throw new DOMException("Route request timed out.", "AbortError"); }
         if (!r.ok) {
           providerDown ||= r.status >= 500 || r.status === 429;
-          await r.body?.cancel();
-          continue;
+          r.body?.cancel().catch(() => {});
+          return null;
         }
-        const bytes = await readCapped(r, 3 * 1024 * 1024, "Route response too large.");
+        phase = "body";
+        return await routeBytes(r, attempt.signal);
+        }, attempt.signal);
+        if (!bytes) continue;
+        phase = "normalise";
         const json = JSON.parse(new TextDecoder().decode(bytes)), coords = json?.features?.find((f) => f.geometry?.type === "LineString")?.geometry?.coordinates;
         if (!Array.isArray(coords) || coords.length > MAX_POINTS) continue;
         const route = cleanRoute({ id: "r-" + crypto.randomUUID(), name: `${["First", "Second", "Third"][n]} loop`, start: q.start, surface: q.surface, coords, generatedAt: now });
@@ -64,6 +99,8 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         providerDown = true;
       } finally {
         clearTimeout(attemptTimer);
+        if (attempt.signal.aborted) { try { response?.body?.cancel().catch(() => {}); } catch {} }
+        onAttempt?.({ phase, status, ms: Date.now() - at, aborted: attempt.signal.aborted });
         abort.signal.removeEventListener("abort", cancelAttempt);
       }
     }
