@@ -1182,8 +1182,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.85";            // shown in InFlite's menu
-const APP_NEWS = "Friend requests let someone know once a day, blocking someone stays private in groups, and Chats opens offline inside Today";       // (said once it's in)
+const APP_VERSION = "1.86";            // shown in InFlite's menu
+const APP_NEWS = "The message box sits right on the keyboard, with no gap under it";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -3530,7 +3530,10 @@ function fitKeyboard() {
     // (pinched in, the page is where you've moved it: fitted again once it's back to size; and a finger on the message
     // box moves it too, styles.css html.zoomed)
     if (doc.classList.toggle("zoomed", zoomed())) return;
-    const kb = window.innerHeight - vv.height > 80 && inField(document.activeElement);
+    // (up when the visible part is well short of the page, or, where iOS shrinks the page itself for the keyboard as
+    // newer ones do on the Home Screen, well short of the screen: else the box kept the home bar's spacing above it)
+    const portrait = matchMedia("(orientation: portrait)").matches, tall = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    const kb = inField(document.activeElement) && (window.innerHeight - vv.height > 80 || (tall > 0 && tall - vv.height > 260));
     if (kb) doc.style.setProperty("--app-h", `${Math.round(vv.height)}px`); else doc.style.removeProperty("--app-h");
     doc.classList.toggle("kbup", kb);
     if (window.scrollY || window.scrollX) window.scrollTo(0, 0);

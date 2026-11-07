@@ -353,7 +353,7 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .compose{flex:none;position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));transition:padding-bottom .35s var(--snappy)}
 /* the home-bar gap goes only once the keyboard is really up (on the tap itself, moving the box under the
    finger let the phone's late tap land on the messages above and put the keyboard away again) */
-html.kbup .compose{padding-bottom:6px}
+html.kbup .compose{padding-bottom:6px;transition:none}
 .note{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;line-height:16px;color:var(--orange-t);text-align:center}
 .note svg{font-size:14px}
 .note.stop{color:var(--red)}
