@@ -110,8 +110,9 @@
 .m-fitness .fr-map .fr-route-outline { width: min(100%,280px); height: 100%; max-height: 280px; }
 
 /* Distance planning and an indeterminate route animation using Fitness's existing tint. */
-.m-fitness .fr-distance { display:flex; align-items:center; gap:8px; color:var(--text-2); }
-.m-fitness .fr-distance input { width:72px; min-width:0; min-height:44px; padding:0 4px; border:0; border-radius:8px; background:none; color:var(--text); text-align:right; font:500 17px/1.2 var(--font); }
+.m-fitness .fr-field .fr-distance { display:flex; align-items:center; height:44px; padding:0 14px; gap:8px; color:var(--text-2); }
+.m-fitness .fr-distance > span { flex:none; }
+.m-fitness .fr-distance input { width:64px; min-width:0; min-height:44px; padding:0 4px; border:0; border-radius:8px; background:none; color:var(--text); text-align:right; font:500 17px/1.2 var(--font); }
 .m-fitness .fr-distance input:focus-visible { outline:2px solid var(--tint); outline-offset:2px; }
 .m-fitness .fr-loading { display:flex; align-items:center; gap:16px; min-height:100px; padding:10px 16px; border-radius:18px; background:var(--field); }
 .m-fitness .fr-loading > svg { flex:none; width:88px; height:64px; overflow:visible; }
