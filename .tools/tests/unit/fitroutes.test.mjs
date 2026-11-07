@@ -10,7 +10,7 @@ import {fitdb} from '../../../functions/_fitness.js';
 const route=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),query={start:route.start,minutes:90,surface:'road',speed:22,seed:1};
 const sql=new DatabaseSync(':memory:'),val=a=>a.map(x=>x===undefined?null:x);
 const st=(q,a=[])=>({sql:q,bind:(...b)=>st(q,b),first:async()=>sql.prepare(q).get(...val(a))??null,all:async()=>({results:sql.prepare(q).all(...val(a)),meta:{}}),run:async()=>({meta:{changes:Number(sql.prepare(q).run(...val(a)).changes)}})});
-const env={DB:{prepare:q=>st(q),batch:async list=>{const out=[];for(const s of list)out.push(/^\s*(INSERT|UPDATE|DELETE)/i.test(s.sql)?await s.run():await s.all());return out;}},FITNESS_HOST:'fitness.localhost'};
+const env={DB:{prepare:q=>st(q),batch:async list=>{const out=[];for(const s of list)out.push(/^\s*(INSERT|UPDATE|DELETE)/i.test(s.sql)?await s.run():await s.all());return out;}},FITNESS_HOST:'fitness.localhost',ROUTING_APP:{fetch:request=>globalThis.fetch(request)}};
 await db(env);await fitdb(env);
 const FIT='http://fitness.localhost',cookies={};
 for(const id of ['ann','bo']){sql.prepare('INSERT INTO pg_users (id,handle,name,email,pub,salt,proof_hash,vault,swift,swift_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id,id,id,id+'@example.com','{}','s','p','v',9,0,0);const h=hex(await sha256(await issueSession(env,id,new Request(FIT+'/api/fitness/me'))));cookies[id]=('f'+id).padEnd(43,'x');sql.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').run(hex(await sha256(cookies[id])),h);}
@@ -26,11 +26,12 @@ test('generated tracks are closed, near the GPS origin, continuous and carry rea
  const twoD=cleanRoute({...r,coords:r.coords.map(c=>c.slice(0,2))});assert.equal(twoD.elevation,false);assert.equal(twoD.ascent,null);assert.ok(!toGPX(twoD).includes('<ele>'));
 });
 test('provider requests follow fixed bicycle profiles and return validated geometry; failures and unsuitable loops stay explicit',async()=>{
- const calls=[],fetcher=async(url,opts)=>{calls.push({url:new URL(url),opts});return Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});};
- const got=await generateRoutes(query,{fetcher});assert.equal(calls.length,3);assert.equal(got.routes.length,1,'duplicate candidates are removed');assert.equal(got.partial,true);assert.equal(calls[0].url.origin,'https://brouter.de');assert.equal(calls[0].url.searchParams.get('profile'),'fastbike');assert.equal(got.routes[0].name,'Recommended loop');
- await generateRoutes({...query,surface:'mixed'},{fetcher});assert.equal(calls[3].url.searchParams.get('profile'),'trekking');
+ const calls=[],fetcher=async(url,opts)=>{calls.push({url:new URL(url),opts,form:new URLSearchParams(opts.body)});return Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});};
+ const got=await generateRoutes(query,{fetcher});assert.equal(calls.length,3);assert.equal(got.routes.length,1,'duplicate candidates are removed');assert.equal(got.partial,true);assert.equal(calls[0].url.origin,'https://routing.internal');assert.equal(calls[0].form.get('profile'),'road');assert.equal(calls[0].url.search,'');assert.equal(calls[0].opts.method,'POST');assert.equal(got.routes[0].name,'Recommended loop');
+ await generateRoutes({...query,surface:'mixed'},{fetcher});assert.equal(calls[3].form.get('profile'),'mixed');
  await assert.rejects(generateRoutes(query,{fetcher:async()=>new Response('unavailable',{status:503})}),{status:503});
  await assert.rejects(generateRoutes(query,{fetcher:async()=>Response.json({features:[]})}),{status:422});
+ await assert.rejects(generateRoutes({...query,start:[2.35,48.85]},{fetcher}),{status:422});
  const c=new AbortController();c.abort();await assert.rejects(generateRoutes(query,{signal:c.signal,fetcher}),{status:503});
 });
 test('route generation requires the signed-in account and own origin; malformed input never reaches a provider',async()=>{

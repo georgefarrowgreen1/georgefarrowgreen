@@ -19,7 +19,7 @@
   "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
   // (direct links to InFlite's other Workers, Mail's and Today's, for this one's own requests to them: functions/_sites.js
   // siteFetch)
-  "services": [{ "binding": "MAIL_APP", "service": "inflite-email" }, { "binding": "TODAY_APP", "service": "inflite" }],
+  "services": [{ "binding": "ROUTING_APP", "service": "inflite-routing", "entrypoint": "RoutingService" }, { "binding": "MAIL_APP", "service": "inflite-email" }, { "binding": "TODAY_APP", "service": "inflite" }],
   "observability": { "enabled": true },
   // (its workers.dev address, for looking at it before the move; the scheduled jobs call inflite-apps)
   "workers_dev": true,

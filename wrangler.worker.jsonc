@@ -19,7 +19,7 @@
   "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
   // (direct links to InFlite's other Workers, Mail's and Today's, for this one's own requests to them: functions/_sites.js
   // siteFetch; and the home page's, gfg, for status.inflite.ai's check of it from inside: functions/_status.js)
-  "services": [{ "binding": "MAIL_APP", "service": "inflite-email" }, { "binding": "TODAY_APP", "service": "inflite" }, { "binding": "GFG_APP", "service": "gfg" }],
+  "services": [{ "binding": "ROUTING_APP", "service": "inflite-routing", "entrypoint": "RoutingService" }, { "binding": "MAIL_APP", "service": "inflite-email" }, { "binding": "TODAY_APP", "service": "inflite" }, { "binding": "GFG_APP", "service": "gfg" }],
   // (the everyday ceilings, counted where Cloudflare serves each request rather than in the database: each so many a
   // minute for each key, functions/_pigeon.js pace)
   "ratelimits": [{ "name": "RL10", "namespace_id": "4101", "simple": { "limit": 10, "period": 60 } }, { "name": "RL20", "namespace_id": "4102", "simple": { "limit": 20, "period": 60 } }, { "name": "RL40", "namespace_id": "4103", "simple": { "limit": 40, "period": 60 } }, { "name": "RL80", "namespace_id": "4104", "simple": { "limit": 80, "period": 60 } }, { "name": "RL160", "namespace_id": "4105", "simple": { "limit": 160, "period": 60 } }, { "name": "RL320", "namespace_id": "4106", "simple": { "limit": 320, "period": 60 } }],

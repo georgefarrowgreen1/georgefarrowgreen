@@ -21,33 +21,38 @@ the previous one. Dates are limited to the next 30 days. Version-checked deletio
 has since changed. The account’s JSON export includes the planned route, and account deletion removes it.
 
 Location access happens only after a user tap; one-shot GPS is used, with no background watching. Coordinates travel
-in the body of an authenticated, same-origin POST to InFlite. They are sent to BRouter as its routing API requires;
-the UI discloses this before the location button. InFlite keeps the start/track only when the user saves a route.
+in the body of an authenticated, same-origin POST to InFlite. They are processed by InFlite’s private UK routing service;
+the UI explains this before the location button. InFlite keeps the start/track only when the user saves a route.
 No coordinates go into InFlite URLs, browser storage, shared caches or application logs. Account caches are in memory,
 scoped to the owner, expire after 30 seconds and are cleared on module unmount. Late GPS, map and account responses
 are guarded; hidden views cancel generation and release maps.
 
 ## Routing service
 
-`functions/_fitroutes.js` is the adapter and loop planner. The default provider is `https://brouter.de/brouter`, using
-its `fastbike` and `trekking` profiles over OpenStreetMap data. This uses the public BRouter service; it is not a
-self-hosted routing engine. A compatible dedicated BRouter deployment can be selected with the Worker’s
-`FITNESS_ROUTER_URL` variable (HTTPS endpoint). No routing API key is required by the default provider.
+InFlite now operates its own UK BRouter engine inside Cloudflare Containers. `functions/_fitloops.js` plans and
+validates loops; `workers/routing` owns the engine, UK coverage boundary, failover pool and verified local road data.
+The authenticated API reaches its named `RoutingService` entrypoint through a private `ROUTING_APP` binding. There
+is no public BRouter routing fallback. The engine has no internet access at runtime and uses a pinned 296 MB UK graph.
 
-Generation is limited to 12 requests per account/hour and a shared 600-provider-call/hour budget. There are at most
-three sequential provider calls, 16 seconds per call and 42 seconds overall, capped response/geometry sizes, and one
-active generation per account in an isolate. Provider errors, no suitable loops, offline status and permission refusal
-stay actionable. A routing-provider failure never returns the old Richmond samples as live results.
+The public routing Worker's `/health` contains release metadata only; arbitrary route requests are private. Protected
+deployment probes test England, Wales, Scotland, Northern Ireland, Shetland, Scilly and map-tile boundaries, plus the
+same complete loop planner used by the site. CI also runs these checks in a resource-capped container with external
+networking disabled before deployment. Both site Worker configs bind the service, which must be deployed first.
+
+Generation is limited to 12 requests per account/hour and a shared 600-call/hour capacity budget. There are at most
+three sequential route calculations, 30 seconds per call and 75 seconds overall, with a 90-second client budget,
+capped response/geometry sizes, and duplicate-work protection. The private gateway fails over once between two capped
+instances; idle instances sleep. Coverage errors, warming/busy status, no suitable loops and permission refusal remain
+explicit. Data snapshots are checksum verified, mirrored in owned R2 storage and embedded in immutable container images.
+A failed upstream data update cannot alter a running router. Details and rollback: [workers/routing/README.md](../../workers/routing/README.md).
 
 - `POST /api/fitness/routes/generate`: `{ start: [longitude, latitude], minutes, surface, speed, seed }` → routes.
 - `GET /api/fitness/routes/plan`: the account’s planned route, or null.
 - `PUT /api/fitness/routes/plan`: `{ route, day, time, tz }` → saved plan with an opaque version.
 - `DELETE /api/fitness/routes/plan`: `{ id, version }` → remaining plan, preserving a concurrent replacement.
 
-All endpoints require sign-in; writes and generation also require the app’s own Origin. Responses are never cached.
-Fitness’s module graph loads live controls on opening Routes, not on Today. Cached sample geometry is excluded from
-both the live view and its static dependency graph. Fitness 2.04 needs no companion navigation change: Routes is
-already registered in the website. Deploy through the existing Workers workflow on `main`.
+All endpoints require sign-in; generation and writes also require the app's own Origin. Responses are never cached.
+Fitness 2.05 retains the existing Routes tab; no companion navigation deployment is needed.
 
 ## Checks
 

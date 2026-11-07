@@ -50,3 +50,10 @@ Today and Mail reach `inflite-apps` through `APPS` service bindings. The site re
 The schema fingerprint and encrypted settings are cached in KV (`site:schema_fp`, `site:kept_secrets`),
 with D1 as the fallback. The build records which minified assets are current, avoiding runtime fingerprinting.
 Further database location, read replication or Smart Placement changes need separate validation.
+
+## Owned UK routing
+
+The Fitness API uses the private `ROUTING_APP` binding to `inflite-routing`'s `RoutingService` entrypoint. Deploy
+`workers/routing` and pass its offline and hosted UK probes before deploying the site binding. The separate UK routing
+workflow uses a checksum-pinned UK graph and capped Cloudflare Containers, with no public routing API at runtime.
+See `workers/routing/README.md` for map updates, costs, health checks and rollback.

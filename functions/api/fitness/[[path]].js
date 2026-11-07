@@ -98,12 +98,14 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024);
     cleanQuery(b);
+    if (!env.ROUTING_APP?.fetch) throw new HttpError(503, "InFlite’s UK router is not ready yet. Please try again shortly.");
     if (routing.has(u.id)) throw new HttpError(409, "A route is already being planned. Please wait.");
     routing.add(u.id);
     try {
       await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
-      await limit(env, 'fxroutes:provider', 600, 3600e3, 3);
-      return json(await generateRoutes(b, { endpoint: env.FITNESS_ROUTER_URL || ROUTER_URL, signal: request.signal }));
+      await limit(env, 'fxroutes:capacity', 600, 3600e3, 3);
+      let signal; try { signal = request.signal; } catch {}
+      return json(await generateRoutes(b, { endpoint: ROUTER_URL, fetcher: (url, init) => env.ROUTING_APP.fetch(new Request(url, init)), signal }));
     } finally { routing.delete(u.id); }
   },
   "GET routes/plan": async ({ request, env }) => {

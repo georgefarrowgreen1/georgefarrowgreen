@@ -29,8 +29,8 @@ import { forgetRoutePlans } from "../routes-account.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.04";
-export const NEWS = "Cycling loops from your current location, saved with your account";
+export const BUILD = "2.05";
+export const NEWS = "UK cycling routes now use InFlite’s own routing service";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

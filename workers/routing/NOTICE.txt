@@ -1,0 +1,8 @@
+InFlite UK Routing
+Engine: BRouter 1.7.10, copyright BRouter contributors, MIT license (LICENSE-BROUTER.txt).
+Bicycle profiles are derived from BRouter's fastbike-lowtraffic and trekking profiles.
+Road and elevation routing data: OpenStreetMap contributors, Open Database Licence (ODbL).
+https://www.openstreetmap.org/copyright
+Original routing segments: https://brouter.de/brouter/segments4/
+UK extract boundary: https://download.geofabrik.de/europe/united-kingdom.poly
+The engine, profiles and map data are embedded and verified before startup; no public routing API is used at runtime.

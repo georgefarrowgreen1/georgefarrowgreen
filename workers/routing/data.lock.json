@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "engine": {
+    "version": "1.7.10",
+    "url": "https://github.com/abrensch/brouter/releases/download/v1.7.10/brouter-1.7.10.zip",
+    "sha256": "023fec3ba997758e8cd7ab9e1bae52e962af3f00b57683e3de86b84ffad01532"
+  },
+  "source": "https://brouter.de/brouter/segments4/",
+  "date": "2026-11-07",
+  "files": [
+    {
+      "file": "W10_N45.rd5",
+      "bytes": 144673,
+      "sha256": "6e65e394619b88896d656a0e2afc3523b5b9623a3bcd40632316c188ccec6c9f"
+    },
+    {
+      "file": "W10_N50.rd5",
+      "bytes": 43258416,
+      "sha256": "cc55cf1aa43611af7dc3e8af789035bac0193759b47dc291873ca1ad9ae9fd3a"
+    },
+    {
+      "file": "W10_N55.rd5",
+      "bytes": 5530497,
+      "sha256": "7df5cca71061c2cd6ff7182526a2023c457b287691960ae75ef5223b7e37ed36"
+    },
+    {
+      "file": "W10_N60.rd5",
+      "bytes": 747842,
+      "sha256": "74887109f0243297e1cb1c0cef5ae005e34a3920def1da6daa04eb9e855010ad"
+    },
+    {
+      "file": "W5_N50.rd5",
+      "bytes": 139466412,
+      "sha256": "e7697adfe1a0a120e3804f4629d6f4db62cb6d4de49547a8038b41984f9e3d95"
+    },
+    {
+      "file": "W5_N55.rd5",
+      "bytes": 26450544,
+      "sha256": "f6cb5ba91f2c8fe2def6e2395df4f538f77f4d11fedd28dba51d8237ff7677a4"
+    },
+    {
+      "file": "W5_N60.rd5",
+      "bytes": 333592,
+      "sha256": "219c88a6ea716592f1d7bf837dc171b90c92e97d7c1f8ed2403794782335ca68"
+    },
+    {
+      "file": "E0_N50.rd5",
+      "bytes": 79642812,
+      "sha256": "dccd0728772bc307542842d506a102432dc12ba5465f6a0df2b6a528f9326608"
+    },
+    {
+      "file": "E0_N55.rd5",
+      "bytes": 40546,
+      "sha256": "0b4dd931df1c76755a7f704c40c30cafaa3f1ecca8ea08184f4fce5169a096e5"
+    },
+    {
+      "file": "E0_N60.rd5",
+      "bytes": 455716,
+      "sha256": "163874c816982a9fde9c8737c79752de701aaf62fb05fa3dea58ff381a45ba9f"
+    }
+  ]
+}
