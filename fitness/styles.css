@@ -2323,15 +2323,17 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 :root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
 /* ==== end of InFlite's menu ==== */
 
-/* The morning check-in on a phone: each answer centred in its third, the choices easy to tell apart and to hit, the
-   question's row tighter so the three choices get the width */
-.seg3 button { display: grid; place-items: center; text-align: center; }
-@media (max-width: 560px) {
-  .checkin.open { gap: 10px; }
-  .checkin-row { gap: 8px; }
-  .checkin-row .lab { width: 96px; gap: 7px; font-size: 14px; }
-  .checkin-row .ico { width: 26px; height: 26px; }
-  .seg3 { padding: 3px; gap: 3px; border-radius: 14px; }
-  .seg3 button { min-height: 40px; border-radius: 11px; font-size: 14.5px; letter-spacing: -0.1px; }
-  .seg3 button[aria-pressed="false"] + button[aria-pressed="false"] { box-shadow: -0.5px 0 0 0 var(--line); }
+/* The morning check-in: each answer its own rounded button, the three of every row in the same columns as the rows
+   above and below (the label column one width for all), across the card's whole width */
+.checkin.open .checkin-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); align-items: center; gap: 10px; }
+.checkin-row .lab { width: auto; min-width: 0; gap: 8px; white-space: nowrap; }
+.checkin.open .checkin-row .seg3 { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+.checkin .checkin-row .seg3 button { display: grid; place-items: center; min-width: 0; min-height: 40px; padding: 0 4px; border-radius: 13px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); color: var(--text-2); font-weight: 600; font-size: 14.5px; text-align: center; white-space: nowrap; }
+.checkin .checkin-row .seg3 button[aria-pressed="true"]:not(.t0):not(.t2) { color: var(--text); background: var(--tint, #2f7af0); background: color-mix(in srgb, var(--tint, #2f7af0) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint, #2f7af0) 45%, transparent); }
+.checkin .checkin-row .seg3 button.t0[aria-pressed="true"] { color: var(--warn); background: color-mix(in srgb, #ffb547 22%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb547 50%, transparent); }
+.checkin .checkin-row .seg3 button.t2[aria-pressed="true"] { color: var(--good-text); background: color-mix(in srgb, #4cd98a 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #4cd98a 50%, transparent); }
+@media (max-width: 420px) {
+  .checkin.open .checkin-row { grid-template-columns: 108px minmax(0, 1fr); gap: 8px; }
+  .checkin.open .checkin-row .seg3 { gap: 6px; }
+  .checkin .checkin-row .seg3 button { font-size: 14px; padding: 0 2px; }
 }

@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.00";
-export const NEWS = "The morning check-in is tidier on a phone: each answer centred and easier to tap";
+export const BUILD = "2.01";
+export const NEWS = "The morning check-in: each answer its own rounded button, in line across the rows";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
