@@ -1,5 +1,5 @@
 /* status.inflite.ai: one quiet column. The verdict, then each group as a card (apps, the account and the home page as rows
-   with 90 days of bars, the scheduled jobs as tiles), then incidents as a timeline. InFlite's sky and glass, kept calm:
+   with 90 days of bars, the jobs and connectors as compact lists), then incidents as a timeline. InFlite's sky and glass, kept calm:
    hairlines, each app's own colour, numbers in tabular figures. */
 :root {
   --bg: #f3f5fa; --sky: #dfe6fb; --sky-2: #ece8fa;
@@ -125,13 +125,19 @@ button { font: inherit; color: inherit; }
 .chart .cur { position: absolute; top: 14px; bottom: 0; width: 1px; background: var(--text-3); pointer-events: none; }
 .chart-note { margin: 0; color: var(--text-3); font-size: 12.5px; }
 
-/* jobs and what the apps rely on: tiles */
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0; background: var(--card-solid); overflow: hidden; }
-.tile { background: var(--card-solid); padding: 12px 14px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 3px 10px; align-items: center; box-shadow: 1px 0 0 var(--line), 0 1px 0 var(--line); }
-.tile > .lg, .tile > .gl { grid-row: span 2; border-radius: 6px; }
-.tile b { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.tile b i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--s); }
-.tile small { color: var(--text-3); font-size: 11.5px; }
+/* jobs and connectors: compact lists, paired when there is room */
+.operations { display: grid; gap: 22px; align-items: start; }
+.status-list { list-style: none; margin: 0; padding: 0; overflow: hidden; background: var(--card-solid); }
+.status-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; min-height: 64px; }
+.status-row + .status-row { border-top: 1px solid var(--line); }
+.status-row > .lg { border-radius: 6px; }
+.status-row b { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.status-row small { display: block; color: var(--text-2); font-size: 11.5px; overflow-wrap: anywhere; }
+.status-row small:empty { display: none; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.status-row[data-s="ok"] .status-dot { background: var(--ok); }
+.status-row[data-s="down"] .status-dot { background: var(--down); }
+@media (min-width: 640px) { .operations { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; } .operations .gh { flex-wrap: wrap; gap: 4px 10px; } }
 
 /* incidents and bug codes, one layout */
 .list > * + * { border-top: 1px solid var(--line); }

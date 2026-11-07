@@ -155,11 +155,12 @@
         <div class="dfoot num"><span>${period ? dm(keyDate(keys[0])) : `Since ${dm(keyDate(keys[0]))}`}</span><span>Today</span></div></div></section>`;
     });
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s }));
-    html += `<section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 minutes</span></div><div class="glass tiles">${jobs.map((j) =>
-      `<div class="tile" data-s="${esc(j.s)}">${logo(j.id, 22)}<b><i></i>${esc(j.name)}</b><small class="num">${j.s === "down" ? `Failed at ${hm(j.at)}` : j.at ? `Ran ${hm(j.at)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div>`).join("")}</div></section>`;
+    html += `<div class="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
+      `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     const deps = d.deps || [];
-    if (deps.length) html += `<section class="group"><div class="gh"><h2>What the apps rely on</h2><span>${deps.some((x) => x.s !== "ok") ? `${deps.filter((x) => x.s !== "ok").length} not answering` : "All answering"}</span></div><div class="glass tiles">${deps.map((x) =>
-      `<div class="tile" data-s="${esc(x.s)}">${logo(x.id, 22)}<b><i></i>${esc(x.name)}</b><small class="num">${x.s === "down" ? esc(x.why || "Not answering") : x.ms != null ? `Answering · ${x.ms} ms` : "Working"}</small></div>`).join("")}</div></section>`;
+    if (deps.length) html += `<section class="group"><div class="gh"><h2>API’s and Connectors</h2><span>${deps.filter((x) => x.s !== "ok").length ? "Needs attention" : "All working"}</span></div><ul class="glass status-list">${deps.map((x) =>
+      `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}" title="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
+    html += `</div>`;
     box.innerHTML = html;
     for (const d of box.querySelectorAll(".days[data-n]")) d.style.gridTemplateColumns = `repeat(${d.dataset.n}, minmax(0, 1fr))`;
     wireDays(); for (const id of opened) chart(id);
