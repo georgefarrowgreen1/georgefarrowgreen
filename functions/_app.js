@@ -118,7 +118,7 @@ export async function serveApp(ctx, res, path, chat, { base = "/", security = SE
     if (chat) html = atRoot(html, base);
     const out = withSecurity(new Response(head ? null : html, res), security);
     out.headers.delete("content-length"); out.headers.delete("etag");
-    // (Pages' own preload hints name the files unstamped, and at the old address: each would be fetched again, uncached)
+    // (the asset service's own preload hints name the files unstamped, and at the old address: each would be fetched again, uncached)
     out.headers.delete("Link");
     out.headers.set("Cache-Control", "no-store");
     return out;

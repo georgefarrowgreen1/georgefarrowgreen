@@ -1,5 +1,5 @@
 // Precision Fit Studio at georgefarrowgreen.com/fitting/: it lives at fitting.georgefarrowgreen.com, its own address, so
-// the site's own address sends you there. Preview (*.pages.dev) and local addresses serve it right here, behind its
+// the site's own address sends you there. Preview (*.workers.dev) and local addresses serve it right here, behind its
 // sign-in as at its own address (functions/_fitstudio.js), so a branch can be looked at before it's live.
 import { fitting, FITTING_HOST } from "../_fitstudio.js";
 

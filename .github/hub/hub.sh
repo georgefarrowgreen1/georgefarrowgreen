@@ -3,22 +3,16 @@
 # of these:
 #   cf_account          → the Cloudflare account: CLOUDFLARE_ACCOUNT_ID, or else the one account the token can see;
 #                         left for the steps after it as HUB_ACCOUNT (GITHUB_ENV), which this file reads when sourced
-#   give_key HUBS       → a new key, made here: the Pages project's production HUB_KEY first, and only once that's set,
-#                         each Worker HUBS names (inflite.ai: inflite; next.inflite.ai: the staging inflite-next; both)
-#   pages_redeploy      → the production deployment that's live, built again: a Pages secret or var reaches only the
-#                         deployments made after it's set
+#   give_key HUBS       → one key for both site Workers and each Worker HUBS names (inflite.ai: inflite; next.inflite.ai: the staging inflite-next; both)
 #   wait_ready HUBS     → each hub's /api/hub asked until it says it's ready
 #   door_shut           → chat.inflite.ai/_hub/version is 404 to anyone without the key, a made-up one included
 #   key_verdict         → hub-key.yml's last step: what's live now, from each step's outcome
 #   take_key_worker [W] → a Worker's HUB_KEY deleted (inflite's: the hub at once not ready, Today links to each app's
 #                         own address)
-#   pages_off PUSH ACTS → the Pages project's HUB_KEY deleted (PUSH=1: its HUB_PUSH too; ACTS=1: TODAY_ACTS set to "0")
 #   wait_hub true|false [seconds] [site] → a hub's /api/hub asked until it says so
 #   take_back_pushes    → the push rows the hub fanned out, deleted from D1 (via = 'hub'; spec §15.4's four statements)
 #   off_verdict         → hub-off.yml's last step
-#   stage_origins       → the Pages project's HUB_ORIGINS lists both hubs (inflite.ai and next.inflite.ai): set as a
-#                         production secret only where it isn't set or lacks one of them
-#   stage_push          → the Pages project's HUB_PUSH set to "1" (hub-stage.yml's hub_push, only when it's asked for)
+#   stage_origins       → preserve existing origins and add both hubs on both site Workers
 #   stage_clone REF     → the inflite repo at REF (one of its own branches or tags, or a commit on one), fetched into
 #                         the runner's temporary folder; its wrangler.toml checked (the staging Worker, at
 #                         next.inflite.ai alone, nothing run as it's built) and its Today's build read
@@ -38,10 +32,10 @@
 # pipe) nor into the log; a key made here is masked before anything else and only ever piped to wrangler. What's
 # printed of an answer from Cloudflare is its error codes and messages, never the request.
 
-PROJECT=georgefarrowgreen      # the Pages project (this repo's wrangler.toml name)
+PROJECT=inflite-apps      # the apps Worker; shared settings also go to gfg
 WORKER=inflite                 # the Worker at inflite.ai (the inflite repo's wrangler.toml name)
 STAGING=inflite-next           # the staging hub at next.inflite.ai (the inflite repo's [env.next]: hub-stage.yml deploys it)
-DATABASE=bio-db                # the D1 database (this repo's wrangler.toml, binding DB)
+DATABASE=bio-db                # the D1 database (this repo's Worker configurations, binding DB)
 SITE=https://inflite.ai
 STAGING_SITE=https://next.inflite.ai
 STAGING_HOST=next.inflite.ai   # the staging Worker's one custom domain (the inflite repo's [env.next] routes)
@@ -51,8 +45,6 @@ IFL_GIT=https://github.com/georgefarrowgreen1/inflite.git   # the inflite repo (
 CF_API=https://api.cloudflare.com/client/v4
 WRANGLER="npx --yes wrangler@4.149.0"
 EVERY=${EVERY:-15}             # seconds between one check and the next
-PAGES_WAIT=${PAGES_WAIT:-600}  # seconds to wait for a production deployment (one under way; then ours)
-PAGES_PERM="Account › Cloudflare Pages › Edit"
 WORKER_PERM="Account › Workers Scripts › Edit"
 D1_PERM="Account › D1 › Edit"
 # (a Worker's custom domain is its zone's: Cloudflare makes the hostname's DNS record and certificate for the Worker, and
@@ -109,8 +101,8 @@ cf_account() {
     local n; n=$(jq 'length' <<<"$CF_OUT")
     case "$n" in
       1) ACCOUNT=$(jq -r '.[0].id' <<<"$CF_OUT"); say "Cloudflare account: the token's one ($(jq -r '.[0].name' <<<"$CF_OUT"))." ;;
-      0) fail "The token can't see any Cloudflare account: give it $PAGES_PERM and $WORKER_PERM on the account, or set CLOUDFLARE_ACCOUNT_ID."; return 1 ;;
-      *) fail "The token can see $n Cloudflare accounts: set the CLOUDFLARE_ACCOUNT_ID secret to the one with the Pages project $PROJECT and the Worker $WORKER."; return 1 ;;
+      0) fail "The token can't see any Cloudflare account: give it $WORKER_PERM on the account, or set CLOUDFLARE_ACCOUNT_ID."; return 1 ;;
+      *) fail "The token can see $n Cloudflare accounts: set the CLOUDFLARE_ACCOUNT_ID secret to the one with the site Workers $PROJECT and the Worker $WORKER."; return 1 ;;
     esac
   fi
   if ! [[ $ACCOUNT =~ ^[A-Za-z0-9]+$ ]]; then fail "CLOUDFLARE_ACCOUNT_ID isn't a Cloudflare account id (letters and digits only): check the secret."; return 1; fi
@@ -145,7 +137,19 @@ hub_ask() {
 # (what has the new key so far: for the verdict at the end, which can't see inside this step; names only)
 gave() { HUB_GAVE="${HUB_GAVE:+$HUB_GAVE }$1"; if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_GAVE=$HUB_GAVE" >> "$GITHUB_ENV"; fi; return 0; }
 
-# A new key for the hub, given to the Pages project (production) and then each Worker HUBS names. Run where there's no
+# Update both site Workers, retaining overrides over encrypted settings.
+site_secret() {
+  local name=$1 value=$2 w
+  need_account || return 1
+  for w in "$PROJECT" gfg; do
+    worker_settled "$w" || return 1
+  done
+  for w in "$PROJECT" gfg; do
+    printf '%s' "$value" | $WRANGLER secret put "$name" --name "$w" || { fail "Couldn't set $name on $w; earlier Workers may already have changed. Run this again after fixing the error."; return 1; }
+    say "$w: $name updated and live."
+  done
+}
+
 # wrangler config (the workflow runs it in the runner's temporary folder): everything is named here. Nothing is changed
 # until every Worker named is known to be there (wrangler's secret put makes an empty Worker where there's none of that
 # name), and the staging hub alone is never given a new key while the hub at inflite.ai is on (it would turn it off).
@@ -155,6 +159,7 @@ give_key() {
   workers=$(hub_workers "$hubs") || { fail "No such choice of hub: \"$hubs\" (inflite.ai, next.inflite.ai or both). Nothing was changed."; return 1; }
   need_account || return 1
   for w in $workers; do
+    worker_settled "$w" || return 1
     rc=0; worker_secrets "$w" || rc=$?
     if [ "$rc" = 2 ]; then
       if [ "$w" = "$STAGING" ]; then fail "There's no Worker $STAGING (the staging hub): run \"Put InFlite's staging hub up\" (hub-stage.yml) first, then this again. Nothing was changed."
@@ -170,61 +175,21 @@ give_key() {
   key=$(openssl rand -hex 32) || { fail "Couldn't make a key. Nothing was changed."; return 1; }
   echo "::add-mask::$key"
   if [ ${#key} -ne 64 ]; then fail "The key made wasn't 64 hex digits. Nothing was changed."; return 1; fi
-  if ! printf '%s' "$key" | $WRANGLER pages secret put HUB_KEY --project-name "$PROJECT"; then
-    fail "Couldn't set the Pages project's HUB_KEY ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM. Nothing was changed: the hub is as it was."
-    return 1
-  fi
-  gave pages
-  say "The Pages project's production secret HUB_KEY is the new key (it reaches the site with its next deployment)."
+  site_secret HUB_KEY "$key" || return 1
+  gave site
   for w in $workers; do
     if ! printf '%s' "$key" | $WRANGLER secret put HUB_KEY --name "$w"; then
-      fail "Couldn't set the Worker's HUB_KEY ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM; or the Worker's latest version isn't the one deployed (a push to another branch of the inflite repo uploads one), and Cloudflare won't change its secrets until its production branch is deployed again (Workers & Pages → $w → Deployments; never deploy that other version)."
+      fail "Couldn't set the Worker's HUB_KEY ($w): wrangler's words above say why. The token likely lacks $WORKER_PERM; or the Worker's latest version isn't the one deployed (a push to another branch of the inflite repo uploads one), and Cloudflare won't change its secrets until its production branch is deployed again (Workers → $w → Deployments; never deploy that other version)."
       return 1
     fi
     gave "$w"
-    say "The Worker $w's secret HUB_KEY is the same key (live at once: until Pages has it too, that hub isn't ready)."
+    say "The Worker $w's secret HUB_KEY is the same key (live at once: until the site has it too, that hub isn't ready)."
   done
 }
 
-# The production deployment that's live, built again from the same commit with the project's settings as they are now
-# (Cloudflare's "Retry deployment"). One already under way is waited for first, so ours is the last to go live.
-pages_redeploy() {
-  need_account || return 1
-  local base="/accounts/$ACCOUNT/pages/projects/$PROJECT" waited=0 newest status live id stage sha
-  while :; do
-    cf GET "$base/deployments?env=production" || { fail "Couldn't list the Pages project's deployments ($PROJECT: $CF_ERR). $(lacks "$PAGES_PERM")"; return 1; }
-    newest=$(jq -c '.[0] // empty' <<<"$CF_OUT")
-    [ -n "$newest" ] || { fail "The Pages project $PROJECT has no production deployment to build again."; return 1; }
-    # (done: deployed, or stopped; anything else is under way)
-    jq -e '.latest_stage as $s | ($s.name == "deploy" and $s.status == "success") or $s.status == "failure" or $s.status == "canceled" or $s.status == "skipped"' <<<"$newest" >/dev/null && break
-    (( waited >= PAGES_WAIT )) && { fail "A production deployment ($(jq -r .id <<<"$newest")) has been under way for $waited s: retry the live one in the dashboard once it's done (Workers & Pages → $PROJECT → Deployments → … → Retry deployment)."; return 1; }
-    echo "  a production deployment is under way ($(jq -r '.latest_stage.name' <<<"$newest")): waiting for it first"
-    sleep "$EVERY"; waited=$((waited + EVERY))
-  done
-  cf GET "$base" || { fail "Couldn't read the Pages project ($PROJECT: $CF_ERR). $(lacks "$PAGES_PERM")"; return 1; }
-  live=$(jq -r '.canonical_deployment.id // empty' <<<"$CF_OUT")
-  [ -n "$live" ] || { fail "The Pages project $PROJECT has no live production deployment to build again."; return 1; }
-  sha=$(jq -r '.canonical_deployment.deployment_trigger.metadata.commit_hash // "" | .[0:7]' <<<"$CF_OUT")
-  cf POST "$base/deployments/$live/retry" '{}' || { fail "Couldn't build production again ($CF_ERR). $(lacks "$PAGES_PERM") Retry the live deployment in the dashboard (Workers & Pages → $PROJECT → Deployments → … → Retry deployment)."; return 1; }
-  id=$(jq -r '.id' <<<"$CF_OUT")
-  say "Building production again from the live deployment (commit ${sha:-?}): deployment $id."
-  waited=0
-  while :; do
-    sleep "$EVERY"; waited=$((waited + EVERY))
-    cf GET "$base/deployments/$id" || { fail "Couldn't follow deployment $id ($CF_ERR). See it in the dashboard (Workers & Pages → $PROJECT → Deployments)."; return 1; }
-    stage=$(jq -r '.latest_stage.name // ""' <<<"$CF_OUT"); status=$(jq -r '.latest_stage.status // ""' <<<"$CF_OUT")
-    if [ "$stage" = deploy ] && [ "$status" = success ]; then break; fi
-    case "$status" in failure|canceled|skipped) fail "Deployment $id stopped at $stage ($status): see its build log (Workers & Pages → $PROJECT → Deployments)."; return 1 ;; esac
-    (( waited >= PAGES_WAIT )) && { fail "Deployment $id isn't done after $waited s (at $stage, $status): see it in the dashboard (Workers & Pages → $PROJECT → Deployments)."; return 1; }
-    echo "  $waited s: $stage, $status"
-  done
-  if cf GET "$base" && [ "$(jq -r '.canonical_deployment.id // ""' <<<"$CF_OUT")" = "$id" ]; then say "Deployment $id is live (after $waited s)."
-  else say "Deployment $id is built (after $waited s), though the project doesn't yet name it as live."; fi
-}
 
 # A hub's /api/hub until it answers {"ready": <want>}. Its yes needs the Worker's key and Chat's host taking it (one
 # request from the Worker to chat.'s /_hub/version with the hub's headers); each copy of the Worker keeps a no for a
-# minute and a yes for five, so a no from before Pages took the key can last a minute after. An answer that isn't the
 # hub's (an error page, no answer) is asked again, like a no.
 wait_hub() {
   local want=$1 limit=${2:-480} site=${3:-$SITE} start=$SECONDS waited=0 el
@@ -274,30 +239,16 @@ door_shut() {
 # hub-key.yml's last step: what's live now. Reads each step's outcome (OUT_*), the choice of hub (HUBS) and what had
 # the new key (HUB_GAVE); fails the run if anything did.
 key_verdict() {
-  local hubs=${HUBS:-inflite.ai} sites site workers bad=0
-  sites=$(hub_sites "$hubs" 2>/dev/null) || sites=$SITE
-  workers=$(hub_workers "$hubs" 2>/dev/null) || workers=$WORKER
-  site=${sites%% *}
   heading "What's live now"
   if [ "${OUT_KEY:-}" != success ]; then
-    bad=1
-    case "${HUB_GAVE:-}" in
-      "") say "Nothing was changed: the hub is as it was (the step that failed says why)." ;;
-      pages) say "Only the Pages project's secret has the new key, and the live site hasn't taken it: nothing live has changed. But the next deployment of Pages (any push to main) takes that key, which no Worker has, and from then the hub is off (Today links to each app's own address): run this again once the cause is fixed, before that." ;;
-      *) say "These have the new key: ${HUB_GAVE#pages }, and the Pages project's secret; the live site hasn't taken it, so each of those hubs is off now (every hub path 503; Today links to each app's own address). Run this again once the cause is fixed (it makes another key and gives it to each)." ;;
-    esac
-  elif [ "${OUT_REDEPLOY:-}" != success ]; then
-    bad=1
-    say "The Worker(s) $workers have the new key, live at once, but the site's live Pages deployment hasn't taken it: until Pages builds again, each hub is off (every hub path 503; Today links to each app's own address). Retry the live production deployment now (Workers & Pages → $PROJECT → Deployments → … → Retry deployment), then check: curl -s $site/api/hub"
-  else
-    if [ "${OUT_WAIT:-}" = success ]; then say "The hub is on at $sites: Today opens the apps in its own window."
-    else bad=1; say "Pages has built again with the key, but not every hub said it's ready in time (the wait step says which). Check by hand: curl -s $site/api/hub (each copy of the Worker keeps a no for a minute). While it says not ready, Today links to each app's own address: nothing is broken; the Worker's logs say why (Workers & Pages → $WORKER → Logs, \"hub probe\")."; fi
+    fail "Key update failed; some Workers may have changed. Check the failed step and run this again."
+    return 1
   fi
-  if [ "${OUT_KEY:-}" = success ] && [ "${OUT_DOOR:-}" != success ]; then
-    bad=1; say "Chat's hub copy wasn't shown to be shut to anyone without the key (the door step says what it answered). If it answered 200, run \"Turn InFlite's hub off\" now."
+  if [ "${OUT_WAIT:-}" != success ] || [ "${OUT_DOOR:-}" != success ]; then
+    fail "Keys were updated, but the hub readiness or private route check failed. See the checks above."
+    return 1
   fi
-  say "Run this again only when the hub is off or broken: on a live hub, the Worker takes the new key at once while Pages takes minutes to build, and every hub path answers 503 until it's done (until the next push to main, if that build fails)."
-  return $bad
+  say "The selected hubs are ready and Chat's private route is closed to unauthenticated requests."
 }
 
 # A Worker's key taken away (hub-off.yml): with no HUB_KEY every hub path answers 503 and /api/hub says it isn't
@@ -316,35 +267,12 @@ take_key_worker() {
   say "The Worker $w's HUB_KEY is deleted: its hub is off (each hub path 503, /api/hub not ready)."
 }
 
-# (a name set in this repo's wrangler.toml, which the Pages project reads at each deployment, and no secret overrides)
-in_toml() { local t="${GITHUB_WORKSPACE:-.}/wrangler.toml"; [ -f "$t" ] && grep -Eq "^[[:space:]]*$1[[:space:]]*=" "$t"; }
-
-# The Pages project's key taken away (hub-off.yml); with PUSH=1 its HUB_PUSH too (no more rows fanned out); with ACTS=1
-# TODAY_ACTS set to "0" (Today's morning stops acting on plans: functions/_todaymorning.js, for an IFL rollback). Each
-# reaches the site with the next deployment (pages_redeploy).
-pages_off() {
-  local push=${1:-0} acts=${2:-0} k vars
-  for k in $([ "$push" = 1 ] && echo HUB_PUSH) $([ "$acts" = 1 ] && echo TODAY_ACTS); do
-    if in_toml "$k"; then fail "$k is set in wrangler.toml, which the Pages project reads at each deployment: take it out there and push to main, then run this again. Nothing was changed here."; return 1; fi
-  done
-  need_account || return 1
-  cf GET "/accounts/$ACCOUNT/pages/projects/$PROJECT" || { fail "Couldn't read the Pages project ($PROJECT: $CF_ERR). $(lacks "$PAGES_PERM")"; return 1; }
-  vars=$(jq -c '.deployment_configs.production.env_vars // {}' <<<"$CF_OUT")
-  for k in HUB_KEY $([ "$push" = 1 ] && echo HUB_PUSH); do
-    if ! jq -e --arg k "$k" 'has($k) and .[$k] != null' <<<"$vars" >/dev/null; then say "The Pages project has no production $k: nothing to take away."; continue; fi
-    if ! $WRANGLER pages secret delete "$k" --project-name "$PROJECT"; then
-      fail "Couldn't delete the Pages project's $k ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM."
-      return 1
-    fi
-    say "The Pages project's production $k is deleted (it leaves the site with the next deployment)."
-  done
-  if [ "$acts" = 1 ]; then
-    if ! printf '0' | $WRANGLER pages secret put TODAY_ACTS --project-name "$PROJECT"; then
-      fail "Couldn't set the Pages project's TODAY_ACTS to \"0\" ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM."
-      return 1
-    fi
-    say "The Pages project's production TODAY_ACTS is \"0\": once the site is built again, Today's morning no longer acts on anyone's plan."
-  fi
+# Disable explicitly: deleting a secret would restore the encrypted default.
+site_off() {
+  local push=${1:-0} acts=${2:-0}
+  site_secret HUB_KEY '' || return 1
+  if [ "$push" = 1 ]; then site_secret HUB_PUSH 0 || return 1; fi
+  if [ "$acts" = 1 ]; then site_secret TODAY_ACTS 0 || return 1; fi
 }
 
 # d1 SQL → D1_OUT: wrangler d1 execute's answer (one entry per statement), or fails saying what D1 said
@@ -390,92 +318,38 @@ take_back_pushes() {
 off_verdict() {
   local bad=0
   heading "What's off now"
-  if [ "${OUT_ACCOUNT:-}" != success ]; then
-    say "Nothing was changed: the hub is as it was (the step that failed says why). To turn it off by hand: delete HUB_KEY from the Worker $WORKER (Workers & Pages → $WORKER → Settings → Variables and Secrets); that alone turns it off at once."
-    return 1
-  fi
-  if [ "${OUT_WORKER:-}" = success ]; then say "The Worker $WORKER has no HUB_KEY: the hub at $SITE is off (every hub path 503; Today links to each app's own address)."
-  else bad=1; say "The Worker $WORKER still has its HUB_KEY: delete it by hand (Workers & Pages → $WORKER → Settings → Variables and Secrets), or run this again once the inflite repo's production branch is the Worker's latest version (Workers & Pages → $WORKER → Deployments)."; fi
-  if [ "${OUT_STAGING:-}" = failure ]; then bad=1; say "The staging Worker $STAGING may still have its HUB_KEY: delete it by hand (Workers & Pages → $STAGING → Settings → Variables and Secrets)."; fi
-  if [ "${OUT_WAIT1:-}" = failure ]; then bad=1; say "The Worker's key is gone, but $SITE/api/hub didn't say so in time: check it by hand (curl -s $SITE/api/hub)."; fi
-  case "${OUT_PAGES:-}" in
-    success)
-      if [ "${OUT_REDEPLOY:-}" = success ]; then say "The Pages project's HUB_KEY$([ "${PUSHES:-0}" = 1 ] && echo " and HUB_PUSH")$([ "${ACTS:-0}" = 1 ] && echo ", and TODAY_ACTS \"0\""), live: the site is built again without them."
-      else bad=1; say "The Pages project's secrets are changed, but the live deployment still has them as they were: retry it now (Workers & Pages → $PROJECT → Deployments → … → Retry deployment)."; fi ;;
-    *) bad=1; say "The Pages project's HUB_KEY$([ "${PUSHES:-0}" = 1 ] && echo " and HUB_PUSH")$([ "${ACTS:-0}" = 1 ] && echo " (and TODAY_ACTS)") weren't changed: the step says why. By hand: npx wrangler pages secret delete HUB_KEY --project-name $PROJECT, then retry the live deployment." ;;
-  esac
-  if [ "${OUT_WAIT2:-}" = failure ]; then bad=1; say "$SITE/api/hub didn't say not ready in time after Pages let go of the key: check it by hand (curl -s $SITE/api/hub)."; fi
-  if [ "${OUT_DOOR:-}" != success ]; then bad=1; say "Chat's hub copy wasn't shown to be shut (the door step says what it answered). If it answered 200, it's open to anyone: roll the site back (Workers & Pages → $PROJECT → Deployments → the production deployment before → Rollback) and check functions/_middleware.js's /_hub/ rule."; fi
-  if [ "${PUSHES:-0}" = 1 ]; then
-    if [ "${OUT_D1:-}" = success ]; then say "The push rows the hub fanned out are taken back."
-    else bad=1; say "The push rows the hub fanned out weren't taken back (the step says why): run this again with the same inputs once that's fixed."; fi
-  fi
-  if [ "$bad" = 0 ]; then say "To turn the hub on again: \"Give InFlite's hub its key\" (a new key)."; fi
-  return $bad
+  for outcome in "${OUT_WORKER:-}" "${OUT_STAGING:-}" "${OUT_SITE:-}" "${OUT_DOOR:-}"; do
+    [ "$outcome" = success ] || bad=1
+  done
+  if [ "${PUSHES:-0}" = 1 ] && [ "${OUT_D1:-}" != success ]; then bad=1; fi
+  if [ "$bad" != 0 ]; then fail "The off switch did not complete every check. See the failed steps; some Workers may already have changed."; return 1; fi
+  say "The hub keys are disabled, and Chat's private route is closed to unauthenticated requests."
 }
 
 # ---- The staging hub (hub-stage.yml): next.inflite.ai, the Worker inflite-next (spec §15.2; addendum A3) ----
-# None of these touch the Worker inflite or the Pages project's HUB_KEY: the staging hub's key is hub-key.yml's.
 
-# The Pages project's HUB_ORIGINS (functions/_sites.js hubOrigins: the origins whose pages are this site's apps too,
-# which Chat and WebAuthn take as their own) must list both hubs, or Chat at next.inflite.ai is refused. Set as a
-# production secret (this repo's wrangler.toml is the project's configuration: the dashboard's plain variables can't be
-# edited) only when it isn't set or lacks one of them. A secret can't be read back: then the live site's passkey list
-# (/.well-known/webauthn, which carries the hubs' origins) says whether next.inflite.ai is in it already. Either way it
-# reaches the site only with the next deployment of Pages, which hub-key.yml's retry builds.
+# Preserve the published allowed origins and add both hubs on both site Workers.
 stage_origins() {
-  local need=("$SITE" "$STAGING_SITE") vars type list="" o missing=() value body live
-  if in_toml HUB_ORIGINS; then fail "HUB_ORIGINS is set in wrangler.toml, which the Pages project reads at each deployment and no secret overrides: make it \"$SITE,$STAGING_SITE\" there and push to main. Nothing was changed here."; return 1; fi
+  local w body list value
   need_account || return 1
-  cf GET "/accounts/$ACCOUNT/pages/projects/$PROJECT" || { fail "Couldn't read the Pages project ($PROJECT: $CF_ERR). $(lacks "$PAGES_PERM") Nothing was changed."; return 1; }
-  vars=$(jq -c '.deployment_configs.production.env_vars // {}' <<<"$CF_OUT")
-  type=$(jq -r '.HUB_ORIGINS.type // (if .HUB_ORIGINS == null then "" else "plain_text" end)' <<<"$vars")
-  case "$type" in
-    "") say "The Pages project has no production HUB_ORIGINS yet." ;;
-    secret_text)
-      # (unreadable: what the live deployment lists, its passkeys' origins with the hubs' among them)
-      body=$(curl -sS --max-time 20 -A "InFlite hub check (GitHub Actions)" "$HOME_SITE/.well-known/webauthn?hub=$(date +%s)" 2>/dev/null) || body=""
-      live=$(jq -r 'if type == "object" and (.origins | type) == "array" then .origins[] else empty end' <<<"$body" 2>/dev/null) || live=""
-      if grep -qxF "$STAGING_SITE" <<<"$live" && grep -qxF "$SITE" <<<"$live"; then
-        say "The Pages project's production HUB_ORIGINS is a secret (it can't be read back), and the live site already lists $SITE and $STAGING_SITE among its origins: left as it is."
-        if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=kept" >> "$GITHUB_ENV"; fi
-        return 0
-      fi
-      # (the live list's hub origins: what it lists beyond the apps' own addresses, kept)
-      list=$(grep -E '^https://' <<<"$live" | grep -vE '^https://(chat|account|auth|weather|fitness|finance)\.inflite\.ai$' | paste -sd, -) || list=""
-      say "The Pages project's production HUB_ORIGINS is a secret (it can't be read back), and the live site doesn't list $STAGING_SITE among its origins: it's set again below, keeping the hub origins the live site lists." ;;
-    *) list=$(jq -r '.HUB_ORIGINS.value // ""' <<<"$vars") ;;
-  esac
-  for o in "${need[@]}"; do
-    if ! tr ',' '\n' <<<"$list" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qxF "$o"; then missing+=("$o"); fi
+  # The home site's related-origins document publishes the shared allowed origins.
+  for w in "$PROJECT" gfg; do
+    body=$(curl -fsS --max-time 20 "$HOME_SITE/.well-known/webauthn") || { fail "Couldn't read $w's current origins; nothing further changed."; return 1; }
+    list=$(jq -er '.origins | if type == "array" then .[] else error("origins missing") end' <<<"$body") || return 1
+    value=$( { printf '%s\n' "$list"; printf '%s\n' "$SITE" "$STAGING_SITE"; } | grep -E '^https://' | awk '!seen[$0]++' | paste -sd, -)
+    worker_settled "$w" || return 1
+    printf '%s' "$value" | $WRANGLER secret put HUB_ORIGINS --name "$w" || return 1
   done
-  if [ "${#missing[@]}" = 0 ]; then
-    say "The Pages project's production HUB_ORIGINS already lists $SITE and $STAGING_SITE: left as it is."
-    if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=kept" >> "$GITHUB_ENV"; fi
-    return 0
-  fi
-  value=$( { tr ',' '\n' <<<"$list"; printf '%s\n' "${missing[@]}"; } | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -E '^https://' | awk '!seen[$0]++' | paste -sd, -)
-  if ! printf '%s' "$value" | $WRANGLER pages secret put HUB_ORIGINS --project-name "$PROJECT"; then
-    fail "Couldn't set the Pages project's HUB_ORIGINS ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM. Nothing was changed."
-    return 1
-  fi
   if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_ORIGINS_DID=set" >> "$GITHUB_ENV"; fi
-  say "The Pages project's production secret HUB_ORIGINS is now $value. It counts only once Pages is deployed again: \"Give InFlite's hub its key\" (hub-key.yml) builds the live deployment again, as does any push to main."
+  say "Both site Workers now allow both hubs, retaining their existing origins."
 }
 
 # HUB_PUSH "1" (functions/_devices.js, _todayapp.js): You at a hub that's ready shows Get Every App's Notifications Here,
 # and a tap of it adds that phone to every app's table, each row marked via = 'hub' (hub-off.yml's pushes takes them
 # back). George's check K1 needs it at the staging hub (spec §15.2, golive.md), so hub-stage.yml sets it only when its
-# hub_push is chosen. A production secret, as HUB_KEY is: it reaches the site with the next deployment of Pages, which
-# hub-key.yml's retry builds. Nothing is sent anywhere new until someone taps that row.
+# Nothing is sent anywhere new until someone taps that row.
 stage_push() {
-  if in_toml HUB_PUSH; then fail "HUB_PUSH is set in wrangler.toml, which the Pages project reads at each deployment and no secret overrides: set it there and push to main instead. Nothing was changed here."; return 1; fi
-  need_account || return 1
-  if ! printf '1' | $WRANGLER pages secret put HUB_PUSH --project-name "$PROJECT"; then
-    fail "Couldn't set the Pages project's HUB_PUSH ($PROJECT, production): wrangler's words above say why. The token likely lacks $PAGES_PERM. Nothing was changed."
-    return 1
-  fi
-  say "The Pages project's production secret HUB_PUSH is \"1\". It counts once Pages is deployed again (\"Give InFlite's hub its key\" does it): then You, at a hub that's ready, shows Get Every App's Notifications Here; nothing is sent anywhere new until it's tapped. \"Turn InFlite's hub off\" with pushes takes it away, and the rows it made."
+  site_secret HUB_PUSH 1
 }
 
 # The inflite repo's wrangler.toml, in the folder DIR, read and checked before anything is built or deployed from it.
@@ -624,7 +498,7 @@ stage_check() {
     el=$((SECONDS - start)); if (( waited > el )); then el=$waited; fi
     if [ "$code" = 200 ] && [ "$build" = "$want" ]; then say "$STAGING_SITE/version says build $build (after $el s): Today $want is live at the staging hub."; break; fi
     if (( el >= limit )); then
-      fail "$STAGING_SITE/version didn't say build $want in $limit s (last answer: HTTP $code, build ${build:-none}). A new custom domain can take a while for its certificate: check Workers & Pages → $STAGING → Settings → Domains & Routes, then curl -s $STAGING_SITE/version."
+      fail "$STAGING_SITE/version didn't say build $want in $limit s (last answer: HTTP $code, build ${build:-none}). A new custom domain can take a while for its certificate: check Workers → $STAGING → Settings → Domains & Routes, then curl -s $STAGING_SITE/version."
       return 1
     fi
     echo "  $el s: HTTP $code, build ${build:-none}; asking again in $EVERY s"
@@ -642,7 +516,7 @@ stage_check() {
   done
   if [ -n "${GITHUB_ENV:-}" ]; then echo "HUB_STAGE_READY=$HUB_READY" >> "$GITHUB_ENV"; fi
   if [ "$HUB_READY" = false ]; then say "$STAGING_SITE/api/hub says ready: false, as it should until the staging hub has its key."
-  else say "$STAGING_SITE/api/hub says ready: true: the staging Worker already has a key the Pages project takes (from an earlier \"Give InFlite's hub its key\")."; fi
+  else say "$STAGING_SITE/api/hub says ready: true: the staging Worker already has a key the site Workers accept (from an earlier \"Give InFlite's hub its key\")."; fi
   live_said
 }
 
@@ -669,19 +543,19 @@ stage_verdict() {
   local bad=0
   heading "What's live now"
   if [ "${OUT_ACCOUNT:-}" != success ]; then
-    say "Nothing was changed (the step that failed says why). The Worker $WORKER and the Pages project's HUB_KEY are never touched by this workflow."
+    say "Nothing was changed (the step that failed says why). The Worker $WORKER and the site Workers’ HUB_KEY are never touched by this workflow."
     return 1
   fi
   case "${OUT_ORIGINS:-}" in
     success)
-      if [ "${HUB_ORIGINS_DID:-}" = set ]; then say "The Pages project's HUB_ORIGINS lists $SITE and $STAGING_SITE now; it counts once Pages is deployed again, which \"Give InFlite's hub its key\" does."
-      else say "The Pages project's HUB_ORIGINS already listed $SITE and $STAGING_SITE: unchanged."; fi ;;
-    *) bad=1; say "The Pages project's HUB_ORIGINS wasn't checked or set (the step says why). Until it lists $STAGING_SITE, Chat at the staging hub is refused. By hand: printf '%s' '$SITE,$STAGING_SITE' | npx wrangler pages secret put HUB_ORIGINS --project-name $PROJECT" ;;
+      if [ "${HUB_ORIGINS_DID:-}" = set ]; then say "The site Workers’ HUB_ORIGINS lists $SITE and $STAGING_SITE now; it is live immediately."
+      else say "The site Workers’ HUB_ORIGINS already listed $SITE and $STAGING_SITE: unchanged."; fi ;;
+    *) bad=1; say "The site Workers’ HUB_ORIGINS wasn't checked or set (the step says why). Until it lists $STAGING_SITE, Chat at the staging hub is refused. By hand: printf '%s' '$SITE,$STAGING_SITE' | npx wrangler secret put HUB_ORIGINS --name $PROJECT" ;;
   esac
   if [ "${HUB_PUSH_ON:-false}" = true ]; then
     case "${OUT_PUSH:-}" in
-      success) say "The Pages project's HUB_PUSH is \"1\"; it counts once Pages is deployed again, which \"Give InFlite's hub its key\" does." ;;
-      *) bad=1; say "The Pages project's HUB_PUSH wasn't set (the step says why). By hand, with no token: the Cloudflare dashboard → Workers & Pages → $PROJECT → Settings → Variables and Secrets → Production → Add, type Secret, HUB_PUSH, value 1; or run this again with hub_push." ;;
+      success) say "The site Workers’ HUB_PUSH is \"1\"; it is live immediately." ;;
+      *) bad=1; say "The site Workers’ HUB_PUSH wasn't set (the step says why). By hand, with no token: the Cloudflare dashboard → Workers → $PROJECT → Settings → Variables and Secrets → Production → Add, type Secret, HUB_PUSH, value 1; or run this again with hub_push." ;;
     esac
   fi
   case "${OUT_CLONE:-}" in
@@ -702,8 +576,8 @@ stage_verdict() {
     skipped|"") if [ "${OUT_DEPLOY:-}" = success ]; then bad=1; say "$STAGING_SITE wasn't checked (the run was stopped before it). Run this again, or check by hand: curl -s $STAGING_SITE/version"; fi ;;
     *) bad=1; say "The check of $STAGING_SITE was stopped part way (${OUT_CHECK}). Run this again, or check by hand: curl -s $STAGING_SITE/version" ;;
   esac
-  say "The Worker $WORKER (inflite.ai) and the Pages project's HUB_KEY weren't touched: this workflow never changes them."
-  if [ "$bad" = 0 ] && [ "${HUB_STAGE_READY:-}" != true ]; then say "Next: \"Give InFlite's hub its key\" (hub-key.yml) with hub next.inflite.ai, which gives the staging hub its key and deploys Pages again."; fi
+  say "The Worker $WORKER (inflite.ai) and the site Workers’ HUB_KEY weren't touched: this workflow never changes them."
+  if [ "$bad" = 0 ] && [ "${HUB_STAGE_READY:-}" != true ]; then say "Next: \"Give InFlite's hub its key\" (hub-key.yml) with hub next.inflite.ai, which gives the staging hub its key and updates the Workers."; fi
   if [ "$bad" != 0 ]; then say "Don't go on to \"Give InFlite's hub its key\" until this run is green: fix what's said above and run this again."; fi
   return $bad
 }
@@ -749,7 +623,7 @@ mail_gate() { case "$1" in "$WORKER") echo HUB_API ;; "$STAGING") echo HUB_API_N
 # its traffic); else fails with what to do, having changed nothing. W: a hub's Worker, or Mail's (inflite-email)
 worker_settled() {
   local w=${1:-$WORKER} deployed newest dep
-  case "$w" in "$WORKER"|"$STAGING"|"$MAIL_WORKER") ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER, $STAGING or $MAIL_WORKER). Nothing was changed."; return 1 ;; esac
+  case "$w" in "$WORKER"|"$STAGING"|"$MAIL_WORKER"|"$PROJECT"|gfg) ;; *) fail "No such Worker of the hub's: \"$w\" ($WORKER, $STAGING or $MAIL_WORKER). Nothing was changed."; return 1 ;; esac
   need_account || return 1
   if ! cf GET "/accounts/$ACCOUNT/workers/scripts/$w/deployments"; then
     if [ "$CF_CODE" = 404 ]; then fail "There's no Worker $w on this account$([ "$w" = "$STAGING" ] && echo " (the staging hub: run \"Put InFlite's staging hub up\" first, or choose inflite.ai)"). Nothing was changed."
@@ -760,7 +634,7 @@ worker_settled() {
   [ -n "$dep" ] || { fail "The Worker $w has no deployment. Nothing was changed."; return 1; }
   deployed=$(jq -r 'if ((.versions // []) | length) == 1 and (.versions[0].percentage // 0) == 100 then .versions[0].version_id else "" end' <<<"$dep")
   if [ -z "$deployed" ]; then
-    fail "The Worker $w is part way through a gradual deployment (two versions sharing its traffic): Cloudflare won't change this Worker's secrets until one version has all of it (Workers & Pages → $w → Deployments). Or use $ROOF_LEVEL2. Nothing was changed."
+    fail "The Worker $w is part way through a gradual deployment (two versions sharing its traffic): Cloudflare won't change this Worker's secrets until one version has all of it (Workers → $w → Deployments). Or use $ROOF_LEVEL2. Nothing was changed."
     return 1
   fi
   if ! cf GET "/accounts/$ACCOUNT/workers/scripts/$w/versions"; then
@@ -769,7 +643,7 @@ worker_settled() {
   newest=$(jq -r '(.items // []) | max_by(.number // 0) | .id // empty' <<<"$CF_OUT")
   [ -n "$newest" ] || { fail "The Worker $w has no versions listed. Nothing was changed."; return 1; }
   if [ "$newest" != "$deployed" ]; then
-    fail "The Worker $w's newest version (${newest:0:8}) isn't the one deployed (${deployed:0:8}): a push to another branch of the inflite repo uploads one, and Cloudflare won't change this Worker's secrets until its production branch is deployed again (Workers & Pages → $w → Deployments; never deploy that other version). Or use $ROOF_LEVEL2. Nothing was changed."
+    fail "The Worker $w's newest version (${newest:0:8}) isn't the one deployed (${deployed:0:8}): a push to another branch of the inflite repo uploads one, and Cloudflare won't change this Worker's secrets until its production branch is deployed again (Workers → $w → Deployments; never deploy that other version). Or use $ROOF_LEVEL2. Nothing was changed."
     return 1
   fi
   say "The Worker $w is settled: its newest version (${newest:0:8}) is the one deployed."

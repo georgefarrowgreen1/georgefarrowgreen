@@ -1,16 +1,11 @@
-// georgefarrowgreen.com as a Worker (the move off Pages: .tools/workers/README.md): the home page, Fit Studio
-// (fitting.georgefarrowgreen.com), and the apps' old addresses there, which send you on to inflite.ai signed in. The
-// same build as InFlite's apps' Worker (wrangler.worker.jsonc, "inflite-apps"), with the same database, storage and
-// keys; the site decides what each address is. Not live till its addresses are moved (README, step 5); deployed, by
-// hand only, beside inflite-apps (.github/workflows/worker-deploy.yml).
+// georgefarrowgreen.com and Fit Studio on Cloudflare Workers. See .tools/workers/README.md.
+// Built by .tools/workers/build.mjs; deployed on pushes to main and by workflow_dispatch.
 {
   "$schema": ".tools/tests/node_modules/wrangler/config-schema.json",
   "name": "gfg",
   "main": ".tools/workers/dist/index.js",
   "compatibility_date": "2026-06-17",
-  // (the site's files, as Pages served them: every request through the Worker first, as functions/_middleware.js
-  // sees everything on Pages; what it passes on (ctx.next()) is the files', with Pages' own ways with HTML, a 404.html
-  // and _headers and _redirects. What's never the site's is left out: .assetsignore)
+  // Static assets follow the middleware; HTML, 404.html, _headers and _redirects are handled by Workers.
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
@@ -28,12 +23,10 @@
   "observability": { "enabled": true },
   // (its workers.dev address, for looking at it before the move; the scheduled jobs call inflite-apps)
   "workers_dev": true,
-  // (the addresses it has taken over from the Pages project so far, one at a time: README, step 5)
+  // Custom domains.
   "routes": [
     // (www had no address of its own before: a custom domain gives it one, and it goes on to georgefarrowgreen.com)
     { "pattern": "www.georgefarrowgreen.com", "custom_domain": true },
-    // (each address the Worker's own custom domain, with its own DNS record: since the Pages project, and the records it
-    // had made, are gone)
     { "pattern": "account.georgefarrowgreen.com", "custom_domain": true },
     { "pattern": "chat.georgefarrowgreen.com", "custom_domain": true },
     { "pattern": "fitness.georgefarrowgreen.com", "custom_domain": true },
@@ -41,10 +34,5 @@
     { "pattern": "fitting.georgefarrowgreen.com", "custom_domain": true },
     { "pattern": "georgefarrowgreen.com", "custom_domain": true }
   ]
-  // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
-  // "routes": [
-  //   { "pattern": "www.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" }, { "pattern": "georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
-  //   { "pattern": "fitting.georgefarrowgreen.com/*", "zone_name": "georgefarrowgreen.com" },
-  //   … and the apps' old addresses there (chat., weather., fitness., account.georgefarrowgreen.com), as the Pages project lists them
-  // ]
+
 }

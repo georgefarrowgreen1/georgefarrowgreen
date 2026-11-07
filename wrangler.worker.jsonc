@@ -1,19 +1,11 @@
-// InFlite's apps as a Worker with static assets (the move off Pages: .tools/workers/README.md): chat., weather.,
-// fitness., finance., account., auth. and status.inflite.ai. Its twin, "gfg" (wrangler.gfg.jsonc), is the same build for
-// georgefarrowgreen.com's own addresses; the site decides what each address is, as it does on Pages. Not live: the site
-// is still the Pages project (wrangler.toml) until the addresses are moved over. Until then this deploys, by hand only
-// (.github/workflows/worker-deploy.yml), with no routes, so it's reachable only at its workers.dev address, side by
-// side with Pages, on the same database, storage and keys.
-//   node .tools/workers/build.mjs                     the functions/ folder compiled into one Worker (as Pages does)
-//   npx wrangler deploy -c wrangler.worker.jsonc      (or the workflow)
+// InFlite's apps on Cloudflare Workers. See .tools/workers/README.md.
+// Built by .tools/workers/build.mjs; deployed on pushes to main and by workflow_dispatch.
 {
   "$schema": ".tools/tests/node_modules/wrangler/config-schema.json",
   "name": "inflite-apps",
   "main": ".tools/workers/dist/index.js",
   "compatibility_date": "2026-06-17",
-  // (the site's files, as Pages served them: every request through the Worker first, as functions/_middleware.js
-  // sees everything on Pages; what it passes on (ctx.next()) is the files', with Pages' own ways with HTML, a 404.html
-  // and _headers and _redirects. What's never the site's is left out: .assetsignore)
+  // Static assets follow the middleware; HTML, 404.html, _headers and _redirects are handled by Workers.
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
@@ -32,12 +24,10 @@
   // minute for each key, functions/_pigeon.js pace)
   "ratelimits": [{ "name": "RL10", "namespace_id": "4101", "simple": { "limit": 10, "period": 60 } }, { "name": "RL20", "namespace_id": "4102", "simple": { "limit": 20, "period": 60 } }, { "name": "RL40", "namespace_id": "4103", "simple": { "limit": 40, "period": 60 } }, { "name": "RL80", "namespace_id": "4104", "simple": { "limit": 80, "period": 60 } }, { "name": "RL160", "namespace_id": "4105", "simple": { "limit": 160, "period": 60 } }, { "name": "RL320", "namespace_id": "4106", "simple": { "limit": 320, "period": 60 } }],
   "observability": { "enabled": true },
-  // (its workers.dev address: what the scheduled jobs call once it's live, past the custom domains' bot checks, as
-  // they call georgefarrowgreen.pages.dev now: functions/_sites.js tickHost)
+  // Scheduled jobs use this Worker address, past the custom domains' bot checks.
   "workers_dev": true,
   "vars": { "TICK_HOST": "inflite-apps.georgefarrowgreen.workers.dev" },
-  // (its addresses, each its own custom domain, with its own DNS record, since the Pages project and the records it had
-  // made are gone)
+  // Custom domains, each with its own DNS record.
   "routes": [
     { "pattern": "finance.inflite.ai", "custom_domain": true },
     { "pattern": "fitness.inflite.ai", "custom_domain": true },
@@ -48,10 +38,5 @@
     // (InFlite's status page: functions/_status.js)
     { "pattern": "status.inflite.ai", "custom_domain": true }
   ]
-  // Its addresses go here at the move, one at a time, each a route in front of the Pages project's (README, step 5):
-  // "routes": [
-  //   { "pattern": "finance.inflite.ai/*", "zone_name": "inflite.ai" }, { "pattern": "fitness.inflite.ai/*", "zone_name": "inflite.ai" },
-  //   { "pattern": "weather.inflite.ai/*", "zone_name": "inflite.ai" }, { "pattern": "account.inflite.ai/*", "zone_name": "inflite.ai" },
-  //   { "pattern": "auth.inflite.ai/*", "zone_name": "inflite.ai" }, { "pattern": "chat.inflite.ai/*", "zone_name": "inflite.ai" }
-  // ]
+
 }

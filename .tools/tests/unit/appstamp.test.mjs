@@ -8,7 +8,7 @@ import { assets as minAssets } from '../../../functions/_min.js';
 
 const ROOT = new URL('../../../', import.meta.url);
 const TYPES = { js: 'text/javascript', css: 'text/css', html: 'text/html; charset=utf-8' };
-// Pages' store of the site's files, counting what it's asked for
+// the static asset store of the site's files, counting what it's asked for
 function assets() {
   const asked = [];
   return { asked, async fetch(req) {

@@ -1,5 +1,5 @@
 // The pepper carried to another project (functions/_atrest.js, PIGEON_PEPPER_KEY): where the pepper and a key are both
-// set (the Pages project), the database keeps the pepper locked with the key; where the key alone is (the Worker), the
+// set (the source environment), the database keeps the pepper locked with the key; where the key alone is (the Worker), the
 // pepper's that one, so what one locked the other opens, and a password checks the same in both. The database's copy
 // opens with the key only; a wrong or short key opens nothing; and none of it changes anything where no key's set.
 import { test } from 'node:test';
@@ -20,7 +20,7 @@ function fakeDb(meta = new Map()) {
 const PEPPER = 'the-original-pepper-the-owner-cannot-read-back', KEY = 'k'.repeat(20) + 'a-key-of-the-owners-choosing';
 const proof = Buffer.from('a password proof, as the phone sends it').toString('base64url');
 
-test('the Pages project, with the pepper and a key: the pepper kept, locked; the Worker, with the key alone, reads the same', async () => {
+test('the source environment, with the pepper and a key: the pepper kept, locked; the Worker, with the key alone, reads the same', async () => {
   const D = fakeDb(), pages = { DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: KEY };
   const stored = await proofHash(pages, proof), vault = await lockVault(pages, 'user-1', 'the key to their messages');
   assert.match(stored, /^p1:/); assert.match(vault, /^w1:/);
@@ -51,7 +51,7 @@ test('no key: as before, nothing kept', async () => {
   assert.equal(D.meta.has('pepper'), false);
   assert.deepEqual(await pepperState({ DB: D, PIGEON_PEPPER: PEPPER }), { on: true, key: false, kept: false });
 });
-test('a new key on the Pages project: the pepper kept again, with it', async () => {
+test('a new key on the source environment: the pepper kept again, with it', async () => {
   const D = fakeDb(), K2 = 'z'.repeat(40);
   await proofHash({ DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: KEY }, proof);
   const stored = await proofHash({ DB: D, PIGEON_PEPPER: PEPPER, PIGEON_PEPPER_KEY: K2 }, proof);

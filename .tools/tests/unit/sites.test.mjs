@@ -18,7 +18,7 @@ test('each app answers at its inflite.ai address, and at its old one (its API, f
   }
   assert.equal(oldApp('weather.georgefarrowgreen.com', {}), 'weather');
   assert.equal(oldApp('www.georgefarrowgreen.com', {}), null);
-  assert.equal(siteOf('account.inflite.ai', {}), 'apps'); assert.equal(siteOf('georgefarrowgreen.com', {}), 'home'); assert.equal(siteOf('x.pages.dev', {}), null);
+  assert.equal(siteOf('account.inflite.ai', {}), 'apps'); assert.equal(siteOf('georgefarrowgreen.com', {}), 'home'); assert.equal(siteOf('x.example.workers.dev', {}), null);
   assert.equal(appOrigin('fitness', {}), 'https://fitness.inflite.ai');
 });
 test('Chat’s API answers at its own address (not only at the addresses a test names)', () => {
@@ -28,7 +28,7 @@ test('Chat’s API answers at its own address (not only at the addresses a test 
 test('InFlite Today is at the apps’ site itself, and links to each app at its own address', () => {
   assert.equal(todayOrigin({}), 'https://inflite.ai');
   assert.equal(todayOrigin({}, new Request('https://account.inflite.ai/api/account/today/me')), 'https://inflite.ai', 'production: never the request’s own');
-  assert.equal(todayOrigin({}, new Request('https://georgefarrowgreen.pages.dev/x')), 'https://inflite.ai');
+  assert.equal(todayOrigin({}, new Request('https://gfg.georgefarrowgreen.workers.dev/x')), 'https://inflite.ai');
   assert.deepEqual(todayLinks({}, null), { chat: 'https://chat.inflite.ai', weather: 'https://weather.inflite.ai', fitness: 'https://fitness.inflite.ai',
     finance: 'https://finance.inflite.ai', account: 'https://account.inflite.ai', auth: 'https://auth.inflite.ai' });
   // the tests' stood-in site, on the port the server's on

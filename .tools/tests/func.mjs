@@ -1,4 +1,4 @@
-// Chat end-to-end checks against the local stack (wrangler pages dev on 8788).
+// Chat end-to-end checks against the local stack (wrangler dev -c wrangler.worker.jsonc on 8788).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { makeAccount, signInChat, accountUrl, pastOffer } from './join.mjs';

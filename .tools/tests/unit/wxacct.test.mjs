@@ -96,7 +96,7 @@ test("the site's sign-in, as a cookie: the whole site's where the address is the
   // the site's own addresses: Secure whatever the request came over
   assert.match(set("http://weather.georgefarrowgreen.com/api/weather/me"), /^__Secure-account=.*; Secure; /);
   // a preview's address, or this machine's: that address alone, and without Secure over plain http
-  assert.doesNotMatch(set("https://abc.georgefarrowgreen.pages.dev/api/weather/me"), /Domain=/);
+  assert.doesNotMatch(set("https://abc.gfg.georgefarrowgreen.workers.dev/api/weather/me"), /Domain=/);
   assert.match(set("http://localhost:8788/api/pigeon/login"), /^account=t{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age/);
   assert.match(set("http://weather.gfg.test:8788/api/weather/me", { ACCOUNT_SITE: "gfg.test" }), /Domain=gfg\.test/);
   assert.match(withoutSession(new Response("{}"), req("https://chat.georgefarrowgreen.com/"), {}).headers.get("Set-Cookie"), /^__Secure-account=; .*Max-Age=0$/);

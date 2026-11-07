@@ -19,7 +19,7 @@ import { assets as minAssets } from '../../../functions/_min.js';
 const ROOT = new URL('../../../', import.meta.url);
 const KEY = 'hub-key-0123456789abcdef', HUB = { 'X-Hub-Key': KEY, 'X-Hub-IP': '203.0.113.9' };
 const TYPES = { js: 'text/javascript', css: 'text/css', html: 'text/html; charset=utf-8', webmanifest: 'application/manifest+json', png: 'image/png', svg: 'image/svg+xml' };
-// (Pages' store: the site's files, with made-up ones laid over them: { '/pigeon/roof/x.js': '…' })
+// (the static asset store: the site's files, with made-up ones laid over them: { '/pigeon/roof/x.js': '…' })
 const store = (over = {}) => ({ asked: [], async fetch(req) {
   let path = new URL(req.url ?? req).pathname; if (path.endsWith('/')) path += 'index.html';
   this.asked.push(path);

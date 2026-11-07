@@ -11,7 +11,7 @@
      from the pepper, bound to the account, so one can't be moved to another.
    - Without PIGEON_PEPPER set, everything stays as it was. Once set it must
      never change or be lost: every password would stop working.
-   - Moving the site to another Cloudflare project (Pages to a Worker, .tools/workers/README.md), where it can't
+   - Moving the site to another Cloudflare project (between Workers, .tools/workers/README.md), where it can't
      be copied (Cloudflare never shows a secret again): PIGEON_PEPPER_KEY, a key of the owner's choosing (32
      characters or more), set beside PIGEON_PEPPER, has the site keep the pepper in the database, locked with it
      (pg_meta "pepper": AES-256-GCM under a key from PIGEON_PEPPER_KEY). Where PIGEON_PEPPER_KEY is set and

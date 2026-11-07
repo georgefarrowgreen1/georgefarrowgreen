@@ -3,7 +3,7 @@
 // start until an activity of theirs since 40 minutes before it (fx_acts, fx_garmin_new, fx_strava_new), or its cap
 // (start + the longer of 2 hours and its length + 30 minutes). Its level is the account's holdRide rule (td_rules; no
 // row, or no table: do): at do friends and apps are held, at suggest apps only, at quiet nothing. Warnings always pass.
-// The off switch: the Pages var RIDE_HOLD set to "0" holds nothing anywhere (every sender as before rides were held,
+// The off switch: the Worker var RIDE_HOLD set to "0" holds nothing anywhere (every sender as before rides were held,
 // nothing said "while you rode", nothing counted), for the senders that pass env (all of them do).
 //   busyMap(D, userIds, t, env?) → Map(userId → { until, level, rideStart }), in one statement, for those busy at t
 //   busyNow(env, userId, t) → { until, level, rideStart } or null

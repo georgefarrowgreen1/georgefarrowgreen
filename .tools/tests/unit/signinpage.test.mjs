@@ -41,7 +41,7 @@ test("every way in kept; nothing only the account's page draws", () => {
   assert.match(page, /SIGNIN_PAGE\?\?=!1/, "the flag kept as written, false, for a reload of app.js");
 });
 
-// Pages' store of the site's files (as acctstamp.test.mjs has it), with min/ beside them
+// the static asset store of the site's files (as acctstamp.test.mjs has it), with min/ beside them
 const store = (changed = {}) => ({ async fetch(req) {
   let path = new URL(req.url).pathname; if (path.endsWith("/")) path += "index.html";
   const text = changed[path] ?? (() => { try { return readFileSync(ROOT + path.slice(1)); } catch (_) { return null; } })();

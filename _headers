@@ -1,4 +1,4 @@
-# Cloudflare Pages headers (https://developers.cloudflare.com/pages/configuration/headers/)
+# Cloudflare Workers static asset headers (https://developers.cloudflare.com/workers/static-assets/headers/)
 # The whole site shares an origin with Chat (/pigeon), whose keys live in
 # this origin's storage, so every page here runs only its own scripts too
 # (plus Cloudflare Web Analytics' beacon, which Cloudflare injects and pins
