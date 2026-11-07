@@ -29,7 +29,8 @@ export const FIT_SECURITY = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // the app's one page (as stored, under /fitness/)
-const PAGE = /^\/fitness\/(?:(?:index|routes-demo)\.html)?$/;
+// Workers Assets redirects routes-demo.html to its extensionless URL.
+const PAGE = /^\/fitness\/(?:index\.html|routes-demo(?:\.html)?)?$/;
 
 // The response for one of the app's files: `res` is the file as stored, at `path` (under /fitness/)
 export function serveFitness(res, path) {
