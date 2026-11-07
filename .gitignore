@@ -15,3 +15,7 @@ node_modules/
 
 # The site as a Worker, built (node .tools/workers/build.mjs)
 .tools/workers/dist/
+
+# Generated demo review builds and browser captures
+/artifacts/
+/test-results/

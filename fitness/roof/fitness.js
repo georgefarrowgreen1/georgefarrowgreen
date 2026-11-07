@@ -24,12 +24,13 @@ import { view as todayView, lookAt, sendableToday } from "./todayview.js";
 import { openOffer } from "./offers.js";
 import { dayStamp, rhythmSaid } from "./fxcalc.js";
 import { dur, dist } from "../ui.js";
+import { renderPlanCard } from "../routes-plan.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.01";
-export const NEWS = "The morning check-in: each answer its own rounded button, in line across the rows";
-export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
+export const BUILD = "2.02";
+export const NEWS = "Try cycling routes: real GPX loops, training fit and a local demo ride plan";
+export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
 const AWAY = 5 * 60e3;
@@ -42,6 +43,7 @@ export async function mount(root, fw) {
   // (each lazy file, through fw.lazy; its literal for roofcontract and C4's lazy list)
   const L = {
     acts: () => fw.lazy((q) => import("./actsview.js" + (q || ""))),
+    routes: () => fw.lazy((q) => import("./routesview.js" + (q || ""))),
     prog: () => fw.lazy((q) => import("./progview.js" + (q || ""))),
     plan: () => fw.lazy((q) => import("./planview.js" + (q || ""))),
     set: () => fw.lazy((q) => import("./fxsettings.js" + (q || ""))),
@@ -129,10 +131,10 @@ export async function mount(root, fw) {
       destroy() { real?.destroy?.(); real = null; },
     };
   };
-  const VIEWS = { today: todayView, activities: lazyView("acts", "Activities"), progress: lazyView("prog", "Progress") };
-  // (the other sections' files fetched once (not when Save Data is asked for), a moment after Fitness first shows, so a first switch to one is instant)
+  const VIEWS = { today: todayView, activities: lazyView("acts", "Activities"), routes: lazyView("routes", "Routes"), progress: lazyView("prog", "Progress") };
+  // Activities/Progress warm after Fitness shows; Routes keeps its geometry lazy until opened.
   let warmed = false, warmT = 0;
-  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
+  const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const [section, v] of views) if (section !== "routes") v.warm?.(); }, 1200); };
   const secs = new Map(), views = new Map();
   for (const [id, name] of SECTIONS) {
     const el = doc.createElement("section");
@@ -157,13 +159,15 @@ export async function mount(root, fw) {
   // hasn't leaves it exactly as it was, its charts and rows never drawing in again)
   let ver = 0;
   const drawnAt = new Map();
+  const routePlan = () => { const owner = fw.session.user.id; return renderPlanCard(secs.get("today"), { owner, current: () => fw.session.user.id === owner, metric: core.U.metric !== false, onOpen: () => fw.nav.section("routes") }); };
   const draw = (id = shown, force = false) => {
     if (!onScreen || !id) return;
-    if (!force && S.me && drawnAt.get(id) === ver) { try { views.get(id)?.resume?.(); } catch (e) { console.error(e); } return; }
+    if (!force && S.me && drawnAt.get(id) === ver) { try { views.get(id)?.resume?.(); if (id === "today") routePlan(); } catch (e) { console.error(e); } return; }
     const el = secs.get(id);
     try {
       if (state(el)) return;
       views.get(id)?.draw();
+      if (id === "today") routePlan();
       drawnAt.set(id, ver);
       if (id === "today" && !zoomed) { const hero = el.querySelector("[data-k=daycard]"); if (hero) { zoomed = true; fw.zoomTarget?.(hero); } }
     } catch (e) { console.error(e); }
@@ -171,6 +175,7 @@ export async function mount(root, fw) {
   // the header line: today's plan; Activities, this year's; Progress, fitness and form
   const lineOf = (id) => {
     if (!S.me) return S.loading ? "Loading…" : "";
+    if (id === "routes") return "Richmond & Surrey · cycling routes demo";
     if (id === "activities") { const y = new Date().getFullYear(), n = S.acts.filter((a) => new Date(a.start).getFullYear() === y).length; return `${n} this year`; }
     if (id === "progress") { const f = S.acts.length ? core.fitnessSeries().at(-1) : null; return f ? `Fitness ${Math.round(f.ctl)} · Form ${core.signed(f.tsb)}` : "Your fitness, as your rides come in"; }
     const T = core.TODAY, done = core.actsOn(T), pid = core.plannedOn(T), w = pid && pid !== "event" ? core.wkById(pid) : null;

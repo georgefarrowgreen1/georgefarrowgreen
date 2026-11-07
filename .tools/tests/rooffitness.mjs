@@ -172,8 +172,8 @@ await part(1, 'Today’s card and Apps’ tile open Fitness in the page; the hea
     '1. two acts beside Search: Add Files (upload) and Fitness Settings (settings), S2-D18', js({ up: await lab('upload'), set: await lab('settings') }));
   ok((await attrOf(p, H.HD_BACK, 'aria-label')) === 'Back to Today', '1. Back: “Back to Today” (S2-D18)', await attrOf(p, H.HD_BACK, 'aria-label'));
   const secs = await sections(p);
-  ok(js(secs.map((s) => s.id)) === js(['today', 'activities', 'progress']) && /Today/.test(secs[0]?.label) && /Activities/.test(secs[1]?.label) && /Progress/.test(secs[2]?.label) && secs[0]?.on === 'true',
-    '1. the switcher: Today · Activities · Progress, Today selected (§2.2, C2)', js(secs));
+  ok(js(secs.map((s) => s.id)) === js(['today', 'activities', 'routes', 'progress']) && /Today/.test(secs[0]?.label) && /Activities/.test(secs[1]?.label) && /Routes/.test(secs[2]?.label) && /Progress/.test(secs[3]?.label) && secs[0]?.on === 'true',
+    '1. the switcher: Today · Activities · Routes · Progress, Today selected (§2.2, C2)', js(secs));
   ok((await count(p, H.htmlApp(APP))) === 1 && (await attrOf(p, H.tab('apps'), 'aria-current')) === 'true', '1. html[data-app=fitness]; the tab bar’s Apps current');
   await p.evaluate(() => scrollTo(0, 600));
   ok(await p.waitForFunction((s) => /^Fitness · ./.test(document.querySelector(s)?.textContent.trim() || ''), H.HD_TITLE, { timeout: 5000 }).then(() => true, () => false), '1. scrolled, the compact title “Fitness · <line>” (S2-D18)', await textOf(p, H.HD_TITLE));

@@ -1,0 +1,52 @@
+name: Fitness routes demo
+on:
+  pull_request:
+    paths: ['fitness/**', 'functions/_fitapp.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+  push:
+    branches: [main]
+    paths: ['fitness/**', 'functions/_fitapp.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+permissions:
+  contents: read
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: georgefarrowgreen
+      - name: Shared InFlite UI
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          R=https://github.com/georgefarrowgreen1/inflite
+          if git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
+          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix .tools/tests --no-audit --no-fund
+        working-directory: georgefarrowgreen
+      - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
+        working-directory: georgefarrowgreen
+      - name: Route data and planning checks
+        run: node .tools/tests/unit/fitnessroutes.test.mjs
+        working-directory: georgefarrowgreen
+      - name: Downloadable review build
+        run: node .tools/build-routes-demo.mjs artifacts/InFlite-Fitness-Routes-Demo.html
+        working-directory: georgefarrowgreen
+      - name: Browser flow and Fitness integration
+        run: node --test .tools/tests/routes-demo.test.cjs
+        working-directory: georgefarrowgreen
+        env:
+          ROOF_IFL: ${{ github.workspace }}/inflite
+          ROUTES_SCREENSHOTS: test-results/routes
+          ROUTES_DEMO_HTML: ${{ github.workspace }}/georgefarrowgreen/artifacts/InFlite-Fitness-Routes-Demo.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fitness-routes-demo
+          path: |
+            georgefarrowgreen/artifacts/InFlite-Fitness-Routes-Demo.html
+            georgefarrowgreen/test-results/routes
+          retention-days: 14
