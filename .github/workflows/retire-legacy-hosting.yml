@@ -1,0 +1,35 @@
+name: Disable obsolete hosting builds
+
+# One-off maintenance branch. Does not run on main, pull requests or other pushes.
+on:
+  push:
+    branches: [codex/disable-legacy-pages]
+    paths:
+      - .github/workflows/retire-legacy-hosting.yml
+      - .tools/hosting/retire-legacy.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retire-legacy-hosting
+  cancel-in-progress: false
+
+jobs:
+  disable:
+    if: github.repository == 'georgefarrowgreen1/georgefarrowgreen' && github.ref == 'refs/heads/codex/disable-legacy-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify replacement Workers and disable obsolete build triggers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node .tools/hosting/retire-legacy.mjs
