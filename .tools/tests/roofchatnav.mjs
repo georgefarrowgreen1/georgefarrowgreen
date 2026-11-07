@@ -268,7 +268,9 @@ await part(4, 'the sign-in hop: /chats/#signin=… → /chats/in/; the trip roun
 const found = await hunt([QUEUED], { S, seen: everyone.flatMap((x) => x.seen || []) });
 ok(!found.length, 'the letter queued and sent in no request URL or body, hub log, stack log (rule 5)', js(found.slice(0, 4)));
 ok(!MISSING.size, 'every hook this test uses is in roofhooks.mjs (B0’s; the missing ones asked of B0)', js([...MISSING]));
-const all = everyone.filter((x) => x.name !== 'pat').flatMap((x) => x.errs || []).filter((e) => !/george-off .*(404|Failed to fetch dynamically imported module)/.test(e));
+// (and, offline, the browser's own note that Chat's page asked for a cross-fade to a page that doesn't take part in
+// one (Chat's @view-transition, Today's none): the fade's skipped, nothing is shown, nothing fails)
+const all = everyone.filter((x) => x.name !== 'pat').flatMap((x) => x.errs || []).filter((e) => !/george-off .*(404|Failed to fetch dynamically imported module|Transition was aborted because of invalid state\. ViewTransition opt-in disabled)/.test(e));
 ok(!all.some((e) => /CSP violation|Refused to/.test(e)), 'no CSP violation on any page', js(all.filter((e) => /CSP|Refused/.test(e)).slice(0, 6)));
 ok(!all.length, 'no page error and no console error on George’s pages (part 2’s refused module files aside)', js(all.slice(0, 8)));
 await closeAll(); await K.b.close().catch(() => {});
