@@ -169,6 +169,49 @@ test("Friends: the requests row, friends by name, groups; Add Friend and Request
   inst.hide(); inst.unmount();
 });
 
+test("the composer clears the home-bar gap only while the keyboard is up, including an iOS Home Screen viewport", { skip: roofSkip }, async () => {
+  const saved = Object.fromEntries(["visualViewport", "innerHeight", "screen", "matchMedia", "getComputedStyle"].map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+  const listeners = new Map();
+  const vv = { height: 844, offsetTop: 0, scale: 1,
+    addEventListener(k, f) { listeners.set(k, f); }, removeEventListener(k) { listeners.delete(k); } };
+  globalThis.visualViewport = vv;
+  globalThis.innerHeight = 844;
+  globalThis.screen = { width: 390, height: 844 };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => "20px" });
+  let inst;
+  try {
+    const w = await world(); inst = w.inst;
+    globalThis.matchMedia = () => ({ matches: true });
+    await inst.show({ kind: "app", app: "chats", section: "chats", key: "open", arg: "f-pat" });
+    const box = w.root.querySelector(".ch-chat"), input = box.querySelector("textarea");
+    const keyboard = () => box.classList.contains("ch-kbup");
+    input.focus(); input.dispatch("focus");
+    assert.equal(keyboard(), false, "focusing alone must not move the composer under a finger");
+    assert.equal(box.style.getPropertyValue("--ch-vvh"), "864px", "Home Screen correction remains without a keyboard");
+    vv.height = 480; vv.offsetTop = 12; listeners.get("resize")();
+    assert.equal(keyboard(), true);
+    assert.equal(box.style.getPropertyValue("--ch-vvh"), "480px", "no Home Screen correction over the keyboard");
+    assert.equal(box.style.getPropertyValue("--ch-vvtop"), "12px");
+    globalThis.innerHeight = 480; listeners.get("resize")();
+    assert.equal(keyboard(), true, "iOS can shrink the layout viewport as well");
+    vv.scale = 2; listeners.get("resize")();
+    assert.equal(keyboard(), false, "pinch zoom is not a keyboard");
+    vv.scale = 1; vv.height = globalThis.innerHeight = 844; listeners.get("resize")();
+    assert.equal(keyboard(), false, "keyboard dismissal restores the home-bar padding even while focused");
+    vv.height = globalThis.innerHeight = 480;
+    globalThis.matchMedia = (q) => ({ matches: q.includes("portrait") });
+    listeners.get("resize")();
+    assert.equal(keyboard(), false, "a short desktop window with a hardware keyboard keeps its normal spacing");
+    inst.hide();
+    assert.equal(listeners.size, 0, "viewport listeners leave with the conversation");
+  } finally {
+    inst?.unmount();
+    for (const [k, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, k, descriptor); else delete globalThis[k];
+    }
+  }
+});
+
 test("a chat: opened by #open, drawn escaped with links as text, header Back/Info and no switcher, fill and the tab bar away; leaving takes its words away", { skip: roofSkip }, async () => {
   const { root, inst, svc, log } = await world();
   await inst.show({ kind: "app", app: "chats", section: "chats", key: "open", arg: "f-pat" });
