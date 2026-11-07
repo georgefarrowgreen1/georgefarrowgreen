@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.86";
-export const NEWS = "The message box sits right on the keyboard, with no gap under it";
+export const BUILD = "1.87";
+export const NEWS = "The message box stays close to the keyboard in InFlite Chats";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

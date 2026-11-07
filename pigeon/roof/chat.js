@@ -213,9 +213,15 @@ function build(host, ctx) {
     }
   };
   const fit = () => {
-    // (to the screen's own foot, on a Home Screen that lays the page out short of it: the shared menu's --fix-gap; never
-    // with the keyboard up, which the visual viewport is short by)
-    const ih = globalThis.innerHeight, kb = !!vv && vv.height < ih - 80;
+    // iOS may shrink the layout viewport along with the keyboard, particularly on the Home Screen. In that case
+    // compare the focused composer's viewport with the screen too, as the standalone chat does. Pinching isn't typing.
+    const ih = globalThis.innerHeight, screen = globalThis.screen;
+    const portrait = globalThis.matchMedia?.("(orientation: portrait)").matches;
+    const tall = screen ? (portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height)) : 0;
+    const kb = !!vv && (vv.scale || 1) === 1 && (vv.height < ih - 80 ||
+      (doc.activeElement === input && globalThis.matchMedia?.("(any-pointer: coarse)").matches && tall - vv.height > 260));
+    box.classList.toggle("ch-kbup", kb);
+    // The shared menu's Home Screen correction and the composer's home-bar padding belong only below a closed keyboard.
     let gap = 0; try { gap = kb ? 0 : parseFloat(getComputedStyle(doc.documentElement).getPropertyValue("--fix-gap")) || 0; } catch (_) {}
     const h = (vv ? vv.height : ih) + gap;
     box.style.setProperty("--ch-vvh", `${Math.round(h)}px`);
@@ -284,6 +290,8 @@ function build(host, ctx) {
   composer.addEventListener("submit", onSubmit);
   input.addEventListener("input", onInput);
   input.addEventListener("keydown", onKey);
+  input.addEventListener("focus", fit);
+  input.addEventListener("blur", fit);
   scroller.addEventListener("scroll", onScroll, { passive: true });
 
   let hiddenOff = null;
@@ -361,6 +369,8 @@ function build(host, ctx) {
       composer.removeEventListener("submit", onSubmit);
       input.removeEventListener("input", onInput);
       input.removeEventListener("keydown", onKey);
+      input.removeEventListener("focus", fit);
+      input.removeEventListener("blur", fit);
       scroller.removeEventListener("scroll", onScroll);
       box.remove();
     },
