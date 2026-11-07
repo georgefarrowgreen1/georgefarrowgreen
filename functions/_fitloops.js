@@ -43,7 +43,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       const attemptTimer = setTimeout(cancelAttempt, 30000);
       const form = new URLSearchParams({lonlats: points.map(p => p.join(",")).join("|"), profile: q.surface});
       try {
-        const r = await fetcher(base, {method: "POST", body: form.toString(), headers: {"Content-Type": "application/x-www-form-urlencoded", Accept: "application/geo+json, application/json"}, signal: attempt.signal, redirect: "error"});
+        const r = await fetcher(base, {method: "POST", body: form.toString(), headers: {"Content-Type": "application/x-www-form-urlencoded", Accept: "application/geo+json, application/json"}, signal: attempt.signal, redirect: "manual"});
         if (!r.ok) {
           providerDown ||= r.status >= 500 || r.status === 429;
           await r.body?.cancel();

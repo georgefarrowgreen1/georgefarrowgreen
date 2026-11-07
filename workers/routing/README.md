@@ -33,7 +33,9 @@ the container and computes a real route with `--network none --memory 1g --cpus 
 inputs to the private `inflite-routing-data` R2 bucket before deployment. It then installs the isolated Worker and
 runs protected probes across the UK, including map-tile boundaries, plus the exact loop planner used by Fitness.
 Initial Cloudflare container provisioning can take several minutes; the readiness step retries within its deadline.
-The site must not be switched until the hosted readiness check is green. An identical source tree on merge rechecks the
+The site must not be switched until the hosted readiness check is green. The loop planner also runs in `workerd`
+under both production compatibility dates, catching Worker-specific Request/AbortSignal incompatibilities that Node
+unit tests cannot detect. An identical source tree on merge rechecks the
 already deployed service without restarting its tested container image.
 
 The existing `CLOUDFLARE_API_TOKEN` and optional account selector need Workers, Containers/registry and R2 permissions.
