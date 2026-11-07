@@ -1,10 +1,11 @@
 // Today's bell (the inflite repo's today/public/bell.js) and the root worker's log behind it (today/public/sw.js): each
 // notification shown kept (id, app, title, body, url, tag, time), newest first, in the place of one with its tag, at
 // most 50 and 14 days; one tapped or cleared in Notification Centre, or cleared in the bell's sheet (its notification
-// closed too), out of it and never merged back; those still showing that it hasn't added; the Home Screen badge the
-// unseen ones, cleared as the sheet's opened, while the rows stay. And the sheet's rows as bell.js draws them: newest
-// first, data as text only, the time as "11:02" / "Yesterday", "No notifications" when there are none, a tap opening,
-// Clear and Delete clearing.
+// closed too), out of it and never merged back, but by the sheet's Undo within a minute; those still showing that it
+// hasn't added; the Home Screen badge the unseen ones, cleared as the sheet's opened (which is told which they were),
+// while the rows stay. And the sheet's rows as bell.js draws them: by day, newest first, data as text only, the time as
+// "Now" / "5m" / "11:02" / "Yesterday" with the app's name, a dot for the unseen, a stack of one app's to one place
+// with its count, "No notifications" when there are none, a tap opening, Clear and Delete clearing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -154,37 +155,136 @@ test('the worker: each one shown is logged, the badge is the unseen ones, the sh
   assert.equal(got, null);
 });
 
-test('the sheet’s rows: newest first as given, data as text only, the time, a tap opening, Clear and Delete clearing; "No notifications" for none', { skip }, async () => {
+test('the worker: Undo puts cleared ones back (seen, as they were, their notifications left closed), only within a minute of their clearing and never over a newer one with the tag; the sheet told which were unseen as it opened', { skip }, async () => {
+  const w = worker();
+  await w.push({ app: 'chat', title: 'Ann', body: 'See you at 6', tag: 'msg-ann', url: '/pigeon/#open=ann' });
+  w.tick(1000);
+  await w.push({ app: 'chat', title: 'Ann', body: 'Running late', tag: 'cheer-1', url: '/pigeon/#open=ann' });
+  let r = await w.ask({ ifl: 'notes' });
+  assert.deepEqual(r.list.map((x) => x.tag), ['chat:cheer-1', 'chat:msg-ann'], 'each one’s tag told, for the sheet’s stacks and its Undo');
+  r = await w.ask({ ifl: 'notes-seen' });
+  assert.deepEqual(r.fresh.length, 2, 'the sheet told which were unseen');
+  assert.equal(r.unread, 0);
+  assert.equal((await w.ask({ ifl: 'notes-seen' })).fresh.length, 0, 'and none the next time');
+  const both = r.list;
+  r = await w.ask({ ifl: 'notes-clear', ids: both.map((x) => x.id) });
+  assert.deepEqual([r.list, w.centre.length], [[], 0]);
+  // (put back: in the log again, seen, newest first; Notification Centre left as it is)
+  r = await w.ask({ ifl: 'notes-back', list: both });
+  assert.deepEqual(r.list.map((x) => [x.body, x.seen, x.url]), [['Running late', true, '/chats/#open=ann'], ['See you at 6', true, '/chats/#open=ann']]);
+  assert.equal(w.centre.length, 0, 'their notifications stay closed');
+  assert.equal(w.badges.at(-1), 0, 'no count for them');
+  assert.ok(w.win.messages.some((m) => m.ifl === 'notes' && m.list.length === 2), 'an open page told');
+  // (put back once only: again, nothing doubled)
+  r = await w.ask({ ifl: 'notes-back', list: both });
+  assert.equal(r.list.length, 2);
+  // (cleared, and a new one with its tag since: that one stays, the old one isn't put over it)
+  const late = r.list[0];
+  await w.ask({ ifl: 'notes-clear', ids: [late.id] });
+  w.tick(1000);
+  await w.push({ app: 'chat', title: 'Ann', body: 'Here now', tag: 'cheer-1', url: '/pigeon/#open=ann' });
+  r = await w.ask({ ifl: 'notes-back', list: [late] });
+  assert.deepEqual(r.list.map((x) => x.body), ['Here now', 'See you at 6']);
+  // (more than a minute after: not put back)
+  const six = r.list[1];
+  await w.ask({ ifl: 'notes-clear', ids: [six.id] });
+  w.tick(61e3);
+  r = await w.ask({ ifl: 'notes-back', list: [six] });
+  assert.deepEqual(r.list.map((x) => x.body), ['Here now']);
+  // (never one the log didn't let go of, and nothing but what a row is: a link elsewhere made the hub's own)
+  r = await w.ask({ ifl: 'notes-back', list: [{ id: 'made-up', app: 'chat', title: 'Hi', body: '', url: '/', tag: '', at: w.now() }] });
+  assert.equal(r.list.length, 1, 'one it never had: not added');
+  const here = r.list[0];
+  await w.ask({ ifl: 'notes-clear', ids: [here.id] });
+  r = await w.ask({ ifl: 'notes-back', list: [{ ...here, url: 'https://evil.example/', app: 'evil', title: 7 }] });
+  assert.deepEqual(r.list.map((x) => [x.url, x.app, x.title]), [['/', 'today', '']]);
+});
+
+test('the sheet’s rows: by day (Today, Yesterday, Earlier), data as text only, the app’s name by the time, a dot for the unseen; a stack for several from one app to one place in a day, its count opening it out; a tap opening, Clear and Delete clearing (a stack as one); the bell and "No notifications" for none', { skip }, async () => {
   globalThis.document = fakeDocument();
   const ui = await import(new URL('ui.js', ROOF));
-  const { draw, when } = await import(BELL);
-  const now = new Date(2026, 10, 7, 12, 0).getTime();
-  assert.equal(when(new Date(2026, 10, 7, 11, 2).getTime(), now), '11:02');
-  assert.equal(when(new Date(2026, 10, 6, 23, 50).getTime(), now), 'Yesterday');
-  assert.match(when(new Date(2026, 10, 3, 9, 0).getTime(), now), /^\w{3}$/);
+  const { draw, when, group } = await import(BELL);
+  const now = new Date(2026, 10, 7, 12, 0).getTime(), at = (d, h, m) => new Date(2026, 10, d, h, m).getTime();
+  // (the times: Now, minutes, the clock today, Yesterday, the day this week, then the date; and as they're said)
+  assert.equal(when(now - 20e3, now), 'Now');
+  assert.equal(when(now + 5e3, now), 'Now', 'a clock a little behind: still Now');
+  assert.equal(when(now - 5 * 60e3, now), '5m');
+  assert.equal(when(now - 59 * 60e3, now), '59m');
+  assert.equal(when(at(7, 10, 2), now), '10:02');
+  assert.equal(when(at(6, 23, 50), now), 'Yesterday');
+  assert.match(when(at(3, 9, 0), now), /^\w{3}$/);
   assert.match(when(new Date(2026, 9, 20, 9, 0).getTime(), now), /20/);
+  assert.equal(when(now - 5 * 60e3, now, true), '5 minutes ago');
+  assert.equal(when(now - 61e3, now, true), '1 minute ago');
+  assert.equal(when(now, now, true), 'Just now');
+  assert.match(when(at(3, 9, 0), now, true), /^\w{6,9}$/, 'the day in full');
   const H = `<img src=x onerror="alert(1)">`;
   const list = [
-    { id: 'c', app: 'markets', title: 'TSCO up 4%', body: '', url: '/markets/#s=TSCO', at: now - 60e3, seen: false },
-    { id: 'b', app: 'chat', title: H, body: H, url: '/chats/#open=abc', at: new Date(2026, 10, 7, 11, 2).getTime(), seen: true },
-    { id: 'a', app: 'weather', title: 'Rain', body: 'Take a coat', url: '/weather/', at: new Date(2026, 10, 6, 9, 0).getTime(), seen: true },
+    { id: 'm', app: 'markets', title: 'TSCO up 4%', body: '', url: '/markets/#s=TSCO', at: now - 60e3, seen: false },
+    { id: 'a3', app: 'chat', title: 'Ann', body: 'Here now', url: '/chats/#open=ann', at: at(7, 10, 40), seen: false },
+    { id: 'h', app: 'chat', title: H, body: H, url: '/chats/#open=x', at: at(7, 10, 30), seen: true },
+    { id: 'a2', app: 'chat', title: 'Ann', body: 'Running late', url: '/chats/#open=ann', at: at(7, 10, 10), seen: true },
+    { id: 'a1', app: 'chat', title: 'Ann', body: 'See you at six', url: '/chats/#open=ann', at: at(7, 9, 0), seen: true },
+    { id: 'y', app: 'weather', title: 'Rain', body: 'Take a coat', url: '/weather/', at: at(6, 9, 0), seen: true },
+    { id: 'a0', app: 'chat', title: 'Ann', body: 'Yesterday’s', url: '/chats/#open=ann', at: at(6, 8, 0), seen: true },
+    { id: 'e', app: 'today', title: 'Your day', body: '', url: '/', at: at(2, 7, 0), seen: true },
   ];
-  const box = ui.el('div'), opened = [], cleared = [];
-  draw(box, list, { ui, now, open: (n) => opened.push(n.id), clear: (n) => cleared.push(n.id) });
-  const rows = box.querySelectorAll('.ifl-nt-row');
-  assert.deepEqual(rows.map((r) => r.dataset.id), ['c', 'b', 'a']);
-  assert.equal(box.querySelector('ul').getAttribute('role'), 'list');
-  assert.deepEqual(rows.map((r) => r.querySelector('.ifl-nt-when').textContent), ['11:59', '11:02', 'Yesterday']);
-  assert.equal(rows[1].querySelector('.ifl-nt-t').textContent, H, 'a title as text');
+  // (grouped: each day's own stacks; the same app and place on another day not in them)
+  const g = group(list, now);
+  assert.deepEqual(g.map((s) => [s.label, s.stacks.map((st) => [st.head.id, st.rest.map((n) => n.id)])]),
+    [['Today', [['m', []], ['a3', ['a2', 'a1']], ['h', []]]], ['Yesterday', [['y', []], ['a0', []]]], ['Earlier', [['e', []]]]]);
+  const box = ui.el('div'), opened = [], cleared = [], more = [];
+  const fresh = new Set(['m', 'a1']);
+  const go = (shown = new Set()) => draw(box, list, { ui, now, fresh, shown, open: (ns) => opened.push(ns.map((n) => n.id)), clear: (ns) => cleared.push(ns.map((n) => n.id)), more: (k) => more.push(k) });
+  go();
+  assert.deepEqual(box.querySelectorAll('.ifl-nt-h').map((h) => h.textContent), ['Today', 'Yesterday', 'Earlier'], 'a heading a day');
+  const sec = box.querySelectorAll('section.ifl-nt-sec');
+  assert.equal(sec[0].querySelector('ul').getAttribute('role'), 'list');
+  assert.equal(sec[0].querySelector('ul').getAttribute('aria-labelledby'), sec[0].querySelector('h3').id, 'each list named by its day');
+  let rows = box.querySelectorAll('.ifl-nt-row');
+  assert.deepEqual(rows.map((r) => r.dataset.id), ['m', 'a3', 'h', 'y', 'a0', 'e'], 'Ann’s three today one row, the newest; yesterday’s apart');
+  assert.deepEqual(rows.map((r) => r.querySelector('.ifl-nt-when').textContent.replace(/^\w{3}$/, 'Day')), ['1m', '10:40', '10:30', 'Yesterday', 'Yesterday', 'Day']);
+  assert.deepEqual(rows.map((r) => r.querySelector('.ifl-nt-app')?.textContent), ['Markets', 'Chat', 'Chat', 'Weather', 'Chat', 'Today'], 'the app’s name by the time');
+  assert.equal(rows[2].querySelector('.ifl-nt-t').textContent, H, 'a title as text');
   assert.ok(!box.outerHTML.includes('<img src=x'), 'never markup');
   assert.equal(rows[0].querySelector('.ifl-nt-b'), null, 'no body: no line for it');
-  assert.equal(rows[2].querySelector('.ifl-nt-b').textContent, 'Take a coat');
+  assert.equal(rows[3].querySelector('.ifl-nt-b').textContent, 'Take a coat');
   assert.equal(rows[0].querySelector('.ifl-nt-x').getAttribute('aria-label'), 'Clear');
   assert.equal(rows[0].querySelector('img.ifl-appic').dataset.app, 'markets');
+  // (the unseen: a dot, and said; a stack with one unseen among it has it too)
+  assert.deepEqual(rows.map((r) => r.dataset.fresh || ''), ['1', '1', '', '', '', '']);
+  assert.match(rows[0].querySelector('.ifl-nt-main').getAttribute('aria-label'), /^New\. TSCO up 4%\. Markets, 1 minute ago$/);
+  assert.match(rows[3].querySelector('.ifl-nt-main').getAttribute('aria-label'), /^Rain\. Take a coat\. Weather, Yesterday$/);
+  // (the stack: +2, a button that says so and that it's shut, said on the row too)
+  const plus = rows[1].querySelector('.ifl-nt-more');
+  assert.equal(plus.textContent, '+2');
+  assert.deepEqual([plus.getAttribute('aria-label'), plus.getAttribute('aria-expanded')], ['2 more', 'false']);
+  assert.match(rows[1].querySelector('.ifl-nt-main').getAttribute('aria-label'), /\. 2 more$/);
+  assert.ok(rows[1].classList.contains('stack'));
+  assert.equal(rows[0].querySelector('.ifl-nt-more'), null, 'one alone: no count');
+  // (its row tapped: open, and the three go as one; cleared, the same)
   rows[1].querySelector('.ifl-nt-main').click();
-  rows[2].querySelector('.ifl-nt-x').click();
-  rows[0].querySelector('.ifl-nt-main').dispatch('keydown', { key: 'Delete' });
-  assert.deepEqual([opened, cleared], [['b'], ['a', 'c']]);
+  rows[1].querySelector('.ifl-nt-x').click();
+  rows[1].querySelector('.ifl-nt-main').dispatch('keydown', { key: 'Delete' });
+  plus.click();
+  assert.deepEqual(opened, [['a3', 'a2', 'a1']]);
+  assert.deepEqual(cleared, [['a3', 'a2', 'a1'], ['a3', 'a2', 'a1']]);
+  assert.deepEqual(more, ['chat|/chats/#open=ann|' + new Date(2026, 10, 7).getTime()]);
+  // (opened out: a row each, the rest a little in, each tapped and cleared by itself; the count now says it's open)
+  go(new Set(more));
+  rows = box.querySelectorAll('.ifl-nt-row');
+  assert.deepEqual(rows.map((r) => r.dataset.id), ['m', 'a3', 'a2', 'a1', 'h', 'y', 'a0', 'e']);
+  assert.deepEqual(rows.slice(1, 4).map((r) => r.classList.contains('sub')), [false, true, true]);
+  assert.equal(rows[1].querySelector('.ifl-nt-more').getAttribute('aria-expanded'), 'true');
+  assert.equal(rows[2].querySelector('.ifl-nt-more'), null);
+  assert.deepEqual(rows.slice(1, 4).map((r) => r.dataset.fresh || ''), ['', '', '1'], 'the dot on the one unseen');
+  opened.length = cleared.length = 0;
+  rows[1].querySelector('.ifl-nt-main').click();
+  rows[3].querySelector('.ifl-nt-x').click();
+  rows[2].querySelector('.ifl-nt-main').dispatch('keydown', { key: 'Backspace' });
+  assert.deepEqual([opened, cleared], [[['a3']], [['a1'], ['a2']]]);
+  // (none: the bell and the words)
   draw(box, [], { ui, now, open() {}, clear() {} });
   assert.equal(box.textContent, 'No notifications');
+  assert.ok(box.querySelector('.ifl-nt-none [data-icon=bell]'), 'with the bell');
 });
