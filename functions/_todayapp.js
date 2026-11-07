@@ -81,7 +81,7 @@ const momentOf = (request, env) => {
 
 // The session view: who, Edit's cards, the morning in a word, and the apps' addresses (functions/_sites.js todayLinks);
 // and for Today First's You and Apps: quiet hours (Chat's, the account's for every app), whether Mail's there for you
-// (the site's admin alone), and whether every app's notifications can come through InFlite (the Pages var HUB_PUSH)
+// (the site's admin alone), and whether every app's notifications can come through InFlite (the Worker var HUB_PUSH)
 async function todayView(env, u, request) {
   const [row, devs, admin, push] = await Promise.all([todayPrefs(env, u.id), todayDevices(env, u.id), adminOf(env).catch(() => null), pushPrefs(env, u.id)]);
   const p = prefsOf(u);

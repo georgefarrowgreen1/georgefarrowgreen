@@ -1,22 +1,14 @@
-// The move off Pages (.tools/workers/README.md): the Pages project's variables and secrets carried to the site's
-// Workers the way the passwords' pepper is (functions/_atrest.js), so nothing need be typed in again (Cloudflare never
-// shows a secret once it's set). Both have PIGEON_PEPPER_KEY, the owner's own key:
-//   - the Pages project (it has PIGEON_PEPPER, which the Workers never do) keeps every one of its own in the database,
-//     locked with a key from PIGEON_PEPPER_KEY (pg_meta "secrets": AES-256-GCM), kept again whenever one changes;
-//   - a Worker (PIGEON_PEPPER_KEY, no PIGEON_PEPPER) opens them, and gives itself each one it hasn't got set of its own
-//     (one set on the Worker always wins).
-// They never leave the account's database, nor are they ever written anywhere readable; a copy of the database alone
-// opens nothing. Not carried: the pepper (functions/_atrest.js carries that), the key itself, and Pages' own (CF_PAGES*).
-//   keepSecrets(env)    what the Pages project ran, once per copy of its server, to keep them (it's gone: kept for
-//                       the tests, and should they ever need keeping afresh from somewhere with PIGEON_PEPPER)
-//   fillSecrets(env)    on a Worker, first thing for every request: what it hasn't got, given (opened once, then held)
-//   keptCount(env)      how many are kept (for Admin's Insights; never a name or a value)
+// Encrypted shared settings in D1, opened by Workers with PIGEON_PEPPER_KEY.
+// Explicit Worker settings always win, including empty overrides used to disable a stored value.
+// keepSecrets supports provisioning from an environment with the pepper and key; fillSecrets opens
+// the existing copy once per server instance. Neither keys, pepper nor platform metadata are stored.
+// keptCount exposes only the count for Admin Insights.
 import { hex, sha256, b64url, fromB64url, db } from "./_pigeon.js";
 
 const enc = new TextEncoder(), dec = new TextDecoder(), AAD = enc.encode("inflight/at-rest/secrets|v1");
 const keyOf = (env) => (typeof env?.PIGEON_PEPPER_KEY === "string" && env.PIGEON_PEPPER_KEY.length >= 32 ? env.PIGEON_PEPPER_KEY : null);
 const NOT = new Set(["PIGEON_PEPPER", "PIGEON_PEPPER_KEY", "TICK_HOST"]);
-const carried = (env) => Object.keys(env).filter((k) => typeof env[k] === "string" && /^[A-Z][A-Z0-9_]*$/.test(k) && !NOT.has(k) && !k.startsWith("CF_PAGES")).sort();
+const carried = (env) => Object.keys(env).filter((k) => typeof env[k] === "string" && /^[A-Z][A-Z0-9_]*$/.test(k) && !NOT.has(k) && !k.startsWith("CF_")).sort();
 async function box(k) {
   const base = await crypto.subtle.importKey("raw", enc.encode(k), "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: enc.encode("inflight/at-rest/secrets/v1") }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);

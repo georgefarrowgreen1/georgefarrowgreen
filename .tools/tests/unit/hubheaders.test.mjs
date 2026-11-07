@@ -29,14 +29,14 @@ const ENV = { HUB_KEY: KEY, CHAT_ORIGIN: 'https://chat.inflite.ai', WEATHER_ORIG
   MARKETS_ORIGIN: 'https://finance.inflite.ai', MAIL_ORIGIN: 'https://email.inflite.ai', AUTH_ORIGIN: 'https://auth.inflite.ai', ROOF_OFF: '1' };
 const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', webmanifest: 'application/manifest+json', png: 'image/png', svg: 'image/svg+xml', json: 'application/json' };
 
-// The site's files, as Pages' store has them
+// The site's files, as the static asset store has them
 const store = { async fetch(r) {
   let path = new URL(r.url ?? r).pathname; if (path.endsWith('/')) path += 'index.html';
   const file = new URL('.' + path, ROOT);
   if (!existsSync(file) || path.includes('..')) return new Response('not here', { status: 404 });
   return new Response(readFileSync(file), { headers: { 'content-type': TYPES[path.split('.').pop()] || 'application/octet-stream', etag: '"x"' } });
 } };
-// The apps' hosts: this repo's server, as Pages runs it there, with the API's routes stood in for; each page with the
+// The apps' hosts: this repo's server, as the Worker runs it there, with the API's routes stood in for; each page with the
 // beacon in it, as Cloudflare's edge adds it
 function hosts() {
   globalThis.fetch = async (url, init = {}) => {

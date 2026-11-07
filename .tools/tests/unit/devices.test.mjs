@@ -1,5 +1,5 @@
 // One device, every app's notifications (Today First, spec §11.3, functions/_devices.js), against a database of its own
-// (Node's SQLite, made to look like D1): POST today/device without fan, or with fan but the Pages var HUB_PUSH unset,
+// (Node's SQLite, made to look like D1): POST today/device without fan, or with fan but the Worker var HUB_PUSH unset,
 // writes Today's td_push only; with both, Chat's pg_push (the cookie's sign-in), Markets' mk_push and Weather's
 // wx_devs/wx_subs too, for one endpoint, each via 'hub', each with its own rules, and never another account's live row;
 // a move takes it everywhere (Fitness's morning too), a delete only this endpoint; today/devices lists the account's other

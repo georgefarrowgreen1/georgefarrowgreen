@@ -2,7 +2,7 @@ name: Deploy the live worker
 
 # workers/live: a small Cloudflare Worker holding the Typing Durable Object, which keeps
 # Chat's typing dots in memory for a few seconds and never stores them. The site reaches
-# it through the TYPING binding in the root wrangler.toml, so this has to have run once
+# it through the TYPING binding in the site Worker configurations, so this has to have run once
 # before that binding goes live. Deployed on each push to main that changes it, with the
 # CLOUDFLARE_API_TOKEN the scheduler's deploy already uses ("Workers Scripts: Edit");
 # CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account. It has no

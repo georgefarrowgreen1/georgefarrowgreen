@@ -7,7 +7,7 @@ import { readFileSync, existsSync } from 'node:fs';
 
 const ROOT = new URL('../../../', import.meta.url);
 const TYPES = { js: 'text/javascript', css: 'text/css', html: 'text/html; charset=utf-8', png: 'image/png', svg: 'image/svg+xml' };
-// Pages' store of the site's files, as the account's page asks it (changed: a file's text swapped for another's)
+// the static asset store of the site's files, as the account's page asks it (changed: a file's text swapped for another's)
 const assets = (changed = {}) => ({ async fetch(req) {
   let path = new URL(req.url).pathname; if (path.endsWith('/')) path += 'index.html';
   const file = new URL('.' + path, ROOT);

@@ -1,25 +1,9 @@
 name: Turn InFlite's hub off
 
-# The off switch for InFlite's hub (spec §15.4's rollback; addendum A1). Deletes the Worker's HUB_KEY first: with no
-# key, every hub path (inflite.ai/chats/, /weather/, ...) answers 503 and inflite.ai/api/hub says {"ready": false}
-# without asking any app (the inflite repo's today/src/hub.js), so Today links to each app's own address at once, as
-# Today 1.08 did. Then the staging hub's (inflite-next), if there is one; then deletes the Pages project's HUB_KEY and
-# builds its live production deployment again, so Chat's hub copy (/_hub/) is not found to anyone at all. Nothing else
-# changes: the apps at their own addresses, their notifications and everyone's data stay as they are. Each part is
-# tried even when one before it failed; the last step says what's off and what's still to do by hand.
-#
-# Only when asked (the inputs below, off by default):
-# - it takes back the push rows the hub fanned out (spec §15.4): the Pages var HUB_PUSH deleted before that deployment,
-#   so no more are made, then in D1 (bio-db) the rows marked via = 'hub' in pg_push and mk_push, and wx_devs with their
-#   wx_subs. td_push is Today's own and stays; the old app icons' own rows were never touched.
-# - it stops Today's morning acting on plans: TODAY_ACTS = "0" (functions/_todaymorning.js), which Today 1.08 can't show
-#   or undo.
-# Both before rolling the inflite repo's Worker back to Today 1.08, whose service worker can't open the apps'
-# notifications.
-#
-# To turn it on again: "Give InFlite's hub its key" (hub-key.yml), which makes a new key.
-# Needs CLOUDFLARE_API_TOKEN with Account › Workers Scripts › Edit and Account › Cloudflare Pages › Edit (and
-# Account › D1 › Edit to take back the push rows). CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account.
+# Disable the live and staging hubs, then explicitly disable HUB_KEY on both site Workers.
+# Optional inputs also disable HUB_PUSH, remove hub push rows, or set TODAY_ACTS to 0.
+# Explicit off values override encrypted stored defaults. Updates are live immediately.
+# Requires Workers Scripts Edit, plus D1 Edit when taking back push rows.
 on:
   workflow_dispatch:
     inputs:
@@ -56,7 +40,6 @@ jobs:
       PUSHES: ${{ inputs.take_back_pushes && '1' || '0' }}
       ACTS: ${{ inputs.stop_today_acts && '1' || '0' }}
     steps:
-      # (.github/hub, and the top-level files with it: pages_off reads wrangler.toml for HUB_PUSH and TODAY_ACTS)
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/hub
@@ -64,7 +47,7 @@ jobs:
         id: token
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit and Account › Cloudflare Pages › Edit. Nothing was changed: to turn the hub off by hand, delete HUB_KEY from the Worker inflite (Workers & Pages → inflite → Settings → Variables and Secrets)."
+            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit. Nothing was changed: to turn the hub off by hand, delete HUB_KEY from the Worker inflite (Workers → inflite → Settings → Variables and Secrets)."
             exit 1
           fi
       - uses: actions/setup-node@v4
@@ -76,8 +59,6 @@ jobs:
         run: |
           . .github/hub/hub.sh
           cf_account
-      # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Workers and the Pages project
-      # by the names given. Should Cloudflare refuse this one, the Pages project's key is still taken away below, which
       # turns the hub off within minutes too)
       - name: Delete the Worker's HUB_KEY (the hub is off at once)
         id: worker
@@ -103,27 +84,17 @@ jobs:
         run: |
           . .github/hub/hub.sh
           wait_hub false 180
-      - name: Delete the Pages project's HUB_KEY (and what the inputs ask)
-        id: pages
+      - name: Delete the site Workers’ HUB_KEY (and what the inputs ask)
+        id: site
         if: ${{ !cancelled() && steps.account.outcome == 'success' }}
         continue-on-error: true
         working-directory: ${{ runner.temp }}
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
-          pages_off "$PUSHES" "$ACTS"
-      - name: Build the Pages project's production again, so the site lets go of them
-        id: redeploy
-        if: ${{ !cancelled() && steps.pages.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 25
-        run: |
-          . .github/hub/hub.sh
-          pages_redeploy
-      # (with the Worker's key still there, the hub turns off once its copies ask chat.'s /_hub/version again and are
-      # told not found: a yes is kept five minutes)
-      - name: Wait for inflite.ai/api/hub to say it isn't ready (the Pages project's key gone)
+          site_off "$PUSHES" "$ACTS"
+      - name: Wait for inflite.ai/api/hub to say it isn't ready (the site Workers’ key gone)
         id: wait2
-        if: ${{ !cancelled() && steps.worker.outcome != 'success' && steps.redeploy.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.worker.outcome != 'success' && steps.site.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
         run: |
@@ -153,12 +124,11 @@ jobs:
           OUT_WORKER: ${{ steps.worker.outcome }}
           OUT_STAGING: ${{ steps.staging.outcome }}
           OUT_WAIT1: ${{ steps.wait1.outcome }}
-          OUT_PAGES: ${{ steps.pages.outcome }}
-          OUT_REDEPLOY: ${{ steps.redeploy.outcome }}
+          OUT_SITE: ${{ steps.site.outcome }}
           OUT_WAIT2: ${{ steps.wait2.outcome }}
           OUT_DOOR: ${{ steps.door.outcome }}
           OUT_D1: ${{ steps.d1.outcome }}
         run: |
-          if [ ! -f .github/hub/hub.sh ]; then echo "::error::This repo's .github/hub wasn't checked out: nothing was changed. To turn the hub off by hand, delete HUB_KEY from the Worker inflite (Workers & Pages → inflite → Settings → Variables and Secrets)."; exit 1; fi
+          if [ ! -f .github/hub/hub.sh ]; then echo "::error::This repo's .github/hub wasn't checked out: nothing was changed. To turn the hub off by hand, delete HUB_KEY from the Worker inflite (Workers → inflite → Settings → Variables and Secrets)."; exit 1; fi
           . .github/hub/hub.sh
           off_verdict

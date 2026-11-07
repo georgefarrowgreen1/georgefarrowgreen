@@ -120,7 +120,7 @@ test('one copy of the server, serving the same file as the old address, the new 
   assert.equal(new Set(Object.values(stamps)).size, 3, `three copies, three stamps: ${JSON.stringify(stamps)}`);
 });
 
-// (a request as Pages hands it to the site's middleware)
+// (a request as the Worker hands it to the site's middleware)
 const ask = async (url, { headers = {}, env = {}, method = 'GET' } = {}) => {
   const request = new Request(url, { method, headers });
   const res = await onRequest({ request, env: { ASSETS: store(), HUB_KEY: KEY, ...env }, next: async () => new Response('the site’s own', { headers: { 'Content-Type': 'text/html' } }), waitUntil() {}, params: {}, data: {} });
@@ -154,7 +154,7 @@ test('the hub copy is at Chat’s own address, for the hub alone: /chats/ for /p
 
 test('the hub copy is nothing anywhere else, or asked for straight: localhost, a preview, the home page, another app, no key, a wrong one', async () => {
   const nowhere = async (url, headers, env) => { const { res, text } = await ask(url, { headers, env }); assert.equal(res.status, 404, `${url} ${JSON.stringify(headers)}`); assert.doesNotMatch(text, /inflight-version/); };
-  for (const url of ['http://localhost:8788/_hub/', 'http://localhost:8788/_hub/app.js', 'https://georgefarrowgreen.pages.dev/_hub/', 'https://abc123.georgefarrowgreen.pages.dev/_hub/',
+  for (const url of ['http://localhost:8788/_hub/', 'http://localhost:8788/_hub/app.js', 'https://gfg.georgefarrowgreen.workers.dev/_hub/', 'https://abc123.gfg.georgefarrowgreen.workers.dev/_hub/',
     'https://georgefarrowgreen.com/_hub/', 'https://chat.georgefarrowgreen.com/_hub/', 'https://weather.inflite.ai/_hub/', 'https://fitness.inflite.ai/_hub/', 'https://finance.inflite.ai/_hub/',
     'https://account.inflite.ai/_hub/', 'https://auth.inflite.ai/_hub/', 'https://inflite.ai/_hub/', 'http://chat.localhost:8788/_hub/x'])
     await nowhere(url, HUB);

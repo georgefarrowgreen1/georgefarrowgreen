@@ -1,7 +1,7 @@
 // The server's modules load, InFlite Today's and every one they're tied in with: each entry point in a fresh copy of
 // Node, so each import loop is met from that end (functions/_accounts.js and _retention.js import each other already,
 // and Today's modules add loops through _wxpush.js, _fitpush.js and _accounts.js). A name imported that isn't exported,
-// or an imported name used at a module's top level before its module has run, stops the whole server (the Pages build
+// or an imported name used at a module's top level before its module has run, stops the whole server (the Worker build
 // is one bundle of functions/), so it fails here first. And every name Today's parts share is exported, a function
 // taking at least the arguments it's listed with (as JavaScript counts them: those before the first with a default).
 // Run it before leaving any work on the server: node .tools/tests/unit/imports.test.mjs
@@ -150,7 +150,7 @@ const SHARED = {
     SESSION_COLUMNS: isList({ pg_handback: "session", pg_handoff: "session", pg_push: "session", pg_hops: "session", pg_qrsign: "session", td_push: "session", mk_push: "session", fx_push: "session", wx_devs: "sess" }),
     repointSession: "D, from, to",
   },
-  // (Pages calls one of these for the scheduler's turn)
+  // (the Worker calls one of these for the scheduler's turn)
   "functions/api/today/[[path]].js": { "onRequest*": (m, at) => assert.ok(Object.keys(m).some((k) => /^onRequest(Post)?$/.test(k) && typeof m[k] === "function"), `${at}: an onRequest or onRequestPost`) },
 };
 const takes = (params) => new Function(params, "").length;

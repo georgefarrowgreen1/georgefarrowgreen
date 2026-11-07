@@ -13,7 +13,7 @@ const { onRequest: atPath } = await import('../../../functions/fitting/_middlewa
 const { hashPassword, parseUsers } = await import('../../../functions/_fitstudio.js');
 const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', webmanifest: 'application/manifest+json', png: 'image/png', woff2: 'font/woff2' };
 
-// the site's files, as Pages' store has them (a page at its name without .html; a file that isn't there: the 404 page)
+// the site's files, as the static asset store has them (a page at its name without .html; a file that isn't there: the 404 page)
 const store = { async fetch(r) {
   let path = new URL(r.url ?? r).pathname; if (path.endsWith('/')) path += 'index.html';
   let file = new URL('.' + path, ROOT);
@@ -127,7 +127,7 @@ test('with no FITTING_USERS, no one can sign in, and the app stays shut', async 
 test('georgefarrowgreen.com/fitting/ sends you on; a preview serves it in place, behind the same sign-in', async () => {
   const on = await ask('https://georgefarrowgreen.com/fitting/app.js', { fn: atPath });
   assert.equal(on.status, 302); assert.equal(on.headers.get('location'), HOST + '/app.js');
-  const P = 'https://claude-fitting.georgefarrowgreen.pages.dev/fitting';
+  const P = 'https://claude-fitting.gfg.georgefarrowgreen.workers.dev/fitting';
   const out = await ask(P + '/', { fn: atPath });
   assert.equal(out.status, 302); assert.equal(out.headers.get('location'), P + '/login');
   assert.equal((await ask(P + '/login', { fn: atPath })).status, 200);
@@ -135,7 +135,7 @@ test('georgefarrowgreen.com/fitting/ sends you on; a preview serves it in place,
   assert.ok(cookie.startsWith('__Host-fit='));
   const here = await ask(P + '/', { fn: atPath, cookie });
   assert.equal(here.status, 200); assert.match(here.headers.get('content-security-policy'), /style-src 'self' 'unsafe-inline'/);
-  assert.equal((await ask('https://claude-fitting.georgefarrowgreen.pages.dev/fitting', { fn: atPath })).status, 301);
+  assert.equal((await ask('https://claude-fitting.gfg.georgefarrowgreen.workers.dev/fitting', { fn: atPath })).status, 301);
 });
 
 test('the app asks nothing of anywhere else, and its worker keeps only files that are there', () => {

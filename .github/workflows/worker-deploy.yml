@@ -1,7 +1,4 @@
-# The site as two Workers, one build (.tools/workers/README.md): "inflite-apps" (wrangler.worker.jsonc, InFlite's apps'
-# addresses) and "gfg" (wrangler.gfg.jsonc, georgefarrowgreen.com's). Deployed by hand only while the move off Pages is
-# The live site since the move (step 6): deployed on each push to main, as the Pages project still is (kept, as the
-# fallback behind the Workers' routes, until step 7), and by hand.
+# Build once and deploy both production Workers on pushes to main or by hand.
 name: Deploy the site's Workers
 
 on:
@@ -35,7 +32,7 @@ jobs:
         if: steps.ready.outputs.go == '1'
         with:
           node-version: 22
-      - name: Build (functions/ compiled as Pages compiles it) and deploy
+      - name: Build the Worker and deploy
         if: steps.ready.outputs.go == '1'
         run: |
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID

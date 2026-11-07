@@ -1,98 +1,52 @@
-# Moving the site off Pages, onto two Workers
+# The site on Cloudflare Workers
 
-Today the whole site is one Cloudflare **Pages** project, `georgefarrowgreen` (`wrangler.toml`). It becomes two
-**Workers**, built from the same code, using the same database and storage:
+The site runs as two Workers built from the same code, sharing D1, KV and R2:
 
-| Worker | Its addresses |
-|---|---|
-| `inflite-apps` (`wrangler.worker.jsonc`) | chat., weather., fitness., finance., account. and auth.inflite.ai |
-| `gfg` (`wrangler.gfg.jsonc`) | georgefarrowgreen.com, www., fitting. (Fit Studio), and the apps' old georgefarrowgreen.com addresses |
+| Worker | Configuration | Addresses |
+|---|---|---|
+| `inflite-apps` | `wrangler.worker.jsonc` | chat., weather., fitness., finance., account., auth. and status.inflite.ai |
+| `gfg` | `wrangler.gfg.jsonc` | georgefarrowgreen.com, www., fitting., and the apps’ old georgefarrowgreen.com addresses |
 
-**The Pages project keeps running the site until every address works on the Workers.** Each step can be undone.
+## Build and deploy
 
-## Your checklist
+Push to `main`, or run **Deploy the site's Workers** in GitHub Actions (`.github/workflows/worker-deploy.yml`).
+It builds once with `node .tools/workers/build.mjs`, then deploys both configurations with `wrangler deploy -c`.
+The workflow needs `CLOUDFLARE_API_TOKEN` with Workers Scripts Edit and Workers Routes Edit for the domains,
+and `CLOUDFLARE_ACCOUNT_ID` if the token can see multiple accounts.
 
-### 1. Deploy the two Workers (nobody sees them yet)
-GitHub → the georgefarrowgreen repo → Actions → **Deploy the site's Workers** → Run workflow.
-They appear in Workers & Pages as `inflite-apps` and `gfg`, with no addresses but their workers.dev ones.
+Every request goes through the Worker middleware in `functions/` first. Static files use the `ASSETS` binding,
+including HTML handling, `404.html`, `_headers` and `_redirects`. `.assetsignore` excludes private source and tools.
+Custom domains in each configuration create the Worker’s DNS records and certificates.
 
-### 2. Carry the pepper over
-1. Make a long random password (40+ characters) in your password manager. Call it **PIGEON_PEPPER_KEY**.
-2. On the **Pages project** (Settings → Variables and secrets → Add): a secret `PIGEON_PEPPER_KEY` with that value.
-   Leave `PIGEON_PEPPER` exactly as it is.
-3. Pages → Deployments → the latest one → **Retry deployment**, so the site sees the new secret.
-4. Sign in to your account once (any app), then open Admin → Insights. Under "Signing in" it should say
-   **Passwords' pepper, kept for the move: Yes**.
-5. On **both Workers** (each one's Settings → Variables and secrets): a secret `PIGEON_PEPPER_KEY` with the same
-   value. Not `PIGEON_PEPPER`: the Workers don't need it.
+## Variables and secrets
 
-### 3. The other secrets: nothing to do
-With `PIGEON_PEPPER_KEY` on the Pages project and both Workers, the Pages project keeps all its other variables and
-secrets in the database too, locked with that key, and the Workers open them (`functions/_kept.js`): the same values,
-so Today's, Mail's and the ticker Workers and GitHub keep theirs. Admin → Insights says how many are kept ("Settings and
-secrets, kept for the move"). One set on a Worker of its own always wins over the kept copy.
+Manage variables and secrets on the Workers in Cloudflare → Workers → the Worker → Settings → Variables and Secrets.
+Use the same shared values on `inflite-apps` and `gfg`. A directly configured value takes precedence over the encrypted
+copy already held in D1 (`functions/_kept.js`). To disable a value held there, set an explicit empty or off value on
+both Workers rather than deleting the override.
 
-### 4. Check them before they're live
-Open `https://inflite-apps.georgefarrowgreen.workers.dev/version` and `https://gfg.georgefarrowgreen.workers.dev/`:
-each should answer (the home page shows on gfg's).
+Keep the existing `PIGEON_PEPPER_KEY` on both Workers: it opens the encrypted password pepper and saved settings.
+Do not rotate it without re-encrypting the stored values. Never put secrets in the repository.
 
-### 5. Move the addresses, one at a time
-For each address I add a route to the Worker's config and deploy it. A route sits in front of the Pages project's
-custom domain, so the address switches with nothing taken down; **undoing it is deleting the route**. Order:
-www.georgefarrowgreen.com (we check here that the switch is seamless), then georgefarrowgreen.com, fitting.,
-finance., fitness., weather., account. and auth.inflite.ai, and chat.inflite.ai last. After each, sign in and open
-the app there (or run Actions → **Sign-in check**).
+## Local development and checks
 
-### 6. Make the Workers the ones that deploy (done in the code: nothing to do)
-- Deploys on every push to main (`.github/workflows/worker-deploy.yml`).
-- Scheduled jobs: the ticker (`workers/ticker/wrangler.toml`'s `TICK_SITE`) and GitHub's backup schedules call
-  `https://inflite-apps.georgefarrowgreen.workers.dev`, and the Pages project's address if that didn't do it (the tick
-  secret's carried with the rest). The GitHub variable `TICK_SITE`, if it's ever set, overrides the Worker's address.
-- Pages goes on deploying on every push too, so the fallback behind the routes stays the same site; it's switched off
-  at step 7.
+`node .tools/workers/build.mjs` builds the Worker. Run `wrangler dev -c wrangler.worker.jsonc` locally.
+The end-to-end test runner (`.tools/tests/run.sh`) builds and serves the Worker automatically on :8788,
+with test variables, local storage and routes removed so each test hostname remains distinct.
 
-### 7. Done (5 November)
-The Pages project's custom domains were removed and the project deleted. Deleting it deleted the DNS records it had
-made, so every address went dark until the Workers took each as a custom domain of their own (the configs'
-`"custom_domain": true`), which made each its own DNS record again. (While the Pages project was there, a custom domain
-couldn't take over a record it had made: Cloudflare refuses.) And a Worker's fetch to an address in its own zone skips
-the zone's routes, so Today and Mail (the inflite repo) reach inflite-apps through a service binding (`APPS`).
-Then the Pages-only bits went from the code: `PAGES_HOST` (ticks only at the Worker's `TICK_HOST`), the scheduled
-jobs' fallback to `georgefarrowgreen.pages.dev`, and keeping the secrets (the Workers open the copy already kept).
-`wrangler.toml` stays as the local test stack's config. Changing a secret from now on is done on the Worker.
+Check `https://inflite-apps.georgefarrowgreen.workers.dev/version`, the home page and the apps after deployment.
+The **Sign-in check** workflow checks production sign-ins.
 
-## What's ready in the code
+## Scheduled jobs and service bindings
 
-- **The Workers' configs:** `wrangler.worker.jsonc` and `wrangler.gfg.jsonc`. `functions/` is compiled as Pages
-  compiles it. Every request goes through the Worker first, and the site's files are its assets, with Pages' own HTML
-  handling, `404.html`, `_headers` and `_redirects`.
-- **What's never published:** `.assetsignore`.
-- **The build:** `.tools/workers/build.mjs`, one build for both Workers.
-- **Testing the Workers:** `SERVE=worker` runs the end-to-end tests against the Worker build instead of Pages.
-- **The pepper:** `PIGEON_PEPPER_KEY` (`functions/_atrest.js`). With it set beside `PIGEON_PEPPER`, the site keeps
-  the pepper in the database, locked with that key. A Worker with only the key opens it, so every password goes on
-  working, and a copy of the database alone is still useless.
-- **The scheduled jobs:** `tickHost` and `TICK_HOST`/`TICK_SITE`, so the jobs can call the Workers' address instead
-  of `georgefarrowgreen.pages.dev`.
+The ticker and GitHub backup schedules call `https://inflite-apps.georgefarrowgreen.workers.dev`.
+`TICK_HOST` allows tick routes only at that host; `TICK_SITE` can override the scheduler destination.
 
-## Speed (5 November)
+Today and Mail reach `inflite-apps` through `APPS` service bindings. The site reaches Mail and Today through
+`MAIL_APP` and `TODAY_APP`; its status checks reach `gfg` through `GFG_APP`.
 
-- **Direct links between the Workers** (service bindings), in place of out through the internet and back: Today and
-  Mail reach `inflite-apps` (`APPS`); Today reaches Mail (`MAIL`); `inflite-apps` and `gfg` reach Mail and Today
-  (`MAIL_APP`, `TODAY_APP`: `functions/_sites.js` `siteFetch`). A Worker's fetch to its own zone also skips the zone's
-  routes, so these are needed, not only quicker.
-- **A new server copy's first request without trips to the database:** the schema's fingerprint and the kept secrets'
-  locked text are read from KV's nearest copy (`site:schema_fp`, `site:kept_secrets`), the database only when KV
-  hasn't them. On a quiet site most requests start a new copy, and the database is in one place.
-- **Minified copies:** which are current is worked out at the build (`build.mjs` → `functions/_minfresh.js`), not by
-  reading and fingerprinting each file in every new copy.
+## Performance
 
-Next, if wanted (each needs a look in the dashboard first):
-- **Where the database is:** Storage & Databases → D1 → bio-db shows its location. Every request that reads it waits
-  a round trip there; if it's far from where people are (it should be Western Europe), a new database there is the fix.
-- **D1 read replication:** copies of the database near each visitor for reads (Settings → Read replication), with the
-  site's reads moved onto D1's Sessions API so a visitor never reads older than what they wrote. The biggest win left
-  for anyone far from the database, and a careful change (every read).
-- **Smart Placement** (`"placement": { "mode": "smart" }`): runs the Worker near the database when that's quicker.
-  Worth trying only once the database's location is known: with every request through the Worker, it can slow pages
-  that don't touch the database.
+The schema fingerprint and encrypted settings are cached in KV (`site:schema_fp`, `site:kept_secrets`),
+with D1 as the fallback. The build records which minified assets are current, avoiding runtime fingerprinting.
+Further database location, read replication or Smart Placement changes need separate validation.
