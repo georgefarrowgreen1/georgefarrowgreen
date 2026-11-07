@@ -437,7 +437,7 @@ test("composes each dearer than a tick's share at once: the one begun first fini
   done();
 });
 
-test("nothing sent (the push service failing): the day given back, for a later tick; a phone gone forgotten; one failing a fifth time in a row forgotten", async () => {
+test("nothing sent (the push service failing): the day given back, for a later tick; a phone gone forgotten; one failing a fifth time in a row kept", async () => {
   tickTest.compose = fromCards(); pushes = [];
   const failing = await account(), gone = await account(), worn = await account({ fails: 4 }), mixed = await account({ phones: 2 });
   const bad = new Set([failing.phones[0].endpoint, worn.phones[0].endpoint, mixed.phones[1].endpoint]);
@@ -447,13 +447,13 @@ test("nothing sent (the push service failing): the day given back, for a later t
   assert.equal(prefs(failing.id).m_sent, null, "nothing went: given back"); assert.equal(prefs(failing.id).m_last, null);
   assert.equal(devices(failing.id)[0].fails, 1, "one failure counted");
   assert.equal(devices(gone.id).length, 0, "its push service says it's gone: forgotten"); assert.equal(prefs(gone.id).m_sent, null);
-  assert.equal(devices(worn.id).length, 0, "its fifth failure in a row: forgotten");
+  assert.deepEqual(devices(worn.id).map((d) => d.fails), [5], "its fifth failure in a row: counted, kept (only gone forgets it)");
   assert.equal(prefs(mixed.id).m_sent, "2026-11-02", "one of two phones had it: the day's done");
   assert.deepEqual(devices(mixed.id).map((d) => d.fails), [0, 1]);
   // the service back: the next tick sends what was given back
   answer = () => 201; pushes = [];
   const next = await morningTick(env, MON7 + 5 * 60e3);
-  assert.equal(next.sent, 1); assert.deepEqual(pushes.map((p) => p.endpoint), [failing.phones[0].endpoint]);
+  assert.equal(next.sent, 2); assert.deepEqual(pushes.map((p) => p.endpoint).sort(), [failing.phones[0].endpoint, worn.phones[0].endpoint].sort());
   assert.equal(devices(failing.id)[0].fails, 0, "working again: its failures forgotten");
   done();
 });

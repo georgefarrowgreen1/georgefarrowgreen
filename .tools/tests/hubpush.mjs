@@ -5,8 +5,8 @@
 //   0. an old Today install with a Weather device on the same sign-in: Chat's first hand-back at the hub moves the
 //      sign-in, and Today's subscription and Weather's device go with it (td_push alive, wx_devs still the account's)
 //   1. On This Phone on, in You's Notifications: Today's morning only (td_push), and nothing posted to the device route before that tap
-//   2. Get Every App's Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'; remembered,
-//      and sent again by itself where Chat's row is lost
+//   2. Get Every App's Here: the same endpoint in pg_push, mk_push and wx_devs (one row each), via = 'hub'; remembered
+//      on the account, and sent again by itself where Chat's row is lost
 //   3. a Chat message, a Markets alert and the morning: each in the push box, opened, each saying its app
 //   4. the root worker's pulse: a push of Chat's handed to the root worker (as the browser would) with no Chat open,
 //      and Mira's tick turns delivered
@@ -226,7 +226,7 @@ ok(!!rows(`SELECT endpoint FROM td_push WHERE endpoint = '${ep}'`)[0] && !rows(`
 ok(/every app notifies here/i.test(await textOf('#youNotify')) && !(await G.p.$('#youEvery')), 'Notifications says every app notifies here now', await textOf('#youNotify'));
 // (remembered: on this phone for this account; and where the account's lost Chat's row (a sign-in that ended takes it),
 // You sends it again by itself, the row never coming back)
-ok(await G.p.evaluate((id) => localStorage.getItem('today:every') === id, GID), 'the tap remembered on this phone, for this account');
+ok(rows(`SELECT push_on, push_every FROM td_prefs WHERE user_id = '${GID}'`)[0]?.push_every === 1, 'the tap remembered on the account, for every device that has them', JSON.stringify(rows(`SELECT push_on, push_every FROM td_prefs WHERE user_id = '${GID}'`)));
 run(`DELETE FROM pg_push WHERE endpoint = '${ep}'`);
 const fansBefore = deviceCalls().filter((x) => x.fan === true).length;
 await G.p.goto(`${HUB}/#you`); await G.p.waitForSelector('#you #youPhone', { timeout: 30000 }).catch(() => {});

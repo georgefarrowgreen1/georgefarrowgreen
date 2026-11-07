@@ -3,8 +3,10 @@
 // - each account's cards, in its order and with those it hid (Edit), and its morning notification: on or off, its time
 //   in the account's zone, which apps' lines it has, the day it was last sent and what it said (td_prefs);
 // - the devices the morning notification goes to: each a push subscription made by inflite.ai's own service worker,
-//   with the site's one key (functions/_notify.js vapid), and the sign-in it was made with, so it goes with that
-//   (td_push);
+//   with the site's one key (functions/_notify.js vapid), and the sign-in it was last handed over with (td_push). It
+//   lasts until it's turned off there, signed out there, its push service says it's gone, or the account goes: never
+//   only because a sign-in ended (expired, ended from elsewhere), so This Phone never turns itself off;
+// - the account's own word on its notifications, whichever device said it (td_prefs push_on, push_every: pushPrefs);
 // - what Today did or offered, each kept for Undo (td_acts), the days its plan has run (td_plans), and each rule's level
 //   and record (td_rules), all read and written by functions/_todayacts.js.
 // The cards themselves are worked out by functions/_todaycards.js, and the morning composed and sent by
@@ -21,8 +23,9 @@ export const CARDS = ["weather", "chat", "fitness", "markets", "mail"];
 // in one only where the admin's Edit saved it: the account's page and data say the four, as before; Today's page adds a
 // card missing from the order at its end)
 export const LINES = ["weather", "chat", "fitness", "markets"];
-// devices an account keeps (an eleventh drops the oldest), and the failures in a row that drop one
-const DEVICES = 10, FAILS = 5;
+// devices an account keeps (an eleventh drops the oldest: a device's page hands it over again as it opens, so it's
+// never one in use)
+const DEVICES = 10;
 
 let ready = null;
 export async function tddb(env) {
@@ -67,6 +70,13 @@ async function setup(env) {
       ignored INTEGER NOT NULL DEFAULT 0, held INTEGER NOT NULL DEFAULT 0, kept_since INTEGER NOT NULL DEFAULT 0, level_at INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, rule))`),
   ]);
+  // (the account's word on its notifications, added later: push_on, wanted, said on any device, and unsaid only by
+  // turning off the last one that has them; push_every, Get Every App's Notifications Here chosen, on any device)
+  for (const c of ["push_on", "push_every"]) await env.DB.prepare(`ALTER TABLE td_prefs ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`).run().catch(() => {});
+  // (said already, before it was kept: by a device that has them, and by every app's rows made from the tap)
+  await env.DB.prepare(`INSERT INTO td_prefs (user_id, push_on, updated) SELECT DISTINCT user_id, 1, ?1 FROM td_push WHERE true
+    ON CONFLICT(user_id) DO UPDATE SET push_on = 1`).bind(Date.now()).run().catch(() => {});
+  await env.DB.prepare("UPDATE td_prefs SET push_every = 1 WHERE push_on = 1 AND user_id IN (SELECT user_id FROM pg_push WHERE via = 'hub')").run().catch(() => {});
 }
 const fingerprint = (text) => { let h = 2166136261; for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "t" + h.toString(36); };
 const SCHEMA_FP = fingerprint(setup.toString());
@@ -173,16 +183,27 @@ async function keysOk(sub) {
     return { p256dh, auth };
   } catch (_) { return null; }
 }
-// (a device lasts as long as the sign-in it was turned on with)
-const LIVE = "JOIN pg_sessions s ON s.hash = p.session";
-const howMany = async (D, userId) => (await D.prepare(`SELECT COUNT(*) AS n FROM td_push p ${LIVE} WHERE p.user_id = ?`).bind(userId).first())?.n || 0;
-// the account's devices, of sign-ins that still last: [{ endpoint, p256dh, auth, session, fails }]
+const howMany = async (D, userId) => (await D.prepare("SELECT COUNT(*) AS n FROM td_push WHERE user_id = ?").bind(userId).first())?.n || 0;
+// the account's devices: [{ endpoint, p256dh, auth, session, fails }]
 export async function todayDevices(env, userId) {
   const D = await tddb(env);
-  return (await D.prepare(`SELECT p.endpoint, p.p256dh, p.auth, p.session, p.fails FROM td_push p ${LIVE} WHERE p.user_id = ? ORDER BY p.added`).bind(userId).all()).results;
+  return (await D.prepare("SELECT endpoint, p256dh, auth, session, fails FROM td_push WHERE user_id = ? ORDER BY added").bind(userId).all()).results;
+}
+// The account's word on its notifications → { on, every }: on, wanted (a device that can have them, without one of its
+// own yet, takes one as its page opens); every, every app's to come to each device that has them, not only Today's
+export async function pushPrefs(env, userId) {
+  const r = await (await tddb(env)).prepare("SELECT push_on, push_every FROM td_prefs WHERE user_id = ?").bind(userId).first();
+  return { on: !!r?.push_on, every: !!r?.push_every };
+}
+// …changed, either or both ({ on, every }: true or false)
+export async function setPushPrefs(env, userId, { on, every }) {
+  const b = (v) => (v === undefined ? null : v ? 1 : 0);
+  await (await tddb(env)).prepare(`INSERT INTO td_prefs (user_id, push_on, push_every, updated) VALUES (?1, COALESCE(?2, 0), COALESCE(?3, 0), ?4)
+    ON CONFLICT(user_id) DO UPDATE SET push_on = COALESCE(?2, push_on), push_every = COALESCE(?3, push_every)`).bind(userId, b(on), b(every), Date.now()).run();
 }
 // Turned on on a device: its subscription (as the browser gives it), for this account and this sign-in, taken from
-// another account or sign-in where it was theirs, its failures forgotten. u: { id, sessionHash } → { ok: true, devices }
+// another account or sign-in where it was theirs, its failures forgotten; and the account wants them from now on.
+// u: { id, sessionHash } → { ok: true, devices }
 export async function addDevice(env, u, sub) {
   const keys = await keysOk(sub);
   if (!sub || typeof sub !== "object" || !pushEndpointOk(sub.endpoint) || !keys) throw new HttpError(400, "That isn’t a push subscription this server can send to.");
@@ -192,6 +213,7 @@ export async function addDevice(env, u, sub) {
     .bind(sub.endpoint, u.id, keys.p256dh, keys.auth, u.sessionHash || null, Date.now()).run();
   // (ten an account at most: the oldest goes as an eleventh comes)
   await D.prepare("DELETE FROM td_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM td_push WHERE user_id = ?1 ORDER BY added DESC LIMIT ?2)").bind(u.id, DEVICES).run();
+  await setPushPrefs(env, u.id, { on: true });
   return { ok: true, devices: await howMany(D, u.id) };
 }
 // The browser renewed a device's subscription by itself (sw.js, pushsubscriptionchange): it moves to the new one, only
@@ -204,31 +226,37 @@ export async function moveDevice(env, u, { sub, was }) {
     WHERE endpoint = ?4 AND user_id = ?5 AND NOT EXISTS (SELECT 1 FROM td_push WHERE endpoint = ?1)`).bind(sub.endpoint, keys.p256dh, keys.auth, from, u.id, u.sessionHash || null).run();
   return { moved: !!r.meta?.changes };
 }
-// Turned off on a device (or signing out there): only where it's this account's → { ok: true, devices }
+// Turned off on a device: only where it's this account's; the last one turned off, the account doesn't want them any
+// more (a device signed out isn't turned off: its sign-out's own) → { ok: true, devices }
 export async function removeDevice(env, userId, endpoint) {
   if (typeof endpoint !== "string" || !endpoint || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
   const D = await tddb(env);
   await D.prepare("DELETE FROM td_push WHERE endpoint = ? AND user_id = ?").bind(endpoint, userId).run();
-  return { ok: true, devices: await howMany(D, userId) };
+  return { ok: true, devices: await lastOff(env, D, userId) };
 }
-// how a send to a device went: taken (its failures forgotten), gone (the device unsubscribed: forgotten), or failed
+// (how many it's on now; none, and push_on's unsaid)
+export async function lastOff(env, D, userId) {
+  const n = await howMany(D, userId);
+  if (!n) await D.prepare("UPDATE td_prefs SET push_on = 0 WHERE user_id = ?").bind(userId).run();
+  return n;
+}
+// how a send to a device went: taken (its failures forgotten), gone (the push service says so, 404 or 410: forgotten),
+// or failed (counted, and kept: a push service that's down, or slow, for a while never turns a phone off)
 export async function deviceOk(env, endpoint) {
   await (await tddb(env)).prepare("UPDATE td_push SET fails = 0, ok_at = ? WHERE endpoint = ?").bind(Date.now(), endpoint).run();
 }
 export async function deviceGone(env, endpoint) {
   await (await tddb(env)).prepare("DELETE FROM td_push WHERE endpoint = ?").bind(endpoint).run();
 }
-// → whether it's been dropped (its fifth failure in a row)
+// → whether it's been dropped: never (a device goes only as deviceGone says)
 export async function deviceFailed(env, endpoint) {
-  const D = await tddb(env);
-  await D.prepare("UPDATE td_push SET fails = fails + 1 WHERE endpoint = ?").bind(endpoint).run();
-  return !!(await D.prepare("DELETE FROM td_push WHERE endpoint = ? AND fails >= ?").bind(endpoint, FAILS).run()).meta?.changes;
+  await (await tddb(env)).prepare("UPDATE td_push SET fails = fails + 1 WHERE endpoint = ?").bind(endpoint).run();
+  return false;
 }
-// devices whose sign-in has ended, and those of accounts being deleted → how many went
+// devices of accounts being deleted → how many went
 export async function tidyDevices(env) {
   const D = await tddb(env);
-  const r = await D.prepare(`DELETE FROM td_push WHERE session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions s WHERE s.hash = td_push.session)
-    OR EXISTS (SELECT 1 FROM pg_users u WHERE u.id = td_push.user_id AND u.delete_at IS NOT NULL)`).run();
+  const r = await D.prepare("DELETE FROM td_push WHERE EXISTS (SELECT 1 FROM pg_users u WHERE u.id = td_push.user_id AND u.delete_at IS NOT NULL)").run();
   return r.meta?.changes || 0;
 }
 
@@ -238,7 +266,7 @@ export async function tidyDevices(env) {
 export async function morningCandidates(env) {
   const D = await tddb(env);
   const { results } = await D.prepare(`SELECT p.user_id, ${COLS.split(", ").map((c) => "p." + c).join(", ")}, u.notify_prefs, u.pigeons FROM td_prefs p JOIN pg_users u ON u.id = p.user_id
-    WHERE p.m_on = 1 AND u.delete_at IS NULL AND EXISTS (SELECT 1 FROM td_push p2 JOIN pg_sessions s ON s.hash = p2.session WHERE p2.user_id = p.user_id)`).all();
+    WHERE p.m_on = 1 AND u.delete_at IS NULL AND EXISTS (SELECT 1 FROM td_push p2 WHERE p2.user_id = p.user_id)`).all();
   return results.map((r) => ({ u: { id: r.user_id, notify_prefs: r.notify_prefs ?? null, pigeons: r.pigeons ?? 1 }, row: rowOf(r) }));
 }
 // the day claimed, only where it's still as it was (was: the row's m_sent) → whether it's this one's
@@ -258,10 +286,10 @@ export async function keepLast(env, userId, { title, lines, out, at }) {
   await (await tddb(env)).prepare("UPDATE td_prefs SET m_last = ? WHERE user_id = ?").bind(JSON.stringify(last), userId).run();
 }
 // the accounts whose morning comes from Today, so Weather's briefing and Fitness's morning reminder don't: on, with a
-// device of a sign-in that still lasts → a Set of their ids
+// device → a Set of their ids
 export async function morningUsers(env) {
   const D = await tddb(env);
-  const { results } = await D.prepare(`SELECT DISTINCT d.user_id FROM td_prefs t JOIN td_push d ON d.user_id = t.user_id JOIN pg_sessions s ON s.hash = d.session WHERE t.m_on = 1`).all();
+  const { results } = await D.prepare("SELECT DISTINCT d.user_id FROM td_prefs t JOIN td_push d ON d.user_id = t.user_id WHERE t.m_on = 1").all();
   return new Set(results.map((r) => r.user_id));
 }
 

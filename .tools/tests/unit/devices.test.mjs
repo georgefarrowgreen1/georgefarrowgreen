@@ -7,13 +7,16 @@
 // used in InFlite's window), and Stop There drops only that sign-in's rows, signing nothing out; §15.4's four rollback
 // DELETEs leave every row not fanned out, and the first of them has its column wherever Chat's set up; Chat's own push
 // and the hub's, on one sign-in, never take each other's; and
-// Weather's ended() deletes a hub-made device whose sign-in has ended, where it only unlinks the others.
+// Weather's ended() deletes a hub-made device whose sign-in has ended, where it only unlinks the others. And This Phone
+// (the owner's report: it turned itself off): a device's Today row outlives the sign-in it was handed over with, is still
+// "here" and is still listed (for Stop There) once that's ended; the account keeps its word on notifications (on, and
+// Get Every App's Here) so a device handed over again, or another turned on, has every app's without the tap.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
 import { deviceAdd, deviceDrop, devicesList, devicesStop, otherDevices, stopDevice, ready } from "../../../functions/_devices.js";
-import { deviceHash } from "../../../functions/_today.js";
+import { deviceHash, todayDevices, tidyDevices, pushPrefs } from "../../../functions/_today.js";
 import { keepPush } from "../../../functions/_markets.js";
 import { tick, keepSub } from "../../../functions/_notify.js";
 import { unlinkEnded, subscribe } from "../../../functions/_wxpush.js";
@@ -178,7 +181,7 @@ test("moved by the browser (was): every table that had it, this account's only; 
   // dropped by someone else: nothing
   await deviceDrop(env, g, { endpoint: next.endpoint });
   assert.ok(where(next.endpoint).pg && fxAt(next.endpoint));
-  assert.deepEqual(await deviceDrop(env, u, { endpoint: next.endpoint }), { ok: true });
+  assert.deepEqual(await deviceDrop(env, u, { endpoint: next.endpoint }), { ok: true, on: true }, "the account still wants them: its other device has them");
   assert.deepEqual(where(next.endpoint), { td: null, pg: null, mk: null, wx: null });
   assert.equal(fxAt(next.endpoint), null, "Fitness's morning dropped with it");
   assert.deepEqual(places(next.endpoint), []);
@@ -251,7 +254,7 @@ test("a sign-in used in InFlite's window (or Today's own Home Screen app) is nam
   const phone = signIn(me, { label: "iPhone · Safari", home: "inflite", apps: "today", seen: T - 2000 });
   const mac = signIn(me, { label: "Mac · Safari", home: "mail", apps: "account", seen: T - 3000 });
   await deviceAdd(env, userOf(me, pad), { sub: await sub("jo-pad"), fan: true });
-  await deviceAdd(env, userOf(me, phone), { sub: await sub("jo-phone") });
+  await deviceAdd(off, userOf(me, phone), { sub: await sub("jo-phone") });       // (off: the account's every would fan it too)
   const m = await sub("jo-mac");
   run("INSERT INTO td_push (endpoint, user_id, p256dh, auth, session, added) VALUES (?, ?, ?, ?, ?, ?)", m.endpoint, me, m.keys.p256dh, m.keys.auth, mac, T);
   assert.deepEqual((await otherDevices(env, u)).map((d) => [d.label, d.home, d.apps]), [
@@ -310,4 +313,67 @@ test("Weather's ended(): a hub-made device whose sign-in has ended is deleted wi
   run("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE endpoint = ?", t.endpoint);
   await unlinkEnded(env.DB);
   assert.equal(where(t.endpoint).wx, null);
+});
+
+test("This Phone never turns itself off: a sign-in that ends (signed out elsewhere, expired, ended from Signed-in devices) leaves the device's Today row, here says so, the tick's tidy keeps it", async () => {
+  const me = person("Lou"), first = signIn(me, { apps: "today", home: "today" }), s = await sub("lou");
+  await deviceAdd(env, userOf(me, first), { sub: s });
+  const device = await deviceHash(s.endpoint);
+  // (the cause: the sign-in it was handed over with ended, and with it the row: the tick's tidy took it, and You's
+  // switch, reading here, went off, with nothing turned off)
+  run("DELETE FROM pg_sessions WHERE hash = ?", first);
+  await tidyDevices(env);
+  assert.deepEqual(where(s.endpoint).td, { user_id: me, session: first }, "kept");
+  assert.equal((await todayDevices(env, me)).length, 1, "still sent the morning");
+  const again = signIn(me, { apps: "today", home: "today" });
+  assert.deepEqual((await devicesList(env, userOf(me, again), { device })).here, ["td_push"], "This Phone still on");
+  // (and listed elsewhere, so it can be stopped there; never as this device's other)
+  assert.deepEqual((await devicesList(env, userOf(me, again), { device })).devices, [], "not this one's other device");
+  const other = signIn(me, { label: "Mac · Safari", apps: "today" }), seen = await otherDevices(env, userOf(me, other));
+  assert.deepEqual(seen.map((d) => [d.label, d.apps]), [["A phone or browser", ["today"]]]);
+  assert.ok(!JSON.stringify(seen).includes(s.endpoint) && !JSON.stringify(seen).includes(device));
+  // handed over again by its page (signed in again): its new sign-in's, and no longer listed as an ended one
+  await deviceAdd(env, userOf(me, again), { sub: s });
+  assert.equal(where(s.endpoint).td.session, again);
+  assert.deepEqual(await otherDevices(env, userOf(me, other)), [{ id: (await otherDevices(env, userOf(me, other)))[0].id, label: "Today on iPhone", home: true, apps: ["today"], at: T }]);
+  // Stop There on one whose sign-in has ended: that device, everywhere it's this account's
+  run("DELETE FROM pg_sessions WHERE hash = ?", again);
+  const lone = (await otherDevices(env, userOf(me, other)))[0];
+  assert.equal(lone.label, "A phone or browser");
+  assert.deepEqual(await devicesStop(env, userOf(me, other), { id: lone.id }), { ok: true });
+  assert.equal(where(s.endpoint).td, null);
+});
+
+test("the account's word on notifications: on from any device; off on one keeps it while another has them; the last turned off unsays it", async () => {
+  const me = person("Max"), u = userOf(me, signIn(me)), a = await sub("max-a"), b = await sub("max-b");
+  assert.deepEqual(await pushPrefs(env, me), { on: false, every: false });
+  await deviceAdd(env, u, { sub: a });
+  assert.deepEqual(await pushPrefs(env, me), { on: true, every: false }, "on, said on one device: a new one offers them on");
+  await deviceAdd(env, userOf(me, signIn(me)), { sub: b });
+  assert.deepEqual(await deviceDrop(env, u, { endpoint: a.endpoint }), { ok: true, on: true }, "off on one device: the other still has them");
+  assert.equal((await pushPrefs(env, me)).on, true);
+  assert.deepEqual(await deviceDrop(env, u, { endpoint: b.endpoint }), { ok: true, on: false }, "the last: the account doesn't want them now");
+  assert.deepEqual(await pushPrefs(env, me), { on: false, every: false });
+});
+
+test("Get Every App's Here is the account's: chosen once, a hand-over without the tap (the page's own, the service worker's) and another device turned on have every app's too", async () => {
+  const me = person("Ned"), phone = signIn(me), s = await sub("ned-phone"), pad = await sub("ned-pad");
+  weatherOf(me, NOTIFY);
+  await deviceAdd(env, userOf(me, phone), { sub: s, fan: true });
+  assert.deepEqual(await pushPrefs(env, me), { on: true, every: true });
+  // (the cause: its apps' rows go with the sign-in (Chat's at its next push, by its own rule), and only a fan: true,
+  // which only this phone's browser remembered, from the tap, brought them back)
+  run("DELETE FROM pg_sessions WHERE hash = ?", phone);
+  await tick(env, "http://localhost").catch(() => {});
+  run("DELETE FROM pg_push WHERE endpoint = ?", s.endpoint);
+  const back = signIn(me);
+  assert.deepEqual((await deviceAdd(env, userOf(me, back), { sub: s })).tables, ["td_push", "pg_push", "mk_push", "wx_devs"], "handed over again, no tap: every app's");
+  assert.equal(where(s.endpoint).pg.session, back);
+  // another device, turned on there: every app's, as the account says
+  assert.deepEqual((await deviceAdd(env, userOf(me, signIn(me, { label: "iPad · Safari" })), { sub: pad })).tables, ["td_push", "pg_push", "mk_push", "wx_devs"]);
+  // HUB_PUSH off: Today's alone, as ever
+  assert.deepEqual((await deviceAdd(off, userOf(me, back), { sub: s })).tables, ["td_push"]);
+  // the one switch off on both: the account's every stays chosen, for the next time they're on
+  await deviceDrop(env, userOf(me, back), { endpoint: s.endpoint }); await deviceDrop(env, userOf(me, back), { endpoint: pad.endpoint });
+  assert.deepEqual(await pushPrefs(env, me), { on: false, every: true });
 });

@@ -172,8 +172,11 @@ test('stages 2–4, app.js: a module’s boot trusts a kept answer only with hub
 test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited before anything else, “Sign Out Anyway?” where something was lost; signed out elsewhere: the apps’ copies and the tab’s Mail keys go', { skip: s24 }, () => {
   const js = own();
   const so = js.slice(js.indexOf('async function signOut()'), js.indexOf('// ---------------------------------------------------------------- the two states'));
-  const flush = so.indexOf('F?.flush?.()'), logout = so.indexOf('/api/logout'), dev = so.indexOf('/api/device');
+  const flush = so.indexOf('F?.flush?.()'), logout = so.indexOf('/api/logout'), dev = so.indexOf('currentSub()');
   assert.ok(flush > 0 && flush < dev && flush < logout, 'flushed before the device is let go of and before /api/logout');
+  // (the device let go of by the logout itself, its subscription kept: signed in again, it has them again, syncPush)
+  assert.match(so, /call\("\/api\/logout", \{ method: "POST", body: endpoint \? \{ endpoint \} : \{\} \}\)/);
+  assert.doesNotMatch(so, /unsubscribe\(/);
   assert.match(so, /if \(fl\?\.lost > 0 && !\(await anyway\(\)\)\) return;/, 'lost > 0: asked; Cancel signs nobody out');
   assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);

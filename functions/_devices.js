@@ -1,19 +1,24 @@
 // One device, every app's notifications (Today First, spec §11.3): the root subscription of inflite.ai written into
 // each app's own table, each with that table's own rules, and taken back out. td_push (Today's morning) always; and
-// only after the person's tap ("Get Every App's Notifications Here", which sends fan: true) and only while the Pages
-// var HUB_PUSH is "1", also pg_push, mk_push and wx_devs/wx_subs, each row marked via = 'hub' so a rollback can take
-// back exactly those. A device is named to the page only by an opaque id, never its endpoint or its session's hash.
+// once the person's tapped "Get Every App's Notifications Here" (which sends fan: true) on any device, and only while
+// the Pages var HUB_PUSH is "1", also pg_push, mk_push and wx_devs/wx_subs, each row marked via = 'hub' so a rollback
+// can take back exactly those. The tap's kept on the account (functions/_today.js pushPrefs every), so every device
+// handed over afterwards (turned on, or handed over again by its page as it opens, after a sign-in that ended took the
+// apps' rows) has every app's too. A device is named to the page only by an opaque id, never its endpoint or its
+// session's hash.
 //   deviceAdd(env, u, { sub, was?, fan?, tz }, { request }) → { ok: true, tables }       (POST today/device; with was,
 //     the endpoint is moved in every table that holds was. tz is accepted and not used (nor is it by POST today/push):
 //     the morning's zone comes with the Morning section's own changes, functions/_todayapp.js)
-//   deviceDrop(env, u, { endpoint }) → { ok: true }                                     (DELETE today/device)
+//   deviceDrop(env, u, { endpoint }) → { ok: true, on }: on, whether the account still wants them (another device has
+//     them)                                                                             (DELETE today/device)
 //   devicesList(env, u, { device }, { request }) → { fan, here, devices: [{ id, label, home, apps, at }] }
 //                                                                                       (GET today/devices)
 //   devicesStop(env, u, { id }) → { ok: true }: that sign-in's push rows gone, never signed out (DELETE today/devices)
-//   addEverywhere(env, u, sub, { fan }) → the tables written
+//   addEverywhere(env, u, sub, { fan }) → the tables written (fan: the tap's; not sent, the account's word)
 //   moveEverywhere(env, u, was, sub) → the tables it moved in
 //   dropEverywhere(env, endpoint, { userId }) → the tables it was in (userId: only that account's rows)
-//   otherDevices(env, u) → [{ id, label, home, apps, at }]: this account's other sign-ins with a push row anywhere
+//   otherDevices(env, u, { device }) → [{ id, label, home, apps, at }]: this account's other sign-ins with a push row
+//     anywhere, and each of its devices getting Today's whose sign-in has ended (not this one: device, its hash)
 //   stopDevice(env, u, id) → the tables it was dropped from, or null when id names none of this account's
 //   ready(env) → the database, with every table this reads and writes made, and their via column
 // The five tables, and the app each is: pg_push (Chat, by session), td_push (Today's morning, by session), mk_push
@@ -26,7 +31,7 @@ import { HttpError, db, serverSecret, b64url, logError, OTHERS, othersOf } from 
 import { keepSub } from "./_notify.js";
 import { mkdb, keepPush } from "./_markets.js";
 import { wxdb, deviceFor, moveFor, dropFor, dropSession } from "./_wxpush.js";
-import { tddb, addDevice, moveDevice, deviceHash } from "./_today.js";
+import { tddb, addDevice, moveDevice, deviceHash, pushPrefs, setPushPrefs, lastOff } from "./_today.js";
 
 const VIA = "hub";
 // (the page's own name for this device: the first 16 characters of its endpoint's SHA-256, functions/_today.js deviceHash)
@@ -68,6 +73,9 @@ export async function addEverywhere(env, u, sub, { fan } = {}) {
   // (Today's morning, always: and its checks first, so a subscription no push service would take goes nowhere)
   await addDevice(env, u, sub);
   const tables = ["td_push"];
+  // (every app's: from the tap, kept on the account; or, without it, as the account says)
+  if (fan === true && env.HUB_PUSH === "1") await setPushPrefs(env, u.id, { every: true });
+  else if (env.HUB_PUSH === "1") fan = (await pushPrefs(env, u.id)).every;
   if (!(fan === true && env.HUB_PUSH === "1") || !u?.sessionHash) return tables;
   const D = await ready(env);
   // (each app's on its own: one that can't take it, Weather full, say, doesn't stop the others)
@@ -123,6 +131,9 @@ async function pushSessions(D, userId) {
   add(pg, "chat"); add(td, "today"); add(mk, "markets"); add(wx, "weather"); add(fx, "fitness");
   return by;
 }
+// (each of the account's devices getting Today's whose sign-in has ended: kept, but listed, so it can be stopped there)
+const orphansQ = (D, u) => D.prepare("SELECT endpoint, added, ok_at FROM td_push p WHERE user_id = ? AND (session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions s WHERE s.hash = p.session))").bind(u.id);
+const orphanId = (env, u, endpoint) => idFor(env, u.id, `push|${endpoint}`);
 // (the other sign-ins, as the account's page knows them: not this one, nor the app's it was opened from, nor those
 // opened from it)
 const othersQ = (D, u) => D.prepare(`SELECT hash, label, home, apps, seen_at FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u));
@@ -133,14 +144,18 @@ function labelOf(x, apps) {
   const app = (x.home && NAMES[x.home] ? x.home : null) || (used.length === 1 && NAMES[used[0]] ? used[0] : null) || (apps.length === 1 ? apps[0] : null);
   return app && kind ? `${NAMES[app]} on ${kind}` : x.label || "A phone or browser";
 }
-export async function otherDevices(env, u) {
-  const D = await ready(env), [by, ss] = await Promise.all([pushSessions(D, u.id), rowsOf(othersQ(D, u))]);
+export async function otherDevices(env, u, { device = null } = {}) {
+  const D = await ready(env), [by, ss, lone] = await Promise.all([pushSessions(D, u.id), rowsOf(othersQ(D, u)), rowsOf(orphansQ(D, u))]);
   const out = [];
   for (const x of ss) {
     const has = by.get(x.hash);
     if (!has) continue;
     const apps = APPS.map(([, app]) => app).filter((a) => has.has(a));
     out.push({ id: await idFor(env, u.id, x.hash), label: labelOf(x, apps), home: !!x.home, apps, at: x.seen_at ?? null });
+  }
+  for (const r of lone) {
+    if (device && (await deviceHash(r.endpoint)) === device) continue;
+    out.push({ id: await orphanId(env, u, r.endpoint), label: "A phone or browser", home: false, apps: ["today"], at: r.ok_at ?? r.added ?? null });
   }
   return out.sort((a, b) => (b.at || 0) - (a.at || 0));
 }
@@ -149,6 +164,8 @@ export async function stopDevice(env, u, id) {
   const D = await ready(env);
   let hash = null;
   for (const x of await rowsOf(othersQ(D, u))) if ((await idFor(env, u.id, x.hash)) === id) { hash = x.hash; break; }
+  // (one whose sign-in has ended: that device, everywhere it's this account's)
+  if (!hash) for (const r of await rowsOf(orphansQ(D, u))) if ((await orphanId(env, u, r.endpoint)) === id) return dropEverywhere(env, r.endpoint, { userId: u.id });
   if (!hash) return null;
   // (its push rows in every app's table, its Weather device's places with it; the sign-in itself left alone)
   const tables = [];
@@ -189,16 +206,18 @@ export async function deviceDrop(env, u, body) {
   const endpoint = body?.endpoint;
   if (typeof endpoint !== "string" || !endpoint || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
   await dropEverywhere(env, endpoint, { userId: u.id });
-  return { ok: true };
+  return { ok: true, on: !!(await lastOff(env, await tddb(env), u.id)) };
 }
 export async function devicesList(env, u, { device } = {}, { request } = {}) {
   const D = await ready(env);
-  const [here, devices] = await Promise.all([typeof device === "string" && DEVICE.test(device) ? hereOf(D, u, device) : [], otherDevices(env, u)]);
+  const mine = typeof device === "string" && DEVICE.test(device) ? device : null;
+  const [here, devices] = await Promise.all([mine ? hereOf(D, u, mine) : [], otherDevices(env, u, { device: mine })]);
   return { fan: env.HUB_PUSH === "1", here, devices };
 }
 export async function devicesStop(env, u, body) {
   const id = body?.id;
   if (typeof id !== "string" || !ID.test(id)) throw new HttpError(400, "Bad request.");
   if (!(await stopDevice(env, u, id))) throw new HttpError(404, "That device wasn’t found.");
+  await lastOff(env, await tddb(env), u.id);
   return { ok: true };
 }

@@ -459,6 +459,42 @@ await part('you: its writes', async () => {
   await ctx.close();
 });
 
+// (This Phone as the account says (today/me's push), the owner's report: it turned itself off. The account wants them,
+// with every app's, and this browser allows them but has no subscription (lost, or never made here): one made without
+// asking and handed over at once, every app's with it, the switch on and Every App's said, nothing tapped. Off here:
+// off on this device alone, kept through a reload; and where it's allowed nowhere yet, the switch stays the account's
+// and the row says so)
+await part('you: this phone, as the account says', async () => {
+  await mode({ phase: 'midday' });
+  const { ctx, p } = await open({ path: '/#you', push: true });
+  // (opened again once its worker's in, as a Home Screen app is, the account saying it wants them)
+  await p.evaluate(() => Promise.race([navigator.serviceWorker.ready, new Promise((ok) => setTimeout(ok, 20000))]));
+  await mode({ phase: 'midday', push: { on: true, every: true } }); await reset();
+  await p.reload();
+  await p.waitForFunction(() => document.querySelector('#youPhone')?.checked, null, { timeout: 15000 });
+  for (let t = Date.now(); Date.now() - t < 15000 && !(await sent('POST', 'device')).length;) await p.waitForTimeout(250);
+  await p.waitForTimeout(1000);
+  const dev = await sent('POST', 'device');
+  ok(dev.length >= 1 && dev.every((x) => x.sub?.endpoint === FAKE_ENDPOINT) && dev.some((x) => x.fan === true), 'handed over by itself, no tap: POST /api/device { sub, fan: true }', JSON.stringify(dev));
+  ok(dev.length === 1, 'once', String(dev.length));
+  ok(await p.evaluate(() => !!localStorage.getItem('fakesub')), 'its subscription made without asking (allowed already)');
+  ok(/every app notifies here/i.test(await text(p, '#youNotify')) && !(await p.$('#youEvery')), 'Every App’s Here: the account’s, never asked again');
+  // (off here: this device alone, and so after a reload, nothing handed over again)
+  await reset();
+  await p.click('#youPhoneRow');
+  await p.waitForFunction(() => { const i = document.querySelector('#youPhone'); return i && !i.disabled && !i.checked; }, null, { timeout: 15000 });
+  same(await sent('DELETE', 'device'), [{ endpoint: FAKE_ENDPOINT }], 'off: DELETE /api/device');
+  await mode({ phase: 'midday', push: { on: true, every: true } }); await reset();
+  await p.reload(); await p.waitForSelector('#youPhone'); await p.waitForTimeout(2000);
+  ok(!(await p.isChecked('#youPhone')) && !(await sent('POST', 'device')).length, 'off on this device after a reload, though the account wants them: nothing sent');
+  await ctx.close();
+  // (allowed nowhere yet on a device: the switch the account's, its row saying so; a tap turns it on here)
+  const b = await open({ path: '/#you' });
+  await b.p.waitForSelector('#youPhone'); await b.p.waitForTimeout(1500);
+  ok(await b.p.isChecked('#youPhone') && /Tap to turn on here/.test(await text(b.p, '#youPhoneRow')), 'not allowed here yet: on, as the account says, “Tap to turn on here”', await text(b.p, '#youPhoneRow'));
+  await b.ctx.close();
+});
+
 await part('you: this phone', async () => {
   await mode({ phase: 'midday' }); await reset();
   const { ctx, p } = await open({ path: '/#you', push: true });
@@ -506,10 +542,12 @@ await part('you: this phone', async () => {
   same(kept.left, PHONE_KEYS, 'Sign Out lets go of every app’s copy of you kept here (Markets’ holdings, Weather’s account, Fitness’s, Chat’s), and keeps the phone’s own (Weather’s places and settings, each app’s look)');
   same(kept.fitness, [], 'and Fitness’s copies of your files and of you (IndexedDB), as its own Sign Out does');
   same(kept.chat, ['cache:u77', 'drafts:u77', 'outbox:u77', 'pins:u77', 'pinsup:u77', 'session'], 'Chat’s own sign-in left to Chat, whose engine signed out here');
-  const out = await reqs(), del = out.findIndex((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), so = out.findIndex((e) => e.path.endsWith('/signout'));
-  ok(del >= 0 && so > del, 'DELETE /api/device first, then signed out');
-  same(JSON.parse(out[del]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'DELETE /api/device { endpoint }');
-  ok(chatOut.length === 1 && out[del].at <= chatOut[0] && chatOut[0] <= out[so].at, 'Chat signed out here by its engine (IFLChat.signOut), after this phone’s gone and before the account', JSON.stringify({ chatOut, del: out[del]?.at, so: out[so]?.at }));
+  // (this phone let go of by the sign-out itself, { endpoint }: never DELETE /api/device, which is turning it off, and the
+  // account's word on notifications stays, for signing in again; the subscription kept)
+  const out = await reqs(), so = out.findIndex((e) => e.path.endsWith('/signout'));
+  ok(so >= 0 && !out.some((e) => e.method === 'DELETE' && e.path.endsWith('/today/device')), 'signed out, this phone with it: no DELETE /api/device');
+  same(JSON.parse(out[so]?.body || '{}'), { endpoint: FAKE_ENDPOINT }, 'POST /api/logout { endpoint }');
+  ok(chatOut.length === 1 && chatOut[0] <= out[so].at, 'Chat signed out here by its engine (IFLChat.signOut), before the account', JSON.stringify({ chatOut, so: out[so]?.at }));
   await ctx.close();
 });
 

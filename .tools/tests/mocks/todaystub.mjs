@@ -23,6 +23,9 @@
 //   POST /__log/reset: the log emptied (as /__reset)
 //   with a phase, GET today/me also says what Today First's account side does (quiet, apps.mail, hubPush): { admin: true }
 //     in the same /mode call makes the account Mail's (apps.mail), { hubPush: false } says the fan-out isn't on
+//   with a phase, { push: { on, every } } in the /mode call: today/me says the account's word on notifications (none
+//     without it, as an account side from before); a device added says on (every with fan: true), one dropped says
+//     whether one's left (none here: off)
 //   POST /mode { v1: true } (with or without a phase): an account side from before Today First, where only Today's own
 //     routes answer (act, rules, notify, device and devices 404), GET today/cards has no v (asked ?v=2 or not), and
 //     today/me says nothing of Today First's
@@ -45,7 +48,7 @@ const HOSTILE = [['Sam "Q" & O\'Neil', 'Sam Quinn'], ["O'Brien", 'Obrien'], ['<b
 let mode = 'ok', morningPatch = {}, log = [];
 // Today First's: the moment answered (null: none), and You's state, afresh with each mode
 const PHASES = ['morning', 'midday', 'preride', 'riding', 'after', 'after-fit', 'evening'];
-let phase = null, you = null, v1 = false, admin = false, hubPush = true;
+let phase = null, you = null, v1 = false, admin = false, hubPush = true, push = null;
 const fresh = () => ({ acts: new Map(), rules: read('rules.json'), notify: read('notify.json'), devices: read('devices.json'), pushed: null });
 you = fresh();
 const LEVELS = ['do', 'suggest', 'quiet'];
@@ -63,7 +66,7 @@ const session = () => {
   const s = read('session.json');
   if (!phase || v1) return s;
   const a = read(`cards.${phase}.json`);
-  return { ...s, quiet: a.quiet || { on: false, from: 22, to: 7 }, apps: { mail: admin }, hubPush };
+  return { ...s, quiet: a.quiet || { on: false, from: 22, to: 7 }, apps: { mail: admin }, hubPush, ...(push ? { push } : {}) };
 };
 const morning = () => {
   const m = { ...read('morning.json'), ...morningPatch };
@@ -110,7 +113,7 @@ createServer(async (req, res) => {
     if (url.pathname === '/__mode' || url.pathname === '/mode') {
       if (b.phase != null && !PHASES.includes(b.phase)) return json(res, { error: `No such phase: ${b.phase}` }, 400);
       mode = b.mode || 'ok'; phase = b.phase || null; morningPatch = {}; you = fresh();
-      v1 = b.v1 === true; admin = b.admin === true; hubPush = b.hubPush !== false;
+      v1 = b.v1 === true; admin = b.admin === true; hubPush = b.hubPush !== false; push = b.push && typeof b.push === 'object' ? { on: !!b.push.on, every: !!b.push.every } : null;
       return json(res, { mode, phase, v1 });
     }
     if (url.pathname === '/__morning') { morningPatch = { ...morningPatch, ...b }; return json(res, { morning: morning() }); }
@@ -235,9 +238,10 @@ createServer(async (req, res) => {
     const tables = b.fan === true && you.devices.fan && !b.was ? ['td_push', 'pg_push', 'mk_push', 'wx_devs'] : ['td_push'];
     you.devices.here = [...new Set([...(you.devices.here || []), ...tables])];
     you.pushed = true;
-    return json(res, { ok: true, tables });
+    if (push) push = { on: true, every: push.every || (b.fan === true && you.devices.fan) };
+    return json(res, { ok: true, tables: push?.every && you.devices.fan ? ['td_push', 'pg_push', 'mk_push', 'wx_devs'] : tables });
   }
-  if (key === 'DELETE device') { you.devices.here = []; you.pushed = false; return json(res, { ok: true }); }
+  if (key === 'DELETE device') { you.devices.here = []; you.pushed = false; if (push) push = { ...push, on: false }; return json(res, { ok: true, ...(push ? { on: false } : {}) }); }
   if (key === 'GET devices') return json(res, { ...you.devices, here: url.searchParams.get('device') ? you.devices.here : [] });
   if (key === 'DELETE devices') {
     const n = you.devices.devices.length;

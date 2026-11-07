@@ -208,13 +208,14 @@ test("devices: ten an account (the oldest goes), each with the sign-in that turn
   assert.ok(one("SELECT 1 AS y FROM td_push WHERE endpoint = ?", subs[6].endpoint), "bo can't take ann's off");
   assert.deepEqual(await T.removeDevice(env, "ann", subs[6].endpoint), { ok: true, devices: 9 });
   await assert.rejects(T.removeDevice(env, "ann", 42), err(400));
-  // a sign-in gone: its devices aren't sent to, and the tick's tidy forgets them
-  await T.addDevice(env, { id: "ann", sessionHash: "sAnn2" }, await device("second-sign-in"));
+  // a sign-in gone (expired, ended from elsewhere, moved): its devices still sent to, and the tick's tidy keeps them
+  // (This Phone turned itself off this way: the tidy took a device whose sign-in had ended, and You read it as off)
+  const second = await device("second-sign-in");
+  await T.addDevice(env, { id: "ann", sessionHash: "sAnn2x" }, second);
   assert.equal((await T.todayDevices(env, "ann")).length, 10);
-  await D.prepare("DELETE FROM pg_sessions WHERE hash = 'sAnn2'").run();
-  assert.equal((await T.todayDevices(env, "ann")).length, 9);
-  assert.equal(await T.tidyDevices(env), 1);
-  assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE user_id = 'ann'").n, 9);
+  assert.equal(await T.tidyDevices(env), 0);
+  assert.ok((await T.todayDevices(env, "ann")).some((d) => d.endpoint === second.endpoint), "kept, with its sign-in gone");
+  await T.removeDevice(env, "ann", second.endpoint);
 });
 
 test("a device that's someone else's now (the same browser, another account or sign-in) moves to them, its failures forgotten", async () => {
@@ -225,14 +226,13 @@ test("a device that's someone else's now (the same browser, another account or s
   await T.addDevice(env, { id: "cy", sessionHash: "sCy" }, { endpoint: sub.endpoint, keys: other.keys });
   assert.deepEqual({ ...one("SELECT user_id, session, fails, ok_at, p256dh FROM td_push WHERE endpoint = ?", sub.endpoint) }, { user_id: "cy", session: "sCy", fails: 0, ok_at: null, p256dh: other.keys.p256dh });
   assert.equal((await T.todayDevices(env, "bo")).length, 0);
-  // failures: five in a row drop it; one that's taken in between starts them again
+  // failures: counted, never dropping it (a push service down for a few days turned This Phone off); one that's taken
+  // in between starts them again; only the push service saying it's gone forgets it
   for (let i = 0; i < 4; i++) assert.equal(await T.deviceFailed(env, sub.endpoint), false);
   await T.deviceOk(env, sub.endpoint);
   assert.equal(one("SELECT fails FROM td_push WHERE endpoint = ?", sub.endpoint).fails, 0);
-  for (let i = 0; i < 4; i++) assert.equal(await T.deviceFailed(env, sub.endpoint), false);
-  assert.equal(await T.deviceFailed(env, sub.endpoint), true, "the fifth");
-  assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE endpoint = ?", sub.endpoint).n, 0);
-  await T.addDevice(env, { id: "cy", sessionHash: "sCy" }, sub);
+  for (let i = 0; i < 9; i++) assert.equal(await T.deviceFailed(env, sub.endpoint), false);
+  assert.equal(one("SELECT fails FROM td_push WHERE endpoint = ?", sub.endpoint).fails, 9, "kept, its failures counted");
   await T.deviceGone(env, sub.endpoint);
   assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE endpoint = ?", sub.endpoint).n, 0);
 });
@@ -253,7 +253,7 @@ test("the day's claim: made only against the day it had (was); given back only w
   assert.deepEqual((await T.todayPrefs(env, "fay")).m_last, { title: "London · 14° / 7°", lines: ["Dry.", "Rest day"], out: ["Markets"], at: 1793602920000 });
 });
 
-test("who has Today's morning (for Weather and Fitness to skip theirs): on, with a device of a sign-in that still lasts", async () => {
+test("who has Today's morning (for Weather and Fitness to skip theirs): on, with a device (its sign-in ended or not)", async () => {
   await account("gus"); await signIn("gus", "sGus");
   await T.saveMorning(env, "gus", { on: true });
   assert.ok(!(await T.morningUsers(env)).has("gus"), "on in Account, with no device: Weather's and Fitness's still come");
@@ -271,7 +271,8 @@ test("who has Today's morning (for Weather and Fitness to skip theirs): on, with
   assert.ok(!(await T.morningCandidates(env)).some((x) => x.u.id === "gus"), "being deleted: not sent");
   await D.prepare("UPDATE pg_users SET delete_at = NULL WHERE id = 'gus'").run();
   await D.prepare("DELETE FROM pg_sessions WHERE hash = 'sGus'").run();
-  assert.ok(!(await T.morningUsers(env)).has("gus"), "its sign-in gone");
+  assert.ok((await T.morningUsers(env)).has("gus"), "its sign-in gone: still Today's, its device kept");
+  assert.ok((await T.morningCandidates(env)).some((x) => x.u.id === "gus"));
 });
 
 test("a device is named by its hash alone (the first 16 of its SHA-256, b64url), and the Morning section knows this one by it", async () => {
@@ -366,6 +367,15 @@ test("the push routes, try, and signing out: a sign-in's devices go with it", as
   assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE session = 'sCy'").n, 0, "and its devices");
   r = await call("GET", "me", { cookie: cyC });
   assert.equal(r.j.signedIn, false);
+  // signing out never unsays the account's word: signed in again, the view says on, for the page to hand the device over
+  // again without a tap; and the device the page names is let go of with it, whichever sign-in it was handed over with
+  const cy2 = await signIn("cy", "sCy2"), phone = await device("cy-later");
+  await T.addDevice(env, { id: "cy", sessionHash: "sCyOld" }, phone);
+  r = await call("POST", "signout", { cookie: cy2, body: { endpoint: phone.endpoint } });
+  assert.equal(r.s, 200);
+  assert.equal(one("SELECT COUNT(*) AS n FROM td_push WHERE endpoint = ?", phone.endpoint).n, 0, "this device's, though handed over with another sign-in");
+  r = await call("GET", "me", { cookie: await signIn("cy", "sCy3") });
+  assert.deepEqual(r.j.push, { on: true, every: false }, "still wanted");
 });
 
 test("the account's data has Today's, and the account going takes it", async () => {

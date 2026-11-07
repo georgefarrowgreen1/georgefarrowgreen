@@ -40,7 +40,7 @@ import { takeHandback } from "./_handback.js";
 import { json, body, signedIn } from "./_accountapi.js";
 import { todayOrigin, todayLinks, siteFetch } from "./_sites.js";
 import { prefsOf, vapid } from "./_notify.js";
-import { todayPrefs, savePrefs, saveMorning, morningTz, deviceHash, todayDevices, addDevice, moveDevice, removeDevice } from "./_today.js";
+import { todayPrefs, savePrefs, saveMorning, morningTz, deviceHash, todayDevices, addDevice, moveDevice, removeDevice, pushPrefs } from "./_today.js";
 import { CARD_KEYS, cardsFor, cardsMemo, avatarFor, localDay } from "./_todaycards.js";
 import { previewMorning, sendMorningNow } from "./_todaymorning.js";
 import { kept as weatherKept } from "./_wxacct.js";
@@ -50,7 +50,7 @@ import { adminOf } from "./api/pigeon/[[path]].js";
 import { actTake, actUndo, rulesGet, rulesPut } from "./_todayacts.js";
 import { planChange } from "./_todayfit.js";
 import { notifyGet, notifyPatch } from "./_todaynotify.js";
-import { deviceAdd, deviceDrop, devicesList, devicesStop } from "./_devices.js";
+import { deviceAdd, deviceDrop, devicesList, devicesStop, dropEverywhere } from "./_devices.js";
 import { mailHide, mailUnhide } from "./_todaymail.js";
 
 // (only from Today's own page: its server passes the page's Origin on, which a page elsewhere can't make Today's)
@@ -83,7 +83,7 @@ const momentOf = (request, env) => {
 // and for Today First's You and Apps: quiet hours (Chat's, the account's for every app), whether Mail's there for you
 // (the site's admin alone), and whether every app's notifications can come through InFlite (the Pages var HUB_PUSH)
 async function todayView(env, u, request) {
-  const [row, devs, admin] = await Promise.all([todayPrefs(env, u.id), todayDevices(env, u.id), adminOf(env).catch(() => null)]);
+  const [row, devs, admin, push] = await Promise.all([todayPrefs(env, u.id), todayDevices(env, u.id), adminOf(env).catch(() => null), pushPrefs(env, u.id)]);
   const p = prefsOf(u);
   return {
     signedIn: true,
@@ -96,6 +96,9 @@ async function todayView(env, u, request) {
     quiet: { on: !!p.quiet, from: p.quietFrom, to: p.quietTo },
     apps: { mail: !!admin && admin.id === u.id },
     hubPush: env.HUB_PUSH === "1",
+    // (the account's word on notifications, whichever device said it: on, wanted, so a device that can have them and
+    // hasn't takes them as its page opens; every, every app's with them)
+    push,
   };
 }
 
@@ -178,11 +181,14 @@ export const TODAY_ROUTES = {
     const token = await issueSession(env, u.id, request, authAt);
     return withSession(json(await todayView(env, { ...u, authAt }, request)), request, env, hex(await sha256(token)), true);
   },
+  // { endpoint? }: this device's, taken out of every app's table, as the sign-in's own devices are. Never the account's
+  // word on its notifications (functions/_today.js pushPrefs): signed in again, the device has them again
   "POST today/signout": async ({ request, env }) => {
     changeFromToday(request, env);
-    const u = await cookieUser(request, env, false, { deleting: true });
+    const u = await cookieUser(request, env, false, { deleting: true }), b = await body(request, 4096).catch(() => ({}));
     if (u) {
       const D = await db(env);
+      if (typeof b?.endpoint === "string" && b.endpoint) await dropEverywhere(env, b.endpoint, { userId: u.id }).catch(() => {});
       await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
       // (the devices this sign-in turned the morning on on: gone with it)
       await D.prepare("DELETE FROM td_push WHERE session = ?").bind(u.sessionHash).run().catch(() => {});
