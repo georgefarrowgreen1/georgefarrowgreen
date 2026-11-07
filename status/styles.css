@@ -241,9 +241,6 @@ html { scroll-padding-top: 76px; }
 .vstats > * + * { border-left: 1px solid var(--line); }
 .vstats b { font-size: 19px; }
 .vstats a:hover { color: var(--tint); }
-.status-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: -18px; padding: 0 4px; }
-.status-tools p { margin: 0; color: var(--text-3); font-size: 12px; }
-.status-tools .pill { min-height: 40px; font-size: 12px; }
 button:disabled { opacity: .6; cursor: wait; }
 .gh h2 { font-size: 16px; letter-spacing: -.2px; }
 .gh { flex-wrap: wrap; gap: 8px 12px; }
@@ -303,8 +300,6 @@ button:disabled { opacity: .6; cursor: wait; }
   .vstats > * { padding-inline: 10px; }
   .vstats b { font-size: 16px; }
   .vstats span { font-size: 10.5px; }
-  .status-tools p { max-width: 185px; line-height: 1.6; }
-  .status-tools { margin-top: -14px; }
   .inc { padding: 16px; }
   .maint { grid-template-columns: 8px minmax(0, 1fr); }
   .maint .pill { grid-column: 2; justify-self: start; min-height: 40px; }

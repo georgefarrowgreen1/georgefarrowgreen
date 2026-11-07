@@ -23,6 +23,7 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  const data=structuredClone(fixture);
  if(problem){data.jobs[1].at=now-30*60e3;data.deps[1].s='warn';data.deps[2].s='down';data.deps[2].why='The provider is not answering right now.';}
  const page=await browser.newPage({viewport:{width,height:1000},colorScheme});
+ await page.clock.install();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  let requests=0;
  await page.route('https://status.test/**', async route=>{
@@ -45,7 +46,11 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),true);
  assert.equal(await page.locator('.incident-detail').evaluate(x=>x.open),false);
  await page.locator('.incident-detail summary').click();
- await page.locator('#refreshBtn').click();await page.waitForFunction(()=>!document.querySelector('#refreshBtn').disabled);
+ assert.equal(await page.locator('.status-tools, #refreshBtn').count(),0);
+ const refreshed = page.waitForResponse(response=>response.url().endsWith('/api/status'));
+ await page.clock.fastForward(60_000);
+ await refreshed;
+ await page.waitForFunction(()=>document.querySelector('.incident-detail').open);
  assert(requests>=2);assert.equal(await page.locator('.incident-detail').evaluate(x=>x.open),true);
  await page.locator('[data-period="2"]').click();
  assert.equal(await page.locator('[data-period="2"]').getAttribute('aria-pressed'),'true');

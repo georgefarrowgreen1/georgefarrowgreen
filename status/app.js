@@ -53,7 +53,6 @@
   function load() {
     if (loading) return loading;
     clearTimeout(retryT);
-    $("refreshBtn").disabled = true; $("refreshBtn").textContent = "Refreshing…";
     return (loading = (async () => {
       try {
         const r = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
@@ -63,7 +62,7 @@
       } catch (_) {
         if (!data) unreachable(); else { data.failed = Date.now(); verdict(); }
         retryT = setTimeout(load, 15e3);
-      } finally { loading = null; $("refreshBtn").disabled = false; $("refreshBtn").textContent = "Refresh now"; }
+      } finally { loading = null; }
     })());
   }
   // (back on the page: asked again where what's shown is over half a minute old, or the last ask failed)
@@ -414,7 +413,6 @@
     if (t.dataset.sub === "on") { subscribe(); return; }
     if (t.dataset.sub === "off") { unsubscribe(); return; }
     if (t.dataset.cal) { calendar(t.dataset.cal); return; }
-    if (t.id === "refreshBtn") { load(); return; }
     if (t.id === "subBtn") { subSheet(); return; }
     if (t.tagName === "A" && t.getAttribute("href")?.startsWith("#")) {
       e.preventDefault(); const h = t.getAttribute("href").slice(1);
