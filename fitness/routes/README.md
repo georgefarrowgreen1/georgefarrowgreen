@@ -1,8 +1,70 @@
-# Cycling routes demo
+# Cycling routes in Fitness
 
-Open `/fitness/routes-demo.html` for the standalone review page, or Fitness → Routes under InFlite's roof.
-The same component runs in both. The preview uses an explicit sample Endurance 90 session. The integrated
-view uses today's planned cycling workout and median recent outdoor ride speed where available.
+Fitness → Routes now generates road-following cycling loops from the device’s current location. Tap **Use current
+location**, allow the browser’s location prompt, choose 30 minutes to 4 hours and a road-biased or mixed-surface profile.
+The same GPS coordinate is the first and last routing waypoint. The result uses BRouter’s snapped cycling-road point;
+if it is over 15 m away, the distance to the road is shown. Starts over 250 m away and GPS accuracy worse than 200 m
+are refused. There is no IP-location fallback and no sample-route fallback.
+
+The planner asks for up to three different directions, adjusts subsequent loop sizes using actual route duration,
+rejects open/discontinuous routes and excessive backtracking, ranks by estimated time, and keeps valid partial results.
+The route map and scrubbable elevation use Fitness’s existing renderer. GPX exports the returned coordinates and
+available elevations, with no fabricated activity timestamps. Missing elevation and unavailable maps have explicit
+fallbacks. Live Routes shows no sample weather and does not provide turn-by-turn guidance.
+
+## Account and location handling
+
+Generated candidates stay in memory until **Save planned route**. One planned route, its day, departure and time zone
+are then stored per account in D1 (`fx_route_plan`), separate from activities and training state. It syncs to the next
+device through the account API and appears beneath the workout on Fitness Today. Saving a new planned route replaces
+the previous one. Dates are limited to the next 30 days. Version-checked deletion cannot remove a plan another device
+has since changed. The account’s JSON export includes the planned route, and account deletion removes it.
+
+Location access happens only after a user tap; one-shot GPS is used, with no background watching. Coordinates travel
+in the body of an authenticated, same-origin POST to InFlite. They are sent to BRouter as its routing API requires;
+the UI discloses this before the location button. InFlite keeps the start/track only when the user saves a route.
+No coordinates go into InFlite URLs, browser storage, shared caches or application logs. Account caches are in memory,
+scoped to the owner, expire after 30 seconds and are cleared on module unmount. Late GPS, map and account responses
+are guarded; hidden views cancel generation and release maps.
+
+## Routing service
+
+`functions/_fitroutes.js` is the adapter and loop planner. The default provider is `https://brouter.de/brouter`, using
+its `fastbike` and `trekking` profiles over OpenStreetMap data. This uses the public BRouter service; it is not a
+self-hosted routing engine. A compatible dedicated BRouter deployment can be selected with the Worker’s
+`FITNESS_ROUTER_URL` variable (HTTPS endpoint). No routing API key is required by the default provider.
+
+Generation is limited to 12 requests per account/hour and a shared 600-provider-call/hour budget. There are at most
+three sequential provider calls, 16 seconds per call and 42 seconds overall, capped response/geometry sizes, and one
+active generation per account in an isolate. Provider errors, no suitable loops, offline status and permission refusal
+stay actionable. A routing-provider failure never returns the old Richmond samples as live results.
+
+- `POST /api/fitness/routes/generate`: `{ start: [longitude, latitude], minutes, surface, speed, seed }` → routes.
+- `GET /api/fitness/routes/plan`: the account’s planned route, or null.
+- `PUT /api/fitness/routes/plan`: `{ route, day, time, tz }` → saved plan with an opaque version.
+- `DELETE /api/fitness/routes/plan`: `{ id, version }` → remaining plan, preserving a concurrent replacement.
+
+All endpoints require sign-in; writes and generation also require the app’s own Origin. Responses are never cached.
+Fitness’s module graph loads live controls on opening Routes, not on Today. Cached sample geometry is excluded from
+both the live view and its static dependency graph. Fitness 2.04 needs no companion navigation change: Routes is
+already registered in the website. Deploy through the existing Workers workflow on `main`.
+
+## Checks
+
+Run `node --test .tools/tests/unit/fitroutes.test.mjs` for provider bounds, track/GPX validation, API authorization,
+rate limits, account isolation, persistence, concurrent deletion and export/deletion coverage. Run
+`node --test .tools/tests/routes-live.test.cjs` for location permissions, mobile/desktop themes, cancellation, map
+cleanup, saved-plan refresh and account APIs. The existing demo test also mounts the actual Fitness module and
+checks the real planned-route card under Today’s workout. `ROOF_IFL` points to the companion InFlite checkout.
+
+The public-location geometry in `.tools/tests/fixtures/cycling-loop.json` was generated by BRouter on 2026-11-07 at
+Richmond Gate solely as a deterministic test fixture. The production view never imports it.
+
+# Archived sample preview
+
+The original account-free sample remains at `https://fitness.inflite.ai/routes-demo` for design review.
+It uses an explicit sample Endurance 90 session and cached Richmond/Surrey tracks. This preview is separate
+from the live Routes section described above.
 
 The demo provides four sample loops from Richmond Gate: a short road-biased loop, that loop twice for
 endurance, a longer Surrey lanes loop, and mixed park paths. Filters match time and surface, the detail shows
@@ -34,15 +96,14 @@ Requests used `https://brouter.de/brouter`, `alternativeidx=0`, `format=geojson`
 - Mixed paths, `profile=trekking`: `-0.29647,51.450229|-0.2738,51.4520|-0.2570,51.4300|-0.2850,51.4220|-0.3030,51.4320|-0.29647,51.450229`
 
 The endurance option repeats the closed road loop twice. Only coordinates and small summary fields are retained;
-there is no runtime dependency on BRouter and no routing API credential. Arbitrary starting-point route generation
-is the next provider integration, not simulated by these sample suggestions.
+there is no runtime dependency on BRouter and no routing API credential. Arbitrary starting-point generation belongs to the live section above; this fixed preview does not simulate it.
 
 ## Maps and lifecycle
 
 Street maps reuse Fitness's MapLibre/OpenFreeMap renderer and load when a route is opened. Outline previews
 and GPX remain available without WebGL or tiles. A failed/slow map falls back to the route outline with a retry.
 Map instances are removed when a view hides, changes route or is destroyed; stale map loads are released.
-The routing-model module exposes geometry/estimation independently from the UI for a future routing provider.
+The archived routing-model module is used by this sample only; live routing uses routes-geometry.js.
 
 ## Review and checks
 
@@ -53,4 +114,4 @@ The outline, elevation inspection and GPX export also work offline. Local plan p
 
 Run `node .tools/tests/unit/fitnessroutes.test.mjs` and
 `ROOF_IFL=/path/to/inflite node --test .tools/tests/routes-demo.test.cjs`.
-The dedicated Fitness routes demo workflow checks both the standalone component and the actual Fitness module.
+The dedicated Fitness routes workflow checks the archived preview, live location flow and actual Fitness module.

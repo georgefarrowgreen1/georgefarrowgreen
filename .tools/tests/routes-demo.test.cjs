@@ -71,21 +71,24 @@ test('hidden/destroyed routes release street maps, including map promises that r
  }finally{await context.close();}
 });
 
-test('Fitness’s actual module opens Routes and shows the saved demo plan on its real Today section', {skip:!process.env.ROOF_IFL&&'set ROOF_IFL to the inflite checkout for the shared UI'},async()=>{
+test('Fitness’s actual module opens live Routes and shows an account route beneath the workout on Today', {skip:!process.env.ROOF_IFL&&'set ROOF_IFL to the inflite checkout for the shared UI'},async()=>{
  const{context,page,errors}=await open();try{
-  await context.route('**/api/fitness/**',route=>route.fulfill({json:new URL(route.request().url()).pathname.endsWith('/me')?{signedIn:true,id:'module-demo',at:Date.now(),ver:1,data:{prefs:{onboarded:true,units:'metric',maps:'tap'}},acts:[],times:[],more:false}:{ok:true}}));
+  const loop=JSON.parse(await readFile(resolve(__dirname,'fixtures/cycling-loop.json'),'utf8'));let plan=null;
+  await context.grantPermissions(['geolocation']);await context.setGeolocation({latitude:loop.start[1],longitude:loop.start[0],accuracy:10});
+  await context.route('**/api/fitness/**',async route=>{const req=route.request(),p=new URL(req.url()).pathname;if(p.endsWith('/routes/generate'))return route.fulfill({json:{routes:[loop]}});if(p.endsWith('/routes/plan')){if(req.method()==='PUT')plan=req.postDataJSON();return route.fulfill({json:{plan}});}return route.fulfill({json:p.endsWith('/me')?{signedIn:true,id:'module-demo',at:Date.now(),ver:1,data:{prefs:{onboarded:true,units:'metric',maps:'tap'}},acts:[],times:[],more:false}:{ok:true}});});
   await page.evaluate(async()=>{
    const ui=await import('/test-fw/ui.js'),entry=await import('/fitness/roof/fitness.js');
    document.querySelector('.fr-preview-main').replaceChildren();const root=document.createElement('div');root.className='m-fitness';document.querySelector('.fr-preview-main').append(root);
    let instance;const fw={ui,screenEl:root,session:{user:{id:'module-demo'},lost:async()=>false},theme:()=> 'light',motion:()=> 'reduced',visible:()=>true,on:()=>()=>{},header:{set(){}},lazy:fn=>fn(''),toast(){},changed(){},zoomTarget(){},nav:{section:section=>instance.show({kind:'app',app:'fitness',section}),depth:()=>1}};
    instance=await entry.mount(root,fw);window.__fitnessModule=instance;window.__routeCore=await import('/fitness/roof/core.js');await instance.show({kind:'app',app:'fitness',section:'routes'});
   });
+  await page.getByRole('button',{name:'Use current location',exact:true}).click();
   await page.locator('[data-sec="routes"] .fr-route-card').first().waitFor();
-  await page.locator('[data-sec="routes"] [data-route="park-endurance"]').click();
-  await page.getByRole('button',{name:'Add demo ride to Fitness Today',exact:true}).click();await page.getByRole('button',{name:'Open Fitness Today',exact:true}).click();
-  await page.locator('[data-sec="today"] [data-k="route-demo-plan"]').waitFor();
-  assert.match(await page.locator('[data-sec="today"] [data-k="route-demo-plan"]').innerText(),/Richmond endurance loop/);
-  assert.equal(await page.locator('[data-sec="today"] [data-k="daycard"] + [data-k="route-demo-plan"]').count(),1,'the route belongs beneath the planned workout');
+  await page.locator('[data-sec="routes"] .fr-route-card').first().click();
+  await page.getByRole('button',{name:'Save planned route',exact:true}).click();await page.getByText('Route saved to your account.',{exact:true}).waitFor();await page.getByRole('button',{name:'Open Fitness Today',exact:true}).click();
+  await page.locator('[data-sec="today"] [data-k="route-plan"]').waitFor();
+  assert.match(await page.locator('[data-sec="today"] [data-k="route-plan"]').innerText(),/Recommended loop/);
+  assert.equal(await page.locator('[data-sec="today"] [data-k="daycard"] + [data-k="route-plan"]').count(),1,'the route belongs beneath the planned workout');
   assert.deepEqual(await page.evaluate(()=>({dirty:__routeCore.S.dirty.size,activities:__routeCore.S.acts.length})),{dirty:0,activities:0});
   await save(page,'integrated-fitness-today');await page.evaluate(()=>__fitnessModule.unmount());assert.deepEqual(errors,[]);
  }finally{await context.close();}
