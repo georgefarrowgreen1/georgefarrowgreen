@@ -28,7 +28,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     // Public health describes the release without starting an idle container.
-    if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true});
+    if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true,release:env.ROUTING_RELEASE_ID||null});
     if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN))return json(await runProbes((r)=>handleRoute(r,env),PROBES));
     return json({error:'not_found'},404);
   }

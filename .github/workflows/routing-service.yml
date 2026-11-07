@@ -22,18 +22,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Identify the deployed release
+        id: release
+        run: |
+          release=$(git rev-parse HEAD^{tree})
+          echo "id=$release" >> "$GITHUB_OUTPUT"
+          node workers/routing/scripts/release-check.mjs "$release" >> "$GITHUB_OUTPUT"
       - name: Read-only hosting preflight
+        if: steps.release.outputs.current != 'true'
         run: node workers/routing/scripts/preflight.mjs
       - run: npm ci --prefix workers/routing --no-audit --no-fund
       - name: Restore the owned immutable map snapshot
+        if: steps.release.outputs.current != 'true'
         run: node workers/routing/scripts/snapshot.mjs restore
       - name: Prepare verified engine and UK road data
+        if: steps.release.outputs.current != 'true'
         run: python3 workers/routing/scripts/prepare.py
       - name: Coverage, request validation and failover checks
         run: npm test --prefix workers/routing
       - name: Build the routing container
+        if: steps.release.outputs.current != 'true'
         run: docker build -t inflite-routing:check workers/routing
       - name: Route with networking disabled and production resource limits
+        if: steps.release.outputs.current != 'true'
         run: |
           docker run -d --name inflite-routing-check --network none --memory 1g --cpus 0.25 --pids-limit 128 --cap-drop ALL --security-opt no-new-privileges inflite-routing:check
           docker exec inflite-routing-check java -Xmx32m -cp /opt/router/classes Probe
@@ -42,12 +53,14 @@ jobs:
         if: always()
         run: docker rm -f inflite-routing-check 2>/dev/null || true
       - name: Mirror the validated snapshot into owned storage
+        if: steps.release.outputs.current != 'true'
         run: node workers/routing/scripts/snapshot.mjs mirror
       - name: Deploy the isolated routing Worker and containers
+        if: steps.release.outputs.current != 'true'
         working-directory: workers/routing
         run: |
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
-          npm run deploy
+          npm run deploy -- --var ROUTING_RELEASE_ID:${{ steps.release.outputs.id }}
       - name: Verify England, Wales, Scotland, Northern Ireland and islands
         working-directory: workers/routing
         run: node scripts/deploy-probe.mjs

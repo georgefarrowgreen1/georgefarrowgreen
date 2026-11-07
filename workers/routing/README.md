@@ -33,12 +33,16 @@ the container and computes a real route with `--network none --memory 1g --cpus 
 inputs to the private `inflite-routing-data` R2 bucket before deployment. It then installs the isolated Worker and
 runs protected probes across the UK, including map-tile boundaries, plus the exact loop planner used by Fitness.
 Initial Cloudflare container provisioning can take several minutes; the readiness step retries within its deadline.
-The site must not be switched until the hosted readiness check is green.
+The site must not be switched until the hosted readiness check is green. An identical source tree on merge rechecks the
+already deployed service without restarting its tested container image.
 
 The existing `CLOUDFLARE_API_TOKEN` and optional account selector need Workers, Containers/registry and R2 permissions.
 The first hosted preflight and snapshot mirror succeeded with this repository's existing deployment credentials.
 `ROUTING_PROBE_TOKEN` is generated/masked by the deployment job, stored only as a routing-Worker secret, and used
 only against that Worker's fixed-location readiness endpoint. It is separate from the Cloudflare API credential.
+The site deployment also calls a scheduler-key-protected `/api/routing-check` at its scheduler host. This computes
+a real fixed-location loop through the deployed site’s private binding and returns only summary metrics; it accepts
+no caller location, performs no account writes, and is unavailable on public app hosts.
 The site’s two Worker configs bind `ROUTING_APP` to `inflite-routing`, entrypoint `RoutingService`.
 
 Containers incur usage charges under the existing Workers paid account. Instance count is capped at two and idle

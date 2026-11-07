@@ -39,6 +39,12 @@ jobs:
           node .tools/workers/build.mjs
           npx --yes wrangler@4.149.0 deploy -c wrangler.worker.jsonc
           npx --yes wrangler@4.149.0 deploy -c wrangler.gfg.jsonc
+      - name: Verify the deployed Fitness routing backend
+        if: steps.ready.outputs.go == '1'
+        env:
+          TICK_SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
+          SITE: ${{ vars.TICK_SITE || 'https://inflite-apps.georgefarrowgreen.workers.dev' }}
+        run: node workers/routing/scripts/check-site.mjs
       # The deploy told to the Incident Desk (functions/_desk.js recordDeploy), which also wakes the new Worker and lets
       # it set its database up once, so the first person after a deploy isn't the one kept waiting for that. Never fails
       # the deploy.
