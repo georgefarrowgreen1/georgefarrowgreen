@@ -32,7 +32,7 @@ def get(item):
  path=OUT/'segments'/item['file'];download(LOCK['source']+item['file'],path,item['sha256'])
  if path.stat().st_size!=item['bytes']:raise RuntimeError('Wrong segment length: '+item['file'])
 with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(get,LOCK['files']))
-version=LOCK['date']+'-'+hashlib.sha256((ROOT/'data.lock.json').read_bytes()).hexdigest()[:12]
+version=LOCK['date']+'-'+hashlib.sha256((ROOT/'data.lock.json').read_bytes()).hexdigest()[:12]+'-'+digest(ROOT/'profiles/road.brf')[:12]
 (OUT/'version.txt').write_text(version+'\n')
 files=[OUT/'brouter.jar',OUT/'version.txt',*sorted((OUT/'profiles').glob('*')),*sorted((OUT/'segments').glob('*.rd5'))]
 (OUT/'SHA256SUMS').write_text(''.join(digest(p)+'  '+str(p.relative_to(OUT))+'\n' for p in files))

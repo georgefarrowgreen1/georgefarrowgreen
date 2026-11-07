@@ -20,3 +20,9 @@ new_sqlite_classes = ["UKRouter"]
 
 [observability]
 enabled = true
+
+# Versioned road-profile text is used only to verify active container releases.
+[[rules]]
+type = "Text"
+globs = ["**/*.brf"]
+fallthrough = true
