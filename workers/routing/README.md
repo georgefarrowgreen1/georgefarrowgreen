@@ -27,8 +27,9 @@ sections. Steps and ferries are disabled; the upstream motorway, trunk and acces
 still derives from `trekking`. Distance controls waypoint radius, adaptive scaling and ranking; speed/climbing never
 change route selection. Already-open 2.05 clients can still send their legacy time request during rollout. Intermediate waypoints can snap up to
 1 km to a cycling road, which avoids rejecting a loop merely because a proposed via point falls in a field.
-Fitness independently rejects a start snapped over 250 m away, invalid/discontinuous/open tracks, excessive
-backtracking and unsuitable durations. BRouter/OpenStreetMap access data is not a guarantee of current conditions.
+Both profiles enable misplaced-via correction without a spur-length cap: arbitrary shaping points must not force
+out-and-back dead-end visits. Fitness independently rejects a start snapped over 250 m away, invalid/discontinuous/open
+tracks, internal reverse-travel spurs over 10 m, excessive overlap and unsuitable distances. BRouter/OpenStreetMap access data is not a guarantee of current conditions.
 
 ## Deployment and readiness
 
@@ -36,7 +37,8 @@ backtracking and unsuitable durations. BRouter/OpenStreetMap access data is not 
 the container and computes a real route with `--network none --memory 1g --cpus 0.25`. It mirrors the validated build
 inputs to the private `inflite-routing-data` R2 bucket before deployment. It then installs the isolated Worker and
 runs protected probes across the UK, including map-tile boundaries, plus the exact loop planner used by Fitness.
-Initial Cloudflare container provisioning can take several minutes; the readiness step retries within its deadline.
+Initial Cloudflare container provisioning and gradual rollouts can take several minutes; the active-profile readiness
+step allows up to eight bounded attempts before stopping the release.
 The site must not be switched until the hosted readiness check is green. The protected release check also compares
 the running primary/standby engines’ embedded profile fingerprints against the deployed source. Idle stale instances
 are replaced sequentially (standby first); busy ones are retried. This prevents a successful gateway deployment from

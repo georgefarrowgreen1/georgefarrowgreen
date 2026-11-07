@@ -7,7 +7,7 @@ if it is over 15 m away, the distance to the road is shown. Starts over 250 m aw
 are refused. There is no IP-location fallback and no sample-route fallback.
 
 The planner asks for up to three different directions, adjusts subsequent loop sizes using actual track distance,
-rejects open/discontinuous routes, excessive backtracking and tracks over 25% away from the target, ranks by closest
+rejects open/discontinuous routes, internal reverse-travel spurs over 10 m, excessive aggregate overlap and tracks over 25% away from the target, ranks by closest
 distance, and keeps valid partial results. Time estimates are secondary and never influence route selection.
 The route map and scrubbable elevation use Fitness’s existing renderer. GPX exports the returned coordinates and
 available elevations, with no fabricated activity timestamps. Missing elevation and unavailable maps have explicit
@@ -57,7 +57,7 @@ A failed upstream data update cannot alter a running router. Details and rollbac
 - `DELETE /api/fitness/routes/plan`: `{ id, version }` → remaining plan, preserving a concurrent replacement.
 
 All endpoints require sign-in; generation and writes also require the app's own Origin. Responses are never cached.
-Fitness 2.06 retains the existing Routes tab; no companion navigation deployment is needed.
+Fitness 2.08 retains the existing Routes tab; no companion navigation deployment is needed.
 
 ## Checks
 
@@ -125,3 +125,8 @@ The outline, elevation inspection and GPX export also work offline. Local plan p
 Run `node .tools/tests/unit/fitnessroutes.test.mjs` and
 `ROOF_IFL=/path/to/inflite node --test .tools/tests/routes-demo.test.cjs`.
 The dedicated Fitness routes workflow checks the archived preview, live location flow and actual Fitness module.
+
+Shaping points are not destinations: both engine profiles remove dead-end detours around intermediate points. The
+server independently detects contiguous reverse traversal of the same road vertices, so a short spur on a long ride
+cannot pass just because overall overlap is small. Legitimate hairpins and the shared start/finish access stem are
+preserved. Map, track statistics and GPX all use the engine’s corrected geometry; no straight-line shortcuts are drawn.

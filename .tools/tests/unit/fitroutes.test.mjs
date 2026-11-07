@@ -71,7 +71,7 @@ test('distance drives the loop geometry, recalibration and ranking independently
  assert.deepEqual(waypoints(cleanQuery({...query,speed:40}),90),waypoints(query,90));
  const coords=(factor,z=1)=>route.coords.map(c=>[query.start[0]+(c[0]-query.start[0])*factor,query.start[1]+(c[1]-query.start[1])*factor,c[2]*z]);
  const calls=[];let n=0;
- const got=await generateRoutes(query,{fetcher:async(url,init)=>{calls.push(new URLSearchParams(init.body).get('lonlats').split('|').map(p=>p.split(',').map(Number)));return Response.json({features:[{geometry:{type:'LineString',coordinates:coords([1.18,1.02,1.6][n],[1,4,1][n++])}}]});}});
+ const got=await generateRoutes(query,{fetcher:async(url,init)=>{calls.push(new URLSearchParams(init.body).get('lonlats').split('|').map(p=>p.split(',').map(Number)));return Response.json({features:[{geometry:{type:'LineString',coordinates:coords(query.metres/route.metres*[1.18,1.02,1.6][n],[1,4,1][n++])}}]});}});
  assert.equal(got.routes.length,2);assert.ok(Math.abs(got.routes[0].metres-query.metres)<Math.abs(got.routes[1].metres-query.metres));
  assert.ok(got.routes[0].ascent>got.routes[1].ascent,'closest distance wins even when it has more climbing');
  assert.ok(metresBetween(calls[1][0],calls[1][1])<metresBetween(calls[0][0],calls[0][1]),'an overlong first candidate shrinks later waypoint radii');
