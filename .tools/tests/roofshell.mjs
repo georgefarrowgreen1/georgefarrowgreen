@@ -11,7 +11,9 @@
 // temperature and rain bars from the fixture, Markets' percent, never an amount); You's Connected Apps (the words each
 // app's connector fills) and each connector sheet; the Weather Notifications sheet (each place's Rain and Warnings, the
 // morning briefing and its time, email: the PATCH /api/notify bodies) and /#you=notify-weather; search (Today's titles,
-// People by name, Settings' rows; typing leaves nothing in storage, the address or a request); the page's sheets as
+// People by name, Settings' rows; typing leaves nothing in storage, the address or a request; as it opens: your apps
+// and shortcuts, no section rows; as you type: the Top hit highlighted, what matched in bold, a slip forgiven, the
+// sheet's height kept; ↑/↓, Enter opening it where it says, Recent and its Clear, Esc; phone light and dark, desktop); the page's sheets as
 // InFlite's sheet (Morning, Every App's, Edit: modal dialogs) and a toast; Back between tabs in one document, and #morning
 // then Back; signed out at /weather/#radar: the way in, Sign in back to /weather/#radar in its href and its click; the hub
 // explicitly not ready: the Weather tile at Weather's own address, a /weather/ document sent there; /api/hub answering
@@ -337,6 +339,67 @@ await part('search', async () => {
   same(await snap(), before, 'typing leaves nothing in storage, history or the address');
   await p.keyboard.press('Escape');
   await ctx.close();
+});
+
+// ======================================================================= search: the empty field, typing, keys, Recent
+await part('search, as it opens and as you type', async () => {
+  await mode({ phase: 'midday' });
+  const groups = (p) => p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label')));
+  const rows = (p) => p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => ({ id: x.id, t: (x.querySelector('b') || x).textContent.trim(), href: x.getAttribute('href'), marks: [...x.querySelectorAll('mark')].map((m) => m.textContent) })));
+  const tall = (p) => p.$eval(H.SEARCH_SHEET, (d) => Math.round(d.getBoundingClientRect().height));
+  for (const [w, h, scheme] of [[390, 844, 'light'], [390, 844, 'dark'], [1280, 800, 'light']]) {
+    const tag = `${w < 700 ? 'phone' : 'desktop'}-${scheme}`, full = tag === 'phone-light';
+    const { ctx, p } = await open({ w, h, scheme });
+    await p.waitForSelector(`${H.TODAY}[data-phase="midday"]`, { timeout: 10000 });
+    await p.click(H.HD_SEARCH);
+    await p.waitForSelector(H.SEARCH_INPUT);
+    await p.waitForTimeout(600);
+    if (full) {
+      ok(await p.evaluate((s) => document.activeElement === document.querySelector(s), H.SEARCH_INPUT), 'Search: its field focused as it opens');
+      same(await groups(p), ['Apps', 'Shortcuts'], 'the empty field: your apps and a few shortcuts');
+      same(await p.$$eval(`${H.SEARCH_SHEET} .ifl-sr-app`, (a) => a.map((x) => x.getAttribute('aria-label'))).then((a) => a.slice(0, 2)), ['Weather', 'Chats'], 'your apps as a row of icons');
+      ok(!(await rows(p)).some((r) => / · /.test(r.t)), 'no section rows until you type');
+      same(await p.$$eval(`${H.SEARCH_SHEET} .ifl-sr-cuts [role=option]`, (o) => o.map((x) => x.getAttribute('href'))).then((a) => a.includes('/weather/#radar') && a.includes('/#you=quiet')), true, 'shortcuts: Rain radar, Quiet Hours…');
+    }
+    await p.screenshot({ path: `${OUT}/search-open-${tag}.png` });
+    const h0 = await tall(p);
+    await p.fill(H.SEARCH_INPUT, 'rad'); await p.waitForTimeout(700);
+    if (full) {
+      const r = await rows(p);
+      same([r[0]?.href, r[0]?.marks, r.length === 1 || (await groups(p))[0] === 'Top hit'], ['/weather/#radar', ['rad'], true], '“rad”: the radar first (the Top hit, when there’s more than one), “rad” in bold');
+      same(await p.$eval(H.SEARCH_INPUT, (i) => i.getAttribute('aria-activedescendant')), r[0]?.id, 'and highlighted, for Enter');
+      ok(Math.abs((await tall(p)) - h0) <= 1, 'the sheet keeps its height as results come (no jump)', `${h0} → ${await tall(p)}`);
+    }
+    await p.screenshot({ path: `${OUT}/search-rad-${tag}.png` });
+    await p.fill(H.SEARCH_INPUT, 'Pat'); await p.waitForTimeout(700);
+    if (full) same((await rows(p))[0]?.t, 'Pat', '“Pat”: the friend waiting for you, first');
+    await p.screenshot({ path: `${OUT}/search-pat-${tag}.png` });
+    if (full) {
+      await p.fill(H.SEARCH_INPUT, 'qiuet hours'); await p.waitForTimeout(700);
+      same((await rows(p))[0]?.t, 'Quiet Hours', 'a slip forgiven: “qiuet hours” finds Quiet Hours');
+      const r = await rows(p);
+      if (r.length > 1) {
+        await p.keyboard.press('ArrowDown');
+        same(await p.$eval(H.SEARCH_INPUT, (i) => i.getAttribute('aria-activedescendant')), r[1].id, '↓ moves the highlight');
+        await p.keyboard.press('ArrowUp');
+      }
+      await p.evaluate(AXE);
+      const axe = await p.evaluate(async () => (await window.axe.run(document.querySelector('dialog[data-sheet=search]'), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, resultTypes: ['violations'] })).violations.map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`));
+      same(axe, [], 'the search sheet, typed in: axe clean');
+      await p.keyboard.press('Enter');
+      await p.waitForURL(/#you=quiet$/, { timeout: 5000 }).catch(() => {});
+      ok(/#you=quiet$/.test(p.url()) && !(await p.$(`${H.SEARCH_SHEET}[open]`)), 'Enter opens it where it says: /#you=quiet, the sheet closed', p.url());
+      await p.click(H.HD_SEARCH); await p.waitForSelector(H.SEARCH_INPUT); await p.waitForTimeout(400);
+      same([await groups(p), await p.$$eval(`${H.SEARCH_SHEET} [data-group=recent] [role=option] b`, (b) => b.map((x) => x.textContent))], [['Apps', 'Recent', 'Shortcuts'], ['Quiet Hours']], 'opened again: Recent, with what was opened');
+      ok(!(await p.evaluate(() => JSON.stringify({ ...localStorage }))).includes('qiuet'), 'what was typed is never kept');
+      await p.screenshot({ path: `${OUT}/search-recent-${tag}.png` });
+      await p.click(`${H.SEARCH_SHEET} [data-group=recent] .ifl-sr-more`); await p.waitForTimeout(200);
+      same(await groups(p), ['Apps', 'Shortcuts'], 'Clear: Recent gone');
+      await p.keyboard.press('Escape');
+      ok(await p.waitForFunction((s) => !document.querySelector(`${s}[open]`), H.SEARCH_SHEET, { timeout: 3000 }).then(() => true, () => false), 'Esc closes it');
+    }
+    await ctx.close();
+  }
 });
 
 // ======================================================================= the page's own sheets and a toast

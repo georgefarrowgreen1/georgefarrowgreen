@@ -370,13 +370,14 @@ try {
     same(await p.evaluate(() => window.focusedInTap), true, 'Search: the sheet and its input made and focused inside the tap');
     same(await p.$eval(H.SEARCH_INPUT, (i) => [i.getAttribute('role'), !!document.getElementById(i.getAttribute('aria-controls'))?.matches('[role=listbox]')]), ['combobox', true], 'a combobox over a listbox');
     await settle(p, 500);
-    same(await p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.querySelector('b').textContent)), ['Weather', 'Weather · 16 Days', 'Weather · Radar', 'Weather · Warnings', 'Chats', 'Fitness', 'Fitness · Today', 'Fitness · Activities', 'Fitness · Progress', 'Markets', 'Markets · Today', 'Markets · Holdings', 'Markets · News', 'Mail'], 'an empty field: every app and its sections (the Apps provider)');
+    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Apps', 'Shortcuts'], 'an empty field: your apps and a few shortcuts, no section rows (Recent once something’s been opened)');
+    same(await p.$$eval(`${H.SEARCH_SHEET} .ifl-sr-app`, (o) => o.map((x) => x.getAttribute('aria-label'))), ['Weather', 'Chats', 'Fitness', 'Markets'], 'your apps, as icons (Mail, the admin’s alone, not for the kit’s account)');
     await p.fill(H.SEARCH_INPUT, 'lon'); await settle(p, 500);
-    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Places'], 'typed: your places (Places from Weather’s connector); the throwing and refusing providers left out, the slow one not yet');
+    same((await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label')))).filter((x) => x !== 'Top hit'), ['Places'], 'typed: your places (Places from Weather’s connector); the throwing and refusing providers left out, the slow one not yet');
     await settle(p, 700);
-    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Places', 'Slow'], 'the slow provider shown when it arrives, after the quick ones');
+    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))).then((g) => [g.at(-1), g.includes('Places') || g.includes('Top hit')]), ['Slow', true], 'the slow provider shown when it arrives, after the better matches');
     await p.fill(H.SEARCH_INPUT, 'radar'); await settle(p, 1100);
-    same(await p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => [x.querySelector('b').textContent, x.getAttribute('href')])).then((r) => r[0]), ['Weather · Radar', '/weather/#radar'], 'an app’s section by name: Weather · Radar → /weather/#radar');
+    same(await p.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.getAttribute('href'))).then((r) => r[0]), '/weather/#radar', 'an app’s section by name: the radar first → /weather/#radar');
     await p.fill(H.SEARCH_INPUT, 'qzxv'); await settle(p, 1100);
     same(await p.$eval(`${H.SEARCH_SHEET} .ifl-none`, (x) => x.textContent), 'Nothing for “qzxv”', '“Nothing for …” when nothing matches');
     const after = await p.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]));
@@ -390,7 +391,7 @@ try {
     // the module’s own provider replaces Places while it’s mounted
     await p.evaluate(() => { window.offMine = kitMod.fw.search.provide({ id: 'mine', group: 'Weather', order: 15, search: () => [{ title: 'From the module', href: '/weather/#days' }] }); });
     await p.click(H.HD_SEARCH); await p.fill(H.SEARCH_INPUT, 'lo'); await settle(p, 1100);
-    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Weather', 'Slow'], 'the module’s provider in place of Places while mounted');
+    same(await p.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))).then((g) => [g.includes('Weather'), g.includes('Places')]), [true, false], 'the module’s provider in place of Places while mounted');
     await axe(p, 'the search sheet');
     await clean(k, 'search');
   }
@@ -587,7 +588,7 @@ try {
     await p5.evaluate(() => { kitMods.markets.fw.search.provide({ id: 'mine', group: 'Markets', order: 30, search: () => [{ title: 'From Markets’ module', href: '/markets/#news' }] }); window.kitSearch = []; });
     await settle(p5, 1500);
     await p5.click(H.HD_SEARCH); await p5.fill(H.SEARCH_INPUT, 'lon'); await settle(p5, 1100);
-    same(await p5.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label'))), ['Places', 'Markets'], 'Markets’ module providing: Weather’s Places still found (London), beside Markets’ own');
+    same([await p5.$$eval(`${H.SEARCH_SHEET} [role=group]`, (g) => g.map((x) => x.getAttribute('aria-label')).filter((x) => x !== 'Top hit' && x !== 'Places')), await p5.$$eval(H.SEARCH_RESULT, (o) => o.some((x) => /London/.test(x.textContent)))], [['Markets'], true], 'Markets’ module providing: Weather’s Places still found (London), beside Markets’ own');
     same(await p5.evaluate(() => [...new Set(kitSearch.map((s) => `${s.app}:${s.userId}`))]), ['weather:u-kit-0001'], 'a connector’s search is given the user ({ userId }); Markets’ connector not asked while its module provides');
     await p5.fill(H.SEARCH_INPUT, 'stand'); await settle(p5, 1100);
     ok(!(await p5.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.textContent))).some((t) => /Markets stand-in/.test(t)), 'Markets’ connector provider replaced by its module’s');

@@ -163,11 +163,13 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // word suggestions are up (sheet.js)). 6 November: 1,216 B more, for the rail on a computer (tabs.js: InFlite's name,
 // each tab's key, your apps, you at its foot, the pill up and down, and the keys 1–4 and /), about 130 B slack). 7 November:
 // 128 B more, for a count on a header act (header.js count: Today's bell); and 32 B more, for that count said in the act's
-// name ("Notifications, 3 new")
-test('roof/*.js together: at most 25 KB and 544 B gzipped, comments stripped', { skip: roofSkip }, () => {
+// name ("Notifications, 3 new"); and 3,744 B more, for search made better (search.js: one scale of matching for every
+// provider, forgiving a slip; a Top hit and groups by their best, three each with Show all, what matched in bold; ↑/↓,
+// Enter and Esc; the empty field's apps, Recent and shortcuts), about 90 B slack
+test('roof/*.js together: at most 29 KB and 256 B gzipped, comments stripped', { skip: roofSkip }, () => {
   const all = files().map((f) => strip(read(f))).join('\n');
   const gz = gzipSync(all).length;
-  assert.ok(gz <= 25 * 1024 + 544, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 26144`);
+  assert.ok(gz <= 29 * 1024 + 256, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 29952`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 
