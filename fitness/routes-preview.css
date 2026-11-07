@@ -1,0 +1,24 @@
+/* Standalone review page; the route feature itself remains scoped to .m-fitness. */
+body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(--text); background: radial-gradient(ellipse at 10% 0,var(--aura-1),transparent 60%),radial-gradient(ellipse at 100% 45%,var(--aura-2),transparent 65%),var(--sky-c); }
+.fr-preview * { box-sizing: border-box; }
+.fr-preview-head { display: flex; align-items: center; gap: 12px; max-width: 1000px; margin: auto; padding: max(24px,env(safe-area-inset-top)) 20px 16px; }
+.fr-preview-head img { border-radius: 12px; }
+.fr-preview-head > div { flex: 1; }
+.fr-preview-head h1 { margin: 0; font: 750 32px/1.05 var(--font-d); letter-spacing: -.8px; }
+.fr-preview-head > div > span { display: block; margin-bottom: 3px; color: var(--text-2); font-size: 12px; }
+.fr-preview-badge { padding: 7px 11px; border-radius: 999px; background: var(--glass); color: var(--text-2); font-size: 12px; font-weight: 600; }
+.fr-preview-tabs { display: flex; gap: 8px; max-width: 1000px; margin: 0 auto 18px; padding: 0 20px; }
+.fr-preview-tabs button { min-height: 44px; padding: 8px 20px; border-radius: 999px; border: 0; font: 600 15px/1.2 var(--font); background: var(--glass); color: var(--text-2); cursor: pointer; }
+.fr-preview-tabs button[aria-current="page"] { color: var(--tint-text); background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--line); }
+.fr-preview-tabs button:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; }
+.fr-preview-main { max-width: 1000px; margin: auto; padding: 0 16px max(30px,env(safe-area-inset-bottom)); }
+.fr-preview-main > [hidden] { display: none !important; }
+@media(min-width:900px) { .fr-preview-main { padding-left: 20px; padding-right: 20px; } }
+
+.fr-preview { --fr-preview-ink: #ffad90; }
+.fr-preview-tabs button[aria-current="page"] { color: var(--fr-preview-ink); }
+.fr-preview-main.m-fitness { --tint: #ff8a68; --tint-deep: #b93a1c; --tint-text: #ffad90; --on-tint: #fff; }
+@media(prefers-color-scheme: light) {
+  .fr-preview { --fr-preview-ink: #b93a1c; }
+  .fr-preview-main.m-fitness { --tint: #f2734d; --tint-text: #b93a1c; }
+}

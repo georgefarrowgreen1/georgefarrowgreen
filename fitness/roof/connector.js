@@ -2,7 +2,7 @@
 // ≤ 4096 bytes raw, no imports (roofcontract). files = fitness.js's static graph + REGISTRY css; lazy = the lazy views'
 // closure less files less NET (map, share, formats, fit, reader: never kept).
 export const CONNECTOR = 1;
-const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["progress", "Progress"]];
+const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 const ENTRIES = [["Fitness Settings", "", "settings fitness"], ["Your Numbers", "=numbers", "your numbers ftp weight heart rate zones"], ["Garmin, Strava and Apple Health", "=devices", "garmin strava apple health devices"]];
 export const connector = {
   app: "fitness",
@@ -11,21 +11,21 @@ export const connector = {
     cards: "Today’s session or the ride you’ve done",
     search: "Your activities and sessions, on this phone",
     notifications: "Your session, in the morning notification",
-    actions: "Open Today, Activities or Progress; send a session",
-    screens: "Today · Activities · Progress",
+    actions: "Open Today, Activities, Routes or Progress; send a session",
+    screens: "Today · Activities · Routes · Progress",
   },
   sections: SECTIONS,
   aliases: { plan: "today", day: "today", offer: "today", settings: "today", act: "activities" },
   files: [
     "/fitness/roof/fitness.js", "/fitness/roof/core.js", "/fitness/roof/idb.js", "/fitness/roof/fxcalc.js",
     "/fitness/roof/connector.js", "/fitness/roof/fxui.js", "/fitness/roof/todayview.js", "/fitness/roof/x.js",
-    "/fitness/roof/offers.js",
+    "/fitness/roof/offers.js", "/fitness/routes-plan.js", "/fitness/routes-store.js", "/fitness/routes-catalog.js",
     "/fitness/ui.js", "/fitness/workouts.js", "/fitness/load.js", "/fitness/account.js", "/fitness/rhythm.js",
     "/fitness/progress.js", "/fitness/besttime.js", "/fitness/efforts.js", "/fitness/charts.js", "/fitness/invites.js",
     "/fitness/todaycalc.js", "/fitness/send.js",
-    "/fitness/roof/fitness.css", "/fitness/roof/fxviews.css"
+    "/fitness/roof/fitness.css", "/fitness/roof/fxviews.css", "/fitness/routes.css"
   ],
-  lazy: ["/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js"],
+  lazy: ["/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js", "/fitness/roof/routesview.js", "/fitness/routes-demo.js", "/fitness/routes-model.js", "/fitness/routes-data.js"],
   // mini(answer) → { kind: "num", num, label: "Fitness" } from answer.cards.fitness.ctl, else null
   mini(a) { const c = a?.cards?.fitness; return c && Number.isFinite(Number(c.ctl)) ? { kind: "num", num: String(Math.round(Number(c.ctl))), label: "Fitness" } : null; },
   // search(q, { userId }) → Fitness Settings, Your Numbers, the devices page: on this phone, q never leaves it (D16)

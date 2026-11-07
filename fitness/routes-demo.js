@@ -1,0 +1,182 @@
+// The Routes demo: pure local planning, real cached geometry, optional street map.
+// Called by the Fitness module and the standalone preview. No activity/API writes.
+import { ROUTES, routeOf, geometry, estimate, recommendations, profile, toGPX, sampleWeather } from './routes-model.js';
+import { savePlan, localDay, validDay } from './routes-store.js';
+import { renderPlanCard } from './routes-plan.js';
+import { icon, sportIcon } from './ui.js';
+const NS = 'http://www.w3.org/2000/svg';
+export function createRoutesView(root, opts = {}) {
+  const doc = root.ownerDocument, owner = opts.owner || 'preview';
+  const current = () => !dead && root.isConnected && opts.current?.() !== false;
+  let dead = false, active = null, mapHandle = null, mapTicket = 0, mapTimer = 0, mapReady = false, cursorPoint = null;
+  let target = Number(opts.workout?.minutes) || 90, surface = 'all', effort = opts.workout?.effort || 'endurance';
+  let planDay = localDay(opts.now?.()), planTime = '09:00', rendered = false;
+  const metric = opts.metric !== false, speed = opts.speed || 22;
+  const abort = new AbortController();
+  const e = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const svgEl = (tag, attrs = {}) => { const n = doc.createElementNS(NS,tag); for (const [k,v] of Object.entries(attrs)) n.setAttribute(k,String(v)); return n; };
+  const distance = m => `${(m / (metric ? 1000 : 1609.344)).toFixed(1)} ${metric ? 'km' : 'mi'}`;
+  const climb = m => `${Math.round(metric ? m : m * 3.28084)} ${metric ? 'm' : 'ft'}`;
+  const duration = mins => mins >= 60 ? `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}` : `${mins} min`;
+  function button(label, run, cls = '') {
+    const native = cls.includes('fr-route-card') ? 'row' : cls.includes('fr-primary') ? 'btn' : cls.includes('fr-back') ? 'link' : 'pill';
+    const b = e('button',`${native} fr-btn ${cls}`,label); b.type = 'button';
+    b.addEventListener('click', () => { if (current()) run(); }, { signal: abort.signal }); return b;
+  }
+  const credit = () => e('p','fr-credit','Sample routes calculated with BRouter using OpenStreetMap data (ODbL). Elevation, surfaces and ride times are estimates; access can change.');
+  function outline(route, mini = false) {
+    const g = geometry(route), svg = svgEl('svg',{viewBox:'0 0 300 300',class:mini ? 'fr-mini-route' : 'fr-route-outline','aria-hidden':'true'});
+    svg.append(svgEl('path',{d:g.path,class:'fr-route-halo'}),svgEl('path',{d:g.path,class:'fr-route-line'}));
+    const [x,y] = g.positions[0]; svg.append(svgEl('circle',{cx:x,cy:y,r:6,class:'fr-route-start'}));
+    return svg;
+  }
+  function clearMap() {
+    mapTicket++; clearTimeout(mapTimer); mapTimer = 0; mapReady = false; cursorPoint = null;
+    mapHandle?.remove(); mapHandle = null;
+  }
+  function setupMap(route, host, fallback, message, retry) {
+    if (!opts.map || !current()) return;
+    const ticket = ++mapTicket;
+    message.textContent = 'Loading street map…'; retry.hidden = true;
+    const failed = () => {
+      if (ticket !== mapTicket || !current()) return;
+      mapTicket++; clearTimeout(mapTimer); mapHandle?.remove(); mapHandle = null; host.replaceChildren(); mapReady = false;
+      fallback.hidden = false; message.textContent = 'Street map unavailable. The route outline and GPX still work.'; retry.hidden = false;
+    };
+    mapTimer = setTimeout(failed, 12000);
+    Promise.resolve().then(() => opts.map(host, { coords: geometry(route).coords.map(c => c.slice(0,2)), explore:true, tint:'#ef704d' })).then(g => {
+      if (ticket !== mapTicket || !current()) { g?.remove(); return; }
+      mapHandle = g;
+      const ready = () => {
+        if (ticket !== mapTicket || !current()) return;
+        clearTimeout(mapTimer); mapReady = true; if (cursorPoint) Promise.resolve(mapHandle?.at?.(cursorPoint)).catch(()=>{}); fallback.hidden = true; message.textContent = 'Street map · OpenFreeMap / OpenStreetMap'; retry.hidden = true;
+      };
+      if (g.map?.loaded?.()) ready(); else if (g.map?.once) g.map.once('load',ready); else ready();
+    }).catch(failed);
+  }
+  function chooseSelect(label, values, value, onChange) {
+    const wrap = e('label','row plain fr-field');
+    const text = e('span','tx'); text.append(e('b','',label));
+    const pick = e('span','pick');
+    const select = e('select'); select.setAttribute('aria-label',label);
+    for (const [v,name] of values) {
+      const option = e('option','',name); option.value = String(v); select.append(option);
+    }
+    select.value = String(value);
+    select.addEventListener('change', () => { if (current()) onChange(select.value); }, {signal:abort.signal});
+    pick.append(select,icon('chev',14,2)); wrap.append(text,pick); return wrap;
+  }
+  function cards(list) {
+    list.replaceChildren();
+    const ranked = recommendations({minutes:target,surface,effort,speed});
+    for (const [i,fit] of ranked.entries()) {
+      const { route } = fit;
+      const card = button('', () => open(route.id), 'fr-route-card'); card.dataset.route = route.id;
+      const body = e('span','tx fr-route-copy');
+      const title = e('span','fr-route-name'); title.append(e('b','',route.name));
+      const meta = e('span','fr-route-meta');
+      if (!i) meta.append(e('span','badge plan',fit.fit ? 'Best fit' : 'Closest fit'));
+      meta.append(e('span','fr-surface',route.surface === 'road' ? 'Road-biased' : 'Mixed surface'));
+      body.append(title,e('small','fr-route-stats',`${distance(route.metres)} · ↑ ${climb(route.ascent)} · ≈ ${duration(fit.duration)}`),meta);
+      const chevron = e('span','chev'); chevron.append(icon('chev',17,2.4));
+      card.append(outline(route,true),body,chevron); list.append(card);
+    }
+  }
+  function showList(focus = false) {
+    clearMap(); active = null; rendered = true; root.replaceChildren(); root.classList.add('fr-routes');
+    const overview = e('div','cols fr-overview');
+    const context = e('section','card glass fr-context');
+    const label = e('h3','k',opts.workout && !opts.sampleWorkout ? 'Your ride' : 'Sample session');
+    label.prepend(icon('ride',15,2));
+    const session = e('div','fr-workout-row');
+    const tile = e('span','tile s-ride'); tile.append(sportIcon('ride',20));
+    const copy = e('div','fr-workout-copy');
+    copy.append(e('b','',opts.workout?.name || 'Endurance 90'),e('span','',`${duration(Number(opts.workout?.minutes) || 90)} planned`));
+    session.append(tile,copy);
+    const start = e('p','fr-location'); start.append(e('span','','Richmond Gate, London · sample start'));
+    context.append(label,session,start);
+    const controls = e('div','group glass fr-filters');
+    const minutes = [...new Set([30,45,60,75,90,120,180,target])].sort((a,b)=>a-b);
+    const list = e('div','group glass fr-route-list'); list.setAttribute('aria-label','Suggested routes');
+    controls.append(chooseSelect('Time available',minutes.map(v=>[v,duration(v)]),target,v=>{target=Number(v);cards(list);}),
+      chooseSelect('Surface',[['all','All surfaces'],['road','Road-biased'],['mixed','Mixed surface']],surface,v=>{surface=v;cards(list);}));
+    overview.append(context,controls);
+    const section = e('section','section fr-suggestions');
+    const heading = e('h3','','Suggested routes'); heading.append(e('span','aside','Demo routes'));
+    section.append(heading,list);
+    root.append(overview,section,credit());
+    renderPlanCard(root,{owner,metric,storage:opts.storage,onOpen:open,onRemove:()=>opts.onPlan?.(null)});
+    cards(list);
+    if (focus) { heading.tabIndex=-1; heading.focus({preventScroll:true}); }
+  }
+  function open(id) {
+    const route = routeOf(id); if (!route || !current()) return;
+    active = id; clearMap(); root.replaceChildren();
+    root.append(button('‹ All routes',()=>showList(true),'fr-back'));
+    const layout = e('div','cols fr-detail-grid'), main = e('div','fr-detail-main'), aside = e('div','fr-detail-aside');
+    layout.append(main,aside); root.append(layout);
+    const hero = e('section','card glass session fr-route-hero');
+    const kind = e('span','sport'); const tile=e('i','s-ride');tile.append(sportIcon('ride',14));
+    kind.append(tile,doc.createTextNode(route.surface === 'road' ? 'Ride · Road-biased' : 'Ride · Mixed surface'));
+    const heading = e('div','fr-detail-title'); heading.append(kind,e('h2','',route.name),e('p','about',route.description)); hero.append(heading); main.append(hero);
+    const map = e('section','map fr-map'); map.setAttribute('aria-label',`${route.name} route map`);
+    const canvas = e('div','fr-map-canvas'), fallback = e('div','fr-map-fallback'); fallback.append(outline(route));
+    const mapFoot = e('div','fr-map-foot'), mapMessage = e('span','','Route outline · real GPX geometry');
+    const retry = button('Try street map',()=>setupMap(route,canvas,fallback,mapMessage,retry),'fr-small'); retry.hidden = !opts.map;
+    mapFoot.append(mapMessage,retry); map.append(canvas,fallback,mapFoot); hero.append(map);
+    const stats = e('div','stats fr-stats');
+    const mins = estimate(route,speed);
+    for (const [label,value,unit] of [
+      ['Distance',(route.metres/(metric?1000:1609.344)).toFixed(1),metric?'km':'mi'],
+      ['Climbing',String(Math.round(metric?route.ascent:route.ascent*3.28084)),metric?'m':'ft'],
+      ['Est. time',mins>=60?`${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`:String(mins),mins>=60?'h':'min'],
+    ]) {
+      const cell=e('div','stat'), valueNode=e('b','',value);
+      valueNode.append(e('u','',unit)); cell.append(e('small','',label),valueNode); stats.append(cell);
+    }
+    hero.append(stats);
+    const fit = recommendations({minutes:target,effort,speed}).find(x=>x.route.id===id);
+    const why = e('p','fr-fit-note'); why.append(icon(fit.fit?'check':'info',15,2.4),e('span','',fit.why));if(!fit.fit)why.classList.add('fr-fit-over'); hero.append(why);
+    const elev = e('section','card glass fr-elevation');
+    const elevationTitle = e('h3','k','Elevation'); elevationTitle.prepend(icon('mountain',15,2)); elev.append(elevationTitle);
+    const g = geometry(route), pr = profile(route), chart = svgEl('svg',{viewBox:'0 0 600 130',class:'fr-profile','aria-hidden':'true'});
+    chart.append(svgEl('path',{d:`${pr.path}L600,130L0,130Z`,class:'fr-profile-area'}),svgEl('path',{d:pr.path,class:'fr-profile-line'}));
+    const cursor = svgEl('line',{x1:0,x2:0,y1:0,y2:130,class:'fr-profile-cursor'}); chart.append(cursor);
+    const scrub = e('input','fr-scrub'); scrub.type='range';scrub.min='0';scrub.max=String(g.coords.length-1);scrub.value='0';scrub.step='1';scrub.setAttribute('aria-label','Inspect route distance');
+    const readout = e('output','fr-profile-readout'), marker = svgEl('circle',{r:7,class:'fr-route-marker'}); fallback.querySelector('svg').append(marker);
+    const move = () => { const i=Number(scrub.value), [x,y]=g.positions[i];marker.setAttribute('cx',String(x));marker.setAttribute('cy',String(y)); const at=g.distances[i]/g.metres*600;cursor.setAttribute('x1',String(at));cursor.setAttribute('x2',String(at));readout.textContent=`${distance(g.distances[i])} into the route · ${climb(g.coords[i][2])} elevation`;scrub.setAttribute('aria-valuetext',readout.textContent);cursorPoint=g.coords[i].slice(0,2);if(mapReady) Promise.resolve(mapHandle?.at?.(cursorPoint)).catch(()=>{});};
+    scrub.addEventListener('input',move,{signal:abort.signal});move();elev.append(chart,scrub,readout);main.append(elev);
+    const surfaceInfo = e('p','fr-surface-info',`${route.paved}% mapped paved · ${route.unknown}% surface unknown · ${route.surface==='road' ? 'Road-biased cycling profile' : 'Roads and park paths'}.`);
+    const form=e('form','card glass fr-planner');
+    const planTitle=e('h3','k','Plan this ride');planTitle.prepend(icon('calendar',15,2));
+    form.append(planTitle);
+    const fields=e('div','group fr-plan-fields'), dateLabel=e('label','row plain fr-field'), date=e('input');date.type='date';date.value=planDay;date.min=localDay(opts.now?.());date.required=true;const dateName=e('span','tx');dateName.append(e('b','','Ride day'));dateLabel.append(dateName,date);
+    const timeLabel=e('label','row plain fr-field'), time=e('input');time.type='time';time.value=planTime;time.required=true;const timeName=e('span','tx');timeName.append(e('b','','Departure'));timeLabel.append(timeName,time);fields.append(dateLabel,timeLabel);form.append(fields);
+    const weather=e('div','fr-sample-weather');
+    const showWeather=()=>{planTime=time.value;planDay=date.value;const w=sampleWeather(time.value);const copy=e('div','fr-weather-copy');copy.append(e('b','',w.label),e('span','',w.detail));weather.replaceChildren(icon('info',22,1.8),copy,e('small','','Sample weather — not a live prediction.'));};
+    date.addEventListener('change',showWeather,{signal:abort.signal});time.addEventListener('input',showWeather,{signal:abort.signal});showWeather();form.append(weather);
+    const status=e('p','fr-feedback');status.setAttribute('role','status');
+    const save=e('button','btn fr-btn fr-primary','Add demo ride');save.type='submit';save.setAttribute('aria-label','Add demo ride to Fitness Today');
+    const next=button('Open Fitness Today',()=>opts.onToday?.(),'fr-text-btn');next.hidden=true;
+    form.append(save,next,status,e('p','foot fr-demo-foot','Demo planning is saved for this account on this device.'));form.addEventListener('submit',event=>{event.preventDefault();if(!current())return;
+      if(!validDay(date.value)||date.value<localDay(opts.now?.())){status.textContent='Choose today or a future ride day.';return;}
+      try{const p=savePlan(owner,{v:1,routeId:id,day:date.value,time:time.value},opts.storage);status.textContent='Demo ride saved. Find it on Fitness Today.';next.hidden=!opts.onToday;save.textContent='Update demo ride';save.setAttribute('aria-label','Update demo ride');opts.onPlan?.(p);}
+      catch{status.textContent='Couldn’t save the demo ride on this device. Please try again.';}
+    },{signal:abort.signal});aside.append(form);
+    const exportButton=button('Export GPX',()=>{
+      const blob=new Blob([toGPX(route)],{type:'application/gpx+xml'}), url=URL.createObjectURL(blob), a=e('a');a.href=url;a.download=`inflite-${route.id}.gpx`;root.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);
+    });exportButton.prepend(icon('download',17,2));const acts=e('div','acts');acts.append(exportButton);hero.append(acts);
+    const about=e('details','fr-method'), summary=e('summary','','About these demo routes');
+    about.append(summary,surfaceInfo,e('p','',`Time is estimated at ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? 'km/h' : 'mph'}, with a climbing allowance and a five-minute pause. Effort and traffic will change this.`),credit());aside.append(about);
+    if(opts.map)setupMap(route,canvas,fallback,mapMessage,retry);
+    const title=heading.querySelector('h2');title.tabIndex=-1;title.focus({preventScroll:true});
+  }
+  return {
+    draw(){if(current()&&!rendered)showList();},
+    resume(){if(!current())return;if(active&&!mapHandle)open(active);},
+    hide(){clearMap();},
+    destroy(){dead=true;abort.abort();clearMap();root.replaceChildren();},
+    open,
+    get active(){return active;},
+  };
+}

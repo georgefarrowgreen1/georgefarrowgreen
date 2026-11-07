@@ -372,7 +372,7 @@ const FROZEN = {
 // (the connectors' words, frozen by B0: s2/spec.md §4.2, §4.3)
 const SHARES = {
   markets: { cards: 'How your holdings are doing today', search: 'Your holdings, on this phone', notifications: 'Price alerts and the evening wrap', actions: 'Open a stock or a section; send a stock’s day in percent', screens: 'Today · Holdings · News' },
-  fitness: { cards: 'Today’s session or the ride you’ve done', search: 'Your activities and sessions, on this phone', notifications: 'Your session, in the morning notification', actions: 'Open Today, Activities or Progress; send a session', screens: 'Today · Activities · Progress' },
+  fitness: { cards: 'Today’s session or the ride you’ve done', search: 'Your activities and sessions, on this phone', notifications: 'Your session, in the morning notification', actions: 'Open Today, Activities, Routes or Progress; send a session', screens: 'Today · Activities · Routes · Progress' },
 };
 
 for (const app of APPS2) {
