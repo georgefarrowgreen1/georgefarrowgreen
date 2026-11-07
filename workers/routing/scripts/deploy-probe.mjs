@@ -8,7 +8,7 @@ for(let attempt=0;attempt<8;attempt++){
  try {
   const r=await fetch(base+'/probe',{method:'POST',headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(180000)}),j=await r.json();
   if(r.ok&&j.ready){console.log(JSON.stringify(j));console.log('Owned UK router is ready for the site binding.');process.exit(0);}
-  console.log(JSON.stringify({attempt:attempt+1,status:r.status,ready:false}));
+  console.log(JSON.stringify({attempt:attempt+1,status:r.status,...j}));
  }catch{console.log(JSON.stringify({attempt:attempt+1,ready:false}));}
  await new Promise(r=>setTimeout(r,10000));
 }

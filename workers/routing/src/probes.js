@@ -17,6 +17,6 @@ export async function runProbes(fetcher,cases=PROBES) {
   checks.push({region:item.name,status,closed,points,ms:Date.now()-at});
  }
  let loops={ready:false,count:0};
- try {const generated=await generateRoutes({start:PROBES[0].start,minutes:90,surface:'road',speed:22,seed:1},{fetcher:(url,init)=>fetcher(new Request(url,init))});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres)};}catch{}
+ try {const generated=await generateRoutes({start:PROBES[0].start,minutes:90,surface:'road',speed:22,seed:1},{fetcher:(url,init)=>fetcher(new Request(url,init))});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres)};}catch(e){loops.error={status:e.status||0,message:e.message};}
  return {ready:checks.every(c=>c.status===200&&c.closed&&c.points>5)&&loops.ready,checks,loops};
 }
