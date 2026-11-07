@@ -26,10 +26,10 @@ export const STATUS_JOBS = [
 export const SLOW_MS = 3000;
 // (what the apps rely on outside InFlite, checked from inside each time: for: the apps each one's part of)
 export const STATUS_DEPS = [
-  { id: "dep-weather", name: "Weather data", for: ["weather", "today"] },
-  { id: "dep-prices", name: "Market prices", for: ["markets"] },
-  { id: "dep-garmin", name: "Garmin Connect", for: ["fitness"] },
-  { id: "dep-email", name: "Email sending", for: ["auth", "account"] },
+  { id: "dep-weather", name: "Weather API", for: ["weather", "today"] },
+  { id: "dep-prices", name: "Market API", for: ["markets"] },
+  { id: "dep-garmin", name: "Garmin API", for: ["fitness"] },
+  { id: "dep-email", name: "Email API", for: ["auth", "account"] },
 ];
 // (the job each app's checks include)
 export const APP_JOB = { chat: "notify", weather: "wxtick", fitness: "garmin", markets: "mkttick", today: "morning" };
