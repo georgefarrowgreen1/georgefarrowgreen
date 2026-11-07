@@ -912,3 +912,16 @@
 .m-fitness .ride-at-time{width: auto; min-width: 7.5em; font-variant-numeric: tabular-nums;}
 .m-fitness .ride-at-set,.m-fitness .ride-at-clear{width: 100%; margin-top: 10px;}
 .m-fitness .offer.from-today .offer-chip{color: var(--tint-text);}
+
+/* The morning check-in on a phone (as fitness/styles.css): each answer centred in its third, the choices easy to tell
+   apart and to hit, the question's row tighter so the three choices get the width */
+.m-fitness .seg3 button{display: grid; place-items: center; text-align: center;}
+@media (max-width: 560px){
+  .m-fitness .checkin.open{gap: 10px;}
+  .m-fitness .checkin-row{gap: 8px;}
+  .m-fitness .checkin-row .lab{width: 96px; gap: 7px; font-size: 14px;}
+  .m-fitness .checkin-row .ico{width: 26px; height: 26px;}
+  .m-fitness .seg3{padding: 3px; gap: 3px; border-radius: 14px;}
+  .m-fitness .seg3 button{min-height: 40px; border-radius: 11px; font-size: 14.5px; letter-spacing: -0.1px;}
+  .m-fitness .seg3 button[aria-pressed="false"] + button[aria-pressed="false"]{box-shadow: -0.5px 0 0 0 var(--line);}
+}

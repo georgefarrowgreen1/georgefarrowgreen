@@ -728,7 +728,7 @@ function feelCard(w, inside = false) {
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
         h("button.t" + i, { type: "button", vars: cur[k] === i ? { "view-transition-name": `seg-${k}` } : null, "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
     v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
-      h("small.checkin-hint", { text: ws ? (inside ? `Sleep’s from your ${ws.watch}: two taps for the rest.` : `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.`) : rhythmOn() ? "Three taps. Today’s session, and the next days, follow what you say." : "Three taps, so today’s riding suits how you are." }));
+      ws && h("small.checkin-hint", { text: ws ? (inside ? `Sleep’s from your ${ws.watch}: two taps for the rest.` : `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.`) : "" }));
 }
 // (sleep, from your watch where last night's in: seven hours or more, or a score of 80, slept well; six, or 60, OK)
 function watchSleep() {
