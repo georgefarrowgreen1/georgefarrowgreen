@@ -1,0 +1,22 @@
+name = "inflite-routing"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+
+[[containers]]
+class_name = "UKRouter"
+image = "./Dockerfile"
+instance_type = "basic"
+max_instances = 2
+
+[[durable_objects.bindings]]
+name = "ROUTER_POOL"
+class_name = "UKRouter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UKRouter"]
+
+[observability]
+enabled = true
