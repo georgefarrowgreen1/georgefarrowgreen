@@ -16,18 +16,29 @@ function waypoints(q, bearing, scale = 1) {
   const radius = q.metres / 4.6 * scale;
   return [q.start, destination(q.start, radius, bearing - 35), destination(q.start, radius * 1.55, bearing), destination(q.start, radius, bearing + 35), q.start];
 }
-function overlap(coords) {
-  const seen = /* @__PURE__ */ new Set();
-  let repeated = 0, total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    const key = (c) => `${c[0].toFixed(4)},${c[1].toFixed(4)}`, a = key(coords[i - 1]), b = key(coords[i]);
+// Detect individual turn-back spurs as well as aggregate repeated distance.
+// Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
+function routeQuality(coords) {
+  const seen = new Set(), stack = [];
+  let repeated = 0, total = 0, returning = 0, longestBacktrack = 0;
+  for (let i = 0; i < coords.length; i++) {
+    const point = coords[i], vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+    const previous = stack.at(-1);
+    if (previous?.vertex === vertex) continue;
+    if (stack.length > 1 && stack.at(-2).vertex === vertex) {
+      returning += metresBetween(previous.point, point);
+      longestBacktrack = Math.max(longestBacktrack, returning);
+      stack.pop();
+    } else { returning = 0; stack.push({vertex, point}); }
+    if (!i) continue;
+    const key = p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, a = key(coords[i - 1]), b = key(point);
     if (a === b) continue;
-    const k = a < b ? `${a}|${b}` : `${b}|${a}`, len = metresBetween(coords[i - 1], coords[i]);
-    total += len;
-    if (seen.has(k)) repeated += len;
-    seen.add(k);
+    const edge = a < b ? `${a}|${b}` : `${b}|${a}`, length = metresBetween(coords[i - 1], point);
+    total += length;
+    if (seen.has(edge)) repeated += length;
+    seen.add(edge);
   }
-  return total ? repeated / total : 1;
+  return {overlap: total ? repeated / total : 1, longestBacktrack};
 }
 async function routeBytes(response, signal) {
   const max = 3 * 1024 * 1024, said = response.headers.get("Content-Length");
@@ -92,7 +103,9 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         const json = JSON.parse(new TextDecoder().decode(bytes)), coords = json?.features?.find((f) => f.geometry?.type === "LineString")?.geometry?.coordinates;
         if (!Array.isArray(coords) || coords.length > MAX_POINTS) continue;
         const route = cleanRoute({ id: "r-" + crypto.randomUUID(), name: `${["First", "Second", "Third"][n]} loop`, start: q.start, surface: q.surface, coords, generatedAt: now });
-        if (!route || overlap(route.coords) > 0.4) continue;
+        if (!route) continue;
+        const quality = routeQuality(route.coords);
+        if (quality.overlap > .4 || quality.longestBacktrack > 10) continue;
         scale = Math.min(1.6, Math.max(.4, scale * q.metres / route.metres));
         if (Math.abs(route.metres - q.metres) > q.metres * .25) continue;
         if (routes.some((r2) => Math.abs(r2.metres - route.metres) < r2.metres * 0.04 && metresBetween(r2.coords[Math.floor(r2.coords.length / 2)], route.coords[Math.floor(route.coords.length / 2)]) < 500)) continue;
@@ -118,4 +131,4 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   });
   return { routes, at: now, partial: routes.length < 3 };
 }
-export { ROUTER_URL, cleanQuery, generateRoutes, waypoints };
+export { ROUTER_URL, cleanQuery, generateRoutes, waypoints, routeQuality };

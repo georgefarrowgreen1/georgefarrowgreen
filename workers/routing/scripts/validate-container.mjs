@@ -1,6 +1,6 @@
 // Exercise the exact site loop planner against an offline, resource-capped container.
 import {spawn} from 'node:child_process';
-import {runProbes} from '../src/probes.js';
+import {runProbes,PROBES,LOOP_CHECKS} from '../src/probes.js';
 const fetcher=async request=>{
  const body=await request.text();
  const raw=await new Promise((resolve,reject)=>{
@@ -11,5 +11,7 @@ const fetcher=async request=>{
  });
  const end=raw.indexOf('\n'),status=Number(raw.slice(0,end));if(!Number.isInteger(status)||status<200||status>599)throw Error('Invalid probe response.');return new Response(raw.slice(end+1),{status});
 };
-const result=await runProbes(fetcher);console.log(JSON.stringify(result));
-if(!result.ready)throw Error('The offline container failed UK coverage or the Fitness loop planner.');
+for(const [check,query]of Object.entries(LOOP_CHECKS)){
+ const result=await runProbes(fetcher,check==='loops'?PROBES:[],{query});console.log(JSON.stringify({check,...result}));
+ if(!result.ready)throw Error('The offline container failed '+check+'.');
+}

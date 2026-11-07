@@ -4,7 +4,7 @@ import { handleRoute, json } from './handler.js';
 import lock from '../data.lock.json';
 import roadProfile from '../profiles/road.brf';
 import {profileFingerprint,engineMatches} from './engine-version.js';
-import { PROBES, runProbes } from './probes.js';
+import { PROBES, LOOP_CHECKS, runProbes } from './probes.js';
 export class UKRouter extends Container {
   defaultPort=8080;
   sleepAfter='10m';
@@ -54,8 +54,9 @@ export default {
         }
         return json({ready:instances.every(i=>i.ready),profile,instances});
       }
-      if(mode&&mode!=='loops'&&!region)return json({error:'invalid_check'},400);
-      return json(await runProbes(r=>handleRoute(r,env),mode==='loops'?[]:region?[region]:PROBES,{loop:!region}));
+      const query=Object.hasOwn(LOOP_CHECKS,mode)?LOOP_CHECKS[mode]:null;
+      if(mode&&!query&&!region)return json({error:'invalid_check'},400);
+      return json(await runProbes(r=>handleRoute(r,env),query?[]:region?[region]:PROBES,{loop:!region,...(query?{query}:{})}));
     }
     return json({error:'not_found'},404);
   }

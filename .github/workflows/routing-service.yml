@@ -2,7 +2,7 @@ name: UK routing service
 on:
   workflow_dispatch:
   push:
-    branches: [main, codex/uk-routing-service, codex/cycling-distance]
+    branches: [main, codex/uk-routing-service, codex/cycling-distance, codex/cycling-no-uturns]
     paths: [workers/routing/**, functions/_fitloops.js, fitness/routes-geometry.js, .github/workflows/routing-service.yml]
 permissions:
   contents: read
