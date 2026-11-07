@@ -1,0 +1,23 @@
+name: UK routing service
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/uk-routing-service]
+    paths: [workers/routing/**, .github/workflows/routing-service.yml]
+permissions:
+  contents: read
+jobs:
+  hosting:
+    name: Check routing hosting access
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read-only Cloudflare Containers preflight
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node workers/routing/scripts/preflight.mjs
