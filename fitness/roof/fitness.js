@@ -24,12 +24,13 @@ import { view as todayView, lookAt, sendableToday } from "./todayview.js";
 import { openOffer } from "./offers.js";
 import { dayStamp, rhythmSaid } from "./fxcalc.js";
 import { dur, dist } from "../ui.js";
-import { renderPlanCard } from "../routes-plan.js";
+import { renderRoutePlan } from "../route-plan.js";
+import { forgetRoutePlans } from "../routes-account.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.03";
-export const NEWS = "Cycling routes refined to match Fitness, with grouped routes and a quieter ride planner";
+export const BUILD = "2.04";
+export const NEWS = "Cycling loops from your current location, saved with your account";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -159,7 +160,9 @@ export async function mount(root, fw) {
   // hasn't leaves it exactly as it was, its charts and rows never drawing in again)
   let ver = 0;
   const drawnAt = new Map();
-  const routePlan = () => { const owner = fw.session.user.id; return renderPlanCard(secs.get("today"), { owner, current: () => fw.session.user.id === owner, metric: core.U.metric !== false, onOpen: () => fw.nav.section("routes") }); };
+  const routeHold = Symbol("route-plan");
+  const routePlan = () => { const owner = fw.session.user.id; return renderRoutePlan(secs.get("today"), { owner, current: () => mounted && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } }); };
+  ctx.refreshRoute = () => routePlan();
   const draw = (id = shown, force = false) => {
     if (!onScreen || !id) return;
     if (!force && S.me && drawnAt.get(id) === ver) { try { views.get(id)?.resume?.(); if (id === "today") routePlan(); } catch (e) { console.error(e); } return; }
@@ -175,7 +178,7 @@ export async function mount(root, fw) {
   // the header line: today's plan; Activities, this year's; Progress, fitness and form
   const lineOf = (id) => {
     if (!S.me) return S.loading ? "Loading…" : "";
-    if (id === "routes") return "Richmond & Surrey · cycling routes demo";
+    if (id === "routes") return "Loops from your location";
     if (id === "activities") { const y = new Date().getFullYear(), n = S.acts.filter((a) => new Date(a.start).getFullYear() === y).length; return `${n} this year`; }
     if (id === "progress") { const f = S.acts.length ? core.fitnessSeries().at(-1) : null; return f ? `Fitness ${Math.round(f.ctl)} · Form ${core.signed(f.tsb)}` : "Your fitness, as your rides come in"; }
     const T = core.TODAY, done = core.actsOn(T), pid = core.plannedOn(T), w = pid && pid !== "event" ? core.wkById(pid) : null;
@@ -295,6 +298,7 @@ export async function mount(root, fw) {
       secs.clear(); views.clear();
       picker.remove();
       detach();
+      forgetRoutePlans();
       core.stop();
     },
   };

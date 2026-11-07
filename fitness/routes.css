@@ -97,3 +97,14 @@
   .m-fitness .fr-route-hero .fr-map { height: 340px; }
   .m-fitness .fr-route-outline { width: 300px; height: 300px; }
 }
+
+/* Live planning extends the same Fitness components used above. */
+.m-fitness .fr-locate { display: grid; gap: 12px; margin: 0; }
+.m-fitness .fr-locate > .k { margin-bottom: 0; }
+.m-fitness .fr-locate > .about { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; }
+.m-fitness .fr-location-update { justify-self: center; min-height: 44px; font-size: 15px; }
+.m-fitness .fr-routes button:disabled { cursor: default; opacity: .6; }
+.m-fitness .fr-saved-link { margin: 0; }
+.m-fitness .fr-saved-link > .link { text-align: left; min-height: 44px; line-height: 1.4; }
+/* Keep the entire outline visible when a street map is unavailable. */
+.m-fitness .fr-map .fr-route-outline { width: min(100%,280px); height: 100%; max-height: 280px; }

@@ -19,7 +19,7 @@ export const isFitness = (url, env) => (env.FITNESS_HOST || FITNESS_HOST).split(
 
 export const FIT_SECURITY = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com https://tiles.openfreemap.org; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
-  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "Permissions-Policy": "geolocation=(self), microphone=(), camera=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",

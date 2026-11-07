@@ -38,7 +38,7 @@ self.addEventListener("notificationclick", (e) => {
 // (app.js). Only the app's files: never the API, nothing of yours (your record and files are the app's own copies,
 // gone as you sign out).
 const SHELL = "fitness-app-1";
-const FILES = ["routes-data.js", "routes-catalog.js", "routes-store.js", "routes-model.js", "routes-demo.js", "routes-plan.js", "routes-preview.js", "routes.css", "routes-preview.css", "routes-demo.html", "./", "theme.js", "styles.css", "app.js", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js",
+const FILES = ["routes-live.js", "routes-account.js", "routes-geometry.js", "route-plan.js", "routes-data.js", "routes-catalog.js", "routes-store.js", "routes-model.js", "routes-demo.js", "routes-plan.js", "routes-preview.js", "routes.css", "routes-preview.css", "routes-demo.html", "./", "theme.js", "styles.css", "app.js", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js",
   "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js", "send.js", "invites.js",
   "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png"];
 const at = (f) => new URL(f, self.registration.scope).href;

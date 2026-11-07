@@ -14,6 +14,7 @@
 
 import { HttpError, limit, pace } from "./_pigeon.js";
 import { dropShares } from "./_fitshare.js";
+import { deleteRouteData } from "./_fitroutes.js";
 import { dropTimes } from "./_fittimes.js";
 
 export const MAX_ACTS = 5000, MAX_FILE = 25 * 1024 * 1024, MAX_STORE = 2 * 1024 * 1024 * 1024, MAX_STATE = 256 * 1024;
@@ -343,4 +344,5 @@ export async function dropFitness(env, userId) {
   await dropShares(env, userId);
   // (and the planned rides' times of day: Ride At, and Today's: functions/_fittimes.js)
   await dropTimes(env, userId);
+  await deleteRouteData(env, userId);
 }

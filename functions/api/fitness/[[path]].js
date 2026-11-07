@@ -1,5 +1,7 @@
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
+//   POST   /api/fitness/routes/generate  bicycle loops from a GPS point, duration and surface
+//   GET|PUT|DELETE /api/fitness/routes/plan the account’s planned route and departure
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
 //                                    (?since=<ms>: only those changed since, and every one's id); your rides' times of day
 //                                    (times: today and the next 7 days; ?tz=<zone>: the phone's, for which days those are);
@@ -44,6 +46,7 @@
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
+import { cleanQuery, generateRoutes, routePlan, saveRoutePlan, dropRoutePlan, ROUTER_URL } from "../../_fitroutes.js";
 import { tickHost } from "../../_sites.js";
 import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
@@ -89,7 +92,38 @@ async function view(env, u, since = null, { today = false, tz = null, t = Date.n
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
+const routing = new Set();
 const ROUTES = {
+  "POST routes/generate": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024);
+    cleanQuery(b);
+    if (routing.has(u.id)) throw new HttpError(409, "A route is already being planned. Please wait.");
+    routing.add(u.id);
+    try {
+      await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
+      await limit(env, 'fxroutes:provider', 600, 3600e3, 3);
+      return json(await generateRoutes(b, { endpoint: env.FITNESS_ROUTER_URL || ROUTER_URL, signal: request.signal }));
+    } finally { routing.delete(u.id); }
+  },
+  "GET routes/plan": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    return json({ plan: await routePlan(env, u.id) });
+  },
+  "PUT routes/plan": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 768 * 1024);
+    await pace(env, `fxrouteplan:${u.id}`, 60, 3600e3);
+    return json({ plan: await saveRoutePlan(env, u.id, b) });
+  },
+  "DELETE routes/plan": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 1024);
+    if (typeof b.id !== 'string' || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(b.id) || !UUID_RE.test(b.version || '')) throw new HttpError(400, "Choose the route to remove.");
+    await pace(env, `fxrouteplan:${u.id}`, 60, 3600e3);
+    await dropRoutePlan(env, u.id, { expected: b.id, version: b.version });
+    return json({ plan: await routePlan(env, u.id) });
+  },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false });
