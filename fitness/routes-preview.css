@@ -13,9 +13,6 @@ body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(-
 .fr-preview-tabs button:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; }
 .fr-preview-main { max-width: 1000px; margin: auto; padding: 0 16px max(30px,env(safe-area-inset-bottom)); }
 .fr-preview-main > [hidden] { display: none !important; }
-.fr-preview-main .fr-sample-session { padding: 22px; border-radius: 24px; background: var(--glass); margin: 18px 0; }
-.fr-preview-main .fr-sample-session h2 { font-size: 23px; margin: 8px 0; }
-.fr-preview-main .fr-sample-session p { color: var(--text-2); font-size: 14px; line-height: 1.5; }
 @media(min-width:900px) { .fr-preview-main { padding-left: 20px; padding-right: 20px; } }
 
 .fr-preview { --fr-preview-ink: #ffad90; }

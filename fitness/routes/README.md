@@ -12,8 +12,12 @@ Weather is deliberately labelled **sample weather**; there are no live forecast 
 not turn-by-turn navigation or a statement that every road/path is currently open.
 
 Demo plans are stored under `fitness:routes-demo:<account-id>`, separately from activities and training state.
-They appear on Fitness Today. The standalone review page has its own `standalone-preview` storage scope.
+They appear directly beneath the workout on Fitness Today. The standalone review page has its own `standalone-preview` storage scope.
 Date/time and route IDs are validated, storage failures are recoverable, and account changes invalidate old views.
+
+Routes reuses Fitness's existing card/glass, grouped rows, pick controls, sport icons, metrics and gradient buttons.
+The feature stylesheet only adds route-specific layout, maps and elevation. Route details and the planner sit in
+Fitness's standard two-column layout on desktop and stack on mobile; technical notes stay in a disclosure.
 
 ## Route provenance
 

@@ -28,8 +28,8 @@ import { renderPlanCard } from "../routes-plan.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.02";
-export const NEWS = "Try cycling routes: real GPX loops, training fit and a local demo ride plan";
+export const BUILD = "2.03";
+export const NEWS = "Cycling routes refined to match Fitness, with grouped routes and a quieter ride planner";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

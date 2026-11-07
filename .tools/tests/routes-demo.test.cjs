@@ -85,6 +85,7 @@ test('Fitness’s actual module opens Routes and shows the saved demo plan on it
   await page.getByRole('button',{name:'Add demo ride to Fitness Today',exact:true}).click();await page.getByRole('button',{name:'Open Fitness Today',exact:true}).click();
   await page.locator('[data-sec="today"] [data-k="route-demo-plan"]').waitFor();
   assert.match(await page.locator('[data-sec="today"] [data-k="route-demo-plan"]').innerText(),/Richmond endurance loop/);
+  assert.equal(await page.locator('[data-sec="today"] [data-k="daycard"] + [data-k="route-demo-plan"]').count(),1,'the route belongs beneath the planned workout');
   assert.deepEqual(await page.evaluate(()=>({dirty:__routeCore.S.dirty.size,activities:__routeCore.S.acts.length})),{dirty:0,activities:0});
   await save(page,'integrated-fitness-today');await page.evaluate(()=>__fitnessModule.unmount());assert.deepEqual(errors,[]);
  }finally{await context.close();}

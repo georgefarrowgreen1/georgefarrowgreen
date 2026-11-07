@@ -8,8 +8,8 @@ let section = 'routes';
 const routes = createRoutesView(root,{owner,workout:{name:'Endurance 90',minutes:90},sampleWorkout:true,map:(el,o)=>able()?routeMap(el,{...o,light:matchMedia('(prefers-color-scheme: light)').matches}):Promise.reject(new Error('WebGL unavailable')),onToday:()=>show('today'),onPlan:()=>drawToday()});
 function drawToday() {
   today.replaceChildren();
-  const sample=document.createElement('section');sample.className='fr-sample-session';
-  for(const [tag,text] of [['span','Sample session'],['h2','Endurance 90'],['p','A steady 90-minute ride. Your selected route sits alongside the session as a separate demo plan.']]){const e=document.createElement(tag);e.textContent=text;sample.append(e);}
+  const sample=document.createElement('section');sample.className='card glass session fr-sample-session';sample.dataset.k='daycard';
+  for(const [tag,text] of [['h3','Sample session'],['h2','Endurance 90'],['p','A steady 90-minute ride. Your selected route sits alongside the session as a separate demo plan.']]){const e=document.createElement(tag);e.textContent=text;sample.append(e);}
   today.append(sample);
   renderPlanCard(today,{owner,onOpen:id=>{show('routes');routes.open(id);},onRemove:()=>drawToday()});
 }
