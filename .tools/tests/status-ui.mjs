@@ -14,7 +14,8 @@ const services = ['today','chat','weather','fitness','markets','mail','auth','ac
 const fixture = {at:now,since:dayKeys[0],dayKeys,services,
   jobs:['Chat notifications','Weather alerts','Garmin sync','Market alerts','Morning notification'].map((name,i)=>({id:['notify','wxtick','garmin','mkttick','morning'][i],name,s:'ok',at:now,ms:400})),
   deps:['Weather API','Market API','Garmin API','Email API'].map((name,i)=>({id:['dep-weather','dep-prices','dep-garmin','dep-email'][i],name,s:'ok',ms:i===3?null:87})),
-  incidents:[{id:'resolved-test',title:'Weather alerts briefly delayed',svcs:['weather'],started:now-3600e3,ended:now-1800e3,updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
+  incidents:[{id:'resolved-test',title:"Markets: TypeError: A.atHub is not a function. (In 'A.atHub(IFL.hub)'",svcs:['weather'],started:now-3600e3,ended:now-1800e3,updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
+fixture.incidents.push({...structuredClone(fixture.incidents[0]),id:'resolved-mail',title:'Mail not answering',svcs:['mail'],notOutage:true});
 const browser = await chromium.launch({executablePath:process.env.CHROMIUM || undefined,args:['--no-sandbox']});
 const out = process.env.STATUS_SCREENSHOTS;
 if(out)mkdirSync(out,{recursive:true});
@@ -44,14 +45,21 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.match(await page.locator('#verdict h2').innerText(),problem?/isn’t answering/:/Everything’s working/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow at ${width}`);
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),true);
- assert.equal(await page.locator('.incident-detail').evaluate(x=>x.open),false);
- await page.locator('.incident-detail summary').click();
+ const incidentLayout=await page.locator('#incs .inc').evaluateAll(rows=>rows.map(row=>{
+  const heading=row.querySelector('h3').getBoundingClientRect(), tags=row.querySelector('.tags').getBoundingClientRect();
+  return {below:tags.top>=heading.bottom,left:Math.abs(tags.left-heading.left)<1,separator:getComputedStyle(row).borderTopWidth};
+ }));
+ assert(incidentLayout.every(x=>x.below && x.left),'badges consistently beneath titles');
+ assert.notEqual(incidentLayout[1].separator,'0px','incident separator visible');
+
+ assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),false);
+ await page.locator('.incident-detail summary').first().click();
  assert.equal(await page.locator('.status-tools, #refreshBtn').count(),0);
  const refreshed = page.waitForResponse(response=>response.url().endsWith('/api/status'));
  await page.clock.fastForward(60_000);
  await refreshed;
  await page.waitForFunction(()=>document.querySelector('.incident-detail').open);
- assert(requests>=2);assert.equal(await page.locator('.incident-detail').evaluate(x=>x.open),true);
+ assert(requests>=2);assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),true);
  await page.locator('[data-period="2"]').click();
  assert.equal(await page.locator('[data-period="2"]').getAttribute('aria-pressed'),'true');
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.period),'2');
