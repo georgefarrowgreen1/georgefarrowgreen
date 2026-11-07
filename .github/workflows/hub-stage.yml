@@ -1,31 +1,9 @@
 name: Put InFlite's staging hub up
 
-# The staging hub (spec §15.2; addendum A3): the inflite repo's Worker as the Worker inflite-next, at its custom domain
-# next.inflite.ai (the inflite repo's wrangler.toml [env.next]: TODAY_AS = "https://inflite.ai", so Today there speaks
-# to the account as inflite.ai; the account's cookie, Domain=inflite.ai, covers it). George's iPhone checks (K1 and K2,
-# and as many of K3 to K11 as he likes) run there before inflite.ai's hub is given its key.
-#
-# Run by hand (Actions → Put InFlite's staging hub up → Run workflow), once the inflite repo's Today First build is live
-# (A3: it goes live first, with its hub off), so the default is its live branch, claude/inflite. Then "Give InFlite's
-# hub its key" (hub-key.yml) with hub next.inflite.ai. It:
-# 1. makes sure the Pages project's HUB_ORIGINS lists https://inflite.ai and https://next.inflite.ai (Chat and WebAuthn
-#    take the hubs' origins as their own: functions/_sites.js hubOrigins), setting it as a production secret only where
-#    it isn't set or lacks one; a Pages secret counts once Pages is deployed again, which hub-key.yml's retry does;
-#    With hub_push (only once George has said yes: golive.md), it sets the Pages project's HUB_PUSH to "1" too, so his
-#    check K1 can use Get Every App's Notifications Here at the staging hub;
-# 2. fetches the inflite repo at the ref given (one of its own branches or tags, or a commit on one: never a pull
-#    request's or a fork's) into the runner's temporary folder, checks its wrangler.toml (its [env.next] the Worker
-#    inflite-next at next.inflite.ai alone, nothing run as it's built, no other config or .env of wrangler's), and
-#    deploys it there (npx wrangler deploy --env next, told exactly which file to read, run from outside the clone);
-# 3. checks https://next.inflite.ai/version says that build's Today, and /api/hub answers ({"ready": false} until
-#    hub-key.yml gives the staging hub its key).
-# It never touches the Worker inflite (inflite.ai) or the Pages project's HUB_KEY. Safe to run again: each run deploys
-# the ref given, and the staging Worker keeps its secrets. The token is given only to the steps that ask Cloudflare,
-# never to the fetch or the checks. Go on to hub-key.yml only when this run is green.
-#
-# Needs CLOUDFLARE_API_TOKEN: a Cloudflare API token with Account › Cloudflare Pages › Edit and Account › Workers
-# Scripts › Edit, and for the custom domain Zone › Workers Routes › Edit on inflite.ai (with Zone › Zone › Read).
-# CLOUDFLARE_ACCOUNT_ID only if the token can see more than one account.
+# Deploy the inflite repo's staging Worker to next.inflite.ai, preserving the live hub.
+# Keep both site Workers' existing allowed origins and add both hubs; optionally enable HUB_PUSH.
+# Then run hub-key.yml for the staging hub and complete the phone checks before enabling both hubs.
+# Requires Workers Scripts Edit and Workers Routes Edit on inflite.ai.
 on:
   workflow_dispatch:
     inputs:
@@ -34,7 +12,7 @@ on:
         type: string
         default: claude/inflite
       hub_push:
-        description: "Also set the Pages project's HUB_PUSH to 1 (Get Every App's Notifications Here, for George's check K1): only once he's said yes"
+        description: "Also set the site Workers’ HUB_PUSH to 1 (Get Every App's Notifications Here, for George's check K1): only once he's said yes"
         type: boolean
         default: false
 
@@ -63,8 +41,6 @@ jobs:
       IFL_REF: ${{ inputs.inflite_ref }}
       HUB_PUSH_ON: ${{ inputs.hub_push }}
     steps:
-      # (.github/hub, and the top-level files with it: stage_origins and stage_push read wrangler.toml; no credentials
-      # kept in the checkout)
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/hub
@@ -75,7 +51,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Cloudflare Pages › Edit, Account › Workers Scripts › Edit and Zone › Workers Routes › Edit on inflite.ai. Nothing was changed."
+            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit and Zone › Workers Routes › Edit on inflite.ai. Nothing was changed."
             exit 1
           fi
       - uses: actions/setup-node@v4
@@ -89,9 +65,7 @@ jobs:
         run: |
           . .github/hub/hub.sh
           cf_account
-      # (in the runner's temporary folder: no wrangler config there, so wrangler takes the Pages project by the name
-      # given, and never reads this repo's wrangler.toml)
-      - name: Make sure the Pages project's HUB_ORIGINS lists both hubs
+      - name: Make sure the site Workers’ HUB_ORIGINS lists both hubs
         id: origins
         if: ${{ !cancelled() && steps.account.outcome == 'success' }}
         continue-on-error: true
@@ -103,7 +77,7 @@ jobs:
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           stage_origins
       # (only when asked: George's check K1 needs it, and he says whether it comes forward)
-      - name: Set the Pages project's HUB_PUSH to 1 (asked for)
+      - name: Set the site Workers’ HUB_PUSH to 1 (asked for)
         id: push
         if: ${{ !cancelled() && steps.account.outcome == 'success' && inputs.hub_push }}
         continue-on-error: true
@@ -114,17 +88,6 @@ jobs:
         run: |
           . "$GITHUB_WORKSPACE/.github/hub/hub.sh"
           stage_push
-      # (a Pages secret reaches the site only with a deployment: the live one built again, as hub-key.yml's retry does)
-      - name: Build the Pages project's production again, so HUB_PUSH counts
-        id: pushdeploy
-        if: ${{ !cancelled() && steps.push.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 25
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          . .github/hub/hub.sh
-          pages_redeploy
       - name: Fetch the inflite repo at the ref given, and check its staging Worker
         id: clone
         if: ${{ !cancelled() && steps.account.outcome == 'success' }}

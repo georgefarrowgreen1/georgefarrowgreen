@@ -1,6 +1,6 @@
 # George Farrow-Green — georgefarrowgreen.com, and the apps at inflite.ai
 
-Two sites from one Pages project (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
+Two sites served by Cloudflare Workers (`functions/_sites.js`). **georgefarrowgreen.com** is the home page (the bio); the apps
 live at **inflite.ai**: Chat (chat.), Weather (weather.), Fitness (fitness.) and the account's own page (account.),
 each below. inflite.ai itself is InFlite Today, the inflite repo's root Worker (`today/`): its page there, and its data
 from this project, at `account.inflite.ai/api/account/today/*` (`functions/_todayapp.js`), with its morning
@@ -19,13 +19,13 @@ notification sent from here (`functions/_todaymorning.js`).
   files and only shows the notifications still sent to a phone that hasn't moved, opening them at the new address; their
   APIs still answer a page left open from before (and the Apple Health shortcut).
 - **Setting up the domain** (once): inflite.ai on Cloudflare; chat., weather., fitness. and account.inflite.ai as
-  custom domains of the Pages project; Strava's Authorization Callback Domain fitness.inflite.ai.
+  custom domains of the `inflite-apps` Worker; Strava's Authorization Callback Domain fitness.inflite.ai.
 - **Tests** stand in both sites: gfg.test for the home page (`ACCOUNT_SITE`), ifl.test for the apps (`APPS_SITE`), with
   passkeys the apps' site's (`PASSKEY_SITE`: a test over plain http can't fetch the related-origins file).
 
 The home page, then each app, below. The home page is a slideshow of my photos fixed behind **Liquid Glass**, the account page's
 look: my name, a line above it and one under it, then **Apps** (Chat, Weather and Fitness) and **Get in touch** (a message,
-or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no build step) with **Cloudflare Pages Functions**
+or Instagram). It's static (`index.html`, `styles.css`, `app.js`, no frontend build step) with **Cloudflare Workers**
 behind it (`functions/`), the words in **KV**, the photos in **R2**.
 
 ## The home page
@@ -117,30 +117,15 @@ functions/api/
   me/photo.js            GET — their account's photo, for the top bar
 ```
 
-## Deploy to Cloudflare Pages
+## Deploy to Cloudflare Workers
 
-### 1. Connect the repo (one time)
-[Cloudflare dashboard](https://dash.cloudflare.com/) → **Workers & Pages** →
-**Create** → **Pages** → **Connect to Git** → pick
-`georgefarrowgreen1/georgefarrowgreen`.
+The site runs on `inflite-apps` (`wrangler.worker.jsonc`) and `gfg` (`wrangler.gfg.jsonc`).
+Push to `main`, or run **Deploy the site's Workers** in GitHub Actions. The workflow builds
+`functions/` into one Worker and deploys both configurations, with static assets and custom domains.
+See [.tools/workers/README.md](.tools/workers/README.md) for setup, secrets, local development and checks.
 
-Build settings:
-- **Framework preset:** `None`
-- **Build command:** *(leave empty)*
-- **Build output directory:** `/`
-
-Click **Save and Deploy**. Cloudflare auto-detects the `functions/` folder.
-
-### 2. Bindings
-Pages project → **Settings → Bindings**: the KV namespace as `BIO_KV` (the words), the R2 bucket as `BIO_R2` (the
-photos, and every app's pictures) and the D1 database as `DB` (accounts, and everything the apps keep). `wrangler.toml`
-names them.
-
-### 3. Redeploy
-Settings changes need a fresh deploy to take effect: **Deployments → … →
-Retry deployment** (or just push any commit).
-
-`EDIT_PASSWORD`, the page's old password, isn't used any more: it can be deleted from **Variables and Secrets**.
+Both Workers bind `BIO_KV` (content), `BIO_R2` (photos and app media), and `DB` (accounts and app data).
+Manage variables and secrets on the Workers; shared values must match on both.
 
 ## Contact form
 
@@ -150,13 +135,13 @@ The page has a public contact form. Wire it up to email you via
 1. Verify your domain in Resend (add the DNS records it gives you — easy on
    Cloudflare since your DNS is there).
 2. Create a Resend API key.
-3. In your Pages project → **Settings → Variables and Secrets**, add:
+3. On both site Workers → **Settings → Variables and Secrets**, add:
    - `RESEND_API_KEY` — **Secret** — the key from step 2
    - `CONTACT_TO` *(optional)* — where messages go (default
      `georgefarrowgreen@icloud.com`)
    - `PIGEON_FROM` — an address on the verified domain, e.g.
      `noreply@georgefarrowgreen.com` (only its domain is used: see **Email**)
-4. Redeploy.
+4. Save the secrets on both Workers; the updates are live immediately.
 
 Messages come from **Website** `<website@georgefarrowgreen.com>` in the site's
 email look (below): their words as they wrote them, their address, when they
@@ -225,8 +210,8 @@ Chat's does: its key is still `inflight`, its name until 28 October 2026, as its
 its colours; its icon and tiles), then `node .tools/tests/mailicons.mjs`. The unit
 tests check every brand's pictures are drawn.
 
-**Sending.** Resend's REST API (no SDK). In Pages → Settings → Variables and
-Secrets add **`RESEND_API_KEY`** as a Secret (never in the code), then redeploy.
+**Sending.** Resend's REST API (no SDK). On both site Workers → Settings → Variables and
+Secrets add **`RESEND_API_KEY`** as a Secret (never in the code); the update is live immediately.
 Until a domain is verified in Resend, mail goes from Resend's test sender
 `onboarding@resend.dev`, which only delivers to your own Resend address. To email
 everyone else, verify georgefarrowgreen.com in Resend and add **`PIGEON_FROM`** =
@@ -493,7 +478,7 @@ Motion, solid with Reduce Transparency.
   account's confirm link said to be on its way only when it went, Resend refusing it or not answering in time; against
   Node's own SQLite standing in for D1).
 
-**Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.inflite.ai`. Nothing
+**Set up (once):** in Cloudflare → Workers → `inflite-apps` → Settings → Domains & Routes, add `account.inflite.ai`. Nothing
 else: it's the same deployment, routed by its address.
 
 ## Weather (weather.inflite.ai)
@@ -1074,14 +1059,13 @@ copied or dragged off, and a long press calls up no menu or preview; what you
 type into (search, settings) takes typing, copying and pasting as ever.
 Share a place with `?lat=…&lon=…&name=…`.
 
-**Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
-project → Custom domains → Set up a custom domain → `weather.inflite.ai`.
+**Setup (once).** In Cloudflare, Workers → `inflite-apps` → Settings → Domains & Routes → Add a custom domain → `weather.inflite.ai`.
 The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
 else: notifications are sent by `.github/workflows/weather-tick.yml` every 10
 minutes with Chat's tick secret (`INFLIGHT_TICK_SECRET` in GitHub,
 `PIGEON_TICK_SECRET` in Cloudflare), unless `WEATHER_TICK_SECRET` is set on
 both sides; they use the site's D1 database and Chat's push key. georgefarrowgreen.com/weather sends you to
-the new address; preview deployments (`*.pages.dev/weather/`) serve the app
+the new address; preview deployments (`*.workers.dev/weather/`) serve the app
 directly, so a branch can be tried before it's merged.
 
 | Part | Where |
@@ -1273,16 +1257,16 @@ coloured by its classes, and sized from script.
 **Its own address.** At fitness.inflite.ai only the app and its own API answer (`functions/_fitapp.js`:
 anything else is "Not found"; `/fitness/…` there goes to the root). Its Content-Security-Policy runs only its own
 scripts and lets it fetch only from its own address: nothing goes anywhere else, your files included. On the site's own
-address, `/fitness/` sends you there; a preview (`*.pages.dev/fitness/`) or a local copy serves the app directly, but
+address, `/fitness/` sends you there; a preview (`*.workers.dev/fitness/`) or a local copy serves the app directly, but
 can't sign in (the account's API answers only at its own address), so it shows Sign in, off, and where it is.
 
-**Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen` project → Custom domains → Set up a custom
+**Setup (once).** In Cloudflare, Workers → `inflite-apps` → Settings → Domains & Routes → Add a custom
 domain → `fitness.inflite.ai`. The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
 else: it uses the site's D1 database (its tables made as they're first wanted) and R2 bucket (`BIO_R2`).
 
 **What's next.** 1. Weather's Best times for each day's session, from your place. 2. Without a cable: Garmin's Connect
 Developer Program (the Training API sends workouts to the device's calendar, the Activity API brings rides back) and
-Wahoo's Cloud API (plans to an ELEMNT or a KICKR, rides back), both by application, with a secret each in Pages; then
+Wahoo's Cloud API (plans to an ELEMNT or a KICKR, rides back), both by application, with a secret each on the Workers; then
 Strava. 3. The plan adapting to what you did (a missed session moved, the week's load kept), and a weekly email in the
 site's email look (a `fitness` brand). 4. Health: resting heart rate, HRV, sleep and weight, from the same programmes,
 into readiness.
@@ -1474,7 +1458,7 @@ stay put. For the subdomain, in Cloudflare (the georgefarrowgreen.com zone):
    **chat.inflite.ai**, redirect (static) to
    **https://georgefarrowgreen.com/pigeon/**, 301, preserve query string on.
 
-(If chat.inflite.ai is added to the Pages project as a custom domain
+(If chat.inflite.ai is added to the `inflite-apps` Worker as a custom domain
 instead, its /pigeon pages still send you to the main address.)
 
 **Phones and iPads only.** On a computer, /pigeon shows a page saying Chat
@@ -1517,13 +1501,13 @@ Landings are noticed on the back of normal app traffic, at most once a minute.
 For notifications while nobody has the app open, set up the 5-minute nudge:
 
 1. Make a long random string (e.g. `openssl rand -hex 32`).
-2. Cloudflare → Workers & Pages → georgefarrowgreen → Settings → Variables and
-   Secrets → add **`PIGEON_TICK_SECRET`** (type Secret) = that string → redeploy.
+2. Cloudflare → Workers → both `inflite-apps` and `gfg` → Settings → Variables and
+   Secrets → add **`PIGEON_TICK_SECRET`** (type Secret) = that string → save.
 3. GitHub → this repo → Settings → Secrets and variables → Actions → New
    repository secret **`INFLIGHT_TICK_SECRET`** = the same string.
 
 `.github/workflows/inflight-notify.yml` then calls `POST /api/pigeon/notify-tick`
-every 5 minutes, via the site's `georgefarrowgreen.pages.dev` address (the custom
+every 5 minutes, via the site's `inflite-apps.georgefarrowgreen.workers.dev` address (the custom
 domain's bot protection blocks GitHub's servers). Optional: `PIGEON_CONTACT` = an email address push services can
 contact about your pushes.
 
@@ -1536,7 +1520,7 @@ every 5 minutes, and reload themselves on a new deploy, or offer an Update
 button if you're mid-message.
 
 No new setup is needed: it uses the `DB` and `BIO_R2` bindings already in
-`wrangler.toml`. Optional backstop for photo deletion (the app already deletes
+`wrangler.worker.jsonc` and `wrangler.gfg.jsonc`. Optional backstop for photo deletion (the app already deletes
 them itself): R2 → `bio-media` → Settings → Object lifecycle rules → delete
 objects with prefix `pigeon/` after 5 days.
 
@@ -2337,10 +2321,9 @@ by `functions/_fitstudio.js` (and at `/fitting/` on preview addresses; `georgefa
   `FITTING_USERS` signs everyone out. Eight wrong passwords from one address wait 15 minutes. Without `FITTING_USERS`
   no one can sign in. Only the sign-in page, its styles, typefaces, logo and icons are open to anyone.
 
-**Sign-in setup:** Cloudflare dashboard → Workers & Pages → the **`gfg` Worker** → **Settings → Variables and
+**Sign-in setup:** Cloudflare dashboard → Workers → the **`gfg` Worker** → **Settings → Variables and
 Secrets** → **Add** → type **Secret**, name `FITTING_USERS`, value e.g. `Kate:a-long-password,Matt:another-one` (or
-the hashed lines from the tool) → **Deploy**. (The one the Pages project had came across in the move to Workers:
-`functions/_kept.js`; one set on the Worker wins.)
+the hashed lines from the tool) → **Deploy**.
 
 **Google Drive setup (the shop, once, ~15 minutes):** signed in to Google as the shop's account:
 1. [console.cloud.google.com](https://console.cloud.google.com) → project menu → **New project**, e.g. "Pedal
@@ -2364,8 +2347,8 @@ terms; a free Gmail account doesn't, so for a business's client records Workspac
 
 ## Local preview
 
-The look works offline, but the API calls need Cloudflare's runtime. To run Functions, KV, R2 and D1 locally, install
-Wrangler and run `wrangler pages dev .`. To edit the page locally, sign in on the site's account page with the account
+The look works offline, but the API calls need Cloudflare's runtime. To run the Worker, KV, R2 and D1 locally, install
+Wrangler, run `node .tools/workers/build.mjs`, then `wrangler dev -c wrangler.worker.jsonc`. To edit the page locally, sign in on the site's account page with the account
 whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/home.mjs`).
 
 ## Running reliably
@@ -2396,7 +2379,7 @@ A pass over every app for UI and UX, motion, speed, stability and how the apps w
 
 - **Chat:** a friend's last-seen time no longer redraws the screen every minute, and a redraw that news brings waits
   while a finger's down or a list is gliding. A friend's `#add=` link is kept for a day (`inflight-add`) and shown on the
-  welcome, so it survives making the account on its page. Pages' unstamped `Link: modulepreload` header is dropped
+  welcome, so it survives making the account on its page. The static asset service's unstamped `Link: modulepreload` header is dropped
   (`functions/_app.js`). The welcome isn't held up by the old address's handover. The welcome sky draws its planet once
   per size, batches its stars and runs at 30 fps (slower while typing). Focus moves to a new screen's title and back to
   what opened a sheet; bubbles and photos are keyboard buttons; toasts are a live region; Copy is in a message's menu.
@@ -2472,7 +2455,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   address written oddly (`/%77eather/`, `//account/`) is sent to its plain self first (so it's routed as that), and one
   that can't be read as an address is a 404 (`.tools/tests/sitepaths.mjs`). HSTS covers every subdomain, and the home
   page opens in a window of its own (COOP). If Functions were ever skipped, `_redirects` still keeps `README.md`,
-  `wrangler.toml`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form takes none from another site's
+  `wrangler.worker.jsonc` and `wrangler.gfg.jsonc`, `.claude/`, `.tools/` and `blokk/` from being served. The contact form takes none from another site's
   page, holds a network (an IPv6 /64 counts as one) to 5 messages an hour and a wider one (an IPv6 /48) to 10 a day,
   keeps 150 a day in all and emails 60 of them (past 60, kept but not emailed; past 150, the form says it's busy and keeps
   nothing more, which takes 15 networks or more in a day), counted in D1 in one step, reads at most 16 KB, and keeps line
@@ -2517,7 +2500,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
   HSTS), because the home page shares its origin with Chat, whose keys live in
-  this origin's storage. `README.md`, `wrangler.toml` and `blokk/` aren't
+  this origin's storage. `README.md`, `wrangler.worker.jsonc` and `wrangler.gfg.jsonc` and `blokk/` aren't
   served.
 
 ### Chat's security model
@@ -2608,9 +2591,7 @@ has, so they stop partway (their other checks, run past that point, pass as befo
   email addresses ordinary ones, and request bodies are capped at 512 KB.
 - **Signed-in devices** (the account's page, Sign-in and security) lists every sign-in, as "iPhone ·
   Safari" with when it was last used, to sign out one or all the others.
-- **One address.** Chat's pages on Cloudflare's preview addresses
-  (`*.pages.dev`) redirect to georgefarrowgreen.com, so there's never a second
-  origin holding sign-ins or keys. The wind map asks Open-Meteo only within a
+- **One address.** Chat uses chat.inflite.ai for sign-ins and keys. The wind map asks Open-Meteo only within a
   share per person and per hour.
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and

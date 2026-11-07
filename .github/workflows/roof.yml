@@ -5,7 +5,6 @@ name: Turn One roof off or on (every module, or one)
 # Weather's milestone-1 page of the hub again and makes the hub refuse the module's files (/weather/roof/*), so a page
 # already open can't start the module either and goes to that page the next time it comes back in sight. State on
 # deletes ROOF_OFF: /weather/ is the framework again. A secret's change makes a new version of the same code: seconds, no
-# build, nothing else touched (the hub's key, Pages, everyone's data stay as they are).
 #
 # Cloudflare changes a Worker's secrets only while its newest version is the one deployed (a push to another branch of
 # the inflite repo uploads one that isn't). So every Worker named is checked first, and if any isn't settled, nothing is
@@ -76,7 +75,7 @@ jobs:
         id: token
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit. Nothing was changed: by hand, Workers & Pages → inflite → Settings → Variables and Secrets → ROOF_OFF (Secret, value 1 for off; deleted for on)."
+            echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit. Nothing was changed: by hand, Workers → inflite → Settings → Variables and Secrets → ROOF_OFF (Secret, value 1 for off; deleted for on)."
             exit 1
           fi
           case "$ROOF_STATE" in off|on) ;; *) echo "::error::No such state: \"$ROOF_STATE\" (off or on). Nothing was changed."; exit 1 ;; esac

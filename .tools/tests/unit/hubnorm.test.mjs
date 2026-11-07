@@ -32,7 +32,7 @@ function d1() {
   });
   return { s, prepare: (sql) => st(sql), async batch(list) { s.exec('BEGIN'); try { const r = list.map((x) => x.now()); s.exec('COMMIT'); return r; } catch (e) { s.exec('ROLLBACK'); throw e; } } };
 }
-// (a request as Pages hands it to the middleware, cf and all; next: what's after it, the route)
+// (a request as the Worker hands it to the middleware, cf and all; next: what's after it, the route)
 function drive(url, { headers = {}, cf = HUB_CF, env = {}, next } = {}) {
   const request = new Request(url, { headers });
   Object.defineProperty(request, 'cf', { value: cf });
@@ -46,7 +46,7 @@ test('a request with no X-Hub-* header goes on as it came: the same object, noth
   const d = drive('https://chat.inflite.ai/api/pigeon/sync', { headers: { 'CF-Connecting-IP': '198.51.100.4', Authorization: 'Bearer x' } });
   await d.run();
   assert.equal(d.calls.length, 1);
-  assert.equal(d.calls[0].input, undefined, 'next() with nothing: the request Pages had, untouched');
+  assert.equal(d.calls[0].input, undefined, 'next() with nothing: the request the Worker had, untouched');
   const w = drive('https://weather.inflite.ai/api/weather/where', { next: (req) => { assert.equal(req, w.request, 'the very same request'); return new Response('ok'); } });
   await w.run();
 });

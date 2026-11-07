@@ -5,6 +5,8 @@
 /.claude/* / 302
 /README.md / 302
 /wrangler.toml / 302
+/wrangler.worker.jsonc / 302
+/wrangler.gfg.jsonc / 302
 /blokk/* / 302
 /block/* / 302
 /workers/* / 302

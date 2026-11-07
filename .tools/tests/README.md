@@ -15,7 +15,7 @@ where it has one, else its live branch `claude/inflite`. This repo goes live fir
 isn't on that branch yet skips, never fails (Today First's, where it has no `today/src/hub.js`).
 
 **End-to-end tests** (everything else here): real browsers (Playwright) drive the app against a
-fresh local copy of the site for each test (`wrangler pages dev` on :8788, an empty database),
+fresh local copy of the site for each test (`wrangler dev -c wrangler.worker.jsonc` on :8788, an empty database),
 with stand-ins for Web Push, email, GIPHY, the weather and Have I Been Pwned (`mocks/`). People
 make accounts and sign in (from the app, on the account's page, and back, as everyone does now: `join.mjs`; a test
 that drives Chat's API directly signs in the same way, `handback.mjs`), add friends, send pigeons, and the tests

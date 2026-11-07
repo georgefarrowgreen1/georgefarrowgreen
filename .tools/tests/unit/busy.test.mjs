@@ -195,7 +195,7 @@ test("what's found is kept for the database: the whole statement, once it's work
   assert.equal(c2.n, 2);
 });
 
-test("the off switch: with the Pages var RIDE_HOLD \"0\" nothing's held, nothing's said to have been, nothing's counted", async () => {
+test("the off switch: with the Worker var RIDE_HOLD \"0\" nothing's held, nothing's said to have been, nothing's counted", async () => {
   const u = uid("offrider"), mira = uid("offmira"), off = { ...env, RIDE_HOLD: "0" };
   ride(u, T - 5 * MIN);
   run(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, instant) VALUES (?, ?, ?, 'x', 0, ?, ?, 1)`, crypto.randomUUID(), mira, u, T, T);
@@ -382,7 +382,7 @@ test("Weather: the sun on a roof not told during a ride (nothing claimed for it)
   assert.deepEqual(await titles("calm"), ["weather:Sun’s coming out"]);
   assert.deepEqual(await titles("rider"), [], "riding: not told");
   assert.equal(one("SELECT last_sun FROM wx_subs WHERE dev = 'dev-roof-rider'").last_sun, null);
-  // half an hour on, still riding, the Pages var RIDE_HOLD "0": told as anyone is (the sun's out now); the other once a spell
+  // half an hour on, still riding, the Worker var RIDE_HOLD "0": told as anyone is (the sun's out now); the other once a spell
   await tick(HALF + 30 * MIN, { ...env, RIDE_HOLD: "0" });
   assert.deepEqual(await titles("rider"), ["weather:Sun’s out"]);
   assert.deepEqual(await titles("calm"), []);

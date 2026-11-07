@@ -5,7 +5,7 @@
 // at all (Mail before 1.49 answers 401: never a stale or an error card).
 //   mailCard(env, u, request?, t?) → null, or { state: "ok", href, people, updates, later: { n, next, href }, ahead?, trips?,
 //     parcels?, bills?, money? }
-//     env.MAIL_KEY: the key (the Pages secret, the same as Mail's Worker's MAIL_KEY); none, no card and nothing asked
+//     env.MAIL_KEY: the key (the Worker secret, the same as Mail's Worker's MAIL_KEY); none, no card and nothing asked
 //     env.MAIL_VIA: where Mail's Worker is reached, in place of its address (the tests' stand-in)
 //     href: Mail's own address (the hub's /mail/ at inflite.ai: IFL.hub.go), and Later's, #later
 // Mail on Your Day, stage 1 (trips and bookings, read from booking details and calendar invites by rules alone, on Mail's

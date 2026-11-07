@@ -2,7 +2,7 @@
 // password kept as a PBKDF2 hash (never as it is). Several fitters: a comma between their lines.
 //   node .tools/fitting-user.mjs Kate              (asks for the password, not shown)
 //   node .tools/fitting-user.mjs Kate 'password'
-// Then Cloudflare: Workers & Pages → georgefarrowgreen → Settings → Variables and Secrets → FITTING_USERS (a secret),
+// Then Cloudflare: Workers → georgefarrowgreen → Settings → Variables and Secrets → FITTING_USERS (a secret),
 // e.g. Kate:pbkdf2$…,Matt:pbkdf2$…  Changing it signs everyone out.
 import { webcrypto } from "node:crypto";
 import { createInterface } from "node:readline";

@@ -1,6 +1,6 @@
 // Weather at georgefarrowgreen.com/weather/: it lives at weather.inflite.ai,
 // its own address (so its places and settings are kept apart from the rest of the site),
-// so the site's own address sends you there. Preview (*.pages.dev) and local addresses
+// so the site's own address sends you there. Preview (*.workers.dev) and local addresses
 // serve it right here, so a branch can be tried before it's live.
 import { serveWeather, WEATHER_HOST } from "../_wxapp.js";
 

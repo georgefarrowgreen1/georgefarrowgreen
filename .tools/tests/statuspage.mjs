@@ -1,9 +1,9 @@
-// status.inflite.ai on the site as a Worker (SERVE=worker: its workers.dev address is where the ticker reports): a
+// status.inflite.ai on the site as a Worker (its workers.dev address is where the ticker reports): a
 // report taken there with the jobs' key, and refused without it; the page at status.ifl.test drawing it (each address,
 // each job, the verdict), an open row's 24 hours, light and dark at a phone's size and a desk's, nothing sideways; the
 // page's files not at any other address. Here Today's and Mail's Workers aren't running, so from inside (over their
 // links) they don't answer: the page says so, though the report from outside said they were fine.
-//   SERVE=worker run.sh statuspage   (needs: worker)
+//   run.sh statuspage   (needs: worker)
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'node:fs';
 import http from 'node:http';

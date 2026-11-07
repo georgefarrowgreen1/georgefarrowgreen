@@ -33,7 +33,7 @@ import { vitalsRoute } from "./_vitals.js";
 import { statusRoute, isStatus, statusHost } from "./_status.js";
 
 export async function onRequest(ctx0) {
-  // (the variables and secrets the Pages project kept in the database at the move off it, for any the Worker hasn't
+  // (the variables and secrets the source environment kept in the database at the move off it, for any the Worker hasn't
   // got set of its own, opened before anything reads one: functions/_kept.js)
   await fillSecrets(ctx0.env).catch(() => {});
   // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
@@ -50,7 +50,7 @@ export async function onRequest(ctx0) {
   if (/^\/status(\/|$)/i.test(plainPath(url.pathname))) return notFound();
   // (www.georgefarrowgreen.com: the home page's own address, the same place)
   if (url.hostname === `www.${homeSite(ctx.env)}`) { url.hostname = homeSite(ctx.env); return Response.redirect(url.href, 301); }
-  // The repo root is the static output (wrangler.toml), so the source, notes and dotfiles are in it too.
+  // The repo root is the static output (wrangler.worker.jsonc and wrangler.gfg.jsonc), so the source, notes and dotfiles are in it too.
   // They aren't part of the site. The asset server decodes and tidies a path before it looks, so this
   // checks the same path it will look for (/%62lokk/, //blokk/ and /%2Etools/ all mean the real thing).
   if (PRIVATE.test(plainPath(url.pathname))) return notFound();

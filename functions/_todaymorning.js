@@ -10,7 +10,7 @@
 // Undo), so the notification can say what Today did, in the Fitness line, naming a friend only where Chat's own "Names
 // on the Lock Screen" is on. Only for an account whose Today has planned a day itself before (Today 1.09's read of the
 // day: functions/_todayacts.js hasPlanned), so nothing's done for anyone whose Today can't undo it (spec §15.4: MAIN goes
-// live before Today 1.09); and not at all while the Pages var TODAY_ACTS is "0" (the off switch: an IFL rollback).
+// live before Today 1.09); and not at all while the Worker var TODAY_ACTS is "0" (the off switch: an IFL rollback).
 
 import { HttpError } from "./_pigeon.js";
 import { prefsOf, pushToSub } from "./_notify.js";

@@ -103,9 +103,9 @@ export async function insights(env, D, t = Date.now()) {
     signin: await signinCounts(D, first, today).catch(() => null),
     // (how fast the apps are on people's own devices, numbers only: functions/_vitals.js)
     speed: await speed(D, first, today).catch(() => null),
-    // (whether the passwords' pepper is kept for the move off Pages, never the pepper: functions/_atrest.js)
+    // (whether the passwords' pepper is kept for the Worker setup, never the pepper: functions/_atrest.js)
     pepper: await pepperState(env).catch(() => null),
-    // (how many of the Pages project's variables and secrets are kept for the move: a number, never a name: _kept.js)
+    // (how many of the source environment’s variables and secrets are kept for the move: a number, never a name: _kept.js)
     keptSecrets: await keptCount(env).catch(() => 0),
   };
 }

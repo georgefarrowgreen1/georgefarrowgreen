@@ -25,7 +25,7 @@ export const APPS_PICS = ACCOUNT_APP;
 // the account's page, for links in emails (this site's, or a local test server's copy)
 export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
 // Where links in emails point: this site, or a local test server. Never a
-// *.pages.dev or preview host (the notification tick runs through one).
+// *.workers.dev or preview host (the notification tick runs through one).
 export function linkOrigin(request) {
   const u = new URL(typeof request === "string" ? request : request.url);
   return /^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.origin : SITE;

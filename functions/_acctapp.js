@@ -112,7 +112,7 @@ export async function accountHost(ctx, url) {
   const out = new Response(body, res);
   for (const [k, v] of Object.entries(isAuth(url, ctx.env) ? AUTH_SECURITY : ACCT_SECURITY)) out.headers.set(k, v);
   if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }
-  // (Pages' own preload hints name the files unstamped: each would be fetched again, and could be a copy kept from before)
+  // (the asset service's own preload hints name the files unstamped: each would be fetched again, and could be a copy kept from before)
   if (page) out.headers.delete("Link");
   // (a stamped file kept only when it's what was asked for: just after a deploy the old one can come under the new stamp)
   const want = script && url.searchParams.get("v"), v = want && (head ? await fingerprint(ctx, url, name) : await stampOf(body));

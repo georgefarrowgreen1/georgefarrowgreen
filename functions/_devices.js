@@ -1,7 +1,7 @@
 // One device, every app's notifications (Today First, spec §11.3): the root subscription of inflite.ai written into
 // each app's own table, each with that table's own rules, and taken back out. td_push (Today's morning) always; and
 // once the person's tapped "Get Every App's Notifications Here" (which sends fan: true) on any device, and only while
-// the Pages var HUB_PUSH is "1", also pg_push, mk_push and wx_devs/wx_subs, each row marked via = 'hub' so a rollback
+// the Worker var HUB_PUSH is "1", also pg_push, mk_push and wx_devs/wx_subs, each row marked via = 'hub' so a rollback
 // can take back exactly those. The tap's kept on the account (functions/_today.js pushPrefs every), so every device
 // handed over afterwards (turned on, or handed over again by its page as it opens, after a sign-in that ended took the
 // apps' rows) has every app's too. A device is named to the page only by an opaque id, never its endpoint or its

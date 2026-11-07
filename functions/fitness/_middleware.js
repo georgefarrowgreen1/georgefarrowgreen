@@ -1,5 +1,5 @@
 // Fitness at georgefarrowgreen.com/fitness/: it lives at fitness.inflite.ai, its own address, so the site's
-// own address sends you there. Preview (*.pages.dev) and local addresses serve it right here, so a branch can be looked
+// own address sends you there. Preview (*.workers.dev) and local addresses serve it right here, so a branch can be looked
 // at before it's live (signed out: signing in is only at the app's own address).
 import { serveFitness, FITNESS_HOST } from "../_fitapp.js";
 
