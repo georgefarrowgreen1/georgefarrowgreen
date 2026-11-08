@@ -2,7 +2,7 @@
 // signed in to on the site (the cookie for the whole site: functions/_account.js) with its name and email (filled in for
 // a message), whether it has a photo, the apps' addresses
 // (functions/api/me/photo.js), what each app keeps of theirs in a line, and whether it's the site's owner (who can edit
-// the page: functions/_auth.js). The account's own page is named too, for Sign in and the photo to go to.
+// the page: functions/_auth.js). The account's own page is named for the footer and profile photo; auth is used for the existing account hand-off.
 import { visitor, failed, json, ownerFresh } from "../../_auth.js";
 import { appFigures } from "../account/[[path]].js";
 import { accountPage, authPage } from "../../_pigeon.js";

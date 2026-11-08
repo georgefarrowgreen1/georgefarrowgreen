@@ -19,6 +19,15 @@ const clamp = (v) => Math.min(1, Math.max(0, v));
 const body = document.body, root = document.documentElement;
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const phone = matchMedia("(max-width: 600px)");
+// InFlite's cookie cannot be read on this domain. A visitor without a home-page session checks it through the
+// existing one-use hop, without a sign-in screen. The return marker prevents a loop even when cookies/storage are
+// blocked; remove it from the address before the page is used or shared. Signed-in home visitors need no hop.
+const accountReturn = new URL(location.href), accountChecked = accountReturn.searchParams.get("__ifl_account") === "checked";
+if (accountChecked) {
+  accountReturn.searchParams.delete("__ifl_account");
+  history.replaceState(null, "", accountReturn.pathname + accountReturn.search + accountReturn.hash);
+}
+
 // The site's motion, in script as in the styles (styles.css: --ease-out for what arrives, --ease-glide for what slides)
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)", GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
 // (words changed in place fade in, rather than snapping; only where they're actually different, and in sight)
@@ -339,18 +348,24 @@ function fadeOnLoad(img) {
 const plural = (n, one, many = one + "s") => `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
 async function loadMe() {
   try { me = await api("/api/me"); } catch (_) { me = { signedIn: false }; }
+  if (!me.signedIn && me.auth && !accountChecked && !arrival && !body.matches(".sheet-up, .edit, .leaving")) {
+    const to = new URL(location.href);
+    to.searchParams.set("__ifl_account", "checked");
+    location.replace(`/api/hop/start?to=${encodeURIComponent(to.href)}`);
+    return;
+  }
   showMe();
 }
 function showMe() {
   // (back from signing in, and signed in: your photo comes into its place from the picture the account's page ended on,
-  // and your photo's place and Edit wait for it: arrive; Sign in, as it was, measured first, as it's about to go)
+  // and your photo's place and Edit wait for it: arrive)
   const back = arrival && !arrival.gone && !arrival.av ? arrival : null, welcome = back && me.signedIn;
-  const pill = welcome && !motion.matches ? $("#sign-in").getBoundingClientRect() : null;
   if (welcome) { for (const el of [$("#me"), $("#edit")]) el.classList.add("held"); back.lines = true; }
-  // (the account's page shows the way back here: #from=home; and Sign in comes straight back once you're in: #signin=home)
-  if (me.account) for (const a of $$("[data-account]")) a.href = a.id === "sign-in" ? `${me.auth || me.account}/#signin=home` : `${me.account}/#from=home`;
+  // (the account's page shows the way back here: #from=home)
+  if (me.account) for (const a of $$("[data-account]")) a.href = `${me.account}/#from=home`;
   // (the apps' own addresses, as the server has them: inflite.ai's, or a test's)
   for (const [k, v] of Object.entries(me.links || {})) { const a = $(`#app-${k}`); if (a) a.href = v; }
+  $("#who").hidden = !me.signedIn;
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
   body.classList.add("known");
@@ -385,7 +400,7 @@ function showMe() {
   }
   fromMe();
   // (back, signed in: the photo on its way; back, but not signed in after all: the picture fades, the page as ever)
-  if (welcome) arrive(back, pill); else if (back) arriveEnd(back, true);
+  if (welcome) arrive(back); else if (back) arriveEnd(back, true);
 }
 // (their own details, if those are what the fields hold: the From row, filled from them as they are now, its photo the
 // bar's; filled each time it's shown, as it may last have been someone else's, or theirs before a change)
@@ -674,7 +689,7 @@ if (/^#signedin(?![\w-])/.test(location.hash)) {
 function arriveFrom() {
   const el = $("#signedin"); if (!el) return null;
   el.classList.add("held");
-  const a = { el, av: null, ghost: null, end: null, lines: false, timers: new Set(), gone: false };
+  const a = { el, av: null, end: null, lines: false, timers: new Set(), gone: false };
   a.slow = later(a, () => arriveEnd(a, true), 4000);
   later(a, () => arriveEnd(a, true), 6000);
   return a;
@@ -690,7 +705,6 @@ function arriveEnd(a, fade = false) {
   if (arrival === a) arrival = null;
   for (const el of [$("#me"), $("#edit")]) el.classList.remove("held");
   if (a.lines) showLines();
-  a.ghost?.remove();
   for (const x of [a.el, a.av]) {
     if (!x?.isConnected) continue;
     if (!fade) { x.remove(); continue; }
@@ -698,8 +712,8 @@ function arriveEnd(a, fade = false) {
     setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
   }
 }
-// Signed in: your photo (or your initial) comes into the picture (pill: where Sign in was, to draw in from)
-function arrive(a, pill) {
+// Signed in: your photo (or your initial) comes into the picture
+function arrive(a) {
   clearTimeout(a.slow); a.timers.delete(a.slow);
   const still = motion.matches, av = a.av = document.createElement("span"), tint = document.createElement("span");
   av.className = "back-in-av"; av.setAttribute("aria-hidden", "true"); tint.className = "back-in-face";
@@ -717,29 +731,19 @@ function arrive(a, pill) {
     body.append(av);
     if (there) document.documentElement.classList.remove("back-face");
     else av.animate(still ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1 }], { duration: still ? 150 : 450, easing: still ? EASE_OUT : spring() });
-    later(a, () => reveal(a, pill), there ? 120 : still ? 250 : 420);
+    later(a, () => reveal(a), there ? 120 : still ? 250 : 420);
   });
 }
-// The picture fades, the page under it; Sign in, as it was, draws in to the circle your photo goes in, and the photo
-// comes down into it on a gentle curve (bowed up a little, as if tossed there rather than slid), becoming the bar's as it
+// The picture fades, the page under it; your photo comes down into its place on a gentle curve (bowed up a little, as if tossed there rather than slid), becoming the bar's as it
 // goes. With Reduce Motion, the photo fades with the picture, and the bar's comes in where it is
-function reveal(a, pill) {
+function reveal(a) {
   const still = motion.matches, el = a.el, av = a.av, to = $("#me").getBoundingClientRect();
   el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: still ? 200 : 400, easing: EASE_OUT, fill: "forwards" }).finished.then(() => el.remove(), () => el.remove());
-  if (still || !pill || !to.width || !av?.isConnected) {
+  if (still || !to.width || !av?.isConnected) {
     av?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: EASE_OUT, fill: "forwards" });
     later(a, () => land(a), 200);
     return;
   }
-  // Sign in, drawing in to the circle (what it says going first)
-  const ghost = a.ghost = $("#sign-in").cloneNode(true);
-  for (const k of ["id", "href", "data-account"]) ghost.removeAttribute(k);
-  ghost.classList.replace("only-visitor", "pill-ghost"); ghost.setAttribute("aria-hidden", "true"); ghost.inert = true;
-  Object.assign(ghost.style, { left: `${pill.left}px`, top: `${pill.top}px`, width: `${pill.width}px`, height: `${pill.height}px` });
-  body.append(ghost);
-  ghost.animate([{ left: `${pill.left}px`, top: `${pill.top}px`, width: `${pill.width}px`, height: `${pill.height}px` }, { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px` }],
-    { duration: 350, delay: 150, easing: GLIDE, fill: "both" });
-  ghost.animate([{ color: getComputedStyle(ghost).color }, { color: "transparent" }], { duration: 150, delay: 120, easing: EASE_OUT, fill: "both" });
   // the photo, down into it, ending a touch small for the spring it lands with (pop-in, from 0.9)
   const from = av.getBoundingClientRect(), s1 = (to.width / from.width) * 0.9;
   const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
@@ -764,7 +768,6 @@ function reveal(a, pill) {
 function land(a) {
   if (a.gone) return;
   const still = motion.matches, av = a.av, e = a.end;
-  a.ghost?.remove(); a.ghost = null;
   $("#me").classList.remove("held");
   if (still) $("#me").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT });
   if (av && e) {
@@ -777,12 +780,6 @@ function land(a) {
   later(a, () => arriveEnd(a), still ? 0 : 240);
 }
 
-// Sign in: off to the account's page, its sky coming in as it goes (handOff)
-$("#sign-in").addEventListener("click", (e) => {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  e.preventDefault();
-  handOff(e.currentTarget.href);
-});
 // Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
 // steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
 document.addEventListener("click", (e) => {

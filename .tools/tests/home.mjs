@@ -46,7 +46,9 @@ const settle = (x, ms = 700) => x.p.waitForTimeout(ms);
 // account's page, the sign-in carried over: functions/_hop.js)
 const signInHome = async (x) => {
   await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 });
-  await x.p.click('#sign-in'); await x.p.waitForURL(/(account|auth)\.ifl\.test/, { timeout: 20000 });
+  if (await x.p.locator('body.signed').count()) return;
+  await x.p.goto(`${ACCT.replace('//account.', '//auth.')}/#signin=home`);
+  await x.p.waitForURL(/(account|auth)\.ifl\.test/, { timeout: 20000 });
   await x.p.waitForSelector('main .signin .btn, main .hero', { timeout: 20000 }); await x.p.waitForTimeout(500);
   if (await x.p.$('main .signin .btn')) await x.p.click('main .signin .btn');
   await x.p.waitForURL(/^http:\/\/gfg\.test:8788\//, { timeout: 30000 }); await x.p.waitForSelector('body.signed', { timeout: 30000 });
@@ -58,17 +60,17 @@ const adminLine = (x) => x.p.locator('main .row:has(b:text-is("Admin"))').innerT
 const shot = (x, name, full = false) => x.p.screenshot({ path: `${out}/${name}.png`, fullPage: full });
 const idOf = (h) => sql(`SELECT id FROM pg_users WHERE handle = '${h}'`).match(/"id": "([^"]+)"/)[1];
 
-// ---- 1. A visitor: the words, Sign in, the apps; nothing to change ----
+// ---- 1. A visitor: the words and apps; no header account control and nothing to change ----
 const V = await browser('visitor');
 await home(V);
 ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycling · Apps$/i.test(await text(V, '.eyebrow')) && /I ride, I take photos/.test(await text(V, '.lede')),
   'the name, the line above it and the one under it', await text(V, '.hero'));
-ok(await shown(V, '#sign-in') && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: Sign in, no Edit and no photo');
-ok(await V.p.getAttribute('#sign-in', 'href') === `${ACCT.replace('//account.', '//auth.')}/#signin=home`, 'Sign in goes to the sign-in page (and comes straight back once you’re in)', await V.p.getAttribute('#sign-in', 'href'));
+ok(!(await shown(V, '#sign-in')) && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: no Sign in, Edit or photo in the header');
+ok(await V.p.getAttribute('.foot [data-account]', 'href') === `${ACCT}/#from=home`, 'the footer still opens the account page');
 ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.ifl.test:8788/', 'the apps open at their own addresses');
 ok(await text(V, '#app-inflight small') === 'Messages, and letters by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');
-await V.p.click('#sign-in'); await V.p.waitForSelector('main .backapp', { timeout: 20000 }).catch(() => {});
+await V.p.goto(`${ACCT.replace('//account.', '//auth.')}/#signin=home`); await V.p.waitForSelector('main .backapp', { timeout: 20000 }).catch(() => {});
 ok(await text(V, 'main .backapp') === 'Home' && await V.p.isVisible('main .signin'), 'Sign in: the account’s sign-in, with Home to go back');
 await V.p.click('main .backapp'); await V.p.waitForSelector('body.known', { timeout: 20000 }).catch(() => {}); await settle(V);
 ok(V.p.url() === `${SITE}/`, 'and Home goes back', V.p.url());

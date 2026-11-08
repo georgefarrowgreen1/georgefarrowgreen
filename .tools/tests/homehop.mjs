@@ -39,13 +39,14 @@ const put = await A.p.evaluate(async () => {
 ok(put[0] === 200, 'a detailed photo put on the account', JSON.stringify(put));
 await A.ctx.close();
 
-// ---- 1. a visitor on the home page: Sign in, on the sign-in page, and back ----
+// ---- 1. a visitor signs in from the account page and returns; an InFlite member needs no button ----
 async function trip(x, label, signIn) {
-  await x.p.goto(`${SITE}/`); await x.p.waitForSelector('#sign-in', { state: 'visible', timeout: 20000 });
-  await x.p.waitForTimeout(600);
-  await x.p.click('#sign-in');
-  await x.p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 20000 });
-  await signIn();
+  await x.p.goto(`${SITE}/`); await x.p.waitForSelector('body.known', { timeout: 20000 });
+  ok(!(await x.p.$('#sign-in')), `${label}: no header Sign in button`);
+  if (signIn) {
+    await x.p.goto(`${AUTH}/#signin=home`);
+    await signIn();
+  }
   const t0 = Date.now();
   await x.p.waitForURL((u) => u.hostname === 'gfg.test', { timeout: 30000 }).catch(() => {});
   const backAt = Date.now();
@@ -54,12 +55,12 @@ async function trip(x, label, signIn) {
   const hops = x.navs.filter((n) => /\/api\/hop\//.test(n.url) || n.url.startsWith(SITE));
   const longest = Math.max(0, ...x.navs.map((n) => n.url.length));
   const photoInQuery = x.navs.some((n) => /\/api\/hop\//.test(n.url) && /signedin|[?&]p=|%26p%3D/.test(n.url.split('#')[0]));
-  const picture = await x.p.evaluate(() => !!window.backPhoto);
+  const picture = await x.p.evaluate(() => !!window.backPhoto || !!document.querySelector('#face img')?.complete);
   await x.p.screenshot({ path: `${out}/${label}.png` });
   ok(signed, `${label}: back on the home page, signed in`, `${backAt - t0} ms to the home page, ${doneAt - t0} ms till signed in; at ${x.p.url().slice(0, 80)}`);
   ok(longest < 2000, `${label}: every address on the way short (the picture in the #, never in a server's address)`, `longest ${longest} chars: ${hops.map((h) => `${new URL(h.url).host}${new URL(h.url).pathname} ${h.status ?? '?'} ${h.url.length}`).join(' → ')}`);
   ok(!photoInQuery, `${label}: no server's address carries the picture`);
-  ok(picture, `${label}: the photo in the picture there from the first frame`);
+  ok(picture, `${label}: the profile photo is available`);
   ok(!x.errs.length, `${label}: no page errors`, x.errs.slice(0, 3).join(' | '));
 }
 const V = await phone('visitor');
@@ -78,10 +79,7 @@ await W.p.waitForURL((u) => u.hostname === 'gfg.test', { timeout: 30000 }).catch
 // (signed out of the home page only: its cookie gone, the apps' kept)
 await W.ctx.clearCookies({ domain: 'gfg.test' }); await W.ctx.clearCookies({ domain: '.gfg.test' });
 W.navs.length = 0;
-await trip(W, '2-apps-signed-in', async () => {
-  const c = await W.p.waitForSelector('main .btn:has-text("Continue")', { timeout: 20000 }).catch(() => null);
-  ok(!!c, '2: the sign-in page asks to carry on as this account (Continue)');
-  await c?.click();
-});
+await trip(W, '2-apps-signed-in', null);
+
 await b.close();
 console.log(`FAILS ${fails}`);

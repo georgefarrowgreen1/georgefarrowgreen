@@ -156,7 +156,6 @@ body.known .bar .end { opacity: 1; }
 /* who's looking: a visitor, someone signed in, the owner, the owner editing */
 .only-signed, .only-owner, .only-edit { display: none !important; }
 body.signed .only-signed, body.owner .only-owner { display: inline-flex !important; }
-body.signed .only-visitor { display: none !important; }
 body.edit .only-edit { display: flex !important; }
 body.edit .not-edit { display: none !important; }
 /* (whichever of Edit, your photo and Done comes into the bar, it comes in with a little spring) */
@@ -514,8 +513,7 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
    along its foot, and your photo in a circle a third of the way down. Going there, that sky comes in over everything
    (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
    page opens on the picture it ended on (index.html, from the first frame: .back-in:target); your photo comes into it
-   where the page had it, and as the picture fades, Sign in draws in to the circle your photo goes in and
-   the photo comes down into it (app.js arrive). None of it takes a tap: a tap goes to what's under it */
+   where the page had it, and as the picture fades, the photo comes down into its place in the bar (app.js arrive). None of it takes a tap: a tap goes to what's under it */
 /* (the account page's sky exactly, and its dawn) */
 :root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
   --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
@@ -548,8 +546,6 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 /* (your photo's place in the bar, and Edit beside it, held back till the photo's landed there; then each comes in with
    its little spring, pop-in, above) */
 #me.held, #edit.held { visibility: hidden; animation: none !important; }
-/* (Sign in, as it was when you went, drawing in to the circle your photo goes in) */
-.pill-ghost { position: fixed; z-index: 21; margin: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
 
 /* the small round controls keep their size, and are each a finger's width to tap (44 px) */
 .sheet-head .x, .fld.from .change, .editbar .add, .toast button { position: relative; }

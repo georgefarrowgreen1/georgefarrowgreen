@@ -110,3 +110,8 @@ The homepage app carousel has a standalone browser regression:
 It checks source and minified assets, automatic and manual looping, interrupted swipes, keyboard focus, signed-in
 app summaries, resizing, contact-sheet suspension, reduced motion and the no-JavaScript fallback. No server or
 account credentials are needed. Set `CAROUSEL_SCREENSHOTS` to save mobile captures.
+
+The homepage account header has an isolated browser regression:
+`CHROMIUM=/usr/bin/chromium node --test .tools/tests/homeaccount.test.cjs`.
+It checks guests, existing home sessions, InFlite-only sessions, owners returning from the account page, blocked
+cookies and account errors against both source and minified assets. No real account credentials are needed.
