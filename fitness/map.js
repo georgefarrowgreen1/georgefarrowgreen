@@ -93,7 +93,7 @@ export async function routeMap(el, { coords, colours = null, light = true, explo
 export async function routeSnapshot(coords,{top=100,bottom=160,timeout=12000}={}){
  if(globalThis.navigator?.onLine===false||!able()||!Array.isArray(coords)||coords.length<2||coords.some(p=>!Array.isArray(p)||p.length<2||!Number.isFinite(p[0])||!Number.isFinite(p[1])||Math.abs(p[0])>180||Math.abs(p[1])>85))throw Error('Map unavailable');
  const el=document.createElement('div');el.setAttribute('aria-hidden','true');el.dataset.shareMap='';
- Object.assign(el.style,{position:'fixed',left:'0',top:'0',width:'360px',height:'450px',opacity:'0',pointerEvents:'none',zIndex:'-1'});document.body.append(el);
+ Object.assign(el.style,{position:'fixed',left:'0',top:'0',width:'360px',height:'640px',opacity:'0',pointerEvents:'none',zIndex:'-1'});document.body.append(el);
  let g,timer,cancelled=false;
  const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Map unavailable')),timeout);});
  const render=(async()=>{
@@ -101,7 +101,7 @@ export async function routeSnapshot(coords,{top=100,bottom=160,timeout=12000}={}
   if(cancelled){g.remove();throw Error('Map unavailable');}
   await new Promise((resolve,reject)=>{g.map.once('idle',resolve);g.map.once('error',reject);g.map.triggerRepaint();});
   if(cancelled)throw Error('Map unavailable');
-  const c=document.createElement('canvas');c.width=1080;c.height=1350;c.getContext('2d').drawImage(g.map.getCanvas(),0,0,1080,1350);return c;
+  const c=document.createElement('canvas');c.width=1080;c.height=1920;c.getContext('2d').drawImage(g.map.getCanvas(),0,0,1080,1920);return c;
  })();
  try{return await Promise.race([render,deadline]);}
  finally{cancelled=true;clearTimeout(timer);g?.remove();el.remove();}

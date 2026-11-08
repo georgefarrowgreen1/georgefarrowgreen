@@ -1,14 +1,15 @@
 // Pictures to share: a ride (its route, its figures, its efforts) and a year (its distance, month by month, its
-// highlights), drawn on a canvas, 1080 × 1350 (a phone's share sheet, and Instagram's portrait), in the app's own
+// highlights), drawn on a canvas, 1080 × 1920 (Instagram Stories, 9:16), in the app's own
 // night-sky look for indoor/year cards, or a map with floating panels for outdoor rides.
 // Map tiles load only when an outdoor share is requested; failed maps keep a route-only export.
+// Titles, figures and branding stay inside the story's top/bottom controls (250 px each).
 //
 // ride: { name, when, coords: [[lon, lat], ...] | null, route: [x, y, …] (0 to 100, as formats.js routeShape has it) | null, zones: [secs × 7] | null,
 //   stats: [[label, value]] (up to six), chip: string | null, sport }
 // year: { title, big: [value, unit], line, months: [secs × 12], top: month index, rows: [[label, value, sub]] }
 // → a PNG, as a Blob
 
-const W = 1080, H = 1350, PAD = 84;
+const W = 1080, H = 1920, PAD = 84;
 const FONT = "-apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif";
 const font = (weight, size) => `${weight} ${size}px ${FONT}`;
 const ZONE = ["#a3abc0", "#4aa3ff", "#3fd08f", "#ffd23f", "#ff9440", "#ff5a5a", "#c07bff"];
@@ -26,7 +27,7 @@ function sky(g) {
   const aura = (x, y, r, c) => { const a = g.createRadialGradient(x, y, 0, x, y, r); a.addColorStop(0, c); a.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = a; g.fillRect(0, 0, W, H); };
   aura(160, 120, 640, "rgba(150, 70, 160, 0.42)");
   aura(1000, 260, 560, "rgba(50, 90, 220, 0.38)");
-  aura(540, 1400, 700, "rgba(40, 60, 160, 0.30)");
+  aura(540, H + 50, 700, "rgba(40, 60, 160, 0.30)");
 }
 // a few words over as many lines as they need (at most `lines`), the last cut with an ellipsis
 function wrap(g, text, x, y, maxW, lh, lines = 2, draw = true) {
@@ -59,11 +60,11 @@ function brandLogo() {
   });
 }
 async function foot(g,light=false) {
-  const mark = await brandLogo(), label = "Powered by InFlite", size = 48, gap = 14;
-  g.font = font(600, 32); g.fillStyle = light ? '#526172' : "rgba(235, 238, 250, 0.75)";
+  const mark = await brandLogo(), label = "Powered by InFlite", size = 36, gap = 10, y = H - 286;
+  g.font = font(600, 26); g.fillStyle = light ? '#526172' : "rgba(235, 238, 250, 0.75)";
   const x = (W - g.measureText(label).width - (mark ? size + gap : 0)) / 2;
-  if (mark) { g.save(); round(g, x, H - 88, size, size, 12); g.clip(); g.drawImage(mark, x, H - 88, size, size); g.restore(); }
-  g.fillText(label, x + (mark ? size + gap : 0), H - 53);
+  if (mark) { g.save(); round(g, x, y - size / 2, size, size, 9); g.clip(); g.drawImage(mark, x, y - size / 2, size, size); g.restore(); }
+  g.fillText(label, x + (mark ? size + gap : 0), y + 9);
 }
 const blob = (c) => new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("The picture couldn’t be made"))), "image/png"));
 
@@ -80,18 +81,19 @@ function shapeOf(coords){
 }
 export async function rideImage(r) {
   const [c, g] = canvas();
-  g.font=font(750,76);const n=wrap(g,r.name,PAD,222,W-2*PAD,84,2,false),light=Array.isArray(r.coords)&&r.coords.length>=2;
-  const top = 222 + n * 84 + 10, box = { x: PAD, y: top, w: W - 2 * PAD, h: 880 - top };
+  g.font=font(750,76);const titleY=404,n=wrap(g,r.name,PAD,titleY,W-2*PAD,84,2,false),light=Array.isArray(r.coords)&&r.coords.length>=2;
+  const headBottom=titleY+(n-1)*84+52,statsH=r.stats.length>3?284:134,statsTop=1544-statsH;
+  const top=headBottom+40,bottom=statsTop-(r.chip?110:40),box={x:PAD,y:top,w:W-2*PAD,h:bottom-top};
   let back=null;
   if(light){
-   try{const {routeSnapshot}=await import('./map.js');back=await routeSnapshot(r.coords,{top:(top+24)/3,bottom:(H-860)/3});}catch{}
+   try{const {routeSnapshot}=await import('./map.js');back=await routeSnapshot(r.coords,{top:top/3,bottom:(H-bottom)/3});}catch{}
    g.fillStyle='#f4f2ee';g.fillRect(0,0,W,H);if(back)g.drawImage(back,0,0,W,H);
-   const fade=g.createLinearGradient(0,1160,0,H);fade.addColorStop(0,'rgba(247,249,252,0)');fade.addColorStop(1,'rgba(247,249,252,.98)');g.fillStyle=fade;g.fillRect(0,1160,W,H-1160);
-   glass(g,back,44,54,W-88,top-74);
+   const fade=g.createLinearGradient(0,1520,0,1680);fade.addColorStop(0,'rgba(247,249,252,0)');fade.addColorStop(1,'rgba(247,249,252,.98)');g.fillStyle=fade;g.fillRect(0,1520,W,H-1520);
+   glass(g,back,44,250,W-88,headBottom-250);
   }else sky(g);
-  g.fillStyle = light ? '#667487' : "rgba(235, 238, 250, 0.62)"; g.font = font(650, 30); g.fillText(r.when.toUpperCase(), PAD, 132);
+  g.fillStyle = light ? '#667487' : "rgba(235, 238, 250, 0.62)"; g.font = font(650, 30); g.fillText(r.when.toUpperCase(), PAD, 314);
   g.fillStyle = light ? '#17283c' : "#f5f6fb"; g.font = font(750, 76);
-  wrap(g, r.name, PAD, 222, W - 2 * PAD, 84, 2);
+  wrap(g, r.name, PAD, titleY, W - 2 * PAD, 84, 2);
   // the route, glowing, from green to red; else (indoors) the ride's time in each zone
   const shape=r.route?.length>=4?r.route:shapeOf(r.coords);
   if (!back && shape?.length >= 4) {
@@ -119,9 +121,9 @@ export async function rideImage(r) {
     });
   }
   // the efforts, where it was a session
-  let y = 900;
-  if (r.chip) { pill(g, PAD, y, r.chip, light ? (r.chipOk?'#087c46':'#8d550c') : r.chipOk ? "#7ff0b0" : "#ffcf7a",light?'rgba(255,255,255,.94)': r.chipOk ? "rgba(79, 220, 142, 0.16)" : "rgba(255, 181, 71, 0.16)"); y += 84; } else y += 30;
-  if(light)glass(g,back,44,y-12,W-88,r.stats.length>3?284:134);
+  if (r.chip) pill(g, PAD, statsTop-84, r.chip, light ? (r.chipOk?'#087c46':'#8d550c') : r.chipOk ? "#7ff0b0" : "#ffcf7a",light?'rgba(255,255,255,.94)': r.chipOk ? "rgba(79, 220, 142, 0.16)" : "rgba(255, 181, 71, 0.16)");
+  const y=statsTop+12;
+  if(light)glass(g,back,44,statsTop,W-88,statsH);
   // the figures, three to a row
   const cols = 3, cw = (W - 2 * PAD) / cols;
   r.stats.slice(0, 6).forEach(([label, value], i) => {
@@ -137,13 +139,13 @@ export async function rideImage(r) {
 export async function yearImage(r) {
   const [c, g] = canvas();
   sky(g);
-  g.fillStyle = "rgba(235, 238, 250, 0.62)"; g.font = font(650, 32); g.fillText(r.title.toUpperCase(), PAD, 140);
-  g.fillStyle = "#f5f6fb"; g.font = font(800, 168); g.fillText(r.big[0], PAD, 320);
+  g.fillStyle = "rgba(235, 238, 250, 0.62)"; g.font = font(650, 32); g.fillText(r.title.toUpperCase(), PAD, 314);
+  g.fillStyle = "#f5f6fb"; g.font = font(800, 168); g.fillText(r.big[0], PAD, 510);
   const bw = g.measureText(r.big[0]).width;
-  g.font = font(700, 56); g.fillStyle = "rgba(235, 238, 250, 0.7)"; g.fillText(r.big[1], PAD + bw + 18, 320);
-  g.font = font(550, 34); g.fillStyle = "rgba(235, 238, 250, 0.78)"; wrap(g, r.line, PAD, 390, W - 2 * PAD, 46, 2);
+  g.font = font(700, 56); g.fillStyle = "rgba(235, 238, 250, 0.7)"; g.fillText(r.big[1], PAD + bw + 18, 510);
+  g.font = font(550, 34); g.fillStyle = "rgba(235, 238, 250, 0.78)"; wrap(g, r.line, PAD, 590, W - 2 * PAD, 46, 2);
   // month by month
-  const mx = PAD, my = 470, mw = W - 2 * PAD, mh = 270, max = Math.max(1, ...r.months), slot = mw / 12, bar = slot - 22;
+  const mx = PAD, my = 700, mw = W - 2 * PAD, mh = 300, max = Math.max(1, ...r.months), slot = mw / 12, bar = slot - 22;
   r.months.forEach((s, i) => {
     const h = Math.max(s ? 8 : 0, (s / max) * (mh - 50)), x = mx + i * slot + 11;
     const gr = g.createLinearGradient(0, my + mh - 50 - h, 0, my + mh - 50);
@@ -152,13 +154,13 @@ export async function yearImage(r) {
     g.fillStyle = i === r.top ? "#f5f6fb" : "rgba(235, 238, 250, 0.5)"; g.font = font(650, 26); g.textAlign = "center"; g.fillText("JFMAMJJASOND"[i], x + bar / 2, my + mh - 8); g.textAlign = "left";
   });
   // the highlights
-  let y = 790;
+  let y = 1080;
   for (const [label, value, sub] of r.rows.slice(0, 4)) {
     g.fillStyle = "rgba(255, 255, 255, 0.07)"; round(g, PAD, y, W - 2 * PAD, 92, 26); g.fill();
     g.fillStyle = "rgba(235, 238, 250, 0.62)"; g.font = font(600, 28); g.fillText(label, PAD + 30, y + 40);
     if (sub) { g.font = font(500, 24); g.fillStyle = "rgba(235, 238, 250, 0.45)"; g.fillText(sub, PAD + 30, y + 74, W - 2 * PAD - 320); }
     g.fillStyle = "#f5f6fb"; g.font = font(750, 40); g.textAlign = "right"; g.fillText(value, W - PAD - 30, y + 60); g.textAlign = "left";
-    y += 106;
+    y += 112;
   }
   await foot(g);
   return blob(c);
