@@ -66,7 +66,7 @@ await home(V);
 ok(await text(V, '.hero h1') === 'George Farrow-Green' && /^Photography · Cycling · Apps$/i.test(await text(V, '.eyebrow')) && /I ride, I take photos/.test(await text(V, '.lede')),
   'the name, the line above it and the one under it', await text(V, '.hero'));
 ok(!(await shown(V, '#sign-in')) && !(await shown(V, '#edit')) && !(await shown(V, '#me')), 'a visitor: no Sign in, Edit or photo in the header');
-ok(await V.p.getAttribute('.foot [data-account]', 'href') === `${ACCT}/#from=home`, 'the footer still opens the account page');
+ok(!(await V.p.$('.foot [data-account]')) && /George Farrow-Green/.test(await text(V, '.foot-row')), 'the footer shows the centred copyright without an account link');
 ok(await V.p.getAttribute('#app-inflight', 'href') === `${CHAT}/` && await V.p.getAttribute('#app-weather', 'href') === 'http://weather.ifl.test:8788/', 'the apps open at their own addresses');
 ok(await text(V, '#app-inflight small') === 'Messages, and letters by pigeon' && await text(V, '#app-weather small') === 'Forecasts, radar and alerts', 'each app says what it is');
 ok(await V.p.evaluate(() => [...document.querySelectorAll('.apps img')].every((i) => i.complete && i.naturalWidth > 0)), 'with its icon');
