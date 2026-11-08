@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {plan,compose,progression,recordedWorkout,riderModel,assessPrescription,dayKey,workoutFromId} from '../../../fitness/rhythm2.js';
+import {plan,compose,progression,recordedWorkout,riderModel,assessPrescription,dayKey,workoutFromId,recoveryState} from '../../../fitness/rhythm2.js';
 import {createCoach} from '../../../fitness/rhythm2-client.js';
 import {measure,flatten,DAY,addDays} from '../../../fitness/workouts.js';
 const today=new Date(2026,10,9).getTime(),prefs={days:[0,60,60,60,0,150,90],level:'some',mode:'build',objective:'balanced',at:today};
@@ -10,7 +10,7 @@ test('sessions exactly fit the slot, keep recoveries between efforts, and round-
 });
 test('progression needs two independent controlled reviews at the same dose; difficulties, uncertainty and interruptions differ',()=>{
  assert.equal(progression([record(7)],'threshold').action,'hold');
- const progress=progression([record(14),record(7)],'threshold');assert.equal(progress.action,'progress');const w=compose('threshold',60,{progress});assert.equal(w.dose.intensity,dose.intensity);assert.equal(w.dose.reps,dose.reps);assert.equal(w.dose.work,dose.work+60);
+ const progress=progression([record(14),record(7)],'threshold');assert.equal(progress.action,'progress');const w=compose('threshold',60,{progress});assert.equal(w.dose.intensity,dose.intensity);assert.equal(w.dose.reps,dose.reps);assert.equal(w.dose.work,dose.work+30);
  assert.equal(progression([record(7),record(7)],'threshold').action,'hold');
  assert.equal(progression([record(7,{completion:'completed',effort:9,reason:'none'})],'threshold').action,'reduce');
  assert.equal(progression([record(7,{completion:'reduced',effort:9,reason:'traffic'})],'threshold').action,'start');
@@ -67,4 +67,64 @@ test('lazy coach deduplicates imports and rejects a controller loaded after an a
  assert.equal(imports,0);const pending=coach.load();assert.equal(coach.load(),pending);await Promise.resolve();assert.equal(imports,1);
  owner='bo';coach.reset();finish(client);await assert.rejects(pending,/account changed/);assert.equal(loads,0);assert.equal(coach.ready(),false);
  const next=coach.load();await Promise.resolve();finish(client);await next;assert.equal(loads,1);assert.equal(coach.ready(),true);
+});
+
+test('VO2 reviews use session context, and stale, future or different-FTP evidence cannot unlock progression',()=>{
+ const vo2=compose('vo2',60),r=(days,effort=8,extra={})=>record(days,{completion:'completed',effort,reason:'none'},{workout:vo2,...extra});
+ assert.equal(progression([r(14),r(7)],'vo2',200,today).action,'progress');
+ const next=compose('vo2',60,{progress:progression([r(14),r(7)],'vo2',200,today)});assert.equal(next.dose.work,195);assert.equal(next.dose.reps,vo2.dose.reps);assert.equal(next.dose.intensity,vo2.dose.intensity);assert.match(next.name,/3:15 min/);
+ assert.equal(progression([r(7,9)],'vo2',200,today).action,'hold');assert.equal(progression([r(7,10)],'vo2',200,today).action,'reduce');
+ assert.equal(progression([r(55),r(48)],'vo2',200,today).action,'start');assert.equal(progression([r(-1),r(-2)],'vo2',200,today).action,'start');
+ assert.equal(progression([r(14,7,{ftp:250}),r(7,7)],'vo2',200,today).action,'hold');
+ const previous=r(2,6,{created:1}),older=r(14,10,{created:9999999999999});assert.equal(progression([previous,older],'vo2',200,today).action,'hold','review insertion order cannot override the most recent ride');
+});
+
+test('new interval doses have work ceilings while old ids and captured prescriptions round-trip unchanged',()=>{
+ for(const [family,ceiling]of [['threshold',2400],['vo2',1200],['sprint',120],['durable',1800]]){
+  let w=compose(family,180);for(let i=0;i<100;i++){w=compose(family,180,{progress:{action:'progress',dose:w.dose}});assert.ok(w.dose.reps*w.dose.work<=ceiling);assert.equal(measure(w).secs,10800);assert.deepEqual(workoutFromId(w.id).steps,w.steps);}
+  assert.equal(progression([record(7,undefined,{workout:w})],family,200,today).action,'hold');
+ }
+ const legacy=workoutFromId('r2:threshold:120:3:1200:240:950');assert.equal(legacy.dose.work,1200);assert.equal(legacy.workSecs,3600);assert.equal(legacy.id,'r2:threshold:120:3:1200:240:950');
+ const r=record(7,undefined,{workout:legacy});assert.equal(progression([r],'threshold',200,today).action,'hold');assert.deepEqual(recordedWorkout(r).steps,legacy.steps);
+ const short=compose('threshold',35),repeat=compose('threshold',35,{progress:{action:'progress',dose:short.dose}});assert.deepEqual(repeat.dose,short.dose);assert.equal(measure(repeat).secs,2100);assert.match(repeat.about,/longer time slot/);
+});
+
+test('recovery combines trends, sleep and check-in instead of treating one outlier as a failed recovery',()=>{
+ const well=Object.fromEntries(Array.from({length:38},(_,i)=>[addDays(today,-i),{hrv:60,rhr:50,sleep:8*3600}]));
+ well[today]={hrv:25,hrv_lo:45,hrv_hi:75,rhr:50,sleep:8*3600};
+ assert.equal(recoveryState({well,today}).easy,false);assert.match(recoveryState({well,today}).why,/One unusual reading/);
+ const variable=Object.fromEntries(Array.from({length:38},(_,i)=>[addDays(today,-i),{hrv:i<7?59:i%2?58:62,rhr:50,sleep:8*3600}]));variable[today].hrv=20;
+ assert.equal(recoveryState({well:variable,today}).easy,false,'one outlier cannot turn normal baseline variation into a persistent low trend');
+ well[today].rhr=58;assert.equal(recoveryState({well,today}).easy,true);
+ well[today].rhr=50;for(let i=0;i<7;i++)well[addDays(today,-i)].hrv=25;assert.equal(recoveryState({well,today}).easy,true);
+ assert.equal(recoveryState({today}).easy,false);assert.equal(recoveryState({today}).rest,false);
+ assert.equal(recoveryState({today,feel:{[today]:{sleep:0,legs:0,mood:1}}}).rest,true);
+ for(let i=0;i<38;i++)well[addDays(today,-i)].hrv=60;for(let i=0;i<3;i++)well[addDays(today,-i)].sleep=6*3600;
+ assert.equal(recoveryState({well,today}).easy,true,'repeated short sleep matters even with normal HRV');
+});
+
+test('repeated fatigue reviews prompt an easier period and expire without rewriting fitness or counting traffic',()=>{
+ const fatigue={completion:'completed',effort:8,reason:'fatigue'},records=[record(3,fatigue),record(1,fatigue)];
+ const r=recoveryState({records,today});assert.equal(r.easy,true);assert.equal(r.until,addDays(today,6));
+ assert.equal(recoveryState({records,today:addDays(today,7)}).easy,false);
+ assert.equal(recoveryState({records:[record(1,fatigue),record(1,fatigue)],today}).easy,false);
+ assert.equal(recoveryState({records:[record(3,{...fatigue,reason:'traffic'}),record(1,fatigue)],today}).easy,false);
+ const p=plan({prefs:{...prefs,days:[60,60,60,60,60,90,90]},records,today,ftp:250});assert.equal(p.ftpSeen,null);assert.ok(p.days.filter(d=>d.date>=today&&d.date<r.until).every(d=>!d.hard));
+});
+
+const steadyHistory=()=>Array.from({length:24},(_,i)=>({id:'steady'+i,start:addDays(today,-(i*2+1)),sport:'ride',sum:{moving:7200,secs:7200,tss:70,kind:'power',iF:.6,zones:[0,7200,0,0,0,0,0]}}));
+test('focused sessions respect rolling seven-day limits across Monday, including unplanned rides',()=>{
+ const hardDays=[addDays(today,-4),addDays(today,-2)],acts=[...steadyHistory(),...hardDays.map(start=>({start,sport:'ride',sum:{moving:3600,tss:55,kind:'power',iF:.8,zones:[600,2400,0,0,600,0,0]}}))];
+ const p=plan({prefs:{...prefs,level:'regular',days:[60,60,60,60,60,120,90]},acts,today,ftp:250});const future=p.days.filter(d=>d.date>=today);
+ assert.equal(p.today.hard,false);assert.ok(future.some(d=>d.hard),'the guard must still allow later focused work');
+ const dates=[...new Set([...hardDays,...future.filter(d=>d.hard).map(d=>d.date)])];for(const d of future)assert.ok(dates.filter(x=>x>=addDays(d.date,-6)&&x<=d.date).length<=2);
+});
+test('planned interval minutes stay a minority and workload grows only with recent controlled feedback',()=>{
+ const acts=steadyHistory(),settings={...prefs,level:'regular',days:[60,60,60,60,60,120,90]},base=plan({prefs:settings,acts,today,ftp:200});
+ const focused=base.days.filter(d=>d.date>=today&&d.hard);assert.ok(focused.length>0);
+ for(let week=0;week<2;week++){const work=focused.filter(d=>d.date>=addDays(today,week*7)&&d.date<addDays(today,(week+1)*7)).reduce((n,d)=>n+base.workouts[d.id].workSecs/60,0);assert.ok(work<=base.weekly.workMinutes+1);}
+ const hold=plan({prefs:{...settings,mode:'hold'},acts,today,ftp:200});assert.equal(base.weekly.minutes,hold.weekly.minutes);
+ const controlled=plan({prefs:settings,acts,records:[record(12),record(8)],today,ftp:200});assert.ok(controlled.weekly.minutes>base.weekly.minutes);
+ const stale=plan({prefs:settings,acts,records:[record(55),record(48)],today,ftp:200});assert.equal(stale.weekly.minutes,base.weekly.minutes);
+ const changedFtp=plan({prefs:settings,acts,records:[record(12,undefined,{ftp:250}),record(8,undefined,{ftp:250})],today,ftp:200});assert.equal(changedFtp.weekly.minutes,base.weekly.minutes);
 });
