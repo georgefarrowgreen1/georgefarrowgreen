@@ -411,7 +411,7 @@ function planTop(x) {
     else if (m.market?.shut?.length) lines.push(`${andList(m.market.shut)} shut today.`);
   }
   if (!g.acts.some((a) => ["done", "offered", "said", "taken"].includes(a.state))) lines.push("Nothing needed moving.");
-  if (w && rain !== undefined) stats.push({ label: "Rain", value: !rain ? "Dry" : rain.now ? "Now" : `From ${hm(rain.at)}` });
+  if (w && rain !== undefined) stats.push({ label: rain ? "Rain" : "Weather", value: !rain ? "Dry" : rain.now ? "Now" : `From ${hm(rain.at)}` });
   if (R) stats.push({ label: "Ride", value: hm(R.start) });
   if (call) stats.push({ label: cap1(callOf(call)), value: hm(call.start) });
   const send = R ? x.rideCard(x.next) : fc?.share ? { share: fc.share, sendCard: fc.sendCard ?? null } : w ? { share: w.share, sendCard: w.sendCard ?? null } : {};
@@ -442,7 +442,7 @@ function weatherTop(x, at) {
     if (n) lines.push(`Next: ${n.title} at ${hm(n.at)}.`);
   }
   if (w.warning?.said) lines.push(w.warning.said);
-  const stats = [{ label: "Now", value: temp }, { label: "Rain", value: !rain ? "Dry" : rain.now ? "Now" : `From ${hm(rain.at)}` }];
+  const stats = [{ label: "Now", value: temp }, { label: rain ? "Rain" : "Weather", value: !rain ? "Dry" : rain.now ? "Now" : `From ${hm(rain.at)}` }];
   if (rain && Number.isFinite(rain.peak)) stats.push({ label: "Heaviest", value: hm(rain.peak) });
   return { kind: "weather", chip: `${w.place?.name || "Here"} · now`, title: `${temp}${temp ? " · " : ""}${head}`, lines, stats, buttons: [{ do: "open", label: "Radar", href: "/weather/#radar" }], ...sent({ share: w.share, sendCard: w.sendCard }) };
 }
