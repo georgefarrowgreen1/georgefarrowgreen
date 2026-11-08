@@ -522,10 +522,6 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .status:empty { margin: 0; min-height: 0; }
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
-/* Send to a friend, under the words (app.js sendPill) */
-.send-btn { margin-top: 12px; display: inline-flex; align-items: center; gap: 7px; }
-.send-btn:not([hidden]) { animation: rise 0.4s var(--glide) backwards; }
-@media (prefers-reduced-motion: reduce) { .send-btn:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */
 .retry:not([hidden]) { animation: rise 0.4s var(--glide) backwards; }
 main[data-empty] ~ .foot .foot-refresh { display: none; }

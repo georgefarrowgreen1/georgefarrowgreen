@@ -8,7 +8,7 @@ import { weatherIcon, moonIcon, glyph } from "./icons.js";
 import { timeChart, rangeChart, hush } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
-import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS } from "./skill.js";
+import { applyTuning, steady, refine, daysSaid, saidBefore } from "./skill.js";
 import { rainAt } from "./radarrain.js";
 import { blend } from "./rainmap.js";
 import { oneRain } from "./agree.js";
@@ -1161,7 +1161,7 @@ const defaults = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa",
 // the page's cards, in their usual order (index.html), each with its element and its name in Settings (Arrange your
 // page: settings.js); the warnings aren't one of them, always first, under the temperature
 const CARDS = [["nowcast", "Next 4 hours"], ["solar", "Solar"], ["hourly", "Next 48 hours"], ["right-now", "Right now"], ["daily", "16-day forecast"], ["radar", "Rain radar"],
-  ["insights-card", "Highlights"], ["windows", "Best times"], ["accuracy", "Forecast accuracy"], ["climate", "This time of year"]];
+  ["insights-card", "Highlights"], ["windows", "Best times"], ["climate", "This time of year"]];
 // as you've arranged them: { order (every card, any the app has gained since put where it usually goes), off }
 function layoutOf(v) {
   const ids = CARDS.map((c) => c[0]), o = v && typeof v === "object" ? v : {};
@@ -1724,7 +1724,7 @@ function drawWhole(pv, q) {
   R = pv; hush(true);
   try {
     showMode(S.modeChosen ? keep.mode : viewFor(wx, now));
-    for (const part of [() => nowcast(wx, now, { fresh: true }), () => cards(wx, now, true), () => hourly(wx, now), () => daily(wx, now), () => windows(wx, now), () => accuracy(wx), () => climate(wx, now), () => tiles(wx, now), fits])
+    for (const part of [() => nowcast(wx, now, { fresh: true }), () => cards(wx, now, true), () => hourly(wx, now), () => daily(wx, now), () => windows(wx, now), () => climate(wx, now), () => tiles(wx, now), fits])
       try { part(); } catch (e) { console.error(e); }
   } finally { R = null; hush(false); Object.assign(S, keep); insWidth = w0; }
   said.remove();
@@ -2172,7 +2172,6 @@ function render() {
   const rest = () => {
     part(daily, wx, now);
     part(windows, wx, now);
-    part(accuracy, wx);
     part(climate, wx, now);
     part(tiles, wx, now);
     balance(`${key}|${!!wx.climate}|${!!wx.skill?.station}`);
@@ -2370,36 +2369,8 @@ function hero(wx, now, fresh = false) {
   // (and written, so read out, only when what it says has changed: not every minute, nor as each part comes in)
   const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""], brief = $("brief");
   if (brief.dataset.said !== said) { const had = !!brief.dataset.said; brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; if (had && shown) rise(brief); }
-  sendPill();
   keepHero(wx);
 }
-// ---- Send to a friend: the weather here, as a card, to Chat (send.js), which shows who it's for and keeps the card up
-// to date in the letter. Under the words, once there's a forecast to send (not on a place's page drawn beside: R) ----
-// (its code fetched as the pill's first put up, not as the page opens: in hand by the time it's tapped)
-let sendJs = null;
-const sendMod = () => (sendJs ||= import("./send.js").catch((e) => { sendJs = null; throw e; }));
-function sendPill() {
-  if (R || $("send-btn")) return;
-  sendMod().catch(() => {});
-  $("brief").after(h("button", { class: "pill-btn send-btn", id: "send-btn", type: "button", onclick: sendToFriend }, h("span", { svg: glyph("share", 17) }), "Send to a friend"));
-}
-async function sendToFriend() {
-  const wx = S.wx;
-  if (!wx) return;
-  const now = nowWall(wx.place.offset), said = $("brief").dataset.said || I.headline(wx, now, S.f);
-  let card = null, M = null;
-  try { M = await sendMod(); card = M.weatherSendCard(wx, now, S.f, { activities: S.settings.activities, name: place()?.name || wx.place.name, headline: said }); } catch (e) { console.error(e); }
-  const words = card?.say || said, way = M?.sendWay(words, card, { hub: IFL.hub });
-  // (at InFlite's hub, Chat's own sheet over the page, sending without leaving it, else Chats' own and back: IFL.hub;
-  // elsewhere, to Chat beside Weather, the words first and the card after them; else the words, by the phone's own
-  // sharing, or copied)
-  if (way?.hub) { IFL.hub.send(way.words, way.packed).catch(() => toast("Couldn’t open Chats just now. Try again.")); return; }
-  if (way?.url) { location.assign(way.url); return; }
-  if (IFL.hub.on) { IFL.hub.send(words, null).catch(() => {}); return; }
-  if (navigator.share) { navigator.share({ text: words }).catch(() => {}); return; }
-  navigator.clipboard?.writeText(words).then(() => toast("Copied, to paste in Chat"), () => toast(words));
-}
-
 // what the top of the page shows, kept for boot.js to put up the moment the page is next opened (written when it
 // changes, and every ten minutes or so meanwhile: how long ago it was shown is what boot.js goes by)
 let heroKept = "", heroAt = 0;
@@ -3224,38 +3195,6 @@ function tiles(wx, now) {
 
 
 /* ---------- one day, in full ---------- */
-// how close each model has been here (weather/skill.js, from the nearest airport's reports)
-function accuracy(wx) {
-  const f = S.f, box = $("accuracy-body"), k = wx.skill, note = (t) => h("p", { class: "small muted" }, t);
-  // (only where there's a station to check against: nothing to say otherwise)
-  $("accuracy").hidden = !k?.station;
-  if (!k?.station) { box.replaceChildren(); return; }
-  const st = k.station;
-  if (!k.skill) { box.replaceChildren(note(k.obsDays >= MIN_DAYS ? `Not enough past forecasts to compare with ${st.name}'s reports yet.` : `Recording ${st.name}'s reports: ${k.obsDays} of ${MIN_DAYS} days.`)); return; }
-  const s = k.skill;
-  box.replaceChildren(...[
-    h("p", { class: "small muted" }, `${st.name} (${f.dist(st.km * 1000)}) · last ${s.days} days`),
-    h("table", { class: "models acc" }, h("caption", { class: "sr-only" }, "Each model's average error and lean, next-day forecasts"),
-      h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
-      ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Best") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
-        h("td", {}, m.loMae != null ? `±${f.deltaFine(m.loMae)}` : "–"), h("td", {}, Math.abs(m.hiBias) >= 0.5 ? `${f.deltaFine(m.hiBias)} ${m.hiBias > 0 ? "warm" : "cold"}` : "–")))),
-    s.days < TUNE_DAYS ? h("p", { class: "chart-note" }, `Tuning starts at ${TUNE_DAYS} days.`) : null,
-    tunedToo(k.local) ? h("p", { class: "chart-note" }, `Also tuned here: ${tunedToo(k.local)}.`) : null].filter(Boolean));
-}
-
-// what else the airport's reports have the hours tuned for (skill.js localSkill), in words: "nights 1.2° cooler, wind
-// 15% stronger" (only what makes a difference worth saying)
-function tunedToo(l) {
-  if (!l || S.settings.tune === false) return "";
-  const f = S.f, out = [], avg = (ks) => ks.reduce((a, k) => a + l.temp[k], 0) / ks.length;
-  for (const [name, ks] of [["nights", [7, 0, 1]], ["mornings", [2, 3]], ["afternoons", [4, 5]], ["evenings", [6]]]) {
-    const e = avg(ks);
-    if (Math.abs(e) >= 0.5) out.push(`${name} ${f.deltaFine(e)} ${e > 0 ? "cooler" : "warmer"}`);
-  }
-  if (Math.abs(l.dew) >= 0.5) out.push(`dew point ${f.deltaFine(l.dew)} ${l.dew > 0 ? "lower" : "higher"}`);
-  for (const [name, r] of [["wind", l.wind], ["gusts", l.gust]]) if (Math.abs(r - 1) >= 0.08) out.push(`${name} ${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "stronger" : "lighter"}`);
-  return out.join(", ");
-}
 // Today, Tomorrow and Yesterday mid-sentence: "Full Moon tomorrow."
 const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 
@@ -3717,8 +3656,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.92";
-const NEWS = "Compact credits, with Powered by InFlite and full attributions a tap away";
+const BUILD = "1.93";
+const NEWS = "A simpler forecast without the sharing button or accuracy pane";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

@@ -200,7 +200,6 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   if (!settle) return { ctx, p, res };
   // everything in: the last to arrive is the thirty years of climate
   await p.waitForFunction(() => /warmer than/i.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
-  await p.waitForSelector('#accuracy-body table', { timeout: 20000 });
   await p.waitForTimeout(300);
   return { ctx, p, res };
 }
@@ -361,7 +360,7 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
 // highlights and the rest; each tile drawn as well as said, and each opening to its hours in a sheet of its own (tapped
 // where they are: not scrolled to, as the radar starts once it's scrolled to)
 {
-  const order = await p.evaluate(() => { const ids = ['alerts', 'nowcast', 'hourly', 'right-now', 'daily', 'radar', 'insights-card', 'windows', 'accuracy', 'climate'], els = ids.map((x) => document.getElementById(x));
+  const order = await p.evaluate(() => { const ids = ['alerts', 'nowcast', 'hourly', 'right-now', 'daily', 'radar', 'insights-card', 'windows', 'climate'], els = ids.map((x) => document.getElementById(x));
     return { inOrder: els.every((e, i) => !i || !!(els[i - 1].compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING)), title: document.getElementById('insights-title').textContent }; });
   ok(order.inOrder && order.title === 'Highlights', 'the page in order: warnings, the next 4 hours, the next 48, right now, the 16 days, the radar, then the highlights and the rest', JSON.stringify(order));
   const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'rain .rbars rect', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
@@ -452,16 +451,7 @@ ok(title1 !== title0 && title2 !== title1 && (await p.evaluate(() => document.ge
   ok(dayShift === 32 && (await p.textContent('#day-title')) === title3 && (await p.evaluate(() => getComputedStyle(document.getElementById('day-body')).translate)) === 'none', 'the day follows the finger, and from a short swipe springs back', `${dayShift} px for 32 px`);
 }
 await p.keyboard.press('Escape');
-// the forecast's track record here, and tuned by it
-const acc = await p.locator('#accuracy-body tr').allTextContents();
-ok(acc.length === 7 && /^ECMWFBest±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
-ok(/^London City Airport \(\d+(\.\d)? mi\) · last \d+ days/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is (in miles, as the wind\'s in mph)', (await p.textContent('#accuracy-body')).slice(0, 50));
-ok(!/null/.test(await p.textContent('#accuracy-body')), 'with nothing stray under it', (await p.textContent('#accuracy-body')).slice(-60));
-{
-  // (the forecast shown had been a degree warm through the night, a degree too humid, and the wind too light)
-  const also = await p.textContent('#accuracy-body .chart-note:last-child').catch(() => '');
-  ok(/^Also tuned here: nights 0\.\d° cooler, dew point 0\.\d° lower, wind \d+% stronger\.$/.test(also), 'and what else the airport\'s reports have the hours tuned for', also);
-}
+ok(await p.locator('#accuracy, #accuracy-body').count() === 0, 'no forecast accuracy pane');
 // the design carries it, not notes: no captions under the charts, the next 4 hours on a light, moderate and heavy scale
 ok(!(await p.locator('#nowcast .chart-note, #hourly .chart-note, #daily .chart-note').count()), 'no notes under the charts');
 const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
@@ -472,7 +462,7 @@ ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of l
   ok(clear >= 4, 'and those words clear of the columns', `${clear} px apart`);
 }
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
-ok(!cards.some((t) => /^Most accurate here/.test(t)) && /^ECMWFBest/.test(acc[1]), 'which model to trust: in the accuracy card, not again in the highlights', `${acc[1]} | ${cards.join(' · ')}`);
+ok(!cards.some((t) => /^Most accurate here/.test(t)), 'no model accuracy pane or duplicate model ranking in Highlights');
 // every source in one window, from one line at the foot of the page
 ok(!(await p.locator('.foot a').count()) && /^Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, to the credits', await p.textContent('.foot-note'));
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
@@ -888,7 +878,7 @@ ok(closedFocus.on && !closedFocus.foot && closedFocus.pv, 'focus on its × again
   const { ctx: c7, p: p7 } = await open({}, { url: `${HOST}/?lat=55.95&lon=-3.19&name=Edinburgh`, settle: false });
   await p7.waitForSelector('.day-row', { timeout: 20000 });
   await p7.waitForTimeout(2500);
-  ok(await p7.evaluate(() => document.getElementById('accuracy').hidden) && await p7.isVisible('#climate'), 'no station near: no accuracy card (the rest as ever)');
+  ok(await p7.locator('#accuracy').count() === 0 && await p7.isVisible('#climate'), 'no station near: no accuracy card (the rest as ever)');
   await c7.close();
 }
 // the next two hours are always there: no rain anywhere on the radar and none expected, the latest radar held (and no

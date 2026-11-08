@@ -88,7 +88,7 @@ export const defaults = () => ({ temp: "c", wind: "mph", precip: "mm", pressure:
 // Now's cards, in their usual order, each with its name in Settings (Arrange Now); daily and radar are sections here,
 // kept in the list so their places and off-state survive (wxsettings.js doesn't list them)
 export const CARDS = [["nowcast", "Next 4 hours"], ["solar", "Solar"], ["hourly", "Next 48 hours"], ["right-now", "Right now"], ["daily", "16-day forecast"], ["radar", "Rain radar"],
-  ["insights-card", "Highlights"], ["windows", "Best times"], ["accuracy", "Forecast accuracy"], ["climate", "This time of year"]];
+  ["insights-card", "Highlights"], ["windows", "Best times"], ["climate", "This time of year"]];
 // as you've arranged them: { order (every card, any the app has gained since put where it usually goes), off }
 export function layoutOf(v) {
   const ids = CARDS.map((c) => c[0]), o = v && typeof v === "object" ? v : {};

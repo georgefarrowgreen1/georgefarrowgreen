@@ -40,7 +40,7 @@ mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c && extra ? '  — ' + extra : ''}`); if (!c) fails++; return !!c; };
 const note = (l) => console.log(`NOTE  ${l}`);
-const MAIN = new URL('../../', import.meta.url).pathname, IFL = new URL('../../../inflite/', import.meta.url).pathname;
+const MAIN = new URL('../../', import.meta.url).pathname, IFL = process.env.ROOF_IFL ? process.env.ROOF_IFL.replace(/\/?$/, '/') : new URL('../../../inflite/', import.meta.url).pathname;
 process.on('uncaughtException', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 process.on('unhandledRejection', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 
@@ -431,7 +431,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   else {
     ok(await until(() => visible(p, `${H.wxSec('now')} ${H.WX_HERO}`)), 'Now: the hero');
     ok(await until(() => visible(p, `${H.wxSec('now')} ${H.WX_ALERTS}`)), 'the warnings slot under it (London has one in force)');
-    ok(await until(() => visible(p, H.NOW_SEND)), 'Send in the hero');
+    ok(await p.locator(H.NOW_SEND).count() === 0, 'Now: no Send to a friend button');
     if (await visible(p, H.DETAIL_TILE)) {
       await p.locator(H.DETAIL_TILE).first().click();
       ok(await until(() => visible(p, `${H.DETAIL_SHEET}[open]`)), 'a Right now tile opens its detail sheet');

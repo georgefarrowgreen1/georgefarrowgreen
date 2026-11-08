@@ -90,9 +90,9 @@ async function takes(stored, patch, what) {
 
 // a device's wx:settings as app.js keeps it: glass tinted, daily and radar moved (radar off), a briefing, a key from
 // elsewhere (zzz) the module doesn't know
-const ORDER = ['radar', 'nowcast', 'solar', 'hourly', 'right-now', 'insights-card', 'windows', 'daily', 'accuracy', 'climate'];
+const ORDER = ['radar', 'nowcast', 'solar', 'hourly', 'right-now', 'insights-card', 'windows', 'daily', 'climate'];
 const BASE = load({
-  temp: 'c', wind: 'mph', glass: 'tinted', layout: { order: ORDER, off: ['radar', 'climate'] }, zzz: { kept: 1 },
+  temp: 'c', wind: 'mph', glass: 'tinted', layout: { order: [...ORDER, 'accuracy'], off: ['radar', 'climate'] }, zzz: { kept: 1 },
   notify: { places: [{ lat: 51.5, lon: -0.12, name: 'London', rain: true, warn: true }], brief: { lat: 51.5, lon: -0.12, name: 'London' }, briefAt: '07:15', endpoint: 'https://push.example/x', devId: 'd1', syncedAt: 5 },
 });
 const PLACES = [{ name: 'London', lat: 51.5072, lon: -0.1276 }, { name: 'My Location', lat: 53.48, lon: -2.24, gps: true }];

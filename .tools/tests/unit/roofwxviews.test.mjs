@@ -309,9 +309,9 @@ test("the credits: every provider, link, licence and the closing note of weather
 });
 
 test("Now: the cards in your order, those you've switched off left off, the 16 days and the radar never (they're sections)", () => {
-  assert.deepEqual(NOW.nowOrder(null), ["nowcast", "solar", "hourly", "right-now", "insights-card", "windows", "accuracy", "climate"]);
+  assert.deepEqual(NOW.nowOrder(null), ["nowcast", "solar", "hourly", "right-now", "insights-card", "windows", "climate"]);
   assert.deepEqual(NOW.nowOrder({ order: ["climate", "daily", "radar", "hourly", "nowcast", "solar", "right-now", "insights-card", "windows", "accuracy"], off: ["windows", "daily"] }),
-    ["climate", "hourly", "nowcast", "solar", "right-now", "insights-card", "accuracy"]);
+    ["climate", "hourly", "nowcast", "solar", "right-now", "insights-card"]);
   assert.deepEqual(NOW.nowOrder({ order: ["hourly"], off: [] }).slice(0, 2), ["hourly", "nowcast"], "a card the layout doesn't name yet still shows");
   assert.equal(NOW.agoOf(Date.now() - 20e3), "just now");
   assert.equal(NOW.agoOf(Date.now() - 5 * 60e3), "5 min ago");

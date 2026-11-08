@@ -5,8 +5,7 @@
 //   el: the section.wx-sec[data-sec=now] weather.js made; ctx = { S, core, fw, open, hint } (see weather.js).
 //   draw(): (re)draw from ctx.S; called when the section shows and on core events while it shows; cheap when nothing
 //   changed. hide(): its section or screen left (pause timers, observers). destroy(): unmount (remove what it added).
-// Hooks (frozen, .tools/tests/roofhooks.mjs; inside this section): the hero's Send, fw.sendButton()'s button
-//   ([data-act=send], FW) placed in .wx-hero; the hero's Retry .wx-hero [data-act=retry] while the forecast failed
+// Hooks (.tools/tests/roofhooks.mjs; inside this section): the hero's Retry .wx-hero [data-act=retry] while the forecast failed
 //   (S.error; → core.refresh()); the foot's Refresh [data-act=refresh]; Next 48 hours' metric ui.seg wrapped in (or
 //   being) [data-key=metric], values "temp" | "rain" | "wind"; each Right now tile's tappable element [data-detail=<kind>]
 //   (weather/detail.js's kinds: feels, wind, humidity, rain, pressure, visibility, uv, air, sun, moon, sea) → open.detail(kind).
@@ -18,15 +17,13 @@ import { timeChart, rangeChart, hush } from "../charts.js";
 import { climateOn, rankIn, yearsAgo } from "../climate.js";
 import { inForce, colourOf, titleOf, glyphOf, spanOf } from "../official.js";
 import { zonesSay, zonesSpell, zoneSaid, ZONE_COLOURS } from "../solar.js";
-import { weatherSendCard, packCard } from "../send.js";
 import { fetchSolar, store, cell } from "../data.js";
-import { MIN_DAYS, TUNE_DAYS } from "../skill.js";
 import { skyClass, skyOk, isNight, h, setVar, icon, glyphEl, wxCard, strip, chartHost, hourChart, tilesEl, COLOR, TILES } from "./wxui.js";
 import { listFor, slotOf } from "./wxwarn.js";
 
 // the cards Now draws, by layout id (app.js CARDS less "daily" and "radar", which are sections here)
-export const NOW_CARDS = ["nowcast", "solar", "hourly", "right-now", "insights-card", "windows", "accuracy", "climate"];
-const DEFAULT_ORDER = ["nowcast", "solar", "hourly", "right-now", "daily", "radar", "insights-card", "windows", "accuracy", "climate"];
+export const NOW_CARDS = ["nowcast", "solar", "hourly", "right-now", "insights-card", "windows", "climate"];
+const DEFAULT_ORDER = ["nowcast", "solar", "hourly", "right-now", "daily", "radar", "insights-card", "windows", "climate"];
 // the cards in your order, those you've switched off left off, daily and radar skipped
 export function nowOrder(layout) {
   const order = Array.isArray(layout?.order) && layout.order.length ? layout.order : DEFAULT_ORDER, off = new Set(Array.isArray(layout?.off) ? layout.off : []);
@@ -90,15 +87,15 @@ export function view(el, ctx) {
   // (the header's rule, weather.js titleOf: a place found by GPS by its own name, "My Location" only until it has one)
   const placeName = () => { const p = place(); return (p?.gps && p.name === "My Location" ? "My Location" : p?.name) || ctx.S.wx?.place?.name || ctx.hint?.place || ""; };
 
-  // ---- the hero, Today's card's markup: the sky, the place and its clock, the temperature, the words, Send ----
+  // ---- the hero, Today's card's markup: the sky, the place and its clock, the temperature and the words ----
   // (its parts kept where they are and changed in place: the clock's words each minute, the status line's words as they
-  // change, Send and Try Again kept unless what they do changes, so focus and a screen reader stay where they were)
+  // change, Try Again kept so focus and a screen reader stay where they were)
   const heroApp = h("span", { class: "tc-app" }), heroClock = h("span", { class: "tc-meta" });
   const heroHead = h("div", { class: "tc-head" }, heroApp);
   const statusEl = h("p", { class: "wx-status", role: "status" });
   const acts = h("div", { class: "tc-foot" });
   const retry = ui.btn("Try Again", { small: true, act: "retry", run: () => { asked = true; ctx.core.refresh(); } });
-  let heroBody = [], sendBtn = null, sendSig = null;
+  let heroBody = [];
   function drawHero(wx, now, f) {
     const S = ctx.S, hint = ctx.hint;
     const sky = wx ? skyClass(wx, now).slice(6) : skyOk(hint?.sky) ? hint.sky : "cloudy-day";
@@ -126,17 +123,7 @@ export function view(el, ctx) {
     }
     if (statusEl.textContent !== st.text) statusEl.textContent = st.text;
     statusEl.classList.toggle("warn", st.warn);
-    // Send: made again only when what it would send changes
-    let card = null;
-    if (wx && c) card = weatherSendCard(wx, now, f, { activities: S.settings?.activities, name: placeName() || wx.place.name, headline: said });
-    const words = card ? card.say || said : null, packed = card ? packCard(card) : null, ss = words ? JSON.stringify([words, packed]) : null;
-    if (ss !== sendSig) {
-      sendSig = ss;
-      sendBtn?.remove();
-      sendBtn = ss ? fw.sendButton({ words, packed, what: "the weather" }) || null : null;
-      if (sendBtn && !sendBtn.dataset.act) sendBtn.dataset.act = "send";
-    }
-    arrange(acts, [st.retry ? retry : null, sendBtn]);
+    arrange(acts, [st.retry ? retry : null]);
     arrange(hero, [heroHead, ...heroBody, statusEl, acts.childNodes.length ? acts : null]);
     hero.setAttribute("aria-busy", String(!wx && !failed));
   }
@@ -276,20 +263,6 @@ export function view(el, ctx) {
       h("span", {}, h("b", {}, good.length ? "Not looking good: " : "Nothing looking good today or tomorrow: "), poor.map((w) => w.name).join(", ")), h("span", { class: "wx-chev", svg: glyph("chevron", 14) })) : null;
     return wxCard(ctx, { id: "windows", title: "Best times", g: "star" }, grid, line);
   }
-  function accuracyCard(wx, f) {
-    const k = wx.skill;
-    if (!k?.station) return null;
-    const st = k.skill ? null : k.station, note = (t) => h("p", { class: "wx-note" }, t);
-    if (st) return wxCard(ctx, { id: "accuracy", title: "Forecast accuracy here", g: "target" }, note(k.obsDays >= MIN_DAYS ? `Not enough past forecasts to compare with ${st.name}'s reports yet.` : `Recording ${st.name}'s reports: ${k.obsDays} of ${MIN_DAYS} days.`));
-    const s = k.skill;
-    return wxCard(ctx, { id: "accuracy", title: "Forecast accuracy here", g: "target" },
-      note(`${k.station.name} (${f.dist(k.station.km * 1000)}) · last ${s.days} days`),
-      h("table", { class: "wx-models acc" }, h("caption", { class: "vh" }, "Each model's average error and lean, next-day forecasts"),
-        h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
-        ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Best") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
-          h("td", {}, m.loMae != null ? `±${f.deltaFine(m.loMae)}` : "–"), h("td", {}, Math.abs(m.hiBias) >= 0.5 ? `${f.deltaFine(m.hiBias)} ${m.hiBias > 0 ? "warm" : "cold"}` : "–")))),
-      s.days < TUNE_DAYS ? note(`Tuning starts at ${TUNE_DAYS} days.`) : null);
-  }
   function climateCard(wx, now, f) {
     const t = f.units.temp === "f" ? (c) => c * 9 / 5 + 32 : (c) => c;
     const head = { id: "climate", title: "This time of year", g: "chart" };
@@ -349,7 +322,7 @@ export function view(el, ctx) {
       let c = null;
       try {
         c = k === "nowcast" ? nowcastCard(wx, now, f) : k === "solar" ? solarCard(wx, now, f) : k === "hourly" ? hourlyCard(wx, now, f) : k === "right-now" ? rightNowCard(wx, now, f)
-          : k === "insights-card" ? insightsCard(wx, now, f) : k === "windows" ? windowsCard(wx, now, f) : k === "accuracy" ? accuracyCard(wx, f) : k === "climate" ? climateCard(wx, now, f) : null;
+          : k === "insights-card" ? insightsCard(wx, now, f) : k === "windows" ? windowsCard(wx, now, f) : k === "climate" ? climateCard(wx, now, f) : null;
       } catch (e) { console.error(e); }
       if (c) list.push(c);
     }
