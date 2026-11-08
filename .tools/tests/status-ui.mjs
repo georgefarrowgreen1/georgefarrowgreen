@@ -14,7 +14,7 @@ const services = ['today','chat','weather','fitness','markets','mail','auth','ac
 const fixture = {at:now,since:dayKeys[0],dayKeys,services,
   jobs:['Chat notifications','Weather alerts','Garmin sync','Market alerts','Morning notification'].map((name,i)=>({id:['notify','wxtick','garmin','mkttick','morning'][i],name,s:'ok',at:now,ms:400})),
   deps:['Weather API','Market API','Garmin API','Email API'].map((name,i)=>({id:['dep-weather','dep-prices','dep-garmin','dep-email'][i],name,s:'ok',ms:i===3?null:87})),
-  incidents:[{id:'resolved-test',title:"Markets: TypeError: A.atHub is not a function. (In 'A.atHub(IFL.hub)'",svcs:['weather'],started:now-3600e3,ended:now-1800e3,updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
+  incidents:[{id:'resolved-test',title:"Markets: TypeError: A.atHub is not a function. (In 'A.atHub(IFL.hub)'",svcs:['weather'],started:Date.UTC(2026,10,5,23,51),ended:Date.UTC(2026,10,6,0,10),updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
 fixture.incidents.push({...structuredClone(fixture.incidents[0]),id:'resolved-mail',title:'Mail not answering',svcs:['mail'],notOutage:true});
 fixture.bugs=['fixed','new','known','back'].map((state,i)=>({code:`IF-T-TEST${i}`,state,app:i===0?'server':'markets',title:i===0?'Today: building your day':null,first:now-864e5,last:now-3600e3,fixedAt:state==='fixed'||state==='back'?now-1800e3:null,n:i+1}));
 fixture.deps.push(
@@ -30,7 +30,7 @@ try {
 for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])for(const problem of [false,true]){
  const data=structuredClone(fixture);
  if(problem){data.jobs[1].at=now-30*60e3;data.deps[1].s='warn';data.deps[2].s='down';data.deps[2].why='The provider is not answering right now.';}
- const page=await browser.newPage({viewport:{width,height:1000},colorScheme});
+ const page=await browser.newPage({viewport:{width,height:1000},colorScheme,reducedMotion:'reduce'});
  await page.clock.install();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  let requests=0;
@@ -55,6 +55,18 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.match(await page.locator('#verdict h2').innerText(),problem?/isn’t answering/:/Everything’s working/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow at ${width}`);
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),true);
+ assert.match(await page.locator('#incs .inc .sub').first().innerText(),/5 Nov.*6 Nov/);
+ const support=await page.locator('.support-services .group').evaluateAll(xs=>xs.map(x=>({left:x.getBoundingClientRect().left,top:x.getBoundingClientRect().top})));
+ assert.equal(support.length,2);
+ assert.equal(support[0].left===support[1].left,width<760,'supporting groups respond to viewport width');
+ await page.locator('#operations').evaluate(x=>x.scrollIntoView({block:'start'}));
+ await page.evaluate(()=>dispatchEvent(new Event('scroll')));
+ await page.clock.runFor(300);
+ assert.equal(await page.locator('#mini').evaluate(x=>x.inert),false);
+ assert.equal(await page.locator('#mini .jump a:visible').count(),4);
+ if(out)await page.locator('#mini').screenshot({path:`${out}/nav-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`});
+ assert.equal(await page.locator('#mini .jump a[href="#operations"]').getAttribute('aria-current'),'location');
+
  const incidentLayout=await page.locator('#incs .inc').evaluateAll(rows=>rows.map(row=>{
   const heading=row.querySelector('h3').getBoundingClientRect(), tags=row.querySelector('.tags').getBoundingClientRect();
   return {below:tags.top>=heading.bottom,left:Math.abs(tags.left-heading.left)<1,separator:getComputedStyle(row).borderTopWidth};
@@ -82,8 +94,21 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.locator('.app[data-id="today"] .days button').count(),7);
  await page.locator('[data-toggle="chat"]').click();
  assert.equal(await page.locator('[data-toggle="chat"]').getAttribute('aria-expanded'),'true');
- await page.locator('.days[data-svc="chat"] button').last().click();
+ const history=page.locator('.days[data-svc="chat"]');
+ assert.equal(await history.locator('button[tabindex="0"]').count(),1);
+ await history.locator('button').last().focus();
+ await page.keyboard.press('ArrowLeft');
+ assert.equal(await page.evaluate(()=>document.activeElement.dataset.k),await history.locator('button').nth(5).getAttribute('data-k'));
+ await page.keyboard.press('Home');
+ assert.equal(await page.evaluate(()=>document.activeElement.dataset.k),await history.locator('button').first().getAttribute('data-k'));
+ await page.keyboard.press('End');
+ await page.keyboard.press('Enter');
  await page.waitForSelector('#hours .q');
+ const oldDay=await history.locator('button').last().elementHandle();
+ const refreshedUnderSheet=page.waitForResponse(response=>response.url().endsWith('/api/status'));
+ await page.clock.fastForward(60_000);await refreshedUnderSheet;
+ await page.waitForFunction(el=>!el.isConnected,oldDay);
+
  assert.equal(await page.locator('.wrap').evaluate(x=>x.inert),true);
  await page.keyboard.press('Shift+Tab');
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.close),'1');
@@ -91,8 +116,11 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.step),'-1');
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.wrap').evaluate(x=>x.inert),false);
+ assert.equal(await page.evaluate(()=>document.activeElement.dataset.k),await history.locator('button').last().getAttribute('data-k'));
  assert.equal(await page.locator('#subBtn, a[href="#updates"]').count(),0);
  assert(!await page.locator('body').innerText().then(t=>t.includes('Checked every 5 minutes from Cloudflare')));
+ await page.evaluate(()=>{location.hash='%E0%A4%A';});
+ await page.evaluate(()=>dispatchEvent(new HashChangeEvent('hashchange')));
  await page.evaluate(()=>{location.hash='updates';});
  assert.equal(await page.locator('#sheet.on').count(),0);
  await page.locator('#lookIn').fill('if t test0');await page.locator('#lookForm button').click();
@@ -104,6 +132,7 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  await page.locator('.page-nav a[href="#incidents"]').click();
  assert.equal(await page.evaluate(()=>location.hash),'#incidents');
  await page.evaluate(()=>window.scrollTo(0,0));
+ if(out)await page.locator('.support-services').screenshot({path:`${out}/support-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`});
  if(out)await page.screenshot({path:`${out}/status-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`,fullPage:true});
  assert.deepEqual(errors,[]);
  console.log(`PASS ${width}px ${colorScheme} ${problem?'issue':'healthy'}: layout, refresh, history, keyboard, sheets, lookup and navigation`);

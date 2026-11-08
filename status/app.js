@@ -115,6 +115,7 @@
     const selector = report && active.tagName === "SUMMARY" ? `[data-report="${CSS.escape(report)}"] summary` : incident && active.tagName === "SUMMARY" ? `[data-incident="${CSS.escape(incident)}"] summary` : active?.dataset.copy ? `[data-copy="${CSS.escape(active.dataset.copy)}"]` : active?.dataset.copycode ? `[data-copycode="${CSS.escape(active.dataset.copycode)}"]` : null;
     verdict(); liveBlock(); groups(); incidents(); codes();
     if (selector && !active.isConnected) document.querySelector(selector)?.focus({ preventScroll: true });
+    trackSection();
   }
   function verdict() {
     const d = data, v = $("verdict"), apps = d.services.filter((s) => s.group === "apps");
@@ -160,16 +161,19 @@
     const focusSelector = focused?.dataset.toggle ? `[data-toggle="${CSS.escape(focused.dataset.toggle)}"]` : focused?.dataset.period != null ? `[data-period="${focused.dataset.period}"]` : focused?.dataset.k ? `.days[data-svc="${CSS.escape(focused.parentElement.dataset.svc)}"] [data-k="${focused.dataset.k}"]` : null;
     const d = data, box = $("groups"), n = span(), keys = d.dayKeys.slice(-n);
     let html = "";
+    const supporting = [];
     GROUPS.forEach(([g, title], gi) => {
       const items = d.services.filter((s) => s.group === g);
       if (!items.length) return;
       const bad = items.filter((s) => stateOf(s)[0] !== "ok").length;
-      html += `<section class="group"${gi === 0 ? ' id="apps"' : ""}><div class="gh"><h2>${esc(title)}</h2>${gi === 0
+      const section = `<section class="group"${gi === 0 ? ' id="apps"' : ""}><div class="gh"><h2>${esc(title)}</h2>${gi === 0
         ? `<div class="seg" role="group" aria-label="How far back">${PERIODS.map(([l], i) => `<button type="button" data-period="${i}" aria-pressed="${period === i}">${l}</button>`).join("")}</div>`
         : `<span>${bad ? `${bad} not working` : items.length > 1 ? `All ${items.length} working` : "Working"}</span>`}</div>
         ${gi === 0 ? `<p class="section-note">Select an app for response times, or a day to see its checks.</p>` : ""}<div class="glass rows">${items.map((s) => appHtml(s, keys)).join("")}
         <div class="dfoot num"><span>${period ? dm(keyDate(keys[0])) : `Since ${dm(keyDate(keys[0]))}`}</span><span>Today</span></div></div></section>`;
+      if (g === "apps") html += section; else supporting.push(section);
     });
+    if (supporting.length) html += `<div class="support-services">${supporting.join("")}</div>`;
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s }));
     html += `<div class="operations" id="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
       `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
@@ -187,7 +191,11 @@
     html += `</div>`;
     html += `<div class="status-legend" aria-label="Status key"><span data-s="ok"><i></i>Working</span><span data-s="warn"><i></i>Slow, late or pending</span><span data-s="down"><i></i>Not working</span><span data-s="none"><i></i>No history</span></div>`;
     box.innerHTML = html;
-    if (focusSelector) box.querySelector(focusSelector)?.focus({ preventScroll: true });
+    if (focusSelector) {
+      const next = box.querySelector(focusSelector);
+      if (next?.dataset.k) { next.parentElement.querySelectorAll("button").forEach((b) => b.tabIndex = -1); next.tabIndex = 0; }
+      next?.focus({ preventScroll: true });
+    }
     for (const d of box.querySelectorAll(".days[data-n]")) d.style.gridTemplateColumns = `repeat(${d.dataset.n}, minmax(0, 1fr))`;
     wireDays(); for (const id of opened) chart(id);
   }
@@ -196,9 +204,9 @@
     const checks = (s.checks || []).map((c) => `<div data-s="${esc(c.s)}"><i></i><span>${esc(c.k)}</span><em>${c.s === "down" ? esc(c.why || "Not answering") : c.at ? `ran ${hm(c.at)}` : c.ms != null ? `${c.ms} ms` : c.s === "none" ? "Not checked" : "Working"}</em></div>`).join("");
     return `<div class="app${open ? " open" : ""}" data-id="${esc(s.id)}">
       <button class="arow" type="button" data-toggle="${esc(s.id)}" aria-expanded="${open}">${logo(s.id)}<b>${esc(s.name)}</b><span class="st num" data-s="${st}"><i></i>${st === "ok" ? `<span>${esc(word.replace("%", ""))}<small>%</small></span>` : esc(word)}</span>${ICON.chev}</button>
-      <div class="days" data-n="${days.length}" data-svc="${esc(s.id)}">${days.map((x, i) => {
+      <div class="days" data-n="${days.length}" data-svc="${esc(s.id)}" role="group" aria-label="${esc(s.name)} daily history" aria-description="Use arrow keys to choose a day, then Enter to open its checks.">${days.map((x, i) => {
         const k = keys[i], ds = x ? x.s : "none", inc = incOn(s.id, k).length;
-        return `<button type="button" data-k="${k}" data-s="${ds}" class="${[inc ? "inc" : "", i === lastI ? "today" : ""].join(" ").trim()}" aria-label="${esc(`${s.name}, ${dayLong(k)}${i === lastI ? " so far" : ""}: ${!x ? "not checked" : ds === "ok" ? "no problems" : ds === "warn" ? "slow or briefly down" : "down for a while"}${inc ? ", an incident" : ""}`)}"></button>`; }).join("")}</div>
+        return `<button type="button" tabindex="${i === lastI ? "0" : "-1"}" data-k="${k}" data-s="${ds}" class="${[inc ? "inc" : "", i === lastI ? "today" : ""].join(" ").trim()}" aria-label="${esc(`${s.name}, ${dayLong(k)}${i === lastI ? " so far" : ""}: ${!x ? "not checked" : ds === "ok" ? "no problems" : ds === "warn" ? "slow or briefly down" : "down for a while"}${inc ? ", an incident" : ""}`)}"></button>`; }).join("")}</div>
       ${open ? `<div class="more"><div class="chart" data-chart="${esc(s.id)}"><p class="chart-note">Loading…</p></div><div class="checks">${checks}</div>
         <p class="meta num">${s.version ? `Version ${esc(s.version)} · ` : ""}${esc(s.address)}</p></div>` : ""}
     </div>`;
@@ -246,7 +254,7 @@
     const open = !x.ended, names = x.svcs.map((id) => nameOf(id)).filter(Boolean);
     const stage = (x.updates.find((u) => STAGES.includes(u.k)) || { k: "Investigating" }).k, at = STAGES.indexOf(stage);
     return `<article class="inc" id="${esc(x.id)}" data-s="${open ? "down" : "ok"}"><header><h3>${esc(x.title)}</h3><div class="tags">${x.notOutage ? `<span class="tag" data-s="none">Not an outage</span>` : ""}<span class="tag">${open ? "Ongoing" : "Resolved"}</span></div></header>
-      <p class="sub num"><span>${names.length ? `${esc(and(names))} · ` : ""}${dm(x.started)} · ${hm(x.started)}${open ? "" : `–${hm(x.ended)}`}</span><span class="dur">${open ? `<span data-since="${x.started}">${mins(Date.now() - x.started)}</span> so far` : mins(x.ended - x.started)}</span></p>
+      <p class="sub num"><span>${names.length ? `${esc(and(names))} · ` : ""}${dm(x.started)} · ${hm(x.started)}${open ? "" : `–${keyOf(x.started) !== keyOf(x.ended) ? `${dm(x.ended)} · ` : ""}${hm(x.ended)}`}</span><span class="dur">${open ? `<span data-since="${x.started}">${mins(Date.now() - x.started)}</span> so far` : mins(x.ended - x.started)}</span></p>
       ${stages && open ? `<div class="stages">${STAGES.map((n, i) => `<div class="${i < at ? "done" : i === at ? "now" : ""}"><i></i>${n}</div>`).join("")}</div>` : ""}
       ${!open ? `<details class="incident-detail" data-incident="${esc(x.id)}"${expandedIncidents.has(x.id) ? " open" : ""}><summary>View incident updates${ICON.chev}</summary>` : ""}<ol class="steps">${x.updates.map((u) => `<li><time>${esc(hm(u.at))}</time><span><b>${esc(u.k)}.</b> ${esc(u.w)}</span></li>`).join("")}</ol>
       <button class="copy" type="button" data-copy="${esc(x.id)}">Copy link to this incident</button>${!open ? "</details>" : ""}</article>`;
@@ -301,9 +309,20 @@
 
   // ---- a day, tapped: its counts, its quarter-hours (each check is kept two days), what happened ----
   function wireDays() {
-    for (const strip of document.querySelectorAll(".days")) strip.addEventListener("click", (e) => {
-      const b = e.target.closest("button"); if (b) openDay(strip.dataset.svc, b.dataset.k);
-    });
+    for (const strip of document.querySelectorAll(".days")) {
+      const select = (b) => { strip.querySelectorAll("button").forEach((x) => x.tabIndex = x === b ? 0 : -1); };
+      strip.addEventListener("click", (e) => {
+        const b = e.target.closest("button"); if (b) { select(b); b.focus({ preventScroll: true }); openDay(strip.dataset.svc, b.dataset.k); }
+      });
+      strip.addEventListener("keydown", (e) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        const buttons = [...strip.querySelectorAll("button")], i = buttons.indexOf(e.target);
+        if (i < 0) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, i + (e.key === "ArrowRight" ? 1 : -1)));
+        select(buttons[next]); buttons[next].focus({ preventScroll: true });
+      });
+    }
   }
   async function openDay(id, k) {
     const s = data.services.find((x) => x.id === id), i = data.dayKeys.indexOf(k), d = s?.days[i];
@@ -336,10 +355,13 @@
   }
 
   // ---- sheets, toasts, links ----
-  let lastFocus = null;
+  let lastFocus = null, lastFocusSelector = null;
   function sheet(html) {
     const el = $("sheet");
-    if (!el.classList.contains("on")) lastFocus = document.activeElement;
+    if (!el.classList.contains("on")) {
+      lastFocus = document.activeElement;
+      lastFocusSelector = lastFocus?.dataset.k ? `.days[data-svc="${CSS.escape(lastFocus.parentElement.dataset.svc)}"] [data-k="${lastFocus.dataset.k}"]` : null;
+    }
     document.querySelector(".wrap").inert = true; document.body.classList.add("sheet-open");
     el.innerHTML = html; el.classList.add("on"); $("scrim").classList.add("on");
     el.querySelector("button:not([disabled])")?.focus({ preventScroll: true });
@@ -349,15 +371,16 @@
     $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); daySel = null;
     for (const b of document.querySelectorAll(".days button.sel")) b.classList.remove("sel");
     document.querySelector(".wrap").inert = false; document.body.classList.remove("sheet-open");
-    if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
-    else $("verdict").focus({ preventScroll: true });
+    const target = lastFocus?.isConnected ? lastFocus : lastFocusSelector ? document.querySelector(lastFocusSelector) : null;
+    if (target?.dataset.k) { target.parentElement.querySelectorAll("button").forEach((b) => b.tabIndex = -1); target.tabIndex = 0; }
+    (target || $("verdict")).focus({ preventScroll: true });
   }
   let toastT = 0;
   const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); };
   const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; const detail = el.querySelector(".incident-detail, .report-detail"); if (detail) { detail.open = true; (detail.dataset.report ? expandedReports : expandedIncidents).add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
   function route() {
-    const h = decodeURIComponent(location.hash.slice(1));
+    let h; try { h = decodeURIComponent(location.hash.slice(1)); } catch (_) { return; }
     if (!h || !data) return;
     if (/^if-?[a-z]/i.test(h) && norm(h)) { $("lookIn").value = norm(h); lookup(); setTimeout(() => $("codesec").scrollIntoView({ behavior: still() ? "auto" : "smooth" }), 50); return; }
     closeSheet(); flash(h);
@@ -371,6 +394,24 @@
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "inflite-maintenance.ics"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
+
+  function markSection(id) {
+    for (const link of document.querySelectorAll('.page-nav a, .jump a')) {
+      if (link.hash === `#${id}`) link.setAttribute("aria-current", "location"); else link.removeAttribute("aria-current");
+    }
+  }
+  let navFrame = 0;
+  function trackSection() {
+    if (navFrame) return;
+    navFrame = requestAnimationFrame(() => {
+      navFrame = 0;
+      let selected = "";
+      for (const id of ["apps", "operations", "incidents", "codesec"]) if ($(id)?.getBoundingClientRect().top <= 150) selected = id;
+      markSection(selected);
+    });
+  }
+  addEventListener("scroll", trackSection, { passive: true });
+  addEventListener("resize", trackSection);
 
   // ---- events ----
   document.addEventListener("click", (e) => {
