@@ -108,7 +108,9 @@ const befriend = (a, b) => put("pg_links", { a: a.id, b: b.id, status: "ok", cre
 async function pushOn(p, prefs = {}) {
   const ph = await phone(p.id);
   put("pg_push", { endpoint: ph.endpoint, user_id: p.id, session: hex(await sha256(p.token)), p256dh: ph.p256dh, auth: ph.auth, created_at: Date.now() });
-  run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", JSON.stringify(prefs), p.id);
+  // These tests exercise message/letter delivery; weekly digests are tested separately. A real Sunday evening
+  // must not add a weekly push to the notifications being asserted here.
+  run("UPDATE pg_users SET notify_prefs = ? WHERE id = ?", JSON.stringify({ weekly: false, ...prefs }), p.id);
   p.phone = ph;
   return p;
 }
