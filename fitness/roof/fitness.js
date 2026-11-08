@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16";
-export const NEWS = "Rhythm 2.0 beta: personal progression, recorded sessions and ride feedback";
+export const BUILD = "2.17";
+export const NEWS = "Rhythm 2.0: refined intervals, recovery trends and training balance";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

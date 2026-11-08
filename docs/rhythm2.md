@@ -22,6 +22,11 @@ hard or reduced session reduces work. Traffic, time and equipment interruptions 
 The stored dose is the one that actually fitted the slot. Missing power data is uncertain, not a failed workout.
 These are conservative coaching heuristics, not a validated prediction of adaptation or recovery.
 
+The 2.17 refinement adds evidence freshness, bounded duration progressions, rolling seven-day hard-session limits,
+minority interval-work budgets and contextual recovery signals. See [research and exact decision rules](rhythm2-science.md)
+for the 2024–2026 reviews, their limitations and the distinction between published evidence and product guardrails.
+The beta sheet includes expandable planning explanations and direct research links.
+
 ## Prescriptions and feedback
 
 `fx_rhythm2` stores account-owned immutable prescriptions with the original FTP, objective, full steps, date and engine.

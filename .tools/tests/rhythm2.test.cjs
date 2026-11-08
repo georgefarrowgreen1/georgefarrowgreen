@@ -29,5 +29,11 @@ test('Rhythm 2 beta enables, records exact targets, saves feedback and can retur
  }finally{await context.close();}
 });
 test('the beta sheet fits narrow phones and desktops in either theme',async()=>{
- for(const [width,theme]of [[320,'light'],[1440,'dark']]){const {context,page,state}=await open(width,theme);try{await page.getByRole('button',{name:/Rhythm 2\.0/}).click();await page.getByRole('switch',{name:'Use Rhythm 2.0 beta'}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(state.errors,[]);}finally{await context.close();}}
+ for(const [width,theme]of [[320,'light'],[1440,'dark']]){const {context,page,state}=await open(width,theme);try{
+  await page.getByRole('button',{name:/Rhythm 2\.0/}).click();await page.getByRole('switch',{name:'Use Rhythm 2.0 beta'}).waitFor();
+  await page.getByText('How Rhythm plans',{exact:true}).click();await page.getByText('Mostly easy riding',{exact:true}).waitFor();await page.getByText('Research behind Rhythm',{exact:true}).click();
+  const links=page.locator('.r2-content a[href^="https://doi.org/"]');assert.equal(await links.count(),4);for(const link of await links.all())assert.equal(await link.getAttribute('target'),'_blank');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.equal(await page.locator('.r2-content').evaluate(e=>e.scrollWidth>e.clientWidth+1),false);
+  assert.deepEqual(state.errors,[]);
+ }finally{await context.close();}}
 });
