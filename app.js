@@ -421,9 +421,9 @@ function showLines() {
 (() => {
   const region = $("#app-carousel"), viewport = $("#app-viewport"), track = $("#apps");
   if (!region || !viewport || !track) return;
-  const cards = $$(".app", track), count = cards.length, controls = $(".app-controls", region);
+  const cards = $$(".app", track), count = cards.length;
   if (count < 2) return;
-  const dots = $(".app-dots", region), play = $("[data-app-play]", region), status = $("#app-carousel-status");
+  const play = $("[data-app-play]", region), status = $("#app-carousel-status");
   const REST = 4000, AFTER_TOUCH = 6500, GLIDE_MS = 980, SWIPE_MS = 620;
   let active = false, position = count, width = 0, step = 0, centre = 0, offset = 0;
   let animation = null, timer = null, frame = null, gesture = null, suppressClick = false;
@@ -441,12 +441,10 @@ function showLines() {
     const x = t === "none" ? offset : new DOMMatrixReadOnly(t).m41;
     animation.cancel(); animation = null; put(x);
   }
-  function indicators() {
-    $$(".app-dot", dots).forEach((dot, i) => dot.setAttribute("aria-current", String(i === index())));
-    play.classList.toggle("is-paused", userPaused || motion.matches);
+  function rotationLabel() {
     play.disabled = motion.matches;
-    play.setAttribute("aria-label", motion.matches ? "Automatic carousel disabled with reduced motion" :
-      userPaused ? "Play automatic carousel" : "Pause automatic carousel");
+    play.textContent = motion.matches ? "Automatic carousel disabled with reduced motion" :
+      userPaused ? "Play automatic carousel" : "Pause automatic carousel";
   }
   function schedule(delay = REST) {
     stop();
@@ -462,7 +460,7 @@ function showLines() {
     stop(); freeze();
     position = Math.max(count - 1, Math.min(count * 2, to));
     const from = offset, toX = xAt(position);
-    indicators();
+    rotationLabel();
     if (manual) status.textContent = `${$("b", cards[index()]).textContent}, app ${index() + 1} of ${count}`;
     const finish = () => { normalise(); schedule(manual ? AFTER_TOUCH : REST); };
     if (motion.matches || Math.abs(from - toX) < 0.5) { finish(); return; }
@@ -505,7 +503,7 @@ function showLines() {
     stop(); freeze();
     active = phone.matches;
     region.classList.toggle("is-carousel", active);
-    controls.hidden = !active;
+    play.hidden = !active;
     if (active) {
       copies = [cards.map(copy), cards.map(copy)];
       track.prepend(...copies[0]); track.append(...copies[1]);
@@ -518,22 +516,10 @@ function showLines() {
       gesture = null; viewport.classList.remove("dragging");
       track.style.removeProperty("transform");
     }
-    indicators();
+    rotationLabel();
   }
-  cards.forEach((card, i) => {
-    const dot = document.createElement("button"); dot.type = "button"; dot.className = "app-dot";
-    dot.setAttribute("aria-label", `Show ${$("b", card).textContent}`);
-    dot.addEventListener("click", () => {
-      // Choose the nearest copy, so Chat from Markets moves forwards across the join rather than rewinding.
-      const to = position + ((i - index() + count + count / 2) % count - count / 2);
-      go(to, true);
-    });
-    dots.append(dot);
-  });
-  $("[data-app-prev]", region).addEventListener("click", () => go(position - 1, true));
-  $("[data-app-next]", region).addEventListener("click", () => go(position + 1, true));
   play.addEventListener("click", () => {
-    userPaused = !userPaused; indicators();
+    userPaused = !userPaused; rotationLabel();
     if (userPaused) { stop(); freeze(); } else availability();
   });
   region.addEventListener("focusin", (e) => {
@@ -541,7 +527,7 @@ function showLines() {
     // Reduce Motion, where there is no autoplay and manual changes are immediate.
     focused = e.target !== play && e.target.matches(":focus-visible");
     if (!focused || !active) return;
-    userPaused = true; stop(); freeze(); indicators();
+    userPaused = true; stop(); freeze(); rotationLabel();
     const i = cards.indexOf(e.target.closest(".app"));
     if (i >= 0) go(count + i, true);
   });
@@ -600,7 +586,7 @@ function showLines() {
   }, true);
   viewport.addEventListener("keydown", (e) => {
     if (!active || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-    e.preventDefault(); userPaused = true; indicators();
+    e.preventDefault(); userPaused = true; rotationLabel();
     const to = e.key === "Home" ? count : e.key === "End" ? count * 2 - 1 : position + (e.key === "ArrowRight" ? 1 : -1);
     // Move keyboard focus with the selected card; the real link remains reachable rather than a hidden duplicate.
     cards[((to % count) + count) % count].focus({ preventScroll: true });
@@ -613,7 +599,7 @@ function showLines() {
   new ResizeObserver(measure).observe(viewport);
   new MutationObserver(availability).observe(body, { attributes: true, attributeFilter: ["class"] });
   phone.addEventListener("change", layout);
-  motion.addEventListener("change", () => { indicators(); freeze(); if (active) normalise(); availability(); });
+  motion.addEventListener("change", () => { rotationLabel(); freeze(); if (active) normalise(); availability(); });
   document.addEventListener("visibilitychange", availability);
   addEventListener("pagehide", () => { stop(); freeze(); });
   addEventListener("pageshow", availability);
