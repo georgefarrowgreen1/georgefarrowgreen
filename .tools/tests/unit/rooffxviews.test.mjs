@@ -425,7 +425,6 @@ test('#act=<id> (§2.6, fitness/app.js openTo): here → the act sheet; not yet,
 
 test('every opener the entry binds is exported, with view() for the two lazy sections, as j0’s surface froze them', { skip }, async () => {
   const PROG = await import(new URL('progview.js', RX).href);
-  const COACH = await import(new URL('rhythm2view.js', RX).href);
   for (const n of ['view', 'openAct', 'openActMap', 'openActShare', 'openRename', 'openForm', 'openUpload']) assert.equal(typeof ACTS[n], 'function', `actsview ${n}`);
   for (const n of ['view', 'openForm', 'openPower', 'openTraining', 'openEngine', 'openYear']) assert.equal(typeof PROG[n], 'function', `progview ${n}`);
   for (const n of ['openSession', 'openWorkout', 'openDay', 'openMove', 'openWorkouts', 'openRhythmSetup', 'openSendDevice']) assert.equal(typeof PLAN[n], 'function', `planview ${n}`);
@@ -434,7 +433,23 @@ test('every opener the entry binds is exported, with view() for the two lazy sec
   // (and the entry asks for exactly these: FXA's fitness.js via(file, name))
   const entry = textOf('fitness.js');
   for (const [, file, name] of entry.matchAll(/via\("(\w+)", "(\w+)"\)/g)) {
-    const mod = { acts: ACTS, prog: PROG, plan: PLAN, set: SET, coach: COACH }[file];
+    const mod = { acts: ACTS, prog: PROG, plan: PLAN, set: SET }[file];
     assert.equal(typeof mod?.[name], 'function', `fitness.js asks ${file}.${name}`);
   }
+});
+
+test('Experimental preserves riding settings and clears only future experimental overrides when turned off',async()=>{
+ const {experimentalPatch}=await import(new URL('rhythm2-view.js',FX));
+ const day=Date.UTC(2026,10,9),state={rhythm:{days:[0,60,60,60,0,120,60],engine:2,objective:'threshold',extra:'kept'},swaps:{[day-86400e3]:'r2p:old',[day]:'r2:threshold:60:0',[day+86400e3]:'endurance-90',[day+2*86400e3]:'r2p:future'}};
+ const original=JSON.stringify(state),off=experimentalPatch(state,false,day);assert.equal(off.rhythm.engine,1);assert.equal(off.rhythm.objective,'threshold');assert.equal(off.rhythm.extra,'kept');assert.deepEqual(off.swaps,{[day-86400e3]:'r2p:old',[day+86400e3]:'endurance-90'});assert.equal(JSON.stringify(state),original);
+ assert.throws(()=>experimentalPatch({rhythm:null},true,day),/Set up/);assert.throws(()=>experimentalPatch({rhythm:{...state.rhythm,run:true}},true,day),/ongoing cycling/);assert.equal(experimentalPatch({rhythm:{...state.rhythm,run:true}},false,day).rhythm.engine,1);
+});
+test('Experimental cannot save into a different account when the lazy planner finishes loading',async()=>{
+ globalThis.document=docWithTemplates();const {createExperimentalControl}=await import(new URL('rhythm2-view.js',FX));let owner='ann',finish,saves=0;
+ const c=createExperimentalControl({coach:{load:()=>new Promise(r=>finish=r)},state:()=>({rhythm:{days:[60,0,0,0,0,0,0]}}),owner:()=>owner,today:()=>Date.now(),save:()=>{saves++;}});
+ const input=c.control.querySelector('input');input.checked=true;input.dispatch('change');assert.equal(input.disabled,true);owner='bo';finish();await flush();assert.equal(saves,0);assert.equal(input.disabled,true);assert.equal(input.checked,false);
+});
+test('Experimental can be switched off without contacting an unavailable planner',async()=>{
+ globalThis.document=docWithTemplates();const {createExperimentalControl}=await import(new URL('rhythm2-view.js',FX));let loads=0,state={rhythm:{days:[60,0,0,0,0,0,0],engine:2}};
+ const c=createExperimentalControl({coach:{load:()=>{loads++;throw Error('offline');}},state:()=>state,owner:()=> 'ann',today:()=>Date.now(),save:patch=>{state={...state,...patch};}});const input=c.control.querySelector('input');assert.equal(input.checked,true);input.checked=false;input.dispatch('change');await flush();assert.equal(loads,0);assert.equal(state.rhythm.engine,1);assert.equal(input.disabled,false);
 });

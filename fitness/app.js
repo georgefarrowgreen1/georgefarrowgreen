@@ -1,3 +1,4 @@
+import {createExperimentalControl,experimentalLogo} from "./rhythm2-view.js";
 // Fitness: training for riding first, and running, swimming and strength alongside. Four screens on a tab bar:
 //
 // - Today: today's session (or rest), the best time for it from Weather, your fitness, fatigue and form, the week so
@@ -1611,8 +1612,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.17";
-const NEWS = "Rhythm 2.0: refined intervals, recovery trends and training balance";
+const BUILD = "2.18";
+const NEWS = "Experimental training, now a single switch in Fitness Settings";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -1685,6 +1686,7 @@ function bigMapView(name, route) {
 
 // ---- you, and settings ----
 function settingsView() {
+  const experimental=createExperimentalControl({coach,state:()=>({rhythm:S.rhythm,swaps:S.swaps}),owner:()=>S.me?.id,today:()=>TODAY,save:patch=>{if(patch.rhythm)S.rhythm=patch.rhythm;if(patch.swaps)S.swaps=patch.swaps;keep(...Object.keys(patch));changed();redraw();todayRefresh();},refresh:()=>Sheet.redraw?.(),notify:toast});
   const p = P(), wkg = (p.ftp / p.weight).toFixed(2);
   return {
     title: "Settings",
@@ -1707,7 +1709,8 @@ function settingsView() {
       section("Preferences", h("div.group", {},
         // (where your rides come from, the devices, maps, units, the morning check-in and exporting everything: your
         // account's, on its page, for every device; Fitness looks as that page does)
-        row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }))),
+        row({ icon: "sliders", tint: "indigo", title: "Fitness settings", sub: `${U.metric ? "Kilometres" : "Miles"} · Garmin, Strava, Apple Health, devices and maps`, onclick: () => openAccount("fitness") }),
+        row({tile:experimentalLogo(),title:"Experimental",chev:false,extra:experimental.control}))),
       section("Your data", h("div.group", {},
         row({ icon: "inbox", tint: "blue", title: "Upload files", sub: "FIT, GPX or TCX, or a zip of them", onclick: () => pushSheet(uploadFilesView) }))),
       !HUB.on && section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: () => signOutHere() }, "Sign Out"))),

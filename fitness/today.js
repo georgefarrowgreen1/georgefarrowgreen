@@ -15,11 +15,8 @@ import { sessionSendCard, sendWay } from "./send.js";
 // ---- Today ----
 // Today, and every day around it (the Plan's days too): the day strip, the day you're looking at, what Rhythm's
 // noticed, the check-in, the week, where it's heading, your fitness and form, and your week and workouts
-async function openRhythm2(){
- try{await coach.load();const {createRhythm2View}=await import("./rhythm2-view.js");const owner=S.me?.id;const view=createRhythm2View({h,row,section,coach,prefs:()=>S.rhythm,setPrefs:p=>{if(S.me?.id!==owner)return;if(S.rhythm?.engine===2&&p.engine!==2){for(const [d,id]of Object.entries(S.swaps))if(+d>=TODAY&&String(id).startsWith("r2"))delete S.swaps[d];keep("swaps");}S.rhythm=p;keep("rhythm");redraw();},today:()=>TODAY,acts:()=>S.own,loadPower:async id=>perSecond(await load(S.own.find(a=>a.id===id))).pwr,refresh:()=>{if(S.me?.id===owner)Sheet.redraw?.();},notify:toast,setup:()=>rhythmSetup()});openSheet(view,{sheet:"rhythm2"});}catch(e){toast(e.message,true);}
-}
 function todayView() {
- if(S.rhythm?.engine===2&&!coach.ready())return [h("div.card.glass",{},h("h2",{text:"Rhythm 2.0"}),h("p",{text:coach.state().error||"Loading your recorded sessions…"}),h("button.pill",{type:"button",onclick:openRhythm2},"Retry"))];
+ if(S.rhythm?.engine===2&&!coach.ready())return [h("div.card.glass",{},h("h2",{text:"Fitness"}),h("p",{text:coach.state().error||"Loading your recorded sessions…"}),h("button.pill",{type:"button",onclick:()=>coach.load({refresh:true}).catch(e=>toast(e.message,true))},"Retry"))];
   // (the day looked at: today, unless another's been tapped, in this week or the next)
   const lo = addDays(mondayOf(TODAY), -7), hi = addDays(mondayOf(TODAY), 13);
   if (S.dayAt != null && (S.dayAt < lo || S.dayAt > hi || S.dayAt === TODAY)) S.dayAt = null;
@@ -253,7 +250,6 @@ function headingCard() {
 function planRows() {
   const prefs = rhythmOn() ? { ...R.DEFAULTS, ...S.rhythm } : null, nd = prefs ? prefs.days.filter((x) => x > 0).length : 0, hrs = prefs ? prefs.days.reduce((a, x) => a + x, 0) : 0;
   return section(null, h("div.group.glass", {},
-    row({icon:"trend",tint:"coral",title:"Rhythm 2.0",sub:S.rhythm?.engine===2?"Your training profile and session reviews":"Try the cycling beta",onclick:openRhythm2}),
     prefs && row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""} · ${prefs.mode === "hold" ? "holding" : "building"}`, onclick: () => rhythmSetup() }),
     prefs && row({ icon: "medal", tint: "green", title: "Riding towards", sub: prefs.event?.date >= TODAY ? `${prefs.event.name || R.EVENTS[prefs.event.kind].name}, ${new Date(prefs.event.date).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}` : "Nothing in particular: a sportive, a race or a time trial?", onclick: () => rhythmSetup({ at: "event" }) }),
     row({ icon: "list", tint: "indigo", title: "Workouts", sub: S.mine.length ? `The library, and ${plural(S.mine.length, "of your own", "of your own")}` : "The library, to ride any day", onclick: () => openSheet(workoutsView, { tall: true }) })));

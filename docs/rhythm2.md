@@ -1,6 +1,6 @@
 # Rhythm 2.0 cycling beta
 
-An opt-in replacement for ongoing cycling plans. Fitness → Today → Rhythm 2.0 opens the beta sheet.
+An opt-in replacement for ongoing cycling plans. Fitness Settings → Experimental is its single on/off control.
 Classic Rhythm remains the default and can be restored with the same switch. Event plans, running and swimming
 continue using classic Rhythm in this first beta.
 
@@ -25,7 +25,9 @@ These are conservative coaching heuristics, not a validated prediction of adapta
 The 2.17 refinement adds evidence freshness, bounded duration progressions, rolling seven-day hard-session limits,
 minority interval-work budgets and contextual recovery signals. See [research and exact decision rules](rhythm2-science.md)
 for the 2024–2026 reviews, their limitations and the distinction between published evidence and product guardrails.
-The beta sheet includes expandable planning explanations and direct research links.
+Since 2.18 the UI shows only Experimental with a custom orbital mark and toggle in Fitness Settings.
+The profile, focus, research and review sheet and Today shortcut were removed. Existing review evidence is retained;
+the normal workout download flow still records prescriptions. No new subjective feedback is inferred automatically.
 
 ## Prescriptions and feedback
 
@@ -44,7 +46,7 @@ all retained history. There are no background communications to third parties.
 - `POST /api/fitness/rhythm2/prescriptions` — validated, immutable prescription.
 - `POST /api/fitness/rhythm2/feedback` — bounded feedback with optimistic concurrency.
 
-The new planner is lazy-loaded. Classic users make no training-record request until they open the beta, and active
+The new planner is lazy-loaded. Classic users make no training-record request until they enable Experimental, and active
 beta sessions cannot be offered until the account's records load. Signing out or changing accounts invalidates pending
 results. The existing Today snapshot carries the selected plan into the cross-app daily view.
 
@@ -52,7 +54,7 @@ results. The existing Today snapshot carries the selected plan into the cross-ap
 
 Unit tests cover dose progression, time/load limits, hard-day spacing, missing evidence, preserved watt targets,
 absolute FIT export, immutable/idempotent storage, account boundaries, origin checks and feedback conflicts. Browser
-checks use the real InFlite framework for opt-in/out, session recording, feedback and responsive layouts.
+checks use the real InFlite framework for the setting, saved state, workout downloads and responsive layouts.
 
 The first release keeps dated event planning and multi-sport coaching on classic Rhythm. Future work can extend the
 planner to those goals, improve real-world interval matching using laps and pauses, and evaluate longer-term training
