@@ -4,9 +4,6 @@
 // (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
 // as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
 const IFL = (() => {
-  // (no app's page pinched bigger, as no app's is: iPhone takes no notice of a page's viewport saying so, only of its own
-  // gesture events refused. A map or a photo still pinches itself, by its touches; menu.css says the rest, touch-action)
-  for (const n of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(n, (e) => e.preventDefault(), { passive: false });
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
   const ICONS = /*ICONS*/{};
@@ -422,12 +419,9 @@ const IFL = (() => {
   const watched = new Set();
   // (--p is 0 or 1, never a fraction tracking the finger: the header goes compact past 28px and back above 8px, and CSS
   // animates the change in one smooth movement (menu.css registers --p), instead of a resize on every scroll frame)
-  // (no pinch zoom: iOS keeps it even with the viewport's user-scalable=no, so its gestures are refused here; and a copy
-  // from the page is empty, but never from a field you type in)
-  if (!globalThis.__iflNoZoom && typeof document !== "undefined") {
-    globalThis.__iflNoZoom = true;
-    for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-    document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // Keep selection behaviour local to the app; leave browser zoom gestures alone.
+  if (!globalThis.__iflSelectionGuard && typeof document !== "undefined") {
+    globalThis.__iflSelectionGuard = true;
     const typing = (t) => t && t.closest?.("input, textarea, select, [contenteditable]");
     document.addEventListener("copy", (e) => { if (!typing(e.target)) e.preventDefault(); });
     document.addEventListener("selectstart", (e) => { if (!typing(e.target)) e.preventDefault(); });

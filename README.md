@@ -2619,3 +2619,8 @@ has, so they stop partway (their other checks, run past that point, pass as befo
 
 Cloudflare publishes your **production branch** (`main`) to the live URL. Pushes
 to other branches create preview deployments.
+
+## November 2026 audit
+
+See [.tools/audits/2026-11-08.md](.tools/audits/2026-11-08.md) for scope, findings, fixes and verification limits.
+Run `CHROMIUM=/path/to/chromium node .tools/audits/public-audit.cjs` after installing `.tools/tests` dependencies for a read-only mobile/desktop public check of all nine InFlite hosts.

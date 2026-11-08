@@ -19,13 +19,13 @@ export const connector = {
   files: [
     "/fitness/roof/fitness.js", "/fitness/roof/core.js", "/fitness/roof/idb.js", "/fitness/roof/fxcalc.js",
     "/fitness/roof/connector.js", "/fitness/roof/fxui.js", "/fitness/roof/todayview.js", "/fitness/roof/x.js",
-    "/fitness/roof/offers.js", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js",
+    "/fitness/roof/offers.js",
     "/fitness/ui.js", "/fitness/workouts.js", "/fitness/load.js", "/fitness/account.js", "/fitness/rhythm.js",
     "/fitness/progress.js", "/fitness/besttime.js", "/fitness/efforts.js", "/fitness/charts.js", "/fitness/invites.js",
     "/fitness/todaycalc.js", "/fitness/send.js",
-    "/fitness/roof/fitness.css", "/fitness/roof/fxviews.css", "/fitness/routes.css"
+    "/fitness/roof/fitness.css", "/fitness/roof/fxviews.css"
   ],
-  lazy: ["/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js", "/fitness/roof/routesview.js", "/fitness/routes-live.js"],
+  lazy: ["/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js", "/fitness/roof/routesview.js", "/fitness/routes-live.js", "/fitness/routes.css", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js"],
   // mini(answer) → { kind: "num", num, label: "Fitness" } from answer.cards.fitness.ctl, else null
   mini(a) { const c = a?.cards?.fitness; return c && Number.isFinite(Number(c.ctl)) ? { kind: "num", num: String(Math.round(Number(c.ctl))), label: "Fitness" } : null; },
   // search(q, { userId }) → Fitness Settings, Your Numbers, the devices page: on this phone, q never leaves it (D16)

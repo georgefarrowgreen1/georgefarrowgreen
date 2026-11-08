@@ -1,3 +1,4 @@
+.m-fitness .fr-routes .fr-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 3px; }
 /* Routes extends Fitness's card/glass, row/group, pick, stat and pill/btn components.
    Shared surfaces, typography, gradients and press states live in fitness.css/fxviews.css. */
 .m-fitness .fr-routes { display: grid; gap: 16px; min-width: 0; padding-bottom: 12px; }
@@ -5,7 +6,6 @@
 .m-fitness .fr-routes .card { min-width: 0; }
 .m-fitness .fr-routes .k > svg { flex: none; }
 .m-fitness .fr-routes .fr-btn { cursor: pointer; }
-.m-fitness .fr-routes .fr-btn:focus-visible, .m-fitness .fr-plan-summary button:focus-visible { outline: 2px solid var(--tint); outline-offset: 3px; }
 .m-fitness .fr-overview { display: grid; gap: 16px; align-items: stretch; }
 .m-fitness .fr-context { margin: 0; }
 .m-fitness .fr-workout-row { display: flex; align-items: center; gap: 12px; }
@@ -80,13 +80,6 @@
 .m-fitness .fr-method summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 12px; }
 .m-fitness .fr-method p { margin: 8px 0; }
 .m-fitness .fr-credit { margin: 0 4px; color: var(--text-3); font-size: 12px; line-height: 1.5; }
-.m-fitness .fr-plan-summary .fr-plan-row { display: flex; align-items: center; gap: 12px; }
-.m-fitness .fr-plan-summary .fr-plan-copy { display: grid; gap: 4px; min-width: 0; }
-.m-fitness .fr-plan-summary .fr-plan-copy b { font-size: 17px; font-weight: 600; }
-.m-fitness .fr-plan-summary .fr-plan-copy p { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.4; }
-.m-fitness .fr-plan-summary .fr-plan-demo { margin-left: auto; color: var(--text-3); font-size: 11px; letter-spacing: 0; text-transform: none; }
-.m-fitness .fr-plan-summary .fr-muted { margin: 10px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.4; }
-.m-fitness .fr-plan-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 @media (min-width: 980px) {
   .m-fitness .fr-overview { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 20px; }
   .m-fitness .fr-filters .row { flex: 1; }

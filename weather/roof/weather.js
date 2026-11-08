@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.89";
-export const NEWS = "Weather asks for your location on opening and keeps My Location up to date";
+export const BUILD = "1.90";
+export const NEWS = "Pinch zoom is available throughout InFlite";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

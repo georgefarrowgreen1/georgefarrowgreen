@@ -1,6 +1,7 @@
 // The account's real planned route, directly beneath Fitness's workout.
 import { icon, sportIcon } from "./ui.js";
 import { readRoutePlan, removeRoutePlan } from "./routes-account.js";
+export { forgetRoutePlans } from "./routes-account.js";
 async function renderRoutePlan(host, { owner, metric = true, current, onOpen, onBusy, plan: given } = {}) {
   const live = () => host.isConnected && current?.() !== false;
   let plan;

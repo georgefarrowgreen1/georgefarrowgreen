@@ -307,7 +307,7 @@ test('the real core, behind the service: its answers and patches have fixtures/c
   const w = await world(), db = fakeIDB();
   db.data.set('session', { token: 'tok-SECRET', me: { id: w.ids.me, name: 'Sam Taylor', handle: 'sam', pub: w.me.pub }, priv: w.me.priv, pub: w.me.pub });
   globalThis.indexedDB = db.indexedDB; globalThis.fetch = w.fetch;
-  const nav2 = nav; nav2.locks = { request: (n, fn) => Promise.resolve().then(fn) };
+  const nav2 = nav; Object.defineProperty(nav2, 'locks', { value: { request: (n, fn) => Promise.resolve().then(fn) }, configurable: true });
   // (the real core, in this process: its self is the Worker's end)
   FakeWorker.impl = async (wk) => {
     let inbox = null;

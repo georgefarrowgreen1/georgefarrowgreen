@@ -120,7 +120,7 @@ test('B0’s frame stub: createFrame gives an F with every member of §3.2, and 
 
 test('roof.css’s token block: the framework’s tokens and each app’s accent, dark first and light in both light blocks, as map-design §3.2', { skip: roofSkip }, () => {
   // (rules by selector, inside a light media block or not; declarations as a map)
-  const css = read(new URL('roof.css', ROOF)).replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = read(new URL('roof.css', ROOF)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]+;/g, '');
   const rules = [];
   const walk = (s, media) => {
     let i = 0;
@@ -262,7 +262,7 @@ test('connector.files: every file there, the CSS in it, and the whole static imp
   }
   // (the 14 reused, as §7.1 agrees them)
   const reused = graph.filter((f) => !f.startsWith('/weather/roof/')).sort();
-  assert.deepEqual(reused, ['account', 'agree', 'charts', 'climate', 'codes', 'data', 'format', 'icons', 'insights', 'official', 'send', 'skill', 'sky', 'solar'].map((f) => `/weather/${f}.js`));
+  assert.deepEqual(reused, ['account', 'agree', 'charts', 'climate', 'codes', 'data', 'format', 'icons', 'insights', 'location', 'official', 'send', 'skill', 'sky', 'solar'].map((f) => `/weather/${f}.js`));
 });
 
 test('every dynamic import in the module sits inside fw.lazy( (D21)', () => {
@@ -422,7 +422,8 @@ for (const app of APPS2) {
     }
     const graph = await staticGraph(app);
     assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
-    assert.deepEqual([...lazy].sort(), (await lazyClosure(app, graph)).sort(), 'lazy: the closure of fw.lazy’s literals, less files and NET');
+    const lazyCSS = [...read(fileOf(R.REGISTRY[app].entry)).matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
+    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS].sort(), 'lazy: import closure and lazily linked CSS, kept offline together');
     assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
     assert.ok(files.length + lazy.length <= 60, `files ∪ lazy: ${files.length + lazy.length} ≤ 60 (the root worker's cap)`);
     // (static imports stay inside the app's own files: never another module's, never app.js)

@@ -345,7 +345,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .dk-under { position: absolute; inset: 0; display: flex; justify-content: flex-end; }
 .dk-act { width: 78px; border: 0; display: grid; place-content: center; justify-items: center; gap: 3px; color: #fff; font-size: 12.5px; font-weight: 600; }
 .dk-act.fix { background: #1f9d55; } .dk-act.mute { background: #5b6787; }
-.dk-row { position: relative; background: var(--dk-solid); touch-action: pan-y; transition: transform 0.24s var(--ease-out); padding-left: 14px !important; }
+.dk-row { position: relative; background: var(--dk-solid); touch-action: pan-y pinch-zoom; transition: transform 0.24s var(--ease-out); padding-left: 14px !important; }
 .dk-row.dragging { transition: none; }
 /* (pressed: shaded over its own solid ground, never see-through to what's under it) */
 button.row.dk-row:active { background-color: var(--dk-solid); box-shadow: inset 0 0 0 100vmax var(--press); }
@@ -912,7 +912,7 @@ a.btn { text-decoration: none; }
 .swipe + .swipe::before, .swipe + .row::before, .row + .swipe::before { content: ""; position: absolute; z-index: 2; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }
 /* (the row slides off over nothing; what it does fills exactly the room it leaves, so the row needs no background) */
 /* (let go, it settles open or shut on the glide, as a control does, not sprung past) */
-.swipe > .row { touch-action: pan-y; transform: translateX(var(--dx)); transition: transform var(--dur-base) var(--glide); }
+.swipe > .row { touch-action: pan-y pinch-zoom; transform: translateX(var(--dx)); transition: transform var(--dur-base) var(--glide); }
 .swipe.dragging > .row { transition: none; }
 .swipe.open .row .mini, .swipe.dragging .row .mini { opacity: 0; transition: opacity 0.2s; }
 .swipe-act { position: absolute; inset: 0 0 0 auto; width: calc(-1 * var(--dx)); overflow: hidden; border: 0; display: grid; place-items: center; padding: 0;
@@ -1354,8 +1354,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .app-head .ic.big { display: grid; place-items: center; color: #fff; width: 64px; height: 64px; border-radius: 15px; margin-bottom: 8px; }
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
-/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
-html { touch-action: pan-x pan-y; }
+/* Allow browser pinch zoom alongside scrolling and app-owned gestures. */
+html { touch-action: manipulation; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {

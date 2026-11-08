@@ -84,7 +84,7 @@ const offerId = meAnswer().offers[0].id;
 {
   const { p, st, seen, ctx } = await phone();
   ok(await openFitness(p), 'the module mounts in main#m-fitness and Today shows its day card');
-  ok(await p.locator(`${H.M_FITNESS} ${H.FX_SEC}`).count() === 3, 'three sections: Today, Activities, Progress');
+  ok(await p.locator(`${H.M_FITNESS} ${H.FX_SEC}`).count() === 4, 'four sections: Today, Activities, Routes, Progress');
   ok(await visible(p, `${H.M_FITNESS} ${H.fxSec('today')}`), 'Today is the one showing');
   ok((await text(p, H.HD_TITLE)).trim() === 'Today', 'the header’s title: Today', await text(p, H.HD_TITLE));
   ok(await until(async () => (await text(p, H.HD_LINE)).trim().length > 0), 'the header’s line: today’s plan', await text(p, H.HD_LINE));
@@ -110,6 +110,22 @@ const offerId = meAnswer().offers[0].id;
   }
   await shot(p, '1-today-390-dark');
   ok(seen.errors.length === 0, 'no page errors', seen.errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// Route styles are deferred, and a failed stylesheet has a usable retry.
+{
+  const { p, ctx } = await phone();
+  await ctx.route(`${KIT}/api/fitness/routes/plan`, r => r.fulfill({ json: { plan: null } }));
+  let styles = 0;
+  await ctx.route(`${KIT}/fitness/routes.css`, r => ++styles === 1 ? r.abort() : r.fallback());
+  await openFitness(p);
+  ok(styles === 0, 'Today does not request the Routes stylesheet');
+  await p.evaluate(() => window.kit.F.nav.go('/fitness/#routes'));
+  ok(await until(() => p.getByText('Routes didn’t load', { exact: true }).isVisible()), 'failed route styles show recovery instead of an unstyled planner');
+  await p.getByRole('button', { name: 'Try Again', exact: true }).click();
+  ok(await until(() => p.locator('.fr-routes').isVisible()), 'Routes opens after retrying its stylesheet');
+  ok(styles === 2 && await p.evaluate(() => !!document.querySelector('link[href="/fitness/routes.css"]')?.sheet), 'the retry loads the stylesheet once and it is applied');
   await ctx.close();
 }
 

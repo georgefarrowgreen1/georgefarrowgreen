@@ -143,7 +143,7 @@ main[aria-busy="true"]::after { content: ""; display: block; width: 26px; height
 .leftout { font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .pchart { display: block; width: 100%; height: 150px; margin-top: 14px; overflow: visible; }
 /* (read along with a finger; its ranges under it) */
-.pbox { position: relative; margin-top: 14px; touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: opacity 0.3s; }
+.pbox { position: relative; margin-top: 14px; touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; transition: opacity 0.3s; }
 .pbox .pchart { margin-top: 0; }
 .pbox.loading { opacity: 0.45; }
 .pseg { margin: 10px 24px 0; }
@@ -523,7 +523,7 @@ body.sheet-up .sheet { transform: none; }
 .sname { margin: 16px 0 4px; font: 600 17px/1.25 var(--font-d); color: var(--text-2); }
 .sprice { font: 600 clamp(34px, 11.5vw, 46px)/1 var(--font-d); letter-spacing: -1.2px; }
 .sdelta { margin-top: 6px; font-size: 16px; font-weight: 500; display: flex; gap: 8px; flex-wrap: wrap; }
-.chartbox { position: relative; margin: 18px -24px 0; height: 210px; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.chartbox { position: relative; margin: 18px -24px 0; height: 210px; touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; }
 .chartbox svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .chartbox .base { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 5; transition: opacity 0.4s; }
 .chartbox .line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.5s; }
@@ -781,7 +781,7 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .dseg button[aria-pressed="true"] { background: var(--thumb); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
 .dtog { border: 1px solid var(--line); } .dtog[aria-pressed="true"] { border-color: transparent; background: var(--ctl); color: var(--text); } .dtog:disabled { opacity: 0.4; cursor: default; }
 .dchartw { position: relative; flex: none; height: max(300px, calc(100svh - 540px)); }
-.dchart { position: absolute; inset: 0; cursor: crosshair; transition: opacity 0.25s; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.dchart { position: absolute; inset: 0; cursor: crosshair; transition: opacity 0.25s; touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; }
 .dchart.loading { opacity: 0.45; }
 .dchart svg { display: block; overflow: visible; }
 .dchart .grid { stroke: var(--line); stroke-width: 1; }
@@ -993,8 +993,8 @@ a.dbtn { text-decoration: none; }
 }
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
-/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
-html { touch-action: pan-x pan-y; }
+/* Allow browser pinch zoom alongside scrolling and app-owned gestures. */
+html { touch-action: manipulation; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {

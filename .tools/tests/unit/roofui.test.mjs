@@ -166,8 +166,10 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // name ("Notifications, 3 new"); and 3,744 B more, for search made better (search.js: one scale of matching for every
 // provider, forgiving a slip; a Top hit and groups by their best, three each with Show all, what matched in bold; ↑/↓,
 // Enter and Esc; the empty field's apps, Recent and shortcuts), about 90 B slack
-test('roof/*.js together: at most 29 KB and 256 B gzipped, comments stripped', { skip: roofSkip }, () => {
-  const all = files().map((f) => strip(read(f))).join('\n');
+// The separately tested request coordinator is an additional bounded transport layer.
+test('roof UI stays within 29 KB + 256 B; requests stay within 2 KB + 128 B gzip', { skip: roofSkip }, () => {
+  const all = files().filter(f => f !== 'requests.js').map((f) => strip(read(f))).join('\n');
+  assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
   assert.ok(gz <= 29 * 1024 + 256, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 29952`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
@@ -240,7 +242,7 @@ async function sandbox3() {
   const { join } = await import('node:path');
   const { pathToFileURL } = await import('node:url');
   const d = mkdtempSync(join(tmpdir(), 'roofhost-'));
-  for (const f of ['frame.js', 'router.js']) copyFileSync(new URL(f, ROOF), join(d, f));
+  for (const f of ['frame.js', 'router.js', 'requests.js']) copyFileSync(new URL(f, ROOF), join(d, f));
   for (const [f, src] of Object.entries(STUB3)) writeFileSync(join(d, f), src);
   return (frame3 = (await import(pathToFileURL(join(d, 'frame.js')).href)).createFrame);
 }

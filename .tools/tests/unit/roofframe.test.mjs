@@ -65,7 +65,7 @@ let createFrame = null, T = null;
 async function sandbox() {
   if (createFrame) return;
   T = mkdtempSync(join(tmpdir(), 'roofframe-'));
-  for (const f of ['frame.js', 'router.js']) copyFileSync(join(ROOF_DIR, f), join(T, f));
+  for (const f of ['frame.js', 'router.js', 'requests.js']) copyFileSync(join(ROOF_DIR, f), join(T, f));
   for (const [f, src] of Object.entries(STUBS)) writeFileSync(join(T, f), src);
   for (const f of ['modules.js', 'connectors.js']) await import(pathToFileURL(join(T, f)).href);
   ({ createFrame } = await import(pathToFileURL(join(T, 'frame.js')).href));

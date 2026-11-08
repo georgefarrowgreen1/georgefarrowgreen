@@ -24,13 +24,11 @@ import { view as todayView, lookAt, sendableToday } from "./todayview.js";
 import { openOffer } from "./offers.js";
 import { dayStamp, rhythmSaid } from "./fxcalc.js";
 import { dur, dist } from "../ui.js";
-import { renderRoutePlan } from "../route-plan.js";
-import { forgetRoutePlans } from "../routes-account.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.10";
-export const NEWS = "Smaller, centred Powered by InFlite button";
+export const BUILD = "2.11";
+export const NEWS = "Pinch zoom is available throughout InFlite";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -41,10 +39,25 @@ const clockOf = (t) => { const d = new Date(t); return `${String(d.getHours()).p
 export async function mount(root, fw) {
   const S = core.S, doc = root.ownerDocument;
   const ctx = { S, core, fw, open: {} };
+  // Routes are lazy; their stylesheet should not delay every opening of Today.
+  let routeCSS = null;
+  const routeStyles = () => routeCSS ||= new Promise((resolve, reject) => {
+    let link = doc.querySelector('link[href="/fitness/routes.css"]');
+    if (link?.sheet) return resolve();
+    if (!link) { link = doc.createElement("link"); link.rel = "stylesheet"; link.href = "/fitness/routes.css"; }
+    const done = (error) => {
+      clearTimeout(timer); link.removeEventListener("load", loaded); link.removeEventListener("error", failed);
+      if (error) { link.remove(); reject(error); } else resolve();
+    };
+    const loaded = () => done(), failed = () => done(new Error("Routes styles could not be loaded"));
+    const timer = setTimeout(failed, 5000);
+    link.addEventListener("load", loaded, { once: true }); link.addEventListener("error", failed, { once: true });
+    if (!link.isConnected) doc.head.append(link);
+  }).catch((error) => { routeCSS = null; throw error; });
   // (each lazy file, through fw.lazy; its literal for roofcontract and C4's lazy list)
   const L = {
     acts: () => fw.lazy((q) => import("./actsview.js" + (q || ""))),
-    routes: () => fw.lazy((q) => import("./routesview.js" + (q || ""))),
+    routes: () => Promise.all([routeStyles(), fw.lazy((q) => import("./routesview.js" + (q || "")))]).then(([, module]) => module),
     prog: () => fw.lazy((q) => import("./progview.js" + (q || ""))),
     plan: () => fw.lazy((q) => import("./planview.js" + (q || ""))),
     set: () => fw.lazy((q) => import("./fxsettings.js" + (q || ""))),
@@ -161,7 +174,16 @@ export async function mount(root, fw) {
   let ver = 0;
   const drawnAt = new Map();
   const routeHold = Symbol("route-plan");
-  const routePlan = () => { const owner = fw.session.user.id; return renderRoutePlan(secs.get("today"), { owner, current: () => mounted && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } }); };
+  let routeKit = null;
+  const routePlan = async () => {
+    const owner = fw.session.user.id;
+    try {
+      const kit = routeKit || await fw.lazy((q) => import("../route-plan.js" + (q || "")));
+      if (!mounted || fw.session.user.id !== owner) return;
+      routeKit = kit;
+      return await kit.renderRoutePlan(secs.get("today"), { owner, current: () => mounted && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } });
+    } catch (error) { console.error("Planned route unavailable", error); }
+  };
   ctx.refreshRoute = () => routePlan();
   const draw = (id = shown, force = false) => {
     if (!onScreen || !id) return;
@@ -298,7 +320,7 @@ export async function mount(root, fw) {
       secs.clear(); views.clear();
       picker.remove();
       detach();
-      forgetRoutePlans();
+      routeKit?.forgetRoutePlans();
       core.stop();
     },
   };

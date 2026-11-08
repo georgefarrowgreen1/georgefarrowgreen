@@ -2783,8 +2783,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* ==== end of InFlite's way in ==== */
 
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
-/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
-html { touch-action: pan-x pan-y; }
+/* Allow browser pinch zoom alongside scrolling and app-owned gestures. */
+html { touch-action: manipulation; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {

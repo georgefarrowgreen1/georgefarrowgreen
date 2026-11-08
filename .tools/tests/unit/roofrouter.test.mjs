@@ -179,7 +179,7 @@ test('stages 2–4: REGISTRY’s Markets, Fitness and Mail exactly; link, stay a
     sections: [['today', 'Today'], ['holdings', 'Holdings'], ['news', 'News']],
     aliases: { s: 'today', income: 'holdings', isa: 'holdings', vs: 'holdings', about: 'holdings' } });
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.fitness)), { app: 'fitness', name: 'Fitness', path: '/fitness/', idb: 'fitness',
-    entry: '/fitness/roof/fitness.js', connector: '/fitness/roof/connector.js', css: ['/fitness/roof/fitness.css', '/fitness/roof/fxviews.css', '/fitness/routes.css'],
+    entry: '/fitness/roof/fitness.js', connector: '/fitness/roof/connector.js', css: ['/fitness/roof/fitness.css', '/fitness/roof/fxviews.css'],
     sections: [['today', 'Today'], ['activities', 'Activities'], ['routes', 'Routes'], ['progress', 'Progress']],
     aliases: { plan: 'today', day: 'today', offer: 'today', settings: 'today', act: 'activities' } });
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.mail)), { app: 'mail', name: 'Mail', path: '/mail/', link: 'email',

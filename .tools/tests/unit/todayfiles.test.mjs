@@ -59,7 +59,7 @@ test('its page is a public one: title, description, og tags, canonical, robots a
   assert.equal(meta('og:url'), 'https://inflite.ai/');
   assert.equal(meta('twitter:card'), 'summary_large_image');
   assert.match(html, /<link rel="canonical" href="https:\/\/inflite\.ai\/">/);
-  assert.match(html, /maximum-scale=1, user-scalable=no/, 'pinch to zoom stays off, as in every app');
+  assert.doesNotMatch(html, /maximum-scale=1|user-scalable=no/, 'browser pinch zoom stays available');
   // (the hub's pages are copies of the apps' own addresses, which stay the ones indexed)
   assert.equal(String(pub('robots.txt')), 'User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /chats/\nDisallow: /weather/\nDisallow: /fitness/\nDisallow: /markets/\nDisallow: /mail/\nSitemap: https://inflite.ai/sitemap.xml\n');
   assert.match(String(pub('sitemap.xml')), /<loc>https:\/\/inflite\.ai\/<\/loc>/);

@@ -385,7 +385,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .lg-fit { background: var(--fit); } .lg-fat { background: var(--fat); } .lg-form { background: var(--form-up); height: 8px !important; } .lg-pwr { background: var(--pwr); } .lg-hr { background: var(--hr); } .lg-ele { background: color-mix(in srgb, var(--text) 30%, transparent); height: 8px !important; } .lg-spd { background: var(--spd); }
 .readout { min-height: 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .readout b { color: var(--text); font-weight: 600; }
-.scrub { touch-action: pan-y; cursor: crosshair; }
+.scrub { touch-action: pan-y pinch-zoom; cursor: crosshair; }
 
 /* the route, on its own pane (a map behind it is for later) */
 .map { border-radius: 22px; overflow: hidden; max-width: 100%;
@@ -2010,8 +2010,8 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
 @media (min-width: 760px) { .ifh .hub-more { display: none; } }
 .hub-strava { margin: 10px 4px 0; text-align: center; }
 /* ==== InFlite's menu, shared: from .tools/inflite/menu.css by node .tools/iflmenu.mjs (change it there) ==== */
-/* (no app's page pinched or double-tapped bigger: a finger scrolls it, and no more. A map or a photo pinches itself) */
-html { touch-action: pan-x pan-y; }
+/* Allow browser pinch zoom alongside scrolling and app-owned gestures. */
+html { touch-action: manipulation; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {
