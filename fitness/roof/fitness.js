@@ -29,8 +29,8 @@ import { forgetRoutePlans } from "../routes-account.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.09";
-export const NEWS = "Map and data credits in a new InFlite popup";
+export const BUILD = "2.10";
+export const NEWS = "Smaller, centred Powered by InFlite button";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

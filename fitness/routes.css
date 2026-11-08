@@ -133,9 +133,10 @@
 }
 
 /* Route source credits use the shared InFlite sheet in the app. */
-.m-fitness .fr-powered { display:inline-flex; align-items:center; justify-self:start; gap:8px; min-height:44px; max-width:100%; margin:0 4px; padding:8px 12px; color:var(--text-2); font-size:13px; }
-.m-fitness .fr-powered img { flex:none; width:22px; height:22px; border-radius:6px; }
-.m-fitness .fr-powered > svg { flex:none; color:var(--text-3); }
+.m-fitness .fr-powered { position:relative; display:flex; align-items:center; justify-self:center; width:max-content; gap:6px; min-height:32px; max-width:100%; margin:0 auto; padding:0 10px; color:var(--text-2); font-size:11px; font-weight:500; }
+.m-fitness .fr-powered::before { content:""; position:absolute; inset:-6px 0; border-radius:inherit; }
+.m-fitness .fr-powered img { flex:none; width:16px; height:16px; border-radius:4px; }
+.m-fitness .fr-powered > svg { flex:none; width:12px; height:12px; color:var(--text-3); }
 .m-fitness .fr-map-data { min-width:0; }
 .m-fitness .fr-map-data .group { margin:0; }
 .m-fitness .fr-data-source { min-height:76px; color:var(--text); text-decoration:none; }

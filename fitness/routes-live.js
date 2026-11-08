@@ -75,7 +75,7 @@ function createLiveRoutes(root, opts = {}) {
     const wrap = e("div", "m-fitness"), content = e("div", "fr-map-data"), sources = e("div", "group glass");
     for (const [name, label, href] of [
       ["© OpenStreetMap contributors", "Map and route data · ODbL", "https://www.openstreetmap.org/copyright"],
-      ["BRouter", "Routing engine", "https://brouter.de/"],
+      ["InFlite Routing System", "Cycling route planning", "https://inflite.ai/"],
       ["OpenFreeMap", "Street maps", "https://openfreemap.org/"]
     ]) {
       const link = e("a", "row fr-data-source"), copy = e("span", "tx");
@@ -423,7 +423,7 @@ function createLiveRoutes(root, opts = {}) {
       }
     }, { signal: events.signal });
     aside.append(form);
-    aside.append(poweredBy());
+    root.append(poweredBy());
     setupMap(r, canvas, fallback, message, retry);
     h.tabIndex = -1;
     h.focus({ preventScroll: true });
