@@ -691,8 +691,9 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
       position: absolute; pointer-events: none;
       height: calc(100vh - 120px); height: calc(100svh - 120px);
     }
+    /* Keep the blur below the clock/notch as Safari expands or collapses its browser chrome. */
     .barbg {
-      top: 12px; height: calc(env(safe-area-inset-top) + 70px);
+      top: calc(env(safe-area-inset-top) + 12px); height: 70px;
       -webkit-mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
       mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
     }
