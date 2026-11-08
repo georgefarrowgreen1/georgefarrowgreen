@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    georgefarrowgreen.com: the home page. A photo slideshow fixed behind,
    Liquid Glass over it (the account page's look): the name and a line
-   about me, then the apps and a way to get in touch.
+   about me, then the apps, projects and a way to get in touch.
 ---------------------------------------------------------------------- */
 
 /* the name's typeface, from the site itself (asked for first: index.html), so it never arrives late and shifts */
@@ -314,6 +314,41 @@ body.paused .segs i.on::after { animation-play-state: paused; }
     clip-path: none; border-radius: 999px; background: var(--glass-strong); color: var(--text); font-size: 13px;
   }
 }
+
+/* Projects stay together beneath Apps: both businesses visible, with their original marks. Their tint is painted
+   within each rounded card, without a filtered glow that could leave a square edge or an extra moving backdrop. */
+.projects { margin-top: 28px; }
+.projects .head { margin: 0 0 18px; }
+.project-grid { display: grid; gap: 14px; }
+.project {
+  min-width: 0; min-height: 212px; padding: 23px; border-radius: 26px;
+  display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 0 0, rgba(82, 109, 228, 0.18), transparent 82%), #181b24;
+  box-shadow: var(--rim);
+  transition: transform 0.28s var(--ease-out), box-shadow 0.28s var(--ease-out);
+}
+.project-cottage { background: radial-gradient(ellipse at 0 0, rgba(186, 142, 115, 0.19), transparent 82%), #1c1c21; }
+.project-identity { display: flex; gap: 15px; align-items: center; }
+.project-brand { flex: none; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; }
+.project-brand img { display: block; border-radius: inherit; }
+.project-brand-cottage { background: linear-gradient(140deg, #473831, #302a29); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13); }
+.project-brand-cottage img { border-radius: 0; }
+.project-name { min-width: 0; }
+.project h3 { font-size: 22px; line-height: 1.12; font-weight: 600; letter-spacing: -0.7px; }
+.project-type { display: block; margin-top: 6px; font-size: 12px; line-height: 1.4; letter-spacing: 0.02em; color: #b2b7d2; }
+.project-cottage .project-type { color: #c5b2a9; }
+.project p { max-width: 270px; margin: 20px 0 18px; color: #b9bdc9; font-size: 15px; line-height: 1.5; }
+.project-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; }
+.project-link { color: #b7caff; font-size: 13px; font-weight: 600; }
+.project-cottage .project-link { color: #dfbaa7; }
+.project-arrow {
+  flex: none; display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); color: #d8deef;
+  transition: transform 0.28s var(--ease-out);
+}
+.project-cottage .project-arrow { color: #dfbaa7; }
+.project:active { transform: scale(0.985); transition-duration: var(--dur-press); }
+@media (max-width: 360px) { .project h3 { font-size: 20px; } }
 
 .group { border-radius: 26px; overflow: hidden; }
 .row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; text-align: left; }
@@ -629,6 +664,13 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .app { padding: 14px; border-radius: 24px; }
   .app img { width: 50px; height: 50px; border-radius: 12px; }
   .app b { font-size: 18px; }
+  .projects { margin-top: 38px; }
+  .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .project { min-height: 284px; padding: 22px; }
+  .project-identity { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .project h3 { font-size: 21px; }
+  .project-type { font-size: 11px; }
+  .project p { margin: 17px 0; font-size: 14px; }
   .sheet { inset: 0; margin: auto; width: min(440px, calc(100% - 32px)); height: fit-content; border-radius: 30px; }
   .sheet .grab { visibility: hidden; height: 2px; }
   @keyframes up { from { transform: translateY(24px) scale(0.97); opacity: 0; } }
@@ -642,8 +684,11 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .hero h1 { font-size: 80px; }
   .lede { font-size: 21px; }
   .head { margin-top: 18px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-areas: "apps contact" "projects contact"; gap: 38px 28px; align-items: start; }
   .grid > section { min-width: 0; }
+  .app-carousel { grid-area: apps; }
+  .projects { grid-area: projects; margin-top: 0; }
+  .contact { grid-area: contact; }
 }
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
@@ -651,6 +696,9 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .row:hover { background-color: rgba(255, 255, 255, 0.05); }
   .tint:hover { filter: brightness(1.08); }
   .app:hover .open { background-color: rgba(61, 139, 255, 0.24); }
+  .project:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 14px 30px rgba(0, 0, 0, 0.13); }
+  .project:hover .project-arrow { transform: translate(2px, -2px); }
+  .project:active { transform: scale(0.985); }
   .foot a:hover { color: var(--text); }
   .sheet-head .x:hover, .editbar .add:hover, .toast button:hover, .tile .ask .no:hover { background-color: rgba(255, 255, 255, 0.16); }
   .fld.from .change:hover { background-color: rgba(61, 139, 255, 0.28); }
@@ -670,6 +718,8 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .page, .bar { transition: opacity var(--dur-fast) linear; }
   body.sheet-up .page, body.sheet-up .bar, body.leaving .page, body.leaving .bar { transform: none; }
   .sheet, .fields textarea, .tile .dot, .tile img { transition: none; }
+  .project, .project-arrow { transition: none; }
+  .project:hover, .project:active, .project:hover .project-arrow { transform: none; }
   .btn:active, .pill:active, .round:active, .app:active, .sheet-head .x:active, .fld.from .change:active, .editbar .add:active, .toast button:active, .tile .where:active, .tile .rm:active, .tile .ask button:active { transform: none; }
 }
 
