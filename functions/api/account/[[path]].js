@@ -55,6 +55,7 @@ import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today
 import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
 import { sharesOf, offersOf } from "../../_fitshare.js";
+import {trainingRecords} from "../../_fitrhythm2.js";
 import { exportRouteData } from "../../_fitroutes.js";
 import { timesExport as fitnessTimes } from "../../_fittimes.js";
 import { fitnessOf, kept as fitnessKept, activities as fitnessActs, nightsKept as fitnessNights, olderActs as fitnessOlder, saveState as fitnessSave, activityFile as fitnessFile, dropFrom as fitnessDrop, fitdb } from "../../_fitness.js";
@@ -1035,6 +1036,7 @@ const ROUTES = {
         plansWaiting: fxOffers.map((x) => ({ start: iso(x.start), name: x.name, who: x.who, state: x.state })),
         // (each day's ride time, set in Fitness (Ride At) or by Today)
         plannedRoute: await exportRouteData(env, u.id),
+        trainingSessions: await trainingRecords(env, u.id, {all:true}),
         rideTimes: (await fitnessTimes(env, u.id)).map((x) => ({ day: x.day, start: iso(x.start), stop: iso(x.stop), timeZone: x.tz, sport: x.sport, setBy: x.source })) },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {

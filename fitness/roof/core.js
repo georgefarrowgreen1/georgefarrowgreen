@@ -21,6 +21,7 @@ export { U, clock, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distN
 import { WORKOUTS, PLANS, measure, layOut, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
 import { summarise, fitness, rescale, tssOf, stayingOf } from "../load.js";
 import * as A from "../account.js";
+import {createCoach} from "../rhythm2-account.js";
 import * as R from "../rhythm.js";
 import * as G from "../progress.js";
 import * as BT from "../besttime.js";
@@ -116,7 +117,7 @@ export function estimates() {
 }
 export function estimate() {
   const e = estimates(), ch = {};
-  if (e.ftp && !isSet("ftp") && Math.abs(e.ftp - P().ftp) >= 3) ch.ftp = e.ftp;
+  if (S.rhythm?.engine !== 2 && e.ftp && !isSet("ftp") && Math.abs(e.ftp - P().ftp) >= 3) ch.ftp = e.ftp;
   if (e.maxHr && !isSet("maxHr") && e.maxHr !== P().maxHr) { ch.maxHr = e.maxHr; if (!isSet("lthr")) ch.lthr = Math.round(e.maxHr * 0.9); }
   if (!Object.keys(ch).length) return;
   S.profile = { ...P(), ...ch, ...(ch.ftp ? { ftpLog: logFtp(ch.ftp, 0) } : {}) }; keep("profile"); resum(); redraw("settings");
@@ -201,18 +202,20 @@ export const runSpeed = () => 1000 / P().runPace;
 export const swimSpeed = () => 100 / P().css;
 export const paceFor = (sport) => (sport === "run" ? runSpeed() : sport === "swim" ? swimSpeed() : 4);
 export const allWorkouts = () => [...S.mine, ...WORKOUTS];
-export const wkById = (id) => S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
+export const wkById = (id) => coach.workout(id) || S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
 
 // ---- Rhythm (app.js 991-1038) ----
 export const rhythmOn = () => !!S.rhythm && !S.chosen;
 const rhFrom = () => [S.wx, S.garmin, S.health];
+export const coach = createCoach({owner:()=>S.me?.id,onRecorded:(day,was,id)=>{if(S.swaps[day]===was){S.swaps[day]=id;keep("swaps");}},api:A,importEngine:()=>Q.fw.lazy((q) => import("../rhythm2.js" + (q || ""))),change:()=>{changed();redraw("plan");todayRefresh();},hold:on=>hold("rhythm2",on),inputs:()=>({prefs:S.rhythm||R.DEFAULTS,acts:S.own.map(a=>({...a,sum:sumOf(a)})),feel:S.feel,swaps:S.swaps,today:TODAY,ftp:P().ftp,wet:wetAhead(),well:wellByDay(),resolveWorkout:id=>S.mine.find(w=>w.id===id)||R.workoutOf(id),paces:{run:runSpeed(),swim:swimSpeed()}})});
+
 let rhCache = null;
 export function rh() {
   if (!rhythmOn()) return null;
   const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}`, from = rhFrom();
   if (rhCache?.key !== key || rhCache.from.some((x, i) => x !== from[i])) {
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, indoor: !!a.indoor, sum: sumOf(a) }));
-    rhCache = { key, from, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet: wetAhead(), well: wellByDay() }) };
+    rhCache = { key, from, v: S.rhythm.engine===2&&coach.ready()?coach.plan():R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet: wetAhead(), well: wellByDay() }) };
   }
   return rhCache.v;
 }
@@ -458,6 +461,7 @@ export function arrive(m, kept = false) {
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   S.sums.clear();
   adopt(m.data);
+  if(S.rhythm?.engine===2)coach.load().catch(()=>{});
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   sumUp();
   redraw();
@@ -491,6 +495,7 @@ export function takeUp(m) {
   S.own = (m.acts || []).map((x) => ({ ...x, sample: false }));
   for (const a of S.own) S.sums.set(a.id, rescale(a.sum, P(), a.sport));
   S.health = m.health || { on: false };
+  if(S.rhythm?.engine===2)coach.load({refresh:true}).catch(()=>{});
   S.offers = Array.isArray(m.offers) ? m.offers : [];
   S.offersToday = m.offersToday === true;
   S.times = Array.isArray(m.times) ? m.times : [];
@@ -543,6 +548,7 @@ export function morningDays() {
   return out;
 }
 export function todaySnap() {
+  if(S.rhythm?.engine===2&&!coach.ready())return null;
   try {
     const days = {};
     for (let i = 0; i < 8; i++) {
@@ -826,6 +832,7 @@ export function shown(v) {
 }
 // (every account field back to nothing: S in place, the caches, the Worker)
 function stopData() {
+  coach.reset();
   clearTimeout(saveT); saveT = null;
   clearTimeout(todayRefresh.t); todayRefresh.from = null;
   const f = fresh();
@@ -838,6 +845,7 @@ function stopData() {
   Q.booted = false;
 }
 export function stop() {
+  coach.reset();
   Q.gen++;
   for (const t of timers) clearTimeout(t);
   timers.clear();

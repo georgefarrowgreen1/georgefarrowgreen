@@ -164,3 +164,8 @@ export const offer = (id, answer) => call(`offers/${encodeURIComponent(id)}`, { 
 // { day, start, stop, source } }; and cleared, for a day
 export const setTime = (b) => call("time", { method: "PUT", body: b });
 export const dropTime = (day) => call("time", { method: "DELETE", body: { day } });
+
+// Rhythm 2 records sync independently of editable profile/plan state.
+export const trainingRecords = () => call("rhythm2");
+export const prescribe = prescription => call("rhythm2/prescriptions",{method:"POST",body:prescription});
+export const sessionFeedback = feedback => call("rhythm2/feedback",{method:"POST",body:feedback});

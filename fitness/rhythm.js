@@ -149,7 +149,7 @@ function rung(c) {
   return { ...c, core: c.wu + c.cd + c.n * (work + c.rec), steps: (f, name, easy = 0.55) => [wu(c.wu), rep(c.n, on(c.len, f, name), off(c.rec, easy)), cd(c.cd)] };
 }
 // an id for a session at a length, its level kept
-export const withMins = (id, mins) => String(id).replace(/^(rh:[a-z0-9]+:)\d+/, `$1${mins}`);
+export const withMins = (id, mins) => String(id).replace(/^((?:rh|r2):[a-z0-9]+:)\d+/, `$1${mins}`);
 // a session Rhythm makes, from its id (rh:<kind>:<minutes>, and :<level> for the hard ones): its steps, with any spare
 // time ridden steady round the work
 export function session(id, t = targets(null)) {

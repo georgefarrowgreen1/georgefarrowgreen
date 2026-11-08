@@ -67,7 +67,7 @@ function appOwn() {
   const src = [...APP_NAMES.map((n) => sourceOf(n)), sourceOf("dayStamp", "plan"), sourceOf("rhythmSaid", "plan"), sourceOf("progActs", "progressview"), sourceOf("rollAvg", "activities")].join("\n");
   const S = { me: null, ver: 0, dirty: new Set(), profile: null, examples: false, chosen: null, rhythm: null, swaps: {}, feel: {}, mine: [], own: [], acts: [], sums: new Map(), garmin: { on: false }, health: { on: false }, wx: null };
   const fn = new Function("S", "U", "PLANS", "WORKOUTS", "layOut", "measure", "dur", "plural", "DAY", "startOfDay", "addDays", "mondayOf", "R", "BT", "TODAY", "rescale",
-    `let dataV = 0, rhCache = null, weeksCache = null; const changed = () => { dataV++; }; const resum = () => {}; const D = {};
+    `let dataV = 0, rhCache = null, weeksCache = null; const changed = () => { dataV++; }; const resum = () => {}; const D = {}; const coach = {ready:()=>false,workout:()=>null};
      const sumOf = (a) => S.sums.get(a.id); const once = (f) => () => f();
      ${src}
      S.profile = { ...START, set: [] };
