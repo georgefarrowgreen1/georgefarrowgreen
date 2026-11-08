@@ -20,5 +20,5 @@ test('proper loops, nearby hairpin roads and a shared start/finish access road a
 });
 test('a clean candidate can still be returned when another direction contains a spur',async()=>{
  let calls=0;const got=await generateRoutes({start,metres:40000,surface:'road',seed:1},{fetcher:async()=>Response.json({features:[{geometry:{type:'LineString',coordinates:++calls===1?withSpur:loop}}]})});
- assert.equal(calls,3);assert.equal(got.routes.length,1);assert.equal(got.partial,true);assert.equal(routeQuality(got.routes[0].coords).longestBacktrack,0);
+ assert.equal(calls,6);assert.equal(got.routes.length,1);assert.equal(got.partial,true);assert.equal(routeQuality(got.routes[0].coords).longestBacktrack,0);
 });

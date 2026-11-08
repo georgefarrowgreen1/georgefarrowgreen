@@ -38,7 +38,8 @@ function cleanRoute(r) {
   const stats = trackStats(coords), snap = metresBetween(r.start, coords[0]);
   if (stats.metres < 1e3 || stats.metres > 22e4 || metresBetween(coords[0], coords.at(-1)) > 25 || snap > 250) return null;
   for (let i = 1; i < coords.length; i++) if (metresBetween(coords[i - 1], coords[i]) > 2500) return null;
-  return { id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), provider: "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+  const planning=Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
+  return { ...planning,id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), provider: "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
 }
 const shapes = /* @__PURE__ */ new WeakMap();
 function geometry(route) {

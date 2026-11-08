@@ -12,6 +12,8 @@ export const PROBES=[
 ];
 export const LOOP_CHECKS={
  'loops':{start:PROBES[0].start,metres:33000,surface:'road',seed:1},
+ 'loops-quiet':{start:PROBES[0].start,metres:33000,surface:'road',roadPreference:'quiet',seed:1},
+ 'loops-mixed':{start:PROBES[0].start,metres:33000,surface:'mixed',seed:1},
  'loops-norfolk':{start:[.847,52.682],metres:100000,surface:'road',seed:1}
 };
 export function probeBody(start){const [x,y]=start;const points=[start,[x+.006,y+.003],[x+.006,y+.006],[x-.003,y+.003],start];return new URLSearchParams({lonlats:points.map(p=>p.map(n=>n.toFixed(6)).join(',')).join('|'),profile:'road'}).toString();}
@@ -24,7 +26,7 @@ export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECK
  }
  let loops={ready:false,count:0};
  if(loop){const attempts=[];
-  try {const generated=await generateRoutes(query,{fetcher:(url,init)=>fetcher(new Request(url,init)),onAttempt:a=>attempts.push(a)});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres),maxBacktrack:Math.max(...generated.routes.map(r=>routeQuality(r.coords).longestBacktrack))};}catch(e){loops.error={status:e.status||0,message:e.message};}
+  try {const generated=await generateRoutes(query,{fetcher:(url,init)=>fetcher(new Request(url,init)),onAttempt:a=>attempts.push(a)});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres),maxDistanceError:Math.max(...generated.routes.map(r=>Math.abs(r.metres-query.metres)/query.metres)),maxBacktrack:Math.max(...generated.routes.map(r=>routeQuality(r.coords).longestBacktrack))};}catch(e){loops.error={status:e.status||0,message:e.message};}
   loops.attempts=attempts;
  }
  return {ready:checks.every(c=>c.status===200&&c.closed&&c.points>5)&&(!loop||loops.ready),checks,...(loop?{loops}:{})};

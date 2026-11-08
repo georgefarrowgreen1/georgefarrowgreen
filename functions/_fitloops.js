@@ -2,6 +2,7 @@
 import { HttpError } from "./_http.js";
 import { cleanRoute, pointOK, destination, metresBetween, MAX_POINTS } from "../fitness/routes-geometry.js";
 import { inUK } from "../workers/routing/src/coverage.js";
+import {DISTANCE_TOLERANCE,roadData,selectRoutes} from "./_fitroutechoices.js";
 const ROUTER_URL = "https://routing.internal/route";
 function cleanQuery(b) {
   if (!b || !pointOK(b.start) || !["road", "mixed"].includes(b.surface) || !Number.isInteger(b.seed) || b.seed < 0 || b.seed > 1e6) throw new HttpError(400, "Choose a distance from 5 to 120 km and a starting location.");
@@ -10,7 +11,8 @@ function cleanQuery(b) {
   const metres = legacy ? Math.round(Math.min(120000, Math.max(5000, (b.minutes - 5) * b.speed / 60 * 1000))) : b.metres;
   if (!Number.isInteger(metres) || metres < 5000 || metres > 120000) throw new HttpError(400, "Choose a distance from 5 to 120 km and a starting location.");
   if (!inUK(b.start.slice(0, 2))) throw new HttpError(422, "Cycling routes currently cover the United Kingdom.");
-  return { start: b.start.slice(0, 2).map(n => Number(n.toFixed(6))), metres, surface: b.surface, seed: b.seed };
+  if (b.roadPreference != null && !["main","quiet"].includes(b.roadPreference) || b.avoidUnpaved != null && typeof b.avoidUnpaved !== "boolean") throw new HttpError(400, "Choose main roads or quiet lanes.");
+  return { start: b.start.slice(0, 2).map(n => Number(n.toFixed(6))), metres, surface: b.surface, seed: b.seed, roadPreference:b.roadPreference||"main", avoidUnpaved:b.surface==="road" ? b.avoidUnpaved!==false : false };
 }
 function waypoints(q, bearing, scale = 1) {
   const radius = q.metres / 4.6 * scale;
@@ -75,15 +77,16 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   const routes = [];
-  let providerDown = false, scale = 1;
+  let providerDown = false, calibration = 1;
+  const queue=Array.from({length:6},(_,n)=>({bearing:(q.seed*137.508+n*60)%360,scale:null,refinements:0}));
   try {
-    for (let n = 0; n < 3 && !abort.signal.aborted; n++) {
-      const bearing = (q.seed * 137.508 + n * 120) % 360, points = waypoints(q, bearing, scale);
+    for (let n = 0; n < 9 && queue.length && !abort.signal.aborted; n++) {
+      const task=queue.shift(),scale=task.scale??calibration,points=waypoints(q,task.bearing,scale);
       const attempt = new AbortController(), cancelAttempt = () => attempt.abort();
       abort.signal.addEventListener("abort", cancelAttempt, { once: true });
       if (abort.signal.aborted) cancelAttempt();
       const attemptTimer = setTimeout(cancelAttempt, 30000);
-      const form = new URLSearchParams({lonlats: points.map(p => p.join(",")).join("|"), profile: q.surface});
+      const form = new URLSearchParams({lonlats: points.map(p => p.join(",")).join("|"), profile: q.surface==="mixed"?"mixed":"road"+(q.roadPreference==="quiet"?"-quiet":"")+(q.avoidUnpaved?"-paved":"")});
       let phase = "request", status = 0, response; const at = Date.now();
       try {
         const bytes = await untilAbort(async () => {
@@ -100,16 +103,22 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         }, attempt.signal);
         if (!bytes) continue;
         phase = "normalise";
-        const json = JSON.parse(new TextDecoder().decode(bytes)), coords = json?.features?.find((f) => f.geometry?.type === "LineString")?.geometry?.coordinates;
+        const json = JSON.parse(new TextDecoder().decode(bytes)), feature=json?.features?.find(f=>f.geometry?.type==="LineString"),coords=feature?.geometry?.coordinates;
         if (!Array.isArray(coords) || coords.length > MAX_POINTS) continue;
-        const route = cleanRoute({ id: "r-" + crypto.randomUUID(), name: `${["First", "Second", "Third"][n]} loop`, start: q.start, surface: q.surface, coords, generatedAt: now });
+        const route = cleanRoute({ id: "r-" + crypto.randomUUID(), name: "Cycling loop", start: q.start, surface: q.surface, coords, generatedAt: now });
         if (!route) continue;
         const quality = routeQuality(route.coords);
         if (quality.overlap > .4 || quality.longestBacktrack > 10) continue;
-        scale = Math.min(1.6, Math.max(.4, scale * q.metres / route.metres));
-        if (Math.abs(route.metres - q.metres) > q.metres * .25) continue;
-        if (routes.some((r2) => Math.abs(r2.metres - route.metres) < r2.metres * 0.04 && metresBetween(r2.coords[Math.floor(r2.coords.length / 2)], route.coords[Math.floor(route.coords.length / 2)]) < 500)) continue;
+        const roads=roadData(feature);
+        if(q.surface==="road"&&q.avoidUnpaved&&roads&&roads.unpaved>20)continue;
+        const error=Math.abs(route.metres-q.metres)/q.metres,nextScale=Math.min(1.8,Math.max(.35,scale*q.metres/route.metres));
+        calibration=nextScale;
+        if(error>.05&&task.refinements<2&&Math.abs(nextScale-scale)>.02){const next={bearing:task.bearing,scale:nextScale,refinements:task.refinements+1};if(error>DISTANCE_TOLERANCE)queue.unshift(next);else queue.push(next);}
+        if(error>DISTANCE_TOLERANCE)continue;
+        if(routes.some(other=>Math.abs(other.metres-route.metres)<30&&metresBetween(other.coords[Math.floor(other.coords.length/2)],route.coords[Math.floor(route.coords.length/2)])<30))continue;
+        route._roads=roads;route._quality=quality;route.targetMetres=q.metres;route.roadPreference=q.roadPreference;route.avoidUnpaved=q.avoidUnpaved;
         routes.push(route);
+        if(routes.length>=5&&n>=5)break;
       } catch (e) {
         providerDown = true;
       } finally {
@@ -123,12 +132,9 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);
   }
-  if (!routes.length) throw new HttpError(providerDown || abort.signal.aborted ? 503 : 422, providerDown || abort.signal.aborted ? "InFlite’s UK router is starting or busy. Please try again shortly." : "No suitable cycling loop was found here. Try a different distance or surface.");
-  routes.sort((a, b) => Math.abs(a.metres - q.metres) - Math.abs(b.metres - q.metres));
-  const names = ["Recommended loop", "Alternative loop", "Another way round"];
-  routes.forEach((r, i) => {
-    r.name = names[i];
-  });
-  return { routes, at: now, partial: routes.length < 3 };
+  if (!routes.length) throw new HttpError(providerDown || abort.signal.aborted ? 503 : 422, providerDown || abort.signal.aborted ? "InFlite’s UK router is starting or busy. Please try again shortly." : "No cycling loop within 10% of that distance was found here. Try a different distance or road preference.");
+  const selected=selectRoutes(routes,q);
+  for(const route of selected){delete route._roads;delete route._quality;}
+  return {routes:selected,at:now,partial:selected.length<3};
 }
 export { ROUTER_URL, cleanQuery, generateRoutes, waypoints, routeQuality };

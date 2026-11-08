@@ -5,7 +5,7 @@ export async function routeInput(request) {
   if(request.method!=='POST'||url.pathname!=='/route'||url.search)return null;
   if(!request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded'))return null;
   const text=await request.text();if(text.length>4096)return null;
-  const form=new URLSearchParams(text);if([...form].length!==2||!['road','mixed'].includes(form.get('profile')))return null;
+  const form=new URLSearchParams(text);if([...form].length!==2||!['road','road-quiet','road-paved','road-quiet-paved','mixed'].includes(form.get('profile')))return null;
   const raw=form.get('lonlats')?.split('|');
   if(!raw||raw.some(p=>p.split(',').some(v=>!/^[-]?\d+(?:\.\d+)?$/.test(v))))return null;
   const points=raw.map(p=>p.split(',').map(Number));

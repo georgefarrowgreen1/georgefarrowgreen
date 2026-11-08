@@ -142,3 +142,13 @@
 .m-fitness .fr-map-data-dialog > header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .m-fitness .fr-map-data-dialog h2 { margin:0; font-size:20px; }
 .m-fitness .fr-data-close { display:grid; place-items:center; flex:none; min-width:44px; min-height:44px; padding:0; }
+
+.m-fitness .fr-road-switch { position:relative; display:inline-flex; flex:none; width:48px; height:30px; }
+.m-fitness .fr-road-switch input { position:absolute; z-index:1; inset:-7px 0; width:48px; height:44px; margin:0; opacity:0; cursor:pointer; }
+.m-fitness .fr-road-track { display:block; width:48px; height:30px; border-radius:999px; background:var(--glass-ctl); box-shadow:inset 0 0 0 .5px var(--line); transition:background .15s; }
+.m-fitness .fr-road-track::before { content:""; display:block; width:24px; height:24px; margin:3px; border-radius:50%; background:#fff; box-shadow:0 2px 5px #0003; transition:transform .15s; }
+.m-fitness .fr-road-switch input:checked + .fr-road-track { background:var(--good); }
+.m-fitness .fr-road-switch input:checked + .fr-road-track::before { transform:translateX(18px); }
+.m-fitness .fr-road-switch input:focus-visible + .fr-road-track { outline:2px solid var(--tint); outline-offset:3px; }
+.m-fitness .fr-road-switch input:disabled + .fr-road-track { opacity:.6; }
+@media (prefers-reduced-motion:reduce) { .m-fitness .fr-road-track, .m-fitness .fr-road-track::before { transition:none; } }
