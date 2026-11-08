@@ -4,7 +4,8 @@ export function quoteSession(q, priceSaid, pct, now = Date.now()) {
   const stamp = (t) => t ? new Date(t * 1000).toLocaleString("en-GB", { timeZone: q.tz || "UTC", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }) : "Time unavailable";
   const always = q.kind === "crypto" || q.kind === "currency" || ["CRYPTOCURRENCY", "CURRENCY"].includes(q.type);
   const open = always || (q.open && now / 1000 >= q.open.start && now / 1000 < q.open.end);
-  const label = open ? "Open · Quote" : q.open ? "Closed · Last regular-session price" : "Last quoted price";
+  const fresh = q.live && now - q.time * 1000 < 90000 && now - q.live.at < 90000;
+  const label = open && fresh ? "Live quote · Yahoo Finance" : open ? "Open · Quote" : q.open ? "Closed · Last regular-session price" : "Last quoted price";
   const lines = [`${label} · ${stamp(q.time)}${q.stale ? " · Prices delayed" : ""}`];
   const x = q.extended;
   if (!open && x?.price != null && x.time > q.time && ["pre", "post"].includes(x.session)) {

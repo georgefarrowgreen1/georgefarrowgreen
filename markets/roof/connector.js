@@ -24,7 +24,7 @@ export const connector = {
   aliases: { s: "today", income: "holdings", isa: "holdings", vs: "holdings", about: "holdings" },
   files: [
     "/markets/roof/markets.js", "/markets/roof/connector.js", "/markets/roof/core.js", "/markets/roof/mkui.js", "/markets/roof/todayview.js",
-    "/markets/account.js", "/markets/income.js", "/markets/send.js", "/markets/session.js", "/markets/charts.js", "/markets/roof/markets.css",
+    "/markets/account.js", "/markets/income.js", "/markets/send.js", "/markets/session.js", "/markets/live.js", "/markets/charts.js", "/markets/roof/markets.css",
   ],
   lazy: ["/markets/roof/holdings.js", "/markets/roof/news.js", "/markets/roof/stock.js", "/markets/roof/edit.js", "/markets/roof/money.js", "/markets/stories.js"],
   // mini(answer): the day's percent and its shape, never an amount (as roof/connectors.js's fallback)

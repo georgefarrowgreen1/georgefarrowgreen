@@ -175,7 +175,11 @@ export function paint(sym, up) {
     n.textContent = range && q.chg != null && !core.isIndex(q) ? `${core.chgSaid(q)} (${core.pct(q.chgPct)})` : core.pct(q.chgPct); n.classList.remove("up-t", "down-t", "flat-t"); n.classList.add(core.tone(q.chgPct)); });
   if (held?.qty > 0 && core.valueOf(held) != null) {
     all(`[data-val="${k}"]`).forEach((n) => { n.textContent = core.money(core.valueOf(held)); flash(n); });
-    all(`[data-dg="${k}"]`).forEach((n) => { n.textContent = n.tagName === "I" ? `${core.signed(core.dayOf(held))} today` : core.signed(core.dayOf(held)); });
+    all(`[data-dg="${k}"]`).forEach((n) => { n.textContent = n.tagName === "I" ? `${core.signed(core.dayOf(held))} today` : core.signed(core.dayOf(held)); n.classList.remove("up-t", "down-t", "flat-t"); n.classList.add(core.tone(core.dayOf(held))); });
+    const paid = held.cost ? core.paidFor(held) : null, gain = paid != null ? core.valueOf(held) - paid + (core.divsOf(held) || 0) : null;
+    if (gain != null) for (const [attr, text] of [["data-gain", core.signed(gain, "GBP", Math.abs(gain) >= 1e4 ? 0 : 2)], ["data-gain-pct", core.pct((gain / paid) * 100, 1)]]) {
+      all(`[${attr}="${k}"]`).forEach((n) => { n.textContent = text; n.classList.remove("up-t", "down-t", "flat-t"); n.classList.add(core.tone(gain)); });
+    }
   }
 }
 

@@ -79,7 +79,8 @@ test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly
   const CONNECT = listOf(wx, 'CONNECT').filter((o) => !/cloudflareinsights/.test(o)), IMAGES = listOf(wx, 'IMAGES');
   assert.ok(CONNECT.length >= 10 && IMAGES.length >= 3, 'Weather’s lists read');
   const mail = directive(csp, 'connect-src').includes(MAIL_ORIGINS[0]) ? MAIL_ORIGINS : [];
-  assert.deepEqual(directive(csp, 'connect-src'), ["'self'", ...mail, ...CONNECT], 'connect-src: Weather’s own (and Mail’s Worker), exactly');
+  const markets = directive(csp, 'connect-src').includes('wss://streamer.finance.yahoo.com') ? ['wss://streamer.finance.yahoo.com'] : [];
+  assert.deepEqual(directive(csp, 'connect-src'), ["'self'", ...markets, ...mail, ...CONNECT], 'connect-src: Weather’s own (and Mail’s Worker), exactly');
   assert.deepEqual(directive(csp, 'frame-src'), ["'self'", ...mail], 'frame-src: this site (and Mail’s Worker, for its bodies), exactly');
   assert.deepEqual(directive(csp, 'img-src'), ["'self'", 'data:', 'blob:', ...IMAGES], 'img-src: Weather’s own, exactly');
   assert.deepEqual(directive(csp, 'media-src'), hasChats ? ["'self'", 'blob:'] : [], 'media-src: Chats’ voice pigeons (blob:), this site alone; none before stage 3');
