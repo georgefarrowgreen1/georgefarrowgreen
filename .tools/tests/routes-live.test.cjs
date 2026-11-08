@@ -52,7 +52,7 @@ test('opening a saved plan preserves its date and departure, and unsaved edits s
 test('distance entry supports miles, rejects invalid distances and removes the explanatory footer copy',async()=>{
  const a=await open({metric:false});try{
   const input=a.page.getByLabel('Distance in miles');assert.equal(await input.inputValue(),'25');await input.fill('0');assert.equal(await a.page.getByRole('button',{name:'Use current location',exact:true}).isDisabled(),true);await input.fill('35');await a.page.getByRole('button',{name:'Use current location',exact:true}).click();await a.page.locator('.fr-route-card').waitFor();assert.equal(a.requests.find(r=>r.path.endsWith('/generate')).body.metres,Math.round(35*1609.344));
-  const text=await a.page.locator('body').innerText();assert.ok(!text.includes('Time available'));assert.ok(!text.includes('Your location is used by'));assert.ok(!text.includes('Check access and conditions before riding. Ride times are estimates.'));assert.equal(await a.page.getByRole('link',{name:'© OpenStreetMap contributors'}).getAttribute('href'),'https://www.openstreetmap.org/copyright');
+  const text=await a.page.locator('body').innerText();assert.ok(!text.includes('Time available'));assert.ok(!text.includes('Your location is used by'));assert.ok(!text.includes('Check access and conditions before riding. Ride times are estimates.'));await a.page.getByRole('button',{name:'Powered by InFlite',exact:true}).click();assert.equal(await a.page.getByRole('link',{name:/OpenStreetMap contributors/}).getAttribute('href'),'https://www.openstreetmap.org/copyright');await a.page.getByRole('button',{name:'Close',exact:true}).click();
  }finally{await a.context.close();}
 });
 test('route generation animates, respects reduced motion, and cancellation removes the animation',async()=>{
@@ -62,5 +62,16 @@ test('route generation animates, respects reduced motion, and cancellation remov
   await a.page.getByRole('button',{name:'Use current location',exact:true}).click();await a.page.getByText('Finding cycling loops back to your start…',{exact:true}).waitFor();await a.page.locator('.fr-loading').waitFor();assert.equal(await a.page.getByRole('button',{name:'Finding loops…',exact:true}).getAttribute('aria-busy'),'true');
   const animation=await a.page.locator('.fr-loading-sweep').evaluate(n=>getComputedStyle(n).animationName);assert.equal(animation,reducedMotion==='reduce'?'none':'fr-route-search');assert.equal(await a.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   if(reducedMotion==='no-preference')await shot(a.page,'distance-generating-dark');await a.page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await a.page.locator('.fr-loading').count(),0);await a.page.getByRole('button',{name:'Find new loops',exact:true}).click();await a.page.locator('.fr-loading').waitFor();await a.page.evaluate(()=>{__view.hide();__view.resume();});assert.equal(await a.page.locator('.fr-loading').count(),0);assert.equal(await a.page.getByRole('button',{name:'Find new loops',exact:true}).isEnabled(),true);assert.deepEqual(a.errors,[]);
+ }finally{await a.context.close();}}
+});
+
+test('Powered by InFlite opens Map and Data with source links and restores focus on dismissal',async()=>{
+ for(const theme of ['light','dark']){const a=await open({width:320,theme});try{
+  const powered=a.page.getByRole('button',{name:'Powered by InFlite',exact:true});assert.equal(await a.page.getByRole('link',{name:/OpenStreetMap contributors/}).count(),0);
+  await a.page.waitForFunction(()=>{const img=document.querySelector('.fr-powered img');return img?.complete&&img.naturalWidth>0;});await powered.click();
+  const dialog=a.page.getByRole('dialog',{name:'Map and Data',exact:true});await dialog.waitFor();assert.equal(await dialog.getByRole('link').count(),3);assert.equal(await a.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  if(theme==='dark')await shot(a.page,'map-and-data-popup');await a.page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});assert.equal(await powered.evaluate(n=>document.activeElement===n),true);
+  await a.page.getByRole('button',{name:'Use current location',exact:true}).click();await a.page.locator('.fr-route-card').click();assert.equal(await a.page.getByText('About this route',{exact:true}).count(),0);assert.equal((await a.page.locator('body').innerText()).includes('Time uses'),false);
+  await a.page.getByRole('button',{name:'Powered by InFlite',exact:true}).click();await dialog.waitFor();await a.page.evaluate(()=>__view.hide());assert.equal(await a.page.locator('dialog[open]').count(),0);assert.deepEqual(a.errors,[]);
  }finally{await a.context.close();}}
 });

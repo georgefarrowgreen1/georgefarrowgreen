@@ -65,6 +65,47 @@ function createLiveRoutes(root, opts = {}) {
     row.append(tx, wrap);
     return row;
   }
+  let dataPopup = null;
+  function closeMapData() {
+    const popup = dataPopup; dataPopup = null;
+    if (popup?.now) popup.now(); else popup?.close();
+  }
+  function mapData() {
+    closeMapData();
+    const wrap = e("div", "m-fitness"), content = e("div", "fr-map-data"), sources = e("div", "group glass");
+    for (const [name, label, href] of [
+      ["© OpenStreetMap contributors", "Map and route data · ODbL", "https://www.openstreetmap.org/copyright"],
+      ["BRouter", "Routing engine", "https://brouter.de/"],
+      ["OpenFreeMap", "Street maps", "https://openfreemap.org/"]
+    ]) {
+      const link = e("a", "row fr-data-source"), copy = e("span", "tx");
+      link.href = href; link.target = "_blank"; link.rel = "noopener";
+      copy.append(e("b", "", name), e("small", "", label));
+      link.append(copy, icon("chev", 16, 2)); sources.append(link);
+    }
+    content.append(sources); wrap.append(content);
+    const opener = doc.activeElement;
+    const dismissed = () => { dataPopup = null; const target = opener?.isConnected ? opener : root.querySelector(".fr-powered"); if (alive() && root.getClientRects().length) target?.focus({preventScroll:true}); };
+    if (opts.openMapData) { dataPopup = opts.openMapData(wrap, dismissed); return; }
+    // Standalone preview uses a native modal; the app supplies its shared sheet above.
+    const dialog = e("dialog", "fr-map-data-dialog"), header = e("header"), heading = e("h2", "", "Map and Data"), host = e("div", "m-fitness");
+    dialog.setAttribute("aria-label", "Map and Data"); heading.tabIndex = -1;
+    let finished = false;
+    const finish = () => { if (finished) return; finished = true; if (dialog.open) dialog.close(); host.remove(); dismissed(); };
+    const close = btn("", finish, "pill fr-data-close"); close.setAttribute("aria-label", "Close"); close.append(icon("x", 18, 2));
+    header.append(heading, close); dialog.append(header, wrap); host.append(dialog); doc.body.append(host);
+    dataPopup = {el:dialog,close:finish};
+    dialog.addEventListener("close", finish, {once:true});
+    dialog.addEventListener("click", event => {if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)finish();});
+    dialog.showModal(); heading.focus({preventScroll:true});
+  }
+  function poweredBy() {
+    const button = btn("", mapData, "pill fr-powered"), logo = e("img");
+    logo.src = "/fitness/inflite.svg"; logo.alt = ""; logo.width = 22; logo.height = 22;
+    button.setAttribute("aria-haspopup", "dialog"); button.title = "Map and Data";
+    button.append(logo, e("span", "", "Powered by InFlite"), icon("info", 14, 2));
+    return button;
+  }
   function clearMap() {
     mapTicket++;
     clearTimeout(mapTimer);
@@ -213,9 +254,7 @@ function createLiveRoutes(root, opts = {}) {
         h.focus({ preventScroll: true });
       }
     }
-    const credit = e("p", "fr-credit"), attribution = e("a", "", "© OpenStreetMap contributors");
-    attribution.href = "https://www.openstreetmap.org/copyright"; attribution.target = "_blank"; attribution.rel = "noopener";
-    credit.append(attribution); root.append(credit);
+    root.append(poweredBy());
   }
   function setupMap(r, host, fallback, message, retry) {
     if (!opts.map) return;
@@ -256,6 +295,7 @@ function createLiveRoutes(root, opts = {}) {
   function open(r, plan) {
     if (plan) { saved = plan; draftDay = plan.day; draftTime = plan.time; }
     if (!alive()) return;
+    closeMapData();
     cancel();
     clearMap();
     active = r;
@@ -383,9 +423,7 @@ function createLiveRoutes(root, opts = {}) {
       }
     }, { signal: events.signal });
     aside.append(form);
-    const about = e("details", "fr-method");
-    about.append(e("summary", "", "About this route"), e("p", "", `Calculated by InFlite’s dedicated BRouter engine using OpenStreetMap contributors (ODbL). ${r.surface === "road" ? "Road cycling favours paved through-roads; map surface data may be incomplete." : "Mixed-surface routing may include unpaved paths."} Check the map, local access and conditions before riding.`), e("p", "", `Time uses ${Math.round(metric ? speed : speed / 1.609344)} ${metric ? "km/h" : "mph"}${opts.speedFromHistory ? " from recent outdoor rides" : ""}, with a climbing allowance and a five-minute pause. This is a route planner; follow your cycling computer for navigation.`));
-    aside.append(about);
+    aside.append(poweredBy());
     setupMap(r, canvas, fallback, message, retry);
     h.tabIndex = -1;
     h.focus({ preventScroll: true });
@@ -408,11 +446,13 @@ function createLiveRoutes(root, opts = {}) {
     else if (!active) showList();
     refreshPlan();
   }, hide() {
+    closeMapData();
     const wasPending = pending;
     cancel();
     if (wasPending) { notice = "Route planning cancelled."; root.querySelector(".fr-loading")?.remove(); }
     clearMap();
   }, destroy() {
+    closeMapData();
     dead = true;
     cancel();
     clearMap();
