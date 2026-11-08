@@ -131,3 +131,20 @@
   .m-fitness .fr-loading-sweep, .m-fitness .fr-loading-start { animation:none; }
   .m-fitness .fr-loading-sweep { stroke-dasharray:none; opacity:.65; }
 }
+
+/* Route source credits use the shared InFlite sheet in the app. */
+.m-fitness .fr-powered { display:inline-flex; align-items:center; justify-self:start; gap:8px; min-height:44px; max-width:100%; margin:0 4px; padding:8px 12px; color:var(--text-2); font-size:13px; }
+.m-fitness .fr-powered img { flex:none; width:22px; height:22px; border-radius:6px; }
+.m-fitness .fr-powered > svg { flex:none; color:var(--text-3); }
+.m-fitness .fr-map-data { min-width:0; }
+.m-fitness .fr-map-data .group { margin:0; }
+.m-fitness .fr-data-source { min-height:76px; color:var(--text); text-decoration:none; }
+.m-fitness .fr-data-source .tx { gap:5px; }
+.m-fitness .fr-data-source .tx b { white-space:normal; font-size:15px; }
+.m-fitness .fr-data-source .tx small { color:var(--text-3); font-size:13px; }
+.m-fitness .fr-data-source > svg { flex:none; color:var(--text-3); }
+.m-fitness .fr-map-data-dialog { position:fixed; inset:0; width:calc(100% - 24px); max-width:440px; max-height:calc(100dvh - 32px); margin:auto; padding:20px; overflow:auto; border:0; border-radius:24px; color:var(--text); background:var(--sheet); box-shadow:var(--edge),var(--lift); }
+.m-fitness .fr-map-data-dialog::backdrop { background:var(--dim); }
+.m-fitness .fr-map-data-dialog > header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.m-fitness .fr-map-data-dialog h2 { margin:0; font-size:20px; }
+.m-fitness .fr-data-close { display:grid; place-items:center; flex:none; min-width:44px; min-height:44px; padding:0; }

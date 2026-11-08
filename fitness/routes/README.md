@@ -14,8 +14,9 @@ available elevations, with no fabricated activity timestamps. Missing elevation 
 fallbacks. Live Routes shows no sample weather and does not provide turn-by-turn guidance.
 
 An indeterminate route animation shows while obtaining location and generating loops. It uses CSS, stops when the
-request finishes or is cancelled, and becomes static for reduced-motion preferences. The planner shows only a compact
-linked OpenStreetMap attribution; the longer explanatory footer has been removed.
+request finishes or is cancelled, and becomes static for reduced-motion preferences. The planner shows a compact
+“Powered by InFlite” button using the existing site logo. It opens the shared “Map and Data” sheet with linked
+OpenStreetMap, BRouter and OpenFreeMap credits. The old “About this route” explanation is removed.
 
 ## Account and location handling
 
@@ -57,7 +58,7 @@ A failed upstream data update cannot alter a running router. Details and rollbac
 - `DELETE /api/fitness/routes/plan`: `{ id, version }` → remaining plan, preserving a concurrent replacement.
 
 All endpoints require sign-in; generation and writes also require the app's own Origin. Responses are never cached.
-Fitness 2.08 retains the existing Routes tab; no companion navigation deployment is needed.
+Fitness 2.09 retains the existing Routes tab; no companion navigation deployment is needed.
 
 ## Checks
 

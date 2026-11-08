@@ -12,6 +12,7 @@ export function view(el, ctx) {
     const speeds = ctx.S.acts.filter(a=>a.sport==='ride'&&!a.indoor).slice(-15).map(a=>{const s=c.sumOf(a);return s?.moving>900&&s.dist>1000 ? s.dist/s.moving*3.6 : 0;}).filter(v=>v>=10&&v<=40).sort((a,b)=>a-b);
     const hold = Symbol("route-save");
     real = createLiveRoutes(el,{owner:id,current:()=>ctx.fw.session.user.id===id,metric:c.U.metric!==false,workout,speed:speeds.length?speeds[Math.floor(speeds.length/2)]:22,speedFromHistory:!!speeds.length,
+      openMapData: (body,onClose) => ctx.fw.sheet.open({sheet:"credits",title:"Map and Data",app:"fitness",body,onClose}),
       map: (host,o) => { if(!c.M.able())return Promise.reject(new Error('WebGL unavailable'));return c.M.routeMap(host,{...o,light:ctx.fw.theme()==='light'}); },
       onBusy:on=>c.hold(hold,on), onSaved:()=>ctx.refreshRoute?.(), onToday:()=>ctx.fw.nav.section('today')});
     return real;
