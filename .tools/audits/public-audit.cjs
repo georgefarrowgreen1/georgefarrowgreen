@@ -22,6 +22,7 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
       try {
         const response = await page.goto(`https://${host}/`, { waitUntil: 'networkidle', timeout: 30000 });
         await page.evaluate(axe);
+        const release = host === 'status.inflite.ai' ? null : await page.evaluate(async () => { try { const r = await fetch('/version', { cache: 'no-store' }); const data = await r.json(); return r.ok && typeof data.build === 'string' ? data : { error: 'Invalid release response' }; } catch { return { error: 'Release endpoint did not return JSON' }; } });
         const data = await page.evaluate(async () => {
           const audit = await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } });
           const nav = performance.getEntriesByType('navigation')[0];
@@ -31,12 +32,12 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
             violations: audit.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })),
             gestureCancelled: ['gesturestart', 'gesturechange', 'gestureend'].some(type => !document.dispatchEvent(new Event(type, { cancelable: true, bubbles: true }))) };
         });
-        results.push({ host, width, status: response.status(), finalURL: page.url(), errors, failed, httpErrors, ...data });
+        results.push({ host, width, status: response.status(), finalURL: page.url(), errors, failed, httpErrors, release, ...data });
       } catch (error) { results.push({ host, width, error: error.message, errors, failed, httpErrors }); }
       await context.close();
       console.log(JSON.stringify(results.at(-1)));
     }
   } finally { await browser.close(); }
   writeFileSync(process.env.AUDIT_OUTPUT || '/tmp/inflite-public.json', JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  if (results.some(r => r.error || r.status !== 200 || r.errors.length || r.failed.length || r.httpErrors.length || r.overflow || r.violations.length || r.gestureCancelled)) process.exitCode = 1;
+  if (results.some(r => r.error || r.release?.error || r.status !== 200 || r.errors.length || r.failed.length || r.httpErrors.length || r.overflow || r.violations.length || r.gestureCancelled)) process.exitCode = 1;
 })().catch(error => { console.error(error); process.exitCode = 1; });
