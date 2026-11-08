@@ -25,7 +25,7 @@ export const connector = {
     "/fitness/todaycalc.js", "/fitness/send.js",
     "/fitness/roof/fitness.css", "/fitness/roof/fxviews.css"
   ],
-  lazy: ["/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js", "/fitness/roof/routesview.js", "/fitness/routes-live.js", "/fitness/routes.css", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js"],
+  lazy: ["/fitness/rhythm2-client.js", "/fitness/roof/rhythm2bridge.js", "/fitness/rhythm2.js", "/fitness/rhythm2-view.js", "/fitness/roof/rhythm2view.js", "/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js", "/fitness/roof/routesview.js", "/fitness/routes-live.js", "/fitness/routes.css", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js"],
   // mini(answer) → { kind: "num", num, label: "Fitness" } from answer.cards.fitness.ctl, else null
   mini(a) { const c = a?.cards?.fitness; return c && Number.isFinite(Number(c.ctl)) ? { kind: "num", num: String(Math.round(Number(c.ctl))), label: "Fitness" } : null; },
   // search(q, { userId }) → Fitness Settings, Your Numbers, the devices page: on this phone, q never leaves it (D16)

@@ -132,7 +132,7 @@ export function cleanState(d) {
   // Rhythm: minutes each day of the week (Monday first, none a rest day), a run and a swim, its lean, build or hold, the
   // Monday it began and the day it was set up, and an event you're riding towards
   const r = d.rhythm, rhythm = obj(r) && Array.isArray(r.days) && r.days.length === 7 ? { days: r.days.map((x) => Math.round(num(x, 0, 600) ?? 0)), run: r.run === true, swim: r.swim === true,
-    lean: ["balanced", "endurance", "punch"].includes(r.lean) ? r.lean : "balanced", mode: r.mode === "hold" ? "hold" : "build", ...(["none", "some", "regular", "lots"].includes(r.level) ? { level: r.level } : {}), ...(num(r.start, 0, 9e12) != null ? { start: r.start } : {}), ...(num(r.at, 0, 9e12) != null ? { at: r.at } : {}),
+    lean: ["balanced", "endurance", "punch"].includes(r.lean) ? r.lean : "balanced", mode: r.mode === "hold" ? "hold" : "build", ...(r.engine === 2 ? {engine:2} : {}), ...(["balanced","endurance","threshold","topend"].includes(r.objective) ? {objective:r.objective} : {}), ...(["none", "some", "regular", "lots"].includes(r.level) ? { level: r.level } : {}), ...(num(r.start, 0, 9e12) != null ? { start: r.start } : {}), ...(num(r.at, 0, 9e12) != null ? { at: r.at } : {}),
     // (and an event you're riding towards: its day, its kind, its name)
     ...(obj(r.event) && num(r.event.date, 0, 9e12) != null && ["sportive", "race", "tt"].includes(r.event.kind) ? { event: { date: r.event.date, kind: r.event.kind, name: String(r.event.name || "").replace(/[\u0000-\u001f]/g, "").slice(0, 60) } } : {}) } : null;
   const out = { profile, plan, rhythm, swaps, feel, workouts, prefs };
@@ -338,6 +338,7 @@ export async function dropFitness(env, userId) {
   // for an account that's gone (functions/_health.js); each where its table's been made)
   // (and Strava's tokens and files waiting: functions/_strava.js; the files went with the rest above)
   for (const t of ["fx_well", "fx_health", "fx_health_key", "fx_strava", "fx_strava_new"]) await D.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(userId).run().catch(() => {});
+  await D.prepare("DELETE FROM fx_rhythm2 WHERE user_id = ?").bind(userId).run().catch(() => {});
   // (and the days it last sent for InFlite Today: functions/_fittoday.js)
   await D.prepare("DELETE FROM fx_today WHERE user_id = ?").bind(userId).run().catch(() => {});
   // (and the sessions sent to friends from Chat, and the plans from Chat waiting: functions/_fitshare.js)

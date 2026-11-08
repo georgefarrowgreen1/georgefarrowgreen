@@ -149,7 +149,7 @@ function rung(c) {
   return { ...c, core: c.wu + c.cd + c.n * (work + c.rec), steps: (f, name, easy = 0.55) => [wu(c.wu), rep(c.n, on(c.len, f, name), off(c.rec, easy)), cd(c.cd)] };
 }
 // an id for a session at a length, its level kept
-export const withMins = (id, mins) => String(id).replace(/^(rh:[a-z0-9]+:)\d+/, `$1${mins}`);
+export const withMins = (id, mins) => String(id).replace(/^((?:rh|r2):[a-z0-9]+:)\d+/, `$1${mins}`);
 // a session Rhythm makes, from its id (rh:<kind>:<minutes>, and :<level> for the hard ones): its steps, with any spare
 // time ridden steady round the work
 export function session(id, t = targets(null)) {
@@ -163,22 +163,22 @@ export function session(id, t = targets(null)) {
   const ladder = (L, f) => { const cs = L.steps.map(rung); let i = Math.min(L.up[level], cs.length - 1); while (i > 0 && cs[i].core > mins) i--; return f(cs[i]); };
   const make = (name, label, about, steps) => ({ id, sport: "ride", kind: label, name, about, steps, rhythm: true });
   switch (kind) {
-    case "endurance": { const warm = Math.min(10, mins / 3), cool = Math.min(5, mins / 6); return make(`Endurance ${hm(mins)}`, "Endurance", "Steady zone 2: conversational all the way. The riding that builds everything else.", [wu(warm, 0.5, 0.65), at(mins - warm - cool, 0.68, "Endurance"), cd(cool, 0.6, 0.45)]); }
-    case "long": { const ramp = Math.min(15, mins / 4); return make(`Long ride ${hm(mins)}`, "Endurance", "Your long ride: zone 2 throughout, and eat from the first hour.", [wu(ramp, 0.5, 0.65), at(mins - 2 * ramp, 0.67, "Endurance"), cd(ramp, 0.6, 0.45)]); }
+    case "endurance": { const warm = Math.min(10, mins / 3), cool = Math.min(5, mins / 6); return make(`Endurance ${hm(mins)}`, "Endurance", "Comfortable endurance riding at a conversational effort.", [wu(warm, 0.5, 0.65), at(mins - warm - cool, 0.68, "Endurance"), cd(cool, 0.6, 0.45)]); }
+    case "long": { const ramp = Math.min(15, mins / 4); return make(`Long ride ${hm(mins)}`, "Endurance", "Comfortable endurance riding. Fuel from the first hour.", [wu(ramp, 0.5, 0.65), at(mins - 2 * ramp, 0.67, "Endurance"), cd(ramp, 0.6, 0.45)]); }
     // (a target event's last days: openers the day before, and the day itself)
-    case "openers": return make("Openers", "Openers", "Easy riding with three short, sharp efforts: legs awake for tomorrow, nothing taken out of them.", [wu(15, 0.5, 0.65), rep(3, on(1, 1.15, "Opener"), off(3, 0.5)), cd(Math.max(5, mins - 27), 0.6, 0.45)]);
-    case "event": return make("Event day", "Event", "The day it's all been for: warm up well, start steady, eat and drink from the first hour.", [wu(15, 0.5, 0.7), at(Math.max(30, mins - 15), 0.75, "Your event")]);
-    case "recovery": return make("Recovery spin", "Recovery", "Easy spinning, nothing more: come away fresher than you started.", [at(Math.min(mins, 60), 0.48, "Easy spin")]);
+    case "openers": return make("Openers", "Openers", "Easy riding with three short efforts to prepare for tomorrow.", [wu(15, 0.5, 0.65), rep(3, on(1, 1.15, "Opener"), off(3, 0.5)), cd(Math.max(5, mins - 27), 0.6, 0.45)]);
+    case "event": return make("Event day", "Event", "Warm up, start steadily, and fuel throughout your event.", [wu(15, 0.5, 0.7), at(Math.max(30, mins - 15), 0.75, "Your event")]);
+    case "recovery": return make("Recovery spin", "Recovery", "Easy spinning to support recovery.", [at(Math.min(mins, 60), 0.48, "Easy spin")]);
     // (the hard ones: a ladder each, the block's week climbing it, longer efforts first, then more of them, then harder;
     // as far up as the day's time goes)
-    case "tempo": return ladder(LADDERS.tempo, (c) => make(`Tempo ${c.n} × ${c.len}`, "Tempo", "Comfortably hard: steady pressure, breathing deep but in control.", fill(c.core, c.steps(0.83, "Tempo"))));
-    case "sweet": return ladder(LADDERS.sweet, (c) => make(`Sweet spot ${c.n} × ${c.len}`, "Sweet spot", "Just under threshold: the most fitness for the least fatigue. Seated and smooth.", fill(c.core, c.steps(0.9, "Sweet spot"))));
-    case "threshold": return ladder(LADDERS.threshold, (c) => make(`Threshold ${c.n} × ${c.len}`, "Threshold", c.len >= 20 ? "Twenty minutes at threshold, twice: hard, but finish each feeling there was a little more." : `${c.len === 10 ? "Ten" : c.len === 12 ? "Twelve" : "Fifteen"} minutes at threshold, ${["", "once", "twice", "three times", "four times"][c.n]}. Even, not heroic.`, fill(c.core, c.steps(t.thr, "Threshold"))));
-    case "vo2": return ladder(LADDERS.vo2, (c) => make(`VO₂ max ${c.n} × ${c.len}`, "VO₂ max", `${c.len === 5 ? "Five" : "Four"} minutes as hard as you can hold for ${c.len === 5 ? "five" : "four"}, spun out easy between. Don't start the next till you're ready.`, fill(c.core, c.steps(t.vo2, "VO₂ max", 0.5))));
+    case "tempo": return ladder(LADDERS.tempo, (c) => make(`Tempo ${c.n} × ${c.len}`, "Tempo", "Comfortably hard, with steady power and controlled breathing.", fill(c.core, c.steps(0.83, "Tempo"))));
+    case "sweet": return ladder(LADDERS.sweet, (c) => make(`Sweet spot ${c.n} × ${c.len}`, "Sweet spot", "Sustained work below threshold. Stay seated and smooth.", fill(c.core, c.steps(0.9, "Sweet spot"))));
+    case "threshold": return ladder(LADDERS.threshold, (c) => make(`Threshold ${c.n} × ${c.len}`, "Threshold", `${c.n} efforts of ${c.len} minutes at threshold. Hold steady power.`, fill(c.core, c.steps(t.thr, "Threshold"))));
+    case "vo2": return ladder(LADDERS.vo2, (c) => make(`VO₂ max ${c.n} × ${c.len}`, "VO₂ max", `${c.n} efforts of ${c.len} minutes with easy recovery. Pace evenly.`, fill(c.core, c.steps(t.vo2, "VO₂ max", 0.5))));
     case "thirty": return ladder(LADDERS.thirty, (c) => { const block = Array.from({ length: c.len * 2 }, (_, i) => (i % 2 ? off(0.25, 0.5, "Easy") : on(0.5, t.on30, "Hard")));
-      return make(`30/15s ${c.n} × ${c.len}`, "VO₂ max", `Thirty seconds hard, fifteen easy, ${c.len} times; three minutes between. Time near VO₂ max without the dread of long efforts.`, fill(c.core, [wu(15), rep(c.n, ...block, off(3, 0.5, "Recover")), cd(10)])); });
-    case "sprint": { const n = clamp(Math.floor((mins - 25) / 5), 1, 8); return make(`Sprints ${n} × 15 s`, "Anaerobic", "All-out sprints from a rolling start, with full recovery. Quality over quantity.", fill(25 + n * 5, [wu(15), rep(n, on(0.25, 2.0, "Sprint"), off(4.75, 0.5, "Recover")), cd(10)])); }
-    case "durable": { const steady = Math.max(30, mins - 10 - 25 - 5); return make(`Long ride, hard finish`, "Durability", "A long steady ride with two threshold efforts in its last hour, when you're already tired: power that lasts.", [wu(10, 0.5, 0.65), at(steady, 0.67, "Endurance"), rep(2, on(10, Math.min(t.thr, 0.95), "Threshold, tired")), off(5, 0.55), cd(5)]); }
+      return make(`30/15s ${c.n} × ${c.len}`, "VO₂ max", `Thirty seconds hard, fifteen easy, ${c.len} times per set; three minutes between sets.`, fill(c.core, [wu(15), rep(c.n, ...block, off(3, 0.5, "Recover")), cd(10)])); });
+    case "sprint": { const n = clamp(Math.floor((mins - 25) / 5), 1, 8); return make(`Sprints ${n} × 15 s`, "Anaerobic", "Short sprints from a rolling start, with full recovery.", fill(25 + n * 5, [wu(15), rep(n, on(0.25, 2.0, "Sprint"), off(4.75, 0.5, "Recover")), cd(10)])); }
+    case "durable": { const steady = Math.max(30, mins - 10 - 25 - 5); return make(`Long ride, hard finish`, "Durability", "Steady endurance, then sustained threshold work late in the ride.", [wu(10, 0.5, 0.65), at(steady, 0.67, "Endurance"), rep(2, on(10, Math.min(t.thr, 0.95), "Threshold, tired")), off(5, 0.55), cd(5)]); }
   }
   return null;
 }
@@ -444,7 +444,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     if (toEv === -1) return restWhy(`Rest: recover from ${evName}`);
     if (toEv === 1) { const id = `rh:openers:${Math.min(45, Math.max(35, avail || 40))}`, w = workoutOf(id, T), meas = measure(w, 4);
       return { ...base, id, kind: "openers", mins: Math.round(meas.secs / 60), tss: Math.round(meas.tss), hard: false, why: `Openers: ${evName} is tomorrow`, fuel: null, strength: false, moved: false }; }
-    if (!avail) return restWhy(P.days.some((x) => x) ? "A rest day: fitness is built while you recover" : "Choose the days you ride in Rhythm's settings");
+    if (!avail) return restWhy(P.days.some((x) => x) ? "Rest today to recover for your next session" : "Choose the days you ride in Rhythm's settings");
     if (tsb < -25) return restWhy(`Rest: your form is ${Math.round(tsb)}, too tired to train well`);
     if (poorRun >= 2) return restWhy("Rest: you've felt poor two days running");
     if (night?.trendLow && (night.hrvLow || night.rhrUp)) return restWhy(`Rest: your HRV has been under its usual all week, and last night ${night.hrvLow ? "was low again" : "your resting heart rate was up"}`);
@@ -471,7 +471,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     const need = Object.entries(sp).map(([k, s]) => [k, since[k] / s]).sort((p, q) => q[1] - p[1]);
     let kind, why, needed = null;
     if (f === "poor") { kind = "recovery"; why = "Easy: you're not feeling good this morning"; }
-    else if (longest && canHard && theme !== "topend" && !absorb && since.durable >= 13 && avail >= 100) { kind = "durable"; needed = since.durable / 13; why = "Your long ride, with threshold efforts in its last hour: power that lasts when you're tired"; }
+    else if (longest && canHard && theme !== "topend" && !absorb && since.durable >= 13 && avail >= 100) { kind = "durable"; needed = since.durable / 13; why = "Your long ride finishes with threshold efforts to build power under fatigue"; }
     else if (canHard && need[0][1] >= 1 && !(longest && since.long >= 5)) {
       const k = need[0][0]; needed = need[0][1];
       kind = k === "vo2" && (theme === "topend" || since.vo2 >= 10) && avail >= 52 ? "thirty" : k;

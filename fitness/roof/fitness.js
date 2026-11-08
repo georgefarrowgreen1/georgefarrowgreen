@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.15";
-export const NEWS = "Rhythm makes better use of your available riding time, with workouts fitted to your training load and faster planning";
+export const BUILD = "2.16";
+export const NEWS = "Rhythm 2.0 beta: personal progression, recorded sessions and ride feedback";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -56,6 +56,7 @@ export async function mount(root, fw) {
   }).catch((error) => { routeCSS = null; throw error; });
   // (each lazy file, through fw.lazy; its literal for roofcontract and C4's lazy list)
   const L = {
+    coach: () => fw.lazy((q) => import("./rhythm2view.js" + (q || ""))),
     acts: () => fw.lazy((q) => import("./actsview.js" + (q || ""))),
     routes: () => Promise.all([routeStyles(), fw.lazy((q) => import("./routesview.js" + (q || "")))]).then(([, module]) => module),
     prog: () => fw.lazy((q) => import("./progview.js" + (q || ""))),
@@ -69,7 +70,7 @@ export async function mount(root, fw) {
     act: via("acts", "openAct"), actMap: via("acts", "openActMap"), actShare: via("acts", "openActShare"), rename: via("acts", "openRename"),
     form: via("acts", "openForm"), upload: via("acts", "openUpload"),
     session: via("plan", "openSession"), workout: via("plan", "openWorkout"), day: via("plan", "openDay"), move: via("plan", "openMove"),
-    workouts: via("plan", "openWorkouts"), rhythmSetup: via("plan", "openRhythmSetup"), sendDevice: via("plan", "openSendDevice"),
+    rhythm2: via("coach", "openRhythm2"), workouts: via("plan", "openWorkouts"), rhythmSetup: via("plan", "openRhythmSetup"), sendDevice: via("plan", "openSendDevice"),
     power: via("prog", "openPower"), training: via("prog", "openTraining"), engine: via("prog", "openEngine"), year: via("prog", "openYear"),
     settings: via("set", "openSettings"),
     offer: (id) => openOffer(ctx, id),

@@ -425,6 +425,7 @@ test('#act=<id> (§2.6, fitness/app.js openTo): here → the act sheet; not yet,
 
 test('every opener the entry binds is exported, with view() for the two lazy sections, as j0’s surface froze them', { skip }, async () => {
   const PROG = await import(new URL('progview.js', RX).href);
+  const COACH = await import(new URL('rhythm2view.js', RX).href);
   for (const n of ['view', 'openAct', 'openActMap', 'openActShare', 'openRename', 'openForm', 'openUpload']) assert.equal(typeof ACTS[n], 'function', `actsview ${n}`);
   for (const n of ['view', 'openForm', 'openPower', 'openTraining', 'openEngine', 'openYear']) assert.equal(typeof PROG[n], 'function', `progview ${n}`);
   for (const n of ['openSession', 'openWorkout', 'openDay', 'openMove', 'openWorkouts', 'openRhythmSetup', 'openSendDevice']) assert.equal(typeof PLAN[n], 'function', `planview ${n}`);
@@ -433,7 +434,7 @@ test('every opener the entry binds is exported, with view() for the two lazy sec
   // (and the entry asks for exactly these: FXA's fitness.js via(file, name))
   const entry = textOf('fitness.js');
   for (const [, file, name] of entry.matchAll(/via\("(\w+)", "(\w+)"\)/g)) {
-    const mod = { acts: ACTS, prog: PROG, plan: PLAN, set: SET }[file];
+    const mod = { acts: ACTS, prog: PROG, plan: PLAN, set: SET, coach: COACH }[file];
     assert.equal(typeof mod?.[name], 'function', `fitness.js asks ${file}.${name}`);
   }
 });

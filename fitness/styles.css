@@ -2337,3 +2337,26 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   .checkin.open .checkin-row .seg3 { gap: 6px; }
   .checkin .checkin-row .seg3 button { font-size: 14px; padding: 0 2px; }
 }
+
+.r2-switch{display:inline-flex;position:relative;flex:none;width:48px;height:30px}
+.r2-switch input{position:absolute;z-index:1;inset:-7px 0;width:48px;height:44px;opacity:0;margin:0;cursor:pointer}
+.r2-track{width:48px;height:30px;border-radius:999px;background:var(--glass-ctl);box-shadow:inset 0 0 0 .5px var(--line)}
+.r2-track::before{content:"";display:block;width:24px;height:24px;margin:3px;border-radius:50%;background:white;box-shadow:0 2px 5px #0003;transition:transform .15s}
+.r2-switch input:checked+.r2-track{background:var(--good)}
+.r2-switch input:checked+.r2-track::before{transform:translateX(18px)}
+.r2-switch input:focus-visible+.r2-track{outline:2px solid var(--tint);outline-offset:3px}
+.r2-switch input:disabled+.r2-track{opacity:.5}
+.r2-content .r2-control{max-width:52%;min-width:0}
+.r2-content .r2-control select,.r2-content .r2-control input{max-width:100%;min-width:0}
+.r2-content .row .tx{min-width:0}
+.r2-content .card h2{margin:0;font-size:20px}
+@media(prefers-reduced-motion:reduce){.r2-track::before{transition:none}}
+
+.r2-content .pick input[type="number"]{appearance:textfield;-webkit-appearance:none;border:0;background:none;height:34px;width:64px;padding:0 10px;color:var(--text);font:inherit;font-weight:600;text-align:center}
+.r2-content .r2-caret{position:absolute;right:10px;pointer-events:none;color:var(--text-3)}
+.r2-content details>summary{cursor:pointer;min-height:48px;list-style:none}
+.r2-content details>summary::after{content:"⌄";margin-left:auto;color:var(--text-3)}
+.r2-content details[open]>summary::after{transform:rotate(180deg)}
+
+.r2-content{display:grid;gap:16px;min-width:0}
+.r2-content .rh-note{margin:0 4px;text-align:left;line-height:1.4}

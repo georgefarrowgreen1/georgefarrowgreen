@@ -15,6 +15,7 @@
 //   download(w, day?, dev?)      a workout as a .fit file named by its day: a blob through <a download> (saveFile),
 //                                then how to get it onto the device; a choice of device the first time
 // A day is the start of that day on this phone (startOfDay), as the rest of Fitness has it.
+import {coach} from "./core.js";
 import { C, DAY, P, R, S, SPORTS, TODAY, ZONES, actsOn, addDays, card, closeSheet, dayLetter, dayLong, dayName, dayStamp, dur, flatten, h, icon, isSet, keep, measure, mondayOf, openSheet, pace, paceFor, pct, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weight, wkById, workoutById, zoneOf, dist, Sheet, sheetEl, WORKOUTS, zoneBars } from "./x.js";
 import { actRow, paceOfSpeed } from "./actsview.js";
 
@@ -388,6 +389,7 @@ function myDevice() {
 async function download(w, day = TODAY, dev = myDevice()) {
   const show = (v, page) => (sheetUp() ? push(v, page) : openSheet(v, { sheet: "send-device" }));
   if (!dev) return show(() => sendView(w, day), "device");
+  if(S.rhythm?.engine===2 && w.engine === "rhythm-2.0"){try{const r=await coach.record(day);w=coach.workout("r2p:"+r.id);}catch(e){return toast(e.message,true);}}
   const name = `${dayStamp(day)}.fit`;
   let F;
   try { F = await formats(); } catch (_) { return toast("That file couldn’t be made just now.", true); }

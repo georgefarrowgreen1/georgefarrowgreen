@@ -1,6 +1,7 @@
 // Fitness's Plan: Rhythm (rhythm.js) on its tab, where you are in the block and the days ahead, each day's session,
 // changing one, and setting Rhythm up; the plans, workouts and their sheets. Drawn by app.js render.
 
+import {coach} from "./app.js";
 import { A, C, DAY, F, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, calendar, card, cardW, choosePlan, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, dur, eventDay, fitness, flatten, full, go, h, head, icon, isSet, keep, layOut, measure, missed, mondayOf, myPlan, numbers, openSheet, pace, paceFor, pct, plan, planStart, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetEl, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf } from "./app.js";
 import { actRow, openAct, zoneBars } from "./activities.js";
 
@@ -70,6 +71,7 @@ function rhythmIntro(wk = [[0, "z1"], [44, "z4"], [30, "z2"], [40, "z6"], [0, "z
 // (where you are in Rhythm: counting down to your event, in its last twelve weeks; else the block and its week)
 const rhythmSaid = () => {
   const r = rh(), b = r.block, ev = r.event;
+  if(r.beta)return r.label;
   if (ev && ev.days >= 0 && ev.days <= 84) return `${ev.name || R.EVENTS[ev.kind].name} · ${ev.days === 0 ? "today" : ev.days < 14 ? `${plural(ev.days, "day")} to go` : `${plural(Math.round(ev.days / 7), "week")} to go`}`;
   return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`;
 };
@@ -246,7 +248,7 @@ function dayChanges(day) {
   }
   if (w && d?.hard) out.push({ key: "easier", label: "Easier", sub: "Steady all the way, no hard efforts", run: () => set(`rh:endurance:${Math.min(mins, 90)}`, "Easier") });
   if (w) out.push({ key: "move", label: "Another day", sub: "Swap it with another day this week or next", run: () => openSheet(() => moveView(day)) });
-  if (w) out.push({ key: "rest", label: "Rest", sub: "Rhythm makes up for it later in the week", run: () => set(null, day === TODAY ? "Rest today" : `Rest on ${dayName(day)}`) });
+  if (w) out.push({ key: "rest", label: "Rest", sub: S.rhythm?.engine===2?"The plan adapts to what you actually ride":"Rhythm makes up for it later in the week", run: () => set(null, day === TODAY ? "Rest today" : `Rest on ${dayName(day)}`) });
   if (S.swaps[day] !== undefined) out.push({ key: "undo", label: "Undo the change", sub: "Back to Rhythm’s plan", run: () => set(undefined, "Back to Rhythm’s plan") });
   return out;
 }
@@ -561,9 +563,10 @@ function myDevice() {
   const d = S.own.find((a) => /garmin|wahoo/i.test(a.device || ""));
   return d ? { brand: /wahoo/i.test(d.device) ? "wahoo" : "garmin", name: d.device } : null;
 }
-function download(w, day = TODAY, dev = myDevice()) {
+async function download(w, day = TODAY, dev = myDevice()) {
   const show = (v) => (sheetEl.open ? pushSheet(v) : openSheet(v));
   if (!dev) return show(() => sendView(w, day));
+  if(S.rhythm?.engine===2 && w.engine === "rhythm-2.0"){try{const r=await coach.record(day);w=coach.workout("r2p:"+r.id);}catch(e){return toast(e.message,true);}}
   const name = `${dayStamp(day)}.fit`;
   saveFile(name, F.fitFromWorkout(w, { pace: paceFor(w.sport) }));
   show(() => savedView(w, day, dev, name));

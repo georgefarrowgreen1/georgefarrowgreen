@@ -13,6 +13,7 @@ import { toast, redraw } from "./fxui.js";
 
 export const rhythmSaid = () => {
   const r = rh(), b = r.block, ev = r.event;
+  if(r.beta)return r.label;
   if (ev && ev.days >= 0 && ev.days <= 84) return `${ev.name || R.EVENTS[ev.kind].name} · ${ev.days === 0 ? "today" : ev.days < 14 ? `${plural(ev.days, "day")} to go` : `${plural(Math.round(ev.days / 7), "week")} to go`}`;
   return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`;
 };
@@ -32,7 +33,7 @@ export function dayChanges(day, open = null) {
   }
   if (w && d?.hard) out.push({ key: "easier", label: "Easier", sub: "Steady all the way, no hard efforts", run: () => set(`rh:endurance:${Math.min(mins, 90)}`, "Easier") });
   if (w) out.push({ key: "move", label: "Another day", sub: "Swap it with another day this week or next", run: () => open?.move(day) });
-  if (w) out.push({ key: "rest", label: "Rest", sub: "Rhythm makes up for it later in the week", run: () => set(null, day === TODAY ? "Rest today" : `Rest on ${dayName(day)}`) });
+  if (w) out.push({ key: "rest", label: "Rest", sub: S.rhythm?.engine===2?"The plan adapts to what you actually ride":"Rhythm makes up for it later in the week", run: () => set(null, day === TODAY ? "Rest today" : `Rest on ${dayName(day)}`) });
   if (S.swaps[day] !== undefined) out.push({ key: "undo", label: "Undo the change", sub: "Back to Rhythm’s plan", run: () => set(undefined, "Back to Rhythm’s plan") });
   return out;
 }

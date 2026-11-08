@@ -1245,6 +1245,7 @@ function adopt(d) {
   S.profile = { ...START, ...(kept || {}), set: kept ? (Array.isArray(kept.set) ? kept.set : Object.keys(START).filter((k) => k in kept)) : [] };
   S.chosen = ok(d?.plan) && PLANS.some((p) => p.id === d.plan.id) && Number.isFinite(d.plan.start) ? d.plan : null;
   S.rhythm = ok(d?.rhythm) && Array.isArray(d.rhythm.days) ? d.rhythm : null;
+  if(S.rhythm?.engine===2&&S.me)coach.load().catch(()=>{});
   S.swaps = ok(d?.swaps) ? d.swaps : {}; S.feel = ok(d?.feel) ? d.feel : {};
   S.mine = Array.isArray(d?.workouts) ? d.workouts : [];
   // (units as you chose them; till then, your phone's region's: miles in the US, kilometres elsewhere)
@@ -1273,7 +1274,7 @@ function estimates() {
 }
 function estimate() {
   const e = estimates(), ch = {};
-  if (e.ftp && !isSet("ftp") && Math.abs(e.ftp - P().ftp) >= 3) ch.ftp = e.ftp;
+  if (S.rhythm?.engine !== 2 && e.ftp && !isSet("ftp") && Math.abs(e.ftp - P().ftp) >= 3) ch.ftp = e.ftp;
   if (e.maxHr && !isSet("maxHr") && e.maxHr !== P().maxHr) { ch.maxHr = e.maxHr; if (!isSet("lthr")) ch.lthr = Math.round(e.maxHr * 0.9); }
   if (!Object.keys(ch).length) return;
   S.profile = { ...P(), ...ch, ...(ch.ftp ? { ftpLog: logFtp(ch.ftp, 0) } : {}) }; keep("profile"); resum(); redraw();
@@ -1335,13 +1336,15 @@ const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "")
 const runSpeed = () => 1000 / P().runPace, swimSpeed = () => 100 / P().css;
 const paceFor = (sport) => (sport === "run" ? runSpeed() : sport === "swim" ? swimSpeed() : 4);
 const allWorkouts = () => [...S.mine, ...WORKOUTS];
-const wkById = (id) => S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
+const wkById = (id) => coach.workout(id) || S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
 
 // ---- Rhythm: the plan that never ends (rhythm.js), unless you've chosen an event's plan ----
 const rhythmOn = () => !!S.rhythm && !S.chosen;
 // (what it goes on that comes in behind the scenes, not through keep: the weather where you ride, for the wet days ahead,
 // and your nights, from Garmin or Apple Health)
 const rhFrom = () => [S.wx, S.garmin, S.health];
+const coach=A.createCoach({owner:()=>S.me?.id,create:()=>import("./rhythm2-standalone.js").then(m=>m.makeCoach())});
+
 let rhCache = null;
 function rh() {
   if (!rhythmOn()) return null;
@@ -1352,7 +1355,7 @@ function rh() {
   const key = `${dataV}@${TODAY}|${P().ftp}|${P().runPace}|${P().css}`, from = rhFrom();
   if (rhCache?.key !== key || rhCache.from.some((x, i) => x !== from[i])) {
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, indoor: !!a.indoor, sum: sumOf(a) }));
-    rhCache = { key, from, v: R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet: wetAhead(), well: wellByDay() }) };
+    rhCache = { key, from, v: S.rhythm.engine===2&&coach.ready()?coach.plan():R.plan({ prefs: S.rhythm, acts, feel: S.feel, swaps: S.swaps, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() }, wet: wetAhead(), well: wellByDay() }) };
   }
   return rhCache.v;
 }
@@ -1608,8 +1611,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.15";
-const NEWS = "Rhythm makes better use of your available riding time, with workouts fitted to your training load and faster planning";
+const BUILD = "2.16";
+const NEWS = "Rhythm 2.0 beta: personal progression, recorded sessions and ride feedback";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2497,6 +2500,7 @@ function morningRefresh() {
 // rest day, the event, or nothing planned. null where anything in it can't be worked out: then nothing's sent, and
 // Fitness goes on as it was
 function todaySnap() {
+  if(S.rhythm?.engine===2&&!coach.ready())return null;
   try {
     const days = {};
     for (let i = 0; i < 8; i++) {
@@ -2669,6 +2673,7 @@ addEventListener("scroll", () => document.documentElement.style.setProperty("--b
 // again: shown before in this visit (after signing out): no slow start, the rest as it was
 function welcome(note = null, { again = !!welcome.shown } = {}) {
   welcome.shown = true;
+  coach.reset();
   S.me = null;
   document.body.classList.add("out");
   IFL.warm();                    // (Sign in's connection to the sign-in page made ahead, while it's on the screen)
@@ -3161,7 +3166,7 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
 })();
 
 // (what the screens, each its own module, take from here)
-export { wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
+export { coach, changed, todayRefresh, wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView, stopped };

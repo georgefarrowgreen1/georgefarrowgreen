@@ -46,6 +46,7 @@
 //   POST   /api/fitness/handback      signed in on the account's page, for Fitness: its code swapped for the sign-in
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
+import {trainingRecords,prescribe,sessionFeedback} from "../../_fitrhythm2.js";
 import { cleanQuery, generateRoutes, routePlan, saveRoutePlan, dropRoutePlan, ROUTER_URL } from "../../_fitroutes.js";
 import { tickHost } from "../../_sites.js";
 import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace } from "../../_pigeon.js";
@@ -94,6 +95,9 @@ const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
 const routing = new Set();
 const ROUTES = {
+  "GET rhythm2": async ({request,env}) => {const u=await signedIn(request,env);return json({records:await trainingRecords(env,u.id)});},
+  "POST rhythm2/prescriptions": async ({request,env}) => {sameOrigin(request);const u=await signedIn(request,env);return json({record:await prescribe(env,u.id,await body(request,24000))});},
+  "POST rhythm2/feedback": async ({request,env}) => {sameOrigin(request);const u=await signedIn(request,env);return json({record:await sessionFeedback(env,u.id,await body(request,4000))});},
   "POST routes/generate": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 1024);

@@ -164,3 +164,20 @@ export const offer = (id, answer) => call(`offers/${encodeURIComponent(id)}`, { 
 // { day, start, stop, source } }; and cleared, for a day
 export const setTime = (b) => call("time", { method: "PUT", body: b });
 export const dropTime = (day) => call("time", { method: "DELETE", body: { day } });
+
+
+export {call as trainingCall};
+// Only this small facade is loaded by classic Fitness. The complete account
+// controller and planner load when the beta is opened or already enabled.
+export function createCoach({owner,create}){
+ let client=null,pending=null,version=0,error=null;
+ const ready=()=>!!client?.ready();
+ const state=()=>client?.state()||{error};
+ function load(options){
+  if(client)return client.load(options);if(pending)return pending;
+  const id=owner(),v=version;error=null;
+  const p=Promise.resolve().then(create).then(c=>{if(version!==v||owner()!==id)throw Error('The signed-in account changed.');client=c;return c.load(options);}).catch(e=>{if(version===v)error=e.message;throw e;}).finally(()=>{if(pending===p)pending=null;});pending=p;return p;
+ }
+ const proxy=key=>(...args)=>client?client[key](...args):Promise.reject(Error('Open Rhythm 2.0 first.'));
+ return {ready,state,load,plan:()=>client?.plan()||null,workout:id=>client?.workout(id)||null,record:proxy('record'),feedback:proxy('feedback'),reset(){version++;client?.reset();client=null;pending=null;error=null;}};
+}

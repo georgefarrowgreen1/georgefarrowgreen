@@ -282,6 +282,7 @@ export function fitFromWorkout(w, { pace = 4, created = Date.now() } = {}) {
     else Object.assign(m, { durationType: DURATION.open, durationValue: 0 });
     const lo = Math.min(s.from, s.to ?? s.from), hi = Math.max(s.from, s.to ?? s.from), held = lo === hi;
     if (s.kind === "free" || w.sport === "strength" || (w.sport === "swim") || !lo) Object.assign(m, { targetType: TARGET.open, targetValue: 0 });
+    else if(w.sport === "ride" && w.engine === "rhythm-2.0" && Number.isFinite(w.targetFtp)) Object.assign(m,{targetType:TARGET.power,targetValue:0,low:1000+Math.max(0,Math.round(lo*w.targetFtp)-2),high:1000+Math.round(hi*w.targetFtp)+3});
     else if (w.sport === "ride") Object.assign(m, { targetType: TARGET.power, targetValue: 0, low: Math.round(lo * 100) - (held ? 2 : 0), high: Math.round(hi * 100) + (held ? 3 : 0) });
     else Object.assign(m, { targetType: TARGET.speed, targetValue: 0, low: Math.round(lo * pace * (held ? 0.97 : 1) * 1000), high: Math.round(hi * pace * (held ? 1.03 : 1) * 1000) });
     if (s.cad) Object.assign(m, { target2Type: TARGET.cadence, target2Value: 0, low2: s.cad[0], high2: s.cad[1] });
