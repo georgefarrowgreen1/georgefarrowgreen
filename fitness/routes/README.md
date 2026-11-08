@@ -16,7 +16,7 @@ fallbacks. Live Routes shows no sample weather and does not provide turn-by-turn
 An indeterminate route animation shows while obtaining location and generating loops. It uses CSS, stops when the
 request finishes or is cancelled, and becomes static for reduced-motion preferences. The planner shows a compact
 “Powered by InFlite” button using the existing site logo. It opens the shared “Map and Data” sheet with linked
-OpenStreetMap, BRouter and OpenFreeMap credits. The old “About this route” explanation is removed.
+OpenStreetMap and OpenFreeMap credits alongside the InFlite Routing System. The old “About this route” explanation is removed.
 
 ## Account and location handling
 
