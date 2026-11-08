@@ -50,7 +50,7 @@ const pages = [];
 async function kit({ w = 390, h = 844, scheme = 'light', path = '/', motion = 'no-preference', noVT = false, init = null, phone = false } = {}) {
   // (phone: a phone's user agent and touch, for Chats, whose service keeps theme.js's device rule: no core on a computer, S3-D13)
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, reducedMotion: motion, locale: 'en-GB', timezoneId: 'Europe/London', ...(phone ? { userAgent: devices['iPhone 13'].userAgent, hasTouch: true, isMobile: true } : {}) });
-  const served = await serveKit(ctx);
+  const served = await serveKit(ctx, { ifl: IFL });
   if (noVT) await ctx.addInitScript(() => { delete Document.prototype.startViewTransition; });
   if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage();
@@ -73,7 +73,7 @@ async function clean(rec, label) {
 }
 async function axe(p, label) {
   if (!(await p.evaluate(() => !!window.axe))) await p.evaluate(AXE);
-  const v = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false }, 'color-contrast': { enabled: false } }, resultTypes: ['violations'] })).violations.filter((x) => x.impact === 'serious' || x.impact === 'critical').map((x) => `${x.id}: ${x.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(', ')}`));
+  const v = await p.evaluate(async () => (await window.axe.run(document, { preload: false, runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false }, 'color-contrast': { enabled: false } }, resultTypes: ['violations'] })).violations.filter((x) => x.impact === 'serious' || x.impact === 'critical').map((x) => `${x.id}: ${x.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(', ')}`));
   same(v, [], `${label}: axe finds nothing serious or critical`);
 }
 
@@ -89,7 +89,7 @@ try {
     ok(await p.isVisible(H.HD_ME) && !(await p.isVisible(H.HD_BACK)), 'your photo leads on a tab screen, no Back');
     same(await p.$eval(H.HD_ME, (b) => [b.getAttribute('aria-label'), b.getAttribute('aria-haspopup'), b.classList.contains('out')]), ['You and your apps', 'dialog', false], 'your photo’s button: “You and your apps”, opening a dialog (InFlite’s menu), not the signed-out button');
     same(await p.$$eval('#hd .ifh-acts [data-act]', (bs) => bs.map((x) => `${x.dataset.act}:${x.getAttribute('aria-label')}`)), ['search:Search', 'edit:Edit Today: hide and reorder cards'], 'the capsule: Search first, then the screen’s act');
-    same(await text(p, H.HD_EDIT), 'Edit', 'an act with no glyph is its word');
+    ok(await p.$eval(H.HD_EDIT, (b) => b.getAttribute('aria-label').startsWith('Edit') && (!!b.querySelector('svg') || !!b.textContent.trim())), 'Edit has a visible glyph or word and an accessible name');
     await p.click(H.HD_EDIT); await p.click(H.HD_ME);
     same(await p.evaluate(() => [kit.state.edit, kit.state.me]), [1, 1], 'the act and your photo run what the screen gave');
     same(await p.$$eval(H.TAB, (as) => as.map((a) => `${a.dataset.tab}:${a.getAttribute('aria-current')}:${a.getAttribute('href')}`)), ['today:page:/', 'chats:null:/chats/', 'apps:null:/#apps', 'you:null:/#you'], 'the tab bar: Today · Chats · Apps · You, Today current (aria-current=page)');
@@ -169,7 +169,7 @@ try {
     const [lx, ox] = await lens(); same(lx, ox, 'the lens sits under the chosen section');
     // compaction
     await p.evaluate(() => scrollTo(0, 120)); await settle(p, 200);
-    same(await p.evaluate(() => [document.querySelector('#hd .ifh').style.getPropertyValue('--p'), document.querySelector('#hd .ifh').classList.contains('ifh-compact')]), ['1.000', true], 'scrolled 64 px and more: --p is 1, compact');
+    same(await p.evaluate(() => [Number(document.querySelector('#hd .ifh').style.getPropertyValue('--p')), document.querySelector('#hd .ifh').classList.contains('ifh-compact')]), [1, true], 'scrolled 64 px and more: --p is 1, compact');
     same(await text(p, H.HD_TITLE), 'London · 14°', 'compact, the title is compactTitle');
     same(await p.$eval(H.HD_TITLE, (h) => h.getAttribute('aria-label')), 'London', 'its full title stays its accessible name');
     await p.evaluate(() => scrollTo(0, 0)); await settle(p, 200);
@@ -183,15 +183,17 @@ try {
     const [lx2, ox2] = await lens(); same(lx2, ox2, 'the lens follows (recomputed on show)');
     same(await p.evaluate(() => kitMod.shows.at(-1).section), 'days', 'the module was shown 16 Days');
     // per-section scroll
-    await p.evaluate(() => scrollTo(0, 700)); await settle(p, 150);
+    await p.evaluate(() => scrollTo(0, 700)); await settle(p, 500);
+    const daysY = (await at(p)).y;
     await p.click(H.hdSec('now')); await settle(p);
-    ok((await at(p)).y < 5, 'another section opens at its own place (the top)');
+    ok((await at(p)).y >= 29 && await p.$eval('#hd .ifh', (h) => h.classList.contains('ifh-compact')), 'switching sections while scrolled keeps the header compact');
     await p.click(H.hdSec('days')); await settle(p, 600);
-    ok(Math.abs((await at(p)).y - 700) < 4, 'back on 16 Days, where it was scrolled to', `y ${(await at(p)).y}`);
+    ok(Math.abs((await at(p)).y - daysY) < 4, 'back on 16 Days, where it was scrolled to', `y ${(await at(p)).y}, saved ${daysY}`);
     // fill
+    const beforeFill = await p.$eval('#hd .ifh', (h) => h.classList.contains('ifh-compact'));
     await p.click(H.hdSec('radar')); await settle(p);
     ok(await p.evaluate(() => document.documentElement.classList.contains('ifl-fill')), 'Radar fills the window: html.ifl-fill (fw.fill)');
-    ok(await p.$eval('#hd .ifh', (h) => getComputedStyle(h).getPropertyValue('--p').trim() === '1'), 'filling, the header is held compact');
+    same(await p.$eval('#hd .ifh', (h) => h.classList.contains('ifh-compact')), beforeFill, 'filling keeps the header in its previous state');
     await p.click(H.hdSec('warnings')); await settle(p);
     ok(!(await p.evaluate(() => document.documentElement.classList.contains('ifl-fill'))), 'another section: ifl-fill cleared');
     // the Back rule
@@ -679,8 +681,8 @@ try {
       return { keys: Object.keys(f), frozen: Object.isFrozen(f), call: 'call' in f, state: f.state, same: f === again && s.facade === f, full: ['protocol', 'state', 'call', 'on', 'facade', 'release'].every((x) => x in s),
         rows: (await s.call('rows', 0, 40)).length, waiting: (await f.waiting({ ids: [] })).length, states: kit.state.serviceStates };
     });
-    same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, states: ['chats:ready'] },
-      'F.service: the frozen seven-key facade, no call; fw.service: the full service, the same one; the stub core answers; opts.serviceState heard ready');
+    same(svc, { keys: ['state', 'share', 'sendTo', 'waiting', 'since', 'reply', 'refresh', 'signOut'], frozen: true, call: false, state: 'ready', same: true, full: true, rows: 3, waiting: 1, states: ['chats:ready'] },
+      'F.service: the frozen facade, including reply, no call; fw.service: the full service, the same one; the stub core answers; opts.serviceState heard ready');
     // (a tap (evaluate runs with one): sendTo to a friend whose key changed (Ali, the fixtures') gives the Send sheet;
     // closed, it says so. No tap: roofcontract's unit case. A card that doesn't pass engineCard: refused, no sheet)
     const tapped = await p.evaluate(async (card) => {

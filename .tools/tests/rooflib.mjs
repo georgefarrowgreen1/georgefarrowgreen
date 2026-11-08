@@ -95,12 +95,14 @@ function hubProxy() {
   };
   const srv = http.createServer((q, s) => {
     let u; try { u = new URL(q.url); } catch (_) { s.writeHead(400); return s.end(); }
+    if (process.env.HUB_LOCAL_PROXY === '1' && !/(^|\.)(ifl|gfg)\.test$/.test(u.hostname)) { s.writeHead(403); return s.end('Local test hosts only'); }
     const [host, port] = where(u.host);
     const out = http.request({ host, port, method: q.method, path: u.pathname + u.search, headers: q.headers }, (r) => { s.writeHead(r.statusCode, r.rawHeaders); r.pipe(s); });
     out.on('error', () => { if (!s.headersSent) s.writeHead(502); s.end(); });
     q.pipe(out);
   });
   srv.on('connect', (q, sock, head) => {
+    if (process.env.HUB_LOCAL_PROXY === '1' && !/(^|\.)(ifl|gfg)\.test(?::\d+)?$/.test(q.url)) return sock.destroy();
     const [host, port] = where(q.url);
     const up = net.connect(port || 443, host, () => { sock.write('HTTP/1.1 200 Connection Established\r\n\r\n'); up.write(head); up.pipe(sock); sock.pipe(up); });
     up.on('error', () => sock.destroy()); sock.on('error', () => up.destroy());
@@ -112,7 +114,7 @@ let browser = null;
 export function launch() {
   return (browser ||= (async () => ENGINE === 'webkit'
     ? webkit.launch({ proxy: { server: await hubProxy(), bypass: '<-loopback>' } })
-    : chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: CHROMIUM_ARGS }))());
+    : chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: CHROMIUM_ARGS, ...(process.env.HUB_LOCAL_PROXY === '1' ? { proxy: { server: await hubProxy(), bypass: '<-loopback>' } } : {}) }))());
 }
 // A browser profile kept on disk, opened again as a fresh window (empty sessionStorage; its storage, caches and
 // service workers kept): roofsw's offline open

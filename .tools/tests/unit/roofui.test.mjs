@@ -169,11 +169,13 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // The separately tested request coordinator is an additional bounded transport layer.
 // 8 November: 256 B for sheets following the visible viewport on resume, keyboard detection when iOS shrinks the
 // layout too, and listener cleanup. Reusing ui.el in navigation and toasts removes the earlier 73 B overrun first.
-test('roof UI stays within 29 KB + 512 B; requests stay within 2 KB + 128 B gzip', { skip: roofSkip }, () => {
+// Motion audit: 512 B for cancellable route snapshots, gesture cleanup and sheet
+// animation completion. No new runtime dependency; the framework remains under 30 KB.
+test('roof UI stays within 30 KB; requests stay within 2 KB + 128 B gzip', { skip: roofSkip }, () => {
   const all = files().filter(f => f !== 'requests.js').map((f) => strip(read(f))).join('\n');
   assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
-  assert.ok(gz <= 29 * 1024 + 512, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 30208`);
+  assert.ok(gz <= 30 * 1024, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 30720`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 

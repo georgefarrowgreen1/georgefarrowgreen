@@ -31,7 +31,9 @@ const clean = () => p.evaluate(() => ({ cls: document.documentElement.className.
 for (const [app, path, main, secs] of [['weather', '/weather/', H.M_WEATHER, ['now', 'days']], ['fitness', '/fitness/', H.M_FITNESS, ['today', 'activities']], ['markets', '/markets/', H.M_MARKETS, ['today', 'holdings']]]) {
   await p.goto(`${HUB}${path}`); ok(await shown(p, main, 20000), `${app} up`); await wait(5000);
   // (a y in the middle of the screen, away from charts if we can: the header's bottom + 150)
-  const y = 600;
+  // Weather's rain chart now occupies y=600 and owns its sideways gesture. Swipe
+  // the forecast's text instead, while still leaving chart scrubbing untouched.
+  const y = app === 'weather' ? 300 : 600;
   const s0 = await sec();
   await swipe(320, 60, y, 12, `${app}-mid`);
   const s1 = await sec();
