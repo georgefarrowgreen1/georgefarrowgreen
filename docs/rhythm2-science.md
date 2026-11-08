@@ -45,9 +45,17 @@ and consistency rather than automatic increases in training volume.
   corroborated by low HRV/short sleep can ease today. Two fatigue reviews on distinct days in the last seven days
   pause newly generated quality work until seven days after the latest such ride. The period expires naturally;
   this is not a diagnosis of overtraining. Sparse/missing readings never become positive readiness evidence.
-- **Volume:** the existing maximum 5% allowance above observed weekly time/load is unlocked only by two recent
-  controlled review dates within 14 days, with no current recovery concern and build mode selected. Otherwise
-  maintain the observed allowance. Neither 5% nor TSS/CTL/ATL is an injury-risk guarantee or a physiological test.
+- **Volume and declared goals:** in build mode the scheduled hours describe the rider’s usual weekly riding goal.
+  Sparse imports must not silently turn that declaration into an eight-week-average time cap. Hold mode retains
+  the observed volume/load baseline; an explicit “starting again” level retains the conservative 90-minute start.
+  The build-mode load allowance is at least 0.8 TSS per scheduled minute, leaving room for controlled intervals
+  alongside easy riding; this is a product fitting heuristic, not a validated safe workload. Recent controlled
+  reviews can retain the existing 5% allowance on observed load, but never extend the scheduled time. Interval
+  dose progression still needs its own evidence. TSS is shared according to session cost rather than a uniform
+  daily rate that truncates the short interval day. Subjective recovery, rest and existing prescriptions retain
+  priority. Recovery spins are capped at an hour. The load-model fatigue margin also considers the declared usual
+  week, without rewriting the historical CTL/ATL values. None of these numerical choices is an injury-risk guarantee
+  or a physiological test. The week preview uses the same engine, records and recovery inputs as the saved plan.
 - **Endurance labels:** “long” is used only when the fitted session lasts at least two hours. A longest available
   slot can shrink under the weekly limits; its shorter session is called an endurance ride. This is a wording
   convention, not a physiological boundary or an instruction to increase riding time. Older saved generic labels

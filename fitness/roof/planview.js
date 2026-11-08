@@ -199,7 +199,7 @@ function rhythmSetup({ first = false, at = null } = {}) {
     });
     const preset = (name, v) => h("button.pill.small", { type: "button", onclick: () => { draft.days = [...v]; Sheet.redraw(); } }, name);
     setTimeout(sum);
-    return { title: editing ? "Your week" : "Rhythm", body: [...top("days", "When do you ride?", "Drag each day up to how long you usually have, or tap a day and use − and +. All the way down is a rest day."),
+    return { title: editing ? "Your week" : "Rhythm", body: [...top("days", "When do you ride?", draft.engine === 2 ? "Set your riding time for a usual week. Drag a bar, or tap a day and use − and +. All the way down is a rest day." : "Drag each day up to how long you usually have, or tap a day and use − and +. All the way down is a rest day."),
       h("div.card.rh-days", {}, h("div.rh-sum", {}, total, count), h("div.rh-bars", {}, cols)),
       h("div.rh-daystep", {}, selName, h("span.stepper", { role: "group", "aria-label": "That day’s time" },
         h("button", { type: "button", "aria-label": "15 minutes less", onclick: () => step(-15) }, icon("minus", 16, 2.4)), selVal,
@@ -246,7 +246,7 @@ function rhythmSetup({ first = false, at = null } = {}) {
       h("small", { text: sub }));
     return { title: editing ? "Your week" : "Rhythm", body: [...top("goal", "Build, or hold?", "You can change this any time, say for a busy month."),
       h("div.rh-goals", { role: "radiogroup", "aria-label": "Build or hold" },
-        card("build", "Keep building", "Up a few points a week, never faster, with a lighter week every fourth. Uses all the time you gave.", "M0 54 C40 50, 60 46, 90 42 S 130 40, 150 40 C170 40, 190 32, 230 26 S 280 20, 300 18 L326 14", "up"),
+        card("build", "Keep building", draft.engine === 2 ? "Use your scheduled riding time, with manageable intervals and recovery around them." : "Up a few points a week, never faster, with a lighter week every fourth. Uses all the time you gave.", "M0 54 C40 50, 60 46, 90 42 S 130 40, 150 40 C170 40, 190 32, 230 26 S 280 20, 300 18 L326 14", "up"),
         card("hold", "Hold where I am", "Fitness kept level with less riding: shorter sessions, the hard work kept.", "M0 32 C40 28, 70 34, 110 31 S 170 28, 200 32 S 270 34, 326 30", "level")),
       h("div.rh-ftp", {}, icon("info", 18, 2), h("span", {}, "Your FTP is ", h("b", { text: `${P().ftp} W` }), isSet("ftp") ? ", as you set it." : ", worked out from your rides till you set it.", " Rhythm sets every interval from it, and from your power curve once your rides show it.")),
       next("Next", event)] };
@@ -271,12 +271,25 @@ function rhythmSetup({ first = false, at = null } = {}) {
       h("button.btn.rh-next", { type: "button", onclick: go }, "See your first week")] };
   };
   // 4. The first week, as Rhythm would have it, before anything's kept
+  let previewLoad = null, previewError = null;
+  const loadPreview = () => {
+    if (previewLoad) return;
+    previewError = null;
+    previewLoad = coach.load().catch(e => { previewError = e.message || "Training is temporarily unavailable."; }).finally(() => { previewLoad = null; Sheet.redraw?.(); });
+  };
   const preview = () => {
+    if (draft.engine === 2 && !coach.ready()) {
+      const error = previewError || coach.state().error;
+      if (!error) loadPreview();
+      return { title: "Your week", body: [...top("preview", "Your next seven days", error || "Building your training preview…"),
+        error && h("button.btn", { type: "button", onclick: () => { loadPreview(); Sheet.redraw?.(); } }, "Try again")] };
+    }
     const acts = S.own.map((a) => ({ start: a.start, sport: a.sport, sum: sumOf(a) }));
-    const r = R.plan({ prefs: { ...draft, start: S.rhythm?.start ?? mondayOf(TODAY), at: S.rhythm?.at ?? TODAY }, acts, feel: S.feel, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } });
+    const prefs = { ...draft, start: S.rhythm?.start ?? mondayOf(TODAY), at: S.rhythm?.at ?? TODAY };
+    const r = draft.engine === 2 ? coach.plan({ prefs }) : R.plan({ prefs, acts, feel: S.feel, today: TODAY, ftp: P().ftp, paces: { run: runSpeed(), swim: swimSpeed() } });
     const ds = r.days.filter((d) => d.date >= TODAY).slice(0, 7), t = R.targets ? r.targets : undefined;
-    const mins = ds.reduce((a, d) => a + d.mins, 0), hard = ds.filter((d) => d.hard), easy = mins ? Math.round(100 * (1 - hard.reduce((a, d) => a + Math.min(d.mins, 60), 0) * 0.55 / mins)) : 100;
-    const rowOf = (d) => { const w = d.id ? R.workoutOf(d.id, t) : null;
+    const mins = ds.reduce((a, d) => a + d.mins, 0), hard = ds.filter((d) => d.hard), easy = mins ? Math.round(100 * (1 - hard.reduce((a, d) => a + (r.beta ? (r.workouts[d.id]?.workSecs || 0) / 60 : Math.min(d.mins, 60) * 0.55), 0) / mins)) : 100;
+    const rowOf = (d) => { const w = d.id ? r.workouts?.[d.id] || R.workoutOf(d.id, t) : null;
       return h("div.row.plain" + (d.date === TODAY ? ".today" : ""), {}, h("span.when", {}, h("b", { text: new Date(d.date).getDate() }), h("small", { text: d.date === TODAY ? "Today" : dayName(d.date).slice(0, 3) })),
         h("span.tx", {}, h("b", { text: w ? `${w.name}${d.strength ? " + strength" : ""}` : "Rest" }), h("small", { text: w ? [dur(d.mins * 60), d.fuel ? `eat ${d.fuel}` : null].filter(Boolean).join(" · ") : d.why })),
         w && h("span.mini", {}, C.profile(w, { mini: true, pace: paceFor(w.sport) }))); };
@@ -285,7 +298,7 @@ function rhythmSetup({ first = false, at = null } = {}) {
       if (S.chosen) { S.chosen = null; S.swaps = {}; keep("plan", "swaps"); }
       keep("rhythm"); closeSheet(); toast(editing ? "Your week is saved" : "Rhythm has started"); X.fw.nav?.section?.("today"); redraw("plan");
     };
-    return { title: editing ? "Your week" : "Rhythm", body: [...top("preview", editing ? "Your next seven days" : "Your first week", `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
+    return { title: editing ? "Your week" : "Rhythm", body: [...top("preview", editing ? "Your next seven days" : "Your first week", r.beta ? `${dur(r.weekly.minutes * 60)} weekly target. ${r.weekly.why}.` : `${R.THEMES[r.block.theme]} block${r.block.absorb ? ", a lighter week" : ""}. Each day firms up that morning, from what you’ve done and how you feel.`),
       h("div.group", {}, ds.map(rowOf)),
       h("div.rh-stats", {}, [["Time", dur(mins * 60)], ["Hard days", String(hard.length)], ["Easy", `${easy}%`]].map(([k, v]) => h("div", {}, h("small", { text: k }), h("b", { text: v })))),
       h("button.btn.rh-next", { type: "button", "data-k": "start", onclick: start }, editing ? "Save" : "Start Rhythm"),
