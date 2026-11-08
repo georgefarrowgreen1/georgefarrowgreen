@@ -64,7 +64,7 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   const title = await p.textContent('#verdict h2');
   ok(/^Today, Mail, Home page, Market alerts.* aren’t answering$/.test(title), `${w} ${scheme}: the verdict names what’s down`, title);
   ok(/last checked/.test(await p.textContent('#verdict .vstats')), `${w} ${scheme}: when it was last checked`);
-  ok((await p.locator('.app').count()) === 9 && (await p.locator('.group:has(h2:text-is("Scheduled jobs")) .status-row').count()) === 5 && (await p.locator('.group:has(h2:text-is("API’s and Connectors")) .status-row').count()) >= 3, `${w} ${scheme}: nine addresses, five jobs, what they rely on`);
+  ok((await p.locator('.app').count()) === 9 && (await p.locator('.group:has(h2:text-is("Scheduled jobs")) .status-row').count()) === 5 && (await p.locator('[data-operation="connectors"] .status-row').count()) >= 3, `${w} ${scheme}: nine addresses, five jobs, what they rely on`);
   ok((await p.locator('.app[data-id="chat"] .days button').count()) === 1, `${w} ${scheme}: bars only from the first day checked`);
   ok((await p.locator('.app img, .app svg').count()) >= 9, `${w} ${scheme}: each with its logo`);
   await p.locator('.arow[data-toggle="chat"]').click();

@@ -50,7 +50,7 @@
   const ago = (t) => { const m = Math.round((Date.now() - t) / MIN); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dm(t); };
   const pct = (v) => (v == null ? "–" : v >= 100 ? "100%" : `${(Math.floor(v * 100) / 100).toFixed(2)}%`);
 
-  let data = null, period = 0, daySel = null;
+  let data = null, period = 0, daySel = null, openOperation = null;
   const opened = new Set(), expandedIncidents = new Set(), expandedReports = new Set(), points = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
@@ -158,7 +158,7 @@
 
   function groups() {
     const focused = document.activeElement;
-    const focusSelector = focused?.dataset.toggle ? `[data-toggle="${CSS.escape(focused.dataset.toggle)}"]` : focused?.dataset.period != null ? `[data-period="${focused.dataset.period}"]` : focused?.dataset.k ? `.days[data-svc="${CSS.escape(focused.parentElement.dataset.svc)}"] [data-k="${focused.dataset.k}"]` : null;
+    const focusSelector = focused?.dataset.operationToggle ? `[data-operation-toggle="${CSS.escape(focused.dataset.operationToggle)}"]` : focused?.dataset.toggle ? `[data-toggle="${CSS.escape(focused.dataset.toggle)}"]` : focused?.dataset.period != null ? `[data-period="${focused.dataset.period}"]` : focused?.dataset.k ? `.days[data-svc="${CSS.escape(focused.parentElement.dataset.svc)}"] [data-k="${focused.dataset.k}"]` : null;
     const d = data, box = $("groups"), n = span(), keys = d.dayKeys.slice(-n);
     let html = "";
     const supporting = [];
@@ -178,17 +178,18 @@
     html += `<div class="operations" id="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
       `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     const allDeps = d.deps || [];
-    for (const [heading, deps] of [
-      ["API’s and Connectors", allDeps.filter(x => !x.monitor)],
-      ["API health", allDeps.filter(x => x.monitor === "api")],
-      ["Page performance", allDeps.filter(x => x.monitor === "performance")],
+    html += `<div class="diagnostics">`;
+    for (const [key, heading, deps] of [
+      ["connectors", "API’s and Connectors", allDeps.filter(x => !x.monitor)],
+      ["api-health", "API health", allDeps.filter(x => x.monitor === "api")],
+      ["performance", "Page performance", allDeps.filter(x => x.monitor === "performance")],
     ]) {
       if (!deps.length) continue;
       const state = deps.some(x => x.s === "down" || x.s === "warn") ? "Needs attention" : deps.some(x => x.s === "none") ? "Collecting data" : "All working";
-      html += `<section class="group"><div class="gh"><h2>${esc(heading)}</h2><span>${state}</span></div><ul class="glass status-list">${deps.map(x =>
+      html += `<section class="group glass operation-group" data-operation="${key}" aria-labelledby="operation-heading-${key}"><h2 class="operation-heading"><button class="operation-toggle" id="operation-heading-${key}" type="button" data-operation-toggle="${key}" aria-expanded="${openOperation === key}" aria-controls="operation-panel-${key}"><span>${esc(heading)}</span><span class="operation-state">${state}</span>${ICON.chev}</button></h2><ul class="status-list" id="operation-panel-${key}"${openOperation === key ? "" : " hidden"}>${deps.map(x =>
         `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.monitor ? esc(x.why || (x.ms != null ? `Response ${x.ms} ms` : x.s === "none" ? "Collecting data" : "Within thresholds")) : x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     }
-    html += `</div>`;
+    html += `</div></div>`;
     html += `<div class="status-legend" aria-label="Status key"><span data-s="ok"><i></i>Working</span><span data-s="warn"><i></i>Slow, late or pending</span><span data-s="down"><i></i>Not working</span><span data-s="none"><i></i>No history</span></div>`;
     box.innerHTML = html;
     if (focusSelector) {
@@ -198,6 +199,15 @@
     }
     for (const d of box.querySelectorAll(".days[data-n]")) d.style.gridTemplateColumns = `repeat(${d.dataset.n}, minmax(0, 1fr))`;
     wireDays(); for (const id of opened) chart(id);
+  }
+  function toggleOperation(key) {
+    openOperation = openOperation === key ? null : key;
+    for (const section of document.querySelectorAll("[data-operation]")) {
+      const open = section.dataset.operation === openOperation;
+      section.querySelector("[data-operation-toggle]").setAttribute("aria-expanded", String(open));
+      section.querySelector(".status-list").hidden = !open;
+    }
+    trackSection();
   }
   function appHtml(s, keys) {
     const [st, word] = stateOf(s), days = shownDays(s), open = opened.has(s.id), lastI = days.length - 1;
@@ -416,6 +426,7 @@
   // ---- events ----
   document.addEventListener("click", (e) => {
     const t = e.target.closest("button, a"); if (!t) return;
+    if (t.dataset.operationToggle) { toggleOperation(t.dataset.operationToggle); return; }
     if (t.dataset.toggle) { const id = t.dataset.toggle; opened.has(id) ? opened.delete(id) : opened.add(id); groups(); document.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); return; }
     if (t.dataset.period != null) { period = +t.dataset.period; verdict(); groups(); return; }
     if (t.dataset.step && daySel) { const i = data.dayKeys.indexOf(daySel.k) + +t.dataset.step; if (i >= firstIx() && i < data.dayKeys.length) openDay(daySel.id, data.dayKeys[i]); return; }
