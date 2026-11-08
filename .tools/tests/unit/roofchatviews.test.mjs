@@ -169,7 +169,7 @@ test("Friends: the requests row, friends by name, groups; Add Friend and Request
   inst.hide(); inst.unmount();
 });
 
-test("the composer clears the home-bar gap only while the keyboard is up, including an iOS Home Screen viewport", { skip: roofSkip }, async () => {
+test("the composer stays within the visual viewport, including Home Screen gaps and the keyboard", { skip: roofSkip }, async () => {
   const saved = Object.fromEntries(["visualViewport", "innerHeight", "screen", "matchMedia", "getComputedStyle"].map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
   const listeners = new Map();
   const vv = { height: 844, offsetTop: 0, scale: 1,
@@ -187,7 +187,10 @@ test("the composer clears the home-bar gap only while the keyboard is up, includ
     const keyboard = () => box.classList.contains("ch-kbup");
     input.focus(); input.dispatch("focus");
     assert.equal(keyboard(), false, "focusing alone must not move the composer under a finger");
-    assert.equal(box.style.getPropertyValue("--ch-vvh"), "864px", "Home Screen correction remains without a keyboard");
+    assert.equal(box.style.getPropertyValue("--ch-vvh"), "844px", "Home Screen correction must not extend below the visible screen");
+    vv.height = 800;
+    for (const f of w.ons.visible) f();
+    assert.equal(box.style.getPropertyValue("--ch-vvh"), "800px", "resuming refits even without a viewport resize event");
     vv.height = 480; vv.offsetTop = 12; listeners.get("resize")();
     assert.equal(keyboard(), true);
     assert.equal(box.style.getPropertyValue("--ch-vvh"), "480px", "no Home Screen correction over the keyboard");
@@ -198,6 +201,7 @@ test("the composer clears the home-bar gap only while the keyboard is up, includ
     assert.equal(keyboard(), false, "pinch zoom is not a keyboard");
     vv.scale = 1; vv.height = globalThis.innerHeight = 844; listeners.get("resize")();
     assert.equal(keyboard(), false, "keyboard dismissal restores the home-bar padding even while focused");
+    assert.equal(box.style.getPropertyValue("--ch-vvh"), "844px", "keyboard dismissal cannot reintroduce an off-screen gap");
     vv.height = globalThis.innerHeight = 480;
     globalThis.matchMedia = (q) => ({ matches: q.includes("portrait") });
     listeners.get("resize")();

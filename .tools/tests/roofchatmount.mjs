@@ -24,7 +24,7 @@ mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${!c && extra ? '  — ' + extra : ''}`); if (!c) fails++; return !!c; };
 const note = (l) => console.log(`NOTE  ${l}`);
-const MAIN = new URL('../../', import.meta.url).pathname, IFL = new URL('../../../inflite/', import.meta.url).pathname;
+const MAIN = new URL('../../', import.meta.url).pathname, IFL = process.env.ROOF_IFL ? process.env.ROOF_IFL.replace(/\/?$/, '/') : new URL('../../../inflite/', import.meta.url).pathname;
 process.on('uncaughtException', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 process.on('unhandledRejection', (e) => { console.log(`FAIL  ${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')}`); console.log(`FAILS ${fails + 1}`); process.exit(0); });
 
@@ -136,6 +136,17 @@ const pat = FX.IDS.pat;
   if (AWAY) ok(await until(() => p.locator(H.TABS_AWAY).count().then((n) => n === 1)), 'the tab bar away');
   else note('the tab bar’s away isn’t drawn yet (tabs.js away is B0’s inert stub: HOST’s)');
   ok(await visible(p, H.CH_COMPOSER), 'the composer');
+  // Home Screen resume can leave a screen/layout correction on html. It must not extend the conversation below
+  // the visual viewport: the message field and the send button need their whole tap targets on screen.
+  const homeGap = await p.evaluate(() => {
+    document.documentElement.style.setProperty('--fix-gap', '54px');
+    visualViewport.dispatchEvent(new Event('resize'));
+    const composer = document.querySelector('.ch-composer').getBoundingClientRect();
+    const send = document.querySelector('.ch-send').getBoundingClientRect();
+    return { bottom: composer.bottom, send: send.bottom, foot: visualViewport.height + visualViewport.offsetTop };
+  });
+  ok(homeGap.bottom <= homeGap.foot + 1 && homeGap.send <= homeGap.foot + 1, 'Home Screen gap: the message box and send button stay fully visible', JSON.stringify(homeGap));
+  await p.evaluate(() => { document.documentElement.style.removeProperty('--fix-gap'); visualViewport.dispatchEvent(new Event('resize')); });
   const atBottom = () => p.locator(H.CH_SCROLLER).evaluate((n) => n.scrollHeight - n.scrollTop - n.clientHeight < 70);
   ok(await until(atBottom), 'the scroller starts at the bottom');
   await shot(p, '2-chat');

@@ -238,9 +238,9 @@ function build(host, ctx) {
     const kb = !!vv && (vv.scale || 1) === 1 && (vv.height < ih - 80 ||
       (doc.activeElement === input && globalThis.matchMedia?.("(any-pointer: coarse)").matches && tall - vv.height > 260));
     box.classList.toggle("ch-kbup", kb);
-    // The shared menu's Home Screen correction and the composer's home-bar padding belong only below a closed keyboard.
-    let gap = 0; try { gap = kb ? 0 : parseFloat(getComputedStyle(doc.documentElement).getPropertyValue("--fix-gap")) || 0; } catch (_) {}
-    const h = (vv ? vv.height : ih) + gap;
+    // Keep the whole composer inside what is actually visible. The shared Home Screen correction describes the
+    // screen outside that viewport; adding it here puts the input and send button below the screen after resume.
+    const h = vv ? vv.height : ih;
     box.style.setProperty("--ch-vvh", `${Math.round(h)}px`);
     if (vv) box.style.setProperty("--ch-vvtop", `${Math.round(vv.offsetTop || 0)}px`);
     if (stick) toBottom();
@@ -352,7 +352,7 @@ function build(host, ctx) {
       vv?.addEventListener("resize", fit);
       vv?.addEventListener("scroll", fit);
       hiddenOff = fw.on("hidden", onHidden);
-      const visOff = fw.on("visible", markRead);
+      const visOff = fw.on("visible", () => { fit(); markRead(); });
       offs.push(visOff);
       fit();
       header();

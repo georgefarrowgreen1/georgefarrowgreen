@@ -97,6 +97,7 @@ roofmail
 roofmail2
 roofmailnav
 roofchatmount
+roofchatcomposer
 roofchatsheetmount
 roofchats
 roofchatnav
