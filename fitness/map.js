@@ -47,15 +47,16 @@ export const lost = (el) => !!el && (el.matches("[data-map-gone]") || !!el.query
 
 // The map in `el`: coords [[lon, lat], ...]; colours, one a point (or none: the app's blue); light: the day style;
 // explore: the map can be moved and zoomed (else the page scrolls past it). → { at([lon, lat] | null), remove() }
-export async function routeMap(el, { coords, colours = null, light = true, explore = false, tint = "#0a84ff" }) {
+export async function routeMap(el, { coords, colours = null, light = true, explore = false, tint = "#0a84ff", capture = false, padding = null }) {
   const m = await load();
   sweep();
   let w = 180, s = 90, e = -180, n = -90;
   for (const [x, y] of coords) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
   const map = new m.Map({
-    container: el, style: routeStyle(light), bounds: [[w, s], [e, n]], fitBoundsOptions: { padding: explore ? 60 : 34, maxZoom: 16 },
+    container: el, style: routeStyle(light), bounds: [[w, s], [e, n]], fitBoundsOptions: { padding: padding || (explore ? 60 : 34), maxZoom: 16 },
+    ...(capture ? {pixelRatio:3,canvasContextAttributes:{preserveDrawingBuffer:true}} : {}),
     attributionControl: false, interactive: explore, dragRotate: false, pitchWithRotate: false, touchPitch: false, rollEnabled: false,
-    boxZoom: false, keyboard: explore, cooperativeGestures: false, maxZoom: 18, fadeDuration: 150, locale: { "Map.Title": "The route on a map" },
+    boxZoom: false, keyboard: explore, cooperativeGestures: false, maxZoom: 18, fadeDuration: capture ? 0 : 150, locale: { "Map.Title": "The route on a map" },
   });
   if (explore) { map.touchZoomRotate.disableRotation(); }
   map.on("error", () => {});
@@ -85,4 +86,23 @@ export async function routeMap(el, { coords, colours = null, light = true, explo
   };
   live.add(g);
   return g;
+}
+
+// A share-only rendering, captured after tiles and route layers settle. The
+// context and hidden container are released on success, failure or timeout.
+export async function routeSnapshot(coords,{top=100,bottom=160,timeout=12000}={}){
+ if(globalThis.navigator?.onLine===false||!able()||!Array.isArray(coords)||coords.length<2||coords.some(p=>!Array.isArray(p)||p.length<2||!Number.isFinite(p[0])||!Number.isFinite(p[1])||Math.abs(p[0])>180||Math.abs(p[1])>85))throw Error('Map unavailable');
+ const el=document.createElement('div');el.setAttribute('aria-hidden','true');el.dataset.shareMap='';
+ Object.assign(el.style,{position:'fixed',left:'0',top:'0',width:'360px',height:'450px',opacity:'0',pointerEvents:'none',zIndex:'-1'});document.body.append(el);
+ let g,timer,cancelled=false;
+ const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Map unavailable')),timeout);});
+ const render=(async()=>{
+  g=await routeMap(el,{coords,capture:true,light:true,padding:{top,bottom,left:30,right:30}});
+  if(cancelled){g.remove();throw Error('Map unavailable');}
+  await new Promise((resolve,reject)=>{g.map.once('idle',resolve);g.map.once('error',reject);g.map.triggerRepaint();});
+  if(cancelled)throw Error('Map unavailable');
+  const c=document.createElement('canvas');c.width=1080;c.height=1350;c.getContext('2d').drawImage(g.map.getCanvas(),0,0,1080,1350);return c;
+ })();
+ try{return await Promise.race([render,deadline]);}
+ finally{cancelled=true;clearTimeout(timer);g?.remove();el.remove();}
 }

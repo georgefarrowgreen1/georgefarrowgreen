@@ -388,9 +388,9 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .scrub { touch-action: pan-y pinch-zoom; cursor: crosshair; }
 
 /* the route, on its own pane (a map behind it is for later) */
-.map { border-radius: 22px; overflow: hidden; max-width: 100%;
+.map { position: relative; border-radius: 22px; overflow: hidden; max-width: 100%;
   background: radial-gradient(120% 100% at 30% 0%, color-mix(in srgb, var(--z2) 12%, transparent), transparent 70%), var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
-.map svg { display: block; width: 100%; height: auto; }
+.map > svg { display: block; width: 100%; height: auto; }
 .map .gridline { stroke: var(--line); stroke-width: 1; }
 .map .scale-t { fill: var(--text-2); font: 600 11px/1 var(--font); }
 
@@ -1845,7 +1845,7 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
   .a-pane .card, .a-pane .group { margin: 0; background: var(--cell); box-shadow: inset 0 0 0 0.5px var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .a-pane .section { margin: 0; }
   .a-pane .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .a-pane .map { border-radius: 18px; overflow: hidden; }
+  .a-pane .map { position: relative; border-radius: 18px; overflow: hidden; }
 
   /* Progress: twelve columns; fitness two-thirds and its four tiles beside it, then pairs, then the year in full */
   .t-progress { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 0 20px; align-items: start; }
@@ -2347,3 +2347,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .experimental-switch input:focus-visible+.experimental-track{outline:2px solid var(--tint);outline-offset:3px}
 .experimental-switch input:disabled+.experimental-track{opacity:.5}
 @media(prefers-reduced-motion:reduce){.experimental-track::before{transition:none}}
+
+.map .map-show{position:absolute;top:12px;right:12px;z-index:2;min-height:40px;max-width:calc(100% - 24px);margin:0;padding:0 14px;background:var(--glass-strong);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--edge),0 6px 16px -8px #0006}
+.map .map-show>svg{flex:none;width:14px;height:14px;margin:0}
+.sheet-top .act-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.act-links>.pill{min-height:40px;text-decoration:none;gap:6px}
+.act-links>.pill svg{flex:none;width:14px;height:14px}

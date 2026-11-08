@@ -1,8 +1,9 @@
 // Pictures to share: a ride (its route, its figures, its efforts) and a year (its distance, month by month, its
 // highlights), drawn on a canvas, 1080 × 1350 (a phone's share sheet, and Instagram's portrait), in the app's own
-// night-sky look. Pure drawing: the words and numbers come in already said (app.js shareView sends them on).
+// night-sky look for indoor/year cards, or a map with floating panels for outdoor rides.
+// Map tiles load only when an outdoor share is requested; failed maps keep a route-only export.
 //
-// ride: { name, when, route: [x, y, …] (0 to 100, as formats.js routeShape has it) | null, zones: [secs × 7] | null,
+// ride: { name, when, coords: [[lon, lat], ...] | null, route: [x, y, …] (0 to 100, as formats.js routeShape has it) | null, zones: [secs × 7] | null,
 //   stats: [[label, value]] (up to six), chip: string | null, sport }
 // year: { title, big: [value, unit], line, months: [secs × 12], top: month index, rows: [[label, value, sub]] }
 // → a PNG, as a Blob
@@ -28,13 +29,13 @@ function sky(g) {
   aura(540, 1400, 700, "rgba(40, 60, 160, 0.30)");
 }
 // a few words over as many lines as they need (at most `lines`), the last cut with an ellipsis
-function wrap(g, text, x, y, maxW, lh, lines = 2) {
+function wrap(g, text, x, y, maxW, lh, lines = 2, draw = true) {
   const words = String(text).split(/\s+/), out = [];
   let cur = "";
   for (const w of words) { const t = cur ? `${cur} ${w}` : w; if (g.measureText(t).width > maxW && cur) { out.push(cur); cur = w; } else cur = t; }
   if (cur) out.push(cur);
   if (out.length > lines) { out.length = lines; let last = out[lines - 1]; while (g.measureText(`${last}…`).width > maxW && last.length) last = last.slice(0, -1); out[lines - 1] = `${last}…`; }
-  out.forEach((l, i) => g.fillText(l, x, y + i * lh));
+  if(draw)out.forEach((l, i) => g.fillText(l, x, y + i * lh));
   return out.length;
 }
 function pill(g, x, y, text, fg, bg) {
@@ -47,35 +48,55 @@ function pill(g, x, y, text, fg, bg) {
 function round(g, x, y, w, h, r) {
   g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
-function foot(g) {
-  g.font = font(600, 28); g.fillStyle = "rgba(235, 238, 250, 0.55)";
+function foot(g,light=false) {
+  g.font = font(600, 28); g.fillStyle = light ? '#526172' : "rgba(235, 238, 250, 0.55)";
   g.fillText("Fitness", PAD, H - 64);
   g.textAlign = "right"; g.fillText("fitness.inflite.ai", W - PAD, H - 64); g.textAlign = "left";
 }
 const blob = (c) => new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("The picture couldn’t be made"))), "image/png"));
 
 // ---- a ride ----
-export function rideImage(r) {
+function glass(g,back,x,y,w,h){
+ g.save();g.shadowColor='rgba(31,46,66,.13)';g.shadowBlur=32;g.shadowOffsetY=12;g.fillStyle='rgba(255,255,255,.9)';round(g,x,y,w,h,40);g.fill();g.restore();
+ g.save();round(g,x,y,w,h,40);g.clip();if(back){g.filter='blur(20px)';g.drawImage(back,0,0,W,H);g.filter='none';}g.fillStyle='rgba(255,255,255,.86)';g.fillRect(x,y,w,h);g.restore();g.strokeStyle='rgba(255,255,255,.95)';g.lineWidth=2;round(g,x+1,y+1,w-2,h-2,39);g.stroke();
+}
+function shapeOf(coords){
+ const pts=coords?.filter(p=>Number.isFinite(p?.[0])&&Number.isFinite(p?.[1])&&Math.abs(p[1])<=85);if(!pts||pts.length<2)return null;
+ const k=Math.cos(pts.reduce((n,p)=>n+p[1],0)/pts.length*Math.PI/180),xs=pts.map(p=>p[0]*k),ys=pts.map(p=>p[1]);
+ const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),span=Math.max(x1-x0,y1-y0);if(!span)return null;
+ return pts.flatMap((p,i)=>[50+(xs[i]-(x0+x1)/2)*88/span,50-(ys[i]-(y0+y1)/2)*88/span]);
+}
+export async function rideImage(r) {
   const [c, g] = canvas();
-  sky(g);
-  g.fillStyle = "rgba(235, 238, 250, 0.62)"; g.font = font(650, 30); g.fillText(r.when.toUpperCase(), PAD, 132);
-  g.fillStyle = "#f5f6fb"; g.font = font(750, 76);
-  const n = wrap(g, r.name, PAD, 222, W - 2 * PAD, 84, 2);
-  // the route, glowing, from green to red; else (indoors) the ride's time in each zone
+  g.font=font(750,76);const n=wrap(g,r.name,PAD,222,W-2*PAD,84,2,false),light=Array.isArray(r.coords)&&r.coords.length>=2;
   const top = 222 + n * 84 + 10, box = { x: PAD, y: top, w: W - 2 * PAD, h: 880 - top };
-  if (r.route?.length >= 4) {
-    const pts = []; for (let i = 0; i + 1 < r.route.length; i += 2) pts.push([Number(r.route[i]) || 0, Number(r.route[i + 1]) || 0]);
+  let back=null;
+  if(light){
+   try{const {routeSnapshot}=await import('./map.js');back=await routeSnapshot(r.coords,{top:(top+24)/3,bottom:(H-860)/3});}catch{}
+   g.fillStyle='#f4f2ee';g.fillRect(0,0,W,H);if(back)g.drawImage(back,0,0,W,H);
+   const fade=g.createLinearGradient(0,1160,0,H);fade.addColorStop(0,'rgba(247,249,252,0)');fade.addColorStop(1,'rgba(247,249,252,.98)');g.fillStyle=fade;g.fillRect(0,1160,W,H-1160);
+   glass(g,back,44,54,W-88,top-74);
+  }else sky(g);
+  g.fillStyle = light ? '#667487' : "rgba(235, 238, 250, 0.62)"; g.font = font(650, 30); g.fillText(r.when.toUpperCase(), PAD, 132);
+  g.fillStyle = light ? '#17283c' : "#f5f6fb"; g.font = font(750, 76);
+  wrap(g, r.name, PAD, 222, W - 2 * PAD, 84, 2);
+  // the route, glowing, from green to red; else (indoors) the ride's time in each zone
+  const shape=r.route?.length>=4?r.route:shapeOf(r.coords);
+  if (!back && shape?.length >= 4) {
+    const pts = []; for (let i = 0; i + 1 < shape.length; i += 2) pts.push([Number(shape[i]) || 0, Number(shape[i + 1]) || 0]);
     const s = Math.min(box.w, box.h) / 100, ox = box.x + (box.w - 100 * s) / 2, oy = box.y + (box.h - 100 * s) / 2, P = (p) => [ox + p[0] * s, oy + p[1] * s];
     // (green to red across the route's own box: a loop starts and ends in the same place)
     const grad = g.createLinearGradient(ox, oy + 100 * s, ox + 100 * s, oy);
     grad.addColorStop(0, "#4fdc8e"); grad.addColorStop(0.5, "#ffb547"); grad.addColorStop(1, "#ff6a5f");
     g.lineJoin = "round"; g.lineCap = "round";
     const path = () => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(...P(p)) : g.moveTo(...P(p)))); };
-    g.save(); g.shadowColor = "rgba(255, 170, 90, 0.55)"; g.shadowBlur = 34; g.strokeStyle = grad; g.lineWidth = 12; path(); g.stroke(); g.restore();
-    g.strokeStyle = "rgba(255,255,255,0.9)"; g.lineWidth = 3; path(); g.stroke();
+    g.save();g.shadowColor=light?'rgba(25,65,110,.2)':"rgba(255, 170, 90, 0.55)";g.shadowBlur=light?12:34;
+    if(light){g.strokeStyle='#fff';g.lineWidth=22;path();g.stroke();}
+    g.strokeStyle=light?'#1677ed':grad;g.lineWidth=12;path();g.stroke();g.restore();
+    if(!light){g.strokeStyle="rgba(255,255,255,0.9)";g.lineWidth=3;path();g.stroke();}
     const dot = (p, col) => { const [x, y] = P(p); g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, 15, 0, 7); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(x, y, 10, 0, 7); g.fill(); };
     dot(pts.at(-1), "#ff6a5f"); dot(pts[0], "#4fdc8e");
-  } else if (r.zones?.some((z) => z > 0)) {
+  } else if (!back && !light && r.zones?.some((z) => z > 0)) {
     const tot = r.zones.reduce((a, b) => a + b, 0), bh = 46, gap = 18, y0 = box.y + (box.h - 7 * (bh + gap)) / 2;
     g.font = font(650, 28);
     r.zones.forEach((z, i) => {
@@ -87,15 +108,17 @@ export function rideImage(r) {
   }
   // the efforts, where it was a session
   let y = 900;
-  if (r.chip) { pill(g, PAD, y, r.chip, r.chipOk ? "#7ff0b0" : "#ffcf7a", r.chipOk ? "rgba(79, 220, 142, 0.16)" : "rgba(255, 181, 71, 0.16)"); y += 84; } else y += 30;
+  if (r.chip) { pill(g, PAD, y, r.chip, light ? (r.chipOk?'#087c46':'#8d550c') : r.chipOk ? "#7ff0b0" : "#ffcf7a",light?'rgba(255,255,255,.94)': r.chipOk ? "rgba(79, 220, 142, 0.16)" : "rgba(255, 181, 71, 0.16)"); y += 84; } else y += 30;
+  if(light)glass(g,back,44,y-12,W-88,r.stats.length>3?284:134);
   // the figures, three to a row
   const cols = 3, cw = (W - 2 * PAD) / cols;
   r.stats.slice(0, 6).forEach(([label, value], i) => {
     const x = PAD + (i % cols) * cw, yy = y + Math.floor(i / cols) * 150;
-    g.fillStyle = "rgba(235, 238, 250, 0.58)"; g.font = font(650, 26); g.fillText(label.toUpperCase(), x, yy + 30);
-    g.fillStyle = "#f5f6fb"; g.font = font(750, 58); g.fillText(value, x, yy + 98, cw - 20);
+    g.fillStyle = light ? '#667487' : "rgba(235, 238, 250, 0.58)"; g.font = font(650, 26); g.fillText(label.toUpperCase(), x, yy + 30);
+    g.fillStyle = light ? '#17283c' : "#f5f6fb"; g.font = font(750, 58); g.fillText(value, x, yy + 98, cw - 20);
   });
-  foot(g);
+  foot(g,light);
+  if(light){g.fillStyle='#526172';g.font=font(500,22);g.fillText(back?'© OpenStreetMap contributors · OpenMapTiles · OpenFreeMap · osm.org/copyright':'Route preview · Map unavailable',PAD,H-26,W-2*PAD);}
   return blob(c);
 }
 
