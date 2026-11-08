@@ -183,7 +183,8 @@ test('through Mail’s Worker: every /body path goes to body.js, and /body/ is 4
     for (const path of ['/body/', '/body', '/body/index.html', '/body/body.js?v=1'])
       assert.equal((await call(path, env)).status, path.startsWith('/body/body.js') ? 200 : 404, `${path} ${JSON.stringify(env)}`);
   const wr = readFileSync(new URL('wrangler.jsonc', EMAIL), 'utf8');
-  for (const p of ['"/body"', '"/body/*"']) assert.ok(/"run_worker_first":\s*\[[^\]]*/.exec(wr)[0].includes(p), `run_worker_first lists ${p}`);
+  const config = JSON.parse(wr.replace(/^\s*\/\/.*$/gm, ''));
+  for (const p of ['/body', '/body/*']) assert.ok(config.assets.run_worker_first === true || config.assets.run_worker_first.includes(p), `Worker runs first for ${p}`);
 });
 
 test('through MW’s gate: /body/ framed by exactly hubOrigins(env), and the shell answers those alone', { skip: gateSkip }, async () => {
