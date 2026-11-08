@@ -226,7 +226,10 @@ function rideCard(a, x, s) {
     chip: n > 0 ? (hd >= n ? `Every effort held · ${n} of ${n}` : `${hd} of ${n} efforts held`) : null, chipOk: n > 0 && hd >= n };
 }
 const shareName = (a) => `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, "");
-const rideShare = (a, x, s) => shareView(() => shares().then((SH) => SH.rideImage(rideCard(a, x, s))), { name: shareName(a), title: a.name });
+const rideShare = (a, x, s) => shareView(async () => {
+  const [SH] = await Promise.all([shares(), needF()]);
+  return SH.rideImage(rideCard(a, x, s));
+}, { name: shareName(a), title: a.name });
 // the route, coloured by the power there (30 seconds' average), on a real map: in its box, or the whole sheet
 function realMap(holder, route, explore = false) {
   return M.routeMap(holder, { ...route, light: lightNow(), explore }).then((g) => { openMaps.push(g); return g; });
