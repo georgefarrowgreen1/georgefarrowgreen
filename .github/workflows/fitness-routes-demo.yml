@@ -1,10 +1,10 @@
 name: Fitness routes
 on:
   pull_request:
-    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/rhythm2.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/rhythm2.test.cjs', '.tools/tests/fitness-ride-ui.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
   push:
     branches: [main]
-    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/rhythm2.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/rhythm2.test.cjs', '.tools/tests/fitness-ride-ui.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
 permissions:
   contents: read
 jobs:
@@ -36,12 +36,13 @@ jobs:
         run: node .tools/build-routes-demo.mjs artifacts/InFlite-Fitness-Routes-Demo.html
         working-directory: georgefarrowgreen
       - name: Browser flow and Fitness integration
-        run: node --test .tools/tests/routes-demo.test.cjs .tools/tests/routes-live.test.cjs .tools/tests/rhythm2.test.cjs
+        run: node --test .tools/tests/routes-demo.test.cjs .tools/tests/routes-live.test.cjs .tools/tests/rhythm2.test.cjs .tools/tests/fitness-ride-ui.test.cjs
         working-directory: georgefarrowgreen
         env:
           ROOF_IFL: ${{ github.workspace }}/inflite
           ROUTES_SCREENSHOTS: test-results/routes
           ROUTES_LIVE_SCREENSHOTS: test-results/routes/live
+          RIDE_SCREENSHOTS: test-results/routes/ride-share
           ROUTES_DEMO_HTML: ${{ github.workspace }}/georgefarrowgreen/artifacts/InFlite-Fitness-Routes-Demo.html
       - uses: actions/upload-artifact@v4
         if: always()

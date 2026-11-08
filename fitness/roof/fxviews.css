@@ -47,9 +47,9 @@
 .m-fitness .scrub { touch-action: pan-y; cursor: crosshair; }
 
 /* the route, on its own pane (a map behind it is for later) */
-.m-fitness .map { border-radius: 22px; overflow: hidden; max-width: 100%;
+.m-fitness .map { position: relative; border-radius: 22px; overflow: hidden; max-width: 100%;
   background: radial-gradient(120% 100% at 30% 0%, color-mix(in srgb, var(--z2) 12%, transparent), transparent 70%), var(--field); box-shadow: inset 0 0 0 0.5px var(--line); }
-.m-fitness .map svg { display: block; width: 100%; height: auto; }
+.m-fitness .map > svg { display: block; width: 100%; height: auto; }
 .m-fitness .map .gridline { stroke: var(--line); stroke-width: 1; }
 .m-fitness .map .scale-t { fill: var(--text-2); font: 600 11px/1 var(--font); }
 
@@ -449,3 +449,9 @@
 .m-fitness .experimental-switch input:focus-visible+.experimental-track{outline:2px solid var(--tint);outline-offset:3px}
 .m-fitness .experimental-switch input:disabled+.experimental-track{opacity:.5}
 @media(prefers-reduced-motion:reduce){.m-fitness .experimental-track::before{transition:none}}
+
+.m-fitness .map .map-show{position:absolute;top:12px;right:12px;z-index:2;min-height:40px;max-width:calc(100% - 24px);margin:0;padding:0 14px;background:var(--glass-strong);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--edge),0 6px 16px -8px #0006}
+.m-fitness .map .map-show>svg{flex:none;width:14px;height:14px;margin:0}
+.m-fitness .sheet-top .act-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.m-fitness .act-links>.pill{min-height:40px;text-decoration:none;gap:6px}
+.m-fitness .act-links>.pill svg{flex:none;width:14px;height:14px}

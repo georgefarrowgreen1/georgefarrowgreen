@@ -222,7 +222,7 @@ function rideCard(a, x, s) {
   const sum = sumOf(a) || s, e = effortsSeen.get(a.id), hd = e ? e.held : sum.held, n = e ? e.n : sum.efforts;
   const stats = [s.dist > 100 && ["Distance", dist(s.dist)], ["Time", dur(s.moving || s.secs)], s.ascent > 20 && ["Climbing", height(s.ascent).join(" ")],
     s.avgPwr && ["Power", `${s.np || s.avgPwr} W`], s.tss != null && ["Stress", String(s.tss)], s.avgHr && ["Heart rate", `${s.avgHr} bpm`], s.avgSpd && !s.avgPwr && ["Speed", speed(s.avgSpd).join(" ")]].filter(Boolean);
-  return { name: a.name, when: `${dayLong(a.start)} · ${timeOf(a.start)}`, sport: a.sport, route: sum.route || F?.routeShape(x.s), zones: s.zones || null, stats,
+  return { name: a.name, when: `${dayLong(a.start)} · ${timeOf(a.start)}`, sport: a.sport, coords: x.s.lat ? routeOf(x.s).coords : null, route: sum.route || F?.routeShape(x.s), zones: s.zones || null, stats,
     chip: n > 0 ? (hd >= n ? `Every effort held · ${n} of ${n}` : `${hd} of ${n} efforts held`) : null, chipOk: n > 0 && hd >= n };
 }
 const shareName = (a) => `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, "");
@@ -237,9 +237,9 @@ function actView(a) {
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   const SW = sheetW(), body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    h("div.sub.act-links", {}, !a.sample && h("button.link.small", { type: "button", "data-k": "rename", onclick: () => push(() => renameView(a), "rename") }, "Rename"),
-      h("button.link.small", { type: "button", "data-k": "share", onclick: () => push(rideShare(a, x, s), "share") }, icon("upload", 14, 2.4), "Share"),
-      /^s\d{1,20}$/.test(a.id) && h("a.link.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
+    h("div.sub.act-links", {}, !a.sample && h("button.pill.small", { type: "button", "data-k": "rename", onclick: () => push(() => renameView(a), "rename") }, "Rename"),
+      h("button.pill.small", { type: "button", "data-k": "share", onclick: () => push(rideShare(a, x, s), "share") }, icon("upload", 14, 2.4), "Share"),
+      /^s\d{1,20}$/.test(a.id) && h("a.pill.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
   // the route, coloured by the power there (30 seconds' average) or plain
   let mapAt = null;
