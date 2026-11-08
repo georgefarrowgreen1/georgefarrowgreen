@@ -1684,3 +1684,68 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .spd.meh b { color: var(--warn); }
 .spd.poor b { color: var(--danger); }
 .spd-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: var(--text-3); line-height: 1.4; }
+
+/* Sign-in and welcome back share the same compact frame, separate from Account's profile. */
+main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+.signin-shell { display: flex; flex-direction: column; width: 100%; min-width: 0; }
+.signin-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.signin-brand { display: flex; align-items: center; gap: 12px; font: 650 26px/1.1 var(--font-d); letter-spacing: -0.5px; }
+.signin-brand img { display: block; width: 44px; height: 44px; border-radius: 13px; }
+.signin-header .backapp { margin: 0; flex-shrink: 0; }
+.signin-stage { flex: 1; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 36px 0 16px; min-width: 0; }
+.signin-panel { width: 100%; max-width: 420px; margin: 0; padding: 32px; border-radius: 24px; display: grid; gap: 20px; text-align: left; box-shadow: inset 0 0 0 1px var(--line), 0 20px 60px -30px rgba(0,0,0,.45); }
+.signin-intro { display: grid; gap: 12px; margin-bottom: 4px; }
+.signin-destination { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--glass-ctl); color: var(--text); font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.signin-destination img { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; }
+.signin-panel h1 { font: 700 28px/1.16 var(--font-d); letter-spacing: -.65px; margin: 0; overflow-wrap: anywhere; }
+.signin-panel p { margin: 0; }
+.signin-lead { font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.signin-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.signin-identity > div:last-child { min-width: 0; display: grid; gap: 6px; }
+.signin-identity h1 { font-size: 24px; }
+.signin-identity .avatar { flex: 0 0 56px; width: 56px; height: 56px; margin: 0; font-size: 26px; box-shadow: none; }
+.signin-identity .avatar::before { display: none; }
+.signin-email { font-size: 15px; line-height: 1.4; color: var(--text-2); overflow-wrap: anywhere; }
+.signin-panel .btn { width: 100%; min-height: 52px; border-radius: 14px; font-size: 16px; gap: 9px; padding: 12px 14px; }
+.signin-panel .btn.quiet { background: var(--glass-ctl); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.signin-panel .form { gap: 16px; }
+.signin-panel .field { gap: 7px; }
+.signin-panel .field > span { margin-left: 2px; font-size: 14px; font-weight: 600; color: var(--text); }
+.signin-panel .field input { background: var(--glass-ctl); min-height: 52px; border-radius: 12px; font-size: 16px; padding: 0 14px; }
+.signin-panel .pw input { padding-right: 52px; }
+.signin-panel .eye { min-width: 44px; min-height: 44px; }
+.signin-panel .forgot { justify-self: end; min-height: 44px; padding: 8px 0; margin-top: -14px; font-size: 14px; }
+.signin-panel .forgot::after, .signin-panel .usepw::after { content: none; }
+.signin-panel .pwbox { display: grid; gap: 16px; }
+.signin-panel .pwbox[hidden], .signin-panel [hidden] { display: none; }
+.signin-panel .pwbox .forgot { margin-top: -12px; }
+.signin-panel .signin-keyhint { text-align: center; color: var(--text-2); font-size: 12px; line-height: 1.5; margin-top: -12px; }
+.signin-panel .or { margin: 0; color: var(--text-2); font-size: 12px; gap: 12px; }
+.signin-panel .usepw { justify-self: stretch; }
+.signin-panel .signin-join { text-align: center; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.signin-join .link, .signin-switch .link { min-height: 44px; padding: 8px 2px; font-size: inherit; }
+.signin-panel .signin-switch { border-top: 1px solid var(--line); padding-top: 12px; text-align: center; }
+.signin-switch .new { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.signin-phone { min-height: 44px; padding: 10px; font-size: 14px; text-align: center; }
+.signin-panel .said { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.signin-panel .said:empty { display: none; }
+.signin-panel button:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; }
+body:has(.signin-shell) .aura { opacity: .28; }
+@media (max-width: 599px) {
+  .signin-stage { align-content: start; padding: 30px 0 0; gap: 16px; }
+  .signin-brand { font-size: 24px; gap: 10px; }
+  .signin-brand img { width: 40px; height: 40px; border-radius: 12px; }
+  .signin-panel { padding: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; gap: 20px; }
+  .signin-intro { gap: 10px; }
+  .signin-panel h1 { font-size: 28px; }
+  .signin-panel .signin-identity { display: grid; justify-items: start; gap: 14px; }
+  .signin-identity h1 { font-size: 26px; }
+  .signin-header .backapp { font-size: 13px; }
+  .signin-panel.qrc { padding: 24px 12px; }
+}
+@media (max-width: 359px) {
+  main.signin-main { padding-inline: 18px; }
+  .signin-brand { font-size: 22px; }
+  .signin-panel h1 { font-size: 25px; }
+  .signin-panel .btn { font-size: 15px; }
+}
