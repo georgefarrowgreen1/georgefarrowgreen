@@ -21,6 +21,9 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
       page.on('response', r => { if (r.status() >= 400) httpErrors.push({ url: r.url(), status: r.status() }); });
       try {
         const response = await page.goto(`https://${host}/`, { waitUntil: 'networkidle', timeout: 30000 });
+        // Freeze normal-page network evidence before injecting the scanner. Axe's
+        // CSS parser can re-request relative @imports against the document URL.
+        const pageNetwork = { errors: [...errors], failed: [...failed], httpErrors: [...httpErrors] };
         await page.evaluate(axe);
         const release = host === 'status.inflite.ai' ? null : await page.evaluate(async () => { try { const r = await fetch('/version', { cache: 'no-store' }); const data = await r.json(); return r.ok && typeof data.build === 'string' ? data : { error: 'Invalid release response' }; } catch { return { error: 'Release endpoint did not return JSON' }; } });
         const data = await page.evaluate(async () => {
@@ -32,7 +35,7 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
             violations: audit.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })),
             gestureCancelled: ['gesturestart', 'gesturechange', 'gestureend'].some(type => !document.dispatchEvent(new Event(type, { cancelable: true, bubbles: true }))) };
         });
-        results.push({ host, width, status: response.status(), finalURL: page.url(), errors, failed, httpErrors, release, ...data });
+        results.push({ host, width, status: response.status(), finalURL: page.url(), ...pageNetwork, scannerHttpErrors: httpErrors.slice(pageNetwork.httpErrors.length), release, ...data });
       } catch (error) { results.push({ host, width, error: error.message, errors, failed, httpErrors }); }
       await context.close();
       console.log(JSON.stringify(results.at(-1)));
