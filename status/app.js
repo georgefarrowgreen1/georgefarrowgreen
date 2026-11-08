@@ -50,10 +50,28 @@
   const ago = (t) => { const m = Math.round((Date.now() - t) / MIN); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dm(t); };
   const pct = (v) => (v == null ? "–" : v >= 100 ? "100%" : `${(Math.floor(v * 100) / 100).toFixed(2)}%`);
 
-  let data = null, period = 0, daySel = null, openOperation = null;
+  let data = null, period = matchMedia("(min-width: 1100px)").matches ? 1 : 0, daySel = null, openOperation = null;
+  const expandedHistory = new Set();
   const opened = new Set(), expandedIncidents = new Set(), expandedReports = new Set(), points = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
+
+  const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+  function syncTheme() {
+    const dark = (document.documentElement.dataset.theme || (systemTheme.matches ? "dark" : "light")) === "dark";
+    $("themeSwitch").setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} theme`);
+    $("themeSwitch").innerHTML = dark
+      ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>'
+      : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15a8 8 0 0 1-11-11 8.5 8.5 0 1 0 11 11Z"/></svg>';
+  }
+  function setTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem("status:theme", theme); } catch (_) {}
+    syncTheme();
+  }
+  try { const theme = localStorage.getItem("status:theme"); if (["light", "dark"].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
+  systemTheme.addEventListener?.("change", syncTheme);
+  syncTheme();
 
   // ---- asking ----
   function seed() { try { const el = $("seed"); return el ? JSON.parse(el.textContent) : null; } catch (_) { return null; } }
@@ -137,7 +155,7 @@
       <div class="vstats num">
         ${l ? `<a class="hot" href="#${esc(l.id)}"><b data-since="${l.started}">${mins(Date.now() - l.started)}</b><span>so far</span></a>` : `<div><b>${pct(up)}</b><span>${period ? `up, last ${PERIODS[period][0]}` : `up since ${d.since ? dm(keyDate(d.since)) : "checks began"}`}</span></div>`}
         <div><b data-ago="${d.at || ""}">${d.at ? ago(d.at) : "–"}</b><span>last checked</span></div>
-        ${l ? `<a href="#${esc(l.id)}"><b>${esc(l.updates[0]?.k || "Spotted")}</b><span>at ${hm(l.updates[0]?.at || l.started)}</span></a>`
+        ${l ? `<a href="#${esc(l.id)}"><b class="phase">${esc(l.updates[0]?.k || "Spotted")}</b><span>at ${hm(l.updates[0]?.at || l.started)}</span></a>`
           : last ? `<a href="#${esc(last.id)}"><b>${dm(last.started)}</b><span>last incident${last.notOutage ? ", a false alarm" : ""}</span></a>` : `<div><b>None</b><span>incidents</span></div>`}
       </div>`;
     $("mini").dataset.s = st; $("miniT").textContent = l ? `${title} · ${mins(Date.now() - l.started)}` : title;
@@ -160,25 +178,26 @@
     const focused = document.activeElement;
     const focusSelector = focused?.dataset.operationToggle ? `[data-operation-toggle="${CSS.escape(focused.dataset.operationToggle)}"]` : focused?.dataset.toggle ? `[data-toggle="${CSS.escape(focused.dataset.toggle)}"]` : focused?.dataset.period != null ? `[data-period="${focused.dataset.period}"]` : focused?.dataset.k ? `.days[data-svc="${CSS.escape(focused.parentElement.dataset.svc)}"] [data-k="${focused.dataset.k}"]` : null;
     const d = data, box = $("groups"), n = span(), keys = d.dayKeys.slice(-n);
-    let html = "";
+    let html = `<div class="service-overview">`;
     const supporting = [];
     GROUPS.forEach(([g, title], gi) => {
       const items = d.services.filter((s) => s.group === g);
       if (!items.length) return;
       const bad = items.filter((s) => stateOf(s)[0] !== "ok").length;
-      const section = `<section class="group"${gi === 0 ? ' id="apps"' : ""}><div class="gh"><h2>${esc(title)}</h2>${gi === 0
+      const section = `<section class="group"${gi === 0 ? ' id="apps"' : ""}><div class="gh"><h2>${esc(title)}${g === "apps" ? `<small class="desktop-app-summary desktop-only">${items.length - bad} working</small>` : ""}</h2>${gi === 0
         ? `<div class="seg" role="group" aria-label="How far back">${PERIODS.map(([l], i) => `<button type="button" data-period="${i}" aria-pressed="${period === i}">${l}</button>`).join("")}</div>`
         : `<span>${bad ? `${bad} not working` : items.length > 1 ? `All ${items.length} working` : "Working"}</span>`}</div>
-        ${gi === 0 ? `<p class="section-note">Select an app for response times, or a day to see its checks.</p>` : ""}<div class="glass rows">${items.map((s) => appHtml(s, keys)).join("")}
+        ${gi === 0 ? `<p class="section-note">Select an app for response times, or a day to see its checks.</p>` : ""}<div class="glass rows">${g === "apps" ? `<div class="desktop-table-head desktop-only" aria-hidden="true"><span>Application</span><span>Daily availability${period ? ` · last ${PERIODS[period][0]}` : ""}</span><span>Uptime / status</span></div>` : ""}${items.map((s) => appHtml(s, keys)).join("")}
         <div class="dfoot num"><span>${period ? dm(keyDate(keys[0])) : `Since ${dm(keyDate(keys[0]))}`}</span><span>Today</span></div></div></section>`;
       if (g === "apps") html += section; else supporting.push(section);
     });
     if (supporting.length) html += `<div class="support-services">${supporting.join("")}</div>`;
+    html += `</div>`;
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s }));
-    html += `<div class="operations" id="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
-      `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
+    html += `<div class="operations" id="operations"><section class="group job-group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
+      `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `<span class="job-last-label">Last ran </span>${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
     const allDeps = d.deps || [];
-    html += `<div class="diagnostics">`;
+    html += `<div class="diagnostics"><div class="gh desktop-only diagnostics-heading"><h2>Diagnostics</h2><span>Expand to inspect</span></div>`;
     for (const [key, heading, deps] of [
       ["connectors", "API’s and Connectors", allDeps.filter(x => !x.monitor)],
       ["api-health", "API health", allDeps.filter(x => x.monitor === "api")],
@@ -237,7 +256,7 @@
     const [st, word] = stateOf(s), days = shownDays(s), open = opened.has(s.id), lastI = days.length - 1;
     const checks = (s.checks || []).map((c) => `<div data-s="${esc(c.s)}"><i></i><span>${esc(c.k)}</span><em>${c.s === "down" ? esc(c.why || "Not answering") : c.at ? `ran ${hm(c.at)}` : c.ms != null ? `${c.ms} ms` : c.s === "none" ? "Not checked" : "Working"}</em></div>`).join("");
     return `<div class="app${open ? " open" : ""}" data-id="${esc(s.id)}">
-      <button class="arow" type="button" data-toggle="${esc(s.id)}" aria-expanded="${open}">${logo(s.id)}<b>${esc(s.name)}</b><span class="st num" data-s="${st}"><i></i>${st === "ok" ? `<span>${esc(word.replace("%", ""))}<small>%</small></span>` : esc(word)}</span>${ICON.chev}</button>
+      <button class="arow" type="button" data-toggle="${esc(s.id)}" aria-expanded="${open}">${logo(s.id)}<b><span>${esc(s.name)}</span><small class="desktop-service-state desktop-only">${esc(st === "ok" ? "Operational" : word)}</small></b><span class="st num" data-s="${st}"><i></i>${st === "ok" ? `<span>${esc(word.replace("%", ""))}<small>%</small></span>` : esc(word)}</span>${ICON.chev}</button>
       <div class="days" data-n="${days.length}" data-svc="${esc(s.id)}" role="group" aria-label="${esc(s.name)} daily history" aria-description="Use arrow keys to choose a day, then Enter to open its checks.">${days.map((x, i) => {
         const k = keys[i], ds = x ? x.s : "none", inc = incOn(s.id, k).length;
         return `<button type="button" tabindex="${i === lastI ? "0" : "-1"}" data-k="${k}" data-s="${ds}" class="${[inc ? "inc" : "", i === lastI ? "today" : ""].join(" ").trim()}" aria-label="${esc(`${s.name}, ${dayLong(k)}${i === lastI ? " so far" : ""}: ${!x ? "not checked" : ds === "ok" ? "no problems" : ds === "warn" ? "slow or briefly down" : "down for a while"}${inc ? ", an incident" : ""}`)}"></button>`; }).join("")}</div>
@@ -284,10 +303,10 @@
 
   // ---- incidents and codes, one layout ----
   const STAGES = ["Investigating", "Identified", "Monitoring", "Resolved"];
-  function incHtml(x, stages) {
+  function incHtml(x, stages, older = false) {
     const open = !x.ended, names = x.svcs.map((id) => nameOf(id)).filter(Boolean);
     const stage = (x.updates.find((u) => STAGES.includes(u.k)) || { k: "Investigating" }).k, at = STAGES.indexOf(stage);
-    return `<article class="inc" id="${esc(x.id)}" data-s="${open ? "down" : "ok"}"><header><h3>${esc(x.title)}</h3><div class="tags">${x.notOutage ? `<span class="tag" data-s="none">Not an outage</span>` : ""}<span class="tag">${open ? "Ongoing" : "Resolved"}</span></div></header>
+    return `<article class="inc${older ? " desktop-older" : ""}" id="${esc(x.id)}" data-s="${open ? "down" : "ok"}"><header><h3>${esc(x.title)}</h3><div class="tags">${x.notOutage ? `<span class="tag" data-s="none">Not an outage</span>` : ""}<span class="tag">${open ? "Ongoing" : "Resolved"}</span></div></header>
       <p class="sub num"><span>${names.length ? `${esc(and(names))} · ` : ""}${dm(x.started)} · ${hm(x.started)}${open ? "" : `–${keyOf(x.started) !== keyOf(x.ended) ? `${dm(x.ended)} · ` : ""}${hm(x.ended)}`}</span><span class="dur">${open ? `<span data-since="${x.started}">${mins(Date.now() - x.started)}</span> so far` : mins(x.ended - x.started)}</span></p>
       ${stages && open ? `<div class="stages">${STAGES.map((n, i) => `<div class="${i < at ? "done" : i === at ? "now" : ""}"><i></i>${n}</div>`).join("")}</div>` : ""}
       ${!open ? `<details class="incident-detail" data-incident="${esc(x.id)}"${expandedIncidents.has(x.id) ? " open" : ""}><summary>View incident updates${ICON.chev}</summary>` : ""}<ol class="steps">${x.updates.map((u) => `<li><time>${esc(hm(u.at))}</time><span><b>${esc(u.k)}.</b> ${esc(u.w)}</span></li>`).join("")}</ol>
@@ -298,12 +317,14 @@
     const list = data.incidents.filter((x) => x.ended), months = [];
     for (const x of list) { const m = new Date(x.started).toLocaleDateString("en-GB", { month: "long", year: "numeric" }); if (months.at(-1)?.m !== m) months.push({ m, xs: [] }); months.at(-1).xs.push(x); }
     $("incSince").textContent = data.since ? `Since ${dm(keyDate(data.since))}` : "Last 90 days";
-    $("incs").innerHTML = list.length ? months.map((g) => `<div><div class="month">${esc(g.m)}</div>${g.xs.map((x) => incHtml(x)).join("")}</div>`).join("")
+    $("incidentsMore").hidden = list.length < 2;
+    syncHistory("incidents");
+    $("incs").innerHTML = list.length ? months.map((g, i) => `<div class="incident-month${i ? " desktop-older" : ""}"><div class="month">${esc(g.m)}</div>${g.xs.map((x) => incHtml(x, false, x !== list[0])).join("")}</div>`).join("")
       : `<p class="empty">No incidents${data.since ? ` since checks began on ${dm(keyDate(data.since))}` : " in the last 90 days"}.</p>`;
   }
   const APPN = { chat: "Chat", chats: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", finance: "Markets", account: "Account", auth: "Account", today: "Today", mail: "Mail", email: "Mail", home: "Home page", server: "The site" };
   const CSTATE = { new: ["warn", "Looking into it"], fixed: ["ok", "Fixed"], back: ["down", "Back again"], known: ["none", "Known"] };
-  function codeHtml(b) {
+  function codeHtml(b, older = false) {
     const [s, tag] = CSTATE[b.state] || CSTATE.new, app = APPN[b.app] || b.app, first = b.first || b.last, last = b.last || first;
     const title = b.title || `${app} report`, steps = [];
     if (b.state === "back") steps.push([last, "Back again", "Seen again since it was fixed. We’re looking into it."]);
@@ -312,14 +333,29 @@
     if (b.n > 1 && last !== first && b.state !== "back") steps.push([last, "Seen again", `${b.n} times in all.`]);
     steps.push([first, b.app === "server" ? "Spotted" : "Reported", b.app === "server" ? "The site logged it as it happened." : "Sent from Report a Problem."]);
     steps.sort((a, c) => c[0] - a[0]);
-    return `<article class="inc report" id="${esc(b.code)}" data-s="${s}"><header><h3>${esc(title)}</h3><div class="tags"><span class="tag">${esc(tag)}</span></div></header>
+    return `<article class="inc report${older ? " desktop-older" : ""}" id="${esc(b.code)}" data-s="${s}"><header><h3>${esc(title)}</h3><div class="tags"><span class="tag">${esc(tag)}</span></div></header>
       <p class="sub num">${esc(app)} · ${esc(dm(first))}${keyOf(last) !== keyOf(first) ? `–${esc(dm(last))}` : ""} · ${b.n} time${b.n === 1 ? "" : "s"}</p>
       <div class="report-code"><span class="cd">${esc(b.code)}</span><button class="cpy" type="button" data-copycode="${esc(b.code)}" aria-label="Copy ${esc(b.code)}">Copy code</button></div>
       <details class="report-detail" data-report="${esc(b.code)}"${expandedReports.has(b.code) ? " open" : ""}><summary>View report updates${ICON.chev}</summary><ol class="steps">${steps.map(([t, k, w]) => `<li><time>${esc(hm(t))}</time><span><b>${esc(k)}.</b> ${esc(w)}</span></li>`).join("")}</ol></details></article>`;
   }
   function codes() {
-    $("codes").innerHTML = data.bugs.length ? data.bugs.map(codeHtml).join("") : `<p class="empty">No bug reports this week.</p>`;
+    $("reportsMore").hidden = data.bugs.length < 2;
+    syncHistory("reports");
+    $("codes").innerHTML = data.bugs.length ? data.bugs.map((b, i) => codeHtml(b, i > 0)).join("") : `<p class="empty">No bug reports this week.</p>`;
   }
+  function syncHistory(kind) {
+    const open = expandedHistory.has(kind), reports = kind === "reports";
+    const list = reports ? $("codes") : $("incs"), button = reports ? $("reportsMore") : $("incidentsMore");
+    list.dataset.expanded = String(open);
+    button.setAttribute("aria-expanded", String(open));
+    const count = reports ? data.bugs.length : data.incidents.filter((x) => x.ended).length;
+    button.textContent = open ? "Show latest" : `View all (${count})`;
+  }
+  function revealHistory(el) {
+    const kind = el.closest("#codes") ? "reports" : el.closest("#incs") ? "incidents" : null;
+    if (kind && el.classList.contains("desktop-older")) { expandedHistory.add(kind); syncHistory(kind); }
+  }
+
   // (a code typed any way: lower case, spaces, no dashes; this week's on the page, older ones asked of the server)
   const norm = (v) => { const c = String(v).toUpperCase().replace(/[^0-9A-Z]/g, ""); const m = /^IF([A-Z])([0-9A-Z]{4,6})$/.exec(c); return m ? `IF-${m[1]}-${m[2]}` : null; };
   let lookupId = 0;
@@ -412,12 +448,13 @@
   let toastT = 0;
   const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); };
   const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; const detail = el.querySelector(".incident-detail, .report-detail"); if (detail) { detail.open = true; (detail.dataset.report ? expandedReports : expandedIncidents).add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
+  function flash(id, block = "start") { const el = document.getElementById(id); if (!el) return false; revealHistory(el); const detail = el.matches(".inc") ? el.querySelector(".incident-detail, .report-detail") : null; if (detail) { detail.open = true; (detail.dataset.report ? expandedReports : expandedIncidents).add(id); } el.scrollIntoView({ behavior: still() ? "auto" : "smooth", block }); el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600); return true; }
   function route() {
     let h; try { h = decodeURIComponent(location.hash.slice(1)); } catch (_) { return; }
     if (!h || !data) return;
     if (/^if-?[a-z]/i.test(h) && norm(h)) { $("lookIn").value = norm(h); lookup(); setTimeout(() => $("codesec").scrollIntoView({ behavior: still() ? "auto" : "smooth" }), 50); return; }
-    closeSheet(); flash(h);
+    if (["apps", "operations", "incidents", "codesec"].includes(h)) navigationTarget = h;
+    closeSheet(); flash(h); trackSection();
   }
   // (Add to calendar: a file the calendar opens)
   function calendar(id) {
@@ -434,13 +471,15 @@
       if (link.hash === `#${id}`) link.setAttribute("aria-current", "location"); else link.removeAttribute("aria-current");
     }
   }
-  let navFrame = 0;
+  let navFrame = 0, navigationTarget = "";
   function trackSection() {
     if (navFrame) return;
     navFrame = requestAnimationFrame(() => {
       navFrame = 0;
-      let selected = "";
-      for (const id of ["apps", "operations", "incidents", "codesec"]) if ($(id)?.getBoundingClientRect().top <= 150) selected = id;
+      const sections = ["apps", "operations", "incidents", "codesec"].map((id) => ({ id, top: $(id)?.getBoundingClientRect().top ?? Infinity })).filter((x) => x.top <= 150);
+      const top = Math.max(...sections.map((x) => x.top));
+      const current = sections.filter((x) => Math.abs(x.top - top) < 2);
+      const selected = current.find((x) => x.id === navigationTarget)?.id || current[0]?.id || "";
       markSection(selected);
     });
   }
@@ -450,6 +489,8 @@
   // ---- events ----
   document.addEventListener("click", (e) => {
     const t = e.target.closest("button, a"); if (!t) return;
+    if (t.dataset.history) { const kind = t.dataset.history; expandedHistory.has(kind) ? expandedHistory.delete(kind) : expandedHistory.add(kind); syncHistory(kind); return; }
+    if (t.id === "themeSwitch") { setTheme((document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark" ? "light" : "dark"); return; }
     if (t.dataset.operationToggle) { toggleOperation(t.dataset.operationToggle); return; }
     if (t.dataset.toggle) { const id = t.dataset.toggle; opened.has(id) ? opened.delete(id) : opened.add(id); groups(); document.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); return; }
     if (t.dataset.period != null) { period = +t.dataset.period; verdict(); groups(); return; }
@@ -460,6 +501,7 @@
     if (t.dataset.cal) { calendar(t.dataset.cal); return; }
     if (t.tagName === "A" && t.getAttribute("href")?.startsWith("#")) {
       e.preventDefault(); const h = t.getAttribute("href").slice(1);
+      if (["apps", "operations", "incidents", "codesec"].includes(h)) { navigationTarget = h; markSection(h); }
       if (location.hash === "#" + h) route(); else location.hash = h;
     }
   });

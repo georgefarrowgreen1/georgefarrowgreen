@@ -21,6 +21,7 @@
   <header class="head">
     <span class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 40 40"><g stroke-linecap="round" stroke-width="7.5"><path d="M13 13l6.5 6.5" stroke="#5d9cff"/><path d="M27 13l-6.5 6.5" stroke="#ff7a59"/><path d="M13 27l6.5-6.5" stroke="#a78bfa"/><path d="M27 27l-6.5-6.5" stroke="#3fd6b7"/></g><circle cx="20" cy="20" r="4.6" fill="#ffd23f"/></svg></span>
     <h1 class="word">InFlite <span>Status</span></h1>
+    <button class="theme-switch desktop-only" id="themeSwitch" type="button" aria-label="Switch theme"></button>
   </header>
 
   <nav class="page-nav" aria-label="Status page sections"><a href="#apps">Apps</a><a href="#operations">Jobs &amp; APIs</a><a href="#incidents">Incidents</a><a href="#codesec">Bug reports</a></nav>
@@ -33,13 +34,14 @@
   <div id="live" class="stack" hidden></div>
   <div id="groups" class="stack"></div>
 
+  <div class="history-panels">
   <section id="incidents" class="group">
-    <div class="gh"><h2>Incidents</h2><span id="incSince">Last 90 days</span></div>
+    <div class="gh"><h2>Incidents</h2><span id="incSince">Last 90 days</span><button class="history-toggle desktop-only" data-history="incidents" id="incidentsMore" type="button" aria-expanded="false" aria-controls="incs" hidden>View history</button></div>
     <div class="glass list" id="incs"><p class="empty">Checking…</p></div>
   </section>
 
   <section id="codesec" class="group">
-    <div class="gh"><h2>Bug reports</h2><span>Find your report</span></div>
+    <div class="gh"><h2>Bug reports</h2><span class="report-hint">Find your report</span><button class="history-toggle desktop-only" data-history="reports" id="reportsMore" type="button" aria-expanded="false" aria-controls="codes" hidden>View all</button></div>
     <div class="glass">
       <form class="look" id="lookForm"><input id="lookIn" aria-label="Report code" placeholder="Enter a report code" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Find</button></form>
       <div id="found" role="status" aria-live="polite"></div>
@@ -47,6 +49,7 @@
     </div>
   </section>
 
+  </div>
   <noscript><p class="foot-note">This page needs JavaScript to show the checks.</p></noscript>
 </main>
 <div class="scrim" id="scrim"></div>

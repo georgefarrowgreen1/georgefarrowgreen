@@ -67,7 +67,7 @@ for (const [w, scheme] of [[390, 'dark'], [390, 'light'], [1100, 'light'], [1100
   ok((await p.locator('.app').count()) === 9 && (await p.locator('.group:has(h2:text-is("Scheduled jobs")) .status-row').count()) === 5 && (await p.locator('[data-operation="connectors"] .status-row').count()) >= 3, `${w} ${scheme}: nine addresses, five jobs, what they rely on`);
   ok((await p.locator('.app[data-id="chat"] .days button').count()) === 1, `${w} ${scheme}: bars only from the first day checked`);
   ok((await p.locator('.app img, .app svg').count()) >= 9, `${w} ${scheme}: each with its logo`);
-  await p.locator('.arow[data-toggle="chat"]').click();
+  await p.locator('.arow[data-toggle="chat"] b').click();
   await p.waitForFunction(() => { const d = document.querySelector('.app[data-id="chat"] .chart'); return d && !/Loading/.test(d.textContent); }, null, { timeout: 10000 }).catch(() => {});
   const day = await p.textContent('.app[data-id="chat"] .chart');
   ok(/A line appears after a few more checks/.test(day), `${w} ${scheme}: Chat’s row open, its 24 hours (one check so far)`, day);

@@ -96,6 +96,6 @@ This folder is part of the repository but not the site: `/.tools/*` is turned aw
 
 Status-page UI checks can run independently of the Worker:
 `CHROMIUM=/usr/bin/chromium node .tools/tests/status-ui.mjs`.
-They use isolated fixtures, block external requests, and check both themes at 320, 390, 640 and 1100px,
+They use isolated fixtures, block external requests, and check both themes from 320 to 1920px,
 including healthy/failing states, refresh, period controls, incident disclosure, keyboard focus, sheets,
-lookup and section navigation. Set `STATUS_SCREENSHOTS=/tmp/status-ui` for full-page captures.
+lookup, section navigation, desktop history expansion and saved theme selection. Set `STATUS_SCREENSHOTS=/tmp/status-ui` for full-page captures.

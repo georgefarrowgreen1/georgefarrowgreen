@@ -27,9 +27,14 @@ const browser = await chromium.launch({executablePath:process.env.CHROMIUM || un
 const out = process.env.STATUS_SCREENSHOTS;
 if(out)mkdirSync(out,{recursive:true});
 try {
-for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])for(const problem of [false,true]){
+for(const width of (process.env.STATUS_WIDTHS?process.env.STATUS_WIDTHS.split(',').map(Number):[320,390,640,1024,1100,1280,1440,1920]))for(const colorScheme of ['light','dark'])for(const problem of [false,true]){
  const data=structuredClone(fixture);
  if(problem){data.jobs[1].at=now-30*60e3;data.deps[1].s='warn';data.deps[2].s='down';data.deps[2].why='The provider is not answering right now.';}
+ if(problem && width===1440){
+  data.services[0].s='down';data.services[6].s='down';
+  data.incidents.unshift({id:'active-test',title:'Today and sign-in are not answering',svcs:['today','auth'],started:now-60e3,ended:null,updates:[{at:now-60e3,k:'Investigating',w:'We are investigating the issue.'}]});
+ }
+
  const page=await browser.newPage({viewport:{width,height:1000},colorScheme,reducedMotion:'reduce'});
  await page.clock.install();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -52,11 +57,27 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.locator('[data-operation-toggle="api-health"]').count(),1);
  assert.equal(await page.locator('[data-operation-toggle="performance"]').count(),1);
  assert.equal(await page.getByText('Collecting performance samples',{exact:true}).count(),1);
- assert.match(await page.locator('#verdict h2').innerText(),problem?/isn’t answering/:/Everything’s working/);
+ assert.match(await page.locator('#verdict h2').innerText(),problem?/(?:isn’t|aren’t) answering/:/Everything’s working/);
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),true);
+ if(problem && width===1440) assert.equal(await page.locator('#live:visible').count(),1,'active incidents remain prominent');
  assert.equal(await page.locator('.operation-toggle').count(),3);
  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),0,'diagnostics start collapsed');
  assert.equal(await page.locator('.operation-group .status-list:visible').count(),0);
+ if(width>=1100) {
+  const layout=await page.evaluate(()=>{const apps=document.querySelector('#apps').getBoundingClientRect(), sidebar=document.querySelector('#operations').getBoundingClientRect();return {side:sidebar.left>=apps.right,aligned:Math.abs(apps.top-sidebar.top)<2};});
+  assert(layout.side && layout.aligned,'desktop apps and diagnostics form aligned columns');
+  assert.equal(await page.locator('#incs .inc:visible').count(),1,'desktop shows latest incident');
+  assert.equal(await page.locator('#codes .report:visible').count(),1,'desktop shows latest report');
+  await page.locator('#incidentsMore').click();assert.equal(await page.locator('#incs .inc:visible').count(),2);
+  await page.locator('#incidentsMore').click();
+  await page.locator('#reportsMore').click();assert.equal(await page.locator('#codes .report:visible').count(),4);
+  await page.locator('#reportsMore').click();
+  if(out)await page.screenshot({path:`${out}/desktop-initial-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`,fullPage:true});
+ } else {
+  assert.equal(await page.locator('#incs .inc:visible').count(),2);
+  assert.equal(await page.locator('#codes .report:visible').count(),4);
+ }
+
  await page.locator('[data-operation-toggle="connectors"]').click();
  assert.equal(await page.locator('[data-operation-toggle="connectors"]').evaluate(x=>getComputedStyle(x).webkitTapHighlightColor),'rgba(0, 0, 0, 0)');
  assert.equal(await page.locator('[data-operation-toggle="connectors"]').evaluate(x=>getComputedStyle(x).outlineStyle),'none');
@@ -104,23 +125,32 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
 
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow at ${width}`);
  assert.match(await page.locator('#incs .inc .sub').first().innerText(),/5 Nov.*6 Nov/);
- const support=await page.locator('.support-services .group').evaluateAll(xs=>xs.map(x=>({left:x.getBoundingClientRect().left,top:x.getBoundingClientRect().top})));
- assert.equal(support.length,2);
+ const support=await page.locator(width>=1100?'.support-services .app':'.support-services .group').evaluateAll(xs=>xs.map(x=>({left:x.getBoundingClientRect().left,top:x.getBoundingClientRect().top})));
+ assert.equal(support.length,width>=1100?3:2);
  assert.equal(support[0].left===support[1].left,width<760,'supporting groups respond to viewport width');
- await page.locator('#operations').evaluate(x=>x.scrollIntoView({block:'start'}));
+ if(width>=1100) { await page.setViewportSize({width,height:600}); await page.locator('#reportsMore').click(); }
+ const navTarget=width>=1100?'incidents':'operations';
+ await page.locator('#'+navTarget).evaluate(x=>x.scrollIntoView({block:'start'}));
  await page.evaluate(()=>dispatchEvent(new Event('scroll')));
  await page.clock.runFor(300);
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),false);
  assert.equal(await page.locator('#mini .jump a:visible').count(),4);
  if(out)await page.locator('#mini').screenshot({path:`${out}/nav-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`});
- assert.equal(await page.locator('#mini .jump a[href="#operations"]').getAttribute('aria-current'),'location');
+ assert.equal(await page.locator(`#mini .jump a[href="#${navTarget}"]`).getAttribute('aria-current'),'location');
+ if(width>=1100) {
+  await page.locator('.page-nav a[href="#codesec"]').click();await page.clock.runFor(300);
+  assert.equal(await page.locator('.page-nav a[href="#codesec"]').getAttribute('aria-current'),'location');
+  await page.locator('#reportsMore').click();await page.setViewportSize({width,height:1000});
+ }
 
+ if(width>=1100)await page.locator("#incidentsMore").click();
  const incidentLayout=await page.locator('#incs .inc').evaluateAll(rows=>rows.map(row=>{
   const heading=row.querySelector('h3').getBoundingClientRect(), tags=row.querySelector('.tags').getBoundingClientRect();
-  return {below:tags.top>=heading.bottom,left:Math.abs(tags.left-heading.left)<1,separator:getComputedStyle(row).borderTopWidth};
+  return {below:tags.top>=heading.bottom,left:Math.abs(tags.left-heading.left)<1,beside:tags.left>=heading.right,separator:getComputedStyle(row).borderTopWidth};
  }));
- assert(incidentLayout.every(x=>x.below && x.left),'badges consistently beneath titles');
+ assert(incidentLayout.every(x=>width>=1100?x.beside:x.below && x.left),'incident badges follow the responsive layout');
  assert.notEqual(incidentLayout[1].separator,'0px','incident separator visible');
+ if(width>=1100)await page.locator('#incidentsMore').click();
 
  assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),false);
  await page.locator('.incident-detail summary').first().click();
@@ -135,6 +165,12 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  await refreshed;
  await page.waitForFunction(()=>document.querySelector('.incident-detail').open);
  assert.equal(await page.locator('#codes .report-detail').first().evaluate(x=>x.open),true);
+ if(width>=1100) {
+  await page.locator('#lookIn').fill('if t test2');await page.locator('#lookForm button').click();
+  assert.equal(await page.locator('#IF-T-TEST2:visible').count(),1,'lookup reveals older reports');
+  assert.equal(await page.locator('#IF-T-TEST2 .report-detail').evaluate(x=>x.open),true);
+ }
+
  assert.equal(await page.locator('[data-operation-toggle="performance"]').getAttribute('aria-expanded'),'true','refresh retains the open dropdown');
  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),1);
  assert(requests>=2);assert.equal(await page.locator('.incident-detail').first().evaluate(x=>x.open),true);
@@ -142,7 +178,7 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.locator('[data-period="2"]').getAttribute('aria-pressed'),'true');
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.period),'2');
  assert.equal(await page.locator('.app[data-id="today"] .days button').count(),7);
- await page.locator('[data-toggle="chat"]').click();
+ await page.locator('[data-toggle="chat"] b').click();
  assert.equal(await page.locator('[data-toggle="chat"]').getAttribute('aria-expanded'),'true');
  const history=page.locator('.days[data-svc="chat"]');
  assert.equal(await history.locator('button[tabindex="0"]').count(),1);
@@ -167,6 +203,11 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.wrap').evaluate(x=>x.inert),false);
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.k),await history.locator('button').last().getAttribute('data-k'));
+ if(width===1440 && !problem){
+  await history.locator('button').last().click();await page.waitForSelector('#hours .q');
+  assert.match(await page.locator('#sheetTitle').innerText(),/Chat/);
+  await page.keyboard.press('Escape');
+ }
  assert.equal(await page.locator('#subBtn, a[href="#updates"]').count(),0);
  assert(!await page.locator('body').innerText().then(t=>t.includes('Checked every 5 minutes from Cloudflare')));
  await page.evaluate(()=>{location.hash='%E0%A4%A';});
@@ -184,6 +225,15 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  await page.evaluate(()=>window.scrollTo(0,0));
  if(out)await page.locator('.support-services').screenshot({path:`${out}/support-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`});
  if(out)await page.screenshot({path:`${out}/status-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`,fullPage:true});
+ if(width>=1100) {
+  const before=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg'));
+  await page.locator('#themeSwitch').click();
+  const chosen=await page.evaluate(()=>document.documentElement.dataset.theme);
+  assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg')),before);
+  await page.reload();await page.waitForSelector('.operation-toggle');
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),chosen,'theme selection persists');
+  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),0);
+ }
  assert.deepEqual(errors,[]);
  console.log(`PASS ${width}px ${colorScheme} ${problem?'issue':'healthy'}: layout, refresh, history, keyboard, sheets, lookup and navigation`);
  await page.close();
