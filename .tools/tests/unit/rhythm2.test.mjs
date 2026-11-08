@@ -8,6 +8,29 @@ const record=(days,feedback={completion:'completed',effort:6,reason:'none'},extr
 test('sessions exactly fit the slot, keep recoveries between efforts, and round-trip their ids',()=>{
  for(const family of ['threshold','vo2','sprint','durable','long','endurance','recovery'])for(const minutes of [15,30,35,45,60,90,150]){const w=compose(family,minutes);if(!w)continue;assert.equal(measure(w).secs,minutes*60);assert.deepEqual(workoutFromId(w.id).steps,w.steps);assert.ok(w.steps.every(s=>s.secs>0));for(let i=1;i<w.steps.length;i++)assert.ok(!(w.steps[i].kind==='work'&&w.steps[i-1].kind==='work'));}
 });
+test('long-ride labels follow the final duration, including shortened ids and saved prescriptions',()=>{
+ for(const minutes of [40,60,90,115,120,150]){
+  const w=compose('long',minutes);
+  assert.equal(w.name,minutes<120?'Endurance ride':'Long endurance ride');
+  assert.equal(measure(w).secs,minutes*60);
+  assert.equal(workoutFromId(w.id).name,w.name);
+  assert.equal(workoutFromId(w.id).id,w.id);
+ }
+ const old={id:'old-long',ftp:200,workout:{...compose('long',60),name:'Long endurance ride'}};
+ const before=JSON.stringify(old),shown=recordedWorkout(old);
+ assert.equal(shown.name,'Endurance ride');
+ assert.deepEqual(shown.steps,old.workout.steps);
+ assert.equal(shown.sourceId,old.workout.id);
+ assert.equal(JSON.stringify(old),before,'the saved prescription is unchanged');
+ const named={...old,workout:{...old.workout,name:'Sunday coffee loop'}};
+ assert.equal(recordedWorkout(named).name,'Sunday coffee loop');
+ assert.equal(compose('durable',100).name,'Endurance ride, sustained finish');
+ assert.equal(compose('durable',120).name,'Long ride, sustained finish');
+ const p=plan({prefs:{...prefs,days:[150,0,0,0,0,150,150]},today});
+ assert.ok(p.today.mins>0&&p.today.mins<120,'the weekly limits shorten the long-ride slot');
+ assert.equal(p.workouts[p.today.id].name,'Endurance ride');
+ assert.ok(p.days.filter(d=>d.date>=today&&d.date<addDays(today,7)).reduce((n,d)=>n+d.mins,0)<=p.weekly.minutes);
+});
 test('progression needs two independent controlled reviews at the same dose; difficulties, uncertainty and interruptions differ',()=>{
  assert.equal(progression([record(7)],'threshold').action,'hold');
  const progress=progression([record(14),record(7)],'threshold');assert.equal(progress.action,'progress');const w=compose('threshold',60,{progress});assert.equal(w.dose.intensity,dose.intensity);assert.equal(w.dose.reps,dose.reps);assert.equal(w.dose.work,dose.work+30);

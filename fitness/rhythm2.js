@@ -18,6 +18,15 @@ const controlledEffort={threshold:7,vo2:8,sprint:8,durable:7};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export const dayKey=t=>{const d=new Date(t);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const step=(kind,secs,from,name,to)=>({kind,secs:Math.round(secs),from,name,...(to==null?{}:{to})});
+// Name the fitted session, rather than the original long-ride slot. Two hours
+// is a wording convention, not a physiological threshold or a volume target.
+function durationName(family,secs,name){
+ if(secs<7200){
+  if(family==='long'&&name==='Long endurance ride')return 'Endurance ride';
+  if(family==='durable'&&name==='Long ride, sustained finish')return 'Endurance ride, sustained finish';
+ }
+ return name;
+}
 const latest=rows=>[...rows].sort((a,b)=>String(a.day).localeCompare(String(b.day))||(a.created||0)-(b.created||0)||String(a.id).localeCompare(String(b.id)));
 const evidence=(records,family)=>latest(records.filter(r=>r.workout?.family===family&&r.feedback&&['completed','reduced'].includes(r.feedback.completion)&&!['traffic','time','equipment','other'].includes(r.feedback.reason)));
 export function progression(records,family,ftp=null,today=null){
@@ -82,7 +91,7 @@ export function compose(family,minutes,{model,ftp=200,progress={action:'start'},
  const names={threshold:`Threshold ${dose?.reps} × ${interval} min`,vo2:`Hard efforts ${dose?.reps} × ${interval} min`,sprint:`Sprints ${dose?.reps} × ${dose?.work} sec`,durable:'Long ride, sustained finish',long:'Long endurance ride',endurance:'Endurance ride',recovery:'Recovery spin'};
  const kind={threshold:'Threshold',vo2:'VO₂ max',sprint:'Sprint',durable:'Durability',long:'Endurance',endurance:'Endurance',recovery:'Recovery'}[family];
  const code=dose?`${dose.reps}:${dose.work}:${dose.recovery}:${Math.round(dose.intensity*1000)}`:'0';
- return {id:`r2:${family}:${minutes}:${code}`,sport:'ride',family,kind,name:names[family],about:progress.why||'Comfortable, conversational riding. Adjust to how you feel.',steps,dose,workSecs:work,rhythm:true,engine:ENGINE,targetFtp:ftp};
+ return {id:`r2:${family}:${minutes}:${code}`,sport:'ride',family,kind,name:durationName(family,secs,names[family]),about:progress.why||'Comfortable, conversational riding. Adjust to how you feel.',steps,dose,workSecs:work,rhythm:true,engine:ENGINE,targetFtp:ftp};
 }
 export function assessPrescription(record,power){
  if(!Array.isArray(power)&&!ArrayBuffer.isView(power))return {status:'uncertain',why:'No power data; use your session feedback.'};
@@ -95,7 +104,7 @@ export function assessPrescription(record,power){
 }
 export function recordedWorkout(record,currentFtp=record.ftp){
  const scale=record.ftp/currentFtp;
- return {...record.workout,id:`r2p:${record.id}`,capturedFtp:record.ftp,prescriptionId:record.id,targetFtp:currentFtp,sourceId:record.workout.id,steps:record.workout.steps.map(s=>({...s,from:s.from*scale,...(s.to==null?{}:{to:s.to*scale})}))};
+ return {...record.workout,name:durationName(record.workout.family,measure(record.workout).secs,record.workout.name),id:`r2p:${record.id}`,capturedFtp:record.ftp,prescriptionId:record.id,targetFtp:currentFtp,sourceId:record.workout.id,steps:record.workout.steps.map(s=>({...s,from:s.from*scale,...(s.to==null?{}:{to:s.to*scale})}))};
 }
 export function recoveryState({well={},feel={},records=[],today}){
  const check=feel[today],night=nightOf(well,today),values=check&&[check.sleep,check.legs,check.mood];

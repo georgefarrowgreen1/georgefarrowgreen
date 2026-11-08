@@ -48,6 +48,10 @@ and consistency rather than automatic increases in training volume.
 - **Volume:** the existing maximum 5% allowance above observed weekly time/load is unlocked only by two recent
   controlled review dates within 14 days, with no current recovery concern and build mode selected. Otherwise
   maintain the observed allowance. Neither 5% nor TSS/CTL/ATL is an injury-risk guarantee or a physiological test.
+- **Endurance labels:** “long” is used only when the fitted session lasts at least two hours. A longest available
+  slot can shrink under the weekly limits; its shorter session is called an endurance ride. This is a wording
+  convention, not a physiological boundary or an instruction to increase riding time. Older saved generic labels
+  are corrected for display without changing the stored prescription, its steps or watt targets.
 
 ## Stability and interpretation
 
