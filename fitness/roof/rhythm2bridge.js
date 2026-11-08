@@ -1,0 +1,7 @@
+import {createCoach,trainingAPI} from '../rhythm2-client.js';
+import {S,P,TODAY,A,R,changed,keep,sumOf,wellByDay,runSpeed,swimSpeed,hold,todayRefresh,fwOf} from './core.js';
+import {redraw} from './fxui.js';
+export function makeCoach(){
+ const fw=fwOf();
+ return createCoach({owner:()=>S.me?.id,api:trainingAPI(A.trainingCall),importEngine:()=>fw.lazy((q)=>import('../rhythm2.js'+(q||''))),change:()=>{changed();redraw('plan');todayRefresh();},hold:on=>hold('rhythm2',on),onRecorded:(day,was,id)=>{if(S.swaps[day]===was){S.swaps[day]=id;keep('swaps');}},inputs:()=>({prefs:S.rhythm||R.DEFAULTS,acts:S.own.map(a=>({...a,sum:sumOf(a)})),feel:S.feel,swaps:S.swaps,today:TODAY,ftp:P().ftp,well:wellByDay(),resolveWorkout:id=>S.mine.find(w=>w.id===id)||R.workoutOf(id),paces:{run:runSpeed(),swim:swimSpeed()}})});
+}

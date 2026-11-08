@@ -29,3 +29,5 @@ export function createCoach({owner,inputs,importEngine,api,change=()=>{},hold=()
  function reset(){generation++;hold(false);records=[];loadedFor=null;pending=null;error=null;}
  return {load,state,ready,plan,workout,record,feedback,reset};
 }
+
+export const trainingAPI=call=>({trainingRecords:()=>call("rhythm2"),prescribe:body=>call("rhythm2/prescriptions",{method:"POST",body}),sessionFeedback:body=>call("rhythm2/feedback",{method:"POST",body})});

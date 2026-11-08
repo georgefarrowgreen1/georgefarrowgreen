@@ -32,7 +32,7 @@ function todayView() {
   const sel = S.dayAt ?? TODAY, isToday = sel === TODAY;
   // (the week's weather, for Rhythm's wet days: asked for as the page is drawn, and the plan drawn again when it comes)
   if (rhythmOn()) rideWx();
-  if(S.rhythm?.engine===2&&!coach.ready())return [h("div.card.glass",{},h("h2",{text:"Rhythm 2.0"}),h("p",{text:coach.state().error||"Loading your recorded sessions…"}),h("button.pill",{type:"button",onclick:()=>ctx.open.rhythm2()},"Retry"))];
+  if(S.rhythm?.engine===2&&!coach.ready())return [card(null,"Rhythm 2.0",coach.state().error||"Loading…",h("button.pill",{onclick:()=>ctx.open.rhythm2()},"Retry"))];
   const id = plannedOn(TODAY), done = actsOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
   const out = [];
   const planned = rhythmOn() || myPlan();
@@ -253,7 +253,7 @@ function headingCard() {
 function planRows() {
   const prefs = rhythmOn() ? { ...R.DEFAULTS, ...S.rhythm } : null, nd = prefs ? prefs.days.filter((x) => x > 0).length : 0, hrs = prefs ? prefs.days.reduce((a, x) => a + x, 0) : 0;
   return section(null, h("div.group.glass", {},
-    row({icon:"trend",tint:"coral",title:"Rhythm 2.0",sub:S.rhythm?.engine===2?"Your training profile and session reviews":"Try the cycling beta",onclick:()=>ctx.open.rhythm2()}),
+    row({title:"Rhythm 2.0",sub:"Cycling beta",onclick:()=>ctx.open.rhythm2()}),
     prefs && row({ icon: "calendar", tint: "blue", title: "Your week", sub: `${plural(nd, "day")}, ${dur(hrs * 60)}${prefs.run ? ", a run" : ""}${prefs.swim ? ", a swim" : ""} · ${prefs.mode === "hold" ? "holding" : "building"}`, onclick: () => ctx.open.rhythmSetup() }),
     prefs && row({ icon: "medal", tint: "green", title: "Riding towards", sub: prefs.event?.date >= TODAY ? `${prefs.event.name || R.EVENTS[prefs.event.kind].name}, ${new Date(prefs.event.date).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}` : "Nothing in particular: a sportive, a race or a time trial?", onclick: () => ctx.open.rhythmSetup("event") }),
     row({ icon: "list", tint: "indigo", title: "Workouts", sub: S.mine.length ? `The library, and ${plural(S.mine.length, "of your own", "of your own")}` : "The library, to ride any day", onclick: () => ctx.open.workouts() })));

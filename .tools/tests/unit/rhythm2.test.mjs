@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {plan,compose,progression,recordedWorkout,riderModel,assessPrescription,dayKey,workoutFromId} from '../../../fitness/rhythm2.js';
-import {createCoach} from '../../../fitness/rhythm2-account.js';
+import {createCoach} from '../../../fitness/rhythm2-client.js';
 import {measure,flatten,DAY,addDays} from '../../../fitness/workouts.js';
 const today=new Date(2026,10,9).getTime(),prefs={days:[0,60,60,60,0,150,90],level:'some',mode:'build',objective:'balanced',at:today};
 const workout=compose('threshold',60),dose=workout.dose;
@@ -58,4 +58,13 @@ test('moving a recorded session creates a new dated prescription with the origin
 });
 test('a completed reviewed ride counts for recovery even before its activity file arrives',()=>{
  const sunday=record(1),p=plan({prefs:{...prefs,days:[60,60,60,60,0,90,60]},records:[sunday],today,ftp:200});assert.equal(p.today.hard,false);
+});
+
+test('lazy coach deduplicates imports and rejects a controller loaded after an account switch',async()=>{
+ const {createCoach:lazyCoach}=await import('../../../fitness/account.js');let owner='ann',finish,imports=0,loads=0;
+ const client={load:async()=>{loads++;},ready:()=>true,reset(){},state:()=>({records:[]})};
+ const coach=lazyCoach({owner:()=>owner,create:()=>{imports++;return new Promise(r=>finish=r);}});
+ assert.equal(imports,0);const pending=coach.load();assert.equal(coach.load(),pending);await Promise.resolve();assert.equal(imports,1);
+ owner='bo';coach.reset();finish(client);await assert.rejects(pending,/account changed/);assert.equal(loads,0);assert.equal(coach.ready(),false);
+ const next=coach.load();await Promise.resolve();finish(client);await next;assert.equal(loads,1);assert.equal(coach.ready(),true);
 });

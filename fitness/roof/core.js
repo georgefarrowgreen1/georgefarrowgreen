@@ -21,7 +21,6 @@ export { U, clock, dateShort, dayLetter, dayLong, dayName, dayShort, dist, distN
 import { WORKOUTS, PLANS, measure, layOut, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
 import { summarise, fitness, rescale, tssOf, stayingOf } from "../load.js";
 import * as A from "../account.js";
-import {createCoach} from "../rhythm2-account.js";
 import * as R from "../rhythm.js";
 import * as G from "../progress.js";
 import * as BT from "../besttime.js";
@@ -207,7 +206,7 @@ export const wkById = (id) => coach.workout(id) || S.mine.find((w) => w.id === i
 // ---- Rhythm (app.js 991-1038) ----
 export const rhythmOn = () => !!S.rhythm && !S.chosen;
 const rhFrom = () => [S.wx, S.garmin, S.health];
-export const coach = createCoach({owner:()=>S.me?.id,onRecorded:(day,was,id)=>{if(S.swaps[day]===was){S.swaps[day]=id;keep("swaps");}},api:A,importEngine:()=>Q.fw.lazy((q) => import("../rhythm2.js" + (q || ""))),change:()=>{changed();redraw("plan");todayRefresh();},hold:on=>hold("rhythm2",on),inputs:()=>({prefs:S.rhythm||R.DEFAULTS,acts:S.own.map(a=>({...a,sum:sumOf(a)})),feel:S.feel,swaps:S.swaps,today:TODAY,ftp:P().ftp,wet:wetAhead(),well:wellByDay(),resolveWorkout:id=>S.mine.find(w=>w.id===id)||R.workoutOf(id),paces:{run:runSpeed(),swim:swimSpeed()}})});
+export const coach=A.createCoach({owner:()=>S.me?.id,create:()=>Q.fw.lazy((q)=>import("./rhythm2bridge.js"+(q||""))).then(m=>m.makeCoach())});
 
 let rhCache = null;
 export function rh() {

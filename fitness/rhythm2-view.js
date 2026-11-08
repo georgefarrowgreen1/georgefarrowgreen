@@ -7,7 +7,7 @@ export function createRhythm2View({h,section,row,coach,prefs,setPrefs,today,acts
  return function view(){
   const p=prefs(),enabled=p?.engine===2,state=coach.state(),plan=state.ready?coach.plan():null,unsupported=!!(p?.run||p?.swim||p?.event?.date>=today()-7*86400e3),records=[...state.records].sort((a,b)=>b.created-a.created);
   const toggle=h('input',{type:'checkbox',role:'switch','aria-label':'Use Rhythm 2.0 beta',checked:enabled,disabled:busy||!p||(unsupported&&!enabled),onchange:e=>run(async()=>{await coach.load();setPrefs({...prefs(),engine:e.target.checked?2:1});notify(e.target.checked?'Rhythm 2.0 beta is on':'Back to classic Rhythm');})});
-  const body=[h('div.sheet-top',{},h('h1',{text:'Rhythm 2.0'}),h('div.sub',{text:'Beta · Cycling that learns from your rides'})),
+  const body=[h('p.rh-note',{text:'Beta · Cycling that learns from your rides'}),
    h('p.rh-note',{text:'Choose a purpose, build a manageable session, then use your feedback to guide the next one.'}),
    h('div.group.glass',{},h('label.row.plain',{},h('span.tx',{},h('b',{text:'Use Rhythm 2.0'}),h('small',{text:enabled?'Personal progression is on':'Classic Rhythm stays available'})),h('span.r2-switch',{},toggle,h('span.r2-track',{'aria-hidden':'true'}))))];
   if(!p)body.push(h('button.btn',{type:'button',onclick:setup},'Set up your riding week'));

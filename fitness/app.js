@@ -23,7 +23,6 @@ import { demo, samples, PROFILE, rng } from "./sample.js";
 import * as F from "./formats.js";
 import * as C from "./charts.js";
 import * as A from "./account.js";
-import {createCoach} from "./rhythm2-account.js";
 import * as R from "./rhythm.js";
 import * as G from "./progress.js";
 import * as M from "./map.js";
@@ -1344,7 +1343,7 @@ const rhythmOn = () => !!S.rhythm && !S.chosen;
 // (what it goes on that comes in behind the scenes, not through keep: the weather where you ride, for the wet days ahead,
 // and your nights, from Garmin or Apple Health)
 const rhFrom = () => [S.wx, S.garmin, S.health];
-const coach=createCoach({owner:()=>S.me?.id,onRecorded:(day,was,id)=>{if(S.swaps[day]===was){S.swaps[day]=id;keep("swaps");}},api:A,importEngine:()=>import("./rhythm2.js"),change:()=>{changed();redraw();todayRefresh();},inputs:()=>({prefs:S.rhythm||R.DEFAULTS,acts:S.own.map(a=>({...a,sum:sumOf(a)})),feel:S.feel,swaps:S.swaps,today:TODAY,ftp:P().ftp,wet:wetAhead(),well:wellByDay(),resolveWorkout:id=>S.mine.find(w=>w.id===id)||R.workoutOf(id),paces:{run:runSpeed(),swim:swimSpeed()}})});
+const coach=A.createCoach({owner:()=>S.me?.id,create:()=>import("./rhythm2-standalone.js").then(m=>m.makeCoach())});
 
 let rhCache = null;
 function rh() {
@@ -3167,7 +3166,7 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
 })();
 
 // (what the screens, each its own module, take from here)
-export { coach, wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
+export { coach, changed, todayRefresh, wellByDay, setNumber, resum, nightsFrom, nightsSeries, shareView };
 export { mapsAlways, wide, mainW, partW };
 // (the sheets your connections are set up on, as the welcome uses them; and for the tests, to open them by themselves)
 export { stravaView, healthView, stopped };

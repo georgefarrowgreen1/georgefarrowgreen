@@ -22,9 +22,9 @@ test('Rhythm 2 beta enables, records exact targets, saves feedback and can retur
   assert.equal(state.trainingRequests,0);assert.ok(!kit.log.some(p=>/\/rhythm2\.js(?:\?|$)/.test(p)),'classic does not fetch the new planner');
   await page.getByRole('button',{name:/Rhythm 2\.0/}).click();const sheet=page.locator('dialog[data-sheet="rhythm2"]');await sheet.waitFor();await page.getByRole('switch',{name:'Use Rhythm 2.0 beta'}).check();await page.getByRole('button',{name:'Use this session',exact:true}).waitFor();
   await page.getByRole('button',{name:'Use this session',exact:true}).click();await page.getByRole('button',{name:'Session recorded',exact:true}).waitFor();assert.equal(state.records.length,1);assert.equal(state.records[0].ftp,250);const steps=JSON.stringify(state.records[0].workout.steps);
-  await page.getByLabel('Perceived effort',{exact:true}).fill('6');await page.getByRole('button',{name:'Save review',exact:true}).click();await page.getByText('Review saved. Rhythm will use it for future sessions.',{exact:true}).waitFor();assert.equal(state.records[0].feedback.effort,6);assert.equal(JSON.stringify(state.records[0].workout.steps),steps);
+  await page.getByLabel('Perceived effort',{exact:true}).fill('6');await page.getByRole('button',{name:'Save review',exact:true}).click();await page.getByText('Review saved. Rhythm will use it for future sessions.',{exact:true}).waitFor();assert.equal(state.records[0].feedback.effort,6);assert.equal(await page.getByLabel('Perceived effort',{exact:true}).inputValue(),'6');assert.equal(JSON.stringify(state.records[0].workout.steps),steps);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-  if(process.env.RHYTHM2_SCREENSHOTS){await mkdir(process.env.RHYTHM2_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.RHYTHM2_SCREENSHOTS+'/mobile-beta.png',fullPage:true});}
+  if(process.env.RHYTHM2_SCREENSHOTS){await mkdir(process.env.RHYTHM2_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.RHYTHM2_SCREENSHOTS+'/mobile-beta.png'});}
   await page.getByRole('switch',{name:'Use Rhythm 2.0 beta'}).uncheck();await page.keyboard.press('Escape');await sheet.waitFor({state:'detached'});assert.equal(state.records.length,1);assert.deepEqual(state.errors,[]);
  }finally{await context.close();}
 });

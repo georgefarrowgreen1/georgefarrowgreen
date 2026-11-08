@@ -71,7 +71,7 @@ function rhythmIntro(wk = [[0, "z1"], [44, "z4"], [30, "z2"], [40, "z6"], [0, "z
 // (where you are in Rhythm: counting down to your event, in its last twelve weeks; else the block and its week)
 const rhythmSaid = () => {
   const r = rh(), b = r.block, ev = r.event;
-  if(r.beta)return "Rhythm 2.0 · " + ({balanced:"all-round riding",endurance:"longer rides",threshold:"sustained power",topend:"hard efforts"}[r.objective]||"cycling beta");
+  if(r.beta)return r.label;
   if (ev && ev.days >= 0 && ev.days <= 84) return `${ev.name || R.EVENTS[ev.kind].name} · ${ev.days === 0 ? "today" : ev.days < 14 ? `${plural(ev.days, "day")} to go` : `${plural(Math.round(ev.days / 7), "week")} to go`}`;
   return `${R.THEMES[b.theme]} block · ${b.absorb ? "lighter week" : `week ${b.week + 1} of 4`}`;
 };
