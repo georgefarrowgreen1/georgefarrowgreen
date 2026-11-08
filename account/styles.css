@@ -1749,3 +1749,17 @@ body:has(.signin-shell) .aura { opacity: .28; }
   .signin-panel h1 { font-size: 25px; }
   .signin-panel .btn { font-size: 15px; }
 }
+
+
+/* A completed sign-out is a calm confirmation, including forgetting the saved account. */
+.welcome.signout-complete { gap: 14px; padding-top: clamp(20px, 6vh, 64px); }
+.signout-complete .mark { width: 64px; height: 64px; border-radius: 20px; margin-bottom: 8px; animation: none; box-shadow: 0 12px 30px -18px rgba(74,69,220,.65); }
+.signout-complete h1 { font-size: 30px; letter-spacing: -.6px; }
+.signout-complete > p { max-width: 30ch; margin: 0; font-size: 15px; line-height: 1.55; }
+.signout-complete .signout-actions { max-width: 400px; margin-top: 12px; padding: 22px; gap: 12px; border-radius: 24px; }
+.signout-actions .btn { min-height: 52px; border-radius: 14px; font-size: 16px; }
+.signout-actions .signout-forget { min-height: 44px; padding: 10px 4px; font-size: 14px; line-height: 1.4; }
+.signout-actions .signout-notice { display: flex; align-items: flex-start; justify-content: center; gap: 8px; margin: 0; padding: 8px 0 0; color: var(--text-2); font-size: 14px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; }
+.signout-actions .signout-notice:empty { display: none; }
+.signout-notice .ico { flex-shrink: 0; margin-top: 2px; color: var(--good-text); }
+.signout-forget:focus-visible, .signout-notice:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }

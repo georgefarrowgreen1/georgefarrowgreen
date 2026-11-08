@@ -1143,8 +1143,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.06";
-const NEWS = "A clearer sign-in, with a compact welcome back and InFlite’s own logo";
+const BUILD = "2.07";
+const NEWS = "A calmer signed-out screen, with clear confirmation when this browser forgets your account";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2625,12 +2625,19 @@ function outPage(r) {
       r(h("div.signin.glass", {}, go, stay)))];
   }
   const back = h("button.btn", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, `Back to ${name}`);
-  const drop = last && h("button.link", { type: "button", onclick: (e) => { forget(); e.currentTarget.remove(); say(said, `This browser has forgotten ${last.email}.`); } }, `Forget ${last.email} on this device`);
-  return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark", {}, icon("signout", 44, 1.8)))),
+  said.classList.add("signout-notice");
+  const drop = last && h("button.link.signout-forget", { type: "button", onclick: (e) => {
+    forget();
+    e.currentTarget.remove();
+    // This is a completed local action, not an error (say() marks errors red).
+    said.replaceChildren(icon("check", 18, 2.4), h("span", { text: "Saved account removed from this browser." }));
+    said.setAttribute("tabindex", "-1"); said.focus({ preventScroll: true });
+  } }, "Forget this account on this device");
+  return [h("div.welcome.signout-complete", {},
+    r(h("div", {}, h("div.mark", {}, icon("signout", 32, 1.8)))),
     r(h("h1", { text: "You’re signed out" })),
-    r(h("p", { text: "Of every app on InFlite, in this browser." })),
-    r(h("div.signin.glass", {}, back, drop, said)))];
+    r(h("p", { text: "You’re signed out of every InFlite app in this browser." })),
+    r(h("div.signin.glass.signout-actions", {}, back, drop, said)))];
 }
 // The account's page, signed out, with a word to say first (an email confirmed by its link, or an app's hand-over that
 // didn't work): signing in's on the sign-in page, and, opened from an app, the way back to it

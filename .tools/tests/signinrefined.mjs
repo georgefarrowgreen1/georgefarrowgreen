@@ -10,7 +10,7 @@ const errors = [];
 const destination = 'https://auth.inflite.ai/#signin=weather&ask=' + 'a'.repeat(43) + '&back=' + encodeURIComponent('https://weather.inflite.ai/');
 let checks = 0;
 const ok = (value, message) => { assert.ok(value, message); checks++; };
-async function open({ width = 1440, height = 1000, mobile = false, last = null, colorScheme = 'dark', passkeys = true } = {}) {
+async function open({ width = 1440, height = 1000, mobile = false, last = null, colorScheme = 'dark', passkeys = true, url = destination } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, isMobile: mobile, hasTouch: mobile, colorScheme, reducedMotion: 'reduce' });
   await ctx.addInitScript(({ last, passkeys }) => {
     globalThis.SIGNIN_PAGE = true;
@@ -37,8 +37,8 @@ async function open({ width = 1440, height = 1000, mobile = false, last = null, 
     return route.fulfill({ contentType: type, body });
   });
   const p = await ctx.newPage(); p.on('pageerror', e => errors.push(e.message));
-  await p.goto(destination);
-  await p.waitForSelector('.signin-main .signin-panel');
+  await p.goto(url);
+  await p.waitForSelector('.signin-main .signin-panel, .signout-complete');
   await p.waitForTimeout(150);
   return { ctx, p, qrCalls: () => qrCalls };
 }
@@ -101,6 +101,23 @@ try {
     const { ctx, p } = await open(args); await layout(p, JSON.stringify(args));
     if (args.passkeys === false) ok(await p.getByRole('button', { name: 'Sign in with a passkey', exact: true }).count() === 0, 'password-only browser remains usable');
     if (args.colorScheme) await p.screenshot({ path: `${out}/signin-light.png`, fullPage: true });
+    await ctx.close();
+  }
+  for (const mobile of [false, true]) {
+    const { ctx, p } = await open({ width: mobile ? 390 : 1440, height: mobile ? 844 : 1000, mobile, colorScheme: 'light', last,
+      url: 'https://auth.inflite.ai/#signout=today&back=' + encodeURIComponent('https://inflite.ai/') });
+    ok(await p.locator('.signout-complete h1').innerText() === 'You’re signed out', 'signed-out confirmation');
+    ok(await p.getByRole('button', { name: 'Back to Today', exact: true }).isVisible(), 'return action remains available');
+    await p.getByRole('button', { name: 'Forget this account on this device', exact: true }).click();
+    ok(await p.evaluate(() => localStorage.getItem('acct:last')) === null, 'forget action removes only the saved account');
+    ok(await p.locator('.signout-notice').innerText() === 'Saved account removed from this browser.', 'forget action confirms success');
+    ok(!(await p.locator('.signout-notice').getAttribute('class')).includes('bad'), 'success is not marked as an error');
+    ok(await p.locator('.signout-notice').evaluate(el => el === document.activeElement), 'focus moves to confirmation');
+    ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'signed-out screen has no horizontal overflow');
+    await p.screenshot({ path: `${out}/signout-${mobile ? 'mobile' : 'desktop'}.png`, fullPage: true });
+    await p.getByRole('button', { name: 'Back to Today', exact: true }).click();
+    await p.waitForURL('https://inflite.ai/');
+    ok(p.url() === 'https://inflite.ai/', 'return to Today retains the original destination');
     await ctx.close();
   }
   assert.deepEqual(errors, [], 'no browser script errors');
