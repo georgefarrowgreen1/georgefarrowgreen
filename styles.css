@@ -300,6 +300,8 @@ body.paused .segs i.on::after { animation-play-state: paused; }
     /* The photograph is already softened behind this part of the page. An opaque glass tint keeps moving cards
        crisp without resampling a backdrop blur for every frame of the glide. */
     background: rgba(28, 30, 40, 0.94); -webkit-backdrop-filter: none; backdrop-filter: none;
+    /* Keep the inset glass rim. An outside shadow is cut off by the moving viewport, drawing a line below the row. */
+    box-shadow: var(--rim);
   }
   .app-carousel.is-carousel .app img { margin-bottom: 14px; }
   .app-carousel.is-carousel .app b { font-size: 21px; }
