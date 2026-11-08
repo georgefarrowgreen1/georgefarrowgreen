@@ -1176,8 +1176,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.90";            // shown in InFlite's menu
-const APP_NEWS = "Page zoom is blocked consistently across all InFlite apps";       // (said once it's in)
+const APP_VERSION = "1.91";            // shown in InFlite's menu
+const APP_NEWS = "A clearer conversation view, with grouped activity and sealed letters in flight";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -3434,9 +3434,9 @@ function mount() {
           <button type="button" class="mode" data-act="nextmode" data-next="now" hidden></button>
           <button type="button" class="kind" data-act="flysheet" aria-haspopup="dialog" hidden></button>
           <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="enter"></textarea>
-          <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
           <button type="button" class="mic" data-act="recstart" aria-label="Record a voice pigeon" hidden>${I.mic}</button>
         </div>
+        <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
       </div>
       <div class="recbar" hidden role="group" aria-label="Recording a voice pigeon">
         <button type="button" class="reccancel" data-act="reccancel" aria-label="Cancel recording">${I.trash}</button>
@@ -3845,8 +3845,10 @@ function render() {
   const fid = fa?.id || "", fk = !fid && fa?.dataset?.act ? switchKey(fa) : null;
   const caret = fid && typeof fa.selectionStart === "number" ? [fa.selectionStart, fa.selectionEnd] : null;
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view), was = snapKeyed();
+  const recalledOpen = new Set([...$view.querySelectorAll("details.recall-run[open]")].map((el) => el.dataset.key));
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   drawnView = kView();
+  if (chat) for (const el of $view.querySelectorAll("details.recall-run")) el.open = recalledOpen.has(el.dataset.key);
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
   if (chat && S.player) voiceShow();
@@ -4393,8 +4395,13 @@ const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Picto
 const TIME_GAP = HOUR;
 // (keyed by its place in the chat: a stretch whose first pigeon lands keeps its header, which changes its time)
 let tsN = 0;
-const stampHtml = (at) => `<div class="stamp" data-key="ts:${tsN++}" data-sig="${at}"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`;
+const stampHtml = (at) => `<div class="stamp" data-key="ts:${tsN++}" data-sig="${at}"><b>${dayLabel(at)}</b></div>`;
 // under your latest landed message (one to one): landed, or read, and when
+const recallOnly = (m, g) => m.recalled && (!g || m.from !== S.me.id || !flockCount(m).landed);
+function recallRun(f, run, g) {
+  return `<details class="recall-run" data-key="recalls:${esc(run[0].id)}"><summary>${I.homing}<span>${run.length} messages called back</span></summary><div class="recall-events">${run.map((m) => `<div><time>${dayLabel(m.sentAt)} ${fmtTime(m.sentAt)}</time>${bubble(g ? member(g, m.from) || { name: "Former member" } : f, m, false, g)}</div>`).join("")}</div></details>`;
+}
+const letterTimeHtml = (m) => `<time class="letter-time${m.from === S.me.id ? " me" : ""}" datetime="${new Date(m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt).toISOString()}">${fmtTime(m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt)}</time>`;
 function statusLine(m) {
   return `<div class="meta me rstat" data-key="st" data-sig="${m.readAt ? "read" : "landed"}">${m.readAt ? `Read ${fmtShort(m.readAt)}` : `Landed ${fmtShort(m.deliverAt)}`}</div>`;
 }
@@ -4417,7 +4424,7 @@ function bubble(f, m, gapTop, g) {
     // sealed until it lands: when, and its pigeon on the way
     const via = m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : "";
     return `<button type="button" class="b up sealed fly k-${k}${gapTop ? " gap-top" : ""}${fresh}"${kk("fly")} data-act="map" data-id="${esc(m.id)}" aria-label="${k === "standard" ? "A pigeon" : `A ${KIND[k].name.toLowerCase()} pigeon`} from ${esc(first(f.name))}${via}, sealed until it lands ${esc(atTime(m.deliverAt))}. Watch it on the map.">
-      <span class="sl">${I.lock}<span>Sealed${via} · lands ${atTime(m.deliverAt)}</span></span>${airTrack(m)}</button>`;
+      <span class="sl">${I.lock}<b>Sealed letter${via}</b></span><span class="sealed-time">Lands in <span data-eta="${esc(m.deliverAt)}">${esc(fmtDur(m.deliverAt - now()))}</span></span>${airTrack(m)}</button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
@@ -4887,16 +4894,22 @@ function vGroupChat(g) {
   quietMeta = new Set(landed.slice(0, -1).map((m) => m.id));
   if (msgs?.length) for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
+    if (!sameDay(at, lastAt)) { body += stampHtml(at); prevFrom = null; }
     lastAt = at;
     const lines = evsTo(at) + stampsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
+    if (recallOnly(m, g)) {
+      let end = i + 1;
+      while (end < msgs.length && recallOnly(msgs[end], g) && (!evs[ev] || evs[ev].at > msgs[end].sentAt) && (!stl[si] || stl[si].at > msgs[end].sentAt)) end++;
+      if (end - i > 1) { body += recallRun({ name: g.name }, msgs.slice(i, end), g); lastAt = msgs[end - 1].sentAt; i = end - 1; prevFrom = null; continue; }
+    }
     let j = i; while (on && j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
     const who = member(g, m.from) || { id: m.from, name: "Former member" };
     if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who" data-key="wh:${esc(m.id)}">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
     body += bubble(who, m, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
     if (m.instant && !m.waiting && runEnds(msgs, i)) { body += runMeta(m); prevFrom = null; continue; }
+    if (!m.instant && !m.recalled) body += letterTimeHtml(m);
     prevFrom = m.from;
   }
   if (msgs?.length) body += evsTo(Infinity) + stampsTo(Infinity);
@@ -4928,13 +4941,19 @@ function vChat() {
   else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty" data-key="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted${on && wayOf(f) === "pigeon" ? " and fly the real distance between you" : ""}.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
+    if (!sameDay(at, lastAt)) { body += stampHtml(at); prevFrom = null; }
     lastAt = at;
     const ml = momsTo(at); if (ml) { body += ml; prevFrom = null; }
+    if (recallOnly(m, null)) {
+      let end = i + 1;
+      while (end < msgs.length && recallOnly(msgs[end], null) && (!moms[mo] || moms[mo].at > msgs[end].sentAt)) end++;
+      if (end - i > 1) { body += recallRun(f, msgs.slice(i, end), null); lastAt = msgs[end - 1].sentAt; i = end - 1; prevFrom = null; continue; }
+    }
     let j = i; while (on && j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
     body += bubble(f, m, prevFrom !== null && prevFrom !== m.from);
     if (m.instant && !m.waiting && runEnds(msgs, i)) { body += runMeta(m); prevFrom = null; continue; }
+    if (!m.instant && !m.recalled) body += letterTimeHtml(m);
     if (m.id === lastLanded && !m.instant) body += statusLine(m);
     prevFrom = m.from;
   }

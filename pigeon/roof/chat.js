@@ -60,10 +60,11 @@ function build(host, ctx) {
   const sendBtn = el("button", { type: "button", class: "ch-send", data: { act: "send" }, aria: { label: "Send" }, disabled: true }, ui.icon("up"));
   const attach = el("button", { type: "button", class: "ch-attach", data: { act: "photo" }, aria: { label: "Send a photo" } }, ui.icon("plus"));
   const voice = el("button", { type: "button", class: "ch-voice", data: { act: "voice" }, aria: { label: "Record a voice pigeon" } }, ui.icon("mic"));
-  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input), voice, sendBtn);
+  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input, voice), sendBtn);
   const box = el("div", { class: "ch-chat", hidden: true }, scroller, composer);
   host.append(box);
 
+  let headerAvatar = null, headerName = "";
   let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
   const vv = globalThis.visualViewport;
   const t = ticker(fw, () => { tick(msgs); header(); });
@@ -79,8 +80,9 @@ function build(host, ctx) {
   function header() {
     if (!id) return;
     const w = who(), c = store.get(`chat:${id}`), flying = (c?.msgs || []).filter((m) => m.flight?.flying && m.flight.landsAt).sort((a, b) => a.flight.landsAt - b.flight.landsAt)[0];
-    const line = flying ? `lands in ${untilWords(flying.flight.landsAt)}` : w.g ? (w.g.members || []).map((m) => first(m.name)).join(", ") : w.f ? friendSub(w.f) : "";
-    fw.header.set({ title: w.kind === "group" ? w.name : first(w.name) || "Chat", compactTitle: w.kind === "group" ? w.name : first(w.name) || "Chat", line, pick: null, sections: false, back: { label: "Back to Chats" },
+    const line = flying ? `Pigeon in flight · ${untilWords(flying.flight.landsAt)}` : w.g ? (w.g.members || []).map((m) => first(m.name)).join(", ") : w.f ? friendSub(w.f) : "";
+    if (headerName !== w.name) { headerName = w.name; headerAvatar = ui.avatar(w.name); }
+    fw.header.set({ conversation: true, avatar: headerAvatar, title: w.kind === "group" ? w.name : first(w.name) || "Chat", compactTitle: w.kind === "group" ? w.name : first(w.name) || "Chat", line, pick: null, sections: false, back: { label: "Back to Chats" },
       acts: [{ icon: "info", label: w.kind === "group" ? "Group Info" : "Info", run: () => (w.kind === "group" ? ctx.open.groupInfo(id) : ctx.open.friendInfo(id)) }] });
   }
 
@@ -93,7 +95,7 @@ function build(host, ctx) {
   };
   function bubbleEl(m) {
     const mine = m.from === "me", fl = m.flight, w = who(), group = w.kind === "group";
-    const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0, m.opened || 0].join("|");
+    const sig = [m.kind, m.text, m.read, m.delivered, m.recalled, m.expires, fl && [fl.flying, fl.sentAt, fl.landsAt, fl.lost, fl.waiting].join(","), JSON.stringify(m.reactions || {}), m.mine, m.media?.ref, m.card ? 1 : 0, m.opened || 0].join("|");
     const row = el("div", { class: `ch-m${mine ? " me" : " them"}`, data: { k: "msg", id: m.id, from: m.from, mid: m.id, sig } });
     if (m.kind === "system" || m.recalled) {
       row.className = "ch-m sys";
@@ -102,9 +104,12 @@ function build(host, ctx) {
     }
     // theirs still in the air: sealed until it lands
     if (!mine && fl && fl.flying) {
+      const progress = el("progress", { class: "ch-flight-progress", max: "1", value: "0", data: { from: fl.sentAt || m.at, to: fl.landsAt }, aria: { hidden: "true" } });
       row.append(el("button", { type: "button", class: "ch-b ch-bubble sealed", data: { act: "map", id: m.id },
         aria: { label: `A pigeon from ${nameOf(m.from)}, sealed until it lands in ${untilWords(fl.landsAt)}. Watch it on the map.` } },
-        el("span", { class: "ch-sealed", text: "Sealed · lands in " }), el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })));
+        el("span", { class: "ch-sealed-head" }, ui.icon("mail"), el("b", { text: "Sealed letter" })),
+        el("span", { class: "ch-sealed-time" }, "Lands in ", el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })),
+        el("span", { class: "ch-flight-track" }, progress, ui.icon("bird"))));
       return row;
     }
     if (fl && fl.lost) {
@@ -137,6 +142,7 @@ function build(host, ctx) {
         break;
       }
     }
+    if (fl?.way === "pigeon" && !fl.flying && m.kind === "text") b.prepend(el("span", { class: "ch-letter-label", text: "Letter" }));
     if (m.text) b.append(wordsEl(doc, m.text));
     // yours in the air: when it lands
     if (mine && fl?.flying) b.append(el("span", { class: "ch-ft" }, fl.waiting ? "sends at " : "lands in ", el("span", { data: { tick: `until:${fl.landsAt}` }, text: untilWords(fl.landsAt) })));
@@ -155,20 +161,31 @@ function build(host, ctx) {
     let last = 0;
     const list = c?.msgs || [];
     const lastMine = [...list].reverse().find((m) => m.from === "me" && !m.flight?.flying && !m.recalled);
-    for (const m of list) {
-      if (!last || m.at - last > GAP || dayLabel(m.at) !== dayLabel(last)) out.push({ stamp: m.at });
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!last || dayLabel(m.at) !== dayLabel(last)) out.push({ stamp: m.at });
+      if (m.recalled) {
+        let j = i + 1;
+        while (j < list.length && list[j].recalled) j++;
+        if (j - i > 1) { out.push({ recalls: list.slice(i, j) }); last = list[j - 1].at; i = j - 1; continue; }
+      }
       last = m.at;
       out.push({ m });
+      if (!m.recalled && !m.flight?.flying) out.push({ time: m.at, mid: m.id, mine: m.from === "me" });
       if (lastMine && m.id === lastMine.id && who().kind !== "group") out.push({ status: m.read ? "Read" : m.delivered ? "Delivered" : "Sent", at: m.id });
     }
     return out;
   }
   const itemEl = (it) => {
-    if (it.stamp) return el("div", { class: "ch-stamp", data: { sig: it.stamp } }, el("b", { text: dayLabel(it.stamp) }), ` ${fmtTime(it.stamp)}`);
+    if (it.stamp) return el("div", { class: "ch-stamp", data: { sig: dayLabel(it.stamp) } }, el("b", { text: dayLabel(it.stamp) }));
+    if (it.time) return el("time", { class: `ch-time${it.mine ? " me" : ""}`, datetime: new Date(it.time).toISOString(), data: { sig: it.time }, text: fmtTime(it.time) });
+    if (it.recalls) return el("details", { class: "ch-recalls", data: { mid: it.recalls[0].id, sig: it.recalls.map((m) => m.id).join(",") } },
+      el("summary", {}, ui.icon("back"), el("span", { text: `${it.recalls.length} messages called back` })),
+      el("div", { class: "ch-recall-events" }, it.recalls.map((m) => el("div", {}, el("time", { datetime: new Date(m.at).toISOString(), text: `${dayLabel(m.at)} ${fmtTime(m.at)}` }), bubbleEl(m)))));
     if (it.status) return el("div", { class: "ch-status", data: { sig: it.status }, text: it.status });
     return bubbleEl(it.m);
   };
-  const keyOf = (it) => (it.stamp ? `s:${it.stamp}` : it.status ? `st:${it.at}` : `m:${it.m.id}`);
+  const keyOf = (it) => (it.stamp ? `s:${it.stamp}` : it.time ? `t:${it.mid}` : it.recalls ? `r:${it.recalls[0].id}` : it.status ? `st:${it.at}` : `m:${it.m.id}`);
 
   // ---- the scroller ----
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < STICK_PX;
@@ -311,6 +328,8 @@ function build(host, ctx) {
     msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = "";
     store.apply(`chat:${id}`, null);
     store.apply(`typing:${id}`, null);
+    headerAvatar = null; headerName = "";
+    fw.header.set({ conversation: false, avatar: null });
     id = null;
     box.hidden = true;
   }

@@ -44,6 +44,10 @@ export const who = (n) => (n === "me" ? "You" : first(n));
 export const first = (name) => String(name || "").trim().split(/\s+/)[0] || String(name || "");
 // (every [data-tick] under root: its time words written again; data-tick = "until:<ts>" | "list:<ts>")
 export function tick(root, now = Date.now()) {
+  for (const p of root.querySelectorAll(".ch-flight-progress")) {
+    const from = Number(p.dataset.from), to = Number(p.dataset.to);
+    p.value = to > from ? Math.min(1, Math.max(0, (now - from) / (to - from))) : 0;
+  }
   for (const n of root.querySelectorAll("[data-tick]")) {
     const [k, v] = String(n.dataset.tick).split(":"), ts = Number(v);
     const t = k === "until" ? untilWords(ts, now) : k === "list" ? listTime(ts, now) : null;

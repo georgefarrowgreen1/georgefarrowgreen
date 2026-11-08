@@ -121,3 +121,45 @@
 /* (wide screens: the chat in a column) */
 @media (min-width: 980px) { .m-chats .ch-chat { left: 50%; right: auto; width: 820px; margin-left: -410px; } }
 @media (prefers-reduced-motion: reduce) { .m-chats * { transition: none !important; animation: none !important; } }
+
+/* Conversation rhythm: day dividers, quiet receipts and explicit sealed letters. */
+.m-chats .ch-scroller { padding: 8px 16px 16px; }
+.m-chats .ch-msgs { gap: 3px; }
+.m-chats .ch-stamp { align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 12px; margin: 18px 24px 10px; color: var(--text-2); font-size: 12px; }
+.m-chats .ch-stamp::before, .m-chats .ch-stamp::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.m-chats .ch-time { align-self: flex-start; margin: 0 7px 8px; font-size: 11px; line-height: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.m-chats .ch-time.me { align-self: flex-end; }
+.m-chats .ch-status { margin-top: -8px; font-size: 11px; color: var(--text-2); }
+.m-chats .ch-b { max-width: 82%; border-radius: 20px; }
+.m-chats .ch-m + .ch-m { margin-top: 5px; }
+.m-chats .ch-letter-label { display: block; font-size: 10px; line-height: 15px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; margin-bottom: 3px; }
+.m-chats .ch-b.sealed { display: grid; gap: 5px; min-width: min(270px, 80vw); max-width: min(330px, 90%); padding: 13px 15px; white-space: normal; background: var(--acc-wash, var(--glass-ctl)); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--acc-ink) 25%,transparent); }
+.m-chats .ch-sealed-head { display: flex; align-items: center; gap: 10px; font-size: 16px; line-height: 22px; }
+.m-chats .ch-sealed-head .ifl-glyph { width: 23px; height: 23px; color: var(--acc-ink); }
+.m-chats .ch-sealed-time { padding-left: 33px; color: var(--text-2); font-size: 13px; line-height: 18px; }
+.m-chats .ch-flight-track { display: flex; align-items: center; gap: 10px; margin-top: 5px; color: var(--acc-ink); }
+.m-chats .ch-flight-track .ifl-glyph { width: 18px; height: 18px; }
+.m-chats .ch-flight-progress { appearance: none; flex: 1; width: 100%; min-width: 0; height: 4px; border: 0; border-radius: 999px; overflow: hidden; color: var(--acc-fill); background: var(--line); }
+.m-chats .ch-flight-progress::-webkit-progress-bar { background: var(--line); border-radius: 999px; }
+.m-chats .ch-flight-progress::-webkit-progress-value { background: var(--acc-fill); border-radius: 999px; }
+.m-chats .ch-flight-progress::-moz-progress-bar { background: var(--acc-fill); border-radius: 999px; }
+.m-chats .ch-photo.done { background: none; margin: 0; padding: 2px 0; min-width: 120px; min-height: 32px; color: inherit; font-size: 16px; }
+.m-chats .ch-rx { align-self: flex-start; margin: -7px 8px 2px 28px; position: relative; z-index: 1; }
+.m-chats .ch-m.me .ch-rx { align-self: flex-end; margin-right: 28px; }
+.m-chats .ch-r { background: var(--solid); border: 1px solid var(--line); box-shadow: none; padding: 1px 6px; }
+.m-chats .ch-r.mine { box-shadow: inset 0 0 0 1px var(--line); }
+.m-chats .ch-recalls { align-self: stretch; margin: 4px 12px 12px; color: var(--text-2); font-size: 13px; }
+.m-chats .ch-recalls summary { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px; cursor: pointer; list-style: none; }
+.m-chats .ch-recalls summary::-webkit-details-marker { display: none; }
+.m-chats .ch-recalls summary::after { content: "⌄"; }
+.m-chats .ch-recalls[open] summary::after { content: "⌃"; }
+.m-chats .ch-recalls summary .ifl-glyph { width: 16px; height: 16px; }
+.m-chats .ch-recalls summary:focus-visible { outline: 2px solid var(--acc-ink); border-radius: 10px; }
+.m-chats .ch-recall-events { padding: 6px 12px; border-left: 1px solid var(--line); }
+.m-chats .ch-recall-events time { display: block; text-align: center; font-size: 11px; }
+.m-chats .ch-recall-events .ch-sys { margin: 5px 0 14px; }
+.m-chats .ch-composer { gap: 8px; padding-inline: 16px; }
+.m-chats .ch-field { align-items: flex-end; border-radius: 22px; }
+.m-chats .ch-voice { width: 40px; height: 44px; background: none; }
+.m-chats .ch-input { min-height: 44px; padding: 11px 0 11px 14px; font-size: 16px; }
+.m-chats .ch-attach, .m-chats .ch-send { width: 44px; height: 44px; }

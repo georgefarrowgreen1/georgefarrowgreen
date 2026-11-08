@@ -3115,3 +3115,39 @@ html.engine .ifm-note,html.engine .ifl-toast{display:none}
 /* A Time to Talk and the + sheet */
 .fromapps .cell[disabled]{opacity:.55}
 
+
+/* Refined conversations: the day groups history; each message keeps its precise time. */
+.navbar.chatnav { min-height: 68px; padding-inline: 6px; gap: 4px; }
+.chatnav .chatwho .av { width: 40px; height: 40px; flex-shrink: 0; }
+.chatnav .chatwho .nm { font-size: 22px; line-height: 26px; letter-spacing: -.4px; }
+.chatnav .chatwho .sub { font-size: 12px; line-height: 16px; }
+.chatnav .nb-right { gap: 2px; }
+.msgs { padding: 8px 16px 18px; }
+.msgs .stamp { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 18px 24px 10px; font-size: 12px; }
+.msgs .stamp::before, .msgs .stamp::after { content: ""; flex: 1; height: .5px; background: var(--sep); }
+.msgs .b { border-radius: 20px; }
+.msgs .rm, .msgs .letter-time { font-size: 11px; line-height: 15px; margin-bottom: 8px; color: var(--label-2); }
+.msgs .b.up.sealed { min-width: min(270px,80vw); max-width: 86%; padding: 13px 15px; gap: 5px; border-radius: 20px; background: color-mix(in srgb,var(--tint) 10%,var(--cell)); color: var(--label); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--tint) 25%,transparent); }
+.msgs .sealed .sl { font-size: 16px; line-height: 22px; gap: 10px; }
+.msgs .sealed .sealed-time { padding-left: 25px; font-size: 13px; line-height: 18px; color: var(--label-2); }
+.msgs .sealed .trk { margin-top: 7px; height: 4px; }
+.msgs .b.once { padding: 10px 14px; min-width: 140px; min-height: 44px; }
+.msgs .b.once b { font-size: 16px; }
+.msgs .recall-run { align-self: stretch; margin: 4px 12px 12px; color: var(--label-2); font-size: 13px; }
+.recall-run summary { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px; cursor: pointer; list-style: none; }
+.recall-run summary::-webkit-details-marker { display: none; }
+.recall-run summary::after { content: "⌄"; }
+.recall-run[open] summary::after { content: "⌃"; }
+.recall-run summary .ico { font-size: 16px; }
+.recall-run summary:focus-visible { outline: 2px solid var(--tint); border-radius: 10px; }
+.recall-events { border-left: 1px solid var(--sep); padding: 6px 12px; }
+.recall-events time { display: block; text-align: center; font-size: 11px; }
+.recall-events .lostnote { margin: 5px 0 14px; }
+.compose { padding-inline: 16px; border-top: .5px solid var(--sep); }
+.compose .field-wrap { box-shadow: inset 0 0 0 .5px var(--sep); }
+.compose .crow > .send { width: 44px; height: 44px; }
+.compose .crow > .send:disabled { width: 44px; opacity: .4; }
+.compose .mic { width: 36px; min-height: 36px; background: none; box-shadow: none; }
+@media (max-width:359px) { .chatnav .chatwho .nm { font-size: 19px; } .compose { padding-inline: 12px; } }
+.msgs .letter-time { align-self: flex-start; margin: 3px 8px 6px; font-variant-numeric: tabular-nums; }
+.msgs .letter-time.me { align-self: flex-end; }

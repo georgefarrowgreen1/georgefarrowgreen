@@ -115,7 +115,7 @@
  *   death: boolean, place?: string, feathers: number }} Me
  * @typedef {{ id: string, chatId: string, kind: string, from: string, to: string, landsAt: number }} Air
  *   (no words; from/to: first names, or "me"; no place names beyond what the list shows today)
- * @typedef {{ flying: boolean, landsAt: number|null, lost: boolean, waiting: boolean, way: string|null, pigeon: string|null }} Flight
+ * @typedef {{ flying: boolean, sentAt: number|null, landsAt: number|null, lost: boolean, waiting: boolean, way: string|null, pigeon: string|null }} Flight
  * @typedef {{ id: string, from: string, at: number,
  *   kind: "text"|"photo"|"voice"|"card"|"ask"|"plan"|"answer"|"when"|"viewonce"|"system",
  *   text?: string, flight?: Flight, replyTo?: string, reactions: { [emoji: string]: number }, mine?: string,
@@ -933,8 +933,8 @@ function msgView(chatId, m, g) {
   const reacts = (S.reacts.get(chatId) || []).filter((r) => r.msg === m.id), counts = {};
   let mineR;
   for (const r of reacts) { const e = readable(r.id)?.r; if (!REACTIONS.includes(e)) continue; counts[e] = (counts[e] || 0) + 1; if (r.from === me) mineR = e; }
-  const v = { id: m.id, from: mine ? "me" : g ? m.from : "them", at: (mine ? m.sentAt : m.deliverAt) || m.sentAt || 0, kind,
-    flight: { flying: !!m.flying, landsAt: Number.isFinite(m.deliverAt) ? m.deliverAt : null, lost: !!m.lost, waiting: !!m.waiting, way: m.instant ? "instant" : "pigeon", pigeon: m.instant ? null : kindOf(m) },
+  const v = { id: m.id, from: mine ? "me" : g ? m.from : "them", at: (mine || m.flying || m.lost ? m.sentAt : m.deliverAt) || m.sentAt || 0, kind,
+    flight: { flying: !!m.flying, sentAt: Number.isFinite(m.sentAt) ? m.sentAt : null, landsAt: Number.isFinite(m.deliverAt) ? m.deliverAt : null, lost: !!m.lost, waiting: !!m.waiting, way: m.instant ? "instant" : "pigeon", pigeon: m.instant ? null : kindOf(m) },
     reactions: counts, read: !!m.readAt, delivered: !!(m.delivered || m.gotAt || m.readAt || (!m.flying && !m.lost)), recalled: !!m.recalled };
   if (mineR) v.mine = mineR;
   if (p && !hidden) {
