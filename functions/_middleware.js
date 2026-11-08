@@ -12,6 +12,7 @@
 // InFlite's hub (inflite.ai/chats/, /weather/, …, the IFL repo's today/src/hub.js) asks each app's own address here on
 // the browser's behalf, with its key (X-Hub-Key) and what it knows of the browser (X-Hub-IP, X-Hub-Geo). Only with
 // the key is any of that believed (hubRequest, first thing); and only then is Chat's hub copy served (/_hub/).
+import { sharedNotFound } from "./_notfound.js";
 import { serveApp, isChat, notFound, HUB_SECURITY } from "./_app.js";
 import { oldApp, appOrigin, homeSite, hubOrigins } from "./_sites.js";
 import { safeEqual } from "./_pigeon.js";
@@ -32,7 +33,16 @@ import { bugsRoute } from "./_bugs.js";
 import { vitalsRoute } from "./_vitals.js";
 import { statusRoute, isStatus, statusHost } from "./_status.js";
 
+// Only InFlite app hosts use the shared design; the portfolio and Precision Fit
+// retain their own pages. Existing routes decide status before this runs.
 export async function onRequest(ctx0) {
+  const response = await route(ctx0);
+  const url = new URL(ctx0.request.url), env = ctx0.env;
+  if (![isChat, isWeather, isFitness, isMarkets, isAccount, isAuth, isStatus].some(is => is(url, env))) return response;
+  return sharedNotFound(ctx0.request, response, env.TODAY_APP);
+}
+
+async function route(ctx0) {
   // (the variables and secrets the source environment kept in the database at the move off it, for any the Worker hasn't
   // got set of its own, opened before anything reads one: functions/_kept.js)
   await fillSecrets(ctx0.env).catch(() => {});
