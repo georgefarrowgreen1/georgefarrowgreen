@@ -29,11 +29,18 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
         const data = await page.evaluate(async () => {
           const audit = await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } });
           const nav = performance.getEntriesByType('navigation')[0];
+          const viewport = document.querySelector('meta[name="viewport"]')?.content || '';
+          const gestureCancellation = ['gesturestart', 'gesturechange', 'gestureend'].map(type => !document.dispatchEvent(new Event(type, { cancelable: true, bubbles: true })));
+          const pinch = new Event('touchmove', { cancelable: true, bubbles: true });
+          Object.defineProperty(pinch, 'touches', { value: [{}, {}] });
+          const pinchCancelled = !document.dispatchEvent(pinch);
+          const zoomBlocked = /maximum-scale=1/.test(viewport) && /user-scalable=no/.test(viewport) && gestureCancellation.every(Boolean) && pinchCancelled;
           return { title: document.title, overflow: document.documentElement.scrollWidth > innerWidth + 1,
             ttfbMs: Math.round(nav.responseStart), domMs: Math.round(nav.domContentLoadedEventEnd),
             bytes: performance.getEntriesByType('resource').reduce((n, r) => n + r.transferSize, nav.transferSize),
-            violations: audit.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })),
-            gestureCancelled: ['gesturestart', 'gesturechange', 'gestureend'].some(type => !document.dispatchEvent(new Event(type, { cancelable: true, bubbles: true }))) };
+            intentionalViolations: audit.violations.filter(v => v.id === 'meta-viewport').map(v => ({ id: v.id, reason: 'Owner requires blocked page zoom across all apps' })),
+            violations: audit.violations.filter(v => v.id !== 'meta-viewport').map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })),
+            viewport, gestureCancellation, pinchCancelled, zoomBlocked };
         });
         results.push({ host, width, status: response.status(), finalURL: page.url(), ...pageNetwork, scannerHttpErrors: httpErrors.slice(pageNetwork.httpErrors.length), release, ...data });
       } catch (error) { results.push({ host, width, error: error.message, errors, failed, httpErrors }); }
@@ -42,5 +49,5 @@ const hosts = ['inflite.ai', 'auth.inflite.ai', 'account.inflite.ai', 'chat.infl
     }
   } finally { await browser.close(); }
   writeFileSync(process.env.AUDIT_OUTPUT || '/tmp/inflite-public.json', JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  if (results.some(r => r.error || r.release?.error || r.status !== 200 || r.errors.length || r.failed.length || r.httpErrors.length || r.overflow || r.violations.length || r.gestureCancelled)) process.exitCode = 1;
+  if (results.some(r => r.error || r.release?.error || r.status !== 200 || r.errors.length || r.failed.length || r.httpErrors.length || r.overflow || r.violations.length || r.zoomBlocked !== true)) process.exitCode = 1;
 })().catch(error => { console.error(error); process.exitCode = 1; });

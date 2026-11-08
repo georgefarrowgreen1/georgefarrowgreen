@@ -304,3 +304,6 @@ button:disabled { opacity: .6; cursor: wait; }
 .report-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .report-code .cpy { border: 0; background: var(--hover); padding: 6px 10px; min-height: 36px; }
 .report-detail .steps { padding-top: 2px; padding-bottom: 6px; }
+
+/* Page zoom is blocked; component gestures are handled by their own controls. */
+html { touch-action: pan-x pan-y; }

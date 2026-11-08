@@ -1,8 +1,22 @@
+"use strict";
+// ==== InFlite page zoom: shared guard ====
+// InFlite's page zoom policy. Runs before sign-in and independently of the menu.
+// Components such as maps and photo viewers retain their own gesture handling.
+(() => {
+  if (globalThis.__iflZoomBlocked) return;
+  globalThis.__iflZoomBlocked = true;
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+  }
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches?.length > 1) event.preventDefault();
+  }, { passive: false });
+})();
+// ==== End InFlite page zoom ====
 // status.inflite.ai's page: what /api/status says (functions/_status.js), drawn at once from what the page arrived with
 // (#seed) and asked again every minute while it's on screen. One calm column: the verdict, what's happening now, the
 // apps as compact rows with their days (a tap on a day opens it), the jobs and what they rely on, incidents, bug codes
 // with a lookup. Links: #<incident>, #IF-….
-"use strict";
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

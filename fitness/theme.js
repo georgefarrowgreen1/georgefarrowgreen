@@ -1,3 +1,17 @@
+// ==== InFlite page zoom: shared guard ====
+// InFlite's page zoom policy. Runs before sign-in and independently of the menu.
+// Components such as maps and photo viewers retain their own gesture handling.
+(() => {
+  if (globalThis.__iflZoomBlocked) return;
+  globalThis.__iflZoomBlocked = true;
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+  }
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches?.length > 1) event.preventDefault();
+  }, { passive: false });
+})();
+// ==== End InFlite page zoom ====
 // Light or Dark, as chosen in Settings (app.js remembers it in this browser), set as the page is read, before it's first
 // drawn, and the browser's bar with it. (Automatic needs nothing: the stylesheet follows the device. A file of its own:
 // the page's rules run no script written in it)

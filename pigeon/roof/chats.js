@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.89";
-export const NEWS = "Pinch zoom is available throughout InFlite";
+export const BUILD = "1.90";
+export const NEWS = "Page zoom is blocked consistently across all InFlite apps";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

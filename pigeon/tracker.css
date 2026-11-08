@@ -86,3 +86,6 @@ a { color: var(--tint); }
 .tk-moon { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(129, 144, 179, .12); border: 1px solid var(--edge); font-size: 13px; color: var(--fg-2); }
 .tk-moon svg { width: 18px; height: 18px; flex: none; fill: #c9d2e6; }
 .tk-moon b { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* Page zoom is blocked; component gestures are handled by their own controls. */
+html { touch-action: pan-x pan-y; }

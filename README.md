@@ -2624,3 +2624,5 @@ to other branches create preview deployments.
 
 See [.tools/audits/2026-11-08.md](.tools/audits/2026-11-08.md) for scope, findings, fixes and verification limits.
 Run `CHROMIUM=/path/to/chromium node .tools/audits/public-audit.cjs` after installing `.tools/tests` dependencies for a read-only mobile/desktop public check of all nine InFlite hosts.
+
+Page zoom is blocked across all InFlite apps by the shared early guard in `.tools/inflite/zoom.js`. After editing it, run `node .tools/zoom.mjs`, followed by minification and Weather’s offline manifest generator. The guard runs on the sign-in page independently of the shared menu.

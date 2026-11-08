@@ -1,3 +1,17 @@
+// ==== InFlite page zoom: shared guard ====
+// InFlite's page zoom policy. Runs before sign-in and independently of the menu.
+// Components such as maps and photo viewers retain their own gesture handling.
+(() => {
+  if (globalThis.__iflZoomBlocked) return;
+  globalThis.__iflZoomBlocked = true;
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+  }
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches?.length > 1) event.preventDefault();
+  }, { passive: false });
+})();
+// ==== End InFlite page zoom ====
 // The sky the page opens on (styles.css body[data-sky]), set as the page is read, before it's first drawn: the one it
 // showed a moment ago, if it was open in the last hour (app.js sky keeps it), else the time of day's, as the app has
 // while a place's forecast comes (app.js go). So opening it at night doesn't show a grey day's sky first, for as long as
