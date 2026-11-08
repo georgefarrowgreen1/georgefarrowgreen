@@ -86,7 +86,7 @@ test('milestone 1: geolocation is no one’s', { skip: m1Case }, () => {
   assert.match(String(pub('_headers')), /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(\)\n/);
 });
 
-test('One roof: the CSP is the Worker’s PAGE_HEADERS’ and names exactly Weather’s origins and no other site; geolocation its own; the framework’s files never kept stale; its worker keeps them', { skip: roofCase }, async () => {
+test('One roof: the CSP matches PAGE_HEADERS and allows only the apps’ explicit origins; geolocation its own; framework files stay current and are kept offline', { skip: roofCase }, async () => {
   const h = String(pub('_headers'));
   const { PAGE_HEADERS } = await import(ROOFJS);
   const csp = /Content-Security-Policy: (.*)/.exec(h)[1];
@@ -95,7 +95,10 @@ test('One roof: the CSP is the Worker’s PAGE_HEADERS’ and names exactly Weat
   const list = (n) => [...new RegExp(`const ${n} = \\[([\\s\\S]*?)\\];`).exec(wx)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const dir = (d) => (new RegExp(`(?:^|;)\\s*${d} ([^;]*)`).exec(csp) || [])[1].trim().split(/\s+/);
   const mail = dir('connect-src').includes('https://email.inflite.ai') ? ['https://email.inflite.ai', 'http://email.ifl.test:8788'] : [];
-  assert.deepEqual(dir('connect-src'), ["'self'", ...mail, ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);
+  // The companion hub can precede this app's release: only the exact pricing-stream host, when present.
+  const markets = dir('connect-src').includes('wss://streamer.finance.yahoo.com') ? ['wss://streamer.finance.yahoo.com'] : [];
+  assert.deepEqual(dir('connect-src'), ["'self'", ...markets, ...mail, ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);
+  assert.equal((csp.match(/wss:/g) || []).length, markets.length, 'no other WebSocket origin');
   assert.deepEqual(dir('img-src'), ["'self'", 'data:', 'blob:', ...list('IMAGES')]);
   assert.deepEqual(dir('frame-src'), ["'self'", ...mail], 'frame-src: this site and Mail’s Worker alone');
   assert.equal((csp.match(/https:/g) || []).length, list('CONNECT').length - 1 + list('IMAGES').length + (mail.length ? 2 : 0), 'no other site');
