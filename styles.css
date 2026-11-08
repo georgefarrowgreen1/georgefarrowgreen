@@ -89,6 +89,8 @@ svg { display: block; flex: none; }
   opacity: 0;
   transform: scale(1.08);
 }
+.cover { position: absolute; inset: 0; }
+.cover:not(.managed) .slide { opacity: 1; }    /* paint the already-preloaded cover without waiting for slideshow metadata */
 .slide.on { opacity: 1; z-index: 1; transition: opacity 1.6s ease, object-position var(--dur-base) var(--ease-out); }
 .slide.was { opacity: 1; }
 /* as you scroll, the photo softens behind what's over it: a softened copy of it faded in (app.js soften), not a blur
@@ -261,18 +263,17 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app.weather { --glow: #ffb43a; }
 .app.fitness { --glow: #ff6a3d; }
 .app.markets { --glow: #2fd384; }
-/* (on a phone, on one line, swiped across, as the account's page has them: each a little narrower than half the width,
-   so the next peeks in from the edge, and it's seen there's more; each comes to rest in line with the page. The line
-   runs out to the screen's edges, past the page's margins. On a tablet or wider, all four side by side: below) */
+/* The native swipe row reserves the enhanced carousel's card size and centred first position before JavaScript
+   arrives. Enhancement adds looping without resizing the cards or shifting the sections below them. */
 @media (max-width: 600px) {
-  .apps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 12px) / 2.15);
+  .apps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: min(244px, calc(100vw - 96px));
     overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
-    margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) -14px calc(-1 * max(16px, env(safe-area-inset-left)));
-    padding: 4px max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left)); scroll-padding-inline: max(16px, env(safe-area-inset-left)); }
+    margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
+    padding: 4px max(48px, calc((100vw - 244px) / 2)) 20px;
+    scroll-padding-inline: max(48px, calc((100vw - 244px) / 2)); }
   .apps::-webkit-scrollbar { display: none; }
-  .apps > .app { scroll-snap-align: start; }
+  .apps > .app { scroll-snap-align: center; }
 }
-@media (max-width: 360px) { .apps { grid-auto-columns: 78%; } }
 .app img { width: 56px; height: 56px; border-radius: 13px; margin-bottom: 10px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
 .app b { font-size: 19px; font-weight: 600; }
 .app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; text-wrap: balance; transition: color var(--dur-fast) var(--ease-out); }
@@ -294,7 +295,7 @@ body.paused .segs i.on::after { animation-play-state: paused; }
     display: flex; gap: 14px; overflow: visible; margin: 0; padding: 4px 0 20px;
     scroll-snap-type: none; transform: translate3d(0, 0, 0); will-change: transform;
   }
-  .app-carousel.is-carousel .app {
+  .app-carousel .app {
     display: grid; flex: 0 0 min(244px, calc(100% - 96px)); min-height: 240px; padding: 20px;
     /* The photograph is already softened behind this part of the page. An opaque glass tint keeps moving cards
        crisp without resampling a backdrop blur for every frame of the glide. */
@@ -302,10 +303,10 @@ body.paused .segs i.on::after { animation-play-state: paused; }
     /* Keep the inset glass rim. An outside shadow is cut off by the moving viewport, drawing a line below the row. */
     box-shadow: var(--rim);
   }
-  .app-carousel.is-carousel .app img { margin-bottom: 14px; }
-  .app-carousel.is-carousel .app b { font-size: 21px; }
-  .app-carousel.is-carousel .app .open { margin-top: 16px; }
-  .app-carousel.is-carousel .app:focus-visible { outline-offset: -3px; }
+  .app-carousel .app img { margin-bottom: 14px; }
+  .app-carousel .app b { font-size: 21px; }
+  .app-carousel .app .open { margin-top: 16px; }
+  .app-carousel .app:focus-visible { outline-offset: -3px; }
   .app-carousel.is-carousel .app-viewport.dragging .app { transform: none; }
   /* A keyboard/screen-reader pause action, revealed only when focused. The visible control strip is removed. */
   .app-rotation:focus-visible {

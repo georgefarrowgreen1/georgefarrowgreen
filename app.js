@@ -20,7 +20,8 @@ const body = document.body, root = document.documentElement;
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const phone = matchMedia("(max-width: 600px)");
 // InFlite's cookie cannot be read on this domain. A visitor without a home-page session checks it through the
-// existing one-use hop, without a sign-in screen. The return marker prevents a loop even when cookies/storage are
+// existing one-use hop before serving HTML; the client path below is a fallback for old/preview servers.
+// The return marker prevents a loop even when cookies/storage are
 // blocked; remove it from the address before the page is used or shared. Signed-in home visitors need no hop.
 const accountReturn = new URL(location.href), accountChecked = accountReturn.searchParams.get("__ifl_account") === "checked";
 if (accountChecked) {
@@ -157,12 +158,15 @@ const linked = CSS.supports("animation-timeline: scroll()");
 // view: scrolled down, with a sheet up or the page out of sight, it holds still (the slideshow too), so the glass over it
 // isn't redrawn for every frame of a photo no one's looking at.
 const SLIDE = 7000, DRIFT = 9000;
-let photos = [], shown = [], at = -1, timer = null, early = null, firstBuild = true, build = 0, left = SLIDE, since = 0, drift = null, held = false;
+let photos = [], photosReady = false, shown = [], at = -1, timer = null, early = null, firstBuild = true, build = 0, left = SLIDE, since = 0, drift = null, held = false;
 const bgEl = $("#bg"), segsEl = $("#segs");
+const slideElements = () => $$(".slide", bgEl);
+const slideNode = (s) => s.closest("picture.cover") || s;
 root.style.setProperty("--slide", SLIDE / 1000 + "s");
 
 async function loadPhotos() {
-  try { photos = (await api("/api/background")).images || []; } catch (_) { photos = []; }
+  try { photos = (await api("/api/background")).images || []; photosReady = true; }
+  catch (_) { showThumbs(); return; }    // keep the visible cover if the list cannot be read
   buildSlides();
   showThumbs();
 }
@@ -183,11 +187,25 @@ function makeSlide(p, src) {
 }
 const makeSeg = (p) => { const i = document.createElement("i"); i.dataset.id = p.id; return i; };
 function buildSlides() {
+  if (!photosReady && !photos.length) return;    // a rotation while the list is loading keeps the native picture
   clearTimeout(timer); clearTimeout(early); build++;
-  bgEl.textContent = ""; segsEl.textContent = "";
+  const first = firstBuild ? $("#cover img") : null;
   shown = forScreen(); at = -1; drift = null;
-  // (the first, the first time: the address the page asked for early, so it's already on its way)
-  shown.forEach((p, i) => { bgEl.append(makeSlide(p, i === 0 && firstBuild ? `/api/background?id=cover&d=${phone.matches ? "mobile" : "desktop"}` : null)); segsEl.append(makeSeg(p)); });
+  const els = shown.map((p, i) => {
+    if (i || !first) return makeSlide(p);
+    // Adopt the parser-loaded image itself: no empty frame, duplicate download or opacity reset as the list arrives.
+    first.dataset.id = p.id;
+    first.dataset.src = first.currentSrc || `/api/background?id=cover&d=${phone.matches ? "mobile" : "desktop"}`;
+    first.style.objectPosition = first.style.transformOrigin = p.focus || "50% 50%";
+    first.classList.add("on");
+    return first;
+  });
+  if (first && els.length) {
+    // Keep the picture and its image connected. Reassigning src or reparenting the image can restart its request.
+    first.parentElement.classList.add("managed");
+    bgEl.append(...els.slice(1));
+  } else bgEl.replaceChildren(...els);
+  segsEl.replaceChildren(...shown.map(makeSeg));
   firstBuild = false;
   segsEl.classList.toggle("one", shown.length < 2);
   if (shown.length) show(0);
@@ -199,7 +217,7 @@ function updateSlides() {
   const next = forScreen();
   if (!next.length || !bgEl.querySelector(".slide.on")) return buildSlides();
   const cur = shown[at]?.id, was = at;
-  const slides = new Map([...bgEl.children].filter((s) => !s._gone).map((s) => [s.dataset.id, s]));
+  const slides = new Map(slideElements().filter((s) => !s._gone).map((s) => [s.dataset.id, s]));
   const segs = new Map([...segsEl.children].map((s) => [s.dataset.id, s]));
   const els = next.map((p) => {
     const s = slides.get(p.id) || makeSlide(p);
@@ -211,7 +229,7 @@ function updateSlides() {
   const gone = [...slides.values()].filter((s) => s.classList.contains("on") || s.classList.contains("was"));
   for (const s of gone) s._gone = true;
   build++; clearTimeout(timer); clearTimeout(early);
-  bgEl.replaceChildren(...els, ...gone);
+  bgEl.replaceChildren(...[...els, ...gone].map(slideNode));
   segsEl.replaceChildren(...next.map((p) => segs.get(p.id) || makeSeg(p)));
   segsEl.classList.toggle("one", next.length < 2);
   shown = next;
@@ -221,7 +239,7 @@ function updateSlides() {
 }
 // (fetched and decoded: ready to show at once)
 function prepare(i) {
-  const s = bgEl.children[i];
+  const s = slideElements()[i];
   if (!s) return Promise.resolve();
   if (!s.getAttribute("src")) s.src = s.dataset.src;
   return s.decode().catch(() => {});
@@ -236,7 +254,7 @@ function markSegs(i, restart = true) {
 }
 async function show(i) {
   clearTimeout(timer);
-  const b = build, s = bgEl.children[i];
+  const b = build, s = slideElements()[i];
   if (!s) return;
   await prepare(i);
   if (b !== build) return;   // (the set changed while it loaded)
@@ -245,7 +263,7 @@ async function show(i) {
   if (prev && prev !== s) {
     prev.classList.replace("on", "was");
     clearTimeout(prev._was);
-    prev._was = setTimeout(() => { prev.classList.remove("was"); if (prev._gone) prev.remove(); }, 1700);
+    prev._was = setTimeout(() => { prev.classList.remove("was"); if (prev._gone) slideNode(prev).remove(); }, 1700);
   }
   clearTimeout(s._was); s.classList.remove("was");
   at = i; s.classList.add("on");
@@ -1470,7 +1488,7 @@ function photosChanged() {
   const now = forScreen();
   if (now.map((p) => p.id).join() !== shown.map((p) => p.id).join()) return updateSlides();
   shown = now;
-  [...bgEl.children].forEach((s, i) => { if (now[i]) s.style.objectPosition = s.style.transformOrigin = now[i].focus || "50% 50%"; });
+  slideElements().forEach((s, i) => { if (now[i]) s.style.objectPosition = s.style.transformOrigin = now[i].focus || "50% 50%"; });
   if (at >= 0 && now[at]) $("#soft").style.setProperty("--soft-pos", now[at].focus || "50% 50%");
 }
 $("#change-photos").addEventListener("click", () => { photosSaid(""); showTiles(); openSheet(ph.sheet); });

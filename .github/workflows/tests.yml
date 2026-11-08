@@ -84,7 +84,7 @@ jobs:
       - name: Homepage carousel motion, swipe, focus and reduced motion
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homecarousel.test.cjs
-      - name: Homepage guest header and InFlite profile hand-off
+      - name: Homepage loading and InFlite profile hand-off
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homeaccount.test.cjs
       - name: Chat keyboard, resume, rotation, scrolling and tap targets

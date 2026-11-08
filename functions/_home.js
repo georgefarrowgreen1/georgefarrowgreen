@@ -5,8 +5,22 @@
 // scripts and styles are stamped with what's in them (?v=), so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
 import { assets } from "./_min.js";
+import { cookieToken } from "./_account.js";
+import { homeSite } from "./_sites.js";
+import { hop } from "./_hop.js";
 
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
+// Complete the cross-domain account check before sending any HTML. A late client redirect paints the page twice,
+// repeats its entrance and discards the first cover download. The existing return marker also bounds guests with
+// blocked cookies to one check. Sessions already present on the home page skip this entirely.
+export async function homeArrival(ctx, url) {
+  if (ctx.request.method !== "GET" || url.hostname !== homeSite(ctx.env) || !isPage(url) ||
+    url.searchParams.get("__ifl_account") === "checked" || cookieToken(ctx.request, ctx.env)) return null;
+  const to = new URL(url); to.searchParams.set("__ifl_account", "checked");
+  const start = new URL("/api/hop/start", url); start.searchParams.set("to", to.href);
+  return hop(new Request(start, ctx.request), ctx.env, "start");
+}
+
 const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 // (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)

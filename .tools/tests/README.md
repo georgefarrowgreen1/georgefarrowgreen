@@ -111,7 +111,9 @@ It checks source and minified assets, automatic and manual looping, interrupted 
 app summaries, resizing, contact-sheet suspension, reduced motion and the no-JavaScript fallback. No server or
 account credentials are needed. Set `CAROUSEL_SCREENSHOTS` to save mobile captures.
 
-The homepage account header has an isolated browser regression:
+The homepage loading and account header have an isolated browser regression:
 `CHROMIUM=/usr/bin/chromium node --test .tools/tests/homeaccount.test.cjs`.
 It checks guests, existing home sessions, InFlite-only sessions, owners returning from the account page, blocked
-cookies and account errors against both source and minified assets. No real account credentials are needed.
+cookies and account errors against both source and minified assets. It also holds back scripts and slideshow metadata
+to check the native cover, its reuse without a second download, and stable card geometry before enhancement.
+No real account credentials are needed.

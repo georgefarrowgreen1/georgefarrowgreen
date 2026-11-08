@@ -48,7 +48,12 @@
   <!-- back from signing in on the account's page (#signedin): the picture that page ended on, there from the first frame
        (styles.css .back-in:target), till app.js takes it on (arriveFrom) -->
   <div class="back-in" id="signedin" aria-hidden="true"></div>
-  <div class="bg" id="bg" aria-hidden="true"></div>
+  <div class="bg" id="bg" aria-hidden="true">
+    <picture class="cover" id="cover">
+      <source media="(min-width: 601px)" srcset="/api/background?id=cover&amp;d=desktop" />
+      <img class="slide" src="/api/background?id=cover&amp;d=mobile" alt="" decoding="async" fetchpriority="high" />
+    </picture>
+  </div>
   <div class="soft" id="soft" aria-hidden="true"></div>
   <div class="barbg" aria-hidden="true"></div>
 
