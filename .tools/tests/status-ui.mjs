@@ -58,18 +58,49 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),0,'diagnostics start collapsed');
  assert.equal(await page.locator('.operation-group .status-list:visible').count(),0);
  await page.locator('[data-operation-toggle="connectors"]').click();
+ assert.equal(await page.locator('[data-operation-toggle="connectors"]').evaluate(x=>getComputedStyle(x).webkitTapHighlightColor),'rgba(0, 0, 0, 0)');
+ assert.equal(await page.locator('[data-operation-toggle="connectors"]').evaluate(x=>getComputedStyle(x).outlineStyle),'none');
  assert.equal(await page.locator('#operation-panel-connectors:visible').count(),1);
  await page.locator('[data-operation-toggle="api-health"]').click();
  assert.equal(await page.locator('#operation-panel-connectors:visible').count(),0);
  assert.equal(await page.locator('#operation-panel-api-health:visible').count(),1);
  await page.locator('[data-operation-toggle="performance"]').focus();
  await page.keyboard.press('Enter');
+ assert.equal(await page.locator('[data-operation-toggle="performance"]').evaluate(x=>getComputedStyle(x).outlineStyle),'solid','keyboard focus remains visible');
  assert.equal(await page.locator('#operation-panel-api-health:visible').count(),0);
  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),1);
  assert.equal(await page.locator('#operation-panel-performance:visible').count(),1);
  await page.keyboard.press('Space');
  assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),0,'open dropdown can be closed');
  await page.keyboard.press('Enter');
+ if(!problem && [390,1100].includes(width)) {
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.locator('[data-operation-toggle="connectors"]').click();
+  const midpoint=await page.locator('#operation-panel-connectors').evaluate(panel=>{
+   const animation=panel.getAnimations()[0];
+   if(!animation)return null;
+   animation.pause();animation.currentTime=120;
+   return {height:panel.getBoundingClientRect().height,full:panel.scrollHeight};
+  });
+  assert(midpoint && midpoint.height>0 && midpoint.height<midpoint.full,'dropdown expands through intermediate heights');
+  await page.locator('[data-operation-toggle="api-health"]').click();
+  assert.equal(await page.locator('#operation-panel-connectors').evaluate(x=>x.inert),true,'closing content immediately becomes inactive');
+  await page.evaluate(()=>Promise.all([...document.querySelectorAll('.operation-panel')].flatMap(p=>p.getAnimations().map(a=>a.finished.catch(()=>{})))));
+  assert.equal(await page.locator('#operation-panel-connectors').evaluate(x=>x.hidden),true);
+  assert.equal(await page.locator('#operation-panel-api-health').evaluate(x=>x.hidden),false);
+  await page.locator('[data-operation-toggle="api-health"]').click();
+  const closing=await page.locator('#operation-panel-api-health').evaluate(panel=>{
+   const animation=panel.getAnimations()[0];
+   if(!animation)return false;
+   const frames=animation.effect.getKeyframes();return parseFloat(frames[0].height)>0 && parseFloat(frames.at(-1).height)===0;
+  });
+  assert(closing,'dropdown animates closed');
+  await page.evaluate(()=>Promise.all([...document.querySelectorAll('.operation-panel')].flatMap(p=>p.getAnimations().map(a=>a.finished.catch(()=>{})))));
+  assert.equal(await page.locator('#operation-panel-api-health').evaluate(x=>x.hidden),true);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.locator('[data-operation-toggle="performance"]').click();
+  assert.equal(await page.locator('#operation-panel-performance').evaluate(x=>x.getAnimations().length),0,'reduced motion skips animation');
+ }
 
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow at ${width}`);
  assert.match(await page.locator('#incs .inc .sub').first().innerText(),/5 Nov.*6 Nov/);

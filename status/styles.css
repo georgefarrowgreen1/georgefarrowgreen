@@ -335,3 +335,8 @@ html { touch-action: pan-x pan-y; }
 .operation-group .status-list { border: 0; border-radius: 0; box-shadow: none; }
 .operation-group .status-list:not([hidden]) { border-top: 1px solid var(--line); }
 @media (hover: hover) { .operation-toggle:hover { background: var(--hover); } }
+
+/* Pointer taps have no browser highlight; keyboard focus stays visible. */
+a, button, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
+:focus:not(:focus-visible) { outline: none; }
+.operation-panel { overflow: hidden; }

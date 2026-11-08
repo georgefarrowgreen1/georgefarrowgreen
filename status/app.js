@@ -186,8 +186,8 @@
     ]) {
       if (!deps.length) continue;
       const state = deps.some(x => x.s === "down" || x.s === "warn") ? "Needs attention" : deps.some(x => x.s === "none") ? "Collecting data" : "All working";
-      html += `<section class="group glass operation-group" data-operation="${key}" aria-labelledby="operation-heading-${key}"><h2 class="operation-heading"><button class="operation-toggle" id="operation-heading-${key}" type="button" data-operation-toggle="${key}" aria-expanded="${openOperation === key}" aria-controls="operation-panel-${key}"><span>${esc(heading)}</span><span class="operation-state">${state}</span>${ICON.chev}</button></h2><ul class="status-list" id="operation-panel-${key}"${openOperation === key ? "" : " hidden"}>${deps.map(x =>
-        `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.monitor ? esc(x.why || (x.ms != null ? `Response ${x.ms} ms` : x.s === "none" ? "Collecting data" : "Within thresholds")) : x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
+      html += `<section class="group glass operation-group" data-operation="${key}" aria-labelledby="operation-heading-${key}"><h2 class="operation-heading"><button class="operation-toggle" id="operation-heading-${key}" type="button" data-operation-toggle="${key}" aria-expanded="${openOperation === key}" aria-controls="operation-panel-${key}"><span>${esc(heading)}</span><span class="operation-state">${state}</span>${ICON.chev}</button></h2><div class="operation-panel" id="operation-panel-${key}" aria-hidden="${openOperation !== key}"${openOperation === key ? "" : " hidden inert"}><ul class="status-list">${deps.map(x =>
+        `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.monitor ? esc(x.why || (x.ms != null ? `Response ${x.ms} ms` : x.s === "none" ? "Collecting data" : "Within thresholds")) : x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></div></section>`;
     }
     html += `</div></div>`;
     html += `<div class="status-legend" aria-label="Status key"><span data-s="ok"><i></i>Working</span><span data-s="warn"><i></i>Slow, late or pending</span><span data-s="down"><i></i>Not working</span><span data-s="none"><i></i>No history</span></div>`;
@@ -200,12 +200,36 @@
     for (const d of box.querySelectorAll(".days[data-n]")) d.style.gridTemplateColumns = `repeat(${d.dataset.n}, minmax(0, 1fr))`;
     wireDays(); for (const id of opened) chart(id);
   }
+  const operationAnimations = new WeakMap();
+  function animateOperation(panel, open) {
+    const from = panel.hidden ? 0 : panel.getBoundingClientRect().height;
+    const opacity = panel.hidden ? 0 : +getComputedStyle(panel).opacity;
+    operationAnimations.get(panel)?.cancel();
+    operationAnimations.delete(panel);
+    panel.inert = !open;
+    panel.setAttribute("aria-hidden", String(!open));
+    if (still() || typeof panel.animate !== "function") { panel.hidden = !open; return; }
+    if (!open && panel.hidden) return;
+    panel.hidden = false;
+    const animation = panel.animate([
+      { height: `${from}px`, opacity },
+      { height: `${open ? panel.scrollHeight : 0}px`, opacity: open ? 1 : 0 },
+    ], { duration: 240, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+    operationAnimations.set(panel, animation);
+    animation.onfinish = () => {
+      if (operationAnimations.get(panel) !== animation) return;
+      panel.hidden = !open;
+      operationAnimations.delete(panel);
+    };
+  }
   function toggleOperation(key) {
     openOperation = openOperation === key ? null : key;
     for (const section of document.querySelectorAll("[data-operation]")) {
+      const button = section.querySelector("[data-operation-toggle]");
       const open = section.dataset.operation === openOperation;
-      section.querySelector("[data-operation-toggle]").setAttribute("aria-expanded", String(open));
-      section.querySelector(".status-list").hidden = !open;
+      if ((button.getAttribute("aria-expanded") === "true") === open) continue;
+      button.setAttribute("aria-expanded", String(open));
+      animateOperation(section.querySelector(".operation-panel"), open);
     }
     trackSection();
   }
