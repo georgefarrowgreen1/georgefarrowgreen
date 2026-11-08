@@ -146,7 +146,7 @@ export const LADDERS = {
 };
 function rung(c) {
   const work = LADDERS.thirty.steps.includes(c) ? c.len * 0.75 : c.len;
-  return { ...c, core: Math.round(c.wu + c.cd + c.n * (work + c.rec)), steps: (f, name, easy = 0.55) => [wu(c.wu), rep(c.n, on(c.len, f, name), off(c.rec, easy)), cd(c.cd)] };
+  return { ...c, core: c.wu + c.cd + c.n * (work + c.rec), steps: (f, name, easy = 0.55) => [wu(c.wu), rep(c.n, on(c.len, f, name), off(c.rec, easy)), cd(c.cd)] };
 }
 // an id for a session at a length, its level kept
 export const withMins = (id, mins) => String(id).replace(/^(rh:[a-z0-9]+:)\d+/, `$1${mins}`);
@@ -156,26 +156,28 @@ export function session(id, t = targets(null)) {
   const x = /^rh:([a-z0-9]+):(\d+)(?::(\d))?$/.exec(id || "");
   if (!x) return null;
   const kind = x[1], mins = +x[2], level = Math.min(3, +(x[3] || 0));
-  const fill = (core, steps) => (mins - core >= 15 ? [steps[0], at(mins - core, 0.68, "Endurance"), ...steps.slice(1)] : steps);
-  // (the rung for the level, or the highest below it the time allows; the lowest where none does)
-  const ladder = (L, f) => { const cs = L.steps.map(rung); let i = Math.min(L.up[level], cs.length - 1); while (i > 0 && cs[i].core > mins + 5) i--; return f(cs[i]); };
+  // Do the quality work fresh, then use the spare time for endurance before cooling down. Durability rides below
+  // deliberately reverse that order; ordinary intervals shouldn't become a hard finish just because the slot grew.
+  const fill = (core, steps) => (mins > core ? [...steps.slice(0, -1), at(mins - core, 0.68, "Endurance"), steps.at(-1)] : steps);
+  // (the rung for the level, or the highest below it the time allows; the planner checks the minimum fits too)
+  const ladder = (L, f) => { const cs = L.steps.map(rung); let i = Math.min(L.up[level], cs.length - 1); while (i > 0 && cs[i].core > mins) i--; return f(cs[i]); };
   const make = (name, label, about, steps) => ({ id, sport: "ride", kind: label, name, about, steps, rhythm: true });
   switch (kind) {
-    case "endurance": return make(`Endurance ${hm(mins)}`, "Endurance", "Steady zone 2: conversational all the way. The riding that builds everything else.", [wu(10, 0.5, 0.65), at(Math.max(10, mins - 15), 0.68, "Endurance"), cd(5, 0.6, 0.45)]);
-    case "long": return make(`Long ride ${hm(mins)}`, "Endurance", "Your long ride: zone 2 throughout, and eat from the first hour.", [wu(15, 0.5, 0.65), at(Math.max(20, mins - 30), 0.67, "Endurance"), cd(15, 0.6, 0.45)]);
+    case "endurance": { const warm = Math.min(10, mins / 3), cool = Math.min(5, mins / 6); return make(`Endurance ${hm(mins)}`, "Endurance", "Steady zone 2: conversational all the way. The riding that builds everything else.", [wu(warm, 0.5, 0.65), at(mins - warm - cool, 0.68, "Endurance"), cd(cool, 0.6, 0.45)]); }
+    case "long": { const ramp = Math.min(15, mins / 4); return make(`Long ride ${hm(mins)}`, "Endurance", "Your long ride: zone 2 throughout, and eat from the first hour.", [wu(ramp, 0.5, 0.65), at(mins - 2 * ramp, 0.67, "Endurance"), cd(ramp, 0.6, 0.45)]); }
     // (a target event's last days: openers the day before, and the day itself)
     case "openers": return make("Openers", "Openers", "Easy riding with three short, sharp efforts: legs awake for tomorrow, nothing taken out of them.", [wu(15, 0.5, 0.65), rep(3, on(1, 1.15, "Opener"), off(3, 0.5)), cd(Math.max(5, mins - 27), 0.6, 0.45)]);
     case "event": return make("Event day", "Event", "The day it's all been for: warm up well, start steady, eat and drink from the first hour.", [wu(15, 0.5, 0.7), at(Math.max(30, mins - 15), 0.75, "Your event")]);
     case "recovery": return make("Recovery spin", "Recovery", "Easy spinning, nothing more: come away fresher than you started.", [at(Math.min(mins, 60), 0.48, "Easy spin")]);
     // (the hard ones: a ladder each, the block's week climbing it, longer efforts first, then more of them, then harder;
-    // as far up as the day's time goes, give or take five minutes)
+    // as far up as the day's time goes)
     case "tempo": return ladder(LADDERS.tempo, (c) => make(`Tempo ${c.n} × ${c.len}`, "Tempo", "Comfortably hard: steady pressure, breathing deep but in control.", fill(c.core, c.steps(0.83, "Tempo"))));
     case "sweet": return ladder(LADDERS.sweet, (c) => make(`Sweet spot ${c.n} × ${c.len}`, "Sweet spot", "Just under threshold: the most fitness for the least fatigue. Seated and smooth.", fill(c.core, c.steps(0.9, "Sweet spot"))));
     case "threshold": return ladder(LADDERS.threshold, (c) => make(`Threshold ${c.n} × ${c.len}`, "Threshold", c.len >= 20 ? "Twenty minutes at threshold, twice: hard, but finish each feeling there was a little more." : `${c.len === 10 ? "Ten" : c.len === 12 ? "Twelve" : "Fifteen"} minutes at threshold, ${["", "once", "twice", "three times", "four times"][c.n]}. Even, not heroic.`, fill(c.core, c.steps(t.thr, "Threshold"))));
     case "vo2": return ladder(LADDERS.vo2, (c) => make(`VO₂ max ${c.n} × ${c.len}`, "VO₂ max", `${c.len === 5 ? "Five" : "Four"} minutes as hard as you can hold for ${c.len === 5 ? "five" : "four"}, spun out easy between. Don't start the next till you're ready.`, fill(c.core, c.steps(t.vo2, "VO₂ max", 0.5))));
     case "thirty": return ladder(LADDERS.thirty, (c) => { const block = Array.from({ length: c.len * 2 }, (_, i) => (i % 2 ? off(0.25, 0.5, "Easy") : on(0.5, t.on30, "Hard")));
       return make(`30/15s ${c.n} × ${c.len}`, "VO₂ max", `Thirty seconds hard, fifteen easy, ${c.len} times; three minutes between. Time near VO₂ max without the dread of long efforts.`, fill(c.core, [wu(15), rep(c.n, ...block, off(3, 0.5, "Recover")), cd(10)])); });
-    case "sprint": return make("Sprints 8 × 15 s", "Anaerobic", "All-out sprints from a rolling start, with full recovery. Quality over quantity.", fill(65, [wu(15), rep(8, on(0.25, 2.0, "Sprint"), off(4.75, 0.5, "Recover")), cd(10)]));
+    case "sprint": { const n = clamp(Math.floor((mins - 25) / 5), 1, 8); return make(`Sprints ${n} × 15 s`, "Anaerobic", "All-out sprints from a rolling start, with full recovery. Quality over quantity.", fill(25 + n * 5, [wu(15), rep(n, on(0.25, 2.0, "Sprint"), off(4.75, 0.5, "Recover")), cd(10)])); }
     case "durable": { const steady = Math.max(30, mins - 10 - 25 - 5); return make(`Long ride, hard finish`, "Durability", "A long steady ride with two threshold efforts in its last hour, when you're already tired: power that lasts.", [wu(10, 0.5, 0.65), at(steady, 0.67, "Endurance"), rep(2, on(10, Math.min(t.thr, 0.95), "Threshold, tired")), off(5, 0.55), cd(5)]); }
   }
   return null;
@@ -271,6 +273,24 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
   // your power curve now (the last 12 weeks' best, the older counting a little less), for intervals set from it
   const bestsIn = (from, to) => Object.fromEntries(Object.entries(bestsOf(acts, from, to)).map(([k, v]) => [k, v.raw]));
   const cpw = criticalPower(bestsOf(acts, addDays(today, -84), addDays(today, 1)), ftp), T = targets(cpw, ftp);
+  // Candidate weeks reuse the same sessions. Measure each one once, including its ramps and recoveries: a fixed
+  // TSS-per-minute estimate both shortens easy rides and misses the true cost of intervals.
+  const measured = new Map();
+  const stats = (id) => {
+    if (!measured.has(id)) {
+      const w = workoutOf(id, T), v = measure(w, w.sport === "run" ? paces.run : w.sport === "swim" ? paces.swim : 4);
+      measured.set(id, { secs: v.secs, tss: v.tss, sport: w.sport });
+    }
+    return measured.get(id);
+  };
+  function fitRide(kind, available, budget, level) {
+    const min = kind === "durable" ? 100 : HARD.has(kind) || kind === "tempo" ? 50 : Math.min(30, available);
+    for (let mins = available; mins >= min; mins -= mins % 5 || 5) {
+      const id = `rh:${kind}:${mins}${LADDERS[kind] ? `:${level}` : ""}`, v = stats(id);
+      if (v.secs <= available * 60 && v.tss <= budget) return id;
+    }
+    return null;
+  }
   // (your form day by day these four months, so a session ridden tired doesn't lower the targets)
   const formOn = new Map();
   { const daily = new Map(); for (const a of acts) { const x = startOfDay(a.start); daily.set(x, (daily.get(x) || 0) + tssOf(a.sum, a.sport)); }
@@ -361,12 +381,19 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       if (e.hard && !e.done) { sc += Math.min(2, e.need ?? 1) + (wet[e.date] ? 0.3 : 0) - (e.tsb < -15 ? 0.4 : 0); if (prev != null && (e.date - prev) / DAY >= 2.9) sc += 0.2; prev = e.date; }
       if (e.kind === "long" || e.kind === "durable") sc += wet[e.date] ? -0.3 : 0.3;
     }
+    // The optional sports need a shorter easy day each, rather than every eligible slot being used for intervals.
+    if (P.run && week.run) sc += 2.5;
+    if (P.swim && week.swim) sc += 2.5;
     if (week.target && dowOf(last) === 6) sc -= 1.5 * Math.min(1, Math.abs(week.tss - week.target) / week.target);
     return sc;
   }
   function plannedWeek(win) {
     const s0 = snap(), ways = [null];
-    for (let m = 0; m < 1 << win.length; m++) { let bits = 0; for (let x = m; x; x &= x - 1) bits++; if (bits <= 3) ways.push(new Set(win.filter((_, i) => m & (1 << i)))); }
+    // Skip slots that cannot host intervals, while retaining a rest day that could move to catch up a missed ride.
+    // This avoids replaying identical weeks for every combination of unavailable days.
+    const catchUp = week.mon === mondayOf(win[0]) && week.missed && !week.moved && Math.max(...P.days) >= 100;
+    const slots = win.filter((d) => P.days[dowOf(d)] >= 50 || (catchUp && !P.days[dowOf(d)] && P.days.slice(dowOf(d) + 1).some((x) => !x)));
+    for (let m = 0; m < 1 << slots.length; m++) { let bits = 0; for (let x = m; x; x &= x - 1) bits++; if (bits <= 3) ways.push(new Set(slots.filter((_, i) => m & (1 << i)))); }
     let best = null;
     for (const w of ways) {
       allow = w; for (const x of win) step(x);
@@ -424,9 +451,12 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
     // the week's training stress: fitness up a few points in a build week (fewer as it gets higher), level in hold,
     // about 60% in an absorb week
     const ramp = hold ? 0 : Math.max(1.5, 4.5 - ctl / 40);
-    const target = taper ? ctl * 7 * (toEv <= 7 ? 0.5 : 0.7) : absorb ? ctl * 7 * (hold ? 0.8 : 0.6) : (ctl + 6 * ramp) * 7;
-    if (week.target == null) week.target = target;
-    const daysLeft = P.days.slice(dow).filter((x) => x > 0).length || 1, share = Math.max(0, (target - week.tss) / daysLeft);
+    if (week.target == null) week.target = taper ? ctl * 7 * (toEv <= 7 ? 0.5 : 0.7) : absorb ? ctl * 7 * (hold ? 0.8 : 0.6) : (ctl + 6 * ramp) * 7;
+    // Keep the week's budget steady, but let a taper tighten it as the event approaches.
+    if (taper) week.target = Math.min(week.target, ctl * 7 * (toEv <= 7 ? 0.5 : 0.7));
+    const target = week.target;
+    const minutesLeft = avail + P.days.slice(dow + 1).reduce((a, x) => a + x, 0);
+    const weight = avail / minutesLeft, share = Math.max(0, target - week.tss) * weight;
     const maxHard = absorb || (taper && toEv <= 7) ? 1 : hours >= 12 ? 3 : 2, longest = avail === Math.max(...P.days) && avail >= 90;
     // (heavy legs, or a poor day, carry over: the day after is easy too)
     const fy = feel[addDays(day, -1)], yesterday = fy && addDays(day, -1) <= today ? (feelOf(fy) === "poor" ? "you weren't feeling good yesterday" : fy.legs === 0 ? "your legs were heavy yesterday" : null) : null;
@@ -447,7 +477,7 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       kind = k === "vo2" && (theme === "topend" || since.vo2 >= 10) && avail >= 52 ? "thirty" : k;
       const ago = since[k] > 21 ? "Over three weeks" : `${Math.round(since[k])} days`, block = THEMES[theme].toLowerCase();
       why = `${ago} since your last ${WORDS[k]} session${theme === (k === "vo2" || k === "sprint" ? "topend" : k === "tempo" ? "aerobic" : "threshold") ? `, and you're in ${/^[aeiou]/.test(block) ? "an" : "a"} ${block} block` : ": keeping it sharp"}`;
-    } else if (longest) { kind = "long"; why = "Your longest day: the week's long ride"; }
+    } else if (longest && tsb >= -15) { kind = "long"; why = "Your longest day: the week's long ride"; }
     else if (tsb < -15) { kind = "recovery"; why = `Easy: your form is ${Math.round(tsb)}`; }
     else { kind = "endurance"; why = f === "tired" ? `Steady, not hard: ${nightWhy || "a poor night or heavy legs"}` : yesterday ? `Steady, not hard: ${yesterday}` : settling ? "Steady, not hard: your HRV's been low this week, so easy days till it's back" : "Aerobic riding between the harder days"; }
     if (green && HARD.has(kind) && tsb <= -20) why += ". Your night says you've recovered: the hard day stands";
@@ -460,38 +490,45 @@ export function plan({ prefs, acts = [], feel = {}, swaps = {}, today, ftp = 250
       else if (pick === "swim") { kind = canHard && week.hard < maxHard ? "swim-css" : "swim"; id = kind === "swim-css" ? "swim-css" : "swim-endurance"; why = kind === "swim-css" ? "Your swim this week: threshold 100s" : "Your swim this week, steady"; }
     }
     if (!id) {
-      if (kind === "endurance" || kind === "long") mins = Math.max(40, Math.min(avail, Math.round(share / (kind === "long" ? 0.75 : 0.77) / 5) * 5));   // (TSS a minute, steady zone 2)
+      // The daily ceiling follows your share of the week: three riding days need longer rides than six. Still no
+      // more than five days' usual load at once, and never enough to push tomorrow's form below −25.
+      const cap = Math.max(60, ctl * clamp(7 * avail / (hours * 60 || avail), 2.5, 5));
+      const fatigueCap = Math.max(0, (41 * ctl - 36 * atl + 25 * 42) / 5);
+      const budget = Math.min(share, cap, fatigueCap);
       if (kind === "recovery") mins = Math.min(45, avail);
-      // (never more in a day than your fitness can take: about two and a half days' worth, an hour at least)
-      const cap = Math.max(60, ctl * 2.5);
-      if (kind === "endurance" || kind === "long") mins = Math.min(mins, Math.max(40, Math.round(cap / 0.77 / 5) * 5));
-      // (a hard day: the session, with steady riding round it only as far as the week's budget goes)
-      if (HARD.has(kind) || kind === "tempo") mins = Math.min(avail, Math.max(kind === "durable" ? 100 : 55, Math.round(Math.min(share, cap) / (kind === "durable" ? 0.8 : 0.9) / 5) * 5));
       // (tapering: the intensity kept, the time cut: hard days an hour at most, long rides two hours, then ninety minutes)
       if (taper) { if (HARD.has(kind) || kind === "tempo") mins = Math.min(mins, 60); if (kind === "long" || kind === "endurance") mins = Math.min(mins, toEv <= 7 ? 90 : 120); }
-      // (a missed ride's training made up on the easy days left, as far as they go: said where it's ten minutes or more)
-      if ((kind === "endurance" || kind === "long") && week.missedTss > 0 && week.missed) {
-        const without = Math.max(40, Math.min(avail, Math.round(Math.max(0, share - week.missedTss / daysLeft) / (kind === "long" ? 0.75 : 0.77) / 5) * 5));
-        if (mins - without >= 10) why += `. ${mins - without} minutes longer, to make up for ${new Date(week.missed).toLocaleDateString("en-GB", { weekday: "long" })}'s missed ride`;
-      }
       // (the hard ones at their level: the block's week, a step up where every effort's held lately, none in an absorb week)
       const fam = { vo2: "vo2", thirty: "on30", threshold: "thr" }[kind];
-      if (LADDERS[kind]) {
-        const up = fam && adjust[fam] > 0 ? 1 : 0, level = absorb ? 0 : taper ? 1 : hold ? 1 : Math.min(3, bw + up);
-        id = `rh:${kind}:${mins}:${level}`;
-        if (up && level > bw) why += ". A step up: you held every effort last time";
-      } else id = `rh:${kind}:${mins}`;
+      const up = fam && adjust[fam] > 0 ? 1 : 0, level = absorb ? 0 : taper ? 1 : hold ? 1 : Math.min(3, bw + up);
+      id = fitRide(kind, mins, budget, level);
+      // If the interval core won't fit the time or load, keep an easy ride rather than squeezing in extra stress.
+      if (!id && kind !== "recovery" && kind !== "endurance") {
+        kind = kind === "durable" ? "long" : "endurance";
+        why = "Steady riding: the harder session would exceed today's time or training load";
+        id = fitRide(kind, mins, budget, level);
+      }
+      if (!id) return restWhy("Rest: you've reached today's training load; recover for the rides ahead");
+      mins = Math.round(stats(id).secs / 60);
+      if (LADDERS[kind] && up && level > bw) why += ". A step up: you held every effort last time";
+      // A missed ride's load is shared across the remaining time, within the same daily and fatigue ceilings.
+      if ((kind === "endurance" || kind === "long") && week.missedTss > 0 && week.missed) {
+        const withoutId = fitRide(kind, mins, Math.min(budget, Math.max(0, share - week.missedTss * weight)), level);
+        const extra = mins - (withoutId ? Math.round(stats(withoutId).secs / 60) : 0);
+        if (extra >= 10) why += `. ${extra} minutes longer, to make up for ${new Date(week.missed).toLocaleDateString("en-GB", { weekday: "long" })}'s missed ride`;
+      }
+      if (!taper && mins <= avail - 15 && kind !== "recovery") why += `. Using ${hm(mins)} of your ${hm(avail)} available to keep training load manageable`;
       if (taper) why = `Tapering for ${evName}: ${HARD.has(kind) ? "the intensity kept, shorter" : "less riding"}, so you arrive fresh`;
       if (wet[day] && (HARD.has(kind) || kind === "tempo")) why += ". Rain for much of the day: a good one for the trainer";
       else if (wet[day] && kind === "long") why += ". Rain for much of the day: dress for it, or take it indoors";
     }
-    const w = workoutOf(id, T), meas = w ? measure(w, w.sport === "run" ? paces.run : w.sport === "swim" ? paces.swim : 4) : { secs: mins * 60, tss: 0 };
+    const meas = stats(id);
     mins = Math.round(meas.secs / 60);
     const hard = HARD.has(kind);
     if (moved) why = `Rest day moved: you missed ${new Date(week.missed).toLocaleDateString("en-GB", { weekday: "long" })}'s session. ${why}`;
     // (heavy strength on a hard day, twice a week in aerobic and threshold blocks, once in top end, none when absorbing)
     const strength = hard && !absorb && week.strength < (theme === "topend" ? 1 : 2) && !kind.startsWith("swim");
-    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: w?.sport === "ride" ? fuelFor(mins, hard) : null, strength: strength && !taper, moved, need: needed, tsb: Math.round(tsb), night: nightWhy, green: !!(green && hard), taper };
+    return { ...base, id, kind, mins, tss: Math.round(meas.tss), hard, why, fuel: meas.sport === "ride" ? fuelFor(mins, hard) : null, strength: strength && !taper, moved, need: needed, tsb: Math.round(tsb), night: nightWhy, green: !!(green && hard), taper };
   }
 
   const at0 = out.find((x) => x.date === today) || null;

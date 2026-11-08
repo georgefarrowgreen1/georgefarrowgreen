@@ -72,7 +72,8 @@ test("the week as a whole: the hard session goes to the wet day, the rules still
 
 test("a missed ride's training made up on the easy days, and said", () => {
   const acts = steady(6).filter((a) => sod(a.start) < monOf(today));
-  const r = RH.plan({ prefs: { start: add(monOf(today), -7), days: [90, 90, 0, 90, 0, 150, 120] }, acts, today, ftp: 260 });
+  // Enough room to redistribute missed load without exceeding the daily or projected-fatigue ceilings.
+  const r = RH.plan({ prefs: { start: add(monOf(today), -7), days: [90, 90, 0, 90, 0, 240, 240] }, acts, today, ftp: 260 });
   assert.ok(r.days.some((d) => /to make up for (Monday|Tuesday)'s missed ride/.test(d.why)), r.days.map((d) => d.why).join(" | "));
 });
 

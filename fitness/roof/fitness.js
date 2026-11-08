@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.14";
-export const NEWS = "InFlite Routing System leads Map and Data with the InFlite logo";
+export const BUILD = "2.15";
+export const NEWS = "Rhythm makes better use of your available riding time, with workouts fitted to your training load and faster planning";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
