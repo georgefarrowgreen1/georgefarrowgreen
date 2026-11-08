@@ -75,3 +75,12 @@ test('Powered by InFlite opens Map and Data with source links and restores focus
   await a.page.getByRole('button',{name:'Powered by InFlite',exact:true}).click();await dialog.waitFor();await a.page.evaluate(()=>__view.hide());assert.equal(await a.page.locator('dialog[open]').count(),0);assert.deepEqual(a.errors,[]);
  }finally{await a.context.close();}}
 });
+test('road choices reach generation and remain accessible; mixed surface hides road-only settings',async()=>{
+ const{context,page,requests,errors}=await open({width:320,theme:'dark'});try{
+  await page.getByLabel('Roads',{exact:true}).selectOption('quiet');await page.getByRole('switch',{name:'Avoid unpaved roads'}).uncheck();
+  await page.getByLabel('Surface',{exact:true}).selectOption('mixed');assert.equal(await page.getByLabel('Roads',{exact:true}).count(),0);assert.equal(await page.getByRole('switch').count(),0);
+  await page.getByLabel('Surface',{exact:true}).selectOption('road');assert.equal(await page.getByLabel('Roads',{exact:true}).inputValue(),'quiet');assert.equal(await page.getByRole('switch').isChecked(),false);
+  await page.getByRole('button',{name:'Use current location',exact:true}).click();await page.locator('.fr-route-card').waitFor();const q=requests.find(r=>r.path.endsWith('/generate')).body;assert.equal(q.roadPreference,'quiet');assert.equal(q.avoidUnpaved,false);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await shot(page,'road-preferences-mobile-dark');
+ }finally{await context.close();}
+});

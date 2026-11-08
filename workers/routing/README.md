@@ -23,11 +23,19 @@ external credential. The site's map tiles remain its existing OpenFreeMap render
 
 The owned road profile (`profiles/road.brf`) derives from BRouter `fastbike`, with a light traffic penalty, lower
 costs for paved primary/secondary/tertiary roads, and higher costs for residential/service shortcuts and unpaved
-sections. Steps and ferries are disabled; the upstream motorway, trunk and access restrictions are retained. Mixed
-still derives from `trekking`. Distance controls waypoint radius, adaptive scaling and ranking; speed/climbing never
-change route selection. Already-open 2.05 clients can still send their legacy time request during rollout. Intermediate waypoints can snap up to
+sections. Steps and ferries are disabled; the upstream motorway, trunk and access restrictions are retained. Main roads and Quiet lanes are separate immutable variants: quiet lanes strengthen traffic avoidance and reduce the
+residential penalty. Avoid unpaved selects a strict variant that excludes known unpaved surfaces and grade 2–5 tracks;
+missing map surface tags remain unknown. Mixed still derives from `trekking`.
+
+Distance controls waypoint radius and adaptive scaling. The planner tries six directions with at most nine sequential
+calculations and the existing 75-second deadline, refining candidates towards 5% and rejecting distances outside 10%.
+Ranking considers distance error, repeated roads and the selected road preference. Alternatives share at most 65%
+of their sampled 40 m road corridors; reversed/resampled versions of the same loop do not count as new choices.
+Flatter/More climbing labels require measured elevation and at least 30 m / 15% difference from the recommendation.
+Fewer genuine alternatives are returned when necessary. Climbing affects labels, not the distance target. The API
+reserves nine calculations against its existing global budget; account and concurrency limits remain in force. Already-open 2.05 clients can still send their legacy time request during rollout. Intermediate waypoints can snap up to
 1 km to a cycling road, which avoids rejecting a loop merely because a proposed via point falls in a field.
-Both profiles enable misplaced-via correction without a spur-length cap: arbitrary shaping points must not force
+All five profiles enable misplaced-via correction without a spur-length cap: arbitrary shaping points must not force
 out-and-back dead-end visits. Fitness independently rejects a start snapped over 250 m away, invalid/discontinuous/open
 tracks, internal reverse-travel spurs over 10 m, excessive overlap and unsuitable distances. BRouter/OpenStreetMap access data is not a guarantee of current conditions.
 

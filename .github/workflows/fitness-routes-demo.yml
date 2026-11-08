@@ -1,10 +1,10 @@
 name: Fitness routes
 on:
   pull_request:
-    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
   push:
     branches: [main]
-    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
+    paths: ['fitness/**', 'functions/_fitapp.js', 'functions/_fitroutes.js', 'functions/_fitloops.js', 'functions/_fitroutechoices.js', 'workers/routing/src/coverage.js', 'functions/api/fitness/**', 'functions/_fitness.js', '.tools/tests/routes-demo.test.cjs', '.tools/tests/routes-live.test.cjs', '.tools/tests/fixtures/cycling-loop.json', '.tools/tests/unit/fitroutes.test.mjs', '.tools/tests/unit/fitroutequality.test.mjs', '.tools/tests/unit/fitroutechoices.test.mjs', '.tools/tests/unit/fitnessroutes.test.mjs', '.tools/build-routes-demo.mjs', '.github/workflows/fitness-routes-demo.yml']
 permissions:
   contents: read
 jobs:
@@ -30,7 +30,7 @@ jobs:
       - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
         working-directory: georgefarrowgreen
       - name: Route data and planning checks
-        run: node --test .tools/tests/unit/fitnessroutes.test.mjs .tools/tests/unit/fitroutes.test.mjs .tools/tests/unit/fitroutequality.test.mjs
+        run: node --test .tools/tests/unit/fitnessroutes.test.mjs .tools/tests/unit/fitroutes.test.mjs .tools/tests/unit/fitroutequality.test.mjs .tools/tests/unit/fitroutechoices.test.mjs
         working-directory: georgefarrowgreen
       - name: Downloadable review build
         run: node .tools/build-routes-demo.mjs artifacts/InFlite-Fitness-Routes-Demo.html

@@ -9,7 +9,7 @@ test('deployment route checks require the scheduler host and credential before i
  assert.equal((await check('fitness.example','POST','probe-key')).status,404);
  assert.equal((await check('apps.example','GET','probe-key')).status,404);
  assert.equal((await check('apps.example','POST','wrong')).status,401);assert.equal(calls,0);
- const r=await check('apps.example','POST','probe-key'),j=await r.json();assert.equal(r.status,200);assert.equal(j.ready,true);assert.equal(j.count,1);assert.equal(calls,3);assert.equal('routes' in j,false);
+ const r=await check('apps.example','POST','probe-key'),j=await r.json();assert.equal(r.status,200);assert.equal(j.ready,true);assert.equal(j.count,1);assert.equal(calls,6);assert.equal('routes' in j,false);
 });
 
 test('caller cancellation bounds stalled private fetches and response bodies',async()=>{

@@ -22,7 +22,7 @@ function createLiveRoutes(root, opts = {}) {
     const d = new Date(n);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
-  let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, distance = metric ? 40 : 25, surface = "road", pending = false, saving = false, dirty = false, notice = "", saved = null;
+  let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, distance = metric ? 40 : 25, surface = "road", roadPreference="main", avoidUnpaved=true, pending = false, saving = false, dirty = false, notice = "", saved = null;
   let draftDay = null, draftTime = null;
   const events = new AbortController();
   function btn(text, fn, cls = "pill") {
@@ -146,7 +146,7 @@ function createLiveRoutes(root, opts = {}) {
       if (!alive() || ticket !== turn) return;
       notice = "Finding cycling loops back to your start…";
       showList();
-      const found = await (opts.generate || generateRoutes)({ start: loc, metres: Math.round(distance * (metric ? 1000 : 1609.344)), surface, seed: Math.floor(Math.random() * 1e6) }, { signal });
+      const found = await (opts.generate || generateRoutes)({ start: loc, metres: Math.round(distance * (metric ? 1000 : 1609.344)), surface, ...(surface==="road"?{roadPreference,avoidUnpaved}:{}), seed: Math.floor(Math.random() * 1e6) }, { signal });
       if (!alive() || ticket !== turn) return;
       routes = found;
       dirty = false;
@@ -196,6 +196,13 @@ function createLiveRoutes(root, opts = {}) {
     wrapDistance.append(input, e("span", "", metric ? "km" : "mi"));
     rowDistance.append(txDistance, wrapDistance);
     controls.append(rowDistance, pick("Surface", [["road", "Road cycling"], ["mixed", "Mixed surface"]], surface, v => { surface = v; }));
+    if(surface==="road"){
+      controls.append(pick("Roads",[["main","Main roads"],["quiet","Quiet lanes"]],roadPreference,v=>{roadPreference=v;}));
+      const row=e("label","row plain fr-field fr-paved-toggle"),copy=e("span","tx"),toggle=e("span","fr-road-switch"),input=e("input"),track=e("span","fr-road-track");
+      copy.append(e("b","","Avoid unpaved"));input.type="checkbox";input.checked=avoidUnpaved;input.disabled=pending;input.setAttribute("role","switch");input.setAttribute("aria-label","Avoid unpaved roads");track.setAttribute("aria-hidden","true");
+      input.addEventListener("change",()=>{avoidUnpaved=input.checked;dirty=true;notice=routes.length?"Road preferences changed. Find new loops to update your routes.":"";showList();root.querySelector('[role="switch"]')?.focus({preventScroll:true});},{signal:events.signal});
+      toggle.append(input,track);row.append(copy,toggle);controls.append(row);
+    }
     overview.append(context, controls);
     root.append(overview);
     const locate = e("section", "card glass fr-locate");
@@ -239,8 +246,10 @@ function createLiveRoutes(root, opts = {}) {
         b.dataset.route = r.id;
         const tx = e("span", "tx fr-route-copy"), name = e("span", "fr-route-name"), meta = e("span", "fr-route-meta");
         name.append(e("b", "", r.name));
-        if (!i) meta.append(e("span", "badge plan", "Closest distance"));
+        if (!i) meta.append(e("span", "badge plan", "Best match"));
         meta.append(e("span", "fr-surface", r.surface === "road" ? "Road cycling" : "Mixed surface"));
+        if(r.surface==="road"&&r.roadPreference)meta.append(e("span","fr-surface",r.roadPreference==="quiet"?"Quiet lanes":"Main roads"));
+        if(r.targetMetres){const error=Math.abs(r.metres-r.targetMetres)/r.targetMetres;meta.append(e("span","fr-surface",`Within ${error<=.05?5:10}% of ${km(r.targetMetres)}`));}
         tx.append(name, e("small", "", `${km(r.metres)} · ${r.ascent == null ? "Elevation unavailable" : "↑ " + up(r.ascent)} · ≈ ${duration(estimate(r, speed))}`), meta);
         const chevron = e("span", "chev");
         chevron.append(icon("chev", 17, 2.4));

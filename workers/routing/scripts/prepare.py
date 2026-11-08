@@ -24,8 +24,10 @@ with zipfile.ZipFile(archive) as z:
  (OUT/'brouter.jar').write_bytes(z.read(prefix+'brouter-'+engine['version']+'-all.jar'))
  (OUT/'profiles').mkdir(exist_ok=True)
  (OUT/'profiles/lookups.dat').write_bytes(z.read(prefix+'profiles2/lookups.dat'))
- for name,upstream in [('road','fastbike'),('mixed','trekking')]:
-  text=(ROOT/'profiles/road.brf').read_text() if name=='road' else z.read(prefix+'profiles2/'+upstream+'.brf').decode()
+ for name,upstream in [('road','fastbike'),('road-quiet','fastbike'),('road-paved','fastbike'),('road-quiet-paved','fastbike'),('mixed','trekking')]:
+  text=(ROOT/'profiles/road.brf').read_text() if name!='mixed' else z.read(prefix+'profiles2/'+upstream+'.brf').decode()
+  if 'quiet' in name:text=text.replace('assign quiet_roads = false','assign quiet_roads = true')
+  if 'paved' in name:text=text.replace('assign paved_only = false','assign paved_only = true')
   # Intermediate points only shape loops; never force a dead-end visit and U-turn.
   text=text.replace('assign correctMisplacedViaPoints = false','assign correctMisplacedViaPoints = true').replace('assign correctMisplacedViaPointsDistance = 400','assign correctMisplacedViaPointsDistance = 0')
   text=text.replace('---context:global','---context:global\n# InFlite: snap via points to a nearby cycleable road; the API separately limits the start to 250 m.\nassign waypointCatchingRange = 1000',1)
