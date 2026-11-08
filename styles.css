@@ -681,3 +681,20 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   transition: background-color 0s 600000s, color 0s 600000s;
   -webkit-background-clip: text; background-clip: text;
 }
+
+/* Newer iPhone Safari can extend scrolling page imagery into its status-bar area. A full-width fixed
+   background at the top is instead sampled as an opaque browser-chrome tint. Keep the photograph in the
+   document on iOS, with a stable viewport height so toolbar changes and opening a sheet do not resize it. */
+@supports (-webkit-touch-callout: none) {
+  @media (hover: none) {
+    .bg, .soft {
+      position: absolute; pointer-events: none;
+      height: calc(100vh - 120px); height: calc(100svh - 120px);
+    }
+    .barbg {
+      top: 12px; height: calc(env(safe-area-inset-top) + 70px);
+      -webkit-mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
+      mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
+    }
+  }
+}
