@@ -73,13 +73,18 @@ function createLiveRoutes(root, opts = {}) {
   function mapData() {
     closeMapData();
     const wrap = e("div", "m-fitness"), content = e("div", "fr-map-data"), sources = e("div", "group glass");
-    for (const [name, label, href] of [
+    for (const [name, label, href, branded] of [
+      ["InFlite Routing System", "Cycling route planning", "https://inflite.ai/", true],
       ["© OpenStreetMap contributors", "Map and route data · ODbL", "https://www.openstreetmap.org/copyright"],
-      ["InFlite Routing System", "Cycling route planning", "https://inflite.ai/"],
       ["OpenFreeMap", "Street maps", "https://openfreemap.org/"]
     ]) {
       const link = e("a", "row fr-data-source"), copy = e("span", "tx");
       link.href = href; link.target = "_blank"; link.rel = "noopener";
+      if (branded) {
+        const logo = e("img", "fr-data-logo");
+        logo.src = "/fitness/inflite.svg"; logo.alt = ""; logo.width = 36; logo.height = 36;
+        link.append(logo);
+      }
       copy.append(e("b", "", name), e("small", "", label));
       link.append(copy, icon("chev", 16, 2)); sources.append(link);
     }

@@ -133,6 +133,7 @@
 .m-fitness .fr-map-data { min-width:0; }
 .m-fitness .fr-map-data .group { margin:0; }
 .m-fitness .fr-data-source { min-height:76px; color:var(--text); text-decoration:none; }
+.m-fitness .fr-data-source .fr-data-logo { flex:none; width:36px; height:36px; border-radius:10px; object-fit:contain; }
 .m-fitness .fr-data-source .tx { gap:5px; }
 .m-fitness .fr-data-source .tx b { white-space:normal; font-size:15px; }
 .m-fitness .fr-data-source .tx small { color:var(--text-3); font-size:13px; }
