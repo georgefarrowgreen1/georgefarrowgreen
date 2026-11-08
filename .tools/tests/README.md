@@ -21,6 +21,11 @@ make accounts and sign in (from the app, on the account's page, and back, as eve
 that drives Chat's API directly signs in the same way, `handback.mjs`), add friends, send pigeons, and the tests
 check what lands, what's drawn and what's pushed.
 
+Admin avatar sizing has a standalone browser regression: `node --test .tools/tests/admin-avatars.test.cjs`
+from the repository root. It renders the real Admin module and source/minified Account styles with synthetic
+portrait, landscape and initials accounts at mobile and desktop widths; no server or account credentials are needed.
+Set `CHROMIUM` to a local browser if needed, and `AVATAR_SCREENSHOTS` to save the rendered lists.
+
     cd .tools/tests && npm ci
     npx playwright install chromium          # or point CHROMIUM at a Chromium you have
     echo "127.0.0.1 chat.localhost" | sudo tee -a /etc/hosts
