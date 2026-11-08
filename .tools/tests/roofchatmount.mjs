@@ -34,7 +34,7 @@ const FX = await import('./unit/fixtures/chats.mjs');
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 const MODULE = '/chats/roof/chats.js';
 // (whether the inflite repo's tabs.js draws away yet, or still has B0's inert stub)
-const AWAY = !/\baway\(\)\s*\{\s*\}/.test(readFileSync(`${IFL}today/public/roof/tabs.js`, 'utf8'));
+const AWAY = /classList\.toggle\("away"/.test(readFileSync(`${IFL}today/public/roof/tabs.js`, 'utf8'));
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 
 async function phone({ width = 390, height = 844, computer = false, colorScheme = 'light', lock = false } = {}) {
@@ -77,7 +77,7 @@ async function openChats(p, { state = 'ready', path = '/chats/' } = {}) {
 }
 async function axe(p, label) {
   if (!(await p.evaluate(() => !!window.axe))) await p.evaluate(AXE);
-  const r = await p.evaluate(async (sel) => (await window.axe.run(document.querySelector(sel) || document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'color-contrast': { enabled: false } }, resultTypes: ['violations'] })).violations
+  const r = await p.evaluate(async (sel) => (await window.axe.run(document.querySelector(sel) || document, { preload: false, runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'color-contrast': { enabled: false } }, resultTypes: ['violations'] })).violations
     .filter((v) => /serious|critical/.test(v.impact)).map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(', ')}`), H.M_CHATS);
   ok(!r.length, `axe: no serious or critical violations (${label})`, r.join(', '));
 }

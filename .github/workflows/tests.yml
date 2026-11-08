@@ -56,3 +56,37 @@ jobs:
       - name: Unit tests
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/unit/*.test.mjs
+
+  iphone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: georgefarrowgreen
+      - name: Matching InFlite framework
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          R=https://github.com/georgefarrowgreen1/inflite
+          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
+          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix .tools/tests --no-audit --no-fund
+        working-directory: georgefarrowgreen
+      - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
+        working-directory: georgefarrowgreen
+      - name: Chat keyboard, resume, rotation, scrolling and tap targets
+        working-directory: georgefarrowgreen
+        run: |
+          node .tools/tests/roofchatcomposer.mjs "$RUNNER_TEMP/iphone" "$RUNNER_TEMP/iphone/composer"
+          node .tools/tests/roofchatmount.mjs "$RUNNER_TEMP/iphone" "$RUNNER_TEMP/iphone/mount" | tee "$RUNNER_TEMP/iphone/mount.log"
+          grep -q '^FAILS 0$' "$RUNNER_TEMP/iphone/mount.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphone-reliability
+          path: ${{ runner.temp }}/iphone
+          retention-days: 7

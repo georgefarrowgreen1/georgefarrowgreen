@@ -22,7 +22,7 @@ import { joinChat, onAccountPage } from './join.mjs';
 
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
-const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db -c wrangler.worker.jsonc --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
 let fails = 0; const errs = [];
@@ -398,7 +398,7 @@ await P.p.click('main .btn:has-text("Back to Fitness")');
 await P.p.waitForSelector('.welcome #sign-in', { timeout: 20000 });
 await P.p.waitForTimeout(1500); await P.p.screenshot({ path: `${out}/welcome-again.png` });
 const cached = await P.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('fitness'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').count(); q.onsuccess = () => res(q.result); }; r.onerror = () => res(-1); }));
-ok(/Of every app on InFlite/.test(outSaid) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
+ok(/You’re signed out of every InFlite app in this browser\./.test(outSaid) && cached === 0 && JSON.parse((await api(P, '/api/fitness/me')).body).signedIn === false, 'signed out on the phone: back to Sign in, and no copies of your files left on it', `cached ${cached}`);
 await P.p.reload(); await P.p.waitForSelector('.welcome #sign-in');
 ok(true, 'and still signed out after a reload');
 await L.p.goto(`${FIT}/#activities`); await L.p.waitForSelector('.ifh-me', { timeout: 20000 }); await L.p.waitForSelector('body[data-fresh]', { state: 'attached' });
@@ -585,7 +585,11 @@ await L.p.click('#sheet .btn.strava');
 const sIn = await L.p.waitForFunction(async () => { const { S } = await import('./app.js'); return S.own.some((a) => a.id === 's7001') && S.own.some((a) => a.id === 's7002'); }, null, { timeout: 60000, polling: 500 }).then(() => true, () => false);
 await settle(L, 800);
 await L.p.screenshot({ path: `${out}/strava-in.png` });
-const sRows = rows(`SELECT id, sport, indoor, name, device FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%' ORDER BY id`), sTokRow = rows(`SELECT access, refresh FROM fx_strava WHERE user_id = '${sam}'`)[0];
+// The UI sees an imported file before its save finishes; wait for persistence rather than racing a fixed delay.
+const sRows = await waitFor(() => {
+  const r = rows(`SELECT id, sport, indoor, name, device FROM fx_acts WHERE user_id = '${sam}' AND id LIKE 's%' ORDER BY id`);
+  return r.length === 2 ? r : null;
+}, 20000) || [], sTokRow = rows(`SELECT access, refresh FROM fx_strava WHERE user_id = '${sam}'`)[0];
 const sMe = (await api(L, '/api/fitness/me')).body, sLeft = rows(`SELECT id FROM fx_strava_new WHERE user_id = '${sam}'`).length;
 ok(sIn && sRows.length === 2 && sRows[0].id === 's7001' && sRows[0].sport === 'ride' && sRows[0].indoor === 1 && sRows[0].name === 'Lunch ride' && sRows[0].device === 'Zwift'
   && sRows[1].id === 's7002' && sRows[1].sport === 'run' && /^w1:/.test(sTokRow?.access) && /^w1:/.test(sTokRow?.refresh) && !/"s[ar]1"/.test(sMe) && slog.some((x) => x.startsWith('POST /api/v3/push_subscriptions')) && sLeft === 0,
