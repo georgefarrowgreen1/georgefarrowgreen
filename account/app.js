@@ -1143,8 +1143,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.05";
-const NEWS = "Page zoom is blocked consistently across all InFlite apps";
+const BUILD = "2.06";
+const NEWS = "A clearer sign-in, with a compact welcome back and InFlite’s own logo";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1598,6 +1598,7 @@ async function load() {
   }
   try { if (!S.me) S.me = await mine; S.pulled = Date.now(); }
   catch (e) {
+    main.classList.remove("signin-main");
     main.removeAttribute("aria-busy");
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
       h("p", { text: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message }),
@@ -1693,6 +1694,7 @@ function render() {
   main.replaceChildren(...(S.reset ? resetPage(r) : S.keep ? keepPage(r) : S.out?.ask ? outPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? (S.signFor ? continuePage(r) : SIGNIN_PAGE || AUTH?.here ? authHome(r) : signedIn(r))
     : S.gone ? gonePage(r) : S.out ? outPage(r) : AUTH && !AUTH.here && !S.handoff ? awayPage(r) : signedOut(r)).filter(Boolean));
   if (rise) settle(risers); else moved(was);
+  main.classList.toggle("signin-main", !!main.querySelector(".signin-shell"));
   main.removeAttribute("aria-busy");
   document.title = AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
   if (!SIGNIN_PAGE) IFL.watch(window);
@@ -2540,6 +2542,7 @@ function signedOut(r) {
   const qrFirst = mode === "signin" && !!QR_IN.code;
   // (on a computer whose window's too narrow for the code beside the card: the code, asked for, in its place)
   const qrAsk = mode === "signin" && !QR_IN.code && !QR_WIDE.matches && QR_ASK.matches;
+  if (mode === "signin" && !qrFirst) return signinScreen(r, last, to);
   const head = { signin: qrFirst ? ["Sign in on this phone first", "Then you’ll be asked about the computer that showed the code."] : [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
     join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
       : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on InFlite. Once it’s made, you’re straight back in ${to}.` : "One account for every app on InFlite, made here and used everywhere."],
@@ -2562,6 +2565,28 @@ function signedOut(r) {
       S.qrAsk ? "Use a password or passkey instead" : "Sign in with your phone"))),
     r(mode === "signin" ? (last ? (S.left ? forgetLine(last) : notYouLine()) : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
+}
+// The two sign-in states share one responsive frame; phone sign-in opens only when requested.
+function signinScreen(r, last, to) {
+  const qr = (QR_WIDE.matches || QR_ASK.matches) && S.qrAsk;
+  const brand = h("div.signin-brand", {}, h("img", { src: "/inflite.svg?v=1", alt: "", width: 44, height: 44 }), h("span", { text: "InFlite" }));
+  const card = qr ? qrCard("alone") : last ? rememberedCard(last, true) : signinCard(true);
+  card.classList.add("signin-panel");
+  if (!qr) {
+    const destination = to && h("div.signin-destination", {}, h("img", { src: appIcon(S.signFor.app), alt: "", width: 28, height: 28 }), h("span", { text: `Continue to ${to}` }));
+    const title = h("h1", { text: last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in to InFlite" });
+    card.prepend(h("div.signin-intro", {}, destination, last ? h("div.signin-identity", {}, avatar(last, true), h("div", {}, title, h("p.signin-email", { text: last.email })))
+      : [title, h("p.signin-lead", { text: "One account for all your apps." })]));
+    card.append(last ? h("div.signin-switch", {}, notYouLine(), S.left && forgetLine(last))
+      : h("p.signin-join", {}, S.join?.open || S.join?.ok ? "New here? " : "Have an invite? ", h("button.link", { type: "button", onclick: () => gate("join") }, S.join?.open || S.join?.ok ? "Create your account" : "Join InFlite")));
+  }
+  const phone = h("button.link.signin-phone", { type: "button", id: "qrask", "aria-expanded": !!qr, onclick: () => {
+    S.qrAsk = !S.qrAsk;
+    if (S.qrAsk) stopAutofill();
+    anew(() => { render(); if (S.qrAsk) $("#qrc")?.focus({ preventScroll: true }); else $("#qrask")?.focus({ preventScroll: true }); });
+  } }, qr ? "Use a password or passkey instead" : "Sign in with your phone");
+  if (qr) { card.setAttribute("tabindex", "-1"); card.setAttribute("aria-label", "Sign in with your phone"); }
+  return [h("div.signin-shell", {}, h("header.signin-header", {}, brand, backButton(r)), h("div.signin-stage", {}, r(card), (QR_WIDE.matches || QR_ASK.matches) && phone))];
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
 // nothing said: the line kept, empty)
@@ -2785,41 +2810,44 @@ async function joinState() {
 function cardTo(old, nu) {
   morph(old, () => { old.className = nu.className + (old.classList.contains("rise") ? " rise" : ""); old.replaceChildren(...nu.childNodes); });
 }
-function signinCard() {
+function signinCard(refined = false) {
   const said = h("p.said", { role: "alert" });
-  const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true,
+  const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true, placeholder: "you@example.com",
     onchange: () => saltSoon(email.value) });
-  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: () => { warmUp(); saltSoon(email.value); } });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, placeholder: "Enter your password", onfocus: () => { warmUp(); saltSoon(email.value); } });
   const go = h("button.btn" + (passkeysWork() ? ".quiet" : ""), { type: "submit" }, "Sign in");
-  const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), go);
-  const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon("face", 21, 1.9), "Sign in with a passkey");
+  const forgot = h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?");
+  const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), refined && forgot, go);
+  const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon(refined ? "key" : "face", 21, 1.9), "Sign in with a passkey");
   if (pk) passkeySoon();
   startAutofill(email, (o, a) => withPasskey(pk || go, said, () => passkeySignedIn(o, a)));
-  return h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form,
-    h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
+  return h("div.signin.glass", {}, pk, pk && refined && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." }), pk && h("div.or", { text: refined ? "or use your password" : "or with your email" }), form,
+    !refined && forgot, said);
 }
 // You, signed in here before: your passkey first, if that's how you did (the password a tap away), or your password, your
 // email known (a passkey offered in its keyboard too, and a button for one)
-function rememberedCard(l) {
+function rememberedCard(l, refined = false) {
   const said = h("p.said", { role: "alert" }), can = passkeysWork(), byKey = can && l.way === "passkey" && (related || l.rp === APPS_RP);
   const pw = h("input", { type: "password", name: "password", autocomplete: "current-password webauthn", required: true, onfocus: () => { warmUp(); saltSoon(l.email); } });
   const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(l.email, null, pw, go, said); } },
     h("input.vh", { type: "email", autocomplete: "username", value: l.email, tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
-  const pwBox = h("div.pwbox", { hidden: byKey }, form);
+  const forgot = h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?");
+  const pwBox = h("div.pwbox", { hidden: byKey, id: "signin-password" }, form, refined && forgot);
+  const hint = refined && byKey && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." });
   const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
-    icon("face", 21, 1.9), byKey ? "Continue with your passkey" : "Sign in with a passkey");
+    icon(refined ? "key" : "face", 21, 1.9), byKey ? (refined ? "Continue with a passkey" : "Continue with your passkey") : "Sign in with a passkey");
   if (can) startAutofill(pw, (o, a) => withPasskey(key, said, () => passkeySignedIn(o, a)));
   if (byKey) passkeySoon(l.id);
   const card = h("div.signin.glass.remembered", {},
-    byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
-    byKey ? [key, pwBox] : [pwBox, key],
-    byKey && h("button.link.usepw", { type: "button", onclick: (e) => {
+    !refined && byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
+    byKey ? [key, hint, pwBox] : [pwBox, key],
+    byKey && h(refined ? "button.btn.quiet.usepw" : "button.link.usepw", { type: "button", "aria-expanded": "false", "aria-controls": "signin-password", onclick: (e) => {
       const open = pwBox.hidden, b = e.currentTarget;
-      morph(card, () => { pwBox.hidden = !open; b.textContent = open ? "Use your passkey instead" : "Use your password instead"; key.classList.toggle("quiet", open); go.classList.toggle("quiet", !open); });
+      morph(card, () => { pwBox.hidden = !open; b.textContent = open ? "Use your passkey instead" : (refined ? "Use password" : "Use your password instead"); b.setAttribute("aria-expanded", String(open)); if (hint) hint.hidden = open; key.classList.toggle("quiet", open); go.classList.toggle("quiet", !open); });
       if (open) pw.focus();
-    } }, "Use your password instead"),
-    h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
+    } }, refined ? "Use password" : "Use your password instead"),
+    !refined && forgot, said);
   return card;
 }
 // (not you: that account forgotten here, and the usual sign-in)

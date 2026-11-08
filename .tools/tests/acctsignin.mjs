@@ -59,7 +59,7 @@ ok(l1?.email === 'rowan@example.com' && l1.name === 'Rowan Hale' && l1.handle ==
 ok(await signOut(A), 'signing out: dusk over the sky');
 await A.p.waitForSelector('main .signin.remembered', { timeout: 10000 }).catch(() => {});
 const r1 = await text(A);
-ok(/Welcome back, Rowan/.test(r1) && /@rowan/.test(r1) && /Forget rowan@example\.com on this device/.test(r1) && !(await A.p.$('main .signin input[name=email]')),
+ok(/Welcome back, Rowan/.test(r1) && /rowan@example\.com/.test(r1) && /Forget rowan@example\.com on this device/.test(r1) && !(await A.p.$('main .signin input[name=email]')),
   'signed out: "Welcome back, Rowan", no email to type, and Forget … on this device', r1.slice(0, 160));
 await shot(A, '01-remembered');
 // the password field: its eye, and Caps Lock said before a password typed in capitals is wrong
@@ -86,7 +86,7 @@ await A.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await A.p.$('main .hero')) && await A.p.evaluate(() => window.__dawn), 'the password alone signs you back in, as dawn breaks over the sky');
 await signOut(A);
 await A.p.click('main .notyou'); await A.p.waitForSelector('main .signin input[name=email]', { timeout: 10000 }).catch(() => {});
-ok(!!(await A.p.$('main .signin input[name=email]')) && !(await last(A)) && /Your account/.test(await text(A)), 'Not you?: forgotten, and the usual sign-in');
+ok(!!(await A.p.$('main .signin input[name=email]')) && !(await last(A)) && /Sign in to InFlite/.test(await text(A)), 'Not you?: forgotten, and the usual sign-in');
 
 // ---- 2. A passkey in the keyboard: asked for as the card's drawn; the passkey button still works past it ----
 const autofill = await A.p.evaluate(() => PublicKeyCredential.isConditionalMediationAvailable?.());
@@ -118,12 +118,12 @@ const l3 = await last(B);
 ok(l3?.way === 'passkey' && !!l3.id, 'remembered as signed in with a passkey, and which', JSON.stringify(l3));
 await signOut(B);
 const r2 = await text(B, 'main .signin');
-ok(/Last time, you used a passkey/.test(r2) && /Continue with your passkey/.test(r2) && !(await B.p.isVisible('main .signin input[name=password]')), 'signed out: Continue with your passkey, the password out of the way', r2);
+ok(/Welcome back/.test(r2) && /Continue with a passkey/.test(r2) && !(await B.p.isVisible('main .signin input[name=password]')), 'signed out: Continue with your passkey, the password out of the way', r2);
 await shot(B, '03-remembered-passkey');
 await B.p.click('main .signin .usepw'); await settle(B, 600);
 ok(await B.p.isVisible('main .signin input[name=password]') && /Use your passkey instead/.test(await text(B, 'main .signin')), 'Use your password instead: there, a tap away');
 await B.p.click('main .signin .usepw'); await settle(B, 600);
-await B.p.click('main .signin .btn:has-text("Continue with your passkey")');
+await B.p.click('main .signin .btn:has-text("Continue with a passkey")');
 await B.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await B.p.$('main .hero')) && /Rowan Hale/.test(await text(B)), 'the passkey signs you in');
 
