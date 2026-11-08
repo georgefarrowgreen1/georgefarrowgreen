@@ -1,3 +1,4 @@
+import { requestLocation } from "../location.js";
 // Weather's state and pipeline under the roof (One roof, spec §7.1, §7.2, D9): a port of weather/app.js's, with the same
 // storage keys and shapes (no new key), guarded by roofwxcore.test against app.js's same-named functions. The hub's
 // branch of app.js throughout (InFlite owns sign-in, notifications and You): stand-ins never go to the account, nothing
@@ -278,6 +279,7 @@ function render() {
 function opened() {
   if (!P.shown || !P.fw?.visible?.()) return;
   if (Date.now() - P.pulledAt > 60e3) { P.pulledAt = Date.now(); sync.pull().catch(() => {}); }
+  refreshLocation();
   check(true);
   tickOn();
 }
@@ -292,6 +294,7 @@ function tickOn() {
   if (P.tick || !P.shown) return;
   P.tick = setInterval(() => {
     if (!P.shown || !P.fw?.visible?.()) { tickOff(); return; }
+    refreshLocation();
     check();
     if (P.base) render();
   }, 60e3);
@@ -306,22 +309,28 @@ export function shown(on) {
   opened();
 }
 async function boot() {
+  const owner = P.fw;
   P.checkedAt = Date.now();
-  if (!S.places.length) await firstPlace();
+  if (!S.places.length) {
+    const found = await locate(true);
+    if (P.fw !== owner) return;
+    if (!P.shown || !P.fw?.visible?.()) { P.booted = false; return; }
+    if (!found) await firstPlace();
+    if (P.fw !== owner) return;
+  } else locate(true);
   if (!S.wx && !S.loading) go();
-  // (My Location kept current, quietly, if it's allowed; and its name found if it couldn't be when saved)
-  if (place()?.gps && await granted()) locate(true);
+  // Find the name if it could not be found when saved.
   const unnamed = S.places.find((x) => x.gps && x.name === "My Location");
   if (unnamed) nameOf(unnamed.lat, unnamed.lon, { live: false }).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); placeChanged(); } }).catch(() => {});
   P.pulledAt = Date.now();
   sync.pull().catch(() => {});
   tickOn();
 }
-const granted = async () => { try { return (await globalThis.navigator?.permissions?.query({ name: "geolocation" }))?.state === "granted"; } catch (_) { return false; } };
-// first time: your location if you've already allowed it, else roughly where you are (from your connection), else
-// London (a stand-in at InFlite: never kept with the account)
+function refreshLocation() {
+  if (P.shown && P.fw?.visible?.() && S.places.some((p) => p.gps || p.approx || p.standin)) locate(true);
+}
+// If location is unavailable: roughly where you are from the connection, then London as a stand-in.
 async function firstPlace() {
-  if (await granted() && await locate(true)) return;
   try {
     const r = await fetch("/api/weather/where", { signal: AbortSignal.timeout(4000) });
     const j = r.ok ? await r.json() : null;
@@ -469,13 +478,16 @@ export async function glanceAll() {
 export async function locate(quiet = false) {
   const geo = globalThis.navigator?.geolocation;
   if (!geo) { if (!quiet) P.fw?.toast?.("Location isn’t available in this browser."); return null; }
+  if (P.locating) return null;
+  const owner = P.fw;
   P.locating = true;
   try {
-    const pos = await new Promise((ok, no) => geo.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
+    const pos = await requestLocation(quiet);
+    if (!pos || P.fw !== owner || !P.shown || !P.fw?.visible?.()) return null;
     // (to three decimal places, about 100 m: all a forecast needs, and nothing nearer sent anywhere, or kept)
     const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps);
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
-    const mine = !quiet || !S.places.length || !!place()?.gps, same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
+    const mine = !quiet || !S.places.length || !!(place()?.gps || place()?.approx || place()?.standin), same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
     // (My Location's notifications, if it has any, follow it)
     const named = (name) => {
       const n = S.settings.notify, moved = (q) => q?.gps && (cell(q.lat, q.lon) !== cell(lat, lon) || q.name !== name);

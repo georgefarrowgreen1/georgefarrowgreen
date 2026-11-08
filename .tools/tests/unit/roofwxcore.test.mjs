@@ -425,3 +425,29 @@ test("a change sends the same PUT body app.js's mine() would, from the same stor
     await step;
   } finally { offline(); core.stop(); }
 });
+
+test("opening Weather requests location with an approximate place already saved, then updates My Location", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  let calls = 0, latitude = 51.501234;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {
+    permissions: { query: async () => ({ state: "prompt" }) },
+    geolocation: { getCurrentPosition(ok) { calls++; ok({ coords: { latitude, longitude: -0.141234 } }); } },
+  } });
+  reset({ "wx:places": [{ name: "London", lat: 51.5, lon: -0.1, approx: true }, { name: "York", lat: 53.96, lon: -1.08 }], "wx:cur": 0 });
+  const owner = { ...fw(), visible: () => true };
+  try {
+    core.start(owner); core.shown(true);
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(calls, 1, "opening calls geolocation before permission was granted");
+    assert.equal(core.place().gps, true, "the approximate forecast becomes My Location");
+    assert.equal(core.place().lat, 51.501, "only rounded coordinates are kept");
+    latitude = 52.123456;
+    await core.locate(false);
+    assert.equal(core.place().lat, 52.123);
+    assert.equal(core.S.places.filter((p) => p.gps).length, 1);
+    assert.ok(core.S.places.some((p) => p.name === "York"), "saved places remain available");
+  } finally {
+    core.stop();
+    if (original) Object.defineProperty(globalThis, "navigator", original); else delete globalThis.navigator;
+  }
+});

@@ -1,3 +1,4 @@
+import { requestLocation } from "./location.js";
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
 import { load, due, extrasDue, searchPlaces, nameOf, store, keepSafe, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
@@ -1273,12 +1274,11 @@ async function start() {
     if (have >= 0) { S.cur = have; savePlaces(); }
     else if (!S.places.length || confirm(`Add “${p.name}” to your places?`)) addPlace(p);
   }
+  // Ask on opening, including when an approximate or saved place is already shown.
+  const locating = locate(true);
   let located = false;
   if (!S.places.length) {
-    // first time: your location if you've already allowed it, else roughly where you are (from your connection), else London
-    let granted = false;
-    try { granted = (await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted"; } catch (_) {}
-    located = granted && await locate(true);
+    located = await locating;
     if (!located) try {
       const r = await fetch("/api/weather/where", { signal: AbortSignal.timeout(4000) });
       const j = r.ok ? await r.json() : null;
@@ -1288,8 +1288,6 @@ async function start() {
   }
   // (found, it's asked for already)
   if (!located) go();
-  // keep "My Location" current, quietly, if you've allowed it (what was kept shows meanwhile)
-  if (!located && place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
   // and if its name couldn't be found when it was saved, try again from where it is (no need to ask for the location)
   const unnamed = !located && S.places.find((x) => x.gps && x.name === "My Location");
   if (unnamed) nameOf(unnamed.lat, unnamed.lon, { live: false }).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
@@ -1412,6 +1410,7 @@ let newApp = false, checkedAt = 0;
 function opened() {
   if (document.visibilityState !== "visible") return;
   if (S.pullNext || Date.now() - pulledAt > 60e3) { S.pullNext = false; pull(); }
+  refreshLocation();
   check(true);
   keepNotify();
 }
@@ -3269,13 +3268,16 @@ const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCa
 /* ---------- places ---------- */
 // (My Location's position, to three decimal places: locate, and start for one kept from before)
 const r3 = (v) => Math.round(v * 1e3) / 1e3;
-// (after: what's done once it's found, before the page turns to where you are: Places closed, say → a promise kept once
-// it has; not before, so where it can't be found, its search is still there)
+function refreshLocation() {
+  if (document.visibilityState === "visible" && S.places.some((p) => p.gps || p.approx || p.standin)) locate(true);
+}
+// after closes Places once the location is found, before turning to its forecast.
 async function locate(quiet = false, after = null) {
   if (!navigator.geolocation) { if (!quiet) toast("Location isn't available in this browser."); return false; }
   const btn = $("locate-btn"); btn.classList.add("busy");
   try {
-    const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
+    const pos = await requestLocation(quiet);
+    if (!pos) return false;
     // (to three decimal places, about 100 m, from here on: all a forecast needs, the hills and valleys in it included,
     // and nothing nearer than that sent anywhere, or kept)
     const lat = r3(pos.coords.latitude), lon = r3(pos.coords.longitude), before = S.places.find((x) => x.gps), gone = after ? after() : Promise.resolve();
@@ -3283,7 +3285,7 @@ async function locate(quiet = false, after = null) {
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
     // (found quietly, as it's opened: the place being looked at stays the one looked at; and still in the same square
     // of the forecast's, what's being asked for already is what's wanted)
-    const mine = !quiet || !S.places.length || !!place()?.gps, same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
+    const mine = !quiet || !S.places.length || !!(place()?.gps || place()?.approx || place()?.standin), same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
     // (My Location's notifications, if it has any, follow it)
     const named = (name) => {
       const n = S.settings.notify, moved = (q) => q?.gps && (cell(q.lat, q.lon) !== cell(lat, lon) || q.name !== name);
@@ -3721,8 +3723,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.88";
-const NEWS = "Rain alerts are checked fairly for everyone, with up to ten devices per account";
+const BUILD = "1.89";
+const NEWS = "Weather asks for your location on opening and keeps My Location up to date";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -4703,6 +4705,7 @@ function wire() {
     // (and the places beside it, their weather now and their whole pages, drawn again for the minute when it's idle)
     nearbySoon();
   }, 60e3);
+  setInterval(refreshLocation, 60e3);
 }
 
 start();

@@ -22,7 +22,7 @@ export const connector = {
   files: [
     "/weather/roof/weather.js", "/weather/roof/connector.js", "/weather/roof/core.js", "/weather/roof/sync.js",
     "/weather/roof/radarview.js", "/weather/roof/now.js", "/weather/roof/wxui.js", "/weather/roof/wxwarn.js",
-    "/weather/data.js", "/weather/insights.js", "/weather/format.js", "/weather/codes.js", "/weather/climate.js",
+    "/weather/location.js", "/weather/data.js", "/weather/insights.js", "/weather/format.js", "/weather/codes.js", "/weather/climate.js",
     "/weather/sky.js", "/weather/skill.js", "/weather/solar.js", "/weather/official.js", "/weather/agree.js",
     "/weather/account.js", "/weather/send.js", "/weather/charts.js", "/weather/icons.js",
     "/weather/roof/weather.css", "/weather/roof/wxcore.css", "/weather/roof/wxsettings.css", "/weather/roof/radar.css",
