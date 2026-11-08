@@ -19,6 +19,7 @@
 // Not here (S2-D7): the account hand-off (openAccount) and Appearance: You has them; notifications are You's.
 import { A, P, S, TODAY, U, ZONES, addDays, isSet, pace, plural, setActs, dropFile, fileKey, sumOf, weight, dayShort, estimate } from "./x.js";
 import { paceOf } from "../ui.js";
+import { createExperimentalControl, experimentalLogo } from "../rhythm2-view.js";
 
 export const PAGES = Object.freeze(["numbers", "units", "nights", "devices"]);
 const TITLES = { numbers: "Your Numbers", units: "Units and Maps", nights: "Nights and Check-in", devices: "Devices", garmin: "Garmin Connect", strava: "Strava", health: "Apple Health" };
@@ -125,9 +126,12 @@ export function openSettings(ctx, page = null) {
     h?.close();
     fw.nav.go("/#you=notify");
   });
+  const experimental = createExperimentalControl({coach:core.coach,state:()=>({rhythm:S.rhythm,swaps:S.swaps}),save:patch=>core.saveSettings(patch),owner:()=>S.me?.id,today:()=>TODAY,refresh:()=>{redraw();core.emit?.("plan");},notify:toast});
+  const experimentalRow = ui.row({lead:experimentalLogo(),title:"Experimental",trail:experimental.control});
+  track(experimentalRow,experimental.update);
   const root = el("div", { class: "m-fitness fxs fxs-root" },
     ui.list(["numbers"].map(goRow), { label: "Training" }),
-    ui.list(["units", "nights"].map(goRow), { label: "Preferences" }),
+    ui.list([...["units", "nights"].map(goRow),experimentalRow], { label: "Preferences" }),
     ui.list(["devices"].map(goRow), { label: "Your rides" }),
     ui.list([notifyRow], { label: "Notifications" }),
     foot("Notifications for Fitness are in You, with every app’s."));

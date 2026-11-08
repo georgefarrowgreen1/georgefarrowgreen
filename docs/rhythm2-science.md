@@ -65,5 +65,6 @@ all limit inference. Field interval matching and long-term outcome validation re
 
 Regression checks cover stale/mismatched reviews, session-order changes, ceilings, fractional-minute names, old IDs,
 single outliers, corroborated/trending recovery signals, fatigue expiry, rolling hard-day limits, work-minute budgets,
-growth gating and retained watt targets. Browser checks exercise the explanatory UI and linked research on narrow
-phones and desktop, plus recording, review and opt-out flows.
+growth gating and retained watt targets. The original explanatory UI was replaced in 2.18 by a single Experimental setting. Sources and decision rules
+remain documented here; existing reviews are retained. Browser checks cover the toggle, persisted state, workout
+downloads, error recovery and narrow-phone/desktop layouts.
