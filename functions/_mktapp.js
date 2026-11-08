@@ -14,7 +14,7 @@ export const MARKETS_HOST = "finance.inflite.ai";
 export const isMarkets = (url, env) => (env.MARKETS_HOST || MARKETS_HOST).split(",").includes(url.hostname);
 
 export const MKT_SECURITY = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cloudflareinsights.com wss://streamer.finance.yahoo.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",

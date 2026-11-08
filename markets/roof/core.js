@@ -1,3 +1,4 @@
+import { priceStream } from "../live.js";
 import { quoteSession } from "../session.js";
 // Markets' state and its sums under InFlite's roof (One roof stage 2, spec §4.1, §4.2, S2-D2, D4, D6, D9, D21): a port of
 // markets/app.js's under its own names (roofmkcore.test compares the same-named functions with app.js's on the same
@@ -71,6 +72,7 @@ export function chartSet(k, c) {
 export function stockOpen(sym) {
   const was = P.stock;
   P.stock = sym || null;
+  stream.sync();
   if (!was || was === P.stock) return;
   const held = owned().some((x) => x.symbol === was);
   for (const key of [...S.charts.keys()]) if (key.startsWith(was + ":") && !(held && /:(5d|1mo|1y)$/.test(key))) S.charts.delete(key);
@@ -539,20 +541,30 @@ async function refresh(force = false) {
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])])], gen = P.gen;
   refresh.busy = true;
   try {
-    const was = { ...S.q }, wasOut = unpriced().map((x) => x.symbol).join(), r = await A.quotes(syms);
+    const r = await A.quotes(syms);
     if (gen !== P.gen) return;
-    Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates);
-    S.pricesAt = Date.now();
-    keep();
-    if (force) return;
-    if (unpriced().map((x) => x.symbol).join() !== wasOut && calm()) { emit("list"); return; }
-    emit("quotes", { was });
+    applyPrices(r, force);
+    stream.sync();
   } catch (e) {
     // (a 401: signed out only once the framework's own check says so; else offline a moment, said as old once it is)
     if (gen === P.gen && e.status === 401) lost();
     else if (gen === P.gen) emit("quotes", { was: null });
   } finally { refresh.busy = false; }
 }
+function applyPrices(r, force = false, fromStream = false) {
+  const was = { ...S.q }, wasOut = unpriced().map((x) => x.symbol).join();
+  Object.assign(S.q, stream.merge(r.quotes)); Object.assign(S.fx, r.rates || {});
+  if (!fromStream) S.pricesAt = Date.now();
+  keep();
+  if (force) return;
+  if (unpriced().map((x) => x.symbol).join() !== wasOut && calm()) { emit("list"); return; }
+  emit("quotes", { was });
+}
+export const liveEnabled = () => !!S.me && store.get(`live:${S.me.id}`) === true;
+export function setLiveEnabled(on) { if (S.me) store.set(`live:${S.me.id}`, !!on); stream.sync(); }
+const stream = priceStream({ quotes: () => S.q, symbols: () => [...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])],
+  enabled: liveEnabled, visible: () => !!S.me && P.on && !!P.fw?.visible?.(),
+  update: (quotes) => applyPrices({ quotes }, false, true) });
 // (a sign-in Markets was told is gone: the framework asks the session; signed out → stop, kept → nothing)
 async function lost() {
   const out = await P.fw?.session?.lost?.().catch(() => false);
@@ -600,6 +612,7 @@ function loadMe(gen) {
     take(m);
     S.pricesAt = Date.now(); S.opening = 0; S.loading = false; S.err = null;
     keep();
+    stream.sync();
     emit("loading", false); emit("error", null); emit("me");
     loadYears(); loadPaid();
     if (P.on && (S.news == null || Date.now() - (S.newsAt || 0) > 15 * 60e3)) loadNews();
@@ -616,6 +629,7 @@ export function retry() {
   return loadMe(P.gen);
 }
 export function stop() {
+  stream.stop();
   shown(false);
   for (const f of P.offs.splice(0)) f();
   P.gen++; P.fw = null; P.sheet = false; P.ordering = 0; P.orderLost = false; P.orderQ = null; P.stock = null; P.sec = "today";
@@ -629,14 +643,15 @@ export function shown(v) {
   P.on = v;
   clearInterval(P.timer); P.timer = 0;
   for (const f of P.offs.splice(0)) f();
-  if (!v) { P.away = Date.now(); if (P.sec === "news") leftNews(); return; }
+  if (!v) { stream.stop(); P.away = Date.now(); if (P.sec === "news") leftNews(); return; }
   const fw = P.fw;
   const tick = () => { if (P.on && fw?.visible?.()) refresh(); };
   P.timer = setInterval(tick, 15000);
+  stream.sync();
   const news = () => { if (S.me && Date.now() - (S.newsAt || 0) > 15 * 60e3) loadNews(); };
   if (fw?.on) {
-    P.offs.push(fw.on("visible", () => { if (!P.on) return; if (Date.now() - P.away >= 15e3) refresh(); news(); }));
-    P.offs.push(fw.on("hidden", () => { P.away = Date.now(); if (P.on && P.sec === "news") leftNews(); }));
+    P.offs.push(fw.on("visible", () => { if (!P.on) return; stream.sync(); if (Date.now() - P.away >= 15e3) refresh(); news(); }));
+    P.offs.push(fw.on("hidden", () => { stream.stop(); P.away = Date.now(); if (P.on && P.sec === "news") leftNews(); }));
   }
   if (P.away && Date.now() - P.away >= 15e3) refresh();
   news();

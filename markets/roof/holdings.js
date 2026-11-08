@@ -213,10 +213,13 @@ accountView.sheet = "mk-account";
 
 // About these prices (S2-D7: the words from Markets' settings, app.js 2766-2769)
 function aboutView() {
+  const sw = h("button.sw", { type: "button", role: "switch", "aria-label": "Live prices (experimental)", "aria-checked": String(core.liveEnabled()) });
+  sw.onclick = () => { core.setLiveEnabled(!core.liveEnabled()); sw.setAttribute("aria-checked", String(core.liveEnabled())); };
   return [h("div.shead", {}, h("small", { text: "About These Prices" }), closeBtn()),
     h("div.facts", {},
       h("div.fact", {}, h("span", { text: "Values in" }), h("b", { text: "Pounds" }), h("i", { text: "Holdings in other currencies at today's rate" })),
-      h("div.fact", {}, h("span", { text: "Prices" }), h("b", { text: "Yahoo Finance" }), h("i", { text: "Up to 20 min behind" }))),
+      h("div.fact", {}, h("span", { text: "Prices" }), h("b", { text: "Yahoo Finance" }), h("i", { text: "Delays vary by exchange" }))),
+    h("div.srow", {}, h("span", {}, "Live prices (experimental)", h("small", { text: "US shares and crypto. Sends followed symbols directly to Yahoo on this device; London stays delayed." })), sw),
     h("p.hint", { text: "Markets shows prices and news to help you follow your money. It isn't financial advice." })];
 }
 aboutView.sheet = "mk-about";

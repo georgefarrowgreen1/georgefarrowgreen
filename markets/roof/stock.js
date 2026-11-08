@@ -63,7 +63,7 @@ function yoursPart(sym, held, q) {
   return h("div", { "data-el": "yours" }, h("div.ystats", {},
       stat("Yours", h("b.num", { "data-val": sym, text: money(v, "GBP", v >= 1e5 ? 0 : 2) }), h("span", { text: `${fmt(held.qty, held.qty % 1 ? 2 : 0)} shares` })),
       stat("Today", h("b", { class: `num ${tone(d)}`, "data-dg": sym, text: signed(d) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": sym, text: pct(q.chgPct) })),
-      g != null ? stat("Since bought", h("b", { class: `num ${tone(g)}`, text: signed(g, "GBP", Math.abs(g) >= 1e4 ? 0 : 2) }), h("span", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) }))
+      g != null ? stat("Since bought", h("b", { class: `num ${tone(g)}`, "data-gain": sym, text: signed(g, "GBP", Math.abs(g) >= 1e4 ? 0 : 2) }), h("span", { class: `num ${tone(g)}`, "data-gain-pct": sym, text: pct((g / paid) * 100, 1) }))
         : stat("Since bought", h("button.inline", { type: "button", onclick: () => pushSheet("holding", sym), text: "Add cost" }), h("span", { text: "to see it" }))),
     h("p.ynote", { text: [held.account ? `In your ${ACCOUNT_NAME[held.account]}` : null, held.cost != null ? `${held.buys > 1 ? "average" : "paid"} ${priceSaid(q, held.cost)} a share` : null, dv >= 0.5 ? `${money(dv, "GBP", 0)} of dividends counted` : null].filter(Boolean).join(" · ") }));
 }

@@ -1,3 +1,4 @@
+import { priceStream } from "./live.js";
 import { quoteSession } from "./session.js";
 // Markets: your money and the markets, said simply. Three screens on a tab bar:
 //
@@ -1129,8 +1130,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.18";
-const NEWS = "Page zoom is blocked consistently across all InFlite apps";
+const BUILD = "2.19";
+const NEWS = "Optional keyless streaming prices for US shares and crypto";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1768,7 +1769,7 @@ function figOf(x) {
   if (S.fig !== "back") return h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) });
   if (x.cost == null || !x.cost) return h("small", { class: "num flat-t", text: "–" });
   const paid = paidFor(x), g = valueOf(x) - paid + (divsOf(x) || 0);
-  return h("small", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) });
+  return h("small", { class: `num ${tone(g)}`, "data-gain-pct": sym, text: pct((g / paid) * 100, 1) });
 }
 function emptyView() {
   const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
@@ -2604,7 +2605,7 @@ function yoursPart(sym, held, q) {
   return h("div", { id: "yours" }, h("div.ystats", {},
       stat("Yours", h("b.num", { "data-val": sym, text: money(v, "GBP", v >= 1e5 ? 0 : 2) }), h("span", { text: `${fmt(held.qty, held.qty % 1 ? 2 : 0)} shares` })),
       stat("Today", h("b", { class: `num ${tone(d)}`, "data-dg": sym, text: signed(d) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": sym, text: pct(q.chgPct) })),
-      g != null ? stat("Since bought", h("b", { class: `num ${tone(g)}`, text: signed(g, "GBP", Math.abs(g) >= 1e4 ? 0 : 2) }), h("span", { class: `num ${tone(g)}`, text: pct((g / paid) * 100, 1) }))
+      g != null ? stat("Since bought", h("b", { class: `num ${tone(g)}`, "data-gain": sym, text: signed(g, "GBP", Math.abs(g) >= 1e4 ? 0 : 2) }), h("span", { class: `num ${tone(g)}`, "data-gain-pct": sym, text: pct((g / paid) * 100, 1) }))
         : stat("Since bought", h("button.inline", { type: "button", onclick: () => pushSheet(editView, sym), text: "Add cost" }), h("span", { text: "to see it" }))),
     h("p.ynote", { text: [held.account ? `In your ${ACCOUNT_NAME[held.account]}` : null, held.cost != null ? `${held.buys > 1 ? "average" : "paid"} ${priceSaid(q, held.cost)} a share` : null, dv >= 0.5 ? `${money(dv, "GBP", 0)} of dividends counted` : null].filter(Boolean).join(" · ") }));
 }
@@ -3104,8 +3105,9 @@ function settingsView() {
     h("div.rows", {},
       h("button.srow", { type: "button", onclick: () => openAccount("notify-markets") }, h("span", { text: "Notifications" }), h("i", { text: IFL.hub.on ? "In You" : S.pushOn ? "On here" : "Off here" })),
       h("div.srow", {}, h("span", {}, "Evening Wrap", h("small", { text: "How your day went, once your markets close" })), wrapSwitch()),
+      h("div.srow", {}, h("span", {}, "Live prices (experimental)", h("small", { text: "US shares and crypto. Sends followed symbols directly to Yahoo on this device; London stays delayed." })), liveSwitch()),
       h("div.srow", {}, h("span", { text: "Values in" }), h("i", { text: "Pounds" })),
-      h("div.srow", {}, h("span", { text: "Prices" }), h("i", { text: "Yahoo Finance, up to 20 min behind" })),
+      h("div.srow", {}, h("span", { text: "Prices" }), h("i", { text: "Yahoo Finance; delays vary by exchange" })),
       !IFL.hub.on && h("button.srow.danger", { type: "button", onclick: signOutHere }, "Sign Out")),
     h("p.hint", { style: "text-align:center", text: "Markets shows prices and news to help you follow your money. It isn't financial advice." })];
 }
@@ -3207,6 +3209,7 @@ function signedOut() { forget(); closeSheet(); welcome(); }
 // income plan), let go: signed out here, or anywhere else (Sign Out Other Devices, a new password, another app), as
 // the account's answer or a price refresh then says; or another account signed in
 function forget() {
+  stream.stop();
   for (const k of ["last", "years", "recent", "newsRead", "newsHide", "newsSeen", "plan"]) store.del(k);
   S.list = []; S.years = {}; S.yearsAt = 0; S.isa = null; S.paid = null; S.inc = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear();
   S.goal = 100; S.add = 0; S.reinvest = true; loadIncome.failed = 0;
@@ -3248,6 +3251,15 @@ async function loadIncome(force = false) {
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
 const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");
+const liveEnabled = () => !!S.me && store.get(`live:${S.me.id}`) === true;
+const stream = priceStream({ quotes: () => S.q, symbols: () => [...INDICES, ...S.list.map((x) => x.symbol), ...document.querySelectorAll("[data-session]")].map((x) => typeof x === "string" ? x : x.dataset.session),
+  enabled: liveEnabled, visible: () => !!S.me && !document.hidden,
+  update: (quotes) => applyPrices({ quotes }, false, true) });
+function liveSwitch() {
+  const sw = h("button.sw", { type: "button", role: "switch", "aria-label": "Live prices (experimental)", "aria-checked": String(liveEnabled()) });
+  sw.onclick = () => { store.set(`live:${S.me.id}`, !liveEnabled()); sw.setAttribute("aria-checked", String(liveEnabled())); stream.sync(); };
+  return sw;
+}
 // Prices again: every 15 seconds while the app's open and in front, each change flashed where it shows
 async function refresh(force = false) {
   // (one at a time: a slow answer isn't asked for again over itself; one that's needed now, after a change, still is)
@@ -3256,10 +3268,19 @@ async function refresh(force = false) {
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(stock ? [stock] : [])])];
   refresh.busy = true;
   try {
-    const was = { ...S.q }, wasT = totals(), wasOut = unpriced().map((x) => x.symbol).join(), r = await A.quotes(syms);
-    Object.assign(S.q, r.quotes); Object.assign(S.fx, r.rates);
+    applyPrices(await A.quotes(syms), force);
+    stream.sync();
+  } catch (e) {
+    // (signed out somewhere else meanwhile; else offline a moment, tried again in half a minute, the prices said as old
+    // once they are)
+    if (e.status === 401) signedOut(); else sayLine();
+  } finally { refresh.busy = false; }
+}
+function applyPrices(r, force = false, fromStream = false) {
+    const was = { ...S.q }, wasT = totals(), wasOut = unpriced().map((x) => x.symbol).join();
+    Object.assign(S.q, stream.merge(r.quotes)); Object.assign(S.fx, r.rates || {});
     // (when they came, by this phone's clock, as their age is told by it: never the server's, a few minutes apart from it)
-    S.pricesAt = Date.now();
+    if (!fromStream) S.pricesAt = Date.now();
     store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
     if (force) return;
     sayLine();
@@ -3267,7 +3288,7 @@ async function refresh(force = false) {
     // (one of yours now in your total that wasn't (its price, or its currency's rate, come in), or the other way: all
     // said again, behind)
     if (unpriced().map((x) => x.symbol).join() !== wasOut && S.tab !== "news" && calm()) { render(false); return; }
-    for (const s of syms) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
+    for (const s of Object.keys(r.quotes)) { const a = was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
     dispatchEvent(new Event("mk:prices"));
     const T = totals(), pv = $("#pv");
     if (pv && Math.abs(T.value - wasT.value) > 0.004) {
@@ -3285,11 +3306,6 @@ async function refresh(force = false) {
         portfolioChart.pts = pts;
       }
     }
-  } catch (e) {
-    // (signed out somewhere else meanwhile; else offline a moment, tried again in half a minute, the prices said as old
-    // once they are)
-    if (e.status === 401) signedOut(); else sayLine();
-  } finally { refresh.busy = false; }
 }
 // one symbol's numbers, wherever they show, said afresh and flashed up or down
 function paint(sym, up) {
@@ -3302,7 +3318,11 @@ function paint(sym, up) {
     el.textContent = el.id === "rpct" && q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(q.chgPct)); });
   if (held?.qty > 0 && valueOf(held) != null) {
     document.querySelectorAll(`[data-val="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = money(valueOf(held)); flash(el); });
-    document.querySelectorAll(`[data-dg="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = el.tagName === "I" ? `${signed(dayOf(held))} today` : signed(dayOf(held)); });
+    document.querySelectorAll(`[data-dg="${CSS.escape(sym)}"]`).forEach((el) => { el.textContent = el.tagName === "I" ? `${signed(dayOf(held))} today` : signed(dayOf(held)); el.classList.remove("up-t", "down-t", "flat-t"); el.classList.add(tone(dayOf(held))); });
+    const paid = held.cost ? paidFor(held) : null, gain = paid != null ? valueOf(held) - paid + (divsOf(held) || 0) : null;
+    if (gain != null) for (const [attr, text] of [["data-gain", signed(gain, "GBP", Math.abs(gain) >= 1e4 ? 0 : 2)], ["data-gain-pct", pct((gain / paid) * 100, 1)]]) {
+      document.querySelectorAll(`[${attr}="${CSS.escape(sym)}"]`).forEach((n) => { n.textContent = text; n.classList.remove("up-t", "down-t", "flat-t"); n.classList.add(tone(gain)); });
+    }
   }
 }
 
@@ -3427,11 +3447,12 @@ function live() {
   if (live.on) return;
   live.on = true;
   setInterval(refresh, 15000);
+  stream.sync();
   seen();
   setTimeout(() => { if (S.news == null) loadNews(); }, 2500);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) { refresh(); seen(); if (Date.now() - (S.newsAt || 0) > 15 * 60e3) loadNews(); }
-    else if (S.tab === "news") store.set("newsSeen", Date.now());
+    if (!document.hidden) { stream.sync(); refresh(); seen(); if (Date.now() - (S.newsAt || 0) > 15 * 60e3) loadNews(); }
+    else { stream.stop(); if (S.tab === "news") store.set("newsSeen", Date.now()); }
   });
   addEventListener("online", () => refresh());
 }
