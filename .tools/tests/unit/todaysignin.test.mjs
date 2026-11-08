@@ -20,7 +20,8 @@ test('Today’s copy of InFlite’s way in is the template’s, and its mark the
 
 test('Today’s way in is the shared one: its parts by the shared names, in index.html, there without a script', { skip }, () => {
   const html = readFileSync(new URL('index.html', PUB), 'utf8');
-  for (const c of ['ifl-in', 'ifl-top', 'ifl-logo', 'ifl-title', 'ifl-tagline', 'ifl-cta', 'ifl-brand', 'ifl-go', 'ifl-new']) assert.match(html, new RegExp(`class="[^"]*\\b${c}\\b`), c);
+  for (const c of ['ifl-in', 'ifl-top', 'ifl-logo', 'ifl-cta', 'ifl-brand', 'ifl-go', 'ifl-new']) assert.match(html, new RegExp(`class="[^"]*\\b${c}\\b`), c);
+  assert.doesNotMatch(html, /class="[^"]*\b(?:ifl-title|ifl-tagline)\b/, "minimal branded welcome has no title or tagline");
   assert.match(html, /<img src="\/inflite\.svg" alt="" width="22" height="22">Powered by InFlite/);
   assert.match(html, /id="signin" href="https:\/\/auth\.inflite\.ai\/">Sign in</);
 });

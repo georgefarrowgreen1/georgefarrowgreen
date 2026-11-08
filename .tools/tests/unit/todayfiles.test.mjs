@@ -52,9 +52,9 @@ test('its icons are the sizes the manifest and page say, and the manifest is InF
 test('its page is a public one: title, description, og tags, canonical, robots and sitemap', { skip: tfSkip }, () => {
   const html = String(pub('index.html'));
   const meta = (k) => new RegExp(`<meta (?:name|property)="${k}" content="([^"]*)"`).exec(html)?.[1];
-  assert.match(html, /<title>InFlite Today<\/title>/);
+  assert.match(html, /<title>InFlite<\/title>/);
   assert.match(meta('description'), /^Your day from InFlite’s apps on one page/);
-  assert.equal(meta('og:title'), 'InFlite Today');
+  assert.equal(meta('og:title'), 'InFlite');
   assert.equal(meta('og:image'), 'https://inflite.ai/og.png');
   assert.equal(meta('og:url'), 'https://inflite.ai/');
   assert.equal(meta('twitter:card'), 'summary_large_image');
