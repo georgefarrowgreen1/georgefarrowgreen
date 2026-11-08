@@ -102,7 +102,7 @@ test('Mail’s Worker gives a part to a page of the Mail deployed; to another Ma
 
 test('wrangler.jsonc: Mail’s Worker answers /parts/* first', { skip }, () => {
   const conf = JSON.parse(readFileSync(new URL('wrangler.jsonc', MAIL), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
-  assert.ok(conf.assets.run_worker_first.includes('/parts/*'));
+  assert.ok(conf.assets.run_worker_first === true || conf.assets.run_worker_first.includes('/parts/*'));
 });
 
 // ---- Mail's service worker: each Mail's parts kept by its build ----

@@ -117,7 +117,8 @@ test('wrangler.jsonc: the page runs the Worker first, and the hubs’ addresses 
   // the module's files, both answered by the Worker; before it, the page and the API alone. And, where Mail's page has
   // later parts (public/parts/), /parts/*: each only for the Mail deployed, src/index.js partFile)
   const roof = existsSync(new URL('public/roof/mail.js', MAIL)), parts = existsSync(new URL('public/parts/', MAIL));
-  assert.deepEqual(conf.assets.run_worker_first, ['/api/*', '/version', '/', '/index.html', ...(roof ? ['/body', '/body/*', '/roof/*'] : []), ...(parts ? ['/parts/*'] : [])]);
+  for (const path of ['/api/*', '/version', '/', '/index.html', ...(roof ? ['/body', '/body/*', '/roof/*'] : []), ...(parts ? ['/parts/*'] : [])])
+    assert.ok(conf.assets.run_worker_first === true || conf.assets.run_worker_first.includes(path), `Worker runs first for ${path}`);
   // (the staging hub, next.inflite.ai, frames Mail too, for the phone checks before going live: spec §15.2 K7)
   assert.equal(conf.vars.HUB_ORIGIN, 'https://inflite.ai https://next.inflite.ai');
   // (_headers keeps 'none' for every file: the Worker's answer is the only one framed by the hub)

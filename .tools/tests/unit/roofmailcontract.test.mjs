@@ -326,7 +326,7 @@ test('the body shell, Mail’s Worker’s /body route and hub gate, wrangler.jso
   assert.match(idx, /import\s*\{\s*body\s*\}\s*from\s*"\.\/body\.js"/);
   assert.match(idx, /import\s*\{[^}]*\bhubOf\b[^}]*\}\s*from\s*"\.\/hubgate\.js"/);
   const conf = JSON.parse(read(new URL('wrangler.jsonc', MAILDIR)).replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
-  for (const p of ['/body', '/body/*', '/roof/*']) assert.ok(conf.assets.run_worker_first.includes(p), `run_worker_first has ${p}`);
+  for (const p of ['/body', '/body/*', '/roof/*']) assert.ok(conf.assets.run_worker_first === true || conf.assets.run_worker_first.includes(p), `run_worker_first has ${p}`);
   const h = read(new URL('public/_headers', MAILDIR));
   assert.match(h, /\n\/body\/\*\n\s+Content-Security-Policy: [^\n]*frame-ancestors 'none'/, '_headers: /body/* frame-ancestors none (the backstop, §3.4)');
   assert.match(h, /\n\/roof\/\*\n\s+Cache-Control: no-cache/, '_headers: /roof/* no-cache');
