@@ -1,7 +1,7 @@
 // Markets's own API, at finance.inflite.ai only, and only signed in with the site's account (the site's cookie, from
 // Markets's own pages: functions/_markets.js has what's kept and where the prices come from).
 //   GET    /api/markets/me            who's signed in, what you own and follow, their prices, the markets', and the day's rates
-//   GET    /api/markets/quotes?s=A,B  prices again (as the app keeps them fresh, each a minute old at most)
+//   GET    /api/markets/quotes?s=A,B  prices again (as the app keeps them fresh, each cached for 15 seconds)
 //   GET    /api/markets/chart?s=A&r=1d|5d|1mo|1y|5y   a chart over a range
 //   GET    /api/markets/years?s=A,B   each one's year: its week, its dividends, its high and low (for what's worth knowing)
 //   GET    /api/markets/news?s=A,B    the news about them, newest first (each story with its key, k: to read it by)
@@ -56,10 +56,10 @@ const symbolsOf = (request, max = 70) => {
 };
 // (each symbol a request has to ask Yahoo for, not kept or kept too long, counted to the account: a few dozen symbols
 // a request, at the route's pace, would otherwise be thousands of Yahoo's a minute, for symbols no one else asks for.
-// A list of 60, refreshed every minute, asks for about 3,900 an hour. Past it, what's kept, or nothing, till it's
+// A list of 60 and the three indices, refreshed every 15 seconds, asks for about 15,120 an hour. Past it, what's kept, or nothing, till it's
 // earned again)
-const yahoo = (env, u) => ({ ask: () => pace(env, `mkyahoo:${u.id}`, 6000, 3600e3).then(() => true, () => false) });
-// (the markets' answers: kept by the browser a little, as they're the same for everyone a minute at a time)
+const yahoo = (env, u) => ({ ask: () => pace(env, `mkyahoo:${u.id}`, 18000, 3600e3).then(() => true, () => false) });
+// (the markets' answers: kept by the browser a little, as they're the same for everyone for 15 seconds)
 const shared = (o, secs) => { const r = json(o); r.headers.set("Cache-Control", `private, max-age=${secs}`); return r; };
 
 const ROUTES = {
@@ -72,7 +72,7 @@ const ROUTES = {
     const u = await signedIn(request, env);
     await pace(env, `mkquotes:${u.id}`, 600, 3600e3);
     const by = Date.now() + ANSWER_BY, q = await quotes(env, symbolsOf(request, 64), by, yahoo(env, u));
-    return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur), by), at: Date.now() }, 20);
+    return shared({ quotes: q, rates: await rates(env, Object.values(q).map((x) => x.cur), by), at: Date.now() }, 10);
   },
   "GET chart": async ({ request, env }) => {
     const u = await signedIn(request, env);
@@ -81,7 +81,7 @@ const ROUTES = {
     if (!RANGE_NAMES.includes(r)) throw new HttpError(400, "Bad request.");
     const c = await chart(env, s, r);
     if (!c) throw new HttpError(404, "Couldn’t find that one.");
-    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs, v: c.v, o: c.o, h: c.h, l: c.l }, r === "1d" ? 30 : 300);
+    return shared({ symbol: s, range: r, t: c.t, c: c.c, base: c.base, prev: c.prev, price: c.price, cur: c.cur, tz: c.tz, divs: c.divs, v: c.v, o: c.o, h: c.h, l: c.l }, r === "1d" ? 10 : 300);
   },
   "GET years": async ({ request, env }) => {
     const u = await signedIn(request, env);
