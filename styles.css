@@ -108,17 +108,8 @@ svg { display: block; flex: none; }
 }
 
 /* ---------------- the top bar ---------------- */
-.barbg {
-  position: fixed; z-index: 19; top: 0; left: 0; right: 0;
-  height: calc(env(safe-area-inset-top) + 82px);
-  opacity: 0; visibility: hidden;
-  background: linear-gradient(180deg, rgba(10, 12, 18, 0.62), rgba(10, 12, 18, 0.4));
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-mask-image: linear-gradient(#000 76%, transparent);
-  mask-image: linear-gradient(#000 76%, transparent);
-  pointer-events: none;
-}
+/* The name and account buttons carry their own glass. A separate full-width backdrop underneath them leaves
+   a dark horizontal band across the photograph as the page scrolls, especially in iPhone Safari. */
 .bar {
   position: fixed; z-index: 20; top: 0; left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -188,11 +179,11 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
 @keyframes arrive { from { opacity: 0; transform: translateY(12px); } }
 
 /* the scroll's own animations (where the browser has them, they move with the scroll, off the page's thread): the
-   name into the bar, the bar's frosted band and the softened photo in; each line of the hero fading as it reaches
+   name into its glass capsule and the softened photo in; each line of the hero fading as it reaches
    the bar, over the stretch of scroll the script measures for it (app.js) */
 @supports (animation-timeline: scroll()) {
   .bar .mid { animation: capsule linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
-  .barbg, .soft { animation: veil linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
+  .soft { animation: veil linear both; animation-timeline: scroll(root); animation-range: 220px 480px; }
   .hero > * { animation: under linear both; animation-timeline: scroll(root); }
   .hero > .cta { animation-name: under, gone; }
 }
@@ -678,7 +669,6 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 }
 @media (min-width: 900px) {
   .bar { padding: 22px calc(max(0px, (100% - 1120px) / 2) + max(40px, env(safe-area-inset-right, 0px))) 12px calc(max(0px, (100% - 1120px) / 2) + max(40px, env(safe-area-inset-left, 0px))); }
-  .barbg { height: 96px; }
   .page { max-width: 1120px; padding: 0 max(40px, env(safe-area-inset-right, 0px)) 48px max(40px, env(safe-area-inset-left, 0px)); }
   .hero { min-height: 560px; padding-bottom: 32px; }
   .hero h1 { font-size: 80px; }
@@ -740,12 +730,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
     .bg, .soft {
       position: absolute; pointer-events: none;
       height: calc(100vh - 120px); height: calc(100svh - 120px);
-    }
-    /* Keep the blur below the clock/notch as Safari expands or collapses its browser chrome. */
-    .barbg {
-      top: calc(env(safe-area-inset-top) + 12px); height: 70px;
-      -webkit-mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
-      mask-image: linear-gradient(transparent, #000 20%, #000 76%, transparent);
     }
   }
 }

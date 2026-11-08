@@ -87,7 +87,7 @@ function showContent() {
 // same measurements.
 const linked = CSS.supports("animation-timeline: scroll()");
 {
-  const bar = $("#bar"), mid = $(".bar .mid"), veil = [$("#soft"), $(".barbg")], fades = $$(".hero > *"), pageEl = $("#page");
+  const bar = $("#bar"), mid = $(".bar .mid"), veil = [$("#soft")], fades = $$(".hero > *"), pageEl = $("#page");
   const FADE = 64;      // the least scroll a line fades over
   let ranges = [], name = null, queued = false;
   const draw = () => {
@@ -842,7 +842,7 @@ let stills = [];
 function pin() {
   if (pinned !== null) return;
   pinned = scrollY;
-  stills = $$(".bar .mid, .barbg, #soft, .hero > *").map((el) => {
+  stills = $$(".bar .mid, #soft, .hero > *").map((el) => {
     const cs = getComputedStyle(el), was = STILL.map((k) => el.style.getPropertyValue(k));
     for (const k of STILL) el.style.setProperty(k, k === "animation-name" ? "none" : cs.getPropertyValue(k));
     return [el, was];
