@@ -1064,7 +1064,7 @@ test("a ride holds messages, group messages, reactions and requests at do; told 
   assert.ok((await told(rider)).some((x) => x.body === "Sent you 3 messages."), "as ever");
 });
 
-test("what came once the ride was in wasn't held: told as ever, not \"while you rode\", not counted; nor is one held from someone unfriended since", async () => {
+test("what came once the ride was in wasn't held: told as ever, not \"while you rode\", not counted; nor is one held from someone unfriended since", async (t) => {
   pushBurst.clear();
   const ray = await pushOn(await person("Ray Rider"), { names: true }), nia = await person("Nia Ross"), mira = await person("Mira Bell");
   befriend(nia, ray); befriend(mira, ray);
@@ -1090,6 +1090,8 @@ test("what came once the ride was in wasn't held: told as ever, not \"while you 
   await send(sol, rae, { instant: true }); await send(nia, rae, { instant: true });
   assert.equal((await told(rae)).length, 0, "riding");
   run("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)", sol.id, rae.id);
+  // The activity must arrive strictly after the messages, even on a fast CI runner.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 1 });
   rodeIn(rae, began + MIN);
   await tick(env, "http://localhost");
   assert.deepEqual((await told(rae)).map((x) => [x.title, x.body]), [["Nia", "Sent you a message while you rode."]]);
