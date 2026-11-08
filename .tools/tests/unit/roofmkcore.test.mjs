@@ -1,7 +1,7 @@
 // Markets' core under the roof keeps in step with Markets' own page (One roof stage 2, spec S2-D1, S2-D2, S2-D4, S2-D9,
 // §4.2, §9.1 MK): app.js's sums (formatters, your money, income, the ISA, the day's series, the markets' state, what's
 // worth knowing, the news' groups) are taken out of markets/app.js by their own lines and run beside
-// markets/roof/core.js's ports on the same account (fixtures/mk.mjs); the half-minute prices run only between shown(true)
+// markets/roof/core.js's ports on the same account (fixtures/mk.mjs); the 15-second prices run only between shown(true)
 // and shown(false), and only while the page is visible; start(A) → stop → start(B) keeps nothing of A; a kept copy is
 // drawn only for its own account; a 401 stops Markets only once the framework says the sign-in is gone.
 //   node --test .tools/tests/unit/roofmkcore.test.mjs
@@ -129,7 +129,7 @@ const tick = () => new Promise((ok) => setImmediate(ok));
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await tick(); };
 const quotesAsked = () => api.log.filter((c) => c.path === "quotes").length;
 
-test("the half-minute prices only between shown(true) and shown(false), and only while the page is visible (S2-D4)", async (t) => {
+test("the 15-second prices only between shown(true) and shown(false), and only while the page is visible (S2-D4)", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Date.now() });
   NET.acc = account(); NET.status = 0;
   const fw = fakeFw();
@@ -142,8 +142,10 @@ test("the half-minute prices only between shown(true) and shown(false), and only
   assert.equal(quotesAsked(), 0, "not shown: no prices asked for");
   core.shown(true);
   assert.equal(core.live(), true);
-  t.mock.timers.tick(30e3); await settle();
-  assert.equal(quotesAsked(), 1, "shown: asked at half a minute");
+  t.mock.timers.tick(14999); await settle();
+  assert.equal(quotesAsked(), 0, "not before 15 seconds");
+  t.mock.timers.tick(1); await settle();
+  assert.equal(quotesAsked(), 1, "shown: asked at 15 seconds");
   fw.isVisible = false; fw.fire("hidden");
   t.mock.timers.tick(60e3); await settle();
   assert.equal(quotesAsked(), 1, "hidden page: none");

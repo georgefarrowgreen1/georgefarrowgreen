@@ -38,6 +38,7 @@ function stockView(sym, o = {}) {
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
     h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, "data-el": "rpct", text: q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span.mk-t3", { "data-el": "rsaid", text: "today" })),
+    h("p.hint.quote-session", { "data-session": sym, text: core.quoteSession(q, priceSaid, pct) }),
     held?.qty > 0 && valueOf(held) != null ? yoursPart(sym, held, q) : null,
     box, seg, why, h("div", { "data-el": "snews" }), facts(sym, held, q),
     held ? h("div", { "data-el": "buys" }) : null,
@@ -201,7 +202,7 @@ async function stockChart(sym, box, seg) {
     range = r; box.dataset.range = r;
     const key = `${sym}:${r}`;
     box.classList.add("loading");
-    const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 60e3 : 600e3);
+    const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 15e3 : 600e3);
     let c = fresh ? kept.c : null;
     if (!c) { try { c = await A.chart(sym, r); core.chartSet(key, c); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else return back(n, e.message); } }
     if (n !== seq || !box.isConnected) return;

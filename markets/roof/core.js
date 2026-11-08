@@ -1,3 +1,4 @@
+import { quoteSession } from "../session.js";
 // Markets' state and its sums under InFlite's roof (One roof stage 2, spec §4.1, §4.2, S2-D2, D4, D6, D9, D21): a port of
 // markets/app.js's under its own names (roofmkcore.test compares the same-named functions with app.js's on the same
 // data). No DOM here at all: views draw from S, and hear of changes through on(evt). The hub's branch of app.js
@@ -531,11 +532,11 @@ async function loadIncome(force = false) {
 // (drawn again behind only while no Markets sheet is up over it and no reorder is waiting to be kept)
 const calm = () => !P.sheet && !P.ordering;
 export const busy = () => !calm();
-// Prices again: every half a minute while Markets shows and the page is in front; each change flashed where it shows
+// Prices again: every 15 seconds while Markets shows and the page is in front; each change flashed where it shows
 // (mkui.paint, on "quotes")
 async function refresh(force = false) {
   if (!S.me || (!force && (refresh.busy || !P.fw?.visible?.()))) return;
-  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol)])], gen = P.gen;
+  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])])], gen = P.gen;
   refresh.busy = true;
   try {
     const was = { ...S.q }, wasOut = unpriced().map((x) => x.symbol).join(), r = await A.quotes(syms);
@@ -620,8 +621,8 @@ export function stop() {
   P.gen++; P.fw = null; P.sheet = false; P.ordering = 0; P.orderLost = false; P.orderQ = null; P.stock = null; P.sec = "today";
   fresh();
 }
-// Markets shown (true) or not: the half-minute prices only between, while the page is visible; on coming back after
-// half a minute or more, once; the news whenever it's older than a quarter of an hour (S2-D4)
+// Markets shown (true) or not: the 15-second prices only between, while the page is visible; on coming back after
+// 15 seconds or more, once; the news whenever it's older than a quarter of an hour (S2-D4)
 export function shown(v) {
   v = !!v;
   if (v === P.on) return;
@@ -631,13 +632,13 @@ export function shown(v) {
   if (!v) { P.away = Date.now(); if (P.sec === "news") leftNews(); return; }
   const fw = P.fw;
   const tick = () => { if (P.on && fw?.visible?.()) refresh(); };
-  P.timer = setInterval(tick, 30000);
+  P.timer = setInterval(tick, 15000);
   const news = () => { if (S.me && Date.now() - (S.newsAt || 0) > 15 * 60e3) loadNews(); };
   if (fw?.on) {
-    P.offs.push(fw.on("visible", () => { if (!P.on) return; if (Date.now() - P.away >= 30e3) refresh(); news(); }));
+    P.offs.push(fw.on("visible", () => { if (!P.on) return; if (Date.now() - P.away >= 15e3) refresh(); news(); }));
     P.offs.push(fw.on("hidden", () => { P.away = Date.now(); if (P.on && P.sec === "news") leftNews(); }));
   }
-  if (P.away && Date.now() - P.away >= 30e3) refresh();
+  if (P.away && Date.now() - P.away >= 15e3) refresh();
   news();
 }
 export const live = () => P.on && !!P.timer;
@@ -649,3 +650,5 @@ export { A, INDICES, INDEX_NAMES, MARKET_OF, BENCHES, ACCOUNTS, ACCOUNT_NAME, PR
   received, DIVIDEND_ALLOWANCE, taxMonths, growthOf, monthSaid, aroundDay, aroundMonth, isaYear, tracksIsa, daySeries, marketSaid, clock, oldSaid, lineSaid, pricesAtSaid, insights, rangeSeries, dayKey,
   TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, newsKey, aboutIt, sansStop, newsSeen, newsHidden, newsRead, newsGroups, newsNew, storyId, storyOf, leftNews, loadNews, recent, follow, removeHolding, alertSet,
   changed, packCard, dayIn, tradedToday, stockSend, portfolioSend, storySend, take, loadYears, loadPaid, loadIncome, calm, refresh, lost, markDivs, health, taxYearOf, yearDivs, yearOn };
+
+export { quoteSession };

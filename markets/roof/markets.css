@@ -554,3 +554,5 @@
 @keyframes mk-letter { from { opacity: 0; transform: translateY(10px); } }
 @keyframes mk-cta { from { opacity: 0; transform: translateY(18px); } }
 @keyframes mk-pulse { 50% { opacity: 0.35; } }
+
+.m-markets .quote-session, .ifl-sheet[data-app=markets] .quote-session { white-space: pre-line; }

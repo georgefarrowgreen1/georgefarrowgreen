@@ -1,3 +1,4 @@
+import { quoteSession } from "./session.js";
 // Markets: your money and the markets, said simply. Three screens on a tab bar:
 //
 // - Today: what you own, worth now and how it's done today, drawn through the day; one line on what moved it; what's
@@ -15,8 +16,8 @@
 // your markets close, the evening wrap: how your day went, on your phone.
 //
 // Signed in only: with your InFlite account, the one every app on the site uses, signed in on the account's own page
-// (account.js). Your list is kept with the account; the prices come through Markets's own API, fetched once a minute
-// for everyone (functions/_markets.js), and kept fresh here every half a minute while the app is open.
+// (account.js). Your list is kept with the account; the prices come through Markets's own API, fetched every 15 seconds
+// for everyone (functions/_markets.js), and kept fresh here every 15 seconds while the app is open.
 
 import * as A from "./account.js";
 import * as C from "./charts.js";
@@ -1134,8 +1135,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.15";
-const NEWS = "A sale recorded without a price keeps the average cost of what you still hold";
+const BUILD = "2.16";
+const NEWS = "Faster price refreshes, closing times and extended-hours quotes";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -2585,6 +2586,7 @@ function stockView(sym, o = {}) {
     h("div.sname", { text: name }),
     h("div.sprice.num", { "data-px": sym, text: priceSaid(q) }),
     h("div.sdelta.num", {}, h("span", { class: tone(q.chgPct), "data-pct": sym, id: "rpct", text: q.chg != null && !isIndex(q) ? `${chgSaid(q)} (${pct(q.chgPct)})` : pct(q.chgPct) }), h("span", { style: "color:var(--text-3)", id: "rsaid", text: "today" })),
+    h("p.hint", { "data-session": sym, style: "white-space:pre-line", text: quoteSession(q, priceSaid, pct) }),
     held?.qty > 0 && valueOf(held) != null ? yoursPart(sym, held, q) : null,
     box, seg, why, h("div", { id: "snews" }), facts(sym, held, q),
     held ? h("div", { id: "buys" }) : null,
@@ -2776,7 +2778,7 @@ async function stockChart(sym, box, seg) {
     range = r; box.dataset.range = r;
     const key = `${sym}:${r}`;
     box.classList.add("loading");
-    const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 60e3 : 600e3);
+    const kept = S.charts.get(key), fresh = kept && Date.now() - kept.at < (r === "1d" ? 15e3 : 600e3);
     let c = fresh ? kept.c : null;
     if (!c) { try { c = await A.chart(sym, r); S.charts.set(key, { at: Date.now(), c }); } catch (e) { box.classList.remove("loading"); if (kept) c = kept.c; else return back(n, e.message); } }
     if (n !== seq || !box.isConnected) return;
@@ -3252,11 +3254,12 @@ async function loadIncome(force = false) {
 }
 // (the page drawn again behind only while nothing's open over it, and nothing's being moved)
 const calm = () => !document.body.classList.contains("sheet-up") && !$(".sortable.sorting");
-// Prices again: every half a minute while the app's open and in front, each change flashed where it shows
+// Prices again: every 15 seconds while the app's open and in front, each change flashed where it shows
 async function refresh(force = false) {
   // (one at a time: a slow answer isn't asked for again over itself; one that's needed now, after a change, still is)
   if (!S.me || (!force && (document.hidden || refresh.busy))) return;
-  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol)])];
+  const stock = Sheet.stack.find(([view]) => view === stockView)?.[1]?.[0];
+  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(stock ? [stock] : [])])];
   refresh.busy = true;
   try {
     const was = { ...S.q }, wasT = totals(), wasOut = unpriced().map((x) => x.symbol).join(), r = await A.quotes(syms);
@@ -3266,6 +3269,7 @@ async function refresh(force = false) {
     store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
     if (force) return;
     sayLine();
+    for (const n of document.querySelectorAll("[data-session]")) n.textContent = quoteSession(S.q[n.dataset.session], priceSaid, pct);
     // (one of yours now in your total that wasn't (its price, or its currency's rate, come in), or the other way: all
     // said again, behind)
     if (unpriced().map((x) => x.symbol).join() !== wasOut && S.tab !== "news" && calm()) { render(false); return; }
@@ -3424,11 +3428,11 @@ async function start() {
   if (askNotify) IFL.allow("markets", "Markets tells you when something you hold moves a lot in a day (you choose which, on each one's page), and how your day went once your markets close.", turnOnHere);
   live();
 }
-// kept fresh: every half a minute, on coming back to it, and when the network's back
+// kept fresh: every 15 seconds, on coming back to it, and when the network's back
 function live() {
   if (live.on) return;
   live.on = true;
-  setInterval(refresh, 30000);
+  setInterval(refresh, 15000);
   seen();
   setTimeout(() => { if (S.news == null) loadNews(); }, 2500);
   document.addEventListener("visibilitychange", () => {

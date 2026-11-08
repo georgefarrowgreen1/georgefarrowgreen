@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.15";
-export const NEWS = "A sale recorded without a price keeps the average cost of what you still hold";
+export const BUILD = "2.16";
+export const NEWS = "Faster price refreshes, closing times and extended-hours quotes";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -146,6 +146,7 @@ export async function mount(root, fw) {
     core.on("news", () => { header(); if (shown === "news") draw(); else stale.add("news"); }),
     core.on("quotes", (d) => {
       header();
+      for (const n of Sheet.handle?.el?.querySelectorAll("[data-session]") || []) n.textContent = core.quoteSession(S.q[n.dataset.session], core.priceSaid, core.pct);
       if (!d?.was) return;
       for (const s of Object.keys(S.q)) { const a = d.was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
       if (shown === "today") views2.get("today")?.patch?.(d.was); else stale.add("today");

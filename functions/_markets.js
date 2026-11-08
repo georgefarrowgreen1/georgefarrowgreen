@@ -1,6 +1,6 @@
 // Markets: what's kept with your account (what you own and follow, and your price alerts), and the markets' own data,
-// fetched here once for everyone and kept a minute or more, so however many people have the app open, each price is
-// asked for once a minute at most.
+// fetched here once for everyone and kept for 15 seconds or more, so however many people have the app open, each price is
+// asked for once every 15 seconds at most.
 //
 // The data: Yahoo Finance's public chart and search addresses (no key): a symbol's price, its day and its history in
 // one answer, and the news about it. (MARKETS_DATA in the environment: another address for them, a test's stand-in.)
@@ -152,7 +152,7 @@ export function kindOf(type, name = "", symbol = "") {
   return "share";
 }
 const RANGES = {
-  "1d": { range: "1d", interval: "5m", ttl: MIN },
+  "1d": { range: "1d", interval: "1m", ttl: 15e3 },
   "5d": { range: "5d", interval: "30m", ttl: 5 * MIN },
   "1mo": { range: "1mo", interval: "1d", ttl: 30 * MIN },
   "1y": { range: "1y", interval: "1d", ttl: 6 * HOUR },
@@ -161,33 +161,43 @@ const RANGES = {
 export const RANGE_NAMES = Object.keys(RANGES);
 const num = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
 // One answer from the chart address: the quote (price, the day's, the year's) and the points
-export function readChart(j, symbol) {
+export function readChart(j, symbol, extended = false) {
   const r = j?.chart?.result?.[0];
   if (!r?.meta) return null;
   const m = r.meta, [cur, k] = MINOR[m.currency] || [m.currency || "", 1], s = (x) => (num(x) == null ? null : +(x * k).toPrecision(10));
   const qt = r.indicators?.quote?.[0] || {}, ts = r.timestamp || [], cl = qt.close || [], vo = qt.volume || [], op = qt.open || [], hi = qt.high || [], lw = qt.low || [], t = [], c = [], v = [], o = [], h = [], l = [];
-  // (each point's close, and its volume, open, high and low: where one's missing, its close stands in)
-  for (let i = 0; i < ts.length; i++) if (num(cl[i]) != null) { const x = s(cl[i]); t.push(ts[i]); c.push(x); v.push(num(vo[i]) ?? 0); o.push(s(op[i]) ?? x); h.push(s(hi[i]) ?? x); l.push(s(lw[i]) ?? x); }
+  const periods = m.currentTradingPeriod || {}, reg = periods.regular;
+  let extra = null;
+  // Extended trading stays separate from regular-session charts and portfolio values.
+  // Match only explicit source periods; missing hours must never turn a regular point into an after-hours quote.
+  for (let i = 0; i < ts.length; i++) if (num(cl[i]) != null) {
+    const session = extended && ["pre", "post"].find((k) => periods[k]?.end > periods[k]?.start && ts[i] >= periods[k].start && ts[i] < periods[k].end);
+    if (session) {
+      if (num(m.regularMarketTime) != null && ts[i] > m.regularMarketTime && (!extra || ts[i] > extra.time)) extra = { session, price: s(cl[i]), time: ts[i] };
+      continue;
+    }
+    const x = s(cl[i]); t.push(ts[i]); c.push(x); v.push(num(vo[i]) ?? 0); o.push(s(op[i]) ?? x); h.push(s(hi[i]) ?? x); l.push(s(lw[i]) ?? x);
+  }
   const price = s(m.regularMarketPrice) ?? c.at(-1) ?? null;
   // (one over half the price it went ex-dividend at is taken as said in pence where the price is in pounds: Yahoo's
   // London dividends are, now and then, a hundred times out)
   const at = (tt) => { let v = c[0]; for (let i = 0; i < t.length && t[i] <= tt; i++) v = c[i]; return v; };
   const divs = Object.values(r.events?.dividends || {}).filter((d) => num(d?.amount) != null && num(d?.date) != null).map((d) => ({ t: d.date, amount: s(d.amount) }))
     .map((d) => (c.length && d.amount > at(d.t) * 0.5 ? { ...d, amount: +(d.amount / 100).toPrecision(10) } : d)).sort((a, b) => a.t - b.t);
-  const reg = m.currentTradingPeriod?.regular;
+  if (extra) { extra.chg = price != null ? extra.price - price : null; extra.chgPct = price ? (extra.price / price - 1) * 100 : null; }
   return {
     symbol: m.symbol || symbol, name: m.instrumentType === "CRYPTOCURRENCY" ? String(m.longName || m.shortName || symbol).replace(/\s+(USD|GBP|EUR)$/, "") : plainName(m.longName || m.shortName, symbol), cur, type: m.instrumentType || "", kind: kindOf(m.instrumentType, m.longName || m.shortName, m.symbol || symbol), ex: EXCHANGES[m.exchangeName] || m.fullExchangeName || m.exchangeName || "",
     tz: m.exchangeTimezoneName || "UTC", price, prev: s(m.previousClose ?? m.chartPreviousClose), base: s(m.chartPreviousClose ?? m.previousClose),
     dayHi: s(m.regularMarketDayHigh), dayLo: s(m.regularMarketDayLow), hi52: s(m.fiftyTwoWeekHigh), lo52: s(m.fiftyTwoWeekLow),
-    time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, t, c, v, o, h, l, divs,
+    time: num(m.regularMarketTime), open: reg && num(reg.start) && num(reg.end) ? { start: reg.start, end: reg.end } : null, extended: extra, t, c, v, o, h, l, divs,
   };
 }
-// a symbol's chart over a range (1d: every five minutes; 5d: every half hour; 1mo, 1y: daily; 5y: weekly). opt: cached's
+// a symbol's chart over a range (1d: every minute; 5d: every half hour; 1mo, 1y: daily; 5y: weekly). opt: cached's
 export async function chart(env, symbol, range = "1d", opt) {
   const R = RANGES[range] || RANGES["1d"];
   return cached(env, `c:${symbol}:${R.range}`, R.ttl, async () => {
-    const j = await fetchJson(env, `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${R.range}&interval=${R.interval}&includePrePost=false${R.range === "1y" ? "&events=div" : ""}`);
-    return readChart(j, symbol);
+    const j = await fetchJson(env, `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${R.range}&interval=${R.interval}&includePrePost=${R.range === "1d"}${R.range === "1y" ? "&events=div" : ""}`);
+    return readChart(j, symbol, R.range === "1d");
   }, opt);
 }
 // the quote: the day's chart, without its points, plus a few of them for a sparkline
