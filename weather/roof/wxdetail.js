@@ -164,40 +164,61 @@ export const CREDITS = {
   lead: { text: "Weather data by Open-Meteo.com", href: "https://open-meteo.com/", licence: "CC BY 4.0", licenceHref: "https://creativecommons.org/licenses/by/4.0/" },
   groups: [
     { id: "weather", title: "Weather data", items: [
-      { name: "Open-Meteo", href: "https://open-meteo.com/", small: "Forecasts, ensembles and waves from ECMWF (its AI model, AIFS, too), NOAA, DWD, Météo-France and ECCC · CC BY 4.0 · shaped and summarised by this app" },
-      { name: "Met Office", href: "https://www.metoffice.gov.uk/", small: "UK models and ensembles, through Open-Meteo · CC BY-SA 4.0" },
-      { name: "ERA5 · Copernicus Climate Change Service", href: "https://climate.copernicus.eu/", small: () => `30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information ${year()}` },
-      { name: "CAMS · Copernicus Atmosphere Monitoring Service", href: "https://atmosphere.copernicus.eu/", small: () => `Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information ${year()}` },
-      { name: "Copernicus Marine Service", href: "https://marine.copernicus.eu/", small: "Sea temperature and tides, through Open-Meteo. Generated using E.U. Copernicus Marine Service information" },
-      { name: "MeteoAlarm · EUMETNET", href: "https://meteoalarm.org/", small: "Official warnings from Europe's weather services (the Met Office's for the UK) · CC BY 4.0" },
-      { name: "National Weather Service", href: "https://www.weather.gov/", small: "Official warnings in the US" },
-      { name: "Environment Agency", href: "https://environment.data.gov.uk/flood-monitoring/doc/reference", small: "Flood warnings in England. This uses Environment Agency flood and river level data from the real-time data API (Beta) · Open Government Licence" },
-      { name: "Aviation Weather Center", href: "https://aviationweather.gov/", small: "Airport reports, for the forecast's accuracy" },
+      { name: "Open-Meteo", href: "https://open-meteo.com/", small: "Forecasts, ensembles & waves · CC BY 4.0" },
+      { name: "Met Office", href: "https://www.metoffice.gov.uk/", small: "UK forecasts & ensembles · CC BY-SA 4.0" },
+      { name: "ERA5 · Copernicus Climate", href: "https://climate.copernicus.eu/", small: "Climate history · via Open-Meteo" },
+      { name: "CAMS · Copernicus Atmosphere", href: "https://atmosphere.copernicus.eu/", small: "Air quality & pollen · via Open-Meteo" },
+      { name: "Copernicus Marine", href: "https://marine.copernicus.eu/", small: "Sea temperature & tides · via Open-Meteo" },
+      { name: "MeteoAlarm · EUMETNET", href: "https://meteoalarm.org/", small: "European weather warnings · CC BY 4.0" },
+      { name: "National Weather Service", href: "https://www.weather.gov/", small: "US weather warnings" },
+      { name: "Environment Agency", href: "https://environment.data.gov.uk/flood-monitoring/doc/reference", small: "England flood warnings · Open Government Licence" },
+      { name: "Aviation Weather Center", href: "https://aviationweather.gov/", small: "Airport weather reports" },
     ] },
     { id: "map", title: "Map data", items: [
       { name: "RainViewer", href: "https://www.rainviewer.com/", small: "Rain radar" },
-      { name: "OpenFreeMap", href: "https://openfreemap.org/", small: "The map, from OpenStreetMap's data" },
-      { name: "© OpenMapTiles", href: "https://www.openmaptiles.org/", small: "The map's layers · CC BY 4.0" },
-      { name: "© OpenStreetMap contributors", href: "https://www.openstreetmap.org/copyright", small: "The map's data · ODbL" },
-      { name: "Natural Earth", href: "https://www.naturalearthdata.com/", small: "The lie of the land, shaded · public domain" },
-      { name: "MapLibre", href: "https://maplibre.org/", small: "Draws the map · BSD-3-Clause" },
-      { name: "Leaflet", href: "https://leafletjs.com/", small: "Draws it on phones that can't draw MapLibre's · BSD-2-Clause" },
+      { name: "OpenFreeMap", href: "https://openfreemap.org/", small: "Maps from OpenStreetMap" },
+      { name: "© OpenMapTiles", href: "https://www.openmaptiles.org/", small: "Map layers · CC BY 4.0" },
+      { name: "© OpenStreetMap contributors", href: "https://www.openstreetmap.org/copyright", small: "Map data · ODbL" },
+      { name: "Natural Earth", href: "https://www.naturalearthdata.com/", small: "Terrain shading · public domain" },
+      { name: "MapLibre", href: "https://maplibre.org/", small: "Map rendering · BSD-3-Clause" },
+      { name: "Leaflet", href: "https://leafletjs.com/", small: "Fallback map rendering · BSD-2-Clause" },
     ] },
     { id: "places", title: "Place names", items: [
-      { name: "BigDataCloud", href: "https://www.bigdatacloud.com/", small: "The name of where you are (it's sent your position, to about a kilometre)" },
-      { name: "Nominatim · OpenStreetMap", href: "https://nominatim.org/", small: "Names BigDataCloud doesn't have" },
-      { name: "GeoNames", href: "https://www.geonames.org/", small: "Search, through Open-Meteo · CC BY 4.0" },
+      { name: "BigDataCloud", href: "https://www.bigdatacloud.com/", small: "Place names · receives location rounded to ~1 km" },
+      { name: "Nominatim · OpenStreetMap", href: "https://nominatim.org/", small: "Additional place names" },
+      { name: "GeoNames", href: "https://www.geonames.org/", small: "Place search · Open-Meteo · CC BY 4.0" },
     ] },
+  ],
+  attributions: [
+    { name: "Open-Meteo", text: "Forecasts, ensembles and waves from ECMWF (its AI model, AIFS, too), NOAA, DWD, Météo-France and ECCC · CC BY 4.0 · shaped and summarised by this app" },
+    { name: "Met Office", text: "UK models and ensembles, through Open-Meteo · CC BY-SA 4.0" },
+    { name: "ERA5 · Copernicus Climate Change Service", text: () => `30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information ${year()}` },
+    { name: "CAMS · Copernicus Atmosphere Monitoring Service", text: () => `Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information ${year()}` },
+    { name: "Copernicus Marine Service", text: "Sea temperature and tides, through Open-Meteo. Generated using E.U. Copernicus Marine Service information" },
+    { name: "MeteoAlarm · EUMETNET", text: "Official warnings from Europe's weather services (the Met Office's for the UK) · CC BY 4.0" },
+    { name: "National Weather Service", text: "Official warnings in the US" },
+    { name: "Environment Agency", text: "Flood warnings in England. This uses Environment Agency flood and river level data from the real-time data API (Beta) · Open Government Licence" },
+    { name: "Aviation Weather Center", text: "Airport reports, for the forecast's accuracy" },
+    { name: "OpenFreeMap", text: "The map, from OpenStreetMap's data" },
+    { name: "© OpenMapTiles", text: "The map's layers · CC BY 4.0" },
+    { name: "© OpenStreetMap contributors", text: "The map's data · ODbL" },
+    { name: "Natural Earth", text: "The lie of the land, shaded · public domain" },
+    { name: "MapLibre", text: "Draws the map · BSD-3-Clause" },
+    { name: "Leaflet", text: "Draws it on phones that can't draw MapLibre's · BSD-2-Clause" },
+    { name: "BigDataCloud", text: "The name of where you are (it's sent your position, to about a kilometre)" },
+    { name: "Nominatim · OpenStreetMap", text: "Names BigDataCloud doesn't have" },
+    { name: "GeoNames", text: "Search, through Open-Meteo · CC BY 4.0" },
   ],
   note: "Worked out on this device from the data above; official warnings are shown as issued, where their weather service maps them (the UK, the US and some others). Forecasts can be wrong: elsewhere, for warnings, check your national weather service. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.",
 };
 // every word of it as plain text (for the parity test, and nothing else)
-export const creditsText = () => [CREDITS.lead.text, CREDITS.lead.licence, ...CREDITS.groups.flatMap((g) => [g.title, ...g.items.flatMap((i) => [i.name, typeof i.small === "function" ? i.small() : i.small])]), CREDITS.note].join("\n");
+export const creditsText = () => [CREDITS.lead.text, CREDITS.lead.licence, ...CREDITS.groups.flatMap((g) => [g.title, ...g.items.flatMap((i) => [i.name, typeof i.small === "function" ? i.small() : i.small])]), ...CREDITS.attributions.flatMap((i) => [i.name, typeof i.text === "function" ? i.text() : i.text]), CREDITS.note].join("\n");
 const link = (href, ...kids) => h("a", { href, target: "_blank", rel: "noopener" }, ...kids);
 export function openCredits(ctx, which) {
   const L = CREDITS.lead;
   const body = h("div", { class: "wx-sheet wx-credits-sheet" },
-    h("p", { class: "wx-credits-lead" }, link(L.href, L.text), " (", link(L.licenceHref, L.licence), ")."),
+    h("a", { class: "wx-credits-brand", href: "https://inflite.ai/", target: "_blank", rel: "noopener" },
+      h("img", { src: "/weather/inflite.svg", alt: "", width: 40, height: 40 }), h("span", {}, "Powered by ", h("b", {}, "InFlite"))),
     CREDITS.groups.map((g) => [
       h("h3", { class: "wx-sub", id: `wx-cr-${g.id}`, data: { part: g.id } }, g.title),
       ctx.fw.ui.list(g.items.map((i) => {
@@ -206,7 +227,11 @@ export function openCredits(ctx, which) {
         return r;
       })),
     ]),
-    h("p", { class: "wx-note" }, CREDITS.note));
+    h("p", { class: "wx-credits-summary" }, "Forecasts can be wrong. For official warnings, check your national weather service."),
+    h("details", { class: "wx-credits-attributions" }, h("summary", {}, "Full attributions & licences"),
+      h("p", { class: "wx-credits-licence" }, link(L.licenceHref, `Open-Meteo licence · ${L.licence}`)),
+      CREDITS.attributions.map((i) => h("p", { class: "wx-credits-attribution" }, h("b", {}, i.name), h("span", {}, typeof i.text === "function" ? i.text() : i.text))),
+      h("p", { class: "wx-note" }, CREDITS.note)));
   const handle = ctx.fw.sheet.open({ sheet: "credits", title: "Credits", body, app: "weather" });
   if (which === "weather" || which === "map") later(() => body.querySelector(`[data-part="${which}"]`)?.scrollIntoView({ block: "start" }));
   return handle;

@@ -2394,3 +2394,21 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 html.ifl-hub #out-grp { display: none; }
 /* (a section opened from the address, #radar or #warnings, scrolled to clear of the bar held at the top: app.js openTo) */
 #radar, #alerts { scroll-margin-top: calc(68px + env(safe-area-inset-top, 0px)); }
+
+/* Credits: short source descriptions, with the full original wording in one disclosure. */
+#credits .credits-brand { display:flex; align-items:center; gap:12px; min-height:56px; margin:0 0 16px; color:var(--text); text-decoration:none; font-size:15px; }
+#credits .credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
+#credits .credits-brand b { font-weight:650; }
+#credits .credits-lead { font-size:12px; margin:0 0 16px; }
+#credits .sheet-sub { margin:20px 2px 8px; font-size:12px; }
+#credits .credits { padding-inline:14px; border-radius:20px; }
+#credits .credits a { min-height:58px; padding:11px 0; }
+#credits .credits b { font-size:15px; line-height:1.3; }
+#credits .credits small { font-size:12px; line-height:1.4; margin-top:3px; color:var(--text-2); }
+#credits .credits-summary { margin:18px 2px 6px; color:var(--text-2); font-size:12px; line-height:1.5; }
+#credits .credits-attributions { color:var(--text-2); font-size:12px; line-height:1.5; }
+#credits .credits-attributions summary { min-height:44px; padding:12px 2px; cursor:pointer; color:var(--tint-blue); font-size:13px; }
+#credits .credits-attribution { margin:12px 2px; }
+#credits .credits-attribution b, #credits .credits-attribution span { display:block; }
+#credits .credits-attribution b { color:var(--text); font-weight:600; margin-bottom:3px; }
+#credits .credits-attributions summary:focus-visible, #credits .credits-brand:focus-visible { outline:2px solid var(--tint-blue); outline-offset:3px; border-radius:8px; }

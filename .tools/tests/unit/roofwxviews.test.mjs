@@ -292,9 +292,20 @@ test("the credits: every provider, link, licence and the closing note of weather
   const note = plain(/<p class="credits-note">([\s\S]*?)<\/p>/.exec(sheet)[1]);
   assert.equal(DETAIL.CREDITS.note, note);
   assert.ok(note.includes("Forecasts can be wrong"));
-  const lead = /<p class="credits-lead">([\s\S]*?)<\/p>/.exec(sheet)[1];
-  assert.equal(plain(lead), `${DETAIL.CREDITS.lead.text} (${DETAIL.CREDITS.lead.licence}).`);
-  assert.ok(lead.includes(DETAIL.CREDITS.lead.href) && lead.includes(DETAIL.CREDITS.lead.licenceHref));
+  assert.ok(!sheet.includes('class="credits-lead"'), "no duplicate Open-Meteo credit above the source list");
+  assert.ok(sheet.indexOf('class="credits-brand"') < sheet.indexOf('class="credits"'), "InFlite branding is first");
+  assert.ok(sheet.includes('/weather/inflite.svg'), "the real logo is used");
+  assert.ok(sheet.includes(DETAIL.CREDITS.lead.licenceHref), "full licence link retained in the disclosure");
+  const attributions = [...sheet.matchAll(/<p class="credits-attribution"><b>(.*?)<\/b><span>([\s\S]*?)<\/span><\/p>/g)];
+  assert.equal(attributions.length, DETAIL.CREDITS.attributions.length);
+  attributions.forEach(([, name, words], i) => {
+    const a = DETAIL.CREDITS.attributions[i];
+    assert.equal(a.name, plain(name));
+    assert.equal(typeof a.text === "function" ? a.text() : a.text, plain(words.replace(/<span class="this-year">\d+<\/span>/, year)));
+  });
+  assert.ok(text.includes("Contains modified Copernicus Climate Change Service information"));
+  assert.ok(text.includes("Generated using E.U. Copernicus Marine Service information"));
+
 });
 
 test("Now: the cards in your order, those you've switched off left off, the 16 days and the radar never (they're sections)", () => {

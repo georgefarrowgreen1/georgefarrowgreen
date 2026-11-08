@@ -24,7 +24,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-1.91" />
+  <meta name="app-version" content="wx-1.92" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -372,36 +372,58 @@
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
     <div class="sheet-body">
+      <a class="credits-brand" href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/weather/inflite.svg" alt="" width="40" height="40"><span>Powered by <b>InFlite</b></span></a>
       <h3 class="sheet-sub" id="cr-weather">Weather data</h3>
-      <p class="credits-lead"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a>).</p>
       <ul class="credits">
-        <li><a href="https://open-meteo.com/" target="_blank" rel="noopener"><span><b>Open-Meteo</b><small>Forecasts, ensembles and waves from ECMWF (its AI model, AIFS, too), NOAA, DWD, Météo-France and ECCC · CC&nbsp;BY&nbsp;4.0 · shaped and summarised by this app</small></span></a></li>
-        <li><a href="https://www.metoffice.gov.uk/" target="_blank" rel="noopener"><span><b>Met Office</b><small>UK models and ensembles, through Open-Meteo · CC&nbsp;BY-SA&nbsp;4.0</small></span></a></li>
-        <li><a href="https://climate.copernicus.eu/" target="_blank" rel="noopener"><span><b>ERA5 · Copernicus Climate Change Service</b><small>30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information <span class="this-year">2026</span></small></span></a></li>
-        <li><a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener"><span><b>CAMS · Copernicus Atmosphere Monitoring Service</b><small>Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information <span class="this-year">2026</span></small></span></a></li>
-        <li><a href="https://marine.copernicus.eu/" target="_blank" rel="noopener"><span><b>Copernicus Marine Service</b><small>Sea temperature and tides, through Open-Meteo. Generated using E.U. Copernicus Marine Service information</small></span></a></li>
-        <li><a href="https://meteoalarm.org/" target="_blank" rel="noopener"><span><b>MeteoAlarm · EUMETNET</b><small>Official warnings from Europe's weather services (the Met Office's for the UK) · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
-        <li><a href="https://www.weather.gov/" target="_blank" rel="noopener"><span><b>National Weather Service</b><small>Official warnings in the US</small></span></a></li>
-        <li><a href="https://environment.data.gov.uk/flood-monitoring/doc/reference" target="_blank" rel="noopener"><span><b>Environment Agency</b><small>Flood warnings in England. This uses Environment Agency flood and river level data from the real-time data API (Beta) · Open Government Licence</small></span></a></li>
-        <li><a href="https://aviationweather.gov/" target="_blank" rel="noopener"><span><b>Aviation Weather Center</b><small>Airport reports, for the forecast's accuracy</small></span></a></li>
+        <li><a href="https://open-meteo.com/" target="_blank" rel="noopener"><span><b>Open-Meteo</b><small>Forecasts, ensembles &amp; waves · CC BY 4.0</small></span></a></li>
+        <li><a href="https://www.metoffice.gov.uk/" target="_blank" rel="noopener"><span><b>Met Office</b><small>UK forecasts &amp; ensembles · CC BY-SA 4.0</small></span></a></li>
+        <li><a href="https://climate.copernicus.eu/" target="_blank" rel="noopener"><span><b>ERA5 · Copernicus Climate</b><small>Climate history · via Open-Meteo</small></span></a></li>
+        <li><a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener"><span><b>CAMS · Copernicus Atmosphere</b><small>Air quality &amp; pollen · via Open-Meteo</small></span></a></li>
+        <li><a href="https://marine.copernicus.eu/" target="_blank" rel="noopener"><span><b>Copernicus Marine</b><small>Sea temperature &amp; tides · via Open-Meteo</small></span></a></li>
+        <li><a href="https://meteoalarm.org/" target="_blank" rel="noopener"><span><b>MeteoAlarm · EUMETNET</b><small>European weather warnings · CC BY 4.0</small></span></a></li>
+        <li><a href="https://www.weather.gov/" target="_blank" rel="noopener"><span><b>National Weather Service</b><small>US weather warnings</small></span></a></li>
+        <li><a href="https://environment.data.gov.uk/flood-monitoring/doc/reference" target="_blank" rel="noopener"><span><b>Environment Agency</b><small>England flood warnings · Open Government Licence</small></span></a></li>
+        <li><a href="https://aviationweather.gov/" target="_blank" rel="noopener"><span><b>Aviation Weather Center</b><small>Airport weather reports</small></span></a></li>
       </ul>
       <h3 class="sheet-sub" id="cr-map">Map data</h3>
       <ul class="credits">
         <li><a href="https://www.rainviewer.com/" target="_blank" rel="noopener"><span><b>RainViewer</b><small>Rain radar</small></span></a></li>
-        <li><a href="https://openfreemap.org/" target="_blank" rel="noopener"><span><b>OpenFreeMap</b><small>The map, from OpenStreetMap's data</small></span></a></li>
-        <li><a href="https://www.openmaptiles.org/" target="_blank" rel="noopener"><span><b>© OpenMapTiles</b><small>The map's layers · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
-        <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><span><b>© OpenStreetMap contributors</b><small>The map's data · ODbL</small></span></a></li>
-        <li><a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener"><span><b>Natural Earth</b><small>The lie of the land, shaded · public domain</small></span></a></li>
-        <li><a href="https://maplibre.org/" target="_blank" rel="noopener"><span><b>MapLibre</b><small>Draws the map · BSD-3-Clause</small></span></a></li>
-        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener"><span><b>Leaflet</b><small>Draws it on phones that can't draw MapLibre's · BSD-2-Clause</small></span></a></li>
+        <li><a href="https://openfreemap.org/" target="_blank" rel="noopener"><span><b>OpenFreeMap</b><small>Maps from OpenStreetMap</small></span></a></li>
+        <li><a href="https://www.openmaptiles.org/" target="_blank" rel="noopener"><span><b>© OpenMapTiles</b><small>Map layers · CC BY 4.0</small></span></a></li>
+        <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><span><b>© OpenStreetMap contributors</b><small>Map data · ODbL</small></span></a></li>
+        <li><a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener"><span><b>Natural Earth</b><small>Terrain shading · public domain</small></span></a></li>
+        <li><a href="https://maplibre.org/" target="_blank" rel="noopener"><span><b>MapLibre</b><small>Map rendering · BSD-3-Clause</small></span></a></li>
+        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener"><span><b>Leaflet</b><small>Fallback map rendering · BSD-2-Clause</small></span></a></li>
       </ul>
       <h3 class="sheet-sub" id="cr-places">Place names</h3>
       <ul class="credits">
-        <li><a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener"><span><b>BigDataCloud</b><small>The name of where you are (it's sent your position, to about a kilometre)</small></span></a></li>
-        <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><span><b>Nominatim · OpenStreetMap</b><small>Names BigDataCloud doesn't have</small></span></a></li>
-        <li><a href="https://www.geonames.org/" target="_blank" rel="noopener"><span><b>GeoNames</b><small>Search, through Open-Meteo · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+        <li><a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener"><span><b>BigDataCloud</b><small>Place names · receives location rounded to ~1 km</small></span></a></li>
+        <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><span><b>Nominatim · OpenStreetMap</b><small>Additional place names</small></span></a></li>
+        <li><a href="https://www.geonames.org/" target="_blank" rel="noopener"><span><b>GeoNames</b><small>Place search · Open-Meteo · CC BY 4.0</small></span></a></li>
       </ul>
+      <p class="credits-summary">Forecasts can be wrong. For official warnings, check your national weather service.</p>
+      <details class="credits-attributions"><summary>Full attributions &amp; licences</summary>
+        <p class="credits-licence"><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Open-Meteo licence · CC BY 4.0</a></p>
+        <p class="credits-attribution"><b>Open-Meteo</b><span>Forecasts, ensembles and waves from ECMWF (its AI model, AIFS, too), NOAA, DWD, Météo-France and ECCC · CC&nbsp;BY&nbsp;4.0 · shaped and summarised by this app</span></p>
+        <p class="credits-attribution"><b>Met Office</b><span>UK models and ensembles, through Open-Meteo · CC&nbsp;BY-SA&nbsp;4.0</span></p>
+        <p class="credits-attribution"><b>ERA5 · Copernicus Climate Change Service</b><span>30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information <span class="this-year">2026</span></span></p>
+        <p class="credits-attribution"><b>CAMS · Copernicus Atmosphere Monitoring Service</b><span>Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information <span class="this-year">2026</span></span></p>
+        <p class="credits-attribution"><b>Copernicus Marine Service</b><span>Sea temperature and tides, through Open-Meteo. Generated using E.U. Copernicus Marine Service information</span></p>
+        <p class="credits-attribution"><b>MeteoAlarm · EUMETNET</b><span>Official warnings from Europe's weather services (the Met Office's for the UK) · CC&nbsp;BY&nbsp;4.0</span></p>
+        <p class="credits-attribution"><b>National Weather Service</b><span>Official warnings in the US</span></p>
+        <p class="credits-attribution"><b>Environment Agency</b><span>Flood warnings in England. This uses Environment Agency flood and river level data from the real-time data API (Beta) · Open Government Licence</span></p>
+        <p class="credits-attribution"><b>Aviation Weather Center</b><span>Airport reports, for the forecast's accuracy</span></p>
+        <p class="credits-attribution"><b>OpenFreeMap</b><span>The map, from OpenStreetMap's data</span></p>
+        <p class="credits-attribution"><b>© OpenMapTiles</b><span>The map's layers · CC&nbsp;BY&nbsp;4.0</span></p>
+        <p class="credits-attribution"><b>© OpenStreetMap contributors</b><span>The map's data · ODbL</span></p>
+        <p class="credits-attribution"><b>Natural Earth</b><span>The lie of the land, shaded · public domain</span></p>
+        <p class="credits-attribution"><b>MapLibre</b><span>Draws the map · BSD-3-Clause</span></p>
+        <p class="credits-attribution"><b>Leaflet</b><span>Draws it on phones that can't draw MapLibre's · BSD-2-Clause</span></p>
+        <p class="credits-attribution"><b>BigDataCloud</b><span>The name of where you are (it's sent your position, to about a kilometre)</span></p>
+        <p class="credits-attribution"><b>Nominatim · OpenStreetMap</b><span>Names BigDataCloud doesn't have</span></p>
+        <p class="credits-attribution"><b>GeoNames</b><span>Search, through Open-Meteo · CC&nbsp;BY&nbsp;4.0</span></p>
       <p class="credits-note">Worked out on this device from the data above; official warnings are shown as issued, where their weather service maps them (the UK, the US and some others). Forecasts can be wrong: elsewhere, for warnings, check your national weather service. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.</p>
+      </details>
     </div>
   </dialog>
 
