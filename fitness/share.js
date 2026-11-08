@@ -48,10 +48,22 @@ function pill(g, x, y, text, fg, bg) {
 function round(g, x, y, w, h, r) {
   g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
-function foot(g,light=false) {
-  g.font = font(600, 28); g.fillStyle = light ? '#526172' : "rgba(235, 238, 250, 0.55)";
-  g.fillText("Fitness", PAD, H - 64);
-  g.textAlign = "right"; g.fillText("fitness.inflite.ai", W - PAD, H - 64); g.textAlign = "left";
+let logo;
+function brandLogo() {
+  return logo ||= new Promise(resolve => {
+    const img = new Image();
+    const done = value => { clearTimeout(timer); img.onload = img.onerror = null; resolve(value); };
+    const timer = setTimeout(() => done(null), 2000);
+    img.onload = () => done(img); img.onerror = () => done(null);
+    img.src = new URL('./inflite.svg', import.meta.url).href;
+  });
+}
+async function foot(g,light=false) {
+  const mark = await brandLogo(), label = "Powered by InFlite", size = 48, gap = 14;
+  g.font = font(600, 32); g.fillStyle = light ? '#526172' : "rgba(235, 238, 250, 0.75)";
+  const x = (W - g.measureText(label).width - (mark ? size + gap : 0)) / 2;
+  if (mark) { g.save(); round(g, x, H - 88, size, size, 12); g.clip(); g.drawImage(mark, x, H - 88, size, size); g.restore(); }
+  g.fillText(label, x + (mark ? size + gap : 0), H - 53);
 }
 const blob = (c) => new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("The picture couldn’t be made"))), "image/png"));
 
@@ -117,13 +129,12 @@ export async function rideImage(r) {
     g.fillStyle = light ? '#667487' : "rgba(235, 238, 250, 0.58)"; g.font = font(650, 26); g.fillText(label.toUpperCase(), x, yy + 30);
     g.fillStyle = light ? '#17283c' : "#f5f6fb"; g.font = font(750, 58); g.fillText(value, x, yy + 98, cw - 20);
   });
-  foot(g,light);
-  if(light){g.fillStyle='#526172';g.font=font(500,22);g.fillText(back?'© OpenStreetMap contributors · OpenMapTiles · OpenFreeMap · osm.org/copyright':'Route preview · Map unavailable',PAD,H-26,W-2*PAD);}
+  await foot(g,light);
   return blob(c);
 }
 
 // ---- a year ----
-export function yearImage(r) {
+export async function yearImage(r) {
   const [c, g] = canvas();
   sky(g);
   g.fillStyle = "rgba(235, 238, 250, 0.62)"; g.font = font(650, 32); g.fillText(r.title.toUpperCase(), PAD, 140);
@@ -149,6 +160,6 @@ export function yearImage(r) {
     g.fillStyle = "#f5f6fb"; g.font = font(750, 40); g.textAlign = "right"; g.fillText(value, W - PAD - 30, y + 60); g.textAlign = "left";
     y += 106;
   }
-  foot(g);
+  await foot(g);
   return blob(c);
 }
