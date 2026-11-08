@@ -5,6 +5,7 @@ before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));({cleanPre
 async function open(width=390,theme='dark',options={}){
  const context=await browser.newContext({viewport:{width,height:900},colorScheme:theme,timezoneId:'Europe/London',locale:'en-GB',acceptDownloads:true});await context.addInitScript(now=>{const D=Date;globalThis.Date=class extends D{constructor(...a){super(...(a.length?a:[now]));}static now(){return now;}};},NOW);
  const kit=await serveKit(context,{main:ROOT+'/',ifl:IFL+'/'}),state={records:[],writes:[],errors:[],trainingRequests:0,recordsFailure:!!options.recordsFailure,data:{profile:{ftp:250,weight:75,lthr:160,maxHr:185,set:['ftp']},plan:null,rhythm:{days:[60,60,0,60,0,120,90],level:'regular',start:NOW-11*3600e3,at:NOW-11*3600e3,lean:'balanced',mode:'build'},swaps:{},feel:{},workouts:[],prefs:{units:'metric',onboarded:true,ask:false}},ver:1};
+ if(options.days)state.data.rhythm.days=[...options.days];if(options.beta)state.data.rhythm.engine=2;
  const acts=Array.from({length:8},(_,i)=>({id:'ride'+i,start:NOW-(i*3+1)*DAY,sport:'ride',indoor:false,name:'Endurance ride',file:'ride.fit',type:'fit',sum:{moving:3600,secs:3600,tss:45,kind:'power',iF:.68}}));
  await context.route(/\/api\/fitness\//,async r=>{const req=r.request(),url=new URL(req.url()),path=url.pathname.split('/api/fitness/')[1],b=req.postData()?JSON.parse(req.postData()):null;let out={};
   if(path==='me'&&req.method()==='GET')out={signedIn:true,id:'ann',name:'Alex',handle:'alex',data:state.data,ver:state.ver,acts,at:NOW,garmin:{on:false},health:{on:false},strava:{on:false},offers:[],times:[]};
@@ -42,4 +43,23 @@ test('Experimental fits narrow phones and desktops in either theme',async()=>{
 });
 test('an unavailable planner leaves Experimental off without changing the saved preference',async()=>{
  const {context,page,state}=await open(390,'light',{recordsFailure:true});try{await settings(page);await page.getByRole('switch',{name:'Experimental',exact:true}).check();await page.getByText('Training is temporarily unavailable.',{exact:true}).waitFor();assert.equal(await page.getByRole('switch',{name:'Experimental',exact:true}).isChecked(),false);assert.notEqual(state.data.rhythm.engine,2);assert.deepEqual(state.errors,[]);}finally{await context.close();}
+});
+
+test('the Experimental week preview and saved plan both use the declared ten-hour riding goal',async()=>{
+ const days=[270,0,0,0,0,60,270],{context,page,state}=await open(390,'dark',{beta:true,days});try{
+  await page.getByRole('button',{name:/Your week/}).click();
+  const dialog=page.locator('dialog[data-sheet="rhythm-setup"]');await dialog.waitFor();
+  for(let i=0;i<8&&!await dialog.getByRole('button',{name:'Save',exact:true}).count();i++){
+   await dialog.getByRole('button',{name:/^(Next|See your first week)$/}).click();
+  }
+  await dialog.getByText(/10\s*h weekly target/).waitFor();
+  await dialog.evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});
+  assert.equal(await dialog.getByText('Long endurance ride',{exact:true}).count(),2);
+  assert.equal(await dialog.getByText('Threshold 3 × 8 min',{exact:true}).count(),1);
+  if(process.env.RHYTHM2_SCREENSHOTS){await mkdir(process.env.RHYTHM2_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.RHYTHM2_SCREENSHOTS+'/ten-hour-preview.png'});}
+  const saved=page.waitForResponse(r=>r.url().includes('/api/fitness/me')&&r.request().method()==='PUT');
+  await dialog.getByRole('button',{name:'Save',exact:true}).click();await saved;
+  const actual=await page.evaluate(async()=>{const c=await import('/fitness/roof/core.js'),r=c.rh();return {minutes:r.weekly.minutes,days:r.days.filter(d=>d.date>=c.TODAY&&d.date<c.TODAY+7*86400e3).map(d=>d.mins)};});
+  assert.equal(actual.minutes,600);assert.deepEqual(actual.days,days);assert.deepEqual(state.data.rhythm.days,days);assert.equal(state.records.length,0);assert.deepEqual(state.errors,[]);
+ }finally{await context.close();}
 });

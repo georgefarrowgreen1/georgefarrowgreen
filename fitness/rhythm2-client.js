@@ -13,7 +13,7 @@ export function createCoach({owner,inputs,importEngine,api,change=()=>{},hold=()
   pending=p;return p;
  }
  const state=()=>({ready:ready(),loading:!!pending,error,records:ready()?records:[],engine});
- const plan=()=>ready()?engine.plan({...inputs(),records,resolveWorkout:id=>workout(id)||inputs().resolveWorkout?.(id)}):null;
+ const plan=(overrides={})=>ready()?engine.plan({...inputs(),...overrides,records,resolveWorkout:id=>workout(id)||inputs().resolveWorkout?.(id)}):null;
  const workout=id=>{if(!ready()||!id)return null;const r=records.find(r=>'r2p:'+r.id===id);return r?engine.recordedWorkout(r,inputs().ftp):engine.workoutFromId(id,inputs().ftp);};
  async function record(day){
   const id=current(),g=generation;await load();if(!valid(id,g))throw Error("The signed-in account changed.");const p=plan(),d=p?.days.find(d=>d.date===day),w=d?.id&&(p.workouts[d.id]||workout(d.id));

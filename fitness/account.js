@@ -179,5 +179,5 @@ export function createCoach({owner,create}){
   const p=Promise.resolve().then(create).then(c=>{if(version!==v||owner()!==id)throw Error('The signed-in account changed.');client=c;return c.load(options);}).catch(e=>{if(version===v)error=e.message;throw e;}).finally(()=>{if(pending===p)pending=null;});pending=p;return p;
  }
  const proxy=key=>(...args)=>client?client[key](...args):Promise.reject(Error('Open Rhythm 2.0 first.'));
- return {ready,state,load,plan:()=>client?.plan()||null,workout:id=>client?.workout(id)||null,record:proxy('record'),feedback:proxy('feedback'),reset(){version++;client?.reset();client=null;pending=null;error=null;}};
+ return {ready,state,load,plan:(...args)=>client?.plan(...args)||null,workout:id=>client?.workout(id)||null,record:proxy('record'),feedback:proxy('feedback'),reset(){version++;client?.reset();client=null;pending=null;error=null;}};
 }

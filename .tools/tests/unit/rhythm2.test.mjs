@@ -8,6 +8,29 @@ const record=(days,feedback={completion:'completed',effort:6,reason:'none'},extr
 test('sessions exactly fit the slot, keep recoveries between efforts, and round-trip their ids',()=>{
  for(const family of ['threshold','vo2','sprint','durable','long','endurance','recovery'])for(const minutes of [15,30,35,45,60,90,150]){const w=compose(family,minutes);if(!w)continue;assert.equal(measure(w).secs,minutes*60);assert.deepEqual(workoutFromId(w.id).steps,w.steps);assert.ok(w.steps.every(s=>s.secs>0));for(let i=1;i<w.steps.length;i++)assert.ok(!(w.steps[i].kind==='work'&&w.steps[i-1].kind==='work'));}
 });
+test('long-ride labels follow the final duration, including shortened ids and saved prescriptions',()=>{
+ for(const minutes of [40,60,90,115,120,150]){
+  const w=compose('long',minutes);
+  assert.equal(w.name,minutes<120?'Endurance ride':'Long endurance ride');
+  assert.equal(measure(w).secs,minutes*60);
+  assert.equal(workoutFromId(w.id).name,w.name);
+  assert.equal(workoutFromId(w.id).id,w.id);
+ }
+ const old={id:'old-long',ftp:200,workout:{...compose('long',60),name:'Long endurance ride'}};
+ const before=JSON.stringify(old),shown=recordedWorkout(old);
+ assert.equal(shown.name,'Endurance ride');
+ assert.deepEqual(shown.steps,old.workout.steps);
+ assert.equal(shown.sourceId,old.workout.id);
+ assert.equal(JSON.stringify(old),before,'the saved prescription is unchanged');
+ const named={...old,workout:{...old.workout,name:'Sunday coffee loop'}};
+ assert.equal(recordedWorkout(named).name,'Sunday coffee loop');
+ assert.equal(compose('durable',100).name,'Endurance ride, sustained finish');
+ assert.equal(compose('durable',120).name,'Long ride, sustained finish');
+ const p=plan({prefs:{...prefs,mode:'hold',days:[150,0,0,0,0,150,150]},today});
+ assert.ok(p.today.mins>0&&p.today.mins<120,'the weekly limits shorten the long-ride slot');
+ assert.equal(p.workouts[p.today.id].name,'Endurance ride');
+ assert.ok(p.days.filter(d=>d.date>=today&&d.date<addDays(today,7)).reduce((n,d)=>n+d.mins,0)<=p.weekly.minutes);
+});
 test('progression needs two independent controlled reviews at the same dose; difficulties, uncertainty and interruptions differ',()=>{
  assert.equal(progression([record(7)],'threshold').action,'hold');
  const progress=progression([record(14),record(7)],'threshold');assert.equal(progress.action,'progress');const w=compose('threshold',60,{progress});assert.equal(w.dose.intensity,dose.intensity);assert.equal(w.dose.reps,dose.reps);assert.equal(w.dose.work,dose.work+30);
@@ -119,12 +142,41 @@ test('focused sessions respect rolling seven-day limits across Monday, including
  assert.equal(p.today.hard,false);assert.ok(future.some(d=>d.hard),'the guard must still allow later focused work');
  const dates=[...new Set([...hardDays,...future.filter(d=>d.hard).map(d=>d.date)])];for(const d of future)assert.ok(dates.filter(x=>x>=addDays(d.date,-6)&&x<=d.date).length<=2);
 });
-test('planned interval minutes stay a minority and workload grows only with recent controlled feedback',()=>{
+test('planned interval minutes stay a minority and reviews cannot exceed the scheduled time goal',()=>{
  const acts=steadyHistory(),settings={...prefs,level:'regular',days:[60,60,60,60,60,120,90]},base=plan({prefs:settings,acts,today,ftp:200});
  const focused=base.days.filter(d=>d.date>=today&&d.hard);assert.ok(focused.length>0);
  for(let week=0;week<2;week++){const work=focused.filter(d=>d.date>=addDays(today,week*7)&&d.date<addDays(today,(week+1)*7)).reduce((n,d)=>n+base.workouts[d.id].workSecs/60,0);assert.ok(work<=base.weekly.workMinutes+1);}
- const hold=plan({prefs:{...settings,mode:'hold'},acts,today,ftp:200});assert.equal(base.weekly.minutes,hold.weekly.minutes);
- const controlled=plan({prefs:settings,acts,records:[record(12),record(8)],today,ftp:200});assert.ok(controlled.weekly.minutes>base.weekly.minutes);
+ const hold=plan({prefs:{...settings,mode:'hold'},acts,today,ftp:200});assert.equal(base.weekly.minutes,settings.days.reduce((n,d)=>n+d,0));assert.ok(hold.weekly.minutes<base.weekly.minutes);
+ const controlled=plan({prefs:settings,acts,records:[record(12),record(8)],today,ftp:200});assert.equal(controlled.weekly.minutes,base.weekly.minutes);
  const stale=plan({prefs:settings,acts,records:[record(55),record(48)],today,ftp:200});assert.equal(stale.weekly.minutes,base.weekly.minutes);
  const changedFtp=plan({prefs:settings,acts,records:[record(12,undefined,{ftp:250}),record(8,undefined,{ftp:250})],today,ftp:200});assert.equal(changedFtp.weekly.minutes,base.weekly.minutes);
+});
+
+test('a declared ten-hour week uses the chosen days despite sparse imports, without inventing extra intensity',()=>{
+ const days=[270,0,0,0,0,60,270],settings={...prefs,days,level:'regular'};
+ const sparse=Array.from({length:6},(_,i)=>({start:addDays(today,-(i*9+1)),sport:'ride',sum:{moving:8340,secs:8340,tss:98,kind:'power',iF:.65}}));
+ for(const acts of [[],sparse]){
+  const p=plan({prefs:settings,acts,today,ftp:300});assert.equal(p.weekly.minutes,600);assert.equal(p.weekly.availableMinutes,600);
+  for(let week=0;week<2;week++){
+   const ds=p.days.filter(d=>d.date>=addDays(today,week*7)&&d.date<addDays(today,(week+1)*7));
+   assert.deepEqual(ds.map(d=>d.mins),days);
+   assert.ok(ds.reduce((n,d)=>n+d.tss,0)<=p.weekly.tss+7);
+   assert.ok(ds.filter(d=>d.hard).length<=p.weekly.maxHard);
+   for(const d of ds.filter(d=>d.hard)){const w=p.workouts[d.id];assert.ok(w.workSecs<=2400);assert.equal(w.targetFtp,300);}
+  }
+ }
+});
+test('time goals still respect explicit recovery, rest, hold mode and a starting-again level',()=>{
+ const settings={...prefs,days:[270,0,0,0,0,60,270],level:'regular'};
+ const easy=plan({prefs:settings,today,feel:{[today]:{sleep:0,legs:2,mood:2}}});assert.equal(easy.today.kind,'recovery');assert.ok(easy.today.mins<=60);assert.equal(easy.today.hard,false);
+ const rest=plan({prefs:settings,today,feel:{[today]:{sleep:0,legs:0,mood:0}}});assert.equal(rest.today.id,null);assert.equal(rest.today.mins,0);
+ const novice=plan({prefs:{...settings,level:'none'},today});assert.equal(novice.weekly.minutes,90);assert.ok(novice.days.filter(d=>d.date>=today&&d.date<addDays(today,7)).reduce((n,d)=>n+d.mins,0)<=90);
+ const hold=plan({prefs:{...settings,mode:'hold'},today});assert.equal(hold.weekly.minutes,330);
+});
+test('draft week previews use the active engine and account records without changing saved preferences',async()=>{
+ const settings={...prefs,days:[60,60,0,60,0,120,90]},draft={...settings,days:[270,0,0,0,0,60,270]};
+ const coach=createCoach({owner:()=> 'ann',inputs:()=>({prefs:settings,today,ftp:250}),importEngine:()=>import('../../../fitness/rhythm2.js'),api:{trainingRecords:async()=>({records:[record(0,null)]})}});
+ await coach.load();const before=JSON.stringify(settings),preview=coach.plan({prefs:draft});
+ assert.equal(preview.weekly.minutes,600);assert.equal(preview.today.prescriptionId,'a'.repeat(24));
+ assert.equal(coach.plan().weekly.minutes,settings.days.reduce((n,d)=>n+d,0));assert.equal(JSON.stringify(settings),before);
 });

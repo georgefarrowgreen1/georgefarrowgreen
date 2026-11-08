@@ -18,6 +18,15 @@ const controlledEffort={threshold:7,vo2:8,sprint:8,durable:7};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export const dayKey=t=>{const d=new Date(t);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const step=(kind,secs,from,name,to)=>({kind,secs:Math.round(secs),from,name,...(to==null?{}:{to})});
+// Name the fitted session, rather than the original long-ride slot. Two hours
+// is a wording convention, not a physiological threshold or a volume target.
+function durationName(family,secs,name){
+ if(secs<7200){
+  if(family==='long'&&name==='Long endurance ride')return 'Endurance ride';
+  if(family==='durable'&&name==='Long ride, sustained finish')return 'Endurance ride, sustained finish';
+ }
+ return name;
+}
 const latest=rows=>[...rows].sort((a,b)=>String(a.day).localeCompare(String(b.day))||(a.created||0)-(b.created||0)||String(a.id).localeCompare(String(b.id)));
 const evidence=(records,family)=>latest(records.filter(r=>r.workout?.family===family&&r.feedback&&['completed','reduced'].includes(r.feedback.completion)&&!['traffic','time','equipment','other'].includes(r.feedback.reason)));
 export function progression(records,family,ftp=null,today=null){
@@ -82,7 +91,7 @@ export function compose(family,minutes,{model,ftp=200,progress={action:'start'},
  const names={threshold:`Threshold ${dose?.reps} × ${interval} min`,vo2:`Hard efforts ${dose?.reps} × ${interval} min`,sprint:`Sprints ${dose?.reps} × ${dose?.work} sec`,durable:'Long ride, sustained finish',long:'Long endurance ride',endurance:'Endurance ride',recovery:'Recovery spin'};
  const kind={threshold:'Threshold',vo2:'VO₂ max',sprint:'Sprint',durable:'Durability',long:'Endurance',endurance:'Endurance',recovery:'Recovery'}[family];
  const code=dose?`${dose.reps}:${dose.work}:${dose.recovery}:${Math.round(dose.intensity*1000)}`:'0';
- return {id:`r2:${family}:${minutes}:${code}`,sport:'ride',family,kind,name:names[family],about:progress.why||'Comfortable, conversational riding. Adjust to how you feel.',steps,dose,workSecs:work,rhythm:true,engine:ENGINE,targetFtp:ftp};
+ return {id:`r2:${family}:${minutes}:${code}`,sport:'ride',family,kind,name:durationName(family,secs,names[family]),about:progress.why||'Comfortable, conversational riding. Adjust to how you feel.',steps,dose,workSecs:work,rhythm:true,engine:ENGINE,targetFtp:ftp};
 }
 export function assessPrescription(record,power){
  if(!Array.isArray(power)&&!ArrayBuffer.isView(power))return {status:'uncertain',why:'No power data; use your session feedback.'};
@@ -95,7 +104,7 @@ export function assessPrescription(record,power){
 }
 export function recordedWorkout(record,currentFtp=record.ftp){
  const scale=record.ftp/currentFtp;
- return {...record.workout,id:`r2p:${record.id}`,capturedFtp:record.ftp,prescriptionId:record.id,targetFtp:currentFtp,sourceId:record.workout.id,steps:record.workout.steps.map(s=>({...s,from:s.from*scale,...(s.to==null?{}:{to:s.to*scale})}))};
+ return {...record.workout,name:durationName(record.workout.family,measure(record.workout).secs,record.workout.name),id:`r2p:${record.id}`,capturedFtp:record.ftp,prescriptionId:record.id,targetFtp:currentFtp,sourceId:record.workout.id,steps:record.workout.steps.map(s=>({...s,from:s.from*scale,...(s.to==null?{}:{to:s.to*scale})}))};
 }
 export function recoveryState({well={},feel={},records=[],today}){
  const check=feel[today],night=nightOf(well,today),values=check&&[check.sleep,check.legs,check.mood];
@@ -137,8 +146,13 @@ export function plan(input){
  const starting={none:90,some:180,regular:330,lots:480}[prefs.level]||150;
  const controlledRecent=pastRecords.filter(r=>r.day>=dayKey(addDays(today,-14))&&Math.abs(r.ftp/ftp-1)<=.02&&r.feedback?.completion==='completed'&&r.feedback.reason==='none'&&r.feedback.effort>=1&&r.feedback.effort<=(controlledEffort[r.workout.family]||7)&&r.feedback.assessment?.status!=='uncertain'&&r.feedback.assessment?.status!=='reduced');
  const growth=prefs.mode!=='hold'&&!recovery.easy&&new Set(controlledRecent.map(r=>r.day)).size>=2?1.05:1;
- const timeBudget=Math.min(weekMins,seed?starting:Math.max(60,typicalMinutes*growth));
- const loadBudget=seed?timeBudget*.65:Math.max(40,observedWeekly*growth);
+ const startingAgain=seed&&prefs.level==='none',holding=prefs.mode==='hold';
+ // Build follows the rider's stated weekly time goal. Imported history informs
+ // intervals/recovery; missing uploads are not a declaration of low capacity.
+ // Hold and an explicit "starting again" level retain a conservative baseline.
+ const timeBudget=Math.min(weekMins,startingAgain?starting:holding?(seed?starting:Math.max(60,typicalMinutes)):weekMins);
+ const loadBudget=holding||startingAgain?(seed?timeBudget*.65:Math.max(40,observedWeekly)):Math.max(timeBudget*.8,observedWeekly*growth);
+ const volumeWhy=startingAgain?'Starting gradually from your current riding level':holding?'Maintaining your recent riding time and training load':'Your scheduled riding time is the weekly goal; recovery and completed rides still shape the plan';
  // This is a conservative product guardrail, not a measured LT1/LT2 split
  // or a claim that one 80/20 distribution is optimal for every rider.
  const workBudget=timeBudget*(objective==='threshold'?.25:.2)*60;
@@ -158,7 +172,10 @@ export function plan(input){
   const dow=(new Date(d).getDay()+6)%7,slotsLeft=days.slice(dow).reduce((n,x)=>n+x,0)||1;
   const share=remaining*slot/slotsLeft;
   let available=Math.min(slot,Math.floor(remaining/5)*5,Math.max(15,Math.floor(share/5)*5));
-  const tired=atl-ctl>Math.max(15,ctl*.7);
+  // The schedule is the rider's stated usual week. Do not infer exhaustion
+  // solely from a low historical CTL when uploads understate that routine.
+  const usualLoad=holding||startingAgain?0:timeBudget*.65/7;
+  const tired=atl-ctl>Math.max(15,ctl*.7,usualLoad*.7);
   const long=slot>=90&&slot===Math.max(...days);
   if(done.length){kind=classify(done[0]);why=done.some(a=>a.reviewed)?'Your reviewed ride counts towards the plan':'Your actual riding counts towards the plan';if(record&&done.some(a=>a.reviewed)){w=recordedWorkout(record,ftp);kind=w.family;}}
   else if(record){w=recordedWorkout(record,ftp);kind=w.family;why='Your recorded prescription; its original targets are preserved';}
@@ -172,7 +189,12 @@ export function plan(input){
    kind=quality?(objective==='topend'?(previous==='vo2'?'sprint':'vo2'):objective==='threshold'?'threshold':previous==='threshold'?'vo2':'threshold'):recover||tired?'recovery':long?'long':'endurance';
    why=quality?`${OBJECTIVES[objective]}: ${model.progress[kind]?.why||'A focused session with recovery around it.'}`:recover?recovery.why:tired?'Easy riding while recent training settles':rollingHard>=maxHard?'Your last seven days already include enough focused sessions':long?'Build comfortable time on the bike':'Aerobic riding between your focused sessions';
    if(quality)available=Math.min(slot,Math.floor(remaining/5)*5,Math.max(35,available));
-   const dayBudget=quality?Math.min(budget,Math.max(40,budget*slot/slotsLeft)):budget*slot/slotsLeft;
+   if(kind==='recovery')available=Math.min(available,60);
+   const proportional=quality?Math.min(budget,Math.max(40,budget*slot/slotsLeft)):budget*slot/slotsLeft;
+   // Leave room for the remaining easy riding rather than assigning every day
+   // the same TSS/minute. A focused hour costs more than an endurance hour.
+   const reserve=Math.max(0,Math.min(remaining-available,slotsLeft-slot))*.65;
+   const dayBudget=holding||startingAgain?proportional:Math.min(budget,Math.max(proportional,budget-reserve));
    const progress=model.progress[kind]||{action:'start'};
    for(let mins=available;mins>=15;mins-=5){let candidate=compose(kind,mins,{model,ftp,progress});if(candidate&&progress.action==='progress'&&(measure(candidate).tss>dayBudget||usedWork+focusedSeconds(candidate)>workBudget))candidate=compose(kind,mins,{model,ftp,progress:{...progress,action:'hold',why:'Repeat this dose to keep the week’s focused work manageable.'}});if(candidate&&measure(candidate).tss<=dayBudget&&(!focusedSeconds(candidate)||usedWork+focusedSeconds(candidate)<=workBudget)){w=candidate;break;}}
    if(w&&quality)why=`${OBJECTIVES[objective]}: ${w.about}`;
@@ -182,7 +204,7 @@ export function plan(input){
   if(w){const stats=measure(w);workouts[w.id]=w;const hard=['threshold','vo2','sprint','durable'].includes(kind);used+=stats.tss;usedMins+=stats.secs/60;usedWork+=focusedSeconds(w);if(hard){lastHard=d;hardCount++;hardDates.add(d);}out.push({...dateBase,id:w.id,kind,mins:stats.secs/60,tss:Math.round(stats.tss),hard,why,confidence:model.confidence,prescriptionId:records.find(r=>r.id===w.prescriptionId&&r.day===key)?.id||null,objective,provisional:!w.prescriptionId});ctl+=(stats.tss-ctl)/42;atl+=(stats.tss-atl)/7;}
   else{const t=done.reduce((n,a)=>n+tssOf(a.sum,a.sport),0);used+=t;usedMins+=done.reduce((n,a)=>n+(a.sum?.moving||a.sum?.secs||0)/60,0);usedWork+=done.reduce((n,a)=>n+observedWork(a),0);if(done.some(a=>hardKinds.has(classify(a)))){lastHard=d;hardCount++;hardDates.add(d);}out.push({...dateBase,kind:done.length?kind:'rest',why:done.length?why:slot&&available<15?'Your week already includes the planned riding time':why});ctl+=(t-ctl)/42;atl+=(t-atl)/7;}
  }
- return {engine:ENGINE,label:"Rhythm · "+OBJECTIVES[objective],days:out,today:out.find(d=>d.date===today)||null,block,ctl:now.ctl,atl:now.atl,seeded:seed,line,cpw:null,targets:targets(null),adjust:{said:[]},ftpSeen:null,event:null,model,objective,workouts,weekly:{minutes:Math.round(timeBudget),tss:Math.round(loadBudget),workMinutes:Math.round(workBudget/60),maxHard},recovery,research:RESEARCH,beta:true};
+ return {engine:ENGINE,label:"Rhythm · "+OBJECTIVES[objective],days:out,today:out.find(d=>d.date===today)||null,block,ctl:now.ctl,atl:now.atl,seeded:seed,line,cpw:null,targets:targets(null),adjust:{said:[]},ftpSeen:null,event:null,model,objective,workouts,weekly:{minutes:Math.round(timeBudget),availableMinutes:weekMins,tss:Math.round(loadBudget),workMinutes:Math.round(workBudget/60),maxHard,why:volumeWhy},recovery,research:RESEARCH,beta:true};
 }
 export function workoutFromId(id,ftp=200){
  const m=/^r2:(threshold|vo2|sprint|durable|long|endurance|recovery):(\d+):(0|\d+:\d+:\d+:\d+)$/.exec(id||'');if(!m)return null;
