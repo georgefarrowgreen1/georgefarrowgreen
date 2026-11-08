@@ -8,6 +8,8 @@
 // each job went, and the lot handed to the site (/api/status/report, functions/_status.js), which keeps them.
 // (the site's address past the custom domains' bot checks: the inflite-apps Worker's workers.dev address, as the
 // ticker's TICK_SITE says (wrangler.toml))
+import { API_PROBES } from "../../functions/_monitorlist.js";
+import { probeApi } from "./api-probe.js";
 import { STATUS_SERVICES, SLOW_MS } from "../../functions/_statuslist.js";
 
 const APPS_SITE = "https://inflite-apps.georgefarrowgreen.workers.dev";
@@ -46,7 +48,7 @@ export default {
       } catch (e) { console.error(path, e && e.message); }
       return { path, ok: false, ms: Date.now() - t0 };
     };
-    const [jobs, checks] = await Promise.all([
+    const [jobs, checks, apis] = await Promise.all([
       Promise.all([
         ask("/api/pigeon/notify-tick", env.INFLIGHT_TICK_SECRET),
         ask("/api/weather/tick", env.WEATHER_TICK_SECRET || env.INFLIGHT_TICK_SECRET),
@@ -55,13 +57,14 @@ export default {
         ask("/api/today/tick", env.INFLIGHT_TICK_SECRET),   // (Today's morning notification)
       ]),
       Promise.all(STATUS_SERVICES.map(probe)),
+      Promise.all(API_PROBES.map(s => probeApi(s))),
     ]);
     const failed = jobs.filter((j) => !j.ok).map((j) => j.path);
     // (status.inflite.ai's: what was found, kept by the site)
     if (env.INFLIGHT_TICK_SECRET) {
       try {
         const r = await fetch(SITE + "/api/status/report", { method: "POST", headers: { Authorization: `Bearer ${env.INFLIGHT_TICK_SECRET}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ checks, jobs }), signal: AbortSignal.timeout(20000) });
+          body: JSON.stringify({ checks, jobs, apis }), signal: AbortSignal.timeout(20000) });
         if (!r.ok) { console.error("/api/status/report", r.status, (await r.text()).slice(0, 200)); failed.push("/api/status/report"); }
       } catch (e) { console.error("/api/status/report", e && e.message); failed.push("/api/status/report"); }
     }

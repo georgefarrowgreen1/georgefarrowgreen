@@ -30,6 +30,9 @@ import { assets } from "./_min.js";
 import { notFound } from "./_app.js";
 import { STATUS_SERVICES, STATUS_JOBS, STATUS_DEPS, APP_JOB, APP_SVCS } from "./_statuslist.js";
 
+import { MONITORS, MONITOR_IDS, MONITOR_POLICY } from "./_monitorlist.js";
+import { monitorChecks } from "./_monitoring.js";
+
 export const STATUS_HOST = "status.inflite.ai";
 // (STATUS_HOST in the environment: tests, on their own names; else status. on the apps' site)
 const statusHostOf = (env) => env?.STATUS_HOST || `status.${appsSite(env)}`;
@@ -106,7 +109,8 @@ export async function setAlertPrefs(env, b) {
 // Desk's own page for it; closed, how long it lasted and a nudge to write it up
 export function incidentMail(env, e) {
   const desk = `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, names = and((e.svcs || []).map(nameOf).filter(Boolean));
-  const hm = (t) => ukHM.format(t), up = e.title.replace(/ not (answering|running|working)$/, "");
+  const monitored = (e.svcs || []).some(id => MONITOR_IDS.has(id));
+  const hm = (t) => ukHM.format(t), up = e.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "");
   const { text, html } = e.open && e.held
     ? emailBody({ brand: "status", icon: "warn-red", title: e.title, preheader: `Since ${hm(e.started)}. ${e.text}`,
       notice: { tone: "red", lead: `Since ${hm(e.started)}.`, text: e.text },
@@ -119,9 +123,9 @@ export function incidentMail(env, e) {
       rows: [...(names ? [["What", names, "grid"]] : []), ["Status page", e.byHand ? "Posted" : "Investigating", "link"]], button: { label: "Open in Incident Desk", url: desk } })
     : emailBody({ brand: "status", icon: "check", title: `${up} working again`, preheader: e.text,
       lines: [e.text, "Add a short write-up while it’s fresh: what went wrong, and what’s changed."],
-      rows: [["Down for", lasted(e.ended - e.started), "clock"], ["From", `${hm(e.started)} to ${hm(e.ended)}`, "clock"], ["Updates posted", String(e.said || 0), "star"]],
+      rows: [[monitored ? "Affected for" : "Down for", lasted(e.ended - e.started), "clock"], ["From", `${hm(e.started)} to ${hm(e.ended)}`, "clock"], ["Updates posted", String(e.said || 0), "star"]],
       button: { label: "Write it up", url: desk } });
-  return { subject: e.open ? `Down: ${e.title}` : `Resolved: ${up} (down ${lasted(e.ended - e.started)})`, text, html };
+  return { subject: e.open ? `${monitored ? "Alert" : "Down"}: ${e.title}` : `Resolved: ${up} (${monitored ? "affected" : "down"} ${lasted(e.ended - e.started)})`, text, html };
 }
 // (an incident opened or closed: a notification on the owner's phone and an email, whatever the hour; never stops what's kept)
 async function tell(env, events) {
@@ -135,7 +139,7 @@ async function tell(env, events) {
       admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
       to && sendEmail(env, { brand: "status", to, ...incidentMail(env, e) }),
       // (one held off the page, the owner's alone)
-      !e.held && tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/ not (answering|running|working)$/, "")}: working again`, body: e.text, id: e.id }),
+      !e.held && tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "")}: working again`, body: e.text, id: e.id }),
     ].filter(Boolean)));
   } catch (e) { console.error("status tell", e && e.message); }
 }
@@ -212,7 +216,7 @@ export async function keepReport(env, body, t = Date.now()) {
   if (STATUS_SERVICES.some((s) => prev[s.id]?.at >= at)) return { kept: false };
   const given = new Map((Array.isArray(body?.checks) ? body.checks : []).filter((c) => c && SVC[c.id]).map((c) => [c.id, c]));
   const ran = new Map((Array.isArray(body?.jobs) ? body.jobs : []).filter((j) => j && typeof j.path === "string").map((j) => [j.path, j]));
-  const [inner, store, deps, maint] = await Promise.all([inside(env), storeCheck(env), depChecks(env), maintNow(D, t)]);
+  const [inner, store, deps, maint, monitoring] = await Promise.all([inside(env), storeCheck(env), depChecks(env), maintNow(D, t), monitorChecks(env, D, body, t)]);
   const rows = [];
   for (const svc of STATUS_SERVICES) {
     const o = given.get(svc.id), i = inner[svc.id];
@@ -231,14 +235,16 @@ export async function keepReport(env, body, t = Date.now()) {
   }
   rows.push({ svc: "db", s: store.s || "ok", ms: store.ms ?? null, version: null, why: store.why || null, check: false });
   for (const [id, d] of Object.entries(deps)) rows.push({ svc: id, s: d.s || "ok", ms: d.ms ?? null, version: null, why: d.why || null, check: false });
+  rows.push(...monitoring);
   const day = dayOf(t), writes = [];
   for (const r of rows) {
     const p = prev[r.svc] || { bad: 0, good: 0 };
     // (an app on a new version since the last check: deployed, as far as the Desk's told)
     if (r.version && p.version && r.version !== p.version) writes.push(D.prepare("INSERT OR IGNORE INTO status_deploys (id, at, what, version, note) VALUES (?, ?, ?, ?, NULL)").bind(`v${r.svc}${r.version}`, at, nameOf(r.svc), r.version));
-    r.bad = r.s === "down" ? p.bad + 1 : r.s === "none" ? p.bad : 0;
-    r.good = r.s === "ok" || r.s === "warn" ? p.good + 1 : r.s === "none" ? p.good : 0;
-    r.maint = covers(maint, r.svc);
+    const watched = MONITOR_IDS.has(r.svc);
+    r.bad = r.s === "down" || watched && r.s === "warn" ? p.bad + 1 : r.s === "none" ? p.bad : 0;
+    r.good = r.s === "ok" || !watched && r.s === "warn" ? p.good + 1 : r.s === "none" ? p.good : 0;
+    r.maint = covers(maint, r.svc) || !!MONITORS.find(m => m.id === r.svc && m.for.some(app => covers(maint, app)));
     writes.push(D.prepare("INSERT OR REPLACE INTO status_now (svc, s, ms, version, why, at, bad, good) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(r.svc, S[r.s], r.ms, r.version, r.why, at, r.bad, r.good));
     if (!r.check) continue;
     writes.push(D.prepare("INSERT OR REPLACE INTO status_checks (svc, at, s, ms) VALUES (?, ?, ?, ?)").bind(r.svc, at, S[r.s], r.ms));
@@ -269,12 +275,12 @@ async function incidents(D, rows, t) {
   const auto = open.filter((x) => !x.kind || x.kind === "auto");
   const by = Object.fromEntries(rows.map((r) => [r.svc, r])), inOpen = new Set(auto.flatMap((x) => x.svcs)), events = [];
   for (const r of rows) {
-    if (r.bad < 2 || inOpen.has(r.svc) || r.maint) continue;
-    const what = JOB[r.svc] ? "isn’t running" : "isn’t answering";
+    if (r.s === "none" || r.bad < 2 || inOpen.has(r.svc) || r.maint) continue;
+    const what = MONITOR_IDS.has(r.svc) ? "needs attention" : JOB[r.svc] ? "isn’t running" : "isn’t answering";
     let x = auto.find((o) => t - o.started < 15 * MIN);
     if (x) { x.svcs.push(r.svc); x.updates.unshift({ at: t, k: "Update", w: `${nameOf(r.svc)} ${what} either.` }); x.changed = true; }
     else {
-      x = { id: `i${t.toString(36)}${r.svc}`, kind: "auto", svcs: [r.svc], started: t - 5 * MIN, ended: null, updates: [{ at: t, k: "Spotted", w: `${nameOf(r.svc)} ${what}: two checks in a row failed${r.why ? ` (${r.why})` : ""}.` }], changed: true, fresh: true };
+      x = { id: `i${t.toString(36)}${r.svc}`, kind: "auto", svcs: [r.svc], started: t - 5 * MIN, ended: null, updates: [{ at: t, k: "Spotted", w: `${nameOf(r.svc)} ${what}: two checks in a row ${MONITOR_IDS.has(r.svc) ? "need attention" : "failed"}${r.why ? ` (${r.why})` : ""}.` }], changed: true, fresh: true };
       auto.unshift(x); open.unshift(x);
     }
     inOpen.add(r.svc);
@@ -290,7 +296,7 @@ async function incidents(D, rows, t) {
     if (!x.kind || x.kind === "auto") {
       x.svcs.sort(byOrder);
       const allJobs = x.svcs.every((id) => JOB[id]), allSvcs = x.svcs.every((id) => !JOB[id]);
-      x.title = `${and(x.svcs.map(nameOf))} ${allJobs ? "not running" : allSvcs ? "not answering" : "not working"}`;
+      x.title = `${and(x.svcs.map(nameOf))} ${x.svcs.some(id => MONITOR_IDS.has(id)) ? "needs attention" : allJobs ? "not running" : allSvcs ? "not answering" : "not working"}`;
       if (x.svcs.every((id) => (!by[id] ? !known(id) : by[id].good >= 2))) {
         x.ended = t; x.updates.unshift({ at: t, k: "Resolved", w: x.svcs.length > 1 ? "Everything is working again." : `${nameOf(x.svcs[0])} is working again.` }); x.changed = true; x.closedNow = true;
       }
@@ -363,7 +369,7 @@ export async function summary(env, t = Date.now()) {
       at: l?.at || null, up90: n ? Math.round(((n - down) / n) * 10000) / 100 : null, days: days.map((k) => { const x = dayState(d[k]); return x && { ...x, n: d[k].n, slow: d[k].slow, down: d[k].down }; }), checks };
   });
   const jobs = STATUS_JOBS.map((j) => { const l = latest[j.id]; return { id: j.id, name: j.name, s: st(j.id), at: l?.at || null, ms: l?.ms ?? null }; });
-  const deps = STATUS_DEPS.map((d) => { const l = latest[d.id]; return { id: d.id, name: d.name, s: st(d.id), at: l?.at || null, ms: l?.ms ?? null, why: l?.why || null }; }).filter((d) => d.at);
+  const deps = STATUS_DEPS.map((d) => { const l = latest[d.id]; return { id: d.id, name: d.name, ...(d.monitor ? { monitor: d.monitor } : {}), s: st(d.id), at: l?.at || null, ms: l?.ms ?? null, why: l?.why || null }; }).filter((d) => d.at);
   const maint = (mts.results || []).map((m) => ({ id: m.id, title: m.title, text: m.text || "", svcs: JSON.parse(m.svcs || "[]"), starts: m.starts, ends: m.ends }));
   const list = (incs.results || []).map((x) => ({ id: x.id, kind: x.kind || "auto", title: x.title, svcs: JSON.parse(x.svcs || "[]"), started: x.started, ended: x.ended, updates: JSON.parse(x.updates || "[]"), codes: x.code ? [x.code] : [],
     ...(x.outage === 0 ? { notOutage: true } : {}) }));
@@ -384,7 +390,7 @@ export async function summary(env, t = Date.now()) {
   } catch (_) {}
   // (the days, and the first any address was checked on: the page shows bars only from then)
   const first = Math.min(...services.map((x) => x.days.findIndex(Boolean)).filter((i) => i >= 0));
-  return { at, every: 5, services, jobs, deps, maint, incidents: list, bugs, outside: latest.outside?.at || null, dayKeys: days, since: Number.isFinite(first) ? days[first] : null };
+  return { at, every: 5, services, jobs, deps, monitoringPolicy: MONITOR_POLICY, maint, incidents: list, bugs, outside: latest.outside?.at || null, dayKeys: days, since: Number.isFinite(first) ? days[first] : null };
 }
 export async function dayOfChecks(env, svc, t = Date.now()) {
   if (!SVC[svc]) throw new HttpError(404, "Not found.");
@@ -455,7 +461,7 @@ export async function noteIncident(env, b, t = Date.now()) {
   if (x.held) return x;
   // (the page's copy at this edge let go of, so it's there at once; elsewhere within half a minute)
   await forget(env);
-  await tellSubscribers(env, { svcs: x.svcs, title: kind === "Resolved" ? `${x.title.replace(/ not (answering|running|working)$/, "")}: working again` : x.title, body: text, id: x.id });
+  await tellSubscribers(env, { svcs: x.svcs, title: kind === "Resolved" ? `${x.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "")}: working again` : x.title, body: text, id: x.id });
   return x;
 }
 const svcsOf = (v) => [...new Set((Array.isArray(v) ? v : []).filter((id) => typeof id === "string" && known(id)))].sort(byOrder).slice(0, 20);
@@ -488,12 +494,13 @@ export async function cancelMaint(env, id, t = Date.now()) {
   await forget(env);
   return { ok: true };
 }
-// (the ticker's outside check's word, from GitHub's servers every hour: that it looked, and what it saw)
+// (the ticker's outside check's word, from GitHub's servers every 15 minutes: that it looked, and what it saw)
 export async function outsideSaw(env, t = Date.now()) {
   const D = await table(env);
   await D.prepare("INSERT OR REPLACE INTO status_now (svc, s, ms, version, why, at, bad, good) VALUES ('outside', 0, NULL, NULL, NULL, ?, 0, 0)").bind(t).run();
   const s = await summary(env, t);
-  return { at: s.at, stale: !s.at || t - s.at > 20 * MIN, down: [...s.services, ...s.jobs, ...s.deps].filter((x) => x.s === "down").map((x) => x.name) };
+  return { at: s.at, stale: !s.at || t - s.at > 20 * MIN, down: [...s.services, ...s.jobs, ...s.deps].filter((x) => x.s === "down").map((x) => x.name),
+    alerts: s.incidents.filter(x => !x.ended && x.svcs.some(id => MONITOR_IDS.has(id))).map(x => x.title) };
 }
 
 // ---- for the page: a day's quarter-hours (each check is kept two days), a bug code looked up, and updates without an
@@ -540,7 +547,7 @@ async function bugItem(b, t) {
 }
 // (what each subscribed app covers: its own address, its job, what it relies on)
 const SUB_APPS = ["today", "chat", "weather", "fitness", "markets", "mail"];
-const COVERS = { today: ["today", "morning", "dep-weather"], chat: ["chat", "notify"], weather: ["weather", "wxtick", "dep-weather"], fitness: ["fitness", "garmin", "dep-garmin"], markets: ["markets", "mkttick", "dep-prices"], mail: ["mail"] };
+const COVERS = Object.fromEntries(["today", "chat", "weather", "fitness", "markets", "mail"].map(app => [app, APP_SVCS[app]]));
 export async function statusSubscribe(env, b, ip, t = Date.now()) {
   await pace(env, `statsub:${ip}`, 20, 60 * MIN);
   const sub = b?.sub || {}, endpoint = String(sub.endpoint || ""), p256dh = String(sub.keys?.p256dh || ""), auth = String(sub.keys?.auth || "");

@@ -50,6 +50,9 @@ jobs:
           fail=0
           for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'markets/*.js' 'account/*.js' 'fitting/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
+      - name: Install locked test and performance-budget tools
+        working-directory: georgefarrowgreen
+        run: npm ci --prefix .tools/tests --no-audit --no-fund
       - name: Unit tests
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/unit/*.test.mjs

@@ -125,7 +125,7 @@
     else if (stale() && behind()) [st, title, sub] = ["warn", "This page is out of date", `It couldn’t reach the checks just now, so what’s below is from ${ago(d.at)}. Trying again…`];
     else if (stale()) [st, title, sub] = ["warn", "The checks are running late", `The last check was ${ago(d.at)}. What’s below is from then.`];
     else if (down.length) [st, title, sub] = ["down", `${and(down.map((x) => x.name))} ${down.length > 1 ? "aren’t" : "isn’t"} answering`, l ? updateLine(l) : "We’re looking into it."];
-    else if (l) [st, title, sub] = ["down", l.title, updateLine(l)];
+    else if (l) [st, title, sub] = [l.svcs?.every(id => /^(api|perf)-/.test(id)) ? "warn" : "down", l.title, updateLine(l)];
     else if (m) [st, title, sub] = ["plan", `Maintenance: ${m.title}`, `Until ${hm(m.ends)}.${m.text ? ` ${m.text}` : ""}`];
     else if (slow.length) [st, title, sub] = ["warn", "A few things are slow", `${and(slow.map((x) => x.name))}: slower than usual or running late. Everything else is normal.`];
     else [st, title, sub] = ["ok", "Everything’s working", `All ${apps.length} apps, and everything they rely on`];
@@ -173,9 +173,17 @@
     const jobs = d.jobs.map((j) => ({ ...j, s: j.s === "ok" && j.at && Date.now() - j.at > STALE ? "warn" : j.s }));
     html += `<div class="operations" id="operations"><section class="group"><div class="gh"><h2>Scheduled jobs</h2><span>Every 5 min</span></div><ul class="glass status-list">${jobs.map((j) =>
       `<li class="status-row" data-s="${esc(j.s)}">${logo(j.id, 22)}<div><b>${esc(j.name)}</b><small class="num">${j.at ? `Last ran ${hm(j.at)}${j.ms != null ? ` · ${(j.ms / 1000).toFixed(1)} s` : ""}` : "Not run yet"}</small></div><span class="status-dot" role="img" aria-label="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}" title="${j.s === "down" ? "Failed" : j.s === "warn" ? "Late" : j.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
-    const deps = d.deps || [];
-    if (deps.length) html += `<section class="group"><div class="gh"><h2>API’s and Connectors</h2><span>${deps.filter((x) => x.s !== "ok").length ? "Needs attention" : "All working"}</span></div><ul class="glass status-list">${deps.map((x) =>
-      `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}" title="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
+    const allDeps = d.deps || [];
+    for (const [heading, deps] of [
+      ["API’s and Connectors", allDeps.filter(x => !x.monitor)],
+      ["API health", allDeps.filter(x => x.monitor === "api")],
+      ["Page performance", allDeps.filter(x => x.monitor === "performance")],
+    ]) {
+      if (!deps.length) continue;
+      const state = deps.some(x => x.s === "down" || x.s === "warn") ? "Needs attention" : deps.some(x => x.s === "none") ? "Collecting data" : "All working";
+      html += `<section class="group"><div class="gh"><h2>${esc(heading)}</h2><span>${state}</span></div><ul class="glass status-list">${deps.map(x =>
+        `<li class="status-row" data-s="${esc(x.s)}">${logo(x.id, 22)}<div><b>${esc(x.name)}</b><small class="num">${x.monitor ? esc(x.why || (x.ms != null ? `Response ${x.ms} ms` : x.s === "none" ? "Collecting data" : "Within thresholds")) : x.s === "down" ? esc(x.why || "Not answering") : x.s === "none" ? "Not checked yet" : x.ms != null ? `Response ${x.ms} ms` : ""}</small></div><span class="status-dot" role="img" aria-label="${x.s === "down" ? "Down" : x.s === "warn" ? "Slow" : x.s === "ok" ? "Working" : "Pending"}"></span></li>`).join("")}</ul></section>`;
+    }
     html += `</div>`;
     html += `<div class="status-legend" aria-label="Status key"><span data-s="ok"><i></i>Working</span><span data-s="warn"><i></i>Slow, late or pending</span><span data-s="down"><i></i>Not working</span><span data-s="none"><i></i>No history</span></div>`;
     box.innerHTML = html;

@@ -17,6 +17,12 @@ const fixture = {at:now,since:dayKeys[0],dayKeys,services,
   incidents:[{id:'resolved-test',title:"Markets: TypeError: A.atHub is not a function. (In 'A.atHub(IFL.hub)'",svcs:['weather'],started:now-3600e3,ended:now-1800e3,updates:[{at:now-1800e3,k:'Resolved',w:'Alerts are being delivered normally.'},{at:now-3600e3,k:'Investigating',w:'Checking delayed alerts.'}]}],bugs:[],maint:[]};
 fixture.incidents.push({...structuredClone(fixture.incidents[0]),id:'resolved-mail',title:'Mail not answering',svcs:['mail'],notOutage:true});
 fixture.bugs=['fixed','new','known','back'].map((state,i)=>({code:`IF-T-TEST${i}`,state,app:i===0?'server':'markets',title:i===0?'Today: building your day':null,first:now-864e5,last:now-3600e3,fixedAt:state==='fixed'||state==='back'?now-1800e3:null,n:i+1}));
+fixture.deps.push(
+ {id:'api-today',name:'Today API',monitor:'api',s:'ok',ms:45,why:null},
+ {id:'api-fitness',name:'Fitness API',monitor:'api',s:'ok',ms:75,why:null},
+ {id:'perf-today',name:'Today performance',monitor:'performance',s:'none',why:'Collecting performance samples'},
+ {id:'perf-mail',name:'Mail performance',monitor:'performance',s:'ok',why:'Enough samples; within thresholds'}
+);
 const browser = await chromium.launch({executablePath:process.env.CHROMIUM || undefined,args:['--no-sandbox']});
 const out = process.env.STATUS_SCREENSHOTS;
 if(out)mkdirSync(out,{recursive:true});
@@ -42,7 +48,10 @@ for(const width of [320,390,640,1100])for(const colorScheme of ['light','dark'])
   await route.fulfill({body,contentType:path==='/'?'text/html':path.endsWith('.js')?'application/javascript':path.endsWith('.css')?'text/css':'image/svg+xml',headers:{'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'"}});
  });
  await page.goto('https://status.test/');await page.waitForSelector('.status-dot');
- assert.equal(await page.locator('.status-row').count(),9);
+ assert.equal(await page.locator('.status-row').count(),fixture.jobs.length+fixture.deps.length);
+ assert.equal(await page.getByRole('heading',{name:'API health',exact:true}).count(),1);
+ assert.equal(await page.getByRole('heading',{name:'Page performance',exact:true}).count(),1);
+ assert.equal(await page.getByText('Collecting performance samples',{exact:true}).count(),1);
  assert.match(await page.locator('#verdict h2').innerText(),problem?/isn’t answering/:/Everything’s working/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow at ${width}`);
  assert.equal(await page.locator('#mini').evaluate(x=>x.inert),true);

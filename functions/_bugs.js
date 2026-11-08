@@ -40,6 +40,7 @@ export const table = (env) => (ready ||= db(env).then((D) => D.batch([
     version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)`),
   D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_unfiled ON pg_bugs(filed_at, at)"),
   D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_code ON pg_bugs(code, at)"),
+  D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_app_at ON pg_bugs(app, at)"),
   // (a server error's detail, for the Incident Desk: { sev: "slow" | "failed", limit, steps: [{ name, ms, done }] })
 ]).then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN detail TEXT").run().catch(() => {}))
   // (who sent it from the window, where they were signed in: told when it's fixed, functions/_desk.js tellFixed)

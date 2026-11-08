@@ -20,11 +20,14 @@ const words = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().s
 const json1 = (v, or) => { try { return v ? JSON.parse(v) : or; } catch (_) { return or; } };
 
 // (which app an item's about, as the Desk's strip names them)
+import { MONITORS } from "./_monitorlist.js";
+
 export const DESK_APPS = ["Today", "Chat", "Weather", "Fitness", "Markets", "Mail", "Signing in"];
 const BY_WORD = { today: "Today", hub: "Today", pigeon: "Chat", chat: "Chat", chats: "Chat", tick: "Chat", sync: "Chat", inflight: "Chat", weather: "Weather", wx: "Weather",
   fitness: "Fitness", garmin: "Fitness", strava: "Fitness", markets: "Markets", finance: "Markets", mkt: "Markets", mail: "Mail", email: "Mail", account: "Signing in", auth: "Signing in" };
 const BY_SVC = { today: "Today", morning: "Today", chat: "Chat", notify: "Chat", weather: "Weather", wxtick: "Weather", "dep-weather": "Weather", fitness: "Fitness", garmin: "Fitness",
   "dep-garmin": "Fitness", markets: "Markets", mkttick: "Markets", "dep-prices": "Markets", mail: "Mail", auth: "Signing in", account: "Signing in", "dep-email": "Signing in" };
+for (const monitor of MONITORS) BY_SVC[monitor.id] = BY_WORD[monitor.for[0]];
 export const appOfCode = (app, kind) => (app === "server" ? BY_WORD[String(kind || "").split(/\s+/)[0]] || null : BY_WORD[app] || null);
 // (a server error's name in words: "Today: building your day")
 const SRC = { "today day": "Today: building your day", "today tick": "Today: the morning notification", "today weather": "Today: the weather", "today plan": "Today: your plan",

@@ -2626,3 +2626,9 @@ See [.tools/audits/2026-11-08.md](.tools/audits/2026-11-08.md) for scope, findin
 Run `CHROMIUM=/path/to/chromium node .tools/audits/public-audit.cjs` after installing `.tools/tests` dependencies for a read-only mobile/desktop public check of all nine InFlite hosts.
 
 Page zoom is blocked across all InFlite apps by the shared early guard in `.tools/inflite/zoom.js`. After editing it, run `node .tools/zoom.mjs`, followed by minification and Weather’s offline manifest generator. The guard runs on the sign-in page independently of the shared menu.
+
+## Continuous API and performance monitoring
+
+The five-minute ticker checks signed-out API contracts, slow responses and recorded server-error bursts. Status also evaluates current field-performance histograms against the previous week, with minimum sample thresholds. Confirmed issues use the existing incident, notification and maintenance system. An independent GitHub watchdog runs every fifteen minutes, and CI enforces the existing app performance budgets.
+
+See [.tools/monitoring/README.md](.tools/monitoring/README.md) for thresholds, alert/recovery rules and coverage limits.

@@ -139,9 +139,10 @@ test("each app's checks: it answers, the database and storage, its job; told whe
   assert.equal(r1.told, 0);
   const s = await summary(env, t);
   const chat = s.services.find((x) => x.id === "chat");
-  assert.deepEqual(chat.checks.map((c) => c.k), ["Answers", "Database and storage", "Chat notifications"]);
-  assert.ok(chat.checks.every((c) => c.s === "ok"));
-  assert.deepEqual(s.services.find((x) => x.id === "mail").checks.map((c) => c.k), ["Answers"], "Mail's data is its own Worker's");
+  assert.deepEqual(chat.checks.map((c) => c.k), ["Answers", "Database and storage", "Chat notifications", "Chat API", "Chat performance"]);
+  assert.ok(chat.checks.slice(0, 3).every((c) => c.s === "ok"));
+  assert.ok(chat.checks.slice(3).every(c => c.s === "none"), "old reports do not invent monitor data");
+  assert.deepEqual(s.services.find((x) => x.id === "mail").checks.map((c) => c.k), ["Answers", "Mail API", "Mail performance"], "Mail's data is its own Worker's");
   for (let i = 0; i < 2; i++) { t += 5 * 60e3; const r = await keepReport(env, report({ fitness: { s: "down", ms: null } }), t); if (i === 1) assert.equal(r.told, 1, "opened: told"); }
   for (let i = 0; i < 2; i++) { t += 5 * 60e3; const r = await keepReport(env, report(), t); if (i === 1) assert.equal(r.told, 1, "closed: told"); }
 });
@@ -301,4 +302,58 @@ test("a day's quarter-hours (while its checks are kept), a code looked up, and u
   assert.equal(await tellSubscribers(pushEnv, { svcs: [], title: "x", id: "i2" }), 2, "naming nothing: everyone");
   await statusUnsubscribe(env, { endpoint: sub(1).endpoint });
   assert.equal(await tellSubscribers(pushEnv, { svcs: ["chat"], title: "x", id: "i3" }), 0);
+});
+
+// The new monitors use the same durable incident/maintenance lifecycle as outages.
+test('API slowness opens once, ignores retries/missing probes, and closes only after two healthy reports', async () => {
+  const { API_PROBES } = await import('../../../functions/_monitorlist.js');
+  let t = T0 + 40 * 864e5;
+  const monitored = (state = 'ok') => ({ ...report(), apis: API_PROBES.map(s => ({ id: s.id, s: s.app === 'fitness' ? state : 'ok', ms: state === 'warn' && s.app === 'fitness' ? 3500 : 50 })) });
+  const active = async () => (await adminIncidents(env)).filter(i => !i.ended && i.svcs.includes('api-fitness'));
+  await keepReport(env, monitored('warn'), t);
+  assert.equal((await active()).length, 0);
+  assert.equal((await keepReport(env, monitored('warn'), t)).kept, false, 'same report is not a second failure');
+  t += 300000; await keepReport(env, monitored('warn'), t);
+  assert.equal((await active()).length, 1);
+  assert.match((await active())[0].title, /needs attention/);
+  t += 300000; await keepReport(env, report(), t);
+  assert.equal((await active()).length, 1, 'no probe cannot establish recovery');
+  t += 300000; await keepReport(env, monitored(), t);
+  assert.equal((await active()).length, 1);
+  t += 300000; await keepReport(env, monitored(), t);
+  assert.equal((await active()).length, 0);
+});
+
+test('server error bursts are aggregated and planned app maintenance covers its API monitor', async () => {
+  const { API_PROBES } = await import('../../../functions/_monitorlist.js');
+  let t = T0 + 41 * 864e5;
+  const monitored = () => ({ ...report(), apis: API_PROBES.map(s => ({ id: s.id, s: 'ok', ms: 50 })) });
+  const putBug = DB.sql.prepare("INSERT INTO pg_bugs (id, code, app, kind, at, words, detail) VALUES (?, 'IF-S-MONIT', 'server', 'weather api', ?, 'private words', ?)");
+  for (let i = 0; i < 20; i++) putBug.run(`slow-monitor-${i}`, t, '{"sev":"slow"}');
+  for (let i = 0; i < 5; i++) putBug.run(`error-monitor-${i}`, t, '{"sev":"failed"}');
+  await planMaint(env, { title: 'Weather maintenance', svcs: ['weather'], starts: t + 60000, ends: t + 3600000 }, t);
+  for (let i = 0; i < 2; i++) { t += 300000; await keepReport(env, monitored(), t); }
+  assert.equal((await adminIncidents(env)).some(i => !i.ended && i.svcs.includes('api-weather')), false, 'maintenance suppresses the monitor incident');
+  const row = (await summary(env, t)).deps.find(d => d.id === 'api-weather');
+  assert.equal(row.s, 'down'); assert.equal(row.why, '5 server errors in 15 minutes');
+  assert.equal(JSON.stringify(row).includes('private words'), false);
+});
+
+test('real performance histograms trigger a monitor and missing data never resolves it', async () => {
+  const { band } = await import('../../../functions/_vitals.js');
+  const { DAY, londonOffset } = await import('../../../functions/_pigeon.js');
+  let t = T0 + 42 * DAY, day = Math.floor((t + londonOffset(t)) / DAY);
+  const put = DB.sql.prepare("INSERT INTO pg_vitals (day, app, dev, metric, b, n) VALUES (?, 'mail', 'phone', 'lcp', ?, ?)");
+  put.run(day, band(6000), 20);
+  const active = async () => (await adminIncidents(env)).filter(i => !i.ended && i.svcs.includes('perf-mail'));
+  await keepReport(env, report(), t); t += 300000; await keepReport(env, report(), t);
+  assert.equal((await active()).length, 1);
+  DB.sql.prepare("DELETE FROM pg_vitals WHERE day = ? AND app = 'mail'").run(day);
+  t += 300000; await keepReport(env, report(), t);
+  assert.equal((await active()).length, 1);
+  put.run(day, band(1000), 100);
+  t += 300000; await keepReport(env, report(), t);
+  assert.equal((await active()).length, 1);
+  t += 300000; await keepReport(env, report(), t);
+  assert.equal((await active()).length, 0);
 });

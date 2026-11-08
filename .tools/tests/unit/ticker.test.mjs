@@ -3,11 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import ticker, { probe } from "../../../workers/ticker/index.js";
+import { API_PROBES } from "../../../functions/_monitorlist.js";
 import { STATUS_SERVICES } from "../../../functions/_statuslist.js";
 
 // (one run, the site answering each job with answer(path), and each address status.inflite.ai checks with look(url):
 // → the jobs asked for, the addresses looked at, what was reported, and what the run threw, or null)
-async function run(env, answer, look = () => new Response('{"build":"1.50"}', { headers: { "Content-Type": "application/json" } })) {
+async function run(env, answer, look = (url) => { const svc = API_PROBES.find(s => s.probe === url); return new Response(JSON.stringify(svc ? { [svc.field]: svc.value } : { build: "1.50" }), { status: svc?.status || 200, headers: { "Content-Type": "application/json" } }); }) {
   const asked = [], looked = [], real = globalThis.fetch, said = console.error;
   let reported = null;
   globalThis.fetch = async (url, o) => {
@@ -48,9 +49,11 @@ test("a run where a job fails (refused, or the site not answering) is said to ha
 
 test("status.inflite.ai's checks: every address looked at as a phone would, how each job went, all reported with the key", async () => {
   const r = await run(env, (p) => new Response("{}", { status: p === "/api/markets/tick" ? 500 : 200 }));
-  assert.deepEqual(r.looked.sort(), STATUS_SERVICES.map((s) => s.probe).sort());
+  assert.deepEqual(r.looked.sort(), [...STATUS_SERVICES, ...API_PROBES].map((s) => s.probe).sort());
   assert.ok(!r.looked.some((u) => u.includes("fitting")), "not Fit Studio");
   assert.equal(r.reported.checks.length, STATUS_SERVICES.length);
+  assert.equal(r.reported.apis.length, API_PROBES.length);
+  assert.ok(r.reported.apis.every(c => c.s === "ok"));
   assert.ok(r.reported.checks.every((c) => c.s === "ok" && c.version === "1.50" && Number.isFinite(c.ms)));
   assert.deepEqual(r.reported.jobs.find((j) => j.path === "/api/markets/tick").ok, false);
   assert.equal(r.reported.jobs.filter((j) => j.ok).length, 4);

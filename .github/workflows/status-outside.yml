@@ -1,4 +1,4 @@
-# status.inflite.ai, checked from outside Cloudflare: every hour, from GitHub's servers, the site is asked whether its own
+# status.inflite.ai, checked from outside Cloudflare: every 15 minutes, from GitHub's servers, the site is asked whether its own
 # checks are still running (functions/_status.js outsideSaw, at the site's workers.dev address with the scheduled jobs'
 # key). If the site doesn't answer, or its checks have stopped (none for 20 minutes), this run fails, and GitHub emails the
 # repository's owner: the one alert that still reaches you when Cloudflare itself, or the ticker, is down. What it saw is
@@ -7,7 +7,7 @@ name: Status, from outside
 
 on:
   schedule:
-    - cron: "23 * * * *"
+    - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -27,12 +27,20 @@ jobs:
           SITE: ${{ vars.TICK_SITE || 'https://inflite-apps.georgefarrowgreen.workers.dev' }}
           TICK_SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
         run: |
-          if [ -z "$TICK_SECRET" ]; then echo "::notice::INFLIGHT_TICK_SECRET isn't set: nothing checked."; exit 0; fi
+          if [ -z "$TICK_SECRET" ]; then echo "::error::INFLIGHT_TICK_SECRET is missing: monitoring cannot run."; exit 1; fi
           body=$(curl -sS --max-time 30 -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TICK_SECRET" "$SITE/api/status/outside" || echo $'\n000')
           code=$(printf '%s' "$body" | tail -n1); json=$(printf '%s' "$body" | sed '$d')
           echo "HTTP $code: $json"
           if [ "$code" != "200" ]; then echo "::error::The site didn't answer the status check (HTTP $code)."; exit 1; fi
-          if printf '%s' "$json" | grep -q '"stale":true'; then echo "::error::status.inflite.ai's checks have stopped: none in the last 20 minutes."; exit 1; fi
-          down=$(printf '%s' "$json" | sed -n 's/.*"down":\[\([^]]*\)\].*/\1/p')
-          if [ -n "$down" ]; then echo "::warning::Down now: $down (the status page has an incident for it)."; fi
-          echo "Checks running."
+          STATUS_CHECK_JSON="$json" node -e '
+            const report = JSON.parse(process.env.STATUS_CHECK_JSON);
+            if (report.ok !== true || report.stale !== false) {
+              console.error("::error::The status checks are missing, invalid or over 20 minutes old."); process.exit(1);
+            }
+            const alerts = Array.isArray(report.alerts) ? report.alerts : [];
+            if (alerts.length) {
+              console.error("::error::Monitoring alerts: " + alerts.join("; ")); process.exit(1);
+            }
+            if (report.down?.length) console.warn("::warning::Down now: " + report.down.join(", "));
+            console.log("Checks running; no confirmed API or performance alerts.");
+          '

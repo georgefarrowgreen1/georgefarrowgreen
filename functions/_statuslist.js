@@ -1,3 +1,4 @@
+import { MONITORS } from "./_monitorlist.js";
 // What status.inflite.ai shows (functions/_status.js), and what the ticker checks for it (workers/ticker/index.js, which
 // imports this): each address as a phone reaches it, and each scheduled job by the path the ticker asks for. Nothing
 // here but the list, so the ticker can carry it without the rest of the site.
@@ -26,6 +27,7 @@ export const STATUS_JOBS = [
 export const SLOW_MS = 3000;
 // (what the apps rely on outside InFlite, checked from inside each time: for: the apps each one's part of)
 export const STATUS_DEPS = [
+  ...MONITORS,
   { id: "dep-weather", name: "Weather API", for: ["weather", "today"] },
   { id: "dep-prices", name: "Market API", for: ["markets"] },
   { id: "dep-garmin", name: "Garmin API", for: ["fitness"] },
@@ -39,3 +41,9 @@ export const APP_SVCS = {
   markets: ["markets", "mkttick", "dep-prices"], finance: ["markets", "mkttick", "dep-prices"], mail: ["mail"], email: ["mail"],
   account: ["account", "auth", "dep-email"], auth: ["auth", "dep-email"], home: ["home"],
 };
+
+// API and field-performance health follows each app's existing banners/subscriptions.
+for (const [app, ids] of Object.entries(APP_SVCS)) {
+  const own = ({ chats: "chat", finance: "markets", email: "mail" })[app] || app;
+  if (MONITORS.some(m => m.for.includes(own))) ids.push(`api-${own}`, `perf-${own}`);
+}
