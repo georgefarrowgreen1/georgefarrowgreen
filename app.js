@@ -414,6 +414,212 @@ function showLines() {
   }
 }
 
+/* ---------------- the apps, on a phone: a continuous carousel ---------------- */
+// The real links stay put (including their signed-in figures). Copies either side let the track glide across the
+// join, then move back by one identical set between frames. Only transform is animated; geometry is read on resize,
+// never during a glide or a drag. Desktop and no-script visitors keep the ordinary four-app row.
+(() => {
+  const region = $("#app-carousel"), viewport = $("#app-viewport"), track = $("#apps");
+  if (!region || !viewport || !track) return;
+  const cards = $$(".app", track), count = cards.length, controls = $(".app-controls", region);
+  if (count < 2) return;
+  const dots = $(".app-dots", region), play = $("[data-app-play]", region), status = $("#app-carousel-status");
+  const REST = 4000, AFTER_TOUCH = 6500, GLIDE_MS = 980, SWIPE_MS = 620;
+  let active = false, position = count, width = 0, step = 0, centre = 0, offset = 0;
+  let animation = null, timer = null, frame = null, gesture = null, suppressClick = false;
+  let userPaused = false, hovered = false, focused = false, visible = false, copies = [];
+  const index = () => ((position % count) + count) % count;
+  const xAt = (p) => centre - p * step;
+  const put = (x) => { offset = x; track.style.transform = `translate3d(${x}px, 0, 0)`; };
+  const stop = () => { clearTimeout(timer); timer = null; };
+  const blocked = () => !active || userPaused || motion.matches || hovered || focused || !visible || document.hidden ||
+    !!gesture || body.matches(".sheet-up, .edit, .leaving");
+  // Interrupt at the exact frame on screen. A new glide starts here, including a swipe caught mid-animation.
+  function freeze() {
+    if (!animation) return;
+    const t = getComputedStyle(track).transform;
+    const x = t === "none" ? offset : new DOMMatrixReadOnly(t).m41;
+    animation.cancel(); animation = null; put(x);
+  }
+  function indicators() {
+    $$(".app-dot", dots).forEach((dot, i) => dot.setAttribute("aria-current", String(i === index())));
+    play.classList.toggle("is-paused", userPaused || motion.matches);
+    play.disabled = motion.matches;
+    play.setAttribute("aria-label", motion.matches ? "Automatic carousel disabled with reduced motion" :
+      userPaused ? "Play automatic carousel" : "Pause automatic carousel");
+  }
+  function schedule(delay = REST) {
+    stop();
+    if (!blocked() && !animation) timer = setTimeout(() => go(position + 1), delay);
+  }
+  function normalise() {
+    while (position >= count * 2) position -= count;
+    while (position < count) position += count;
+    put(xAt(position));
+  }
+  function go(to, manual = false) {
+    if (!active || !step) return;
+    stop(); freeze();
+    position = Math.max(count - 1, Math.min(count * 2, to));
+    const from = offset, toX = xAt(position);
+    indicators();
+    if (manual) status.textContent = `${$("b", cards[index()]).textContent}, app ${index() + 1} of ${count}`;
+    const finish = () => { normalise(); schedule(manual ? AFTER_TOUCH : REST); };
+    if (motion.matches || Math.abs(from - toX) < 0.5) { finish(); return; }
+    put(toX);
+    const run = animation = track.animate([
+      { transform: `translate3d(${from}px, 0, 0)` }, { transform: `translate3d(${toX}px, 0, 0)` },
+    ], { duration: manual ? SWIPE_MS : GLIDE_MS, easing: EASE_OUT });
+    run.finished.then(() => {
+      if (animation !== run) return;
+      animation = null; finish();
+    }).catch(() => {});    // interruption keeps the current frame: freeze()
+  }
+  function availability() {
+    if (blocked()) { stop(); freeze(); }
+    else go(position);    // finish a held glide, then give this card its full reading time
+  }
+  function copy(card) {
+    const c = card.cloneNode(true);
+    c.removeAttribute("id"); $$('[id]', c).forEach((el) => el.removeAttribute("id"));
+    c.classList.add("app-copy"); c.setAttribute("aria-hidden", "true"); c.tabIndex = -1;
+    return c;
+  }
+  // Links and personal figures can arrive after the carousel. Refresh only their copies, keeping the real links,
+  // focused elements and the running track animation intact.
+  cards.forEach((card, i) => new MutationObserver(() => {
+    for (const set of copies) { const c = copy(card); set[i].replaceWith(c); set[i] = c; }
+  }).observe(card, { attributes: true, childList: true, characterData: true, subtree: true }));
+  function measure() {
+    if (!active) return;
+    const nextWidth = viewport.clientWidth, nextStep = cards[0].offsetWidth + 14;
+    if (nextWidth === width && nextStep === step) return;
+    stop(); freeze();
+    if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+    gesture = null; viewport.classList.remove("dragging");
+    width = nextWidth; step = nextStep; centre = (width - cards[0].offsetWidth) / 2;
+    normalise(); schedule();
+  }
+  function layout() {
+    if (phone.matches === active) return;
+    stop(); freeze();
+    active = phone.matches;
+    region.classList.toggle("is-carousel", active);
+    controls.hidden = !active;
+    if (active) {
+      copies = [cards.map(copy), cards.map(copy)];
+      track.prepend(...copies[0]); track.append(...copies[1]);
+      region.setAttribute("aria-roledescription", "carousel");
+      position = count; width = step = 0; measure();
+    } else {
+      copies.flat().forEach((c) => c.remove()); copies = [];
+      region.removeAttribute("aria-roledescription");
+      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      gesture = null; viewport.classList.remove("dragging");
+      track.style.removeProperty("transform");
+    }
+    indicators();
+  }
+  cards.forEach((card, i) => {
+    const dot = document.createElement("button"); dot.type = "button"; dot.className = "app-dot";
+    dot.setAttribute("aria-label", `Show ${$("b", card).textContent}`);
+    dot.addEventListener("click", () => {
+      // Choose the nearest copy, so Chat from Markets moves forwards across the join rather than rewinding.
+      const to = position + ((i - index() + count + count / 2) % count - count / 2);
+      go(to, true);
+    });
+    dots.append(dot);
+  });
+  $("[data-app-prev]", region).addEventListener("click", () => go(position - 1, true));
+  $("[data-app-next]", region).addEventListener("click", () => go(position + 1, true));
+  play.addEventListener("click", () => {
+    userPaused = !userPaused; indicators();
+    if (userPaused) { stop(); freeze(); } else availability();
+  });
+  region.addEventListener("focusin", (e) => {
+    // Keyboard users keep control until they explicitly press Play. Moving a focused app into view also works with
+    // Reduce Motion, where there is no autoplay and manual changes are immediate.
+    focused = e.target !== play && e.target.matches(":focus-visible");
+    if (!focused || !active) return;
+    userPaused = true; stop(); freeze(); indicators();
+    const i = cards.indexOf(e.target.closest(".app"));
+    if (i >= 0) go(count + i, true);
+  });
+  region.addEventListener("focusout", () => {
+    focused = false;
+    // The next focusin runs before the microtask, so tabbing within the carousel never starts a timer.
+    queueMicrotask(() => { if (!focused) schedule(AFTER_TOUCH); });
+  });
+  viewport.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") { hovered = true; stop(); freeze(); } });
+  viewport.addEventListener("pointerleave", () => { hovered = false; if (!gesture) availability(); });
+  viewport.addEventListener("dragstart", (e) => e.preventDefault());
+  viewport.addEventListener("pointerdown", (e) => {
+    if (!active || e.button !== 0 || !e.isPrimary || gesture) return;
+    stop(); freeze();
+    gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, offset, dx: 0, horizontal: false,
+      lastX: e.clientX, at: e.timeStamp, velocity: 0 };
+  });
+  viewport.addEventListener("pointermove", (e) => {
+    const g = gesture;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.horizontal) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      if (Math.abs(dy) >= Math.abs(dx)) { gesture = null; availability(); return; }
+      g.horizontal = true; viewport.setPointerCapture(e.pointerId); viewport.classList.add("dragging");
+    }
+    const dt = e.timeStamp - g.at;
+    if (dt > 0) g.velocity = (e.clientX - g.lastX) / dt;
+    g.lastX = e.clientX; g.at = e.timeStamp;
+    g.dx = Math.max(-step * 1.5, Math.min(step * 1.5, dx));
+    if (frame === null) frame = requestAnimationFrame(() => {
+      frame = null;
+      if (gesture === g) put(g.offset + g.dx);
+    });
+  });
+  function release(e) {
+    const g = gesture;
+    if (!g || e.pointerId !== g.id) return;
+    gesture = null;
+    if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+    viewport.classList.remove("dragging");
+    if (!g.horizontal) { availability(); return; }
+    suppressClick = true;
+    // Drop any stale velocity after a finger has rested. Cancelled gestures settle where they are, without a fling.
+    const v = e.type === "pointercancel" || e.timeStamp - g.at > 80 ? 0 : Math.max(-1.2, Math.min(1.2, g.velocity));
+    put(g.offset + g.dx);
+    go(Math.round((centre - offset - v * 140) / step), true);
+    // A drag must never activate the link under the release, including on browsers that delay a synthetic click.
+    setTimeout(() => { suppressClick = false; }, 400);
+  }
+  viewport.addEventListener("pointerup", release);
+  viewport.addEventListener("pointercancel", release);
+  viewport.addEventListener("lostpointercapture", release);
+  viewport.addEventListener("click", (e) => {
+    if (suppressClick) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  viewport.addEventListener("keydown", (e) => {
+    if (!active || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault(); userPaused = true; indicators();
+    const to = e.key === "Home" ? count : e.key === "End" ? count * 2 - 1 : position + (e.key === "ArrowRight" ? 1 : -1);
+    // Move keyboard focus with the selected card; the real link remains reachable rather than a hidden duplicate.
+    cards[((to % count) + count) % count].focus({ preventScroll: true });
+  });
+  new IntersectionObserver(([entry]) => {
+    const next = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+    if (next === visible) return;
+    visible = next; availability();
+  }, { threshold: [0, 0.5] }).observe(viewport);
+  new ResizeObserver(measure).observe(viewport);
+  new MutationObserver(availability).observe(body, { attributes: true, attributeFilter: ["class"] });
+  phone.addEventListener("change", layout);
+  motion.addEventListener("change", () => { indicators(); freeze(); if (active) normalise(); availability(); });
+  document.addEventListener("visibilitychange", availability);
+  addEventListener("pagehide", () => { stop(); freeze(); });
+  addEventListener("pageshow", availability);
+  layout();
+})();
+
 /* ---------------- signing in, on the account's page: the way there, and back ---------------- */
 // The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
 // that sky comes in over everything, so that page opens on what was already in sight (handOff); back from it
@@ -593,8 +799,8 @@ $("#sign-in").addEventListener("click", (e) => {
 });
 // Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
 // steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
-for (const a of $$("#app-inflight, #app-weather, #app-fitness, #app-markets, [data-account]")) a.addEventListener("click", (e) => {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".app, [data-account]") || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   body.classList.add("leaving");
   setTimeout(() => body.classList.remove("leaving"), 4000);    // (in case it never goes)
 });

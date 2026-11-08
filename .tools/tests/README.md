@@ -104,3 +104,9 @@ Status-page UI checks can run independently of the Worker:
 They use isolated fixtures, block external requests, and check both themes from 320 to 1920px,
 including healthy/failing states, refresh, period controls, incident disclosure, keyboard focus, sheets,
 lookup, section navigation, desktop history expansion and saved theme selection. Set `STATUS_SCREENSHOTS=/tmp/status-ui` for full-page captures.
+
+The homepage app carousel has a standalone browser regression:
+`CHROMIUM=/usr/bin/chromium node --test .tools/tests/homecarousel.test.cjs`.
+It checks source and minified assets, automatic and manual looping, interrupted swipes, keyboard focus, signed-in
+app summaries, resizing, contact-sheet suspension, reduced motion and the no-JavaScript fallback. No server or
+account credentials are needed. Set `CAROUSEL_SCREENSHOTS` to save mobile captures.

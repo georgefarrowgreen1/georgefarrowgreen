@@ -277,6 +277,52 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .app small.mine { color: var(--text); }
 .app .open { margin-top: 12px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 15px; color: var(--tint-text); background: rgba(61, 139, 255, 0.16); transition: background-color var(--dur-fast) var(--ease-out); }
 
+
+/* The app carousel keeps the four real links in the document. With no script it is the usual swipeable row;
+   on a phone the enhanced track moves as one composited layer. Copies at either end make the loop continuous. */
+.app-controls, .app-copy { display: none; }
+.app-carousel { min-width: 0; }
+@media (max-width: 600px) {
+  .app-carousel.is-carousel .app-viewport {
+    overflow: hidden; overflow: clip; touch-action: pan-y pinch-zoom; cursor: grab;
+    margin-inline: calc(-1 * max(16px, env(safe-area-inset-left))) calc(-1 * max(16px, env(safe-area-inset-right)));
+  }
+  .app-carousel.is-carousel .app-viewport.dragging { cursor: grabbing; }
+  .app-carousel.is-carousel .apps {
+    display: flex; gap: 14px; overflow: visible; margin: 0; padding: 4px 0 20px;
+    scroll-snap-type: none; transform: translate3d(0, 0, 0); will-change: transform;
+  }
+  .app-carousel.is-carousel .app {
+    display: grid; flex: 0 0 min(244px, calc(100% - 96px)); min-height: 240px; padding: 20px;
+    /* The photograph is already softened behind this part of the page. An opaque glass tint keeps moving cards
+       crisp without resampling a backdrop blur for every frame of the glide. */
+    background: rgba(28, 30, 40, 0.94); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .app-carousel.is-carousel .app img { margin-bottom: 14px; }
+  .app-carousel.is-carousel .app b { font-size: 21px; }
+  .app-carousel.is-carousel .app .open { margin-top: 16px; }
+  .app-carousel.is-carousel .app:focus-visible { outline-offset: -3px; }
+  .app-carousel.is-carousel .app-viewport.dragging .app { transform: none; }
+  .app-carousel.is-carousel .app-controls { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 0 8px; }
+  .app-control { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    color: var(--text-2); background: rgba(255, 255, 255, 0.055); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-release) var(--ease-spring); }
+  .app-control::after { content: ""; position: absolute; inset: -2px; }
+  .app-control:active { transform: scale(0.92); color: var(--text); background: rgba(255, 255, 255, 0.12); }
+  .app-dots { display: flex; align-items: center; }
+  .app-dot { width: 26px; height: 44px; display: grid; place-items: center; border-radius: 12px; }
+  .app-dot::after { content: ""; width: 6px; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.3);
+    transition: transform 0.5s var(--ease-out), background-color var(--dur-base) var(--ease-out); }
+  .app-dot[aria-current="true"]::after { transform: scaleX(3); background: #fff; }
+  .app-play svg { grid-area: 1 / 1; transition: opacity var(--dur-fast) var(--ease-out); }
+  .app-play-icon, .app-play.is-paused .app-pause-icon { opacity: 0; }
+  .app-play.is-paused .app-play-icon { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-control, .app-dot::after, .app-play svg { transition: none; }
+  .app-control:active { transform: none; }
+}
+
 .group { border-radius: 26px; overflow: hidden; }
 .row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; text-align: left; }
 .row + .row::before { content: ""; position: absolute; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }

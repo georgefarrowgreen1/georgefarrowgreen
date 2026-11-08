@@ -81,6 +81,9 @@ jobs:
       - name: Admin profile photos fill their circles on mobile and desktop
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/admin-avatars.test.cjs
+      - name: Homepage carousel motion, swipe, focus and reduced motion
+        working-directory: georgefarrowgreen
+        run: node --test .tools/tests/homecarousel.test.cjs
       - name: Chat keyboard, resume, rotation, scrolling and tap targets
         working-directory: georgefarrowgreen
         run: |

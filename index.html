@@ -77,9 +77,10 @@
     </section>
 
     <div class="grid">
-      <section aria-labelledby="apps-h">
+      <section class="app-carousel" id="app-carousel" aria-labelledby="apps-h">
         <h2 class="head" id="apps-h">Apps</h2>
-        <div class="apps">
+        <div class="app-viewport" id="app-viewport">
+        <div class="apps" id="apps">
           <a class="app inflight glass" id="app-inflight" href="https://chat.inflite.ai/">
             <img src="/apps/inflight.png" alt="" width="56" height="56" />
             <b>Chat</b>
@@ -105,6 +106,17 @@
             <span class="open">Open <span aria-hidden="true">›</span></span>
           </a>
         </div>
+        </div>
+        <div class="app-controls" hidden>
+          <button class="app-control" type="button" data-app-prev aria-label="Previous app"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+          <div class="app-dots" aria-label="Choose an app"></div>
+          <button class="app-control" type="button" data-app-next aria-label="Next app"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
+          <button class="app-control app-play" type="button" data-app-play aria-label="Pause automatic carousel">
+            <svg class="app-pause-icon" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3" height="12" rx="1"/><rect x="10" y="2" width="3" height="12" rx="1"/></svg>
+            <svg class="app-play-icon" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5c0-.8.9-1.2 1.5-.8l8 5.5a1 1 0 0 1 0 1.6l-8 5.5c-.6.4-1.5 0-1.5-.8z"/></svg>
+          </button>
+        </div>
+        <p class="vh" id="app-carousel-status" role="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="touch-h">
         <h2 class="head" id="touch-h">Get in touch</h2>
