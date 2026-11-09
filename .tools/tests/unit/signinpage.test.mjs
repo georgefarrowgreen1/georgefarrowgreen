@@ -71,6 +71,20 @@ test("the sign-in page asks for signin.js; the account's page for app.js", async
   assert.match(js.text, /\.\/crypto\.js\?v=\w{12}/, "its crypto.js stamped");
 });
 
+test("auth starts in the shared frame and fingerprints its presentation module", async () => {
+  const auth = await (await at("auth.inflite.ai"))("/");
+  assert.match(auth.text, /data-auth-loading/);
+  assert.match(auth.text, /<main id="main" class="signin-main" aria-busy="true"/);
+  assert.doesNotMatch(auth.text, /class="sk sk-hero"/);
+  const file = await (await at("auth.inflite.ai"))("/signin.js");
+  assert.match(file.text, /\.\/auth-frame\.js\?v=\w{12}/);
+  assert.match(auth.res.headers.get("content-security-policy"), /style-src 'self'/);
+  assert.doesNotMatch(auth.res.headers.get("content-security-policy"), /unsafe-inline/);
+  const account = await (await at("account.inflite.ai"))("/");
+  assert.doesNotMatch(account.text, /data-auth-loading/);
+  assert.match(account.text, /class="sk sk-hero"/);
+});
+
 test("out of date (account/app.js changed since): app.js itself, never an old copy", async () => {
   const app = readFileSync(ROOT + "account/app.js", "utf8") + "\n// changed\n";
   const r = await minAssets({ ASSETS: store({ "/account/app.js": app }) }).fetch(new Request("https://auth.inflite.ai/account/signin.js"));

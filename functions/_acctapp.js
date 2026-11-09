@@ -11,6 +11,7 @@ import { versionResponse } from "./_version.js";
 import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
 import { fastSignIn } from "./_signinfast.js";
+import { AUTH_LOADING } from "../account/auth-frame.js";
 export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -108,7 +109,10 @@ export async function accountHost(ctx, url) {
   // left out: about half as much to fetch and read. .tools/minify.mjs signinPage; functions/_min.js sends app.js itself
   // should that copy be out of date)
   const html = page && !head ? await res.text() : null;
-  const body = head ? null : page ? await stamped(ctx, url, isAuth(url, ctx.env) ? html.replace('src="app.js"', 'src="signin.js"') : html) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
+  const authHtml = page && !head && isAuth(url, ctx.env) ? html.replace('src="app.js"', 'src="signin.js"')
+    .replace('<main id="main"', '<main id="main" class="signin-main"')
+    .replace(/<!-- account-loading:start -->[\s\S]*?<!-- account-loading:end -->/, AUTH_LOADING) : html;
+  const body = head ? null : page ? await stamped(ctx, url, authHtml) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
   const out = new Response(body, res);
   for (const [k, v] of Object.entries(isAuth(url, ctx.env) ? AUTH_SECURITY : ACCT_SECURITY)) out.headers.set(k, v);
   if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }

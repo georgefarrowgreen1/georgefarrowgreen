@@ -57,8 +57,8 @@ const V = await browser('visitor');
 await open(V, `${ACCT}/`);
 await waitText(V, /Forgot password\?/); await V.p.waitForTimeout(2500);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /or with your email/.test(signin) && /Forgot password\?/.test(signin) && !/New here|by invitation/.test(signin) && /One sign-in for every app\s*Chat\s*Weather\s*Fitness\s*Markets/.test(signin) && !/Create your account/.test(signin),
-  'the account\'s page, signed out: a passkey, then email and password; and, with no invite, no way to make one, nor anything said of it', signin.slice(-160));
+ok(/Sign in with a passkey/.test(signin) && /or use your password/.test(signin) && /Forgot password\?/.test(signin) && /Have an invite\? Join InFlite/.test(signin) && !/Create your account/.test(signin),
+  'signed out: the shared sign-in frame, password fallback and invitation entry; no open signup form', signin.slice(-160));
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
 ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${AUTH}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
 const noInvite = await V.p.evaluate(async () => { const r = await fetch('/api/account/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X', handle: 'xxx', email: 'x@example.com' }) }); return [r.status, (await r.json()).field]; });
@@ -99,9 +99,9 @@ const welcomeJoin = await N.p.$eval('.welcome .wnew a', (a) => a.href).catch(() 
 ok(welcomeJoin === `${AUTH}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'Chat\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
 await N.p.click('.welcome [data-act=acctsignin]'); await N.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await N.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); await settle(N);
-const order = await N.p.evaluate(() => [...document.querySelectorAll('main .backapp, main .lead, main .signin > .btn, main .signin .or, main .signin form, main .signin .forgot')]
+const order = await N.p.evaluate(() => [...document.querySelectorAll('main .backapp, main .signin-destination, main .signin > .btn, main .signin .or, main .signin form, main .signin .forgot')]
   .map((e) => e.matches('.backapp') ? `back to ${e.textContent.trim()}` : e.matches('.signin > .btn') ? 'passkey' : e.matches('form') ? 'form' : e.textContent.trim()));
-ok(order.join(' | ') === 'back to Chat | Sign in to continue to Chat | passkey | or with your email | form | Forgot password?', 'Chat\'s Sign in: the account\'s page, saying so; a passkey, then email and password; a forgotten password', order.join(' | '));
+ok(order.includes('back to Chat') && order.includes('Continue to Chat') && order.indexOf('passkey') < order.indexOf('form') && order.includes('Forgot password?'), 'Chat uses the shared frame and destination, passkey first, password and recovery available', order.join(' | '));
 await N.p.click('main .signin form .btn');
 ok(await text(N, 'main .said') === 'Enter your email.', 'nothing typed: said, as everywhere on the site', await text(N, 'main .said'));
 await shot(N, '04-inflight-signin');
@@ -188,7 +188,7 @@ await X.p.click('#settings-btn'); await X.p.waitForSelector('#settings[open] #ac
 ok(!(await X.p.$('#settings input[type=password], #settings [data-page=signin]')), 'Weather has no sign-in of its own');
 await X.p.click('#acct-signin'); await X.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
 await X.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
-ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather\'s Sign in: the account\'s page, saying so, with the way back to Weather', await text(X, 'main .lead'));
+ok(/Continue to Weather/.test(await text(X, 'main .signin-destination')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather uses the shared destination and way back', await text(X, 'main .signin-destination'));
 
 // ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----
@@ -200,11 +200,11 @@ ok(/Sign in to continue to Weather/.test(await text(X, 'main .lead')) && /Weathe
   const asked = await hostCall(AC, '/api/account/email/change', { email: 'eve.new@example.com' }, { cookie: made.cookie, ip });
   const warn = await waitMail('eve@example.com', /new email was asked for/), link = await waitMail('eve.new@example.com', /Confirm your new email/);
   ok(made.s === 201 && asked.s === 200 && !rows("SELECT email_ok FROM pg_users WHERE handle = 'evemead'")[0].email_ok && /e•+@example\.com/.test(warn?.text || '')
-    && /If this wasn’t you, sign in now and change your password\. That calls the change off and signs out every other device\./.test(warn?.text || ''),
+    && /calls the change off, signs out every device and sends you a reset link/.test(warn?.text || '') && !!tokenIn(warn, 'secure'),
     'a new email asked for: the address as it is told, confirmed or not, and how to call it off', `${made.s} ${asked.s} ${(warn?.text || '').slice(0, 200)}`);
   const done = await hostCall(AC, '/api/account/email/change-confirm', { token: tokenIn(link, 'email') }, { ip });
   const told = await waitMail('eve@example.com', /email was changed/);
-  ok(done.s === 200 && /Ask the person who runs the site for a reset link, and you can put your email back\./.test(told?.text || ''),
+  ok(done.s === 200 && /your email goes back to this address, every device is signed out/.test(told?.text || '') && !!tokenIn(told, 'undo'),
     'opened: the old address told, and how to get the account back if it wasn\'t them', `${done.s} ${(told?.text || '').slice(0, 240)}`);
 }
 

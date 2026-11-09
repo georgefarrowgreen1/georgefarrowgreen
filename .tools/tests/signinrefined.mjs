@@ -5,7 +5,7 @@ import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const out = root + 'artifacts/signin'; mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox'] });
 const errors = [];
 const destination = 'https://auth.inflite.ai/#signin=weather&ask=' + 'a'.repeat(43) + '&back=' + encodeURIComponent('https://weather.inflite.ai/');
 let checks = 0;
@@ -79,7 +79,9 @@ try {
     } else ok(await p.locator('.signin-phone').count() === 0, 'mobile omits desktop phone action');
     await p.getByRole('button', { name: 'Forgot password?', exact: true }).click();
     await p.waitForSelector('.welcome h1');
-    ok(!(await p.locator('main').getAttribute('class') || '').includes('signin-main'), 'recovery gets its own layout');
+    ok((await p.locator('main').getAttribute('class') || '').includes('signin-main'), 'recovery shares the sign-in frame');
+    ok(await p.locator('.auth-panel').getAttribute('data-auth-state') === 'forgot', 'recovery has a distinct state in the shared frame');
+    ok((await p.locator('.signin-destination').innerText()).includes('Weather'), 'recovery retains the app destination');
     await ctx.close();
   }
   const last = { name: 'George Green', handle: 'george', email: 'george@example.com', way: 'passkey', rp: 'inflite.ai', id: 'a'.repeat(43) };

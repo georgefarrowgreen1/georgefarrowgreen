@@ -23,6 +23,7 @@
 // screen); and two even columns on a wide one.
 
 import { E2E, b64url, fromB64url } from "./crypto.js";
+import { authScreen, updateAuthScreen } from "./auth-frame.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
@@ -1153,8 +1154,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.09";
-const NEWS = "Consistent menus, spacing and motion that adapt to your screen";
+const BUILD = "2.10";
+const NEWS = "Every sign-in, invitation and recovery step now shares one InFlite flow";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1608,11 +1609,11 @@ async function load() {
   }
   try { if (!S.me) S.me = await mine; S.pulled = Date.now(); }
   catch (e) {
-    main.classList.remove("signin-main");
+    main.classList.add("signin-main");
     main.removeAttribute("aria-busy");
-    return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
-      h("p", { text: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message }),
-      h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
+    return main.replaceChildren(...authPage(x => x, { state: "connection-error", title: "Can’t reach your account", mark: icon("shield", 26, 1.8),
+      description: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message,
+      content: h("button.btn", { type: "button", onclick: () => location.reload() }, "Try again") }));
   }
   if (S.me.prefs) theme(S.me.prefs.appearance);
   // (the way out: where next said, or, the site's sign-in still on, whether to end it asked first)
@@ -2460,33 +2461,22 @@ function checkupView(brief = false) {
 // Being deleted: when, and keeping it
 function deleting(r) {
   const m = S.me;
-  return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
-    r(h("h1", { text: "Your account is being deleted" })),
-    r(h("p", { text: `On ${new Date(m.deleteAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, @${m.handle} and everything kept with it, in every app on the site, will be deleted. Until then, you can keep it.` })),
-    r(h("div.signin.glass", {},
-      h("button.btn", { type: "button", onclick: async (e) => {
+  return authPage(r, { state: "deletion-pending", title: "Your account is being deleted", mark: icon("trash", 26, 1.7),
+    description: `On ${new Date(m.deleteAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, @${m.handle} and everything kept with it, in every app on the site, will be deleted. Until then, you can keep it.`,
+    content: [h("button.btn", { type: "button", onclick: async (e) => {
         try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); anew(() => { S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }); }
         catch (err) { toast(err.message, true); }
       } }, icon("undo", 20, 2.2), "Keep my account"),
-      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign Out")))),
-  ];
+      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign Out")] });
 }
-// Deleting it asked for here (S.gone): signed out everywhere, and when it goes, and how to keep it till then (signing
-// in; or the email's link, sent only to an address that's been confirmed)
 function gonePage(r) {
   const g = S.gone, on = new Date(g.at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
   const signIn = () => (AUTH ? location.assign(`${AUTH.auth}/`) : anew(() => { S.gone = null; S.settled = false; render(); scrollTo(0, 0); }));
-  return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
-    r(h("h1", { text: "Your account will be deleted" })),
-    r(h("p", { text: `On ${on}, with everything kept with it, in every app on InFlite. It’s signed out everywhere now.` })),
-    r(h("p", { text: `Changed your mind? Sign in before then to keep it${g.email ? `, or use the link we’re emailing to ${g.email}` : ""}.` })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: signIn }, icon("signin", 20, 1.9), "Sign In to Keep It"))))];
+  return authPage(r, { state: "deletion-requested", title: "Your account will be deleted", mark: icon("trash", 26, 1.7),
+    description: `On ${on}, with everything kept with it, in every app on InFlite. It’s signed out everywhere now.`,
+    content: [h("p.hint", { text: `Changed your mind? Sign in before then to keep it${g.email ? `, or use the link we’re emailing to ${g.email}` : ""}.` }),
+      h("button.btn", { type: "button", onclick: signIn }, icon("signin", 20, 1.9), "Sign In to Keep It")] });
 }
-// An email's link that does something (S.keep.kind): keeping the account (#keep=), "This wasn't me" (#secure=), or
-// undoing a new email (#undo=). Done once it's tapped, not as the link's opened. (A link that won't work is put away,
-// said why; offline, or the server not answering, it stays, to try again.)
 const LINKS = {
   keep: { mark: ["trash", "red"], title: "Keep your account?", text: "It’s being deleted. Tap below to keep it.", go: ["undo", "Keep my account", "Keeping it…"], path: "delete/keep",
     done: () => "Your account is staying. Sign in to carry on." },
@@ -2506,13 +2496,8 @@ function keepPage(r) {
     try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
     anew(() => { S.keep = null; S.me = m; S.settled = false; render(); });
   } }, icon(L.go[0], 20, 2.2), L.go[1]);
-  return [h("div.welcome", {},
-    r(h("div", {}, h(`div.mark${L.mark[1] ? `.${L.mark[1]}` : ""}`, {}, icon(L.mark[0], 44, 1.7)))),
-    r(h("h1", { text: L.title })),
-    r(h("p", { text: L.text })),
-    r(h("div.signin.glass", {}, go,
-      h("button.btn.quiet", { type: "button", onclick: () => anew(() => { S.keep = null; S.settled = false; render(); }) }, "Not now")))),
-  ];
+  return authPage(r, { state: "security-link", title: L.title, description: L.text, mark: icon(L.mark[0], 26, 1.7),
+    content: [go, h("button.btn.quiet", { type: "button", onclick: () => anew(() => { S.keep = null; S.settled = false; render(); }) }, "Not now")] });
 }
 
 // ---- signed out: signing in; or making an account (by invite: accounts are made here, and only here); or a forgotten
@@ -2522,7 +2507,22 @@ const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$
 // the way between them: the form below changed in place, the rest of the page staying put
 // InFlite's own mark (inflite.svg: a petal in each app's colour round the sun), where you sign in to them all; the
 // account's icon (icon.svg: a warm head, frosted glass shoulders) is kept for the account among the apps
-const logo = () => h("div.mark.logo", {}, h("img", { src: "/inflite.svg?v=1", alt: "", width: 92, height: 92 }));
+// Every authentication state composes the same frame. Only the card enters; the brand and destination stay put.
+function authPage(r, options) {
+  const app = S.signFor?.app, target = APPS[app];
+  const destination = options.destination === false ? null : options.destination || (target && {
+    icon: app === "home" ? null : appIcon(app), label: `Continue to ${target.name}`,
+  });
+  const screen = authScreen({ ...options, destination, back: options.back === undefined ? backButton(x => x) : options.back });
+  const panel = screen.querySelector(".auth-panel");
+  if (options.panelClass) panel.classList.add(...options.panelClass.split(" "));
+  r(panel);
+  return [screen];
+}
+const authBack = () => h("button.pill.quiet.backapp", { type: "button", onclick: () => {
+  S.reset = null; S.handoff = null; S.out = null; S.keep = null; S.gone = null;
+  gate("signin");
+}, "aria-label": "Back to sign in" }, icon("back", 17, 2.4), "Sign in");
 // (where the browser can, and motion's welcome, the card goes to its new size as the title and what's in it cross-fade:
 // the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
 let gating = 0;
@@ -2546,73 +2546,44 @@ function signedOut(r) {
   if (!S.join) joinState();
   if (mode !== "signin") stopAutofill();
   const to = S.signFor && S.signFor.app !== "home" ? APPS[S.signFor.app].name : null;
-  // (no account to be made without an invite, as on the real site: said so up top, plainly, and what to do in the card)
+  if (mode === "signin") return signinScreen(r, last, to, !!QR_IN.code);
   const needInvite = mode === "join" && S.join && !S.join.pending && !(S.join.open || S.join.ok);
-  // (a phone that scanned a computer's code, signed out here: signed in here first, then on to the computer)
-  const qrFirst = mode === "signin" && !!QR_IN.code;
-  // (on a computer whose window's too narrow for the code beside the card: the code, asked for, in its place)
-  const qrAsk = mode === "signin" && !QR_IN.code && !QR_WIDE.matches && QR_ASK.matches;
-  if (mode === "signin" && !qrFirst) return signinScreen(r, last, to);
-  const head = { signin: qrFirst ? ["Sign in on this phone first", "Then you’ll be asked about the computer that showed the code."] : [last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Your account"],
-    join: needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`]
-      : ["You’ll need an invite"]) : ["Create your account", to ? `One account for every app on InFlite. Once it’s made, you’re straight back in ${to}.` : "One account for every app on InFlite, made here and used everywhere."],
-    forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
-  const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
-  return [backButton(r), h("div.welcome", {},
-    // (the mark floats; it rises in inside something else, as one animation can't do both)
-    r(h("div", {}, qrFirst ? h("div.mark", {}, icon("laptop", 46, 1.7)) : mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : needInvite ? h("div.mark", {}, icon("mail", 46, 1.7)) : last ? avatar(last) : logo())),
-    r(h("h1", { text: head[0] })),
-    head[1] && r(h("p", { text: head[1] })),
-    // (sent here by an app: which, as that's where you'll be once you're in)
-    mode === "signin" && !qrFirst && r(to ? h("p.lead", {}, "Sign in to continue to ", h("img", { src: appIcon(S.signFor.app), alt: "" }), h("b", { text: to }))
-      : last ? h("p.lead", { text: `@${last.handle}` })
-      // (the apps it's for, each by its icon, in a row that fits a phone)
-      : h("div.leadrow", {}, h("p.lead", { text: "One sign-in for every app" }),
-        h("div.approw", {}, [["inflight", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"]].map(([k, n]) => h("span", {}, h("img", { src: `/apps/${k}.png`, alt: "" }), n))))),
-    r(qrAsk && S.qrAsk ? qrCard("alone") : ((card) => (mode === "signin" && QR_WIDE.matches && !QR_IN.code ? h("div.signpair", {}, card, h("div.vor", {}, h("span", { text: "or" })), qrCard()) : card))(
-      mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : last ? rememberedCard(last) : signinCard())),
-    qrAsk && r(h("p.foot.new", {}, h("button.link", { type: "button", id: "qrask", onclick: () => { S.qrAsk = !S.qrAsk; if (S.qrAsk) stopAutofill(); anew(() => { render(); $("#qrask")?.focus({ preventScroll: true }); }); } },
-      S.qrAsk ? "Use a password or passkey instead" : "Sign in with your phone"))),
-    r(mode === "signin" ? (last ? (S.left ? forgetLine(last) : notYouLine()) : joinLine()) : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
-  ];
+  const head = mode === "forgot" ? ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."]
+    : needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`] : ["You’ll need an invite", "Open the link you were sent, or paste it below."])
+    : ["Create your account", to ? `One account for every app. Once it’s ready, you’re back in ${to}.` : "One account for all your InFlite apps."];
+  return authPage(r, { state: mode, title: head[0], description: head[1], mark: icon(mode === "forgot" ? "key" : "mail", 26, 1.8),
+    content: mode === "join" ? joinCard() : forgotCard(), back: authBack(),
+    footer: h("p.foot.new", {}, mode === "join" ? "Already have an account? " : "Remembered it? ", h("button.link", { type: "button", onclick: () => gate("signin") }, "Sign in")) });
 }
 // The two sign-in states share one responsive frame; phone sign-in opens only when requested.
-function signinScreen(r, last, to) {
-  const qr = (QR_WIDE.matches || QR_ASK.matches) && S.qrAsk;
-  const brand = h("div.signin-brand", {}, h("img", { src: "/inflite.svg?v=1", alt: "", width: 44, height: 44 }), h("span", { text: "InFlite" }));
+function signinScreen(r, last, to, phoneFirst = false) {
+  const qr = !phoneFirst && (QR_WIDE.matches || QR_ASK.matches) && S.qrAsk;
   const card = qr ? qrCard("alone") : last ? rememberedCard(last, true) : signinCard(true);
-  card.classList.add("signin-panel");
-  if (!qr) {
-    const destination = to && h("div.signin-destination", {}, h("img", { src: appIcon(S.signFor.app), alt: "", width: 28, height: 28 }), h("span", { text: `Continue to ${to}` }));
-    const title = h("h1", { text: last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in to InFlite" });
-    card.prepend(h("div.signin-intro", {}, destination, last ? h("div.signin-identity", {}, avatar(last, true), h("div", {}, title, h("p.signin-email", { text: last.email })))
-      : [title, h("p.signin-lead", { text: "One account for all your apps." })]));
-    card.append(last ? h("div.signin-switch", {}, notYouLine(), S.left && forgetLine(last))
-      : h("p.signin-join", {}, S.join?.open || S.join?.ok ? "New here? " : "Have an invite? ", h("button.link", { type: "button", onclick: () => gate("join") }, S.join?.open || S.join?.ok ? "Create your account" : "Join InFlite")));
-  }
-  const phone = h("button.link.signin-phone", { type: "button", id: "qrask", "aria-expanded": !!qr, onclick: () => {
+  const phone = !phoneFirst && (QR_WIDE.matches || QR_ASK.matches) && h("button.link.signin-phone", { type: "button", id: "qrask", "aria-expanded": !!qr, onclick: () => {
     S.qrAsk = !S.qrAsk;
     if (S.qrAsk) stopAutofill();
     anew(() => { render(); if (S.qrAsk) $("#qrc")?.focus({ preventScroll: true }); else $("#qrask")?.focus({ preventScroll: true }); });
   } }, qr ? "Use a password or passkey instead" : "Sign in with your phone");
   if (qr) { card.setAttribute("tabindex", "-1"); card.setAttribute("aria-label", "Sign in with your phone"); }
-  return [h("div.signin-shell", {}, h("header.signin-header", {}, brand, backButton(r)), h("div.signin-stage", {}, r(card), (QR_WIDE.matches || QR_ASK.matches) && phone))];
+  return authPage(r, { state: qr ? "phone" : phoneFirst ? "phone-first" : "signin",
+    title: qr ? "Sign in with your phone" : phoneFirst ? "Sign in on this phone first" : last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in to InFlite",
+    description: phoneFirst ? "Then you can approve the computer that showed the code." : qr ? "Use a phone that’s already signed in." : last ? last.email : "One account for all your apps.",
+    identity: !qr && last ? avatar(last, true) : null, content: card, extra: phone,
+    footer: qr ? null : last ? h("div.signin-switch", {}, notYouLine(), S.left && forgetLine(last)) : joinLine() });
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
 // nothing said: the line kept, empty)
 function joinLine() {
-  return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
-    : h("p.foot.new.invite", { id: "joinline" });
+  const open = S.join?.open || S.join?.ok;
+  return h("p.signin-join", { id: "joinline" }, open ? "New here? " : "Have an invite? ",
+    h("button.link", { type: "button", onclick: () => gate("join") }, open ? "Create your account" : "Join InFlite"));
 }
 // The sign-in page, signed in: who, while a computer's code is asked about (a sheet over this), with the way to the account
 function authHome(r) {
   const m = S.me;
-  return [h("div.welcome", {},
-    r(h("div", {}, avatar(m))),
-    r(h("h1", { text: m.name })),
-    r(h("p", { text: `@${m.handle}. You’re signed in on this device.` })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.account}/`) }, "Go to your account"))),
-    r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out"))))];
+  return authPage(r, { state: "signed-in", title: m.name, description: `@${m.handle}. You’re signed in on this device.`, identity: avatar(m, true),
+    content: h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.account}/`) }, "Go to your account"),
+    footer: h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")) });
 }
 // Signed out of an app (S.out): of every app on the site in this browser, as they share the one sign-in; back to that
 // app (where Sign in brings you back here), and this browser's memory of you let go, if you'd like
@@ -2628,11 +2599,8 @@ function outPage(r) {
       anew(() => { S.out = o.app === "account" ? null : { app: o.app, back: o.back }; if (!S.out) { S.said = { text: "Signed out." }; S.left = true; } S.settled = false; render(); scrollTo(0, 0); });
     } }, "Sign Out");
     const stay = h("button.btn.quiet", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, "Stay Signed In");
-    return [h("div.welcome", {},
-      r(h("div", {}, h("div.mark", {}, icon("signout", 44, 1.8)))),
-      r(h("h1", { text: "Sign out of InFlite?" })),
-      r(h("p", { text: `Of every app on InFlite, in this browser. You’re signed in as @${S.me.handle}.` })),
-      r(h("div.signin.glass", {}, go, stay)))];
+    return authPage(r, { state: "signout-confirm", title: "Sign out of InFlite?", destination: false, back: null,
+      description: `Of every app on InFlite, in this browser. You’re signed in as @${S.me.handle}.`, mark: icon("signout", 26, 1.8), content: [go, stay] });
   }
   const back = h("button.btn", { type: "button", onclick: () => location.replace(o.app === "home" ? homeVia(o.back) : o.back) }, `Back to ${name}`);
   said.classList.add("signout-notice");
@@ -2643,20 +2611,15 @@ function outPage(r) {
     said.replaceChildren(icon("check", 18, 2.4), h("span", { text: "Saved account removed from this browser." }));
     said.setAttribute("tabindex", "-1"); said.focus({ preventScroll: true });
   } }, "Forget this account on this device");
-  return [h("div.welcome.signout-complete", {},
-    r(h("div", {}, h("div.mark", {}, icon("signout", 32, 1.8)))),
-    r(h("h1", { text: "You’re signed out" })),
-    r(h("p", { text: "You’re signed out of every InFlite app in this browser." })),
-    r(h("div.signin.glass.signout-actions", {}, back, drop, said)))];
+  return authPage(r, { state: "signed-out", panelClass: "signout-complete", title: "You’re signed out", destination: false, back: null,
+    description: "You’re signed out of every InFlite app in this browser.", mark: icon("signout", 26, 1.8),
+    content: h("div.signin.glass.signout-actions", {}, back, drop, said) });
 }
 // The account's page, signed out, with a word to say first (an email confirmed by its link, or an app's hand-over that
 // didn't work): signing in's on the sign-in page, and, opened from an app, the way back to it
 function awayPage(r) {
-  return [backButton(r), h("div.welcome", {},
-    r(h("div", {}, logo())),
-    r(h("h1", { text: "Your account" })),
-    r(h("p", { text: "One account for every app on InFlite." })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.auth}/`) }, icon("signin", 20, 1.9), "Sign in"))))];
+  return authPage(r, { state: "signin-needed", title: "Your account", description: "One account for every app on InFlite.",
+    content: h("button.btn", { type: "button", onclick: () => location.assign(`${AUTH.auth}/`) }, icon("signin", 20, 1.9), "Sign in") });
 }
 // Opened from an app, signed in there: carry on as that account here, said yes to
 function handoffPage(r) {
@@ -2667,11 +2630,9 @@ function handoffPage(r) {
       S.handoff = null; welcome(m, null, opens());
     } catch (err) { anew(() => { S.handoff = null; S.settled = false; render(); }); toast(err.message, true, 4000); }
   } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
-  return [backButton(r), h("div.welcome", {},
-    r(h("div", {}, logo())),
-    r(h("h1", { text: w.name })),
-    r(h("p", { text: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?` })),
-    r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];
+  return authPage(r, { state: "handoff", title: w.name, identity: avatar(w, true),
+    description: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?`, content: [go, said],
+    footer: h("button.link", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in") });
 }
 // ---- sent here by an app to sign in (S.signFor): back to it once you're in, the sign-in handed back (functions/
 // _handback.js), and for Chat what unlocks its key there, sealed to its tab ----
@@ -2682,12 +2643,10 @@ function continuePage(r) {
   const m = S.me, a = S.signFor, name = APPS[a.app].name, said = h("p.said" + (S.said?.bad ? ".bad" : ""), { role: "alert", text: S.said?.text || "" });
   S.said = null;
   const go = a.app !== "inflight" && h("button.btn", { type: "button", onclick: () => handBack(m, {}, go) }, a.app === "home" ? "Continue" : `Continue to ${name}`);
-  return [backButton(r), h("div.welcome", {},
-    r(h("div", {}, avatar(m))),
-    r(h("h1", { text: m.name })),
-    r(h("p", { text: `@${m.handle}. ${a.app === "home" ? "Carry on as this account?" : S.need ? `One more step for ${name}.` : `Continue to ${name} as this account?`}` })),
-    r(go ? h("div.signin.glass", {}, go, said) : unlockCard(m, said)),
-    r(h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => { S.need = null; signOut(e.currentTarget); } }, "Sign out"))))];
+  return authPage(r, { state: S.need || a.app === "inflight" ? "unlock" : "continue", title: m.name, identity: avatar(m, true),
+    description: `@${m.handle}. ${a.app === "home" ? "Carry on as this account?" : S.need ? `One more step for ${name}.` : `Continue to ${name} as this account?`}`,
+    content: go ? [go, said] : unlockCard(m, said),
+    footer: h("p.foot.new", {}, "Not you? ", h("button.link", { type: "button", onclick: (e) => { S.need = null; signOut(e.currentTarget); } }, "Sign out")) });
 }
 // (Chat's key, opened there with what you show here)
 function unlockCard(m, said) {
@@ -2932,7 +2891,7 @@ function drawQr(card = $("#qrc")) {
   if (QRS.code) import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: "A QR code to sign in here with your phone" }); qr.append(h("span.qrlogo", { "aria-hidden": "true" }, h("img", { src: "/inflite.svg?v=1", alt: "" }))); },
     () => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here." })));
   qrPut(card, QRS.err || QRS.note,
-    h("h2", { text: "Sign in with your phone" }),
+    h("h2.qrc-title", { text: "Sign in with your phone" }),
     QRS.err || QRS.note ? h("p.said", { text: QRS.err || QRS.note }) : null,
     qr, h("div.qrtime", { "aria-hidden": "true", title: "A new code comes by itself" }, qrBar()),
     h("ol.qrsteps", {}, h("li", {}, "Open the camera on a phone that’s signed in"), h("li", {}, "Point it at this code"), h("li", {}, "Tap the number you’ll see here")),
@@ -3133,16 +3092,25 @@ function forgotCard() {
   const said = h("p.said", { role: "alert" });
   const email = h("input", { type: "email", name: "email", autocomplete: "username", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
   const go = h("button.btn", { type: "submit" }, "Email me a link");
-  const box = h("div.signin.glass", {}, h("form.form", { onsubmit: async (e) => {
+  const box = h("div.signin.glass");
+  const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
     if (!EMAIL_OK.test(email.value.trim())) return say(said, "Enter the email your account uses.", email);
     try {
-      const r = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
-      // (the card going to the size of what it says now, as that fades in)
-      morph(box, () => box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message }))));
+      const response = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
+      morph(box, () => {
+        updateAuthScreen(box, { state: "email-sent", title: "Check your email", description: "The link works once, for an hour." });
+        box.replaceChildren(h("div.sent", {}, h("p", { role: "status", text: response.message })),
+          h("button.btn", { type: "button", onclick: () => gate("signin") }, "Back to sign in"),
+          h("button.btn.quiet", { type: "button", onclick: () => {
+            updateAuthScreen(box, { state: "forgot", title: "Forgot your password?", description: "We’ll email you a link to choose a new one. It works once, for an hour." });
+            draw(); email.focus();
+          } }, "Change email address"));
+      });
     } catch (err) { say(said, err.message, email); }
-  } }, field("Email", email), go),
-  h("p.hint.center", { text: "With a passkey, a reset keeps your Chat messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
+  } }, field("Email", email), go);
+  const draw = () => box.replaceChildren(form, h("p.hint", { text: "A compatible passkey may help you keep your Chat messages when you reset your password." }), said);
+  draw();
   return box;
 }
 // A reset link's own page: who it's for, and a new password. With a passkey that holds a copy of the key (one made in
@@ -3159,14 +3127,13 @@ async function resetCheck(again) {
 }
 function resetPage(r) {
   const R = S.reset, info = R.info;
-  if (!info && !R.error) return [h("div.welcome", {}, r(h("div.empty", {}, h("span.spin"))))];
-  if (R.error && R.away) return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "Can’t check this link" })), r(h("p", { text: R.error })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: (e) => busy(e.currentTarget, "Checking…", () => resetCheck(true)) }, "Try again"))))];
-  if (R.error) return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark.red", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "This link won’t work" })), r(h("p", { text: R.error })),
-    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
-      h("button.btn.quiet", { type: "button", onclick: () => { S.reset = null; gate("signin"); } }, "Sign in"))))];
+  if (!info && !R.error) return authPage(r, { state: "checking-link", title: "Checking your link", description: "This will only take a moment.",
+    content: h("div.empty", { role: "status", "aria-label": "Checking your link" }, h("span.spin")) });
+  if (R.error && R.away) return authPage(r, { state: "link-unavailable", title: "Can’t check this link", description: R.error, mark: icon("key", 26, 1.8),
+    content: h("button.btn", { type: "button", onclick: (e) => busy(e.currentTarget, "Checking…", () => resetCheck(true)) }, "Try again") });
+  if (R.error) return authPage(r, { state: "link-invalid", title: "This link won’t work", description: R.error, mark: icon("key", 26, 1.8), back: authBack(),
+    content: [h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
+      h("button.btn.quiet", { type: "button", onclick: () => { S.reset = null; gate("signin"); } }, "Sign in")] });
   const said = h("p.said", { role: "alert" });
   const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp }), { meter, hint } = rated(pw);
   const canKeep = info.passkeys.length > 0 && passkeysWork(), other = S.me?.signedIn && S.me.handle !== info.handle;
@@ -3200,21 +3167,17 @@ function resetPage(r) {
       checkQuietly(pw.value, proof);
     } catch (err) { say(said, err.message, pw); }
   };
-  return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark", {}, icon("key", 48, 1.7)))),
-    r(h("h1", { text: "Choose a new password" })),
-    r(h("p", { text: `For ${info.name} (@${info.handle}, ${info.email}).` })),
-    r(h("div.signin.glass", {},
-      other && h("p.hint.bad", { text: `You’re signed in here as @${S.me.handle}. This link is for a different account: only carry on if it’s yours.` }),
+  return authPage(r, { state: "reset-password", title: "Choose a new password", mark: icon("key", 26, 1.8), back: authBack(),
+    description: `For ${info.name} (@${info.handle}, ${info.email}).`,
+    content: h("div.signin.glass", {},
+      other && h("p.hint.bad", { text: `You’re signed in as @${S.me.handle}, but this link is for @${info.handle}. Only carry on if it’s yours.` }),
       h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
         h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
         pwField("New password", pw), meter, hint),
-      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your Chat messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
+      h("p.hint.auth-warning", { text: `${canKeep ? "Use your passkey to keep your Chat messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out, and your passkeys are removed: add one again once you’re in.` }),
       canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
       h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
-      S.me?.signedIn && h("button.link", { type: "button", onclick: () => anew(() => { S.reset = null; S.settled = false; render(); }) }, "Cancel"),
-      said))),
-  ];
+      S.me?.signedIn && h("button.link", { type: "button", onclick: () => anew(() => { S.reset = null; S.settled = false; render(); }) }, "Cancel"), said) });
 }
 // → { m: the account, signed in; prf, id: the passkey's PRF secret and id, for Chat (where it sent you here: what
 // opens the passkey's own copy of its key, if it has one) }. (only: the one passkey to ask for, yours, remembered here)

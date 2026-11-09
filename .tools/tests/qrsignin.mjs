@@ -145,8 +145,9 @@ ok(/Sam Lee/.test(await m.locator('main').innerText()), 'Continue: the Mac signe
 // (from an app: Markets, handed back)
 const [, m2] = await macPage();
 await m2.goto(`${MKT}/`); await m2.waitForSelector('#sign-in:not([disabled])', { timeout: 20000 }); await m2.click('#sign-in');
+await m2.getByRole('button', { name: 'Sign in with your phone', exact: true }).click();
 await m2.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
-ok(/continue to\s*Markets/.test(await m2.locator('main').innerText()), 'Markets → Sign in: the account’s page, its QR code there too');
+ok(/continue to\s*Markets/i.test(await m2.locator('main').innerText()), 'Markets → Sign in: destination retained when phone sign-in is requested');
 const viaPhone = async (pg, mac) => {
   await pg.goto(await mac.getAttribute('#qrc .qrbox', 'data-link')); await pg.locator('.sheet-body button:has-text("Continue")').click();
   await pg.waitForSelector('.qrpick button, .qrtype', { timeout: 20000 }); await mac.waitForSelector('.qrnum b', { timeout: 10000 });
@@ -158,7 +159,7 @@ await m2.waitForURL(/finance\.ifl\.test/, { timeout: 30000 }); await m2.waitForS
 ok(true, 'and back in Markets, signed in');
 // (a wrong number, in the page)
 const [, m3] = await macPage();
-await m3.goto(`${ACCT}/`); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
+await m3.goto(`${ACCT}/`); await m3.getByRole('button', { name: 'Sign in with your phone', exact: true }).click(); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
 const right = await viaPhone(ph, m3), off = (await ph.locator('.qrpick button').allInnerTexts()).map((x) => x.trim()).find((x) => x !== right);
 await ph.locator(`.qrpick button:text-is("${off}")`).click();
 await ph.waitForSelector('.qrend.bad', { timeout: 10000 }); await m3.waitForSelector('#qrc .said', { timeout: 10000 }); await m3.waitForSelector('#qrc .qrbox svg', { timeout: 10000 });
@@ -187,7 +188,7 @@ ok(/Sign in on this phone first/.test(await pout.locator('main h1').innerText())
 
 // ---- the account page's own scanner: a stand-in camera held up to the Mac's screen ----
 const [, m4] = await macPage();
-await m4.goto(`${ACCT}/`); await m4.waitForSelector('#qrc .qrbox svg', { timeout: 30000 }); await settle(m4, 900);
+await m4.goto(`${ACCT}/`); await m4.getByRole('button', { name: 'Sign in with your phone', exact: true }).click(); await m4.waitForSelector('#qrc .qrbox svg', { timeout: 30000 }); await settle(m4, 900);
 const box = await m4.locator('#qrc .qrbox').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
 const jpg = await m4.screenshot({ type: 'jpeg', quality: 90, clip: { x: cx - 320, y: cy - 240, width: 640, height: 480 } });
 writeFileSync(`${out}/camera.mjpeg`, Buffer.concat(Array(30).fill(jpg)));

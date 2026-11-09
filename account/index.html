@@ -33,6 +33,7 @@
   <script type="module" src="app.js"></script>
   <!-- (what the script brings in, asked for alongside it rather than after it's arrived) -->
   <link rel="modulepreload" href="crypto.js" />
+  <link rel="modulepreload" href="auth-frame.js" />
 </head>
 <body>
   <!-- the sky behind it all: a gradient, with slow light drifting over it -->
@@ -43,12 +44,12 @@
   <div class="status" aria-hidden="true"></div>
   <div class="page" id="page">
     <main id="main" aria-busy="true">
-      <div class="skeleton" aria-label="Loading your account">
+      <!-- account-loading:start --><div class="skeleton" aria-label="Loading your account">
         <div class="sk sk-title"></div>
         <div class="sk sk-hero"></div>
         <div class="sk sk-row"></div>
         <div class="sk sk-group"></div>
-      </div>
+      </div><!-- account-loading:end -->
     </main>
   </div>
   <dialog class="sheet" id="sheet" aria-labelledby="sheet-title"></dialog>

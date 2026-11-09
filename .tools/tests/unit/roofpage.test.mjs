@@ -182,12 +182,18 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
   const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
   assert.ok(out.length > 0, 'signedOutNow');
-  assert.match(out, /if \(sure === true\) forgetApps\(\{ chat: false \}\)/, 'signed out elsewhere, the account said so: the apps’ copies (Chat’s engine signs itself out)');
-  assert.match(out, /sessionCheck = null; checkSession\(\)\.then\(\(inn\) => inn === false && forgetApps\(\{ chat: false \}\)\)/, 'any other 401 or word: the account asked afresh first (review I-8)');
+  if (out.includes('if (sure !== true)')) {
+    assert.match(out, /return checkSession\(true\)/, 'a secondary failure revalidates the authoritative session');
+    assert.match(out, /inn === false && scope === requests\.generation\) signedOutNow\(true\)/, 'only a confirmed answer for the same account can sign out');
+    assert.ok(out.indexOf('forgetApps({ chat: false })') > out.indexOf('resetRequests();'), 'app data is cleared only after the confirmation guard returns');
+  } else {
+    assert.match(out, /if \(sure === true\) forgetApps\(\{ chat: false \}\)/);
+    assert.match(out, /sessionCheck = null; checkSession\(\)\.then\(\(inn\) => inn === false && forgetApps\(\{ chat: false \}\)\)/);
+  }
   // (sure only from the account's own answer, or the frame's lost(), which asks it first)
   assert.match(js, /lost: \(\) => signedOutNow\(true\)/);
-  assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \(!view\?\.signedIn\) return signedOutNow\(true\);/);
-  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\(\);/, 'a 401 from any other call: not sure');
+  assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \((?:!view\?\.signedIn|view\?\.signedIn === false)\) return signedOutNow\(true\);/);
+  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\((?:path === "\/api\/session")?\);/, 'only the authoritative session endpoint may confirm a request’s 401');
   assert.match(js, /const APP_SESSION_KEPT = \["mail:signin-verifier"\];/);
   assert.match(js, /for \(const k of APP_SESSION_KEPT\) sessionStorage\.removeItem\(k\)/);
   for (const k of ['mail:replies', 'mail:unsent', 'mail:outbox', 'mail:remote-images', 'mail:lens']) assert.ok(js.includes(`"${k}"`), `APP_KEPT: ${k}`);
@@ -210,10 +216,11 @@ test('stage 2, app.js: a confirmed sign-out found out about (401, the account’
   assert.match(fa, /inStore\("fitness", "files", \(s\) => s\.clear\(\)\)/, 'the fitness store emptied');
   // (the callers of signedOutNow: a 401, the account saying signed out, the worker's word, the frame's confirmed lost())
   const calls = [...js.matchAll(/^.*signedOutNow\(\).*$/gm)].map((m) => m[0].trim()).filter((l) => !/^\/\/|^function signedOutNow/.test(l));
-  for (const l of calls) assert.match(l, /status === 401|!view\?\.signedIn|!view\?\.user\?\.id|d\.ifl === "signedout"/, `signedOutNow only once it’s confirmed: ${l}`);
+  for (const l of calls) assert.match(l, /status === 401|!view\?\.signedIn|!view\?\.user\?\.id|d\.ifl === "signedout"/, `signedOutNow callers request authoritative verification: ${l}`);
   assert.match(js, /lost: (?:signedOutNow|\(\) => signedOutNow\(true\)),/, 'and the frame’s lost(), which calls it only on a confirmed “signed out” (D3)');
   // (offline: the load's catch keeps the copy or shows the way in with the message, never signedOutNow)
-  const ld = js.slice(js.indexOf('async function load()'), js.indexOf('const save = '));
+  const loadAt = js.indexOf('\nasync function load(');
+  const ld = js.slice(loadAt, js.indexOf('const save = ', loadAt));
   const offline = ld.slice(ld.indexOf('const ks = e.status === 0'), ld.indexOf('if (view?.links)'));
   assert.ok(offline.length > 0 && !/signedOutNow/.test(offline), 'no answer at all: nothing signed out, nothing cleared');
 });
@@ -235,7 +242,7 @@ const s3 = s24 || (!/\bchats: fz\(\{/.test(String(pub('roof/router.js'))) && 'th
 test('stage 3, app.js: the sign-in hop to /chats/in/ is start()’s first line, only at /chats/ and only for the trip’s keys; Sign In’s hrefs unchanged', { skip: s3 }, () => {
   const js = own();
   const st = js.slice(js.indexOf('\nfunction start() {'));
-  const first = st.split('\n').slice(2).find((l) => !/^\s*\/\//.test(l));
+  const first = st.split('\n').slice(2).find((l) => !/^\s*\/\//.test(l) && l.trim() !== 'ensureSessionUI();');
   assert.equal(first.trim(), 'if (/^\\/chats\\/(index\\.html)?$/.test(location.pathname) && /^#(signin|verify=|invite=|reset=)/.test(location.hash)) return location.replace("/chats/in/" + location.hash);');
   const hop = new Function('location', `${first.trim()} return null;`);
   const at = (p, h) => { let to = null; hop({ pathname: p, hash: h, replace: (u) => (to = u) }); return to; };

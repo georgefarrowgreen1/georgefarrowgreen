@@ -118,7 +118,7 @@ const l3 = await last(B);
 ok(l3?.way === 'passkey' && !!l3.id, 'remembered as signed in with a passkey, and which', JSON.stringify(l3));
 await signOut(B);
 const r2 = await text(B, 'main .signin');
-ok(/Welcome back/.test(r2) && /Continue with a passkey/.test(r2) && !(await B.p.isVisible('main .signin input[name=password]')), 'signed out: Continue with your passkey, the password out of the way', r2);
+ok(/Welcome back/.test(await text(B, 'main h1')) && /Continue with a passkey/.test(r2) && !(await B.p.isVisible('main .signin input[name=password]')), 'signed out: shared identity header, passkey first and password out of the way', r2);
 await shot(B, '03-remembered-passkey');
 await B.p.click('main .signin .usepw'); await settle(B, 600);
 ok(await B.p.isVisible('main .signin input[name=password]') && /Use your passkey instead/.test(await text(B, 'main .signin')), 'Use your password instead: there, a tap away');
