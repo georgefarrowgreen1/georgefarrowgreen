@@ -24,7 +24,7 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.25";
+export const BUILD = "2.26";
 export const NEWS = "Cash interest payout dates, with recurring and month-end schedules";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 

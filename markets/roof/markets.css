@@ -614,6 +614,6 @@
 .m-markets .cash-payout-fields[hidden], .ifl-sheet[data-app=markets] .cash-payout-fields[hidden], .m-markets .cash-check[hidden], .ifl-sheet[data-app=markets] .cash-check[hidden] { display: none; }
 
 /* Keep the long cash form below its title while its fields scroll. */
-dialog.ifl-sheet[data-app=markets][data-sheet=cash] { overflow: hidden; }
+.ifl-sheet[data-app=markets][data-sheet=cash] { overflow: hidden; }
 .ifl-sheet[data-app=markets][data-sheet=cash] .ifs-head { flex: none; }
 .ifl-sheet[data-app=markets][data-sheet=cash] .ifs-body { overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px; }
