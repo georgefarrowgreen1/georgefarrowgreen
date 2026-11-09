@@ -65,10 +65,11 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   glass redraw for no reason.
   - The initial loading screen uses George's contour portrait, with continuous red, green, blue and purple light
     moving from left to right. It reveals the page as soon as the first photo, display font and initial words are
-    ready; account data and slideshow metadata never hold it up. There is no minimum display time, and a four-second
-    safety limit releases the page even if a request or script fails. Reduce Motion keeps the portrait still. Back
+    ready, with at least two seconds for the fully visible portrait; account data and slideshow metadata never hold
+    it up. A four-second safety limit releases the page even if a request or script fails, and a stalled portrait
+    cannot keep ready content hidden. Reduce Motion keeps the portrait still and skips the showcase wait. Back
     navigation and the account's existing return animation skip it. The portrait fades away before the page enters,
-    with a shorter reveal when the page is ready before the artwork appears. Its WebGL resources are released after
+    keeping the face and headline separate throughout the reveal. Its WebGL resources are released after
     the fade. The floating name is a Back to top link, with keyboard focus returned to the hero and immediate scrolling
     when Reduce Motion is enabled.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web

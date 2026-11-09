@@ -403,7 +403,13 @@ function showMe() {
     try { [about, from = ""] = location.hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
     history.replaceState(null, "", location.pathname + location.search);
     if (about && !$("#c-message").value) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
-    $(".cta [data-contact]").click();
+    const openContact = () => {
+      const trigger = $(".cta [data-contact]");
+      trigger.focus({ preventScroll: true });
+      trigger.click();
+    };
+    if (root.classList.contains("intro-loading")) addEventListener("home:revealed", openContact, { once: true });
+    else openContact();
   }
   const face = $("#face");
   face.textContent = "";

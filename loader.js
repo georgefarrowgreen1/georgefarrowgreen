@@ -1,5 +1,5 @@
 // Start before the first paint. The page itself remains the fallback if this script cannot run.
-// The approved portrait is decoration: it never decides how long someone waits for the page.
+// The portrait gets a two-second showcase once visible, followed by a separate head/page reveal.
 (() => {
   const root = document.documentElement;
   if (root.classList.contains("back-on") || /^#signedin(?![\w-])/.test(location.hash) ||
@@ -7,13 +7,16 @@
 
   let active = true, mounted = false, revealed = false, engine = null, overlay = null, finishTimer = null, starting = false;
   let exitTimer = null, headExit = null, portraitFrame = 0, portraitShown = false, quick = false;
+  let contentReady = false, shownAt = 0, holdTimer = null, artWaitTimer = null;
+  const SHOWCASE = 2000, ART_WAIT = 1000;
   let restore = [], wasBusy = null, busyTarget = null, watch = null, appReady;
   const app = new Promise(resolve => { appReady = resolve; });
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
   const image = new Image(720, 720);
-  image.alt = ""; image.className = "loader-image"; image.decoding = "async"; image.fetchPriority = "low";
+  image.alt = ""; image.className = "loader-image"; image.decoding = "async"; image.fetchPriority = "high";
   const cleanup = () => {
     clearTimeout(finishTimer);
+    clearTimeout(holdTimer); clearTimeout(artWaitTimer);
     clearTimeout(exitTimer); cancelAnimationFrame(portraitFrame);
     headExit?.cancel(); headExit = null;
     engine?.destroy(); engine = null;
@@ -54,6 +57,7 @@
   function dismiss(immediate = false) {
     if (!active) { if (immediate) revealPage(true); return; }
     active = false; clearTimeout(limit); cancelAnimationFrame(portraitFrame);
+    clearTimeout(holdTimer); clearTimeout(artWaitTimer);
     engine?.stop();
     quick = !portraitShown;
     if (immediate || !mounted) { revealPage(true); return; }
@@ -69,12 +73,27 @@
       exitTimer = setTimeout(() => { headExit?.finish(); revealPage(); }, duration + 80);
     } catch (_) { revealPage(); }
   }
+  function finishWhenReady() {
+    if (!active || !contentReady) return;
+    clearTimeout(holdTimer);
+    if (motion.matches) { dismiss(); return; }
+    if (!shownAt) {
+      // A missing or stalled portrait must not replace ready content with a blank screen.
+      if (!artWaitTimer) artWaitTimer = setTimeout(() => dismiss(), ART_WAIT);
+      return;
+    }
+    clearTimeout(artWaitTimer); artWaitTimer = null;
+    const remaining = SHOWCASE - (performance.now() - shownAt);
+    if (remaining > 0) holdTimer = setTimeout(() => dismiss(), remaining);
+    else dismiss();
+  }
   function skip(e) { if (e.key === "Escape") dismiss(); }
   function leave() { dismiss(true); }
   function restored(e) { if (e.persisted) dismiss(true); }
   function changedMotion() {
     engine?.motion();
     if (!active && motion.matches) revealPage(true);
+    else finishWhenReady();
   }
   // A failed API, missing app script or lost connection cannot leave the content behind a curtain.
   const limit = setTimeout(() => dismiss(), 4000);
@@ -122,13 +141,19 @@
       document.removeEventListener("load", checkMount, true);
       mounted = true; overlay.hidden = false;
       portrait.prepend(image); root.classList.add("intro-mounted");
-      // Let already-ready pages begin their reveal before the decorative head's first visible frame.
+      // Start the minimum only after the decoded face has faded fully into view, not during its download.
       image.decode().then(() => {
         if (!active) return;
         portraitFrame = requestAnimationFrame(() => {
           portraitFrame = requestAnimationFrame(() => {
             if (!active) return;
             portraitShown = true; portrait.classList.add("shown");
+            const entering = portrait.getAnimations().filter(animation => animation.transitionProperty === "opacity");
+            Promise.allSettled(entering.map(animation => animation.finished)).then(() => {
+              if (!active) return;
+              shownAt = performance.now();
+              finishWhenReady();
+            });
           });
         });
       }).catch(() => {});
@@ -137,13 +162,14 @@
       restore = [document.getElementById("bar"), document.getElementById("page")].filter(Boolean).map(node => [node, node.inert]);
       for (const [node] of restore) node.inert = true;
       document.getElementById("loader-skip")?.addEventListener("click", () => dismiss());
-      // GPU setup and this image's decode run alongside readiness, never on its critical path.
+      // The page and portrait load in parallel; only the optional showcase waits for the artwork.
       startPortrait();
       const cover = document.querySelector("#cover img");
       const photo = cover ? cover.decode().catch(() => {}) : Promise.resolve();
       const font = document.fonts?.load('700 1em "Space Grotesk"').catch(() => {});
       await Promise.all([photo, font, app]);
-      dismiss();
+      contentReady = true;
+      finishWhenReady();
     } catch (_) { dismiss(true); }
   }
   // Mount as the parser supplies the content, even if a later application script stalls.
