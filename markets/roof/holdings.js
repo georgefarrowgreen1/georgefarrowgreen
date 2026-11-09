@@ -140,20 +140,19 @@ function mixPart(T) {
       onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.setProperty("--at", String(i)); seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mix === k))); el("ring")?.replaceWith(mixRing(totals(), k)); } })));
   return [h("div.mixrow", {}, seg), ring];
 }
-// How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
-// year's dividends; and today. Then what it's from, where that's not everything, and a day asked for where one that
-// pays has none to count its dividends from
+// Holdings value, return including known dividends, and paid income together. Unknown costs and purchase dates
+// stay explicit; partial coverage is explained below the figures.
 function statsPart(T) {
-  const I = T.back == null ? income() : null, stat = (label, v, cls, sub) => h("div.stat", {}, h("small", { text: label }), h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub }));
+  const paid = T.costed.filter((x) => divsOf(x) != null), stat = (label, v, cls, sub) => h("div.stat", {}, h("dt", { text: label }), h("dd", {}, h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub })));
   const notes = [];
   if (leftOutSaid()) notes.push(`${leftOutSaid()} `);
-  if (T.back != null && T.costed.length < T.o.length) notes.push(`Since you bought is from the ${T.costed.length} of your ${T.o.length} holdings you've said what you paid for. `);
+  if (T.back != null && T.costed.length < T.o.length) notes.push(`Return covers ${T.costed.length} of ${T.o.length} holdings with a purchase cost. `);
   if (T.undated.length === 1) notes.push("Say when you bought ", h("button.inline", { type: "button", onclick: () => M.open.holding(T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you.");
   else if (T.undated.length) notes.push("Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you.");
-  return [h("div.stats", {},
-      T.back != null ? stat("Since you bought", signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), `${pct(T.backPct, 1)}${T.divs >= 0.5 ? ` · ${money(T.divs, "GBP", 0)} in dividends` : ""}`)
-        : I?.total ? stat("Dividends", `${money(I.total, "GBP", 0)}`, "", "a year, expected") : null,
-      stat("Today", signed(T.day, "GBP", Math.abs(T.day) >= 1e4 ? 0 : 2), tone(T.day), pct(T.dayPct))),
+  return [h("dl.stats.portfolio-overview", { "aria-label": "Portfolio overview" },
+      stat("Portfolio", money(T.value), "", plural(T.o.length, "holding")),
+      stat("Total return", T.back == null ? "–" : signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), T.back == null ? "Add purchase costs" : `${pct(T.backPct, 1)} · incl. known dividends`),
+      stat("Paid dividends", paid.length ? money(T.divs) : "–", "", paid.length ? (paid.length < T.costed.length ? "Known payments" : "Since bought") : "Add purchase dates")),
     notes.length ? h("p.stats-note", {}, notes) : null];
 }
 // Your accounts: each one's worth and day; and the ISA's allowance, what's left of it this tax year

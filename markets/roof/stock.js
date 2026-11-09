@@ -31,7 +31,7 @@ function stockView(sym, o = {}) {
   }
   const name = held?.name || INDEX_NAMES[sym] || o.name || q.name;
   const box = h("div.chartbox", { "data-el": "cb" });
-  const seg = h("div.seg", { role: "group", "aria-label": "Chart range" }, h("span.sl"), RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: label })));
+  const seg = h("div.seg.range-controls", { role: "group", "aria-label": "Chart range" }, RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: ({ "1d": "Day", "5d": "Week", "1mo": "Month", "1y": "Year", "5y": "5yr" })[r] || label })));
   const why = h("p.why", { "data-el": "why" }, h("span.mk-dim", { text: "Finding out why…" }));
   const parts = [
     h("div.shead", {}, backBtn(), h("small", { text: [plainSym(sym), q.ex, ["trust", "fund"].includes(kindOf(q)) ? KIND_SAID[kindOf(q)] : null].filter(Boolean).join(" · ") }), closeBtn()),
@@ -195,7 +195,7 @@ async function stockChart(sym, box, seg) {
   box.append(now, blabel); box.after(axis);
   // (drawn: the range shown. One that can't be drawn leaves it as it was, pressed again, so it can be asked for again)
   let shown = null, raw = null, range = "1d", drawn = "1d", seq = 0;
-  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
+  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
   const back = (n, why) => { if (n !== seq) return; range = drawn; box.dataset.range = drawn; press(drawn); if (why) toast(why, true); };
   const show = async (r, first) => {
     const n = ++seq;

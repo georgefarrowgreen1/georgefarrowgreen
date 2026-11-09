@@ -1509,3 +1509,15 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   .page { padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
   body:not(.desk-on) .view :is(a[href], button, input, select, textarea, summary) { scroll-margin-bottom: calc(54px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* One comparison of holdings value, return and paid income; amounts wrap within their column. */
+.portfolio-overview { margin: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.portfolio-overview dt { font-size: 12px; color: var(--text-3); }
+.portfolio-overview dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.portfolio-overview b { font-size: clamp(17px, 4.5vw, 22px); }
+.range-controls { padding: 4px; gap: 3px; min-height: 44px; }
+.range-controls button { min-height: 44px; min-width: 0; border-radius: 12px; transition: background-color var(--dur-fast, .16s), color var(--dur-fast, .16s); }
+.range-controls button[aria-pressed=true] { background: var(--cell, var(--glass)); box-shadow: 0 2px 6px #0001; color: var(--text); }
+.range-controls button:focus-visible { outline: 2px solid var(--tint, var(--acc)); outline-offset: -2px; }
+
+.range-controls button::after { inset: 0; }

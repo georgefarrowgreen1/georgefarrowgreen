@@ -1140,8 +1140,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.20";
-const NEWS = "Consistent menus, spacing and motion that adapt to your screen";
+const BUILD = "2.21";
+const NEWS = "Clearer chart ranges and one overview of portfolio value, returns and paid dividends";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1671,12 +1671,12 @@ function portfolioBox() {
   const svg = portfolioChart(), box = h("div.pbox", { id: "pbox" }, svg);
   // (the range chosen kept when the page is drawn again: the day's drawn first, then reshaped to it)
   const kept = PRANGES.some(([r]) => r === S.prange) ? S.prange : "1d";
-  const seg = h("div.seg.pseg", { role: "group", "aria-label": "Your portfolio over" }, h("span.sl"), PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: label })));
+  const seg = h("div.seg.pseg.range-controls", { role: "group", "aria-label": "Your portfolio over" }, PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: ({ "1d": "Day", "5d": "Week", "1mo": "Month", "1y": "Year", "5y": "5yr" })[r] || label })));
   S.prange = "1d";
-  if (kept !== "1d") requestAnimationFrame(() => { const b = seg.querySelector(`[data-r="${kept}"]`); if (b) seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; show(kept); });
+  if (kept !== "1d") requestAnimationFrame(() => { const b = seg.querySelector(`[data-r="${kept}"]`); if (b) show(kept); });
   // (the range drawn: where another can't be, it stays, pressed again, and today's goes on being kept fresh: refresh)
   let seq = 0, drawn = "1d";
-  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
+  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
   const show = async (r) => {
     const n = ++seq;
     S.prange = r;
@@ -1874,20 +1874,19 @@ function mixPart(T) {
       onclick: () => { if (S.mix === k) return; S.mix = k; seg.querySelector(".sl").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); $("#ring")?.replaceWith(mixRing(totals(), k)); } })));
   return [h("div.mixrow", {}, seg), ring];
 }
-// How you've done, under the ring: since you bought (with the dividends it's paid you), or where that's not known, a
-// year's dividends; and today. Then what it's from, where that's not everything, and a day asked for where one that
-// pays has none to count its dividends from
+// Holdings value, return including known dividends, and paid income together. Unknown costs and purchase dates
+// stay explicit; partial coverage is explained below the figures.
 function statsPart(T) {
-  const I = T.back == null ? income() : null, stat = (label, v, cls, sub) => h("div.stat", {}, h("small", { text: label }), h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub }));
+  const paid = T.costed.filter((x) => divsOf(x) != null), stat = (label, v, cls, sub) => h("div.stat", {}, h("dt", { text: label }), h("dd", {}, h("b", { class: `num ${cls}`, text: v }), h("span.num", { text: sub })));
   const notes = [];
   if (leftOutSaid()) notes.push(`${leftOutSaid()} `);
-  if (T.back != null && T.costed.length < T.o.length) notes.push(`Since you bought is from the ${T.costed.length} of your ${T.o.length} holdings you've said what you paid for. `);
+  if (T.back != null && T.costed.length < T.o.length) notes.push(`Return covers ${T.costed.length} of ${T.o.length} holdings with a purchase cost. `);
   if (T.undated.length === 1) notes.push("Say when you bought ", h("button.inline", { type: "button", onclick: () => openSheet(editView, T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you.");
   else if (T.undated.length) notes.push("Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you.");
-  return [h("div.stats", {},
-      T.back != null ? stat("Since you bought", signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), `${pct(T.backPct, 1)}${T.divs >= 0.5 ? ` · ${money(T.divs, "GBP", 0)} in dividends` : ""}`)
-        : I?.total ? stat("Dividends", `${money(I.total, "GBP", 0)}`, "", "a year, expected") : null,
-      stat("Today", signed(T.day, "GBP", Math.abs(T.day) >= 1e4 ? 0 : 2), tone(T.day), pct(T.dayPct))),
+  return [h("dl.stats.portfolio-overview", { "aria-label": "Portfolio overview" },
+      stat("Portfolio", money(T.value), "", plural(T.o.length, "holding")),
+      stat("Total return", T.back == null ? "–" : signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), T.back == null ? "Add purchase costs" : `${pct(T.backPct, 1)} · incl. known dividends`),
+      stat("Paid dividends", paid.length ? money(T.divs) : "–", "", paid.length ? (paid.length < T.costed.length ? "Known payments" : "Since bought") : "Add purchase dates")),
     notes.length ? h("p.stats-note", {}, notes) : null];
 }
 // A list put in your order: press and hold a row (or, with a mouse, hold and drag), it lifts, and follows your finger, the
@@ -2584,7 +2583,7 @@ function stockView(sym, o = {}) {
   }
   const name = held?.name || INDEX_NAMES[sym] || o.name || q.name;
   const box = h("div.chartbox", { id: "cb" });
-  const seg = h("div.seg", { role: "group", "aria-label": "Chart range" }, h("span.sl"), RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: label })));
+  const seg = h("div.seg.range-controls", { role: "group", "aria-label": "Chart range" }, RANGES.map(([r, label], i) => h("button", { type: "button", "aria-pressed": String(i === 0), "data-r": r, text: ({ "1d": "Day", "5d": "Week", "1mo": "Month", "1y": "Year", "5y": "5yr" })[r] || label })));
   const why = h("p.why", { id: "why" }, h("span", { style: "opacity:.35", text: "Finding out why…" }));
   const parts = [
     h("div.shead", {}, backBtn(), h("small", { text: [plainSym(sym), q.ex, ["trust", "fund"].includes(kindOf(q)) ? KIND_SAID[kindOf(q)] : null].filter(Boolean).join(" · ") }), closeBtn()),
@@ -2776,7 +2775,7 @@ async function stockChart(sym, box, seg) {
   box.append(now, blabel); box.after(axis);
   // (drawn: the range shown. One that can't be drawn leaves it as it was, pressed again, so it can be asked for again)
   let shown = null, raw = null, range = "1d", drawn = "1d", seq = 0;
-  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelector(".sl").style.transform = `translateX(${b.offsetLeft}px)`; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
+  const press = (r) => { const b = seg.querySelector(`[data-r="${r}"]`); if (!b) return; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); };
   const back = (n, why) => { if (n !== seq) return; range = drawn; box.dataset.range = drawn; press(drawn); if (why) toast(why, true); };
   const show = async (r, first) => {
     const n = ++seq;
