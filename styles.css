@@ -70,11 +70,12 @@ html.intro-loading:not(.intro-mounted)::before {
 .site-loader {
   position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center;
   background: #03060b; opacity: 1; isolation: isolate;
-  transition: opacity 0.9s var(--ease-out);
+  transition: opacity 0.2s var(--ease-out);
 }
 .loader-portrait {
   position: relative; width: min(300px, 82vw, 72svh); aspect-ratio: 1;
-  transform: translateY(-12px); mix-blend-mode: screen;
+  transform: translateY(-12px); mix-blend-mode: screen; opacity: 0;
+  transition: opacity 0.16s linear;
   -webkit-mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
   mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
 }
@@ -82,13 +83,16 @@ html.intro-loading:not(.intro-mounted)::before {
 .loader-portrait img { filter: grayscale(1) sepia(1) saturate(16) hue-rotate(318deg) brightness(0.9); }
 .loader-portrait canvas { opacity: 0; transition: opacity 0.25s linear; }
 .loader-portrait.ready canvas { opacity: 1; }
+.loader-portrait.shown { opacity: 1; }
+html.intro-exiting .loader-portrait { opacity: 0; transition: none; }
+html.intro-fast .site-loader { transition-duration: 0.14s; }
 .loader-skip { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); padding: 12px 18px; border-radius: 999px; background: #1c2433; opacity: 0; pointer-events: none; }
 .loader-skip:focus-visible { opacity: 1; pointer-events: auto; }
 html.intro-loading .hero, html.intro-loading .grid, html.intro-loading .foot { animation-play-state: paused; }
 html.intro-revealing .site-loader { opacity: 0; pointer-events: none; }
 @media (max-width: 540px) { .loader-portrait { width: min(280px, 82vw, 72svh); } }
 @media (prefers-reduced-motion: reduce) {
-  .site-loader, .loader-portrait canvas { transition-duration: 0.16s; }
+  .site-loader, html.intro-fast .site-loader, .loader-portrait, .loader-portrait canvas { transition-duration: 0.1s; }
   .loader-portrait { transform: none; }
 }
 
@@ -158,6 +162,11 @@ html.intro-revealing .site-loader { opacity: 0; pointer-events: none; }
   opacity: 0;
   transform: translateY(8px);
 }
+.bar .back-top { position: relative; overflow: visible; visibility: hidden; }
+.back-top > [data-c="name"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A 44px touch target around the original 36px capsule, without changing the bar's scroll measurements. */
+.back-top::before { content: ""; position: absolute; inset: -4px 0; border-radius: inherit; }
+#top:focus { outline: none; }
 .bar .end { flex: none; display: flex; gap: 8px; margin-left: auto; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
 body.known .bar .end { opacity: 1; }
 
@@ -218,7 +227,11 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
   .hero > * { animation: under linear both; animation-timeline: scroll(root); }
   .hero > .cta { animation-name: under, gone; }
 }
-@keyframes capsule { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes capsule {
+  from { opacity: 0; transform: translateY(8px); visibility: hidden; }
+  12% { opacity: 0.12; transform: translateY(7.04px); visibility: hidden; }
+  to { opacity: 1; transform: none; visibility: visible; }
+}
 @keyframes veil { from { opacity: 0; visibility: hidden; } to { opacity: 1; visibility: visible; } }
 @keyframes under { from { opacity: 1; } to { opacity: 0; } }
 /* (the buttons, once faded, hidden too: not tapped through the bar's gaps, or tabbed to, unseen; in an animation by
@@ -713,7 +726,7 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 }
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
-  .app:hover, .pill.glass:hover, .round.glass:hover { background-color: rgba(40, 44, 58, 0.5); }
+  .app:hover, .pill.glass:hover, .round.glass:hover, .back-top:hover { background-color: rgba(40, 44, 58, 0.5); }
   .row:hover { background-color: rgba(255, 255, 255, 0.05); }
   .tint:hover { filter: brightness(1.08); }
   .app:hover .open { background-color: rgba(61, 139, 255, 0.24); }

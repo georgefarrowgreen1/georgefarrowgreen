@@ -123,3 +123,6 @@ The homepage contour loader has its own browser regression:
 It checks readiness against delayed cover/text/account requests, bounded failure recovery, missing assets/scripts,
 reduced motion, static fallback without WebGL, keyboard skip, account returns, history restoration and no JavaScript,
 using the real source and minified homepage assets.
+
+`CHROMIUM=/usr/bin/chromium node --test .tools/tests/homebacktotop.test.cjs` checks the floating name link on mobile
+and desktop: pointer and keyboard return, hidden-link tab order, reduced motion and the native no-JavaScript fallback.

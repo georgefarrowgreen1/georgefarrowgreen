@@ -20,6 +20,28 @@ async function fixture(assets, options = {}) {
     addEventListener('home:revealed', () => loaderTest.reveals.push(performance.now()));
     addEventListener('pageshow', e => loaderTest.pageshows.push(e.persisted));
   });
+  if (options.trackExit) await ctx.addInitScript(() => {
+    loaderTest.frames = [];
+    const opacity = el => {
+      let value = 1;
+      for (let node = el; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.visibility === 'hidden' || style.display === 'none') return 0;
+        value *= Number(style.opacity);
+      }
+      return value;
+    };
+    const sample = () => {
+      const overlay = document.getElementById('site-loader'), head = document.getElementById('loader-portrait');
+      const veil = overlay && !overlay.hidden ? opacity(overlay) : 0;
+      const headline = document.querySelector('.hero h1');
+      loaderTest.frames.push({ time: performance.now(), head: head ? opacity(head) : 0,
+        veil, headline: headline ? opacity(headline) * (1 - veil) : 0,
+        loading: document.documentElement.classList.contains('intro-loading') });
+      if (performance.now() < 6000 && (overlay || !document.querySelector('#page'))) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   if (options.noWebGL) await ctx.addInitScript(() => {
     const real = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (type, ...args) { return /webgl/i.test(type) ? null : real.call(this, type, ...args); };
@@ -203,5 +225,39 @@ test('context loss returns to the static portrait without trapping the page', as
     await f.p.waitForFunction(() => !document.querySelector('#loader-portrait')?.classList.contains('ready'));
     assert.equal(await f.p.locator('#loader-portrait img').isVisible(), true); assert.equal(await f.p.evaluate(() => document.documentElement.classList.contains('intro-loading')), true);
     f.cover.done(); await readable(f.p); assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+
+// Check the visible sequence, not just class names: translucent art must never sit over readable hero text.
+for (const assets of ['', 'min/']) test(`${assets || 'source/'}the portrait clears before the headline enters, with a shorter complete exit`, async () => {
+  const f = await fixture(assets, { holdCover: true, noWebGL: true, trackExit: true });
+  try {
+    await active(f.p);
+    await f.p.waitForFunction(() => { const image = document.querySelector('#loader-portrait img'); return image?.complete && image.naturalWidth > 0; });
+    await f.p.evaluate(() => document.fonts.ready);
+    await f.p.waitForTimeout(80);
+    await f.p.evaluate(() => { loaderTest.readyAt = performance.now(); }); f.cover.done();
+    await readable(f.p);
+    const result = await f.p.evaluate(() => ({ frames: loaderTest.frames.filter(x => x.time >= loaderTest.readyAt),
+      duration: performance.now() - loaderTest.readyAt, reveals: loaderTest.reveals.length }));
+    assert.ok(result.frames.some(x => x.head > .2), 'sampler observed the loaded portrait');
+    assert.ok(result.frames.some(x => x.headline > .025), 'sampler observed the page entering');
+    assert.equal(result.frames.some(x => x.head > .025 && x.headline > .025), false,
+      'the portrait must be visually gone before the page becomes readable');
+    assert.ok(result.duration < 800, `complete exit should finish promptly once content is ready (${result.duration}ms)`);
+    assert.equal(result.reveals, 1); assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+test('already-ready content takes the fast reveal path without an imposed portrait hold', async () => {
+  const f = await fixture('', { noWebGL: true, trackExit: true, holdMe: true });
+  try {
+    await readable(f.p);
+    const result = await f.p.evaluate(() => ({ frames: loaderTest.frames, reveals: loaderTest.reveals,
+      elapsed: performance.now(), known: document.body.classList.contains('known') }));
+    assert.equal(result.reveals.length, 1);
+    assert.ok(result.elapsed < 1200, `ready content should not wait for an intro (${result.elapsed}ms)`);
+    assert.equal(result.frames.some(x => x.head > .025 && x.headline > .025), false);
+    assert.equal(result.known, false, 'account readiness remains independent');
+    assert.deepEqual(f.errors, []);
   } finally { await f.close(); }
 });

@@ -5,7 +5,8 @@
   if (root.classList.contains("back-on") || /^#signedin(?![\w-])/.test(location.hash) ||
       performance.getEntriesByType?.("navigation")[0]?.type === "back_forward") return;
 
-  let active = true, mounted = false, engine = null, overlay = null, finishTimer = null, starting = false;
+  let active = true, mounted = false, revealed = false, engine = null, overlay = null, finishTimer = null, starting = false;
+  let exitTimer = null, headExit = null, portraitFrame = 0, portraitShown = false, quick = false;
   let restore = [], wasBusy = null, busyTarget = null, watch = null, appReady;
   const app = new Promise(resolve => { appReady = resolve; });
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -13,9 +14,11 @@
   image.alt = ""; image.className = "loader-image"; image.decoding = "async"; image.fetchPriority = "low";
   const cleanup = () => {
     clearTimeout(finishTimer);
+    clearTimeout(exitTimer); cancelAnimationFrame(portraitFrame);
+    headExit?.cancel(); headExit = null;
     engine?.destroy(); engine = null;
     overlay?.remove(); overlay = null;
-    root.classList.remove("intro-revealing", "intro-mounted");
+    root.classList.remove("intro-revealing", "intro-mounted", "intro-exiting", "intro-fast");
     motion.removeEventListener("change", changedMotion);
     watch?.disconnect(); watch = null;
     document.removeEventListener("load", checkMount, true);
@@ -25,10 +28,10 @@
     removeEventListener("pageshow", restored);
     image.onerror = null;
   };
-  function dismiss(immediate = false) {
-    if (!active) { if (immediate) cleanup(); return; }
-    active = false; clearTimeout(limit);
-    root.classList.remove("intro-loading");
+  function revealPage(immediate = false) {
+    if (revealed) { if (immediate) cleanup(); return; }
+    revealed = true; clearTimeout(exitTimer);
+    root.classList.remove("intro-loading", "intro-exiting");
     for (const [node, inert] of restore) node.inert = inert;
     restore = [];
     if (busyTarget) {
@@ -46,14 +49,32 @@
     dispatchEvent(new Event("home:revealed"));
     if (immediate || !mounted) { cleanup(); return; }
     root.classList.add("intro-revealing");
-    finishTimer = setTimeout(cleanup, motion.matches ? 180 : 950);
+    finishTimer = setTimeout(cleanup, motion.matches ? 130 : quick ? 170 : 230);
+  }
+  function dismiss(immediate = false) {
+    if (!active) { if (immediate) revealPage(true); return; }
+    active = false; clearTimeout(limit); cancelAnimationFrame(portraitFrame);
+    engine?.stop();
+    quick = !portraitShown;
+    if (immediate || !mounted) { revealPage(true); return; }
+    if (quick) { root.classList.add("intro-fast"); revealPage(); return; }
+    const portrait = document.getElementById("loader-portrait");
+    const opacity = getComputedStyle(portrait).opacity;
+    root.classList.add("intro-exiting");
+    // The black backdrop and paused content remain until the head has completely disappeared.
+    const duration = motion.matches ? 60 : 140;
+    try {
+      headExit = portrait.animate([{ opacity }, { opacity: 0 }], { duration, easing: "ease-out", fill: "forwards" });
+      headExit.finished.then(() => revealPage(), () => {});
+      exitTimer = setTimeout(() => { headExit?.finish(); revealPage(); }, duration + 80);
+    } catch (_) { revealPage(); }
   }
   function skip(e) { if (e.key === "Escape") dismiss(); }
   function leave() { dismiss(true); }
   function restored(e) { if (e.persisted) dismiss(true); }
   function changedMotion() {
     engine?.motion();
-    if (!active && motion.matches) cleanup();
+    if (!active && motion.matches) revealPage(true);
   }
   // A failed API, missing app script or lost connection cannot leave the content behind a curtain.
   const limit = setTimeout(() => dismiss(), 4000);
@@ -101,6 +122,16 @@
       document.removeEventListener("load", checkMount, true);
       mounted = true; overlay.hidden = false;
       portrait.prepend(image); root.classList.add("intro-mounted");
+      // Let already-ready pages begin their reveal before the decorative head's first visible frame.
+      image.decode().then(() => {
+        if (!active) return;
+        portraitFrame = requestAnimationFrame(() => {
+          portraitFrame = requestAnimationFrame(() => {
+            if (!active) return;
+            portraitShown = true; portrait.classList.add("shown");
+          });
+        });
+      }).catch(() => {});
       busyTarget = document.getElementById("page");
       wasBusy = busyTarget.getAttribute("aria-busy"); busyTarget.setAttribute("aria-busy", "true");
       restore = [document.getElementById("bar"), document.getElementById("page")].filter(Boolean).map(node => [node, node.inert]);

@@ -67,7 +67,10 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
     moving from left to right. It reveals the page as soon as the first photo, display font and initial words are
     ready; account data and slideshow metadata never hold it up. There is no minimum display time, and a four-second
     safety limit releases the page even if a request or script fails. Reduce Motion keeps the portrait still. Back
-    navigation and the account's existing return animation skip it. Its WebGL resources are released after the fade.
+    navigation and the account's existing return animation skip it. The portrait fades away before the page enters,
+    with a shorter reveal when the page is ready before the artwork appears. Its WebGL resources are released after
+    the fade. The floating name is a Back to top link, with keyboard focus returned to the hero and immediate scrolling
+    when Reduce Motion is enabled.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
     Animation) runs only while the top of the page is in view: scrolled, with a sheet up or out of sight, the photo
     and the slideshow hold still, so the glass over them isn't redrawn every frame.

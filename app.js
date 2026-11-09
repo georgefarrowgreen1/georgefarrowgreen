@@ -88,6 +88,12 @@ function showContent() {
 const linked = CSS.supports("animation-timeline: scroll()");
 {
   const bar = $("#bar"), mid = $(".bar .mid"), veil = [$("#soft")], fades = $$(".hero > *"), pageEl = $("#page");
+  mid.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    $("#top").focus({ preventScroll: true });
+    scrollTo({ top: 0, left: 0, behavior: motion.matches ? "instant" : "smooth" });
+  });
   const FADE = 64;      // the least scroll a line fades over
   let ranges = [], name = null, queued = false;
   const draw = () => {
@@ -95,6 +101,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
     const y = scrollY, k = name ? clamp((y - name[0]) / (name[1] - name[0])) : 0;
     for (const el of veil) { el.style.opacity = k; el.style.visibility = k > 0 ? "visible" : "hidden"; }
     mid.style.opacity = k; mid.style.transform = `translateY(${(1 - k) * 8}px)`;
+    mid.style.visibility = k > 0.12 ? "visible" : "hidden";
     fades.forEach((el, i) => { const r = ranges[i], o = editing || !r ? "" : 1 - clamp((y - r[0]) / (r[1] - r[0]));
       el.style.opacity = o; el.style.visibility = o === 0 && el.classList.contains("cta") ? "hidden" : ""; });
   };
