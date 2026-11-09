@@ -21,7 +21,7 @@ export async function homeArrival(ctx, url) {
   return hop(new Request(start, ctx.request), ctx.env, "start");
 }
 
-const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js"];
+const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js", "loader.js", "loader-portrait.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 // (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)
 let memo = { at: 0, v: null };
@@ -71,7 +71,7 @@ export async function homePage(ctx, url, res) {
       url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] }).replace(/</g, "\\u003c"), { html: true }); } })
     .on('meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]', attr("bio"))
     .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:site_name"]', attr("name"))
-    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"]', stamp("src"))
+    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"], script[src^="loader.js"], script[src^="loader-portrait.js"]', stamp("src"))
     .transform(res);
   out.headers.delete("content-length"); out.headers.delete("etag");
   out.headers.set("Cache-Control", "no-cache");

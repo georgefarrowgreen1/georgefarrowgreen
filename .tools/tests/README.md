@@ -117,3 +117,9 @@ It checks guests, existing home sessions, InFlite-only sessions, owners returnin
 cookies and account errors against both source and minified assets. It also holds back scripts and slideshow metadata
 to check the native cover, its reuse without a second download, and stable card geometry before enhancement.
 No real account credentials are needed.
+
+The homepage contour loader has its own browser regression:
+`CHROMIUM=/usr/bin/chromium node --test .tools/tests/homeloader.test.cjs`.
+It checks readiness against delayed cover/text/account requests, bounded failure recovery, missing assets/scripts,
+reduced motion, static fallback without WebGL, keyboard skip, account returns, history restoration and no JavaScript,
+using the real source and minified homepage assets.

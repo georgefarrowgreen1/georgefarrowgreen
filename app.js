@@ -290,7 +290,7 @@ function schedule() {
 }
 // (held still, where it got to: scrolled down, a sheet up, or the page out of sight)
 function hold() {
-  const h = document.hidden || scrollY > 40 || body.classList.contains("sheet-up");
+  const h = document.hidden || scrollY > 40 || body.classList.contains("sheet-up") || root.classList.contains("intro-loading");
   if (h === held) return;
   held = h; body.classList.toggle("paused", h);
   if (h) { clearTimeout(timer); clearTimeout(early); left = Math.max(0, left - (performance.now() - since)); drift?.pause(); }
@@ -299,6 +299,7 @@ function hold() {
 // (a different set when the screen changes size past a phone's, only if it's actually different)
 phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) updateSlides(); });
 document.addEventListener("visibilitychange", hold);
+addEventListener("home:revealed", hold);
 hold();      // (and from the start: a page opened out of sight, in a tab behind, holds still till it's looked at)
 motion.addEventListener("change", () => { if (at >= 0) show(at); });
 
@@ -466,7 +467,7 @@ function showLines() {
   const put = (x) => { offset = x; track.style.transform = `translate3d(${x}px, 0, 0)`; };
   const stop = () => { clearTimeout(timer); timer = null; };
   const blocked = () => !active || userPaused || motion.matches || hovered || focused || !visible || document.hidden ||
-    !!gesture || body.matches(".sheet-up, .edit, .leaving");
+    !!gesture || body.matches(".sheet-up, .edit, .leaving") || root.classList.contains("intro-loading");
   // Interrupt at the exact frame on screen. A new glide starts here, including a swipe caught mid-animation.
   function freeze() {
     if (!animation) return;
@@ -636,6 +637,7 @@ function showLines() {
   document.addEventListener("visibilitychange", availability);
   addEventListener("pagehide", () => { stop(); freeze(); });
   addEventListener("pageshow", availability);
+  addEventListener("home:revealed", availability);
   layout();
 })();
 
@@ -1579,3 +1581,4 @@ const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown
 let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
 loadPhotos();
 loadMe();
+window.homeLoader?.ready(wordsDue);

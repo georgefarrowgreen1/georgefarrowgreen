@@ -63,6 +63,11 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   Edit says it couldn't load the words, rather than starting from the defaults it's written with).
 - **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
   glass redraw for no reason.
+  - The initial loading screen uses George's contour portrait, with continuous red, green, blue and purple light
+    moving from left to right. It reveals the page as soon as the first photo, display font and initial words are
+    ready; account data and slideshow metadata never hold it up. There is no minimum display time, and a four-second
+    safety limit releases the page even if a request or script fails. Reduce Motion keeps the portrait still. Back
+    navigation and the account's existing return animation skip it. Its WebGL resources are released after the fade.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
     Animation) runs only while the top of the page is in view: scrolled, with a sheet up or out of sight, the photo
     and the slideshow hold still, so the glass over them isn't redrawn every frame.

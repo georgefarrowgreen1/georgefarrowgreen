@@ -42,9 +42,18 @@
   <!-- (the account hand-off can reuse the sign-in service's connection) -->
   <link rel="preconnect" href="https://auth.inflite.ai" />
   <script src="signedin.js"></script>
+  <script src="loader.js"></script>
+  <script src="loader-portrait.js" defer></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="site-loader" id="site-loader" hidden>
+    <div class="loader-portrait" id="loader-portrait" aria-hidden="true">
+      <canvas id="loader-canvas"></canvas>
+    </div>
+    <p class="vh" role="status">Loading George Farrow-Green’s page</p>
+    <button class="loader-skip" id="loader-skip" type="button">Skip loading</button>
+  </div>
   <!-- back from signing in on the account's page (#signedin): the picture that page ended on, there from the first frame
        (styles.css .back-in:target), till app.js takes it on (arriveFrom) -->
   <div class="back-in" id="signedin" aria-hidden="true"></div>

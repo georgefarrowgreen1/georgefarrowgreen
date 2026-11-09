@@ -48,7 +48,7 @@ jobs:
         working-directory: georgefarrowgreen
         run: |
           fail=0
-          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'markets/*.js' 'account/*.js' 'fitting/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
+          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'fitness/*.js' 'markets/*.js' 'account/*.js' 'fitting/*.js' 'app.js' 'loader.js' 'loader-portrait.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
       - name: Install locked test and performance-budget tools
         working-directory: georgefarrowgreen
@@ -97,6 +97,9 @@ jobs:
       - name: Cash holdings, interest estimates, editing and retry safety
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/markets-cash.test.cjs .tools/tests/markets-overview.test.cjs
+      - name: Homepage portrait loading, readiness and fallback
+        working-directory: georgefarrowgreen
+        run: node --test .tools/tests/homeloader.test.cjs
       - name: Chat keyboard, resume, rotation, scrolling and tap targets
         working-directory: georgefarrowgreen
         run: |

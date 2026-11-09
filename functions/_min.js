@@ -5,7 +5,7 @@
 // Every app's files are read through this (assets(env).fetch, in place of env.ASSETS.fetch).
 import { FRESH } from "./_minfresh.js";
 
-export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account|status)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles)\.(?:js|css)$/;
+export const MINIFIED = /^\/(?:(?:pigeon|weather|fitness|markets|account|status)\/(?!vendor\/)(?:[\w.-]+\/)*[\w.-]+|app|styles|loader(?:-portrait)?)\.(?:js|css)$/;
 const SKIP = /\/sw\.js$/;
 // (copies made from another file: the sign-in page's script, from the account's (.tools/minify.mjs signinPage), current
 // while that file is as it was made from, and that file itself sent while it isn't)

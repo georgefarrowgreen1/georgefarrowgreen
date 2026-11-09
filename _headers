@@ -21,6 +21,16 @@
 /app.js
   Cache-Control: no-cache
 
+/loader.js
+  Cache-Control: no-cache
+
+/loader-portrait.js
+  Cache-Control: no-cache
+
+# Versioned contour artwork used only by the homepage loader.
+/loading/*
+  Cache-Control: public, max-age=31536000, immutable
+
 /404.js
   Cache-Control: no-cache
 

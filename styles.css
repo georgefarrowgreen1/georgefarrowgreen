@@ -61,6 +61,37 @@ svg { display: block; flex: none; }
 :focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; }
 [hidden] { display: none !important; }
 
+/* ---------------- the contour head, only while the initial page is being readied ---------------- */
+html.intro-loading { overflow: hidden; }
+/* The early script sets this before the body is parsed, so the photo never flashes ahead of the loader. */
+html.intro-loading:not(.intro-mounted)::before {
+  content: ""; position: fixed; inset: 0; z-index: 10000; background: #03060b;
+}
+.site-loader {
+  position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center;
+  background: #03060b; opacity: 1; isolation: isolate;
+  transition: opacity 0.9s var(--ease-out);
+}
+.loader-portrait {
+  position: relative; width: min(300px, 82vw, 72svh); aspect-ratio: 1;
+  transform: translateY(-12px); mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
+}
+.loader-portrait img, .loader-portrait canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.loader-portrait img { filter: grayscale(1) sepia(1) saturate(16) hue-rotate(318deg) brightness(0.9); }
+.loader-portrait canvas { opacity: 0; transition: opacity 0.25s linear; }
+.loader-portrait.ready canvas { opacity: 1; }
+.loader-skip { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); padding: 12px 18px; border-radius: 999px; background: #1c2433; opacity: 0; pointer-events: none; }
+.loader-skip:focus-visible { opacity: 1; pointer-events: auto; }
+html.intro-loading .hero, html.intro-loading .grid, html.intro-loading .foot { animation-play-state: paused; }
+html.intro-revealing .site-loader { opacity: 0; pointer-events: none; }
+@media (max-width: 540px) { .loader-portrait { width: min(280px, 82vw, 72svh); } }
+@media (prefers-reduced-motion: reduce) {
+  .site-loader, .loader-portrait canvas { transition-duration: 0.16s; }
+  .loader-portrait { transform: none; }
+}
+
 .glass {
   background: var(--glass);
   -webkit-backdrop-filter: blur(30px) saturate(180%);
