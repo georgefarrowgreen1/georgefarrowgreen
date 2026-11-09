@@ -1559,3 +1559,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .cash-tier-fields[hidden] { display: none; }
 .cash-band-detail { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .cash-row small { white-space: normal; }
+
+.cash-payout-fields { display: grid; gap: 4px; min-width: 0; }
+.cash-editor .field select { width: 100%; min-width: 0; min-height: 50px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 17px; }
+.cash-editor .cash-check { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.cash-check input { width: 20px; height: 20px; flex: none; accent-color: var(--tint); }
+.cash-payout-fields[hidden], .cash-check[hidden] { display: none; }

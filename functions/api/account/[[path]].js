@@ -1042,7 +1042,7 @@ const ROUTES = {
         rideTimes: (await fitnessTimes(env, u.id)).map((x) => ({ day: x.day, start: iso(x.start), stop: iso(x.stop), timeZone: x.tz, sport: x.sport, setBy: x.source })) },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {
-        cash: mkCash.map((x) => ({ name: x.name, balance: x.amount, currency: "GBP", annualInterestRate: x.rate, ...(x.tier ? { rateAppliesToFirst: x.tier.limit, annualInterestRateAbove: x.tier.rate } : {}), account: x.account, addedAt: iso(x.added), updatedAt: iso(x.updated) })),
+        cash: mkCash.map((x) => ({ name: x.name, balance: x.amount, currency: "GBP", annualInterestRate: x.rate, ...(x.tier ? { rateAppliesToFirst: x.tier.limit, annualInterestRateAbove: x.tier.rate } : {}), payout: x.payout, account: x.account, addedAt: iso(x.added), updatedAt: iso(x.updated) })),
         holdings: mkList.map((x) => ({ symbol: x.symbol, name: x.name, shares: x.qty, averageCost: x.cost, account: x.account, boughtOn: x.since ? iso(x.since).slice(0, 10) : null, addedAt: iso(x.added), alertAt: x.alert ? `${x.alert}%` : null,
           buysAndSales: mkBuys.filter((b) => b.symbol === x.symbol).map((b) => ({ on: iso(b.at), shares: b.qty, priceEach: b.price })) })),
         isa: mkIsa ? { taxYear: mkIsa.year, paidIn: mkIsa.paid } : null,

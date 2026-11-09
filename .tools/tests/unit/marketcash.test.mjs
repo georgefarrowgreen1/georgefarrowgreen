@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { cashInput, cashTotals, cashNumber, cashSeries, cashRows, cashBands, cashInterest, MAX_CASH } from "../../../markets/cash.js";
+import { cashInput, cashTotals, cashNumber, cashSeries, cashRows, cashBands, cashInterest, cashPayout, cashNextPayout, cashToday, MAX_CASH } from "../../../markets/cash.js";
 import { createCashStore } from "../../../markets/cash-store.js";
 import { cashHoldings, putCash, dropCash } from "../../../functions/_marketcash.js";
 import { db, issueSession, hex, sha256 } from "../../../functions/_pigeon.js";
@@ -39,6 +39,31 @@ test("tiered savings apply each rate only to its band, including balances below 
   assert.equal(cashInput({ ...row, tier: null }).tier, null, "explicitly returning to one rate is supported");
 });
 
+test("payout schedules validate real dates and preserve balances and AER estimates", () => {
+  assert.equal(cashPayout(null), null);
+  const payout = { date: "2026-11-30", repeat: "monthly", monthEnd: true }, row = holding(800, { payout });
+  assert.deepEqual(cashInput(row).payout, payout); assert.deepEqual(cashRows([row])[0].payout, payout);
+  assert.deepEqual(cashTotals([row]), { amount: 12000, annual: 480, monthly: 40 });
+  assert.equal(cashPayout({ date: "2026-11-12", repeat: "monthly", monthEnd: true }).date, "2026-11-30");
+  assert.equal(cashPayout({ date: "2028-02-29", repeat: "yearly" }).monthEnd, false);
+  for (const payout of [false, [], "2026-11-30", {}, { date: "2026-02-29", repeat: "monthly" }, { date: "2026-13-01", repeat: "monthly" }, { date: "2026-01-32", repeat: "once" }, { date: "1899-12-31", repeat: "yearly" }, { date: "2026-11-01T00:00:00Z", repeat: "once" }, { date: "2026-11-30", repeat: "weekly" }, { date: "2026-11-30", repeat: "monthly", monthEnd: "true" }, { date: "2026-11-30", repeat: "once", monthEnd: true }]) assert.throws(() => cashInput(holding(800, { payout })), /payout|paid|Month-end/);
+});
+test("payout dates roll forward without drifting at month ends, leap years or UK midnight", () => {
+  const monthly = { date: "2026-01-31", repeat: "monthly" };
+  for (const [today, next] of [["2026-01-01", "2026-01-31"], ["2026-01-31", "2026-01-31"], ["2026-02-01", "2026-02-28"], ["2026-02-28", "2026-02-28"], ["2026-03-01", "2026-03-31"]]) assert.equal(cashNextPayout(monthly, today), next);
+  assert.equal(cashNextPayout({ date: "2026-11-30", repeat: "monthly" }, "2026-12-01"), "2026-12-30");
+  assert.equal(cashNextPayout({ date: "2026-11-30", repeat: "monthly", monthEnd: true }, "2026-12-01"), "2026-12-31");
+  assert.equal(cashNextPayout({ date: "2026-11-30", repeat: "quarterly", monthEnd: true }, "2026-12-01"), "2027-02-28");
+  assert.equal(cashNextPayout({ date: "2024-02-29", repeat: "yearly" }, "2025-02-01"), "2025-02-28");
+  assert.equal(cashNextPayout({ date: "2024-02-29", repeat: "yearly" }, "2028-02-01"), "2028-02-29");
+  assert.equal(cashNextPayout({ date: "2026-11-09", repeat: "once" }, "2026-11-09"), "2026-11-09");
+  assert.equal(cashNextPayout({ date: "2026-11-09", repeat: "once" }, "2026-11-10"), null, "a past date is not assumed received");
+  assert.equal(cashNextPayout({ date: "1900-01-31", repeat: "monthly" }, "2026-02-01"), "2026-02-28");
+  assert.equal(cashNextPayout(null, "2026-11-09"), null); assert.equal(cashNextPayout(monthly, "bad"), null);
+  assert.equal(cashToday(Date.UTC(2026, 5, 30, 23, 30)), "2026-07-01", "BST changes the bank date before UTC midnight");
+  assert.equal(cashToday(Date.UTC(2026, 10, 30, 23, 30)), "2026-11-30");
+});
+
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 test("a pending cash read cannot overwrite an edit; a late account response cannot cross sign-ins", async () => {
   let owner = "ann:1"; const state = { cash: [] }, read = deferred(), write = deferred(); let changes = 0;
@@ -56,6 +81,14 @@ test("cash edits are serialized, and queued edits are dropped when the account c
   const a = store.save(holding()), b = store.save(holding(2)); await Promise.resolve(); assert.deepEqual(calls, [12000]);
   owner = "bo"; first.resolve({ cash: [holding()] }); assert.equal(await a, false); assert.equal(await b, false); assert.equal(calls.length, 1);
 });
+test("the existing cash refresh redraws due dates after UK midnight, even when offline, without adding interest", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 0, 31, 23, 59) });
+  const state = { cash: cashRows([holding(800, { payout: { date: "2026-01-31", repeat: "monthly" } })]) }, before = structuredClone(state.cash);
+  let changes = 0;
+  const store = createCashStore({ state, owner: () => "ann", keep() { assert.fail("calendar changes are not balance writes"); }, changed() { changes++; }, api: { cash: async () => { throw new Error("offline"); } } });
+  await store.sync(); assert.equal(changes, 0); t.mock.timers.tick(120000); await store.sync();
+  assert.equal(changes, 1); assert.deepEqual(state.cash, before); assert.equal(cashNextPayout(state.cash[0].payout), "2026-02-28");
+});
 
 const sql = new DatabaseSync(":memory:"), val = (a) => a.map((x) => x === undefined ? null : typeof x === "boolean" ? +x : x);
 const stmt = (q, args = []) => ({ bind: (...a) => stmt(q, a), first: async () => sql.prepare(q).get(...val(args)) ?? null,
@@ -63,12 +96,14 @@ const stmt = (q, args = []) => ({ bind: (...a) => stmt(q, a), first: async () =>
 const env = { DB: { prepare: (q) => stmt(q), batch: async (list) => { sql.exec("BEGIN"); try { const out = []; for (const s of list) out.push(await s.all()); sql.exec("COMMIT"); return out; } catch (e) { sql.exec("ROLLBACK"); throw e; } } } };
 await db(env);
 // Upgrade the actual previous schema with a kept balance; an additive migration must preserve it.
-sql.exec("CREATE TABLE mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, rate REAL NOT NULL, account TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user_id, id))");
-sql.prepare("INSERT INTO mk_cash VALUES ('legacy', ?, 'Kept savings', 12000, 4, NULL, 100, 100)").run(id(999));
+sql.exec("CREATE TABLE mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, rate REAL NOT NULL, account TEXT, tier TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user_id, id))");
+sql.prepare("INSERT INTO mk_cash VALUES ('legacy', ?, 'Kept savings', 12000, 4, NULL, NULL, 100, 100)").run(id(999));
+sql.prepare("INSERT INTO mk_cash VALUES ('legacy', ?, 'Kept tiers', 10000, 3.96, NULL, ?, 101, 101)").run(id(998), JSON.stringify({ limit: 5000, rate: 0.7 }));
 await mkdb(env);
-test("adding tiered savings preserves existing single-rate balances", async () => {
-  const [row] = await cashHoldings(env, "legacy");
-  assert.equal(row.name, "Kept savings"); assert.equal(row.amount, 12000); assert.equal(row.rate, 4); assert.equal(row.tier, null); assert.equal(row.updated, 100); assert.equal(cashInterest(row), 480);
+test("adding payout dates preserves existing single-rate and tiered balances", async () => {
+  const [row, tiered] = await cashHoldings(env, "legacy");
+  assert.equal(row.name, "Kept savings"); assert.equal(row.amount, 12000); assert.equal(row.rate, 4); assert.equal(row.tier, null); assert.equal(row.payout, null); assert.equal(row.updated, 100); assert.equal(cashInterest(row), 480);
+  assert.deepEqual(tiered.tier, { limit: 5000, rate: 0.7 }); assert.equal(tiered.payout, null); assert.equal(cashInterest(tiered), 233);
 });
 const tokens = {};
 for (const user of ["ann", "bo"]) {
@@ -115,6 +150,21 @@ test("tiered cash persists, validates both bands, protects against older clients
   const was = row; row = (await putCash(env, "ann", { ...row, tier: { limit: 6000, rate: 0 } })).find((x) => x.id === input.id); assert.equal(cashInterest(row), 237.6);
   await assert.rejects(putCash(env, "ann", { ...was, tier: { limit: 1, rate: 0 } }), (e) => e.status === 409);
   row = (await putCash(env, "ann", { ...row, tier: null })).find((x) => x.id === input.id); assert.equal(row.tier, null); assert.equal(cashInterest(row), 396);
+});
+test("cash payout dates persist privately, retry safely and cannot be removed by an old client or stale edit", async () => {
+  const input = holding(800, { amount: 10000, rate: 3.96, tier: { limit: 5000, rate: 0.7 }, payout: { date: "2026-11-30", repeat: "monthly", monthEnd: true } });
+  let response = await request("PUT", "ann", input); assert.equal(response.status, 200);
+  let row = (await response.json()).cash.find((x) => x.id === input.id); assert.deepEqual(row.payout, input.payout); assert.equal(cashInterest(row), 233);
+  assert.deepEqual((await putCash(env, "ann", input)).find((x) => x.id === input.id).payout, input.payout);
+  assert.ok(!(await cashHoldings(env, "bo")).some((x) => x.id === input.id));
+  const { payout, ...oldClient } = row; await assert.rejects(putCash(env, "ann", { ...oldClient, amount: 1 }), (e) => e.status === 409 && /payout dates/.test(e.message));
+  response = await request("PUT", "ann", { ...row, payout: { date: "2026-02-30", repeat: "monthly" } }); assert.equal(response.status, 400); assert.equal((await response.json()).field, "payoutDate");
+  response = await request("PUT", "ann", { ...row, payout: { date: "2026-11-30", repeat: "daily" } }); assert.equal(response.status, 400); assert.equal((await response.json()).field, "payoutRepeat");
+  const was = row;
+  row = (await putCash(env, "ann", { ...row, payout: { date: "2027-04-05", repeat: "once" } })).find((x) => x.id === input.id);
+  assert.deepEqual(row.payout, { date: "2027-04-05", repeat: "once", monthEnd: false }); assert.equal(row.amount, 10000);
+  await assert.rejects(putCash(env, "ann", { ...was, payout: null }), (e) => e.status === 409);
+  row = (await putCash(env, "ann", { ...row, payout: null })).find((x) => x.id === input.id); assert.equal(row.payout, null); assert.deepEqual(row.tier, input.tier);
 });
 test("cash limits are atomic, existing balances remain editable at the limit, and deleting account data removes cash only for that user", async () => {
   await Promise.all(Array.from({ length: MAX_CASH }, (_, i) => putCash(env, "limit", holding(i + 100))));

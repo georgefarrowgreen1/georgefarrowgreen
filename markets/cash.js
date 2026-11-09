@@ -1,9 +1,48 @@
 // Manually entered GBP cash. Interest is a forecast, never an automatic balance change or a recorded return.
 export const MAX_CASH = 60;
 export const CASH_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export const CASH_PAYOUTS = [["monthly", "Monthly"], ["quarterly", "Quarterly"], ["yearly", "Yearly"], ["once", "One-off"]];
 const validAmount = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1e12 && Math.abs(n - Math.round(n * 100) / 100) <= 1e-7;
 const validRate = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100 && Math.abs(n - Math.round(n * 1e4) / 1e4) <= 1e-8;
 const validTier = (x) => x == null || (typeof x === "object" && !Array.isArray(x) && validAmount(x.limit) && x.limit > 0 && validRate(x.rate));
+const dateParts = (value) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split("-").map(Number), date = new Date(Date.UTC(y, m - 1, d));
+  return y >= 1900 && date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? [y, m, d] : null;
+};
+const calendarDate = (y, m, d) => y <= 9999 ? `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` : null;
+const lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+export function cashPayout(value) {
+  if (value == null) return null;
+  const fail = (message, field) => { throw Object.assign(new Error(message), { field }); };
+  const parts = typeof value === "object" && !Array.isArray(value) && dateParts(value.date);
+  if (!parts) fail("Choose a valid payout date from 1900 onwards.", "payoutDate");
+  if (!CASH_PAYOUTS.some(([key]) => key === value.repeat)) fail("Choose how often interest is paid.", "payoutRepeat");
+  if (value.monthEnd !== undefined && typeof value.monthEnd !== "boolean") fail("Choose whether payouts fall at month end.", "payoutEnd");
+  const monthEnd = value.monthEnd ?? false;
+  if (monthEnd && !["monthly", "quarterly"].includes(value.repeat)) fail("Month-end payouts need a monthly or quarterly schedule.", "payoutRepeat");
+  return { date: monthEnd ? calendarDate(parts[0], parts[1], lastDay(parts[0], parts[1])) : value.date, repeat: value.repeat, monthEnd };
+}
+// Savings dates use the UK bank calendar, independent of the browser's timezone or daylight-saving changes.
+export function cashToday(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(now));
+  const get = (type) => parts.find((p) => p.type === type).value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+export function cashNextPayout(value, today = cashToday()) {
+  let payout; try { payout = cashPayout(value); } catch (_) { return null; }
+  const current = dateParts(today);
+  if (!payout || !current) return null;
+  if (payout.repeat === "once") return payout.date >= today ? payout.date : null;
+  const [y, m, d] = dateParts(payout.date), step = { monthly: 1, quarterly: 3, yearly: 12 }[payout.repeat], first = y * 12 + m - 1;
+  const period = Math.max(0, Math.floor((current[0] * 12 + current[1] - 1 - first) / step));
+  const at = (n) => {
+    const index = first + n * step, year = Math.floor(index / 12), month = index % 12 + 1, end = lastDay(year, month);
+    return calendarDate(year, month, payout.monthEnd ? end : Math.min(d, end));
+  };
+  const next = at(period);
+  return next && next >= today ? next : at(period + 1);
+}
 export function cashId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -30,7 +69,7 @@ export function cashInput(value) {
   const account = value.account == null || value.account === "" ? null : value.account;
   if (account != null && !["isa", "sipp", "gia"].includes(account)) fail("Choose an account from the list.", "account");
   if (value.updated !== undefined && (!Number.isSafeInteger(value.updated) || value.updated < 0)) fail("Reopen this cash holding before saving.", "updated");
-  return { ...(value.updated !== undefined ? { updated: value.updated } : {}), id: id.toLowerCase(), name, amount: Math.round(amount * 100) / 100, rate, tier, account };
+  return { ...(value.updated !== undefined ? { updated: value.updated } : {}), id: id.toLowerCase(), name, amount: Math.round(amount * 100) / 100, rate, tier, payout: cashPayout(value.payout), account };
 }
 // AER-based estimates at today's balance. Only the part above the limit uses the second rate.
 export function cashBands(x) {

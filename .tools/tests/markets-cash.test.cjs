@@ -78,3 +78,23 @@ for(const width of [320,390,1440])for(const hosted of [true,false])test(`tiered 
   assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });
+for(const width of [320,390,1440])for(const hosted of [true,false])test(`payout dates can be saved, changed and cleared ${hosted?'in Today':'standalone'} at ${width}px`,async()=>{
+ const {ctx,p,acc,writes,errors}=await world({width,hosted,cashOnly:width===320});
+ try{
+  await holdings(p,hosted);await visible(p,'button').filter({hasText:/^Add cash$/}).first().click();
+  await p.locator('#mk-cash-name').fill('Savings payout');await p.locator('#mk-cash-amount').fill('10000');await p.locator('#mk-cash-rate').fill('3.96');
+  await p.getByRole('button',{name:'Tiered rates',exact:true}).click();await p.locator('#mk-cash-limit').fill('5000');await p.locator('#mk-cash-above').fill('0.70');
+  const repeat=p.locator('#mk-cash-payout-repeat'),date=p.locator('#mk-cash-payout-date'),end=p.locator('#mk-cash-payout-end');
+  assert.equal(await date.isVisible(),false);await repeat.selectOption('monthly');await date.waitFor();await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-error').waitFor({state:'visible'});assert.match(await p.locator('#mk-cash-error').textContent(),/payout date/);assert.equal(writes.length,0);
+  await date.fill('2030-01-31');await end.check();await p.locator('#mk-cash-payout-preview').waitFor({state:'visible'});assert.match(await p.locator('#mk-cash-payout-preview').textContent(),/31 Jan 2030.*Monthly/);
+  if(hosted){await date.scrollIntoViewIfNeeded();assert.equal(await p.locator('.ifl-sheet[data-sheet=cash]').evaluate(d=>d.querySelector('.ifs-body').getBoundingClientRect().top>=d.querySelector('.ifs-head').getBoundingClientRect().bottom-1),true,'the form scrolls below its title');}
+  if(process.env.CASH_SCREENSHOTS){await date.scrollIntoViewIfNeeded();await p.screenshot({path:process.env.CASH_SCREENSHOTS+'/payout-editor-'+(hosted?'today':'standalone')+'-'+width+'.png'});}
+  await p.locator('#mk-cash-save').click();await date.waitFor({state:'detached'});assert.deepEqual(acc.cash[0].payout,{date:'2030-01-31',repeat:'monthly',monthEnd:true});assert.equal(acc.cash[0].amount,10000);assert.deepEqual(acc.cash[0].tier,{limit:5000,rate:0.7});
+  await holdings(p,hosted);let row=visible(p,'.cash-row').first();assert.match(await row.textContent(),/Next payout 31 Jan 2030.*Monthly/);assert.match(await row.textContent(),/233.00/);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  if(process.env.CASH_SCREENSHOTS){await row.scrollIntoViewIfNeeded();await p.waitForTimeout(600);await p.screenshot({path:process.env.CASH_SCREENSHOTS+'/payout-row-'+(hosted?'today':'standalone')+'-'+width+'.png'});}
+  await row.click();assert.equal(await date.inputValue(),'2030-01-31');assert.equal(await repeat.inputValue(),'monthly');assert.equal(await end.isChecked(),true);
+  await repeat.selectOption('once');assert.equal(await end.isVisible(),false);await date.fill('2030-04-05');await p.locator('#mk-cash-save').click();await date.waitFor({state:'detached'});assert.deepEqual(acc.cash[0].payout,{date:'2030-04-05',repeat:'once',monthEnd:false});
+  await holdings(p,hosted);await visible(p,'.cash-row').first().click();await repeat.selectOption('');assert.equal(await date.isVisible(),false);await p.locator('#mk-cash-save').click();await date.waitFor({state:'detached'});assert.equal(acc.cash[0].payout,null);assert.equal(acc.cash[0].amount,10000);assert.deepEqual(acc.cash[0].tier,{limit:5000,rate:0.7});
+  assert.equal(await visible(p,'.cash-payout-date').count(),0);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});

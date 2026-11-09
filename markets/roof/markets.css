@@ -606,3 +606,14 @@
 .m-markets .cash-tier-fields[hidden], .ifl-sheet[data-app=markets] .cash-tier-fields[hidden] { display: none; }
 .m-markets .cash-band-detail, .ifl-sheet[data-app=markets] .cash-band-detail { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .m-markets .cash-row small, .ifl-sheet[data-app=markets] .cash-row small { white-space: normal; }
+
+.m-markets .cash-payout-fields, .ifl-sheet[data-app=markets] .cash-payout-fields { display: grid; gap: 4px; min-width: 0; }
+.m-markets .cash-editor .field select, .ifl-sheet[data-app=markets] .cash-editor .field select { width: 100%; min-width: 0; min-height: 50px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 17px; }
+.m-markets .cash-editor .cash-check, .ifl-sheet[data-app=markets] .cash-editor .cash-check { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.m-markets .cash-check input, .ifl-sheet[data-app=markets] .cash-check input { width: 20px; height: 20px; flex: none; accent-color: var(--tint); }
+.m-markets .cash-payout-fields[hidden], .ifl-sheet[data-app=markets] .cash-payout-fields[hidden], .m-markets .cash-check[hidden], .ifl-sheet[data-app=markets] .cash-check[hidden] { display: none; }
+
+/* Keep the long cash form below its title while its fields scroll. */
+dialog.ifl-sheet[data-app=markets][data-sheet=cash] { overflow: hidden; }
+.ifl-sheet[data-app=markets][data-sheet=cash] .ifs-head { flex: none; }
+.ifl-sheet[data-app=markets][data-sheet=cash] .ifs-body { overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px; }

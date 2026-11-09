@@ -1,7 +1,8 @@
-import { cashRows } from "./cash.js";
+import { cashRows, cashToday } from "./cash.js";
 // Cash writes are serial within an account. A late read cannot overwrite a save or a different signed-in account.
 export function createCashStore({ state, api, owner, keep, changed }) {
   let queue = Promise.resolve(), queuedFor = null, revision = 0, read = 0, writing = 0;
+  let calendar = cashToday();
   const take = (rows) => {
     if (!Array.isArray(rows)) throw new Error("Couldn’t read your cash holdings. Try again.");
     const clean = cashRows(rows);
@@ -32,6 +33,8 @@ export function createCashStore({ state, api, owner, keep, changed }) {
     async sync() {
       const who = owner(), rev = revision, n = ++read;
       if (!who || writing) return false;
+      const today = cashToday();
+      if (calendar !== today) { calendar = today; if (state.cash?.some((x) => x.payout)) changed(); }
       try {
         const answer = await api.cash();
         if (owner() !== who || rev !== revision || n !== read || writing) return false;
