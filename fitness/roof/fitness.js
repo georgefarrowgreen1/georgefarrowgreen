@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.25";
-export const NEWS = "Your available, planned and completed training time in one weekly overview";
+export const BUILD = "2.26";
+export const NEWS = "Clearer account links and less repeated text across InFlite";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -206,7 +206,7 @@ export async function mount(root, fw) {
     const T = core.TODAY, done = core.actsOn(T), pid = core.plannedOn(T), w = pid && pid !== "event" ? core.wkById(pid) : null;
     if (done.length) { const s = core.sumOf(done[0]); return s?.dist > 100 ? `Done: ${dist(s.dist)}` : `Done: ${done[0].name}`; }
     if (pid === "event") return "Event day";
-    if (w) { const t = (S.times || []).find((x) => x.day === dayStamp(T)); return `${w.name} · ${dur(measure(w, core.paceFor(w.sport)).secs)}${t ? ` at ${clockOf(t.start)}` : ""}`; }
+    if (w) { const t = (S.times || []).find((x) => x.day === dayStamp(T)); return `${w.kind || "Ride"} · ${dur(measure(w, core.paceFor(w.sport)).secs)}${t ? ` at ${clockOf(t.start)}` : ""}`; }
     if (pid === null) return "Rest day";
     return core.rhythmOn() ? rhythmSaid() : "";
   };

@@ -1140,8 +1140,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.21";
-const NEWS = "Clearer chart ranges and one overview of portfolio value, returns and paid dividends";
+const BUILD = "2.22";
+const NEWS = "Clearer account links and less repeated text across InFlite";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3171,7 +3171,7 @@ function welcome(note = null, again = null) {
       again ? h("button.btn.go.ifl-go.press", { type: "button", id: "try-again", onclick: again }, "Try Again")
         : h("button.btn.go.ifl-go.press", { type: "button", id: "sign-in", disabled: !page && !hub, onclick: (e) => toAccountSignIn(e) }, "Sign in"),
       !page && !hub && !again && h("p.said", { style: "margin-top:12px", text: "Signing in is at finance.inflite.ai." }),
-      page && !again && h("p.ifl-new", {}, "New here? ", h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create your account")))));
+      page && !again && h("p.ifl-new", {}, h("button", { type: "button", onclick: (e) => toAccountSignIn(e, "join") }, "Create an account")))));
   main.removeAttribute("aria-busy");
   document.title = "Markets";
 }

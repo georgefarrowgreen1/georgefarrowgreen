@@ -1186,8 +1186,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.94";            // shown in InFlite's menu
-const APP_NEWS = "A clearer inbox with stronger unread conversations and quieter timestamps";       // (said once it's in)
+const APP_VERSION = "1.95";            // shown in InFlite's menu
+const APP_NEWS = "Clearer account links and less repeated text across InFlite";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1749,7 +1749,7 @@ const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/"
 const toAuth = (hash = "") => { const p = accountPage() || "https://account.inflite.ai/"; return (/\.localhost[:/]/.test(p) ? p : p.replace("//account.", "//auth.")) + hash; };
 // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
 const brandLine = `<p class="wbrand ifl-brand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
-const newHere = () => `<p class="wnew ifl-new">New here? <a href="${esc(toAuth("#join"))}" data-act="acctjoin">Create your account</a></p>`;
+const newHere = () => `<p class="wnew ifl-new"><a href="${esc(toAuth("#join"))}" data-act="acctjoin">Create an account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 // Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as (on the
