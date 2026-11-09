@@ -1521,3 +1521,36 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .range-controls button:focus-visible { outline: 2px solid var(--tint, var(--acc)); outline-offset: -2px; }
 
 .range-controls button::after { inset: 0; }
+
+/* Cash uses the same rows, fields and shape as the rest of Markets. */
+.cash-section { min-width: 0; }
+.cash-section .label { margin-top: 20px; }
+.cash-empty { margin: 0 24px; padding: 0 0 12px; }
+.cash-empty .hint { margin: 0; }
+.cash-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 24px 0; }
+.cash-summary > div { min-width: 0; }
+.cash-summary dt { color: var(--text-3); font-size: 12px; line-height: 1.35; }
+.cash-summary dd { margin: 5px 0 0; font-size: clamp(16px, 4.5vw, 21px); font-weight: 600; overflow-wrap: anywhere; }
+.cash-note, .cash-chart-note { margin: 12px 24px; font-size: 12.5px; line-height: 1.5; }
+.cash-row > span:first-child { flex: 1; min-width: 0; }
+.cash-row .r { max-width: none; width: auto; min-width: 0; }
+.cash-row b, .cash-row small { overflow-wrap: anywhere; }
+.cash-row .r small { white-space: normal; }
+.cash-editor { min-width: 0; }
+.cash-editor .field input { min-width: 0; width: 100%; }
+.cash-editor .btn { margin-top: 20px; width: 100%; min-height: 48px; }
+.cash-error { color: var(--down, var(--danger)); font-size: 14px; line-height: 1.4; margin: 12px 0; }
+.cash-error[hidden] { display: none; }
+.cash-remove { width: 100%; min-height: 44px; margin-top: 8px; color: var(--down, var(--danger)); border: 0; background: transparent; font: inherit; }
+.cash-add { display: block; min-height: 44px; margin: 0 0 10px; padding: 8px 0; border: 0; background: transparent; color: var(--tint, var(--acc-ink)); font: inherit; font-weight: 600; }
+.cash-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dpane .cash-section .label { padding: 0; margin: 16px 0 8px; font-size: 13px; }
+.dpane .cash-section .list { margin: 0; }
+.dpane .cash-row { padding: 10px 4px; min-height: 60px; }
+.dpane .cash-empty { margin: 0; }
+
+.cash-section .cash-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.cash-row .r b { white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+
+.hero .big.num { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.dsum .pv b { overflow-wrap: anywhere; }

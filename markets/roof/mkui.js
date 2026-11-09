@@ -21,6 +21,11 @@ export { C };
 export const CHARTS = C;
 export const M = { fw: null, root: null, open: {}, views: {} };
 export function init(fw, root, open, views) { Object.assign(M, { fw, root, open, views }); }
+export function cashContext() {
+  return { h, state: core.S, money: core.money, fmt: core.fmt, accounts: core.ACCOUNTS,
+    open: (id) => M.open.cash(id), save: core.cashStore.save, remove: core.cashStore.remove,
+    current: () => { const g = core.genNow(); return () => core.mine(g); }, close: closeSheet, toast };
+}
 export const bind = (...a) => init(...a);
 export const chart = (box, at) => C.scrubber(box, at);
 export function ring(f) {

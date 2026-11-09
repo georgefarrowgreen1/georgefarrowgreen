@@ -46,6 +46,7 @@ import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf, savePrefs, pushTo, chatEmails, setChatEmails, EMAIL_KINDS } from "../../_notify.js";
 import { morningOf, setMorningFor } from "../../_fitpush.js";
 import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap, holdings as marketHoldings, isaOf, mkdb } from "../../_markets.js";
+import { cashHoldings } from "../../_marketcash.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
 import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
@@ -978,7 +979,7 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkBuys, mkIsa, mkAlerts, today, upcoming, fxShares, fxOffers] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices, fxKept, fxActs, fxNights, mkList, mkCash, mkBuys, mkIsa, mkAlerts, today, upcoming, fxShares, fxOffers] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
@@ -995,6 +996,7 @@ const ROUTES = {
       allActs(env, u.id).catch(() => []),   // (every one, newest first)
       fitnessNights(env, u.id).catch(() => null),   // (your nights: hrv in ms, rhr in beats a minute, sleep in seconds)
       marketHoldings(env, u.id).catch(() => []),
+      cashHoldings(env, u.id).catch(() => []),
       mkdb(env).then((M) => M.prepare("SELECT symbol, qty, price, at FROM mk_buys WHERE user_id = ? ORDER BY symbol, at").bind(u.id).all()).then((r) => r.results).catch(() => []),
       isaOf(env, u.id).catch(() => null),
       alertsOf(env, u.id).catch(() => null),
@@ -1040,6 +1042,7 @@ const ROUTES = {
         rideTimes: (await fitnessTimes(env, u.id)).map((x) => ({ day: x.day, start: iso(x.start), stop: iso(x.stop), timeZone: x.tz, sport: x.sport, setBy: x.source })) },
       // (what you own and follow, each with its buys and sales; your ISA's year; its notifications)
       markets: {
+        cash: mkCash.map((x) => ({ name: x.name, balance: x.amount, currency: "GBP", annualInterestRate: x.rate, account: x.account, addedAt: iso(x.added), updatedAt: iso(x.updated) })),
         holdings: mkList.map((x) => ({ symbol: x.symbol, name: x.name, shares: x.qty, averageCost: x.cost, account: x.account, boughtOn: x.since ? iso(x.since).slice(0, 10) : null, addedAt: iso(x.added), alertAt: x.alert ? `${x.alert}%` : null,
           buysAndSales: mkBuys.filter((b) => b.symbol === x.symbol).map((b) => ({ on: iso(b.at), shares: b.qty, priceEach: b.price })) })),
         isa: mkIsa ? { taxYear: mkIsa.year, paidIn: mkIsa.paid } : null,

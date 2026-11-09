@@ -1,3 +1,6 @@
+import { cashSection, cashEditor } from "./cashview.js";
+import { cashTotals, cashSeries, cashRows } from "./cash.js";
+import { createCashStore } from "./cash-store.js";
 import { priceStream } from "./live.js";
 import { quoteSession } from "./session.js";
 // Markets: your money and the markets, said simply. Three screens on a tab bar:
@@ -1140,8 +1143,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.22";
-const NEWS = "Clearer account links and less repeated text across InFlite";
+const BUILD = "2.23";
+const NEWS = "Cash holdings with a balance, annual interest rate and clear interest estimates";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1158,7 +1161,7 @@ const RANGES = [["1d", "1D", "today"], ["5d", "1W", "this week"], ["1mo", "1M", 
 
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), sbody = $("#sbody"), tabsEl = $("#tabs"), toastEl = $("#toast");
-const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
+const S = { me: null, list: [], cash: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, tab: "today", charts: new Map(), pushOn: false, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
   inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null };
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
@@ -1229,7 +1232,7 @@ const and2 = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)
 // ---- your money ----
 const rate = (cur) => (cur ? S.fx[cur] ?? null : null);
 const owned = () => S.list.filter((x) => x.qty > 0 && S.q[x.symbol]?.price != null && rate(S.q[x.symbol].cur) != null);
-const valueOf = (x) => { const q = S.q[x.symbol]; return q?.price != null && rate(q.cur) != null ? q.price * x.qty * rate(q.cur) : null; };
+const valueOf = (x) => { if (x.kind === "cash") return x.amount; const q = S.q[x.symbol]; return q?.price != null && rate(q.cur) != null ? q.price * x.qty * rate(q.cur) : null; };
 const dayOf = (x) => { const q = S.q[x.symbol]; return q?.price != null && q.prev && rate(q.cur) != null ? (q.price - q.prev) * x.qty * rate(q.cur) : null; };
 // what one's paid you in dividends since you bought it, in pounds (null: not known, with no day to count from)
 const divsOf = (x) => { const p = S.paid?.v?.[x.symbol], r = rate(S.q[x.symbol]?.cur); return p && r != null ? p.paid * r : null; };
@@ -1240,17 +1243,17 @@ const unpriced = () => S.list.filter((x) => x.qty > 0 && valueOf(x) == null);
 const leftOutSaid = (xs = unpriced()) => (xs.length ? `${and2(xs.map((x) => x.name))} ${xs.length === 1 ? "isn't" : "aren't"} in this total: no price for ${xs.length === 1 ? "it" : "them"} just now.` : "");
 // (gain: in price; divs: the dividends on top, from those with a day to count from; back: the two together, on what you paid)
 function totals() {
-  const o = owned(), value = o.reduce((a, x) => a + valueOf(x), 0), day = o.reduce((a, x) => a + (dayOf(x) || 0), 0);
+  const cash = cashTotals(S.cash), o = owned(), value = cash.amount + o.reduce((a, x) => a + valueOf(x), 0), day = o.reduce((a, x) => a + (dayOf(x) || 0), 0);
   const costed = o.filter((x) => x.cost != null), paid = costed.reduce((a, x) => a + paidFor(x), 0), now = costed.reduce((a, x) => a + valueOf(x), 0);
   const divs = costed.reduce((a, x) => a + (divsOf(x) || 0), 0), gain = costed.length ? now - paid : null;
-  return { o, value, day, dayPct: value - day ? (day / (value - day)) * 100 : 0, paid, gain, gainPct: paid ? ((now - paid) / paid) * 100 : null, costed,
+  return { o, value, cash: cash.amount, interest: cash.annual, day, dayPct: value - day ? (day / (value - day)) * 100 : 0, paid, gain, gainPct: paid ? ((now - paid) / paid) * 100 : null, costed,
     divs, back: gain == null ? null : gain + divs, backPct: paid ? ((gain + divs) / paid) * 100 : null, undated: costed.filter((x) => divsOf(x) == null && S.years[x.symbol]?.div12 > 0) };
 }
 // your money in each account (and what's in none yet): [{ key, name, o, value, day }], largest first
 function byAccount(o = owned()) {
-  const out = [...ACCOUNTS, [null, "Not in an account"]].map(([key, name]) => { const xs = o.filter((x) => (x.account || null) === key);
-    return { key, name, o: xs, value: xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
-  return out.filter((a) => a.o.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
+  const out = [...ACCOUNTS, [null, "Not in an account"]].map(([key, name]) => { const xs = o.filter((x) => (x.account || null) === key), cash = (S.cash || []).filter((x) => (x.account || null) === key);
+    return { key, name, o: xs, cash, value: cashTotals(cash).amount + xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
+  return out.filter((a) => a.o.length || a.cash.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
 }
 // Your income: each dividend each holding paid over the last year (a year of its paying, by how often it pays: yearDivs),
 // for what you own now, expected again a year on, in the month it went ex-dividend; one-offs (specials) said apart,
@@ -1363,17 +1366,17 @@ function isaYear() {
   const left = Math.max(0, S.isa.allowance - S.isa.paid);
   return { ...S.isa, left, days, used: Math.min(1, S.isa.paid / S.isa.allowance) };
 }
-const tracksIsa = () => !!S.isa && (S.isa.paid > 0 || S.list.some((x) => x.account === "isa"));
+const tracksIsa = () => !!S.isa && (S.isa.paid > 0 || S.list.some((x) => x.account === "isa") || (S.cash || []).some((x) => x.account === "isa"));
 const allowBar = (used) => h("div.allow", {}, h("i", { style: `width:${Math.max(used > 0 ? 2 : 0, used * 100)}%` }));
 
 // your money through the day: each holding at its price at each moment (its last close before it opened)
 function daySeries() {
-  const o = owned(), drawn = o.filter((x) => S.q[x.symbol].sparkT?.length > 1);
-  if (!drawn.length) return null;
+  const cash = cashTotals(S.cash).amount, o = owned(), drawn = o.filter((x) => S.q[x.symbol].sparkT?.length > 1);
+  if (!drawn.length) return o.length ? null : cashSeries(cash);
   const T = [...new Set(drawn.flatMap((x) => S.q[x.symbol].sparkT))].sort((a, b) => a - b);
   if (T.length < 2) return null;
-  const base = o.reduce((a, x) => a + S.q[x.symbol].prev * x.qty * rate(S.q[x.symbol].cur), 0);
-  const vals = T.map((t) => o.reduce((a, x) => {
+  const base = cash + o.reduce((a, x) => a + S.q[x.symbol].prev * x.qty * rate(S.q[x.symbol].cur), 0);
+  const vals = T.map((t) => cash + o.reduce((a, x) => {
     const q = S.q[x.symbol]; let p = q.prev, j = -1;
     for (let i = 0; i < (q.sparkT?.length || 0) && q.sparkT[i] <= t; i++) j = i;
     if (j >= 0) p = q.spark[j];
@@ -1609,16 +1612,16 @@ function afterDraw(animate) {
 }
 
 function todayView() {
-  if (!S.list.length) return emptyView();
+  if (!S.list.length && !S.cash?.length) return emptyView();
   const T = totals(), parts = [];
-  if (T.o.length) {
+  if (T.o.length || S.cash?.length) {
     const [a, b] = fmt(T.value).split(".");
     parts.push(h("div.hero", {},
       h("span.eyebrow", { text: "Your portfolio" }),
       h("span.big.num", { id: "pv" }, `£${a}`, h("span.p", { text: "." + b })),
       h("span.delta.num", {}, h("span", { id: "pd", class: tone(T.day), text: signed(T.day) }), h("span", { id: "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { id: "ps", text: "today" })),
       leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null));
-    parts.push(portfolioBox());
+    parts.push(T.value > 0 || T.o.length ? portfolioBox() : h("p.hint.cash-chart-note", { text: "Add an amount to see your portfolio chart." }));
   } else {
     const up = S.list.filter((x) => (S.q[x.symbol]?.chgPct || 0) > 0).length;
     parts.push(h("div.hero", {}, h("span.eyebrow", { text: "Your list" }), h("span.big", { style: "font-size:40px" }, `${up} of ${S.list.length} up`), h("span.delta", {}, h("span.muted", { text: "today" }))));
@@ -1652,6 +1655,7 @@ function todayView() {
   return parts;
 }
 function daySaid(T) {
+  if (!T.o.length && S.cash?.length) return [`Cash interest: about ${money(T.interest)} a year at your current rates.`];
   const o = T.o;
   if (o.length >= 2) {
     const by = [...o].sort((a, b) => (dayOf(b) || 0) - (dayOf(a) || 0)), top = by[0], low = by.at(-1), tg = dayOf(top) || 0, lg = dayOf(low) || 0;
@@ -1714,18 +1718,18 @@ function portfolioBox() {
     press(b.dataset.r);
     show(b.dataset.r);
   });
-  return [box, seg];
+  return [box, seg, S.cash?.length ? h("p.hint.cash-chart-note", { text: "Cash uses your current balance throughout this chart." }) : null];
 }
 // what you own now, through a range: each holding's chart (kept ten minutes), its price carried over when its market's
 // shut, at today's exchange rates. { T, vals, base, by: each holding's change over it, in pounds }
 async function rangeSeries(r) {
-  const o = owned(), charts = {};
+  const cash = cashTotals(S.cash).amount, o = owned(), charts = {};
   const get = async (sym) => { const k = `${sym}:${r}`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, r); S.charts.set(k, { at: Date.now(), c }); return c; };
   for (let i = 0; i < o.length; i += 6) await Promise.all(o.slice(i, i + 6).map((x) => get(x.symbol).then((c) => { charts[x.symbol] = c; }, () => {})));
   const held = o.filter((x) => charts[x.symbol]?.c?.length > 1);
-  if (!held.length) return null;
+  if (!held.length) return !o.length ? cashSeries(cash, r) : null;
   const key = r === "5d" ? (t) => Math.round(t / 1800) * 1800 : (t) => Date.parse(dayKey(t)) / 1000;
-  const T = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(key)))].sort((a, b) => a - b), vals = T.map(() => 0), by = [];
+  const T = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(key)))].sort((a, b) => a - b), vals = T.map(() => cash), by = [];
   for (const x of held) {
     const c = charts[x.symbol], m = new Map(c.t.map((t, i) => [key(t), c.c[i]])), k = x.qty * rate(S.q[x.symbol].cur);
     let last = c.c[0];
@@ -1733,7 +1737,7 @@ async function rangeSeries(r) {
     by.push({ x, v: (S.q[x.symbol].price - c.c[0]) * k });
   }
   // (ending now: the prices as they are)
-  vals[vals.length - 1] = held.reduce((a, x) => a + valueOf(x), 0);
+  vals[vals.length - 1] = cash + held.reduce((a, x) => a + valueOf(x), 0);
   return { T, vals, base: vals[0], by };
 }
 function rangeSaid(s, r) {
@@ -1785,18 +1789,29 @@ function emptyView() {
   const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
   return [h("div.empty", {}, h("h2.rise", { text: "Start with what you own" }),
     h("p.rise", { vars: { i: "1" }, text: "Add your shares, funds and investment trusts, and Markets tells you each day what they're worth, what moved them and what's worth knowing. Or just follow a few." }),
-    h("div.rise", { vars: { i: "2" } }, h("button.btn.go.press", { type: "button", onclick: () => openSheet(searchView), style: "margin-top:10px" }, "Find and Add")),
+    h("div.rise", { vars: { i: "2" } }, h("button.btn.go.press", { type: "button", onclick: () => openSheet(searchView), style: "margin-top:10px" }, "Find and Add"), h("button.btn.press", { type: "button", onclick: () => openCash() }, "Add cash")),
     h("div.chips.rise", { vars: { i: "3" } }, picks.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => openStock(s, { name: n }), text: n })))),
   h("h3.label", {}, "Markets"),
   h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];
     return h("button.mk.rise.press", { type: "button", vars: { i: String(i + 4) }, onclick: () => openStock(s) }, h("small", { text: INDEX_NAMES[s] }), h("b.num", { "data-px": s, text: priceSaid(q) }), h("span", { class: `num ${tone(q.chgPct)}`, "data-pct": s, text: pct(q.chgPct) })); }))];
 }
 
+function cashContext() {
+  return { h, state: S, money, fmt, accounts: ACCOUNTS, open: openCash, save: cashStore.save, remove: cashStore.remove,
+    current: () => { const epoch = cashEpoch, id = S.me?.id; return () => !!id && S.me?.id === id && cashEpoch === epoch; }, close: closeSheet, toast };
+}
+const cashPart = (options) => cashSection(cashContext(), S.cash || [], options);
+function cashView(id) { return [cashEditor(cashContext(), id)]; }
+cashView.sheet = "cash";
+cashView.focus = "#mk-cash-amount";
+const openCash = (id) => (Sheet.stack.length ? pushSheet : openSheet)(cashView, id);
+
 function holdingsView() {
-  if (!S.list.length) return emptyView();
+  if (!S.list.length && !S.cash?.length) return emptyView();
   const T = totals(), parts = [];
-  if (T.o.length) parts.push(...mixPart(T));
-  if (T.o.length) parts.push(...statsPart(T));
+  if (T.o.length || T.cash > 0) parts.push(...mixPart(T));
+  if (T.o.length || S.cash?.length) parts.push(...statsPart(T));
+  parts.push(cashPart());
   const own = S.list.filter((x) => x.qty > 0), fol = S.list.filter((x) => !(x.qty > 0));
   if (own.length) {
     // (under each one's worth: today's change, or how it's done since you bought, switched here)
@@ -1811,7 +1826,7 @@ function holdingsView() {
   }
   parts.push(h("div.links", {}, h("button", { type: "button", onclick: () => openSheet(searchView), text: "Find and Add" })));
   if (S.list.length > 1) parts.push(h("p.hint.center", { style: "margin-top:4px" }, "Press and hold one to move it, or ", h("button.inline", { type: "button", onclick: () => openSheet(orderView), text: "move them a step at a time" }), "."));
-  if (T.o.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
+  if (T.o.length || S.cash?.length) parts.push(...accountsPart(T), ...incomePart(), ...vsPart());
   return parts;
 }
 
@@ -1820,16 +1835,16 @@ function holdingsView() {
 // or its name under the dial, and it's lifted out (the others fade back), what it's worth said in the middle; tap it
 // again, or another, to change that
 const MIX = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)", "var(--m6)"];
-const MIX_KINDS = { share: MIX[0], trust: MIX[2], fund: MIX[1], crypto: MIX[3] }, MIX_ACCTS = { isa: MIX[2], sipp: MIX[1], gia: MIX[0] };
+const MIX_KINDS = { share: MIX[0], trust: MIX[2], fund: MIX[1], crypto: MIX[3], cash: MIX[4] }, MIX_ACCTS = { isa: MIX[2], sipp: MIX[1], gia: MIX[0] };
 function mixSlices(T, by) {
   if (by === "kind") {
-    const kinds = {};
+    const kinds = T.cash > 0 ? { cash: T.cash } : {};
     for (const x of T.o) { const k = kindOf(S.q[x.symbol]); kinds[k] = (kinds[k] || 0) + valueOf(x); }
-    return Object.entries(kinds).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ n: KINDS_SAID[k] || "Other", v, c: MIX_KINDS[k] || MIX[5] }));
+    return Object.entries(kinds).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ n: (k === "cash" ? "Cash" : KINDS_SAID[k]) || "Other", v, c: MIX_KINDS[k] || MIX[5] }));
   }
   if (by === "account") return byAccount(T.o).map((a) => ({ n: a.name, v: a.value, c: MIX_ACCTS[a.key] || MIX[5], key: a.key }));
   // (the biggest five and the rest together; six, each its own: one on its own is no "everything else")
-  const all = [...T.o].sort((a, b) => valueOf(b) - valueOf(a)), n = all.length === 6 ? 6 : 5, top = all.slice(0, n), rest = all.slice(n).reduce((a, x) => a + valueOf(x), 0);
+  const all = [...T.o, ...(T.cash > 0 ? [{ kind: "cash", name: "Cash", amount: T.cash }] : [])].sort((a, b) => valueOf(b) - valueOf(a)), n = all.length === 6 ? 6 : 5, top = all.slice(0, n), rest = all.slice(n).reduce((a, x) => a + valueOf(x), 0);
   return [...top.map((x, i) => ({ n: x.name, v: valueOf(x), c: MIX[i], sym: x.symbol })), ...(rest > 0 ? [{ n: "Everything else", v: rest, c: MIX[5] }] : [])];
 }
 const bigMoney = (v) => (v >= 1e6 ? `£${fmt(v / 1e6, 2)}m` : money(v, "GBP", 0));
@@ -1848,7 +1863,7 @@ function mixRing(T, by) {
     svg.append(el);
     return el;
   });
-  const big = h("b.num", { text: bigMoney(T.value) }), name = h("span", { text: plural(T.o.length, "holding") }), share = h("small.num");
+  const big = h("b.num", { text: bigMoney(T.value) }), name = h("span", { text: plural(T.o.length + (S.cash?.length || 0), "holding") }), share = h("small.num");
   const centre = h("div.dialc", { "aria-live": "polite" }, name, big, share);
   const keys = slices.map((sl, i) => h("button.mkey", { type: "button", "aria-pressed": "false", onclick: () => pick(i) }, h("i", { style: `background:${sl.c}` }), h("span", { text: sl.n }), h("b.num", { text: `${Math.round((sl.v / T.value) * 100)}%` })));
   let on = -1;
@@ -1857,7 +1872,7 @@ function mixRing(T, by) {
     arcs.forEach((a, k) => { a.classList.toggle("on", k === on); a.classList.toggle("dim", on >= 0 && k !== on); });
     keys.forEach((b, k) => b.setAttribute("aria-pressed", String(k === on)));
     const sl = slices[on];
-    if (!sl) { name.textContent = plural(T.o.length, "holding"); big.textContent = bigMoney(T.value); share.textContent = ""; return; }
+    if (!sl) { name.textContent = plural(T.o.length + (S.cash?.length || 0), "holding"); big.textContent = bigMoney(T.value); share.textContent = ""; return; }
     name.textContent = sl.n; big.textContent = bigMoney(sl.v); share.textContent = `${Math.round((sl.v / T.value) * 100)}% of your money`;
   }
   return h("div.dial", { id: "ring" }, h("div.dialw", {}, svg, centre), h("div.mkeys", {}, keys));
@@ -1883,9 +1898,10 @@ function statsPart(T) {
   if (T.back != null && T.costed.length < T.o.length) notes.push(`Return covers ${T.costed.length} of ${T.o.length} holdings with a purchase cost. `);
   if (T.undated.length === 1) notes.push("Say when you bought ", h("button.inline", { type: "button", onclick: () => openSheet(editView, T.undated[0].symbol), text: T.undated[0].name }), " to count the dividends it's paid you.");
   else if (T.undated.length) notes.push("Say when you bought each (Edit Holding, on its page) to count the dividends they've paid you.");
-  return [h("dl.stats.portfolio-overview", { "aria-label": "Portfolio overview" },
-      stat("Portfolio", money(T.value), "", plural(T.o.length, "holding")),
-      stat("Total return", T.back == null ? "–" : signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), T.back == null ? "Add purchase costs" : `${pct(T.backPct, 1)} · incl. known dividends`),
+  return [h("dl.stats.portfolio-overview.cash-overview", { "aria-label": "Portfolio overview" },
+      stat("Portfolio", money(T.value), "", plural(T.o.length + (S.cash?.length || 0), "holding")),
+      stat(T.cash > 0 ? "Investment return" : "Total return", T.back == null ? "–" : signed(T.back, "GBP", Math.abs(T.back) >= 1e4 ? 0 : 2), tone(T.back), T.back == null ? (T.o.length ? "Add purchase costs" : "No investments yet") : `${pct(T.backPct, 1)} · incl. known dividends`),
+      stat("Cash", money(T.cash || 0), "", S.cash?.length ? "Included in portfolio" : "None added"),
       stat("Paid dividends", paid.length ? money(T.divs) : "–", "", paid.length ? (paid.length < T.costed.length ? "Known payments" : "Since bought") : "Add purchase dates")),
     notes.length ? h("p.stats-note", {}, notes) : null];
 }
@@ -1987,7 +2003,7 @@ function accountsPart(T) {
   if (!tagged && !tracksIsa()) return [h("p.foot", { class: "foot", style: "padding-top:22px" }, "Hold some in an ISA or a pension? Say which on each one's page (Edit Holding) to see each account's total. ",
     h("button.inline", { type: "button", onclick: () => openSheet(isaView), text: "Track your ISA allowance" }))];
   const rows = (tagged ? accts : []).map((a, i) => h("button.item.two.rise", { type: "button", vars: { i: String(i) }, onclick: () => openSheet(accountView, a.key) },
-    h("span", {}, h("b", { text: a.name }), h("small", { text: `${plural(a.o.length, "holding")} · ${Math.round((a.value / T.value) * 100)}% of your money` })),
+    h("span", {}, h("b", { text: a.name }), h("small", { text: `${plural(a.o.length + (a.cash?.length || 0), "holding")} · ${(T.value ? Math.round((a.value / T.value) * 100) : 0)}% of your money` })),
     h("span.r", {}, h("b.num", { text: money(a.value) }), h("small", { class: `num ${tone(a.day)}`, text: `${signed(a.day)} today` }))));
   if (iy && tracksIsa()) rows.push(h("button.item.two.rise", { type: "button", vars: { i: String(rows.length) }, onclick: () => openSheet(isaView) },
     h("span", {}, h("b", { text: "ISA allowance" }), h("small", { text: `${iy.year} · ${plural(iy.days, "day")} left to use it` })),
@@ -2274,15 +2290,16 @@ async function vsDraw(box, seg, big, say) {
 function accountView(key) {
   const T = totals(), a = byAccount(T.o).find((x) => x.key === key) || { key, name: ACCOUNT_NAME[key] || "Not in an account", o: [], value: 0, day: 0 };
   const costed = a.o.filter((x) => x.cost != null), paid = costed.reduce((s, x) => s + paidFor(x), 0), divs = costed.reduce((s, x) => s + (divsOf(x) || 0), 0), gain = costed.reduce((s, x) => s + valueOf(x), 0) - paid + divs, iy = isaYear();
-  return [h("div.shead", {}, h("small", { text: key === "isa" ? "Stocks & Shares ISA" : key === "sipp" ? "Pension (SIPP)" : key === "gia" ? "General account" : "Your holdings" }), closeBtn()),
+  return [h("div.shead", {}, h("small", { text: key === "isa" ? "ISA" : key === "sipp" ? "Pension (SIPP)" : key === "gia" ? "General account" : "Your holdings" }), closeBtn()),
     h("div.sname", { text: a.name }),
     h("div.sprice.num", { text: money(a.value) }),
     h("div.sdelta.num", {}, h("span", { class: tone(a.day), text: `${signed(a.day)} (${pct(a.value - a.day ? (a.day / (a.value - a.day)) * 100 : 0)})` }), h("span", { style: "color:var(--text-3)", text: "today" })),
     h("div.facts", {},
       costed.length ? h("div.fact", {}, h("span", { text: "Since you bought" }), h("b", { class: `num ${tone(gain)}`, text: signed(gain) }), h("i.num", { text: `${pct(paid ? (gain / paid) * 100 : 0, 1)} on ${money(paid, "GBP", 0)}${divs >= 0.5 ? `, with ${money(divs, "GBP", 0)} of dividends` : ""}` })) : null,
       key === "isa" && iy ? h("button.fact.press", { type: "button", onclick: () => pushSheet(isaView) }, h("span", { text: `Allowance, ${iy.year}` }), h("b.num", { text: `${money(iy.left, "GBP", 0)} left` }), h("i.num", { text: `of ${money(iy.allowance, "GBP", 0)}` }), allowBar(iy.used)) : null),
-    h("h3.slabel", { text: plural(a.o.length, "holding") }),
-    h("div.list.flush", {}, [...a.o].sort((x, y) => valueOf(y) - valueOf(x)).map((x, i) => itemRow(x, i, "value", (s) => pushSheet(stockView, s))))];
+    h("h3.slabel", { text: plural(a.o.length + (a.cash?.length || 0), "holding") }),
+    h("div.list.flush", {}, [...a.o].sort((x, y) => valueOf(y) - valueOf(x)).map((x, i) => itemRow(x, i, "value", (s) => pushSheet(stockView, s)))),
+    cashSection(cashContext(), a.cash || [], { compact: true })];
 }
 // The ISA's allowance: what you've paid in this tax year, and what's left
 function isaView() {
@@ -2931,7 +2948,7 @@ function searchView() {
   });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && shown[0]) { e.preventDefault(); open(shown[0].symbol, shown[0].name); } });
   setTimeout(() => input.focus({ preventScroll: true }), 420);
-  return [h("div.shead", {}, h("h2", { text: "Find and Add" }), closeBtn()), h("label.field", {}, icon("search", 18, 2.2), input), results];
+  return [h("div.shead", {}, h("h2", { text: "Find and Add" }), closeBtn()), h("button.cash-add", { type: "button", onclick: () => openCash() }, "Add cash instead"), h("label.field", {}, icon("search", 18, 2.2), input), results];
 }
 // Adding one to your list, or changing how many you own and what you paid
 function editView(sym, o = {}) {
@@ -3213,21 +3230,22 @@ async function signOutHere() {
   signedOut();
   A.outVia("markets");
 }
-function signedOut() { forget(); closeSheet(); welcome(); }
+function signedOut() { cashEpoch++; forget(); closeSheet(); welcome(); }
 // What this phone keeps of you (your portfolio's copy and its years, what you've searched for, read and hidden, your
 // income plan), let go: signed out here, or anywhere else (Sign Out Other Devices, a new password, another app), as
 // the account's answer or a price refresh then says; or another account signed in
 function forget() {
   stream.stop();
   for (const k of ["last", "years", "recent", "newsRead", "newsHide", "newsSeen", "plan"]) store.del(k);
-  S.list = []; S.years = {}; S.yearsAt = 0; S.isa = null; S.paid = null; S.inc = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear();
+  S.list = []; S.cash = []; S.years = {}; S.yearsAt = 0; S.isa = null; S.paid = null; S.inc = null; S.newsErr = null; S.newsAt = 0; S.news = null; S.charts.clear();
   S.goal = 100; S.add = 0; S.reinvest = true; loadIncome.failed = 0;
 }
 
 // ---- signed in: your list and its prices ----
 function take(m) {
+  if (S.me?.id !== m.id) cashEpoch++;
   S.me = { id: m.id, name: m.name, handle: m.handle, photoAt: m.photoAt };
-  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
+  S.list = m.holdings || []; S.cash = cashRows(m.cash); S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
   if (m.appearance && m.appearance !== "auto") { document.documentElement.dataset.theme = m.appearance; store.set("appearance", m.appearance); try { localStorage.setItem("markets:appearance", m.appearance); } catch (_) {} }
   else { delete document.documentElement.dataset.theme; try { localStorage.removeItem("markets:appearance"); } catch (_) {} }
 }
@@ -3270,12 +3288,16 @@ function liveSwitch() {
   return sw;
 }
 // Prices again: every 15 seconds while the app's open and in front, each change flashed where it shows
+let cashEpoch = 0;
+const cashStore = createCashStore({ state: S, api: A, owner: () => S.me ? `${cashEpoch}:${S.me.id}` : null,
+  keep: () => store.set("last", { me: S.me, holdings: S.list, cash: S.cash, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt }), changed: () => render(false) });
 async function refresh(force = false) {
   // (one at a time: a slow answer isn't asked for again over itself; one that's needed now, after a change, still is)
   if (!S.me || (!force && (document.hidden || refresh.busy))) return;
   const stock = Sheet.stack.find(([view]) => view === stockView)?.[1]?.[0];
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(stock ? [stock] : [])])];
   refresh.busy = true;
+  cashStore.sync();
   try {
     applyPrices(await A.quotes(syms), force);
     stream.sync();
@@ -3290,7 +3312,7 @@ function applyPrices(r, force = false, fromStream = false) {
     Object.assign(S.q, stream.merge(r.quotes)); Object.assign(S.fx, r.rates || {});
     // (when they came, by this phone's clock, as their age is told by it: never the server's, a few minutes apart from it)
     if (!fromStream) S.pricesAt = Date.now();
-    store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
+    store.set("last", { me: S.me, holdings: S.list, cash: S.cash, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
     if (force) return;
     sayLine();
     for (const n of document.querySelectorAll("[data-session]")) n.textContent = quoteSession(S.q[n.dataset.session], priceSaid, pct);
@@ -3414,7 +3436,7 @@ async function start() {
     // go, never Markets' copy, which would otherwise be drawn for whoever opens Markets next)
     const last = code ? null : store.get("last");
     if (last?.me && (!IFL.hub.on || hubKeptIs(last.me.id))) {
-      take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
+      take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
       // (said as old only if the account's slow to answer: oldSaid)
       S.opening = Date.now() + 4000; setTimeout(() => { if (S.opening) { S.opening = 0; sayLine(); } }, 4100);
       render();
@@ -3437,7 +3459,7 @@ async function start() {
   S.pricesAt = Date.now(); S.opening = 0;
   render(!same);
   if (was?.y) requestAnimationFrame(() => scrollTo(0, was.y));
-  store.set("last", { me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
+  store.set("last", { me: S.me, holdings: S.list, cash: S.cash, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
   checkPush();
   loadYears();
   loadPaid();
@@ -3504,4 +3526,4 @@ start();
 DESK.addEventListener("change", () => render(false));
 export { S, h, A, C, $, icon, fmt, money, signed, pct, tone, priceSaid, chgSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, unpriced, leftOutSaid, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
   aroundDay, INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, alertSet, toast, ago, dayKey, rangeSeries, marketSaid, lineSaid, pricesAtSaid, whyMoving, sendInChat, store, meFace, youMenu, daySeries,
-  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, storyView, IFL, keepFocus };
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, storyView, IFL, keepFocus, cashPart };

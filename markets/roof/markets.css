@@ -568,3 +568,36 @@
 .m-markets .range-controls button:focus-visible, .ifl-sheet[data-app=markets] .range-controls button:focus-visible { outline: 2px solid var(--tint, var(--acc)); outline-offset: -2px; }
 
 .m-markets .range-controls button::after, .ifl-sheet[data-app=markets] .range-controls button::after { inset: 0; }
+
+
+/* Cash uses the same rows, fields and shape as the rest of Markets. */
+.m-markets .cash-section, .ifl-sheet[data-app=markets] .cash-section { min-width: 0; }
+.m-markets .cash-section .label, .ifl-sheet[data-app=markets] .cash-section .label { margin-top: 20px; }
+.m-markets .cash-empty, .ifl-sheet[data-app=markets] .cash-empty { margin: 0 24px; padding: 0 0 12px; }
+.m-markets .cash-empty .hint, .ifl-sheet[data-app=markets] .cash-empty .hint { margin: 0; }
+.m-markets .cash-summary, .ifl-sheet[data-app=markets] .cash-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 24px 0; }
+.m-markets .cash-summary > div, .ifl-sheet[data-app=markets] .cash-summary > div { min-width: 0; }
+.m-markets .cash-summary dt, .ifl-sheet[data-app=markets] .cash-summary dt { color: var(--text-3); font-size: 12px; line-height: 1.35; }
+.m-markets .cash-summary dd, .ifl-sheet[data-app=markets] .cash-summary dd { margin: 5px 0 0; font-size: clamp(16px, 4.5vw, 21px); font-weight: 600; overflow-wrap: anywhere; }
+.m-markets .cash-note, .ifl-sheet[data-app=markets] .cash-note, .m-markets .cash-chart-note, .ifl-sheet[data-app=markets] .cash-chart-note { margin: 12px 24px; font-size: 12.5px; line-height: 1.5; }
+.m-markets .cash-row > span:first-child, .ifl-sheet[data-app=markets] .cash-row > span:first-child { flex: 1; min-width: 0; }
+.m-markets .cash-row .r, .ifl-sheet[data-app=markets] .cash-row .r { max-width: none; width: auto; min-width: 0; }
+.m-markets .cash-row b, .ifl-sheet[data-app=markets] .cash-row b, .m-markets .cash-row small, .ifl-sheet[data-app=markets] .cash-row small { overflow-wrap: anywhere; }
+.m-markets .cash-row .r small, .ifl-sheet[data-app=markets] .cash-row .r small { white-space: normal; }
+.m-markets .cash-editor, .ifl-sheet[data-app=markets] .cash-editor { min-width: 0; }
+.m-markets .cash-editor .field input, .ifl-sheet[data-app=markets] .cash-editor .field input { min-width: 0; width: 100%; }
+.m-markets .cash-editor .btn, .ifl-sheet[data-app=markets] .cash-editor .btn { margin-top: 20px; width: 100%; min-height: 48px; }
+.m-markets .cash-error, .ifl-sheet[data-app=markets] .cash-error { color: var(--down, var(--danger)); font-size: 14px; line-height: 1.4; margin: 12px 0; }
+.m-markets .cash-error[hidden], .ifl-sheet[data-app=markets] .cash-error[hidden] { display: none; }
+.m-markets .cash-remove, .ifl-sheet[data-app=markets] .cash-remove { width: 100%; min-height: 44px; margin-top: 8px; color: var(--down, var(--danger)); border: 0; background: transparent; font: inherit; }
+.m-markets .cash-add, .ifl-sheet[data-app=markets] .cash-add { display: block; min-height: 44px; margin: 0 0 10px; padding: 8px 0; border: 0; background: transparent; color: var(--tint, var(--acc-ink)); font: inherit; font-weight: 600; }
+.m-markets .cash-overview, .ifl-sheet[data-app=markets] .cash-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.m-markets .dpane .cash-section .label, .ifl-sheet[data-app=markets] .dpane .cash-section .label { padding: 0; margin: 16px 0 8px; font-size: 13px; }
+.m-markets .dpane .cash-section .list, .ifl-sheet[data-app=markets] .dpane .cash-section .list { margin: 0; }
+.m-markets .dpane .cash-row, .ifl-sheet[data-app=markets] .dpane .cash-row { padding: 10px 4px; min-height: 60px; }
+.m-markets .dpane .cash-empty, .ifl-sheet[data-app=markets] .dpane .cash-empty { margin: 0; }
+
+.m-markets .cash-section .cash-row, .ifl-sheet[data-app=markets] .cash-section .cash-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.m-markets .cash-row .r b, .ifl-sheet[data-app=markets] .cash-row .r b { white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+
+.m-markets .hero .big.num { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }

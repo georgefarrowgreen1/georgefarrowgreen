@@ -60,7 +60,7 @@ export function account(now = Date.now(), who = "a") {
 // the state app.js's S and core.S share, from an account (what take() and the loaders leave)
 export function stateOf(acc) {
   return {
-    me: { id: acc.id, name: acc.name, handle: acc.handle, photoAt: acc.photoAt }, list: structuredClone(acc.holdings), q: structuredClone(acc.quotes), fx: { ...acc.rates },
+    me: { id: acc.id, name: acc.name, handle: acc.handle, photoAt: acc.photoAt }, list: structuredClone(acc.holdings), cash: structuredClone(acc.cash || []), q: structuredClone(acc.quotes), fx: { ...acc.rates },
     years: structuredClone(acc.years || {}), news: structuredClone(acc.news || null), newsTopics: { ...(acc.topics || {}) }, isa: acc.isa ? { ...acc.isa } : null,
     paid: acc.paid ? { at: Date.now(), v: structuredClone(acc.paid) } : null, inc: null, charts: new Map(), alertsOff: false, wrap: true, vs: null, prange: "1d", mix: "holding", fig: "day",
     imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, nfilter: "all", newsSince: null, pricesAt: Date.now(),
@@ -91,6 +91,7 @@ export function marketsApi(state) {
     const acc = state.acc;
     if (state.status && p !== "me") return j({ error: "Sign in first." }, state.status);
     if (p === "me") return state.status === 401 ? j({ error: "Sign in first." }, 401) : j(acc ? { ...acc } : { signedIn: false });
+    if (p === "cash") return j({ cash: acc?.cash || [] });
     if (p === "quotes") { const syms = (u.searchParams.get("s") || "").split(",").map(decodeURIComponent); return j({ quotes: Object.fromEntries(syms.filter((s) => acc?.quotes?.[s]).map((s) => [s, acc.quotes[s]])), rates: acc?.rates || {} }); }
     if (p === "years") return j({ years: acc?.years || {} });
     if (p === "paid") return j({ paid: acc?.paid || {} });

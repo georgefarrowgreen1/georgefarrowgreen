@@ -11,7 +11,7 @@ for(const width of [320,390,1440])test(`Markets comparisons and chart ranges wor
  try{await p.goto(KIT+'/?module=/markets/roof/markets.js&apps=weather,markets');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/'));await p.locator('.pseg.range-controls').waitFor();
  assert.deepEqual(await p.locator('.pseg button').allTextContents(),['Day','Week','Month','Year']);
  await p.locator('.pseg button[data-r="1mo"]').click();await p.waitForFunction(()=>document.querySelector('[data-el=ps]')?.textContent==='this month');assert.equal(await p.locator('.pseg [aria-pressed=true]').getAttribute('data-r'),'1mo');
- await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));const overview=p.locator('.portfolio-overview');await overview.waitFor();assert.deepEqual(await overview.locator('dt').allTextContents(),['Portfolio','Total return','Paid dividends']);
+ await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));const overview=p.locator('.portfolio-overview');await overview.waitFor();assert.deepEqual(await overview.locator('dt').allTextContents(),['Portfolio','Total return','Cash','Paid dividends']);
  const text=await overview.textContent();assert.match(text,/£/);assert.doesNotMatch(text,/NaN|undefined/);assert.match(await p.locator('.stats-note').textContent(),/Return covers 3 of 4/);
  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  // Unknown purchase details must remain unknown rather than becoming zero returns/payments.

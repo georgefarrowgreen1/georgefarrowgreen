@@ -1,3 +1,5 @@
+import { cashTotals, cashSeries, cashRows } from "../cash.js";
+import { createCashStore } from "../cash-store.js";
 import { priceStream } from "../live.js";
 import { quoteSession } from "../session.js";
 // Markets' state and its sums under InFlite's roof (One roof stage 2, spec §4.1, §4.2, S2-D2, D4, D6, D9, D21): a port of
@@ -29,7 +31,7 @@ import { marked as markDivs, health, taxYearOf, yearDivs, yearOn } from "../inco
 import { stockSendCard, chatHash } from "../send.js";
 
 export const EVENTS = Object.freeze(["me", "quotes", "news", "list", "settings", "loading", "error"]);
-export const S = { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, charts: new Map(), alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
+export const S = { me: null, list: [], cash: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, charts: new Map(), alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
   inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null };
 export const store = {
   get(k, d = null) { try { const v = localStorage.getItem("markets:" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
@@ -135,7 +137,7 @@ const and2 = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)
 // ---- your money ----
 const rate = (cur) => (cur ? S.fx[cur] ?? null : null);
 const owned = () => S.list.filter((x) => x.qty > 0 && S.q[x.symbol]?.price != null && rate(S.q[x.symbol].cur) != null);
-const valueOf = (x) => { const q = S.q[x.symbol]; return q?.price != null && rate(q.cur) != null ? q.price * x.qty * rate(q.cur) : null; };
+const valueOf = (x) => { if (x.kind === "cash") return x.amount; const q = S.q[x.symbol]; return q?.price != null && rate(q.cur) != null ? q.price * x.qty * rate(q.cur) : null; };
 const dayOf = (x) => { const q = S.q[x.symbol]; return q?.price != null && q.prev && rate(q.cur) != null ? (q.price - q.prev) * x.qty * rate(q.cur) : null; };
 // what one's paid you in dividends since you bought it, in pounds (null: not known, with no day to count from)
 const divsOf = (x) => { const p = S.paid?.v?.[x.symbol], r = rate(S.q[x.symbol]?.cur); return p && r != null ? p.paid * r : null; };
@@ -146,17 +148,17 @@ const unpriced = () => S.list.filter((x) => x.qty > 0 && valueOf(x) == null);
 const leftOutSaid = (xs = unpriced()) => (xs.length ? `${and2(xs.map((x) => x.name))} ${xs.length === 1 ? "isn't" : "aren't"} in this total: no price for ${xs.length === 1 ? "it" : "them"} just now.` : "");
 // (gain: in price; divs: the dividends on top, from those with a day to count from; back: the two together, on what you paid)
 function totals() {
-  const o = owned(), value = o.reduce((a, x) => a + valueOf(x), 0), day = o.reduce((a, x) => a + (dayOf(x) || 0), 0);
+  const cash = cashTotals(S.cash), o = owned(), value = cash.amount + o.reduce((a, x) => a + valueOf(x), 0), day = o.reduce((a, x) => a + (dayOf(x) || 0), 0);
   const costed = o.filter((x) => x.cost != null), paid = costed.reduce((a, x) => a + paidFor(x), 0), now = costed.reduce((a, x) => a + valueOf(x), 0);
   const divs = costed.reduce((a, x) => a + (divsOf(x) || 0), 0), gain = costed.length ? now - paid : null;
-  return { o, value, day, dayPct: value - day ? (day / (value - day)) * 100 : 0, paid, gain, gainPct: paid ? ((now - paid) / paid) * 100 : null, costed,
+  return { o, value, cash: cash.amount, interest: cash.annual, day, dayPct: value - day ? (day / (value - day)) * 100 : 0, paid, gain, gainPct: paid ? ((now - paid) / paid) * 100 : null, costed,
     divs, back: gain == null ? null : gain + divs, backPct: paid ? ((gain + divs) / paid) * 100 : null, undated: costed.filter((x) => divsOf(x) == null && S.years[x.symbol]?.div12 > 0) };
 }
 // your money in each account (and what's in none yet): [{ key, name, o, value, day }], largest first
 function byAccount(o = owned()) {
-  const out = [...ACCOUNTS, [null, "Not in an account"]].map(([key, name]) => { const xs = o.filter((x) => (x.account || null) === key);
-    return { key, name, o: xs, value: xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
-  return out.filter((a) => a.o.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
+  const out = [...ACCOUNTS, [null, "Not in an account"]].map(([key, name]) => { const xs = o.filter((x) => (x.account || null) === key), cash = (S.cash || []).filter((x) => (x.account || null) === key);
+    return { key, name, o: xs, cash, value: cashTotals(cash).amount + xs.reduce((a, x) => a + valueOf(x), 0), day: xs.reduce((a, x) => a + (dayOf(x) || 0), 0) }; });
+  return out.filter((a) => a.o.length || a.cash.length).sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || b.value - a.value);
 }
 // Your income: each dividend each holding paid over the last year (a year of its paying, by how often it pays: yearDivs),
 // for what you own now, expected again a year on, in the month it went ex-dividend; one-offs (specials) said apart,
@@ -262,16 +264,16 @@ function isaYear() {
   const left = Math.max(0, S.isa.allowance - S.isa.paid);
   return { ...S.isa, left, days, used: Math.min(1, S.isa.paid / S.isa.allowance) };
 }
-const tracksIsa = () => !!S.isa && (S.isa.paid > 0 || S.list.some((x) => x.account === "isa"));
+const tracksIsa = () => !!S.isa && (S.isa.paid > 0 || S.list.some((x) => x.account === "isa") || (S.cash || []).some((x) => x.account === "isa"));
 
 // your money through the day: each holding at its price at each moment (its last close before it opened)
 function daySeries() {
-  const o = owned(), drawn = o.filter((x) => S.q[x.symbol].sparkT?.length > 1);
-  if (!drawn.length) return null;
+  const cash = cashTotals(S.cash).amount, o = owned(), drawn = o.filter((x) => S.q[x.symbol].sparkT?.length > 1);
+  if (!drawn.length) return o.length ? null : cashSeries(cash);
   const T = [...new Set(drawn.flatMap((x) => S.q[x.symbol].sparkT))].sort((a, b) => a - b);
   if (T.length < 2) return null;
-  const base = o.reduce((a, x) => a + S.q[x.symbol].prev * x.qty * rate(S.q[x.symbol].cur), 0);
-  const vals = T.map((t) => o.reduce((a, x) => {
+  const base = cash + o.reduce((a, x) => a + S.q[x.symbol].prev * x.qty * rate(S.q[x.symbol].cur), 0);
+  const vals = T.map((t) => cash + o.reduce((a, x) => {
     const q = S.q[x.symbol]; let p = q.prev, j = -1;
     for (let i = 0; i < (q.sparkT?.length || 0) && q.sparkT[i] <= t; i++) j = i;
     if (j >= 0) p = q.spark[j];
@@ -368,13 +370,13 @@ function insights() {
 // what you own now, through a range: each holding's chart (kept ten minutes), its price carried over when its market's
 // shut, at today's exchange rates. { T, vals, base, by: each holding's change over it, in pounds }
 async function rangeSeries(r) {
-  const o = owned(), charts = {};
+  const cash = cashTotals(S.cash).amount, o = owned(), charts = {};
   const get = async (sym) => { const k = `${sym}:${r}`, kept = S.charts.get(k); if (kept && Date.now() - kept.at < 600e3) return kept.c; const c = await A.chart(sym, r); chartSet(k, c); return c; };
   for (let i = 0; i < o.length; i += 6) await Promise.all(o.slice(i, i + 6).map((x) => get(x.symbol).then((c) => { charts[x.symbol] = c; }, () => {})));
   const held = o.filter((x) => charts[x.symbol]?.c?.length > 1);
-  if (!held.length) return null;
+  if (!held.length) return !o.length ? cashSeries(cash, r) : null;
   const key = r === "5d" ? (t) => Math.round(t / 1800) * 1800 : (t) => Date.parse(dayKey(t)) / 1000;
-  const T = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(key)))].sort((a, b) => a - b), vals = T.map(() => 0), by = [];
+  const T = [...new Set(held.flatMap((x) => charts[x.symbol].t.map(key)))].sort((a, b) => a - b), vals = T.map(() => cash), by = [];
   for (const x of held) {
     const c = charts[x.symbol], m = new Map(c.t.map((t, i) => [key(t), c.c[i]])), k = x.qty * rate(S.q[x.symbol].cur);
     let last = c.c[0];
@@ -382,7 +384,7 @@ async function rangeSeries(r) {
     by.push({ x, v: (S.q[x.symbol].price - c.c[0]) * k });
   }
   // (ending now: the prices as they are)
-  vals[vals.length - 1] = held.reduce((a, x) => a + valueOf(x), 0);
+  vals[vals.length - 1] = cash + held.reduce((a, x) => a + valueOf(x), 0);
   return { T, vals, base: vals[0], by };
 }
 // a day's key, for lining up days across markets
@@ -504,9 +506,9 @@ const storySend = (n) => ({ words: `${String(n?.title || "").trim()}\n${String(n
 // ---- signed in: your list and its prices (app.js 2866-2941, the theme and the DOM left out) ----
 function take(m) {
   S.me = { id: m.id, name: m.name, handle: m.handle, photoAt: m.photoAt };
-  S.list = m.holdings || []; S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
+  S.list = m.holdings || []; S.cash = cashRows(m.cash); S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
 }
-const keep = () => store.set("last", { id: S.me?.id ?? null, me: S.me, holdings: S.list, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
+const keep = () => store.set("last", { id: S.me?.id ?? null, me: S.me, holdings: S.list, cash: S.cash, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt });
 // your holdings' years (for what's worth knowing), behind: drawn again once they're in
 async function loadYears() {
   const old = Date.now() - (S.yearsAt || 0) > 12 * 3600e3, gen = P.gen;
@@ -534,12 +536,15 @@ async function loadIncome(force = false) {
 // (drawn again behind only while no Markets sheet is up over it and no reorder is waiting to be kept)
 const calm = () => !P.sheet && !P.ordering;
 export const busy = () => !calm();
+export const cashStore = createCashStore({ state: S, api: A, owner: () => S.me ? `${P.gen}:${S.me.id}` : null,
+  keep: () => keep(), changed: () => emit("list") });
 // Prices again: every 15 seconds while Markets shows and the page is in front; each change flashed where it shows
 // (mkui.paint, on "quotes")
 async function refresh(force = false) {
   if (!S.me || (!force && (refresh.busy || !P.fw?.visible?.()))) return;
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])])], gen = P.gen;
   refresh.busy = true;
+  cashStore.sync();
   try {
     const r = await A.quotes(syms);
     if (gen !== P.gen) return;
@@ -575,7 +580,7 @@ async function lost() {
 // ---- starting and stopping (S2-D2, D4, D9) ----
 // every account field from scratch (RI7): nothing of the last account's survives a stop
 function fresh() {
-  Object.assign(S, { me: null, list: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
+  Object.assign(S, { me: null, list: [], cash: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
     inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null });
   S.charts = new Map();
   for (const k of ["yearsAt", "newsAt", "newsErr", "pricesAt", "opening", "loading", "err"]) delete S[k];
@@ -593,7 +598,7 @@ export function start(fw) {
   { const p = store.get("plan"); if (p) { S.goal = +p.goal || 100; S.add = +p.add || 0; S.reinvest = p.reinvest !== false; } }
   const id = fw?.session?.user?.id ?? null, last = keptFor(id);
   if (last) {
-    take({ ...last.me, holdings: last.holdings, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0;
+    take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0;
     const ys = store.get("years"); if (!ys?.id || ys.id === id) { S.years = ys?.years || {}; S.yearsAt = ys?.at || 0; }
     S.opening = Date.now() + 4000;
     emit("me");

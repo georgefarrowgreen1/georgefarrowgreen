@@ -436,6 +436,8 @@ function market(t, { london = "today", ny = "friday" } = {}) {
   });
 }
 const hold = (uid, symbol, name, qty, account = null, ord = 0) => put("mk_holdings", { user_id: uid, symbol, name, qty, cost: null, ord, added: 0, account });
+
+
 const pf = (uid) => { hold(uid, "RR.L", "Rolls-Royce", 100, null, 0); hold(uid, "TSCO.L", "Tesco", 1000, "isa", 1); hold(uid, "AAPL", "Apple", 10, null, 2); hold(uid, "SHEL.L", "Shell", 0, null, 3); hold(uid, "GONE.L", "Gone Ltd", 5, null, 4); };
 // Tesco's dividends, as Markets keeps them (mk_cache d:TSCO.L): twice a year for five years, the last in June
 const TSCO_DIVS = [2022, 2023, 2024, 2025, 2026].flatMap((y) => [{ t: S(Date.UTC(y - 1, 10, 6)), amount: 0.0825 }, { t: S(Date.UTC(y, 5, 5)), amount: 0.041 }]);
@@ -818,4 +820,21 @@ test("heaviestOf: the wettest hour between two times on the place's clock, the s
   assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 14), Date.UTC(2026, 10, 2, 17)), Date.UTC(2026, 10, 2, 16), "only within the times");
   assert.equal(heaviestOf(wx, Date.UTC(2026, 10, 2, 20), Date.UTC(2026, 10, 2, 23)), null);
   assert.equal(heaviestOf({}, 0, 1), null);
+});
+
+test("Markets cash stays constant in Today’s value and chart; forecasts never become gains or dividends", async () => {
+  user("cash-card", "Cash Rider"); hold("cash-card", "RR.L", "Rolls-Royce", 100, "isa");
+  const before = await marketsCard(env, { id: "cash-card" }, ctxAt(WEEKDAY));
+  put("mk_cash", { user_id: "cash-card", id: "cash-one", name: "Private savings", amount: 12000, rate: 4, account: "isa", added: WEEKDAY, updated: WEEKDAY });
+  const after = await marketsCard(env, { id: "cash-card" }, ctxAt(WEEKDAY));
+  assert.equal(after.value, before.value + 12000); assert.equal(after.change, before.change);
+  assert.equal(after.pct, Math.round(before.change / (after.value - before.change) * 10000) / 100);
+  assert.equal(after.isa.paid, before.isa.paid); assert.equal(after.isa.inIsa, before.isa.inIsa + 12000);
+  assert.equal(after.spark.base, before.spark.base + 12000);
+  for (let i = 0; i < before.spark.vals.length; i++) assert.ok(Math.abs(after.spark.vals[i] - before.spark.vals[i] - 12000) < .011);
+  assert.doesNotMatch(after.share || "", /Private savings|£|12000|480/);
+  user("cash-only", "Cash Only");
+  put("mk_cash", { user_id: "cash-only", id: "cash-only", name: "Savings", amount: 5000, rate: 4.25, account: null, added: WEEKDAY, updated: WEEKDAY });
+  const only = await marketsCard(env, { id: "cash-only" }, ctxAt(WEEKDAY));
+  assert.equal(only.state, "ok"); assert.equal(only.value, 5000); assert.equal(only.change, 0); assert.equal(only.pct, 0); assert.equal(only.traded, false); assert.equal(only.dividend, null); assert.equal(only.share, null);
 });

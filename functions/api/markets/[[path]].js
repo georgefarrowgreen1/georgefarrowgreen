@@ -8,6 +8,7 @@
 //   GET    /api/markets/story?u=&k=   a story's preview, from its page (one the news gave, with its key)
 //   GET    /api/markets/pic?u=&s=&k=  a story's picture, passed through
 //   GET    /api/markets/search?q=     things to add, by name or symbol
+//   GET/PUT/DELETE /api/markets/cash  cash balances and annual interest rates, scoped to your account
 //   PUT    /api/markets/holding       added or changed: { symbol, name?, qty?, cost?, account? } → your list
 //   DELETE /api/markets/holding?s=A   taken off your list → your list
 //   PUT    /api/markets/order         your list in a new order: { symbols } → your list
@@ -35,16 +36,18 @@ import { isMarkets } from "../../_mktapp.js";
 import { tickAuthOk, vapid } from "../../_notify.js";
 import { holdings, putHolding, dropHolding, orderHoldings, setAlert, quotes, chart, yearOf, news, search, rates, INDICES, RANGE_NAMES, cleanSymbol, keepPush, dropPhone, movePhone, alertTick, wrapTick, alertsOf, mkdb, isaOf, setIsa, setWrap, buysOf, addBuy, dropBuy, paidOf, incomeOf, dividends, story, storyKey, storyKeyOk, picture, fewAtATime } from "../../_markets.js";
 
+import { cashHoldings, putCash, dropCash } from "../../_marketcash.js";
+
 // (prices for a request that's waiting: by eight seconds, what's kept given for any the source is slow with, so a slow
 // source is never taken for no connection)
 const ANSWER_BY = 8000;
 // The account as Markets shows it: who, what you own and follow, and every price it needs to draw your day
 async function view(env, u) {
-  const list = await holdings(env, u.id), by = Date.now() + ANSWER_BY;
+  const [list, cash] = await Promise.all([holdings(env, u.id), cashHoldings(env, u.id)]), by = Date.now() + ANSWER_BY;
   const q = await quotes(env, [...INDICES, ...list.map((h) => h.symbol)], by);
   const fx = await rates(env, Object.values(q).map((x) => x.cur), by);
   const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first(), wrap = await D.prepare("SELECT off FROM mk_wrap WHERE user_id = ?").bind(u.id).first();
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, wrap: !wrap?.off, isa: await isaOf(env, u.id), at: Date.now(),
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, cash, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, wrap: !wrap?.off, isa: await isaOf(env, u.id), at: Date.now(),
     appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
 }
 // a few symbols from the address (s=A,B,C)
@@ -120,6 +123,23 @@ const ROUTES = {
     const pic = await picture(env, src, link && (await storyKeyOk(env, link, p.get("k"))) ? link : "");
     if (!pic) return new Response(null, { status: 404, headers: { "Cache-Control": "private, max-age=3600" } });
     return new Response(pic.body, { headers: { "Content-Type": pic.type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Cross-Origin-Resource-Policy": "same-origin" } });
+  },
+  "GET cash": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    await pace(env, `mkcash:${u.id}`, 600, 3600e3);
+    return json({ cash: await cashHoldings(env, u.id) });
+  },
+  "PUT cash": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await pace(env, `mkcashwrite:${u.id}`, 300, 3600e3);
+    return json({ cash: await putCash(env, u.id, await body(request)) });
+  },
+  "DELETE cash": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await pace(env, `mkcashwrite:${u.id}`, 300, 3600e3);
+    return json({ cash: await dropCash(env, u.id, new URL(request.url).searchParams.get("id")) });
   },
   "PUT holding": async ({ request, env }) => {
     sameOrigin(request);

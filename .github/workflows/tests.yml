@@ -94,6 +94,9 @@ jobs:
       - name: Homepage loading and InFlite profile hand-off
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homeaccount.test.cjs
+      - name: Cash holdings, interest estimates, editing and retry safety
+        working-directory: georgefarrowgreen
+        run: node --test .tools/tests/markets-cash.test.cjs .tools/tests/markets-overview.test.cjs
       - name: Chat keyboard, resume, rotation, scrolling and tap targets
         working-directory: georgefarrowgreen
         run: |

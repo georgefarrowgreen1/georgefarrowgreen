@@ -18,7 +18,7 @@ async function call(path, { method = "GET", body, wait = 30000 } = {}) {
 }
 async function answer(r) {
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status, field: j.field });
   return j;
 }
 const list = (syms) => syms.map(encodeURIComponent).join(",");
@@ -38,6 +38,9 @@ export const news = (syms, markets = true) => call(`news?s=${list(syms)}${market
 export const story = (u, k) => call(`story?${new URLSearchParams({ u, k: k || "" })}`, { wait: 12000 });
 export const picUrl = (u, s, k) => `${API}/pic?${new URLSearchParams({ u, s: s || "", k: k || "" })}`;
 export const search = (q) => call(`search?q=${encodeURIComponent(q)}`);
+export const cash = () => call("cash");
+export const putCash = (holding) => call("cash", { method: "PUT", body: holding });
+export const dropCash = (id) => call(`cash?id=${encodeURIComponent(id)}`, { method: "DELETE" });
 export const putHolding = (h) => call("holding", { method: "PUT", body: h });
 export const dropHolding = (sym) => call(`holding?s=${encodeURIComponent(sym)}`, { method: "DELETE" });
 export const order = (symbols) => call("order", { method: "PUT", body: { symbols } });

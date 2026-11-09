@@ -16,16 +16,16 @@ const { S, INDICES, INDEX_NAMES, PRANGES, fmt, money, signed, pct, tone, priceSa
 function todayView() {
   const wait = notIn();
   if (wait) return wait;
-  if (!S.list.length) return emptyView();
+  if (!S.list.length && !S.cash?.length) return emptyView();
   const T = totals(), parts = [];
-  if (T.o.length) {
+  if (T.o.length || S.cash?.length) {
     const [a, b] = fmt(T.value).split(".");
     parts.push(h("div.hero", { "data-k": "portfolio" },
       h("div.mk-herohead", {}, h("span.eyebrow", { text: "Your portfolio" }), core.portfolioSend() ? sendBtn() : null),
       h("span.big.num", { "data-el": "pv" }, `£${a}`, h("span.p", { text: "." + b })),
       h("span.delta.num", {}, h("span", { "data-el": "pd", class: tone(T.day), text: signed(T.day) }), h("span", { "data-el": "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { "data-el": "ps", text: "today" })),
       leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null));
-    parts.push(portfolioBox());
+    parts.push(T.value > 0 || T.o.length ? portfolioBox() : h("p.hint.cash-chart-note", { text: "Add an amount to see your portfolio chart." }));
   } else {
     const up = S.list.filter((x) => (S.q[x.symbol]?.chgPct || 0) > 0).length;
     parts.push(h("div.hero", {}, h("span.eyebrow", { text: "Your list" }), h("span.big.small", {}, `${up} of ${S.list.length} up`), h("span.delta", {}, h("span.muted", { text: "today" }))));
@@ -59,6 +59,7 @@ function todayView() {
   return parts;
 }
 function daySaid(T) {
+  if (!T.o.length && S.cash?.length) return [`Cash interest: about ${money(T.interest)} a year at your current rates.`];
   const o = T.o;
   if (o.length >= 2) {
     const by = [...o].sort((a, b) => (dayOf(b) || 0) - (dayOf(a) || 0)), top = by[0], low = by.at(-1), tg = dayOf(top) || 0, lg = dayOf(low) || 0;
@@ -121,7 +122,7 @@ function portfolioBox() {
     press(b.dataset.r);
     show(b.dataset.r);
   });
-  return [box, seg];
+  return [box, seg, S.cash?.length ? h("p.hint.cash-chart-note", { text: "Cash uses your current balance throughout this chart." }) : null];
 }
 function rangeSaid(s, r) {
   const by = [...s.by].sort((a, b) => b.v - a.v), top = by[0], low = by.at(-1), out = [];
@@ -181,7 +182,7 @@ function emptyView() {
   const picks = [["RR.L", "Rolls-Royce"], ["AAPL", "Apple"], ["VUSA.L", "Vanguard S&P 500"], ["SMT.L", "Scottish Mortgage"], ["NVDA", "Nvidia"], ["TSCO.L", "Tesco"], ["BTC-USD", "Bitcoin"]];
   return [h("div.empty", {}, h("h2.rise", { text: "Start with what you own" }),
     h("p.rise", { vars: { i: "1" }, text: "Add your shares, funds and investment trusts, and Markets tells you each day what they're worth, what moved them and what's worth knowing. Or just follow a few." }),
-    h("div.rise", { vars: { i: "2" } }, h("button.btn.go.press", { type: "button", onclick: () => M.open.addStock() }, "Add a Stock")),
+    h("div.rise", { vars: { i: "2" } }, h("button.btn.go.press", { type: "button", onclick: () => M.open.addStock() }, "Add a Stock"), h("button.btn.press", { type: "button", onclick: () => M.open.cash() }, "Add cash")),
     h("div.chips.rise", { vars: { i: "3" } }, picks.map(([s, n]) => h("button.chip.glass.press", { type: "button", onclick: () => openStock(s, { name: n }), text: n })))),
   h("h3.label", {}, "Markets"),
   h("div.markets", {}, INDICES.filter((s) => S.q[s]).map((s, i) => { const q = S.q[s];

@@ -37,6 +37,10 @@ export async function mkdb(env) {
     await D.batch([
       D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
         ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, since INTEGER, PRIMARY KEY (user_id, symbol))`),
+      D.prepare(`CREATE TABLE IF NOT EXISTS mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+        amount REAL NOT NULL CHECK(amount >= 0 AND amount <= 1000000000000), rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
+        account TEXT CHECK(account IS NULL OR account IN ('isa', 'sipp', 'gia')), added INTEGER NOT NULL, updated INTEGER NOT NULL,
+        PRIMARY KEY (user_id, id))`),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
       D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
@@ -865,7 +869,8 @@ export async function wrapTick(env, t = Date.now()) {
     // (held through a ride, as through quiet hours, and said after: marked the first time, so it's counted once)
     if ((await heldBack(env, D, [{ user_id: userId }], t, () => D.prepare(`INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2
       WHERE mk_wrap.sent IS NULL OR (mk_wrap.sent != ?3 AND mk_wrap.sent NOT LIKE ?4)`).bind(userId, heldMark(today, t), today, `held:${today}@%`))).size) continue;
-    const { value, total, pct: pctDay, top, low, shut, day } = wrapFigures(held, fx, t);
+    const cash = await D.prepare("SELECT COALESCE(SUM(amount), 0) AS amount FROM mk_cash WHERE user_id = ?").bind(userId).first();
+    const { value, total, pct: pctDay, top, low, shut, day } = wrapFigures(held, fx, t, cash?.amount || 0);
     const claim = await D.prepare("INSERT INTO mk_wrap (user_id, sent) VALUES (?1, ?2) ON CONFLICT (user_id) DO UPDATE SET sent = ?2 WHERE mk_wrap.sent IS NULL OR mk_wrap.sent != ?2").bind(userId, today).run();
     if (!claim.meta?.changes) continue;
     const pounds = (v) => money(Math.abs(v), "GBP"), flat = Math.abs(total) < 1;
@@ -900,10 +905,10 @@ function shutOf(held, t) {
   const open = new Set(held.filter((r) => tradedOn(r, t)).map(placeOf));
   return [...new Set(held.filter((r) => !tradedOn(r, t)).map(placeOf))].filter((p) => p && !open.has(p));
 }
-export function wrapFigures(held, fx, t = Date.now()) {
+export function wrapFigures(held, fx, t = Date.now(), cash = 0) {
   const on = (r) => tradedOn(r, t), today = held.filter(on);
   const day = (r) => (on(r) ? (r.x.price - r.x.prev) * r.qty * fx[r.x.cur] : 0), by = [...today].sort((a, b) => day(b) - day(a));
-  const value = held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = today.reduce((a, r) => a + day(r), 0);
+  const value = (Number.isFinite(cash) && cash > 0 ? cash : 0) + held.reduce((a, r) => a + r.x.price * r.qty * fx[r.x.cur], 0), total = today.reduce((a, r) => a + day(r), 0);
   return { value, total, pct: value - total ? (total / (value - total)) * 100 : 0, top: by[0], low: by.at(-1), day, shut: shutOf(held, t) };
 }
 // For InFlite Today (functions/_todaymkt.js), in Markets' own words. The next dividend you can expect, as Markets
@@ -986,12 +991,13 @@ export function wrapIncome(inc, held, fx, t = Date.now()) {
 export async function dropMarkets(env, userId) {
   const D = await mkdb(env).catch(() => null);
   if (!D) return;
-  await D.batch(["mk_holdings", "mk_alerts", "mk_push", "mk_off", "mk_isa", "mk_wrap", "mk_buys"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
+  await D.batch(["mk_holdings", "mk_cash", "mk_alerts", "mk_push", "mk_off", "mk_isa", "mk_wrap", "mk_buys"].map((tb) => D.prepare(`DELETE FROM ${tb} WHERE user_id = ?`).bind(userId)));
 }
 // what's kept, for the account's page: how many you own and follow
 export async function marketsOf(env, userId) {
   const D = await mkdb(env).catch(() => null);
   if (!D) return { holdings: 0 };
   const r = await D.prepare("SELECT COUNT(*) AS n, SUM(qty > 0) AS owned FROM mk_holdings WHERE user_id = ?").bind(userId).first().catch(() => null);
-  return { holdings: r?.n || 0, owned: r?.owned || 0 };
+  const cash = await D.prepare("SELECT COUNT(*) AS n, SUM(amount > 0) AS owned FROM mk_cash WHERE user_id = ?").bind(userId).first();
+  return { holdings: (r?.n || 0) + (cash?.n || 0), owned: (r?.owned || 0) + (cash?.owned || 0) };
 }

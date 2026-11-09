@@ -16,7 +16,7 @@
 // W world, P portfolio, N news (j k through it, o to open one, s to send it), ? help.
 import { S, h, A, $, icon, fmt, money, signed, pct, tone, priceSaid, chgSaid, plainSym, nameOf, valueOf, dayOf, totals, owned, unpriced, leftOutSaid, rate, divsOf, paidFor, income, kindOf, KIND_SAID,
   aroundDay, INDEX_NAMES, INDICES, RANGES, openSheet, pushSheet, stockView, searchView, editView, alertView, alertSet, toast, ago, dayKey, rangeSeries, lineSaid, pricesAtSaid, whyMoving, sendInChat, meFace, youMenu, daySeries,
-  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, IFL, keepFocus } from "./app.js";
+  shareStory, copyStory, TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, IFL, keepFocus, cashPart } from "./app.js";
 
 const D = { screen: "port", view: "chart", sel: null, range: "1y", sort: { k: "value", dir: -1 }, type: "line", log: false, ma: true, bb: false, vol: true, rsi: false, macd: false, vs: null, menu: null, news: null, risk: null , nlist: "all", nsel: null };
 const VS = [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]];
@@ -228,11 +228,11 @@ function portPane() {
   const sum = h("div.dsum", {},
     h("div.pv", {}, h("small", { text: "Your portfolio" }), h("b.num", { id: "dpv", text: money(T.value) }), (() => { const ds = daySeries(); return ds ? spark(ds.vals, 120, 24, ds.base) : null; })()),
     h("div", {}, h("small", { text: "Today" }), h("b", { class: `num ${tone(T.day)}`, id: "dpd", text: `${signed(T.day)}` }), h("i", { class: `num ${tone(T.day)}`, id: "dpp", text: pct(T.dayPct) })),
-    T.back != null ? h("div", {}, h("small", { text: "Since bought" }), h("b", { class: `num ${tone(T.back)}`, text: signed(T.back, "GBP", 0) }), h("i", { class: `num ${tone(T.back)}`, text: pct(T.backPct, 1) })) : null);
+    T.back != null ? h("div", {}, h("small", { text: T.cash > 0 ? "Investment return" : "Since bought" }), h("b", { class: `num ${tone(T.back)}`, text: signed(T.back, "GBP", 0) }), h("i", { class: `num ${tone(T.back)}`, text: pct(T.backPct, 1) })) : null);
   // (and yours with no price just now, said apart, each still opened from here to change or remove)
   const own = owned(), fol = S.list.filter((x) => !(x.qty > 0)), none = unpriced();
   return h("div.dpane.port", {}, h("div.dhead", {}, h("h2", { text: "Portfolio" }), h("button.dbtn", { type: "button", onclick: () => openSheet(searchView) }, icon("plus", 14, 2.6), "Add")),
-    sum, own.length ? holdTable(own, T) : null,
+    sum, cashPart({ compact: true }), own.length ? holdTable(own, T) : null,
     none.length ? [h("h3.dsub", { text: "Not in your total" }), followTable(none), h("p.dempty", { text: leftOutSaid(none) })] : null,
     fol.length ? [h("h3.dsub", { text: "Following" }), followTable(fol)] : null);
 }

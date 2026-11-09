@@ -1,3 +1,5 @@
+import { cashEditor } from "../cashview.js";
+import { cashContext, pushSheet } from "./mkui.js";
 // Markets' module: its entry under InFlite's roof (One roof stage 2, spec §2.1, §2.5, §2.6, §4.1, §4.2, §4.7, S2-D2–D7,
 // D9, D18, D19, D21, D22). Loaded by the framework (roof/modules.js) with import("/markets/roof/markets.js") on first open
 // and kept for the life of the page.
@@ -22,9 +24,13 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.22";
-export const NEWS = "Clearer account links and less repeated text across InFlite";
+export const BUILD = "2.23";
+export const NEWS = "Cash holdings with a balance, annual interest rate and clear interest estimates";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
+
+function cashView(id) { return [cashEditor(cashContext(), id)]; }
+cashView.sheet = "cash";
+cashView.focus = "#mk-cash-amount";
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
 const DROP_AFTER = 5 * 60e3;
@@ -45,6 +51,7 @@ export async function mount(root, fw) {
     stock: (sym, o) => LAZY.stock().then((m) => m.openStock(ctx, sym, o), failed),
     addStock: (q = "") => openAdd(q),
     holding: (sym, o) => LAZY.edit().then((m) => m.openHolding(ctx, sym, o), failed),
+    cash: (id) => (Sheet.stack.length ? pushSheet : openSheet)(cashView, id),
     income: () => LAZY.money().then((m) => m.openIncome(ctx), failed),
     isa: () => LAZY.money().then((m) => m.openIsa(ctx), failed),
     vs: () => LAZY.money().then((m) => m.openVs(ctx), failed),
@@ -68,7 +75,7 @@ export async function mount(root, fw) {
     const give = (m) => { edit = m; if (input.isConnected) m.fill(input, results, q); };
     if (edit) queueMicrotask(() => give(edit));
     else LAZY.edit().then(give, () => results.replaceChildren(h("p.hint", { text: "Couldn’t get the search ready just now. Try again in a moment." })));
-    return [h("div.shead", {}, h("h2", { text: "Add a Stock" })), h("label.field", {}, icon("search", 18, 2.2), input), results];
+    return [h("div.shead", {}, h("h2", { text: "Add a Stock" })), h("button.cash-add", { type: "button", onclick: () => ctx.open.cash() }, "Add cash instead"), h("label.field", {}, icon("search", 18, 2.2), input), results];
   }
   addView.sheet = "add-stock";
   addView.focus = "input[data-k=find]";

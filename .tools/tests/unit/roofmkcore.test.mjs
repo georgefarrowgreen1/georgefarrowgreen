@@ -1,3 +1,4 @@
+import { cashTotals, cashSeries } from "../../../markets/cash.js";
 // Markets' core under the roof keeps in step with Markets' own page (One roof stage 2, spec S2-D1, S2-D2, S2-D4, S2-D9,
 // §4.2, §9.1 MK): app.js's sums (formatters, your money, income, the ISA, the day's series, the markets' state, what's
 // worth knowing, the news' groups) are taken out of markets/app.js by their own lines and run beside
@@ -44,9 +45,9 @@ function appOwn(S) {
     "taxMonths", "growthOf", "monthSaid", "aroundDay", "aroundMonth", "isaYear", "tracksIsa", "daySeries", "marketSaid", "clock", "oldSaid", "lineSaid", "pricesAtSaid", "insights", "newsKey", "aboutIt",
     "sansStop", "newsSeen", "newsGroups", "rangeSeries", "dayKey"];
   const stub = () => null;
-  const f = new Function("S", "C", "A", "h", "markDivs", "health", "project", "taxYearOf", "csv", "yearDivs", "yearOn", "storiesOf", "openSheet", "incomeView", "isaView", "go",
+  const f = new Function("S", "C", "A", "h", "markDivs", "health", "project", "taxYearOf", "csv", "yearDivs", "yearOn", "storiesOf", "openSheet", "incomeView", "isaView", "go", "cashTotals", "cashSeries",
     `${src}\nreturn { ${names.join(", ")} };`);
-  return f(S, C, core.A, stub, INC.marked, INC.health, INC.project, INC.taxYearOf, INC.csv, INC.yearDivs, INC.yearOn, storiesOf, stub, stub, stub, stub);
+  return f(S, C, core.A, stub, INC.marked, INC.health, INC.project, INC.taxYearOf, INC.csv, INC.yearDivs, INC.yearOn, storiesOf, stub, stub, stub, stub, cashTotals, cashSeries);
 }
 // both on the same account: core.S filled in place, app.js's S a copy
 function both(acc = account()) {
@@ -122,6 +123,27 @@ test("a range's series: what you own now through the week, from each holding's c
   const t0 = Math.floor(Date.now() / 1000) - 5 * 86400, chart = (p) => ({ t: Array.from({ length: 6 }, (_, i) => t0 + i * 86400), c: Array.from({ length: 6 }, (_, i) => p * (1 + i / 100)) });
   for (const x of core.S.list) { const q = core.S.q[x.symbol]; if (q) { core.S.charts.set(`${x.symbol}:5d`, { at: Date.now(), c: chart(q.price) }); S.charts.set(`${x.symbol}:5d`, { at: Date.now(), c: chart(q.price) }); } }
   assert.deepEqual(plain(await core.rangeSeries("5d")), plain(await app.rangeSeries("5d")));
+});
+
+test("cash counts in value, allocation and charts while estimated interest stays out of recorded gains", () => {
+  const acc = account(), { app, S } = both(acc), before = core.totals(), chart = core.daySeries();
+  const cash = [{ id: "00000000-0000-4000-8000-000000000001", name: "Savings", amount: 12000, rate: 4, account: "isa" }];
+  core.S.cash = structuredClone(cash); S.cash = structuredClone(cash);
+  const after = core.totals();
+  assert.equal(after.value, before.value + 12000); assert.equal(after.cash, 12000); assert.equal(after.interest, 480);
+  assert.equal(after.back, before.back); assert.equal(after.day, before.day);
+  assert.equal(after.dayPct, before.day / (after.value - before.day) * 100);
+  assert.deepEqual(plain(after), plain(app.totals()));
+  assert.equal(core.byAccount().reduce((a, x) => a + x.value, 0), after.value);
+  assert.equal(core.S.isa.paid, acc.isa.paid, "cash balance is not an ISA contribution");
+  const plotted = core.daySeries(); assert.equal(plotted.base, chart.base + 12000);
+  for (let i = 0; i < chart.vals.length; i++) assert.ok(Math.abs(plotted.vals[i] - chart.vals[i] - 12000) < 1e-8);
+  assert.deepEqual(plain(plotted), plain(app.daySeries()));
+  for (const q of Object.values(core.S.q)) q.sparkT = [];
+  assert.equal(core.daySeries(), null, "missing investment history must not become a chart of cash alone");
+  core.S.list = []; S.list = [];
+  assert.equal(core.totals().value, 12000); assert.deepEqual(core.daySeries().vals, [12000, 12000]);
+  assert.equal(core.portfolioSend(), null, "cash amounts and estimated interest never enter a share card");
 });
 
 // ---- the life of it: start, shown, stop ----
