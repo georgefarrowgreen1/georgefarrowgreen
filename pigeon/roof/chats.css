@@ -29,8 +29,8 @@
 .m-chats .ch-row .ifl-avatar { flex: none; width: 44px; height: 44px; font-size: 18px; }
 .m-chats .ch-rtext { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .m-chats .ch-rtop, .m-chats .ch-rbot { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.m-chats .ch-rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 16px; }
-.m-chats .ch-rtime { flex: none; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.m-chats .ch-rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 16px; }
+.m-chats .ch-rtime { flex: none; color: var(--text-3); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .m-chats .ch-rline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 14.5px; }
 .m-chats .ch-row.unread .ch-rname, .m-chats .ch-row.unread .ch-rline { color: var(--text); }
 .m-chats .ch-row.unread .ch-rtime { color: var(--acc-ink); font-weight: 600; }
@@ -163,3 +163,6 @@
 .m-chats .ch-voice { width: 40px; height: 44px; background: none; }
 .m-chats .ch-input { min-height: 44px; padding: 11px 0 11px 14px; font-size: 16px; }
 .m-chats .ch-attach, .m-chats .ch-send { width: 44px; height: 44px; }
+
+.m-chats .ch-row.unread .ch-rname { font-weight: 700; }
+.m-chats .ch-row.unread .ch-rline { font-weight: 500; }
