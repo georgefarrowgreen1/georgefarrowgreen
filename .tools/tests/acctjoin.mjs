@@ -57,7 +57,7 @@ const V = await browser('visitor');
 await open(V, `${ACCT}/`);
 await waitText(V, /Use your password/); await V.p.waitForTimeout(2500);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /Use your password/.test(signin) && !(await V.p.isVisible('main .signin input[name=password]')) && /Have an invite\? Join InFlite/.test(signin) && !/Create your account/.test(signin),
+ok(/Sign in with a passkey/.test(signin) && /Use your password/.test(signin) && !(await V.p.isVisible('main .signin input[name=password]')) && /Use an invite/.test(signin) && !/Create an account/.test(signin),
   'signed out: the shared sign-in frame, password fallback and invitation entry; no open signup form', signin.slice(-160));
 await usePassword(V.p);
 ok(await V.p.getByRole('button', { name: 'Forgot password?', exact: true }).isVisible(), 'password disclosure keeps recovery available');
@@ -126,7 +126,7 @@ ok(count(`SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id = '${ivy.id}' AND 
 // ---- 5. Forgot password, on the account's page: a link by email; kept her key with the passkey ----
 const R = await browser('reset');
 await open(R, `${ACCT}/#forgot`);
-ok(/Forgot your password\?/.test(await text(R)) && /Remembered it\? Sign in/.test(await text(R)), 'Forgot password: its own card', await text(R));
+ok(/Forgot your password\?/.test(await text(R)) && await R.p.getByRole('button', { name: /^(Back to sign in|Sign in)$/ }).count() === 1, 'Forgot password: its own card with one way back', await text(R));
 await R.p.fill('main input[name=email]', 'nobody@example.com'); await R.p.click('main .signin form .btn'); await R.p.waitForSelector('main .sent', { timeout: 15000 });
 const saysNobody = await text(R, 'main .sent');
 await open(R, `${ACCT}/#forgot`);

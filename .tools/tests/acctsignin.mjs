@@ -59,8 +59,8 @@ ok(l1?.email === 'rowan@example.com' && l1.name === 'Rowan Hale' && l1.handle ==
 ok(await signOut(A), 'signing out: dusk over the sky');
 await A.p.waitForSelector('main .signin.remembered', { timeout: 10000 }).catch(() => {});
 const r1 = await text(A);
-ok(/Welcome back, Rowan/.test(r1) && /rowan@example\.com/.test(r1) && /Forget rowan@example\.com on this device/.test(r1) && !(await A.p.$('main .signin input[name=email]')),
-  'signed out: "Welcome back, Rowan", no email to type, and Forget … on this device', r1.slice(0, 160));
+ok(/Welcome back, Rowan/.test(r1) && /rowan@example\.com/.test(r1) && /Use another account/.test(r1) && await A.p.locator('.signin-switch button').count() === 1 && !(await A.p.$('main .signin input[name=email]')),
+  'signed out: remembered identity, no email to type, and one account-switch action', r1.slice(0, 160));
 await shot(A, '01-remembered');
 // the password field: its eye, and Caps Lock said before a password typed in capitals is wrong
 await A.p.fill('main .signin input[name=password]', 'wrong one entirely');
@@ -86,7 +86,7 @@ await A.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await A.p.$('main .hero')) && await A.p.evaluate(() => window.__dawn), 'the password alone signs you back in, as dawn breaks over the sky');
 await signOut(A);
 await A.p.click('main .notyou'); await usePassword(A.p);
-ok(!!(await A.p.$('main .signin input[name=email]')) && !(await last(A)) && /Sign in to InFlite/.test(await text(A)), 'Not you?: forgotten, and the usual sign-in');
+ok(!!(await A.p.$('main .signin input[name=email]')) && !(await last(A)) && await A.p.locator('h1').innerText() === 'Sign in', 'Not you?: forgotten, and the usual sign-in');
 
 // ---- 2. A passkey in the keyboard: asked for as the card's drawn; the passkey button still works past it ----
 const autofill = await A.p.evaluate(() => PublicKeyCredential.isConditionalMediationAvailable?.());
@@ -129,6 +129,7 @@ ok(!!(await B.p.$('main .hero')) && /Rowan Hale/.test(await text(B)), 'the passk
 
 // ---- 5. The passkey button, past the keyboard's ask (still waiting, in A, which has no passkey here): asked for
 // itself, rather than refused as one ask too many ----
+await A.p.getByRole('button', { name: 'Use your passkey instead', exact: true }).click();
 await A.p.click('main .signin .btn:has-text("Sign in with a passkey")');
 const none = await A.p.waitForSelector('main .said[role=status]:not(.bad):has-text("No passkey was used")', { timeout: 20000 }).then((e) => e.innerText(), () => '');
 ok(/No passkey was used/.test(none), 'Sign in with a passkey, with the keyboard\'s ask waiting: that put away, and the passkey asked for', none);

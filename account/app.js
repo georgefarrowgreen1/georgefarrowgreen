@@ -1154,8 +1154,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.12";
-const NEWS = "A simpler sign-in, a password when you need it, and calmer feedback";
+const BUILD = "2.13";
+const NEWS = "Fewer repeated sign-in controls and a cleaner recovery flow";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2557,8 +2557,7 @@ function signedOut(r) {
     : needInvite ? (S.invite ? ["That invite didn’t work", `${S.join.error || "It may have been used already, or have run out."} Ask for a new one, or paste another below.`] : ["You’ll need an invite", "Open the link you were sent, or paste it below."])
     : ["Create your account", to ? `One account for every app. Once it’s ready, you’re back in ${to}.` : "One account for all your InFlite apps."];
   return authPage(r, { state: mode, title: head[0], description: head[1], mark: icon(mode === "forgot" ? "key" : "mail", 26, 1.8),
-    content: mode === "join" ? joinCard() : forgotCard(), back: authBack(),
-    footer: h("p.foot.new", {}, mode === "join" ? "Already have an account? " : "Remembered it? ", h("button.link", { type: "button", onclick: () => gate("signin") }, "Sign in")) });
+    content: mode === "join" ? joinCard() : forgotCard(), back: authBack() });
 }
 // The two sign-in states share one responsive frame; phone sign-in opens only when requested.
 function signinScreen(r, last, to, phoneFirst = false) {
@@ -2571,17 +2570,17 @@ function signinScreen(r, last, to, phoneFirst = false) {
   } }, qr ? "Use a password or passkey instead" : "Sign in with your phone");
   if (qr) { card.setAttribute("tabindex", "-1"); card.setAttribute("aria-label", "Sign in with your phone"); }
   return authPage(r, { state: qr ? "phone" : phoneFirst ? "phone-first" : "signin",
-    title: qr ? "Sign in with your phone" : phoneFirst ? "Sign in on this phone first" : last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in to InFlite",
+    title: qr ? "Sign in with your phone" : phoneFirst ? "Sign in on this phone first" : last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in",
     description: phoneFirst ? "Then you can approve the computer that showed the code." : qr ? "Use a phone that’s already signed in." : last ? last.email : "One account for all your apps.",
     identity: !qr && last ? avatar(last, true) : null, content: card,
-    footer: qr ? phone : [last ? h("div.signin-switch", {}, notYouLine(), S.left && forgetLine(last)) : joinLine(), phone] });
+    footer: qr ? phone : [last ? h("div.signin-switch", {}, notYouLine()) : joinLine(), phone] });
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
 // nothing said: the line kept, empty)
 function joinLine() {
   const open = S.join?.open || S.join?.ok;
-  return h("p.signin-join", { id: "joinline" }, open ? "New here? " : "Have an invite? ",
-    h("button.link", { type: "button", onclick: () => gate("join") }, open ? "Create your account" : "Join InFlite"));
+  return h("p.signin-join", { id: "joinline" },
+    h("button.link", { type: "button", onclick: () => gate("join") }, open ? "Create an account" : "Use an invite"));
 }
 // The sign-in page, signed in: who, while a computer's code is asked about (a sheet over this), with the way to the account
 function authHome(r) {
@@ -2801,7 +2800,7 @@ function signinCard(refined = false) {
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), refined && forgot, go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon(refined ? "key" : "face", 21, 1.9), "Sign in with a passkey");
   if (pk) passkeySoon();
-  startAutofill(email, (o, a) => withPasskey(pk || go, said, () => passkeySignedIn(o, a)));
+  startAutofill(email, (o, a) => withPasskey(pk?.hidden ? go : pk || go, said, () => passkeySignedIn(o, a)));
   const hint = pk && refined && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." });
   const pwBox = refined && h("div.pwbox", { hidden: !!pk, id: "signin-password" }, form);
   const card = h("div.signin.glass", {}, pk, hint, pk && !refined && h("div.or", { text: "or with your email" }), pwBox || form,
@@ -2822,7 +2821,7 @@ function rememberedCard(l, refined = false) {
   const hint = refined && byKey && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." });
   const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
     icon(refined ? "key" : "face", 21, 1.9), byKey ? (refined ? "Continue with a passkey" : "Continue with your passkey") : "Sign in with a passkey");
-  if (can) startAutofill(pw, (o, a) => withPasskey(key, said, () => passkeySignedIn(o, a)));
+  if (can) startAutofill(pw, (o, a) => withPasskey(key.hidden ? go : key, said, () => passkeySignedIn(o, a)));
   if (byKey) passkeySoon(l.id);
   const card = h("div.signin.glass.remembered", {},
     !refined && byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
@@ -2839,7 +2838,7 @@ function passwordChoice(card, pwBox, input, key, go, hint, said, refined = true)
     morph(card, () => {
       pwBox.hidden = !open; b.textContent = open ? "Use your passkey instead" : label; b.setAttribute("aria-expanded", String(open));
       if (hint) hint.hidden = open;
-      key.classList.toggle("quiet", open); go.classList.toggle("quiet", !open);
+      key.hidden = open; go.classList.toggle("quiet", !open);
       said.textContent = ""; said.classList.remove("bad"); said.setAttribute("role", "status");
     });
     if (open) input.focus(); else key.focus({ preventScroll: true });
@@ -2848,11 +2847,6 @@ function passwordChoice(card, pwBox, input, key, go, hint, said, refined = true)
 // (not you: that account forgotten here, and the usual sign-in)
 function notYouLine() {
   return h("p.foot.new", {}, "Not you? ", h("button.link.notyou", { type: "button", onclick: () => { forget(); stopAutofill(); anew(() => { S.settled = false; render(); }); } }, "Use another account"));
-}
-// (just signed out here, as on a computer that isn't yours: the same, said as what it does, as an app's way out says it)
-function forgetLine(l) {
-  return h("p.foot.new", {}, h("button.link.notyou", { type: "button", onclick: () => { forget(); stopAutofill(); S.left = false; anew(() => { S.settled = false; render(); toast(`This browser has forgotten ${l.email}.`); }); } },
-    `Forget ${l.email} on this device`));
 }
 // Signed out on a computer: a QR code, to scan with a phone that's signed in (functions/_qrsign.js), beside the usual
 // way. A new one every two minutes, five in a row at most before it waits to be asked for another (a page left open
@@ -3118,14 +3112,15 @@ function forgotCard() {
     try {
       const response = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
       morph(box, () => {
-        updateAuthScreen(box, { state: "email-sent", title: "Check your email", description: "The link works once, for an hour." });
+        updateAuthScreen(box, { state: "email-sent", title: "Check your email", description: "The link works once, for an hour.", back: null });
         box.replaceChildren(h("div.sent", {}, h("p", { role: "status", text: response.message })),
           h("button.btn", { type: "button", onclick: () => gate("signin") }, "Back to sign in"),
           h("button.btn.quiet", { type: "button", onclick: () => {
-            updateAuthScreen(box, { state: "forgot", title: "Forgot your password?", description: "We’ll email you a link to choose a new one. It works once, for an hour." });
+            updateAuthScreen(box, { state: "forgot", title: "Forgot your password?", description: "We’ll email you a link to choose a new one. It works once, for an hour.", back: authBack() });
             draw(); email.focus();
           } }, "Change email address"));
       });
+      box.querySelector("button.btn")?.focus({ preventScroll: true });
     } catch (err) { say(said, err.message, email); }
   } }, field("Email", email), go);
   const draw = () => box.replaceChildren(form, h("p.hint", { text: "A compatible passkey may help you keep your Chat messages when you reset your password." }), said);
@@ -3151,8 +3146,7 @@ function resetPage(r) {
   if (R.error && R.away) return authPage(r, { state: "link-unavailable", title: "Can’t check this link", description: R.error, mark: icon("key", 26, 1.8),
     content: h("button.btn", { type: "button", onclick: (e) => busy(e.currentTarget, "Checking…", () => resetCheck(true)) }, "Try again") });
   if (R.error) return authPage(r, { state: "link-invalid", title: "This link won’t work", description: R.error, mark: icon("key", 26, 1.8), back: authBack(),
-    content: [h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
-      h("button.btn.quiet", { type: "button", onclick: () => { S.reset = null; gate("signin"); } }, "Sign in")] });
+    content: h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link") });
   const said = h("p.said", { role: "alert" });
   const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp }), { meter, hint } = rated(pw);
   const canKeep = info.passkeys.length > 0 && passkeysWork(), other = S.me?.signedIn && S.me.handle !== info.handle;

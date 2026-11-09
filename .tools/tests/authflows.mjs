@@ -51,6 +51,7 @@ async function frame(x,state,label){
  const result=await x.p.evaluate(()=>{const panel=document.querySelector('.auth-panel'),r=panel.getBoundingClientRect();return{overflow:document.documentElement.scrollWidth>innerWidth+1,left:r.left,right:r.right,width:innerWidth,headings:document.querySelectorAll('main h1').length,brand:document.querySelectorAll('.signin-brand').length,labels:[...document.querySelectorAll('main input:not(.vh)')].filter(e=>e.getClientRects().length).every(e=>e.labels?.length||e.getAttribute('aria-label'))}});
  if(result.overflow||result.left< -1||result.right>result.width+1){console.log(JSON.stringify({label,result,nodes:await x.p.evaluate(()=>[...document.body.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right,wrap:getComputedStyle(e).overflowWrap})).slice(-14))}));if(engine==='chromium')await x.p.screenshot({path:`${out}/failed-${label}.png`,caret:'initial',fullPage:true});}
  ok(!result.overflow&&result.left>=-1&&result.right<=result.width+1,`${label}: card fits`);ok(result.headings===1&&result.brand===1,`${label}: one title and brand`);ok(result.labels,`${label}: fields labelled`);
+ if(['forgot','join','email-sent','link-invalid'].includes(state))ok(await x.p.getByRole('button',{name:/^(Back to sign in|Sign in)$/}).count()===1,`${label}: one way back to sign in`);
  assert.deepEqual(x.errors,[]);assert.deepEqual(await x.p.evaluate(()=>window.__violations||[]),[]);checks+=2;
  if(engine==='chromium')await x.p.screenshot({path:`${out}/${label}.png`,caret:'initial',fullPage:true});
 }
@@ -64,11 +65,12 @@ try{
    ok((await x.p.locator('.signin-destination').innerText()).includes('Weather'),'recovery retains destination');
    await x.p.getByLabel('Email',{exact:true}).fill('sam@example.com');await x.p.getByRole('button',{name:'Email me a link',exact:true}).click();
    await frame(x,'email-sent',`email-sent-${width}-${scheme}`);
+   ok(await x.p.getByRole('button',{name:'Back to sign in',exact:true}).evaluate(el=>el===document.activeElement),'email confirmation focuses its single return action');
    await x.p.getByRole('button',{name:'Change email address',exact:true}).click();await frame(x,'forgot',`email-edit-${width}-${scheme}`);
    ok(await x.p.getByLabel('Email',{exact:true}).inputValue()==='sam@example.com','editing keeps entered email');
    await x.p.getByRole('button',{name:'Back to sign in',exact:true}).click();await frame(x,'signin',`return-${width}-${scheme}`);
    ok(await x.p.evaluate(()=>!!document.activeElement.closest('.signin')&&document.activeElement.getClientRects().length>0),'returning from recovery focuses a visible sign-in control');
-   await x.p.getByRole('button',{name:'Join InFlite',exact:true}).click();await frame(x,'join',`invite-${width}-${scheme}`);
+   await x.p.getByRole('button',{name:'Use an invite',exact:true}).click();await frame(x,'join',`invite-${width}-${scheme}`);
   }finally{await x.ctx.close();}
  }
  for(const [state,opts] of [

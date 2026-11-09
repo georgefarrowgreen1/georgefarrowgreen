@@ -15,6 +15,10 @@ browsers without passkey support get the password form directly. Both disclosure
 their values, expose their expanded state, and move focus into the chosen method. Sign-in feedback reserves one
 line; a dismissed passkey is a neutral status, while credential and service failures remain alerts.
 
+Password mode hides the passkey action and retains one control to return to passkey mode. Recovery, signup and
+invalid-link screens have one return to sign-in; email confirmation uses its main return action, restoring the
+header control when editing the email. A remembered account has one switch-account action, which forgets it locally.
+
 The same frame covers sign-in, remembered accounts, invites, signup, recovery and email sent, reset-link loading,
 invalid/unavailable links, password reset, phone sign-in, Chat unlock, account continuation, sign-out confirmation
 and completion, account deletion states, and account security links.

@@ -27,11 +27,16 @@ export function authScreen({ state, title, description, content, footer, back, d
 }
 
 // A form can complete in place without replacing the frame, losing its destination or replaying the brand.
-export function updateAuthScreen(from, { state, title, description }) {
+export function updateAuthScreen(from, { state, title, description, back }) {
   const panel = from.closest(".auth-panel");
   if (!panel) return;
   if (state) panel.dataset.authState = state;
   if (title) panel.querySelector("h1").textContent = title;
+  if (back !== undefined) {
+    const header = panel.closest(".auth-shell").querySelector(".signin-header");
+    header.querySelector(".backapp")?.remove();
+    if (back) header.append(back);
+  }
   if (description != null) {
     const heading = panel.querySelector(".auth-heading");
     let lead = heading.querySelector(".signin-lead");

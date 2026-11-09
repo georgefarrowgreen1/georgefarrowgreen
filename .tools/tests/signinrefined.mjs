@@ -11,28 +11,39 @@ const errors = [];
 const destination = 'https://auth.inflite.ai/#signin=weather&ask=' + 'a'.repeat(43) + '&back=' + encodeURIComponent('https://weather.inflite.ai/');
 let checks = 0;
 const ok = (value, message) => { assert.ok(value, message); checks++; };
-async function open({ width = 1440, height = 1000, mobile = false, last = null, colorScheme = 'dark', passkeys = true, cancel = false, reducedMotion = 'reduce', url = destination } = {}) {
+async function open({ width = 1440, height = 1000, mobile = false, last = null, colorScheme = 'dark', passkeys = true, cancel = false, autofill = false, reducedMotion = 'reduce', url = destination } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, isMobile: mobile, hasTouch: mobile, colorScheme, reducedMotion });
-  await ctx.addInitScript(({ last, passkeys }) => {
+  await ctx.addInitScript(({ last, passkeys, autofill }) => {
     globalThis.SIGNIN_PAGE = true;
     if (last) localStorage.setItem('acct:last', JSON.stringify(last));
     if (!passkeys) Object.defineProperty(window, 'PublicKeyCredential', { value: undefined });
     else {
       if (!window.PublicKeyCredential) Object.defineProperty(window, 'PublicKeyCredential', { value: class {}, configurable: true });
-      PublicKeyCredential.isConditionalMediationAvailable = async () => false;
+      PublicKeyCredential.isConditionalMediationAvailable = async () => autofill;
       if (!navigator.credentials) Object.defineProperty(navigator, 'credentials', { value: {}, configurable: true });
-      navigator.credentials.get = async () => { throw new DOMException('Cancelled', 'NotAllowedError'); };
+      navigator.credentials.get = async options => {
+        if (autofill && options.mediation === 'conditional') return new Promise(resolve => {
+          window.__pickPasskey = () => resolve({ id: 'a'.repeat(43), response: { clientDataJSON: new Uint8Array([0]).buffer, authenticatorData: new Uint8Array([0]).buffer, signature: new Uint8Array([0]).buffer } });
+        });
+        throw new DOMException('Cancelled', 'NotAllowedError');
+      };
     }
-  }, { last, passkeys });
+  }, { last, passkeys, autofill });
   let qrCalls = 0;
+  let releaseAutofill;
+  const autofillGate = new Promise(resolve => releaseAutofill = resolve);
   await ctx.route('**/*', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.startsWith('/api/')) {
+      if (path === '/api/account/signin/passkey' && autofill) {
+        await autofillGate;
+        return route.fulfill({ status: 503, json: { error: 'Test service unavailable' } });
+      }
       if (path === '/api/account/signin/qr') qrCalls++;
-      const data = path.endsWith('/signin/options') && cancel ? { challenge: 'a'.repeat(43), rpId: 'inflite.ai' } : path.endsWith('/me') ? { signedIn: false } : path.endsWith('/join') ? { open: false, ok: false }
+      const data = path.endsWith('/signin/options') && (cancel || autofill) ? { challenge: 'a'.repeat(43), rpId: 'inflite.ai' } : path.endsWith('/me') ? { signedIn: false } : path.endsWith('/join') ? { open: false, ok: false }
         : path.endsWith('/signin/qr') ? { code: 'a'.repeat(32), poll: 'b'.repeat(43), ttl: 120000 }
         : path.endsWith('/signin/qr/wait') ? { state: 'waiting' } : { error: 'Test service unavailable' };
-      return route.fulfill({ status: path.includes('options') && !cancel ? 503 : 200, contentType: 'application/json', body: JSON.stringify(data) });
+      return route.fulfill({ status: path.includes('options') && !(cancel || autofill) ? 503 : 200, contentType: 'application/json', body: JSON.stringify(data) });
     }
     const shared = { '/apps/weather.png': 'weather/icon-180.png', '/qr.js': 'pigeon/qr.js' };
     let rel = shared[path] || (path === '/' ? 'account/index.html' : path === '/crypto.js' ? 'pigeon/crypto.js'
@@ -47,7 +58,7 @@ async function open({ width = 1440, height = 1000, mobile = false, last = null, 
   await p.goto(url);
   await p.waitForSelector('.signin-main .signin-panel, .signout-complete');
   await p.waitForTimeout(150);
-  return { ctx, p, qrCalls: () => qrCalls };
+  return { ctx, p, qrCalls: () => qrCalls, releaseAutofill };
 }
 async function layout(p, label) {
   const m = await p.evaluate(() => {
@@ -66,13 +77,15 @@ try {
   for (const mobile of [false, true]) {
     const { ctx, p, qrCalls } = await open({ width: mobile ? 390 : 1440, height: mobile ? 844 : 1000, mobile });
     await layout(p, mobile ? 'mobile' : 'desktop');
-    ok(await p.locator('h1').innerText() === 'Sign in to InFlite', 'first sign-in title');
+    ok(await p.locator('h1').innerText() === 'Sign in', 'brand is not repeated in the sign-in title');
     ok(await p.locator('.signin-destination').count() === 0, 'destination is named once in the header');
     ok(await p.getByLabel('Email', { exact: true }).isHidden(), 'first view keeps password form collapsed');
     ok(qrCalls() === 0, 'QR is not requested before choosing phone sign-in');
     if (engine === 'chromium') await p.screenshot({ path: `${out}/signin-${mobile ? 'mobile' : 'desktop'}.png`, fullPage: true, caret: 'initial' });
     await p.getByRole('button', { name: 'Use your password', exact: true }).click();
     ok(await p.getByLabel('Email', { exact: true }).evaluate(el => el === document.activeElement), 'password disclosure focuses email');
+    ok(await p.getByRole('button', { name: /passkey/ }).count() === 1, 'password mode has one passkey option');
+    ok(await p.getByRole('button', { name: 'Sign in with a passkey', exact: true }).count() === 0, 'password mode hides the duplicate passkey button');
     await p.getByLabel('Email', { exact: true }).fill('george@example.com');
     await p.getByLabel('Password', { exact: true }).fill('example-password');
     await p.getByRole('button', { name: 'Show password', exact: true }).click();
@@ -91,7 +104,7 @@ try {
       ok(qrCalls() > 0 || await p.locator('#qrc').count() === 1, 'phone sign-in opens on request');
       await p.getByRole('button', { name: 'Use a password or passkey instead', exact: true }).click();
       await p.waitForSelector('.signin-panel input[name=email]', { state: 'attached' });
-      ok(await p.locator('h1').innerText() === 'Sign in to InFlite', 'return from phone sign-in');
+      ok(await p.locator('h1').innerText() === 'Sign in', 'return from phone sign-in');
     } else ok(await p.locator('.signin-phone').count() === 0, 'mobile omits desktop phone action');
     if (await p.getByLabel('Password', { exact: true }).isHidden()) await p.getByRole('button', { name: 'Use your password', exact: true }).click();
     await p.getByRole('button', { name: 'Forgot password?', exact: true }).click();
@@ -113,6 +126,7 @@ try {
     await p.getByRole('button', { name: 'Use your password', exact: true }).click();
     ok(await p.locator('#signin-password').isVisible(), 'password fallback reveals form');
     ok(await p.locator('input[name=password]').evaluate(el => el === document.activeElement), 'password fallback focuses input');
+    ok(await p.getByRole('button', { name: /passkey/ }).count() === 1, 'remembered password mode has one passkey option');
     await p.getByRole('button', { name: 'Use another account', exact: true }).click();
     await p.waitForSelector('input[name=email]', { state: 'attached' });
     ok(await p.evaluate(() => localStorage.getItem('acct:last')) === null, 'switching accounts forgets remembered account');
@@ -149,9 +163,29 @@ try {
   await unavailable.p.locator('.signin-feedback.bad').waitFor();
   ok(await unavailable.p.locator('.signin-feedback').getAttribute('role') === 'alert', 'service failures still show as errors');
   await unavailable.ctx.close();
+  for (const remembered of [false, true]) {
+    const { ctx, p, releaseAutofill } = await open({ width: 390, mobile: true, last: remembered ? last : null, autofill: true });
+    try {
+      await p.getByRole('button', { name: 'Use your password', exact: true }).click();
+      await p.waitForFunction(() => typeof window.__pickPasskey === 'function');
+      await p.evaluate(() => window.__pickPasskey());
+      const go = p.locator('.signin form button[type=submit]');
+      await p.locator('.signin form button.working').waitFor();
+      ok(await go.getAttribute('aria-busy') === 'true' && await go.isVisible(), 'passkey autofill shows progress on the visible form button');
+      releaseAutofill();
+      await p.locator('.signin-feedback.bad').waitFor();
+      ok(await go.isEnabled() && await go.isVisible(), 'autofill failure restores the visible sign-in control');
+      ok(await p.getByRole('button', { name: /passkey/ }).count() === 1, 'autofill does not reintroduce a duplicate passkey action');
+    } finally { releaseAutofill(); await ctx.close(); }
+  }
   const knownPassword = await open({ last: { ...last, way: 'password' } });
   ok(await knownPassword.p.getByLabel('Password', { exact: true }).isVisible(), 'remembered password user goes straight to password');
   await knownPassword.ctx.close();
+  const rememberedOut = await open({ last, url: 'https://auth.inflite.ai/#signout=account' });
+  ok(await rememberedOut.p.locator('.signin-switch button').count() === 1, 'signed-out remembered account has one account-switch action');
+  await rememberedOut.p.getByRole('button', { name: 'Use another account', exact: true }).click();
+  ok(await rememberedOut.p.evaluate(() => localStorage.getItem('acct:last')) === null, 'one account-switch action still forgets the saved account');
+  await rememberedOut.ctx.close();
   for (const mobile of [false, true]) {
     const { ctx, p } = await open({ width: mobile ? 390 : 1440, height: mobile ? 844 : 1000, mobile, colorScheme: 'light', last,
       url: 'https://auth.inflite.ai/#signout=today&back=' + encodeURIComponent('https://inflite.ai/') });
