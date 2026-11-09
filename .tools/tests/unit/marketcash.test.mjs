@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { cashInput, cashTotals, cashNumber, cashSeries, MAX_CASH } from "../../../markets/cash.js";
+import { cashInput, cashTotals, cashNumber, cashSeries, cashRows, cashBands, cashInterest, MAX_CASH } from "../../../markets/cash.js";
 import { createCashStore } from "../../../markets/cash-store.js";
 import { cashHoldings, putCash, dropCash } from "../../../functions/_marketcash.js";
 import { db, issueSession, hex, sha256 } from "../../../functions/_pigeon.js";
@@ -22,6 +22,21 @@ test("cash validates real amounts/rates, accepts zero, and keeps forecasts separ
   assert.deepEqual(cashTotals(rows), { amount: 20000, annual: 480, monthly: 40 }); assert.deepEqual(rows, before, "forecast never accrues into the balance");
   assert.deepEqual(cashTotals(null), { amount: 0, annual: 0, monthly: 0 }); assert.equal(cashTotals([holding(1, { amount: -1 })]).amount, 0);
   const series = cashSeries(12000, "1y", 1800000000); assert.equal(series.T[1] - series.T[0], 365 * 86400); assert.deepEqual(series.vals, [12000, 12000]);
+});
+
+test("tiered savings apply each rate only to its band, including balances below and exactly at the limit", () => {
+  const row = holding(700, { amount: 10000, rate: 3.96, tier: { limit: 5000, rate: 0.7 } });
+  assert.equal(cashInterest(row), 233); assert.equal(cashTotals([row]).monthly.toFixed(2), "19.42");
+  assert.deepEqual(cashBands(row), [{ amount: 5000, rate: 3.96 }, { amount: 5000, rate: 0.7 }]);
+  for (const [amount, annual] of [[0, 0], [1000, 39.6], [5000, 198], [5001, 198.007], [12000, 247]]) assert.ok(Math.abs(cashInterest({ ...row, amount }) - annual) < 1e-9);
+  assert.equal(cashInterest({ ...row, tier: { limit: 5000, rate: 0 } }), 198);
+  assert.equal(cashInterest({ ...row, rate: 0 }), 35);
+  assert.equal(cashInterest({ ...row, tier: { limit: 5000, rate: 5 } }), 448, "second band may also have a higher rate");
+  assert.equal(cashTotals([row, holding()]).annual, 713);
+  assert.deepEqual(cashRows([row])[0].tier, row.tier, "bands survive the account cache and shared store");
+  for (const tier of [false, "5000", [], {}, { limit: 0, rate: 1 }, { limit: -1, rate: 1 }, { limit: 1.005, rate: 1 }, { limit: 1e12 + 1, rate: 1 }, { limit: "5000", rate: 1 }, { limit: 5000, rate: -1 }, { limit: 5000, rate: "0.7" }, { limit: 5000, rate: NaN }, { limit: 5000, rate: 101 }, { limit: 5000, rate: 0.12345 }]) assert.throws(() => cashInput({ ...row, tier }), /limit|rate/);
+  assert.deepEqual(cashBands({ ...row, tier: { limit: -1, rate: 10 } }), []);
+  assert.equal(cashInput({ ...row, tier: null }).tier, null, "explicitly returning to one rate is supported");
 });
 
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
@@ -46,7 +61,15 @@ const sql = new DatabaseSync(":memory:"), val = (a) => a.map((x) => x === undefi
 const stmt = (q, args = []) => ({ bind: (...a) => stmt(q, a), first: async () => sql.prepare(q).get(...val(args)) ?? null,
   all: async () => ({ results: sql.prepare(q).all(...val(args)), meta: {} }), run: async () => ({ meta: { changes: Number(sql.prepare(q).run(...val(args)).changes) } }) });
 const env = { DB: { prepare: (q) => stmt(q), batch: async (list) => { sql.exec("BEGIN"); try { const out = []; for (const s of list) out.push(await s.all()); sql.exec("COMMIT"); return out; } catch (e) { sql.exec("ROLLBACK"); throw e; } } } };
-await db(env); await mkdb(env);
+await db(env);
+// Upgrade the actual previous schema with a kept balance; an additive migration must preserve it.
+sql.exec("CREATE TABLE mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, rate REAL NOT NULL, account TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (user_id, id))");
+sql.prepare("INSERT INTO mk_cash VALUES ('legacy', ?, 'Kept savings', 12000, 4, NULL, 100, 100)").run(id(999));
+await mkdb(env);
+test("adding tiered savings preserves existing single-rate balances", async () => {
+  const [row] = await cashHoldings(env, "legacy");
+  assert.equal(row.name, "Kept savings"); assert.equal(row.amount, 12000); assert.equal(row.rate, 4); assert.equal(row.tier, null); assert.equal(row.updated, 100); assert.equal(cashInterest(row), 480);
+});
 const tokens = {};
 for (const user of ["ann", "bo"]) {
   sql.prepare("INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?, ?, ?, ?, '{}', 's', 'p', 'v', 9, 0, ?)").run(user, user, user, user + "@example.com", Date.now());
@@ -78,6 +101,20 @@ test("cash retries are idempotent; stale changes and deleted holdings cannot ove
   await assert.rejects(putCash(env, "ann", { ...row, amount: 9 }), (e) => e.status === 409);
   await assert.rejects(dropCash(env, "bo", id(2)), (e) => e.status === 404);
   await dropCash(env, "ann", id(2)); await assert.rejects(putCash(env, "ann", { ...next, amount: 11 }), (e) => e.status === 409);
+});
+test("tiered cash persists, validates both bands, protects against older clients and supports returning to a single rate", async () => {
+  const input = holding(700, { amount: 10000, rate: 3.96, tier: { limit: 5000, rate: 0.7 } });
+  let response = await request("PUT", "ann", input); assert.equal(response.status, 200);
+  let row = (await response.json()).cash.find((x) => x.id === input.id); assert.deepEqual(row.tier, input.tier); assert.equal(cashInterest(row), 233);
+  assert.deepEqual((await putCash(env, "ann", input)).find((x) => x.id === input.id).tier, input.tier, "retry creates one record with the same bands");
+  assert.equal((await request("GET", "bo")).status, 200); assert.ok(!(await cashHoldings(env, "bo")).some((x) => x.id === input.id));
+  const { tier, ...oldClient } = row; await assert.rejects(putCash(env, "ann", { ...oldClient, amount: 1 }), (e) => e.status === 409 && /Update Markets/.test(e.message));
+  for (const [bad, field] of [[{ limit: -1, rate: 0.7 }, "limit"], [{ limit: 5000, rate: 101 }, "above"]]) {
+    response = await request("PUT", "ann", { ...row, tier: bad }); assert.equal(response.status, 400); assert.equal((await response.json()).field, field);
+  }
+  const was = row; row = (await putCash(env, "ann", { ...row, tier: { limit: 6000, rate: 0 } })).find((x) => x.id === input.id); assert.equal(cashInterest(row), 237.6);
+  await assert.rejects(putCash(env, "ann", { ...was, tier: { limit: 1, rate: 0 } }), (e) => e.status === 409);
+  row = (await putCash(env, "ann", { ...row, tier: null })).find((x) => x.id === input.id); assert.equal(row.tier, null); assert.equal(cashInterest(row), 396);
 });
 test("cash limits are atomic, existing balances remain editable at the limit, and deleting account data removes cash only for that user", async () => {
   await Promise.all(Array.from({ length: MAX_CASH }, (_, i) => putCash(env, "limit", holding(i + 100))));

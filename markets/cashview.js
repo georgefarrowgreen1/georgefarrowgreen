@@ -1,4 +1,7 @@
-import { cashInput, cashNumber, cashTotals, cashId } from "./cash.js";
+import { cashInput, cashNumber, cashTotals, cashId, cashInterest, cashBands } from "./cash.js";
+
+const rateSaid = (fmt, rate) => `${fmt(rate, 4).replace(/\.?0+$/, "")}%`;
+const ratesSaid = ({ fmt, money }, x) => x.tier ? `${rateSaid(fmt, x.rate)} to ${money(x.tier.limit)} · ${rateSaid(fmt, x.tier.rate)} above · AER` : `${rateSaid(fmt, x.rate)} AER`;
 
 // The same cash rows and editor on Markets' own page, desktop desk and Today module.
 // ctx = { h, state, money, fmt, open, save, remove, current, close, toast, accounts }.
@@ -6,14 +9,14 @@ export function cashSection(ctx, rows = ctx.state.cash || [], { compact = false 
   const { h, money, fmt } = ctx, sums = cashTotals(rows);
   return h("section.cash-section", { "aria-label": "Cash holdings" },
     h("h3.label", {}, "Cash", h("button", { type: "button", onclick: () => ctx.open(), text: "Add cash" })),
-    rows.length ? h("div.list.cash-list", {}, rows.map((x) => h("button.item.two.cash-row", { type: "button", "data-cash": x.id, onclick: () => ctx.open(x.id), "aria-label": `Edit ${x.name}: ${money(x.amount)}, ${fmt(x.rate, 4).replace(/\.?0+$/, "")}% annual interest` },
-      h("span", {}, h("b", { text: x.name }), h("small", { text: `${fmt(x.rate, 4).replace(/\.?0+$/, "")}% AER${x.account ? ` · ${ctx.accounts.find(([k]) => k === x.account)?.[1] || ""}` : ""}` })),
-      h("span.r", {}, h("b.num", { text: money(x.amount) }), h("small", { text: `About ${money(x.amount * x.rate / 100)}/year` })))))
+    rows.length ? h("div.list.cash-list", {}, rows.map((x) => h("button.item.two.cash-row", { type: "button", "data-cash": x.id, onclick: () => ctx.open(x.id), "aria-label": `Edit ${x.name}: ${money(x.amount)}, ${ratesSaid(ctx, x)}` },
+      h("span", {}, h("b", { text: x.name }), h("small", { text: `${ratesSaid(ctx, x)}${x.account ? ` · ${ctx.accounts.find(([k]) => k === x.account)?.[1] || ""}` : ""}` })),
+      h("span.r", {}, h("b.num", { text: money(x.amount) }), h("small", { text: `About ${money(cashInterest(x))}/year` })))))
       : h("div.cash-empty", {}, h("p.hint", { text: "Add a balance and interest rate. Cash counts towards your portfolio." })),
     rows.length && !compact ? h("dl.cash-summary", {},
       h("div", {}, h("dt", { text: "Est. yearly interest" }), h("dd.num", { text: money(sums.annual) })),
       h("div", {}, h("dt", { text: "Monthly equivalent" }), h("dd.num", { text: money(sums.monthly) }))) : null,
-    rows.length && !compact ? h("p.hint.cash-note", { text: "Interest is an estimate before tax, assuming the balance and rate stay the same. Update the balance when it changes." }) : null);
+    rows.length && !compact ? h("p.hint.cash-note", { text: "AER-based estimates before tax, at your current balance and rates. Bank payouts may differ with compounding and rate or balance changes. Update the balance when it changes." }) : null);
 }
 
 export function cashEditor(ctx, id = null) {
@@ -22,17 +25,28 @@ export function cashEditor(ctx, id = null) {
   const name = h("input", { id: "mk-cash-name", type: "text", maxlength: 60, autocomplete: "off", placeholder: "e.g. Savings", value: held?.name || "" });
   const amount = h("input", { id: "mk-cash-amount", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "0.00", value: held ? String(held.amount) : "" });
   const rate = h("input", { id: "mk-cash-rate", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "0", value: held ? String(held.rate) : "" });
-  const inputs = { name, amount, rate }, echo = h("p.echo.cash-echo", { "aria-live": "polite" });
+  const limit = h("input", { id: "mk-cash-limit", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "e.g. 5,000", value: held?.tier ? String(held.tier.limit) : "" });
+  const above = h("input", { id: "mk-cash-above", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "0", value: held?.tier ? String(held.tier.rate) : "" });
+  const inputs = { name, amount, rate, limit, above }, echo = h("p.echo.cash-echo", { "aria-live": "polite" });
   const error = h("p.cash-error", { id: "mk-cash-error", role: "alert", hidden: true });
+  let tiered = !!held?.tier;
+  const rateLabel = h("label", { for: "mk-cash-rate", text: tiered ? "Rate up to limit (AER)" : "Annual interest rate (AER)" });
+  const bandFields = h("div.cash-tier-fields", { hidden: !tiered },
+    h("label", { for: "mk-cash-limit", text: "First-tier balance limit" }), h("div.field", {}, h("span.unit", { text: "£" }), limit),
+    h("label", { for: "mk-cash-above", text: "Rate above limit (AER)" }), h("div.field", {}, above, h("span.unit", { text: "%" })));
+  const mode = h("div.choice.cash-rate-mode", { role: "group", "aria-label": "Interest rate type" }, [[false, "Single rate"], [true, "Tiered rates"]].map(([value, label]) => h("button.press", { type: "button", "data-tiered": String(value), "aria-pressed": String(tiered === value), text: label,
+    onclick: () => { tiered = value; bandFields.hidden = !tiered; rateLabel.textContent = tiered ? "Rate up to limit (AER)" : "Annual interest rate (AER)"; mode.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tiered === String(tiered)))); error.hidden = true; tell(); } })));
   let account = held?.account || null;
   const choice = h("div.choice", { role: "group", "aria-label": "Held in" }, ctx.accounts.map(([k, label]) => h("button.press", { type: "button", "data-a": k, "aria-pressed": String(account === k), text: label,
     onclick: () => { account = account === k ? null : k; choice.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.a === account))); } })));
-  const values = () => ({ id: key, name: name.value, amount: cashNumber(amount.value), rate: cashNumber(rate.value, { rate: true }), account, ...(held?.updated != null ? { updated: held.updated } : {}) });
+  const values = () => ({ id: key, name: name.value, amount: cashNumber(amount.value), rate: cashNumber(rate.value, { rate: true }), tier: tiered ? { limit: cashNumber(limit.value), rate: cashNumber(above.value, { rate: true }) } : null, account, ...(held?.updated != null ? { updated: held.updated } : {}) });
   const tell = () => {
     let x; try { x = cashInput(values()); } catch (_) { echo.textContent = ""; return; }
-    echo.textContent = `About ${money(x.amount * x.rate / 100)} a year · ${money(x.amount * x.rate / 1200)} monthly equivalent`;
+    const annual = cashInterest(x);
+    echo.replaceChildren(h("span", { text: `About ${money(annual)} a year · ${money(annual / 12)} monthly equivalent` }));
+    if (x.tier) echo.append(h("small.cash-band-detail", { text: cashBands(x).filter((b) => b.amount > 0).map((b) => `${money(b.amount)} at ${rateSaid(fmt, b.rate)}`).join(" + ") }));
   };
-  for (const input of Object.values(inputs)) input.addEventListener("input", () => { input.removeAttribute("aria-invalid"); tell(); });
+  for (const input of Object.values(inputs)) input.addEventListener("input", () => { input.removeAttribute("aria-invalid"); input.removeAttribute("aria-describedby"); error.hidden = true; tell(); });
   tell();
   const report = (e) => {
     error.hidden = false; error.textContent = e.message;
@@ -67,9 +81,10 @@ export function cashEditor(ctx, id = null) {
     h("div.form", {},
       h("label", { for: "mk-cash-name", text: "Name (optional)" }), h("div.field", {}, name),
       h("label", { for: "mk-cash-amount", text: "Amount" }), h("div.field", {}, h("span.unit", { text: "£" }), amount),
-      h("label", { for: "mk-cash-rate", text: "Annual interest rate (AER)" }), h("div.field", {}, rate, h("span.unit", { text: "%" })),
+      h("label", { text: "Interest rate" }), mode,
+      rateLabel, h("div.field", {}, rate, h("span.unit", { text: "%" })), bandFields,
       echo, h("label", { text: "Held in (optional)" }), choice),
-    h("p.hint", { text: "Use 0% for cash that doesn’t earn interest. Estimates stay separate from recorded investment returns." }),
+    h("p.hint", { text: "Use AER, rather than gross p.a., for these estimates. Use 0% for cash that doesn’t earn interest. Rates and balances are updated manually." }),
     error, save, remove);
   return form;
 }

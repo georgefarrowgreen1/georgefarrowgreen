@@ -601,3 +601,8 @@
 .m-markets .cash-row .r b, .ifl-sheet[data-app=markets] .cash-row .r b { white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
 
 .m-markets .hero .big.num { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+
+.m-markets .cash-tier-fields, .ifl-sheet[data-app=markets] .cash-tier-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.m-markets .cash-tier-fields[hidden], .ifl-sheet[data-app=markets] .cash-tier-fields[hidden] { display: none; }
+.m-markets .cash-band-detail, .ifl-sheet[data-app=markets] .cash-band-detail { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.m-markets .cash-row small, .ifl-sheet[data-app=markets] .cash-row small { white-space: normal; }

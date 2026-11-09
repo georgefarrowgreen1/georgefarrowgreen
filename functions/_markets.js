@@ -39,7 +39,7 @@ export async function mkdb(env) {
         ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, since INTEGER, PRIMARY KEY (user_id, symbol))`),
       D.prepare(`CREATE TABLE IF NOT EXISTS mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
         amount REAL NOT NULL CHECK(amount >= 0 AND amount <= 1000000000000), rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
-        account TEXT CHECK(account IS NULL OR account IN ('isa', 'sipp', 'gia')), added INTEGER NOT NULL, updated INTEGER NOT NULL,
+        account TEXT CHECK(account IS NULL OR account IN ('isa', 'sipp', 'gia')), tier TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL,
         PRIMARY KEY (user_id, id))`),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
       D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
@@ -53,6 +53,7 @@ export async function mkdb(env) {
       D.prepare("CREATE INDEX IF NOT EXISTS mk_buys_of ON mk_buys (user_id, symbol)"),
     ]);
     // (the accounts, added to a list kept from before them)
+    await D.prepare("ALTER TABLE mk_cash ADD COLUMN tier TEXT").run().catch(() => {});
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
     // (and when each was bought, likewise)
     await D.prepare("ALTER TABLE mk_holdings ADD COLUMN since INTEGER").run().catch(() => {});

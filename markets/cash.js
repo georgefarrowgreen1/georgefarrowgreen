@@ -1,6 +1,9 @@
 // Manually entered GBP cash. Interest is a forecast, never an automatic balance change or a recorded return.
 export const MAX_CASH = 60;
 export const CASH_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const validAmount = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1e12 && Math.abs(n - Math.round(n * 100) / 100) <= 1e-7;
+const validRate = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100 && Math.abs(n - Math.round(n * 1e4) / 1e4) <= 1e-8;
+const validTier = (x) => x == null || (typeof x === "object" && !Array.isArray(x) && validAmount(x.limit) && x.limit > 0 && validRate(x.rate));
 export function cashId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -13,22 +16,35 @@ export function cashInput(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("Enter a cash holding.", "amount");
   const { id, amount, rate } = value;
   if (typeof id !== "string" || !CASH_ID.test(id)) fail("That cash holding isn’t valid.", "id");
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || amount > 1e12 || Math.abs(amount - Math.round(amount * 100) / 100) > 1e-7) fail("Enter an amount from £0 to £1 trillion, with up to two decimal places.", "amount");
-  if (typeof rate !== "number" || !Number.isFinite(rate) || rate < 0 || rate > 100 || Math.abs(rate - Math.round(rate * 1e4) / 1e4) > 1e-8) fail("Enter an annual interest rate from 0% to 100%, with up to four decimal places.", "rate");
+  if (!validAmount(amount)) fail("Enter an amount from £0 to £1 trillion, with up to two decimal places.", "amount");
+  if (!validRate(rate)) fail("Enter an annual interest rate from 0% to 100%, with up to four decimal places.", "rate");
+  let tier = null;
+  if (value.tier != null) {
+    if (typeof value.tier !== "object" || Array.isArray(value.tier) || !validAmount(value.tier.limit) || value.tier.limit <= 0) fail("Enter a first-tier limit above £0 and up to £1 trillion, with up to two decimal places.", "limit");
+    if (!validRate(value.tier.rate)) fail("Enter a rate above the limit from 0% to 100%, with up to four decimal places.", "above");
+    tier = { limit: Math.round(value.tier.limit * 100) / 100, rate: value.tier.rate };
+  }
   if (value.name != null && typeof value.name !== "string") fail("Enter a name for this cash holding.", "name");
   const name = (value.name || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() || "Cash";
   if (name.length > 60) fail("Keep the name to 60 characters.", "name");
   const account = value.account == null || value.account === "" ? null : value.account;
   if (account != null && !["isa", "sipp", "gia"].includes(account)) fail("Choose an account from the list.", "account");
   if (value.updated !== undefined && (!Number.isSafeInteger(value.updated) || value.updated < 0)) fail("Reopen this cash holding before saving.", "updated");
-  return { ...(value.updated !== undefined ? { updated: value.updated } : {}), id: id.toLowerCase(), name, amount: Math.round(amount * 100) / 100, rate, account };
+  return { ...(value.updated !== undefined ? { updated: value.updated } : {}), id: id.toLowerCase(), name, amount: Math.round(amount * 100) / 100, rate, tier, account };
 }
+// AER-based estimates at today's balance. Only the part above the limit uses the second rate.
+export function cashBands(x) {
+  if (!x || !validAmount(x.amount) || !validRate(x.rate) || !validTier(x.tier)) return [];
+  if (!x.tier) return [{ amount: x.amount, rate: x.rate }];
+  return [{ amount: Math.min(x.amount, x.tier.limit), rate: x.rate }, { amount: Math.max(0, x.amount - x.tier.limit), rate: x.tier.rate }];
+}
+export const cashInterest = (x) => cashBands(x).reduce((sum, band) => sum + band.amount * band.rate / 100, 0);
 export function cashTotals(rows) {
   let amount = 0, annual = 0;
   for (const x of Array.isArray(rows) ? rows : []) {
-    if (!x || !Number.isFinite(x.amount) || x.amount < 0 || x.amount > 1e12 || !Number.isFinite(x.rate) || x.rate < 0 || x.rate > 100) continue;
+    if (!cashBands(x).length) continue;
     amount += x.amount;
-    annual += x.amount * x.rate / 100;
+    annual += cashInterest(x);
   }
   return { amount, annual, monthly: annual / 12 };
 }

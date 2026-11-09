@@ -55,3 +55,26 @@ for(const hosted of [true,false])test(`large cash balances stay inside the phone
   await visible(p,'[data-el=pv],#pv').waitFor();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });
+for(const width of [320,390,1440])for(const hosted of [true,false])test(`tiered savings persist and recalculate ${hosted?'in Today':'standalone'} at ${width}px`,async()=>{
+ const {ctx,p,acc,writes,errors}=await world({width,hosted,cashOnly:width===320});
+ try{
+  await holdings(p,hosted);await visible(p,'button').filter({hasText:/^Add cash$/}).first().click();
+  await p.locator('#mk-cash-name').fill('Tiered savings');await p.locator('#mk-cash-amount').fill('10000');await p.locator('#mk-cash-rate').fill('3.96');
+  assert.equal(await p.locator('#mk-cash-limit').isVisible(),false);await p.getByRole('button',{name:'Tiered rates',exact:true}).click();
+  await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-error').waitFor({state:'visible'});assert.match(await p.locator('#mk-cash-error').textContent(),/first-tier limit/);assert.equal(writes.length,0);
+  await p.locator('#mk-cash-limit').fill('5000');await p.locator('#mk-cash-above').fill('0.70');
+  assert.equal(await p.locator('#mk-cash-error').isVisible(),false);
+  await p.waitForFunction(()=>document.querySelector('.cash-echo')?.textContent.includes('£233.00 a year'));
+  assert.match(await p.locator('.cash-echo').textContent(),/£19.42 monthly/);assert.match(await p.locator('.cash-band-detail').textContent(),/5,000.00 at 3.96%.*5,000.00 at 0.7%/);
+  if(process.env.CASH_SCREENSHOTS){await p.locator('.cash-echo').scrollIntoViewIfNeeded();await p.screenshot({path:process.env.CASH_SCREENSHOTS+'/tier-editor-'+(hosted?'today':'standalone')+'-'+width+'.png'});}
+  await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-amount').waitFor({state:'detached'});assert.deepEqual(acc.cash[0].tier,{limit:5000,rate:0.7});
+  await holdings(p,hosted);let row=visible(p,'.cash-row').first();assert.match(await row.textContent(),/3.96% to £5,000.00.*0.7% above/);assert.match(await row.textContent(),/233.00/);
+  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  if(process.env.CASH_SCREENSHOTS){await row.scrollIntoViewIfNeeded();await p.waitForTimeout(600);await p.screenshot({path:process.env.CASH_SCREENSHOTS+'/tier-row-'+(hosted?'today':'standalone')+'-'+width+'.png'});}
+  await row.click();assert.equal(await p.locator('#mk-cash-limit').inputValue(),'5000');assert.equal(await p.locator('#mk-cash-above').inputValue(),'0.7');
+  await p.locator('#mk-cash-amount').fill('4000');await p.waitForFunction(()=>document.querySelector('.cash-echo')?.textContent.includes('£158.40 a year'));await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-amount').waitFor({state:'detached'});
+  await holdings(p,hosted);await visible(p,'.cash-row').first().click();await p.getByRole('button',{name:'Single rate',exact:true}).click();assert.equal(await p.locator('#mk-cash-limit').isVisible(),false);
+  await p.locator('#mk-cash-amount').fill('10000');await p.waitForFunction(()=>document.querySelector('.cash-echo')?.textContent.includes('£396.00 a year'));await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-amount').waitFor({state:'detached'});assert.equal(acc.cash[0].tier,null);
+  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});

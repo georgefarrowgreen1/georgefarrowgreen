@@ -1554,3 +1554,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 
 .hero .big.num { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .dsum .pv b { overflow-wrap: anywhere; }
+
+.cash-tier-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.cash-tier-fields[hidden] { display: none; }
+.cash-band-detail { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.cash-row small { white-space: normal; }

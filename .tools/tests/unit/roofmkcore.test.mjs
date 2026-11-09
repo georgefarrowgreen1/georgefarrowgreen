@@ -139,6 +139,9 @@ test("cash counts in value, allocation and charts while estimated interest stays
   const plotted = core.daySeries(); assert.equal(plotted.base, chart.base + 12000);
   for (let i = 0; i < chart.vals.length; i++) assert.ok(Math.abs(plotted.vals[i] - chart.vals[i] - 12000) < 1e-8);
   assert.deepEqual(plain(plotted), plain(app.daySeries()));
+  for (const state of [core.S, S]) { state.cash[0].rate = 3.96; state.cash[0].tier = { limit: 5000, rate: 0.7 }; }
+  assert.equal(core.totals().interest, 247); assert.equal(core.totals().value, after.value); assert.equal(core.totals().back, before.back);
+  assert.deepEqual(plain(core.totals()), plain(app.totals()), "both app entries use the same tiered estimate");
   for (const q of Object.values(core.S.q)) q.sparkT = [];
   assert.equal(core.daySeries(), null, "missing investment history must not become a chart of cash alone");
   core.S.list = []; S.list = [];

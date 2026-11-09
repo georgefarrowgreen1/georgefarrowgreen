@@ -825,14 +825,14 @@ test("heaviestOf: the wettest hour between two times on the place's clock, the s
 test("Markets cash stays constant in Today’s value and chart; forecasts never become gains or dividends", async () => {
   user("cash-card", "Cash Rider"); hold("cash-card", "RR.L", "Rolls-Royce", 100, "isa");
   const before = await marketsCard(env, { id: "cash-card" }, ctxAt(WEEKDAY));
-  put("mk_cash", { user_id: "cash-card", id: "cash-one", name: "Private savings", amount: 12000, rate: 4, account: "isa", added: WEEKDAY, updated: WEEKDAY });
+  put("mk_cash", { user_id: "cash-card", id: "cash-one", name: "Private savings", amount: 12000, rate: 3.96, tier: JSON.stringify({ limit: 5000, rate: 0.7 }), account: "isa", added: WEEKDAY, updated: WEEKDAY });
   const after = await marketsCard(env, { id: "cash-card" }, ctxAt(WEEKDAY));
   assert.equal(after.value, before.value + 12000); assert.equal(after.change, before.change);
   assert.equal(after.pct, Math.round(before.change / (after.value - before.change) * 10000) / 100);
   assert.equal(after.isa.paid, before.isa.paid); assert.equal(after.isa.inIsa, before.isa.inIsa + 12000);
   assert.equal(after.spark.base, before.spark.base + 12000);
   for (let i = 0; i < before.spark.vals.length; i++) assert.ok(Math.abs(after.spark.vals[i] - before.spark.vals[i] - 12000) < .011);
-  assert.doesNotMatch(after.share || "", /Private savings|£|12000|480/);
+  assert.doesNotMatch(after.share || "", /Private savings|£|12000|247/);
   user("cash-only", "Cash Only");
   put("mk_cash", { user_id: "cash-only", id: "cash-only", name: "Savings", amount: 5000, rate: 4.25, account: null, added: WEEKDAY, updated: WEEKDAY });
   const only = await marketsCard(env, { id: "cash-only" }, ctxAt(WEEKDAY));
