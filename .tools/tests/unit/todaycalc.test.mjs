@@ -1,7 +1,13 @@
 // Fitness's Today: readiness, and each day's ring in the week
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readinessOf, dayKindOf, toneOfIF } from "../../../fitness/todaycalc.js";
+import { readinessOf, dayKindOf, toneOfIF, weekAvailableSeconds } from "../../../fitness/todaycalc.js";
+
+test("weekly availability preserves long days and distinguishes unknown time from rest", () => {
+  assert.equal(weekAvailableSeconds([270, 0, 0, 0, 0, 60, 270]), 36000);
+  assert.equal(weekAvailableSeconds([0, 0, 0, 0, 0, 0, 0]), 0);
+  for (const days of [null, [], [60], [60, 0, 0, 0, 0, 0, -1], [60, 0, 0, 0, 0, 0, NaN]]) assert.equal(weekAvailableSeconds(days), null);
+});
 
 test("readiness: form alone, then the check-in moving it", () => {
   assert.deepEqual(readinessOf(9), { v: 74, tone: "steady", word: "Steady" });

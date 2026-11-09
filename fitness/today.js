@@ -42,15 +42,15 @@ function todayView() {
   if (wide()) {
     if (planned) out.push(weekGrid(sel));
     if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
-    right.push(isToday && morningCard(w), rhythmSays(), isToday && reviewCard(), planRows());
+    right.push(planned && weekCard(), isToday && morningCard(w), rhythmSays(), isToday && reviewCard(), planRows());
     out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
     return out;
   }
   if (planned) out.push(dayStrip(sel));
   if (planned && S.agenda) { const ag = agenda(sel); if (S.agendaFx) { ag.classList.add("open-in"); S.agendaFx = false; } out.push(ag); }
   if (isToday && done.length) { left.push(tomorrowCard()); right.push(didCard(done[0])); }
-  left.push(rhythmSays(), isToday && morningCard(w), isToday && reviewCard());
-  right.push(planned && weekCard(), headingCard(), planRows());
+  left.push(planned && weekCard(), rhythmSays(), isToday && morningCard(w), isToday && reviewCard());
+  right.push(headingCard(), planRows());
   out.push(h("div.cols", {}, h("div", {}, left.filter(Boolean)), h("div", {}, right.filter(Boolean))));
   return out;
 }
@@ -566,13 +566,15 @@ function weekCard() {
   const rode = (d) => actsOn(d).reduce((a, x) => a + (sumOf(x)?.moving || 0), 0);
   // (the week's whole time: what's planned from when the plan began, and what you rode before it)
   const planSecs = days.reduce((a, d) => a + (d >= began ? (wOn(d) ? measure(wOn(d), paceFor(wOn(d).sport)).secs : 0) : rode(d)), 0), doneSecs = days.reduce((a, d) => a + rode(d), 0);
-  const planned = days.filter((d) => wOn(d)).length, ridden = days.filter((d) => actsOn(d).length).length;
+  const planned = days.filter((d) => wOn(d)).length;
+  const available = rhythmOn() ? TC.weekAvailableSeconds(S.rhythm?.days || R.DEFAULTS.days) : null;
+  const metric = (label, value) => h("div", {}, h("dt", { text: label }), h("dd", { text: dur(value) }));
   // (easy and hard: a hard session's hard part, about its first hour at 55%, as Rhythm reckons it)
   const hardSecs = days.reduce((a, d) => { const w = wOn(d); if (!w || w.sport !== "ride") return a; const m = measure(w, paceFor(w.sport)), hard = rhythmOn() && S.swaps[d] === undefined ? !!rhDay(d)?.hard : m.iF >= 0.84; return a + (hard ? Math.min(m.secs, 3600) * 0.55 : 0); }, 0);
   const easy = planSecs ? Math.round(100 * (1 - hardSecs / planSecs)) : 100;
-  return todaySection("This week", planned ? `${ridden} of ${planned} ${planned === 1 ? "ride" : "rides"}` : null, h("div.card.glass.week-card", {},
-    h("div.wk-line", {}, h("span", {}, h("b", { text: hmOf(doneSecs) }), " ridden"), h("span", { text: planSecs ? `of ${dur(planSecs)} planned` : "" })),
-    planSecs > 0 && h("div.week-bar", { role: "img", "aria-label": `${dur(doneSecs)} ridden of ${dur(planSecs)} planned` }, h("i", { vars: { width: Math.min(100, (doneSecs / planSecs) * 100) + "%" } })),
+  return todaySection("This week", planned ? `${planned} planned ${planned === 1 ? "day" : "days"}` : null, h("div.card.glass.week-card", {},
+    h("dl.week-overview" + (available == null ? ".two" : ""), { "aria-label": "Weekly training time" }, available != null && metric("Available", available), metric("Planned", planSecs), metric("Completed", doneSecs)),
+    planSecs > 0 && h("div.week-bar", { role: "img", "aria-label": `${dur(doneSecs)} completed of ${dur(planSecs)} planned` }, h("i", { vars: { width: Math.min(100, (doneSecs / planSecs) * 100) + "%" } })),
     planSecs > 0 && h("div.wk-line.bal-head", {}, h("span", { text: "Easy and hard" }), h("span", {}, h("b", { text: `${easy}%` }), " easy")),
     planSecs > 0 && h("div.bal", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { flex: String(easy) } }), h("i.hard", { vars: { flex: String(100 - easy) } })),
     planSecs > 0 && h("small.week-status", { text: easy >= 75 && easy <= 88 ? "About 80/20: the mix that builds fitness fastest." : easy > 88 ? "Mostly easy this week: good for building the base." : "A hard week: rest well between the sessions." })));

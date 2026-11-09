@@ -1,5 +1,11 @@
 // Today's figures that are worked out, not drawn (today.js draws them). Pure: no page, no network.
 
+// The configured week is in minutes. Unknown or malformed availability must never be presented as a real total.
+export function weekAvailableSeconds(days) {
+  if (!Array.isArray(days) || days.length !== 7 || days.some(n => !Number.isFinite(n) || n < 0 || n > 1440)) return null;
+  return days.reduce((total, n) => total + n * 60, 0);
+}
+
 // How ready you are, out of 100: from your form (training stress balance), and the morning's check-in where it's all
 // said (feel: { sleep, legs, mood }, each 0 poor, 1 so-so, 2 good), and your night from Garmin where there's one
 // (night: fitness/rhythm.js nightOf: HRV low or falling all week, resting heart rate up, a short night or three, the
