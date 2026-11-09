@@ -3,6 +3,7 @@
 // and the photo fading in once it's there rather than appearing.
 const $ = (s) => document.querySelector(s);
 const path = decodeSafe(location.pathname);
+$("#year").textContent = new Date().getFullYear();
 
 // the address, in a tag of its own (the path only: the site's own name in front of it says nothing)
 if (path && path !== "/") { $("#where-path").textContent = path; $("#where").hidden = false; }
@@ -45,9 +46,6 @@ if (best) {
     chevron(),
   );
   $("#meant").hidden = false;
-  // (and not twice: an app that's the answer isn't in the list below as well)
-  document.querySelector(`.row[data-app="${best.key}"]`)?.remove();
-  if (best.img) $("#apps-h").textContent = "Or open the other app";
 }
 
 // tell me: the home page's message sheet, opened with this address in it (and where the link was, if the browser says)
