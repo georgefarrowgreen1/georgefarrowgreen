@@ -1765,7 +1765,7 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .signin-destination { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--glass-ctl); color: var(--text); font-size: 14px; font-weight: 500; margin-bottom: 8px; }
 .signin-destination img { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; }
 .signin-panel h1 { font: 700 28px/1.16 var(--font-d); letter-spacing: -.65px; margin: 0; overflow-wrap: anywhere; }
-.signin-panel p { margin: 0; }
+.signin-panel p { margin: 0; max-width: none; }
 .auth-panel { overflow-wrap: anywhere; }
 .auth-panel .link { max-width: 100%; white-space: normal; }
 .auth-heading, .auth-content { display: grid; min-width: 0; gap: 16px; }
