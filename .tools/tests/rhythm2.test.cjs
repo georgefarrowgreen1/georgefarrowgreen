@@ -42,7 +42,8 @@ test('Experimental fits narrow phones and desktops in either theme',async()=>{
  }finally{await context.close();}}
 });
 test('an unavailable planner leaves Experimental off without changing the saved preference',async()=>{
- const {context,page,state}=await open(390,'light',{recordsFailure:true});try{await settings(page);await page.getByRole('switch',{name:'Experimental',exact:true}).check();await page.getByText('Training is temporarily unavailable.',{exact:true}).waitFor();assert.equal(await page.getByRole('switch',{name:'Experimental',exact:true}).isChecked(),false);assert.notEqual(state.data.rhythm.engine,2);assert.deepEqual(state.errors,[]);}finally{await context.close();}
+ // The same words are announced by .ifm-say after two frames; assert the Fitness notification itself.
+ const {context,page,state}=await open(390,'light',{recordsFailure:true});try{await settings(page);await page.getByRole('switch',{name:'Experimental',exact:true}).check();await page.locator('.ifl-toast[data-app="fitness"]').getByText('Training is temporarily unavailable.',{exact:true}).waitFor();assert.equal(await page.getByRole('switch',{name:'Experimental',exact:true}).isChecked(),false);assert.notEqual(state.data.rhythm.engine,2);assert.deepEqual(state.errors,[]);}finally{await context.close();}
 });
 
 test('the Experimental week preview and saved plan both use the declared ten-hour riding goal',async()=>{
