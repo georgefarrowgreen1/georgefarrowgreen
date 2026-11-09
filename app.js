@@ -281,7 +281,7 @@ async function show(i) {
   markSegs(i);
   // (its softened copy made now, so it's there however soon the page is scrolled: made small off this thread, so
   // neither the fade nor its start waits on it)
-  soften(s, shown[i]);
+  queueSoften(s, shown[i]);
   left = SLIDE;
   if (held) drift?.pause(); else schedule();
 }
@@ -297,7 +297,7 @@ function schedule() {
 }
 // (held still, where it got to: scrolled down, a sheet up, or the page out of sight)
 function hold() {
-  const h = document.hidden || scrollY > 40 || body.classList.contains("sheet-up") || root.classList.contains("intro-loading");
+  const h = document.hidden || scrollY > 40 || body.classList.contains("sheet-up") || root.matches(".intro-loading, .intro-revealing");
   if (h === held) return;
   held = h; body.classList.toggle("paused", h);
   if (h) { clearTimeout(timer); clearTimeout(early); left = Math.max(0, left - (performance.now() - since)); drift?.pause(); }
@@ -307,6 +307,7 @@ function hold() {
 phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) updateSlides(); });
 document.addEventListener("visibilitychange", hold);
 addEventListener("home:revealed", hold);
+addEventListener("home:intro-finished", hold);
 hold();      // (and from the start: a page opened out of sight, in a tab behind, holds still till it's looked at)
 motion.addEventListener("change", () => { if (at >= 0) show(at); });
 
@@ -314,6 +315,37 @@ motion.addEventListener("change", () => { if (at >= 0) show(at); });
 // thousand pixels' work), then stretched over the screen, so softening it is only a fade, not a blur redrawn each frame.
 // (styles.css fades the copy in when it's first made)
 const softs = new Map();
+let pendingSoft = null, softTimer = null, softIdle = null, softAfter = 0;
+function cancelSoftening() {
+  clearTimeout(softTimer); window.cancelIdleCallback?.(softIdle);
+  softTimer = softIdle = null;
+}
+function runSoftening() {
+  softTimer = softIdle = null;
+  if (document.hidden || root.matches(".intro-loading, .intro-revealing")) return;
+  const work = pendingSoft; pendingSoft = null;
+  if (work && work.img === bgEl.querySelector(".slide.on")) soften(work.img, work.photo);
+}
+function scheduleSoftening() {
+  cancelSoftening();
+  if (!pendingSoft || document.hidden || root.matches(".intro-loading, .intro-revealing")) return;
+  softTimer = setTimeout(() => {
+    softTimer = null;
+    if (window.requestIdleCallback) softIdle = requestIdleCallback(runSoftening, { timeout: 1000 });
+    else softTimer = setTimeout(runSoftening, 0);
+  }, Math.max(0, softAfter - performance.now()));
+}
+function queueSoften(img, photo) {
+  pendingSoft = { img, photo };
+  scheduleSoftening();
+}
+addEventListener("home:intro-finished", () => {
+  // Thumbnail decoding and blur are optional; give the hero entrance its frame budget first.
+  softAfter = performance.now() + 650;
+  scheduleSoftening();
+});
+addEventListener("pagehide", cancelSoftening);
+document.addEventListener("visibilitychange", () => document.hidden ? cancelSoftening() : scheduleSoftening());
 async function soften(img, p) {
   const el = $("#soft"), key = img.currentSrc || img.src;
   if (!softs.has(key)) {
@@ -480,7 +512,7 @@ function showLines() {
   const put = (x) => { offset = x; track.style.transform = `translate3d(${x}px, 0, 0)`; };
   const stop = () => { clearTimeout(timer); timer = null; };
   const blocked = () => !active || userPaused || motion.matches || hovered || focused || !visible || document.hidden ||
-    !!gesture || body.matches(".sheet-up, .edit, .leaving") || root.classList.contains("intro-loading");
+    !!gesture || body.matches(".sheet-up, .edit, .leaving") || root.matches(".intro-loading, .intro-revealing");
   // Interrupt at the exact frame on screen. A new glide starts here, including a swipe caught mid-animation.
   function freeze() {
     if (!animation) return;
@@ -651,6 +683,7 @@ function showLines() {
   addEventListener("pagehide", () => { stop(); freeze(); });
   addEventListener("pageshow", availability);
   addEventListener("home:revealed", availability);
+  addEventListener("home:intro-finished", availability);
   layout();
 })();
 

@@ -8,20 +8,42 @@
   let active = true, mounted = false, revealed = false, engine = null, overlay = null, finishTimer = null, starting = false;
   let exitTimer = null, headExit = null, portraitFrame = 0, portraitShown = false, quick = false;
   let contentReady = false, shownAt = 0, holdTimer = null, artWaitTimer = null;
+  let decoded = false, rendererSettled = false, rendererFallback = false, renderWait = null;
+  let retired = null, disposeTimer = null, disposeIdle = null, introFinished = false;
+  const rendererSetup = new AbortController();
   const SHOWCASE = 2000, ART_WAIT = 1000;
   let restore = [], wasBusy = null, busyTarget = null, watch = null, appReady;
   const app = new Promise(resolve => { appReady = resolve; });
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
   const image = new Image(720, 720);
   image.alt = ""; image.className = "loader-image"; image.decoding = "async"; image.fetchPriority = "high";
-  const cleanup = () => {
+  function disposeRenderer() {
+    clearTimeout(disposeTimer); window.cancelIdleCallback?.(disposeIdle);
+    disposeTimer = disposeIdle = null;
+    retired?.destroy(); retired = null;
+    removeEventListener("pagehide", disposeRenderer);
+  }
+  function retireRenderer(value, immediate) {
+    if (!value) { if (immediate) disposeRenderer(); return; }
+    value.stop();
+    retired = value;
+    if (immediate || document.hidden) { disposeRenderer(); return; }
+    addEventListener("pagehide", disposeRenderer, { once: true });
+    // The overlay is gone; release graphics only after the page's entrance has settled.
+    disposeTimer = setTimeout(() => {
+      if (window.requestIdleCallback) disposeIdle = requestIdleCallback(disposeRenderer, { timeout: 1000 });
+      else disposeRenderer();
+    }, 650);
+  }
+  const cleanup = (immediate = false) => {
     clearTimeout(finishTimer);
+    clearTimeout(renderWait); rendererSetup.abort();
     clearTimeout(holdTimer); clearTimeout(artWaitTimer);
     clearTimeout(exitTimer); cancelAnimationFrame(portraitFrame);
     headExit?.cancel(); headExit = null;
-    engine?.destroy(); engine = null;
     overlay?.remove(); overlay = null;
     root.classList.remove("intro-revealing", "intro-mounted", "intro-exiting", "intro-fast");
+    retireRenderer(engine, immediate); engine = null;
     motion.removeEventListener("change", changedMotion);
     watch?.disconnect(); watch = null;
     document.removeEventListener("load", checkMount, true);
@@ -30,9 +52,10 @@
     removeEventListener("pagehide", leave);
     removeEventListener("pageshow", restored);
     image.onerror = null;
+    if (!introFinished) { introFinished = true; dispatchEvent(new Event("home:intro-finished")); }
   };
   function revealPage(immediate = false) {
-    if (revealed) { if (immediate) cleanup(); return; }
+    if (revealed) { if (immediate) cleanup(true); return; }
     revealed = true; clearTimeout(exitTimer);
     root.classList.remove("intro-loading", "intro-exiting");
     for (const [node, inert] of restore) node.inert = inert;
@@ -49,14 +72,16 @@
     }
     overlay?.setAttribute("aria-hidden", "true");
     if (overlay) overlay.inert = true;
+    if (!immediate && mounted) root.classList.add("intro-revealing");
     dispatchEvent(new Event("home:revealed"));
-    if (immediate || !mounted) { cleanup(); return; }
-    root.classList.add("intro-revealing");
+    if (immediate || !mounted) { cleanup(true); return; }
     finishTimer = setTimeout(cleanup, motion.matches ? 130 : quick ? 170 : 230);
   }
   function dismiss(immediate = false) {
     if (!active) { if (immediate) revealPage(true); return; }
     active = false; clearTimeout(limit); cancelAnimationFrame(portraitFrame);
+    clearTimeout(renderWait);
+    if (!engine) rendererSetup.abort();
     clearTimeout(holdTimer); clearTimeout(artWaitTimer);
     engine?.stop();
     quick = !portraitShown;
@@ -120,16 +145,53 @@
     if (node && getComputedStyle(node).position === "fixed") mount();
   }
   function startPortrait() {
-    if (!active || !mounted || starting || !window.createLoaderPortrait) return;
+    if (!active || !mounted || starting || rendererSettled || !window.createLoaderPortrait) return;
     starting = true;
     const portrait = document.getElementById("loader-portrait"), canvas = document.getElementById("loader-canvas");
     canvas.addEventListener("loaderportraiterror", () => {
       portrait.classList.remove("ready"); engine?.destroy(); engine = null;
+      rendererSettled = rendererFallback = true;
+      showPortrait();
     }, { once: true });
-    window.createLoaderPortrait(canvas, image, () => motion.matches).then(value => {
-      if (!active) { value.destroy(); return; }
-      engine = value; portrait.classList.add("ready"); value.start();
-    }).catch(() => { /* Static red contour art remains if WebGL is unavailable. */ });
+    window.createLoaderPortrait(canvas, image, () => motion.matches, { signal: rendererSetup.signal }).then(value => {
+      if (!active || rendererFallback) { retireRenderer(value, document.hidden); return; }
+      engine = value;
+      value.start();
+      if (engine !== value) return; // A synchronous first-paint failure selected the fallback.
+      portrait.classList.add("ready");
+      rendererSettled = true; clearTimeout(renderWait);
+      showPortrait();
+    }).catch(() => {
+      if (!active) return;
+      rendererSettled = rendererFallback = true;
+      showPortrait();
+    });
+  }
+  function showPortrait() {
+    if (!active || !decoded || portraitShown || portraitFrame) return;
+    if (!rendererSettled) {
+      if (!renderWait) renderWait = setTimeout(() => {
+        rendererSettled = rendererFallback = true;
+        rendererSetup.abort();
+        showPortrait();
+      }, 400);
+      return;
+    }
+    clearTimeout(renderWait);
+    const portrait = document.getElementById("loader-portrait");
+    portraitFrame = requestAnimationFrame(() => {
+      portraitFrame = requestAnimationFrame(() => {
+        if (!active) return;
+        portraitFrame = 0;
+        portraitShown = true; portrait.classList.add("shown");
+        const entering = portrait.getAnimations().filter(animation => animation.transitionProperty === "opacity");
+        Promise.allSettled(entering.map(animation => animation.finished)).then(() => {
+          if (!active) return;
+          shownAt = performance.now();
+          finishWhenReady();
+        });
+      });
+    });
   }
   async function mount() {
     if (!active || mounted) return;
@@ -144,18 +206,8 @@
       // Start the minimum only after the decoded face has faded fully into view, not during its download.
       image.decode().then(() => {
         if (!active) return;
-        portraitFrame = requestAnimationFrame(() => {
-          portraitFrame = requestAnimationFrame(() => {
-            if (!active) return;
-            portraitShown = true; portrait.classList.add("shown");
-            const entering = portrait.getAnimations().filter(animation => animation.transitionProperty === "opacity");
-            Promise.allSettled(entering.map(animation => animation.finished)).then(() => {
-              if (!active) return;
-              shownAt = performance.now();
-              finishWhenReady();
-            });
-          });
-        });
+        decoded = true;
+        showPortrait();
       }).catch(() => {});
       busyTarget = document.getElementById("page");
       wasBusy = busyTarget.getAttribute("aria-busy"); busyTarget.setAttribute("aria-busy", "true");

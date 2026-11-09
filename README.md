@@ -72,6 +72,9 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
     keeping the face and headline separate throughout the reveal. Its WebGL resources are released after
     the fade. The floating name is a Back to top link, with keyboard focus returned to the hero and immediate scrolling
     when Reduce Motion is enabled.
+    Shader setup, texture upload and the first canvas paint finish before the portrait fades in; slow graphics setup
+    uses the original static artwork without switching it mid-intro. Empty artwork margins use neutral lightening,
+    with no circular mask. Optional photo processing and graphics disposal run after the page entrance settles.
   - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
     Animation) runs only while the top of the page is in view: scrolled, with a sheet up or out of sight, the photo
     and the slideshow hold still, so the glass over them isn't redrawn every frame.

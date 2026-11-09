@@ -73,16 +73,15 @@ html.intro-loading:not(.intro-mounted)::before {
   transition: opacity 0.2s var(--ease-out);
 }
 .loader-portrait {
+  /* The source's near-black pixels stay below the backdrop; no ellipse or additive blue plate. */
   position: relative; width: min(300px, 82vw, 72svh); aspect-ratio: 1;
-  transform: translateY(-12px); mix-blend-mode: screen; opacity: 0;
+  transform: translateY(-12px); mix-blend-mode: lighten; opacity: 0;
   transition: opacity 0.16s linear;
-  -webkit-mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
-  mask-image: radial-gradient(ellipse 50% 50% at center, #000 90%, transparent 100%);
 }
 .loader-portrait img, .loader-portrait canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-.loader-portrait img { filter: grayscale(1) sepia(1) saturate(16) hue-rotate(318deg) brightness(0.9); }
-.loader-portrait canvas { opacity: 0; transition: opacity 0.25s linear; }
+.loader-portrait canvas { opacity: 0; }
 .loader-portrait.ready canvas { opacity: 1; }
+.loader-portrait.ready img { visibility: hidden; }
 .loader-portrait.shown { opacity: 1; }
 html.intro-exiting .loader-portrait { opacity: 0; transition: none; }
 html.intro-fast .site-loader { transition-duration: 0.14s; }

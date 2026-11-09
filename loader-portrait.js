@@ -17,11 +17,32 @@
  float across=clamp((uv.x-.17)/.66,0.,1.);float pos=uPhase.z>=0.?uPhase.z:positionAt(uPhase.x-across*2.4*uPhase.y);float hue=splineHue(pos);C=min(C+.025*lab.x,.25);
  vec3 mapped=pow(max(inGamut(lab.x,C,hue),0.),vec3(1./2.2));outputColor=vec4(mix(texel.rgb,mapped,strength),texel.a);}`;
 
-  window.createLoaderPortrait = async (canvas, image, isReduced) => {
-    if (typeof image.decode === "function") await image.decode();
+  window.createLoaderPortrait = async (canvas, image, isReduced, { signal } = {}) => {
+    const stopped = () => new DOMException("Portrait setup was stopped", "AbortError");
+    if (signal?.aborted) throw stopped();
+    if (typeof image.decode === "function") {
+      const decoded = image.decode();
+      if (signal) {
+        let abortDecode;
+        try {
+          await Promise.race([decoded, new Promise((resolve, reject) => {
+            abortDecode = () => reject(stopped());
+            signal.addEventListener("abort", abortDecode, { once: true });
+            if (signal.aborted) abortDecode();
+          })]);
+        } finally { signal.removeEventListener("abort", abortDecode); }
+      } else await decoded;
+    }
+    if (signal?.aborted) throw stopped();
     const sourceWidth = image.naturalWidth || image.width;
     const sourceHeight = image.naturalHeight || image.height;
     if (!sourceWidth || !sourceHeight) throw new Error("Portrait image is unavailable");
+    if (!canvas.isConnected) throw new Error("Portrait canvas is unavailable");
+    // Allocate its final drawing buffer once, before WebGL creates a default-sized one.
+    const initialBox = canvas.getBoundingClientRect();
+    const density = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.round(initialBox.width * density));
+    canvas.height = Math.max(1, Math.round(initialBox.height * density));
     const gl = canvas.getContext("webgl2", {
       alpha: false, antialias: false, powerPreference: "low-power"
     });
@@ -31,6 +52,8 @@
     let resizeObserver = null, intersectionObserver = null;
     let disposed = false, started = false, intersecting = false;
     let raf = 0, previous = 0, elapsed = 0, paintNeeded = true;
+    let setupTimer = 0, setupFrame = 0, rejectSetup = null;
+    let appliedWidth = 0, appliedHeight = 0;
     let cssWidth = 0, cssHeight = 0, pixelWidth = 0, pixelHeight = 0;
     const phase = new Float32Array([0, 0, -1]);
     const ease = (x) => x * x * x * (x * (x * 6 - 15) + 10);
@@ -45,11 +68,16 @@
       return !disposed && started && intersecting && !document.hidden &&
         canvas.isConnected && pixelWidth > 0 && pixelHeight > 0;
     }
-    function destroy() {
+    function destroy(reason = new Error("Portrait setup was stopped")) {
       if (disposed) return;
       disposed = true;
       started = false;
       halt();
+      clearTimeout(setupTimer); cancelAnimationFrame(setupFrame);
+      setupTimer = setupFrame = 0;
+      const reject = rejectSetup; rejectSetup = null;
+      reject?.(reason);
+      signal?.removeEventListener("abort", onAbort);
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
@@ -114,20 +142,52 @@
       }
     }
     function onPageHide() { destroy(); }
+    function onAbort() { destroy(stopped()); }
+    function yieldSetup() {
+      // Finish this work after a paint opportunity; background tabs use a bounded task instead.
+      return new Promise((resolve, reject) => {
+        rejectSetup = reject;
+        const done = () => {
+          clearTimeout(setupTimer); cancelAnimationFrame(setupFrame);
+          setupTimer = setupFrame = 0; rejectSetup = null;
+          resolve();
+        };
+        setupTimer = setTimeout(done, 80);
+        setupFrame = requestAnimationFrame(() => {
+          setupFrame = 0; clearTimeout(setupTimer);
+          setupTimer = setTimeout(done, 0);
+        });
+      });
+    }
+    function waitForProgram(parallel) {
+      return new Promise((resolve, reject) => {
+        const deadline = performance.now() + 1000;
+        rejectSetup = reject;
+        const poll = () => {
+          setupTimer = 0;
+          try {
+            if (!gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR)) {
+              if (performance.now() >= deadline) throw new Error("Portrait shader setup took too long");
+              setupTimer = setTimeout(poll, 16);
+              return;
+            }
+            rejectSetup = null; resolve();
+          } catch (error) { rejectSetup = null; reject(error); }
+        };
+        poll();
+      });
+    }
     function paint(still) {
       if (gl.isContextLost()) throw new Error("Portrait graphics context was lost");
-      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-        canvas.width = pixelWidth;
-        canvas.height = pixelHeight;
+      if (appliedWidth !== pixelWidth || appliedHeight !== pixelHeight) {
+        if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+        if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+        gl.viewport(0, 0, pixelWidth, pixelHeight);
+        appliedWidth = pixelWidth; appliedHeight = pixelHeight;
       }
-      gl.viewport(0, 0, pixelWidth, pixelHeight);
       phase[0] = elapsed;
       phase[1] = ease(Math.max(0, Math.min(1, elapsed / 5)));
       phase[2] = still ? 0 : -1;
-      gl.useProgram(program);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.uniform1i(imageUniform, 0);
       gl.uniform3fv(phaseUniform, phase);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       paintNeeded = false;
@@ -155,14 +215,18 @@
     }
 
     try {
+      // These guards cover setup yields as well as the active animation.
+      canvas.addEventListener("webglcontextlost", onContextLost);
+      window.addEventListener("pagehide", onPageHide);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) throw stopped();
+      const parallel = gl.getExtension("KHR_parallel_shader_compile");
       function compile(type, code) {
         const shader = gl.createShader(type);
         if (!shader) throw new Error("Portrait shader is unavailable");
         shaders.push(shader);
         gl.shaderSource(shader, code);
         gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
-          throw new Error("Portrait shader could not compile");
         return shader;
       }
       program = gl.createProgram();
@@ -170,6 +234,10 @@
       gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX));
       gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT));
       gl.linkProgram(program);
+      // Submit both shaders before checking a status, so a driver can compile them together.
+      await yieldSetup();
+      if (parallel) await waitForProgram(parallel);
+      if (!canvas.isConnected) throw new Error("Portrait canvas is unavailable");
       if (!gl.getProgramParameter(program, gl.LINK_STATUS))
         throw new Error("Portrait program could not link");
       // Linked programs no longer need their source shader objects.
@@ -186,12 +254,16 @@
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.generateMipmap(gl.TEXTURE_2D);
+      gl.useProgram(program);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(imageUniform, 0);
+      // Keep the texture upload and first draw out of one uninterrupted startup task.
+      await yieldSetup();
+      if (!canvas.isConnected) throw new Error("Portrait canvas is unavailable");
       if (gl.isContextLost() || gl.getError() !== gl.NO_ERROR)
         throw new Error("Portrait texture could not be prepared");
 
-      canvas.addEventListener("webglcontextlost", onContextLost);
       document.addEventListener("visibilitychange", onVisibility);
-      window.addEventListener("pagehide", onPageHide);
       window.addEventListener("resize", onViewportResize, { passive: true });
       if (typeof ResizeObserver === "function") {
         resizeObserver = new ResizeObserver((entries) => {
@@ -210,12 +282,14 @@
         }, { threshold: 0.01 });
         intersectionObserver.observe(canvas);
       } else window.addEventListener("scroll", onScroll, { passive: true });
-      measure();
+      cacheSize(initialBox.width, initialBox.height);
     } catch (error) {
       destroy();
       throw error;
     }
 
+    // Once returned, the owner controls the displayed engine through stop/destroy, not setup cancellation.
+    signal?.removeEventListener("abort", onAbort);
     return {
       start() {
         if (disposed) return;

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { readFileSync, existsSync, statSync } = require('node:fs');
 const { resolve, extname } = require('node:path');
 const { chromium } = require('playwright');
+const sharp = require('sharp');
 const ROOT = resolve(__dirname, '../..'), HOME = 'https://loader.test';
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100"><rect width="80" height="100" fill="#456"/></svg>';
 let browser;
@@ -36,6 +37,8 @@ async function fixture(assets, options = {}) {
       const veil = overlay && !overlay.hidden ? opacity(overlay) : 0;
       const headline = document.querySelector('.hero h1');
       loaderTest.frames.push({ time: performance.now(), head: head ? opacity(head) : 0,
+        canvas: document.getElementById('loader-canvas') ? opacity(document.getElementById('loader-canvas')) : 0,
+        source: head?.querySelector('img') ? opacity(head.querySelector('img')) : 0,
         veil, headline: headline ? opacity(headline) * (1 - veil) : 0,
         loading: document.documentElement.classList.contains('intro-loading'),
         exiting: document.documentElement.classList.contains('intro-exiting') });
@@ -57,10 +60,34 @@ async function fixture(assets, options = {}) {
       const draw = Type.prototype[name]; Type.prototype[name] = function (...args) { loaderTest.render.draws++; return draw.apply(this, args); };
     }
   });
-  const cover = deferred(), script = deferred(), words = deferred(), me = deferred(), portrait = deferred();
+  if (options.trackCost) await ctx.addInitScript(() => {
+    loaderTest.cost = { compile: 0, link: 0, upload: 0, geometry: 0, layout: 0, resize: 0, typed: 0 };
+    let inFrame = false;
+    const frame = requestAnimationFrame;
+    window.requestAnimationFrame = function (callback) {
+      if (!new Error().stack?.includes('loader-portrait.js')) return frame.call(this, callback);
+      return frame.call(this, timestamp => { inFrame = true; try { callback(timestamp); } finally { inFrame = false; } });
+    };
+    for (const Type of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) if (Type) {
+      for (const [name, counter] of [['compileShader', 'compile'], ['linkProgram', 'link'], ['texImage2D', 'upload'], ['texSubImage2D', 'upload'], ['bufferData', 'geometry'], ['bufferSubData', 'geometry']]) {
+        const real = Type.prototype[name];
+        Type.prototype[name] = function (...args) { if (inFrame) loaderTest.cost[counter]++; return real.apply(this, args); };
+      }
+    }
+    const layout = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () { if (inFrame) loaderTest.cost.layout++; return layout.call(this); };
+    for (const name of ['width', 'height']) {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, name);
+      Object.defineProperty(HTMLCanvasElement.prototype, name, { ...descriptor, set(value) { if (inFrame && this.id === 'loader-canvas') loaderTest.cost.resize++; return descriptor.set.call(this, value); } });
+    }
+    const Typed = Float32Array;
+    window.Float32Array = new Proxy(Typed, { construct(target, args) { if (inFrame) loaderTest.cost.typed++; return Reflect.construct(target, args); } });
+  });
+  const cover = deferred(), script = deferred(), words = deferred(), me = deferred(), portrait = deferred(), renderer = deferred();
   if (!options.holdCover) cover.done(); if (!options.holdScript) script.done();
   if (!options.holdWords) words.done(); if (!options.holdMe) me.done();
   if (!options.holdPortrait) portrait.done();
+  if (!options.holdRenderer) renderer.done();
   const errors = [], requested = [];
   await ctx.route(`${HOME}/**`, async route => {
     const url = new URL(route.request().url()), path = url.pathname; requested.push(path);
@@ -75,6 +102,7 @@ async function fixture(assets, options = {}) {
       return options.coverFails ? route.fulfill({ status: 404, body: '' }) : route.fulfill({ contentType: 'image/svg+xml', body: SVG });
     }
     if (path === '/app.js') await script.promise;
+    if (path === '/loader-portrait.js') await renderer.promise;
     if ((options.missing || []).includes(path)) return route.fulfill({ status: 404, body: '' });
     if (path.startsWith('/apps/')) return route.fulfill({ contentType: 'image/svg+xml', body: SVG });
     if (path.startsWith('/loading/')) {
@@ -92,8 +120,8 @@ async function fixture(assets, options = {}) {
   });
   const p = await ctx.newPage(); p.on('pageerror', e => { errors.push(e.message); console.error('PAGE ERROR', e.message); });
   await p.goto(`${HOME}/${options.hash || ''}`, { waitUntil: 'commit' });
-  return { ctx, p, errors, requested, cover, script, words, me, portrait,
-    async close() { cover.done(); script.done(); words.done(); me.done(); portrait.done(); await ctx.close(); } };
+  return { ctx, p, errors, requested, cover, script, words, me, portrait, renderer,
+    async close() { cover.done(); script.done(); words.done(); me.done(); portrait.done(); renderer.done(); await ctx.close(); } };
 }
 const active = p => p.waitForFunction(() => document.documentElement.classList.contains('intro-loading'));
 const released = async (p, timeout = 5500) => { await p.locator('#page').waitFor({ state: 'attached' }); await p.waitForFunction(() => !document.documentElement.classList.contains('intro-loading'), null, { timeout }); };
@@ -355,5 +383,91 @@ for (const assets of ['', 'min/']) test(`${assets || 'source/'}a contact-report 
     assert.equal(await f.p.locator('.cta [data-contact]').evaluate(el => el === document.activeElement), true, 'closing returns focus to the hero contact action');
     assert.equal(f.requested.includes('/api/contact'), false, 'this regression never submits a message');
     assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+
+
+// Sample the composed result: a raw-canvas-only test would miss a CSS blend/mask halo.
+async function portraitMargins(p) {
+  const sample = await p.locator('#loader-portrait').evaluate(el => {
+    const bounds = el.getBoundingClientRect(), image = el.querySelector('img');
+    const rgb = getComputedStyle(document.getElementById('site-loader')).backgroundColor.match(/\d+/g).slice(0, 3).map(Number);
+    const source = document.createElement('canvas'); source.width = image.naturalWidth; source.height = image.naturalHeight;
+    const context = source.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, source.width, source.height).data, points = [];
+    for (const radius of [.44, .47, .495]) for (let angle = 0; angle < 360; angle += 10) {
+      const a = angle * Math.PI / 180, u = .5 + Math.cos(a) * radius, v = .5 + Math.sin(a) * radius;
+      const sx = Math.round(u * (source.width - 1)), sy = Math.round(v * (source.height - 1));
+      let background = true;
+      // Avoid sampling a real hair/contour highlight or its downsampled neighbourhood.
+      for (let dy = -4; dy <= 4 && background; dy++) for (let dx = -4; dx <= 4 && background; dx++) {
+        const x = Math.max(0, Math.min(source.width - 1, sx + dx)), y = Math.max(0, Math.min(source.height - 1, sy + dy)), i = (y * source.width + x) * 4;
+        if ([0, 1, 2].some(c => pixels[i + c] > rgb[c])) background = false;
+      }
+      if (background) points.push({ u, v });
+    }
+    return { bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, points, rgb,
+      mask: getComputedStyle(el).maskImage };
+  });
+  const { bounds, points, rgb } = sample;
+  assert.ok(points.length >= 60, 'enough uncontaminated source-background samples surround the head');
+  const clip = { x: Math.floor(bounds.x) - 3, y: Math.floor(bounds.y) - 3, width: Math.ceil(bounds.width) + 6, height: Math.ceil(bounds.height) + 6 };
+  const { data, info } = await sharp(await p.screenshot({ clip })).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let worst = 0;
+  for (const point of points) {
+    const x = Math.floor(bounds.x + point.u * bounds.width - clip.x), y = Math.floor(bounds.y + point.v * bounds.height - clip.y), i = (y * info.width + x) * 3;
+    for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(data[i + c] - rgb[c]));
+  }
+  let facePixels = 0;
+  for (let y = Math.round(info.height * .2); y < info.height * .8; y++) for (let x = Math.round(info.width * .25); x < info.width * .75; x++) {
+    const i = (y * info.width + x) * 3;
+    if ([0, 1, 2].some(c => data[i + c] > rgb[c] + 24)) facePixels++;
+  }
+  assert.ok(facePixels > 80, 'the face remains visibly rendered rather than clearing the entire portrait');
+  assert.ok(worst <= 2, `outer portrait pixels match the overlay without a ring or square plate (maximum difference ${worst})`);
+  assert.equal(sample.mask, 'none', 'the approved head is not cropped by a geometric mask');
+}
+for (const assets of ['', 'min/']) for (const noWebGL of [false, true]) test(`${assets || 'source/'}${noWebGL ? 'static' : 'animated'} portrait has no circular or rectangular background boundary`, async () => {
+  const f = await fixture(assets, { holdCover: true, noWebGL });
+  try {
+    await active(f.p);
+    await f.p.waitForFunction(noWebGL => {
+      const portrait = document.getElementById('loader-portrait'), canvas = document.getElementById('loader-canvas');
+      return portrait?.classList.contains('shown') && Number(getComputedStyle(portrait).opacity) > .999 &&
+        (noWebGL || (portrait.classList.contains('ready') && Number(getComputedStyle(canvas).opacity) > .999));
+    }, noWebGL);
+    for (let i = 0; i < (noWebGL ? 1 : 3); i++) { if (i) await f.p.waitForTimeout(220); await portraitMargins(f.p); }
+    assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+for (const assets of ['', 'min/']) test(`${assets || 'source/'}steady portrait motion does not compile, allocate, resize or measure layout in its frame loop`, async () => {
+  const f = await fixture(assets, { holdCover: true, trackRenderer: true, trackCost: true, trackExit: true });
+  try {
+    await active(f.p);
+    await f.p.waitForFunction(() => document.getElementById('loader-portrait')?.classList.contains('shown') &&
+      document.getElementById('loader-portrait')?.classList.contains('ready') && loaderTest.render.draws > 0);
+    await f.p.waitForTimeout(150);
+    const before = await f.p.evaluate(() => ({ cost: { ...loaderTest.cost }, draws: loaderTest.render.draws }));
+    await f.p.waitForTimeout(350);
+    const after = await f.p.evaluate(() => ({ cost: { ...loaderTest.cost }, draws: loaderTest.render.draws }));
+    assert.ok(after.draws > before.draws, 'the sampled renderer was actively animating');
+    assert.deepEqual(after.cost, before.cost, 'steady frames only update existing phase uniforms and draw');
+    const visible = await f.p.evaluate(() => loaderTest.frames.filter(frame => frame.head > .025));
+    assert.ok(visible.length > 2, 'the startup sampler observed the face entering');
+    assert.equal(visible.some(frame => frame.source > .025 || frame.canvas < frame.head - .01), false, 'a visible GPU portrait never swaps from the static image or crossfades its canvas later');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+test('a renderer that arrives after the static face is visible never pops into the showcase', async () => {
+  const f = await fixture('', { holdCover: true, holdRenderer: true, trackExit: true, trackRenderer: true });
+  try {
+    await active(f.p);
+    await f.p.waitForFunction(() => { const portrait = document.getElementById('loader-portrait'); return portrait?.classList.contains('shown') && Number(getComputedStyle(portrait).opacity) > .999; });
+    assert.equal(await f.p.locator('#loader-portrait').evaluate(el => el.classList.contains('ready')), false);
+    f.renderer.done(); await f.p.waitForTimeout(550);
+    assert.equal(await f.p.locator('#loader-portrait').evaluate(el => el.classList.contains('ready')), false, 'the chosen visible backend remains static for the visit');
+    assert.equal(await f.p.evaluate(() => loaderTest.render.draws), 0, 'a late renderer does not begin unnecessary GPU work');
+    assert.equal(await f.p.evaluate(() => loaderTest.frames.some(frame => frame.head > .025 && frame.canvas > .025)), false, 'there is no source-to-canvas brightness popup');
+    f.cover.done(); await readable(f.p); assert.deepEqual(f.errors, []);
   } finally { await f.close(); }
 });
