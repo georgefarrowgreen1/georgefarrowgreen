@@ -467,12 +467,14 @@ export async function openRename(ctx, id) {
   if (sheetEl.open) push(() => renameView(a), "rename");
 }
 export function openForm(ctx) { use(ctx); openSheet(formView, { sheet: "form" }); }
-export async function openUpload(ctx, got) {
+export async function openUpload(ctx, got, current = () => true) {
   use(ctx);
-  try { await needF(); } catch (_) { return toast("Fitness couldn’t read those files just now.", true); }
+  try { await needF(); } catch (_) { if (current()) toast("Fitness couldn’t read those files just now.", true); return false; }
+  if (!current()) return false;
   const g = { acts: [], workouts: [], skipped: [], dupes: 0, ...(got || {}) };
   g.acts.sort((a, b) => b.start - a.start);
   openSheet(() => uploadView(g), { sheet: "upload", tall: g.acts.length > 2 });
+  return true;
 }
 // the Activities section: drawn on show and on core's events while it shows (the entry calls draw); the list's DOM let
 // go after it's been out of sight a while (S2-D22) is the entry's; here, the observer and the background work stop

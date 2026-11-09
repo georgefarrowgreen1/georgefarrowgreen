@@ -76,7 +76,7 @@ async function cardFrom(ui, words, packed) {
 const why = (w) => Object.assign(new Error(`chats: ${w}`), { why: w });
 const RESTART_WAIT = 5000, PING_WAIT = 1500;
 
-export function startService({ path = "/chats/", ui, onStale } = {}) {
+export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
   void path;
   const subs = new Map(), last = new Map();
   let state = "signin", w = null, n = 0, alive = false, ended = false, stale = false, restarting = null, starts = null;
@@ -91,6 +91,7 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
   // (the first state said is kept and told even when it's the one it starts as, signin: a store made later must hear it)
   const setState = (s) => { if (typeof s !== "string" || (s === state && last.has("state"))) return; state = s; last.set("state", { state: s }); tell("state", { state: s }); };
   const onMsg = (e) => {
+    if (ended) return;
     const d = e.data;
     if (!d || typeof d !== "object") return;
     if (d.t === "patch" && typeof d.topic === "string") {
@@ -151,7 +152,7 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
     return raw(m, a);
   };
   const on = (topic, fn) => {
-    if (typeof topic !== "string" || typeof fn !== "function") return () => {};
+    if (ended || typeof topic !== "string" || typeof fn !== "function") return () => {};
     const l = subs.get(topic) || new Set();
     l.add(fn); subs.set(topic, l);
     if (topic === "*") for (const [k, v] of last) { try { fn({ topic: k, data: v }); } catch (_) {} }
@@ -159,13 +160,16 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
   };
   let offs = [];
   const release = ({ terminate } = {}) => {
-    if (!terminate) return;
-    ended = true;
+    if (!terminate || ended) return;
+    ended = true; signal?.removeEventListener("abort", abort);
     for (const off of offs) { try { off?.(); } catch (_) {} }
     offs = [];
     try { w?.terminate(); } catch (_) {}
     w = null; failAll("no"); subs.clear(); last.clear();
   };
+  const abort = () => release({ terminate: true });
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
   const svc = {
     protocol: PROTOCOL,
     get state() { return state; },
@@ -173,10 +177,11 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
   };
   // Send: Chat's send sheet in a framework sheet (S3-D7); not ready → false (a card's Send then goes to /chats/#share=)
   const share = async (words, packed, { to } = {}) => {
-    if (state !== "ready") return false;
+    if (ended || state !== "ready") return false;
     const x = await cardFrom(ui, words, packed).catch(() => null);
-    if (!x) return false;
+    if (ended || !x) return false;
     const m = await ui.lazy((q) => import("./send.js" + q));
+    if (ended) return false;
     return m.openSend(ui, svc, { card: x.card, words: x.words, to: typeof to === "string" && /^[\w-]{1,64}$/.test(to) ? to : null });
   };
   // one tap to one friend (or group) whose keys are trusted and unchanged, as the sheet's Send; anyone else, the sheet
@@ -222,6 +227,7 @@ export function startService({ path = "/chats/", ui, onStale } = {}) {
   });
   // a computer: no Worker, ever (S3-D13); the facade says device
   let ready;
+  if (ended) { ready = Promise.resolve(); return ready.then(() => svc); }
   if (deviceOf() === "computer") { state = "device"; last.set("state", { state }); ready = Promise.resolve(); return ready.then(() => svc); }
   make();
   // (a Worker that never answered hello or start (its file not found, or it failed as it loaded): offline, not signed

@@ -19,8 +19,9 @@ const { S } = core;
 export { C };
 // (B0's stub names, kept: CHARTS = charts.js, bind = init, chart = a chart read with a finger, ring = a goal's ring)
 export const CHARTS = C;
-export const M = { fw: null, root: null, open: {}, views: {} };
-export function init(fw, root, open, views) { Object.assign(M, { fw, root, open, views }); }
+let owner = 0;
+export const M = { fw: null, root: null, open: {}, views: {}, current: () => () => true };
+export function init(fw, root, open, views, current = () => () => true) { owner++; Object.assign(M, { fw, root, open, views, current }); }
 export function cashContext() {
   return { h, state: core.S, money: core.money, fmt: core.fmt, accounts: core.ACCOUNTS,
     open: (id) => M.open.cash(id), save: core.cashStore.save, remove: core.cashStore.remove,
@@ -33,7 +34,7 @@ export function ring(f) {
   s.append(C.el("circle", { class: "rbg", cx: 28, cy: 28, r: 22 }), C.el("circle", { class: "rfg", cx: 28, cy: 28, r: 22, "stroke-dasharray": c.toFixed(1), "stroke-dashoffset": (c * (1 - Math.max(0, Math.min(1, f)))).toFixed(1), transform: "rotate(-90 28 28)" }));
   return s;
 }
-export function release() { Object.assign(M, { fw: null, root: null, open: {}, views: {} }); Sheet.stack = []; Sheet.handle = null; Sheet.body = null; Sheet.say = null; }
+export function release() { owner++; Object.assign(M, { fw: null, root: null, open: {}, views: {}, current: () => () => false }); Sheet.stack = []; Sheet.handle = null; Sheet.body = null; Sheet.say = null; }
 
 // ---- building (app.js 821-838) ----
 export function h(sel, attrs = {}, ...kids) {
@@ -70,7 +71,10 @@ export const el = (k) => $(`[data-el="${k}"]`);
 
 // ---- the sheet: one stack of Markets' views in one framework sheet (app.js 2172-2216) ----
 export const Sheet = { stack: [], handle: null, body: null, say: null };
-const resolve = (v) => (typeof v === "string" ? M.views[v]() : Promise.resolve(v));
+const resolve = (v) => {
+  const mine = owner, valid = M.current(), current = () => mine === owner && valid();
+  return M.views[v]().then((view) => current() ? view : null, (error) => { if (current()) throw error; return null; });
+};
 const named = () => { for (let i = Sheet.stack.length - 1; i >= 0; i--) if (Sheet.stack[i][0].sheet) return Sheet.stack[i][0].sheet; return "stock"; };
 function frame(view) {
   const say = h("p.vh", { "aria-live": "polite", "data-el": "sheet-say" }), body = h("div.mk-sheet");
@@ -97,7 +101,7 @@ function focusSheet() {
 }
 // open(view, …args): a sheet of its own (one already up shows it instead); pushSheet: on top, ‹ back to the one under
 export function openSheet(view, ...args) {
-  if (typeof view === "string") return resolve(view).then((v) => openSheet(v, ...args));
+  if (typeof view === "string") return resolve(view).then((v) => v ? openSheet(v, ...args) : null);
   Sheet.stack = [[view, args]];
   if (!Sheet.handle || Sheet.handle.closed) frame(view);
   drawSheet();
@@ -105,7 +109,7 @@ export function openSheet(view, ...args) {
   return Sheet.handle;
 }
 export function pushSheet(view, ...args) {
-  if (typeof view === "string") return resolve(view).then((v) => pushSheet(v, ...args));
+  if (typeof view === "string") return resolve(view).then((v) => v ? pushSheet(v, ...args) : null);
   if (!Sheet.handle || Sheet.handle.closed) return openSheet(view, ...args);
   Sheet.stack.push([view, args]);
   drawSheet();

@@ -4,6 +4,8 @@
 // printed, so the floor before a port (the reused files and B0's stubs) and each batch's cost are in the log.
 //   Weather: JS ≤ 90 KB once WX has moved Warnings' helpers and the detail and credits sheets (weather/roof/wxdetail.js no
 //   longer B0's stub; 104.9 before, §4.5), CSS ≤ 14 KB. Markets: JS ≤ 40, CSS ≤ 12. Fitness: JS ≤ 85, CSS ≤ 22.
+//   9 November architecture: Fitness ≤86 KB for cancellable lazy views and retained
+//   import batches across navigation (measured85.384 KB); its CSS ceiling stays22 KB.
 //   Requests: the static graph, never more than connector.files (the root worker keeps exactly those).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { MAIN, ROOF, roofSkip, appsSkip } from './fixtures/roof.mjs';
 import { staticGz, haveEsbuild } from './fixtures/budget.mjs';
 
-const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40, css: 12 }, fitness: { js: 85, css: 22 } };
+const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40, css: 12 }, fitness: { js: 86, css: 22 } };
 const stubbed = (rel) => existsSync(new URL(rel, MAIN)) && /^export const STUB = true;/m.test(readFileSync(new URL(rel, MAIN), 'utf8'));
 const kib = (n) => `${n.toFixed(1)} KB`;
 

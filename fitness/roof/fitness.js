@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.27";
-export const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
+export const BUILD = "2.28";
+export const NEWS = "More reliable app switching and recovery";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -39,6 +39,9 @@ const clockOf = (t) => { const d = new Date(t); return `${String(d.getHours()).p
 export async function mount(root, fw) {
   const S = core.S, doc = root.ownerDocument;
   const ctx = { S, core, fw, open: {} };
+  let mounted = true, onScreen = false, episode = 0;
+  const live = () => mounted && !fw.signal?.aborted;
+  const here = (mine) => live() && onScreen && episode === mine;
   // Routes are lazy; their stylesheet should not delay every opening of Today.
   let routeCSS = null;
   const routeStyles = () => routeCSS ||= new Promise((resolve, reject) => {
@@ -63,8 +66,12 @@ export async function mount(root, fw) {
     set: () => fw.lazy((q) => import("./fxsettings.js" + (q || ""))),
   };
   const loaded = {};
-  const via = (k, name) => (...a) => L[k]().then((m) => { loaded[k] = m; return m[name](ctx, ...a); })
-    .catch((e) => { console.error(e); fw.toast("That didn’t open. Try again in a moment."); });
+  const via = (k, name) => (...a) => {
+    const mine = episode;
+    if (!here(mine)) return Promise.resolve(null);
+    return L[k]().then((m) => { if (!here(mine)) return null; loaded[k] = m; return m[name](ctx, ...a); })
+      .catch((e) => { if (here(mine)) { console.error(e); fw.toast("That didn’t open. Try again in a moment."); } return null; });
+  };
   Object.assign(ctx.open, {
     act: via("acts", "openAct"), actMap: via("acts", "openActMap"), actShare: via("acts", "openActShare"), rename: via("acts", "openRename"),
     form: via("acts", "openForm"), upload: via("acts", "openUpload"),
@@ -83,18 +90,38 @@ export async function mount(root, fw) {
   picker.dataset.k = "files";
   picker.setAttribute("aria-label", "Add Files");
   root.append(picker);
-  let batches = 0;
+  let batches = 0, uploads = [], presenting = false;
+  const owned = (owner) => live() && S.me?.id === owner && fw.session.user?.id === owner;
+  // A parsed file is account data: keep it across section changes and present it once Fitness is visible again.
+  const presentUploads = async () => {
+    if (presenting || !live() || !onScreen) return;
+    uploads = uploads.filter((batch) => owned(batch.owner));
+    if (!uploads.length) return;
+    presenting = true;
+    const batch = uploads[0];
+    try {
+      const m = loaded.acts || await L.acts();
+      if (!owned(batch.owner)) return;
+      loaded.acts = m;
+      if (!onScreen) return;
+      if (await m.openUpload(ctx, batch.got, () => owned(batch.owner) && onScreen)) uploads = uploads.filter((x) => x !== batch);
+    } catch (e) {
+      if (owned(batch.owner) && onScreen) { console.error(e); fw.toast("Those files are ready. Open Fitness again to review them."); }
+    } finally { presenting = false; }
+  };
   const take = async (files) => {
     files = [...(files || [])];
     if (!files.length) return;
     // (picked or dropped before the account's in: said, not lost without a word)
     if (!S.me) { fw.toast(S.error && !S.loading ? "Fitness didn’t open, so those files weren’t read. Try again, then add them." : "Fitness is still opening. Add your files in a moment."); return; }
+    const owner = S.me.id;
     batches++;
     fw.toast(`Reading ${files.length === 1 ? "1 file" : `${files.length} files`}…`);
     try {
       const got = await core.importFiles(files);
-      if (!mounted) return;
-      await ctx.open.upload(got);
+      if (!owned(owner)) return;
+      uploads.push({ owner, got });
+      await presentUploads();
     } finally { batches--; }
   };
   picker.addEventListener("change", () => { const f = [...picker.files]; picker.value = ""; take(f); });
@@ -121,28 +148,31 @@ export async function mount(root, fw) {
 
   // ---- the sections ----
   const lazyView = (k, label) => (el, c) => {
-    let real = null, loading = null, failed = false, drawn = false;
+    let real = null, loading = null, failed = false, drawn = false, dead = false, generation = 0;
     const go = () => {
+      if (dead || !live()) return;
       // (its file in already (fetched ahead, or before a drop): the view made and drawn at once, never a skeleton between)
       if (!real && loaded[k]) real = loaded[k].view(el, c);
       if (real) { if (drawn) real.draw(); return; }
       if (loading) return;
       failed = false;
       el.replaceChildren(fw.ui.skeleton("card", 3));
-      loading = L[k]().then((m) => { loaded[k] = m; real = m.view(el, c); loading = null; if (drawn) real.draw(); }).catch((e) => {
+      const mine = generation;
+      loading = L[k]().then((m) => { if (dead || !live() || generation !== mine) return; loaded[k] = m; real = m.view(el, c); loading = null; if (drawn) real.draw(); }).catch((e) => {
+        if (dead || !live() || generation !== mine) return;
         console.error(e); loading = null; failed = true; real = null;
         el.replaceChildren(fw.ui.error({ title: `${label} didn’t load`, body: "Check your connection, then try again.", acts: [{ label: "Try Again", act: "retry", run: () => go() }] }));
       });
     };
     return {
       // (its file fetched ahead, at a quiet moment once Fitness shows)
-      warm() { if (!real && !loading && !loaded[k]) L[k]().then((m) => { loaded[k] = m; }, () => {}); },
+      warm() { const mine = generation; if (!dead && live() && !real && !loading && !loaded[k]) L[k]().then((m) => { if (!dead && live() && generation === mine) loaded[k] = m; }, () => {}); },
       draw() { drawn = true; if (!failed) go(); },
       // (shown again with nothing new to draw: told it's on screen, its DOM left as it is)
       resume() { drawn = true; if (real) real.resume?.(); else if (!loading && !failed) go(); },
       hide() { drawn = false; real?.hide?.(); },
-      drop() { if (real) { real.destroy?.(); real = null; } el.replaceChildren(); },
-      destroy() { real?.destroy?.(); real = null; },
+      drop() { generation++; loading = null; failed = false; drawn = false; if (real) { real.destroy?.(); real = null; } el.replaceChildren(); },
+      destroy() { dead = true; generation++; loading = null; drawn = false; real?.destroy?.(); real = null; },
     };
   };
   const VIEWS = { today: todayView, activities: lazyView("acts", "Activities"), routes: lazyView("routes", "Routes"), progress: lazyView("prog", "Progress") };
@@ -157,7 +187,7 @@ export async function mount(root, fw) {
     secs.set(id, el);
     views.set(id, VIEWS[id](el, ctx));
   }
-  let shown = null, onScreen = false, mounted = true, zoomed = false, opening = 0;
+  let shown = null, zoomed = false, opening = 0;
   const away = new Map();
   // (Today before the account's in: a skeleton; and what went wrong, with Try Again)
   const state = (el) => {
@@ -179,10 +209,10 @@ export async function mount(root, fw) {
     const owner = fw.session.user.id;
     try {
       const kit = routeKit || await fw.lazy((q) => import("../route-plan.js" + (q || "")));
-      if (!mounted || fw.session.user.id !== owner) return;
+      if (!live() || fw.session.user.id !== owner) return;
       routeKit = kit;
-      return await kit.renderRoutePlan(secs.get("today"), { owner, current: () => mounted && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } });
-    } catch (error) { console.error("Planned route unavailable", error); }
+      return await kit.renderRoutePlan(secs.get("today"), { owner, current: () => live() && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } });
+    } catch (error) { if (live()) console.error("Planned route unavailable", error); }
   };
   ctx.refreshRoute = () => routePlan();
   const draw = (id = shown, force = false) => {
@@ -250,7 +280,7 @@ export async function mount(root, fw) {
 
   // (an address's ride, day or plan: once the account's in, up to 20 s; a later one takes over)
   const whenReady = (my) => new Promise((done) => {
-    const t0 = Date.now(), look = () => (my !== opening || !mounted ? done(false) : S.me ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
+    const t0 = Date.now(), look = () => (my !== opening || !live() || !onScreen ? done(false) : S.me ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
     look();
   });
   const dayOfKey = (k) => { const [y, mo, d] = String(k).split("-").map(Number), t = new Date(y, mo - 1, d).getTime(); return Number.isFinite(t) && dayStamp(t) === k ? startOfDay(t) : null; };
@@ -262,7 +292,7 @@ export async function mount(root, fw) {
     if (key === "act" && arg) {
       const find = () => S.acts.find((x) => x.id === arg);
       if (find()) ctx.open.act(arg);
-      else if (core.older.p || S.me.more) core.older().then(() => { if (my !== opening) return; if (find()) ctx.open.act(arg); else fw.toast("That activity isn’t here."); });
+      else if (core.older.p || S.me.more) core.older().then(() => { if (my !== opening || !live() || !onScreen) return; if (find()) ctx.open.act(arg); else fw.toast("That activity isn’t here."); });
       else fw.toast("That activity isn’t here.");
     } else if (key === "day" && arg) {
       const d = dayOfKey(arg), lo = addDays(mondayOf(core.TODAY), -7), hi = addDays(mondayOf(core.TODAY), 13);
@@ -275,6 +305,8 @@ export async function mount(root, fw) {
 
   return {
     async show(route) {
+      if (!live()) return;
+      episode++;
       const id = SECTIONS.some(([k]) => k === route?.section) ? route.section : "today";
       if (shown && shown !== id) { try { views.get(shown).hide(); } catch (e) { console.error(e); } away.set(shown, Date.now()); }
       for (const [k, el] of secs) el.hidden = k !== id;
@@ -289,9 +321,11 @@ export async function mount(root, fw) {
       header();
       draw(id);
       openTo(route);
+      presentUploads();
       warm();
     },
     hide() {
+      episode++; opening++;
       onScreen = false;
       guard(false);
       depth = 0; lit(false);
@@ -309,7 +343,7 @@ export async function mount(root, fw) {
     },
     sendable() { try { return shown === "today" || !shown ? sendableToday() : null; } catch (e) { console.error(e); return null; } },
     unmount() {
-      mounted = false; onScreen = false; opening++;
+      mounted = false; onScreen = false; uploads = []; opening++; episode++; clearTimeout(warmT);
       guard(false);
       for (const [t, f] of [["dragenter", enter], ["dragover", over], ["dragleave", leave], ["drop", drop]]) screen.removeEventListener(t, f);
       for (const off of offs) off();

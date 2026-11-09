@@ -24,8 +24,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.27";
-export const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
+export const BUILD = "2.28";
+export const NEWS = "More reliable app switching and recovery";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }
@@ -37,6 +37,9 @@ const DROP_AFTER = 5 * 60e3;
 
 export async function mount(root, fw) {
   const S = core.S;
+  let mounted = true, onScreen = false, episode = 0;
+  const live = () => mounted && !fw.signal?.aborted;
+  const here = (mine) => live() && onScreen && episode === mine;
   // the lazy files, each a literal import inside fw.lazy (C4, D21)
   const LAZY = {
     holdings: () => fw.lazy((q) => import("./holdings.js" + q)),
@@ -47,24 +50,29 @@ export async function mount(root, fw) {
   };
   const ctx = { S, core, fw, open: {} };
   const failed = (e) => { console.error(e); fw.toast("Couldn’t open that just now. Try again."); return null; };
+  const via = (file, method) => (...a) => {
+    const mine = episode;
+    if (!here(mine)) return Promise.resolve(null);
+    return LAZY[file]().then((m) => here(mine) ? m[method](ctx, ...a) : null, (e) => here(mine) ? failed(e) : null);
+  };
   Object.assign(ctx.open, {
-    stock: (sym, o) => LAZY.stock().then((m) => m.openStock(ctx, sym, o), failed),
+    stock: via("stock", "openStock"),
     addStock: (q = "") => openAdd(q),
-    holding: (sym, o) => LAZY.edit().then((m) => m.openHolding(ctx, sym, o), failed),
+    holding: via("edit", "openHolding"),
     cash: (id) => (Sheet.stack.length ? pushSheet : openSheet)(cashView, id),
-    income: () => LAZY.money().then((m) => m.openIncome(ctx), failed),
-    isa: () => LAZY.money().then((m) => m.openIsa(ctx), failed),
-    vs: () => LAZY.money().then((m) => m.openVs(ctx), failed),
-    story: (id) => LAZY.news().then((m) => m.openStory(ctx, id), failed),
-    account: (name) => LAZY.holdings().then((m) => m.openAccount(ctx, name), failed),
-    about: () => LAZY.holdings().then((m) => m.openAbout(ctx), failed),
+    income: via("money", "openIncome"),
+    isa: via("money", "openIsa"),
+    vs: via("money", "openVs"),
+    story: via("news", "openStory"),
+    account: via("holdings", "openAccount"),
+    about: via("holdings", "openAbout"),
   });
   // (a view pushed from another file, by name)
   const views = {
     stock: () => LAZY.stock().then((m) => m.stockView), holding: () => LAZY.edit().then((m) => m.editView), story: () => LAZY.news().then((m) => m.storyView),
     isa: () => LAZY.money().then((m) => m.isaView), income: () => LAZY.money().then((m) => m.incomeView), vs: () => LAZY.money().then((m) => m.vsView),
   };
-  init(fw, root, ctx.open, views);
+  init(fw, root, ctx.open, views, () => { const mine = episode; return () => here(mine); });
 
   // ---- Add a Stock: its sheet and field made here, in the tap that asks for it, so the keyboard comes up (RI9); its
   // results and recent searches filled by edit.js once that's in
@@ -72,33 +80,35 @@ export async function mount(root, fw) {
   function addView(q = "") {
     const input = h("input", { type: "search", id: "mk-q", "data-k": "find", placeholder: "Company, fund or symbol", autocomplete: "off", autocapitalize: "off", spellcheck: "false", enterkeyhint: "search", "aria-label": "Find a company, fund, investment trust or symbol" });
     const results = h("div.results", { "data-el": "results" }, fw.ui.skeleton("rows", 4));
-    const give = (m) => { edit = m; if (input.isConnected) m.fill(input, results, q); };
+    const give = (m) => { edit = m; if (live() && onScreen && input.isConnected) m.fill(input, results, q); };
     if (edit) queueMicrotask(() => give(edit));
-    else LAZY.edit().then(give, () => results.replaceChildren(h("p.hint", { text: "Couldn’t get the search ready just now. Try again in a moment." })));
+    else LAZY.edit().then(give, () => live() && input.isConnected && results.replaceChildren(h("p.hint", { text: "Couldn’t get the search ready just now. Try again in a moment." })));
     return [h("div.shead", {}, h("h2", { text: "Add a Stock" })), h("button.cash-add", { type: "button", onclick: () => ctx.open.cash() }, "Add cash instead"), h("label.field", {}, icon("search", 18, 2.2), input), results];
   }
   addView.sheet = "add-stock";
   addView.focus = "input[data-k=find]";
-  const openAdd = (q = "") => openSheet(addView, String(q || "").slice(0, 40));
+  const openAdd = (q = "") => live() && onScreen ? openSheet(addView, String(q || "").slice(0, 40)) : null;
 
   // ---- the sections
   const doc = root.ownerDocument, secs = new Map(), views2 = new Map(), drops = new Map(), stale = new Set();
   const stub = (id, el) => {
-    let real = null, loading = null;
-    const load = () => (loading ??= LAZY[id]().then((m) => { real = m.view(el, ctx); return real; }, (e) => { loading = null; throw e; }));
+    let real = null, loading = null, dead = false;
+    const load = () => (loading ??= LAZY[id]().then((m) => { if (dead || !live()) return null; real = m.view(el, ctx); return real; }, (e) => { loading = null; throw e; }));
     return {
       // (its file fetched ahead, at a quiet moment once Markets shows: its first show then drawn at once, no skeleton)
-      warm() { if (!real) load().catch(() => {}); },
+      warm() { if (!dead && live() && !real) load().catch(() => {}); },
       draw(animate) {
+        if (dead || !live()) return;
         if (real) return real.draw(animate);
         el.replaceChildren(fw.ui.skeleton("rows", 6));
-        load().then((v) => { if (shown === id && onScreen) v.draw(animate); }, (e) => {
+        load().then((v) => { if (v && !dead && live() && shown === id && onScreen) v.draw(animate); }, (e) => {
+          if (dead || !live()) return;
           console.error(e);
           el.replaceChildren(fw.ui.error({ title: "This part of Markets didn’t open", body: "Try again in a moment.", acts: [{ label: "Try Again", act: "retry", run: () => draw(id) }] }));
         });
       },
       hide() { return real?.hide() || false; },
-      destroy() { real?.destroy(); el.replaceChildren(); },
+      destroy() { dead = true; real?.destroy(); real = null; el.replaceChildren(); },
     };
   };
   for (const [id, name] of SECTIONS) {
@@ -111,7 +121,7 @@ export async function mount(root, fw) {
     secs.set(id, el);
     views2.set(id, id === "today" ? todayView(el, ctx) : stub(id, el));
   }
-  let shown = null, onScreen = false, opening = 0;
+  let shown = null, opening = 0;
   // (the other sections' files fetched once (not when Save Data is asked for), a moment after Markets first shows, so a first switch to one is instant)
   let warmed = false, warmT = 0;
   const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views2.values()) v.warm?.(); }, 1200); };
@@ -169,7 +179,7 @@ export async function mount(root, fw) {
   want.open = () => { if (onScreen) takeWant(); else fw.nav.go("/markets/"); };
   // (a stock or a sheet asked for in the address: opened once your list is in, up to 20 s; a later one takes over)
   const whenReady = (my) => new Promise((done) => {
-    const t0 = Date.now(), look = () => (my !== opening ? done(false) : S.me ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
+    const t0 = Date.now(), look = () => (my !== opening || !live() || !onScreen ? done(false) : S.me ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
     look();
   });
   const openFrom = async (route) => {
@@ -185,6 +195,8 @@ export async function mount(root, fw) {
 
   return {
     async show(route) {
+      if (!live()) return;
+      episode++; opening++;
       const id = SECTIONS.some((s) => s[0] === route?.section) ? route.section : "today";
       if (shown && shown !== id) {
         try { if (views2.get(shown).hide()) stale.add(shown); } catch (e) { console.error(e); }
@@ -208,6 +220,7 @@ export async function mount(root, fw) {
       warm();
     },
     hide() {
+      episode++; opening++;
       onScreen = false;
       core.shown(false);
       if (shown) { try { views2.get(shown).hide(); } catch (e) { console.error(e); } away(shown); }
@@ -223,7 +236,7 @@ export async function mount(root, fw) {
       return null;
     },
     unmount() {
-      opening++;
+      mounted = false; episode++; clearTimeout(warmT); opening++;
       onScreen = false;
       want.open = null;
       for (const off of offs) off();

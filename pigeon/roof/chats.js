@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.96";
-export const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
+export const BUILD = "1.97";
+export const NEWS = "More reliable app switching and recovery";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
@@ -59,10 +59,13 @@ export async function mount(root, fw) {
   root.classList.add("m-chats");
   const store = createStore();
   const ctx = { fw, svc: null, store, open: {} };
+  let dead = false, onScreen = false, episode = 0;
+  const live = () => !dead && !fw.signal?.aborted;
+  const here = (mine) => live() && onScreen && episode === mine;
   // (until the service answers, every call waits for it; a failure says why "offline")
   let svcP = null, svc = null;
-  const call = (m, ...a) => (svc ? svc.call(m, ...a) : (svcP || Promise.reject({ why: "offline" })).then((s) => s.call(m, ...a)));
-  ctx.svc = { call, on: (t, fn) => (svc ? svc.on(t, fn) : () => {}) };
+  const call = (m, ...a) => !live() ? Promise.reject({ why: "offline" }) : (svc ? svc.call(m, ...a) : (svcP || Promise.reject({ why: "offline" })).then((s) => live() && s ? s.call(m, ...a) : Promise.reject({ why: "offline" })));
+  ctx.svc = { call, on: (t, fn) => (live() && svc ? svc.on(t, fn) : () => {}) };
 
   // ---- the openers ----
   const lazyFail = () => { fw.toast("That needs a connection. Try again when you’re back online."); return null; };
@@ -73,7 +76,11 @@ export async function mount(root, fw) {
     media: () => fw.lazy((q) => import("./media.js" + q)),
     send: () => fw.lazy((q) => import("./send.js" + q)),
   };
-  const lz = (file, name) => (...a) => L[file]().then((m) => m[name](ctx, ...a), lazyFail);
+  const lz = (file, name) => (...a) => {
+    const mine = episode;
+    if (!here(mine)) return Promise.resolve(null);
+    return L[file]().then((m) => here(mine) ? m[name](ctx, ...a) : null, () => here(mine) ? lazyFail() : null);
+  };
   Object.assign(ctx.open, {
     newChat: () => openNewChat(ctx), newGroup: () => openNewGroup(ctx), requests: () => openRequests(ctx), addFriend: (h) => openAddFriend(ctx, h),
     friendInfo: lz("sheets", "openFriendInfo"), groupInfo: lz("sheets", "openGroupInfo"), safety: lz("sheets", "openSafety"),
@@ -81,7 +88,7 @@ export async function mount(root, fw) {
     map: lz("flight", "openMap"), flightLog: lz("flight", "openFlightLog"), news: lz("flight", "openNews"),
     settings: lz("settings", "openChatSettings"),
     photo: lz("media", "pickPhoto"), voice: lz("media", "recordVoice"), gifs: lz("media", "openGifs"),
-    send: (o) => L.send().then((m) => m.openSend(fw, ctx.svc, o), lazyFail),
+    send: (o) => { const mine = episode; return here(mine) ? L.send().then((m) => here(mine) ? m.openSend(fw, ctx.svc, o) : null, () => here(mine) ? lazyFail() : null) : Promise.resolve(null); },
   });
   Object.freeze(ctx);
 
@@ -101,7 +108,7 @@ export async function mount(root, fw) {
   const lock = lockView(lockBox, ctx);
   const unwatch = lockWatch(ctx, root);
 
-  let shown = null, onScreen = false, route = null, stateNow = deviceOf() === "computer" ? "device" : null, failed = false, syncT = 0, opening = 0;
+  let shown = null, route = null, stateNow = deviceOf() === "computer" ? "device" : null, failed = false, syncT = 0, opening = 0;
   const offs = [];
 
   // ---- the header ----
@@ -137,6 +144,7 @@ export async function mount(root, fw) {
       box.append(code);
       // (the code for this link, drawn by Chat's qr.js: an SVG it writes with everything in it its own)
       fw.lazy((q) => import("../qr.js" + q)).then((m) => {
+        if (!live() || !code.isConnected) return;
         const t = doc.createElement("template");
         t.innerHTML = m.qrSvg(new URL("/chats/", globalThis.location?.href || "https://inflite.ai/").href, { title: "QR code for Chats" });
         code.replaceChildren(t.content);
@@ -163,7 +171,7 @@ export async function mount(root, fw) {
   // ---- the service ----
   function onState(d) {
     const s = d?.state;
-    if (!s || s === stateNow) return;
+    if (!live() || !s || s === stateNow) return;
     const was = stateNow;
     stateNow = s;
     if (s === "locked" || was === "ready") forgetWords();
@@ -179,8 +187,9 @@ export async function mount(root, fw) {
     if (rows) store.apply("rows", rows.map(({ line, ...r }) => r));
   }
   function connect() {
-    if (stateNow === "device" || svcP) return svcP;
+    if (!live() || stateNow === "device" || svcP) return svcP;
     svcP = fw.service().then((s) => {
+      if (!live()) return null;
       svc = s;
       // (every patch into the store; "*" first replays the last value of each topic but chat:* and typing:*)
       offs.push(s.on("*", (p) => store.apply(p)));
@@ -188,19 +197,19 @@ export async function mount(root, fw) {
         ...["unread", "air"].map((k) => store.on(k, header)));
       return s;
     });
-    svcP.catch(() => { failed = true; svcP = null; paint(); });
+    svcP.catch(() => { if (!live()) return; failed = true; svcP = null; paint(); });
     return svcP;
   }
 
   // ---- the route ----
   async function openRoute(r) {
-    if (!r || stateNow !== "ready") return;
+    if (!live() || !onScreen || !r || stateNow !== "ready") return;
     const my = ++opening;
     if (r.key === "open" && r.arg) {
       for (const v of views.values()) v.hide();
       for (const s of secs.values()) s.hidden = true;
       const ok = await chat.show(r);
-      if (my !== opening) return;
+      if (my !== opening || !live() || !onScreen) return;
       if (!ok) {
         chat.hide();
         fw.toast("That chat isn’t on this phone");
@@ -220,7 +229,7 @@ export async function mount(root, fw) {
         const h = String(r.hash || "").replace(/^#?/, "#");
         const { words, card } = readShareHash(h);
         const back = new URLSearchParams(h.slice(1)).get("back");
-        ctx.open.send({ card, words, to: null }).then((res) => { if (res && back && /^\/[\w/-]*$/.test(back) && !back.startsWith("//")) fw.nav.go(back, { replace: true }); });
+        ctx.open.send({ card, words, to: null }).then((res) => { if (live() && onScreen && my === opening && res && back && /^\/[\w/-]*$/.test(back) && !back.startsWith("//")) fw.nav.go(back, { replace: true }); });
         break;
       }
     }
@@ -244,6 +253,8 @@ export async function mount(root, fw) {
 
   return {
     async show(r) {
+      if (!live()) return;
+      episode++;
       route = r || { section: "chats" };
       onScreen = true;
       if (stateNow !== "device") connect();
@@ -252,7 +263,7 @@ export async function mount(root, fw) {
       await openRoute(route);
     },
     hide() {
-      onScreen = false;
+      episode++; onScreen = false;
       opening++;
       clearInterval(syncT); syncT = 0;
       for (const v of views.values()) v.hide();
@@ -264,6 +275,7 @@ export async function mount(root, fw) {
     async flush() { return chat.flush(); },
     unmount() {
       this.hide();
+      dead = true;
       for (const f of offs) { try { f?.(); } catch (_) {} }
       offs.length = 0;
       globalThis.removeEventListener("online", onLine);

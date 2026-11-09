@@ -21,7 +21,8 @@ const tfSkip = skip || (!existsSync(new URL('../src/hub.js', PUB)) && 'the infli
 const oldSkip = tfSkip || (!roofSkip && 'the inflite repo beside has the roof: its page is checked by the case after');
 const roofOnly = tfSkip || roofSkip;
 const pub = (f) => readFileSync(new URL(f, PUB));
-const STATIC = ['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send'];
+const STATIC = ['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send',
+  ...['tasks', 'screens'].filter(f => existsSync(new URL(`roof/${f}.js`, PUB)))];
 // (app.js after the shared block, which is a copy of MAIN's menu.js, unchanged here)
 const own = () => { const js = String(pub('app.js')), end = js.indexOf('// ==== end of InFlite’s menu ===='.replace('’', "'")); return end > 0 ? js.slice(end) : js; };
 
@@ -288,7 +289,11 @@ test('stage 3, app.js: the core let go of on every way out (sign-out ends it bef
   const rel = so.indexOf('F?.releaseService("chats", { terminate: true })'), fa = so.indexOf('await forgetApps(');
   assert.ok(so.indexOf('c.signOut()') > 0 && so.indexOf('c.signOut()') < rel && rel < fa, 'the core’s signOut, then ended, then the store cleared');
   assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut \}\);/, 'Chat’s store cleared here too with Chats in the page');
-  assert.match(js, /if \(was\) \{ you\?\.forgetYou\?\.\(\); F\?\.releaseService\("chats", \{ terminate: true \}\); \}/, 'another account: let go of');
+  if (existsSync(new URL('roof/tasks.js', PUB))) {
+    const adopt = js.slice(js.indexOf('function signedIn('), js.indexOf('const idle ='));
+    assert.match(adopt, /if \(was\) \{\s*unframe\(\);\s*letDayGo\(\);\s*you\?\.forgetYou\?\.\(\);/, 'another account disposes every module and the old day');
+    assert.ok(adopt.indexOf('unframe();') < adopt.indexOf('S.view = view;'), 'old frame ends before the new account is adopted');
+  } else assert.match(js, /if \(was\) \{ you\?\.forgetYou\?\.\(\); F\?\.releaseService\("chats", \{ terminate: true \}\); \}/, 'previous production host releases Chats on account replacement');
   assert.match(js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn(')), /unframe\(\);/, 'signed out: the frame destroyed (which ends its services)');
   assert.match(js, /retired: (retiredSoon\(\)|\{ then: \(ok, no\) => retiredSoon\(\)\.then\(ok, no\) \}), serviceState,/, "opts.retired: retireOld’s promise, read when the frame first asks (a thenable)");
   assert.match(js, /retiring = Promise\.all\(\[retiring, gone\]\);/);
@@ -297,6 +302,7 @@ test('stage 3, app.js: the core let go of on every way out (sign-out ends it bef
   assert.match(ss, /if \(app !== "chats" \|\| state !== "locked"\) return;/);
   assert.match(ss, /#today \.dw-words, #today \.dw-chips, #today \.dt-said/); assert.match(ss, /day\?\.forgetHeard\?\.\(\);/);
   assert.match(String(pub('day.js')), /export function forgetHeard\(\) \{ heard\.clear\(\); wroteHeard\.clear\(\); \}/);
-  assert.match(js, /chatSettings: \(\) => \(chatsHere && F \? F\.nav\.go\("\/chats\/#settings"\)/);
+  if (existsSync(new URL('roof/screens.js', PUB))) assert.match(js, /chatSettings: \(\) => task\.active\(\) && \(chatsHere \? task\.frame\.nav\.go\("\/chats\/#settings"\)/);
+  else assert.match(js, /chatSettings: \(\) => \(chatsHere && F \? F\.nav\.go\("\/chats\/#settings"\)/);
   assert.match(js, /if \(S\.hub && !chatsHere\) IFL\.hub\.chat\(\)\.then\(\(c\) => c\?\.refresh\?\.\(\)\)/, 'the push’s sync: the frame relays it with Chats here');
 });
