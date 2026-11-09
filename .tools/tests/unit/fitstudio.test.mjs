@@ -165,6 +165,10 @@ test('the shop’s Google Client ID: pasted into the app by a fitter, kept for e
   assert.equal((await put('<script>.apps.googleusercontent.com')).status, 400);
   assert.equal((await ask(HOST + '/api/google', { env, cookie })).status, 405);
   assert.equal((await put(ID)).status, 200);
+  const malformed = new Request(HOST + '/api/google', { method: 'PUT', headers: { Origin: HOST, Cookie: cookie }, body: 'not-json' });
+  const refused = await onRequest({ request: malformed, env, waitUntil() {}, params: {}, data: {} });
+  assert.equal(refused.status, 400);
+  assert.equal((await (await ask(HOST + '/api/me', { env, cookie })).json()).google, ID, 'malformed JSON cannot clear the stored Client ID');
   // (Matt's iPad, signed in apart, has it too)
   const matt = cookieOf(await signIn('Matt', 'matt-plain-99', env));
   assert.deepEqual(await (await ask(HOST + '/api/me', { env, cookie: matt })).json(), { name: 'Matt', google: ID, googleFixed: false });

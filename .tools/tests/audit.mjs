@@ -18,6 +18,7 @@ const out = process.argv[2];
 // overlapping its words, where scrolling brings it out from under; held under one, it is.
 const AUDIT = () => {
   const B = document.body, R = document.documentElement, CS = new Map();
+  const modal = document.querySelector('dialog:modal');
   const css = (e) => { let c = CS.get(e); if (!c) CS.set(e, c = getComputedStyle(e)); return c; };
   const clips = (c, ax) => (ax === 'x' ? c.overflowX : c.overflowY) !== 'visible' && c.display !== 'contents';
   const scrolls = (c, ax) => /auto|scroll/.test(ax === 'x' ? c.overflowX : c.overflowY);
@@ -27,6 +28,9 @@ const AUDIT = () => {
   const SEEN = new Map();
   const seen = (e) => {
     if (!e || e === B || e === R) return true;
+    // A modal's dimmed backdrop can remain translucent. Its inert page is not
+    // foreground content and cannot overlap the dialog's readable text.
+    if (modal && !modal.contains(e) && !e.contains(modal)) return false;
     if (SEEN.has(e)) return SEEN.get(e);
     const c = css(e);
     let ok = c.display !== 'none' && +c.opacity > 0.05 && c.clip !== 'rect(0px, 0px, 0px, 0px)' && c.clipPath !== 'inset(50%)';

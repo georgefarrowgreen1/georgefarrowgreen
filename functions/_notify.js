@@ -167,7 +167,7 @@ export async function pushTo(env, userId, note) {
 export async function pushToSub(env, sub, note) {
   try {
     const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
-      method: "POST", signal: AbortSignal.timeout(8000),
+      method: "POST", redirect: "manual", signal: AbortSignal.timeout(8000),
       headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
         TTL: String(note.ttl || DAY / 1000), Urgency: note.urgency || "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
         ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },
@@ -175,8 +175,9 @@ export async function pushToSub(env, sub, note) {
     });
     if (r.status === 404 || r.status === 410) return "gone";
     if (r.ok) return "sent";
-    console.error("push", r.status, await r.text().catch(() => ""));
-  } catch (e) { console.error("push", e && e.message); }
+    r.body?.cancel().catch(() => {});
+    console.error("push", r.status);
+  } catch (e) { console.error("push", "network"); }
   return "error";
 }
 

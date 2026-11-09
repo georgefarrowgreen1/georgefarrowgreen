@@ -82,7 +82,7 @@ globalThis.fetch = async (u, init) => {
 };
 const worker = async () => (await load('src/index.js')).default;
 const ask = async (path, { method = 'GET', body } = {}) => {
-  const h = { 'Sec-Fetch-Site': 'same-origin', Cookie: `account=${'y'.repeat(30)}`, ...(body !== undefined && { 'Content-Type': 'application/json', 'X-Inflite': '1' }) };
+  const h = { Origin: 'https://email.inflite.ai', 'Sec-Fetch-Site': 'same-origin', Cookie: `account=${'y'.repeat(30)}`, ...(body !== undefined && { 'Content-Type': 'application/json', 'X-Inflite': '1' }) };
   const res = await (await worker()).fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
   await settle();
   const text = await res.text();
@@ -299,7 +299,7 @@ test('the switches off (as they start): parcel and bill mail is kept, nothing re
 test('turned on: the last 60 days read back (DMARC from the original); parcels as they come, one row a parcel across its emails; a lookalike, no DMARC, or a failed one: never', { skip }, async () => {
   // (one switch, then the other straight after, each read-back started before the last is done: the second goes on with
   // both kinds, the first stops without writing over it)
-  const patch = async (spot) => (await worker()).fetch(new Request('https://email.inflite.ai/api/settings', { method: 'PATCH', headers: { 'Sec-Fetch-Site': 'same-origin', Cookie: `account=${'y'.repeat(30)}`, 'Content-Type': 'application/json', 'X-Inflite': '1' }, body: JSON.stringify({ spot }) }), env, ctx);
+  const patch = async (spot) => (await worker()).fetch(new Request('https://email.inflite.ai/api/settings', { method: 'PATCH', headers: { Origin: 'https://email.inflite.ai', 'Sec-Fetch-Site': 'same-origin', Cookie: `account=${'y'.repeat(30)}`, 'Content-Type': 'application/json', 'X-Inflite': '1' }, body: JSON.stringify({ spot }) }), env, ctx);
   const first = await patch({ parcels: true, tz: Z });
   const on = { status: (await patch({ bills: true, tz: Z })).status };
   assert.equal(first.status, 200);

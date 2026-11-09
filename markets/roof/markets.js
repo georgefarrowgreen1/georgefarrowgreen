@@ -22,8 +22,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.19";
-export const NEWS = "Optional keyless streaming prices for US shares and crypto";
+export const BUILD = "2.20";
+export const NEWS = "Consistent menus, spacing and motion that adapt to your screen";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

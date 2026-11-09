@@ -307,7 +307,9 @@ const IFL = (() => {
     m.behind?.forEach((c) => { c.inert = false; });
     m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
+    window.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("resize", m.fit);
+    window.visualViewport?.removeEventListener("scroll", m.fit);
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
@@ -369,7 +371,7 @@ const IFL = (() => {
     const key = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
       else if (e.key === "Tab") {
-        const f = [...pop.querySelectorAll("button, a")];
+        const f = [...pop.querySelectorAll("button:not(:disabled), a[href]")];
         if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
         else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
       }
@@ -384,22 +386,30 @@ const IFL = (() => {
     // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
     // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
     // field, which left it short, or the phone turned)
-    const tall = () => Math.min(window.innerHeight, window.visualViewport?.height || Infinity);
-    const r = anchor.getBoundingClientRect(), H = tall(), W = window.innerWidth;
-    const left = Math.max(12, Math.min(r.left - 2, W - pop.offsetWidth - 12));
-    const below = r.bottom + 10 + pop.offsetHeight <= H - 12 || r.top < H / 2;
-    const top = below ? r.bottom + 10 : Math.max(12, r.top - 10 - pop.offsetHeight);
-    const fit = () => { if (below) pop.style.maxHeight = `${Math.max(0, tall() - top - 12)}px`; };
+    const fit = () => {
+      const vv = window.visualViewport, y = vv?.offsetTop || 0, x = vv?.offsetLeft || 0;
+      const H = Math.min(window.innerHeight, vv?.height || Infinity), W = Math.min(window.innerWidth, vv?.width || Infinity);
+      const r = anchor.getBoundingClientRect();
+      pop.style.maxHeight = `${Math.max(0, H - 24)}px`;
+      const roomBelow = y + H - r.bottom - 22, roomAbove = r.top - y - 22;
+      const below = pop.offsetHeight <= roomBelow || roomBelow >= roomAbove;
+      pop.style.maxHeight = `${Math.max(0, Math.min(H - 24, below ? roomBelow : roomAbove))}px`;
+      const left = Math.max(x + 12, Math.min(r.left - 2, x + W - pop.offsetWidth - 12));
+      const top = Math.max(y + 12, Math.min(below ? r.bottom + 10 : r.top - 10 - pop.offsetHeight, y + H - pop.offsetHeight - 12));
+      pop.style.top = `${top}px`;
+      pop.style.left = `${left}px`;
+      pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
+    };
     fit();
+    window.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("resize", fit);
-    pop.style.top = `${top}px`;
-    pop.style.left = `${left}px`;
-    pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
+    window.visualViewport?.addEventListener("scroll", fit);
     anchor.classList.add("ifm-lit");
     open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
+      fit();
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
     requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
@@ -1176,8 +1186,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.92";            // shown in InFlite's menu
-const APP_NEWS = "The message box stays fully on screen when Chats resumes or the keyboard closes";       // (said once it's in)
+const APP_VERSION = "1.93";            // shown in InFlite's menu
+const APP_NEWS = "Consistent menus, spacing and motion that adapt to your screen";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

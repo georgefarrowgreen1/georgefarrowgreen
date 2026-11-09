@@ -1304,6 +1304,74 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: #9c93ff; } }
 :root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; }
 :root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
+/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+   no extra request, and an app's existing offline/update mechanism keeps it current. */
+:root {
+  --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
+  --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
+  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ifl-chrome-blur: blur(24px) saturate(160%);
+  --ifl-chrome-solid: #f7f8fc;
+  --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
+  --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
+  --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+}
+:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }
+/* Concentric surfaces: the inset is subtracted from the outer corner. */
+.ifm-pop { padding: var(--ifl-space-2); border-radius: var(--ifl-radius-card);
+  -webkit-backdrop-filter: var(--ifl-chrome-blur); backdrop-filter: var(--ifl-chrome-blur);
+  transform: translateY(-4px) scale(0.96);
+  transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
+.ifm-pop.open { transform: none; }
+.ifm-pop.closing { transform: translateY(-3px) scale(0.97);
+  transition: transform 0.22s var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
+.ifm-grp, .ifm-card { border-radius: calc(var(--ifl-radius-card) - var(--ifl-space-2)); }
+.ifm-card { padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
+.ifm-layer { transition: background-color var(--ifl-motion-fast) ease; }
+.ifm-layer.open { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ifa-sheet { border-radius: var(--ifl-radius-sheet) var(--ifl-radius-sheet) 0 0;
+  transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
+.ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+
+/* Allow flex/grid text to shrink before it can push a control outside its surface. */
+.ifh-t, .ifm-who, .ifm-l, .ifm-val, .ifm-note-tx, .ifb-facts > *,
+.row .tx, .ifl-tx, .tc-meta, .tc-app { min-width: 0; }
+.ifh-name { line-height: 1.2; }
+.ifm-who b, .ifm-who small, .ifm-l, .ifm-note-tx, .ifb-facts, .ifl-sub { white-space: normal; overflow-wrap: anywhere; }
+.ifm-val { max-width: min(40vw, 18ch); white-space: normal; overflow-wrap: anywhere; text-align: end; }
+.ifm-row:has(.ifm-val:not(:empty)) { grid-template-columns: 30px minmax(0, 1.2fr) minmax(0, 0.8fr) 15px; }
+.ifm-row { min-height: 52px !important; height: auto !important; padding-top: var(--ifl-space-2) !important; padding-bottom: var(--ifl-space-2) !important; }
+.ifm-switch::before { content: ""; position: absolute; inset: -7px 0; }
+:is(.pill, .btn, .ifl-btn) { max-width: 100%; overflow-wrap: anywhere; }
+:is(.pill, .btn, .ifl-btn):focus-visible { outline: 2px solid var(--tint-text, var(--tint, currentColor)); outline-offset: 3px; }
+
+/* Accessibility preferences apply to the shared chrome in every standalone app. */
+@media (prefers-reduced-motion: reduce) {
+  .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
+  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after { transition: none; }
+  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb-card {
+    -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ifl-chrome-solid);
+  }
+  .ifm-grp { background: var(--ifl-chrome-solid); }
+}
+@media (forced-colors: active) {
+  .ifm-pop, .ifm-grp, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back { background: Canvas; color: CanvasText; border: 1px solid ButtonText; }
+}
 /* ==== end of InFlite's menu ==== */
 
 /* ==== InFlite's way in, shared: from .tools/inflite/signin.css by node .tools/signin.mjs (change it there) ==== */

@@ -84,7 +84,7 @@ export const ENGINE = (() => {
 })();
 // (WebKit takes no resolver rules: a proxy that sends each of the tests' names where Chromium's rules would)
 let proxy = null;
-function hubProxy() {
+export function hubProxy() {
   if (proxy) return proxy;
   const where = (host) => {
     const [name, port = '80'] = host.split(':');

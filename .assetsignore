@@ -8,6 +8,13 @@
 .claude
 node_modules
 functions
+docs
+tests
+package.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+**/*.map
 workers
 README.md
 wrangler.toml

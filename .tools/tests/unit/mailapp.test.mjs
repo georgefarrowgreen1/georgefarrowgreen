@@ -42,7 +42,7 @@ globalThis.fetch = async (u, init) => (String(u).startsWith(env.ACCOUNT_ORIGIN)
   : realFetch(u, init));
 const call = async (method, path, body) => {
   const { default: worker } = await load('src/index.js');
-  const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json' },
+  const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Origin: 'https://email.inflite.ai', Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined }), env, ctx);
   return { status: res.status, data: await res.json() };
 };

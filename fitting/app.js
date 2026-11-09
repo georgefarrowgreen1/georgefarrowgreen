@@ -1072,7 +1072,7 @@ function reportStepHTML(){
       <div class="row-btns"><a class="btn" id="mailto" href="${esc(mailtoHref())}">Open in Mail</a><button type="button" class="btn" data-act="copy-mail">Copy email</button></div>
       <div id="send-msg"></div>
       <div class="hint">On iPad, Make PDF then Share or email opens the share sheet: choose Mail and the report goes as an attachment.</div></div>
-      <div><span class="lab">Email message</span><div class="mail" id="mail" style="margin-top:7px">${esc(mailText())}</div></div></div></div>`;
+      <div><span class="lab">Email message</span><div class="mail" id="mail" role="region" tabindex="0" aria-label="Email message" style="margin-top:7px">${esc(mailText())}</div></div></div></div>`;
 }
 function mailtoHref(){
   const [subj, ...rest] = mailText().split('\n\n');
@@ -1459,7 +1459,7 @@ function fitPages(){
 function loadScript(src){ return new Promise((res, rej) => { if ([...document.scripts].some(s => s.src === src)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('The PDF tools did not load. Check the connection and try again.')); document.head.appendChild(s); }); }
 async function ensureLibs(){
   await loadScript(new URL('vendor/html2canvas.min.js', document.baseURI).href);
-  await loadScript(new URL('vendor/jspdf.umd.min.js', document.baseURI).href);
+  await loadScript(new URL('vendor/jspdf.umd.min.js?v=4.2.1', document.baseURI).href);
 }
 async function buildPDF(onStep){
   await ensureLibs();

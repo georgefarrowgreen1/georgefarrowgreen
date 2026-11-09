@@ -140,9 +140,13 @@ for (let i = 0; i < 60 && !['Hostile', 'Other', 'Wide', 'Quoted', 'Plain'].every
 await wait(1500);
 seen = await heardOf();
 const { h: h1, said: said1 } = seen;
+const measured = Object.fromEntries(await Promise.all(Object.keys(h1).map(async (k) => {
+  const shell = p.frames().find((f) => f.url().startsWith(`${MAIL}/body/`) && f.url().includes(`m=${ids[k].id}`));
+  return [k, await shell.locator('#b').evaluate((e) => Math.ceil(e.getBoundingClientRect().height))];
+})));
 // (a real height, the message's own: never a shell's first empty layout (40), which would stop the page's 6 s rule)
-ok(Object.keys(h1).every((k) => said1[k]?.length && h1[k] >= 40 && h1[k] === said1[k].at(-1) && !said1[k].includes(40)) && ['Hostile', 'Quoted', 'Wide'].every((k) => h1[k] > 64),
-  'every frame said its height, its message’s own (never an empty 40; Hostile, Quoted and Wide taller than 64)', JSON.stringify({ h1, said1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
+ok(Object.keys(h1).every((k) => said1[k]?.length && h1[k] >= 40 && h1[k] === said1[k].at(-1) && !said1[k].includes(40) && Math.abs(h1[k] - measured[k]) <= 1) && ['Hostile', 'Quoted'].every((k) => h1[k] > 64),
+  'every frame reports its rendered message height, never an empty shell (newsletter zoom may produce a short frame)', JSON.stringify({ h1, measured, said1, shellNet: shellNet.slice(0, 12), frames: p.frames().map((f) => f.url().slice(0, 80)) }));
 await p.screenshot({ path: `${out}/frames.png`, fullPage: true });
 
 // (the shell drew the message: its inner frame, from the shell's own document, as Playwright can see it)

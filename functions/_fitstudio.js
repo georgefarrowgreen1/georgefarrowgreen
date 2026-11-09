@@ -17,6 +17,7 @@
 // api/me hands it to the app. Without one the app offers no Drive.
 
 import { notFound } from "./_app.js";
+import { body as readJson } from "./_pigeon.js";
 export const FITTING_HOST = "fitting.georgefarrowgreen.com";
 // (FITTING_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
 export const isFitting = (url, env) => (env.FITTING_HOST || FITTING_HOST).split(",").includes(url.hostname);
@@ -120,7 +121,10 @@ async function api(ctx, url, what) {
     if (req.headers.get("Origin") !== url.origin) return json(403, { error: "Only from the Fit Studio’s own pages." });
     if (!await signedIn(req, env)) return json(401, { error: "Sign in first." });
     if (String(env.FITTING_GOOGLE_CLIENT_ID || "").trim()) return json(409, { error: "The Client ID is set on the server, so it’s changed there." });
-    let id = ""; try { id = String((await req.json()).id || "").trim(); } catch (_) {}
+    let body;
+    try { body = await readJson(req, 8192); } catch (e) { return json(e.status === 413 ? 413 : 400, { error: "Send a valid Google Client ID." }); }
+    const id = typeof body?.id === "string" ? body.id.trim() : null;
+    if (id === null) return json(400, { error: "Send a valid Google Client ID." });
     if (id && !GID.test(id)) return json(400, { error: "That doesn’t look like a Google Client ID: it ends .apps.googleusercontent.com." });
     if (!env.BIO_KV) return json(503, { error: "The site can’t keep it just now." });
     if (id) await env.BIO_KV.put(GKEY, id); else await env.BIO_KV.delete(GKEY);
@@ -139,8 +143,8 @@ async function api(ctx, url, what) {
   const tries = kv ? Number(await kv.get(key).catch(() => 0)) || 0 : 0;
   if (tries >= TRIES) return json(429, { error: "Too many wrong passwords. Try again in 15 minutes." });
   let body = {};
-  try { body = await req.json(); } catch (_) { return json(400, { error: "Send a name and a password." }); }
-  const name = String(body.name || "").trim(), password = String(body.password || "");
+  try { body = await readJson(req, 8192); } catch (e) { return json(e.status === 413 ? 413 : 400, { error: "Send a name and a password." }); }
+  const name = typeof body?.name === "string" ? body.name.trim() : "", password = typeof body?.password === "string" ? body.password : "";
   if (!name || !password || name.length > 64 || password.length > 256) return json(400, { error: "Enter your name and password." });
   const user = users.find((u) => u.name.toLowerCase() === name.toLowerCase());
   // (a name that isn't there checked against a stand-in all the same, so a wrong name takes as long as a wrong password)

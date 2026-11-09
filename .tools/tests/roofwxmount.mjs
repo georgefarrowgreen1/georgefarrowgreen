@@ -60,11 +60,14 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || (exist
 // (kit.test counted as secure, as inflite.ai is: My Location's position is only given to a secure page)
 
 // ---- a phone at the kit: Weather's third parties and API stood in, its listeners counted ----
-async function phone({ colorScheme = 'dark', theme = null, geo = { latitude: 55.953, longitude: -3.188 } } = {}) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme, permissions: ['geolocation'], geolocation: geo, locale: 'en-GB', timezoneId: 'Europe/London' });
+async function phone({ colorScheme = 'dark', theme = null, saveData = false, geo = { latitude: 55.953, longitude: -3.188 } } = {}) {
+  // Saved-place scenarios start without location permission. Grant it explicitly
+  // in the My Location scenario: Weather now requests it automatically on open.
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme, permissions: [], geolocation: geo, locale: 'en-GB', timezoneId: 'Europe/London' });
   // (me: 'down' till the links are done, so the account's copy in wx:acct keeps York, as an account would that has it;
   // then 'ok'; '401' for the sign-in that's gone at Weather's end)
   const st = { puts: [], me: 'down', ver: 1, errors: [], geocode: 0 };
+  if (saveData) await ctx.addInitScript(() => { Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } }); });
   await ctx.addInitScript(({ places, theme }) => {
     try {
       if (!localStorage.getItem('wx:places')) {
@@ -164,8 +167,8 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
     await p.locator(H.hdSec(id)).click();
     ok(await until(() => visible(p, H.wxSec(id))), `section ${id} shows`);
     ok(await until(async () => (await p.evaluate(() => location.pathname + location.hash)) === (id === 'now' ? '/weather/' : `/weather/#${id}`)), `the address follows: ${id}`);
-    // (Radar holds the header compact: its compact title, "London · 14°")
-    if (id === 'radar') ok(await until(async () => /^London · -?\d+°$/.test((await text(p, H.HD_TITLE)).trim())), 'the compact title: London · 14°', await text(p, H.HD_TITLE));
+    // Radar keeps the header at its entering size (header.js's fill contract).
+    if (id === 'radar') ok(await until(async () => (await text(p, H.HD_TITLE)).trim() === 'London' && await p.evaluate(() => document.documentElement.classList.contains('ifl-fill'))), 'Radar preserves the entering title and fills its viewport', await text(p, H.HD_TITLE));
   }
   await shot(p, '1-now');
 
@@ -197,6 +200,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   ok((await stored(p, 'wx:places')).map((x) => x.name).join() === 'London,Leeds,Paris', 'Delete: Bath gone');
   await p.locator(H.PLACES_EDIT).click();
   // My Location (a granted, stood-in position: Edinburgh)
+  await ctx.grantPermissions(['geolocation'], { origin: KIT });
   await p.locator(H.PLACES_LOCATE).click();
   ok(await sheetClosed(p, H.PLACES_SHEET, 8000), 'Use My Location: the sheet goes once it’s found');
   ok(await until(async () => (await stored(p, 'wx:places'))[0]?.gps === true), 'My Location first in the list', JSON.stringify(await stored(p, 'wx:places')));
@@ -269,12 +273,12 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
 }
 
 // ===================== 1b. loading on open (stage 2 S2-D5, §4.5, C4) =====================
-// Now's first open fetches none of the lazy five (days, warnings, places, wxsettings, wxdetail); each is fetched once,
+// With Save Data, Now's first open fetches none of the lazy five (days, warnings, places, wxsettings, wxdetail); each is fetched once,
 // the first time it's wanted (16 Days, Warnings, the ▾'s Places, a Right now tile and then the credits line, Weather
 // Settings), and never again; the settings part opens through lazy wxsettings.js. (Nothing here imports a module file
 // itself: the counts are the module's own asks.)
 {
-  const { p, st, ctx } = await phone();
+  const { p, st, ctx } = await phone({ saveData: true });
   const LAZY = ['days', 'warnings', 'places', 'wxsettings', 'wxdetail'], asked = {};
   p.on('request', (r) => { const m = /\/weather\/roof\/(\w+)\.js$/.exec(new URL(r.url()).pathname); if (m) asked[m[1]] = (asked[m[1]] || 0) + 1; });
   const n = (f) => asked[f] || 0;

@@ -9,7 +9,7 @@ import { gzipSync } from "node:zlib";
 import { MADE_FROM } from "../../functions/_min.js";
 const ROOT = new URL("../../", import.meta.url).pathname, OUT = `${ROOT}.tools/workers/dist`;
 const local = `${ROOT}.tools/tests/node_modules/.bin/wrangler`;
-const [cmd, pre] = existsSync(local) ? [local, []] : ["npx", ["--yes", "wrangler@4.149.0"]];
+const [cmd, pre] = existsSync(local) ? [local, []] : ["npx", ["--yes", "wrangler@4.158.0"]];
 const date = /"compatibility_date": "([^"]+)"/.exec(readFileSync(`${ROOT}wrangler.worker.jsonc`, "utf8"))?.[1];
 // (which minified copies are still of their files, known now, for the Worker: functions/_minfresh.js, put back after)
 const FRESH_JS = `${ROOT}functions/_minfresh.js`, was = readFileSync(FRESH_JS, "utf8");

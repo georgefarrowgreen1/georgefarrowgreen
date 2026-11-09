@@ -236,6 +236,10 @@ test("a story's page read only where Markets's news gave it, its redirects each 
     assert.equal(await story(env, "https://news.example.com/b"), null, "to an address by number: not followed");
     assert.ok(!asked.includes("https://10.0.0.1/inside"));
     assert.equal(await story(env, "https://news.example.com/c"), null, "to plain http: not followed");
+    for (const host of ["printer.local", "localtest.localhost", "metadata.google.internal", "router.home.arpa"]) {
+      assert.equal(await story(env, `https://${host}/private`), null, "reserved internal host refused");
+      assert.ok(!asked.includes(`https://${host}/private`));
+    }
     assert.equal(await story(env, "https://news.example.com/d"), null, "round and round: given up on");
     assert.equal(asked.filter((u) => u === "https://news.example.com/d").length, 5);
   } finally { globalThis.fetch = was; }

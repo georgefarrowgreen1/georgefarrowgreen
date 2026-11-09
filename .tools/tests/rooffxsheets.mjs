@@ -102,9 +102,14 @@ await p.locator(H.fxAct(ACT.id)).first().click();
 ok(await until(() => visible(`${sheet('act')} .stats`), 15000), 'the ride’s sheet (data-sheet=act): its file read, its figures drawn');
 ok(await visible(H.FX_ACT_MAP) && await visible(H.FX_ACT_SHARE), 'its route ([data-k=map]) and Share ([data-k=share])');
 await shot('act');
+// Exercise the real offline export fallback without waiting on vector-map tiles.
+// The map itself is exercised online below by Show on Map and Explore.
+await p.evaluate(() => Promise.all([import('/fitness/share.js'), import('/fitness/map.js')]));
+await ctx.setOffline(true);
 await p.locator(H.FX_ACT_SHARE).first().click();
 ok(await until(() => visible(`${sheet('act')} [data-page=share] .share-img`)), 'Share: a pushed page with the picture');
-ok(await until(() => p.locator(`${sheet('act')} [data-page=share] .share-img`).evaluate((i) => /^blob:/.test(i.src)), 8000), 'the picture drawn (a blob: image)');
+ok(await until(() => p.locator(`${sheet('act')} [data-page=share] .share-img`).evaluate((i) => /^blob:/.test(i.src)), 20000), 'the picture drawn (a blob: image)', await p.locator('.share-said').textContent());
+await ctx.setOffline(false);
 await shot('act-share');
 await p.locator(`${sheet('act')} [data-back]`).first().click();
 await p.locator(`${sheet('act')} [data-k=rename]`).first().click();

@@ -1,0 +1,239 @@
+{
+  "audit": "InFlite sitewide UI UX and security review",
+  "date": "2026-11-08",
+  "repositories": {
+    "georgefarrowgreen": {
+      "base": "40dd803c0fbff8c00563951b801525e60b178f70",
+      "production_branch": "main"
+    },
+    "inflite": {
+      "base": "4239fbf2417461822dcc1fc98626c34e343d3742",
+      "production_branch": "claude/inflite"
+    }
+  },
+  "scope": {
+    "web_apps": [
+      "Today",
+      "Chat",
+      "Weather",
+      "Fitness including Routes",
+      "Markets",
+      "Mail",
+      "Account",
+      "Auth",
+      "Status",
+      "Precision Fit Studio",
+      "georgefarrowgreen.com and 404"
+    ],
+    "services": [
+      "Shared account and session APIs",
+      "Chat and push",
+      "Weather and warning feeds",
+      "Fitness routing service",
+      "Markets link previews",
+      "Mail connector and body isolation",
+      "Status reporting and subscriptions"
+    ],
+    "excluded": [
+      "blokk and block are private repository tools; middleware denies their production paths"
+    ]
+  },
+  "design_changes": [
+    "One generated set of spacing, surface radius and motion tokens across all seven InFlite app stylesheets; foundation tokens for Status, portfolio and fitting",
+    "30px cards, 26px groups, 38px sheets, 4/8/12/16/24/32px spacing, shared spring and glide curves",
+    "Profile menus recalculate position and available height on window and visual-viewport changes; long names, email addresses, labels and values wrap",
+    "Menu keyboard focus skips disabled switches, restores its anchor, and releases the page after dismissal",
+    "Small menu travel replaces large scaling; menu backdrop dimming avoids full-screen blur; reduced motion and transparency preserve legibility",
+    "Extra title line height prevents descender clipping",
+    "Weather saved places are keyboard accessible",
+    "Fitting fields and calculated measurements shrink within narrow cards; icon-only mobile controls have accessible names; light secondary text and red buttons meet contrast checks",
+    "Solid-surface fallbacks for Status and portfolio when reduced transparency is requested"
+  ],
+  "security_passes": [
+    {
+      "pass": 1,
+      "fixed": [
+        {
+          "finding": "Malformed numeric HTML entities could throw while parsing external Markets names or previews",
+          "change": "Validate Unicode code points, replace invalid values and reject surrogate code points"
+        },
+        {
+          "finding": "Push fetches could follow redirects after validating the original endpoint",
+          "change": "Both push implementations use manual redirects and leave provider response bodies and endpoint-bearing errors out of logs"
+        },
+        {
+          "finding": "Mail writes depended on custom-header and fetch-metadata gates without an explicit exact Origin check",
+          "change": "Require Mail, the configured hub, or the narrowly scoped Account origin for mutations; reject absent, opaque and lookalike origins"
+        },
+        {
+          "finding": "Repository-only files should not be exposed as public assets",
+          "change": "Exclude documentation, tests, lockfiles and source maps from assets; deny decoded repository paths before reaching ASSETS"
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "fixed": [
+        {
+          "finding": "Vendored jsPDF 2.5.1 had published advisories, outside the main package inventory",
+          "change": "Replace with npm-integrity-verified jsPDF 4.2.1, version the load URL and refresh the fitting offline cache; verify real raster PDF export"
+        },
+        {
+          "finding": "Status and fitting read some JSON bodies before enforcing size limits",
+          "change": "Use stream-bounded readers: 8KiB for subscriptions and fitting settings/login; 32KB for authenticated Status reports/deploy notices"
+        },
+        {
+          "finding": "Malformed Google settings JSON could clear an existing client ID; JSON null could cause a login exception",
+          "change": "Validate input before changing settings and return a client error for malformed or unsupported login data"
+        },
+        {
+          "finding": "Public Status subscriptions accepted writes without an explicit origin check",
+          "change": "Require an exact same-origin POST before reading subscription bodies"
+        },
+        {
+          "finding": "Markets previews accepted reserved internal domain suffixes",
+          "change": "Reject localhost, local, internal and home.arpa names on initial and redirected preview requests"
+        },
+        {
+          "finding": "Pinned Wrangler 4.149.0 included undici advisories in development/deployment tooling",
+          "change": "Pin Wrangler 4.158.0 in tests, builder fallback, hub helper and deployment workflows; regenerate the dependency lockfile"
+        }
+      ]
+    }
+  ],
+  "reviewed_boundaries": [
+    "Exact origin and source checks for cross-window messages",
+    "Mail body sandbox without allow-scripts, message CSP and remote-content isolation",
+    "Account freshness/passkey requirements for Mail administration",
+    "Session separation, object ownership, parameterized SQL and request/body caps",
+    "Redirect validation, allowlisted push endpoints and preview URLs",
+    "CSP, HSTS and MIME protections across all eleven public roots"
+  ],
+  "validation": {
+    "unit": {
+      "passed": 1862,
+      "failed": 0,
+      "skipped": 5,
+      "skip_reason": "Obsolete pre-framework milestones and the replaced frame stub; current framework cases run instead"
+    },
+    "today_chromium": {
+      "passed": 37,
+      "failed": 0
+    },
+    "today_webkit": {
+      "passed": 36,
+      "failed": 0,
+      "skipped": 1,
+      "skip_reason": "The offline interception fixture is Chromium-specific"
+    },
+    "shared_design_status_fitting": {
+      "passed": 203,
+      "failed": 0,
+      "widths": [
+        320,
+        390,
+        768,
+        844,
+        1440
+      ],
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "includes": "Real fitting login, all fit steps, PDF generation, long menus, resize, keyboard focus and reduced preferences",
+      "evidence": "design-release.log after the final generated CSS"
+    },
+    "auth_browser": {
+      "passed": 70,
+      "failed": 0
+    },
+    "chat_composer": {
+      "passed": 12,
+      "failed": 0
+    },
+    "dependency_audits": {
+      "root": "0 published vulnerabilities",
+      "Mail production": "0 published vulnerabilities",
+      "Routing production": "0 published vulnerabilities",
+      "vendored PDF/rendering inventory after update": "0 published vulnerabilities",
+      "test and deployment tooling after update": "0 published vulnerabilities"
+    },
+    "sitewide_layout": {
+      "screens": 98,
+      "widths": [
+        320,
+        390,
+        768,
+        844,
+        1440
+      ],
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "page_errors": 0,
+      "serious_accessibility_findings": 0,
+      "notes": "Intentional peeking homepage carousel cards are separately classified. Account modal backdrop text is inert background, not overlapping foreground content; a follow-up checked 10 modal/menu screens with zero findings."
+    },
+    "framework": {
+      "passed": 308,
+      "failed": 0
+    },
+    "Weather_module": {
+      "passed": 151,
+      "failed": 0
+    },
+    "Chat_module": {
+      "passed": 69,
+      "failed": 0
+    },
+    "Mail_reader_module": {
+      "passed": 77,
+      "failed": 0
+    },
+    "Fitness_sheets": {
+      "passed": 42,
+      "failed": 0,
+      "includes": "Offline image export, online vector maps, Activities, Progress, Rhythm, training and device/settings sheets"
+    },
+    "cross_account_security_e2e": {
+      "passed": 31,
+      "failed": 0
+    },
+    "final_Today_layout_menu_followup": {
+      "passed": 3,
+      "failed": 0
+    },
+    "hostile_Mail_body_e2e": {
+      "passed": 33,
+      "failed": 0,
+      "includes": "Sandbox and CSP isolation, no outbound attacker traffic until explicit image loading, exact message scope, forged postMessage refusal, quotes, newsletter zoom, frame heights and worker cache exclusion"
+    }
+  },
+  "limits": [
+    "Automated browser checks use disposable local accounts and deterministic service fixtures, alongside read-only production header and release checks. They do not enumerate every possible user-data combination.",
+    "WebKit automation covers the rendering engine; physical iPhone performance, permission prompts and third-party outages need device/provider observation.",
+    "Markets URL restrictions are defense in depth, not a claim of complete DNS-rebinding prevention.",
+    "Some compact controls are smaller than 44px but meet the measured 24px target or spacing requirement. Intentionally peeking carousel cards are classified separately from inaccessible overflow."
+  ],
+  "completed_date": "2026-11-09",
+  "test_fixture_updates": [
+    "Model location permission explicitly in saved-place Weather checks; test lazy imports with Save Data and preserve the current Radar fill-header contract",
+    "Use a real document load event for reload assertions instead of a same-document history event",
+    "Mail write fixtures include the browser Origin header; explicit negative tests still reject missing, opaque and foreign origins",
+    "Use the generated local Worker configuration for D1 reads and pass SQL as an argument without shell interpolation",
+    "Compare message-frame heights with measured rendered content instead of assuming a fixed minimum newsletter height"
+  ],
+  "release_versions": {
+    "Today": "2.00",
+    "Mail": "1.76",
+    "Chat": "1.93",
+    "Weather": "1.94",
+    "Fitness": "2.24",
+    "Markets": "2.20",
+    "Account": "2.09",
+    "PDF_library": "4.2.1",
+    "Wrangler": "4.158.0"
+  },
+  "remaining_identified_security_findings": []
+}

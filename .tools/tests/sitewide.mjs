@@ -1,3 +1,4 @@
+// needs: hub mail
 // The whole site, at every size it's used: each app and the home page on phones (small to large, and on their side),
 // tablets (both ways round), laptops and wide screens; dark, and light at a phone's and a laptop's size. Each screen is
 // photographed and checked: text that overlaps, is cut off or runs off the screen; a page that scrolls sideways; things
@@ -8,8 +9,9 @@ import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'fs';
 import { joinChat } from './join.mjs';
 import * as F from './mocks/wxappdata.mjs';
+import { hubProxy } from './rooflib.mjs';
 const [,, S, out] = process.argv;
-const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', WX = 'http://weather.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', MKT = 'http://finance.ifl.test:8788', HOME = 'http://gfg.test:8788', MAIL = 'http://127.0.0.1:8806';
+const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', WX = 'http://weather.ifl.test:8788', FIT = 'http://fitness.ifl.test:8788', MKT = 'http://finance.ifl.test:8788', HOME = 'http://gfg.test:8788', MAIL = 'http://email.ifl.test:8788';
 // (where every sign-in and sign-up is done: secure, as the apps are, or it can't make its keys)
 const AUTH = 'http://auth.ifl.test:8788';
 const AXE = readFileSync(`${S}/wr/node_modules/axe-core/axe.min.js`, 'utf8');
@@ -80,11 +82,13 @@ const IPAD = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15
 const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
 // the sizes: [name, width, height, kind]
 const SIZES = [['se', 320, 568, 'phone'], ['mini', 375, 812, 'phone'], ['phone', 390, 844, 'phone'], ['max', 430, 932, 'phone'], ['side', 844, 390, 'phone'],
-  ['ipad', 768, 1024, 'tablet'], ['ipad-side', 1024, 768, 'tablet'], ['laptop', 1280, 800, 'desk'], ['desk', 1440, 900, 'desk'], ['wide', 1920, 1080, 'desk']];
+  ['ipad', 768, 1024, 'tablet'], ['ipad-side', 1024, 768, 'tablet'], ['laptop', 1280, 800, 'desk'], ['desk', 1440, 900, 'desk'], ['wide', 1920, 1080, 'desk']].filter(s => !process.env.AUDIT_SIZES || process.env.AUDIT_SIZES.split(',').includes(s[0]));
 const LIGHT = new Set(['phone', 'desk']);
 // (a browser of its own for each size: a long run in one wears it out)
-const launch = () => chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--disable-dev-shm-usage', '--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${HOME},${AUTH},${CHAT},${MKT},${ACCT},${WX},${FIT}`] });
+const launch = async () => chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
+  ...(process.env.HUB_LOCAL_PROXY === '1' ? { proxy: { server: await hubProxy(), bypass: '<-loopback>' } } : {}),
+  args: ['--disable-dev-shm-usage', '--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${HOME},${AUTH},${CHAT},${MKT},${ACCT},${WX},${FIT},${MAIL}`] });
+const settle = (p, ms) => p.waitForTimeout(process.env.AUDIT_FAST === '1' ? Math.min(ms, 250) : ms);
 let b = await launch();
 const report = { pages: [], loads: [] };
 let fails = 0;
@@ -114,7 +118,7 @@ async function weatherRoutes(ctx) {
 }
 async function context(kind, scheme, storageState) {
   const ctx = await b.newContext({ storageState, viewport: { width: 390, height: 844 }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk',
-    userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', timezoneId: 'Europe/London', colorScheme: scheme, serviceWorkers: 'block',
+    userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', timezoneId: 'Europe/London', colorScheme: scheme, reducedMotion: process.env.AUDIT_FAST === '1' ? 'reduce' : 'no-preference', serviceWorkers: 'block',
     geolocation: { latitude: 51.5072, longitude: -0.1276 }, permissions: ['geolocation'] });
   await weatherRoutes(ctx);
   return ctx;
@@ -146,7 +150,7 @@ const SCREENS = [
   ['home-out', HOME + '/', null, '.hero, h1', { fresh: true }],
   ['404', HOME + '/no-such-page', null, 'body'],
   ['account', ACCT + '/', null, '.app, .group'],
-  ['account-notify', ACCT + '/', async (p) => { await p.locator('button:has-text("Notifications"), .row:has-text("Notifications")').first().click(); await p.waitForTimeout(900); }, '.app, .group'],
+  ['account-security', ACCT + '/', async (p) => { await p.locator('button, a').filter({ hasText: /^Sign-in and Security/ }).filter({ visible: true }).first().click(); await settle(p, 900); }, '.app, .group'],
   // (on a computer, Chat's page says it isn't available there, with a code to scan; on a phone on its side, to turn it
   // upright: those are its screens there)
   ['chat', CHAT + '/', null, '#screen .view, .na-qr:not([hidden]), .rotate'],
@@ -154,17 +158,17 @@ const SCREENS = [
   ['fitness', FIT + '/', null, 'main, .empty, .ifh'],
   // (from 1100px wide Markets is its desk, markets/desk.js: today's screen is the desk there, and the phone's tabs aren't)
   ['markets-today', MKT + '/', null, '#pv, .desk'],
-  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
-  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
-  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(1800); }, '#pv', { phone: true }],
-  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Dividends")').first().click(); await p.waitForTimeout(1600); }, '#pv', { phone: true }],
-  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await p.waitForTimeout(800); await p.locator('.item:has-text("Your year")').first().click(); await p.waitForTimeout(3000); }, '#pv', { phone: true }],
-  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await p.waitForTimeout(900); }, '#pv', { phone: true }],
-  ['markets-menu', MKT + '/', async (p) => { await p.click('.ifh-me, .ifl-me, [aria-label="You"], .ifh button.me').catch(() => {}); await p.waitForTimeout(900); }, '#pv', { phone: true }],
+  ['markets-holdings', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await settle(p, 1600); }, '#pv', { phone: true }],
+  ['markets-news', MKT + '/', async (p) => { await p.click('.tab[data-tab="news"]'); await settle(p, 1600); }, '#pv', { phone: true }],
+  ['markets-stock', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await settle(p, 800); await p.locator('#all .item:has-text("Scottish")').first().click(); await p.waitForSelector('.chartbox path.line[d]', { timeout: 10000 }).catch(() => {}); await settle(p, 1800); }, '#pv', { phone: true }],
+  ['markets-income', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await settle(p, 800); await p.locator('.item:has-text("Dividends")').first().click(); await settle(p, 1600); }, '#pv', { phone: true }],
+  ['markets-vs', MKT + '/', async (p) => { await p.click('.tab[data-tab="holdings"]'); await settle(p, 800); await p.locator('.item:has-text("Your year")').first().click(); await settle(p, 3000); }, '#pv', { phone: true }],
+  ['markets-search', MKT + '/', async (p) => { await p.click('.ifh-act[aria-label="Find and add"]'); await settle(p, 900); }, '#pv', { phone: true }],
+  ['markets-menu', MKT + '/', async (p) => { await p.click('.ifh-me, .ifl-me, [aria-label="You"], .ifh button.me').catch(() => {}); await settle(p, 900); }, '#pv', { phone: true }],
   ['mail', MAIL + '/?demo', null, 'body', { mail: true }],
 ];
 let mailUp = false;
-try { mailUp = (await fetch(MAIL + '/')).ok; } catch (_) {}
+try { mailUp = (await fetch('http://127.0.0.1:8806/')).ok; } catch (_) {}
 
 // the screen's own scrollers (a list, a thread, a column): seen, on the screen and not under anything, holding more than
 // they show; the biggest four, each to be stepped towards its far end (down, or up where it's at its foot: a thread) and
@@ -194,31 +198,31 @@ async function shot(p, kind, size, scheme, [name, url, act, sel], errs) {
   await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   // (any of them shown: the first in the page may be one that's hidden at this size)
   await p.waitForSelector(sel.split(',').map((x) => `${x.trim()}:visible`).join(', '), { timeout: 20000 }).catch(() => errs.push(`never showed ${sel}`));
-  await p.waitForTimeout(1800);
+  await settle(p, 1800);
   if (act) await act(p).catch((e) => errs.push(`couldn't open: ${String(e.message).split('\n')[0].slice(0, 120)}`));
-  await p.waitForTimeout(500);
+  await settle(p, 500);
   // (down the page a screen at a time, and back to the top: what's drawn only once it's scrolled to, e.g. Weather's
   // radar, is then there to check; and each step is checked as it's seen, for what's only found on the screen, as a box
   // drawn over part of a text)
   const seen = [];
   for (let i = 0; i < 12; i++) {
     if (!await p.evaluate(() => { const y = scrollY; scrollBy({ top: innerHeight * 0.8, behavior: 'instant' }); return scrollY > y; })) break;
-    await p.waitForTimeout(400);
+    await settle(p, 400);
     seen.push(await p.evaluate(AUDIT));
   }
-  await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' })); await p.waitForTimeout(900);
+  await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' })); await settle(p, 900);
   const a = await p.evaluate(AUDIT);
   // (then the screen's own scrollers, a step at a time within a cap, each step checked, and each put back)
   const n = await p.evaluate(SCROLLERS);
   for (let i = 0, steps = 0; i < n && steps < 16; i++) {
     for (let k = 0; k < 6 && steps < 16; k++, steps++) {
       if (!await p.evaluate((i) => window.__sweep.step(i), i)) break;
-      await p.waitForTimeout(400);
+      await settle(p, 400);
       seen.push(await p.evaluate(AUDIT));
     }
-    await p.evaluate((i) => window.__sweep.back(i), i); await p.waitForTimeout(300);
+    await p.evaluate((i) => window.__sweep.back(i), i); await settle(p, 300);
   }
-  if (n) await p.waitForTimeout(600);
+  if (n) await settle(p, 600);
   // (what was found only while scrolled, listed with the rest and apart, as scrolled)
   const scrolled = [...new Set(seen.flatMap((r) => r.issues))].filter((x) => !a.issues.includes(x));
   const ellipsis = [...new Set([...a.trunc, ...seen.flatMap((r) => r.trunc)])];
@@ -227,13 +231,14 @@ async function shot(p, kind, size, scheme, [name, url, act, sel], errs) {
   if (sz === 'phone' || sz === 'desk' || sz === 'se') {
     await p.evaluate(AXE);
     // (all but pinch to zoom, which every app has off on purpose, as a native app: decided, so not a finding)
-    axe = await p.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false } }, resultTypes: ['violations'] })).violations
+    axe = await p.evaluate(async () => (await window.axe.run(document, { preload: false, runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] }, rules: { 'meta-viewport': { enabled: false } }, resultTypes: ['violations'] })).violations
       .map((v) => `${v.id} ×${v.nodes.length} (${v.impact}): ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ').slice(0, 140)}`));
   }
   const file = `${name}-${sz}-${scheme}.png`;
   await p.screenshot({ path: `${out}/${file}` });
   const issues = [...a.issues, ...scrolled];
   report.pages.push({ name, size: sz, w, h, scheme, issues, scrolled, ellipsis, taps: [...new Set(taps.small)].slice(0, 12), near: [...new Set(taps.near)].slice(0, 12), nearCount: taps.near.length, axe, errs: [...new Set(errs)], file });
+  writeFileSync(`${out}/sitewide.json`, JSON.stringify(report, null, 2));
   const bad = issues.length + errs.length;
   console.log(`${bad ? 'NOTE' : 'ok  '}  ${name} ${sz} ${scheme}: ${issues.length} layout, ${taps.small.length} small taps${taps.near.length ? ` (${taps.near.length} under 44)` : ''}, ${axe.length} axe, ${errs.length} errors${bad ? '  — ' + [...issues, ...errs].slice(0, 4).join(' | ') : ''}`);
 }
@@ -261,7 +266,7 @@ async function look(kit, size, scheme, scr) {
     let c = null, p = null, timer = 0;
     const errs = [];
     try {
-      c = o.fresh ? await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk', userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', colorScheme: scheme, serviceWorkers: 'block' }) : null;
+      c = o.fresh ? await b.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: kind === 'desk' ? 1 : 2, isMobile: kind === 'phone', hasTouch: kind !== 'desk', userAgent: kind === 'phone' ? IPHONE : kind === 'tablet' ? IPAD : MAC, locale: 'en-GB', colorScheme: scheme, reducedMotion: process.env.AUDIT_FAST === '1' ? 'reduce' : 'no-preference', serviceWorkers: 'block' }) : null;
       p = await (c || kit.ctx).newPage();
       await p.setViewportSize({ width: w, height: h });
       p.on('pageerror', (e) => errs.push(String(e.message || e).slice(0, 160)));
@@ -299,7 +304,7 @@ async function load(ctxSigned, name, url, sel) {
   await p.goto(url, { waitUntil: 'load', timeout: 45000 }).catch(() => {});
   await p.waitForSelector(sel, { timeout: 20000 }).catch(() => {});
   const shown = Date.now() - t0;
-  await p.waitForTimeout(2500);
+  await settle(p, 2500);
   const nav = await p.evaluate(() => { const n = performance.getEntriesByType('navigation')[0]; return { dcl: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd), lcp: Math.round(window.__lcp) }; });
   const kb = Math.round(reqs.reduce((a, x) => a + x, 0) / 1024);
   report.loads.push({ name, requests: reqs.length, kb, types, shownMs: shown, ...nav });
@@ -325,16 +330,17 @@ for (const size of process.env.LOADS_ONLY ? [] : SIZES.slice(Math.max(0, SIZES.f
   for (const scheme of LIGHT.has(size[0]) ? ['dark', 'light'] : ['dark']) {
     const kit = { kind, scheme, ctx: null };
     await renew(kit).catch((e) => console.log(`      (no context for ${size[0]} ${scheme}: ${String(e.message).split('\n')[0]}; each screen tries again)`));
-    for (const scr of SCREENS) await look(kit, size, scheme, scr);
+    for (const scr of SCREENS.filter(s => !process.env.AUDIT_SCREENS || process.env.AUDIT_SCREENS.split(',').includes(s[0]))) await look(kit, size, scheme, scr);
     await kit.ctx?.close().catch(() => {});
   }
   save();
 }
 await b.close().catch(() => {}); b = await launch();
 const people = { desk: await context('phone', 'dark', states.phone) };
-for (const [name, url, sel] of [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen .view'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
-  ['fitness', FIT + '/', 'main'], ['markets', MKT + '/', '#pv'], ...(mailUp ? [['mail', MAIL + '/?demo', 'body']] : [])]) await load(people.desk, name, url, sel);
+for (const [name, url, sel] of (process.env.AUDIT_LOADS === '0' ? [] : [['home', HOME + '/', '.hero'], ['account', ACCT + '/', '.app, .group'], ['chat', CHAT + '/', '#screen .view'], ['weather', WX + '/?lat=51.5072&lon=-0.1276&name=London', '.day-row'],
+  ['fitness', FIT + '/', 'main'], ['markets', MKT + '/', '#pv'], ...(mailUp ? [['mail', MAIL + '/?demo', 'body']] : [])])) await load(people.desk, name, url, sel);
 save();
 console.log(`${report.pages.length} screens looked at`);
 console.log(`FAILS ${fails}`);
 await b.close();
+process.exit(fails ? 1 : 0);

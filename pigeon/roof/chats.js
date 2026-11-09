@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.92";
-export const NEWS = "The message box stays fully on screen when Chats resumes or the keyboard closes";
+export const BUILD = "1.93";
+export const NEWS = "Consistent menus, spacing and motion that adapt to your screen";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

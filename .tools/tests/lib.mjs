@@ -1,15 +1,16 @@
 // Shared test kit: phones with push we can read, sign-up, the database, the API, ticks.
 import { chromium } from 'playwright';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
 import http from 'http';
 import { joinChat, pigeonsTo } from './join.mjs';
+import { hubProxy } from './rooflib.mjs';
 // (TEST_BASE: another local copy of the site, on another port)
 export async function kit(S, out, BASE = process.env.TEST_BASE || 'http://localhost:8788') {
 const PORT = BASE.match(/:(\d+)\/?$/)?.[1] || '80';
 const URL = process.env.APPURL || BASE + '/pigeon/';
-const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+const sql0 = (q) => execFileSync(`${S}/wr/node_modules/.bin/wrangler`, ['d1', 'execute', 'bio-db', '--config', `${process.env.APP_ROOT}/.tools/workers/dist/wrangler.test.json`, '--local', '--persist-to', `${S}/wrstate`, '--command', q], { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const pushes = () => readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -72,9 +73,10 @@ async function phone(name, keys) {
 let hubB = null;
 const HUB = 'http://ifl.test:8788';
 const SECURE = ['', 'auth.', 'account.', 'chat.', 'email.', 'weather.', 'fitness.', 'finance.'].map((h) => `http://${h}ifl.test:8788`).join(',');
-const hubBrowser = () => (hubB ||= chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: [
+const hubBrowser = () => (hubB ||= (async () => chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
+  ...(process.env.HUB_LOCAL_PROXY === '1' ? { proxy: { server: await hubProxy(), bypass: '<-loopback>' } } : {}), args: [
   '--host-resolver-rules=MAP ifl.test:8788 127.0.0.1:8787, MAP email.ifl.test:8788 127.0.0.1:8806, MAP *.ifl.test 127.0.0.1, MAP ifl.test 127.0.0.1, MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1',
-  `--unsafely-treat-insecure-origin-as-secure=${SECURE}`] }));
+  `--unsafely-treat-insecure-origin-as-secure=${SECURE}`] }))());
 // A phone with InFlite on its Home Screen: an iPhone, standalone (navigator.standalone and display-mode, as homelink.mjs),
 // phone()'s push stand-in with keys the test holds, every window.open noted (window.__opened), opened at the hub.
 // zone: its time zone; path: where it opens; cookies: { name: value } on the whole tests' site (ifl.test), as signing

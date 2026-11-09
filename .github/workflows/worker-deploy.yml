@@ -37,8 +37,8 @@ jobs:
         run: |
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           node .tools/workers/build.mjs
-          npx --yes wrangler@4.149.0 deploy -c wrangler.worker.jsonc
-          npx --yes wrangler@4.149.0 deploy -c wrangler.gfg.jsonc
+          npx --yes wrangler@4.158.0 deploy -c wrangler.worker.jsonc
+          npx --yes wrangler@4.158.0 deploy -c wrangler.gfg.jsonc
       - name: Verify the deployed Fitness routing backend
         if: steps.ready.outputs.go == '1'
         env:

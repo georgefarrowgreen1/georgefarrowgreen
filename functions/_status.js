@@ -21,7 +21,7 @@
 // there's an incident feed (/feed.xml). Nothing of anyone's is in any of it: addresses, times, versions, bug codes.
 //   statusRoute(ctx, url) → the answer for /api/status*, /api/status-banner, or null for anything else
 //   isStatus(url, env), statusHost(ctx, url): the address and its page
-import { HttpError, db, pace, clientIp, fromB64url } from "./_pigeon.js";
+import { HttpError, db, pace, clientIp, fromB64url, body as readJson } from "./_pigeon.js";
 import { appsSite, homeSite, tickHost, siteFetch, appOrigin } from "./_sites.js";
 import { tickAuthOk, pushTo, pushToSub, pushEndpointOk, vapid } from "./_notify.js";
 import { emailReady, sendEmail, emailBody } from "./_email.js";
@@ -625,17 +625,16 @@ export async function statusRoute(ctx, url) {
       tickAuthOk(req, env);
       if (p === "/api/status/outside") return json({ ok: true, ...(await outsideSaw(env)) });
       // (a deploy, as the site's workflow says just after it: for the Incident Desk, functions/_desk.js)
-      if (p === "/api/status/deploy") return json(await (await import("./_desk.js")).recordDeploy(env, await req.json().catch(() => ({}))));
-      const raw = await req.text();
-      if (raw.length > 32000) throw new HttpError(413, "Too long.");
-      let body; try { body = JSON.parse(raw || "{}"); } catch (_) { throw new HttpError(400, "Not readable."); }
+      if (p === "/api/status/deploy") return json(await (await import("./_desk.js")).recordDeploy(env, await readJson(req, 32000)));
+      const body = await readJson(req, 32000);
       return json({ ok: true, ...(await keepReport(env, body)) });
     }
     if (!isStatus(url, env)) return null;
     // (updates without an account: this device's subscription kept, or forgotten)
     if (p === "/api/status/subscribe" || p === "/api/status/unsubscribe") {
       if (req.method !== "POST") return json({ error: "Not found." }, 404);
-      const b = await req.json().catch(() => ({}));
+      if (req.headers.get("Origin") !== url.origin) throw new HttpError(403, "Use the status page to update this device.");
+      const b = await readJson(req, 8192);
       return json(p === "/api/status/subscribe" ? await statusSubscribe(env, b, clientIp(req)) : await statusUnsubscribe(env, b));
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "Not found." }, 404);

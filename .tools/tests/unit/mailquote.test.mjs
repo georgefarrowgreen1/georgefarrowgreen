@@ -43,7 +43,7 @@ globalThis.fetch = async (u, init) => (String(u).startsWith(env.ACCOUNT_ORIGIN)
 // (from InFlite's page: a hub's CORS write)
 const call = async (path, body, { origin = 'https://inflite.ai', method = 'POST' } = {}) => {
   const { default: worker } = await load('src/index.js');
-  const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json',
+  const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Origin: 'https://email.inflite.ai', Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json',
     ...(origin ? { Origin: origin, 'Sec-Fetch-Site': 'same-site' } : { 'Sec-Fetch-Site': 'same-origin' }) }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
   return { status: res.status, data: await res.json() };
 };

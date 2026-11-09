@@ -268,3 +268,10 @@ test('/roof/*: the module’s scripts and styles as they are, no-cache; anything
   assert.equal(v.headers.get('cache-control'), 'no-store');
   assert.deepEqual(await v.json(), { build: '1.49' });
 });
+
+test('writes reject missing, opaque and untrusted origins even with the custom header and no fetch metadata', { skip }, async () => {
+  for (const origin of [null, 'null', 'https://evil.example', 'https://inflite.ai.evil.example']) {
+    const r=await ask('/api/threads/t1', { method:'PATCH', origin, site:null, headers:W, body:{ unread:false } });
+    assert.equal(r.status,403,String(origin));
+  }
+});

@@ -15,8 +15,8 @@ body{margin:0}
 img{max-width:100%}
 /* Layout: sticky brand bar, step rail on the left from 980px, one working column, fixed pager at the bottom. Built for a fitter holding an iPad. */
 :root{
-  --bg:#f6f5f3; --card:#ffffff; --field:#f0eeeb; --line:#e0ddd8; --ink:#14161a; --ink-2:#3a3f47; --mute:#6a6e76;
-  --red:#e3141c; --red-ink:#c4111a; --red-soft:#fde9e9; --on-red:#ffffff;
+  --bg:#f6f5f3; --card:#ffffff; --field:#f0eeeb; --line:#e0ddd8; --ink:#14161a; --ink-2:#3a3f47; --mute:#62666e;
+  --red:#e3141c; --red-fill:#d20e17; --red-ink:#c4111a; --red-soft:#fde9e9; --on-red:#ffffff;
   --good:#1b8048; --good-soft:#e1f2e8; --warn:#a87300; --warn-soft:#fbf0d3; --bad:#cc1f27; --bad-soft:#fbe3e3; --blue:#2a64c6; --blue-soft:#e3ebfa;
   --sel:#14161a; --sel-ink:#ffffff; --focus:#e3141c;
   --f-disp:'Barlow Condensed','Barlow','Arial Narrow',sans-serif;
@@ -59,12 +59,12 @@ button{cursor:pointer}
 .who b{font-family:var(--f-disp);font-weight:700;font-size:21px;letter-spacing:.01em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who span{font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .saved{font-size:12.5px;color:var(--mute);white-space:nowrap}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-weight:600;font-size:16px;text-decoration:none;color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:var(--ifl-radius-pill,999px);border:1px solid var(--line);background:var(--card);font-weight:600;font-size:16px;text-decoration:none;color:var(--ink);max-width:100%;overflow-wrap:anywhere;transition:transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,ease)}
 .btn:active{transform:translateY(1px)}
-.btn.primary{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.btn.primary{background:var(--red-fill);border-color:var(--red-fill);color:var(--on-red)}
 .btn.dark{background:var(--sel);border-color:var(--sel);color:var(--sel-ink)}
 .btn.ghost{background:transparent}
-.btn.sm{min-height:40px;padding:0 14px;font-size:14.5px;border-radius:10px}
+.btn.sm{min-height:44px;padding:0 14px;font-size:14.5px}
 .btn svg{width:18px;height:18px;flex:none}
 .btn[disabled]{opacity:.55;cursor:default}
 
@@ -79,7 +79,7 @@ button{cursor:pointer}
 .step-btn .t{font-weight:600;font-size:15px;white-space:nowrap}
 .step-btn .p{font-size:12.5px;color:var(--mute);white-space:nowrap}
 .step-btn[aria-current="step"]{background:var(--card);border-color:var(--line);box-shadow:var(--shadow)}
-.step-btn[aria-current="step"] .n{background:var(--red);color:var(--on-red)}
+.step-btn[aria-current="step"] .n{background:var(--red-fill);color:var(--on-red)}
 .step-btn.done .n{background:var(--sel);color:var(--sel-ink)}
 .rail-fit{display:none}
 @media (min-width:980px){.rail-fit{display:block;margin-top:14px;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-size:13.5px;color:var(--ink-2)}
@@ -91,14 +91,14 @@ main{min-width:0}
 h1{font-family:var(--f-disp);font-weight:800;font-style:italic;text-transform:uppercase;font-size:clamp(32px,4.4vw,44px);line-height:1;margin:4px 0 6px;letter-spacing:.005em;text-wrap:balance}
 .lede{color:var(--ink-2);margin:0;max-width:62ch}
 
-.sec{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px}
-@media (min-width:700px){.sec{padding:24px 26px}}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:var(--ifl-radius-card,30px);padding:var(--ifl-space-5,24px);margin-bottom:16px;min-width:0;overflow-wrap:anywhere}
+@media (min-width:700px){.sec{padding:var(--ifl-space-5,24px)}}
 .sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .sec h2{font-family:var(--f-disp);font-weight:700;text-transform:uppercase;letter-spacing:.03em;font-size:22px;margin:0;line-height:1.1}
 .sec-note{font-size:13.5px;color:var(--mute)}
 .tag-fit{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
 
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:16px 18px}
 .grid .wide{grid-column:1/-1}
 .fld{display:flex;flex-direction:column;gap:7px;min-width:0}
 .lab{font-size:12.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}
@@ -109,7 +109,7 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),l
 textarea{min-height:96px;resize:vertical;line-height:1.45}
 input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var(--card)}
 ::placeholder{color:var(--mute);opacity:.75}
-.num{position:relative;display:flex;align-items:center}
+.num{position:relative;display:flex;align-items:center;min-width:0}
 .num input{padding-right:52px;font-variant-numeric:tabular-nums}
 .num .u{position:absolute;right:14px;font-size:14px;color:var(--mute);pointer-events:none}
 .lr{display:grid;grid-template-columns:28px 1fr;gap:8px 10px;align-items:center}
@@ -141,7 +141,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .calc b{font-family:var(--f-disp);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
 
 /* fit cards */
-.fits{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.fits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px}
 .fitc{position:relative;text-align:left;border:1.5px solid var(--line);border-radius:16px;background:var(--card);padding:18px;display:flex;flex-direction:column;gap:10px;min-height:100%}
 .fitc[aria-pressed="true"]{border-color:var(--ink);box-shadow:var(--shadow)}
 .fitc .fname{font-family:var(--f-disp);font-weight:800;font-style:italic;text-transform:uppercase;font-size:25px;line-height:1}
@@ -423,9 +423,9 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 /* inseam: the reading and the starting saddle height it gives, side by side */
 .inseam{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:12px;align-items:stretch}
 .inseam .calc{flex-wrap:wrap;gap:2px 10px;align-content:center}
-.inseam .calc > span:first-child{white-space:nowrap}
+.inseam .calc > span:first-child{white-space:normal}
 .inseam .calc b{white-space:nowrap}
-@media (max-width:520px){.inseam{grid-template-columns:1fr}}
+@media (max-width:520px){.inseam{grid-template-columns:minmax(0,1fr)}}
 .bgrp{padding:20px 0 6px;font-family:var(--f-disp);font-weight:700;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--red-ink)}
 .btable .bgrp:first-of-type{padding-top:6px}
 .delta.ch{color:var(--red-ink)}
@@ -644,3 +644,28 @@ body.signin::before{display:none}
 .gd-how summary{cursor:pointer;font-weight:600;color:var(--ink)}
 .gd-how ol{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
 .gd-cid{flex:1 1 100%;margin:-4px 0 0 58px;font-size:12.5px;color:var(--mute)}
+
+/* ==== InFlite design tokens: generated by .tools/iflmenu.mjs ==== */
+/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+   no extra request, and an app's existing offline/update mechanism keeps it current. */
+:root {
+  --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
+  --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
+  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ifl-chrome-blur: blur(24px) saturate(160%);
+  --ifl-chrome-solid: #f7f8fc;
+  --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
+  --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
+  --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+}
+:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }
+/* ==== end of InFlite design tokens ==== */

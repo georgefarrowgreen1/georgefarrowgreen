@@ -1,0 +1,22 @@
+/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+   no extra request, and an app's existing offline/update mechanism keeps it current. */
+:root {
+  --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
+  --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
+  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ifl-chrome-blur: blur(24px) saturate(160%);
+  --ifl-chrome-solid: #f7f8fc;
+  --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
+  --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
+  --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+}
+:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }

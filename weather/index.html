@@ -24,7 +24,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-1.93" />
+  <meta name="app-version" content="wx-1.94" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -65,7 +65,7 @@
   <main id="main" aria-busy="true" data-empty="loading">
     <!-- the weather now, with the saved places either side of it drawn beside it ready to swipe to: a sideways scroller
          that stops at each (app.js pager) -->
-    <div class="pager" id="pager">
+    <div class="pager" id="pager" role="region" tabindex="0" aria-label="Saved weather places">
       <div class="pg-page pg-prev" aria-hidden="true" inert hidden></div>
       <section class="hero" aria-labelledby="hero-title">
         <h1 class="sr-only" id="hero-title">Weather for <span id="sr-place">your place</span></h1>

@@ -125,7 +125,11 @@ const EXCHANGES = { LSE: "London", IOB: "London", NMS: "Nasdaq", NGM: "Nasdaq", 
   FGI: "FTSE", SNP: "S&P", DJI: "Dow Jones", NIM: "Nasdaq", CXI: "Cboe" };
 // A name as written, where Yahoo's has its characters escaped as for a web page ("AT&amp;T" → "AT&T")
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-export const unescaped = (s) => String(s ?? "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e.toLowerCase()] ?? m));
+const codePoint = (e) => {
+  const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+  return Number.isInteger(n) && n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : "\ufffd";
+};
+export const unescaped = (s) => String(s ?? "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => e[0] === "#" ? codePoint(e) : ENTITIES[e.toLowerCase()] ?? m);
 // A company's name, as people say it: "Rolls-Royce Holdings plc" → "Rolls-Royce", "NVIDIA Corporation" → "NVIDIA",
 // "JPMorgan Chase &amp; Co." → "JPMorgan Chase"
 export function plainName(n, symbol = "") {
@@ -355,7 +359,7 @@ export async function news(env, symbols, { markets = true } = {}) {
 // { title, summary (no more than 420 characters, at a word), image (https, from the page's address), site, at (ms) },
 // any of them null
 const ENTITY = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", mdash: "—", ndash: "–", hellip: "…" };
-const unentity = (t) => String(t).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()] ?? m));
+const unentity = (t) => String(t).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => e[0] === "#" ? codePoint(e) : ENTITY[e.toLowerCase()] ?? m);
 const plainText = (t) => unentity(String(t).replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
 export function readPreview(html, url) {
   const head = String(html).slice(0, 400000), meta = {};
@@ -378,7 +382,7 @@ export function readPreview(html, url) {
 }
 // (a page Markets will ask for: https, a name and no number for its address, no port or sign-in in it)
 const PAGE_UA = "Mozilla/5.0 (compatible; InFliteMarkets/1.0; link preview; +https://inflite.ai)";
-const okPage = (u) => u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") && /\.[a-z]{2,}$/i.test(u.hostname) && !/^[\d.]+$/.test(u.hostname);
+const okPage = (u) => u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") && /\.[a-z]{2,}$/i.test(u.hostname) && !/^[\d.]+$/.test(u.hostname) && !/(^|\.)(localhost|local|internal|home\.arpa)$/i.test(u.hostname);
 // A page or a picture asked for, its redirects followed by hand, each address on the way checked as the first was (so
 // one can't lead Markets somewhere it wouldn't go): a few at most, all within six seconds. → { r, end (where it ended) }, or null
 async function fetchPage(u, headers) {

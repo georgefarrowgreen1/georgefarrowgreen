@@ -638,7 +638,9 @@ try {
     await p6.goBack(); await settle(p6, 600);
     await clean(k6, 'Back to a module off since, before the reload');
     await p6.evaluate(() => { kitMods.weather.lost = 0; });
-    const nav6 = p6.waitForEvent('framenavigated', { timeout: 8000 }).catch(() => null);
+    // Same-document history fires framenavigated before the ensuing reload.
+    // Wait for the document's load before asserting its load counter.
+    const nav6 = p6.waitForEvent('load', { timeout: 8000 }).catch(() => null);
     await p6.goForward();
     await nav6; await p6.waitForFunction(() => window.kit?.ready, null, { timeout: 10000 }).catch(() => {});
     same([new URL(p6.url()).pathname, await p6.evaluate(() => window.stay6 ?? null), loads6], ['/markets/', null, 1], 'online, all saved: a real load at /markets/ (the page as the server has it now)');

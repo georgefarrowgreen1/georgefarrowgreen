@@ -116,3 +116,14 @@ test("a new sign-in: told on Chat's devices as Chat's, with where it was through
   assert.equal(n.app, "chat");
   assert.equal(n.body, "Your Chat account was signed in on iPhone · Safari in France. Not you? Sign it out in Privacy & Security.");
 });
+
+test('push delivery does not follow a provider redirect or log its response body', async () => {
+  const ph=await phone('redirect'), previous=globalThis.fetch, logger=console.error, requests=[], logs=[];
+  globalThis.fetch=async (url, init) => { requests.push({url,init}); return new Response('PRIVATE PROVIDER BODY',{status:307,headers:{Location:'https://untrusted.example/collect'}}); };
+  console.error=(...args)=>logs.push(args.join(' '));
+  try {
+    assert.equal(await pushToSub(env,ph,{title:'Notice',body:'Private text',url:'/'}),'error');
+    assert.equal(requests.length,1); assert.equal(requests[0].init.redirect,'manual');
+    assert.ok(!logs.join(' ').includes('PRIVATE PROVIDER BODY'));
+  } finally { globalThis.fetch=previous; console.error=logger; }
+});
