@@ -5,7 +5,7 @@
 // acctjoin.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { makeAccount } from './join.mjs';
+import { makeAccount, usePassword } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', AUTH = 'http://auth.ifl.test:8788';
 const PW = 'a long test password';
@@ -85,7 +85,7 @@ await A.p.click('main .signin form .btn');
 await A.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await A.p.$('main .hero')) && await A.p.evaluate(() => window.__dawn), 'the password alone signs you back in, as dawn breaks over the sky');
 await signOut(A);
-await A.p.click('main .notyou'); await A.p.waitForSelector('main .signin input[name=email]', { timeout: 10000 }).catch(() => {});
+await A.p.click('main .notyou'); await usePassword(A.p);
 ok(!!(await A.p.$('main .signin input[name=email]')) && !(await last(A)) && /Sign in to InFlite/.test(await text(A)), 'Not you?: forgotten, and the usual sign-in');
 
 // ---- 2. A passkey in the keyboard: asked for as the card's drawn; the passkey button still works past it ----
@@ -98,7 +98,7 @@ const B = await browser('rowan-phone');
 await B.p.goto(`${CHAT}/`);
 await B.p.waitForSelector('.welcome [data-act=acctsignin]', { state: 'visible', timeout: 30000 }); await B.p.click('.welcome [data-act=acctsignin]');
 await B.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
-await B.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
+await usePassword(B.p);
 await B.p.fill('main .signin input[name=email]', 'rowan@example.com'); await B.p.fill('main .signin input[name=password]', PW);
 await B.p.click('main .signin form .btn');
 await B.p.waitForSelector('main .signin.offer', { timeout: 30000 }).catch(() => {});
@@ -130,10 +130,10 @@ ok(!!(await B.p.$('main .hero')) && /Rowan Hale/.test(await text(B)), 'the passk
 // ---- 5. The passkey button, past the keyboard's ask (still waiting, in A, which has no passkey here): asked for
 // itself, rather than refused as one ask too many ----
 await A.p.click('main .signin .btn:has-text("Sign in with a passkey")');
-const none = await A.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => '');
+const none = await A.p.waitForSelector('main .said[role=status]:not(.bad):has-text("No passkey was used")', { timeout: 20000 }).then((e) => e.innerText(), () => '');
 ok(/No passkey was used/.test(none), 'Sign in with a passkey, with the keyboard\'s ask waiting: that put away, and the passkey asked for', none);
 await signOut(B);
-await B.p.click('main .notyou'); await B.p.waitForSelector('main .signin input[name=email]', { timeout: 10000 }).catch(() => {});
+await B.p.click('main .notyou'); await B.p.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 10000 });
 await B.p.click('main .signin .btn:has-text("Sign in with a passkey")');
 await B.p.waitForSelector('main .hero', { timeout: 30000 }).catch(() => {});
 ok(!!(await B.p.$('main .hero')), 'and with one here, it signs you in');

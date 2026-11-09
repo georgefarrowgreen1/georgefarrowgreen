@@ -35,6 +35,11 @@ export async function fillJoin(page, { name, handle, email, password = PASSWORD 
   };
   await step('name', name); await step('handle', handle); await step('email', email); await step('password', password, true);
 }
+// Reveal the existing password form before filling either field on a passkey-first screen.
+export async function usePassword(page) {
+  await page.waitForSelector('main .signin input[name=password]', { state: 'attached', timeout: 30000 });
+  if (!(await page.isVisible('main .signin input[name=password]')) && await page.$('main .signin .usepw')) await page.click('main .signin .usepw');
+}
 // On the account's page, sent there by an app to sign in: its sign-in (email and password), or, signed in there
 // already, the password to carry on as yourself; then back in the app. → the page's address, if it signed in just now
 // (rather than carrying on as who it had signed in already)
@@ -44,11 +49,11 @@ export async function onAccountPage(page, { email, password = PASSWORD }) {
   const acct = new URL(page.url()).origin + '/';
   // (signed in there before as someone else, who it remembers: Not you?)
   const known = await page.$eval('main .signin.remembered input[type=email]', (i) => i.value).catch(() => null);
-  if (known && known !== email) { await page.click('main .notyou'); await page.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); }
+  if (known && known !== email) { await page.click('main .notyou'); await page.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 20000 }); }
   const typed = !!(await page.$('main .signin input[name=email]')), fresh = typed || known === email;
+  // (passkey first: reveal the password form before filling either field)
+  await usePassword(page);
   if (typed) await page.fill('main .signin input[name=email]', email);
-  // (last time with a passkey: the password a tap away)
-  if (!(await page.isVisible('main .signin input[name=password]')) && await page.$('main .signin .usepw')) await page.click('main .signin .usepw');
   await page.fill('main .signin input[name=password]', password);
   await page.click('main .signin form .btn');
   await pastOffer(page);

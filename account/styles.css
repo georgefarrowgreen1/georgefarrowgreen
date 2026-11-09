@@ -1777,6 +1777,8 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .auth-panel .auth-content > .signin::before, .auth-panel .auth-content > .signin::after { display: none; }
 .auth-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--tint-text); background: var(--glass-ctl); }
 .auth-panel .auth-footer { display: grid; gap: 8px; text-align: center; }
+.auth-panel[data-auth-state="signin"], .auth-panel[data-auth-state="phone-first"] { row-gap: 16px; }
+.auth-panel:is([data-auth-state="signin"], [data-auth-state="phone-first"]) .auth-content > .signin { gap: 12px; }
 .auth-panel .auth-footer .foot, .auth-panel .auth-footer .new { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
 .auth-footer .link { min-height: 44px; padding: 8px 2px; }
 .auth-panel .hint, .auth-panel .hint.center { text-align: left; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -1816,11 +1818,12 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .signin-panel .usepw { justify-self: stretch; }
 .signin-panel .signin-join { text-align: center; color: var(--text-2); font-size: 13px; line-height: 1.5; }
 .signin-join .link, .signin-switch .link { min-height: 44px; padding: 8px 2px; font-size: inherit; }
-.signin-panel .signin-switch { border-top: 1px solid var(--line); padding-top: 12px; text-align: center; }
+.signin-panel .signin-switch { border-top: 1px solid var(--line); padding-top: 8px; text-align: center; }
 .signin-switch .new { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
 .signin-phone { min-height: 44px; padding: 10px; font-size: 14px; text-align: center; }
 .signin-panel .said { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .signin-panel .said:empty { display: none; }
+.signin-panel .signin-feedback, .signin-panel .signin-feedback:empty { display: block; min-height: 1.5em; }
 .signin-panel button:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; }
 body:has(.signin-shell) .aura { opacity: .28; }
 @media (max-width: 599px) {

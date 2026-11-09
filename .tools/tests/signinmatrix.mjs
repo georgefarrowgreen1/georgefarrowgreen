@@ -8,7 +8,7 @@
 // (Mail asks for the site's admin with a passkey, so it's left to mailauth.mjs; Today's API to todayauth.mjs.)
 import { dress, chatSession, until, wait, HUB, CHAT, ACCOUNT_AT, CHROMIUM_ARGS } from './rooflib.mjs';
 import { chromium } from 'playwright';
-import { makeAccount, onAccountPage } from './join.mjs';
+import { makeAccount, onAccountPage, usePassword } from './join.mjs';
 import { randomBytes } from 'node:crypto';
 const [,, , out] = process.argv;
 let fails = 0;
@@ -108,7 +108,7 @@ for (const d of DEVICES.filter((d) => !ONLY.length || ONLY.includes(d.id))) {
       // signing in: filled here instead)
       if (a.id === 'account') {
         await p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 30000 });
-        await p.waitForSelector('main .signin input[name=email]', { timeout: 30000 });
+        await usePassword(p);
         await p.fill('main .signin input[name=email]', email); await p.fill('main .signin input[name=password]', 'a long test password');
         await p.click('main .signin form .btn');
         await p.waitForURL((u) => u.hostname === a.host, { timeout: 45000 });

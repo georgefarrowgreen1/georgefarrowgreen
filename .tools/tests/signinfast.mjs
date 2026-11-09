@@ -58,8 +58,8 @@ const warm = await q.evaluate(() => [...document.querySelectorAll('link[rel=prec
 ok(warm.some((x) => /^preconnect http:\/\/auth\.ifl\.test:8788\/?$/.test(x)), 'signed out on Today: the sign-in page’s connection made ahead', warm.join(', '));
 const w3 = word();
 await q.goto(`${AUTH}/go?${new URLSearchParams({ signin: 'today', ask: w3.ask, back: HUB + '/' })}`);
-await q.waitForSelector('main .signin input[name=email]', { timeout: 30000 });
-ok(new URL(q.url()).host === 'auth.ifl.test:8788', 'signed out: on to the sign-in page, its card asking for an email');
+await q.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 30000 });
+ok(new URL(q.url()).host === 'auth.ifl.test:8788', 'signed out: on to the shared sign-in page');
 ok(await q.evaluate(() => { try { const k = JSON.parse(sessionStorage.getItem('acct-for') || 'null'); return k?.app === 'today' && /ifl\.test/.test(k.back); } catch (_) { return false; } }), 'and what Today said kept, for the way back');
 await q.screenshot({ path: `${out}/signed-out.png` }).catch(() => {});
 const errs = [...(ctx.__errs || []), ...(fresh.__errs || [])].filter((e) => !/Failed to load|ERR_|favicon|status of 4\d\d|Cross-Origin-Opener-Policy/.test(e));

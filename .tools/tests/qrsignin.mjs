@@ -147,7 +147,7 @@ const [, m2] = await macPage();
 await m2.goto(`${MKT}/`); await m2.waitForSelector('#sign-in:not([disabled])', { timeout: 20000 }); await m2.click('#sign-in');
 await m2.getByRole('button', { name: 'Sign in with your phone', exact: true }).click();
 await m2.waitForSelector('#qrc .qrbox svg', { timeout: 30000 });
-ok(/continue to\s*Markets/i.test(await m2.locator('main').innerText()), 'Markets → Sign in: destination retained when phone sign-in is requested');
+ok(/Markets/.test(await m2.locator('.signin-header .backapp').innerText()) && await m2.locator('.signin-destination').count() === 0, 'Markets → Sign in: one destination retained when phone sign-in is requested');
 const viaPhone = async (pg, mac) => {
   await pg.goto(await mac.getAttribute('#qrc .qrbox', 'data-link')); await pg.locator('.sheet-body button:has-text("Continue")').click();
   await pg.waitForSelector('.qrpick button, .qrtype', { timeout: 20000 }); await mac.waitForSelector('.qrnum b', { timeout: 10000 });

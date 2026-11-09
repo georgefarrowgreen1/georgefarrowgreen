@@ -59,6 +59,7 @@ try{
  for(const width of [320,390,1440])for(const scheme of ['light','dark']){
   const x=await open({width,scheme});try{
    await frame(x,'signin',`signin-${width}-${scheme}`);
+   if(await x.p.getByLabel('Password',{exact:true}).isHidden())await x.p.getByRole('button',{name:'Use your password',exact:true}).click();
    await x.p.getByRole('button',{name:'Forgot password?',exact:true}).click();await frame(x,'forgot',`forgot-${width}-${scheme}`);
    ok((await x.p.locator('.signin-destination').innerText()).includes('Weather'),'recovery retains destination');
    await x.p.getByLabel('Email',{exact:true}).fill('sam@example.com');await x.p.getByRole('button',{name:'Email me a link',exact:true}).click();
@@ -66,6 +67,7 @@ try{
    await x.p.getByRole('button',{name:'Change email address',exact:true}).click();await frame(x,'forgot',`email-edit-${width}-${scheme}`);
    ok(await x.p.getByLabel('Email',{exact:true}).inputValue()==='sam@example.com','editing keeps entered email');
    await x.p.getByRole('button',{name:'Back to sign in',exact:true}).click();await frame(x,'signin',`return-${width}-${scheme}`);
+   ok(await x.p.evaluate(()=>!!document.activeElement.closest('.signin')&&document.activeElement.getClientRects().length>0),'returning from recovery focuses a visible sign-in control');
    await x.p.getByRole('button',{name:'Join InFlite',exact:true}).click();await frame(x,'join',`invite-${width}-${scheme}`);
   }finally{await x.ctx.close();}
  }

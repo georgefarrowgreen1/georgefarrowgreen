@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createHash, randomBytes } from 'crypto';
-import { onAccountPage, fillJoin as joinSteps } from './join.mjs';
+import { onAccountPage, usePassword, fillJoin as joinSteps } from './join.mjs';
 import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', AUTH = 'http://auth.ifl.test:8788';
@@ -55,10 +55,12 @@ async function fillJoin(x, { name, handle, email, password = PW }) {
 // ---- 1. Without an invite: no way to make one, on the page or past it ----
 const V = await browser('visitor');
 await open(V, `${ACCT}/`);
-await waitText(V, /Forgot password\?/); await V.p.waitForTimeout(2500);
+await waitText(V, /Use your password/); await V.p.waitForTimeout(2500);
 const signin = await text(V);
-ok(/Sign in with a passkey/.test(signin) && /or use your password/.test(signin) && /Forgot password\?/.test(signin) && /Have an invite\? Join InFlite/.test(signin) && !/Create your account/.test(signin),
+ok(/Sign in with a passkey/.test(signin) && /Use your password/.test(signin) && !(await V.p.isVisible('main .signin input[name=password]')) && /Have an invite\? Join InFlite/.test(signin) && !/Create your account/.test(signin),
   'signed out: the shared sign-in frame, password fallback and invitation entry; no open signup form', signin.slice(-160));
+await usePassword(V.p);
+ok(await V.p.getByRole('button', { name: 'Forgot password?', exact: true }).isVisible(), 'password disclosure keeps recovery available');
 await open(V, `${ACCT}/#join`); await waitText(V, /You’ll need an invite/);
 ok(/You’ll need an invite/.test(await text(V)) && !!(await V.p.$('main .signin input[name=invite]')) && !(await V.p.$('main input[name=name]')) && V.p.url() === `${AUTH}/`, 'Create your account, with no invite: what to do, a place for the link, and no form', await text(V, 'main .signin'));
 const noInvite = await V.p.evaluate(async () => { const r = await fetch('/api/account/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X', handle: 'xxx', email: 'x@example.com' }) }); return [r.status, (await r.json()).field]; });
@@ -98,10 +100,10 @@ await N.p.goto(`${CHAT}/`); await N.p.waitForSelector('.welcome [data-act=acctsi
 const welcomeJoin = await N.p.$eval('.welcome .wnew a', (a) => a.href).catch(() => '');
 ok(welcomeJoin === `${AUTH}/#join` && !(await N.p.$('[data-id=signup], [data-form=signup], [data-form=signin]')), 'Chat\'s welcome: Sign in, and New here? Create your account (both on the account\'s page)', welcomeJoin);
 await N.p.click('.welcome [data-act=acctsignin]'); await N.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
-await N.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 }); await settle(N);
+await usePassword(N.p); await settle(N);
 const order = await N.p.evaluate(() => [...document.querySelectorAll('main .backapp, main .signin-destination, main .signin > .btn, main .signin .or, main .signin form, main .signin .forgot')]
   .map((e) => e.matches('.backapp') ? `back to ${e.textContent.trim()}` : e.matches('.signin > .btn') ? 'passkey' : e.matches('form') ? 'form' : e.textContent.trim()));
-ok(order.includes('back to Chat') && order.includes('Continue to Chat') && order.indexOf('passkey') < order.indexOf('form') && order.includes('Forgot password?'), 'Chat uses the shared frame and destination, passkey first, password and recovery available', order.join(' | '));
+ok(order.includes('back to Chat') && !(await N.p.$('main .signin-destination')) && order.indexOf('passkey') < order.indexOf('form') && order.includes('Forgot password?'), 'Chat has one destination, passkey first, password and recovery available', order.join(' | '));
 await N.p.click('main .signin form .btn');
 ok(await text(N, 'main .said') === 'Enter your email.', 'nothing typed: said, as everywhere on the site', await text(N, 'main .said'));
 await shot(N, '04-inflight-signin');
@@ -187,8 +189,8 @@ await X.p.goto(`${WX}/`); await X.p.waitForSelector('#settings-btn', { timeout: 
 await X.p.click('#settings-btn'); await X.p.waitForSelector('#settings[open] #acct .acct-card', { timeout: 15000 });
 ok(!(await X.p.$('#settings input[type=password], #settings [data-page=signin]')), 'Weather has no sign-in of its own');
 await X.p.click('#acct-signin'); await X.p.waitForURL((u) => /^(account|auth)\./.test(u.hostname), { timeout: 20000 });
-await X.p.waitForSelector('main .signin input[name=email]', { timeout: 20000 });
-ok(/Continue to Weather/.test(await text(X, 'main .signin-destination')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather uses the shared destination and way back', await text(X, 'main .signin-destination'));
+await X.p.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 20000 });
+ok(!(await X.p.$('main .signin-destination')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather has one destination and way back', await text(X, 'main .backapp'));
 
 // ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----

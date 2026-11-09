@@ -1,7 +1,5 @@
-// The sign-in page on a computer: the title, the card and the phone's code beside it in the middle of the window across
-// (the pair, wider than the page's column, used to push everything to the right), and up and down where it fits; at
-// common desktop sizes, signed out plainly and sent by an app (Today: its back pill, "Sign in to continue to Today"),
-// and on a phone still one column with nothing past the screen's edge.
+// The shared sign-in card stays centered at common desktop sizes, with phone sign-in requested separately.
+// The app's return control names its destination once; narrow screens retain one column without overflow.
 import { chromium } from 'playwright';
 const [,, S, out] = process.argv;
 const AUTH = 'http://auth.ifl.test:8788';
@@ -16,7 +14,7 @@ const measure = (p) => p.evaluate(() => {
   return { cw: document.documentElement.clientWidth, ch: innerHeight, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight,
     h1: r(document.querySelector('.signin-shell h1')), pair: r(document.querySelector('.signpair')), card: r(document.querySelector('.signin-panel')),
     qr: r(document.querySelector('.signpair .qrc')), back: r(document.querySelector('.backapp')), welcome: r(document.querySelector('.signin-stage')),
-    lead: document.querySelector('.signin-destination')?.textContent || '' };
+    lead: document.querySelector('.backapp')?.textContent || '' };
 });
 async function page(w, hgt, url, mobile) {
   const ctx = await b.newContext(mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: w, height: hgt } });
@@ -30,7 +28,7 @@ for (const [label, url] of [['plain', `${AUTH}/`], ['from Today', TODAY]]) {
     const { ctx, p } = await page(w, hgt, url);
     const m = await measure(p), mid = m.cw / 2, near = (a, n = 2) => Math.abs(a - mid) <= n;
     const at = `${label}, ${w}×${hgt}`;
-    if (label === 'from Today' && w === 1920) ok(/continue to\s*Today/.test(m.lead) && !!m.back, `${at}: sent by Today (its back pill, "Sign in to continue to Today")`, m.lead);
+    if (label === 'from Today' && w === 1920) ok(/Today/.test(m.lead) && !!m.back, `${at}: Today is named once, in its return control`, m.lead);
     ok(!!m.card && !m.pair && !m.qr, `${at}: one card; phone sign-in requested separately`);
     ok(m.h1.l >= m.card.l && m.h1.r <= m.card.r, `${at}: the title stays inside the card`);
     ok(near(m.card.c), `${at}: the card centered across`);

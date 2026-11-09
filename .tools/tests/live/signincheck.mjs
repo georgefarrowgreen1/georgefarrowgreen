@@ -45,7 +45,8 @@ for (const d of DEVICES) for (const a of APPS) {
     step = 'the sign-in page';
     if (a.own) {
       await p.waitForURL((u) => u.hostname.startsWith('auth.'), { timeout: 30000 });
-      await p.waitForSelector('main .signin input[name=email]', { timeout: 30000 });
+      await p.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 30000 });
+      if (await p.locator('main .signin input[name=password]').isHidden()) await p.locator('main .signin .usepw').click();
       await p.fill('main .signin input[name=email]', EMAIL); await p.fill('main .signin input[name=password]', PASSWORD);
       await p.click('main .signin form .btn');
     } else await onAccountPage(p, { email: EMAIL, password: PASSWORD });
