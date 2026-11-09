@@ -1802,6 +1802,46 @@ cmpBox.addEventListener('pointerdown', e => { if (!CMP) return; e.preventDefault
 cmpBox.addEventListener('pointermove', e => { if (CMP && CMP.drag) cmpAt(e); });
 ['pointerup','pointercancel'].forEach(n => cmpBox.addEventListener(n, () => { if (CMP) CMP.drag = false; }));
 
+// Full-screen tools act as dialogs: keyboard focus stays in the tool that is
+// visible, and returns to its opener after the existing close action completes.
+const fitOverlays = [...document.querySelectorAll('.overlay')], fitReturns = new WeakMap();
+let fitModal = null;
+const fitControls = el => [...el.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]')]
+  .filter(x => x.getClientRects().length && !x.closest('[inert]'));
+function syncFitDialogs(){
+  const next = fitOverlays.filter(el => !el.hidden).at(-1) || null, was = fitModal;
+  if (next === was) return;
+  if (next && !fitReturns.has(next)) fitReturns.set(next, document.activeElement);
+  fitModal = next;
+  for (const el of document.querySelectorAll('.top, .shell, .pager')) el.inert = !!next;
+  for (const el of fitOverlays){
+    el.inert = !!next && el !== next;
+    el.setAttribute('aria-modal', String(el === next));
+  }
+  const returning = was?.hidden && fitReturns.get(was);
+  if (next) (returning?.isConnected && next.contains(returning) && returning.getClientRects().length ? returning : fitControls(next)[0] || next).focus({preventScroll:true});
+  else if (was){
+    const target = fitReturns.get(was); fitReturns.delete(was);
+    if (target?.isConnected && target.getClientRects().length) target.focus({preventScroll:true});
+    else { const main = $('#main'); main.tabIndex = -1; main.focus({preventScroll:true}); }
+  }
+  for (const el of fitOverlays) if (el.hidden) fitReturns.delete(el);
+}
+const fitDialogChanges = new MutationObserver(syncFitDialogs);
+for (const el of fitOverlays){
+  el.setAttribute('role', 'dialog'); el.tabIndex = -1;
+  const title = el.querySelector('.ov-bar .ttl');
+  if (title){ title.id ||= `fit-tool-${el.id}`; el.setAttribute('aria-labelledby', title.id); }
+  fitDialogChanges.observe(el, {attributes:true, attributeFilter:['hidden']});
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || !fitModal) return;
+  const controls = fitControls(fitModal), first = controls[0], last = controls.at(-1);
+  if (!first){ e.preventDefault(); fitModal.focus(); }
+  else if (!fitModal.contains(document.activeElement) || (e.shiftKey && document.activeElement === first)){ e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+});
+
 window.addEventListener('resize', () => { jumpEdge(); if (!$('#ov').hidden) fitPages(); if (MZ) layoutMZ(); if (CMP) layoutCmp(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!$('#fits').hidden) $('#fits').hidden = true; else if (CMP){ $('#cmp').hidden = true; CMP = null; } else if (MZ) closeMZ(); else if (!$('#ov').hidden) $('#ov').hidden = true; } });
 

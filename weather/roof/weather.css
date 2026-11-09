@@ -71,10 +71,10 @@
 /* ---- Now: the warnings slot ---- */
 .m-weather .wx-alerts[hidden] { display: none; }
 .m-weather .wx-alert { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 12px 14px; border-radius: var(--r-group, 26px); text-align: left; color: var(--text);
-  background: color-mix(in srgb, var(--wx-amber) 16%, var(--glass)); box-shadow: var(--edge); transition: transform var(--dur-press) var(--ease-out, ease); }
+  background: color-mix(in srgb, var(--wx-amber) 16%, var(--glass)); box-shadow: var(--edge); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
 .m-weather .wx-alert[data-level="alert"] { background: color-mix(in srgb, var(--wx-red) 18%, var(--glass)); }
 .m-weather .wx-alert[data-colour="yellow"] { background: color-mix(in srgb, var(--wx-yellow) 16%, var(--glass)); }
-.m-weather .wx-alert:active { transform: scale(0.98); }
+.m-weather .wx-alert:active { transform: scale(0.98); transition-duration: var(--dur-press, .1s); }
 .m-weather .wx-alert-words { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .m-weather .wx-alert-words b { font-size: 16px; font-weight: 650; }
 .m-weather .wx-alert-words small { font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
@@ -178,8 +178,12 @@
 
 /* Right now: the tiles, on the framework's stats grid */
 .m-weather .wx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; margin: 0; }
-.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--r-well, 16px); text-align: left; color: var(--text); background: var(--glass-ctl); transition: transform var(--dur-press) ease; }
-.m-weather .wx-tile:active { transform: scale(0.97); background: var(--press); }
+.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--r-well, 16px); text-align: left; color: var(--text); background: var(--glass-ctl); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
+.m-weather .wx-tile:active { transform: scale(0.97); background: var(--press); transition-duration: var(--dur-press, .1s); }
+@media (prefers-reduced-motion: reduce) {
+  .m-weather :is(.wx-alert, .wx-tile) { transition: none; }
+  .m-weather :is(.wx-alert, .wx-tile):active { transform: none; }
+}
 .m-weather .wx-tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .m-weather .wx-tile-k { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; color: var(--text-2); }
 .m-weather .wx-tile-k .wx-g { color: var(--acc-ink); }

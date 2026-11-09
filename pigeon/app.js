@@ -927,10 +927,19 @@ const IFL = (() => {
           : "InFlite hit a problem it didn’t expect. Send it on and it’ll be looked into: the code says which."),
         dl, note, el("p", "ifb-who", "What you write here is read by InFlite’s owner alone."), el("div", "ifb-acts", send, copy, shut), said);
       box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ifb-t");
-      const layer = el("div", "ifb-layer", box);
+      const was = document.activeElement, layer = el("dialog", "ifb-layer", box);
+      layer.setAttribute("aria-labelledby", "ifb-t");
       const text = () => [`${manual ? "Problem report" : "Bug report"} ${r.code}`, ...facts.map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " · ")}`), note.value.trim() ? `Note: ${note.value.trim()}` : ""].filter(Boolean).join("\n");
-      const done = () => { layer.remove(); document.removeEventListener("keydown", key, true); showing = null; };
-      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+      const done = () => { layer.close?.(); layer.remove(); document.removeEventListener("keydown", key, true); showing = null; if (was?.isConnected) was.focus?.({ preventScroll: true }); };
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); }
+        else if (e.key === "Tab") {
+          const f = [...layer.querySelectorAll("textarea, button:not([disabled]), a[href]")].filter((n) => n.getClientRects().length);
+          if (f.length && (!layer.contains(document.activeElement) || (e.shiftKey && document.activeElement === f[0]) || (!e.shiftKey && document.activeElement === f.at(-1)))) {
+            e.preventDefault(); (e.shiftKey ? f.at(-1) : f[0]).focus();
+          }
+        }
+      };
       shut.onclick = done;
       layer.addEventListener("pointerdown", (e) => { if (e.target === layer) done(); });
       copy.onclick = async () => { try { await navigator.clipboard.writeText(text()); said.textContent = "Copied."; } catch (_) { said.textContent = "Couldn’t copy: a screenshot works as well."; } };
@@ -950,6 +959,7 @@ const IFL = (() => {
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
+      layer.showModal?.();
       document.addEventListener("keydown", key, true);
       showing = layer;
       (manual ? note : shut).focus({ preventScroll: true });
@@ -1186,8 +1196,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.95";            // shown in InFlite's menu
-const APP_NEWS = "Clearer account links and less repeated text across InFlite";       // (said once it's in)
+const APP_VERSION = "1.96";            // shown in InFlite's menu
+const APP_NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

@@ -22,6 +22,26 @@ defaults:
     shell: bash
 
 jobs:
+  ui-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: georgefarrowgreen
+      - name: Production InFlite framework
+        run: git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix .tools/tests --no-audit --no-fund
+        working-directory: georgefarrowgreen
+      - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
+        working-directory: georgefarrowgreen
+      - name: UI controls, focus, history shortcuts and reduced motion
+        working-directory: georgefarrowgreen
+        run: node --test --test-concurrency=1 .tools/tests/shared-modal-ui.test.cjs .tools/tests/chats-ui-refinement.test.cjs .tools/tests/weather-places-ui.test.cjs .tools/tests/fitness-ui-refinement.test.cjs .tools/tests/fitting-dialogs.test.cjs
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10

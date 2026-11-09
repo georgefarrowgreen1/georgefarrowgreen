@@ -953,10 +953,19 @@ const IFL = (() => {
           : "InFlite hit a problem it didn’t expect. Send it on and it’ll be looked into: the code says which."),
         dl, note, el("p", "ifb-who", "What you write here is read by InFlite’s owner alone."), el("div", "ifb-acts", send, copy, shut), said);
       box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ifb-t");
-      const layer = el("div", "ifb-layer", box);
+      const was = document.activeElement, layer = el("dialog", "ifb-layer", box);
+      layer.setAttribute("aria-labelledby", "ifb-t");
       const text = () => [`${manual ? "Problem report" : "Bug report"} ${r.code}`, ...facts.map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " · ")}`), note.value.trim() ? `Note: ${note.value.trim()}` : ""].filter(Boolean).join("\n");
-      const done = () => { layer.remove(); document.removeEventListener("keydown", key, true); showing = null; };
-      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+      const done = () => { layer.close?.(); layer.remove(); document.removeEventListener("keydown", key, true); showing = null; if (was?.isConnected) was.focus?.({ preventScroll: true }); };
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); }
+        else if (e.key === "Tab") {
+          const f = [...layer.querySelectorAll("textarea, button:not([disabled]), a[href]")].filter((n) => n.getClientRects().length);
+          if (f.length && (!layer.contains(document.activeElement) || (e.shiftKey && document.activeElement === f[0]) || (!e.shiftKey && document.activeElement === f.at(-1)))) {
+            e.preventDefault(); (e.shiftKey ? f.at(-1) : f[0]).focus();
+          }
+        }
+      };
       shut.onclick = done;
       layer.addEventListener("pointerdown", (e) => { if (e.target === layer) done(); });
       copy.onclick = async () => { try { await navigator.clipboard.writeText(text()); said.textContent = "Copied."; } catch (_) { said.textContent = "Couldn’t copy: a screenshot works as well."; } };
@@ -976,6 +985,7 @@ const IFL = (() => {
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
+      layer.showModal?.();
       document.addEventListener("keydown", key, true);
       showing = layer;
       (manual ? note : shut).focus({ preventScroll: true });
@@ -1622,8 +1632,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.26";
-const NEWS = "Clearer account links and less repeated text across InFlite";
+const BUILD = "2.27";
+const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

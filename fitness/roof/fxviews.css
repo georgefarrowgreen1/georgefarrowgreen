@@ -56,7 +56,7 @@
 /* figures in a grid (an activity's, a workout's) */
 .m-fitness .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
 .m-fitness .stat small { display: block; font-size: 12.5px; color: var(--text-3); }
-.m-fitness .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-fitness .stat b { display: block; margin-top: 2px; font: 600 21px/1.15 var(--font-r); font-variant-numeric: tabular-nums; letter-spacing: -0.3px; white-space: normal; overflow-wrap: anywhere; }
 .m-fitness .stat b u { text-decoration: none; font: 500 13px/1 var(--font); color: var(--text-2); margin-left: 2px; letter-spacing: 0; }
 @media (max-width: 360px) { .m-fitness .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -82,8 +82,8 @@
 .m-fitness .repeat > .rh { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 13px; font-weight: 700; color: var(--tint-text); letter-spacing: 0.3px; }
 
 .m-fitness .stepper { display: inline-flex; align-items: center; gap: 2px; border-radius: 999px; background: var(--field); padding: 2px; }
-.m-fitness .stepper button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); }
-.m-fitness .stepper button:active { background: var(--press); }
+.m-fitness .stepper button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; color: var(--text); transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)), background-color .18s; }
+.m-fitness .stepper button:active { background: var(--press); transform: scale(.94); transition-duration: var(--motion-press, .1s); }
 .m-fitness .stepper output { min-width: 88px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .m-fitness .stepper label { display: none; }
 .m-fitness .field { display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); font-size: 17px; }
@@ -455,3 +455,8 @@
 .m-fitness .sheet-top .act-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .m-fitness .act-links>.pill{min-height:40px;text-decoration:none;gap:6px}
 .m-fitness .act-links>.pill svg{flex:none;width:14px;height:14px}
+
+@media (prefers-reduced-motion: reduce) {
+.m-fitness .stepper button, .m-fitness .rh-day .track i { transition: none; }
+.m-fitness .stepper button:active { transform: none; }
+}

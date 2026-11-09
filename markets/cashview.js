@@ -81,23 +81,23 @@ export function cashEditor(ctx, id = null) {
     if (save.disabled || !current()) return;
     error.hidden = true;
     let x; try { x = cashInput(values()); } catch (e) { report(e); return; }
-    save.disabled = true; if (remove) remove.disabled = true;
+    busy(true);
     try {
       if (!(await ctx.save(x)) || !current()) return;
       if (save.isConnected) ctx.close();
       ctx.toast(held ? "Cash updated" : "Cash added");
-    } catch (e) { if (current() && save.isConnected) report(e); }
-    finally { save.disabled = false; if (remove) remove.disabled = false; }
+    } catch (e) { busy(false); if (current() && save.isConnected) report(e); }
+    finally { busy(false); }
   };
   let armed = false;
   const remove = held && h("button.cash-remove", { type: "button", text: "Remove cash holding" });
   if (remove) remove.onclick = async () => {
     if (remove.disabled || !current()) return;
-    if (!armed) { armed = true; remove.textContent = "Tap again to remove"; setTimeout(() => { armed = false; remove.textContent = "Remove cash holding"; }, 4000); return; }
-    save.disabled = remove.disabled = true;
+    if (!armed) { armed = true; remove.textContent = "Tap again to remove"; setTimeout(() => { armed = false; if (!remove.disabled) remove.textContent = "Remove cash holding"; }, 4000); return; }
+    busy(true, true);
     try { if (await ctx.remove(held.id) && current()) { if (remove.isConnected) ctx.close(); ctx.toast("Cash removed"); } }
-    catch (e) { if (current() && remove.isConnected) report(e); }
-    finally { save.disabled = remove.disabled = false; }
+    catch (e) { busy(false); if (current() && remove.isConnected) report(e); }
+    finally { armed = false; busy(false); }
   };
   const form = h("div.cash-editor", {},
     h("div.shead", {}, h("h2", { text: held ? "Edit cash" : "Add cash" })),
@@ -110,5 +110,12 @@ export function cashEditor(ctx, id = null) {
       h("label", { for: "mk-cash-payout-repeat", text: "Interest payouts (optional)" }), h("div.field", {}, payoutRepeat), payoutFields),
     h("p.hint", { text: "Use AER, rather than gross p.a., for these estimates. Use 0% for cash that doesn’t earn interest. Rates and balances are updated manually." }),
     error, save, remove);
+  const busy = (on, removing = false) => {
+    if (on) armed = false;
+    form.setAttribute("aria-busy", String(on));
+    form.querySelectorAll("input, select, button:not(.x)").forEach((control) => { control.disabled = on; });
+    save.textContent = on && !removing ? "Saving…" : held ? "Save cash" : "Add cash";
+    if (remove) remove.textContent = on && removing ? "Removing…" : "Remove cash holding";
+  };
   return form;
 }

@@ -37,8 +37,8 @@
 .m-markets .glass, .ifl-sheet[data-app=markets] .glass { position: relative; background: var(--sheen), var(--glass); box-shadow: var(--edge), var(--lift); }
 .m-markets .press, .ifl-sheet[data-app=markets] .press { transition: transform 0.45s var(--ease-spring); }
 .m-markets .press:active, .ifl-sheet[data-app=markets] .press:active { transform: scale(0.96); transition-duration: 0.1s; }
-.m-markets .rise, .ifl-sheet[data-app=markets] .rise { animation: mk-rise 0.7s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 55ms + 80ms); }
-@keyframes mk-rise { from { opacity: 0; transform: translateY(14px); } }
+.m-markets .rise, .ifl-sheet[data-app=markets] .rise { animation: mk-rise 0.5s var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 6) * 35ms + 40ms); }
+@keyframes mk-rise { from { opacity: 0; transform: translateY(10px); } }
 .m-markets .mk-ic svg, .ifl-sheet[data-app=markets] .mk-ic svg { width: var(--ic, 18px); height: var(--ic, 18px); }
 .m-markets :focus-visible, .ifl-sheet[data-app=markets] :focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; border-radius: 10px; }
 .ifl-sheet[data-app=markets] .mk-sheet > * { animation: mk-rise 0.6s var(--ease-out) backwards; }
@@ -67,7 +67,9 @@
 .m-markets .mk-wait { padding: 8px 24px 0; }
 /* (a control brought into view by the keys comes to rest clear of the header and the tab bar) */
 .m-markets a[href], .m-markets button, .m-markets input, .m-markets summary { scroll-margin: calc(var(--hd-h, 140px) + 12px) 0 calc(var(--tabs-h, 64px) + 40px); }
-@media (prefers-reduced-motion: reduce) { .m-markets .rise, .ifl-sheet[data-app=markets] .rise, .ifl-sheet[data-app=markets] .mk-sheet > * { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .m-markets *, .m-markets *::before, .m-markets *::after, .ifl-sheet[data-app=markets] *, .ifl-sheet[data-app=markets] *::before, .ifl-sheet[data-app=markets] *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
 
 /* ---- two columns at 980 px and wider (S2-D8): Today's cards and lists beside the portfolio; the desk's row ---- */
 @media (min-width: 980px) {

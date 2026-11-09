@@ -1,0 +1,124 @@
+{
+  "date": "2026-11-09",
+  "scope": [
+    "Today and shared navigation/sheets",
+    "Chats standalone and hosted",
+    "Weather standalone and hosted",
+    "Fitness standalone and hosted",
+    "Markets standalone and hosted",
+    "Mail standalone and hosted",
+    "Auth and account",
+    "Public homepage, Status and Fit Studio"
+  ],
+  "reference": "Existing InFlite design tokens, translucent chrome, concentric shapes and restrained iOS-inspired spring motion",
+  "findings": [
+    {
+      "area": "Shared",
+      "issue": "Problem report overlay could sit below an existing modal and keyboard focus could leave it",
+      "change": "Native modal top layer, keyboard wrapping, Escape and opener restoration",
+      "files": [
+        ".tools/inflite/menu.js",
+        ".tools/inflite/menu.css"
+      ]
+    },
+    {
+      "area": "Shared",
+      "issue": "Settings close/back targets were40px and reduced transparency omitted header chrome",
+      "change": "44px hit areas with existing visual geometry; solid header/report surfaces when requested",
+      "files": [
+        ".tools/inflite/design.css"
+      ]
+    },
+    {
+      "area": "Today/Mail",
+      "issue": "Long sheet titles overlapped scrolled content; Mail had small compose controls and missing field focus",
+      "change": "Painted bounded title chrome, stronger compose focus,44px recipient/account controls, reader wrapping"
+    },
+    {
+      "area": "Chats",
+      "issue": "No quick return from history; long flight-card names and some sheet text overflowed; feedback varied",
+      "change": "Latest messages control, bounded names, larger mic target and shared press/release/reduced-motion feedback"
+    },
+    {
+      "area": "Weather",
+      "issue": "Place controls squeezed names; delayed responses could show stale search results; reorder moved keyboard focus",
+      "change": "Responsive place editing, wrapped names, immediate query invalidation and preserved reorder focus"
+    },
+    {
+      "area": "Fitness",
+      "issue": "Steppers/week controls too small; numeric metrics clipped; availability drag lag and cancellation gaps",
+      "change": "44px targets, full metric wrapping, vertical semantics/Home/End and safe direct drag response"
+    },
+    {
+      "area": "Markets",
+      "issue": "Cash writes lacked visible progress/locking; long list entrance delays accumulated; hosted reduced-motion incomplete",
+      "change": "Saving/Removing states, stable submitted fields, explicit Close, bounded entrance delays and hosted motion parity"
+    },
+    {
+      "area": "Auth",
+      "issue": "Reduced-motion spinner could remain invisible when rotation was removed",
+      "change": "Visible static loading indicator; unified sign-in flows rechecked"
+    },
+    {
+      "area": "Status",
+      "issue": "Small history/sheet controls and abrupt sheet dismissal",
+      "change": "44px controls, clear focus, restrained exits and immediate interaction isolation"
+    },
+    {
+      "area": "Fit Studio",
+      "issue": "Tool overlays leaked keyboard focus and background interaction",
+      "change": "Contained focus, inert background, restored opener and separate scrolling body"
+    },
+    {
+      "area": "Public homepage",
+      "issue": "Recent loader/return-to-top changes needed protection during suite-wide refinement",
+      "change": "Existing staged loader and capsule regressions retained and passed"
+    }
+  ],
+  "validation": {
+    "publicBaseline": {
+      "screens": 18,
+      "hosts": 9,
+      "horizontalOverflow": 0,
+      "uncaughtErrors": 0,
+      "unexpectedAxeFindings": 0
+    },
+    "sharedMenusStatusStudio": 203,
+    "browsers": [
+      "Chromium",
+      "WebKit"
+    ],
+    "widths": [
+      320,
+      390,
+      1440
+    ],
+    "preferences": [
+      "light",
+      "dark",
+      "reduced motion",
+      "reduced transparency"
+    ],
+    "budgets": "Existing JS/CSS ceilings retained",
+    "unitTests": {
+      "passed": 1881,
+      "existingSkips": 5
+    },
+    "combinedNewUiTests": {
+      "passed": 19
+    },
+    "marketsBrowser": {
+      "passed": 29
+    },
+    "workerBundle": {
+      "gzipMB": 0.58,
+      "limitMB": 10
+    },
+    "todayBrowser": 49,
+    "rootRequestsAndApi": "passed",
+    "mailMount": "Both suites FAILS0",
+    "weatherMount": "150 checks plus13 corrected cold-load checks",
+    "sharedModalBrowsers": "Chromium and WebKit, including opening above another dialog"
+  },
+  "boundaries": "Public production audit is read-only. Authenticated workflows use synthetic local accounts and fixtures. Existing owner-required page zoom restrictions are preserved."
+}

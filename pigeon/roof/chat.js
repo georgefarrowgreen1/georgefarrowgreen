@@ -60,7 +60,8 @@ function build(host, ctx) {
   const sendBtn = el("button", { type: "button", class: "ch-send", data: { act: "send" }, aria: { label: "Send" }, disabled: true }, ui.icon("up"));
   const attach = el("button", { type: "button", class: "ch-attach", data: { act: "photo" }, aria: { label: "Send a photo" } }, ui.icon("plus"));
   const voice = el("button", { type: "button", class: "ch-voice", data: { act: "voice" }, aria: { label: "Record a voice pigeon" } }, ui.icon("mic"));
-  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, attach, el("div", { class: "ch-field" }, input, voice), sendBtn);
+  const latest = el("button", { type: "button", class: "ch-latest", data: { act: "latest" }, hidden: true, aria: { label: "Jump to latest messages" } }, ui.icon("down"), el("span", { text: "Latest messages" }));
+  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, latest, attach, el("div", { class: "ch-field" }, input, voice), sendBtn);
   const box = el("div", { class: "ch-chat", hidden: true }, scroller, composer);
   host.append(box);
 
@@ -189,7 +190,7 @@ function build(host, ctx) {
 
   // ---- the scroller ----
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < STICK_PX;
-  const toBottom = () => { scroller.scrollTop = scroller.scrollHeight; };
+  const toBottom = () => { scroller.scrollTop = scroller.scrollHeight; latest.hidden = true; };
   const topMsg = () => {
     const top = scroller.getBoundingClientRect?.().top ?? 0;
     for (const n of msgs.querySelectorAll("[data-mid]")) { const r = n.getBoundingClientRect?.(); if (r && r.bottom > top) return { mid: n.dataset.mid, off: r.top - top }; }
@@ -217,11 +218,13 @@ function build(host, ctx) {
       ui.btn("Check", { small: true, act: "safety" })) : null);
     if (stick) toBottom();
     else if (hold) restore(hold);
+    latest.hidden = stick || atBottom();
     lastFirst = c.msgs?.[0]?.id || null;
     header();
   });
   const onScroll = () => {
     stick = atBottom();
+    latest.hidden = stick;
     const c = id && store.get(`chat:${id}`);
     if (c?.older && !asking && scroller.scrollTop < OLDER_PX && c.msgs?.length) {
       asking = true;
@@ -290,6 +293,7 @@ function build(host, ctx) {
     if (!a || !box.contains(a) || e.target.closest?.(".ch-words a[href]")) return;
     const mid = a.dataset.id;
     switch (a.dataset.act) {
+      case "latest": e.preventDefault(); stick = true; toBottom(); break;
       case "send": e.preventDefault(); send(); break;
       case "photo": ctx.open.photo(id); break;
       case "voice": ctx.open.voice(id); break;
@@ -325,7 +329,7 @@ function build(host, ctx) {
     vv?.removeEventListener("scroll", fit);
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
-    msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = "";
+    msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = ""; latest.hidden = true;
     store.apply(`chat:${id}`, null);
     store.apply(`typing:${id}`, null);
     headerAvatar = null; headerName = "";
@@ -369,6 +373,7 @@ function build(host, ctx) {
       const a = anchors.get(cid);
       draw.now();
       if (a && restore(a)) stick = atBottom(); else { stick = true; toBottom(); }
+      latest.hidden = stick;
       markRead();
       return true;
     },

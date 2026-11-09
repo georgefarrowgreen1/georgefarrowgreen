@@ -945,10 +945,19 @@ const IFL = (() => {
           : "InFlite hit a problem it didn’t expect. Send it on and it’ll be looked into: the code says which."),
         dl, note, el("p", "ifb-who", "What you write here is read by InFlite’s owner alone."), el("div", "ifb-acts", send, copy, shut), said);
       box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ifb-t");
-      const layer = el("div", "ifb-layer", box);
+      const was = document.activeElement, layer = el("dialog", "ifb-layer", box);
+      layer.setAttribute("aria-labelledby", "ifb-t");
       const text = () => [`${manual ? "Problem report" : "Bug report"} ${r.code}`, ...facts.map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " · ")}`), note.value.trim() ? `Note: ${note.value.trim()}` : ""].filter(Boolean).join("\n");
-      const done = () => { layer.remove(); document.removeEventListener("keydown", key, true); showing = null; };
-      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+      const done = () => { layer.close?.(); layer.remove(); document.removeEventListener("keydown", key, true); showing = null; if (was?.isConnected) was.focus?.({ preventScroll: true }); };
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); }
+        else if (e.key === "Tab") {
+          const f = [...layer.querySelectorAll("textarea, button:not([disabled]), a[href]")].filter((n) => n.getClientRects().length);
+          if (f.length && (!layer.contains(document.activeElement) || (e.shiftKey && document.activeElement === f[0]) || (!e.shiftKey && document.activeElement === f.at(-1)))) {
+            e.preventDefault(); (e.shiftKey ? f.at(-1) : f[0]).focus();
+          }
+        }
+      };
       shut.onclick = done;
       layer.addEventListener("pointerdown", (e) => { if (e.target === layer) done(); });
       copy.onclick = async () => { try { await navigator.clipboard.writeText(text()); said.textContent = "Copied."; } catch (_) { said.textContent = "Couldn’t copy: a screenshot works as well."; } };
@@ -968,6 +977,7 @@ const IFL = (() => {
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
+      layer.showModal?.();
       document.addEventListener("keydown", key, true);
       showing = layer;
       (manual ? note : shut).focus({ preventScroll: true });
@@ -1143,8 +1153,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.26";
-const NEWS = "Cash interest payout dates, with recurring and month-end schedules";
+const BUILD = "2.27";
+const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1801,7 +1811,7 @@ function cashContext() {
     current: () => { const epoch = cashEpoch, id = S.me?.id; return () => !!id && S.me?.id === id && cashEpoch === epoch; }, close: closeSheet, toast };
 }
 const cashPart = (options) => cashSection(cashContext(), S.cash || [], options);
-function cashView(id) { return [cashEditor(cashContext(), id)]; }
+function cashView(id) { const form = cashEditor(cashContext(), id); form.querySelector(".shead").append(closeBtn()); return [form]; }
 cashView.sheet = "cash";
 cashView.focus = "#mk-cash-amount";
 const openCash = (id) => (Sheet.stack.length ? pushSheet : openSheet)(cashView, id);

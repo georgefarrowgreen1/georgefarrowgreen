@@ -178,10 +178,10 @@ button { font: inherit; color: inherit; }
 /* sheets and the toast */
 .scrim { position: fixed; inset: 0; background: rgba(4, 6, 18, 0.5); opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 30; }
 .scrim.on { opacity: 1; pointer-events: auto; }
-.sheet { position: fixed; left: 50%; bottom: 0; width: min(560px, 100%); transform: translate(-50%, 105%); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); z-index: 31; visibility: hidden;
+.sheet { position: fixed; left: 50%; bottom: 0; width: min(560px, 100%); transform: translate(-50%, 105%); transition: transform 0.32s var(--ifl-motion-glide, cubic-bezier(0.2, 0.9, 0.25, 1)), visibility 0s linear 0.32s; z-index: 31; visibility: hidden; pointer-events: none;
   background: var(--card-solid); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px -12px rgba(0, 0, 0, 0.4); max-height: 86vh; overflow: auto;
   padding: 10px max(18px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); display: grid; gap: 12px; }
-.sheet.on { transform: translate(-50%, 0); visibility: visible; }
+.sheet.on { transform: translate(-50%, 0); visibility: visible; transition-delay: 0s; pointer-events: auto; }
 .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--line-2); margin: 0 auto 2px; }
 .sh { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; gap: 6px; }
 .sh h3 { margin: 0; text-align: center; font: 650 16px/1.25 var(--display); }
@@ -234,7 +234,7 @@ button:disabled { opacity: .6; cursor: wait; }
 .gh h2 { font-size: 16px; letter-spacing: -.2px; }
 .gh { flex-wrap: wrap; gap: 8px 12px; }
 .section-note { color: var(--text-3); font-size: 12px; margin: -3px 4px 2px; }
-.seg button { min-height: 36px; padding-inline: 12px; }
+.seg button { min-height: 44px; padding-inline: 12px; }
 .arow { padding-top: 16px; padding-bottom: 12px; min-height: 56px; }
 .arow .st { max-width: 44vw; white-space: normal; text-align: right; justify-content: end; }
 .arow .st i { flex: none; }
@@ -262,15 +262,15 @@ button:disabled { opacity: .6; cursor: wait; }
 :is(.incident-detail, .report-detail) summary::-webkit-details-marker { display: none; }
 :is(.incident-detail, .report-detail)[open] summary { margin-bottom: 10px; }
 :is(.incident-detail, .report-detail)[open] summary .chev { transform: rotate(90deg); }
-.copy, .cpy { min-height: 36px; }
+.copy, .cpy { min-height: 44px; min-width: 44px; }
 .steps span, .meta { overflow-wrap: anywhere; }
 .look { padding: 18px; }
 .look input { min-height: 44px; font-size: 16px; }
 .look button { min-height: 44px; }
 .foot-note { padding-top: 6px; }
 .sheet-open { overflow: hidden; }
-.ib { width: 40px; height: 40px; }
-.sh { grid-template-columns: 40px minmax(0, 1fr) 40px; }
+.ib { width: 44px; height: 44px; }
+.sh { grid-template-columns: 44px minmax(0, 1fr) 44px; }
 @media (min-width: 640px) {
   .mini { padding-inline: max(24px, calc((100vw - 880px) / 2 + 16px)); }
   .verdict { padding: 30px; }
@@ -302,14 +302,14 @@ button:disabled { opacity: .6; cursor: wait; }
 
 /* Reports keep their reference code visible and their timeline on demand. */
 .report-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.report-code .cpy { border: 0; background: var(--hover); padding: 6px 10px; min-height: 36px; }
+.report-code .cpy { border: 0; background: var(--hover); padding: 6px 10px; min-height: 44px; }
 .report-detail .steps { padding-top: 2px; padding-bottom: 6px; }
 
 /* Page zoom is blocked; component gestures are handled by their own controls. */
 html { touch-action: pan-x pan-y; }
 /* Keep the whole navigation available and supporting services compact. */
 .page-nav a[aria-current], .jump a[aria-current] { background: var(--card-solid); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
-.jump a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
+.jump a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .group, .operations, .inc { scroll-margin-top: 88px; }
 .support-services { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
 .support-services .group { align-content: start; }
@@ -472,6 +472,17 @@ a, button, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
 
 @media (prefers-reduced-transparency: reduce) {
   .glass, .mini, .toast { background: var(--card-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* Direct, reversible feedback for compact controls, with no layout movement. */
+:is(.ib, .seg button, .copy, .cpy, .pill, .history-toggle, .theme-switch, .page-nav a, .jump a) {
+  transition: transform var(--ifl-motion-release, .38s) var(--ifl-motion-spring, ease), background-color var(--ifl-motion-fast, .18s) ease, color var(--ifl-motion-fast, .18s) ease;
+}
+:is(.ib, .seg button, .copy, .cpy, .pill, .history-toggle, .theme-switch, .page-nav a, .jump a):not(:disabled):active { transform: scale(.97); transition-duration: var(--ifl-motion-press, .1s); }
+.rows .arow:focus-visible { outline-offset: -3px; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.ib, .seg button, .copy, .cpy, .pill, .history-toggle, .theme-switch, .page-nav a, .jump a) { transition: none; }
+  :is(.ib, .seg button, .copy, .cpy, .pill, .history-toggle, .theme-switch, .page-nav a, .jump a):active { transform: none; }
 }
 
 /* ==== InFlite design tokens: generated by .tools/iflmenu.mjs ==== */

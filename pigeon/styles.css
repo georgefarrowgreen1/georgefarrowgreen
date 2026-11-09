@@ -721,17 +721,17 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation-duration:.2s}}
 
 /* ---- messages pop out of the composer, or in from the sky when they land ---- */
-.b.fresh,.fly.fresh{animation:bubble-in .6s var(--bouncy);transform-origin:bottom left}
+.b.fresh,.fly.fresh{animation:bubble-in .42s var(--ease-spring);transform-origin:bottom left}
 /* (yours rises out of the box: from as far below as the box is, --rise, app.js sendRise) */
 .b.me.fresh{transform-origin:bottom right;animation:bubble-send .46s var(--snappy)}
-@keyframes bubble-send{from{opacity:0;transform:translateY(var(--rise,18px)) scale(.92)}}
-@keyframes bubble-in{from{opacity:0;transform:scale(.4) translateY(20px)}}
+@keyframes bubble-send{from{opacity:0;transform:translateY(var(--rise,12px)) scale(.97)}}
+@keyframes bubble-in{from{opacity:0;transform:translateY(8px) scale(.96)}}
 .attach:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
 .send:not(:disabled){animation:send-in .45s var(--bouncy)}
 @keyframes send-in{from{transform:scale(.2);opacity:0}}
 /* scrolled up, a pigeon arrives below: a pill over the composer (centred with translate, so the pop-in's transform is free) */
-.newpill{position:absolute;left:50%;bottom:calc(100% + 8px);translate:-50% 0;z-index:2;height:34px;padding:0 15px;border:0;border-radius:999px;background:var(--glass-strong);color:var(--tint);
-  font:600 14px/34px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
+.newpill{position:absolute;left:50%;bottom:calc(100% + 8px);translate:-50% 0;z-index:2;min-height:44px;padding:0 15px;border:0;border-radius:999px;background:var(--glass-strong);color:var(--tint);
+  font:600 14px/44px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
 .newpill:active{transform:scale(.94);transition-duration:.1s}
 .newpill.out{animation:fade-out .2s ease forwards;pointer-events:none}
 /* a message held for its menu sinks, and springs back as the menu opens (not snaps) */
@@ -903,9 +903,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .rpill.mine{background:color-mix(in srgb,var(--tint) 16%,var(--cell))}
 .rpill.flying{opacity:.55}
 /* the reaction row on top of the message menu */
-.rrow{display:flex;justify-content:space-between;gap:2px;padding:8px 8px 6px;border-bottom:.5px solid var(--sep)}
-.rrow button{width:40px;height:40px;border:0;border-radius:50%;background:none;font-size:24px;line-height:1;display:grid;place-items:center;transition:transform .3s var(--bouncy)}
-.rrow button:active{transform:scale(1.25)}
+.rrow{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;padding:8px 8px 6px;border-bottom:.5px solid var(--sep)}
+.rrow button{width:44px;height:44px;border:0;border-radius:50%;background:none;font-size:24px;line-height:1;display:grid;place-items:center;transition:transform .3s var(--bouncy)}
+.rrow button:active{transform:scale(.94)}
 .rrow button.on{background:color-mix(in srgb,var(--tint) 18%,transparent)}
 /* replying to: above the message box */
 .replybar{display:flex;align-items:center;gap:10px;margin:0 6px 6px;padding:8px 8px 8px 14px;border-radius:20px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:14px}
@@ -1599,16 +1599,16 @@ svg.fillico{fill:currentColor;stroke:none}
    a quick tap) and settles back smoothly; nothing grows or bounces. Send and the
    microphone share one spot at the end of the field, so the words never shift
    when one turns into the other. */
-.compose button{-webkit-tap-highlight-color:transparent;transition:transform .3s var(--ease-out),box-shadow .2s,background-color .2s,filter .2s,opacity .18s,color .2s}
+.compose button{-webkit-tap-highlight-color:transparent;transition:transform var(--dur-release,.38s) var(--ease-spring),box-shadow .2s,background-color .2s,filter .2s,opacity .18s,color .2s}
 .compose button.down{transition-duration:.05s}
 .compose .plus:active{transform:none;filter:none;box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
-.compose .plus.down{transform:scale(.9);box-shadow:inset 0 0 0 99px var(--fill-2),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
+.compose .plus.down{transform:scale(.94);box-shadow:inset 0 0 0 99px var(--fill-2),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
 .compose .kind:active{transform:none}
 .compose .kind.down{transform:scale(.95);background:var(--fill-2)}
 .compose .send:active{transform:none}
-.compose .send.down{transform:scale(.88);filter:brightness(.88)}
+.compose .send.down{transform:scale(.93);filter:brightness(.88)}
 .field-wrap .mic:active{transform:none;color:var(--label-2)}
-.field-wrap .mic.down{transform:scale(.88);background:var(--fill-2);color:var(--label)}
+.field-wrap .mic.down{transform:scale(.93);background:var(--fill-2);color:var(--label)}
 .compose .replybar button.down,.compose .attach button.down,.compose .wxplan .btn.down{transform:scale(.92);filter:brightness(.9)}
 /* the field: a ring while you're writing in it */
 .field-wrap{position:relative;transition:box-shadow .2s}
@@ -1618,7 +1618,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .field-wrap .send{position:absolute;right:4px;bottom:4px;width:36px;height:36px;margin:0;animation:none}
 .field-wrap .send:disabled{width:36px;opacity:0}
 .field-wrap .send:not([hidden]):not(:disabled),.field-wrap .mic:not([hidden]){animation:spot-in .18s var(--ease-out)}
-@keyframes spot-in{from{opacity:0;transform:scale(.7)}}
+@keyframes spot-in{from{opacity:0;transform:scale(.92)}}
 @media (prefers-reduced-motion:reduce){.field-wrap .send,.field-wrap .mic{animation:none!important}}
 /* writing: the pigeon steps back to its badge, so the words have the room (still a tap to change it) */
 .compose .kind{transition:transform .3s var(--ease-out),background-color .2s,gap .25s var(--ease-out),padding .25s var(--ease-out)}
@@ -2512,12 +2512,14 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .tile::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(160deg,rgba(255,255,255,.38),rgba(255,255,255,0) 55%);pointer-events:none}
 .tile.kb::after,.tile.emo::after{display:none}
 .av{box-shadow:0 0 0 1.5px rgba(255,255,255,.45),0 6px 14px -6px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){.compose button.down,.rrow button:active,.newpill:active{transform:none!important}}
+
 /* the floating glass that had colours of its own: the same glass as the rest */
 .menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{background:var(--sheen),var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--edge),var(--lift)}
 @media (prefers-reduced-transparency:reduce){
   .group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard,.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--cell)}
   .b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)),.b:not(.me)::before{background:var(--cell)}
-  .sheet,.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
+  .sheet,.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel,.field-wrap,.compose .plus,.compose .mode{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
 
 /* Powered by InFlite, over Sign in (where it sits: InFlite's way in, at the end), in Chat's night */
@@ -3051,8 +3053,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .ifl-tab, .ifl-back { transition: none; } }
 
 /* Something went wrong (menu.js BUG): a window that says the bug's code and what's known of it, to screenshot or send */
-.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
   background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
@@ -3134,6 +3137,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifs-btn { position: relative; }
+.ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
 /* Allow flex/grid text to shrink before it can push a control outside its surface. */
 .ifh-t, .ifm-who, .ifm-l, .ifm-val, .ifm-note-tx, .ifb-facts > *,
@@ -3154,7 +3159,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb-card {
+  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
     -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ifl-chrome-solid);
   }
   .ifm-grp { background: var(--ifl-chrome-solid); }

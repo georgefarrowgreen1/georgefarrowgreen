@@ -1621,8 +1621,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .ifl-tab, .ifl-back { transition: none; } }
 
 /* Something went wrong (menu.js BUG): a window that says the bug's code and what's known of it, to screenshot or send */
-.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
   background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
@@ -1704,6 +1705,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifs-btn { position: relative; }
+.ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
 /* Allow flex/grid text to shrink before it can push a control outside its surface. */
 .ifh-t, .ifm-who, .ifm-l, .ifm-val, .ifm-note-tx, .ifb-facts > *,
@@ -1724,7 +1727,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb-card {
+  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
     -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ifl-chrome-solid);
   }
   .ifm-grp { background: var(--ifl-chrome-solid); }
@@ -1858,3 +1861,9 @@ body:has(.signin-shell) .aura { opacity: .28; }
 .signout-actions .signout-notice:empty { display: none; }
 .signout-notice .ico { flex-shrink: 0; margin-top: 2px; color: var(--good-text); }
 .signout-forget:focus-visible, .signout-notice:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
+
+/* Keep progress readable without persistent rotation when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  .spin, .btn .spin, .adm-wait .spin { animation: none; }
+  .adm-wait .spin { opacity: 1; }
+}

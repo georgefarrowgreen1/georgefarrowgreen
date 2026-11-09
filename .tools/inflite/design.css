@@ -16,6 +16,8 @@
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifs-btn { position: relative; }
+.ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
 /* Allow flex/grid text to shrink before it can push a control outside its surface. */
 .ifh-t, .ifm-who, .ifm-l, .ifm-val, .ifm-note-tx, .ifb-facts > *,
@@ -36,7 +38,7 @@
   .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb-card {
+  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
     -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ifl-chrome-solid);
   }
   .ifm-grp { background: var(--ifl-chrome-solid); }

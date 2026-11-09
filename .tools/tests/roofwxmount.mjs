@@ -153,6 +153,10 @@ async function openWeather(p, path = '/weather/') {
   return until(() => visible(p, `${H.M_WEATHER} ${H.wxSec('now')}`) || visible(p, `${H.M_WEATHER} ${H.WX_SEC}:not([hidden])`), 15000);
 }
 async function sheetClosed(p, sel) { return until(async () => !(await visible(p, `${sel}[open]`)), 4000); }
+async function revealDetails(p) {
+  const summary = p.locator(`${H.wxSec('now')} [data-card="right-now"] details:not([open]) > summary`);
+  if (await summary.count()) await summary.first().click();
+}
 
 // ===================== 1. mount, sections, header, Places, links, settings, 401 =====================
 {
@@ -312,6 +316,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   }
   ok(n('places') === 1, 'places.js fetched once', JSON.stringify(asked));
   // a Right now tile, then the credits line: wxdetail.js once for both
+  await revealDetails(p);
   await p.locator(H.DETAIL_TILE).first().click();
   ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1)), 'a Right now tile opens its detail sheet');
   await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
@@ -345,13 +350,16 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
 // (a slow file: a section shows a skeleton till it's in; a sheet, a skeleton sheet of its name, swapped for the real one;
 // two quick taps, one sheet; one closed while it waits, or asked for just before the person left Weather, nothing opens)
 {
-  const { p, st, ctx } = await phone();
+  // Keep this a cold-load case: the module otherwise warms sections during idle time before this tap.
+  const { p, st, ctx } = await phone({ saveData: true });
   const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
   for (const f of ['days', 'wxdetail', 'places', 'wxsettings']) await p.route(`${KIT}/weather/roof/${f}.js`, async (r) => { await sleep(1200); r.fallback(); });
   await openWeather(p);
+  await revealDetails(p);
   await until(() => visible(p, H.DETAIL_TILE), 8000);
+  const sawDaysLoading = p.locator(`${H.wxSec('days')} .ifl-skeleton`).waitFor({ state: 'visible', timeout: 6000 }).then(() => true, () => false);
   await p.locator(H.hdSec('days')).click();
-  ok(await until(() => visible(p, `${H.wxSec('days')} .ifl-skeleton`), 1000), '16 Days, its file slow: a skeleton in the section');
+  ok(await sawDaysLoading, '16 Days, its file slow: a skeleton in the section');
   ok(await until(async () => (await p.locator(H.DAY_ROW).count()) >= 10, 6000), 'then its rows, once it’s in');
   ok(await p.locator(`${H.wxSec('days')} .ifl-skeleton`).count() === 0, 'the skeleton gone');
   await p.locator(H.hdSec('now')).click(); await until(() => visible(p, H.wxSec('now')));
@@ -394,6 +402,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
   p.on('request', (r) => { const u = new URL(r.url()); if (u.pathname.startsWith('/weather/roof/')) urls.push(u.pathname + u.search); });
   for (const f of failing) await p.route(new RegExp(`${KIT}/weather/roof/${f}\\.js(\\?.*)?$`), (r) => (failing.has(f) ? r.fulfill({ status: 503, body: '' }) : r.fallback()));
   await openWeather(p);
+  await revealDetails(p);
   await until(() => visible(p, H.DETAIL_TILE), 8000);
   await p.locator(H.hdSec('days')).click();
   ok(await until(() => visible(p, `${H.wxSec('days')} .ifl-error [data-act=retry]`), 6000), 'days.js failing: 16 Days says so, with Try Again');
@@ -436,6 +445,7 @@ async function sheetClosed(p, sel) { return until(async () => !(await visible(p,
     ok(await until(() => visible(p, `${H.wxSec('now')} ${H.WX_HERO}`)), 'Now: the hero');
     ok(await until(() => visible(p, `${H.wxSec('now')} ${H.WX_ALERTS}`)), 'the warnings slot under it (London has one in force)');
     ok(await p.locator(H.NOW_SEND).count() === 0, 'Now: no Send to a friend button');
+    await revealDetails(p);
     if (await visible(p, H.DETAIL_TILE)) {
       await p.locator(H.DETAIL_TILE).first().click();
       ok(await until(() => visible(p, `${H.DETAIL_SHEET}[open]`)), 'a Right now tile opens its detail sheet');

@@ -60,7 +60,7 @@ $("you").append(youRows, ...filler(10, "You"));
 const me = () => { const s = document.createElement("span"); s.className = "me-ph"; s.textContent = "S"; return s; };
 const F = createFrame({
   root: $("in"), header: $("hd"), views: $("views"), tabs: $("tabs"),
-  session: () => ({ view: { user }, hub: state.hub, roof: state.roof, apps: state.apps, links: { weather: "https://weather.kit.test", chat: "https://chat.kit.test", finance: "https://finance.kit.test", fitness: "https://fitness.kit.test", email: "https://email.kit.test" } }),
+  session: () => ({ view: { user, apps: state.apps }, hub: state.hub, roof: state.roof, apps: state.apps, links: { weather: "https://weather.kit.test", chat: "https://chat.kit.test", finance: "https://finance.kit.test", fitness: "https://fitness.kit.test", email: "https://email.kit.test" } }),
   changed: () => { state.changed++; },
   retired: Promise.resolve(),
   serviceState: (app, s) => { state.serviceStates.push(`${app}:${s}`); },

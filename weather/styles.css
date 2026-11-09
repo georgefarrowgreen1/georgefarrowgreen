@@ -166,6 +166,10 @@ main .radar.radar-big .icon-btn { -webkit-backdrop-filter: var(--blur-ctl); back
 fieldset.opt label { transition: filter 0.2s, color 0.25s; }
 fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(--dur-press); }
 .day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: var(--dur-press); }
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn, .place, .pill-btn, .day-row, .row-btn, :is(.radar-centre, .map-layers), .link { transition-property: background-color, opacity; }
+  .icon-btn:active, .place:active, .pill-btn:active, .day-row:active, .row-btn:active, :is(.radar-centre, .map-layers):active { transform: none; }
+}
 @media (hover: hover) {
   .icon-btn:hover, .place:hover, .pill-btn:hover, :is(.radar-centre, .map-layers):hover { filter: brightness(1.15); }
 }
@@ -974,6 +978,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
 .ins.official { transition: transform var(--dur-release) var(--spring), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 .ins.official:active { transform: scale(0.985); transition-duration: var(--dur-press); }
+@media (prefers-reduced-motion: reduce) { .ins.official { transition-property: background-color; } .ins.official:active { transform: none; } }
 .ins.official[data-colour="yellow"] { --tint: rgba(133, 106, 6, 0.6); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
 .ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
 .ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
@@ -1067,6 +1072,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* a tile that opens: its title a button over all of it, a little chevron to say so; it gives under a finger */
 .tile.opens { cursor: pointer; transition: transform var(--dur-release) var(--spring), filter 0.25s, background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 .tile.opens:active { transform: scale(0.97); filter: brightness(1.12); transition-duration: var(--dur-press); }
+@media (prefers-reduced-motion: reduce) { .tile.opens { transition-property: background-color; } .tile.opens:active { transform: none; filter: none; } }
 .tile-open { all: unset; flex: 1; min-width: 0; cursor: pointer; }
 .tile-open::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; }
 .tile-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
@@ -1246,8 +1252,8 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 .row-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 50px; }
 @media (hover: hover) { .row-btn:hover { background-color: rgba(255, 255, 255, 0.07); } }
 .row-btn .rb-main { flex: 1; min-width: 0; }
-.row-btn .rb-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-btn .rb-name { font-weight: 600; display: block; overflow-wrap: anywhere; }
+.row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow-wrap: anywhere; }
 .row-btn[aria-current="true"] .rb-name::after { content: " · showing"; font-weight: 500; color: var(--text-3); font-size: 13px; }
 /* the saved places: a card each, in its own sky (iOS's Weather list); swiped left, it narrows to make room for a Delete
    beside it, a rounded button of its own (iOS 27's swipe actions), so nothing on it is cut off */
@@ -1263,9 +1269,9 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 .pc-li.swiped .place-card, .pc-li:has(.pc-del:focus-visible) .place-card { width: calc(100% - 100px); }
 .pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
 .pc-r { align-items: flex-end; justify-content: space-between; }
-.pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .pc-here { display: inline-grid; vertical-align: 1px; }
-.pc-sub { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-top: 2px; }
+.pc-sub { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-top: 2px; overflow-wrap: anywhere; }
 .pc-cond { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: auto; padding-top: 10px; }
 .pc-temp { font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
 .pc-hl { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); white-space: pre; }
@@ -2293,8 +2299,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .ifl-tab, .ifl-back { transition: none; } }
 
 /* Something went wrong (menu.js BUG): a window that says the bug's code and what's known of it, to screenshot or send */
-.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
   background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
@@ -2376,6 +2383,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifs-btn { position: relative; }
+.ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
 /* Allow flex/grid text to shrink before it can push a control outside its surface. */
 .ifh-t, .ifm-who, .ifm-l, .ifm-val, .ifm-note-tx, .ifb-facts > *,
@@ -2396,7 +2405,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb-card {
+  .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
     -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--ifl-chrome-solid);
   }
   .ifm-grp { background: var(--ifl-chrome-solid); }

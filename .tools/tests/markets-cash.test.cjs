@@ -4,15 +4,15 @@ const ROOT=resolve(__dirname,'../..'),IFL=resolve(ROOT,'../inflite');let browser
 before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));fixtures=await import(pathToFileURL(ROOT+'/.tools/tests/unit/fixtures/mk.mjs'));browser=process.env.CASH_BROWSER==='webkit'?await webkit.launch():await chromium.launch({executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};
-async function world({width,hosted,cashOnly=false,loseFirst=false}){
+async function world({width,hosted,cashOnly=false,loseFirst=false,pauseWrite=false}){
  const ctx=await browser.newContext({viewport:{width,height:1000},colorScheme:width===390?'dark':'light',reducedMotion:'reduce',serviceWorkers:'block'});
  if(hosted)await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
  else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();let file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(ROOT+'/markets/')||!existsSync(file))return r.fulfill({status:404,body:'not found'});return r.fulfill({body:readFileSync(file),contentType:MIME[extname(file)]||'application/octet-stream'});});
- const acc=fixtures.account();acc.cash=[];if(cashOnly)acc.holdings=[];const api=fixtures.marketsApi({acc}),writes=[];let lose=loseFirst;
+ const acc=fixtures.account();acc.cash=[];if(cashOnly)acc.holdings=[];const api=fixtures.marketsApi({acc}),writes=[];let lose=loseFirst,release;const pending=new Promise(ok=>{release=ok;});
  await ctx.route('**/api/markets/**',async r=>{
   const req=r.request(),u=new URL(req.url()),path=u.pathname.split('/').at(-1),method=req.method();
   if(path==='cash'){
-   if(method==='PUT'){const b=req.postDataJSON();writes.push(b);const old=acc.cash.find(x=>x.id===b.id);if(old)Object.assign(old,b,{updated:Date.now()});else acc.cash.push({...b,added:Date.now(),updated:Date.now()});if(lose){lose=false;return r.abort();}}
+   if(method==='PUT'){const b=req.postDataJSON();writes.push(b);const old=acc.cash.find(x=>x.id===b.id);if(old)Object.assign(old,b,{updated:Date.now()});else acc.cash.push({...b,added:Date.now(),updated:Date.now()});if(lose){lose=false;return r.abort();}if(pauseWrite)await pending;}
    if(method==='DELETE')acc.cash=acc.cash.filter(x=>x.id!==u.searchParams.get('id'));
    return r.fulfill({json:{cash:acc.cash}});
   }
@@ -22,7 +22,7 @@ async function world({width,hosted,cashOnly=false,loseFirst=false}){
  const p=await ctx.newPage(),errors=[];p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));
  if(hosted){await p.goto(KIT+'/?module=/markets/roof/markets.js&apps=weather,markets');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));}
  else {await p.goto('http://finance.kit.test/');await p.waitForFunction(()=>document.querySelector('#main')?.textContent?.includes('Markets')||document.querySelector('.cash-section')||document.querySelector('.empty'));}
- return {ctx,p,acc,writes,errors};
+ return {ctx,p,acc,writes,errors,release};
 }
 const visible=(p,s)=>p.locator(s).filter({visible:true});
 async function holdings(p,hosted){if(hosted){await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));return;}if(!await p.locator('body').evaluate(b=>b.classList.contains('desk-on'))){const tab=p.locator('[data-tab="holdings"],button[data-k="holdings"],a[href="#holdings"]').filter({visible:true});if(await tab.count())await tab.first().click();else await p.evaluate(()=>{location.hash='holdings';});}}
@@ -42,6 +42,22 @@ for(const width of [320,390,1440])for(const hosted of [true,false])test(`cash ca
   await row.click();await amount.waitFor();await amount.fill(cashOnly?'0':'10,000');await rate.fill('0');await p.locator('#mk-cash-save').click();await amount.waitFor({state:'detached'});assert.equal(acc.cash.length,1);assert.equal(acc.cash[0].amount,cashOnly?0:10000);assert.equal(acc.cash[0].rate,0);assert.ok(writes[1].updated);assert.doesNotMatch(await p.locator('body').textContent(),/0 of 0 up|NaN/);
   await holdings(p,hosted);await visible(p,'.cash-row').first().click();await p.locator('.cash-remove').click();assert.equal(acc.cash.length,1);await p.locator('.cash-remove').click();await amount.waitFor({state:'detached'});assert.equal(acc.cash.length,0);
   assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
+for(const hosted of [true,false])test(`cash save shows progress and keeps submitted fields stable ${hosted?'in Today':'standalone'}`,async()=>{
+ const {ctx,p,acc,writes,errors,release}=await world({width:390,hosted,cashOnly:true,pauseWrite:true});
+ try{await visible(p,'button').filter({hasText:/^Add cash$/}).first().click();await p.locator('#mk-cash-amount').fill('12000');await p.locator('#mk-cash-rate').fill('4');await p.locator('#mk-cash-save').click();
+  await p.locator('.cash-editor[aria-busy=true]').waitFor();assert.equal(await p.locator('#mk-cash-save').textContent(),'Saving…');assert.equal(await p.locator('#mk-cash-amount').isDisabled(),true);assert.equal(await p.locator('#mk-cash-rate').isDisabled(),true);assert.equal(await p.getByRole('button',{name:'Tiered rates',exact:true}).isDisabled(),true);assert.equal(await p.locator('#mk-cash-payout-repeat').isDisabled(),true);assert.equal(writes.length,1);
+  release();await p.locator('#mk-cash-amount').waitFor({state:'detached'});assert.equal(acc.cash[0].amount,12000);assert.equal(acc.cash[0].rate,4);assert.deepEqual(errors,[]);
+ }finally{release();await ctx.close();}
+});
+test('standalone cash editor has a visible close action',async()=>{
+ const {ctx,p,errors}=await world({width:390,hosted:false,cashOnly:true});try{await visible(p,'button').filter({hasText:/^Add cash$/}).first().click();const close=p.locator('.cash-editor button[aria-label=Close]');await close.waitFor();await close.click();await p.locator('#mk-cash-amount').waitFor({state:'detached'});assert.deepEqual(errors,[]);}finally{await ctx.close();}
+});
+for(const hosted of [true,false])test(`Markets motion respects reduced motion and bounds long-list entry delays ${hosted?'in Today':'standalone'}`,async()=>{
+ const {ctx,p}=await world({width:390,hosted});try{await holdings(p,hosted);await p.locator(hosted?'.m-markets .dialsvg .arc':'.dialsvg .arc').first().waitFor();const values=await p.evaluate(hosted=>{const root=hosted?document.querySelector('.m-markets'):document.querySelector('#main'),n=document.createElement('i');n.className='rise';n.style.setProperty('--i','59');root.append(n);const normal=getComputedStyle(n),values={duration:normal.animationDuration,delay:normal.animationDelay};n.remove();return values;},hosted);assert.ok(parseFloat(values.duration)<=0.001);assert.equal(parseFloat(values.delay),0);
+  await p.waitForFunction(hosted=>{const ns=[...document.querySelectorAll(hosted?'.m-markets .dialsvg .arc':'.dialsvg .arc')];return ns.length&&ns.every(n=>parseFloat(getComputedStyle(n).animationDuration)<=0.001);},hosted);const animated=await p.evaluate(hosted=>[...document.querySelectorAll(hosted?'.m-markets .dialsvg .arc':'.dialsvg .arc')].map(n=>({duration:getComputedStyle(n).animationDuration,iterations:getComputedStyle(n).animationIterationCount})),hosted);assert.ok(animated.length);assert.ok(animated.every(x=>parseFloat(x.duration)<=0.001&&x.iterations!=='infinite'),JSON.stringify(animated));
+  await p.emulateMedia({reducedMotion:'no-preference'});const delay=await p.evaluate(hosted=>{const root=hosted?document.querySelector('.m-markets'):document.querySelector('#main'),n=document.createElement('i');n.className='rise';n.style.setProperty('--i','59');root.append(n);const delay=getComputedStyle(n).animationDelay;n.remove();return delay;},hosted);assert.ok(parseFloat(delay)<=0.25,'even the sixtieth row is ready within 250 ms');
  }finally{await ctx.close();}
 });
 test('retrying a cash save after a lost response keeps the input and creates just one holding',async()=>{

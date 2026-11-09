@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.95";
-export const NEWS = "A clearer forecast, with current conditions and climate details on request";
+export const BUILD = "1.96";
+export const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

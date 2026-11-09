@@ -65,7 +65,8 @@ export function openPlaces(ctx) {
       const at = i + by, p2 = S.places[at];
       draw();
       say.textContent = `${nameOf(p2)} moved to ${at + 1} of ${S.places.length}.`;
-      list.querySelector(`[data-place="${at}"] [data-act="${by < 0 ? "up" : "down"}"]:not([disabled])`)?.focus() || list.querySelector(`[data-place="${at}"] button:not([disabled])`)?.focus();
+      const next = list.querySelector(`[data-place="${at}"] [data-act="${by < 0 ? "up" : "down"}"]:not([disabled])`) || list.querySelector(`[data-place="${at}"] button:not([disabled])`);
+      next?.focus();
     };
     const tools = editing ? h(doc, "span", { class: "wx-place-tools" },
       h(doc, "button", { class: "ifl-icon-btn", type: "button", data: { act: "up" }, "aria-label": `Move ${nameOf(p)} up`, disabled: i === 0, on: { click: () => moved(-1) } }, "↑"),
@@ -77,7 +78,7 @@ export function openPlaces(ctx) {
         say.textContent = `${name} removed.`;
         (list.querySelector(`[data-place="${Math.min(i, S.places.length - 1)}"] [data-act=delete]`) || edit).focus();
       } } }, "Delete") : null) : null;
-    return h(doc, "div", { class: "ifl-row wx-place", role: "listitem", data: { place: String(i) }, "aria-current": current ? "true" : "false" }, go, tools);
+    return h(doc, "div", { class: `ifl-row wx-place${editing ? " is-editing" : ""}`, role: "listitem", data: { place: String(i) }, "aria-current": current ? "true" : "false" }, go, tools);
   }
   function draw() {
     list.replaceChildren(...S.places.map(row));
@@ -89,13 +90,18 @@ export function openPlaces(ctx) {
   // only from this field, as in Weather today)
   function search() {
     clearTimeout(timer);
-    const q = field.value.trim();
-    if (q.length < 2) { seq++; found.replaceChildren(); foundSaid.textContent = ""; return; }
+    const q = field.value.trim(), my = ++seq;
+    // Invalidate the previous request at the keystroke, before the debounce. Old results must never remain tappable
+    // for a newly typed place, or arrive while its next search is still waiting to start.
+    found.replaceChildren();
+    found.setAttribute("aria-busy", String(q.length >= 2));
+    foundSaid.textContent = q.length >= 2 ? "Searching…" : "";
+    if (q.length < 2) return;
     timer = setTimeout(async () => {
-      const my = ++seq;
       let got = null;
       try { got = await searchPlaces(q); } catch (_) {}
       if (my !== seq) return;
+      found.setAttribute("aria-busy", "false");
       if (!got) { found.replaceChildren(); foundSaid.textContent = "Search isn’t available right now."; return; }
       found.replaceChildren(...got.map((p, n) => h(doc, "button", { class: "ifl-row wx-found-row", type: "button", role: "listitem", data: { found: String(n) }, on: { click: () => {
         const i = core.addPlace(p, false);

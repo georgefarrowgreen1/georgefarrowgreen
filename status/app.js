@@ -433,12 +433,12 @@
       lastFocusSelector = lastFocus?.dataset.k ? `.days[data-svc="${CSS.escape(lastFocus.parentElement.dataset.svc)}"] [data-k="${lastFocus.dataset.k}"]` : null;
     }
     document.querySelector(".wrap").inert = true; document.body.classList.add("sheet-open");
-    el.innerHTML = html; el.classList.add("on"); $("scrim").classList.add("on");
+    el.innerHTML = html; el.inert = false; el.setAttribute("aria-hidden", "false"); el.classList.add("on"); $("scrim").classList.add("on");
     el.querySelector("button:not([disabled])")?.focus({ preventScroll: true });
   }
   function closeSheet() {
     if (!$("sheet").classList.contains("on")) return;
-    $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); daySel = null;
+    $("sheet").inert = true; $("sheet").setAttribute("aria-hidden", "true"); $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); daySel = null;
     for (const b of document.querySelectorAll(".days button.sel")) b.classList.remove("sel");
     document.querySelector(".wrap").inert = false; document.body.classList.remove("sheet-open");
     const target = lastFocus?.isConnected ? lastFocus : lastFocusSelector ? document.querySelector(lastFocusSelector) : null;

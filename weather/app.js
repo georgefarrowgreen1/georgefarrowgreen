@@ -932,10 +932,19 @@ const IFL = (() => {
           : "InFlite hit a problem it didn’t expect. Send it on and it’ll be looked into: the code says which."),
         dl, note, el("p", "ifb-who", "What you write here is read by InFlite’s owner alone."), el("div", "ifb-acts", send, copy, shut), said);
       box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "ifb-t");
-      const layer = el("div", "ifb-layer", box);
+      const was = document.activeElement, layer = el("dialog", "ifb-layer", box);
+      layer.setAttribute("aria-labelledby", "ifb-t");
       const text = () => [`${manual ? "Problem report" : "Bug report"} ${r.code}`, ...facts.map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " · ")}`), note.value.trim() ? `Note: ${note.value.trim()}` : ""].filter(Boolean).join("\n");
-      const done = () => { layer.remove(); document.removeEventListener("keydown", key, true); showing = null; };
-      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
+      const done = () => { layer.close?.(); layer.remove(); document.removeEventListener("keydown", key, true); showing = null; if (was?.isConnected) was.focus?.({ preventScroll: true }); };
+      const key = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); }
+        else if (e.key === "Tab") {
+          const f = [...layer.querySelectorAll("textarea, button:not([disabled]), a[href]")].filter((n) => n.getClientRects().length);
+          if (f.length && (!layer.contains(document.activeElement) || (e.shiftKey && document.activeElement === f[0]) || (!e.shiftKey && document.activeElement === f.at(-1)))) {
+            e.preventDefault(); (e.shiftKey ? f.at(-1) : f[0]).focus();
+          }
+        }
+      };
       shut.onclick = done;
       layer.addEventListener("pointerdown", (e) => { if (e.target === layer) done(); });
       copy.onclick = async () => { try { await navigator.clipboard.writeText(text()); said.textContent = "Copied."; } catch (_) { said.textContent = "Couldn’t copy: a screenshot works as well."; } };
@@ -955,6 +964,7 @@ const IFL = (() => {
         } catch (_) { send.disabled = false; said.textContent = "That didn’t send. Try again, or screenshot this and send it on."; }
       };
       document.body.append(layer);
+      layer.showModal?.();
       document.addEventListener("keydown", key, true);
       showing = layer;
       (manual ? note : shut).focus({ preventScroll: true });
@@ -3356,19 +3366,23 @@ const skyOf = (code, day) => { const kind = codeInfo(code).kind; return kind ===
 let searchTimer = null, searchSeq = 0, searchingT = 0;
 function onSearch(now = false) {
   clearTimeout(searchTimer); clearTimeout(searchingT);
-  const q = $("search").value.trim(), out = $("results");
+  const q = $("search").value.trim(), out = $("results"), my = ++searchSeq;
+  // Drop answers and tappable rows from the previous query before this one's debounce starts.
+  results([]);
+  out.setAttribute("aria-busy", String(q.length >= 2));
+  $("results-said").textContent = q.length >= 2 ? "Searching…" : "";
   // (searching, the results take the list's place, the list fading out of their way (styles.css); cleared, it's back)
   $("places").classList.toggle("searching", q.length >= 2);
-  if (q.length < 2) { searchSeq++; results([]); $("results-said").textContent = ""; S.pick = S.searching = false; return; }
+  if (q.length < 2) { $("results-said").textContent = ""; S.pick = S.searching = false; return; }
   if (now !== true) S.pick = false;
   S.searching = true;
   // ("Searching…", if they're a moment coming, where there's nothing found yet to show meanwhile)
   searchingT = setTimeout(() => { if (S.searching && !out.querySelector(".row-btn")) results([h("li", { class: "muted small searching" }, "Searching…")]); }, 300);
   searchTimer = setTimeout(async () => {
-    const my = ++searchSeq;
     try {
       const list = await searchPlaces(q);
       if (my !== searchSeq) return;
+      out.setAttribute("aria-busy", "false");
       S.searching = false; clearTimeout(searchingT);
       // (chosen: the sheet goes, then the page turns to it, it now one of the places)
       results(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => {
@@ -3378,7 +3392,7 @@ function onSearch(now = false) {
       $("results-said").textContent = list.length ? `${list.length} ${list.length === 1 ? "place" : "places"} found` : "No places found";
       // (Enter pressed before the places came back: take the first now)
       if (S.pick && list.length) { S.pick = false; out.querySelector(".row-btn")?.click(); }
-    } catch (_) { if (my === searchSeq) { S.searching = false; clearTimeout(searchingT); results([h("li", { class: "muted small" }, "Search isn't available right now.")]); $("results-said").textContent = "Search isn't available right now"; } }
+    } catch (_) { if (my === searchSeq) { out.setAttribute("aria-busy", "false"); S.searching = false; clearTimeout(searchingT); results([h("li", { class: "muted small" }, "Search isn't available right now.")]); $("results-said").textContent = "Search isn't available right now"; } }
   }, now === true ? 0 : 280);
 }
 // the results as they come: the first lot rising in, each after crossfading into the one before
@@ -3666,8 +3680,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.95";
-const NEWS = "A clearer forecast, with current conditions and climate details on request";
+const BUILD = "1.96";
+const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

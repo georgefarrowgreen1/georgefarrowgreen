@@ -17,13 +17,18 @@
 .ifl-sheet[data-sheet="places"] .wx-place-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ifl-sheet[data-sheet="places"] .wx-place-name { font-weight: 600; overflow-wrap: anywhere; }
 .ifl-sheet[data-sheet="places"] .wx-here { margin-inline-end: 4px; color: var(--acc-ink, var(--acc)); }
-.ifl-sheet[data-sheet="places"] .wx-place-sub { font-size: 0.85em; color: var(--text-2); }
+.ifl-sheet[data-sheet="places"] .wx-place-sub { font-size: 0.85em; color: var(--text-2); overflow-wrap: anywhere; }
 .ifl-sheet[data-sheet="places"] .wx-place-icon { flex: none; width: 26px; height: 26px; }
 .ifl-sheet[data-sheet="places"] .wx-place-icon svg { width: 26px; height: 26px; }
 .ifl-sheet[data-sheet="places"] .wx-place-temp { flex: none; min-width: 3ch; font-size: 1.25em; font-variant-numeric: tabular-nums; text-align: end; }
 .ifl-sheet[data-sheet="places"] .wx-place-tools { display: flex; gap: 4px; padding-inline-end: 8px; }
 .ifl-sheet[data-sheet="places"] .wx-place-tools button { min-width: 44px; min-height: 44px; }
-.ifl-sheet[data-sheet="places"] .wx-del { color: var(--danger, #ff453a); padding-inline: 10px; }
+/* Editing keeps each place readable; the three actions get their own stable row instead of squeezing its name. */
+.ifl-sheet[data-sheet="places"] .wx-place.is-editing { flex-wrap: wrap; }
+.ifl-sheet[data-sheet="places"] .wx-place.is-editing .wx-place-go { flex-basis: 100%; }
+.ifl-sheet[data-sheet="places"] .wx-place.is-editing :is(.wx-place-icon, .wx-place-temp) { display: none; }
+.ifl-sheet[data-sheet="places"] .wx-place.is-editing .wx-place-tools { margin-inline-start: auto; padding-bottom: 6px; }
+.ifl-sheet[data-sheet="places"] .wx-place-tools .wx-del { width: auto; min-width: 72px; color: var(--danger, #ff453a); padding-inline: 10px; }
 .ifl-sheet[data-sheet="places"] .wx-say { margin: 0; min-height: 1.2em; font-size: 0.85em; color: var(--text-2); }
 .ifl-sheet[data-sheet="places"] .wx-locate { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
 .ifl-sheet[data-sheet="places"] .wx-find-label { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }

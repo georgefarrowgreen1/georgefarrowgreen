@@ -266,8 +266,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .ifl-tab, .ifl-back { transition: none; } }
 
 /* Something went wrong (menu.js BUG): a window that says the bug's code and what's known of it, to screenshot or send */
-.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+.ifb-layer { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: 2147483003; display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
   background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
