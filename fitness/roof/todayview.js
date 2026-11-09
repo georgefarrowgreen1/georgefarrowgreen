@@ -7,10 +7,10 @@
 // drop takes Files only); the drag's class sits on the module's screen, not the page's body.
 import * as TC from "../todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, canMorph, card, cardW,
-  closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, fitness, fitnessSeries, flatten, formSaid, h, held, icon, keep, lightNow, load, mapCredit, measure, missed,
+  closeSheet, dayLong, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, h, held, icon, keep, lightNow, load, mapCredit, measure, missed,
   mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, routeOf, row, section, sheetEl, signed,
-  sportIcon, startOfDay, sumOf, svgOf, toast, weekIndex, weeks, wkById, workoutById, zoneOf, store, mapsAlways, wide, signedOutHere,
-  dayChanges, dayStamp, rhythmSaid, progActs, rollAvg, sessionOf, effortsOf, effortFigs, FAM, setAsk } from "./x.js";
+  sportIcon, startOfDay, sumOf, svgOf, toast, weeks, wkById, zoneOf, store, mapsAlways, wide, signedOutHere,
+  dayChanges, dayStamp, progActs, rollAvg, sessionOf, effortsOf, effortFigs, setAsk } from "./x.js";
 import { offerCards, undoToday } from "./offers.js";
 import { withOffer, withLine, withChip } from "../invites.js";
 import {coach} from "./core.js";
@@ -569,9 +569,8 @@ function weekCard() {
   return todaySection("This week", planned ? `${planned} planned ${planned === 1 ? "day" : "days"}` : null, h("div.card.glass.week-card", {},
     h("dl.week-overview" + (available == null ? ".two" : ""), { "aria-label": "Weekly training time" }, available != null && metric("Available", available), metric("Planned", planSecs), metric("Completed", doneSecs)),
     planSecs > 0 && h("div.week-bar", { role: "img", "aria-label": `${dur(doneSecs)} completed of ${dur(planSecs)} planned` }, h("i", { vars: { width: Math.min(100, (doneSecs / planSecs) * 100) + "%" } })),
-    planSecs > 0 && h("div.wk-line.bal-head", {}, h("span", { text: "Easy and hard" }), h("span", {}, h("b", { text: `${easy}%` }), " easy")),
     planSecs > 0 && h("div.bal", { role: "img", "aria-label": `${easy}% easy, ${100 - easy}% hard this week` }, h("i.easy", { vars: { flex: String(easy) } }), h("i.hard", { vars: { flex: String(100 - easy) } })),
-    planSecs > 0 && h("small.week-status", { text: easy >= 75 && easy <= 88 ? "About 80/20: the mix that builds fitness fastest." : easy > 88 ? "Mostly easy this week: good for building the base." : "A hard week: rest well between the sessions." })));
+    planSecs > 0 && h("small.week-status", { text: `${easy}% easy · ${100 - easy}% hard` })));
 }
 // ---- Last night (rhythm.js nightOf): HRV, resting heart rate and sleep, from your Apple Watch or Garmin, each against
 // your own usual, and what Rhythm made of it; tapped, the last two months and the rules ----
@@ -589,10 +588,10 @@ function lastNight() {
 function nightVerdict(n) {
   if (n.trendLow && (n.hrvLow || n.rhrUp)) return ["amber", "Time for a rest", `${capN(n.said)}, after a week under your usual: Rhythm makes today a rest day.`];
   if (n.hrvLow || n.rhrUp) return ["amber", "Not quite recovered", `${capN(n.said)}.`];
-  if (n.trendLow) return ["amber", "Under par all week", "Your HRV has been under its usual most of this week: easy days till it’s back."];
+  if (n.trendLow) return ["amber", "Under par all week", "HRV low most of this week: easy days until it recovers."];
   if (n.short || n.debt) return ["amber", "Short on sleep", `${capN(n.said)}.`];
   if (n.green) return ["green", "Recovered", "HRV and resting heart rate in your usual range, after a full night."];
-  return n.lo || n.rb ? ["blue", "As usual", "Nothing out of the ordinary last night."] : ["blue", "Learning your usual", "Fitness learns your HRV and resting heart rate over your first week of nights. Sleep counts from today."];
+  return n.lo || n.rb ? ["blue", "As usual", "Nothing out of the ordinary last night."] : ["blue", "Learning your usual", "Your first week establishes HRV and resting heart rate. Sleep counts from today."];
 }
 // This morning: last night (where your watch has it) and how you are, in one: the night's verdict and its three tiles
 // (tapped, your nights in full), then the check-in, its sleep from your watch, so only legs and motivation are asked;
@@ -652,7 +651,7 @@ function reviewCard() {
     const hrs = ahead.reduce((t, d) => t + (d.mins || 0), 0);
     next = h("div.rv-next", {}, h("div.rv-next-top", {}, h("b", { text: "Next week" }), h("small", { text: `${dur(hrs * 60)} · ${theme}` })),
       h("div.rv-days", {}, hard.map((d) => { const w = wkById(S.swaps[d.date] !== undefined ? S.swaps[d.date] : d.id); return w && h("button.rv-day", { type: "button", onclick: () => lookAt(d.date) }, h("small", { text: dayShortName(d.date) }), h("b", { text: w.name })); })),
-      ahead[0]?.block?.absorb ? h("small.rv-why", { text: "Lighter, so the last three weeks sink in: the next block starts fitter." }) : hard[0] && h("small.rv-why", { text: hard[0].why }));
+      ahead[0]?.block?.absorb ? h("small.rv-why", { text: "Recovery week after three weeks of training." }) : hard[0] && h("small.rv-why", { text: hard[0].why }));
   }
   return todaySection("Your week", `${dayShort(mon)} to ${dayShort(TODAY)}`, h("div.card.glass.review-card", {}, rows, next));
 }
@@ -673,11 +672,11 @@ function nightsView() {
       rule(n?.trendLow, "amber", "trend", "HRV under its usual most of the week", "No hard days till it’s back; with a low night too, a rest day."),
       rule(n?.rhrUp, "amber", "heart", "Resting heart rate up 5 or more", "Eases the day, as heavy legs do."),
       rule(n?.short || n?.debt, "amber", "moon", "Under six hours, or three short nights", "Eases the day, unless your check-in says you slept well."),
-      rule(n?.green, "green", "check", "A good night", "HRV and resting heart rate as usual after seven hours: a hard day can stand a little deeper into fatigue."))),
+      rule(n?.green, "green", "check", "A good night", "Usual HRV and resting heart rate, with seven hours’ sleep: hard training may continue further into fatigue."))),
     both && section("Nights from", h("div.seg.wide", { vars: { "--n": 3, "--at": at }, role: "group", "aria-label": "Nights from" }, opts.map(([k, l]) =>
       h("button", { type: "button", "aria-pressed": String(cur === k), onclick: () => { S.nightsFrom = k; keep("prefs"); Sheet.redraw(); redraw(); } }, l))),
-      h("p.foot", { text: "Your Apple Watch and Garmin measure HRV differently, so Rhythm never mixes the two. Automatic goes by whichever has more of this month’s nights." })),
-    section(null, h("p.foot", { text: "Your usual is your own, from your last month of nights (HRV’s range is Garmin’s own, where it gives one). Each night is read the morning after." })),
+      h("p.foot", { text: "Watch and Garmin HRV stay separate. Automatic uses the source with more nights this month." })),
+    section(null, h("p.foot", { text: "Your baseline uses the past month, or Garmin’s HRV range when provided. Nights are read the next morning." })),
   ] };
 }
 // How you feel: sleep, legs and motivation, a tap each, there on the page; what Rhythm (or the plan) makes of it under
@@ -772,14 +771,14 @@ function askToday() {
 function rhythmIntro(wk = [[0, "z1"], [44, "z4"], [30, "z2"], [40, "z6"], [0, "z1"], [62, "z2"], [36, "z2"]], feature = (ic, tint, b, t) => h("div.rh-feat", {}, h("span.ic." + tint, {}, icon(ic, 16, 2.2)), h("div", {}, h("b", { text: b }), h("span", { text: t })))) {
   return h("div.card.hero.glass.rhythm-intro", {},
     h("div.rh-brand", {}, h("span.tile.s-ride", {}, icon("wave", 18, 2.2)), h("span", { text: "Rhythm" })),
-    h("h2", { text: "A session or rest, decided each morning" }),
+    h("h2", { text: "Training that fits your day" }),
     h("div.rh-example", { "aria-label": "An example week" },
       h("div.rh-ex-head", {}, h("span", { text: "A week, for example" }), h("span", { text: "6 h 30" })),
       h("div.rh-ex-bars", {}, wk.map(([v, z], i) => h("div", {}, h("i.bg-" + z + (v ? "" : ".rest"), { vars: { "--h": Math.max(6, v) + "px" } }), h("small", { text: "MTWTFSS"[i] })))),
       h("div.rh-ex-key", {}, [["z2", "Easy"], ["z4", "Threshold"], ["z6", "VO₂ max"], ["z1", "Rest"]].map(([z, l]) => h("span", {}, h("i.bg-" + z), l)))),
     feature("today", "blue", "Fits your week", "The days you ride, and for how long."),
-    feature("heart", "green", "Listens to you", "Slept badly? Today gets easier, not shorter."),
-    feature("swap", "indigo", "Never goes stale", "Four-week blocks, a lighter week every fourth."),
+    feature("heart", "green", "Listens to you", "Poor sleep eases the intensity."),
+    feature("swap", "indigo", "Never goes stale", "Four-week blocks with recovery."),
     h("button.btn", { type: "button", onclick: () => ctx.open.rhythmSetup() }, "Set up Rhythm"),
     h("p.rh-note", { text: "Four questions, about a minute" }));
 }
