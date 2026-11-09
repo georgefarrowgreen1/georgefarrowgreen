@@ -47,8 +47,10 @@ export const icon = (name, size = 30, lbl = "") => h("span", { class: "wx-ic", s
 export const glyphEl = (name, size = 16) => h("span", { class: "wx-g", svg: glyph(name, size) });
 // a card on the framework's component, with Weather's title row
 export function wxCard(ctx, { id, title, g, extra, cls }, ...body) {
-  const head = h("div", { class: "wx-card-head" }, h("h2", { class: "wx-card-title" }, g ? glyphEl(g, 16) : null, title), extra || null);
-  const c = ctx.fw.ui.card({ body: [head, ...body.flat().filter(Boolean)] });
+  const folded = id === "right-now" || id === "climate";
+  const head = h(folded ? "summary" : "div", { class: "wx-card-head", ...(folded ? { tabindex: "0" } : {}) }, h("h2", { class: "wx-card-title" }, g ? glyphEl(g, 16) : null, title), extra || null);
+  const contents = [head, ...body.flat().filter(Boolean)];
+  const c = ctx.fw.ui.card({ body: folded ? [h("details", { class: "wx-more" }, contents)] : contents });
   c.classList.add("wx-card");
   if (cls) for (const k of String(cls).split(/\s+/)) if (k) c.classList.add(k);
   if (id) c.dataset.card = id;

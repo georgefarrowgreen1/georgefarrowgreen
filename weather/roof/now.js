@@ -333,6 +333,8 @@ export function view(el, ctx) {
       c._sig = `${c.outerHTML ?? ""}|${JSON.stringify(chartKey(c.dataset.card, wx, now))}`;
       const o = old.get(c.dataset.card);
       if (o && o._sig === c._sig) return o;
+      const before = o?.querySelector(".wx-more"), after = c.querySelector(".wx-more");
+      if (before && after) after.open = before.open;
       const sl = o?.querySelector?.(".wx-strip")?.scrollLeft;
       if (sl) scrolls.set(c, sl);
       return c;

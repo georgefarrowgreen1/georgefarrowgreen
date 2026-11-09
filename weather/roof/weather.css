@@ -6,6 +6,12 @@
    re-tokenised. */
 
 /* ---- tokens: dark first, light in both light cases ---- */
+.m-weather .wx-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin-bottom: 0; }
+.m-weather .wx-more > summary::-webkit-details-marker { display: none; }
+.m-weather .wx-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin-left: auto; flex: none; }
+.m-weather .wx-more[open] > summary { margin-bottom: 14px; }
+.m-weather .wx-more[open] > summary::after { transform: rotate(45deg); }
+.m-weather .wx-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
 .m-weather, .wx-sheet {
   --wx-temp: #f0a040; --wx-rain: #5aa2f0; --wx-wind: #2fc4b0;
   --wx-temp-text: #ffc078; --wx-rain-text: #9fd0ff; --wx-wind-text: #6fe0cf;

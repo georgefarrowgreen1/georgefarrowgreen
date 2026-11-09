@@ -678,6 +678,12 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .ct-icon { display: inline-flex; color: var(--text-3); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack:empty { display: none; }
+.weather-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin: -8px 0; }
+.weather-more > summary::-webkit-details-marker { display: none; }
+.weather-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin: 0 4px 0 auto; flex: none; }
+.weather-more[open] > summary { margin-bottom: 14px; }
+.weather-more[open] > summary::after { transform: rotate(45deg); }
+.weather-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
 
 /* segmented control: a glass track with a lens that glides to the choice */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: rgba(0, 0, 0, 0.16); }

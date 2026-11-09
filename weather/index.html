@@ -24,7 +24,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-1.94" />
+  <meta name="app-version" content="wx-1.95" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -128,10 +128,10 @@
       <!-- (the word about rain alerts after the next 48 hours, not in front of them) -->
       <section class="card nudge" id="nudge" aria-labelledby="nudge-title" hidden></section>
 
-      <section id="right-now" aria-labelledby="details-title">
-        <h2 class="section-title" id="details-title">Right now</h2>
+      <details class="card weather-more" id="right-now" aria-labelledby="details-title">
+        <summary class="card-head"><h2 class="card-title" id="details-title">Right now</h2></summary>
         <div class="tiles" id="tiles"></div>
-      </section>
+      </details>
 
       <section class="card" id="daily" aria-labelledby="daily-title">
         <div class="card-head">
@@ -181,10 +181,10 @@
         <div class="win-grid" id="win-grid"></div>
       </section>
 
-      <section class="card" id="climate" aria-labelledby="climate-title">
-        <h2 class="card-title" id="climate-title"><span class="ct-icon" data-g="chart"></span>This time of year</h2>
+      <details class="card weather-more" id="climate" aria-labelledby="climate-title">
+        <summary class="card-head"><h2 class="card-title" id="climate-title"><span class="ct-icon" data-g="chart"></span>This time of year</h2></summary>
         <div id="climate-body"><p class="muted small">Gathering 30 years of weather…</p></div>
-      </section>
+      </details>
 
 
 
