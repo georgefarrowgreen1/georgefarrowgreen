@@ -40,7 +40,7 @@ export async function homePage(ctx, url, res) {
   // the script and styles, asked for by the stamp the page gave them: kept for good, as that address only ever means
   // this copy (asked for any other way, or by a stamp that isn't this copy's, they're checked each time)
   const f = url.pathname.slice(1);
-  if (STAMPED.includes(f) && ctx.request.method === "GET" && res.status === 200) {
+  if (STAMPED.includes(f) && ["GET", "HEAD"].includes(ctx.request.method) && res.status === 200) {
     const want = url.searchParams.get("v"), v = want ? (await stamps(ctx, url))[f] : null;
     const out = new Response(res.body, res);
     out.headers.set("Cache-Control", want && want === v ? "public, max-age=31536000, immutable" : "no-cache");
