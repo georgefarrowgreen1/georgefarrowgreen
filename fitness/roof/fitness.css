@@ -23,7 +23,7 @@
   --s-ride: linear-gradient(160deg, #ff9a6a, #ee4b2f); --s-run: linear-gradient(160deg, #4fdc8e, #1fa75a); --s-swim: linear-gradient(160deg, #5ad8f0, #1b8fc0);
   --s-strength: linear-gradient(160deg, #8a86ff, #5a4fe0); --s-walk: linear-gradient(160deg, #9aa3b8, #6b7389);
   --r-group: var(--ifl-radius-group); --r-hero: var(--ifl-radius-card);
-  --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); --dur-release: 0.45s;
+  --ease-spring: var(--ifl-motion-spring); --dur-release: var(--ifl-motion-release);
 }
 @media (prefers-color-scheme: light) {
   .m-fitness {
@@ -62,10 +62,10 @@
 
 /* ---- from fitness/styles.css ---- */
 .m-fitness .glass{position: relative; background: var(--glass); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--edge), var(--lift);}
-.m-fitness .rise{animation: fx-rise 0.8s var(--ease-glide) backwards; animation-delay: calc(var(--i, 0) * 60ms + 40ms);}
-@keyframes fx-rise{from { opacity: 0; transform: translateY(18px) scale(0.985); }}
-.m-fitness .screen.in{animation: fx-screen-in 0.42s var(--ease-out) backwards;}
-@keyframes fx-screen-in{from { opacity: 0; transform: translateY(10px); }}
+.m-fitness .rise{animation: fx-rise var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, ease-out) backwards; animation-delay: calc(min(var(--i, 0), 3) * var(--ifl-motion-stagger, 24ms));}
+@keyframes fx-rise { from { transform: translateY(var(--ifl-motion-distance, 8px)); } }
+.m-fitness .screen.in{animation: none;}
+@keyframes fx-screen-in { from { transform: translateY(var(--ifl-motion-distance, 8px)); } }
 .m-fitness .card{border-radius: var(--ifl-radius-card); padding: 18px; margin-bottom: 16px;}
 .m-fitness .card.hero{border-radius: var(--r-hero); padding: 20px;}
 .m-fitness .card > h3,.m-fitness .k{display: flex; align-items: center; gap: 7px; margin: 0 0 12px; font: 600 13px/1.2 var(--font); letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3);}
@@ -149,7 +149,7 @@
 .m-fitness .seg button{position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast);}
 .m-fitness .seg button[aria-pressed="true"]{color: var(--text);}
 .m-fitness .seg::before{content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 3)); border-radius: 999px; background: var(--glass-strong);
-  box-shadow: var(--edge), 0 1px 4px rgba(0, 0, 0, 0.18); translate: calc(var(--at, 0) * 100%) 0; transition: translate 0.5s var(--ease-spring);}
+  box-shadow: var(--edge), 0 1px 4px rgba(0, 0, 0, 0.18); translate: calc(var(--at, 0) * 100%) 0; transition: translate var(--ifl-motion-tab, .28s) var(--ifl-motion-spring, ease-out);}
 .m-fitness .seg.small button{padding: 5px 10px; font-size: 13px;}
 .m-fitness .seg.none::before{opacity: 0;}
 .m-fitness .seg.wide{display: grid; width: 100%; margin-bottom: 16px;}
@@ -219,12 +219,12 @@
 .m-fitness .pill.primary{color: var(--on-tint); background: var(--ifl-accent-gradient); box-shadow: var(--ifl-shadow-control); border-radius: 999px; }
 .m-fitness .pill.small{min-height: 32px; padding: 0 12px; font-size: 14px;}
 .m-fitness .link{border: 0; background: none; padding: 0; color: var(--tint-text); font-size: 17px; font-weight: 500;}
-@keyframes fx-sheet-in{from { transform: translateY(calc(100% + 16px)); }}
-@keyframes fx-dim-in{from { opacity: 0; }}
+@keyframes fx-sheet-in { from { transform: translateY(calc(100% + 16px)); } }
+@keyframes fx-dim-in { from { opacity: 0; } }
 @keyframes fx-sheet-out{from { transform: var(--from-tf, none); } to { transform: translateY(calc(100% + 16px)); }}
-@keyframes fx-dim-out{to { opacity: 0; }}
+@keyframes fx-dim-out { to { opacity: 0; } }
 @media (min-width: 700px){
-@keyframes fx-sheet-in{from { transform: translateY(26px) scale(0.97); opacity: 0; }}
+@keyframes fx-sheet-in { from { transform: translateY(26px) scale(0.97); opacity: 0; } }
 @keyframes fx-sheet-out{from { transform: var(--from-tf, none); } to { transform: translateY(26px) scale(0.97); opacity: 0; }}
 }
 .m-fitness.fx-sheet{-webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent);}
@@ -235,8 +235,8 @@
 .m-fitness.fx-sheet .section{margin: 0;}
 .m-fitness.fx-sheet.swap{animation: fx-swap var(--dur-base) var(--ease-out) backwards;}
 .m-fitness.fx-sheet.swap.back{animation-name: fx-swap-back;}
-@keyframes fx-swap{from { opacity: 0; transform: translateX(28px); }}
-@keyframes fx-swap-back{from { opacity: 0; transform: translateX(-28px); }}
+@keyframes fx-swap { from { opacity: 0; transform: translateX(28px); } }
+@keyframes fx-swap-back { from { opacity: 0; transform: translateX(-28px); } }
 .m-fitness .sheet-top{display: grid; gap: 4px; padding: 2px 6px 0;}
 .m-fitness .sheet-top h1{margin: 0; font: 700 26px/1.12 var(--font-d); text-wrap: balance;}
 .m-fitness .sheet-top .sub{color: var(--text-2); font-size: 15px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;}
@@ -251,9 +251,9 @@
 .m-fitness .cols{display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 20px; align-items: start;}
 }
 @media (prefers-reduced-motion: reduce){
-.m-fitness .rise,.m-fitness .screen.in{animation-name: fx-fade;}
-@keyframes fx-fade{from { opacity: 0; }}
-@keyframes fx-fade-out{to { opacity: 0; }}
+.m-fitness .rise,.m-fitness .screen.in{animation: none;}
+@keyframes fx-fade { from { opacity: 0; } }
+@keyframes fx-fade-out { to { opacity: 0; } }
 .m-fitness .tabs::before,.m-fitness .seg::before{transition-duration: 0.15s;}
 .m-fitness .tabs.moving::before{animation: none;}
 .m-fitness .wait::after{animation: none;}
@@ -297,7 +297,7 @@
 .m-fitness .rh-feat span{display: block; font-size: 14px; line-height: 1.35; color: var(--text-2);}
 .m-fitness .rh-note{margin: -4px 0 0; text-align: center; font-size: 13px; color: var(--text-3);}
 .m-fitness .rh-dots{display: flex; justify-content: center; gap: 6px; margin: 2px 0 6px;}
-.m-fitness .rh-dots i{width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 18%, transparent); transition: width var(--dur-base) var(--ease-out);}
+.m-fitness .rh-dots i{width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 18%, transparent); transition: background-color var(--ifl-motion-fast, .16s);}
 .m-fitness .rh-dots i.done{background: var(--tint);}
 .m-fitness .rh-dots i.now{width: 22px; background: var(--tint);}
 .m-fitness .rh-next{margin-top: 8px;}
@@ -310,7 +310,7 @@
 .m-fitness .rh-day .v{font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;}
 .m-fitness .rh-day .track{position: relative; width: 100%; height: 210px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); touch-action: none; cursor: ns-resize; display: flex; align-items: flex-end;}
 .m-fitness .rh-day .track:focus-visible{outline: 2px solid var(--tint); outline-offset: 2px;}
-.m-fitness .rh-day .track i{display: block; width: 100%; height: var(--h, 30%); border-radius: 12px; background: var(--ifl-accent-gradient); box-shadow: none; transition: height 0.12s var(--ease-out);}
+.m-fitness .rh-day .track i{display: block; width: 100%; height: var(--h, 30%); border-radius: 12px; background: var(--ifl-accent-gradient); box-shadow: none; transition: none;}
 .m-fitness .rh-day .track i::before{content: ""; display: block; width: 16px; height: 3px; margin: 6px auto 0; border-radius: 2px; background: color-mix(in srgb, var(--on-tint) 45%, transparent);}
 .m-fitness .rh-day .track i.rest{background: none; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 25%, transparent); border-radius: 6px; min-height: 10px;}
 .m-fitness .rh-day .track i.rest::before{display: none;}
@@ -769,7 +769,7 @@
 .m-fitness .morning-card{display: grid; gap: 10px; padding: 16px;}
 .m-fitness .nc-head{display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;}
 .m-fitness .nc-more{display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; color: var(--tint-text);}
-.m-fitness .nt-row{padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out);}
+.m-fitness .nt-row{padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out);}
 .m-fitness .nt-row:active{transform: scale(0.985);}
 .m-fitness .nt-row.flat .nt{padding-bottom: 10px;}
 .m-fitness .mc-sep{height: 0.5px; margin: 4px -16px 2px; background: var(--line);}
@@ -816,7 +816,7 @@
 .m-fitness .nights-chart .n-7{stroke: var(--text-3); stroke-dasharray: 3 3; opacity: 0.5;}
 .m-fitness .nights-chart .n-h{fill: var(--text-2); font-size: 12px; font-weight: 600;}
 .m-fitness .nights-chart .n-v{fill: var(--text); font-size: 12px; font-weight: 700;}
-.m-fitness .p-nights{display: block; width: 100%; padding: 14px 16px 12px; border: 0; color: var(--text); font: inherit; cursor: pointer; transition: transform 0.18s var(--ease-out);}
+.m-fitness .p-nights{display: block; width: 100%; padding: 14px 16px 12px; border: 0; color: var(--text); font: inherit; cursor: pointer; transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out);}
 .m-fitness .p-nights:active{transform: scale(0.985);}
 .m-fitness .n-key{display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--text-2);}
 .m-fitness .n-key span{display: inline-flex; align-items: center; gap: 6px;}
@@ -827,14 +827,14 @@
 .m-fitness .n-rule .n-today{font-size: 12px; font-weight: 650; color: var(--warn);}
 .m-fitness .n-rule.on .ic.green ~ .n-today{color: var(--good-text);}
 .m-fitness .n-rule:not(.on) .tx b{color: var(--text-2);}
-.m-fitness .screen.in .morning-card .nt,.m-fitness .day-in .morning-card .nt{animation: pop-in 0.5s var(--ease-out) backwards;}
-.m-fitness .screen.in .morning-card .nt:nth-child(1),.m-fitness .day-in .morning-card .nt:nth-child(1){animation-delay: 120ms;}
-.m-fitness .screen.in .morning-card .nt:nth-child(2),.m-fitness .day-in .morning-card .nt:nth-child(2){animation-delay: 190ms;}
-.m-fitness .screen.in .morning-card .nt:nth-child(3),.m-fitness .day-in .morning-card .nt:nth-child(3){animation-delay: 260ms;}
-.m-fitness .screen.in .morning-card .nc-chip,.m-fitness .day-in .morning-card .nc-chip{animation: pop-in 0.45s var(--ease-spring, var(--ease-out)) 80ms backwards;}
-@keyframes fx-n-draw{from { stroke-dashoffset: 1; }}
-@keyframes fx-n-rise{from { transform: scaleY(0); }}
-@keyframes fx-n-pop{from { transform: scale(0); }}
+.m-fitness .screen.in .morning-card .nt,.m-fitness .day-in .morning-card .nt{animation: fx-pop-in 0.5s var(--ease-out) backwards;}
+.m-fitness .screen.in .morning-card .nt:nth-child(1),.m-fitness .day-in .morning-card .nt:nth-child(1){animation-delay: 24ms;}
+.m-fitness .screen.in .morning-card .nt:nth-child(2),.m-fitness .day-in .morning-card .nt:nth-child(2){animation-delay: 38ms;}
+.m-fitness .screen.in .morning-card .nt:nth-child(3),.m-fitness .day-in .morning-card .nt:nth-child(3){animation-delay: 52ms;}
+.m-fitness .screen.in .morning-card .nc-chip,.m-fitness .day-in .morning-card .nc-chip{animation: fx-pop-in 0.45s var(--ease-spring, var(--ease-out)) 80ms backwards;}
+@keyframes fx-n-draw { from { stroke-dashoffset: 1; } }
+@keyframes fx-n-rise { from { transform: scaleY(0); } }
+@keyframes fx-n-pop { from { transform: scale(0); } }
 @media (prefers-reduced-motion: reduce){
 .m-fitness .morning-card .nt,.m-fitness .morning-card .nc-chip,.m-fitness .nspark *,.m-fitness .nights-chart *{animation: none !important;}
 .m-fitness .nt-row:active,.m-fitness .p-nights:active{transform: none;}
@@ -852,15 +852,15 @@
 .m-fitness .rv-next-top small{font-size: 13px; color: var(--text-2); text-align: right;}
 .m-fitness .rv-days{display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px;}
 .m-fitness .rv-days::-webkit-scrollbar{display: none;}
-.m-fitness .rv-day{flex: none; display: grid; gap: 2px; padding: 10px 12px; border: 0; border-radius: 14px; background: var(--glass-strong); box-shadow: var(--edge); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform 0.18s var(--ease-out);}
+.m-fitness .rv-day{flex: none; display: grid; gap: 2px; padding: 10px 12px; border: 0; border-radius: 14px; background: var(--glass-strong); box-shadow: var(--edge); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out);}
 .m-fitness .rv-day:active{transform: scale(0.96);}
 .m-fitness .rv-day small{font-size: 12px; font-weight: 600; color: var(--text-2);}
 .m-fitness .rv-day b{font-size: 14px; font-weight: 600; white-space: nowrap;}
 .m-fitness .rv-why{font-size: 13px; line-height: 1.4; color: var(--text-2);}
 .m-fitness .screen.in .review-card .rv-row,.m-fitness .day-in .review-card .rv-row{animation: fx-rise 0.5s var(--ease-out) backwards;}
-.m-fitness .screen.in .review-card .rv-row:nth-child(2),.m-fitness .day-in .review-card .rv-row:nth-child(2){animation-delay: 70ms;}
-.m-fitness .screen.in .review-card .rv-row:nth-child(3),.m-fitness .day-in .review-card .rv-row:nth-child(3){animation-delay: 140ms;}
-.m-fitness .screen.in .review-card .rv-row:nth-child(4),.m-fitness .day-in .review-card .rv-row:nth-child(4){animation-delay: 210ms;}
+.m-fitness .screen.in .review-card .rv-row:nth-child(2),.m-fitness .day-in .review-card .rv-row:nth-child(2){animation-delay: 14ms;}
+.m-fitness .screen.in .review-card .rv-row:nth-child(3),.m-fitness .day-in .review-card .rv-row:nth-child(3){animation-delay: 28ms;}
+.m-fitness .screen.in .review-card .rv-row:nth-child(4),.m-fitness .day-in .review-card .rv-row:nth-child(4){animation-delay: 42ms;}
 .m-fitness .screen.in .review-card .rv-next,.m-fitness .day-in .review-card .rv-next{animation: fx-rise 0.55s var(--ease-out) 280ms backwards;}
 @media (prefers-reduced-motion: reduce){
 .m-fitness .review-card .rv-row,.m-fitness .review-card .rv-next{animation: none !important;}
@@ -941,4 +941,34 @@
 .m-fitness .week-overview dd { margin: 6px 0 0; font-size: clamp(17px, 2.5vw, 24px); font-weight: 700; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 .m-fitness .strip-step::after { content: ""; position: absolute; inset: 0 -6px; }
-.m-fitness .rh-day .track.dragging i { transition: none; }
+.m-fitness .rh-day .track.dragging i { transition: none; }/* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .sday, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .strip-all, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .strip-step, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .mv-day, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .chip-btn, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .seg3 button, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .seg button, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .p-lens button, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .rh-choice, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .rh-goal, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .rh-tile, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .checkin-done, /* Responsive controls settle with the shared spring; text and final card geometry stay visible. */
+.m-fitness .stepper button, .m-fitness button.card, .m-fitness button.row, .m-fitness a.row, .m-fitness button.p-tile, .m-fitness button.p-card, .m-fitness button.p-mini, .m-fitness button.p-history, .m-fitness button.p-nights, .m-fitness button.choice, .m-fitness button.gday, .m-fitness .next-up, .m-fitness .tomorrow, .m-fitness .ag-row, .m-fitness .nt-row, .m-fitness .rv-day { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out), background-color var(--ifl-motion-fast, .16s), color var(--ifl-motion-fast, .16s), box-shadow var(--ifl-motion-fast, .16s); }.m-fitness .sday:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .strip-all:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .strip-step:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .mv-day:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .chip-btn:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .seg3 button:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .seg button:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .p-lens button:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .rh-choice:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .rh-goal:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .rh-tile:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .checkin-done:active:where(:not(:disabled):not([aria-disabled="true"])), .m-fitness .stepper button:active:where(:not(:disabled):not([aria-disabled="true"])) { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--ifl-motion-press, .09s); }.m-fitness button.card:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.row:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness a.row:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.p-tile:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.p-card:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.p-mini:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.p-history:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.p-nights:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.choice:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness button.gday:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness .next-up:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness .tomorrow:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness .ag-row:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness .nt-row:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)), .m-fitness .rv-day:active:where(:not(:disabled):not([aria-disabled="true"]):not(.dragging)) { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--ifl-motion-press, .09s); }.m-fitness .sday:disabled, .m-fitness .strip-all:disabled, .m-fitness .strip-step:disabled, .m-fitness .mv-day:disabled, .m-fitness .chip-btn:disabled, .m-fitness .seg3 button:disabled, .m-fitness .seg button:disabled, .m-fitness .p-lens button:disabled, .m-fitness .rh-choice:disabled, .m-fitness .rh-goal:disabled, .m-fitness .rh-tile:disabled, .m-fitness .checkin-done:disabled, .m-fitness .stepper button:disabled, .m-fitness button.card:disabled, .m-fitness button.row:disabled, .m-fitness a.row:disabled, .m-fitness button.p-tile:disabled, .m-fitness button.p-card:disabled, .m-fitness button.p-mini:disabled, .m-fitness button.p-history:disabled, .m-fitness button.p-nights:disabled, .m-fitness button.choice:disabled, .m-fitness button.gday:disabled, .m-fitness .next-up:disabled, .m-fitness .tomorrow:disabled, .m-fitness .ag-row:disabled, .m-fitness .nt-row:disabled, .m-fitness .rv-day:disabled { transform: none; }
+.m-fitness .rh-day .track { transition: box-shadow var(--ifl-motion-fast, .16s), background-color var(--ifl-motion-fast, .16s); }
+.m-fitness .rh-day .track i::before { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out); }.m-fitness .rh-day .track.dragging i::before, .m-fitness .rh-day .track:focus-visible i::before { transform: scaleX(1.25); }
+.m-fitness .rh-day .track.dragging i, .m-fitness .gday.dragging { transition: none; transform: none; }
+@keyframes fx-zone-fill { from { transform: scaleX(.04); } }
+@media (prefers-reduced-motion: reduce) {.m-fitness .sday, .m-fitness .strip-all, .m-fitness .strip-step, .m-fitness .mv-day, .m-fitness .chip-btn, .m-fitness .seg3 button, .m-fitness .seg button, .m-fitness .p-lens button, .m-fitness .rh-choice, .m-fitness .rh-goal, .m-fitness .rh-tile, .m-fitness .checkin-done, .m-fitness .stepper button, .m-fitness button.card, .m-fitness button.row, .m-fitness a.row, .m-fitness button.p-tile, .m-fitness button.p-card, .m-fitness button.p-mini, .m-fitness button.p-history, .m-fitness button.p-nights, .m-fitness button.choice, .m-fitness button.gday, .m-fitness .next-up, .m-fitness .tomorrow, .m-fitness .ag-row, .m-fitness .nt-row, .m-fitness .rv-day { transition: none; }.m-fitness .sday:active, .m-fitness .strip-all:active, .m-fitness .strip-step:active, .m-fitness .mv-day:active, .m-fitness .chip-btn:active, .m-fitness .seg3 button:active, .m-fitness .seg button:active, .m-fitness .p-lens button:active, .m-fitness .rh-choice:active, .m-fitness .rh-goal:active, .m-fitness .rh-tile:active, .m-fitness .checkin-done:active, .m-fitness .stepper button:active, .m-fitness button.card:active, .m-fitness button.row:active, .m-fitness a.row:active, .m-fitness button.p-tile:active, .m-fitness button.p-card:active, .m-fitness button.p-mini:active, .m-fitness button.p-history:active, .m-fitness button.p-nights:active, .m-fitness button.choice:active, .m-fitness button.gday:active, .m-fitness .next-up:active, .m-fitness .tomorrow:active, .m-fitness .ag-row:active, .m-fitness .nt-row:active, .m-fitness .rv-day:active { transform: none; }
+  .m-fitness .rh-day .track, .m-fitness .rh-day .track i::before, .m-fitness .seg::before, .m-fitness .experimental-track::before { transition: none; }
+  .m-fitness .zrow .zbar i { animation: none; }
+}
+
+/* Day changes are local to the selected workout, rather than another entrance of the entire section. */
+.m-fitness .day-in.next { animation: fx-day-next var(--ifl-motion-layout, .28s) var(--ifl-motion-spring, ease-out); }
+.m-fitness .day-in.prev { animation: fx-day-prev var(--ifl-motion-layout, .28s) var(--ifl-motion-spring, ease-out); }
+@keyframes fx-day-next { from { transform: translateX(var(--ifl-motion-distance, 8px)); } }
+@keyframes fx-day-prev { from { transform: translateX(calc(-1 * var(--ifl-motion-distance, 8px))); } }
+@keyframes fx-pop-in { from { transform: scale(.985); } }
+.m-fitness .checkin-said { animation: fx-pop-in .3s var(--ifl-motion-spring, ease-out); }
+@media (prefers-reduced-motion: reduce) { .m-fitness .day-in, .m-fitness .checkin-said { animation: none; } }.m-fitness:is([data-motion-paused] *) .bringing .bar i, .m-fitness:is([data-motion-paused] *) .wait::after, .m-fitness:is([data-motion-paused] *) .share-frame::after, .m-fitness[hidden] *, .m-fitness[hidden] *::before, .m-fitness[hidden] *::after, .m-fitness .fx-sec[hidden] *, .m-fitness .fx-sec[hidden] *::before, .m-fitness .fx-sec[hidden] *::after, .m-fitness:is([hidden] *) .bringing .bar i, .m-fitness:is([hidden] *) .share-frame::after { animation-play-state: paused; }

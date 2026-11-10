@@ -8,7 +8,7 @@
 /* ---- tokens: dark first, light in both light cases ---- */
 .m-weather .wx-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin-bottom: 0; }
 .m-weather .wx-more > summary::-webkit-details-marker { display: none; }
-.m-weather .wx-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin-left: auto; flex: none; }
+.m-weather .wx-more > summary::after { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin-left: auto; flex: none; }
 .m-weather .wx-more[open] > summary { margin-bottom: 14px; }
 .m-weather .wx-more[open] > summary::after { transform: rotate(45deg); }
 .m-weather .wx-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
@@ -71,10 +71,10 @@
 /* ---- Now: the warnings slot ---- */
 .m-weather .wx-alerts[hidden] { display: none; }
 .m-weather .wx-alert { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 12px 14px; border-radius: var(--r-group, 26px); text-align: left; color: var(--text);
-  background: color-mix(in srgb, var(--wx-amber) 16%, var(--glass)); box-shadow: var(--edge); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
+  background: color-mix(in srgb, var(--wx-amber) 16%, var(--glass)); box-shadow: var(--edge); transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
 .m-weather .wx-alert[data-level="alert"] { background: color-mix(in srgb, var(--wx-red) 18%, var(--glass)); }
 .m-weather .wx-alert[data-colour="yellow"] { background: color-mix(in srgb, var(--wx-yellow) 16%, var(--glass)); }
-.m-weather .wx-alert:active { transform: scale(0.98); transition-duration: var(--dur-press, .1s); }
+.m-weather .wx-alert:active { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--dur-press, .1s); }
 .m-weather .wx-alert-words { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .m-weather .wx-alert-words b { font-size: 16px; font-weight: 650; }
 .m-weather .wx-alert-words small { font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
@@ -167,10 +167,10 @@
 :is(.m-weather, .wx-sheet) .r-small { fill: var(--text-3); font-size: 11px; }
 :is(.m-weather, .wx-sheet) .r-vtext { fill: var(--text); font-size: 12.5px; font-weight: 700; }
 @media (prefers-reduced-motion: no-preference) {
-  :is(.m-weather, .wx-sheet) .c-enter .c-line { stroke-dasharray: 1 1; animation: wx-draw 1.1s var(--ease-glide, ease) backwards; animation-delay: var(--t0, 0ms); }
-  :is(.m-weather, .wx-sheet) .c-enter .c-band { animation: wx-fade 0.9s ease-out backwards; animation-delay: calc(0.3s + var(--t0, 0ms)); }
-  :is(.m-weather, .wx-sheet) .c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: wx-grow 0.6s var(--ease-spring, ease) backwards; animation-delay: calc(var(--k, 0) * 14ms + var(--t0, 0ms)); }
-  :is(.m-weather, .wx-sheet) .c-enter :is(.c-dot, .c-label) { animation: wx-fade 0.3s ease backwards; animation-delay: calc(0.8s + var(--t0, 0ms)); }
+  :is(.m-weather, .wx-sheet) .c-enter .c-line { stroke-dasharray: 1 1; animation: wx-draw var(--ifl-motion-page, .46s) var(--ease-glide, ease) backwards; animation-delay: var(--t0, 0ms); }
+  :is(.m-weather, .wx-sheet) .c-enter .c-band { animation: wx-fade var(--ifl-motion-enter, .36s) ease-out backwards; animation-delay: calc(var(--ifl-motion-stagger, 24ms) + var(--t0, 0ms)); }
+  :is(.m-weather, .wx-sheet) .c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: wx-grow var(--ifl-motion-release, .42s) var(--ease-spring, ease) backwards; animation-delay: calc(min(calc(var(--k, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)) + var(--t0, 0ms)); }
+  :is(.m-weather, .wx-sheet) .c-enter .c-dot { animation: wx-grow var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); transform-box: fill-box; transform-origin: center; }
 }
 @keyframes wx-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes wx-fade { from { opacity: 0; } }
@@ -178,10 +178,10 @@
 
 /* Right now: the tiles, on the framework's stats grid */
 .m-weather .wx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; margin: 0; }
-.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--ifl-radius-row, 16px); text-align: left; color: var(--text); background: var(--ifl-surface-2, var(--glass-ctl)); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
-.m-weather .wx-tile:active { transform: scale(0.97); background: var(--press); transition-duration: var(--dur-press, .1s); }
+.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--ifl-radius-row, 16px); text-align: left; color: var(--text); background: var(--ifl-surface-2, var(--glass-ctl)); transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
+.m-weather .wx-tile:active { transform: scale(var(--ifl-press-scale, .97)); background: var(--press); transition-duration: var(--dur-press, .1s); }
 @media (prefers-reduced-motion: reduce) {
-  .m-weather :is(.wx-alert, .wx-tile) { transition: none; }
+  .m-weather :is(.wx-alert, .wx-tile), .m-weather .wx-more > summary::after { transition: none; }
   .m-weather :is(.wx-alert, .wx-tile):active { transform: none; }
 }
 .m-weather .wx-tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }

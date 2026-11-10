@@ -5,10 +5,11 @@
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-pop.open { transform: none; }
 .ifm-pop.closing { transform: translateY(-3px) scale(0.97);
-  transition: transform 0.22s var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
+  transition: transform var(--ifl-motion-exit) var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
 .ifm-grp, .ifm-card { border-radius: calc(var(--ifl-radius-card) - var(--ifl-space-2)); }
-.ifm-card { padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
+.ifm-card { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
 .ifm-layer { transition: background-color var(--ifl-motion-fast) ease; }
+.ifm-layer:not(.open), .ifa-layer:not(.on) { pointer-events: none; }
 .ifm-layer.open { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifa-sheet { border-radius: var(--ifl-radius-sheet) var(--ifl-radius-sheet) 0 0;
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
@@ -16,6 +17,8 @@
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+:is(.ifa-go, .ifa-later, .ifb-btn):active:not(:disabled) { transform: scale(var(--ifl-press-scale)); transition-duration: var(--ifl-motion-press); }
 .ifs-btn { position: relative; }
 .ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
@@ -31,11 +34,14 @@
 :is(.pill, .btn, .ifl-btn) { max-width: 100%; overflow-wrap: anywhere; }
 :is(.pill, .btn, .ifl-btn):focus-visible { outline: 2px solid var(--tint-text, var(--tint, currentColor)); outline-offset: 3px; }
 
+/* CSS presentation motion rests while data and navigation retain their own lifetimes. */
+html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
+
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
-  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after { transition: none; }
-  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
+  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
+  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active, .ifm-row:active, .ifm-card:active, .ifa-go:active, .ifa-later:active, .ifb-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {

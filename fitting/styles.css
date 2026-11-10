@@ -669,7 +669,11 @@ body.signin::before{display:none}
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
   --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
-  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-press: 0.09s; --ifl-motion-release: 0.42s; --ifl-motion-fast: 0.16s;
+  --ifl-motion-enter: 0.36s; --ifl-motion-exit: 0.22s; --ifl-motion-layout: 0.28s;
+  --ifl-motion-page: 0.46s; --ifl-motion-tab: 0.28s; --ifl-motion-sheet: 0.46s;
+  --ifl-motion-stagger: 24ms; --ifl-motion-stagger-cap: 120ms; --ifl-motion-distance: 8px;
+  --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --ifl-chrome-blur: none;

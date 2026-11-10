@@ -19,8 +19,8 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-spring: linear(0, 0.019, 0.067, 0.135, 0.214, 0.3, 0.388, 0.473, 0.553, 0.628, 0.695, 0.755, 0.807, 0.852, 0.89, 0.921, 0.947, 0.968, 0.984, 0.996, 1.005, 1.012, 1.016, 1.018, 1.02, 1.02, 1.019, 1.018, 1.017, 1.015, 1.013, 1.012, 1.01, 1.008, 1.007, 1.006, 1.005, 1.004, 1.003, 1);
-  --dur-press: 0.1s; --dur-release: 0.45s; --dur-fast: 0.2s; --dur-base: 0.35s; --dur-sheet-in: 0.5s; --dur-sheet-out: 0.34s;
+  --ease-spring: var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1));
+  --dur-press: var(--ifl-motion-press, .09s); --dur-release: var(--ifl-motion-release, .42s); --dur-fast: var(--ifl-motion-fast, .16s); --dur-base: var(--ifl-motion-layout, .28s); --dur-sheet-in: var(--ifl-motion-sheet, .46s); --dur-sheet-out: var(--ifl-motion-exit, .22s);
   /* (Weather's own names for them) */
   --ease: var(--ease-out);
   --glide: var(--ease-glide);
@@ -106,18 +106,19 @@ main .radar.radar-big .icon-btn { -webkit-backdrop-filter: var(--blur-ctl); back
 }
 /* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
 .icon-btn, .place, .pill-btn, .day-row, .row-btn, :is(.radar-centre, .map-layers), .link {
-  transition: transform var(--dur-release) var(--spring), background-color 0.25s, filter 0.25s, opacity var(--dur-fast);
+  transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast), filter var(--dur-fast);
 }
-.icon-btn:active, .place:active, .pill-btn:active, :is(.radar-centre, .map-layers):active { transform: scale(0.92); filter: brightness(1.18); transition-duration: var(--dur-press); }
-fieldset.opt label { transition: filter 0.2s, color 0.25s; }
-fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(--dur-press); }
-.day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: var(--dur-press); }
+.icon-btn:active, :is(.radar-centre, .map-layers):active { transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--dur-press); }
+.place:active, .pill-btn:active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--dur-press); }
+fieldset.opt label { transition: background-color var(--dur-fast), color var(--dur-fast); }
+fieldset.opt label:active { background-color: var(--ifl-press); transition-duration: var(--dur-press); }
+.day-row:active, .row-btn:active { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--dur-press); }
 @media (prefers-reduced-motion: reduce) {
   .icon-btn, .place, .pill-btn, .day-row, .row-btn, :is(.radar-centre, .map-layers), .link { transition-property: background-color, opacity; }
   .icon-btn:active, .place:active, .pill-btn:active, .day-row:active, .row-btn:active, :is(.radar-centre, .map-layers):active { transform: none; }
 }
 @media (hover: hover) {
-  .icon-btn:hover, .place:hover, .pill-btn:hover, :is(.radar-centre, .map-layers):hover { filter: brightness(1.15); }
+  .icon-btn:hover, .place:hover, .pill-btn:hover, :is(.radar-centre, .map-layers):hover { filter: brightness(1.04); }
 }
 
 /* Condition metadata remains available, while decorative sky nodes no longer paint or animate. */
@@ -146,7 +147,7 @@ body.sheet-up .top::before { opacity: 0; }
   font: 700 19px/1 inherit; color: var(--ifl-on-accent, #10200f); background: var(--ifl-accent-gradient); box-shadow: var(--ifl-shadow-control); -webkit-tap-highlight-color: transparent; }
 .me-btn[hidden] { display: none; }
 .me-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.me-btn:active { transform: scale(0.92); }
+.me-btn:active { transform: scale(var(--ifl-press-icon, .94)); }
 .me-btn:not([hidden]) + .place { margin-right: auto; }
 .icon-btn[hidden] { display: none; }
 .place { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; min-height: 44px; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
@@ -340,7 +341,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .status.warn { color: var(--warn); }
 .retry { margin-top: 14px; }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */
-.retry:not([hidden]) { animation: rise 0.4s var(--glide) backwards; }
+.retry:not([hidden]) { animation: rise var(--ifl-motion-enter, .36s) var(--glide) backwards; }
 main[data-empty] ~ .foot .foot-refresh { display: none; }
 /* (and the footer comes with the forecast, not before: under placeholders it would only be pushed away as it came) */
 main:is([data-empty="loading"], [data-empty="kept"]) ~ .foot { display: none; }
@@ -380,10 +381,10 @@ main[data-empty="kept"] .hero .brief:empty { display: block; width: 88%; height:
 /* when the forecast arrives, the hero eases up into place, first (the cards on screen come in after it: app.js arrive;
    only what's on screen: an animation on a card still off it can leave it unpainted; backwards fill, so nothing's left
    behind) */
-@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes rise { from { transform: translateY(var(--ifl-motion-distance, 8px)); } }
 /* (and as the page opens, for the weather last shown: the same rise carried on, not started again, as the forecast comes) */
-main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s var(--glide) backwards; }
-.ins.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
+main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise var(--ifl-motion-enter, .36s) var(--glide) backwards; }
+.ins.rise { animation: rise var(--ifl-motion-enter, .36s) var(--glide) backwards; animation-delay: min(calc(var(--i, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)); }
 /* swiping between places (app.js pager): the scroller under the finger moves by itself, the browser's own, as quick and
    as smooth as any; the cards under it carried along with it (and the next place's beside them), the place coming in's
    sky coming in over this one's and, while it's swiped (.top.swiping), its name over this one's in the bar, each by how
@@ -467,12 +468,12 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .hero-temp.was { position: absolute; left: 0; top: 0; margin: 0; pointer-events: none; }
 /* which place, of the saved ones (an arrow for My Location) */
 .dots { display: flex; gap: 7px; align-items: center; margin: 0 0 6px 2px; height: 10px; }
-.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color var(--dur-fast), transform var(--dur-release) var(--spring); }
 .dots i.on { background: var(--text); transform: scale(1.15); }
 .dots i.gps { width: 9px; height: 9px; background: none; color: var(--text-3); display: grid; place-items: center; }
 .dots i.gps.on { color: var(--text); }
 .dots i svg { display: block; }
-@media (prefers-reduced-motion: reduce) { main:is(:not([data-empty]), [data-empty="kept"]) .hero, .ins.rise, .retry:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
+@media (prefers-reduced-motion: reduce) { main:is(:not([data-empty]), [data-empty="kept"]) .hero, .ins.rise, .retry:not([hidden]) { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -489,7 +490,7 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .stack:empty { display: none; }
 .weather-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin: -8px 0; }
 .weather-more > summary::-webkit-details-marker { display: none; }
-.weather-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin: 0 4px 0 auto; flex: none; }
+.weather-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin: 0 4px 0 auto; flex: none; transition: transform var(--dur-release) var(--spring); }
 .weather-more[open] > summary { margin-bottom: 14px; }
 .weather-more[open] > summary::after { transform: rotate(45deg); }
 .weather-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
@@ -497,16 +498,16 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 /* segmented control: a glass track with a lens that glides to the choice */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: var(--ifl-surface-2);  box-shadow: none; }
 .seg::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 999px; z-index: 0;
-  transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.42s var(--glide);
+  transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform var(--dur-release) var(--spring);
   background: var(--ifl-raised, #fff);
   box-shadow: var(--ifl-shadow-control); }
-@media (prefers-reduced-motion: reduce) { .seg::before { transition: none; } }
-.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color 0.3s, opacity 0.15s; }
+.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color var(--dur-fast), transform var(--dur-release) var(--spring); }
 .seg button[aria-selected="true"] { color: var(--text); }
 /* (each a finger's 44 points tall, reaching over the track's edge) */
 .seg button::after { content: ""; position: absolute; inset: -3px 0; }
-.seg button:not([aria-selected="true"]):active { opacity: 0.6; }
+.seg button:not([aria-selected="true"]):active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .seg button:not([aria-selected="true"]):hover { color: var(--text); } }
+@media (prefers-reduced-motion: reduce) { .seg::before, .weather-more > summary::after { transition: none; } .seg button:not([aria-selected="true"]):active { transform: none; } }
 
 /* hour strip */
 /* the hours: they swipe to the card's edges, fading there, but rest and snap inside its margins
@@ -548,68 +549,67 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 /* a new chart draws in (charts.js): the line traced from the left, its range fading in behind it, columns
    growing from the baseline one after another with a little spring, then the labels */
 /* (--t0: drawn again part way through, it carries on from there) */
-.c-enter .c-line { stroke-dasharray: 1 1; animation: c-draw 1.1s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
-.c-enter .c-band { animation: c-fade 0.9s ease-out backwards; animation-delay: calc(0.3s + var(--t0, 0ms)); }
-.c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: c-grow 0.6s var(--spring) backwards; animation-delay: calc(var(--k, 0) * 14ms + var(--t0, 0ms)); }
-/* (each pop a spring of its size and a fade of its own: a fade never overshoots) */
-.c-enter .c-dot, .c-enter .c-label { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop 0.45s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(0.8s + var(--t0, 0ms)); }
+.c-enter .c-line { stroke-dasharray: 1 1; animation: c-draw var(--ifl-motion-page, .46s) var(--glide) backwards; animation-delay: var(--t0, 0ms); }
+.c-enter .c-band { animation: c-fade var(--ifl-motion-enter, .36s) var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger, 24ms) + var(--t0, 0ms)); }
+.c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: c-grow var(--dur-release) var(--spring) backwards; animation-delay: calc(min(calc(var(--k, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)) + var(--t0, 0ms)); }
+/* Graphic dots settle after the line; text labels stay readable throughout. */
+.c-enter .c-dot { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop var(--dur-release) var(--spring) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
 @keyframes c-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes c-fade { from { opacity: 0; } }
 @keyframes c-grow { from { transform: scaleY(0); } }
 @keyframes c-pop { from { transform: scale(0.5); } }
 /* (one waiting to be scrolled to holds where it starts from, so it isn't seen whole first and then put back to draw in) */
 .c-wait .c-line { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
-.c-wait .c-band, .c-wait .c-dot, .c-wait .c-label { opacity: 0; }
+.c-wait .c-band, .c-wait .c-dot { opacity: 0; }
 .c-wait .c-col { transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(0); }
 /* the climate's range draws in too: its bands spread out from the normal, the normal and the record drawn, then today */
-.r-enter :is(.r-wide, .r-mid) { transform-box: fill-box; transform-origin: 50% 50%; animation: r-spread 0.9s var(--glide) backwards; animation-delay: var(--t0, 0ms); }
+.r-enter :is(.r-wide, .r-mid) { transform-box: fill-box; transform-origin: 50% 50%; animation: r-spread var(--ifl-motion-page, .46s) var(--glide) backwards; animation-delay: var(--t0, 0ms); }
 .r-enter .r-mid { animation-delay: calc(0.1s + var(--t0, 0ms)); }
-.r-enter :is(.r-mean, .r-record, .r-text, .r-small) { animation: c-fade 0.6s var(--ease) backwards; animation-delay: calc(0.35s + var(--t0, 0ms)); }
-.r-enter .r-value { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(0.7s + var(--t0, 0ms)); }
-.r-enter .r-vtext { animation: c-fade 0.4s var(--ease) backwards; animation-delay: calc(0.8s + var(--t0, 0ms)); }
+.r-enter :is(.r-mean, .r-record) { animation: c-fade var(--ifl-motion-enter, .36s) var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger, 24ms) + var(--t0, 0ms)); }
+.r-enter .r-value { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop var(--dur-release) var(--spring) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
 .r-wait :is(.r-wide, .r-mid) { transform-box: fill-box; transform-origin: 50% 50%; transform: scaleX(0); }
-.r-wait :is(.r-mean, .r-record, .r-text, .r-small, .r-value, .r-vtext) { opacity: 0; }
+.r-wait :is(.r-mean, .r-record, .r-value) { opacity: 0; }
 @keyframes r-spread { from { transform: scaleX(0); } }
 
 /* ---------- motion, once, as things come into view (app.js motion()) ---------- */
 /* the 16 days: each bar sweeps out from the low to the high, row after row; today's dot lands after */
 .pre .d-fill { transform: scaleX(0); transform-origin: 0 50%; }
-.play .d-fill { transform-origin: 0 50%; animation: sweep 0.8s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms + var(--t0, 0ms)); }
+.play .d-fill { transform-origin: 0 50%; animation: sweep var(--dur-release) var(--spring) backwards; animation-delay: calc(min(calc(var(--i, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)) + var(--t0, 0ms)); }
 .pre .d-now { opacity: 0; }
-.play .d-now { animation: land 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(0.5s + var(--i, 0) * 50ms + var(--t0, 0ms)); }
+.play .d-now { animation: land var(--dur-release) var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + min(calc(var(--i, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)) + var(--t0, 0ms)); }
 /* the compass needle swings round to the wind and settles, as a real one does */
 .compass .needle-g { transform-box: view-box; transform-origin: 40px 40px; }
 .pre .compass .needle-g { transform: rotate(-150deg); }
-.play .compass .needle-g { animation: swing 1.4s cubic-bezier(0.3, 1.45, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+.play .compass .needle-g { animation: swing var(--ifl-motion-page, .46s) var(--spring) backwards; animation-delay: var(--t0, 0ms); }
 /* the sun's path traced from sunrise to now, then the sun; at night, the sun below the horizon */
 .pre .sunarc .done { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
-.play .sunarc .done { stroke-dasharray: 1 1; animation: c-draw 1.3s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.play .sunarc .done { stroke-dasharray: 1 1; animation: c-draw var(--ifl-motion-page, .46s) var(--glide) backwards; animation-delay: var(--t0, 0ms); }
 .pre .sunarc .sun, .pre .sunarc .under { opacity: 0; }
 .sunarc .sun { transform-box: fill-box; transform-origin: 50% 50%;  stroke: var(--ifl-surface); }
-.play .sunarc .sun { animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
+.play .sunarc .sun { animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
 .play .sunarc .under { animation: c-fade 0.8s var(--ease) backwards; animation-delay: var(--t0, 0ms); }
-.play .sunarc .sun.down { animation-delay: calc(0.35s + var(--t0, 0ms)); }
+.play .sunarc .sun.down { animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
 /* the UV and air knobs slide along to their reading */
 .pre .meter i { opacity: 0; }
-.play .meter i { animation: knob 1s var(--spring) backwards, knob-fade 0.6s var(--ease) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .meter i { animation: knob var(--dur-release) var(--spring) backwards, knob-fade 0.6s var(--ease) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
 /* the thermometer fills up from its bulb, the humidity bar fills along, the pressure needle swings round to its reading */
 .thermo .th-fill { transform-box: fill-box; transform-origin: 50% 100%; }
 .pre .thermo .th-fill { transform: scaleY(0); }
 .pre .fbar i { transform: scaleX(0); transform-origin: 0 50%; }
-.play .thermo .th-fill { animation: fill-up 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
-.play .fbar i { transform-origin: 0 50%; animation: sweep 0.9s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .thermo .th-fill { animation: fill-up var(--dur-release) var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .fbar i { transform-origin: 0 50%; animation: sweep var(--dur-release) var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
 .pre .dial .dl-needle-g { transform: rotate(var(--sw, 0deg)); }
-.play .dial .dl-needle-g { animation: dial 1.3s cubic-bezier(0.3, 1.35, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+.play .dial .dl-needle-g { animation: dial var(--ifl-motion-page, .46s) var(--spring) backwards; animation-delay: var(--t0, 0ms); }
 /* the tide comes in: its water rises, its line traces along, then where it is now */
 .tidec .tc-water { transform-box: fill-box; transform-origin: 50% 100%; }
 .pre .tidec .tc-water { transform: scaleY(0); }
 .pre .tidec .tc-line { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
 .pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 0; }
 .tidec .tc-here, .tidec .tc-mark { transform-box: fill-box; transform-origin: 50% 50%; }
-.play .tidec .tc-water { animation: fill-up 1.1s var(--spring) backwards; animation-delay: var(--t0, 0ms); }
-.play .tidec .tc-line { stroke-dasharray: 1 1; animation: c-draw 1.2s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
-.play .tidec .tc-mark { animation: c-pop 0.4s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(0.9s + var(--t0, 0ms)); }
-.play .tidec .tc-here { animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
+.play .tidec .tc-water { animation: fill-up var(--dur-release) var(--spring) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-line { stroke-dasharray: 1 1; animation: c-draw var(--ifl-motion-page, .46s) var(--glide) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-mark { animation: c-pop 0.4s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
+.play .tidec .tc-here { animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(var(--ifl-motion-stagger-cap, 120ms) + var(--t0, 0ms)); }
 @keyframes fill-up { from { transform: scaleY(0); } }
 @keyframes dial { from { transform: rotate(var(--sw, 0deg)); } }
 @keyframes sweep { from { transform: scaleX(0); } }
@@ -637,14 +637,14 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
     main :is(.card, .ins, .tile).settled:not(.rise) { animation: none; }
   }
 }
-@keyframes settle { from { transform: translateY(28px) scale(0.965); } }
+@keyframes settle { from { transform: translateY(var(--ifl-motion-distance, 8px)) scale(.99); } }
 /* a day's sheet: the parts of the day come in one after another as it rises */
-dialog.day-sheet[open] .part { animation: rise 0.55s var(--glide) backwards; }
-dialog.day-sheet[open] .part:nth-child(2) { animation-delay: 0.05s; }
-dialog.day-sheet[open] .part:nth-child(3) { animation-delay: 0.1s; }
-dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
-/* (with Reduce Motion, all of them dissolving in together, with the sheet: :nth-child(n), to be over the delays above) */
-@media (prefers-reduced-motion: reduce) { dialog.day-sheet[open] .part:nth-child(n) { animation: c-fade 0.2s var(--ease) backwards; } }
+dialog.day-sheet[open] .part { animation: rise var(--ifl-motion-enter, .36s) var(--glide) backwards; }
+dialog.day-sheet[open] .part:nth-child(2) { animation-delay: var(--ifl-motion-stagger, 24ms); }
+dialog.day-sheet[open] .part:nth-child(3) { animation-delay: calc(var(--ifl-motion-stagger, 24ms) * 2); }
+dialog.day-sheet[open] .part:nth-child(4) { animation-delay: calc(var(--ifl-motion-stagger, 24ms) * 3); }
+/* Reduce Motion presents each part immediately, including the staggered rows. */
+@media (prefers-reduced-motion: reduce) { dialog.day-sheet[open] .part:nth-child(n) { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .c-enter .c-line, .c-enter .c-band, .c-enter .c-col, .c-enter .c-dot, .c-enter .c-label { animation: none; } }
 .c-crossline { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; }
 .c-hit { cursor: crosshair; }
@@ -742,26 +742,26 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* one with its own short line: that, folded; the whole of it, open (fading in), and while it folds away */
 .ins-row.has-short .ins-line, .ins-row.has-short.open .ins-short, .ins-row.has-short.fold .ins-short { display: none; }
 .ins-row.has-short.open .ins-line, .ins-row.has-short.fold .ins-line { display: block; }
-.ins-row.has-short.open .ins-line { animation: c-fade 0.3s var(--ease); }
-.ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform 0.4s var(--glide); }
+.ins-row.has-short.open .ins-line { animation: rise var(--ifl-motion-enter, .36s) var(--glide); }
+.ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform var(--dur-release) var(--spring); }
 .ins-row.open .ins-chev { transform: rotate(180deg); }
 .ins-row.whole .ins-chev { visibility: hidden; }
 /* open, a way on to its day or its hours (and one that goes somewhere is never just its line: always opens) */
 .ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background-color: var(--ifl-surface-2); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
-.ins-go:active { opacity: 0.6; transition-duration: var(--dur-press); }
+.ins-go:active { background-color: var(--ifl-press); transition-duration: var(--dur-press); }
 .ins-go { position: relative; }
 .ins-go::after { content: ""; position: absolute; inset: -6px 0; }
 .ins-go span { display: inline-grid; transform: rotate(-90deg); }
 .ins-row.open .ins-go, .ins-row.fold .ins-go { display: inline-flex; }
 .ins-go:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
-.ins-row.rise, .days li.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
+.ins-row.rise, .days li.rise { animation: rise var(--ifl-motion-enter, .36s) var(--glide) backwards; animation-delay: min(calc(var(--i, 0) * var(--ifl-motion-stagger, 24ms)), var(--ifl-motion-stagger-cap, 120ms)); }
 .ins-more { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 0 8px; border-top: 0.5px solid var(--line); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
 /* (all of them shown: a way back to the first few, its chevron the other way up) */
 .ins-more.less svg { transform: rotate(180deg); }
 .ins-more:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -2px; border-radius: 10px; }
-.ins-more:active { opacity: 0.6; }
+.ins-more:active { background-color: var(--ifl-press); transition-duration: var(--dur-press); }
 @media (hover: hover) { .ins-head:hover, .ins-more:hover { background-color: var(--ifl-surface-2); } .ins-row.whole .ins-head:hover { background-color: transparent; } .ins-go:hover { background-color: var(--ifl-surface-2); } }
-@media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.has-short.open .ins-line { animation: c-fade 0.2s var(--ease) backwards; } .ins-chev { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.has-short.open .ins-line { animation: none; } .ins-chev { transition: none; } }
 .ins { border-radius: 22px; padding: 13px 15px 14px; display: grid; grid-template-columns: 32px 1fr; gap: 2px 11px; }
 .ins-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center;
   background: var(--ifl-surface-2); box-shadow: none;  color: var(--text); }
@@ -782,7 +782,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
 .ins-open:focus-visible::after { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .ins.official { transition: transform var(--dur-release) var(--spring), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
-.ins.official:active { transform: scale(0.985); transition-duration: var(--dur-press); }
+.ins.official:active { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--dur-press); }
 @media (prefers-reduced-motion: reduce) { .ins.official { transition-property: background-color; } .ins.official:active { transform: none; } }
 .ins.official[data-colour="yellow"] { --tint: color-mix(in srgb, #d9b12f 13%, var(--ifl-surface)); --rim: none; }
 .ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
@@ -790,7 +790,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* several at once: one banner saying what they are, that opens to all of them (app.js cards) */
 .warn-sum { grid-template-columns: 32px 1fr 18px; }
 .warn-sum > p { grid-column: 2; }
-.warn-sum .ws-chev { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--text-2); transition: transform 0.4s var(--glide); }
+.warn-sum .ws-chev { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--text-2); transition: transform var(--dur-release) var(--spring); }
 .warn-sum.open .ws-chev { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .warn-sum .ws-chev { transition: none; } }
 
@@ -876,13 +876,13 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .wind-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
 /* a tile that opens: its title a button over all of it, a little chevron to say so; it gives under a finger */
 .tile.opens { cursor: pointer; transition: transform var(--dur-release) var(--spring), filter 0.25s, background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
-.tile.opens:active { transform: scale(0.97); filter: brightness(1.12); transition-duration: var(--dur-press); }
+.tile.opens:active { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--dur-press); }
 @media (prefers-reduced-motion: reduce) { .tile.opens { transition-property: background-color; } .tile.opens:active { transform: none; filter: none; } }
 .tile-open { all: unset; flex: 1; min-width: 0; cursor: pointer; }
 .tile-open::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; }
 .tile-open:focus-visible::after { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .tile-chev { display: inline-flex; flex: none; transform: rotate(-90deg); opacity: 0.8; }
-@media (hover: hover) { .tile.opens:hover { filter: brightness(1.08); } }
+@media (hover: hover) { .tile.opens:hover { filter: brightness(1.04); } }
 /* a tile in full, in its own sheet: what it says now, a little larger, then its hours */
 .detail-now { border-radius: var(--r-inner); padding: 14px 16px 15px; display: flex; flex-direction: column; gap: 3px; }
 .detail-now .big { font-size: 40px; }
@@ -893,7 +893,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .detail-sheet .sheet-head h2 { display: flex; align-items: center; gap: 8px; }
 /* which tile of them it is (a swipe sideways for the next) */
 .detail-dots { display: flex; justify-content: center; gap: 7px; margin: -4px 0 6px; }
-.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background-color var(--dur-fast), transform var(--dur-release) var(--spring); }
 .detail-dots i.on { background: var(--text); transform: scale(1.15); }
 /* the rain tile's next 24 hours, an hour a bar */
 .rbars { display: block; width: 100%; height: 26px; margin: 8px 0 2px; }
@@ -901,7 +901,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .rbars rect.dry { fill: rgba(255, 255, 255, 0.18); }
 .rbars rect { transform-box: fill-box; transform-origin: 50% 100%; }
 .pre .rbars rect { transform: scaleY(0); }
-.play .rbars rect { animation: fill-up 0.8s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .rbars rect { animation: fill-up var(--dur-release) var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
 .dt-icon { display: inline-flex; color: var(--text-3); }
 .ways { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; text-align: center; }
 .way { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; }
@@ -974,10 +974,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 2px; }
 .foot a { padding: 13px 2px; margin: -13px -2px; }
 .foot a { transition: opacity var(--dur-fast); }
-.foot a:active { opacity: 0.55; transition-duration: var(--dur-press); }
+.foot a:active { text-decoration: underline; text-underline-offset: 3px; }
 /* a plain button: tinted text, as on iOS */
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
-.link:active { opacity: 0.55; transition-duration: var(--dur-press); }
+.link:active { text-decoration: underline; text-underline-offset: 3px; }
 /* (pointed at, with a mouse: a link, or a word that does something, fades a little, as the site's do) */
 @media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-new a:hover, .win-poor:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; } }
 
@@ -990,7 +990,7 @@ dialog.sheet { position: fixed; --tint: var(--ifl-surface); padding: 0; color: v
 /* opening, it comes up from below on iOS's own curve (not faded in: Safari leaves a fading pane of glass unblurred,
    then snaps it frosted); the dim fades in with it. Opened again while it was going, it comes back up from where it
    had got to (--in-t, --in-o, --dim-o: app.js openSheet) */
-dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in var(--dur-sheet-in) var(--glide); transition: transform 0.45s var(--glide), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
+dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in var(--dur-sheet-in) var(--glide); transition: transform var(--dur-sheet-in) var(--glide), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 dialog.sheet::backdrop { background: rgb(15 19 13 / .26); }
 dialog.sheet[open]::backdrop { animation: dim-in var(--dur-sheet-in) var(--glide); }
 @keyframes sheet-in { from { transform: var(--in-t, translateY(calc(100% + 12px))); opacity: var(--in-o, 1); } }
@@ -1011,7 +1011,7 @@ dialog.sheet.dragging { transition: none; }
 @keyframes sheet-fade-out { from { opacity: var(--from-o, 1); } to { opacity: 0; } }
 /* while a sheet is up, the page behind steps back, and holds still: its glass unblurred, and nothing on it (or the
    sky) moving (under the dim it looks the same, and the sheet's own glass isn't blurred afresh every frame) */
-.page { transition: transform 0.5s var(--glide); }
+.page { transition: transform var(--dur-sheet-in) var(--glide); }
 /* (named one by one, the panes of glass and the hero's icon, the one thing on the page that moves of itself: a rule
    for everything on the page would have every one of its thousands of parts restyled as a sheet came and went) */
 body.sheet-up .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .map-zoom, :is(.radar-centre, .map-layers), .radar-credit, .rc-t, .radar-dry, .layer-menu),
@@ -1069,7 +1069,8 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 .pc-li { position: relative; }
 .place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: var(--ifl-radius-row, 16px); cursor: pointer; text-align: left; color: var(--text);
   background: var(--ifl-surface-2); box-shadow: none;
-  transition: width 0.35s var(--glide), filter var(--dur-fast); text-shadow: none; }
+  transition: width var(--dur-release) var(--glide), transform var(--dur-release) var(--spring), background-color var(--dur-fast), filter var(--dur-fast); text-shadow: none; }
+.place-card:active { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--dur-press); }
 .place-card[aria-current="true"] { box-shadow: inset 0 0 0 1.5px var(--ifl-accent-fill);  background: color-mix(in srgb, var(--ifl-accent-fill) 20%, var(--ifl-surface)); }
 .pc-li.swiped .place-card, .pc-li:has(.pc-del:focus-visible) .place-card { width: calc(100% - 100px); }
 .pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
@@ -1093,9 +1094,9 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
   .pc-bin:hover { background-color: rgba(0, 0, 0, 0.5); }
   .pc-r { transition: opacity var(--dur-fast); }
   .pc-li:hover .pc-r { opacity: 0; }
-  .place-card:hover { filter: brightness(1.08); }
+  .place-card:hover { filter: brightness(1.04); }
 }
-@media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: opacity var(--dur-fast), filter var(--dur-fast); } }
+@media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: none; } .place-card:active { transform: none; } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
 /* (finding you: its arrow turning as the bar's does, app.js locate) */
 #use-location.busy .g { animation: spin 1s linear infinite; }
@@ -1122,7 +1123,7 @@ fieldset.opt:has(> .choice) { display: block; }
 .choice:has(> label:nth-child(3) > input:checked) { --i: 2; }
 .choice:has(> label:nth-child(4) > input:checked) { --i: 3; }
 .choice::before { content: ""; position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 999px;
-  transform: translateX(calc(var(--i) * 100%)); transition: transform 0.42s var(--glide);
+  transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-release) var(--spring);
   background: var(--ifl-raised);
   box-shadow: var(--ifl-shadow-control); }
 .choice:not(:has(input:checked))::before { opacity: 0; }
@@ -1135,16 +1136,21 @@ fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid v
 /* switches */
 label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12px; }
 .switch input[type="checkbox"] { -webkit-appearance: none; appearance: none; order: 9; margin: 0 0 0 auto; flex: none; position: relative; width: 52px; height: 32px; border-radius: 999px; cursor: pointer;
-  background: var(--line); box-shadow: inset 0 0 0 1px var(--line); transition: background-color 0.3s; }
+  background: var(--line); box-shadow: inset 0 0 0 1px var(--line); transition: background-color var(--dur-fast); }
 .switch input[type="checkbox"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 999px;
   background: linear-gradient(180deg, #ffffff, #eef1f6); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12), inset 0 -1px 1px rgba(0, 0, 0, 0.06);
-  transition: transform 0.45s var(--spring), width 0.25s var(--spring); }
+  transition: transform var(--dur-release) var(--spring), width var(--dur-fast) var(--spring); }
 .switch input[type="checkbox"]:checked { background: var(--good); }
 .switch input[type="checkbox"]:checked::before { transform: translateX(20px); }
 /* pressed, the knob stretches like a drop of glass */
 .switch input[type="checkbox"]:active::before { width: 34px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 244, 250, 0.82)); }
 .switch input[type="checkbox"]:checked:active::before { transform: translateX(14px); }
 .switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .switch input[type="checkbox"], .switch input[type="checkbox"]::before { transition: none; }
+  .switch input[type="checkbox"]:active::before { width: 28px; }
+  .switch input[type="checkbox"]:checked:active::before { transform: translateX(20px); }
+}
 /* a time to choose (app.js fillTimes: a quarter of an hour apart, said as the Clock setting says them), in a chip */
 select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: var(--ifl-surface-2); border: 0; border-radius: var(--ifl-radius-row, 16px);
   padding: 5px 10px; box-shadow: none; cursor: pointer; }
@@ -1155,7 +1161,7 @@ select.at:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2
 .np-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-name small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
 .np-chip { position: relative; flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
-  background-color: var(--ifl-surface-2); box-shadow: none; transition: background-color 0.2s, color 0.2s; }
+  background-color: var(--ifl-surface-2); box-shadow: none; transition: background-color var(--dur-fast), color var(--dur-fast); }
 /* (a finger's 44 points to tap, above and below it, as it looks; not either side, into the chip beside it) */
 .np-chip::after { content: ""; position: absolute; inset: -5px 0; border-radius: inherit; }
 .np-chip[aria-pressed="true"] { color: var(--ifl-on-accent); background-color: var(--ifl-accent-fill); box-shadow: none; }
@@ -1177,7 +1183,7 @@ select.at:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2
 .acct-txt span { font-size: 13.5px; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 .acct-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px; border-radius: 999px; border: 0; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; color: var(--text); background-color: rgba(255, 255, 255, 0.1);
   transition: filter var(--dur-fast), background-color var(--dur-fast), transform var(--dur-release) var(--spring), opacity var(--dur-fast); }
-.acct-btn:not(:disabled):active { transform: scale(0.97); transition-duration: var(--dur-press); }
+.acct-btn:not(:disabled):active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .acct-btn:not(:disabled):hover { filter: brightness(1.12); } }
 .acct-btn.primary { background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); box-shadow: var(--ifl-shadow-control); }
 a.acct-btn { text-decoration: none; }
@@ -1191,7 +1197,7 @@ a.acct-btn { text-decoration: none; }
 .acct-ok { color: var(--ifl-accent-ink) !important; }
 /* the account's card: a way to its own page */
 .acct-card.go { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
-.acct-card.go:active { transform: scale(0.98); background-color: rgba(255, 255, 255, 0.12); transition-duration: var(--dur-press); }
+.acct-card.go:active { transform: scale(var(--ifl-press-card, .985)); background-color: rgba(255, 255, 255, 0.12); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .acct-card.go:hover { background-color: rgba(255, 255, 255, 0.11); } }
 .acct-card.go:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .acct-card .acct-txt { flex: 1; }
@@ -1219,18 +1225,18 @@ a.acct-btn { text-decoration: none; }
 .day-strip::-webkit-scrollbar { display: none; }
 .ds-day { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 46px; min-height: 52px; padding: 4px 2px; border: 0; background: none; border-radius: 14px; cursor: pointer; color: var(--text-2); }
 .ds-day span { font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-3); }
-.ds-day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color 0.3s, color 0.3s, transform 0.4s var(--spring); }
-.ds-day[aria-current] b { background: var(--ifl-accent-fill); color: var(--ifl-on-accent); transform: scale(1.06); }
+.ds-day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-release) var(--spring); }
+.ds-day[aria-current] b { background: var(--ifl-accent-fill); color: var(--ifl-on-accent); transform: scale(1.03); }
 .ds-day[aria-current] span { color: var(--text); }
-.ds-day:active b { transform: scale(0.9); transition-duration: var(--dur-press); }
+.ds-day:active b { transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .ds-day:not([aria-current]):hover b { background-color: rgba(255, 255, 255, 0.12); } }
 /* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
 #day-body, #detail-body { touch-action: pan-y pinch-zoom; }
-#day-body.from-right, #detail-body.from-right { animation: from-right 0.4s var(--glide); }
-#day-body.from-left, #detail-body.from-left { animation: from-left 0.4s var(--glide); }
-@keyframes from-right { from { opacity: 0; transform: translateX(36px); } }
-@keyframes from-left { from { opacity: 0; transform: translateX(-36px); } }
-@media (prefers-reduced-motion: reduce) { #day-body:is(.from-right, .from-left), #detail-body:is(.from-right, .from-left) { animation: c-fade 0.18s var(--ease); } .ds-day b { transition: background-color var(--dur-fast), color var(--dur-fast); } }
+#day-body.from-right, #detail-body.from-right { animation: from-right var(--ifl-motion-tab, .28s) var(--glide); }
+#day-body.from-left, #detail-body.from-left { animation: from-left var(--ifl-motion-tab, .28s) var(--glide); }
+@keyframes from-right { from { transform: translateX(var(--ifl-motion-distance, 8px)); } }
+@keyframes from-left { from { transform: translateX(calc(-1 * var(--ifl-motion-distance, 8px))); } }
+@media (prefers-reduced-motion: reduce) { #day-body:is(.from-right, .from-left), #detail-body:is(.from-right, .from-left) { animation: none; } .ds-day b { transition: background-color var(--dur-fast), color var(--dur-fast); } .ds-day[aria-current] b, .ds-day:active b { transform: none; } }
 .day-top { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
 .day-top .wi { width: 58px; height: 58px; }
 .day-top .dt-main { font-size: 18px; font-weight: 650; }
@@ -1259,8 +1265,8 @@ a.acct-btn { text-decoration: none; }
 /* ---------- radar ---------- */
 /* a button's two glyphs (play and pause; full screen and back) in one place: the one shown grows in as the other
    shrinks and blurs away, as iOS swaps its symbols */
-.icon-btn > .g-on, .icon-btn > .g-off { grid-area: 1 / 1; position: relative; z-index: 3; transition: opacity 0.2s, transform 0.42s var(--spring), filter 0.2s; }
-[data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { opacity: 0; transform: scale(0.3); filter: blur(4px); }
+.icon-btn > .g-on, .icon-btn > .g-off { grid-area: 1 / 1; position: relative; z-index: 3; transition: opacity var(--dur-fast), transform var(--dur-release) var(--spring); }
+[data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { opacity: 0; transform: scale(.78); }
 @media (prefers-reduced-motion: reduce) { .icon-btn > .g-on, .icon-btn > .g-off { transition: none; } }
 /* full screen: the card grows from its place (a view transition, radar.js) on iOS's curve, what's in it changing over
    quickly at the start rather than the two showing through each other all the way */
@@ -1311,8 +1317,8 @@ a.acct-btn { text-decoration: none; }
 /* "Tap to explore": at the map's foot with its scale and its ©, as far in from the edge, the same height as the ©; in
    once the credits have folded away (they share the foot) */
 .radar-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: inline-flex; align-items: center; height: 26px; padding: 0 12px; white-space: nowrap; font-size: 12.5px; font-weight: 600; border-radius: 999px; background-color: var(--map-panel);  color: var(--map-ink); }
-.radar-hint:not([hidden]) { animation: hint-in 0.45s var(--glide) both; }
-@keyframes hint-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
+.radar-hint:not([hidden]) { animation: hint-in var(--ifl-motion-enter, .36s) var(--glide) both; }
+@keyframes hint-in { from { transform: translateX(-50%) translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .radar-hint:not([hidden]) { animation: none; } }
 /* the dock, as Apple's Weather map has it: play, and what's on show (its kind over its day and time), then the
    timeline; in the card under the map, full screen a glass panel over the map's foot */
@@ -1342,9 +1348,9 @@ a.acct-btn { text-decoration: none; }
 .radar-slider::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--fill); }
 /* (the thumb: the fill's rounded end, a size up when it's held) */
 .radar-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -3px; border-radius: 50%; border: 0;
-  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.4s var(--spring); }
+  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform var(--dur-release) var(--spring); }
 .radar-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 0; background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
-.radar-slider:active::-webkit-slider-thumb { transform: scale(1.5); }
+.radar-slider:active::-webkit-slider-thumb { transform: scale(1.25); transition-duration: var(--dur-press); }
 .radar-slider:focus-visible { outline: none; }
 .radar-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--tint-blue), 0 1px 4px rgba(0, 0, 0, 0.3); }
 .radar-scale { position: relative; height: 20px; margin: 2px 14px 0; }
@@ -1378,7 +1384,8 @@ a.acct-btn { text-decoration: none; }
 .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
 /* the wind's: the wind or its gusts (radar.js gustSwitch), a small segmented choice beside its colours */
 .rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: var(--ifl-surface-2); box-shadow: none; }
-.rl-switch button { font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background-color 0.25s var(--glide), color 0.25s var(--glide); }
+.rl-switch button { font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-release) var(--spring); }
+.rl-switch button:active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--dur-press); }
 .rl-switch button[aria-pressed="true"] { background-color: var(--ifl-raised); color: var(--text); box-shadow: var(--ifl-shadow-control); }
 /* (small to look at, larger to tap: the wind's switch, the map's zoom, an insight's way in) */
 .rl-switch button { position: relative; }
@@ -1459,8 +1466,8 @@ body.no-scroll { overflow: hidden; }
 .map-zoom button + button { box-shadow: inset 0 1px 0 var(--map-line); }
 .map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
 /* the map's buttons give under a finger and spring back, as the rest do */
-.map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s;  color: var(--map-ink); }
-.map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
+.map-zoom button { transition: background-color var(--dur-fast), transform var(--dur-release) var(--spring), color var(--dur-fast);  color: var(--map-ink); }
+.map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--dur-press); }
 @media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
 .map-in, .map-out { position: relative; }
 .map-in::after, .map-out::after, :is(.radar-centre, .map-layers)::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
@@ -1470,10 +1477,10 @@ body.no-scroll { overflow: hidden; }
 .layer-wrap { position: relative; }
 .layer-menu { position: absolute; right: 46px; top: 0; z-index: 600; display: flex; flex-direction: column; min-width: 156px; padding: 5px; border-radius: 16px;
   background-color: var(--map-panel); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--ifl-shadow-card);
-  transform-origin: 100% 0; animation: menu-in 0.22s var(--glide); }
+  transform-origin: 100% 0; animation: menu-in var(--dur-release) var(--spring); }
 .layer-menu[hidden] { display: none; }
 /* (it closes the way it opened, a little quicker: radar.js shut) */
-@keyframes menu-in { from { opacity: 0; transform: scale(0.92); } }
+@keyframes menu-in { from { transform: translateY(-4px) scale(.98); } }
 .layer-menu button { -webkit-appearance: none; appearance: none; border: 0; background: none; color: var(--map-ink); font: inherit; font-size: 14px; font-weight: 500; text-align: left; padding: 9px 12px; border-radius: var(--ifl-radius-row, 16px); cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 44px; transition: background-color var(--dur-fast); }
 @media (hover: hover) and (pointer: fine) { .layer-menu button:not([aria-pressed="true"]):hover { background-color: rgba(255, 255, 255, 0.08); } .radar.light-map .layer-menu button:not([aria-pressed="true"]):hover { background-color: rgba(0, 0, 0, 0.05); } }
 .layer-menu button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.16); font-weight: 650; }
@@ -1482,7 +1489,7 @@ body.no-scroll { overflow: hidden; }
 .radar.light-map .layer-menu { background-color: var(--map-panel); box-shadow: var(--ifl-shadow-card); }
 .radar.light-map .layer-menu button { color: #1c1c1e; }
 .radar.light-map .layer-menu button[aria-pressed="true"] { background: rgba(0, 0, 0, 0.07); }
-@media (prefers-reduced-motion: reduce) { .layer-menu { animation: c-fade 0.15s var(--ease); } }
+@media (prefers-reduced-motion: reduce) { .layer-menu { animation: none; } }
 /* on a phone, in the card (where a tap opens the map full screen, to pinch and pan), no zoom or back-to-the-place:
    the layers alone; full screen, all of them */
 @media (pointer: coarse) { .radar:not(.radar-big) :is(.map-zoom, .radar-centre) { display: none; } }
@@ -1533,13 +1540,13 @@ body.no-scroll { overflow: hidden; }
 .map-other[data-empty="1"] .mo-b { opacity: 0; scale: 0.6; }
 /* (each comes in as it's put on the map, as the place's own does, rather than popping up there) */
 @starting-style { .map-other .mo-b { opacity: 0; scale: 0.6; } }
-.map-other:active .mo-b { transform: translateX(-50%) scale(0.92); }
+.map-other:active .mo-b { transform: translateX(-50%) scale(.96); }
 .map-other:focus-visible { outline: none; }
 .map-other:focus-visible .mo-b { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 /* a reading where the map's tapped (radar.js readAt): the layer's say there, and any warning it's in, over a dot */
 .map-read { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
 .mr-b { position: absolute; left: 0; bottom: 12px; transform: translateX(calc(-50% + var(--dx, 0px))); display: grid; gap: 2px; width: max-content; max-width: 172px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
-  color: #fff; background-color: rgba(18, 24, 36, 0.86); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: read-in 0.22s var(--glide) backwards; }
+  color: #fff; background-color: rgba(18, 24, 36, 0.86); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: read-in var(--dur-release) var(--spring) backwards; }
 .mr-v { font-size: 13.5px; font-weight: 650; line-height: 1.15; }
 .mr-w { font-size: 11px; font-weight: 650; line-height: 1.15; color: #ffd60a; white-space: normal; text-wrap: balance; }
 .mr-w:empty { display: none; }
@@ -1564,8 +1571,8 @@ body.no-scroll { overflow: hidden; }
 .light-map .map-read.side-l .mr-b::after { border-top-color: transparent; border-left-color: rgba(255, 255, 255, 0.92); }
 .light-map .map-read.below .mr-b::after { border-top-color: transparent; border-bottom-color: rgba(255, 255, 255, 0.92); }
 /* (it comes in, wherever it's put beside its spot, and goes the same way, a little quicker: radar.js) */
-@keyframes read-in { from { opacity: 0; translate: 0 4px; scale: 0.94; } }
-@media (prefers-reduced-motion: reduce) { .mr-b { animation: c-fade 0.15s var(--ease); } .mo-b, .mp-bubble { transition: opacity var(--dur-fast); } }
+@keyframes read-in { from { translate: 0 4px; scale: .98; } }
+@media (prefers-reduced-motion: reduce) { .mr-b { animation: none; } .mo-b, .mp-bubble { transition: opacity var(--dur-fast); } }
 /* (before the page has its temperature: the dot alone) */
 .map-pin:not([data-on="1"]) .mp-bubble { opacity: 0; scale: 0.6; }
 .mp-name { transition: opacity 0.25s var(--ease); }
@@ -1586,7 +1593,7 @@ body.no-scroll { overflow: hidden; }
 .radar.light-map .base-tiles { filter: saturate(0.2) brightness(1.04) contrast(0.92); }
 /* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
 .radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 13px; cursor: pointer;
-  color: var(--map-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--map-panel); transition: transform 0.42s var(--spring), filter 0.25s; }
+  color: var(--map-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--map-panel); transition: transform var(--dur-release) var(--spring); }
 .radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
 /* (its names in a line or two (radar.js credited), in glass reaching left from the ©: the © itself never changes size, so
    nothing moves as they fold away into it, clipped back to it) */
@@ -1595,7 +1602,7 @@ body.no-scroll { overflow: hidden; }
   clip-path: inset(0 round 13px); transition: clip-path 0.6s var(--glide), opacity 0.3s 0.25s; pointer-events: none; }
 .radar.light-map .radar-credit .rc-t { background-color: var(--map-panel); box-shadow: var(--ifl-shadow-control); }
 .radar-credit.folded .rc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
-.radar-credit:active { transform: scale(0.88); filter: brightness(1.18); transition-duration: 0.1s; }
+.radar-credit:active { transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--dur-press); }
 @media (hover: hover) { .radar-credit.folded:hover .rc-t, .radar-credit.folded:focus-visible .rc-t { clip-path: inset(0 round 13px); opacity: 1; transition: clip-path 0.4s var(--glide), opacity 0.15s; } }
 /* (a picture over the map fading away under the next: mapleaf.js fadeOut) */
 .radar .rv-was { transition: opacity 0.26s ease; }
@@ -1604,6 +1611,15 @@ body.no-scroll { overflow: hidden; }
 .radar :is(.rv-mix, .rv-field) { transition: opacity 0.26s var(--ease); }
 @media (prefers-reduced-motion: reduce) { .radar :is(.rv-was, .rv-mix, .rv-field) { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .radar-credit, .radar-credit .rc-t { transition: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .map-zoom button, .rl-switch button { transition: background-color var(--dur-fast), color var(--dur-fast); }
+  .radar-slider.jump, .radar-note, .radar-status, .wind-flow, .acct-btn, .acct-card.go { transition: none; }
+  .map-zoom button:not(:disabled):active, .radar-credit:active, .rl-switch button:active, .acct-btn:not(:disabled):active, .acct-card.go:active, .me-btn:active { transform: none; }
+  .map-other:active .mo-b { transform: translateX(-50%); }
+  .radar-slider:active::-webkit-slider-thumb { transform: none; }
+  .radar-slider:active::-moz-range-thumb { transform: none; }
+}
 
 /* ---------- credits ---------- */
 /* each source a row in a group, as Settings lists them; out to its site */
@@ -1624,7 +1640,7 @@ body.no-scroll { overflow: hidden; }
 .warn-link { margin: 16px 0 0; }
 .warn-link a { display: inline-flex; align-items: center; min-height: 44px; color: var(--tint-blue); font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }
 .credits a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; color: inherit; text-decoration: none; transition: opacity 0.2s; }
-.credits a:active { opacity: 0.55; transition-duration: var(--dur-press); }
+.credits a:active { text-decoration: underline; text-underline-offset: 3px; }
 .credits a > span { flex: 1; min-width: 0; }
 .credits b { display: block; font-weight: 600; }
 .credits small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--text-3); }
@@ -1676,8 +1692,8 @@ body.no-scroll { overflow: hidden; }
 /* the list: each folder a row, its own coloured icon, what's in it said beside it, and a chevron */
 .folders > li + li { background-position: 58px 0; background-size: calc(100% - 58px) 0.5px; }
 .folder { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 16px 0 14px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; text-align: left; cursor: pointer;
-  transition: background-color 0.2s; }
-.folder:active { background-color: rgba(255, 255, 255, 0.09); transition-duration: 0.05s; }
+  transition: background-color var(--dur-fast); }
+.folder:active { background-color: var(--ifl-press); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .folder:hover { background-color: rgba(255, 255, 255, 0.06); } .grp-out:hover { background-color: rgba(255, 105, 97, 0.1); } .act-open:hover { background-color: rgba(255, 255, 255, 0.06); } }
 .folder:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -3px; border-radius: 16px; }
 .folder::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 0 2px; border: solid var(--text-3); border-width: 2px 2px 0 0; transform: rotate(45deg); }
@@ -1849,7 +1865,7 @@ html { touch-action: pan-x pan-y; }
 
 /* you */
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
-.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-card:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
   background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
@@ -1865,7 +1881,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-row.off .ifm-ic { opacity: 0.55; }
 .ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
-.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row.go { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+.ifm-row.go:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
@@ -1898,10 +1915,10 @@ html { touch-action: pan-x pan-y; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
-  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform 0.2s; }
+  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-foot .ifm-out svg { width: 19px; height: 19px; stroke-width: 2; }
 .ifm-foot .ifm-out::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
-.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(0.92); }
+.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 
 /* notifications on this device, asked for in one tap: a sheet from the foot */
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
@@ -1944,7 +1961,7 @@ body, body *:not(input):not(textarea):not(select):not([contenteditable]):not([co
 img, svg, a { -webkit-user-drag: none; }
 /* (--p animated as a number: the header's height, title size and band all move together, smoothly, as it goes compact) */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
-.ifh { transition: --p 0.34s cubic-bezier(0.32, 0.72, 0, 1); }
+.ifh { transition: --p var(--ifl-motion-layout) var(--ifl-motion-glide); }
 @media (prefers-reduced-motion: reduce) { .ifh { transition-duration: 0.01s; } }
 .ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
@@ -1964,12 +1981,12 @@ img, svg, a { -webkit-user-drag: none; }
 .ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
 .ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
   display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
-  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
 .ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
-.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-me:active, .ifh-act:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifh-t { min-width: 0; display: grid; }
 .ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
@@ -1985,7 +2002,7 @@ img, svg, a { -webkit-user-drag: none; }
   -webkit-backdrop-filter: none; backdrop-filter: none;
   box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -2004,9 +2021,9 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
-.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
 .ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
@@ -2027,19 +2044,19 @@ img, svg, a { -webkit-user-drag: none; }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
-  -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
+  -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
 .ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
-.ifl-tab:active { transform: scale(0.92); }
+.ifl-tab:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
-.ifl-back:active { transform: scale(0.94); }
+.ifl-back:active { transform: scale(var(--ifl-press-scale, 0.97)); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 /* Chat's engine: its page in a frame over the whole page, see-through, in a dialog of its own. Shown (.on), the dialog's
    modal, in the top layer over every sheet of the page's own; put away, it's shut but still laid out (never display:
@@ -2116,7 +2133,11 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
   --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
-  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-press: 0.09s; --ifl-motion-release: 0.42s; --ifl-motion-fast: 0.16s;
+  --ifl-motion-enter: 0.36s; --ifl-motion-exit: 0.22s; --ifl-motion-layout: 0.28s;
+  --ifl-motion-page: 0.46s; --ifl-motion-tab: 0.28s; --ifl-motion-sheet: 0.46s;
+  --ifl-motion-stagger: 24ms; --ifl-motion-stagger-cap: 120ms; --ifl-motion-distance: 8px;
+  --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --ifl-chrome-blur: none;
@@ -2155,10 +2176,11 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-pop.open { transform: none; }
 .ifm-pop.closing { transform: translateY(-3px) scale(0.97);
-  transition: transform 0.22s var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
+  transition: transform var(--ifl-motion-exit) var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
 .ifm-grp, .ifm-card { border-radius: calc(var(--ifl-radius-card) - var(--ifl-space-2)); }
-.ifm-card { padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
+.ifm-card { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
 .ifm-layer { transition: background-color var(--ifl-motion-fast) ease; }
+.ifm-layer:not(.open), .ifa-layer:not(.on) { pointer-events: none; }
 .ifm-layer.open { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifa-sheet { border-radius: var(--ifl-radius-sheet) var(--ifl-radius-sheet) 0 0;
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
@@ -2166,6 +2188,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+:is(.ifa-go, .ifa-later, .ifb-btn):active:not(:disabled) { transform: scale(var(--ifl-press-scale)); transition-duration: var(--ifl-motion-press); }
 .ifs-btn { position: relative; }
 .ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
@@ -2181,11 +2205,14 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 :is(.pill, .btn, .ifl-btn) { max-width: 100%; overflow-wrap: anywhere; }
 :is(.pill, .btn, .ifl-btn):focus-visible { outline: 2px solid var(--tint-text, var(--tint, currentColor)); outline-offset: 3px; }
 
+/* CSS presentation motion rests while data and navigation retain their own lifetimes. */
+html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
+
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
-  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after { transition: none; }
-  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
+  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
+  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active, .ifm-row:active, .ifm-card:active, .ifa-go:active, .ifa-later:active, .ifb-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
@@ -2208,7 +2235,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .wx-ifh .me-btn { --ifh-photo: var(--ifl-accent-gradient); --ifh-photo-ink: var(--ifl-on-accent); }
 .wx-ifh .place { flex: 1; max-width: none; min-height: 44px; padding: 0; border-radius: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .wx-ifh .place::before, .wx-ifh .place::after { display: none !important; }
-.wx-ifh .place:active { transform: none; filter: none; opacity: 0.7; }
+.wx-ifh .place:active { transform: none; filter: none; background-color: var(--ifl-press); }
 .wx-ifh .place-name { font-size: calc(32px - 12px * var(--p)); line-height: 1.12; font-weight: 700; letter-spacing: calc(0.3px - 0.6px * var(--p)); }
 .wx-ifh .place-name::after { width: calc(9px - 3px * var(--p)); height: calc(9px - 3px * var(--p)); border-width: 0 2.6px 2.6px 0; margin-left: 8px; }
 .wx-ifh .pg-name { right: 18px; }

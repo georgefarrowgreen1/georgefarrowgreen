@@ -1164,8 +1164,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.15";
-const NEWS = "A unified neutral design with clearer cards and green controls";
+const BUILD = "2.16";
+const NEWS = "Smoother springs, transitions and interrupted motion across InFlite";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -3419,8 +3419,8 @@ function pwField(label, input) {
   input.addEventListener("blur", () => shown(false));
   return h("div.pwf", {}, h("label.field", {}, h("span", { text: label }), h("div.pw", {}, input, eye)), caps);
 }
-// (what went wrong fades in with a shake, or just fades with Reduce Motion; in a card on the page the card goes to its
-// new size as it's said or cleared, the line under it with it; a sheet does that by itself, fitting what's in it)
+// (feedback remains readable during its small movement; in a card on the page the
+// card goes to its new size as it's said or cleared; a sheet fits itself)
 function say(el, text, input, bad = !!text) {
   if (!el) return;
   const change = () => { el.setAttribute("role", bad ? "alert" : "status"); el.textContent = text; el.classList.toggle("bad", bad); }, box = text !== el.textContent && !el.closest("#sheet") && el.closest(".signin");
@@ -3429,20 +3429,26 @@ function say(el, text, input, bad = !!text) {
   if (input) input.focus();
 }
 function shake(el) {
-  el.animate(still.matches ? [{ opacity: 0 }, { opacity: 1 }]
-    : [{ opacity: 0, transform: "translateX(0)" }, { opacity: 1, transform: "translateX(-6px)" }, { transform: "translateX(5px)" }, { transform: "translateX(-3px)" }, { transform: "translateX(0)" }],
-    { duration: still.matches ? ms("--dur-fast") : 380, easing: tok("--ease-out") });
+  // A method-switch fade can still be running when a fast failure arrives.
+  // Its empty feedback line must not keep the newly available error dimmed.
+  for (const animation of el.getAnimations()) animation.cancel();
+  if (still.matches || document.hidden) return;
+  const animation = el.animate([{ transform: "translateX(0)" }, { transform: "translateX(-3px)" },
+    { transform: "translateX(2px)" }, { transform: "translateX(-1px)" }, { transform: "translateX(0)" }],
+    { duration: 220, easing: tok("--ease-out") });
+  animation.id = "account-feedback";
 }
 // (a button busy: as wide as it was, so what's beside it stays put, and what it says now faded in; the focus back on
 // it after, if it had it, as being held loses it)
 async function busy(btn, label, fn) {
-  const kids = [...btn.childNodes], was = btn.disabled, wide = btn.style.minWidth, had = document.activeElement === btn;
+  const kids = [...btn.childNodes], was = btn.disabled, wasBusy = btn.getAttribute("aria-busy"), wide = btn.style.minWidth, had = document.activeElement === btn;
   btn.style.minWidth = `${btn.offsetWidth}px`;
-  btn.disabled = true; btn.replaceChildren(h("span.spin"), h("span", { text: label }));
+  btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(h("span.spin"), h("span", { text: label }));
   for (const k of btn.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
   try { return await fn(); }
   finally {
     btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
+    if (wasBusy === null) btn.removeAttribute("aria-busy"); else btn.setAttribute("aria-busy", wasBusy);
     if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
   }
 }

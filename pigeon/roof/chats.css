@@ -49,6 +49,8 @@
 .m-chats .ch-reqs { grid-column: 1; color: var(--text-2); font-size: 14px; overflow-wrap: anywhere; }
 .m-chats .ch-req .ifl-badge { grid-column: 2; grid-row: 1 / span 2; background: var(--acc-fill); color: var(--on-acc); }
 .m-chats .ch-news { font-weight: 600; }
+.m-chats .ch-req, .m-chats .ch-news { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1)), background-color var(--ifl-motion-fast, .16s) ease; }
+.m-chats .ch-req:active, .m-chats .ch-news:active { transform: scale(var(--ifl-press-scale-card, .985)); transition-duration: var(--ifl-motion-press, .09s); }
 
 /* (In the Air) */
 .m-chats .ch-air { margin-bottom: 14px; }
@@ -86,7 +88,7 @@
 .m-chats .ch-b { position: relative; max-width: 76%; padding: 8px 13px 9px; border: 0; border-radius: 21px; background: var(--ch-bubble-in); color: var(--text);
   font: inherit; font-size: 17px; line-height: 22px; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; cursor: pointer;
   transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)); }
-.m-chats .ch-b:active { transform: scale(.985); }
+.m-chats .ch-b:active { transform: scale(var(--ifl-press-scale-card, .985)); transition-duration: var(--ifl-motion-press, .09s); }
 .m-chats .ch-m.me .ch-b { background: var(--ch-bubble-me); color: var(--ch-on-me); }
 .m-chats .ch-m.me .ch-b a { color: inherit; }
 .m-chats .ch-b a { color: var(--acc-ink); text-decoration: underline; }
@@ -98,6 +100,8 @@
 .m-chats .ch-ft { display: block; margin-top: 3px; font-size: 12px; opacity: 0.8; font-variant-numeric: tabular-nums; }
 .m-chats .ch-photo, .m-chats .ch-vn { display: block; min-width: 160px; min-height: 44px; margin: -2px -6px 4px; padding: 10px 12px; border: 0; border-radius: 16px; background: var(--ifl-surface-2, var(--glass-ctl)); color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 .m-chats .ch-vn { background: var(--ch-bubble-me); color: var(--ch-on-me); }
+.m-chats .ch-photo, .m-chats .ch-vn { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1)), opacity var(--ifl-motion-fast, .16s) ease; }
+.m-chats .ch-photo:not(.done):active, .m-chats .ch-vn:active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--ifl-motion-press, .09s); }
 .m-chats .ch-m.me .ch-photo { background: color-mix(in srgb, var(--ch-on-me) 12%, transparent); color: var(--ch-on-me); }
 /* (a view-once photo that can't be opened here: yours, or theirs once opened. What became of it, not a button) */
 .m-chats .ch-photo.done { color: var(--label-2); font-style: italic; cursor: default; }
@@ -106,6 +110,7 @@
 .m-chats .ch-r { padding: 1px 6px; border-radius: var(--r-pill, 999px); background: var(--glass-strong); box-shadow: var(--edge); font-size: 13px; }
 .m-chats .ch-r.mine { box-shadow: inset 0 0 0 1.5px var(--acc); }
 .m-chats .ch-typing { margin: 6px 4px; color: var(--text-3); font-size: 13.5px; font-style: italic; }
+.m-chats .ch-typing:not([hidden]) { animation: ch-soft-in var(--ifl-motion-fast, .16s) ease both; }
 .m-chats .ch-cwarn:empty { display: none; }
 .m-chats .ch-cwarn { margin: 6px 0 10px; }
 
@@ -124,18 +129,32 @@
 .m-chats .ch-send:not(:disabled):active, .m-chats .ch-attach:active, .m-chats .ch-voice:active { transform: scale(.93); transition-duration: var(--dur-press, .1s); }
 .m-chats .ch-send { background: var(--ifl-accent-gradient, var(--acc-fill)); color: var(--ifl-on-accent, var(--on-acc)); box-shadow: var(--ifl-shadow-control, none); }
 .m-chats .ch-send:disabled { opacity: 0.4; cursor: default; }
+.m-chats .ch-send:not(:disabled) .ifl-glyph { animation: ch-send-ready .24s var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1)) both; }
 .m-chats .ch-send svg, .m-chats .ch-attach svg, .m-chats .ch-voice svg, .m-chats .ch-send .ifl-glyph { width: 20px; height: 20px; }
 .m-chats .ch-send:focus-visible, .m-chats .ch-attach:focus-visible, .m-chats .ch-voice:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: 2px; }
 .m-chats .ch-latest { position: absolute; right: 16px; bottom: calc(100% + 10px); display: inline-flex; align-items: center; gap: 7px; min-height: 44px; max-width: calc(100% - 32px); padding: 0 15px; border: 1px solid var(--line); border-radius: var(--r-pill, 999px); background: var(--solid); box-shadow: var(--lift); color: var(--acc-ink); font: 600 14px/1.25 var(--font); cursor: pointer; transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)); }
 .m-chats .ch-latest .ifl-glyph { width: 17px; height: 17px; }
 .m-chats .ch-latest:active { transform: scale(.96); }
 .m-chats .ch-latest:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: 3px; }
+.m-chats .ch-latest:not([hidden]) { animation: ch-latest-enter .28s var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1)) both; }
+
+/* Render hooks mark only live additions and a letter that has just opened;
+   history, receipt patches and repeated syncs keep their existing position. */
+.m-chats .ch-m.ch-arriving { transform-origin: bottom left; animation: ch-message-enter var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, cubic-bezier(.22, 1, .36, 1)) both; }
+.m-chats .ch-m.me.ch-arriving { transform-origin: bottom right; }
+.m-chats .ch-m.ch-revealing { animation: ch-message-reveal .24s ease both; }
+@keyframes ch-message-enter { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes ch-message-reveal { from { opacity: .35; } to { opacity: 1; } }
+@keyframes ch-send-ready { from { opacity: .35; transform: scale(.8); } to { opacity: 1; transform: none; } }
+@keyframes ch-latest-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes ch-soft-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* (wide screens: the chat in a column) */
 @media (min-width: 980px) { .m-chats .ch-chat { left: 50%; right: auto; width: 820px; margin-left: -410px; } }
 @media (prefers-reduced-motion: reduce) {
   .m-chats * { transition: none !important; animation: none !important; }
-  .m-chats .ch-row:active, .m-chats .ch-airp:active, .m-chats .ch-b:active, .m-chats .ch-send:active, .m-chats .ch-attach:active, .m-chats .ch-voice:active, .m-chats .ch-latest:active { transform: none !important; }
+  .m-chats .ch-row:active, .m-chats .ch-airp:active, .m-chats .ch-b:active, .m-chats .ch-send:active, .m-chats .ch-attach:active, .m-chats .ch-voice:active, .m-chats .ch-latest:active,
+  .m-chats .ch-req:active, .m-chats .ch-news:active, .m-chats .ch-photo:active, .m-chats .ch-vn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .m-chats .ch-composer { background: var(--solid); -webkit-backdrop-filter: none; backdrop-filter: none; }

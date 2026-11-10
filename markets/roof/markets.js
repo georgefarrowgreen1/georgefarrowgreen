@@ -24,8 +24,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.30";
-export const NEWS = "A unified neutral design with clearer cards and green controls";
+export const BUILD = "2.31";
+export const NEWS = "Smoother springs, transitions and interrupted motion across InFlite";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }

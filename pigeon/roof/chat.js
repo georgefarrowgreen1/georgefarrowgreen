@@ -67,6 +67,9 @@ function build(host, ctx) {
 
   let headerAvatar = null, headerName = "";
   let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
+  // Only identities in the current rendered window are remembered. A receipt,
+  // sync or older page may replace a keyed row without making it a new arrival.
+  let paintedMessages = null, newestMessageAt = 0;
   const vv = globalThis.visualViewport;
   const t = ticker(fw, () => { tick(msgs); header(); });
 
@@ -202,6 +205,27 @@ function build(host, ctx) {
     scroller.scrollTop += (n.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - a.off;
     return true;
   };
+  function arrivals(c) {
+    const list = c.msgs || [], previous = paintedMessages;
+    const next = new Map(list.map((m) => [m.id, m.from !== "me" && !!m.flight?.flying]));
+    const allowed = previous && stick && fw.visible() && fw.motion?.() === "full" && !doc.documentElement?.hasAttribute?.("data-motion-paused");
+    const fresh = allowed ? list.filter((m) => !previous.has(m.id) && m.at >= newestMessageAt && m.kind !== "system" && !m.recalled) : [];
+    const arriving = new Set(fresh.length <= 3 ? fresh.map((m) => m.id) : []);
+    const revealed = new Set(allowed ? list.filter((m) => previous.get(m.id) === true && !next.get(m.id) && !m.recalled && m.kind !== "system").map((m) => m.id) : []);
+    paintedMessages = next;
+    newestMessageAt = list.reduce((at, m) => Math.max(at, Number(m.at) || 0), newestMessageAt);
+    if (!arriving.size && !revealed.size) return;
+    for (const row of msgs.querySelectorAll(".ch-m[data-mid]")) {
+      if (arriving.has(row.dataset.mid)) row.classList.add("ch-arriving");
+      else if (revealed.has(row.dataset.mid)) row.classList.add("ch-revealing");
+    }
+  }
+  const settleMotion = () => {
+    for (const row of msgs.querySelectorAll(".ch-arriving, .ch-revealing")) row.classList.remove("ch-arriving", "ch-revealing");
+  };
+  const onMotionEnd = (e) => {
+    if (e.target.parentNode === msgs && (e.animationName === "ch-message-enter" || e.animationName === "ch-message-reveal")) e.target.classList.remove("ch-arriving", "ch-revealing");
+  };
   const draw = framed(() => {
     if (!id) return;
     const c = store.get(`chat:${id}`), hold = !stick && msgs.children.length ? topMsg() : null;
@@ -212,6 +236,7 @@ function build(host, ctx) {
       const w = who();
       msgs.replaceChildren(el("p", { class: "ch-hello" }, el("b", { text: "Say hello" }), el("span", { text: `Messages to ${w.kind === "group" ? w.name : first(w.name)} are end-to-end encrypted.` })));
     } else patchList(msgs, itemsOf(c), keyOf, itemEl);
+    arrivals(c);
     tick(msgs, now);
     put(warn, who().f?.keyChanged ? el("div", { class: "ch-warn", role: "note" },
       el("span", { text: `${first(who().name)}’s security key has changed. Check the safety number before you send anything.` }),
@@ -304,7 +329,7 @@ function build(host, ctx) {
       case "safety": ctx.open.safety(id); break;
     }
   };
-  const onHidden = () => flushDraft();
+  const onHidden = () => { flushDraft(); settleMotion(); };
   // (the chat on screen and the page in sight: marked read, as Chat's loadChat does)
   const markRead = () => { if (id && fw.visible()) svc.call("read", id).catch(() => {}); };
   box.addEventListener("click", onClick);
@@ -314,6 +339,8 @@ function build(host, ctx) {
   input.addEventListener("focus", fit);
   input.addEventListener("blur", fit);
   scroller.addEventListener("scroll", onScroll, { passive: true });
+  msgs.addEventListener("animationend", onMotionEnd);
+  msgs.addEventListener("animationcancel", onMotionEnd);
 
   let hiddenOff = null;
   function leave() {
@@ -330,6 +357,7 @@ function build(host, ctx) {
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
     msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = ""; latest.hidden = true;
+    paintedMessages = null; newestMessageAt = 0;
     store.apply(`chat:${id}`, null);
     store.apply(`typing:${id}`, null);
     headerAvatar = null; headerName = "";
@@ -396,6 +424,8 @@ function build(host, ctx) {
       input.removeEventListener("focus", fit);
       input.removeEventListener("blur", fit);
       scroller.removeEventListener("scroll", onScroll);
+      msgs.removeEventListener("animationend", onMotionEnd);
+      msgs.removeEventListener("animationcancel", onMotionEnd);
       box.remove();
     },
   };

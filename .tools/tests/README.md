@@ -118,6 +118,14 @@ cookies and account errors against both source and minified assets. It also hold
 to check the native cover, its reuse without a second download, and stable card geometry before enhancement.
 No real account credentials are needed.
 
+The shared motion pass has isolated browser checks in `account-status-motion.test.cjs`, `chats-motion.test.cjs`
+and `weather-motion-ui.test.cjs`. They check interrupted transitions, reduced motion, retained drafts and chart/text
+readability without real accounts or weather requests. The sibling InFlite repository runs
+`tests/today-mail-motion.test.cjs` with `npm run test:web`, alongside the real framework sheet and navigation checks.
+The presentation-only lifecycle guard lives in `.tools/inflite/motion.js`; run `node .tools/motion.mjs` after editing it
+to update the existing early entry scripts in both repositories. It pauses decorative CSS motion while hidden and
+resumes it after browser restoration; data refresh and authentication keep their own lifecycle ownership.
+
 The homepage contour loader has its own browser regression:
 `CHROMIUM=/usr/bin/chromium node --test .tools/tests/homeloader.test.cjs`.
 It checks readiness against delayed cover/text/account requests, bounded failure recovery, missing assets/scripts,

@@ -35,7 +35,9 @@
 .b.me:not(.up,.sending,.lost,.waiting,.failed) .cd-delta.cd-changed{background:rgba(255,204,0,.28);color:#fff}
 .cd-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;font-size:13px;color:var(--cd-ink-2)}
 .cd-open{display:inline-flex;align-items:center;min-height:44px;color:var(--cd-btn-ink);font-weight:600;text-decoration:none}
-.cd-open:active{opacity:.6}
+.cd-open:active{opacity:.65}
+.cd-open{transition:opacity var(--ifl-motion-fast,.18s) ease}
+.cd-cell{transition:background-color var(--ifl-motion-fast,.18s) ease,box-shadow var(--ifl-motion-fast,.18s) ease}
 
 /* the glyphs */
 .cd-glyph{flex:none;width:30px;height:30px;fill:none;stroke-linecap:round;stroke-linejoin:round}
@@ -50,10 +52,10 @@
 .cd-ask{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;margin-top:6px;font-size:14px;color:inherit;opacity:.92}
 .cd-ask.cd-done{opacity:.75}
 .cd-acts{display:flex;gap:6px}
-.cd-btn,.cd-chip{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:0;border-radius:999px;background:var(--cd-btn);color:var(--cd-btn-ink);font:inherit;font-size:14.5px;font-weight:600;white-space:normal;overflow-wrap:anywhere;cursor:pointer;transition:transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1))}
+.cd-btn,.cd-chip{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:0;border-radius:999px;background:var(--cd-btn);color:var(--cd-btn-ink);font:inherit;font-size:14.5px;font-weight:600;white-space:normal;overflow-wrap:anywhere;cursor:pointer;transition:transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)),opacity var(--ifl-motion-fast,.18s) ease,background-color var(--ifl-motion-fast,.18s) ease}
 .cd-acts .cd-btn{flex:1;min-width:0;padding:0 8px}
 .cd-btn.cd-pri{background:var(--cd-pri);color:var(--cd-pri-ink)}
-.cd-btn:active,.cd-chip:active{transform:scale(.96)}
+.cd-btn:active,.cd-chip:active{transform:scale(.96);transition-duration:var(--ifl-motion-press,.1s)}
 .cd-btn:focus-visible,.cd-chip:focus-visible,.cd-open:focus-visible{outline:2px solid var(--cd-btn-ink);outline-offset:3px}
 .cd-btn:disabled,.cd-chip:disabled{opacity:.5;cursor:default}
 .cd-later{display:flex;flex-wrap:wrap;gap:6px}
@@ -72,4 +74,4 @@
 .cd-off{background:var(--fill)}
 .cd-cell.cd-in{box-shadow:inset 0 0 0 2px var(--tint)}
 
-@media (prefers-reduced-motion:reduce){.cd-btn:active,.cd-chip:active{transform:none}}
+@media (prefers-reduced-motion:reduce){.cd-btn,.cd-chip,.cd-open,.cd-cell{transition:none}.cd-btn:active,.cd-chip:active{transform:none}}

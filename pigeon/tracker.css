@@ -76,12 +76,14 @@ a { color: var(--tint); }
 .tk-phone h1 { margin: 6px 0 0; font-size: 24px; line-height: 1.2; text-wrap: balance; }
 .tk-phone p { margin: 0; max-width: 32ch; color: var(--fg-2); }
 .tk-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 3px; }
-.tk-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; margin-top: 8px; padding: 14px 26px; border-radius: 999px; background: var(--action); color: var(--action-ink); font-weight: 600; text-decoration: none; }
+.tk-btn { transition: transform var(--ifl-motion-release,.42s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)),opacity var(--ifl-motion-fast,.16s) ease; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; margin-top: 8px; padding: 14px 26px; border-radius: 999px; background: var(--action); color: var(--action-ink); font-weight: 600; text-decoration: none; }
 
-@media (prefers-reduced-motion: reduce) { .tk-live { animation: none; } }
+.tk-btn:active { transform: scale(var(--ifl-press-scale,.97)); transition-duration: var(--ifl-motion-press,.09s); }
+html[data-motion-paused] .tk-live { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .tk-live { animation: none; } .tk-btn { transition: none; } .tk-btn:active { transform: none; } }
 /* (the zoom buttons give a little under a press) */
-.tk-zoom button { transition: transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)), background-color .18s; }
-.tk-zoom button:active { transform: scale(.94); }
+.tk-zoom button { transition: transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)), background-color var(--ifl-motion-fast,.16s); }
+.tk-zoom button:active { transform: scale(var(--ifl-press-scale-icon,.94)); transition-duration: var(--ifl-motion-press,.09s); }
 @media (prefers-reduced-motion: reduce) { .tk-zoom button { transition: background-color .2s; } .tk-zoom button:active { transform: none; } }
 
 /* today, as totals: top right, over the map */

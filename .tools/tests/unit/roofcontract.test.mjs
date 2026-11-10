@@ -139,7 +139,7 @@ test('roof.css’s token block: neutral shared surfaces, geometry and one action
   walk(css, null);
   const get = (sel, media, prop) => { let v; for (const r of rules) if (r.sel.includes(sel) && (media ? r.media?.includes(media) : !r.media) && prop in r.decl) v = r.decl[prop]; return v; };
   const ROOT = { '--bar': 'var(--ifl-surface, #191c19)', '--r-sheet': 'var(--ifl-radius-sheet, 30px)', '--r-well': 'var(--ifl-radius-row, 16px)', '--r-pill': 'var(--ifl-radius-pill, 999px)', '--ease-in': 'cubic-bezier(0.4, 0, 1, 1)',
-    '--dur-press': '0.1s', '--dur-fast': '0.2s', '--dur-base': '0.35s', '--dur-sheet-in': '0.5s', '--dur-sheet-out': '0.34s', '--tabs-h': 'var(--ift-h, 64px)', '--gutter': '16px',
+    '--dur-press': 'var(--ifl-motion-press, 0.09s)', '--dur-fast': 'var(--ifl-motion-fast, 0.16s)', '--dur-base': 'var(--ifl-motion-enter, 0.36s)', '--dur-sheet-in': 'var(--ifl-motion-sheet, 0.46s)', '--dur-sheet-out': 'var(--ifl-motion-exit, 0.22s)', '--tabs-h': 'var(--ift-h, 64px)', '--gutter': '16px',
     '--pos': 'var(--good-text)', '--neg': 'var(--danger)', '--chart-grid': 'var(--line)', '--chart-axis': 'var(--text-2)', '--chart-now': 'var(--text-3)' };
   for (const [k, v] of Object.entries(ROOT)) assert.equal(get(':root', null, k), v, k);
   assert.ok(get(':root', null, '--hd-h'), '--hd-h has a first value');

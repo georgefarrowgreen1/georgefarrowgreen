@@ -40,7 +40,7 @@ jobs:
         working-directory: georgefarrowgreen
       - name: UI controls, focus, history shortcuts and reduced motion
         working-directory: georgefarrowgreen
-        run: node --test --test-concurrency=1 .tools/tests/shared-modal-ui.test.cjs .tools/tests/chats-ui-refinement.test.cjs .tools/tests/weather-places-ui.test.cjs .tools/tests/fitness-ui-refinement.test.cjs .tools/tests/fitting-dialogs.test.cjs
+        run: node --test --test-concurrency=1 .tools/tests/shared-modal-ui.test.cjs .tools/tests/chats-ui-refinement.test.cjs .tools/tests/weather-places-ui.test.cjs .tools/tests/fitness-ui-refinement.test.cjs .tools/tests/fitting-dialogs.test.cjs .tools/tests/account-status-motion.test.cjs .tools/tests/chats-motion.test.cjs .tools/tests/weather-motion-ui.test.cjs
 
   check:
     runs-on: ubuntu-latest

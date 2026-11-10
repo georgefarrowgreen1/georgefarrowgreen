@@ -38,7 +38,7 @@ html { touch-action: pan-x pan-y; }
 
 /* you */
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
-.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-card:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
   background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
@@ -54,7 +54,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-row.off .ifm-ic { opacity: 0.55; }
 .ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
-.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row.go { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+.ifm-row.go:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
@@ -87,10 +88,10 @@ html { touch-action: pan-x pan-y; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
-  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform 0.2s; }
+  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-foot .ifm-out svg { width: 19px; height: 19px; stroke-width: 2; }
 .ifm-foot .ifm-out::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
-.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(0.92); }
+.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 
 /* notifications on this device, asked for in one tap: a sheet from the foot */
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
@@ -133,7 +134,7 @@ body, body *:not(input):not(textarea):not(select):not([contenteditable]):not([co
 img, svg, a { -webkit-user-drag: none; }
 /* (--p animated as a number: the header's height, title size and band all move together, smoothly, as it goes compact) */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
-.ifh { transition: --p 0.34s cubic-bezier(0.32, 0.72, 0, 1); }
+.ifh { transition: --p var(--ifl-motion-layout) var(--ifl-motion-glide); }
 @media (prefers-reduced-motion: reduce) { .ifh { transition-duration: 0.01s; } }
 .ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
@@ -153,12 +154,12 @@ img, svg, a { -webkit-user-drag: none; }
 .ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
 .ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
   display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
-  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
 .ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
-.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-me:active, .ifh-act:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifh-t { min-width: 0; display: grid; }
 .ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
@@ -174,7 +175,7 @@ img, svg, a { -webkit-user-drag: none; }
   -webkit-backdrop-filter: none; backdrop-filter: none;
   box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -193,9 +194,9 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
-.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
 .ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
@@ -216,19 +217,19 @@ img, svg, a { -webkit-user-drag: none; }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
-  -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
+  -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
 .ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
-.ifl-tab:active { transform: scale(0.92); }
+.ifl-tab:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
-.ifl-back:active { transform: scale(0.94); }
+.ifl-back:active { transform: scale(var(--ifl-press-scale, 0.97)); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 /* Chat's engine: its page in a frame over the whole page, see-through, in a dialog of its own. Shown (.on), the dialog's
    modal, in the top layer over every sheet of the page's own; put away, it's shut but still laid out (never display:

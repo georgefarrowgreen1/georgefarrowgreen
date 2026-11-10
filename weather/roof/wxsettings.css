@@ -25,10 +25,10 @@
 .ifl-sheet[data-app=weather] .wxs-card {
   display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; min-height: 52px;
   padding: 4px 8px 4px 12px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass)); border: 1px solid var(--line);
-  transition: opacity var(--dur-fast, .2s) var(--ease-out, ease);
+  transition: background-color var(--ifl-motion-fast, .16s), border-color var(--ifl-motion-fast, .16s);
 }
 .ifl-sheet[data-app=weather] .wxs-card.is-off .wxs-card-n { color: var(--text-3, var(--text-2)); }
-.ifl-sheet[data-app=weather] .wxs-card-n { min-width: 0; overflow-wrap: anywhere; }
+.ifl-sheet[data-app=weather] .wxs-card-n { min-width: 0; overflow-wrap: anywhere; transition: color var(--ifl-motion-fast, .16s); }
 .ifl-sheet[data-app=weather] .wxs-card .ifl-btn { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; }
 .ifl-sheet[data-app=weather] .wxs-card .ifl-btn:disabled { opacity: .35; }
 .ifl-sheet[data-app=weather] .wxs-said { min-height: 1.4em; margin: 0 4px; color: var(--text-2); font-size: 13px; }
@@ -49,6 +49,6 @@
 .ifl-sheet[data-app=weather] .wxs-in small { color: var(--text-2); }
 .ifl-sheet[data-app=weather] .wxs-btns { display: flex; justify-content: flex-start; padding-top: 4px; }
 @media (max-width: 359px) { .ifl-sheet[data-app=weather] .wxs-edit { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .ifl-sheet[data-app=weather] .wxs-card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ifl-sheet[data-app=weather] .wxs-card, .ifl-sheet[data-app=weather] .wxs-card-n { transition: none; } }
 /* the app's hero tops the list only, not the pages pushed over it */
 .ifl-sheet[data-app=weather][data-sheet=wxsettings].pushed .ifs-hero { display: none; }

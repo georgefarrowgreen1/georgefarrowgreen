@@ -66,7 +66,8 @@
 .m-weather .wx-radar .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
 .m-weather .wx-radar .rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: var(--rd-sel); box-shadow: inset 0 0 0 0.5px var(--rd-line); }
 .m-weather .wx-radar .rl-switch button { position: relative; font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer;
-  transition: background-color 0.25s var(--ease-glide), color 0.25s var(--ease-glide); }
+  transition: background-color var(--ifl-motion-fast, .16s), color var(--ifl-motion-fast, .16s), transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); }
+.m-weather .wx-radar .rl-switch button:active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--ifl-motion-press, .09s); }
 .m-weather .wx-radar .rl-switch button::after { content: ""; position: absolute; inset: -8px 0; }
 .m-weather .wx-radar .rl-switch button[aria-pressed="true"] { background-color: var(--rd-press); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 .m-weather .wx-radar .rl-switch button:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
@@ -75,9 +76,11 @@
 .m-weather .wx-radar .radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin: 0; padding: 12px 16px 8px; border-radius: var(--ifl-radius-card, 26px); }
 .m-weather .wx-radar .radar-bar { display: contents; }
 .m-weather .wx-radar .radar-play { grid-area: play; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: var(--ink); background-color: var(--rd-sel); cursor: pointer; }
+.m-weather .wx-radar :is(.radar-play, .radar-centre, .map-layers) { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--ifl-motion-fast, .16s); }
+.m-weather .wx-radar :is(.radar-play, .radar-centre, .map-layers):active { transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--ifl-motion-press, .09s); }
 .m-weather .wx-radar .radar-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.m-weather .wx-radar .radar-play > .g-on, .m-weather .wx-radar .radar-play > .g-off { grid-area: 1 / 1; display: inline-flex; transition: opacity 0.2s, transform 0.42s var(--ease-spring), filter 0.2s; }
-.m-weather .wx-radar [data-on="1"] > .g-off, .m-weather .wx-radar [data-on="0"] > .g-on { opacity: 0; transform: scale(0.3); filter: blur(4px); }
+.m-weather .wx-radar .radar-play > .g-on, .m-weather .wx-radar .radar-play > .g-off { grid-area: 1 / 1; display: inline-flex; transition: opacity var(--ifl-motion-fast, .16s), transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); }
+.m-weather .wx-radar [data-on="1"] > .g-off, .m-weather .wx-radar [data-on="0"] > .g-on { opacity: 0; transform: scale(.78); }
 .m-weather .wx-radar .radar-track { grid-area: track; min-width: 0; }
 @property --f { syntax: "<number>"; inherits: true; initial-value: 1; }
 @property --nowf { syntax: "<number>"; inherits: true; initial-value: 1; }
@@ -92,9 +95,9 @@
 .m-weather .wx-radar .radar-slider::-moz-range-track { height: 8px; border-radius: 999px; background: var(--rest); }
 .m-weather .wx-radar .radar-slider::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--fill); }
 .m-weather .wx-radar .radar-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -3px; border-radius: 50%; border: 0;
-  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.4s var(--ease-spring); }
+  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); }
 .m-weather .wx-radar .radar-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 0; background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
-.m-weather .wx-radar .radar-slider:active::-webkit-slider-thumb { transform: scale(1.5); }
+.m-weather .wx-radar .radar-slider:active::-webkit-slider-thumb { transform: scale(1.25); transition-duration: var(--ifl-motion-press, .09s); }
 .m-weather .wx-radar .radar-slider:focus-visible { outline: none; }
 .m-weather .wx-radar .radar-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--acc), 0 1px 4px rgba(0, 0, 0, 0.3); }
 .m-weather .wx-radar .radar-scale { position: relative; height: 20px; margin: 2px 14px 0; }
@@ -133,10 +136,10 @@
 .m-weather .wx-radar .map-zoom > :first-child { border-radius: 22px 22px 0 0; }
 .m-weather .wx-radar .map-zoom > :last-child { border-radius: 0 0 22px 22px; }
 .m-weather .wx-radar .map-zoom button { position: relative; z-index: 3; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--rd-ink); cursor: pointer;
-  transition: background-color 0.2s, transform 0.42s var(--ease-spring), color 0.2s; }
+  transition: background-color var(--ifl-motion-fast, .16s), transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), color var(--ifl-motion-fast, .16s); }
 .m-weather .wx-radar .map-zoom button + button { box-shadow: inset 0 1px 0 var(--rd-line); }
 .m-weather .wx-radar .map-zoom button:disabled { color: var(--rd-ink-off); cursor: default; }
-.m-weather .wx-radar .map-zoom button:not(:disabled):active { background: var(--rd-press); transform: scale(0.86); transition-duration: 0.1s; }
+.m-weather .wx-radar .map-zoom button:not(:disabled):active { background: var(--rd-press); transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--ifl-motion-press, .09s); }
 @media (hover: hover) { .m-weather .wx-radar .map-zoom button:not(:disabled):hover { background: var(--rd-hover); } }
 .m-weather .wx-radar :is(.radar-centre, .map-layers) { position: relative; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--rd-ink); background-color: var(--rd-glass-2); cursor: pointer; }
 .m-weather .wx-radar :is(.radar-centre, .map-layers) svg { position: relative; z-index: 3; }
@@ -145,9 +148,9 @@
 .m-weather .wx-radar .layer-wrap { position: relative; }
 .m-weather .wx-radar .layer-menu { position: absolute; right: 52px; top: 0; z-index: 600; display: flex; flex-direction: column; min-width: 156px; padding: 5px; border-radius: 16px;
   background-color: var(--rd-glass-3); -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur); box-shadow: 0 0 0 0.5px var(--rd-line), 0 10px 26px -8px rgba(0, 0, 0, 0.45);
-  transform-origin: 100% 0; animation: wx-menu-in 0.22s var(--ease-glide); }
+  transform-origin: 100% 0; animation: wx-menu-in var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); }
 .m-weather .wx-radar .layer-menu[hidden] { display: none; }
-@keyframes wx-menu-in { from { opacity: 0; transform: scale(0.92); } }
+@keyframes wx-menu-in { from { transform: translateY(-4px) scale(.98); } }
 .m-weather .wx-radar .layer-menu button { -webkit-appearance: none; appearance: none; border: 0; background: none; color: var(--rd-ink); font: inherit; font-size: 14px; font-weight: 500; text-align: left; padding: 9px 12px;
   border-radius: 11px; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 44px; transition: background-color var(--dur-fast); }
 @media (hover: hover) and (pointer: fine) { .m-weather .wx-radar .layer-menu button:not([aria-pressed="true"]):hover { background-color: var(--rd-hover); } }
@@ -163,14 +166,14 @@
   text-shadow: 0 0 2px var(--rd-halo), 0 0 6px var(--rd-halo-2); transition: opacity 0.3s var(--ease-out) 0.3s; }
 .m-weather .wx-radar .radar-wrap:has(.radar-credit:not(.folded)) .map-scale.under { opacity: 0; transition-delay: 0s; }
 .m-weather .wx-radar .radar-credit { position: absolute; right: calc(max(10px, env(safe-area-inset-right)) + 54px); top: 19px; bottom: auto; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; cursor: pointer;
-  color: var(--rd-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--rd-glass); transition: transform 0.42s var(--ease-spring), filter 0.25s; }
+  color: var(--rd-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--rd-glass); transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); }
 .m-weather .wx-radar .radar-credit::after { content: ""; position: absolute; inset: -9px; }
 .m-weather .wx-radar .radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
 .m-weather .wx-radar .radar-credit .rc-t { position: absolute; right: 0; top: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
   color: inherit; background-color: var(--rd-glass-3); -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur);
   clip-path: inset(0 round 13px); transition: clip-path 0.6s var(--ease-glide), opacity 0.3s 0.25s; pointer-events: none; }
 .m-weather .wx-radar .radar-credit.folded .rc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
-.m-weather .wx-radar .radar-credit:active { transform: scale(0.88); transition-duration: 0.1s; }
+.m-weather .wx-radar .radar-credit:active { transform: scale(var(--ifl-press-icon, .94)); transition-duration: var(--ifl-motion-press, .09s); }
 
 /* ---- the place's bubble, the other places', a reading ---- */
 .m-weather .wx-radar .map-pin { position: relative; width: 0; height: 0; pointer-events: none; color: #fff; }
@@ -206,12 +209,12 @@
 .m-weather .wx-radar .map-other[data-kind="wind"] .mo-d { display: block; }
 .m-weather .wx-radar .map-other[data-empty="1"] .mo-b { opacity: 0; scale: 0.6; }
 @starting-style { .m-weather .wx-radar .map-other .mo-b { opacity: 0; scale: 0.6; } }
-.m-weather .wx-radar .map-other:active .mo-b { transform: translateX(-50%) scale(0.92); }
+.m-weather .wx-radar .map-other:active .mo-b { transform: translateX(-50%) scale(.96); }
 .m-weather .wx-radar .map-other:focus-visible { outline: none; }
 .m-weather .wx-radar .map-other:focus-visible .mo-b { outline: 2px solid var(--acc); outline-offset: 2px; }
 .m-weather .wx-radar .map-read { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
 .m-weather .wx-radar .mr-b { position: absolute; left: 0; bottom: 12px; transform: translateX(calc(-50% + var(--dx, 0px))); display: grid; gap: 2px; width: max-content; max-width: 172px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
-  color: var(--rd-read-ink); background-color: var(--rd-read); box-shadow: 0 0 0 0.5px var(--rd-line), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: wx-read-in 0.22s var(--ease-glide) backwards; }
+  color: var(--rd-read-ink); background-color: var(--rd-read); box-shadow: 0 0 0 0.5px var(--rd-line), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: wx-read-in var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease) backwards; }
 .m-weather .wx-radar .mr-v { font-size: 13.5px; font-weight: 650; line-height: 1.15; }
 .m-weather .wx-radar .mr-w { font-size: 11px; font-weight: 650; line-height: 1.15; color: var(--rd-warn); white-space: normal; text-wrap: balance; }
 .m-weather .wx-radar .mr-w:empty { display: none; }
@@ -226,7 +229,7 @@
 .m-weather .wx-radar .map-read.side .mr-b::after { left: -6px; top: 50%; bottom: auto; transform: translateY(-50%); border: 6px solid transparent; border-right-color: var(--rd-read); border-left: 0; }
 .m-weather .wx-radar .map-read.side-l .mr-b::after { left: auto; right: -6px; top: 50%; bottom: auto; transform: translateY(-50%); border: 6px solid transparent; border-left-color: var(--rd-read); border-right: 0; }
 .m-weather .wx-radar .map-read.below .mr-b::after { bottom: auto; top: -6px; border: 6px solid transparent; border-bottom-color: var(--rd-read); border-top: 0; }
-@keyframes wx-read-in { from { opacity: 0; translate: 0 4px; scale: 0.94; } }
+@keyframes wx-read-in { from { translate: 0 4px; scale: .98; } }
 
 /* a phone on its side: the dock beside the legend, so the map keeps its height */
 @media (max-height: 480px) and (min-width: 560px) {
@@ -238,6 +241,11 @@
 @media (prefers-reduced-motion: reduce) {
   .m-weather .wx-radar :is(.radar-play > .g-on, .radar-play > .g-off, .radar-map .maplibregl-canvas, .rv-was, .rv-mix, .rv-field, .radar-credit, .radar-credit .rc-t, .mo-b, .mp-bubble) { transition: none; }
   .m-weather .wx-radar :is(.mr-b, .layer-menu) { animation: none; }
+  .m-weather .wx-radar :is(.map-zoom button, .radar-play, .radar-centre, .map-layers, .rl-switch button, .radar-slider.jump, .wind-flow) { transition: none; }
+  .m-weather .wx-radar :is(.map-zoom button:not(:disabled), .radar-credit, .radar-play, .radar-centre, .map-layers, .rl-switch button):active { transform: none; }
+  .m-weather .wx-radar .map-other:active .mo-b { transform: translateX(-50%); }
+  .m-weather .wx-radar .radar-slider:active::-webkit-slider-thumb { transform: none; }
+  .m-weather .wx-radar .radar-slider:active::-moz-range-thumb { transform: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .m-weather .wx-radar :is(.radar-legend, .radar-dock, .layer-menu, .wx-radar-said, .radar-credit .rc-t) { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: var(--ifl-surface); }

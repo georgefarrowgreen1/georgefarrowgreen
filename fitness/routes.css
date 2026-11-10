@@ -146,10 +146,22 @@
 
 .m-fitness .fr-road-switch { position:relative; display:inline-flex; flex:none; width:48px; height:30px; }
 .m-fitness .fr-road-switch input { position:absolute; z-index:1; inset:-7px 0; width:48px; height:44px; margin:0; opacity:0; cursor:pointer; }
-.m-fitness .fr-road-track { display:block; width:48px; height:30px; border-radius:999px; background:var(--glass-ctl); box-shadow:inset 0 0 0 .5px var(--line); transition:background .15s; }
-.m-fitness .fr-road-track::before { content:""; display:block; width:24px; height:24px; margin:3px; border-radius:50%; background:#fff; box-shadow:0 2px 5px #0003; transition:transform .15s; }
+.m-fitness .fr-road-track { display:block; width:48px; height:30px; border-radius:999px; background:var(--glass-ctl); box-shadow:inset 0 0 0 .5px var(--line); transition:background-color var(--ifl-motion-fast,.16s); }
+.m-fitness .fr-road-track::before { content:""; display:block; width:24px; height:24px; margin:3px; border-radius:50%; background:#fff; box-shadow:0 2px 5px #0003; transition:transform var(--ifl-motion-release,.42s) var(--ifl-motion-spring,ease-out); }
 .m-fitness .fr-road-switch input:checked + .fr-road-track { background:var(--good); }
 .m-fitness .fr-road-switch input:checked + .fr-road-track::before { transform:translateX(18px); }
 .m-fitness .fr-road-switch input:focus-visible + .fr-road-track { outline:2px solid var(--tint); outline-offset:3px; }
 .m-fitness .fr-road-switch input:disabled + .fr-road-track { opacity:.6; }
 @media (prefers-reduced-motion:reduce) { .m-fitness .fr-road-track, .m-fitness .fr-road-track::before { transition:none; } }
+
+/* Route actions use Fitness's press/release timing without moving a live map or drag target. */
+.m-fitness :is(.fr-route-card, .fr-btn, .fr-back, .fr-data-close) { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out), background-color var(--ifl-motion-fast, .16s); }
+.m-fitness :is(.fr-route-card, .fr-btn, .fr-back, .fr-data-close):active:not(:disabled) { transform: scale(var(--ifl-press-card, .985)); transition-duration: var(--ifl-motion-press, .09s); }
+.m-fitness .fr-feedback:not(:empty) { animation: fr-feedback-in .28s var(--ifl-motion-spring, ease-out); }
+@keyframes fr-feedback-in { from { transform: translateY(4px); } }
+:root[data-motion-paused] .m-fitness :is(.fr-loading-sweep, .fr-loading-start), [hidden] .m-fitness :is(.fr-loading-sweep, .fr-loading-start) { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .m-fitness :is(.fr-route-card, .fr-btn, .fr-back, .fr-data-close) { transition: none; }
+  .m-fitness :is(.fr-route-card, .fr-btn, .fr-back, .fr-data-close):active { transform: none; }
+  .m-fitness .fr-feedback { animation: none; }
+}

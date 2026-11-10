@@ -1,3 +1,17 @@
+// ==== InFlite motion: shared lifecycle ====
+// Pause presentation motion before first paint and while the page is in the app
+// switcher. This does not pause data, requests, navigation or authentication.
+(() => {
+  const doc = globalThis.document, root = doc?.documentElement;
+  if (!root?.toggleAttribute || globalThis.__iflMotionReady) return;
+  globalThis.__iflMotionReady = true;
+  const sync = () => root.toggleAttribute("data-motion-paused", doc.visibilityState === "hidden");
+  doc.addEventListener?.("visibilitychange", sync);
+  globalThis.addEventListener?.("pagehide", () => root.toggleAttribute("data-motion-paused", true));
+  globalThis.addEventListener?.("pageshow", sync);
+  sync();
+})();
+// ==== End InFlite motion ====
 // ==== InFlite page zoom: shared guard ====
 // InFlite's page zoom policy. Runs before sign-in and independently of the menu.
 // Components such as maps and photo viewers retain their own gesture handling.

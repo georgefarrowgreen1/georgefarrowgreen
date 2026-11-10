@@ -22,3 +22,7 @@ body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(-
   .fr-preview { --fr-preview-ink: var(--tint-text); }
   .fr-preview-main.m-fitness { --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --on-tint: var(--ifl-on-accent); }
 }
+
+.fr-preview-tabs button { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease-out), background-color var(--ifl-motion-fast, .16s), color var(--ifl-motion-fast, .16s); }
+.fr-preview-tabs button:active { transform: scale(var(--ifl-press-scale, .97)); transition-duration: var(--ifl-motion-press, .09s); }
+@media (prefers-reduced-motion: reduce) { .fr-preview-tabs button { transition: none; } .fr-preview-tabs button:active { transform: none; } }

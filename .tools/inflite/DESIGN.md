@@ -20,6 +20,16 @@ Cards are 26px, groups 22px, sheets 30px and rows/fields 16px. Buttons, tabs and
 
 Use short press feedback and the shared release/glide curves. Animate transform and opacity; avoid running background effects or adding blur to every surface. Respect reduced motion, reduced transparency and forced colours. Preserve existing navigation, lifecycle cancellation and draft ownership.
 
+Motion uses one scale: 90ms presses, 160ms small fades, 280ms layout/tab changes, 360ms content entry,
+420ms spring releases and 460ms page/sheet arrivals. Exits settle in220ms. Stagger by24ms and stop at120ms;
+delayed text remains readable. Keep whole cards stationary when only their data refreshes. Avoid transforming
+the ancestors of fixed composers or maps. The shared early `motion.js` guard pauses decorative CSS animations
+while hidden, including after page restoration; it never pauses data refresh or authentication.
+
+Interruptions belong to the component: cancel old effects before replacements, finish route mutation before
+opening a modal, and release transient size animations on keyboard/viewport changes or close. Intrinsic sheet
+resizing is the small exception to transform/opacity: it is bounded, unfilled and never locks a pixel height.
+
 ## Verification
 
 Check native and Today-hosted screens at narrow-phone and desktop sizes, in light/dark and explicit appearance settings. Review populated, empty, loading, error and editor/sheet states. Check overflow, contrast, focus, keyboard clearance and route/sheet transitions. Run app regressions and shared contract/budget checks before generating minified assets and deploying both repositories.

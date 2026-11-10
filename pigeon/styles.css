@@ -526,45 +526,45 @@ html.kbup .compose{padding-bottom:6px;transition:none}
    ============================================================ */
 :root{
   --ease-out:cubic-bezier(.22,1,.36,1);
-  --smooth:cubic-bezier(.25,1,.5,1); --snappy:cubic-bezier(.2,1.1,.4,1); --bouncy:cubic-bezier(.3,1.35,.45,1);
+  --smooth:var(--ifl-motion-glide,cubic-bezier(.32,.72,0,1)); --snappy:var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)); --bouncy:var(--snappy);
   /* the names the site's other pages use for the same curves and times (home, account, Weather) */
   --ease-glide:var(--nav); --ease-in:cubic-bezier(.4,0,1,1); --ease-spring:var(--snappy);
   --dur-press:.1s; --dur-release:.45s; --dur-fast:.2s; --dur-base:.35s; --dur-sheet-in:.5s; --dur-sheet-out:.34s;
 }
 @supports (transition-timing-function:linear(0,1)){
   :root{
-    --smooth:linear(0, 0.02, 0.071, 0.139, 0.216, 0.295, 0.374, 0.448, 0.518, 0.581, 0.638, 0.689, 0.733, 0.772, 0.806, 0.836, 0.861, 0.883, 0.901, 0.917, 0.93, 0.942, 0.951, 0.959, 0.966, 0.972, 0.976, 0.98, 0.984, 0.986, 0.989, 0.991, 0.992, 0.994, 0.995, 0.996, 0.996, 0.997, 0.998, 1);
-    --snappy:linear(0, 0.019, 0.067, 0.135, 0.214, 0.3, 0.388, 0.473, 0.553, 0.628, 0.695, 0.755, 0.807, 0.852, 0.89, 0.921, 0.947, 0.968, 0.984, 0.996, 1.005, 1.012, 1.016, 1.018, 1.02, 1.02, 1.019, 1.018, 1.017, 1.015, 1.013, 1.012, 1.01, 1.008, 1.007, 1.006, 1.005, 1.004, 1.003, 1);
-    --bouncy:linear(0, 0.029, 0.103, 0.207, 0.328, 0.455, 0.579, 0.695, 0.799, 0.887, 0.959, 1.015, 1.056, 1.084, 1.1, 1.106, 1.106, 1.099, 1.089, 1.077, 1.063, 1.05, 1.037, 1.025, 1.015, 1.007, 1, 0.995, 0.992, 0.99, 0.989, 0.989, 0.989, 0.99, 0.991, 0.993, 0.994, 0.996, 0.997, 1);
+    --smooth:var(--ifl-motion-glide,cubic-bezier(.32,.72,0,1));
+    --snappy:var(--ifl-motion-spring,linear(0,.12,.36,.59,.77,.89,.96,.994,1.006,1.008,1.005,1.002,1));
+    --bouncy:var(--snappy);
   }
 }
 
-/* ---- touch: glass swells and brightens, solid things dip, rows light up ---- */
-.nbtn,.chatwho,.plus,.send,.mapctl button,.fly,.b.pic img{transition:transform .5s var(--snappy),background-color .3s,box-shadow .3s,filter .3s,opacity .25s}
-.nbtn:active,.plus:active,.mapctl button:active{transform:scale(1.14);filter:brightness(1.08) saturate(1.1);box-shadow:var(--glass-shadow)}
-.nb-right .nbtn:active{transform:scale(1.18);background:var(--fill)}
+/* ---- touch: short presses settle back on the shared, gentle spring ---- */
+.nbtn,.chatwho,.plus,.send,.mapctl button,.fly,.b.pic img{transition:transform var(--ifl-motion-release,.38s) var(--snappy),background-color .18s,box-shadow .18s,opacity .18s}
+.nbtn:active,.plus:active,.mapctl button:active{transform:scale(var(--ifl-press-scale-icon,.94));filter:none;box-shadow:var(--glass-shadow);transition-duration:var(--ifl-motion-press,.1s)}
+.nb-right .nbtn:active{transform:scale(var(--ifl-press-scale-icon,.94));background:var(--fill)}
 .nb-right{transition:transform .5s var(--snappy)}
-.nb-right:has(.nbtn:active){transform:scale(1.04)}
+.nb-right:has(.nbtn:active){transform:none}
 .nbtn.prominent:active{filter:brightness(1.12)}
-.chatwho:active{transform:scale(1.06);filter:brightness(1.06)}
-.send:active{transform:scale(1.15)}
+.chatwho:active{transform:scale(.99);filter:none}
+.send:active{transform:scale(var(--ifl-press-scale-icon,.94));transition-duration:var(--ifl-motion-press,.1s)}
 .b.pic img:active{transform:scale(.98)}
-.btn,.asheet .ab,.asheet .cancel,.toast button,.reqrow .btn{transition:transform .45s var(--snappy),filter .25s,background-color .25s,opacity .25s}
-.btn:not(:disabled):active,.asheet .ab:active,.asheet .cancel:active{transform:scale(.96);filter:brightness(1.08)}
+.btn,.asheet .ab,.asheet .cancel,.toast button,.reqrow .btn{transition:transform var(--ifl-motion-release,.38s) var(--snappy),background-color .18s,opacity .18s}
+.btn:not(:disabled):active,.asheet .ab:active,.asheet .cancel:active{transform:scale(var(--ifl-press-scale,.97));filter:none;transition-duration:var(--ifl-motion-press,.09s)}
 button.cell,label.cell,.mrow,.menu-pop .mi{transition:background-color .45s var(--ease-out)}
 button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transition-duration:0s}
 .link{transition:opacity .3s}.link:active{opacity:.45}
 
 /* ---- tab bar: the highlight slides and stretches like a drop of glass ---- */
 .tabs{position:relative;transition:transform .5s var(--snappy)}
-.tabs:has(.tab:active){transform:scale(1.04)}
+.tabs:has(.tab:active){transform:scale(.995)}
 .tabs::before{content:"";position:absolute;top:var(--ift-pad);bottom:var(--ift-pad);left:var(--ift-pad);width:calc((100% - 2 * var(--ift-pad)) / 3);border-radius:999px;background:color-mix(in srgb,var(--ift-tint) var(--ift-pill),transparent);
   translate:calc(var(--tab, 0) * 100%) 0;transition:translate .55s var(--snappy);pointer-events:none}
 .tabs.moving::before{animation:squish .55s var(--smooth)}
 @keyframes squish{35%{scale:1.22 .9}}
 .tabs[data-tab="-1"]::before{opacity:0}
 .tab{transition:transform .45s var(--snappy),color .25s}
-.tab:active{transform:scale(.9)}
+.tab:active{transform:scale(.96);transition-duration:var(--ifl-motion-press,.1s)}
 .tabbar.rise .tabs{animation:rise .5s var(--snappy)}
 .tabbar.back .tabs{animation:tabs-back .5s var(--nav)}
 @keyframes tabs-back{from{transform:translateX(-28vw);opacity:.7}}
@@ -583,7 +583,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 /* ---- sheets: spring up; the screen behind settles back; slide away when closed ---- */
 /* (the curve iOS sheets use: quick, then a long gentle settle, never past the top) */
-.sheet{animation:up .5s cubic-bezier(.32,.72,0,1)}
+.sheet{animation:up .4s var(--smooth)}
 .scrim{animation:fade .4s cubic-bezier(.32,.72,0,1)}
 .sheet.closing{animation:down .34s cubic-bezier(.32,.72,0,1) forwards}
 .scrim.closing{animation:fade-out .34s ease forwards}
@@ -607,14 +607,14 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* ---- menus grow out of the button that opened them, and shrink back ----
    (on the soft spring, its opacity on a curve of its own: the spring's overshoot never dims it, and no blur to
    repaint under the glass every frame) */
-.menu-pop{animation:menu-in .4s var(--snappy),menu-fade .18s ease-out}
+.menu-pop{animation:menu-in .3s var(--snappy),menu-fade .16s ease-out}
 .menu-pop.closing{animation:menu-out .22s var(--nav) forwards}
-@keyframes menu-in{from{transform:scale(.4)}}
+@keyframes menu-in{from{transform:translateY(-4px) scale(.96)}}
 @keyframes menu-fade{from{opacity:0}}
-@keyframes menu-out{from{opacity:var(--o0,1);transform:scale(var(--s0,1))}to{opacity:0;transform:scale(.6)}}
+@keyframes menu-out{from{opacity:var(--o0,1);transform:scale(var(--s0,1))}to{opacity:0;transform:translateY(-3px) scale(.96)}}
 .menu-pop .mi{animation:fade .3s ease both}
 /* (away on the sheets' own curve, quick from the start; app.js closePop waits for it) */
-.asheet{animation:up .55s var(--snappy)}
+.asheet{animation:up .4s var(--smooth)}
 .asheet.closing{animation:down .3s var(--nav) forwards}
 .poplayer .scrim.closing{animation-duration:.3s}
 
@@ -700,14 +700,14 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation-duration:.2s}}
 
 /* ---- messages pop out of the composer, or in from the sky when they land ---- */
-.b.fresh,.fly.fresh{animation:bubble-in .42s var(--ease-spring);transform-origin:bottom left}
+.b.fresh,.fly.fresh{animation:bubble-in .32s var(--snappy);transform-origin:bottom left}
 /* (yours rises out of the box: from as far below as the box is, --rise, app.js sendRise) */
-.b.me.fresh{transform-origin:bottom right;animation:bubble-send .46s var(--snappy)}
-@keyframes bubble-send{from{opacity:0;transform:translateY(var(--rise,12px)) scale(.97)}}
-@keyframes bubble-in{from{opacity:0;transform:translateY(8px) scale(.96)}}
-.attach:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
-.send:not(:disabled){animation:send-in .45s var(--bouncy)}
-@keyframes send-in{from{transform:scale(.2);opacity:0}}
+.b.me.fresh{transform-origin:bottom right;animation:bubble-send .34s var(--snappy)}
+@keyframes bubble-send{from{opacity:0;transform:translateY(clamp(6px,var(--rise,12px),24px)) scale(.985)}}
+@keyframes bubble-in{from{opacity:0;transform:translateY(6px) scale(.985)}}
+.attach:not([hidden]){animation:bubble-in .3s var(--snappy);transform-origin:bottom left}
+.send:not(:disabled):not(.busy)>svg{animation:send-in .26s var(--snappy)}
+@keyframes send-in{from{transform:scale(.82);opacity:0}}
 /* scrolled up, a pigeon arrives below: a pill over the composer (centred with translate, so the pop-in's transform is free) */
 .newpill{position:absolute;left:50%;bottom:calc(100% + 8px);translate:-50% 0;z-index:2;min-height:44px;padding:0 15px;border:0;border-radius:999px;background:var(--glass-strong);color:var(--tint);
   font:600 14px/44px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:none;backdrop-filter:none;animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
@@ -728,7 +728,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes ferr-in{from{opacity:0;max-height:0;margin-top:0;margin-bottom:0;transform:translateY(-4px)}to{max-height:6em}}
 @keyframes shake{15%{transform:translateX(-9px)}35%{transform:translateX(7px)}55%{transform:translateX(-5px)}75%{transform:translateX(3px)}}
 
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
+  .nbtn:active,.plus:active,.send:active,.mapctl button:active,.chatwho:active,.btn:active,.asheet .ab:active,.asheet .cancel:active,.tabs:has(.tab:active),.tab:active,.vplay:active{transform:none!important;filter:none!important}}
 /* (and yet nothing simply cuts: screens, banners, bars, new messages and the lock dissolve in and out instead of moving;
    a spinner still turns, slowly) */
 @media (prefers-reduced-motion:reduce){
@@ -1211,7 +1212,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .meta .fl.outq.bad{color:var(--red);max-width:100%;text-align:right}
 @media (prefers-reduced-motion: reduce){.b.me.pending{animation:none}}
 /* voice pigeons: the microphone, the recording bar, and the message itself */
-.field-wrap .mic{position:absolute;right:4px;bottom:4px;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--label-2);display:grid;place-items:center;cursor:pointer;transition:transform .2s cubic-bezier(.3,1.5,.5,1),color .2s}
+.field-wrap .mic{position:absolute;right:4px;bottom:4px;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--label-2);display:grid;place-items:center;cursor:pointer;transition:transform var(--ifl-motion-release,.38s) var(--snappy),color .2s}
 .field-wrap .mic .ico{font-size:22px}
 .field-wrap .mic:active{transform:scale(.88);color:var(--tint)}
 .recbar{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 8px;margin:0 8px;border-radius:26px;background:var(--bubble-me);color:var(--on-bubble-me);box-shadow:var(--glass-shadow);animation:recin .3s cubic-bezier(.3,1.4,.5,1)}
@@ -1227,9 +1228,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .b.voicem{min-width:200px;padding:10px 14px 10px 10px;background:var(--bubble-me);color:var(--on-bubble-me)}
 .b.voicem .ft{color:color-mix(in srgb,var(--on-bubble-me) 75%,transparent)}
 .voice{display:flex;align-items:center;gap:9px;--p:0}
-.vplay{flex:none;width:38px;height:38px;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--tint-fill);color:var(--on-tint);transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
+.vplay{flex:none;width:38px;height:38px;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--tint-fill);color:var(--on-tint);transition:transform var(--ifl-motion-release,.38s) var(--snappy)}
 .b.me .vplay{background:var(--tint-fill);color:var(--on-tint)}
-.vplay:active{transform:scale(.9)}
+.vplay:active{transform:scale(.94);transition-duration:var(--ifl-motion-press,.1s)}
 .vplay:disabled{opacity:.45}
 .vplay .ico{font-size:15px}
 svg.fillico{fill:currentColor;stroke:none}
@@ -2795,7 +2796,7 @@ html { touch-action: pan-x pan-y; }
 
 /* you */
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
-.ifm-card:active { background: var(--ifm-press) !important; }
+.ifm-card:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
   background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
@@ -2811,7 +2812,8 @@ html { touch-action: pan-x pan-y; }
 .ifm-row.off .ifm-ic { opacity: 0.55; }
 .ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
-.ifm-row.go:active { background: var(--ifm-press) !important; }
+.ifm-row.go { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+.ifm-row.go:active { background: var(--ifm-press) !important; transform: scale(var(--ifl-press-card)); transition-duration: var(--ifl-motion-press); }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
@@ -2844,10 +2846,10 @@ html { touch-action: pan-x pan-y; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
-  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform 0.2s; }
+  background: var(--ifm-red-bg) !important; color: var(--ifm-red) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-foot .ifm-out svg { width: 19px; height: 19px; stroke-width: 2; }
 .ifm-foot .ifm-out::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
-.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(0.92); }
+.ifm-foot .ifm-out:active, .ifm-foot .ifm-upd:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 
 /* notifications on this device, asked for in one tap: a sheet from the foot */
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
@@ -2890,7 +2892,7 @@ body, body *:not(input):not(textarea):not(select):not([contenteditable]):not([co
 img, svg, a { -webkit-user-drag: none; }
 /* (--p animated as a number: the header's height, title size and band all move together, smoothly, as it goes compact) */
 @property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
-.ifh { transition: --p 0.34s cubic-bezier(0.32, 0.72, 0, 1); }
+.ifh { transition: --p var(--ifl-motion-layout) var(--ifl-motion-glide); }
 @media (prefers-reduced-motion: reduce) { .ifh { transition-duration: 0.01s; } }
 .ifh { --p: 0; --ifh-pt0: var(--ifh-pt, calc(env(safe-area-inset-top, 0px) + 10px)); position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; column-gap: 12px; box-sizing: border-box; height: calc(var(--ifh-pt0) + 72px - 24px * var(--p)); margin: 0 0 calc(var(--ifh-mb, 0px) + 24px * var(--p));
@@ -2910,12 +2912,12 @@ img, svg, a { -webkit-user-drag: none; }
 .ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
 .ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
   display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
-  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
 .ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
-.ifh-me:active, .ifh-act:active { transform: scale(0.92); }
+.ifh-me:active, .ifh-act:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifh-t { min-width: 0; display: grid; }
 .ifh-name { display: flex; align-items: center; min-width: 0; margin: 0; font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); font-weight: 700; line-height: 1.12; letter-spacing: calc(0.3px - 0.6px * var(--p));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
@@ -2931,7 +2933,7 @@ img, svg, a { -webkit-user-drag: none; }
   -webkit-backdrop-filter: none; backdrop-filter: none;
   box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -2950,9 +2952,9 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
-.ifs-btn:active { transform: scale(0.9); }
+.ifs-btn:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
 .ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
@@ -2973,19 +2975,19 @@ img, svg, a { -webkit-user-drag: none; }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
-  -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
+  -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
 .ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
-.ifl-tab:active { transform: scale(0.92); }
+.ifl-tab:active { transform: scale(var(--ifl-press-icon, 0.94)); }
 .ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
-.ifl-back:active { transform: scale(0.94); }
+.ifl-back:active { transform: scale(var(--ifl-press-scale, 0.97)); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 /* Chat's engine: its page in a frame over the whole page, see-through, in a dialog of its own. Shown (.on), the dialog's
    modal, in the top layer over every sheet of the page's own; put away, it's shut but still laid out (never display:
@@ -3062,7 +3064,11 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
   --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
-  --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
+  --ifl-motion-press: 0.09s; --ifl-motion-release: 0.42s; --ifl-motion-fast: 0.16s;
+  --ifl-motion-enter: 0.36s; --ifl-motion-exit: 0.22s; --ifl-motion-layout: 0.28s;
+  --ifl-motion-page: 0.46s; --ifl-motion-tab: 0.28s; --ifl-motion-sheet: 0.46s;
+  --ifl-motion-stagger: 24ms; --ifl-motion-stagger-cap: 120ms; --ifl-motion-distance: 8px;
+  --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --ifl-chrome-blur: none;
@@ -3101,10 +3107,11 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-pop.open { transform: none; }
 .ifm-pop.closing { transform: translateY(-3px) scale(0.97);
-  transition: transform 0.22s var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
+  transition: transform var(--ifl-motion-exit) var(--ifl-motion-glide), opacity var(--ifl-motion-fast) ease; }
 .ifm-grp, .ifm-card { border-radius: calc(var(--ifl-radius-card) - var(--ifl-space-2)); }
-.ifm-card { padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
+.ifm-card { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); padding: var(--ifl-space-3) var(--ifl-space-4) !important; column-gap: var(--ifl-space-3); }
 .ifm-layer { transition: background-color var(--ifl-motion-fast) ease; }
+.ifm-layer:not(.open), .ifa-layer:not(.on) { pointer-events: none; }
 .ifm-layer.open { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifa-sheet { border-radius: var(--ifl-radius-sheet) var(--ifl-radius-sheet) 0 0;
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
@@ -3112,6 +3119,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
+.ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
+:is(.ifa-go, .ifa-later, .ifb-btn):active:not(:disabled) { transform: scale(var(--ifl-press-scale)); transition-duration: var(--ifl-motion-press); }
 .ifs-btn { position: relative; }
 .ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
@@ -3127,11 +3136,14 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 :is(.pill, .btn, .ifl-btn) { max-width: 100%; overflow-wrap: anywhere; }
 :is(.pill, .btn, .ifl-btn):focus-visible { outline: 2px solid var(--tint-text, var(--tint, currentColor)); outline-offset: 3px; }
 
+/* CSS presentation motion rests while data and navigation retain their own lifetimes. */
+html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
+
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
-  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after { transition: none; }
-  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transform: none !important; }
+  .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
+  .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active, .ifm-row:active, .ifm-card:active, .ifa-go:active, .ifa-later:active, .ifb-btn:active { transform: none !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .ifm-pop, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back, .ifb, .ifh.ifh-up, .ifh-acts {
