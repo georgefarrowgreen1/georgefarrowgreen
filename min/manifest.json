@@ -144,7 +144,7 @@
  "weather/account.js": "7d29093ec05f765d23bcec00a513c39cde75e1a9682bfe293745153b1c172d58",
  "weather/agree.js": "e8fed04798501bd421539a09482e4d65aa04e016792a195386e97c4d3f06708a",
  "weather/alerts.js": "ad4911d5e4cb5c43edcc24a2bce4cc2f0d018bd2f88625e4b99dc7be11509c6a",
- "weather/app.js": "bf780b4064d5f0c86b7cebb000c809e6ed8dee6683374b4af85025df56f6efd2",
+ "weather/app.js": "f32b22387a9680521c6f2933398648558b86c1e33a3f11d059e30f5ac926f309",
  "weather/boot.js": "10b29626359990d0a947b7f5e107355010fe5bfc267906ae3e14a5b03fec5ef8",
  "weather/charts.js": "8bc22519968140de745224b81a82c69f4b341da827369c6347ec11dcb8e72005",
  "weather/climate.js": "bef4b4e1397ebab050626cb9b0ec676cc540b2c7bc6de71def2ff8b25f771857",
@@ -174,8 +174,8 @@
  "weather/roof/radarview.js": "d6a21c6fbffdd1b34746555690300fb425c98a5134e4b840289f4d2b52c9319c",
  "weather/roof/sync.js": "2fffa8f0da205da2b7cf63ca21b72c2a82fd93b672215993559591b12497236c",
  "weather/roof/warnings.js": "a202278a4cf3e9ef905282bc0ad10270b37fb6afd2d0d40ffdb6b1af879c2905",
- "weather/roof/weather.css": "be9c03b2a5c39deb542c3375c3348657cfa86eeb828f5991759f4b19138c0a39",
- "weather/roof/weather.js": "57a1f7ee556f503a2dd4dfaac0ee66b782ad09950f4e34b49c453e1a5a906ba0",
+ "weather/roof/weather.css": "4977d8b044579b99c188e59a3be68085c6bfdd1cf028e71cafe05973d9daa611",
+ "weather/roof/weather.js": "7e28e4c9b663a893616e1f27e10f2273e1d3239e8e4a3648f88ae91e0022f4a4",
  "weather/roof/wxcore.css": "4df11b011e99a0c9eb917511362eb5763cb061139242c33030d6cddaaa2ed49a",
  "weather/roof/wxdetail.js": "a69dc379cd43aebbdccc4301a1b66b438ae42d07ad89cc10aa733dbccaff9934",
  "weather/roof/wxsettings.css": "33b84217f52d888a14fc1e8b0a3f3b39eea1c76a8c73fd47e81d095c272309e0",
@@ -187,6 +187,6 @@
  "weather/skill.js": "54b19ce34d579cf3596f96a990dfd0f8441760e71b8c31fd8a0aa0661fa1d354",
  "weather/sky.js": "128215c544ac0acf2f86120988c8b2317b006430747d7f43baea5711735bd44e",
  "weather/solar.js": "ae7af6fecaf6f75dda1e05efce5c07c71571f4f48a7fdac889840cf46e860cfb",
- "weather/styles.css": "9d3ddedc85d1c7baabd62809ebc76bbbea0cbc3466630b2422ea2deb51cf66a8",
+ "weather/styles.css": "d0afa6180d46bbfda7de9f56d97297597a4cf52aa89a275461d6717d0d05ecd6",
  "account/signin.js": "c01360a063aeadfccff1c050e09ebc444d8f4299e9ed101ec83ac6f064b4c869"
 }

@@ -12,7 +12,7 @@
   --alert: #c9362b;
   --good: var(--ifl-accent-fill, #abe35e);
   --tint-blue: var(--ifl-accent-ink, #28542a);
-  --rain-text: var(--rain);
+  --rain-text: #1f63d6;
   /* the motion, as every app on the site has it: out (quick, then settling), the glide (iOS's own, for things that rise
      and slide: quick then soft, no overshoot), in (for what leaves), and a soft spring (about 2% over, then back: for
      what's let go of, never for a fade); and how long each kind of thing takes */
@@ -45,9 +45,9 @@
 @supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
 /* Appearance follows InFlite rather than the current forecast’s sky. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --temp: #f0a040; --rain: #5aa2f0; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
+  :root:not([data-theme="light"]) { --temp: #f0a040; --rain: #5aa2f0; --rain-text: #9fd0ff; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
 }
-:root[data-theme="dark"] { --temp: #f0a040; --rain: #5aa2f0; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
+:root[data-theme="dark"] { --temp: #f0a040; --rain: #5aa2f0; --rain-text: #9fd0ff; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
 svg [fill="#EEF3F9" i] { fill: var(--cloud-glass, #cbd1c9); }
 
 * { box-sizing: border-box; }
@@ -637,7 +637,7 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
     main :is(.card, .ins, .tile).settled:not(.rise) { animation: none; }
   }
 }
-@keyframes settle { from { opacity: 0.2; transform: translateY(28px) scale(0.965); } }
+@keyframes settle { from { transform: translateY(28px) scale(0.965); } }
 /* a day's sheet: the parts of the day come in one after another as it rises */
 dialog.day-sheet[open] .part { animation: rise 0.55s var(--glide) backwards; }
 dialog.day-sheet[open] .part:nth-child(2) { animation-delay: 0.05s; }
@@ -818,8 +818,8 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .win-day { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .win-time { font-size: 16px; font-weight: 650; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
-/* the ones not worth it today or tomorrow: named in a line, under the rest (a tap shows them, faded) */
-.win.poor { opacity: 0.62; }
+/* Poor is conveyed by its rating and explanation; its text stays fully readable. */
+.win.poor { opacity: 1; }
 .win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 0; padding: 10px 0; min-height: 44px; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; transition: opacity var(--dur-fast); }
 .win-poor b { font-weight: 600; color: var(--text-3); }
 .win-poor > span:last-child { flex: none; display: inline-flex; color: var(--text-3); }
@@ -979,7 +979,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
 .link:active { opacity: 0.55; transition-duration: var(--dur-press); }
 /* (pointed at, with a mouse: a link, or a word that does something, fades a little, as the site's do) */
-@media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-new a:hover, .win-poor:hover { opacity: 0.75; } }
+@media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-new a:hover, .win-poor:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; } }
 
 /* ---------- sheets ---------- */
 /* (fixed, as a modal dialog is by default, so it stays put if the page behind scrolls, as when a keyboard opens) */

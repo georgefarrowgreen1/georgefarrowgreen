@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.97";
-export const NEWS = "A unified neutral design with clearer cards and green controls";
+export const BUILD = "1.98";
+export const NEWS = "Clearer rain chances and outdoor-time suggestions";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

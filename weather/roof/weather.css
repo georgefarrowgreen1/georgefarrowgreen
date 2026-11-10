@@ -194,7 +194,7 @@
 .m-weather .wx-ins .wx-g { width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--ifl-accent-fill, var(--acc)) 20%, var(--ifl-surface, var(--solid))); color: var(--acc-ink); }
 .m-weather .wx-win-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
 .m-weather .wx-win { display: grid; gap: 4px; padding: 11px 12px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass-ctl)); }
-.m-weather .wx-win.poor { opacity: 0.7; }
+.m-weather .wx-win.poor { opacity: 1; }
 .m-weather .win-name { display: flex; align-items: center; gap: 6px; font-weight: 650; }
 .m-weather .win-name .wx-g { color: var(--acc-ink); }
 .m-weather .win-day { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; color: var(--text-2); }
