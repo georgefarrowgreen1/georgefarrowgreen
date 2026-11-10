@@ -58,11 +58,11 @@ a { color: var(--tint); }
 .tk-where .none { color: var(--fg-3); }
 
 .tk-zoom { position: absolute; right: 20px; bottom: 20px; display: flex; gap: 8px; }
-.tk-zoom button { min-width: 44px; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg);
+.tk-zoom button { display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); text-align: center;
   font: 600 18px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; cursor: pointer; }
-.tk-zoom button[data-z="reset"] { font-size: 13px; }
+.tk-zoom button[data-z="reset"] { width: auto; padding: 0 14px; border-radius: 999px; font-size: 13px; }
 .tk-zoom button:hover { background: var(--well); }
-.tk-zoom button:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.tk-zoom button:focus-visible { outline: 2px solid color-mix(in srgb,var(--fg) 75%,transparent); outline-offset: -3px; }
 
 .tk-tip { position: absolute; pointer-events: none; padding: 9px 12px; border-radius: 16px; background: var(--panel); border: 1px solid var(--edge);
   font-size: 13px; line-height: 1.35; color: var(--fg); white-space: nowrap; box-shadow: var(--shadow); transform: translate(-50%, calc(-100% - 14px)); }
@@ -75,7 +75,7 @@ a { color: var(--tint); }
 .tk-phone img { border-radius: 22px; }
 .tk-phone h1 { margin: 6px 0 0; font-size: 24px; line-height: 1.2; text-wrap: balance; }
 .tk-phone p { margin: 0; max-width: 32ch; color: var(--fg-2); }
-.tk-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 3px; }
+.tk-btn:focus-visible { outline: 2px solid color-mix(in srgb,var(--action-ink) 75%,transparent); outline-offset: -3px; }
 .tk-btn { transition: transform var(--ifl-motion-release,.42s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)),opacity var(--ifl-motion-fast,.16s) ease; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; margin-top: 8px; padding: 14px 26px; border-radius: 999px; background: var(--action); color: var(--action-ink); font-weight: 600; text-decoration: none; }
 
 .tk-btn:active { transform: scale(var(--ifl-press-scale,.97)); transition-duration: var(--ifl-motion-press,.09s); }

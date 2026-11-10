@@ -133,8 +133,7 @@
 /* ---- the map's controls, in glass on it, under the line at the top ---- */
 .m-weather .wx-radar .map-ctl { position: absolute; top: 10px; right: max(10px, env(safe-area-inset-right)); z-index: 500; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .m-weather .wx-radar .map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: var(--rd-glass-2); }
-.m-weather .wx-radar .map-zoom > :first-child { border-radius: 22px 22px 0 0; }
-.m-weather .wx-radar .map-zoom > :last-child { border-radius: 0 0 22px 22px; }
+.m-weather .wx-radar .map-zoom > button { border-radius: 50%; }
 .m-weather .wx-radar .map-zoom button { position: relative; z-index: 3; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--rd-ink); cursor: pointer;
   transition: background-color var(--ifl-motion-fast, .16s), transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), color var(--ifl-motion-fast, .16s); }
 .m-weather .wx-radar .map-zoom button + button { box-shadow: inset 0 1px 0 var(--rd-line); }

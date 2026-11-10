@@ -18,6 +18,8 @@ Actual InFlite/app icons remain unchanged. Weather warnings, map layers, trainin
 
 Cards are 26px, groups 22px, sheets 30px and rows/fields 16px. Buttons, tabs and segmented controls use pills where their layout permits. Subtract insets from the outer radius for concentric surfaces. Keep touch targets at least 44px, safe areas, visible keyboard access and modal focus restoration.
 
+Round every visible control and every window corner, including keyboard, focus and pressed states. Use one focus indicator on the rounded outer field; bare inner inputs must not draw a second square outline. Keep field text 16px from its surface edge and sheet content 20px from phone edges (24px from 600px), with 12px below the sheet header. Center icon and emoji glyphs explicitly in their hit targets; reactions use 48px circles. Measure glyph bounds as well as the button box.
+
 Use short press feedback and the shared release/glide curves. Animate transform and opacity; avoid running background effects or adding blur to every surface. Respect reduced motion, reduced transparency and forced colours. Preserve existing navigation, lifecycle cancellation and draft ownership.
 
 Motion uses one scale: 90ms presses, 160ms small fades, 280ms layout/tab changes, 360ms content entry,

@@ -376,7 +376,7 @@ button.row.dk-row:active { background-color: var(--dk-solid); box-shadow: inset 
 .dk-axis { stroke: var(--line); stroke-width: 1; } .dk-dep { stroke: var(--tint); stroke-width: 1.5; stroke-dasharray: 3 3; } .dk-hit { fill: var(--warn); }
 .dk-ax { display: flex; justify-content: space-between; font: 500 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-2); }
 .dk-tech { border-radius: 18px; background: var(--glass-ctl, var(--field)); box-shadow: var(--edge, inset 0 0 0 0.5px var(--line)); }
-.dk-tech summary { padding: 14px 16px; cursor: pointer; font-size: 15px; color: var(--text-2); }
+.dk-tech summary { padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px); cursor: pointer; font-size: 15px; color: var(--text-2); }
 .dk-tech pre { margin: 0; padding: 0 16px 14px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 /* (the main actions at the foot, in reach of a thumb, staying there as the sheet scrolls) */
 .dk-dock { position: sticky; bottom: calc(-22px - env(safe-area-inset-bottom, 0px)); margin: 0 -16px calc(-22px - env(safe-area-inset-bottom, 0px)); padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px));
@@ -437,7 +437,8 @@ button.row.dk-row:active { background-color: var(--dk-solid); box-shadow: inset 
 .dk-up b { font-size: 13px; } .dk-up span { color: #5a6582; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .dk-row { transition: none; } }
 .adm-two { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
-.field select { width: 100%; min-height: 50px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); font-size: 17px; color: inherit; }
+.field select { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); font-size: 17px; color: inherit; }
+.field select:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--tint); }
 /* no account without an invite (app.js inviteCard): what it takes, three steps along a faint line, then the link */
 .invite-steps { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
 .invite-steps li { position: relative; display: grid; justify-items: center; align-content: start; gap: 9px; font-size: 13px; font-weight: 500; line-height: 1.25; color: var(--text-2);
@@ -479,9 +480,10 @@ button.row.dk-row:active { background-color: var(--dk-solid); box-shadow: inset 
 .pwf { display: grid; gap: 6px; }
 .pw { position: relative; }
 .pw input { padding-right: 52px; }
-.eye { position: absolute; right: 5px; top: 50%; width: 42px; height: 42px; margin-top: -21px; border: 0; border-radius: 12px; background: none; color: var(--text-2);
+.eye { position: absolute; right: 4px; top: 50%; width: 44px; height: 44px; margin-top: -22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-2);
   display: grid; place-items: center; transition: transform var(--dur-release) var(--spring); }
 .eye:active { transform: scale(0.88); transition-duration: var(--dur-press); }
+.pw .eye:focus-visible { outline-offset: -2px; }
 .eye .slash { stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset var(--dur-base) var(--ease-out); }
 .eye.on .slash { stroke-dashoffset: 0; }
 .caps[hidden] { display: none; }
@@ -631,7 +633,7 @@ dialog.sheet.dragging { transition: none; }
    phone's size, either way round: an iPad's browser has its bars at the top, and a sheet the width of its screen had
    rows, a photo and a QR code bigger than the screen) */
 @media (max-width: 699px), (max-height: 499px) {
-  html.inbrowser dialog.sheet { inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding-top: var(--top); border-radius: 0; }
+  html.inbrowser dialog.sheet { inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding-top: var(--top); border-radius: var(--r-sheet); }
   html.inbrowser dialog.sheet .sheet-body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
 }
 .grab { flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--text-3); opacity: 0.6; margin: 8px auto 0; }
@@ -639,7 +641,7 @@ dialog.sheet.dragging { transition: none; }
 .sheet-head h2 { margin: 0; font: 600 17px/1.2 var(--font); text-align: center; grid-column: 2; }
 .sheet-head .l { justify-self: start; }
 .sheet-head .r { justify-self: end; grid-column: 3; }
-.sheet-head .link { font-size: 17px; }
+.sheet-head .link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 999px; font-size: 17px; }
 .sheet-head .link.done { font-weight: 600; }
 .x { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl);
   transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
@@ -805,7 +807,7 @@ dialog.sheet.dragging { transition: none; }
 .welcome .new { margin: 6px 0 0; font-size: 14px; color: var(--text-3); }
 .welcome .new a { color: var(--tint-text); text-decoration: none; font-weight: 500; }
 .grab, .sheet-head { touch-action: none; }
-.sheet-head .link.back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; margin-left: -6px; }
+.sheet-head .link.back { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; margin-left: -6px; border-radius: 50%; }
 .mini.sure { color: #fff; background: var(--danger-deep); }
 .row .mini .spin { width: 14px; height: 14px; }
 .mini:has(.spin) { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; }
@@ -959,7 +961,7 @@ a.btn { text-decoration: none; }
   /* (the pane: a part's sheet, where the right-hand column is (--pl, --pw, --pt from app.js paneAt), its own height down
      to the window's foot, scrolling inside; no dim, no swipe down; it fades in and out) */
   dialog.sheet.pane { position: fixed; inset: var(--pt, 96px) auto 24px var(--pl, 50%); z-index: 60; width: var(--pw, 760px); max-width: none; height: auto; max-height: none; margin: 0;
-    border-radius: 28px; box-shadow: var(--edge), 0 24px 60px -24px rgba(0, 0, 0, 0.45); }
+    border-radius: var(--r-sheet); box-shadow: var(--edge), 0 24px 60px -24px rgba(0, 0, 0, 0.45); }
   dialog.sheet.pane[open] { animation: pane-in 0.26s var(--glide) both; }
   dialog.sheet.pane.closing { animation: pane-out 0.18s ease forwards; }
   dialog.sheet.pane .grab { display: none; }
@@ -1706,7 +1708,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-layer { transition: background-color var(--ifl-motion-fast) ease; }
 .ifm-layer:not(.open), .ifa-layer:not(.on) { pointer-events: none; }
 .ifm-layer.open { -webkit-backdrop-filter: none; backdrop-filter: none; }
-.ifa-sheet { border-radius: var(--ifl-radius-sheet) var(--ifl-radius-sheet) 0 0;
+.ifa-sheet { border-radius: var(--ifl-radius-sheet);
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
@@ -1715,7 +1717,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
 .ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
 :is(.ifa-go, .ifa-later, .ifb-btn):active:not(:disabled) { transform: scale(var(--ifl-press-scale)); transition-duration: var(--ifl-motion-press); }
-.ifs-btn { position: relative; }
+.ifs-btn { position: relative; display: grid; place-items: center; padding: 0; line-height: 1; }
+.ifb { border-radius: var(--ifl-radius-sheet); }
+.ifb-code, .ifb-note { border-radius: var(--ifl-radius-row); }
 .ifs-btn::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; }
 
 /* Allow flex/grid text to shrink before it can push a control outside its surface. */
@@ -1725,7 +1729,9 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifm-who b, .ifm-who small, .ifm-l, .ifm-note-tx, .ifb-facts, .ifl-sub { white-space: normal; overflow-wrap: anywhere; }
 .ifm-val { max-width: min(40vw, 18ch); white-space: normal; overflow-wrap: anywhere; text-align: end; }
 .ifm-row:has(.ifm-val:not(:empty)) { grid-template-columns: 30px minmax(0, 1.2fr) minmax(0, 0.8fr) 15px; }
-.ifm-row { min-height: 52px !important; height: auto !important; padding-top: var(--ifl-space-2) !important; padding-bottom: var(--ifl-space-2) !important; }
+.ifm-row { border-radius: var(--ifl-radius-row); min-height: 52px !important; height: auto !important; padding-top: var(--ifl-space-2) !important; padding-bottom: var(--ifl-space-2) !important; }
+.ifh-pick { border-radius: var(--ifl-radius-row); padding: 4px 6px; margin: -4px -6px; }
+.ifa-sheet button { display: grid; place-items: center; padding: 10px 16px; border-radius: var(--ifl-radius-pill); }
 .ifm-switch::before { content: ""; position: absolute; inset: -7px 0; }
 :is(.pill, .btn, .ifl-btn) { max-width: 100%; overflow-wrap: anywhere; }
 :is(.pill, .btn, .ifl-btn):focus-visible { outline: 2px solid var(--tint-text, var(--tint, currentColor)); outline-offset: 3px; }
@@ -1821,7 +1827,7 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .signin-panel .form { gap: 16px; }
 .signin-panel .field { gap: 7px; }
 .signin-panel .field > span { margin-left: 2px; font-size: 14px; font-weight: 600; color: var(--text); }
-.signin-panel .field input { background: var(--glass-ctl); min-height: 52px; border-radius: var(--ifl-radius-row, 16px); font-size: 16px; padding: 0 14px; }
+.signin-panel .field input { background: var(--glass-ctl); min-height: 52px; border-radius: var(--ifl-radius-row, 16px); font-size: 16px; padding: 0 16px; }
 .signin-panel .pw input { padding-right: 52px; }
 .signin-panel .eye { min-width: 44px; min-height: 44px; }
 .signin-panel .forgot { justify-self: end; min-height: 44px; padding: 8px 0; margin-top: -14px; font-size: 14px; }

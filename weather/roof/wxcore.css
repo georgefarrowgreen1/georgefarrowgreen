@@ -10,7 +10,7 @@
 .ifl-sheet[data-sheet="places"] .wx-places { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; }
 .ifl-sheet[data-sheet="places"] .wx-place { display: flex; align-items: center; gap: 6px; padding: 0; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass)); }
 .ifl-sheet[data-sheet="places"] .wx-place[aria-current="true"] { background: color-mix(in srgb, var(--ifl-accent-fill, var(--acc)) 20%, var(--ifl-surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent); }
-.ifl-sheet[data-sheet="places"] .wx-place-go { flex: 1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0; background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; border-radius: inherit; transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--ifl-motion-fast, .16s); }
+.ifl-sheet[data-sheet="places"] .wx-place-go { flex: 1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 10px; padding: 10px 16px; border: 0; background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; border-radius: inherit; transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--ifl-motion-fast, .16s); }
 .ifl-sheet[data-sheet="places"] .wx-place-go:not(:disabled):active { transform: scale(var(--ifl-press-card, .985)); background: var(--ifl-press); transition-duration: var(--ifl-motion-press, .09s); }
 .ifl-sheet[data-sheet="places"] .wx-place-go:disabled { cursor: default; color: var(--text); opacity: 1; }
 .ifl-sheet[data-sheet="places"] .wx-place-go:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
@@ -36,7 +36,7 @@
 .ifl-sheet[data-sheet="places"] .wx-find { width: 100%; min-height: 44px; padding: 10px 14px; font: inherit; font-size: 16px; color: var(--text); background: var(--ifl-surface-2, var(--field)); border: 1px solid var(--line, transparent); border-radius: var(--ifl-radius-row, 16px); }
 .ifl-sheet[data-sheet="places"] .wx-find:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 .ifl-sheet[data-sheet="places"] .wx-found { display: flex; flex-direction: column; gap: 6px; }
-.ifl-sheet[data-sheet="places"] .wx-found-row { display: flex; align-items: center; width: 100%; min-height: 52px; padding: 8px 12px; border: 0; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass)); color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.ifl-sheet[data-sheet="places"] .wx-found-row { display: flex; align-items: center; width: 100%; min-height: 52px; padding: 10px 16px; border: 0; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass)); color: var(--text); font: inherit; text-align: start; cursor: pointer; }
 .ifl-sheet[data-sheet="places"] .wx-found-row { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease), background-color var(--ifl-motion-fast, .16s); }
 .ifl-sheet[data-sheet="places"] .wx-found-row:active { transform: scale(var(--ifl-press-card, .985)); background: var(--ifl-press); transition-duration: var(--ifl-motion-press, .09s); }
 .ifl-sheet[data-sheet="places"] .wx-found-row:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }

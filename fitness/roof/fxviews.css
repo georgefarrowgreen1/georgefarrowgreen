@@ -132,15 +132,15 @@
 .m-fitness .drop-zone p { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.4; text-wrap: pretty; }
 .m-fitness .note-garmin { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 13px 14px; border-radius: 18px; background: color-mix(in srgb, var(--tint) 9%, transparent); font-size: 14px; line-height: 1.35; color: var(--text-2); }
 .m-fitness .note-garmin .ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
-.m-fitness .note-garmin .link { font: inherit; font-weight: 600; padding: 0; }
+.m-fitness .note-garmin .link { font: inherit; font-weight: 600; padding: 6px 10px; }
 .m-fitness .foot.none { text-align: center; padding: 28px 0; }
 
 /* ---- uploading: each activity, with what it was, a tap to change ---- */
 .m-fitness .row.up { align-items: center; }
 .m-fitness .row.up .tx small.said { color: var(--text-3); font-size: 12.5px; }
 .m-fitness .row.up.guess .tx small.said { color: #ffc65a; }
-.m-fitness .pick { position: relative; flex: none; display: inline-flex; align-items: center; height: 34px; border-radius: var(--ifl-radius-row); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-.m-fitness .pick select { appearance: none; -webkit-appearance: none; border: 0; background: none; height: 100%; padding: 0 28px 0 13px; font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; }
+.m-fitness .pick { position: relative; flex: none; display: inline-flex; align-items: center; height: 44px; border-radius: var(--ifl-radius-row); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+.m-fitness .pick select { border-radius: inherit; appearance: none; -webkit-appearance: none; border: 0; background: none; height: 100%; padding: 0 28px 0 13px; font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; }
 .m-fitness .pick svg { position: absolute; right: 10px; pointer-events: none; transform: rotate(90deg); color: var(--text-3); }
 .m-fitness .row.up.guess .pick { box-shadow: inset 0 0 0 1.5px #f2a100; }
 /* Garmin Connect: the key, pasted in */

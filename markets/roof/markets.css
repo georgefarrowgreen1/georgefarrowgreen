@@ -29,7 +29,7 @@
 @supports (content-visibility: hidden) { .m-markets .mk-sec[hidden] { display: block !important; content-visibility: hidden; min-height: 0 !important; } }
 .m-markets .mk-view { max-width: var(--col); margin: 0 auto; }
 .m-markets button, .ifl-sheet[data-app=markets] button, .m-markets input, .ifl-sheet[data-app=markets] input { font: inherit; color: inherit; letter-spacing: inherit; }
-.m-markets button, .ifl-sheet[data-app=markets] button { cursor: pointer; border: 0; background: none; padding: 0; text-align: left; }
+.m-markets button, .ifl-sheet[data-app=markets] button { cursor: pointer; border: 0; border-radius: 16px; background: none; padding: 0; text-align: left; }
 .m-markets a, .ifl-sheet[data-app=markets] a { color: inherit; text-decoration: none; }
 .m-markets .num, .ifl-sheet[data-app=markets] .num { font-variant-numeric: tabular-nums; }
 .m-markets .up-t, .ifl-sheet[data-app=markets] .up-t { color: var(--up); } .m-markets .down-t, .ifl-sheet[data-app=markets] .down-t { color: var(--down); } .m-markets .flat-t, .ifl-sheet[data-app=markets] .flat-t { color: var(--text-2); }
@@ -40,12 +40,12 @@
 .m-markets .rise, .ifl-sheet[data-app=markets] .rise { animation: mk-rise var(--ifl-motion-enter) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 5) * var(--ifl-motion-stagger)); }
 @keyframes mk-rise { from { opacity: 0.72; transform: translateY(6px); } }
 .m-markets .mk-ic svg, .ifl-sheet[data-app=markets] .mk-ic svg { width: var(--ic, 18px); height: var(--ic, 18px); }
-.m-markets :focus-visible, .ifl-sheet[data-app=markets] :focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; border-radius: 10px; }
+.m-markets :focus-visible, .ifl-sheet[data-app=markets] :focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; border-radius: 16px; }
 .ifl-sheet[data-app=markets] .mk-sheet > * { animation: mk-rise var(--ifl-motion-enter) var(--ease-out) backwards; }
 .ifl-sheet[data-app=markets] .mk-sparkline, .m-markets .mk-sparkline { width: 100%; height: 44px; margin-top: 6px; overflow: visible; }
 .m-markets .mk-herohead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .m-markets .big.small { font-size: 40px; }
-.m-markets .mk-edit { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 4px; }
+.m-markets .mk-edit { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 12px; }
 .m-markets .mk-order .item.ord { grid-template-columns: minmax(0, 1fr) 44px 44px; }
 .m-markets .mk-order .mv { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--ctl); }
 .m-markets .mk-order .mv[aria-disabled="true"] { opacity: 0.35; }
@@ -120,7 +120,7 @@
 .m-markets .say b, .ifl-sheet[data-app=markets] .say b { color: var(--text); font-weight: 600; }
 .m-markets .label, .ifl-sheet[data-app=markets] .label { margin: 44px 0 14px; padding: 0 24px; display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
 .m-markets .label span, .ifl-sheet[data-app=markets] .label span, .m-markets .label button, .ifl-sheet[data-app=markets] .label button { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; color: var(--text-3); }
-.m-markets .label button, .ifl-sheet[data-app=markets] .label button { position: relative; color: var(--tint-text); font-weight: 600; }
+.m-markets .label button, .ifl-sheet[data-app=markets] .label button { padding: 6px 10px; margin: -6px -10px; border-radius: 999px; position: relative; color: var(--tint-text); font-weight: 600; }
 .m-markets .label button::after, .ifl-sheet[data-app=markets] .label button::after, .m-markets .del::after, .ifl-sheet[data-app=markets] .del::after, .m-markets .seg button::after, .ifl-sheet[data-app=markets] .seg button::after { content: ""; position: absolute; inset: -12px -10px; }
 .m-markets .seg button::after, .ifl-sheet[data-app=markets] .seg button::after { inset: -12px 0; }
 .m-markets .del, .ifl-sheet[data-app=markets] .del { position: relative; }
@@ -133,7 +133,7 @@
 .m-markets .dots, .ifl-sheet[data-app=markets] .dots { display: flex; justify-content: center; margin-top: 14px; }
 .m-markets .dots i, .ifl-sheet[data-app=markets] .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: background-color var(--ifl-motion-fast); }
 .m-markets .dots i.on, .ifl-sheet[data-app=markets] .dots i.on { width: 18px; background: var(--text-2); }
-.m-markets .dots button, .ifl-sheet[data-app=markets] .dots button { padding: 14px 13px; margin: -6px 0; }
+.m-markets .dots button, .ifl-sheet[data-app=markets] .dots button { border-radius: 999px; padding: 14px 13px; margin: -6px 0; }
 @media (pointer: coarse) {
   .m-markets .dots button, .ifl-sheet[data-app=markets] .dots button { padding-block: 19px; margin-block: -11px; }
 }
@@ -154,8 +154,8 @@
 .m-markets .range52 i, .ifl-sheet[data-app=markets] .range52 i { position: absolute; top: -4px; left: var(--at); width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--c, transparent); animation: mk-slide 0.38s var(--ease-out) backwards; }
 @keyframes mk-slide { from { opacity: 0.6; transform: scale(0.8); } }
 .m-markets .range52 + .ends, .ifl-sheet[data-app=markets] .range52 + .ends { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); margin-top: 8px; }
-.m-markets .list, .ifl-sheet[data-app=markets] .list { margin: 0 24px; padding: 0 16px; border-radius: var(--ifl-radius-card, 26px); background: var(--glass); box-shadow: var(--edge), var(--lift); }
-.m-markets .item, .ifl-sheet[data-app=markets] .item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(84px, auto); align-items: center; gap: 12px; padding: 14px 0; border-top: 0.5px solid var(--line); transition: opacity 0.2s; }
+.m-markets .list, .ifl-sheet[data-app=markets] .list { margin: 0 24px; padding: 0 4px; border-radius: var(--ifl-radius-card, 26px); background: var(--glass); box-shadow: var(--edge), var(--lift); }
+.m-markets .item, .ifl-sheet[data-app=markets] .item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(84px, auto); align-items: center; gap: 12px; padding: 14px 12px; border-top: 0.5px solid var(--line); transition: opacity 0.2s; }
 .m-markets .item:first-child, .ifl-sheet[data-app=markets] .item:first-child { border-top: 0; }
 .m-markets .item:active, .ifl-sheet[data-app=markets] .item:active { opacity: 0.82; }
 .m-markets .item b, .ifl-sheet[data-app=markets] .item b { display: block; font-size: 16.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -168,15 +168,12 @@
 .m-markets .item.two, .ifl-sheet[data-app=markets] .item.two { grid-template-columns: minmax(0, 1fr) auto; }
 .m-markets .item.two small, .ifl-sheet[data-app=markets] .item.two small { white-space: normal; text-wrap: balance; }
 .m-markets .list.flush, .ifl-sheet[data-app=markets] .list.flush { margin: 0; padding: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.m-markets .sortable .item, .ifl-sheet[data-app=markets] .sortable .item { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform 0.28s var(--ease-out), opacity 0.2s; }
-.m-markets .sortable.sorting .item, .ifl-sheet[data-app=markets] .sortable.sorting .item { transition: transform 0.22s var(--ease-out); animation: none; }
-.m-markets .sortable .item.lifted, .ifl-sheet[data-app=markets] .sortable .item.lifted { position: relative; z-index: 2; transition: none; border-radius: 16px; background: var(--glass-strong); box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.45); opacity: 1; }
 .m-markets .hint.center, .ifl-sheet[data-app=markets] .hint.center { text-align: center; padding: 0 24px; }
 .m-markets .item.buy, .ifl-sheet[data-app=markets] .item.buy { grid-template-columns: minmax(0, 1fr) auto auto; }
 .m-markets .item.buy:active, .ifl-sheet[data-app=markets] .item.buy:active { opacity: 1; }
 .m-markets .del, .ifl-sheet[data-app=markets] .del { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--ctl); color: var(--text-3); font-size: 13px; font-weight: 600; transition: background-color var(--ifl-motion-fast), color var(--ifl-motion-fast), transform var(--ifl-motion-release) var(--ease-spring); }
 .m-markets .del.sure, .ifl-sheet[data-app=markets] .del.sure { background: var(--down); color: var(--tint-ink); }
-.m-markets .item.ord, .ifl-sheet[data-app=markets] .item.ord { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 0; }
+.m-markets .item.ord, .ifl-sheet[data-app=markets] .item.ord { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 8px 12px; }
 .m-markets .item.ord:active, .ifl-sheet[data-app=markets] .item.ord:active { opacity: 1; }
 .m-markets .mv, .ifl-sheet[data-app=markets] .mv { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--ctl); color: var(--text-2); }
 .m-markets .mv:active, .ifl-sheet[data-app=markets] .mv:active { background: var(--press); }
@@ -265,8 +262,8 @@
 .m-markets .sbar, .ifl-sheet[data-app=markets] .sbar { position: sticky; bottom: calc(-44px - env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 34px -24px calc(-44px - env(safe-area-inset-bottom, 0px)); padding: 14px 24px calc(14px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; background: var(--sheet); }
 .m-markets .sbar::before, .ifl-sheet[data-app=markets] .sbar::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 26px; pointer-events: none; background: linear-gradient(to top, var(--sheet), transparent); }
 .m-markets .sbar.two, .ifl-sheet[data-app=markets] .sbar.two { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: stretch; }
-.m-markets .tool, .ifl-sheet[data-app=markets] .tool { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 64px; padding: 8px 4px; border-radius: var(--ifl-radius-row, 16px); background: var(--ctl); text-align: center; font-size: 12.5px; font-weight: 600; color: var(--text); transition: background-color 0.25s, color 0.25s, transform var(--ifl-motion-release) var(--ease-spring); }
-.m-markets .tool span, .ifl-sheet[data-app=markets] .tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.m-markets .tool, .ifl-sheet[data-app=markets] .tool { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 64px; padding: 10px 8px; border-radius: var(--ifl-radius-row, 16px); background: var(--ctl); text-align: center; font-size: 12.5px; font-weight: 600; color: var(--text); transition: background-color 0.25s, color 0.25s, transform var(--ifl-motion-release) var(--ease-spring); }
+.m-markets .tool span, .ifl-sheet[data-app=markets] .tool span { overflow: hidden; white-space: normal; line-height: 1.25; max-width: 100%; }
 .m-markets .tool.on, .ifl-sheet[data-app=markets] .tool.on { background: var(--tint); color: var(--tint-ink); }
 .m-markets .sbar .btn, .ifl-sheet[data-app=markets] .sbar .btn { min-height: 64px; border-radius: 18px; }
 .m-markets .mixrow, .ifl-sheet[data-app=markets] .mixrow { padding: 22px 24px 0; }
@@ -284,7 +281,7 @@
 .m-markets .dialc b, .ifl-sheet[data-app=markets] .dialc b { font: 600 clamp(24px, 7.4vw, 30px)/1.05 var(--font-d); letter-spacing: -0.6px; }
 .m-markets .dialc small, .ifl-sheet[data-app=markets] .dialc small { min-height: 1.2em; font-size: 12.5px; color: var(--text-2); }
 .m-markets .mkeys, .ifl-sheet[data-app=markets] .mkeys { width: 100%; margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 20px; }
-.m-markets .mkey, .ifl-sheet[data-app=markets] .mkey { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; margin: 0 -10px; border-radius: 12px; font-size: 14px; color: var(--text-2); transition: background-color 0.25s; }
+.m-markets .mkey, .ifl-sheet[data-app=markets] .mkey { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; margin: 0 -10px; border-radius: 16px; font-size: 14px; color: var(--text-2); transition: background-color 0.25s; }
 .m-markets .mkey i, .ifl-sheet[data-app=markets] .mkey i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
 .m-markets .mkey span, .ifl-sheet[data-app=markets] .mkey span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }
 .m-markets .mkey b, .ifl-sheet[data-app=markets] .mkey b { font-weight: 500; color: var(--text); }
@@ -314,7 +311,7 @@
 @keyframes mk-flash-up { 0%, 20% { color: var(--up); } }
 @keyframes mk-flash-down { 0%, 20% { color: var(--down); } }
 .m-markets .markets, .ifl-sheet[data-app=markets] .markets { padding: 0 24px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.m-markets .mk, .ifl-sheet[data-app=markets] .mk { display: grid; gap: 3px; text-align: left; min-width: 0; }
+.m-markets .mk, .ifl-sheet[data-app=markets] .mk { display: grid; padding: 8px; gap: 3px; text-align: left; min-width: 0; }
 .m-markets .mk small, .ifl-sheet[data-app=markets] .mk small { font-size: 13px; color: var(--text-3); }
 .m-markets .mk b, .ifl-sheet[data-app=markets] .mk b { font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .m-markets .mk span, .ifl-sheet[data-app=markets] .mk span { font-size: 13.5px; font-weight: 500; }
@@ -481,7 +478,7 @@
 .m-markets .btns, .ifl-sheet[data-app=markets] .btns { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .m-markets .btns .wide, .ifl-sheet[data-app=markets] .btns .wide { grid-column: 1 / -1; }
 .m-markets .links, .ifl-sheet[data-app=markets] .links { margin-top: 14px; display: flex; justify-content: center; gap: 22px; }
-.m-markets .links button, .ifl-sheet[data-app=markets] .links button { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 4px; }
+.m-markets .links button, .ifl-sheet[data-app=markets] .links button { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 12px; }
 .m-markets .links button.danger, .ifl-sheet[data-app=markets] .links button.danger { color: var(--down); }
 .m-markets .field, .ifl-sheet[data-app=markets] .field { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 0 16px; border-radius: var(--ifl-radius-row, 16px); background: var(--field); box-shadow: inset 0 0 0 1px var(--line); margin-top: 14px; transition: box-shadow var(--ifl-motion-fast); }
 .m-markets .field input, .ifl-sheet[data-app=markets] .field input { flex: 1; align-self: stretch; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; }
@@ -489,7 +486,7 @@
 .m-markets .field:focus-within, .ifl-sheet[data-app=markets] .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint-text); }
 .m-markets .field svg, .ifl-sheet[data-app=markets] .field svg { flex: none; color: var(--text-3); }
 .m-markets .results, .ifl-sheet[data-app=markets] .results { margin-top: 10px; }
-.m-markets .res, .ifl-sheet[data-app=markets] .res { width: 100%; padding: 14px 2px; border-top: 0.5px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; }
+.m-markets .res, .ifl-sheet[data-app=markets] .res { width: 100%; padding: 14px 12px; border-top: 0.5px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; }
 .m-markets .res:first-child, .ifl-sheet[data-app=markets] .res:first-child { border-top: 0; }
 .m-markets .res b, .ifl-sheet[data-app=markets] .res b { font-size: 16.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-markets .res small, .ifl-sheet[data-app=markets] .res small { font-size: 13.5px; color: var(--text-3); grid-column: 1; }
@@ -505,7 +502,7 @@
 .m-markets .res .rp, .ifl-sheet[data-app=markets] .res .rp { display: grid; justify-items: end; gap: 1px; }
 .m-markets .res .rp b, .ifl-sheet[data-app=markets] .res .rp b { font-size: 15.5px; font-weight: 500; }
 .m-markets .res .rp small, .ifl-sheet[data-app=markets] .res .rp small { grid-column: auto; font-size: 13px; }
-.m-markets .resopen, .ifl-sheet[data-app=markets] .resopen { position: absolute; inset: 0; z-index: 0; border-radius: 12px; }
+.m-markets .resopen, .ifl-sheet[data-app=markets] .resopen { position: absolute; inset: 0; z-index: 0; border-radius: 16px; }
 .m-markets .res > :not(.resopen), .ifl-sheet[data-app=markets] .res > :not(.resopen), .m-markets .bcard > :not(.resopen), .ifl-sheet[data-app=markets] .bcard > :not(.resopen) { position: relative; z-index: 1; pointer-events: none; }
 .m-markets .res > .addb, .ifl-sheet[data-app=markets] .res > .addb, .m-markets .bcard > .addb, .ifl-sheet[data-app=markets] .bcard > .addb { pointer-events: auto; }
 .m-markets .dimmed, .ifl-sheet[data-app=markets] .dimmed { color: var(--text-3); }
@@ -619,3 +616,11 @@
 .m-markets .cash-editor .field:has([aria-invalid="true"]), .ifl-sheet[data-app=markets] .cash-editor .field:has([aria-invalid="true"]) { box-shadow: inset 0 0 0 1.5px var(--down); }
 
 @media (prefers-reduced-motion: reduce) { .m-markets .dialsvg .arc, .ifl-sheet[data-app=markets] .dialsvg .arc { stroke-dashoffset: 0; } }
+
+.m-markets .field select, .ifl-sheet[data-app=markets] .field select { appearance: none; -webkit-appearance: none; outline: none; border-radius: inherit; padding-right: 24px; }
+
+.ifl-sheet[data-app=markets] .ifs-btn { border-radius: 50%; }
+.m-markets .mk-ic, .ifl-sheet[data-app=markets] .mk-ic { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+
+.m-markets .field:has(select), .ifl-sheet[data-app=markets] .field:has(select) { position: relative; }
+.m-markets .field:has(select)::after, .ifl-sheet[data-app=markets] .field:has(select)::after { content: ""; position: absolute; right: 18px; top: 50%; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-70%) rotate(45deg); pointer-events: none; }

@@ -6,12 +6,12 @@
    re-tokenised. */
 
 /* ---- tokens: dark first, light in both light cases ---- */
-.m-weather .wx-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin-bottom: 0; }
+.m-weather .wx-more > summary { cursor: pointer; list-style: none; min-height: 44px; margin-bottom: 0; border-radius: var(--ifl-radius-row, 16px); }
 .m-weather .wx-more > summary::-webkit-details-marker { display: none; }
 .m-weather .wx-more > summary::after { transition: transform var(--ifl-motion-release, .42s) var(--ifl-motion-spring, ease); content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); margin-left: auto; flex: none; }
 .m-weather .wx-more[open] > summary { margin-bottom: 14px; }
 .m-weather .wx-more[open] > summary::after { transform: rotate(45deg); }
-.m-weather .wx-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
+.m-weather .wx-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; }
 .m-weather, .wx-sheet {
   --wx-temp: #f0a040; --wx-rain: #5aa2f0; --wx-wind: #2fc4b0;
   --wx-temp-text: #ffc078; --wx-rain-text: #9fd0ff; --wx-wind-text: #6fe0cf;
@@ -202,7 +202,7 @@
 .m-weather .win-rate:is([data-r="Great"], [data-r="Good"]) { color: var(--good-text); }
 .m-weather .win-time { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .m-weather .win-text { font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
-.m-weather .wx-win-poor { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 6px 2px; text-align: left; font-size: 14px; color: var(--text-2); }
+.m-weather .wx-win-poor { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 6px 8px; border-radius: var(--ifl-radius-row, 16px); text-align: left; font-size: 14px; color: var(--text-2); }
 .m-weather .wx-win-poor b { color: var(--text); font-weight: 600; }
 .m-weather .wx-solar-chart { color: var(--text-2); }
 .m-weather .wx-solar-chart .sun-spell { fill: color-mix(in srgb, var(--wx-yellow) 18%, transparent); }
@@ -222,9 +222,9 @@
 /* the foot: Updated · Refresh, and the credits line */
 .m-weather .wx-foot { display: grid; gap: 4px; justify-items: center; padding: 6px 0 4px; text-align: center; font-size: 13.5px; color: var(--text-3); }
 .m-weather .wx-foot p { margin: 0; }
-:is(.m-weather, .wx-sheet) .wx-link { display: inline; min-height: 0; padding: 10px 2px; margin: -10px 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--acc-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; cursor: pointer; }
+:is(.m-weather, .wx-sheet) .wx-link { display: inline; min-height: 0; padding: 10px 8px; margin: -10px 0; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 600; color: var(--acc-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; cursor: pointer; }
 :is(.m-weather, .wx-sheet) .wx-link:disabled { opacity: 0.55; }
-.m-weather .wx-credits { min-height: 44px; padding: 8px 6px; border: 0; background: none; font: inherit; color: var(--text-3); cursor: pointer; }
+.m-weather .wx-credits { min-height: 44px; padding: 8px 8px; border: 0; border-radius: var(--ifl-radius-row, 16px); background: none; font: inherit; color: var(--text-3); cursor: pointer; }
 .m-weather .wx-credits .wx-link { padding: 0; margin: 0; }
 
 /* ---- 16 Days ---- */
@@ -347,7 +347,7 @@
 /* credits */
 .wx-sheet .wx-credits-lead { font-size: 15px; }
 
-.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; gap:12px; min-height:56px; margin:0 0 16px; color:var(--text); text-decoration:none; font-size:15px; }
+.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; gap:12px; min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:15px; }
 .wx-credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
 .wx-credits-brand b { font-weight:650; }
 .wx-credits-sheet .wx-credits-lead { font-size:12px; line-height:1.5; margin:0 0 16px; }
@@ -357,11 +357,11 @@
 .wx-credits-sheet .ifl-tx > small { font-size:12px; line-height:1.4; color:var(--text-2); margin-top:3px; }
 .wx-credits-sheet .wx-credits-summary { margin:18px 2px 6px; color:var(--text-2); font-size:12px; line-height:1.5; }
 .wx-credits-sheet .wx-credits-attributions { color:var(--text-2); font-size:12px; line-height:1.5; }
-.wx-credits-attributions summary { min-height:44px; padding:12px 2px; cursor:pointer; color:var(--acc-ink); font-size:13px; }
+.wx-credits-attributions summary { min-height:44px; padding:12px 8px; border-radius:var(--ifl-radius-row, 16px); cursor:pointer; color:var(--acc-ink); font-size:13px; }
 .wx-credits-attribution { margin:12px 2px; }
 .wx-credits-attribution b, .wx-credits-attribution span { display:block; }
 .wx-credits-attribution b { color:var(--text); font-weight:600; margin-bottom:3px; }
-.wx-credits-attributions summary:focus-visible, .wx-credits-brand:focus-visible { outline:2px solid var(--acc-ink); outline-offset:3px; border-radius:8px; }
+.wx-credits-attributions summary:focus-visible, .wx-credits-brand:focus-visible { outline:2px solid var(--acc-ink); outline-offset:3px; }
 
 .wx-sheet.wx-credits-sheet { gap:8px; }
 .wx-credits-sheet .wx-credits-brand { margin-bottom:4px; }

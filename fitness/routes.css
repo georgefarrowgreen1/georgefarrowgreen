@@ -15,7 +15,7 @@
 .m-fitness .fr-context .fr-location { margin: 12px 0 0; color: var(--text-3); font-size: 13px; line-height: 1.4; }
 .m-fitness .fr-filters { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .m-fitness .fr-field { min-width: 0; }
-.m-fitness .fr-field .pick { max-width: 60%; height: 40px; }
+.m-fitness .fr-field .pick { max-width: 60%; height: 44px; }
 .m-fitness .fr-field .pick select { min-width: 0; width: 100%; max-width: 100%; font-size: 15px; }
 .m-fitness .fr-field select:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; border-radius: inherit; }
 .m-fitness .fr-suggestions { margin: 0; }
@@ -63,7 +63,7 @@
 .m-fitness .fr-plan-fields { background: var(--cell); border-radius: var(--ifl-radius-row); }
 .m-fitness .fr-plan-fields .row { gap: 8px; padding-left: 14px; padding-right: 14px; }
 .m-fitness .fr-plan-fields .tx b { font-size: 15px; }
-.m-fitness .fr-plan-fields input { appearance: auto; min-width: 0; width: 148px; max-width: 60%; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text-2); text-align: right; font: 500 15px/1.2 var(--font); }
+.m-fitness .fr-plan-fields input { appearance: auto; min-width: 0; width: 148px; max-width: 60%; min-height: 44px; margin: 0; padding: 8px 12px; border: 0; border-radius: var(--ifl-radius-row); background: none; color: var(--text-2); text-align: right; font: 500 15px/1.2 var(--font); }
 .m-fitness .fr-plan-fields input:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
 .m-fitness .fr-plan-fields input[type=time] { width: 116px; }
 .m-fitness .fr-sample-weather { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 10px; padding: 4px 0; }
@@ -77,7 +77,7 @@
 .m-fitness .fr-feedback:empty { display: none; }
 .m-fitness .fr-text-btn { justify-self: center; }
 .m-fitness .fr-method { padding: 0 4px; color: var(--text-3); font-size: 13px; line-height: 1.5; }
-.m-fitness .fr-method summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 12px; }
+.m-fitness .fr-method summary { cursor: pointer; min-height: 44px; border-radius: var(--ifl-radius-row); display: list-item; list-style-position: inside; padding: 12px 10px; }
 .m-fitness .fr-method p { margin: 8px 0; }
 .m-fitness .fr-credit { margin: 0 4px; color: var(--text-3); font-size: 12px; line-height: 1.5; }
 @media (min-width: 980px) {

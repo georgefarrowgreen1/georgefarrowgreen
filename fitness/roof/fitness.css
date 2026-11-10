@@ -53,6 +53,7 @@
    so switching back costs no layout and nothing is drawn again); where that isn't known, display: none as before) */
 @supports (content-visibility: hidden) { .m-fitness .fx-sec[hidden] { display: block !important; content-visibility: hidden; min-height: 0 !important; } }
 .m-fitness .screen { display: block; }
+.m-fitness button { border-radius: var(--ifl-radius-row); }
 .m-fitness.fx-drop-on::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-group); border: 2px dashed var(--acc); background: color-mix(in srgb, var(--tint) 12%, transparent); pointer-events: none; }
 .m-fitness.fx-sheet { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 18px; color: var(--text); font: 17px/1.35 var(--font); }
 .m-fitness .fx-sheet-right { display: flex; justify-content: flex-end; }
@@ -70,7 +71,7 @@
 .m-fitness .card.hero{border-radius: var(--r-hero); padding: 20px;}
 .m-fitness .card > h3,.m-fitness .k{display: flex; align-items: center; gap: 7px; margin: 0 0 12px; font: 600 13px/1.2 var(--font); letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3);}
 .m-fitness .k svg{flex: none;}
-.m-fitness .k .more{margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 15px; color: var(--tint-text); background: none; border: 0; padding: 0;}
+.m-fitness .k .more{margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 15px; color: var(--tint-text); background: none; border: 0; min-height: 44px; padding: 6px 10px;}
 .m-fitness button.card{display: block; width: 100%; text-align: left; border: 0; color: inherit; font: inherit; transition: transform var(--dur-release) var(--ease-spring);}
 .m-fitness button.card:active{transform: scale(0.985); transition-duration: var(--dur-press);}
 .m-fitness .cards2{display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;}
@@ -144,7 +145,7 @@
 .m-fitness .note b{color: var(--text);}
 .m-fitness .note .ic{flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: var(--s-ride);}
 .m-fitness .note .gos{display: flex; gap: 18px; margin-top: 8px;}
-.m-fitness .note .go{font-weight: 600; color: var(--tint-text); background: none; border: 0; padding: 0; font-size: 14px;}
+.m-fitness .note .go{font-weight: 600; color: var(--tint-text); background: none; border: 0; min-height: 44px; padding: 6px 10px; font-size: 14px;}
 .m-fitness .seg{position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line);}
 .m-fitness .seg button{min-height: 44px; position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast);}
 .m-fitness .seg button[aria-pressed="true"]{color: var(--text);}
@@ -218,7 +219,7 @@
 .m-fitness .pill:active{transform: scale(0.95); transition-duration: var(--dur-press);}
 .m-fitness .pill.primary{color: var(--on-tint); background: var(--ifl-accent-gradient); box-shadow: var(--ifl-shadow-control); border-radius: 999px; }
 .m-fitness .pill.small{min-height: 32px; padding: 0 12px; font-size: 14px;}
-.m-fitness .link{border: 0; background: none; padding: 0; color: var(--tint-text); font-size: 17px; font-weight: 500;}
+.m-fitness .link{display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 999px; border: 0; background: none; padding: 6px 10px; color: var(--tint-text); font-size: 17px; font-weight: 500;}
 @keyframes fx-sheet-in { from { transform: translateY(calc(100% + 16px)); } }
 @keyframes fx-dim-in { from { opacity: 0; } }
 @keyframes fx-sheet-out{from { transform: var(--from-tf, none); } to { transform: translateY(calc(100% + 16px)); }}

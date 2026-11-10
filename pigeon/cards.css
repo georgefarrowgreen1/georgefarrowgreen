@@ -3,7 +3,7 @@
    a lighter pane with white words (not while it's in the air, being sent, called back or waiting, when the bubble is clear and its
    words dark); in a friend's glass bubble and in sheets, a pane on the glass. */
 .cd-card,.cd-ask{--cd-pane:var(--ifl-surface,var(--cell));--cd-ink:var(--label);--cd-ink-2:var(--label-2);--cd-line:var(--sep);--cd-dot:var(--tint);--cd-up:var(--green-t);--cd-down:var(--red);--cd-btn:var(--ifl-surface-2,var(--fill));--cd-btn-ink:var(--label);--cd-pri:var(--ifl-accent-gradient,var(--tint-fill));--cd-pri-ink:var(--on-tint)}
-.cd-card{display:grid;gap:8px;min-width:min(256px,100%);margin:6px 0 2px;padding:14px 16px;border-radius:var(--ifl-radius-row,16px);background:var(--cd-pane);color:var(--cd-ink);box-shadow:inset 0 0 0 1px var(--cd-line);font-size:15px;line-height:1.35;overflow-wrap:anywhere;text-align:left}
+.cd-card{display:grid;gap:8px;min-width:min(256px,100%);margin:6px 0 2px;padding:14px 16px;border-radius:var(--ifl-radius-card,26px);background:var(--cd-pane);color:var(--cd-ink);box-shadow:inset 0 0 0 1px var(--cd-line);font-size:15px;line-height:1.35;overflow-wrap:anywhere;text-align:left}
 .b.me:not(.up,.sending,.lost,.waiting,.failed) .cd-card,.b.me:not(.up,.sending,.lost,.waiting,.failed) .cd-ask{--cd-pane:rgba(255,255,255,.08);--cd-ink:var(--ifl-on-contrast,#fff);--cd-ink-2:rgba(255,255,255,.78);--cd-line:rgba(255,255,255,.14);--cd-up:#c9ffd6;--cd-down:#ffd1cd;--cd-btn:rgba(255,255,255,.12);--cd-btn-ink:var(--ifl-on-contrast,#fff);--cd-pri:var(--ifl-accent-gradient,var(--tint-fill));--cd-pri-ink:var(--on-tint)}
 .cd-card.cd-sheet{margin:0;background:var(--cell);min-width:0}
 .cd-k-weather{--cd-dot:var(--teal)} .cd-k-fitness{--cd-dot:var(--orange)} .cd-k-markets{--cd-dot:var(--green)} .cd-k-streak{--cd-dot:var(--tint)}
@@ -34,7 +34,7 @@
 .b.me:not(.up,.sending,.lost,.waiting,.failed) .cd-delta{background:rgba(255,255,255,.18);color:#fff}
 .b.me:not(.up,.sending,.lost,.waiting,.failed) .cd-delta.cd-changed{background:rgba(255,204,0,.28);color:#fff}
 .cd-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;font-size:13px;color:var(--cd-ink-2)}
-.cd-open{display:inline-flex;align-items:center;min-height:44px;color:var(--cd-btn-ink);font-weight:600;text-decoration:none}
+.cd-open{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 10px;border-radius:999px;color:var(--cd-btn-ink);font-weight:600;text-align:center;text-decoration:none}
 .cd-open:active{opacity:.65}
 .cd-open{transition:opacity var(--ifl-motion-fast,.18s) ease}
 .cd-cell{transition:background-color var(--ifl-motion-fast,.18s) ease,box-shadow var(--ifl-motion-fast,.18s) ease}
@@ -52,11 +52,11 @@
 .cd-ask{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;margin-top:6px;font-size:14px;color:inherit;opacity:.92}
 .cd-ask.cd-done{opacity:.75}
 .cd-acts{display:flex;gap:6px}
-.cd-btn,.cd-chip{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:0;border-radius:999px;background:var(--cd-btn);color:var(--cd-btn-ink);font:inherit;font-size:14.5px;font-weight:600;white-space:normal;overflow-wrap:anywhere;cursor:pointer;transition:transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)),opacity var(--ifl-motion-fast,.18s) ease,background-color var(--ifl-motion-fast,.18s) ease}
-.cd-acts .cd-btn{flex:1;min-width:0;padding:0 8px}
+.cd-btn,.cd-chip{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border:0;border-radius:999px;background:var(--cd-btn);color:var(--cd-btn-ink);font:inherit;font-size:14.5px;font-weight:600;line-height:1.35;text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;transition:transform var(--ifl-motion-release,.38s) var(--ifl-motion-spring,cubic-bezier(.22,1,.36,1)),opacity var(--ifl-motion-fast,.18s) ease,background-color var(--ifl-motion-fast,.18s) ease}
+.cd-acts .cd-btn{flex:1;min-width:0;padding:10px 12px}
 .cd-btn.cd-pri{background:var(--cd-pri);color:var(--cd-pri-ink)}
 .cd-btn:active,.cd-chip:active{transform:scale(.96);transition-duration:var(--ifl-motion-press,.1s)}
-.cd-btn:focus-visible,.cd-chip:focus-visible,.cd-open:focus-visible{outline:2px solid var(--cd-btn-ink);outline-offset:3px}
+.cd-btn:focus-visible,.cd-chip:focus-visible,.cd-open:focus-visible{outline:2px solid color-mix(in srgb,var(--cd-btn-ink) 75%,transparent);outline-offset:-3px}
 .cd-btn:disabled,.cd-chip:disabled{opacity:.5;cursor:default}
 .cd-later{display:flex;flex-wrap:wrap;gap:6px}
 .cd-later[hidden]{display:none}
