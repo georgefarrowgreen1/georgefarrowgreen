@@ -4,10 +4,10 @@ const ROOT=resolve(__dirname,'../..'),IFL=resolve(ROOT,'../inflite');let browser
 before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));fixtures=await import(pathToFileURL(ROOT+'/.tools/tests/unit/fixtures/mk.mjs'));browser=process.env.CASH_BROWSER==='webkit'?await webkit.launch():await chromium.launch({executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};
-async function world({width,hosted,cashOnly=false,loseFirst=false,pauseWrite=false}){
+async function world({width,hosted,cashOnly=false,loseFirst=false,pauseWrite=false,quietProbe=false}){
  const ctx=await browser.newContext({viewport:{width,height:1000},colorScheme:width===390?'dark':'light',reducedMotion:'reduce',serviceWorkers:'block'});
  if(hosted)await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
- else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();let file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(ROOT+'/markets/')||!existsSync(file))return r.fulfill({status:404,body:'not found'});return r.fulfill({body:readFileSync(file),contentType:MIME[extname(file)]||'application/octet-stream'});});
+ else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();let file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(ROOT+'/markets/')||!existsSync(file))return r.fulfill({status:404,body:'not found'});const body=quietProbe&&file.endsWith('/app.js')?readFileSync(file,'utf8')+'\nexport { render as quietProbeRender };':readFileSync(file);return r.fulfill({body,contentType:MIME[extname(file)]||'application/octet-stream'});});
  const acc=fixtures.account();acc.cash=[];if(cashOnly)acc.holdings=[];const api=fixtures.marketsApi({acc}),writes=[];let lose=loseFirst,release;const pending=new Promise(ok=>{release=ok;});
  await ctx.route('**/api/markets/**',async r=>{
   const req=r.request(),u=new URL(req.url()),path=u.pathname.split('/').at(-1),method=req.method();
@@ -112,5 +112,26 @@ for(const width of [320,390,1440])for(const hosted of [true,false])test(`payout 
   await repeat.selectOption('once');assert.equal(await end.isVisible(),false);await date.fill('2030-04-05');await p.locator('#mk-cash-save').click();await date.waitFor({state:'detached'});assert.deepEqual(acc.cash[0].payout,{date:'2030-04-05',repeat:'once',monthEnd:false});
   await holdings(p,hosted);await visible(p,'.cash-row').first().click();await repeat.selectOption('');assert.equal(await date.isVisible(),false);await p.locator('#mk-cash-save').click();await date.waitFor({state:'detached'});assert.equal(acc.cash[0].payout,null);assert.equal(acc.cash[0].amount,10000);assert.deepEqual(acc.cash[0].tier,{limit:5000,rate:0.7});
   assert.equal(await visible(p,'.cash-payout-date').count(),0);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
+
+// Long cash forms keep validation with the field the user is taken back to.
+for(const hosted of [true,false])test(`cash validation stays beside the invalid field ${hosted?'in Today':'standalone'}`,async()=>{
+ const {ctx,p,writes,errors}=await world({width:hosted?320:390,hosted,cashOnly:true});
+ try{await visible(p,'button').filter({hasText:/^Add cash$/}).first().click();await p.locator('#mk-cash-amount').fill('10000');await p.locator('#mk-cash-rate').fill('101');
+  await p.getByRole('button',{name:'Tiered rates',exact:true}).click();await p.locator('#mk-cash-limit').fill('5000');await p.locator('#mk-cash-above').fill('0.7');await p.locator('#mk-cash-payout-repeat').selectOption('monthly');await p.locator('#mk-cash-payout-date').fill('2030-01-31');
+  const check=async(id,message)=>{await p.locator('#mk-cash-save').click();await p.locator('#mk-cash-error').waitFor({state:'visible'});assert.match(await p.locator('#mk-cash-error').textContent(),message);assert.equal(await p.locator('#'+id).getAttribute('aria-invalid'),'true');assert.equal(await p.evaluate(()=>document.activeElement.id),id);assert.equal(await p.locator('#'+id).evaluate(e=>e.closest('.field').nextElementSibling?.id),'mk-cash-error');const r=await p.locator('#mk-cash-error').boundingBox();assert.ok(r.y>=0&&r.y+r.height<=1000,'the field error is visible after focus moves');};
+  await check('mk-cash-rate',/interest rate/);await p.locator('#mk-cash-rate').fill('3.96');await p.locator('#mk-cash-payout-date').fill('');await check('mk-cash-payout-date',/payout date/);assert.equal(writes.length,0);
+  if(!hosted){await p.locator('#mk-cash-save').scrollIntoViewIfNeeded();const close=p.locator('.cash-editor button[aria-label=Close]');const r=await close.boundingBox(),box=await p.locator('#sbody').boundingBox();assert.ok(r.y>=box.y&&r.y+r.height<=box.y+box.height,'Close remains inside the long form viewport');await close.click();await p.locator('#mk-cash-amount').waitFor({state:'detached'});}
+  assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
+// Exercise the real render paths; only the native fixture exposes its private renderer.
+for(const hosted of [true,false])test(`quiet redraws keep holdings and allocation settled ${hosted?'in Today':'standalone'}`,async()=>{
+ const {ctx,p,errors}=await world({width:390,hosted,quietProbe:!hosted});
+ try{await holdings(p,hosted);await p.locator('.dialsvg .arc').first().waitFor();await p.emulateMedia({reducedMotion:'no-preference'});await p.waitForTimeout(1000);
+  const redraw=async()=>p.evaluate(async hosted=>{if(hosted)(await import('/markets/roof/core.js')).emit('list');else (await import('/app.js')).quietProbeRender(false);await new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok)));const root=hosted?document.querySelector('.m-markets [data-sec=holdings]'):document.querySelector('section.view');return {moving:root.getAnimations({subtree:true}).filter(a=>a.animationName&&a.effect?.getTiming().iterations!==Infinity&&a.playState==='running').map(a=>a.animationName),arcs:[...root.querySelectorAll('.dialsvg .arc')].map(e=>getComputedStyle(e).strokeDashoffset)};},hosted);
+  for(const reduced of [false,true]){if(reduced)await p.emulateMedia({reducedMotion:'reduce'});const result=await redraw();assert.deepEqual(result.moving,[],'quiet changes do not replay the list or allocation entrance');assert.ok(result.arcs.length&&result.arcs.every(x=>parseFloat(x)===0),'the final allocation remains drawn: '+JSON.stringify({reduced,result}));}
+  assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });

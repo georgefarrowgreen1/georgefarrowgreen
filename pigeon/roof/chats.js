@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.99";
-export const NEWS = "Smoother springs, transitions and interrupted motion across InFlite";
+export const BUILD = "2.00";
+export const NEWS = "Message actions, replies and voice playback";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

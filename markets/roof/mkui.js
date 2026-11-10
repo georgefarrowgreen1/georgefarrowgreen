@@ -168,7 +168,12 @@ export function keepFocus(redo, scope = M.root) {
 }
 // (once drawn: the lines drawn in)
 export function afterDraw(scope, animate = true) {
-  if (!animate || !scope) return;
+  if (!scope) return;
+  if (!animate) {
+    // Finish only this new view’s CSS entrances, never a chart tween or an active control transition.
+    for (const a of scope.getAnimations?.({ subtree: true }) || []) try { if (a.animationName && a.effect.getTiming().iterations !== Infinity) a.finish(); } catch (_) {}
+    return;
+  }
   scope.querySelectorAll("path[data-draw]").forEach((p, i) => C.drawIn(p, Number(p.dataset.draw) || i * 0.05));
 }
 // one symbol's numbers, wherever they show in Markets, said afresh and flashed up or down (app.js paint, scoped)

@@ -107,6 +107,83 @@ for (const width of [390, 1440]) for (const reducedMotion of ['no-preference', '
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`auth field feedback remains available and retires without losing hints ${width}`, async () => {
+    const f = await authFixture(width, 'reduce'), { p } = f;
+    try {
+      await f.ctx.route('**/api/account/signin/salt', route => route.fulfill({ status: 503, json: { error: 'Try signing in again in a moment.' } }));
+      await p.getByRole('button', { name: 'Use your password', exact: true }).click();
+      await p.locator('input[name="email"]').fill('alex@example.com');
+      const password = p.locator('input[name="password"]'); await password.fill('This draft stays');
+      await p.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await p.locator('.signin-feedback.bad').waitFor();
+      const passwordFeedback = await p.locator('.signin-feedback').getAttribute('id');
+      assert.equal(await password.getAttribute('aria-describedby'), passwordFeedback);
+      assert.equal(await password.evaluate(el => el === document.activeElement), true);
+      assert.equal(await password.getAttribute('aria-invalid'), null, 'a service error does not claim the password is invalid');
+      await p.getByRole('button', { name: 'Use your passkey instead', exact: true }).click();
+      assert.equal(await password.getAttribute('aria-describedby'), null, 'retiring a sign-in method also retires its feedback');
+      await p.getByRole('button', { name: 'Use your password', exact: true }).click();
+      assert.equal(await password.inputValue(), 'This draft stays');
+      await p.getByRole('button', { name: 'Forgot password?', exact: true }).click();
+      const email = p.locator('input[name="email"]');
+      await email.evaluate(el => {
+        const hint = document.createElement('p'); hint.id = 'existing-email-hint'; hint.textContent = 'Use the email your account uses.';
+        el.closest('.field').append(hint); el.setAttribute('aria-describedby', hint.id);
+      });
+      await email.fill('x@y');
+      const send = p.getByRole('button', { name: 'Email me a link', exact: true }); await send.click();
+      await p.locator('.said.bad').waitFor();
+      const feedback = await p.locator('.said.bad').getAttribute('id');
+      assert.deepEqual((await email.getAttribute('aria-describedby')).split(' '), ['existing-email-hint', feedback]);
+      assert.equal(await email.evaluate(el => el === document.activeElement), true);
+      await email.fill('alex@example.com');
+      assert.equal(await email.getAttribute('aria-describedby'), 'existing-email-hint', 'editing retires only the stale feedback');
+      await send.click(); f.completeReset();
+      await p.locator('.auth-panel[data-auth-state="email-sent"]').waitFor();
+      await p.getByRole('button', { name: 'Change email address', exact: true }).click();
+      assert.equal(await email.getAttribute('aria-describedby'), 'existing-email-hint');
+      assert.equal(await email.inputValue(), 'alex@example.com');
+      assert.deepEqual(f.errors, []);
+    } finally { f.completeReset(); await f.ctx.close(); }
+  });
+}
+
+test('Status reopening the same day ignores an older hours response', async () => {
+  const ctx = await context(390, 'reduce', 'status-reopen'), p = await ctx.newPage(), data = statusData(), errors = [];
+  p.on('pageerror', e => errors.push(e.message));
+  let releaseOld, requests = 0;
+  const old = new Promise(resolve => { releaseOld = resolve; });
+  await ctx.route('https://status.test/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/status') return route.fulfill({ json: data });
+    if (path === '/api/status/day') return route.fulfill({ json: { points: [] } });
+    if (path === '/api/status/hours') {
+      const first = ++requests === 1; if (first) await old;
+      return route.fulfill({ json: { kept: true, ms: first ? 999 : 22, q: Array(96).fill(first ? 'down' : 'ok') } });
+    }
+    if (path.startsWith('/api/')) return route.fulfill({ json: { found: false } });
+    const file = ROOT + '/status/' + (path === '/' ? 'index.html' : path.slice(1));
+    return existsSync(file) ? route.fulfill({ body: readFileSync(file), contentType: MIME[extname(file)] || 'application/octet-stream' }) : route.fulfill({ status: 404, body: '' });
+  });
+  try {
+    await p.goto('https://status.test/'); await p.locator('.arow').first().waitFor();
+    const day = p.locator('#apps .days button').last(), firstRequest = p.waitForRequest(r => new URL(r.url()).pathname === '/api/status/hours');
+    await day.click(); await firstRequest;
+    await p.getByRole('button', { name: 'Done', exact: true }).click(); await day.click();
+    await p.waitForFunction(() => document.querySelector('#dayMs')?.textContent === '22 ms');
+    const stale = p.waitForResponse(r => new URL(r.url()).pathname === '/api/status/hours'); releaseOld();
+    await (await stale).finished(); await p.evaluate(() => new Promise(requestAnimationFrame));
+    assert.equal(requests, 2);
+    assert.equal(await p.locator('#dayMs').textContent(), '22 ms');
+    assert.equal(await p.locator('#hours i[data-s="down"]').count(), 0);
+    assert.equal(await p.locator('#sheet').getAttribute('aria-hidden'), 'false');
+    await p.getByRole('button', { name: 'Done', exact: true }).click();
+    assert.equal(await p.locator('#sheet').evaluate(el => el.inert), true);
+    assert.deepEqual(errors, []);
+  } finally { releaseOld(); await ctx.close(); }
+});
+
 function statusData() {
   const now = Date.now(), dayKeys = Array.from({ length: 90 }, (_, i) => new Date(now - (89 - i) * 864e5).toISOString().slice(0, 10));
   const ids = ['today', 'chat', 'weather', 'fitness', 'markets', 'mail', 'auth', 'account', 'home'];

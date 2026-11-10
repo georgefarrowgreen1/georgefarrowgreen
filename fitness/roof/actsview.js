@@ -38,6 +38,18 @@ const push = (view, page) => pushSheet(() => ({ ...view(), page }));
 let shownHere = false;
 const working = () => shownHere && (X?.fw?.visible?.() ?? true);
 
+// These filters stay in place while their list/charts change: keyboard focus and the moving selection survive redraw.
+export function drawWithSegment(el, nodes, selector) {
+  const previous = el.querySelector(selector), next = nodes.find((n) => n.matches?.(selector));
+  if (!previous || !next || previous.parentNode !== el || previous.textContent !== next.textContent) return el.replaceChildren(...nodes);
+  const at = nodes.indexOf(next), buttons = previous.querySelectorAll("button");
+  next.querySelectorAll("button").forEach((b, i) => buttons[i]?.setAttribute("aria-pressed", b.getAttribute("aria-pressed")));
+  previous.style.setProperty("--at", next.style.getPropertyValue("--at"));
+  for (const child of [...el.children]) if (child !== previous) child.remove();
+  el.prepend(...nodes.slice(0, at));
+  el.append(...nodes.slice(at + 1));
+}
+
 // ---- Activities ----
 const PAGE = 60;
 // (the next weeks drawn as the list's end comes into view, as if it were all there)
@@ -488,7 +500,7 @@ export function view(el, ctx) {
     draw() {
       shownHere = true;
       const y = el.scrollTop;
-      el.replaceChildren(...activitiesView().filter(Boolean));
+      drawWithSegment(el, activitiesView().filter(Boolean), '.seg[aria-label="Sport"]');
       el.scrollTop = y;
       // (the figures of the ones kept before rows had them: a few at a time, a little after Activities first shows)
       // (always a moment after it shows, and once per show: coming back to Activities never sets it filling straight away)

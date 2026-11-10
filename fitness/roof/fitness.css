@@ -146,7 +146,7 @@
 .m-fitness .note .gos{display: flex; gap: 18px; margin-top: 8px;}
 .m-fitness .note .go{font-weight: 600; color: var(--tint-text); background: none; border: 0; padding: 0; font-size: 14px;}
 .m-fitness .seg{position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line);}
-.m-fitness .seg button{position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast);}
+.m-fitness .seg button{min-height: 44px; position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast);}
 .m-fitness .seg button[aria-pressed="true"]{color: var(--text);}
 .m-fitness .seg::before{content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 3)); border-radius: 999px; background: var(--glass-strong);
   box-shadow: var(--edge), 0 1px 4px rgba(0, 0, 0, 0.18); translate: calc(var(--at, 0) * 100%) 0; transition: translate var(--ifl-motion-tab, .28s) var(--ifl-motion-spring, ease-out);}
@@ -561,7 +561,7 @@
 .m-fitness .checkin-row .lab{width: 112px; flex: none; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-2);}
 .m-fitness .checkin-row .ico{width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: var(--glass-ctl); color: var(--text-2);}
 .m-fitness .seg3{flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 13px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line);}
-.m-fitness .seg3 button{min-height: 34px; padding: 0 2px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s, color 0.2s;}
+.m-fitness .seg3 button{min-height: 44px; padding: 0 2px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s, color 0.2s;}
 .m-fitness .seg3 button[aria-pressed="true"]{color: var(--text); background: var(--glass-strong); box-shadow: var(--ifl-shadow-control);}
 .m-fitness .seg3 button.t0[aria-pressed="true"]{color: var(--warn); background: color-mix(in srgb, #ffb547 22%, transparent);}
 .m-fitness .seg3 button.t2[aria-pressed="true"]{color: var(--good-text); background: color-mix(in srgb, #4cd98a 20%, transparent);}

@@ -148,9 +148,19 @@ const IFL = (() => {
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
   // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
-  let allowEl = null;
+  // Retire only this surface's own transition; closing chrome is immediately
+  // inert and absent from the accessibility tree, even during rapid reopening.
+  function retire(layer, surface, now) {
+    layer.inert = true; layer.setAttribute("aria-hidden", "true");
+    if (now || document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return layer.remove();
+    const done = () => { clearTimeout(timer); surface.removeEventListener("transitionend", ended); layer.remove(); };
+    const ended = (e) => { if (e.target === surface && e.propertyName === "transform") done(); };
+    const timer = setTimeout(done, 550);
+    surface.addEventListener("transitionend", ended);
+  }
+  let allowEl = null, allowClose = null;
   function allow(app, line, turnOn) {
-    allowEl?.remove();
+    allowClose?.(true);
     const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
     const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
     go.type = later.type = "button";
@@ -158,11 +168,20 @@ const IFL = (() => {
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
     const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
     const key = (e) => {
-      if (e.key === "Escape") shut();
-      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === go ? later : go).focus(); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); shut(); }
+      else if (e.key === "Tab") {
+        e.preventDefault(); const f = [go, later].filter((b) => !b.disabled), i = f.indexOf(document.activeElement);
+        f[i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+      }
     };
-    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
-    later.onclick = shut;
+    const shut = (now) => {
+      if (allowEl !== layer) return;
+      allowEl = allowClose = null; document.removeEventListener("keydown", key, true);
+      layer.classList.remove("on"); retire(layer, sheet, now === true);
+      if (was?.isConnected) was.focus?.({ preventScroll: true });
+    };
+    allowClose = shut;
+    later.onclick = () => shut();
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
     go.onclick = async () => {
       go.disabled = true; go.textContent = "Turning On…";
@@ -171,7 +190,7 @@ const IFL = (() => {
     };
     document.addEventListener("keydown", key, true);
     document.body.append(layer);
-    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (allowEl === layer) layer.classList.add("on"); }));
     go.focus({ preventScroll: true });
   }
   // (opened to turn them on: #notify, taken out of the address, and whether it was there)
@@ -328,12 +347,13 @@ const IFL = (() => {
     window.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("scroll", m.fit);
+    m.cancelFit();
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
-    if (now) m.layer.remove();
-    else { m.pop.classList.add("closing"); setTimeout(() => m.layer.remove(), 260); }
+    m.anchor.setAttribute("aria-expanded", "false");
+    m.pop.classList.add("closing"); retire(m.layer, m.pop, now);
     m.onClose?.();
   }
   function menu(anchor, o) {
@@ -357,7 +377,14 @@ const IFL = (() => {
           sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
           if (r.key) sw.dataset.k = r.key;
           sw.disabled = !!r.disabled;
-          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); let v; try { v = await r.toggle?.(next); } catch (_) { v = !next; } if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          sw.onclick = async () => {
+            if (sw.getAttribute("aria-busy") === "true") return;
+            const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next));
+            sw.setAttribute("aria-busy", "true"); sw.setAttribute("aria-disabled", "true");
+            let v; try { v = await r.toggle?.(next); } catch (_) { v = !next; }
+            if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v));
+            sw.removeAttribute("aria-busy"); sw.removeAttribute("aria-disabled");
+          };
           rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
         } else {
           // (a value or none, its chevron in the same column: lined up with every other row's)
@@ -387,7 +414,7 @@ const IFL = (() => {
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
     const key = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
       else if (e.key === "Tab") {
         const f = [...pop.querySelectorAll("button:not(:disabled), a[href]")];
         if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
@@ -404,7 +431,7 @@ const IFL = (() => {
     // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
     // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
     // field, which left it short, or the phone turned)
-    const fit = () => {
+    const fitNow = () => {
       const vv = window.visualViewport, y = vv?.offsetTop || 0, x = vv?.offsetLeft || 0;
       const H = Math.min(window.innerHeight, vv?.height || Infinity), W = Math.min(window.innerWidth, vv?.width || Infinity);
       const r = anchor.getBoundingClientRect();
@@ -418,19 +445,23 @@ const IFL = (() => {
       pop.style.left = `${left}px`;
       pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     };
-    fit();
+    let fitFrame = 0;
+    const fit = () => { if (!fitFrame) fitFrame = requestAnimationFrame(() => { fitFrame = 0; if (open?.layer === layer) fitNow(); }); };
+    const cancelFit = () => { cancelAnimationFrame(fitFrame); fitFrame = 0; };
+    fitNow();
     window.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("scroll", fit);
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
+    anchor.setAttribute("aria-expanded", "true");
+    open = { anchor, layer, pop, key, fit, cancelFit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
-      fit();
+      fitNow();
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
-    requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (open?.layer === layer) { layer.classList.add("open"); pop.classList.add("open"); } }));
     card.focus({ preventScroll: true });
   }
   // InFlite's header, the same in every app: your photo (InFlite's menu; signed out, an outline that signs in) · the
@@ -830,10 +861,11 @@ const IFL = (() => {
     const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "InFlite is one app now"), el("p", "ifa-p", "Today, Chats and every app in one place. Add inflite.ai to your Home Screen."), steps, how, stop, later);
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "InFlite is one app now");
     const layer = el("div", "ifa-layer ifl-moved", sheet), was = document.activeElement;
-    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); was?.focus?.({ preventScroll: true }); };
+    let closed = false;
+    const shut = () => { if (closed) return; closed = true; document.removeEventListener("keydown", key, true); layer.classList.remove("on"); retire(layer, sheet); if (was?.isConnected) was.focus?.({ preventScroll: true }); };
     // (Escape shuts it; Tab and Shift-Tab go round its buttons, never behind it)
     const key = (e) => {
-      if (e.key === "Escape") return shut();
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return shut(); }
       if (e.key !== "Tab") return;
       const f = [how, stop, later].filter((b) => b && !b.hidden && !b.disabled);
       if (!f.length) return;
@@ -852,7 +884,7 @@ const IFL = (() => {
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
     document.addEventListener("keydown", key, true);
     document.body.append(layer);
-    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!closed) layer.classList.add("on"); }));
     how.focus?.({ preventScroll: true });
   }
   // a plain toast: the words alone, said out, gone in a few seconds
@@ -1153,8 +1185,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.31";
-const NEWS = "Smoother springs, transitions and interrupted motion across InFlite";
+const BUILD = "2.32";
+const NEWS = "Steadier charts and clearer cash forms";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1617,8 +1649,13 @@ function keepFocus(redo) {
 }
 // (once drawn: the lines drawn in, as they come into view)
 function afterDraw(animate) {
-  if (!animate) return;
-  main.querySelectorAll("path[data-draw]").forEach((p, i) => C.drawIn(p, Number(p.dataset.draw) || i * 0.05));
+  const scope = main.querySelector(".view") || main;
+  if (!animate) {
+    // Quiet redraws settle finite CSS entrances; chart tweens and control transitions keep their owners.
+    for (const a of scope.getAnimations?.({ subtree: true }) || []) try { if (a.animationName && a.effect.getTiming().iterations !== Infinity) a.finish(); } catch (_) {}
+    return;
+  }
+  scope.querySelectorAll("path[data-draw]").forEach((p, i) => C.drawIn(p, Number(p.dataset.draw) || i * 0.05));
 }
 
 function todayView() {

@@ -216,7 +216,7 @@ export function view(el, ctx) {
   function hourlyCard(wx, now, f) {
     if (!chosen) mode = viewFor(wx, now, f);
     const hrs = I.hoursFrom(wx, now, 48), host = chartHost(mode);
-    const seg = ui.seg([["temp", "Temp"], ["rain", "Rain"], ["wind", "Wind"]], mode, (v) => { mode = v; chosen = true; hourChart(host, wx, nowWall(wx.place.offset), hrs, mode, true, ctx.S.f || f); }, { label: "Chart" });
+    const seg = ui.seg([["temp", "Temp"], ["rain", "Rain"], ["wind", "Wind"]], mode, (v) => { chosen = true; if (mode === v) return; mode = v; hourChart(host, wx, nowWall(wx.place.offset), hrs, mode, true, ctx.S.f || f); }, { label: "Chart" });
     seg.dataset.key = "metric";
     const card = wxCard(ctx, { id: "hourly", title: "Next 48 hours", g: "clock", extra: seg }, strip(wx, now, f, hrs), host);
     later(() => hourChart(host, wx, now, hrs, mode, true, f), host);

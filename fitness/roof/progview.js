@@ -12,7 +12,7 @@
 // actsview.js's sheet ([data-sheet=form]); your nights, Today's (todayview.js nightsView).
 import { C, G, DAY, P, S, TODAY, U, addDays, card, cardW, dayName, dayShort, dist, distNum, dur, fitnessSeries, formSaid, h, height, hm, icon, isSet, mondayOf, nightsFrom, nightsSeries, openSheet, plural, progActs, pushSheet, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, stat, store, svgOf, wide, Sheet } from "./x.js";
 import { nightsView } from "./todayview.js";
-import { formView, openAct, shareView, uploadFilesView } from "./actsview.js";
+import { drawWithSegment, formView, openAct, shareView, uploadFilesView } from "./actsview.js";
 
 // ---- the module's handle: the ctx the entry gave the last view or opener ----
 let X = null;
@@ -350,7 +350,7 @@ export function view(el, ctx) {
   use(ctx);
   el.classList.add("fx-progress");
   return {
-    draw() { const y = el.scrollTop; el.replaceChildren(...progressView().filter(Boolean)); el.scrollTop = y; },
+    draw() { const y = el.scrollTop; drawWithSegment(el, progressView().filter(Boolean), ".p-range"); el.scrollTop = y; },
     hide() {},
     destroy() { el.replaceChildren(); },
   };

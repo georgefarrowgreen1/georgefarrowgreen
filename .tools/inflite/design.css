@@ -15,6 +15,7 @@
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifm-switch[aria-busy="true"] { cursor: progress; }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
 .ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }

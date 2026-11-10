@@ -246,7 +246,7 @@ button.card:active { transform: scale(0.985); transition-duration: var(--dur-pre
 
 /* ---- segmented control (as Weather's Temp / Rain / Wind) ---- */
 .seg { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border-radius: 999px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-.seg button { position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast); }
+.seg button { min-height: 44px; position: relative; z-index: 1; border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--dur-fast); }
 .seg button[aria-pressed="true"] { color: var(--text); }
 .seg::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 3)); border-radius: 999px; background: var(--glass-strong);
   box-shadow: var(--edge), 0 1px 4px rgba(0, 0, 0, 0.18); translate: calc(var(--at, 0) * 100%) 0; transition: translate var(--ifl-motion-tab, .28s) var(--ifl-motion-spring, ease-out); }
@@ -910,7 +910,7 @@ main[aria-busy="true"]:empty::after { height: 300px; }
 .p-curve .cross { stroke: var(--text); stroke-opacity: 0.25; stroke-dasharray: 2 3; } .p-curve .halo { fill: var(--tint); opacity: 0.2; } .p-curve .pt { fill: #fff; stroke: var(--tint); stroke-width: 3; }
 .p-curve .lab, .p-ftp .lab, .p-eff .lab { font-size: 10px; fill: var(--text-3); }
 .p-lens { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-.p-lens button { min-height: 36px; border: 0; border-radius: 12px; background: var(--glass-ctl); color: var(--text-2); font: 600 13px/1 var(--font); }
+.p-lens button { min-height: 44px; border: 0; border-radius: 12px; background: var(--glass-ctl); color: var(--text-2); font: 600 13px/1 var(--font); }
 .p-lens button.on { background: var(--ifl-accent-gradient); color: var(--on-tint); box-shadow: var(--ifl-shadow-control); }
 .p-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
 .p-legend span { display: inline-flex; align-items: center; gap: 6px; } .p-legend i { width: 12px; height: 10px; border-radius: 3px; }
@@ -1090,7 +1090,7 @@ img, svg { -webkit-user-drag: none; }
 .checkin-row .lab { width: 112px; flex: none; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-2); }
 .checkin-row .ico { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: var(--glass-ctl); color: var(--text-2); }
 .seg3 { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 13px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
-.seg3 button { min-height: 34px; padding: 0 2px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s, color 0.2s; }
+.seg3 button { min-height: 44px; padding: 0 2px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s, color 0.2s; }
 .seg3 button[aria-pressed="true"] { color: var(--text); background: var(--glass-strong); box-shadow: var(--ifl-shadow-control); }
 .seg3 button.t0[aria-pressed="true"] { color: var(--warn); background: color-mix(in srgb, #ffb547 22%, transparent); }
 .seg3 button.t2[aria-pressed="true"] { color: var(--good-text); background: color-mix(in srgb, #4cd98a 20%, transparent); }
@@ -1717,7 +1717,7 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
 .onb-goal b { font-size: 15px; font-weight: 600; } .onb-goal small { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
 .onb-event { display: grid; gap: 10px; padding: 14px; margin: 0; }
 .onb-kinds { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; background: var(--glass-ctl); }
-.onb-kinds button { min-height: 34px; border: 0; border-radius: 999px; background: none; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.onb-kinds button { min-height: 44px; border: 0; border-radius: 999px; background: none; color: var(--text-2); font-size: 14px; font-weight: 600; }
 .onb-kinds button.on { background: var(--glass-strong); color: var(--text); box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.35); }
 .onb-note { display: grid; gap: 4px; padding: 14px 16px; margin: 0; } .onb-note b { font-size: 15px; } .onb-note small { font-size: 13px; color: var(--text-2); line-height: 1.4; }
 .onb-switch { flex: none; position: relative; width: 51px; height: 31px; border: 0; border-radius: 16px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color var(--dur-fast); }
@@ -2337,6 +2337,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifm-switch[aria-busy="true"] { cursor: progress; }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
 .ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
@@ -2404,7 +2405,7 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 .map .map-show{position:absolute;top:12px;right:12px;z-index:2;min-height:40px;max-width:calc(100% - 24px);margin:0;padding:0 14px;background: var(--glass-strong);-webkit-backdrop-filter: none;backdrop-filter: none;box-shadow: var(--edge), var(--ifl-shadow-control);}
 .map .map-show>svg{flex:none;width:14px;height:14px;margin:0}
 .sheet-top .act-links{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.act-links>.pill{min-height:40px;text-decoration:none;gap:6px box-shadow: inset 0 0 0 1px var(--line); background: var(--glass-ctl); }
+.act-links>.pill{min-height:40px;text-decoration:none;gap:6px; box-shadow: inset 0 0 0 1px var(--line); background: var(--glass-ctl); }
 .act-links>.pill svg{flex:none;width:14px;height:14px}
 
 .week-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }

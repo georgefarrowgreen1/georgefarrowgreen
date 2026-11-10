@@ -272,19 +272,74 @@ export function openWhoHas(ctx, msgId) {
   return h;
 }
 
-/* ---------- a photo (decrypted in the core, its object URL made and let go of by media.js) ---------- */
+/* Voice controls share Chats' spacing and focus treatment across browsers;
+   the media element and its pending play remain owned by this sheet. */
+function voiceControls(k, h, audio, seconds) {
+  const { el } = k, play = el("button", { type: "button", class: "ifl-btn chs-play", aria: { label: "Play voice message", pressed: "false" }, text: "Play" });
+  const seek = el("input", { type: "range", class: "chs-seek", min: "0", max: "1", step: ".1", value: "0", disabled: true, aria: { label: "Voice message position" } });
+  const time = el("output", { class: "chs-voice-time", aria: { live: "off" } });
+  const note = el("p", { class: "chs-foot chs-voice-note", hidden: true, role: "status" });
+  const box = el("div", { class: "chs-player", role: "group", aria: { label: "Voice message playback" } }, play, seek, time, note);
+  const clip = (n) => { const s = Math.max(0, Math.floor(Number(n) || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  let alive = true, pending = false;
+  const current = () => alive && !h.closed && !h.el.classList.contains("closing");
+  function draw() {
+    if (!current()) return;
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+    const at = Number.isFinite(audio.currentTime) ? audio.currentTime : 0, paused = audio.paused !== false;
+    play.textContent = paused ? "Play" : "Pause";
+    play.setAttribute("aria-label", paused ? "Play voice message" : "Pause voice message");
+    play.setAttribute("aria-pressed", String(!paused)); play.setAttribute("aria-busy", String(pending));
+    seek.max = String(duration || 1); seek.value = String(at); seek.disabled = !duration;
+    seek.setAttribute("aria-valuetext", `${clip(at)} of ${duration || seconds ? clip(duration || seconds) : "unknown duration"}`);
+    time.textContent = `${clip(at)} / ${duration || seconds ? clip(duration || seconds) : "—"}`;
+  }
+  async function toggle() {
+    if (!current() || pending) return;
+    if (audio.paused === false) { audio.pause(); return; }
+    pending = true; play.setAttribute("aria-busy", "true"); note.hidden = true;
+    try { await audio.play(); if (!current()) audio.pause(); }
+    catch (_) { if (current()) { note.textContent = "Couldn’t play this voice message. Try again."; note.hidden = false; } }
+    finally { if (current()) { pending = false; draw(); } }
+  }
+  const move = () => {
+    if (!current() || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    audio.currentTime = Math.max(0, Math.min(audio.duration, Number(seek.value) || 0)); draw();
+  };
+  const changed = () => { if (current()) draw(); else if (alive) audio.pause(); };
+  const failed = () => { if (current()) { draw(); note.textContent = "Couldn’t play this voice message. Try again."; note.hidden = false; } };
+  const events = ["loadedmetadata", "durationchange", "timeupdate", "play", "pause", "ended"];
+  play.addEventListener("click", toggle); seek.addEventListener("input", move); audio.addEventListener("error", failed);
+  for (const name of events) audio.addEventListener(name, changed);
+  draw();
+  return { el: box, stop() {
+    if (!alive) return;
+    alive = false;
+    play.removeEventListener("click", toggle); seek.removeEventListener("input", move); audio.removeEventListener("error", failed);
+    for (const name of events) audio.removeEventListener(name, changed);
+    play.disabled = true; seek.disabled = true; audio.pause?.();
+  } };
+}
+
+/* ---------- a photo or voice message (decrypted in the core, URLs owned by this sheet) ---------- */
 export function openView(ctx, msgId) {
-  const k = kit(ctx), { ui, el } = k;
-  let box = null, url = null;
-  const h = k.sheet({ sheet: "view", label: "Photo", body: (b) => { box = el("div", { class: "chs-view" }); b.append(box); }, onClose: () => { url?.revoke?.(); url = null; } });
+  const k = kit(ctx), { ui, el } = k, x = k.msgOf(msgId), voice = x?.m?.kind === "voice";
+  let box = null, url = null, audio = null, player = null;
+  const h = k.sheet({ sheet: "view", label: voice ? "Voice message" : "Photo", title: voice ? "Voice message" : null,
+    body: (b) => { box = el("div", { class: "chs-view" }); b.append(box); },
+    onClose: () => { player?.stop(); player = null; audio?.removeAttribute("src"); audio?.load?.(); audio = null; url?.revoke?.(); url = null; } });
   box.append(ui.skeleton("hero"));
-  const x = k.msgOf(msgId), ref = x?.m?.media?.ref || msgId;
+  const ref = x?.m?.media?.ref || msgId;
   Promise.all([k.svc.call("photo", ref), k.fw.lazy((q) => import("./media.js" + q))]).then(([blob, M]) => {
-    if (h.closed) return;
-    if (!blob) { box.replaceChildren(ui.empty({ title: "This photo isn’t on this phone any more", body: "A photo sent to be seen once is opened once, then let go of, and one that’s been kept 30 days goes too." })); return; }
+    if (h.closed || h.el.classList.contains("closing")) return;
+    if (!blob) { box.replaceChildren(ui.empty({ title: voice ? "This voice message isn’t available" : "This photo isn’t on this phone any more", body: voice ? "It may have expired or been removed from this phone." : "A photo sent to be seen once is opened once, then let go of, and one that’s been kept 30 days goes too." })); return; }
     url = M.blobUrl(blob);
-    box.replaceChildren(el("img", { src: url.url, alt: "Photo", class: "chs-photo" }), el("p", { class: "chs-foot", text: "Decrypted on this phone." }));
-  }, (e) => { if (!h.closed) box.replaceChildren(ui.error({ title: "Can’t open the photo", body: e?.why === "offline" ? "No signal." : "Try again in a moment." })); });
+    if (voice) {
+      audio = el("audio", { src: url.url, preload: "metadata", hidden: true, class: "chs-audio" });
+      player = voiceControls(k, h, audio, x?.m?.media?.secs);
+      box.replaceChildren(audio, player.el, el("p", { class: "chs-foot", text: "Decrypted on this phone." }));
+    } else box.replaceChildren(el("img", { src: url.url, alt: "Photo", class: "chs-photo" }), el("p", { class: "chs-foot", text: "Decrypted on this phone." }));
+  }, (e) => { if (!h.closed && !h.el.classList.contains("closing")) box.replaceChildren(ui.error({ title: voice ? "Can’t open the voice message" : "Can’t open the photo", body: e?.why === "offline" ? "No signal." : "Try again in a moment." })); });
   return h;
 }
 
@@ -423,13 +478,16 @@ export function holdItems(ctx, target = {}) {
 export function openHold(ctx, target = {}) {
   const k = kit(ctx), { ui, el } = k;
   const items = holdItems(ctx, target), x = target.msgId ? k.msgOf(target.msgId) : null, m = x?.m;
-  const h = k.sheet({ sheet: "hold", title: target.title || "", label: target.title ? null : "Actions", body: (b) => {
+  const h = k.sheet({ sheet: "hold", title: target.title || "", label: target.title ? null : "Actions", onClose: () => target.onClose?.(), body: (b) => {
     const box = el("div", { class: "chs chs-hold" });
     if (target.kind === "msg" && m && !m.recalled) {
       const mine = m.mine || "";
       const rr = el("div", { class: "chs-react", role: "group", "aria-label": "React" }, REACTIONS.map((e) => {
         const btn = el("button", { type: "button", class: "chs-emoji", data: { act: "react", value: e }, aria: { pressed: String(mine === e), label: `React ${e}` }, text: e });
-        btn.addEventListener("click", () => { h.close(); k.svc.call("react", x.chat.id, m.id, e).catch((err) => k.say(err)); });
+        btn.addEventListener("click", () => {
+          if (h.closed || h.el.classList.contains("closing")) return;
+          h.close(); k.svc.call("react", x.chat.id, m.id, e).catch((err) => k.say(err));
+        });
         return btn;
       }));
       box.append(rr);
@@ -439,7 +497,13 @@ export function openHold(ctx, target = {}) {
       if (Number.isFinite(m.at)) box.append(el("p", { class: "chs-foot", text: `Sent ${fmtShort(m.at)}` }));
     }
     box.append(ui.list(items.map((it) => {
-      const r = k.row({ title: it.label, sub: it.sub, run: () => { h.close(); try { it.run?.(); } catch (_) {} } }, { act: it.act });
+      const r = k.row({ title: it.label, sub: it.sub, run: () => {
+        if (h.closed || h.el.classList.contains("closing")) return;
+        // Select the reply before close, so reduced motion's synchronous close
+        // and the animated close can both hand focus to the composer afterward.
+        if (it.act === "reply") { try { it.run?.(); } catch (_) {} h.close(); }
+        else { h.close(); try { it.run?.(); } catch (_) {} }
+      } }, { act: it.act });
       if (it.destructive) r.classList.add("chs-danger");
       return r;
     })));

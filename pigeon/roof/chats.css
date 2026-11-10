@@ -119,7 +119,17 @@
   background: var(--ifl-page, var(--solid)); -webkit-backdrop-filter: none; backdrop-filter: none; border-top: 0.5px solid var(--line); }
 .m-chats .ch-chat.ch-kbup .ch-composer { padding-bottom: 6px; }
 .m-chats .ch-field { flex: 1; min-width: 0; display: flex; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--field)); box-shadow: inset 0 0 0 0.5px var(--line); transition: box-shadow var(--dur-fast, .18s) ease; }
-.m-chats .ch-input { flex: 1; min-width: 0; height: calc(22px * var(--ch-rows, 1) + 16px); max-height: 160px; padding: 8px 14px; border: 0; background: transparent; color: var(--text);
+.m-chats .ch-entry { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.m-chats .ch-reply { display: flex; align-items: center; min-height: 52px; margin: 8px 0 0 12px; padding-left: 9px; border-left: 2px solid var(--acc-ink); }
+.m-chats .ch-reply:not([hidden]) { animation: ch-soft-in var(--ifl-motion-fast, .16s) ease both; }
+.m-chats .ch-reply-copy { flex: 1; min-width: 0; font-size: 13px; line-height: 18px; }
+.m-chats .ch-reply-copy b, .m-chats .ch-reply-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-chats .ch-reply-copy b { color: var(--acc-ink); }
+.m-chats .ch-reply-copy span { color: var(--text-2); }
+.m-chats .ch-reply-cancel { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border: 0; padding: 0; border-radius: 50%; background: transparent; color: var(--text-2); cursor: pointer; }
+.m-chats .ch-reply-cancel .ifl-glyph { width: 18px; height: 18px; }
+.m-chats .ch-reply-cancel:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: -2px; }
+.m-chats .ch-input { flex: none; width: 100%; min-width: 0; height: calc(22px * var(--ch-rows, 1) + 22px); max-height: 160px; padding: 8px 14px; border: 0; background: transparent; color: var(--text);
   font: inherit; font-size: 17px; line-height: 22px; resize: none; outline: none; }
 .m-chats .ch-input::placeholder { color: var(--text-3); }
 .m-chats .ch-field:focus-within { box-shadow: inset 0 0 0 1.5px var(--acc); }

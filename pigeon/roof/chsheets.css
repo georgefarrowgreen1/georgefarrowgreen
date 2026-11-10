@@ -89,6 +89,15 @@
 /* ---- a photo ---- */
 .ifl-sheet[data-app=chats] .chs-view { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .ifl-sheet[data-app=chats] .chs-photo { max-width: 100%; max-height: 70vh; border-radius: var(--r-well, 16px); object-fit: contain; }
+.ifl-sheet[data-app=chats] .chs-audio { display: none; }
+.ifl-sheet[data-app=chats] .chs-player { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 12px; width: 100%; max-width: 440px; margin: 8px 0; }
+.ifl-sheet[data-app=chats] .chs-play { align-self: start; min-width: 82px; min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--r-pill, 999px); background: var(--ifl-accent-gradient, var(--acc-fill)); color: var(--ifl-on-accent, var(--on-acc)); font: 600 15px/1.2 var(--font); cursor: pointer; }
+.ifl-sheet[data-app=chats] .chs-play:focus-visible, .ifl-sheet[data-app=chats] .chs-seek:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: 3px; }
+.ifl-sheet[data-app=chats] .chs-play:disabled { opacity: .55; cursor: wait; }
+.ifl-sheet[data-app=chats] .chs-play[aria-busy=true] { opacity: .7; cursor: progress; }
+.ifl-sheet[data-app=chats] .chs-seek { width: 100%; min-width: 0; min-height: 44px; margin: 0; border-radius: var(--r-pill, 999px); accent-color: var(--acc-ink); cursor: pointer; }
+.ifl-sheet[data-app=chats] .chs-voice-time { grid-column: 2; margin-top: 3px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; text-align: center; }
+.ifl-sheet[data-app=chats] .chs-voice-note { grid-column: 1 / -1; margin-top: 10px; }
 
 /* ---- voice ---- */
 .ifl-sheet[data-app=chats] .chv { align-items: center; padding: 20px; border-radius: var(--ifl-radius-card, 26px); background: var(--ifl-contrast, #141714); color: var(--ifl-on-contrast, #fff); }

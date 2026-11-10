@@ -30,6 +30,12 @@ Interruptions belong to the component: cancel old effects before replacements, f
 opening a modal, and release transient size animations on keyboard/viewport changes or close. Intrinsic sheet
 resizing is the small exception to transform/opacity: it is bounded, unfilled and never locks a pixel height.
 
+Keep focused inputs, recipient chips and selected filters mounted during data refreshes. Quiet refreshes update
+values without replaying entrances. When motion is reduced, charts must retain their final data shapes.
+Put validation beside the relevant field and associate its message with that input. Long editors and detail
+pages keep their close/navigation actions within reach. Closing overlays immediately release interaction and
+accessibility ownership; delayed animation callbacks may never reopen them or steal newer focus.
+
 ## Verification
 
 Check native and Today-hosted screens at narrow-phone and desktop sizes, in light/dark and explicit appearance settings. Review populated, empty, loading, error and editor/sheet states. Check overflow, contrast, focus, keyboard clearance and route/sheet transitions. Run app regressions and shared contract/budget checks before generating minified assets and deploying both repositories.

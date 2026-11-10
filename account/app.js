@@ -144,9 +144,19 @@ const IFL = (() => {
   // Notifications on this device, asked for in one tap (a phone asks each app for itself, and only from a tap): when
   // the app's opened from the account's Notifications page to turn them on (#notify), or from the menu's row where
   // they're off. What they tell you is the account's. turnOn(): asks the browser first thing, → true once they're on
-  let allowEl = null;
+  // Retire only this surface's own transition; closing chrome is immediately
+  // inert and absent from the accessibility tree, even during rapid reopening.
+  function retire(layer, surface, now) {
+    layer.inert = true; layer.setAttribute("aria-hidden", "true");
+    if (now || document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return layer.remove();
+    const done = () => { clearTimeout(timer); surface.removeEventListener("transitionend", ended); layer.remove(); };
+    const ended = (e) => { if (e.target === surface && e.propertyName === "transform") done(); };
+    const timer = setTimeout(done, 550);
+    surface.addEventListener("transitionend", ended);
+  }
+  let allowEl = null, allowClose = null;
   function allow(app, line, turnOn) {
-    allowEl?.remove();
+    allowClose?.(true);
     const img = el("img", "ifa-ic"); img.src = iconUrl(app); img.alt = "";
     const go = el("button", "ifa-go", "Allow Notifications"), later = el("button", "ifa-later", "Not Now");
     go.type = later.type = "button";
@@ -154,11 +164,20 @@ const IFL = (() => {
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "Notifications on this device");
     const layer = allowEl = el("div", "ifa-layer", sheet), was = document.activeElement;
     const key = (e) => {
-      if (e.key === "Escape") shut();
-      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === go ? later : go).focus(); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); shut(); }
+      else if (e.key === "Tab") {
+        e.preventDefault(); const f = [go, later].filter((b) => !b.disabled), i = f.indexOf(document.activeElement);
+        f[i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+      }
     };
-    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); if (allowEl === layer) allowEl = null; was?.focus?.({ preventScroll: true }); };
-    later.onclick = shut;
+    const shut = (now) => {
+      if (allowEl !== layer) return;
+      allowEl = allowClose = null; document.removeEventListener("keydown", key, true);
+      layer.classList.remove("on"); retire(layer, sheet, now === true);
+      if (was?.isConnected) was.focus?.({ preventScroll: true });
+    };
+    allowClose = shut;
+    later.onclick = () => shut();
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
     go.onclick = async () => {
       go.disabled = true; go.textContent = "Turning On…";
@@ -167,7 +186,7 @@ const IFL = (() => {
     };
     document.addEventListener("keydown", key, true);
     document.body.append(layer);
-    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (allowEl === layer) layer.classList.add("on"); }));
     go.focus({ preventScroll: true });
   }
   // (opened to turn them on: #notify, taken out of the address, and whether it was there)
@@ -324,12 +343,13 @@ const IFL = (() => {
     window.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("scroll", m.fit);
+    m.cancelFit();
     // (focus back on your photo, if it was in the menu: else it's left on nothing, and a screen reader starts again at the top)
     if (m.layer.contains(document.activeElement) || document.activeElement === document.body) m.anchor.focus?.({ preventScroll: true });
     m.layer.classList.remove("open");
     m.pop.classList.remove("open");
-    if (now) m.layer.remove();
-    else { m.pop.classList.add("closing"); setTimeout(() => m.layer.remove(), 260); }
+    m.anchor.setAttribute("aria-expanded", "false");
+    m.pop.classList.add("closing"); retire(m.layer, m.pop, now);
     m.onClose?.();
   }
   function menu(anchor, o) {
@@ -353,7 +373,14 @@ const IFL = (() => {
           sw.setAttribute("aria-checked", String(!!r.on)); sw.setAttribute("aria-label", r.label);
           if (r.key) sw.dataset.k = r.key;
           sw.disabled = !!r.disabled;
-          sw.onclick = async () => { const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next)); let v; try { v = await r.toggle?.(next); } catch (_) { v = !next; } if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v)); };
+          sw.onclick = async () => {
+            if (sw.getAttribute("aria-busy") === "true") return;
+            const next = sw.getAttribute("aria-checked") !== "true"; sw.setAttribute("aria-checked", String(next));
+            sw.setAttribute("aria-busy", "true"); sw.setAttribute("aria-disabled", "true");
+            let v; try { v = await r.toggle?.(next); } catch (_) { v = !next; }
+            if (typeof v === "boolean") sw.setAttribute("aria-checked", String(v));
+            sw.removeAttribute("aria-busy"); sw.removeAttribute("aria-disabled");
+          };
           rows.append(el("div", "ifm-row" + (r.disabled ? " off" : ""), ic, el("span", "ifm-l", r.label), sw));
         } else {
           // (a value or none, its chevron in the same column: lined up with every other row's)
@@ -383,7 +410,7 @@ const IFL = (() => {
     const layer = el("div", "ifm-layer", pop);
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) { e.preventDefault(); close(); } });
     const key = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); anchor.focus?.({ preventScroll: true }); }
       else if (e.key === "Tab") {
         const f = [...pop.querySelectorAll("button:not(:disabled), a[href]")];
         if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
@@ -400,7 +427,7 @@ const IFL = (() => {
     // screen leaves it, so on a short one (a phone on its side) it scrolls, and its foot's never out of reach below;
     // fitted again as what's in sight changes while it's open: the keyboard going as the menu takes the focus from a
     // field, which left it short, or the phone turned)
-    const fit = () => {
+    const fitNow = () => {
       const vv = window.visualViewport, y = vv?.offsetTop || 0, x = vv?.offsetLeft || 0;
       const H = Math.min(window.innerHeight, vv?.height || Infinity), W = Math.min(window.innerWidth, vv?.width || Infinity);
       const r = anchor.getBoundingClientRect();
@@ -414,19 +441,23 @@ const IFL = (() => {
       pop.style.left = `${left}px`;
       pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${below ? "-10px" : "calc(100% + 10px)"}`;
     };
-    fit();
+    let fitFrame = 0;
+    const fit = () => { if (!fitFrame) fitFrame = requestAnimationFrame(() => { fitFrame = 0; if (open?.layer === layer) fitNow(); }); };
+    const cancelFit = () => { cancelAnimationFrame(fitFrame); fitFrame = 0; };
+    fitNow();
     window.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("scroll", fit);
     anchor.classList.add("ifm-lit");
-    open = { anchor, layer, pop, key, fit, behind, onClose: o.onClose, redraw: (list) => {
+    anchor.setAttribute("aria-expanded", "true");
+    open = { anchor, layer, pop, key, fit, cancelFit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
       const k = document.activeElement?.dataset?.k;
       rowsBox.replaceChildren(...drawRows(list));
-      fit();
+      fitNow();
       if (k) rowsBox.querySelector(`[data-k="${k}"]`)?.focus({ preventScroll: true });
     } };
-    requestAnimationFrame(() => requestAnimationFrame(() => { layer.classList.add("open"); pop.classList.add("open"); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (open?.layer === layer) { layer.classList.add("open"); pop.classList.add("open"); } }));
     card.focus({ preventScroll: true });
   }
   // InFlite's header, the same in every app: your photo (InFlite's menu; signed out, an outline that signs in) · the
@@ -826,10 +857,11 @@ const IFL = (() => {
     const sheet = el("div", "ifa-sheet", img, el("h2", "ifa-t", "InFlite is one app now"), el("p", "ifa-p", "Today, Chats and every app in one place. Add inflite.ai to your Home Screen."), steps, how, stop, later);
     sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", "InFlite is one app now");
     const layer = el("div", "ifa-layer ifl-moved", sheet), was = document.activeElement;
-    const shut = () => { document.removeEventListener("keydown", key, true); layer.classList.remove("on"); setTimeout(() => layer.remove(), 320); was?.focus?.({ preventScroll: true }); };
+    let closed = false;
+    const shut = () => { if (closed) return; closed = true; document.removeEventListener("keydown", key, true); layer.classList.remove("on"); retire(layer, sheet); if (was?.isConnected) was.focus?.({ preventScroll: true }); };
     // (Escape shuts it; Tab and Shift-Tab go round its buttons, never behind it)
     const key = (e) => {
-      if (e.key === "Escape") return shut();
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return shut(); }
       if (e.key !== "Tab") return;
       const f = [how, stop, later].filter((b) => b && !b.hidden && !b.disabled);
       if (!f.length) return;
@@ -848,7 +880,7 @@ const IFL = (() => {
     layer.addEventListener("pointerdown", (e) => { if (e.target === layer) shut(); });
     document.addEventListener("keydown", key, true);
     document.body.append(layer);
-    requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!closed) layer.classList.add("on"); }));
     how.focus?.({ preventScroll: true });
   }
   // a plain toast: the words alone, said out, gone in a few seconds
@@ -1164,8 +1196,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.16";
-const NEWS = "Smoother springs, transitions and interrupted motion across InFlite";
+const BUILD = "2.17";
+const NEWS = "Clearer field feedback and more reliable menus";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2849,6 +2881,7 @@ function passwordChoice(card, pwBox, input, key, go, hint, said, refined = true)
       pwBox.hidden = !open; b.textContent = open ? "Use your passkey instead" : label; b.setAttribute("aria-expanded", String(open));
       if (hint) hint.hidden = open;
       key.hidden = open; go.classList.toggle("quiet", !open);
+      clearFieldFeedback(said);
       said.textContent = ""; said.classList.remove("bad"); said.setAttribute("role", "status");
     });
     if (open) input.focus(); else key.focus({ preventScroll: true });
@@ -3421,10 +3454,34 @@ function pwField(label, input) {
 }
 // (feedback remains readable during its small movement; in a card on the page the
 // card goes to its new size as it's said or cleared; a sheet fits itself)
+const feedbackFields = new WeakMap();
+let feedbackSerial = 0;
+function clearFieldFeedback(el) {
+  const held = feedbackFields.get(el);
+  if (!held) return;
+  const descriptions = (held.input.getAttribute("aria-describedby") || "").split(/\s+/).filter(id => id && id !== el.id);
+  if (descriptions.length) held.input.setAttribute("aria-describedby", descriptions.join(" "));
+  else held.input.removeAttribute("aria-describedby");
+  held.input.removeEventListener("input", held.clear);
+  feedbackFields.delete(el);
+}
 function say(el, text, input, bad = !!text) {
   if (!el) return;
+  clearFieldFeedback(el);
   const change = () => { el.setAttribute("role", bad ? "alert" : "status"); el.textContent = text; el.classList.toggle("bad", bad); }, box = text !== el.textContent && !el.closest("#sheet") && el.closest(".signin");
   if (box) morph(box, change, false); else change();
+  // Keep the explanation available when the field is revisited. A changed value
+  // retires this association without removing any other hint the field already had.
+  if (input && text) {
+    if (!el.id) {
+      let id; do { id = `account-feedback-${++feedbackSerial}`; } while (document.getElementById(id));
+      el.id = id;
+    }
+    const descriptions = new Set((input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+    descriptions.add(el.id); input.setAttribute("aria-describedby", [...descriptions].join(" "));
+    const clear = () => clearFieldFeedback(el);
+    feedbackFields.set(el, { input, clear }); input.addEventListener("input", clear, { once: true });
+  }
   if (text && bad) shake(el);
   if (input) input.focus();
 }

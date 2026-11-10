@@ -7,6 +7,7 @@
 .ifl-sheet[data-app=weather] .wxs-opt { display: flex; flex-direction: column; gap: 6px; }
 .ifl-sheet[data-app=weather] .wxs-opt-k { margin: 0 4px; color: var(--text-2); font-size: 13px; font-weight: 600; }
 .ifl-sheet[data-app=weather] .wxs-opt .ifl-seg-sm { align-self: stretch; }
+.ifl-sheet[data-app=weather] .wxs-opt .ifl-seg-sm [role="radio"] { flex: 1; min-width: 44px; min-height: 44px; }
 
 /* a line: words on the left, a switch or a choice on the right */
 .ifl-sheet[data-app=weather] .wxs-line {

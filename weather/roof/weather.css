@@ -325,6 +325,8 @@
 .wx-sheet .wx-dt-sub { font-size: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .wx-sheet .wx-day-desc { font-size: 15.5px; }
 .wx-sheet .wx-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 6px; }
+/* Let the dialog own the whole day's scroll range, including its sticky actions. */
+.ifl-sheet[data-app="weather"][data-sheet="day"] > .ifs-body { flex: none; }
 .wx-sheet .part { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass-ctl)); font-variant-numeric: tabular-nums; }
 .wx-sheet .p-name { font-size: 12.5px; color: var(--text-2); }
 .wx-sheet .p-temp { font-weight: 650; }
@@ -332,7 +334,6 @@
 .wx-sheet .wx-conf { display: flex; align-items: center; gap: 10px; }
 .wx-sheet .wx-conf-bar { flex: 1; position: relative; height: 8px; border-radius: 4px; background: var(--ifl-surface-2, var(--glass-ctl)); }
 .wx-sheet .wx-conf-bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--k, 0) * 100%); border-radius: 4px; background: var(--acc); }
-.wx-sheet .wx-day-step { display: flex; justify-content: space-between; gap: 8px; padding-top: 4px; }
 /* a warning */
 .wx-sheet .wx-warn-from { font-weight: 650; }
 .wx-sheet .wx-warn-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 13px; color: var(--wx-chip-ink); background: var(--wx-yellow); }

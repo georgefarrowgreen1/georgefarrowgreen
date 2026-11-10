@@ -72,8 +72,9 @@ export function cashEditor(ctx, id = null) {
   for (const input of [payoutDate, payoutRepeat, payoutEnd]) input.addEventListener("change", payoutChanged);
   tell();
   const report = (e) => {
-    error.hidden = false; error.textContent = e.message;
     const input = inputs[e.field];
+    if (input) input.closest(".field")?.after(error); else save.before(error);
+    error.textContent = e.message; error.hidden = false;
     if (input) { input.setAttribute("aria-invalid", "true"); input.setAttribute("aria-describedby", "mk-cash-error"); input.focus(); }
   };
   const save = h("button.btn.go.press", { type: "button", id: "mk-cash-save", text: held ? "Save cash" : "Add cash" });

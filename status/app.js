@@ -411,7 +411,7 @@
   async function openDay(id, k) {
     const s = data.services.find((x) => x.id === id), i = data.dayKeys.indexOf(k), d = s?.days[i];
     if (!s || i < 0) return;
-    daySel = { id, k };
+    const selection = daySel = { id, k };
     const isToday = k === data.dayKeys.at(-1), incs = incOn(id, k), fa = incs.some((x) => x.notOutage);
     const first = firstIx(), lastIx = data.dayKeys.length - 1;
     const line = !d ? "Not checked this day" : `${d.n} check${d.n === 1 ? "" : "s"} · ${d.slow ? `${d.slow} slow` : "none slow"} · ${d.down ? `${d.down} failed` : fa ? "failed checks were a false alarm" : "none failed"}`;
@@ -427,7 +427,7 @@
     const box = $("hours");
     try {
       const r = await fetch(`/api/status/hours?svc=${encodeURIComponent(id)}&day=${k}`); const h = await r.json();
-      if (daySel?.k !== k || daySel?.id !== id) return;
+      if (daySel !== selection) return;
       if (!h.kept) { box.innerHTML = `<p class="hint">Each check is kept for two days; days before that are kept as totals.</p>`; return; }
       if (h.ms != null) $("dayMs").textContent = `${h.ms} ms`;
       const faQ = new Set();
@@ -435,7 +435,7 @@
       box.innerHTML = `<div class="q" role="img" aria-label="${esc(h.q.includes("down") ? "Failed checks in some quarter-hours" : h.q.includes("warn") ? "A few slow quarter-hours" : "Fine all day")}">${h.q.map((v, q) => `<i data-s="${v}"${faQ.has(q) && v === "ok" ? ' class="fa"' : ""}></i>`).join("")}</div>
         <div class="ax num"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
         <div class="key"><span data-s="ok"><i></i>Fine</span><span data-s="warn"><i></i>Slow</span><span data-s="down"><i></i>Failed</span>${faQ.size ? `<span><i class="fa"></i>False alarm</span>` : ""}${isToday ? `<span data-s="none"><i></i>Not yet</span>` : ""}</div>`;
-    } catch (_) { box.innerHTML = `<p class="hint">The day’s hours couldn’t be loaded.</p>`; }
+    } catch (_) { if (daySel === selection) box.innerHTML = `<p class="hint">The day’s hours couldn’t be loaded.</p>`; }
   }
 
   // ---- sheets, toasts, links ----

@@ -618,7 +618,7 @@ test("moved()'s card keeps the keys to itself: Tab and Shift-Tab go round its bu
   p.hub.moved("chat", { off() {} });
   const card = p.doc.body.children.find((n) => n.className.includes("ifl-moved"));
   const btn = (t) => all(card).find((n) => n.tagName === "BUTTON" && n.textContent === t);
-  const key = (k, shift = false) => { const e = { key: k, shiftKey: shift, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; for (const fn of p.doc.listeners.keydown || []) fn(e); return e; };
+  const key = (k, shift = false) => { const e = { key: k, shiftKey: shift, defaultPrevented: false, propagationStopped: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.propagationStopped = true; } }; for (const fn of p.doc.listeners.keydown || []) fn(e); return e; };
   assert.equal(p.doc.activeElement, btn("How to Add"), "How to Add first");
   assert.ok(key("Tab").defaultPrevented);
   assert.equal(p.doc.activeElement, btn("Turn Off Notifications Here"));
@@ -631,6 +631,7 @@ test("moved()'s card keeps the keys to itself: Tab and Shift-Tab go round its bu
   btn("Not Now").focus(); p.doc.activeElement = null;
   key("Tab", true);
   assert.equal(p.doc.activeElement, btn("Not Now"), "from outside it: back in, at its end");
-  key("Escape");
+  const escape = key("Escape");
+  assert.ok(escape.defaultPrevented && escape.propagationStopped, "Escape belongs to this overlay, not an underlying page or dialog");
   assert.ok(!card.classList.contains("on"), "Escape shuts it");
 });

@@ -197,6 +197,116 @@ test('Chat Settings: Privacy & Security is a plain link to Chat’s own page; a 
   h.now();
 });
 
+test('voice playback uses accessible CSP-safe controls and stops playback before revoking its sheet-owned URL', { skip }, async () => {
+  await setup();
+  const created = URL.createObjectURL, revoked = URL.revokeObjectURL, events = [];
+  URL.createObjectURL = (b) => { events.push(['create', b.type]); return 'blob:voice-test'; };
+  URL.revokeObjectURL = (u) => events.push(['revoke', u]);
+  try {
+    const { ctx, calls } = await ctxOf({ answers: { photo: () => new Blob(['voice'], { type: 'audio/mp4' }) } });
+    const h = M['sheets.js'].openView(ctx, 'm-p-5');
+    await settle();
+    const audio = h.body.querySelector('audio');
+    assert.ok(audio && !audio.hasAttribute('controls'), 'playback controls remain in Chats’ own UI');
+    assert.equal(h.body.querySelector('.chs-play').getAttribute('aria-label'), 'Play voice message');
+    assert.equal(h.body.querySelector('.chs-seek').getAttribute('aria-label'), 'Voice message position');
+    assert.equal(audio.getAttribute('preload'), 'metadata');
+    assert.equal(audio.getAttribute('src'), 'blob:voice-test');
+    assert.equal(h.body.querySelector('img'), null, 'a voice message never enters the photo renderer');
+    assert.equal(h.el.querySelector('h2').textContent, 'Voice message');
+    assert.deepEqual(calls.filter(([m]) => m === 'photo'), [['photo', 'vo-p-5']]);
+    audio.pause = () => events.push(['pause']);
+    audio.load = () => events.push(['load', audio.getAttribute('src')]);
+    h.now(); h.now();
+    assert.deepEqual(events, [['create', 'audio/mp4'], ['pause'], ['load', null], ['revoke', 'blob:voice-test']]);
+  } finally { URL.createObjectURL = created; URL.revokeObjectURL = revoked; }
+});
+
+test('a pending voice play is owned by its sheet and late play failure cannot change a closed viewer', { skip }, async () => {
+  await setup();
+  const { ctx } = await ctxOf({ answers: { photo: () => new Blob(['voice'], { type: 'audio/mp4' }) } });
+  const h = M['sheets.js'].openView(ctx, 'm-p-5');
+  await settle();
+  const audio = h.body.querySelector('audio'), button = h.body.querySelector('.chs-play');
+  let reject, plays = 0, pauses = 0;
+  audio.play = () => { plays++; return new Promise((_, r) => { reject = r; }); };
+  audio.pause = () => { pauses++; };
+  button.click(); button.click();
+  assert.equal(plays, 1, 'a second tap cannot duplicate a pending play');
+  assert.equal(button.getAttribute('aria-busy'), 'true');
+  assert.equal(button.disabled, false, 'a pending play keeps its keyboard focus target');
+  h.now();
+  const closedText = h.body.textContent;
+  reject(new Error('interrupted while closing'));
+  await settle();
+  assert.equal(h.body.textContent, closedText, 'late failure does not write an error into a closed sheet');
+  assert.equal(pauses, 1);
+  assert.ok(Object.values(audio.listeners).every((listeners) => !listeners.length), 'all media listeners are removed');
+});
+
+test('the voice play control retains keyboard focus across pending playback and a retryable failure', { skip }, async () => {
+  await setup();
+  const { ctx } = await ctxOf({ answers: { photo: () => new Blob(['voice'], { type: 'audio/mp4' }) } });
+  const h = M['sheets.js'].openView(ctx, 'm-p-5'); await settle();
+  const audio = h.body.querySelector('audio'), button = h.body.querySelector('.chs-play');
+  let finish;
+  audio.paused = true;
+  audio.pause = () => { audio.paused = true; };
+  audio.play = () => new Promise((resolve) => { finish = resolve; });
+  button.focus(); button.click();
+  assert.equal(document.activeElement, button);
+  audio.paused = false; finish(); await settle();
+  assert.equal(document.activeElement, button);
+  assert.equal(button.getAttribute('aria-busy'), 'false');
+  assert.equal(button.getAttribute('aria-label'), 'Pause voice message');
+  audio.paused = true;
+  audio.play = async () => { throw new Error('playback failed'); };
+  button.click(); await settle();
+  assert.equal(document.activeElement, button);
+  assert.equal(button.getAttribute('aria-busy'), 'false');
+  assert.equal(h.body.querySelector('.chs-voice-note').hidden, false);
+  h.now();
+});
+
+test('a closed media viewer cannot create a late object URL or render decrypted media', { skip }, async () => {
+  await setup();
+  let finish, count = 0;
+  const created = URL.createObjectURL;
+  URL.createObjectURL = () => { count++; return 'blob:late-media'; };
+  try {
+    const { ctx } = await ctxOf({ answers: { photo: () => new Promise((r) => { finish = r; }) } });
+    const h = M['sheets.js'].openView(ctx, 'm-p-5');
+    h.now();
+    finish(new Blob(['late'], { type: 'audio/mp4' }));
+    await settle();
+    assert.equal(count, 0);
+    assert.equal(h.body.querySelector('audio'), null);
+    assert.equal(h.el.isConnected, false);
+  } finally { URL.createObjectURL = created; }
+});
+
+test('Reply selection happens once before close, then the composer receives its close callback', { skip }, async () => {
+  await setup();
+  const order = [], { ctx } = await ctxOf();
+  const h = M['sheets.js'].openHold(ctx, { kind: 'msg', chatId: IDS.pat, msgId: 'm-p-1',
+    on: (act, id) => order.push([act, id]), onClose: () => order.push(['closed']) });
+  const reply = h.body.querySelector('[data-act=reply]');
+  assert.ok(h.body.querySelector('[data-act=react]'), 'message context includes reactions');
+  reply.click(); reply.click();
+  await settle();
+  assert.deepEqual(order, [['reply', 'm-p-1'], ['closed']]);
+});
+
+test('a rapid repeat reaction cannot toggle the message twice while its action sheet dismisses', { skip }, async () => {
+  await setup();
+  const { ctx, calls } = await ctxOf();
+  const h = M['sheets.js'].openHold(ctx, { kind: 'msg', chatId: IDS.pat, msgId: 'm-p-1' });
+  const reaction = h.body.querySelector('[data-act=react]');
+  reaction.click(); reaction.click();
+  await settle();
+  assert.equal(calls.filter(([m]) => m === 'react').length, 1);
+});
+
 test('Send: the card checked as engineCard; ready → friends ranked, picked, sealed by sendRun, “… You’re still here”; closed unsent → closed', { skip }, async () => {
   await setup();
   const S = M['send.js'] ?? (M['send.js'] = await import(new URL('send.js', CHATS_ROOF).href));

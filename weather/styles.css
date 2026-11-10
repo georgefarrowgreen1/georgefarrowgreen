@@ -1129,7 +1129,7 @@ fieldset.opt:has(> .choice) { display: block; }
 .choice:not(:has(input:checked))::before { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .choice::before { transition: none; } }
 .choice > label { z-index: 1; }
-fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 36px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 44px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 fieldset.opt label:has(input[type="radio"]:checked) { color: var(--text); }
 fieldset.opt input[type="radio"] { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
@@ -1462,7 +1462,7 @@ body.no-scroll { overflow: hidden; }
 .map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42);  background: var(--map-panel);  box-shadow: var(--ifl-shadow-control); }
 .map-zoom > :first-child { border-radius: 22px 22px 0 0; }
 .map-zoom > :last-child { border-radius: 0 0 22px 22px; }
-.map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--map-ink); cursor: pointer; }
+.map-zoom button { position: relative; z-index: 3; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--map-ink); cursor: pointer; }
 .map-zoom button + button { box-shadow: inset 0 1px 0 var(--map-line); }
 .map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
 /* the map's buttons give under a finger and spring back, as the rest do */
@@ -1595,6 +1595,7 @@ body.no-scroll { overflow: hidden; }
 .radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 13px; cursor: pointer;
   color: var(--map-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--map-panel); transition: transform var(--dur-release) var(--spring); }
 .radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
+.radar-credit::after { content: ""; position: absolute; inset: -9px; }
 /* (its names in a line or two (radar.js credited), in glass reaching left from the ©: the © itself never changes size, so
    nothing moves as they fold away into it, clipped back to it) */
 .radar-credit .rc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
@@ -2186,6 +2187,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifm-switch[aria-busy="true"] { cursor: progress; }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
 .ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
@@ -2236,7 +2238,7 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 .wx-ifh .place { flex: 1; max-width: none; min-height: 44px; padding: 0; border-radius: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .wx-ifh .place::before, .wx-ifh .place::after { display: none !important; }
 .wx-ifh .place:active { transform: none; filter: none; background-color: var(--ifl-press); }
-.wx-ifh .place-name { font-size: calc(32px - 12px * var(--p)); line-height: 1.12; font-weight: 700; letter-spacing: calc(0.3px - 0.6px * var(--p)); }
+.wx-ifh .place-name { font-size: calc(clamp(26px, 8.6vw, 32px) * (1 - 0.375 * var(--p))); line-height: 1.12; font-weight: 700; letter-spacing: calc(0.3px - 0.6px * var(--p)); }
 .wx-ifh .place-name::after { width: calc(9px - 3px * var(--p)); height: calc(9px - 3px * var(--p)); border-width: 0 2.6px 2.6px 0; margin-left: 8px; }
 .wx-ifh .pg-name { right: 18px; }
 .wx-ifh .place-line { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--text-2); }

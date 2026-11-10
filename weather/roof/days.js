@@ -28,7 +28,7 @@ export function rowWords(d, mode, f, i) {
 
 export function view(el, ctx) {
   let mode = "temp", sig = null;
-  const seg = ctx.fw.ui.seg(MODES, mode, (v) => { mode = v; sig = null; draw(); }, { label: "Days by" });
+  const seg = ctx.fw.ui.seg(MODES, mode, (v) => { if (mode === v) return; mode = v; sig = null; draw(); }, { label: "Days by" });
   seg.dataset.key = "daysby";
   const head = h("div", { class: "wx-days-head" }, h("h2", { class: "wx-days-title" }, "Days by"), seg);
   const box = h("div", { class: "wx-days" });
@@ -132,10 +132,10 @@ export function openDay(ctx, key) {
     // the day before and after
     const prev = i > 0 ? days[i - 1] : null, next = i >= 0 && i < days.length - 1 ? days[i + 1] : null;
     const go = (x, act) => () => { fill(x, act); };
-    kids.push(h("div", { class: "wx-day-step" },
+    const step = h("footer", { class: "ifs-acts wx-day-step" },
       ui.btn(prev ? (i - 1 === 0 ? "Today" : f.dayName(prev.date)) : "Earlier", { small: true, run: prev ? go(prev, "prev") : null, label: prev ? `The day before: ${dayTitle(f, prev.date, now)}` : "No day before", act: "prev" }),
-      ui.btn(next ? f.dayName(next.date) : "Later", { small: true, run: next ? go(next, "next") : null, label: next ? `The day after: ${dayTitle(f, next.date, now)}` : "No day after", act: "next" })));
-    const steps = kids[kids.length - 1].querySelectorAll("[data-act]");
+      ui.btn(next ? f.dayName(next.date) : "Later", { small: true, run: next ? go(next, "next") : null, label: next ? `The day after: ${dayTitle(f, next.date, now)}` : "No day after", act: "next" }));
+    const steps = step.querySelectorAll("[data-act]");
     if (!prev && steps[0]) steps[0].disabled = true;
     if (!next && steps[1]) steps[1].disabled = true;
     const body = h("div", { class: "wx-sheet wx-dayx", data: { day: day.key } }, ...kids.filter(Boolean));
@@ -146,13 +146,16 @@ export function openDay(ctx, key) {
       const b = handle.body || handle.el.querySelector(".ifs-body"), t = handle.el.querySelector("h2");
       if (t) t.textContent = title;
       if (b) { b.replaceChildren(body); b.scrollTop = 0; }
-      // (the button pressed went with the old day: focus on the new one, the other if this way's done, else the title)
-      if (act) {
-        const btn = (a) => body.querySelector(`.wx-day-step [data-act="${a}"]`), here = btn(act), other = btn(act === "prev" ? "next" : "prev");
-        const to = here && !here.disabled ? here : other && !other.disabled ? other : t;
-        if (to === t && t && !t.hasAttribute("tabindex")) t.setAttribute("tabindex", "-1");
-        to?.focus?.({ preventScroll: true });
-      }
+      handle.el.scrollTop = 0;
+    }
+    // One navigation pair in the sheet's sticky actions, visible beside every
+    // chart. The dialog itself scrolls; a new day starts at its summary.
+    const oldStep = handle.el.querySelector(".wx-day-step");
+    if (oldStep) oldStep.replaceWith(step); else handle.el.append(step);
+    if (act) {
+      const btn = (a) => step.querySelector(`[data-act="${a}"]`), here = btn(act), other = btn(act === "prev" ? "next" : "prev");
+      const to = here && !here.disabled ? here : other && !other.disabled ? other : handle.el.querySelector("h2");
+      to?.focus?.({ preventScroll: true });
     }
     const draw = () => { for (const [m, , host] of charts) hourChart(host, wx, now, hrs, m, day.key === keyOf(now), f); };
     (typeof requestAnimationFrame === "function" ? requestAnimationFrame : (fn) => setTimeout(fn, 0))(() => { try { draw(); } catch (e) { console.error(e); } });

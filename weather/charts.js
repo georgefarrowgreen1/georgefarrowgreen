@@ -30,6 +30,32 @@ function colPath(x, y, w, h, r = 4) {
   return `M${x} ${y + h}V${y + r}Q${x} ${y} ${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h}z`;
 }
 
+// ResizeObserver only records the width. Drawing there can change the SVG's
+// height inside the same delivery and trigger a WebKit notification loop.
+function watchWidth(host, redraw) {
+  if (host._ro || typeof ResizeObserver === "undefined") return;
+  let frame = 0, generation = 0, attached = host.isConnected, closed = false;
+  const cancel = host._cancelResize = () => { generation++; if (frame) cancelAnimationFrame(frame); frame = 0; };
+  const close = () => { closed = true; cancel(); ro.disconnect(); host._ro = null; delete host._cancelResize; };
+  const ro = host._ro = new ResizeObserver(() => {
+    if (closed) return;
+    if (!host.isConnected) { if (attached) close(); return; }
+    attached = true;
+    const w = host.clientWidth, was = host._w ?? 0;
+    if (!w) return;
+    host._w = w; seen(host, w);
+    if (Math.abs(w - was) <= 2 || frame) return;
+    const at = generation;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (at !== generation || closed) return;
+      if (!host.isConnected) { close(); return; }
+      redraw();
+    });
+  });
+  ro.observe(host);
+}
+
 /**
  * A chart over time, into `host`:
  *   kind      "line" | "columns"
@@ -48,14 +74,12 @@ function colPath(x, y, w, h, r = 4) {
  *   key       what it shows (a place, a view): a new one draws in; the same one, redrawn or refreshed, doesn't
  */
 export function timeChart(host, opts) {
+  host._cancelResize?.();
   const fresh = !host._chart || (opts.key ?? null) !== (host._chart.key ?? null);
   host._chart = opts;
   // (its width kept as it changes, rather than measured each time it's drawn: that would lay the page out again then and
   // there, each chart in turn, as the forecast's parts come in)
-  if (!host._ro && typeof ResizeObserver !== "undefined") {
-    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) draw(host); });
-    host._ro.observe(host);
-  }
+  watchWidth(host, () => draw(host));
   // (drawn again with the same key: what's changed crossfades)
   draw(host, fresh, !fresh);
 }
@@ -330,13 +354,11 @@ function draw(host, fresh = false, fade = false) {
 // (key: as timeChart's, what it shows: a new one draws in, the same one drawn again crossfades; again: drawn again only
 // for a new width)
 export function rangeChart(host, o, again = false) {
+  host._cancelResize?.();
   const fresh = !host._range || (o.key ?? null) !== (host._range.key ?? null);
   // (its width as timeChart's: kept, or guessed, and drawn again once it's known if that's another)
   host._range = o;
-  if (!host._ro && typeof ResizeObserver !== "undefined") {
-    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; if (!w) return; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) rangeChart(host, host._range, true); });
-    host._ro.observe(host);
-  }
+  watchWidth(host, () => rangeChart(host, host._range, true));
   const W = Math.max(260, (host._w ??= guessW(host)) || 320), Hh = 74, L = 12, R = 12, iw = W - L - R, y0 = 30;
   const all = [o.p10, o.p90, o.value, o.record?.v, o.lowRecord?.v].filter((v) => v != null);
   const lo = Math.min(...all) - 1, hi = Math.max(...all) + 1, X = (v) => L + ((v - lo) / (hi - lo)) * iw;

@@ -961,6 +961,7 @@ a.dbtn { text-decoration: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .dialsvg .arc { stroke-dashoffset: 0; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
@@ -1330,6 +1331,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifm-note { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), opacity var(--ifl-motion-fast) ease; }
 .ifm-switch::after { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
+.ifm-switch[aria-busy="true"] { cursor: progress; }
 .ifh-me, .ifh-act, .ifl-back, .ifs-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 .ifh-me:active, .ifh-act:active, .ifl-back:active, .ifs-btn:active { transition-duration: var(--ifl-motion-press); }
 .ifa-go, .ifa-later, .ifb-btn { transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), background-color var(--ifl-motion-fast); }
@@ -1572,3 +1574,8 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 @media (prefers-reduced-motion: reduce) { .card.press:active { transform: none; } }
 
 .mv, .rtwo button, .dtabs button, .sitem, .dmenu button { transition: transform var(--ifl-motion-release) var(--ease-spring), background-color var(--ifl-motion-fast); }
+
+/* Keep the cash editor’s Close action available while its longer form scrolls. */
+.cash-editor .shead { position: sticky; top: 0; z-index: 4; background: var(--sheet); box-shadow: 0 -8px 0 var(--sheet), 0 8px 0 var(--sheet); }
+.sbody:has(.cash-editor) { scroll-padding-top: 64px; }
+.cash-editor .field:has([aria-invalid="true"]) { box-shadow: inset 0 0 0 1.5px var(--down); }

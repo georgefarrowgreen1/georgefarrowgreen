@@ -61,12 +61,17 @@ function build(host, ctx) {
   const attach = el("button", { type: "button", class: "ch-attach", data: { act: "photo" }, aria: { label: "Send a photo" } }, ui.icon("plus"));
   const voice = el("button", { type: "button", class: "ch-voice", data: { act: "voice" }, aria: { label: "Record a voice pigeon" } }, ui.icon("mic"));
   const latest = el("button", { type: "button", class: "ch-latest", data: { act: "latest" }, hidden: true, aria: { label: "Jump to latest messages" } }, ui.icon("down"), el("span", { text: "Latest messages" }));
-  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, latest, attach, el("div", { class: "ch-field" }, input, voice), sendBtn);
+  const replyName = el("b"), replyText = el("span");
+  const reply = el("div", { class: "ch-reply", hidden: true, role: "group", aria: { label: "Replying to a message" } },
+    el("div", { class: "ch-reply-copy" }, replyName, replyText),
+    el("button", { type: "button", class: "ch-reply-cancel", data: { act: "cancel-reply" }, aria: { label: "Cancel reply" } }, ui.icon("x")));
+  const composer = el("form", { class: "ch-composer", data: { k: "composer" }, aria: { label: "Write a message" } }, latest, attach, el("div", { class: "ch-field" }, el("div", { class: "ch-entry" }, reply, input), voice), sendBtn);
   const box = el("div", { class: "ch-chat", hidden: true }, scroller, composer);
   host.append(box);
 
   let headerAvatar = null, headerName = "";
   let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
+  let episode = 0, replyTo = null, replyAt = 0;
   // Only identities in the current rendered window are remembered. A receipt,
   // sync or older page may replace a keyed row without making it a new arrival.
   let paintedMessages = null, newestMessageAt = 0;
@@ -237,6 +242,7 @@ function build(host, ctx) {
       msgs.replaceChildren(el("p", { class: "ch-hello" }, el("b", { text: "Say hello" }), el("span", { text: `Messages to ${w.kind === "group" ? w.name : first(w.name)} are end-to-end encrypted.` })));
     } else patchList(msgs, itemsOf(c), keyOf, itemEl);
     arrivals(c);
+    drawReply();
     tick(msgs, now);
     put(warn, who().f?.keyChanged ? el("div", { class: "ch-warn", role: "note" },
       el("span", { text: `${first(who().name)}’s security key has changed. Check the safety number before you send anything.` }),
@@ -277,6 +283,19 @@ function build(host, ctx) {
   // ---- the composer ----
   const sizeInput = () => { input.style.setProperty("--ch-rows", String(Math.min(6, Math.max(1, input.value.split("\n").length)))); };
   const words = () => input.value.replace(/\s+$/, "");
+  function drawReply() {
+    const m = replyTo && store.get(`chat:${id}`)?.msgs?.find((m) => m.id === replyTo && !m.recalled);
+    if (replyTo && !m) { replyTo = null; replyAt++; }
+    reply.hidden = !m;
+    reply.setAttribute("aria-label", m ? `Replying to ${nameOf(m.from)}` : "Replying to a message");
+    replyName.textContent = m ? nameOf(m.from) : "";
+    replyText.textContent = m ? String(m.text || (m.card && safeWords(m.card)) || (m.kind === "voice" ? "Voice message" : m.kind === "photo" || m.kind === "viewonce" ? "Photo" : "Message")).replace(/\s+/g, " ").slice(0, 200) : "";
+  }
+  function selectReply(mid) {
+    replyTo = mid; replyAt++;
+    drawReply();
+    if (stick) toBottom();
+  }
   const flushDraft = () => {
     clearTimeout(draftT); draftT = 0;
     if (!id) return;
@@ -296,16 +315,19 @@ function build(host, ctx) {
     if (!text.trim() || !id) return;
     if (text.length > MAX_TEXT) { fw.toast("That’s too long to send in one message."); return; }
     sending++;
-    const was = text;
+    const was = text, cid = id, at = episode, quoted = replyTo;
+    selectReply(null);
+    const clearedReplyAt = replyAt;
     input.value = ""; draftSent = ""; onInput(); clearTimeout(draftT);
     stick = true;
     try {
-      const r = await svc.call("sendText", id, was, {});
+      const r = await svc.call("sendText", cid, was, quoted ? { replyTo: quoted } : {});
       if (!r || r.ok === false || r.err) throw r;
-      svc.call("draft", id, "").catch(() => {});
+      if (id === cid && episode === at && !input.value) svc.call("draft", cid, "").catch(() => {});
     } catch (e) {
+      if (id !== cid || episode !== at) return;
       const why = e?.why || e?.err;
-      if (!input.value) { input.value = was; onInput(); }
+      if (!input.value) { input.value = was; if (replyAt === clearedReplyAt) selectReply(quoted); onInput(); }
       fw.toast(why === "trust" ? "Check the safety number first: their key has changed." : why === "offline" ? "No signal. It’ll go when you’re back online." : why === "locked" ? "Chats is locked." : e?.said || "Couldn’t send that. Try again.");
     } finally { sending--; }
   }
@@ -319,20 +341,33 @@ function build(host, ctx) {
     const mid = a.dataset.id;
     switch (a.dataset.act) {
       case "latest": e.preventDefault(); stick = true; toBottom(); break;
+      case "cancel-reply": selectReply(null); input.focus({ preventScroll: true }); break;
       case "send": e.preventDefault(); send(); break;
       case "photo": ctx.open.photo(id); break;
       case "voice": ctx.open.voice(id); break;
       case "view": e.stopPropagation(); ctx.open.view(mid); break;
       case "play": e.stopPropagation(); ctx.open.view(mid); break;
       case "map": ctx.open.map(mid); break;
-      case "hold": ctx.open.hold({ chatId: id, msgId: mid }); break;
+      case "hold": {
+        const cid = id, at = episode;
+        let focusReply = false;
+        const current = () => id === cid && episode === at && !box.hidden;
+        ctx.open.hold({ kind: "msg", chatId: cid, msgId: mid,
+          on: (act) => { if (act === "reply" && current()) { selectReply(mid); focusReply = replyTo === mid; } },
+          onClose: () => { if (focusReply && current() && replyTo === mid) input.focus({ preventScroll: true }); } });
+        break;
+      }
       case "safety": ctx.open.safety(id); break;
     }
+  };
+  const onMessageKey = (e) => {
+    if ((e.key === "Enter" || e.key === " ") && !e.repeat && e.target.matches?.('.ch-b[role="button"]')) { e.preventDefault(); onClick(e); }
   };
   const onHidden = () => { flushDraft(); settleMotion(); };
   // (the chat on screen and the page in sight: marked read, as Chat's loadChat does)
   const markRead = () => { if (id && fw.visible()) svc.call("read", id).catch(() => {}); };
   box.addEventListener("click", onClick);
+  box.addEventListener("keydown", onMessageKey);
   composer.addEventListener("submit", onSubmit);
   input.addEventListener("input", onInput);
   input.addEventListener("keydown", onKey);
@@ -357,6 +392,7 @@ function build(host, ctx) {
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
     msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = ""; latest.hidden = true;
+    episode++; selectReply(null);
     paintedMessages = null; newestMessageAt = 0;
     store.apply(`chat:${id}`, null);
     store.apply(`typing:${id}`, null);
@@ -371,7 +407,7 @@ function build(host, ctx) {
       if (!cid) return false;
       if (id && id !== cid) leave();
       if (id === cid) { header(); return true; }
-      id = cid; stick = true; lastFirst = null;
+      id = cid; episode++; stick = true; lastFirst = null;
       box.hidden = false;
       fw.fill(true);
       fw.tabs?.away?.(true);
@@ -418,6 +454,7 @@ function build(host, ctx) {
     unmount() {
       this.hide();
       box.removeEventListener("click", onClick);
+      box.removeEventListener("keydown", onMessageKey);
       composer.removeEventListener("submit", onSubmit);
       input.removeEventListener("input", onInput);
       input.removeEventListener("keydown", onKey);
