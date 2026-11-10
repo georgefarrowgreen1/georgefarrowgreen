@@ -395,28 +395,36 @@ async function portraitMargins(p) {
     const source = document.createElement('canvas'); source.width = image.naturalWidth; source.height = image.naturalHeight;
     const context = source.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0);
     const pixels = context.getImageData(0, 0, source.width, source.height).data, points = [];
+    // Source compression leaves a near-black floor. Qualify empty neighborhoods independently
+    // of the requested overlay colour, so an all-black backdrop still exercises these pixels.
+    const emptySource = (u, v) => {
+      const sx = Math.round(u * (source.width - 1)), sy = Math.round(v * (source.height - 1));
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const x = Math.max(0, Math.min(source.width - 1, sx + dx)), y = Math.max(0, Math.min(source.height - 1, sy + dy)), i = (y * source.width + x) * 4;
+        if ([0, 1, 2].some(c => pixels[i + c] > 8)) return false;
+      }
+      return true;
+    };
     for (const radius of [.44, .47, .495]) for (let angle = 0; angle < 360; angle += 10) {
       const a = angle * Math.PI / 180, u = .5 + Math.cos(a) * radius, v = .5 + Math.sin(a) * radius;
-      const sx = Math.round(u * (source.width - 1)), sy = Math.round(v * (source.height - 1));
-      let background = true;
-      // Avoid sampling a real hair/contour highlight or its downsampled neighbourhood.
-      for (let dy = -4; dy <= 4 && background; dy++) for (let dx = -4; dx <= 4 && background; dx++) {
-        const x = Math.max(0, Math.min(source.width - 1, sx + dx)), y = Math.max(0, Math.min(source.height - 1, sy + dy)), i = (y * source.width + x) * 4;
-        if ([0, 1, 2].some(c => pixels[i + c] > rgb[c])) background = false;
-      }
-      if (background) points.push({ u, v });
+      if (emptySource(u, v)) points.push({ u, v });
+    }
+    for (let y = 1; y < 25; y++) for (let x = 1; x < 25; x++) {
+      const u = x / 25, v = y / 25;
+      if (emptySource(u, v)) points.push({ u, v });
     }
     return { bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, points, rgb,
       mask: getComputedStyle(el).maskImage };
   });
   const { bounds, points, rgb } = sample;
+  assert.deepEqual(rgb, [0, 0, 0], 'the loader backdrop is completely black');
   assert.ok(points.length >= 60, 'enough uncontaminated source-background samples surround the head');
   const clip = { x: Math.floor(bounds.x) - 3, y: Math.floor(bounds.y) - 3, width: Math.ceil(bounds.width) + 6, height: Math.ceil(bounds.height) + 6 };
   const { data, info } = await sharp(await p.screenshot({ clip })).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   let worst = 0;
   for (const point of points) {
     const x = Math.floor(bounds.x + point.u * bounds.width - clip.x), y = Math.floor(bounds.y + point.v * bounds.height - clip.y), i = (y * info.width + x) * 3;
-    for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(data[i + c] - rgb[c]));
+    for (let c = 0; c < 3; c++) worst = Math.max(worst, data[i + c]);
   }
   let facePixels = 0;
   for (let y = Math.round(info.height * .2); y < info.height * .8; y++) for (let x = Math.round(info.width * .25); x < info.width * .75; x++) {
@@ -424,10 +432,15 @@ async function portraitMargins(p) {
     if ([0, 1, 2].some(c => data[i + c] > rgb[c] + 24)) facePixels++;
   }
   assert.ok(facePixels > 80, 'the face remains visibly rendered rather than clearing the entire portrait');
-  assert.ok(worst <= 2, `outer portrait pixels match the overlay without a ring or square plate (maximum difference ${worst})`);
+  assert.equal(worst, 0, 'empty portrait pixels must be exactly black, with no compression grain or coloured floor');
+  for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+    if (x > 1 && x < info.width - 2 && y > 1 && y < info.height - 2) continue;
+    const i = (y * info.width + x) * 3;
+    assert.equal(data[i] | data[i + 1] | data[i + 2], 0, 'the outside portrait margin must also be completely black');
+  }
   assert.equal(sample.mask, 'none', 'the approved head is not cropped by a geometric mask');
 }
-for (const assets of ['', 'min/']) for (const noWebGL of [false, true]) test(`${assets || 'source/'}${noWebGL ? 'static' : 'animated'} portrait has no circular or rectangular background boundary`, async () => {
+for (const assets of ['', 'min/']) for (const noWebGL of [false, true]) test(`${assets || 'source/'}${noWebGL ? 'static' : 'animated'} portrait background is pure black without grain or a geometric boundary`, async () => {
   const f = await fixture(assets, { holdCover: true, noWebGL });
   try {
     await active(f.p);

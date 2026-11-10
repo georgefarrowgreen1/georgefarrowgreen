@@ -65,20 +65,22 @@ svg { display: block; flex: none; }
 html.intro-loading { overflow: hidden; }
 /* The early script sets this before the body is parsed, so the photo never flashes ahead of the loader. */
 html.intro-loading:not(.intro-mounted)::before {
-  content: ""; position: fixed; inset: 0; z-index: 10000; background: #03060b;
+  content: ""; position: fixed; inset: 0; z-index: 10000; background: #000;
 }
 .site-loader {
   position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center;
-  background: #03060b; opacity: 1; isolation: isolate;
+  background: #000; opacity: 1; isolation: isolate;
   transition: opacity 0.2s var(--ease-out);
 }
 .loader-portrait {
-  /* The source's near-black pixels stay below the backdrop; no ellipse or additive blue plate. */
   position: relative; width: min(300px, 82vw, 72svh); aspect-ratio: 1;
-  transform: translateY(-12px); mix-blend-mode: lighten; opacity: 0;
+  transform: translateY(-12px); opacity: 0;
   transition: opacity 0.16s linear;
 }
 .loader-portrait img, .loader-portrait canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.loader-filters { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+/* Only the static fallback uses this one-time colour key; the animated canvas clears its own background. */
+.loader-portrait img { filter: url(#loader-black-ink); }
 .loader-portrait canvas { opacity: 0; }
 .loader-portrait.ready canvas { opacity: 1; }
 .loader-portrait.ready img { visibility: hidden; }

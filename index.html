@@ -48,6 +48,13 @@
 </head>
 <body>
   <div class="site-loader" id="site-loader" hidden>
+    <svg class="loader-filters" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <filter id="loader-black-ink" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  25 25 25 0 -1" />
+        </filter>
+      </defs>
+    </svg>
     <div class="loader-portrait" id="loader-portrait" aria-hidden="true">
       <canvas id="loader-canvas"></canvas>
     </div>
