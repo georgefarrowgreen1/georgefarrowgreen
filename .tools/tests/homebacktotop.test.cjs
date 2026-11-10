@@ -45,7 +45,11 @@ async function down(p) {
   await p.evaluate(() => scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
   await p.waitForFunction(() => { const el = document.querySelector('.bar .mid'), s = getComputedStyle(el); return scrollY > 100 && Number(s.opacity) > .98 && s.visibility !== 'hidden'; });
 }
-async function top(p) { await p.waitForFunction(() => scrollY < 1); }
+async function top(p) {
+  // An instant scroll finishes before the fallback's scroll-event RAF paints.
+  // Wait for the visible/focus state before sending the next keyboard action.
+  await p.waitForFunction(() => scrollY < 1 && getComputedStyle(document.querySelector('.bar .mid')).visibility === 'hidden');
+}
 async function tabFromBody(p) {
   await p.evaluate(() => { document.body.tabIndex = -1; document.body.focus(); document.body.removeAttribute('tabindex'); });
   await p.keyboard.press('Tab');
