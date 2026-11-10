@@ -30,7 +30,7 @@ const link = (id) => ({ fetch: async () => new Response(JSON.stringify({ build: 
 const DB = d1();
 const env = { DB, STATUS_DEPS: "0", PIGEON_TICK_SECRET: "tick", TODAY_APP: link("today"), MAIL_APP: link("mail") };
 const S = DB.sql, one = (q, ...a) => { const r = S.prepare(q).get(...a); return r ? { ...r } : null; };
-const T = Date.now(), MIN = 60e3;
+const T = Date.UTC(2026, 10, 10, 12), MIN = 60e3;
 const report = (over = {}) => ({ checks: STATUS_SERVICES.map((s) => ({ id: s.id, s: "ok", ms: 120, ...(over[s.id] || {}) })), jobs: STATUS_JOBS.map((j) => ({ path: j.path, ok: true, ms: 800 })) });
 
 test("a day that runs out of time says how long each part took, and is kept as slow (people got their cards), not failed", async () => {
