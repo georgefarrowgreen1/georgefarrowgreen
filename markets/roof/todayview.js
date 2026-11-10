@@ -76,7 +76,7 @@ function daySaid(T) {
 // Your portfolio's chart, in a box you can read along, with its ranges under it: the day's from its prices through the
 // day; a week's, a month's and a year's from each holding's chart, what you own now at today's exchange rates
 function portfolioBox() {
-  const svg = portfolioChart(), box = h("div.pbox", { "data-el": "pbox" }, svg);
+  const svg = portfolioChart(), chart = svg.portfolio, box = h("div.pbox", { "data-el": "pbox" }, svg);
   // (the range chosen kept when the page is drawn again: the day's drawn first, then reshaped to it)
   const kept = PRANGES.some(([r]) => r === S.prange) ? S.prange : "1d";
   const seg = h("div.seg.pseg.range-controls", { role: "group", "aria-label": "Your portfolio over" }, PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: ({ "1d": "Day", "5d": "Week", "1mo": "Month", "1y": "Year", "5y": "5yr" })[r] || label })));
@@ -94,21 +94,27 @@ function portfolioBox() {
     box.classList.remove("loading");
     if (!s) { S.prange = drawn; press(drawn); toast("Couldn't draw that just now. Try again in a moment.", true); return; }
     drawn = r;
-    const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
+    const t0 = s.T[0], t1 = s.T.at(-1), { pts, baseY } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
     const up = s.vals.at(-1) >= s.base, line = svg.querySelector("path[data-draw]"), fill = svg.querySelectorAll("path")[0];
     svg.querySelectorAll("stop").forEach((x) => x.setAttribute("stop-color", up ? "#5fe0a6" : "#ff8a80"));
     line.setAttribute("stroke", up ? "var(--up)" : "var(--down)");
-    const k = Math.max(pts.length, portfolioChart.pts?.length || 0), rs = (p) => C.resample(p.map((x) => x[0]), k).map((x, i) => [x, C.resample(p.map((y) => y[1]), k)[i]]);
-    if (portfolioChart.pts) await C.tween(rs(portfolioChart.pts), rs(pts), 700, (p) => { line.setAttribute("d", C.smooth(p)); fill.setAttribute("d", C.area(p, 150)); });
-    portfolioChart.pts = pts; portfolioChart.raw = { pts, s, r };
+    const base = svg.querySelector("line.base");
+    base.setAttribute("y1", baseY); base.setAttribute("y2", baseY); base.setAttribute("visibility", "visible");
+    const from = chart.pts, version = ++chart.seq;
+    const k = Math.max(pts.length, from?.length || 0), rs = (p) => C.resample(p.map((x) => x[0]), k).map((x, i) => [x, C.resample(p.map((y) => y[1]), k)[i]]);
+    const paint = (p) => { if (version === chart.seq && box.isConnected) { line.setAttribute("d", C.smooth(p)); fill.setAttribute("d", C.area(p, 150)); } };
+    // Commit the selected series together; a failed next request must not leave
+    // its labels or scrubber pointing at the previous series mid-animation.
+    chart.pts = pts; chart.raw = { pts, s, r };
     // (and what's said over it: the change over the range, and who did it)
     const ch = s.vals.at(-1) - s.base, chp = s.base ? (ch / s.base) * 100 : 0, pd = $el("pd"), pp = $el("pp"), ps = $el("ps"), say = $el("say");
     if (pd) { pd.textContent = signed(ch); pd.className = tone(ch); pp.textContent = pct(chp); pp.className = tone(ch); ps.textContent = PRANGES.find((x) => x[0] === r)[2]; }
     if (say) say.replaceChildren(...(r === "1d" ? daySaid(totals()) : rangeSaid(s, r)));
+    if (from?.length) await C.tween(rs(from), rs(pts), 700, paint); else paint(pts);
   };
   C.scrubber(box, (x, w) => {
-    const raw = portfolioChart.raw || { pts: portfolioChart.pts, s: daySeries(), r: "1d" };
-    if (!raw.pts || !raw.s) return null;
+    const raw = chart.raw;
+    if (!raw?.pts?.length || !raw.s) return null;
     const xv = (x / w) * 390;
     let k = 0, best = Infinity;
     raw.pts.forEach((p, i) => { const d = Math.abs(p[0] - xv); if (d < best) { best = d; k = i; } });
@@ -134,15 +140,16 @@ function rangeSaid(s, r) {
 }
 function portfolioChart() {
   const s = daySeries(), svg = C.el("svg", { class: "pchart", viewBox: "0 0 390 150", preserveAspectRatio: "none", role: "img", "aria-label": "Your portfolio today", "data-el": "pchart" });
-  if (!s) return svg;
-  const up = s.vals.at(-1) >= s.base, col = up ? "var(--up)" : "var(--down)", t0 = s.T[0], t1 = s.T.at(-1);
-  const { pts, baseY } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
+  // Prices may arrive without an intraday series. Keep an empty drawing ready
+  // for history or a later quote, and keep its samples with this SVG instance.
+  const up = !s || s.vals.at(-1) >= s.base, col = up ? "var(--up)" : "var(--down)", t0 = s?.T[0], t1 = s?.T.at(-1);
+  const { pts, baseY } = s ? C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base }) : { pts: [], baseY: 150 };
   svg.innerHTML = `<defs><linearGradient id="mk-pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${up ? "#5fe0a6" : "#ff8a80"}" stop-opacity=".22"/><stop offset="1" stop-color="${up ? "#5fe0a6" : "#ff8a80"}" stop-opacity="0"/></linearGradient></defs>`;
-  svg.append(C.el("line", { class: "base", x1: 0, x2: 390, y1: baseY, y2: baseY, "vector-effect": "non-scaling-stroke" }));
+  svg.append(C.el("line", { class: "base", x1: 0, x2: 390, y1: baseY, y2: baseY, visibility: s ? "visible" : "hidden", "vector-effect": "non-scaling-stroke" }));
   const fill = C.el("path", { d: C.area(pts, 150), fill: "url(#mk-pg)", class: "pfill" }), line = C.el("path", { d: C.smooth(pts), fill: "none", stroke: col, "stroke-width": 2, "stroke-linecap": "round", "vector-effect": "non-scaling-stroke", "data-draw": "0" });
   svg.append(fill, line);
   requestAnimationFrame(() => fill.classList.add("on"));
-  portfolioChart.pts = pts;
+  svg.portfolio = { pts, raw: s ? { pts, s, r: "1d" } : null, seq: 0 };
   return svg;
 }
 function itemRow(x, i, mode, open = (s) => openStock(s)) {
@@ -212,21 +219,27 @@ export function view(el, ctx) {
     // new prices: the total counted from where it was, the day, the words and the day's line reshaped (app.js 2920-2935)
     patch(was) {
       const T = totals(), wasT = was ? totalsWith(was) : null, pv = $el("pv");
-      if (!pv || !wasT || Math.abs(T.value - wasT.value) <= 0.004) return;
-      C.count(wasT.value, T.value, 700, (v) => { const [a, b] = fmt(v).split("."); pv.replaceChildren(`£${a}`, h("span.p", { text: "." + b })); });
-      const pd = S.prange === "1d" && $el("pd"), pp = $el("pp");
-      if (pd) { pd.textContent = signed(T.day); pd.className = tone(T.day); pp.textContent = pct(T.dayPct); pp.className = tone(T.day); }
+      if (!pv || !wasT) return;
+      if (Math.abs(T.value - wasT.value) > 0.004) C.count(wasT.value, T.value, 700, (v) => { const [a, b] = fmt(v).split("."); pv.replaceChildren(`£${a}`, h("span.p", { text: "." + b })); });
+      const pd = S.prange === "1d" && $el("pd"), pp = $el("pp"), ps = $el("ps");
+      if (pd) { pd.textContent = signed(T.day); pd.className = tone(T.day); pp.textContent = pct(T.dayPct); pp.className = tone(T.day); if (ps) ps.textContent = "today"; }
       const say = S.prange === "1d" && $el("say"); if (say) say.replaceChildren(...daySaid(T));
       const svg = S.prange === "1d" && $el("pchart"), line = svg?.querySelector("path[data-draw]"), fill = svg?.querySelectorAll("path")[0], s = daySeries();
-      if (line && s && portfolioChart.pts) {
-        const t0 = s.T[0], t1 = s.T.at(-1), { pts } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
-        const n = Math.max(pts.length, portfolioChart.pts.length), rs = (p) => C.resample(p.map((x) => x[0]), n).map((x, i) => [x, C.resample(p.map((y) => y[1]), n)[i]]);
-        C.tween(rs(portfolioChart.pts), rs(pts), 800, (p) => { line.setAttribute("d", C.smooth(p)); fill?.setAttribute("d", C.area(p, 150)); });
-        portfolioChart.pts = pts;
+      if (line && s) {
+        const chart = svg.portfolio, seq = ++chart.seq;
+        const up = s.vals.at(-1) >= s.base;
+        line.setAttribute("stroke", up ? "var(--up)" : "var(--down)");
+        svg.querySelectorAll("stop").forEach((x) => x.setAttribute("stop-color", up ? "#5fe0a6" : "#ff8a80"));
+        const t0 = s.T[0], t1 = s.T.at(-1), { pts, baseY } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
+        const base = svg.querySelector("line.base"); base.setAttribute("y1", baseY); base.setAttribute("y2", baseY); base.setAttribute("visibility", "visible");
+        const n = Math.max(pts.length, chart.pts.length), rs = (p) => C.resample(p.map((x) => x[0]), n).map((x, i) => [x, C.resample(p.map((y) => y[1]), n)[i]]);
+        const paint = (p) => { if (seq === chart.seq && svg.isConnected && S.prange === "1d") { line.setAttribute("d", C.smooth(p)); fill?.setAttribute("d", C.area(p, 150)); } };
+        if (chart.pts.length) C.tween(rs(chart.pts), rs(pts), 800, paint); else paint(pts);
+        chart.pts = pts; chart.raw = { pts, s, r: "1d" };
       }
     },
     hide() {},
-    destroy() { sec.replaceChildren(); portfolioChart.pts = null; portfolioChart.raw = null; },
+    destroy() { sec.replaceChildren(); },
   };
 }
 // (the total as it was, with the quotes before the new ones)

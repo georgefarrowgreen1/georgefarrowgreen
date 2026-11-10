@@ -114,9 +114,9 @@ jobs:
       - name: Homepage loading and InFlite profile hand-off
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homeaccount.test.cjs
-      - name: Cash holdings, interest estimates, editing and retry safety
+      - name: Portfolio charts, cash holdings, interest estimates and retry safety
         working-directory: georgefarrowgreen
-        run: node --test .tools/tests/markets-cash.test.cjs .tools/tests/markets-overview.test.cjs
+        run: node --test .tools/tests/markets-cash.test.cjs .tools/tests/markets-overview.test.cjs .tools/tests/markets-chart.test.cjs
       - name: Homepage portrait loading, readiness and fallback
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homeloader.test.cjs
