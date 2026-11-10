@@ -4,7 +4,7 @@
    A chat (S3-D17): fixed from the foot of the header to the bottom of what's in sight (--ch-vvh, from visualViewport,
    set by chat.js), its scroller above the composer; html.ifl-fill holds the window still and the tab bar is away. */
 
-.m-chats { --ch-pad: 16px; --ch-bubble-in: var(--glass-ctl); --ch-bubble-me: var(--acc-fill); --ch-on-me: var(--on-acc); color: var(--text); }
+.m-chats { --ch-pad: 16px; --ch-bubble-in: var(--ifl-surface-2, var(--glass-ctl)); --ch-bubble-me: var(--ifl-contrast, #141714); --ch-on-me: var(--ifl-on-contrast, #fff); color: var(--ifl-text, var(--text)); }
 .m-chats .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .m-chats [hidden] { display: none !important; }
 .m-chats.ch-veiled > * { filter: blur(24px); opacity: 0.3; }
@@ -20,9 +20,9 @@
 
 /* ---- the list ---- */
 .m-chats .ch-sec { padding: 0 0 24px; }
-.m-chats .ch-list { display: flex; flex-direction: column; border-radius: var(--r-group); background: var(--glass); box-shadow: var(--edge), var(--lift); overflow: hidden; }
+.m-chats .ch-list { display: flex; flex-direction: column; border-radius: var(--ifl-radius-card, 26px); background: var(--ifl-surface, var(--glass)); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--lift)); overflow: hidden; }
 .m-chats .ch-list:empty { display: none; }
-.m-chats .ch-row { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px 14px; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent;
+.m-chats .ch-row { display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 14px 16px; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent;
   transition: background-color var(--dur-fast, .18s) ease, transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)); }
 .m-chats .ch-row + .ch-row { border-top: 0.5px solid var(--line); }
 .m-chats .ch-row:active { background: var(--press); transform: scale(.994); }
@@ -30,7 +30,7 @@
 .m-chats .ch-row .ifl-avatar { flex: none; width: 44px; height: 44px; font-size: 18px; }
 .m-chats .ch-rtext { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .m-chats .ch-rtop, .m-chats .ch-rbot { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.m-chats .ch-rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 16px; }
+.m-chats .ch-rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 16px; }
 .m-chats .ch-rtime { flex: none; color: var(--text-3); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .m-chats .ch-rline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 14.5px; }
 .m-chats .ch-row.unread .ch-rname, .m-chats .ch-row.unread .ch-rline { color: var(--text); }
@@ -44,7 +44,7 @@
 .m-chats .ch-warn { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border-radius: var(--r-well, 16px); background: var(--glass-ctl); color: var(--text); font-size: 14px; line-height: 1.35; }
 .m-chats .ch-warn.strong, .m-chats .ch-cwarn .ch-warn { box-shadow: inset 3px 0 0 var(--warn); }
 .m-chats .ch-req, .m-chats .ch-news { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; width: 100%; min-height: 52px; padding: 10px 14px; border: 0; border-radius: var(--r-well, 16px);
-  background: var(--glass); box-shadow: var(--edge); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  background: var(--ifl-surface, var(--glass)); box-shadow: var(--ifl-shadow-card, var(--lift)); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .m-chats .ch-reqt { font-weight: 600; }
 .m-chats .ch-reqs { grid-column: 1; color: var(--text-2); font-size: 14px; overflow-wrap: anywhere; }
 .m-chats .ch-req .ifl-badge { grid-column: 2; grid-row: 1 / span 2; background: var(--acc-fill); color: var(--on-acc); }
@@ -54,7 +54,7 @@
 .m-chats .ch-air { margin-bottom: 14px; }
 .m-chats .ch-airl { margin: 0 4px 8px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .m-chats .ch-airs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; scroll-snap-type: x proximity; scroll-padding-inline: 2px; }
-.m-chats .ch-airp { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 132px; max-width: min(230px, 72vw); min-height: 66px; padding: 12px; border: 0; border-radius: var(--r-well, 16px); background: var(--glass); box-shadow: var(--edge); scroll-snap-align: start;
+.m-chats .ch-airp { flex: none; display: flex; flex-direction: column; gap: 5px; min-width: 132px; max-width: min(230px, 72vw); min-height: 70px; padding: 14px 16px; border: 0; border-radius: var(--ifl-radius-card, 26px); background: var(--ifl-surface, var(--glass)); box-shadow: var(--ifl-shadow-card, var(--lift)); scroll-snap-align: start;
   color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)), background-color var(--dur-fast, .18s) ease; }
 .m-chats .ch-airp:active { transform: scale(.97); background: var(--press); }
 .m-chats .ch-airp:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: -2px; }
@@ -96,7 +96,9 @@
 .m-chats .ch-from { display: block; margin-bottom: 2px; color: var(--acc-ink); font-size: 13px; font-weight: 600; }
 .m-chats .ch-quote { display: block; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid currentColor; opacity: 0.75; font-size: 13.5px; }
 .m-chats .ch-ft { display: block; margin-top: 3px; font-size: 12px; opacity: 0.8; font-variant-numeric: tabular-nums; }
-.m-chats .ch-photo, .m-chats .ch-vn { display: block; min-width: 160px; min-height: 44px; margin: -2px -6px 4px; padding: 10px 12px; border: 0; border-radius: 16px; background: var(--glass-ctl); color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.m-chats .ch-photo, .m-chats .ch-vn { display: block; min-width: 160px; min-height: 44px; margin: -2px -6px 4px; padding: 10px 12px; border: 0; border-radius: 16px; background: var(--ifl-surface-2, var(--glass-ctl)); color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.m-chats .ch-vn { background: var(--ch-bubble-me); color: var(--ch-on-me); }
+.m-chats .ch-m.me .ch-photo { background: color-mix(in srgb, var(--ch-on-me) 12%, transparent); color: var(--ch-on-me); }
 /* (a view-once photo that can't be opened here: yours, or theirs once opened. What became of it, not a button) */
 .m-chats .ch-photo.done { color: var(--label-2); font-style: italic; cursor: default; }
 .m-chats .ch-card { margin: 2px -4px 4px; }
@@ -109,18 +111,18 @@
 
 /* (the composer, under the scroller) */
 .m-chats .ch-composer { position: relative; flex: none; display: flex; align-items: flex-end; gap: 8px; margin: 0; padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-  background: var(--bar, var(--glass-strong)); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border-top: 0.5px solid var(--line); }
+  background: var(--ifl-page, var(--solid)); -webkit-backdrop-filter: none; backdrop-filter: none; border-top: 0.5px solid var(--line); }
 .m-chats .ch-chat.ch-kbup .ch-composer { padding-bottom: 6px; }
-.m-chats .ch-field { flex: 1; min-width: 0; display: flex; border-radius: 20px; background: var(--field); box-shadow: inset 0 0 0 0.5px var(--line); transition: box-shadow var(--dur-fast, .18s) ease; }
+.m-chats .ch-field { flex: 1; min-width: 0; display: flex; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--field)); box-shadow: inset 0 0 0 0.5px var(--line); transition: box-shadow var(--dur-fast, .18s) ease; }
 .m-chats .ch-input { flex: 1; min-width: 0; height: calc(22px * var(--ch-rows, 1) + 16px); max-height: 160px; padding: 8px 14px; border: 0; background: transparent; color: var(--text);
   font: inherit; font-size: 17px; line-height: 22px; resize: none; outline: none; }
 .m-chats .ch-input::placeholder { color: var(--text-3); }
 .m-chats .ch-field:focus-within { box-shadow: inset 0 0 0 1.5px var(--acc); }
 .m-chats .ch-send, .m-chats .ch-attach, .m-chats .ch-voice { flex: none; display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%;
-  background: var(--glass-ctl); color: var(--acc-ink); cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: var(--ifl-raised, var(--glass-ctl)); color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent;
   transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)), opacity var(--dur-fast, .18s) ease, background-color var(--dur-fast, .18s) ease; }
 .m-chats .ch-send:not(:disabled):active, .m-chats .ch-attach:active, .m-chats .ch-voice:active { transform: scale(.93); transition-duration: var(--dur-press, .1s); }
-.m-chats .ch-send { background: var(--acc-fill); color: var(--on-acc); }
+.m-chats .ch-send { background: var(--ifl-accent-gradient, var(--acc-fill)); color: var(--ifl-on-accent, var(--on-acc)); box-shadow: var(--ifl-shadow-control, none); }
 .m-chats .ch-send:disabled { opacity: 0.4; cursor: default; }
 .m-chats .ch-send svg, .m-chats .ch-attach svg, .m-chats .ch-voice svg, .m-chats .ch-send .ifl-glyph { width: 20px; height: 20px; }
 .m-chats .ch-send:focus-visible, .m-chats .ch-attach:focus-visible, .m-chats .ch-voice:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: 2px; }
@@ -150,7 +152,7 @@
 .m-chats .ch-b { max-width: 82%; border-radius: 20px; }
 .m-chats .ch-m + .ch-m { margin-top: 5px; }
 .m-chats .ch-letter-label { display: block; font-size: 10px; line-height: 15px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; margin-bottom: 3px; }
-.m-chats .ch-b.sealed { display: grid; gap: 5px; min-width: min(270px, 80vw); max-width: min(330px, 90%); padding: 13px 15px; white-space: normal; background: var(--acc-wash, var(--glass-ctl)); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--acc-ink) 25%,transparent); }
+.m-chats .ch-b.sealed { display: grid; gap: 5px; min-width: min(270px, 80vw); max-width: min(330px, 90%); padding: 15px 16px; border-radius: var(--ifl-radius-card, 26px); white-space: normal; background: var(--ifl-surface, var(--glass-ctl)); color: var(--text); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, none); }
 .m-chats .ch-sealed-head { display: flex; align-items: center; gap: 10px; font-size: 16px; line-height: 22px; }
 .m-chats .ch-sealed-head .ifl-glyph { width: 23px; height: 23px; color: var(--acc-ink); }
 .m-chats .ch-sealed-time { padding-left: 33px; color: var(--text-2); font-size: 13px; line-height: 18px; }
@@ -176,7 +178,7 @@
 .m-chats .ch-recall-events time { display: block; text-align: center; font-size: 11px; }
 .m-chats .ch-recall-events .ch-sys { margin: 5px 0 14px; }
 .m-chats .ch-composer { gap: 8px; padding-inline: 16px; }
-.m-chats .ch-field { align-items: flex-end; border-radius: 22px; }
+.m-chats .ch-field { align-items: flex-end; border-radius: var(--ifl-radius-row, 16px); }
 .m-chats .ch-voice { width: 44px; height: 44px; background: none; }
 .m-chats .ch-input { min-height: 44px; padding: 11px 0 11px 14px; font-size: 16px; }
 .m-chats .ch-attach, .m-chats .ch-send { width: 44px; height: 44px; }

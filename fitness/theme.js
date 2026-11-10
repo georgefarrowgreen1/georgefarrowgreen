@@ -19,7 +19,7 @@ try {
   const t = localStorage.getItem("fitness:appearance");
   if (t === "light" || t === "dark") {
     document.documentElement.dataset.theme = t;
-    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#24224f" : "#f8e2da");
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#101210" : "#f8f9f6");
   }
 } catch (_) {}
 // Back from signing in on the account's page (#signin=…): the page's last picture, its sky and you, from the very first

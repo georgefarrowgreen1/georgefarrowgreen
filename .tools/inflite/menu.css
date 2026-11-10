@@ -3,52 +3,34 @@ html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {
-  --ifm-sheet: rgba(250, 250, 253, 0.86);
-  --ifm-panel: rgba(255, 255, 255, 0.9);
-  --ifm-line: rgba(60, 60, 67, 0.14);
-  --ifm-text: #11131c;
-  --ifm-text-2: rgba(60, 60, 67, 0.62);
-  --ifm-text-3: rgba(60, 60, 67, 0.36);
-  --ifm-press: rgba(120, 120, 128, 0.14);
-  --ifm-red: #e5342a;
-  --ifm-red-bg: rgba(229, 52, 42, 0.1);
-  --ifm-green: #1f9d55;
-  --ifm-dim: rgba(14, 18, 40, 0.14);
-  --ifm-tint: #2f6be6;
-  --ifm-warn: #c86a00;
+  --ifm-sheet: var(--ifl-surface); --ifm-panel: var(--ifl-surface-2);
+  --ifm-line: var(--ifl-line); --ifm-text: var(--ifl-text);
+  --ifm-text-2: var(--ifl-muted); --ifm-text-3: var(--ifl-subtle);
+  --ifm-press: var(--ifl-press); --ifm-red: #c73229; --ifm-red-bg: rgba(199, 50, 41, 0.1);
+  --ifm-green: var(--ifl-accent-ink); --ifm-dim: rgba(14, 18, 16, 0.2);
+  --ifm-tint: var(--ifl-accent-ink); --ifm-warn: #9b5900;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
   }
 }
 :root[data-theme="dark"] :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
 }
-/* each app's own colour: its focus rings, and Update */
-.ifm-in-chat { --ifm-tint: #2b6fe6; }
-.ifm-in-weather { --ifm-tint: #3a86f0; }
-.ifm-in-fitness { --ifm-tint: #f0542e; }
-.ifm-in-markets { --ifm-tint: #12a46a; }
-.ifm-in-mail { --ifm-tint: #1aa58f; }
-.ifm-in-account { --ifm-tint: #5b4fe0; }
 
 .ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
 .ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
 .ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
   text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
 .ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
-.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+.ifm-lit { box-shadow: 0 0 0 2px var(--ifl-accent-ink) !important; border-radius: 50%; }
 
 .ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
-  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 12px 36px -16px rgba(14, 18, 16, 0.24);
   transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
 .ifm-pop.open { transform: none; opacity: 1; }
 .ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
@@ -58,7 +40,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
 .ifm-card:active { background: var(--ifm-press) !important; }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
-  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+  background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
 .ifm-photo img { object-fit: cover; display: block; }
 .ifm-who { min-width: 0; }
@@ -68,20 +50,21 @@ html { touch-action: pan-x pan-y; }
 
 /* the app's own rows */
 .ifm-rows { display: grid; gap: 6px; }
-.ifm-row.off { opacity: 0.5; }
-.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row.off { color: var(--ifm-text-2); }
+.ifm-row.off .ifm-ic { opacity: 0.55; }
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
 .ifm-row.go:active { background: var(--ifm-press) !important; }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
-.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
-.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
-.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
-.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
-.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
-.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
-.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+.ifm-ic.red { background: #e85850; }
+.ifm-ic.blue { background: #548cd4; }
+.ifm-ic.green { background: #2da75b; }
+.ifm-ic.orange { background: #df9527; }
+.ifm-ic.indigo { background: #8a76c8; }
+.ifm-ic.grey { background: #7b837b; }
+.ifm-ic.teal { background: #29988b; }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
 /* (its own name: an app's .warn, a banner of its own, isn't this) */
@@ -90,7 +73,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
 .ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
-.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"] { background: var(--ifl-accent-gradient) !important; }
 .ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
 
 /* its version, and Sign Out */
@@ -100,7 +83,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ifm-green); }
 .ifm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ifm-foot .ifm-upd { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px !important; border-radius: 16px !important;
-  background: rgba(47, 107, 230, 0.14) !important; background: color-mix(in srgb, var(--ifm-tint) 15%, transparent) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
+  background: var(--ifl-accent-wash) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
@@ -113,22 +96,22 @@ html { touch-action: pan-x pan-y; }
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
 .ifa-layer.on { opacity: 1; }
 .ifa-sheet { box-sizing: border-box; width: min(520px, 100%); padding: 26px 22px calc(env(safe-area-inset-bottom, 0px) + 22px); border-radius: 34px 34px 0 0; text-align: center; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 -8px 30px rgba(14, 18, 16, 0.12);
   transform: translateY(100%); transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
 .ifa-layer.on .ifa-sheet { transform: none; }
 .ifa-ic { width: 62px; height: 62px; border-radius: 15px; }
 .ifa-t { margin: 12px 0 6px; font-size: 21px; font-weight: 700; letter-spacing: -0.2px; }
 .ifa-p { margin: 0 auto 18px; max-width: 340px; color: var(--ifm-text-2); font-size: 15px; line-height: 1.4; }
 .ifa-sheet button { appearance: none; -webkit-appearance: none; border: 0; font: inherit; cursor: pointer; display: block; width: 100%; -webkit-tap-highlight-color: transparent; }
-.ifa-go { height: 50px; border-radius: 25px; background: var(--ifm-tint); color: #fff; font-size: 17px; font-weight: 600; }
+.ifa-go { height: 50px; border-radius: 25px; background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); font-size: 17px; font-weight: 600; }
 .ifa-go[disabled] { opacity: 0.6; }
 .ifa-later { margin-top: 8px; height: 44px; background: none; color: var(--ifm-tint); font-size: 16px; }
 @media (prefers-reduced-motion: reduce) { .ifa-sheet { transition: none; } }
 
 /* the note after an update */
 .ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
-  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), var(--ifl-shadow-card); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
   transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
 .ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
 .ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
@@ -159,21 +142,21 @@ img, svg, a { -webkit-user-drag: none; }
 /* (the band behind the header once the page has scrolled: solid the whole way down the header, so nothing reads through
    behind its title, then fading out over the 16px below it) */
 .ifh::before { content: ""; position: absolute; inset: 0 0 -16px; z-index: -1; pointer-events: none; opacity: var(--p);
-  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) calc(100% - 16px), transparent);
+  background: linear-gradient(to bottom, var(--ifl-page) calc(100% - 16px), transparent);
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
 /* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
 .ifh:not(.ifh-up)::before { display: none; }
 /* (the blur on the header itself, not its band: a header with a view-transition-name is a backdrop root, so a blur on
    anything inside it sees nothing of the page behind; on the header, it sees the page) */
-.ifh.ifh-up { -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
+.ifh.ifh-up { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
-.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
-  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
+.ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
+  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
-.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
@@ -187,11 +170,11 @@ img, svg, a { -webkit-user-drag: none; }
   font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
 .ifh-line:empty { height: 0; margin: 0; }
 .ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
-.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
-  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifl-surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -210,12 +193,12 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
 .ifs-btn:active { transform: scale(0.9); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
-.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
 .ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .ifs-hero span { font-size: 14px; opacity: 0.62; }
 
@@ -224,28 +207,26 @@ img, svg, a { -webkit-user-drag: none; }
    colour; it stays put as the pages cross-fade (its view-transition-name). The cross-fade between pages is asked for
    here, of every page (an at-rule can't be kept to html.ifl-hub); off the hub menu.js lets it go as a page is left */
 @view-transition { navigation: auto; }
-.ifl-tabs { --ifl-tab-ink: #3f4250; --ifl-tab-on: #1d55c4; --ifl-tabs-glass: rgba(250, 250, 253, 0.8);
+.ifl-tabs { --ifl-tab-ink: var(--ifl-muted); --ifl-tab-on: var(--ifl-on-accent); --ifl-tabs-glass: var(--ifl-surface-2);
   position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
   width: calc(100% - 32px); max-width: var(--ift-max); height: var(--ift-h); margin: 0 auto; padding: var(--ift-pad); border-radius: 999px;
-  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px var(--ifm-line), 0 10px 28px -14px rgba(20, 30, 70, 0.45);
+  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifl-line), var(--ifl-shadow-control);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); } }
-:root[data-theme="dark"] .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
   -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
-.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: color-mix(in srgb, var(--ifl-tab-on) var(--ift-pill), transparent); }
+.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
 .ifl-tab:active { transform: scale(0.92); }
-.ifl-tab:focus-visible { outline: 2px solid var(--ifl-tab-on); outline-offset: -2px; }
+.ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 6px 14px -8px rgba(20, 30, 70, 0.35); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
 .ifl-back:active { transform: scale(0.94); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
@@ -270,8 +251,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 16px 48px -20px rgba(14, 18, 16, 0.3); }
 .ifb-head { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; }
 .ifb-ic { flex: none; width: 26px; height: 26px; padding: 6px; border-radius: 50%; color: var(--ifm-red); background: var(--ifm-red-bg); stroke-width: 2.2; }
 .ifb-code { margin: 14px 0 6px; padding: 10px 12px; border-radius: 14px; background: var(--ifm-panel); box-shadow: inset 0 0 0 0.5px var(--ifm-line);
@@ -287,7 +268,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifb-who { margin: -6px 0 12px; color: var(--ifm-text-3); font-size: 12.5px; }
 .ifb-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .ifb-btn { flex: 1 1 auto; min-height: 44px; padding: 0 16px; text-align: center; border: 0; border-radius: 999px; color: var(--ifm-text); background: var(--ifm-press); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
-.ifb-go { flex-basis: 100%; color: #fff; background: var(--ifm-tint); }
+.ifb-go { flex-basis: 100%; color: var(--ifl-on-accent); background: var(--ifl-accent-gradient); }
 .ifb-btn:disabled { opacity: 0.6; cursor: default; }
 .ifb-btn:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 .ifb-link { color: var(--ifm-tint, #4c8dff); font-weight: 600; white-space: nowrap; }
@@ -296,10 +277,10 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 /* the status banner (menu.js BANNER): under the app's header while something touching it is wrong, a link to the status
    page; amber for an incident, the app's tint for maintenance */
 .ifl-sb { --sb: #c26a00; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 2px 10px; margin: 6px 16px 10px; padding: 10px 6px 10px 14px; border-radius: 16px;
-  background: color-mix(in srgb, var(--sb) 12%, rgba(255, 255, 255, 0.78)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: #11131c; cursor: pointer;
-  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
-.ifl-sb[data-k="maint"] { --sb: #4c56dc; }
-.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: 0 10px 30px -14px rgba(10, 16, 50, 0.4); }
+  background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: var(--ifl-text); cursor: pointer;
+  -webkit-backdrop-filter: none; backdrop-filter: none; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
+.ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
+.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: var(--ifl-shadow-card); }
 .ifl-sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sb); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb) 22%, transparent); }
 .ifl-sb-t { min-width: 0; display: grid; }
 .ifl-sb-t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -307,6 +288,6 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifl-sb-go { display: inline-flex; align-items: center; gap: 1px; color: var(--sb); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
 .ifl-sb-go svg, .ifl-sb-x svg { width: 14px; height: 14px; stroke-width: 2.6; }
 .ifl-sb-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.55; display: grid; place-items: center; cursor: pointer; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: #9c93ff; } }
-:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; }
-:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); } }
+:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); }
+:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }

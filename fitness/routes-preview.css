@@ -1,5 +1,5 @@
 /* Standalone review page; the route feature itself remains scoped to .m-fitness. */
-body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(--text); background: radial-gradient(ellipse at 10% 0,var(--aura-1),transparent 60%),radial-gradient(ellipse at 100% 45%,var(--aura-2),transparent 65%),var(--sky-c); }
+body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(--text); background: var(--sky-c); }
 .fr-preview * { box-sizing: border-box; }
 .fr-preview-head { display: flex; align-items: center; gap: 12px; max-width: 1000px; margin: auto; padding: max(24px,env(safe-area-inset-top)) 20px 16px; }
 .fr-preview-head img { border-radius: 12px; }
@@ -15,10 +15,10 @@ body.fr-preview { min-height: 100dvh; height: auto; overflow: auto; color: var(-
 .fr-preview-main > [hidden] { display: none !important; }
 @media(min-width:900px) { .fr-preview-main { padding-left: 20px; padding-right: 20px; } }
 
-.fr-preview { --fr-preview-ink: #ffad90; }
+.fr-preview { --fr-preview-ink: var(--tint-text); }
 .fr-preview-tabs button[aria-current="page"] { color: var(--fr-preview-ink); }
-.fr-preview-main.m-fitness { --tint: #ff8a68; --tint-deep: #b93a1c; --tint-text: #ffad90; --on-tint: #fff; }
+.fr-preview-main.m-fitness { --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --on-tint: var(--ifl-on-accent); }
 @media(prefers-color-scheme: light) {
-  .fr-preview { --fr-preview-ink: #b93a1c; }
-  .fr-preview-main.m-fitness { --tint: #f2734d; --tint-text: #b93a1c; }
+  .fr-preview { --fr-preview-ink: var(--tint-text); }
+  .fr-preview-main.m-fitness { --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --on-tint: var(--ifl-on-accent); }
 }

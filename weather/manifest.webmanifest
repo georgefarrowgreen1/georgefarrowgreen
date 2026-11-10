@@ -10,8 +10,8 @@
   "categories": [
     "weather"
   ],
-  "background_color": "#0c1428",
-  "theme_color": "#0c1428",
+  "background_color": "#f8f9f6",
+  "theme_color": "#f8f9f6",
   "icons": [
     {
       "src": "./icon.svg",

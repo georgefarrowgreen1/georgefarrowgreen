@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { shell } from "../../wxshell.mjs";
+import vm from "node:vm";
 
 test("the service worker's fingerprints and the page's version are this version's", () => {
   const { sw, cache, list, sums } = shell();
@@ -31,4 +32,21 @@ test("the page preloads what it opens with, not the radar card's code, and keeps
   const { list } = shell(), missing = [...all].filter((f) => !list.includes(`./${f}`));
   assert.deepEqual(missing, [], "a script the app can load isn't in the offline copy (weather/sw.js SHELL)");
   assert.ok(all.has("radar.js") && all.has("mapgl.js") && all.has("radarwork.js") && all.has("detail.js"));
+});
+
+// A persisted sky/appearance must not recolour the next launch after a system-theme change.
+test("offline Weather keeps separate light and dark browser chrome after an old tint was cached", async () => {
+  const sw = readFileSync(new URL("../../../weather/sw.js", import.meta.url), "utf8");
+  const source = sw.slice(sw.indexOf("async function tinted(res)"), sw.indexOf("// a notification:", sw.indexOf("async function tinted(res)")));
+  const html = readFileSync(new URL("../../../weather/index.html", import.meta.url), "utf8");
+  for (const tint of ["#1b2860", "#101210", "#f8f9f6", '<script>bad</script>']) {
+    const context = { Response, Headers, URL, self:{registration:{scope:'https://weather.test/'}}, TINT:'wx-tint',
+      caches:{open:async()=>({match:async()=>new Response(tint)})} };
+    vm.runInNewContext(source + ";globalThis.runTint=tinted;", context);
+    const result = await context.runTint(new Response(html, {headers:{'content-type':'text/html'}}));
+    const body = await result.text();
+    assert.match(body, /name="theme-color" content="#f8f9f6" media="\(prefers-color-scheme: light\)"/);
+    assert.match(body, /name="theme-color" content="#101210" media="\(prefers-color-scheme: dark\)"/);
+    assert.ok(!body.includes('<script>bad</script>'));
+  }
 });

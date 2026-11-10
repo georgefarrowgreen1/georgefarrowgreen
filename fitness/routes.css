@@ -28,7 +28,7 @@
 .m-fitness .fr-route-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 20px; }
 .m-fitness .fr-route-card .fr-route-meta .badge { padding: 3px 8px; font-size: 11px; }
 .m-fitness .fr-surface { color: var(--text-3); font-size: 12px; }
-.m-fitness .fr-mini-route { flex: none; display: block; width: 64px; height: 64px; border-radius: 14px; background: var(--field); }
+.m-fitness .fr-mini-route { flex: none; display: block; width: 64px; height: 64px; border-radius: var(--ifl-radius-row); background: var(--field); }
 .m-fitness .fr-route-halo { fill: none; stroke: var(--glass-strong); stroke-width: 9; stroke-linejoin: round; }
 .m-fitness .fr-route-line { fill: none; stroke: var(--tint); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 .m-fitness .fr-mini-route .fr-route-line { stroke-width: 8; }
@@ -60,7 +60,7 @@
 .m-fitness .fr-profile-readout { display: block; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 .m-fitness .fr-planner { display: grid; gap: 12px; }
 .m-fitness .fr-planner > h3.k { margin-bottom: 0; }
-.m-fitness .fr-plan-fields { background: var(--cell); border-radius: 16px; }
+.m-fitness .fr-plan-fields { background: var(--cell); border-radius: var(--ifl-radius-row); }
 .m-fitness .fr-plan-fields .row { gap: 8px; padding-left: 14px; padding-right: 14px; }
 .m-fitness .fr-plan-fields .tx b { font-size: 15px; }
 .m-fitness .fr-plan-fields input { appearance: auto; min-width: 0; width: 148px; max-width: 60%; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text-2); text-align: right; font: 500 15px/1.2 var(--font); }
@@ -107,7 +107,7 @@
 .m-fitness .fr-distance > span { flex:none; }
 .m-fitness .fr-distance input { width:64px; min-width:0; min-height:44px; padding:0 4px; border:0; border-radius:8px; background:none; color:var(--text); text-align:right; font:500 17px/1.2 var(--font); }
 .m-fitness .fr-distance input:focus-visible { outline:2px solid var(--tint); outline-offset:2px; }
-.m-fitness .fr-loading { display:flex; align-items:center; gap:16px; min-height:100px; padding:10px 16px; border-radius:18px; background:var(--field); }
+.m-fitness .fr-loading { display:flex; align-items:center; gap:16px; min-height:100px; padding:10px 16px; border-radius: var(--ifl-radius-row); background:var(--field); }
 .m-fitness .fr-loading > svg { flex:none; width:88px; height:64px; overflow:visible; }
 .m-fitness .fr-loading-track, .m-fitness .fr-loading-sweep { fill:none; stroke:var(--tint); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; }
 .m-fitness .fr-loading-track { opacity:.15; }
@@ -138,7 +138,7 @@
 .m-fitness .fr-data-source .tx b { white-space:normal; font-size:15px; }
 .m-fitness .fr-data-source .tx small { color:var(--text-3); font-size:13px; }
 .m-fitness .fr-data-source > svg { flex:none; color:var(--text-3); }
-.m-fitness .fr-map-data-dialog { position:fixed; inset:0; width:calc(100% - 24px); max-width:440px; max-height:calc(100dvh - 32px); margin:auto; padding:20px; overflow:auto; border:0; border-radius:24px; color:var(--text); background:var(--sheet); box-shadow:var(--edge),var(--lift); }
+.m-fitness .fr-map-data-dialog { position:fixed; inset:0; width:calc(100% - 24px); max-width:440px; max-height:calc(100dvh - 32px); margin:auto; padding:20px; overflow:auto; border:0; border-radius: var(--ifl-radius-sheet); color:var(--text); background:var(--sheet); box-shadow:var(--edge),var(--lift); }
 .m-fitness .fr-map-data-dialog::backdrop { background:var(--dim); }
 .m-fitness .fr-map-data-dialog > header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .m-fitness .fr-map-data-dialog h2 { margin:0; font-size:20px; }

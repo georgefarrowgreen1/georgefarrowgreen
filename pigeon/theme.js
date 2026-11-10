@@ -30,7 +30,7 @@
   // the browser bar matches the page
   var dark = t === "dark" || (t === "auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
   var m = document.querySelector('meta[name="theme-color"]');
-  if (m) m.setAttribute("content", dark ? "#1b2860" : "#dde3fb");
+  if (m) m.setAttribute("content", dark ? "#101210" : "#f8f9f6");
   // Chat is for phones and iPads. An iPad asks for desktop sites, calling
   // itself a Mac, but a Mac has no touchscreen. Anything else (a computer) is
   // shown a page saying Chat isn't available, and the app never starts.

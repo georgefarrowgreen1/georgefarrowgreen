@@ -324,7 +324,8 @@ test("weather.css: tokens, not white, outside the hero; each data colour with a 
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const [, sel, body] = m;
     if (/\.tcard\.wx/.test(sel)) continue;
-    assert.ok(!/#fff\b|#ffffff\b|rgba?\(\s*255\s*,\s*255\s*,\s*255/i.test(body), `white outside the hero: ${sel.trim()}`);
+    const component = body.replace(/--[\w-]+\s*:[^;]+;/g, "");
+    assert.ok(!/#fff\b|#ffffff\b|rgba?\(\s*255\s*,\s*255\s*,\s*255/i.test(component), `component paint must use theme tokens: ${sel.trim()}`);
   }
   assert.ok(/\.m-weather, \.wx-sheet\) svg \[fill="#EEF3F9" i\] \{ fill: var\(--cloud-glass\); \}/.test(css));
   for (const k of ["--wx-temp", "--wx-rain", "--wx-wind", "--wx-temp-text", "--wx-rain-text", "--wx-wind-text"]) {

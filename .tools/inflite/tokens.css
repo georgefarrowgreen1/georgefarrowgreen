@@ -1,14 +1,22 @@
-/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+/* InFlite's shared palette, geometry and motion. Bundled into each app by iflmenu.mjs:
    no extra request, and an app's existing offline/update mechanism keeps it current. */
 :root {
+  --ifl-page: #f8f9f6; --ifl-surface: #ffffff; --ifl-surface-2: #f1f2ef; --ifl-raised: #ffffff;
+  --ifl-text: #171a18; --ifl-muted: #646a66; --ifl-subtle: #676e66;
+  --ifl-line: rgba(24, 31, 26, 0.08); --ifl-press: rgba(24, 31, 26, 0.06);
+  --ifl-accent: #2ea84d; --ifl-accent-ink: #247a35; --ifl-accent-fill: #74df36; --ifl-on-accent: #10150d;
+  --ifl-accent-gradient: linear-gradient(110deg, #24c872, #b8eb2b); --ifl-accent-wash: #e2f5d8;
+  --ifl-contrast: #141714; --ifl-on-contrast: #ffffff;
+  --ifl-shadow-card: 0 1px 2px rgba(14, 18, 16, 0.025), 0 9px 24px -18px rgba(14, 18, 16, 0.18);
+  --ifl-shadow-control: 0 1px 3px rgba(14, 18, 16, 0.05), 0 5px 14px -10px rgba(14, 18, 16, 0.16);
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
-  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
   --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: blur(24px) saturate(160%);
-  --ifl-chrome-solid: #f7f8fc;
+  --ifl-chrome-blur: none;
+  --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
@@ -17,6 +25,22 @@
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+  :root:not([data-theme="light"]) {
+    --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+    --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+    --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+    --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+    --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+    --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+    --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+  }
 }
-:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }
+:root[data-theme="dark"] {
+  --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+  --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+  --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+  --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+  --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+  --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+  --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+}

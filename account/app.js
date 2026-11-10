@@ -1164,8 +1164,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.14";
-const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
+const BUILD = "2.15";
+const NEWS = "A unified neutral design with clearer cards and green controls";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1574,7 +1574,7 @@ function theme(pref, fade) {
     try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
     // (the browser's bar: Light or Dark, both its tags that one's colour; Automatic, each its own scheme's, so the bar
     // still follows the device as it changes)
-    const top = (d) => (d ? "#1b2860" : "#dde3fb");   // (the top of the sky: styles.css --sky-top)
+    const top = (d) => (d ? "#101210" : "#f8f9f6");   // (the top of the sky: styles.css --sky-top)
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top(root.dataset.theme ? isDark() : (m.getAttribute("media") || "").includes("dark")));
   };
   const looks = pref === "light" || pref === "dark" ? pref === "dark" : dark.matches;

@@ -1,81 +1,62 @@
-/* Chat: iOS 26 styling, in keeping with the account page and Weather. A sky of slow light behind every screen
-   (dawn in light, night in dark: the account page's own), and Liquid Glass over it: groups, the Messages list, cards,
-   friends' bubbles and sheets are panes of glass with a bright rim and a soft lift; the nav buttons, the tab bar, the
-   composer and menus float over everything in a stronger glass. Light by default. */
+/* Chats uses InFlite’s quiet neutral surfaces and lime actions. Conversation
+   contrast stays separate: charcoal outgoing messages, soft grey incoming ones. */
 :root{
-  /* the sky (the account page's: its gradient, its three lights, and the colour under them, which the phone tints
-     its status bar with), and the glass over it: a pane, a stronger one for what floats, a bright rim, a soft lift,
-     a sheen in its top corner */
-  --sky-a:#e9eefc; --sky-b:#f3f0fb; --sky-c:#f7f8fc; --sky-top:#dde3fb;
-  --aura-1:rgba(110,150,255,.42); --aura-2:rgba(200,150,255,.36); --aura-3:rgba(90,210,240,.3);
-  --pane:rgba(255,255,255,.58); --pane-strong:rgba(250,251,255,.9);
-  --edge:inset 0 1px .5px rgba(255,255,255,.95),inset 0 -1px .5px rgba(255,255,255,.4),inset 0 0 22px rgba(255,255,255,.3);
-  --lift:0 0 0 .5px rgba(20,30,60,.08),0 22px 44px -20px rgba(40,50,100,.28),0 2px 6px rgba(40,50,100,.06);
-  --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.7),rgba(255,255,255,0) 46%);
-  --blur:blur(28px) saturate(180%);
-  --bg:#eef0fb;            /* the sky as one colour: for a ring cut round something on it */
-  --bg-plain:#eef0fb;
-  --cell:#f9fafe;          /* a pane on the sky as one colour: small things drawn solid, and rings cut round things on glass */
-  --cell-2:#eef0fb;
-  --fill:rgba(20,30,60,.06);
-  --fill-2:rgba(20,30,60,.12);
-  --label:#000000;
-  --label-2:rgba(20,24,44,.66);      /* (4.5:1 or better on every background) */
-  --label-3:rgba(20,24,44,.3);       /* (for chevrons, icons and lines: too faint for words, which take --label-2) */
-  --sep:rgba(20,24,44,.1);
-  --tint:#0068e8;                      /* a touch deeper than iOS blue, so white text on it and it as text both read */
-  --on-tint:#ffffff;
-  --green:#34c759; --orange:#ff9500; --red:#d63129;
-  --green-t:#1d7f37; --orange-t:#a85000; --tint-fill:#0068e8;     /* the same colours for words: darker, so they read */ --indigo:#5856d6; --teal:#30b0c7; --teal-t:#0b7285; --tint-t:#0054c4; --gray:#8e8e93; --yellow:#ffcc00;
-  --bubble-in:rgba(255,255,255,.62);     /* friends' bubbles: glass, as the groups are */
-  --glass:rgba(250,251,255,.9);
-  --glass-strong:rgba(250,251,255,.9);
-  --glass-hi:rgba(255,255,255,.95);
-  --glass-edge:rgba(20,30,60,.08);
-  --glass-shadow:0 22px 44px -20px rgba(40,50,100,.28),0 2px 6px rgba(40,50,100,.06);
-  --scrim:rgba(0,0,0,.22);
-  --sea:#d3e6f5; --shelf:#e4f0fa; --relief-hi:#ffffff; --relief-lo:#b9a98a; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
-  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#8a6408; --p-ring:transparent;   /* pigeon kinds */
-  --p-standard-t:#1d7f37; --p-swift-t:#c4271e; --p-dumb-t:#7a5f3b; --tint-on:#0052bd; --red-on:#b3261e;   /* the same, as words on light grounds */
-  --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
-  --mono:ui-monospace, "SF Mono", Menlo, monospace;
+  --sky-a:var(--ifl-page,#f8f9f6); --sky-b:var(--ifl-page,#f8f9f6); --sky-c:var(--ifl-page,#f8f9f6); --sky-top:var(--ifl-page,#f8f9f6);
+  --aura-1:transparent; --aura-2:transparent; --aura-3:transparent;
+  --pane:var(--ifl-surface,#fff); --pane-strong:var(--ifl-raised,#fff);
+  --edge:inset 0 0 0 1px var(--ifl-line,rgba(23,24,21,.07));
+  --lift:var(--ifl-shadow-card,0 4px 18px rgba(24,27,19,.045));
+  --sheen:linear-gradient(transparent,transparent); --blur:none;
+  --bg:var(--ifl-page,#f8f9f6); --bg-plain:var(--ifl-page,#f8f9f6);
+  --cell:var(--ifl-surface,#fff); --cell-2:var(--ifl-surface-2,#f1f2ef);
+  --fill:var(--ifl-press,rgba(24,31,26,.06));
+  --fill-2:color-mix(in srgb,var(--ifl-text,#171a18) 10%,transparent);
+  --label:var(--ifl-text,#171a18); --label-2:var(--ifl-muted,#646a66); --label-3:var(--ifl-subtle,#717970);
+  --sep:var(--ifl-line,rgba(23,24,21,.08));
+  --tint:var(--ifl-accent-ink,#247a35); --tint-fill:var(--ifl-accent-fill,#74df36); --on-tint:var(--ifl-on-accent,#10150d);
+  --green:var(--ifl-accent,#2ea84d); --green-t:var(--ifl-accent-ink,#247a35); --orange:#dd8a26; --orange-t:#935a17; --red:#c6362f;
+  --indigo:var(--ifl-text,#171a18); --teal:#46775c; --teal-t:#376349; --tint-t:var(--ifl-accent-ink,#247a35); --gray:#8d9088; --yellow:#edd16d;
+  --tint-on:var(--ifl-accent-ink,#247a35); --red-on:#aa2d28;
+  --bubble-in:var(--ifl-surface-2,#f1f2ef); --bubble-me:var(--ifl-contrast,#141714); --on-bubble-me:var(--ifl-on-contrast,#fff);
+  --glass:var(--ifl-raised,#fff); --glass-strong:var(--ifl-raised,#fff); --glass-hi:transparent; --glass-edge:var(--ifl-line,rgba(23,24,21,.07));
+  --glass-shadow:var(--ifl-shadow-control,0 2px 8px rgba(24,27,19,.055)); --scrim:rgba(15,18,13,.28);
+  --sea:#e0e7e2; --shelf:#eaf0e8; --relief-hi:#fff; --relief-lo:#b5b5a8; --land:#f5f3eb; --land-edge:#d9d7cd; --border:#c1c3b5; --grid:rgba(0,0,0,.04);
+  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#8a6408; --p-ring:transparent;
+  --p-standard-t:#1d7f37; --p-swift-t:#c4271e; --p-dumb-t:#7a5f3b;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
   color-scheme:light;
 }
-/* Dark mode: picked in Account → Appearance (saved on this phone), or
-   Automatic, which follows the phone. Light is the default. */
+/* Appearance follows the same account setting as the rest of InFlite. */
 :root[data-theme="dark"]{
-    --sky-a:#121a3c; --sky-b:#0a0f26; --sky-c:#05060e; --sky-top:#1b2860;
-    --aura-1:rgba(80,120,255,.55); --aura-2:rgba(160,90,255,.4); --aura-3:rgba(40,190,230,.32);
-    --pane:rgba(34,40,66,.5); --pane-strong:rgba(28,33,56,.86);
-    --edge:inset 0 1px .5px rgba(255,255,255,.42),inset 0 -1px .5px rgba(255,255,255,.08),inset 0 0 22px rgba(255,255,255,.03);
-    --lift:0 0 0 .5px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16);
-    --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 46%);
-    --bg:#0e1430; --bg-plain:#0e1430; --cell:#1a2040; --cell-2:#232a4c;
-    --fill:rgba(255,255,255,.08); --fill-2:rgba(255,255,255,.14);
-    --label:#f5f6fb; --label-2:rgba(235,238,250,.72); --label-3:rgba(235,238,250,.34); --sep:rgba(255,255,255,.1);
-    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
-    --bubble-in:rgba(44,50,80,.55);
-    --glass:rgba(28,33,56,.86); --glass-strong:rgba(28,33,56,.86); --glass-hi:rgba(255,255,255,.3); --glass-edge:rgba(0,0,0,.4);
-    --glass-shadow:0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sky-a:var(--ifl-page,#101210); --sky-b:var(--ifl-page,#101210); --sky-c:var(--ifl-page,#101210); --sky-top:var(--ifl-page,#101210);
+    --pane:var(--ifl-surface,#191c19); --pane-strong:var(--ifl-raised,#2b302b);
+    --bg:var(--ifl-page,#101210); --bg-plain:var(--ifl-page,#101210); --cell:var(--ifl-surface,#191c19); --cell-2:var(--ifl-surface-2,#222622);
+    --label:var(--ifl-text,#f4f7f2); --label-2:var(--ifl-muted,#bac2b9); --label-3:var(--ifl-subtle,#a2aba1);
+    --sep:var(--ifl-line,rgba(240,244,232,.1)); --glass-edge:var(--ifl-line,rgba(240,244,232,.1));
+    --tint:var(--ifl-accent-ink,#97e84e); --tint-fill:var(--ifl-accent-fill,#74df36); --on-tint:var(--ifl-on-accent,#10150d); --tint-t:var(--ifl-accent-ink,#97e84e); --tint-on:var(--ifl-accent-ink,#97e84e);
+    --green:var(--ifl-accent,#97e84e); --green-t:var(--ifl-accent-ink,#97e84e); --orange:#e4ae62; --orange-t:#e4ae62; --red:#f07c72; --red-on:#f3a097;
+    --bubble-in:var(--ifl-surface-2,#222622); --bubble-me:var(--ifl-contrast,#080a08); --on-bubble-me:var(--ifl-on-contrast,#f4f7f2);
+    --glass:var(--ifl-raised,#2b302b); --glass-strong:var(--ifl-raised,#2b302b); --scrim:rgba(0,0,0,.52);
+    --edge:inset 0 0 0 1px var(--ifl-line,rgba(240,244,232,.1)); --lift:var(--ifl-shadow-card,0 4px 18px rgba(0,0,0,.18)); --glass-shadow:var(--ifl-shadow-control,0 2px 8px rgba(0,0,0,.18));
+    --sea:#252f29; --shelf:#2c3830; --relief-hi:#555b51; --relief-lo:#1b211b; --land:#3b4035; --land-edge:#4c5245; --border:#616857; --grid:rgba(255,255,255,.04);
+    --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff453a; --p-dumb-t:#c4a57e; --p-ring:rgba(255,255,255,.3); --p-dot-ring:rgba(255,255,255,.36); --p-badge-ring:rgba(255,255,255,.18);
     color-scheme:dark;
 }
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme:dark){
   :root[data-theme="auto"]{
-    --sky-a:#121a3c; --sky-b:#0a0f26; --sky-c:#05060e; --sky-top:#1b2860;
-    --aura-1:rgba(80,120,255,.55); --aura-2:rgba(160,90,255,.4); --aura-3:rgba(40,190,230,.32);
-    --pane:rgba(34,40,66,.5); --pane-strong:rgba(28,33,56,.86);
-    --edge:inset 0 1px .5px rgba(255,255,255,.42),inset 0 -1px .5px rgba(255,255,255,.08),inset 0 0 22px rgba(255,255,255,.03);
-    --lift:0 0 0 .5px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16);
-    --sheen:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.16),rgba(255,255,255,0) 46%);
-    --bg:#0e1430; --bg-plain:#0e1430; --cell:#1a2040; --cell-2:#232a4c;
-    --fill:rgba(255,255,255,.08); --fill-2:rgba(255,255,255,.14);
-    --label:#f5f6fb; --label-2:rgba(235,238,250,.72); --label-3:rgba(235,238,250,.34); --sep:rgba(255,255,255,.1);
-    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
-    --bubble-in:rgba(44,50,80,.55);
-    --glass:rgba(28,33,56,.86); --glass-strong:rgba(28,33,56,.86); --glass-hi:rgba(255,255,255,.3); --glass-edge:rgba(0,0,0,.4);
-    --glass-shadow:0 22px 44px -18px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.16); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sky-a:var(--ifl-page,#101210); --sky-b:var(--ifl-page,#101210); --sky-c:var(--ifl-page,#101210); --sky-top:var(--ifl-page,#101210);
+    --pane:var(--ifl-surface,#191c19); --pane-strong:var(--ifl-raised,#2b302b);
+    --bg:var(--ifl-page,#101210); --bg-plain:var(--ifl-page,#101210); --cell:var(--ifl-surface,#191c19); --cell-2:var(--ifl-surface-2,#222622);
+    --label:var(--ifl-text,#f4f7f2); --label-2:var(--ifl-muted,#bac2b9); --label-3:var(--ifl-subtle,#a2aba1);
+    --sep:var(--ifl-line,rgba(240,244,232,.1)); --glass-edge:var(--ifl-line,rgba(240,244,232,.1));
+    --tint:var(--ifl-accent-ink,#97e84e); --tint-fill:var(--ifl-accent-fill,#74df36); --on-tint:var(--ifl-on-accent,#10150d); --tint-t:var(--ifl-accent-ink,#97e84e); --tint-on:var(--ifl-accent-ink,#97e84e);
+    --green:var(--ifl-accent,#97e84e); --green-t:var(--ifl-accent-ink,#97e84e); --orange:#e4ae62; --orange-t:#e4ae62; --red:#f07c72; --red-on:#f3a097;
+    --bubble-in:var(--ifl-surface-2,#222622); --bubble-me:var(--ifl-contrast,#080a08); --on-bubble-me:var(--ifl-on-contrast,#f4f7f2);
+    --glass:var(--ifl-raised,#2b302b); --glass-strong:var(--ifl-raised,#2b302b); --scrim:rgba(0,0,0,.52);
+    --edge:inset 0 0 0 1px var(--ifl-line,rgba(240,244,232,.1)); --lift:var(--ifl-shadow-card,0 4px 18px rgba(0,0,0,.18)); --glass-shadow:var(--ifl-shadow-control,0 2px 8px rgba(0,0,0,.18));
+    --sea:#252f29; --shelf:#2c3830; --relief-hi:#555b51; --relief-lo:#1b211b; --land:#3b4035; --land-edge:#4c5245; --border:#616857; --grid:rgba(255,255,255,.04);
+    --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff453a; --p-dumb-t:#c4a57e; --p-ring:rgba(255,255,255,.3); --p-dot-ring:rgba(255,255,255,.36); --p-badge-ring:rgba(255,255,255,.18);
     color-scheme:dark;
   }
 }
@@ -105,12 +86,10 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 .one{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt{margin-top:22px!important}.mt-s{margin-top:14px!important}.mt-xs{margin-top:10px!important}
 
-/* Liquid Glass, as the account page has it: blur + saturation, a sheen, a bright rim, a soft lift. This is the stronger
-   glass, for what floats over everything (the bars and their buttons, menus, toasts); what lies on the sky is a clearer
-   pane of it (the end of this file). */
+/* Raised controls keep a quiet surface and a low shadow, without a blur layer. */
 .glass,.nbtn,.nb-right,.tabs,.tabacc,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
-  background:var(--sheen),var(--glass);
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  background:var(--glass);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
   box-shadow:var(--edge),var(--lift);
 }
 
@@ -118,8 +97,8 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
    Each light is soft at its edge by its own gradient rather than by a blur, and moves on in small steps, twice a
    second: a slow drift looks the same, and the glass over it is blurred afresh twice a second rather than at every
    frame. Held still with Reduce Motion. */
-.sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:radial-gradient(120% 80% at 50% -10%,var(--sky-a),var(--sky-b) 52%,var(--sky-c)) var(--sky-top)}
-.aura{position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.9;will-change:transform}
+.sky{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:var(--bg)}
+.aura{display:none}
 .a1{background:radial-gradient(circle closest-side,color-mix(in srgb,var(--aura-1) 73%,transparent),color-mix(in srgb,var(--aura-1) 66%,transparent) 20%,color-mix(in srgb,var(--aura-1) 49%,transparent) 40%,
   color-mix(in srgb,var(--aura-1) 29%,transparent) 60%,color-mix(in srgb,var(--aura-1) 12%,transparent) 80%,transparent);top:-32vmax;left:-22vmax;animation:drift1 38s steps(76) infinite alternate}
 .a2{background:radial-gradient(circle closest-side,color-mix(in srgb,var(--aura-2) 73%,transparent),color-mix(in srgb,var(--aura-2) 66%,transparent) 20%,color-mix(in srgb,var(--aura-2) 49%,transparent) 40%,
@@ -144,9 +123,9 @@ html.night .sky{visibility:hidden}
 @media (min-width:600px){
   html,body{background:var(--sky-top)}
   .page{justify-content:center;padding:16px}
-  .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep);transform:translateZ(0)}
+  .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:30px;box-shadow:var(--lift);transform:translateZ(0)}
   /* (on the night, the day's dark rim can't be seen, the page and the panel the same black: a light one, all the way round) */
-  html.night .app{box-shadow:0 30px 80px -30px rgba(0,0,0,.6),0 0 0 1px rgba(160,190,255,.16)}
+  html.night .app{box-shadow:var(--lift)}
 }
 .rotate{display:none}
 /* a computer: no app, just a page saying so (with a code to open it on a phone) */
@@ -155,7 +134,7 @@ html[data-device="computer"] .page,html[data-device="computer"] .rotate{display:
 html[data-device="computer"],html[data-device="computer"] body{background:var(--bg)}
 html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:center;justify-content:center;padding:40px 24px;-webkit-user-select:text;user-select:text}
 .na{max-width:440px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
-.na-icon{width:96px;height:96px;margin-bottom:8px;border-radius:22px;box-shadow:0 14px 34px -10px rgba(0,85,212,.45)}
+.na-icon{width:96px;height:96px;margin-bottom:8px;border-radius:22px;box-shadow:var(--glass-shadow)}
 .na h1{margin:0;font-size:30px;line-height:1.15;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
 .na p{margin:0;font-size:17px;line-height:1.45;color:var(--label-2);text-wrap:pretty}
 .na p b{color:var(--label);font-weight:600}
@@ -185,7 +164,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .navbar{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:56px;padding:6px 14px}
 .navbar::before{content:"";position:absolute;inset:0 0 -22px 0;z-index:-1;pointer-events:none;opacity:0;transition:opacity .2s;
   background:linear-gradient(to bottom,var(--sky-top) 35%,transparent);
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
   -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent);mask-image:linear-gradient(to bottom,#000 55%,transparent)}
 .scrolled .navbar::before,.navbar.solid::before{opacity:1}
 .nb-left{display:flex;align-items:center;justify-self:start;min-width:0}
@@ -199,7 +178,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .nb-right .nbtn + .nbtn{margin-left:-4px}
 .nbtn.back svg{font-size:22px;stroke-width:2.4}
 .nbtn.back span{display:none}
-.nbtn.prominent{background:var(--tint-fill);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 16px color-mix(in srgb,var(--tint) 40%,transparent)}
+.nbtn.prominent{background:var(--ifl-accent-gradient,var(--tint-fill));color:var(--on-tint);box-shadow:var(--glass-shadow)}
 .nbtn:disabled{opacity:.4}
 .nbtn:active{transform:scale(.94)}
 .large{margin:0 20px 10px;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.37px;display:flex;align-items:center;gap:10px;min-width:0}
@@ -217,10 +196,10 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .ifh.chead .ifh-acts{-webkit-backdrop-filter:none;backdrop-filter:none}          /* (its glass near solid already: no blur to work out behind a sheet) */
 .ifh.chead .ifh-me .av{font-size:15px}
 .nbtn.mebtn{width:44px;height:44px;margin-left:2px;background:none;box-shadow:none}
-.nbtn.mebtn .av{width:38px;height:38px;font-size:15px;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 4px 10px -4px rgba(20,30,60,.4)}
+.nbtn.mebtn .av{width:38px;height:38px;font-size:15px;box-shadow:0 0 0 1px var(--sep)}
 
 /* ---------- search ---------- */
-.search{display:flex;align-items:center;gap:7px;margin:0 16px 12px;padding:0 14px;height:42px;border-radius:999px;background:var(--fill);color:var(--label-2)}
+.search{display:flex;align-items:center;gap:7px;margin:0 16px 12px;padding:0 14px;height:46px;border-radius:16px;background:var(--cell-2);color:var(--label-2)}
 .search.skp{animation:sheen 1.4s ease-in-out infinite}        /* (the placeholder's, while the list is still on its way) */
 .search svg{font-size:18px}
 .search input{flex:1;min-width:0;border:0;background:none;outline:none;color:var(--label);font-size:17px;padding:0}
@@ -231,7 +210,7 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .ghead{margin:24px 36px 8px;font-size:calc(15px * var(--ts, 1));line-height:calc(20px * var(--ts, 1));font-weight:600;color:var(--label);letter-spacing:-.2px}
 .gfoot{margin:8px 36px 0;font-size:calc(13px * var(--ts, 1));line-height:calc(18px * var(--ts, 1));color:var(--label-2);letter-spacing:-.08px}
 .gfoot.bad{color:var(--red)}
-.group{margin:0 16px;background:var(--cell);border-radius:26px;overflow:hidden}
+.group{margin:0 16px;background:var(--cell);border-radius:var(--ifl-radius-group,22px);overflow:hidden}
 .group :focus-visible{outline-offset:-3px}
 .search:focus-within,.fcell:focus-within{box-shadow:inset 0 0 0 1.5px var(--tint)}
 .group + .group{margin-top:22px}
@@ -250,10 +229,10 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .cell.destructive{color:var(--red)}
 .tile{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff;font-size:17px;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .tile svg.ico{stroke-width:2.1}
-.tile.blue{background:linear-gradient(180deg,#3f9cff,#0a6ff0)}.tile.green{background:linear-gradient(180deg,#4cd673,#28b850)}
+.tile.blue{background:var(--cell-2);color:var(--label)}.tile.green{background:var(--ifl-accent-wash,var(--fill));color:var(--tint)}
 .tile.orange{background:linear-gradient(180deg,#ffad33,#ff8a00)}.tile.red{background:linear-gradient(180deg,#ff6259,#f0372c)}
-.tile.indigo{background:linear-gradient(180deg,#7a78ff,#4f4cd8)}.tile.gray{background:linear-gradient(180deg,#a2a2a8,#7d7d84)}
-.tile.teal{background:linear-gradient(180deg,#5ad2e6,#26a8c2)}
+.tile.indigo,.tile.gray{background:var(--cell-2);color:var(--label)}
+.tile.teal{background:var(--cell-2);color:var(--label)}
 .cell select.overlay{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
 .badge-n{flex:none;min-width:24px;height:24px;padding:0 8px;border-radius:12px;background:var(--red);color:#fff;font-size:14px;font-weight:600;line-height:24px;text-align:center}
 .pad{padding:18px 16px}
@@ -282,7 +261,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 
 /* ---------- Messages list ---------- */
 .mlist{display:flex;flex-direction:column;padding:0 4px}
-.mrow{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:72px;padding:10px 14px 10px 22px;border:0;border-radius:22px;background:none;text-align:left;color:var(--label)}
+.mrow{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:72px;padding:10px 14px 10px 22px;border:0;border-radius:16px;background:none;text-align:left;color:var(--label)}
 .mrow:active{background:var(--fill)}
 .mrow + .mrow::before{content:"";position:absolute;top:0;right:14px;left:88px;height:.5px;background:var(--sep)}
 .mrow .dot{position:absolute;left:7px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:var(--tint)}
@@ -299,7 +278,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .empty .btn{margin-top:20px}
 
 /* ---------- buttons: capsules ---------- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 24px;border:0;border-radius:999px;background:var(--tint-fill);color:var(--on-tint);font-size:17px;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 18px color-mix(in srgb,var(--tint) 32%,transparent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 24px;border:0;border-radius:999px;background:var(--ifl-accent-gradient,var(--tint-fill));color:var(--on-tint);font-size:17px;font-weight:650;box-shadow:var(--glass-shadow)}
 a.btn{text-decoration:none;box-sizing:border-box}
 .btn svg{font-size:20px}
 .btn.wide{width:100%}
@@ -325,7 +304,7 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .stamp{align-self:center;margin:16px 0 6px;font-size:11px;font-weight:500;color:var(--label-2);text-align:center}
 .stamp b{font-weight:600}
 .b{position:relative;max-width:76%;margin-top:2px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in);color:var(--label);font-size:calc(17px * var(--ts, 1));line-height:calc(22px * var(--ts, 1));align-self:flex-start;overflow-wrap:anywhere}
-.b.me{align-self:flex-end;background:linear-gradient(180deg,color-mix(in srgb,var(--tint-fill) 96%,#fff),var(--tint-fill));color:#fff}
+.b.me{align-self:flex-end;background:var(--bubble-me);color:var(--on-bubble-me)}
 .b.gap-top{margin-top:10px}
 /* a web address in a message: tapped, it opens in the browser */
 .lnk{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;-webkit-touch-callout:none}
@@ -334,7 +313,7 @@ a.btn{text-decoration:none;box-sizing:border-box}
 .b.pic img.arrive,.av img.arrive{animation:fade .3s ease both}
 .b.pic .ph.wait{animation:sheen 1.4s ease-in-out infinite}
 .b.pic .ptxt{display:block;margin-top:3px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in)}
-.b.pic.me .ptxt{background:var(--tint-fill);color:#fff}
+.b.pic.me .ptxt{background:var(--bubble-me);color:var(--on-bubble-me)}
 .ph{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--label-2);font-size:13px;padding:12px;text-align:center;cursor:default!important}
 .ph svg{font-size:26px}
 .bad-scroll{font-style:italic;opacity:.8}
@@ -360,13 +339,13 @@ html.kbup .compose{padding-bottom:6px;transition:none}
 .crow{display:flex;align-items:flex-end;gap:8px}
 .plus{flex:none;width:44px;height:44px;border:0;border-radius:50%;color:var(--label);display:grid;place-items:center}
 .plus svg{font-size:21px;stroke-width:2.2}
-.field-wrap{flex:1;min-width:0;display:flex;align-items:flex-end;min-height:44px;border-radius:22px;padding:4px 4px 4px 16px}
+.field-wrap{flex:1;min-width:0;display:flex;align-items:flex-end;min-height:44px;border-radius:16px;padding:4px 4px 4px 16px}
 .field-wrap textarea{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;padding:7px 0;font-size:calc(17px * var(--ts, 1));line-height:calc(22px * var(--ts, 1));max-height:120px;display:block;color:var(--label)}
 .field-wrap textarea::placeholder{color:var(--label-2)}
-.send{flex:none;width:36px;height:36px;border:0;border-radius:50%;background:var(--tint-fill);color:#fff;display:grid;place-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.send{flex:none;width:36px;height:36px;border:0;border-radius:50%;background:var(--ifl-accent-gradient,var(--tint-fill));color:var(--on-tint);display:grid;place-items:center;box-shadow:var(--glass-shadow)}
 .send svg{font-size:18px;stroke-width:2.6}
 .send:disabled{opacity:0;pointer-events:none;width:0;margin:0}
-.attach{display:flex;align-items:center;gap:10px;padding:8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
+.attach{display:flex;align-items:center;gap:10px;padding:8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
 .attach img{flex:none;width:46px;height:46px;object-fit:cover;border-radius:14px}
 /* the photo card above the message box: thumbnail, title, status and, once
    Send is pressed, a bar that glides (driven frame by frame from app.js) */
@@ -399,10 +378,10 @@ html.kbup .compose{padding-bottom:6px;transition:none}
 .tab svg{font-size:var(--ift-icon)}
 .tab[aria-current="true"]{color:var(--ift-tint)}
 .tab:active{transform:scale(.95)}
-.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tint-fill);color:#fff;font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
+.tab .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tint-fill);color:var(--on-tint);font-size:11px;line-height:18px;font-weight:700;box-shadow:0 0 0 2px var(--cell)}
 
 /* ---------- forms ---------- */
-.fcell{position:relative;display:flex;align-items:center;gap:6px;min-height:52px;padding:0 8px 0 18px;background:var(--cell)}
+.fcell{position:relative;display:flex;align-items:center;gap:6px;min-height:52px;padding:0 8px 0 18px;border-radius:16px;background:var(--cell-2)}
 .fcell + .fcell::before{content:"";position:absolute;top:0;right:0;left:18px;height:.5px;background:var(--sep)}
 .fcell .pre{flex:none;color:var(--label-2)}
 .fcell input,.fcell select{flex:1;min-width:0;border:0;background:none;outline:none;padding:14px 10px 14px 0;font-size:17px;color:var(--label)}
@@ -450,8 +429,8 @@ html.kbup .compose{padding-bottom:6px;transition:none}
 /* ---------- sheets ---------- */
 .layer:empty,.poplayer:empty,.toasts:empty{display:none}
 .scrim{position:absolute;inset:0;z-index:20;background:var(--scrim)}
-.sheet{position:absolute;left:0;right:0;bottom:0;top:12px;z-index:21;display:flex;flex-direction:column;border-radius:38px 38px 0 0;
-  background:var(--sheen),var(--pane-strong);-webkit-backdrop-filter:blur(36px) saturate(190%);backdrop-filter:blur(36px) saturate(190%);box-shadow:var(--edge),0 -10px 40px rgba(0,0,0,.18)}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:12px;z-index:21;display:flex;flex-direction:column;border-radius:30px 30px 0 0;
+  background:var(--pane-strong);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:var(--lift)}
 .grab{flex:none;width:36px;height:5px;border-radius:3px;background:var(--label-3);margin:7px auto 0}
 .sheet > header{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:60px;padding:2px 14px 0}
 .sheet > header h2{margin:0;font-size:17px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:56vw}
@@ -517,14 +496,14 @@ html.kbup .compose{padding-bottom:6px;transition:none}
 
 /* ---------- glass action card ---------- */
 .asheet{position:absolute;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:41}
-.asheet .grp{display:flex;flex-direction:column;gap:8px;padding:18px 14px 14px;border-radius:34px;background:var(--glass-strong)}
+.asheet .grp{display:flex;flex-direction:column;gap:8px;padding:18px 14px 14px;border-radius:30px;background:var(--glass-strong)}
 .asheet .msg{padding:0 8px 6px;text-align:center;font-size:13px;line-height:18px;color:var(--label-2)}
 .asheet .msg b{display:block;color:var(--label);font-size:17px;line-height:22px;font-weight:600;margin-bottom:4px}
 .asheet .msg:focus{outline:none}
 .asheet .ab,.asheet .cancel{display:block;width:100%;min-height:52px;border:0;border-radius:999px;font-size:17px;font-weight:600}
 .asheet .ab{background:color-mix(in srgb,var(--tint) 15%,transparent);color:var(--tint-on)}
 .asheet .ab.destructive{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red-on)}
-.asheet .cancel{margin-top:8px;background:var(--glass-strong);color:var(--label);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
+.asheet .cancel{margin-top:8px;background:var(--glass-strong);color:var(--label);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:var(--glass-shadow)}
 
 /* ---------- banner ---------- */
 /* (under the navigation bar, so Back and the bar's buttons stay in reach; in a sheet, under the sheet's own header) */
@@ -562,7 +541,7 @@ html.kbup .compose{padding-bottom:6px;transition:none}
 
 /* ---- touch: glass swells and brightens, solid things dip, rows light up ---- */
 .nbtn,.chatwho,.plus,.send,.mapctl button,.fly,.b.pic img{transition:transform .5s var(--snappy),background-color .3s,box-shadow .3s,filter .3s,opacity .25s}
-.nbtn:active,.plus:active,.mapctl button:active{transform:scale(1.14);filter:brightness(1.08) saturate(1.1);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),0 12px 30px rgba(0,0,0,.18)}
+.nbtn:active,.plus:active,.mapctl button:active{transform:scale(1.14);filter:brightness(1.08) saturate(1.1);box-shadow:var(--glass-shadow)}
 .nb-right .nbtn:active{transform:scale(1.18);background:var(--fill)}
 .nb-right{transition:transform .5s var(--snappy)}
 .nb-right:has(.nbtn:active){transform:scale(1.04)}
@@ -731,7 +710,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes send-in{from{transform:scale(.2);opacity:0}}
 /* scrolled up, a pigeon arrives below: a pill over the composer (centred with translate, so the pop-in's transform is free) */
 .newpill{position:absolute;left:50%;bottom:calc(100% + 8px);translate:-50% 0;z-index:2;min-height:44px;padding:0 15px;border:0;border-radius:999px;background:var(--glass-strong);color:var(--tint);
-  font:600 14px/44px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
+  font:600 14px/44px var(--font);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:none;backdrop-filter:none;animation:bubble-in .35s var(--snappy);transition:transform .3s var(--snappy)}
 .newpill:active{transform:scale(.94);transition-duration:.1s}
 .newpill.out{animation:fade-out .2s ease forwards;pointer-events:none}
 /* a message held for its menu sinks, and springs back as the menu opens (not snaps) */
@@ -784,7 +763,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* friend requests: handle in the small grey line, like every other list */
 .reqrow .csub{font-size:13px;line-height:18px;color:var(--label-2)}
 /* menus and confirm cards: more solid glass, so what's behind doesn't show through the words */
-.menu-pop,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:blur(30px) saturate(1.8);backdrop-filter:blur(30px) saturate(1.8)}
+.menu-pop,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:none;backdrop-filter:none}
 .note{text-wrap:balance}
 /* long labels stay on one line beside a value */
 .cell.has-icon:has(> .val) .ctext > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -838,7 +817,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .meta .fl.flock .ico{font-size:11px;color:var(--red)}
 /* choosing people */
 .pickrow .tickbox{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1.6px var(--label-3);color:transparent;font-size:14px;transition:background .2s,box-shadow .2s}
-.pickrow[aria-checked="true"] .tickbox{background:var(--tint-fill);box-shadow:none;color:#fff;animation:pop .35s var(--bouncy)}
+.pickrow[aria-checked="true"] .tickbox{background:var(--tint-fill);box-shadow:none;color:var(--on-tint);animation:pop .35s var(--bouncy)}
 .pickrow .tickbox .ico{stroke-width:3.2}
 /* the map card for a flock: each member and their pigeon */
 .mapcard .frows{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:150px;overflow:auto}
@@ -908,7 +887,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .rrow button:active{transform:scale(.94)}
 .rrow button.on{background:color-mix(in srgb,var(--tint) 18%,transparent)}
 /* replying to: above the message box */
-.replybar{display:flex;align-items:center;gap:10px;margin:0 6px 6px;padding:8px 8px 8px 14px;border-radius:20px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:14px}
+.replybar{display:flex;align-items:center;gap:10px;margin:0 6px 6px;padding:8px 8px 8px 14px;border-radius:20px;background:var(--glass-strong);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:14px}
 .replybar>.ico{flex:none;color:var(--tint);font-size:18px}
 .replybar .rtext{flex:1;min-width:0;display:flex;flex-direction:column}
 .replybar .rtext b{font-size:12px;font-weight:600;color:var(--tint)}
@@ -943,7 +922,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .badge2 b{font-size:13px;line-height:16px;font-weight:600}
 .badge2:not(.earned) b{color:var(--label-2)}
 .badge2 small{font-size:11px;line-height:14px;color:var(--label-2)}
-.badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint);color:#fff;vertical-align:1px}
+.badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint-fill);color:var(--on-tint);vertical-align:1px}
 .badge2 .bprog{display:block;width:80%;height:4px;margin-top:5px;border-radius:2px;background:linear-gradient(90deg,var(--tint) calc(var(--w,0) * 100%),var(--fill) 0)}
 .badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-2)}
 .meta{align-items:center}
@@ -1065,7 +1044,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes flyoff{0%{transform:translate(0,0) scale(1);opacity:1}35%{transform:translate(3px,-3px) rotate(-6deg) scale(1.05)}100%{transform:translate(34px,-42px) rotate(-18deg) scale(.55);opacity:0}}
 @keyframes flap{from{transform:scaleY(1)}to{transform:scaleY(.72)}}
 .addrow .btn.sent{background:var(--green);box-shadow:0 6px 16px color-mix(in srgb,var(--green) 35%,transparent);animation:pop .4s var(--bouncy)}
-.addrow .btn.sent .ico{font-size:18px;stroke-width:3;color:#fff}
+.addrow .btn.sent .ico{font-size:18px;stroke-width:3;color:var(--on-tint)}
 .nbtn.pulsing{animation:pulse .7s ease-in-out infinite alternate}
 @keyframes pulse{to{transform:scale(.9);opacity:.7}}
 @media (prefers-reduced-motion: reduce){.btn .flyb,.btn .flyb svg,.addrow .btn.sent,.nbtn.pulsing{animation:none}}
@@ -1235,7 +1214,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .field-wrap .mic{position:absolute;right:4px;bottom:4px;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--label-2);display:grid;place-items:center;cursor:pointer;transition:transform .2s cubic-bezier(.3,1.5,.5,1),color .2s}
 .field-wrap .mic .ico{font-size:22px}
 .field-wrap .mic:active{transform:scale(.88);color:var(--tint)}
-.recbar{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 4px;margin:0 8px;border-radius:24px;background:var(--glass-strong);box-shadow:var(--glass-shadow);animation:recin .3s cubic-bezier(.3,1.4,.5,1)}
+.recbar{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 8px;margin:0 8px;border-radius:26px;background:var(--bubble-me);color:var(--on-bubble-me);box-shadow:var(--glass-shadow);animation:recin .3s cubic-bezier(.3,1.4,.5,1)}
 @keyframes recin{from{opacity:0;transform:translateY(8px) scale(.97)}}
 .recbar .reccancel{flex:none;width:38px;height:38px;border:0;border-radius:50%;background:none;color:var(--red);display:grid;place-items:center;cursor:pointer}
 .recbar .reccancel .ico{font-size:21px}
@@ -1245,10 +1224,11 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .recwave{flex:1;min-width:0;height:28px;display:flex;align-items:center;justify-content:flex-end;gap:2px;overflow:hidden}
 .recwave i{flex:none;width:3px;height:calc(var(--h, .1) * 100%);border-radius:2px;background:var(--red);opacity:.85;transition:height .08s}
 .recbar .recsend{position:static;flex:none}
-.b.voicem{min-width:200px;padding:7px 12px 7px 7px}
+.b.voicem{min-width:200px;padding:10px 14px 10px 10px;background:var(--bubble-me);color:var(--on-bubble-me)}
+.b.voicem .ft{color:color-mix(in srgb,var(--on-bubble-me) 75%,transparent)}
 .voice{display:flex;align-items:center;gap:9px;--p:0}
-.vplay{flex:none;width:34px;height:34px;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--tint-fill);color:#fff;transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
-.b.me .vplay{background:#fff;color:var(--tint)}
+.vplay{flex:none;width:38px;height:38px;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--tint-fill);color:var(--on-tint);transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
+.b.me .vplay{background:var(--tint-fill);color:var(--on-tint)}
 .vplay:active{transform:scale(.9)}
 .vplay:disabled{opacity:.45}
 .vplay .ico{font-size:15px}
@@ -1326,7 +1306,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .mlist .mrow{transition:background-color .45s var(--ease-out),transform .3s var(--snappy)}
 .mlist .mrow:active{transition:background-color 0s,transform .3s var(--snappy)}
 .mlist .mrow.pressing{transform:scale(.97);transition:background-color 0s,transform .34s var(--smooth)}
-.menu-scrim.blur{background:rgba(0,0,0,.14);-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);animation:fade .25s ease}
+.menu-scrim.blur{background:rgba(0,0,0,.14);-webkit-backdrop-filter:none;backdrop-filter:none;animation:fade .25s ease}
 .menu-scrim.blur.closing{animation:fade-out .22s ease forwards}
 .mrow.lifted{position:absolute;z-index:41;background:var(--cell);box-shadow:0 14px 44px rgba(0,0,0,.2);animation:lift .42s var(--bouncy)}
 .mrow.lifted .av{--dot-bg:var(--cell)}
@@ -1410,7 +1390,7 @@ svg.fillico{fill:currentColor;stroke:none}
    A plain bar with who, their time and how far; each message with its own
    time inside it; colour only on what's in the air; one row to write in. */
 .navbar.chatnav{grid-template-columns:auto minmax(0,1fr) auto;gap:0;min-height:58px;padding:4px 6px 4px 2px}
-.navbar.chatnav::before{inset:0;opacity:1;background:color-mix(in srgb,var(--sky-top) 75%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
+.navbar.chatnav::before{inset:0;opacity:1;background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
 .chatnav .nbtn,.chatnav .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
 .chatnav .nbtn{color:var(--tint)}
 .chatnav .chatwho{justify-self:stretch;max-width:none;gap:10px;padding:4px 8px 4px 0;border-radius:14px;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;text-align:left}
@@ -1437,7 +1417,7 @@ svg.fillico{fill:currentColor;stroke:none}
 
 /* in the air: an outline, and its pigeon on a hairline of the way */
 .k-standard{--k:var(--p-standard)}.k-swift{--k:var(--p-swift)}.k-turbo{--k:var(--label)}.k-rocket{--k:var(--p-rocket)}.k-dumb{--k:var(--p-dumb)}
-.b.up{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%);cursor:pointer}
+.b.up{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%);cursor:pointer}
 .b.up .ft{color:var(--label-2)}
 .b.up .quote{background:var(--fill);border-left-color:var(--tint)}
 .b.up .quote b{color:var(--tint)}
@@ -1445,7 +1425,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .b.up .frow,.b.me.sending .frow{clear:both;display:flex;align-items:center;gap:10px;margin:7px -4px -4px 0}
 .b.up .frow .ft,.b.me.sending .frow .ft{float:none;margin:0 0 0 auto}
 .trk{position:relative;flex:1;min-width:48px;height:12px;container-type:inline-size}
-.trk::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42}
+.trk::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:repeating-linear-gradient(90deg,var(--sep) 0 6px,transparent 6px 10px);opacity:.42}
 .trk i{position:absolute;left:0;top:5px;height:2px;width:100%;transform:scaleX(var(--f,0));transform-origin:0 50%;border-radius:1px;background:var(--k);transition:transform 1s linear}
 .trk .cb{position:absolute;left:-8px;top:-1px;width:14px;height:14px;transform:translateX(calc(var(--f,0) * 100cqw));transition:transform 1s linear}
 .trk .cb .bird{display:block;width:14px;height:14px;color:var(--k);transform:scaleX(-1)}
@@ -1453,10 +1433,10 @@ svg.fillico{fill:currentColor;stroke:none}
 .b.pic.up{box-shadow:none;overflow:visible}   /* (a photo's or GIF's in the air: the outline round its words only, not round the picture
    too, and not cut at its corners by the bubble's: the picture rounds its own) */
 .b.pic.up .ptxt{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint)}
-.b.voicem.up .vplay{background:var(--tint-fill);color:#fff}
+.b.voicem.up .vplay{background:var(--tint-fill);color:var(--on-tint)}
 /* yours on its way to the server, a moment before it takes off (app.js: send) */
 /* (as it'll be once it's in the air, so nothing changes but its words: the same outline, its track, "Sending…" for the time) */
-.b.me.sending{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%)}
+.b.me.sending{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%)}
 .b.me.sending .ft{color:var(--label-2)}
 .b.me.sending > .ft{float:none;display:flex;justify-content:flex-end;margin:7px -4px -4px 0}
 .b.me.sending .quote{background:var(--fill);border-left-color:var(--tint)}
@@ -1464,7 +1444,7 @@ svg.fillico{fill:currentColor;stroke:none}
 /* the send button, while what you sent goes up: a spinner where the arrow was */
 .field-wrap .send.busy,.field-wrap .send.busy:disabled{opacity:1}
 .send.busy svg{opacity:0}
-.send.busy::after{content:"";position:absolute;inset:9px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin .8s linear infinite}
+.send.busy::after{content:"";position:absolute;inset:9px;border-radius:50%;border:2.5px solid color-mix(in srgb,var(--on-tint) 25%,transparent);border-top-color:var(--on-tint);animation:spin .8s linear infinite}
 /* theirs, sealed until it lands */
 .b.up.sealed{display:flex;flex-direction:column;gap:6px;width:auto;margin-top:2px;padding:9px 14px 10px;border:0;font:inherit;text-align:left;color:var(--label-2);box-shadow:inset 0 0 0 1.5px var(--label-3)}
 .b.up.sealed.gap-top{margin-top:10px}
@@ -1476,7 +1456,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .flyrun{background:none;box-shadow:inset 0 0 0 1.5px var(--label-3)}
 .flyrun .stack .pg{box-shadow:0 0 0 2px var(--bg-plain)}
 .flyrun .frh small,.frr b{color:var(--label-2)}
-.ctrack::before{background-image:none;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42;animation:none}
+.ctrack::before{background-image:none;background:repeating-linear-gradient(90deg,var(--sep) 0 6px,transparent 6px 10px);opacity:.42;animation:none}
 .ctrack i{background:var(--label-2)}
 .ctrack .cbird{fill:var(--label-2);animation:none}
 
@@ -1532,23 +1512,23 @@ svg.fillico{fill:currentColor;stroke:none}
 .navbar.root .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:2px}
 .navbar.root .nbtn{color:var(--tint);background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
 .navbar.root .nbtn svg{font-size:22px}
-.navbar:not(.chatnav)::before{inset:0;background:color-mix(in srgb,var(--sky-top) 55%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
+.navbar:not(.chatnav)::before{inset:0;background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none;-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
 
 /* in the air, at the top of Messages: outlined like the pigeon in the chat */
-.acard{background:none;box-shadow:inset 0 0 0 1.5px var(--label-3);gap:6px;padding:12px 14px 11px;border-radius:20px}
-.acard.mine{box-shadow:inset 0 0 0 1.5px var(--tint)}
+.acard{background:var(--cell);box-shadow:var(--edge),var(--glass-shadow);gap:6px;padding:14px 16px;border-radius:26px}
+.acard.mine{box-shadow:var(--edge),var(--glass-shadow)}
 .acard .awho{gap:7px;font-size:14px}
 .acard .awho .av.xs{flex:none;width:22px;height:22px;font-size:9px}
 .acard .acd{color:var(--label);font-weight:650}
 .acard.soon .acd{color:var(--tint)}
 .acard.soon{animation:none}
-.acard .atrack::before{background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);background-size:auto;opacity:.42;animation:none}
+.acard .atrack::before{background:repeating-linear-gradient(90deg,var(--sep) 0 6px,transparent 6px 10px);background-size:auto;opacity:.42;animation:none}
 .acard .atrack i{background:var(--k,var(--tint))}
 .acard .abird{color:var(--k,var(--tint))}
 .acard .abird svg{filter:none}
 .acard .asub .ico{font-size:12px;vertical-align:-2px;margin-right:4px;color:var(--k,var(--label-2))}   /* (in the line, so a long one ends in "…") */
 .acard .asub.late,.acard .asub.early{font-weight:500}
-.acard.landed{background:none;box-shadow:inset 0 0 0 1.5px var(--green)}
+.acard.landed{background:color-mix(in srgb,var(--tint-fill) 24%,var(--cell));box-shadow:var(--edge),var(--glass-shadow)}
 .acard.landed::after{display:none}
 
 /* the list: a pigeon in the air says so in grey, its colour only on the pigeon */
@@ -1566,7 +1546,7 @@ svg.fillico{fill:currentColor;stroke:none}
 
 /* the map card: the airmail line, flown in its colour, its pigeon on it */
 .mapcard .prog{position:relative;height:2px;margin:12px 6px 8px;border-radius:1px;background:none;overflow:visible}
-.mapcard .prog::before{content:"";position:absolute;inset:0;border-radius:1px;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42}
+.mapcard .prog::before{content:"";position:absolute;inset:0;border-radius:1px;background:repeating-linear-gradient(90deg,var(--sep) 0 6px,transparent 6px 10px);opacity:.42}
 .mapcard .prog i{position:relative;display:block;height:2px;border-radius:1px;background:var(--k,var(--tint))}
 .mapcard .prog i .bird{position:absolute;right:-9px;top:-7px;width:16px;height:16px;color:var(--k,var(--tint));transform:scaleX(-1)}
 .mapcard .prog.lost i .bird{display:none}
@@ -1601,7 +1581,7 @@ svg.fillico{fill:currentColor;stroke:none}
    when one turns into the other. */
 .compose button{-webkit-tap-highlight-color:transparent;transition:transform var(--dur-release,.38s) var(--ease-spring),box-shadow .2s,background-color .2s,filter .2s,opacity .18s,color .2s}
 .compose button.down{transition-duration:.05s}
-.compose .plus:active{transform:none;filter:none;box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
+.compose .plus:active{transform:none;filter:none;box-shadow:var(--glass-shadow)}
 .compose .plus.down{transform:scale(.94);box-shadow:inset 0 0 0 99px var(--fill-2),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
 .compose .kind:active{transform:none}
 .compose .kind.down{transform:scale(.95);background:var(--fill-2)}
@@ -1734,7 +1714,7 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 .veiled .toasts{display:none}
 /* view-once photos: a pill to tap, and a viewer that closes itself */
 .b.once{display:inline-flex;align-items:center;gap:8px;padding:11px 18px 11px 14px;font:inherit;font-weight:600;color:var(--label);border:0;text-align:left}
-.b.once .oico{font-size:22px;color:#7b5cff;flex:none}
+.b.once .oico{font-size:22px;color:var(--tint);flex:none}
 .b.once.me .oico{color:#fff}
 /* opened or expired: the same quiet outline as an expired photo */
 .b.once.done,.b.once.me.done{gap:6px;padding:6px 12px 6px 10px;font-weight:400;color:var(--label-2)}
@@ -1759,65 +1739,60 @@ html.zoomed .compose,html.zoomed .compose textarea{touch-action:pan-x pan-y pinc
 /* invite only */
 .welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
 /* the welcome: night, a pigeon crossing, very few words */
-html.night,html.night body,html.night .app{background:#03050c}
-html.night .rotate{color:#e9eeff}              /* (turned sideways on the welcome: its words on the night, not in the day's black) */
-html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
+html.night,html.night body,html.night .app{background:var(--bg)}
+html.night .rotate{color:var(--label)}              /* (turned sideways on the welcome: its words on the night, not in the day's black) */
+html.night #screen{isolation:isolate;background:var(--bg)}
 html.night .view{background:transparent}
 .nightsky{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
-html.night .nightsky{display:block}
-.welcome.night{position:relative;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:#e9eeff;overflow:hidden}
+html.night .nightsky{display:none}
+.welcome.night{position:relative;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:var(--label);overflow:hidden}
 .welcome .wtop{margin-top:max(22vh,120px);display:flex;flex-direction:column;align-items:center;gap:14px}
-.welcome .wtitle{margin:0;display:flex;gap:0;font-size:40px;line-height:1;font-weight:200;letter-spacing:.16em;padding-left:.16em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.45)}
+.welcome .wtitle{margin:0;display:flex;gap:0;font-size:40px;line-height:1;font-weight:700;letter-spacing:-.04em;padding-left:0;color:var(--label);text-shadow:none}
 .welcome .wtitle span{display:inline-block;opacity:0;filter:blur(10px);transform:translateY(8px);animation:wletter 1.4s cubic-bezier(.2,.7,.2,1) forwards}
 .welcome .wtitle span:nth-child(1){animation-delay:.35s}.welcome .wtitle span:nth-child(2){animation-delay:.47s}.welcome .wtitle span:nth-child(3){animation-delay:.59s}.welcome .wtitle span:nth-child(4){animation-delay:.71s}
 .welcome .wtitle span:nth-child(5){animation-delay:.83s}.welcome .wtitle span:nth-child(6){animation-delay:.95s}.welcome .wtitle span:nth-child(7){animation-delay:1.07s}.welcome .wtitle span:nth-child(8){animation-delay:1.19s}
 @keyframes wletter{to{opacity:1;filter:blur(0);transform:none}}
-.welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 1.4s ease 0.8s forwards}
+.welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:var(--label-2);font-style:italic;opacity:0;animation:wfade 1.4s ease 0.8s forwards}
 @keyframes wfade{to{opacity:1}}
 .welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 0.9s ease 1.2s forwards}
 .welcome .wcta.swap{opacity:1;animation:wcta-swap .45s var(--ease-out) both}
 @keyframes wcta-swap{from{opacity:0;transform:translateY(6px)}}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
-.welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
-.welcome .wglow{position:relative;background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);letter-spacing:.12em;font-weight:500;animation:wpulse 3.2s ease-in-out infinite}
+.welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:var(--label);text-shadow:none}
+.welcome .wglow{position:relative;background:var(--ifl-accent-gradient,var(--tint-fill));color:var(--on-tint);border:0;box-shadow:var(--glass-shadow);letter-spacing:0;font-weight:650}
 @keyframes wpulse{50%{box-shadow:0 0 38px rgba(110,160,255,.6),inset 0 0 22px rgba(130,170,255,.28)}}
-.welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
-.welcome .wquiet:active{color:#fff}
+.welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:var(--label-2);font:inherit;font-size:15px;letter-spacing:.08em}
+.welcome .wquiet:active{color:var(--label)}
 @media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper,.welcome .wcta{animation:none;opacity:1;filter:none;transform:none}.welcome .wglow{animation:none}}
 /* the welcome's logo: out of the dark, in a soft glow */
 .welcome .wlogo{position:relative;margin:0;display:grid;place-items:center;width:160px;height:160px}
 .welcome .wlogo .appicon{position:relative;width:96px;height:96px;border-radius:26px;font-size:58px;opacity:0;filter:blur(14px);transform:scale(.86);will-change:auto;
-  box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 10px 30px rgba(10,40,120,.45);animation:wlogo 1.8s cubic-bezier(.2,.7,.2,1) .3s forwards}
+  box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,var(--glass-shadow);animation:wlogo 1.8s cubic-bezier(.2,.7,.2,1) .3s forwards}
 @keyframes wlogo{80%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
-.welcome .wlogo::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(closest-side,rgba(70,140,255,.4),rgba(70,140,255,.12) 55%,rgba(70,140,255,0));opacity:0;animation:wfade 2.2s ease .6s forwards}
+.welcome .wlogo::before{display:none}
 .welcome .wtop{margin-top:max(16vh,80px)}
 @media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wlogo::before{animation:none;opacity:1;filter:none;transform:none}}
 /* "You've been invited" in the same quiet capitals as "By invitation only" */
-.welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
+.welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:var(--label-2);text-shadow:none}
 /* every screen before you're in, under the same night: the sky carries on behind,
    and one screen gives way to the next in a slow dissolve rather than a slide */
-.auth.night{--label:#eef2ff;--label-2:rgba(214,224,255,.66);--label-3:rgba(214,224,255,.34);--cell:rgba(110,140,255,.08);--cell-2:rgba(110,140,255,.12);
-  --fill:rgba(160,190,255,.12);--fill-2:rgba(160,190,255,.2);--sep:rgba(160,190,255,.16);--tint:#a9c6ff;--tint-fill:rgba(120,160,255,.16);--red:#ff8278;--green:#5fe08a;
-  --glass:rgba(120,150,255,.1);--glass-strong:rgba(20,28,60,.9);--glass-hi:rgba(160,190,255,.2);--glass-edge:rgba(160,190,255,.2);--bg:#03050c;color-scheme:dark;color:var(--label);
-  --pane:var(--cell);--sheen:none;--edge:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge);--lift:0 8px 28px rgba(0,0,0,.3)}
+.auth.night{--pane:var(--cell);--sheen:linear-gradient(transparent,transparent);color:var(--label)}
 .auth.night .navbar::before{display:none}
-.auth.night .large,.auth.night .hero h1{font-weight:300;letter-spacing:.06em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.4)}
-.auth.night .group{border:1px solid rgba(160,190,255,.14);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-.auth.night .fcell input{caret-color:#cfe0ff}
-.auth.night .fcell input:-webkit-autofill{-webkit-text-fill-color:#eef2ff;transition:background-color 99999s}
-.auth.night .btn:not(.plain){background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);letter-spacing:.08em;font-weight:500;
-  box-shadow:0 0 24px rgba(110,160,255,.3),inset 0 0 18px rgba(130,170,255,.16);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.auth.night .large,.auth.night .hero h1{font-weight:700;letter-spacing:-.03em;color:var(--label);text-shadow:none}
+.auth.night .group{border:1px solid var(--sep);-webkit-backdrop-filter:none;backdrop-filter:none}
+.auth.night .fcell input{caret-color:var(--label)}
+.auth.night .fcell input:-webkit-autofill{-webkit-text-fill-color:var(--label);transition:background-color 99999s}
+.auth.night .btn:not(.plain){background:var(--ifl-accent-gradient,var(--tint-fill));color:var(--on-tint);border:0;letter-spacing:0;font-weight:650;box-shadow:var(--glass-shadow)}
 .auth.night .btn.plain{color:var(--label-2);letter-spacing:.06em}
-.auth.night form .btn.plain{color:#dfe8ff;background:rgba(6,10,26,.62);border:1px solid rgba(160,190,255,.26)}   /* (the email way in: quieter than the passkey, still plainly a button over the sky) */
+.auth.night form .btn.plain{color:var(--label);background:var(--cell-2);border:1px solid var(--sep)}   /* (the email way in: quieter than the passkey, still plainly a button over the sky) */
 
-.auth.night .hero .appicon{box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 0 40px rgba(70,140,255,.45)}
+.auth.night .hero .appicon{box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,var(--glass-shadow)}
 html.night .view.nav-push,html.night .view.nav-pop{background:transparent;animation:ndawn .7s cubic-bezier(.2,.7,.2,1)}
 @keyframes ndawn{from{opacity:0;transform:translateY(12px)}}
 html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s ease forwards}
 html.night .nav-ghost > .ghost-in{animation:none}
 @keyframes ndusk{to{opacity:0;transform:translateY(-6px)}}
-.nav-ghost .night{background:#03050c}          /* a night screen left for the day: it goes as it was */
+.nav-ghost .night{background:var(--bg)}          /* a night screen left for the day: it goes as it was */
 html.night .nav-ghost .night{background:none}
 /* back on the welcome: the logo and words are already there */
 .welcome.again .wlogo .appicon{animation:none;opacity:1;filter:none;transform:none}
@@ -1830,8 +1805,8 @@ html.night .nav-ghost .night{background:none}
    phone's, not Chat's Appearance), with a dawn along the bottom. Nothing here ever catches a tap. */
 /* (the account page's sky exactly: its gradient, and its dawn, warm along the foot with a cool light at the top) */
 :root{--acct-sky:#f3f0fb;--acct-sky-a:#e9eefc;--acct-sky-c:#f7f8fc;
-  --acct-heaven:radial-gradient(120% 80% at 50% -10%,var(--acct-sky-a),var(--acct-sky) 52%,var(--acct-sky-c));
-  --dawn:radial-gradient(120% 50% at 50% 112%,rgba(255,190,150,.55),rgba(255,160,200,.22) 45%,transparent 72%),radial-gradient(110% 60% at 50% -12%,rgba(160,200,255,.22),transparent 62%)}
+  --acct-heaven:var(--bg);
+  --dawn:linear-gradient(transparent,transparent)}
 @media (prefers-color-scheme:dark){:root{--acct-sky:#0a0f26;--acct-sky-a:#121a3c;--acct-sky-c:#05060e}}
 /* going: that sky, over everything */
 .handoff{position:fixed;inset:0;z-index:100;overflow:hidden;pointer-events:none}
@@ -1842,11 +1817,11 @@ html.arriving body::after,.arrival .arv-sky{background:var(--dawn),var(--acct-he
 html.arriving body::after{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;animation:fade-out .4s ease 12s forwards}
 html.arriving.arv-face body::before,.arrival .arv-me{position:fixed;left:50%;top:30%;width:78px;height:78px;margin:-39px 0 0 -39px;border-radius:50%}
 html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-events:none;display:grid;place-items:center;color:#fff;font:600 32px/1 var(--font);
-  background:var(--arv-p,none) center/cover no-repeat,linear-gradient(160deg,#78b6ff,#3157d8 70%,#6a3fd8);box-shadow:0 12px 30px -12px rgba(40,50,150,.5);animation:fade-out .4s ease 12s forwards}
+  background:var(--arv-p,none) center/cover no-repeat,linear-gradient(160deg,#65715a,#303b29);box-shadow:0 12px 30px -12px rgba(24,30,18,.12);animation:fade-out .4s ease 12s forwards}
 .arrival{position:fixed;inset:0;z-index:45;pointer-events:none}
 .arrival .arv-sky{position:absolute;inset:0}
 .arrival .arv-me{display:grid;place-items:center;overflow:hidden;color:#fff;font:600 32px/1 var(--font);letter-spacing:0;
-  background:linear-gradient(160deg,#78b6ff,#3157d8 70%,#6a3fd8);box-shadow:0 12px 30px -12px rgba(40,50,150,.5)}
+  background:linear-gradient(160deg,#65715a,#303b29);box-shadow:0 12px 30px -12px rgba(24,30,18,.12)}
 .arrival .arv-me img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}   /* (over the initial, which stays under it as it fades in) */
 @media (prefers-reduced-motion:reduce){html.arriving body::after,html.arriving.arv-face body::before{animation:fade-out .2s ease 12s forwards!important}}
 /* until they come in, a row at a time: Messages' list, under its title */
@@ -1866,7 +1841,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .dusk-copy{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden}
 .screen:has(> .dusk > .dusk-copy) > :is(.view,.tabbar,.compose){visibility:hidden}   /* (the copy is clear: the screen itself goes from under it) */
 .dusk-copy > .view{flex:1;min-height:0;overflow:hidden}
-.dusk-night{position:absolute;inset:0;z-index:47;opacity:0;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
+.dusk-night{position:absolute;inset:0;z-index:47;opacity:0;background:var(--bg)}
 /* a friend's loft */
 .lofthead .sub{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;text-align:center}
 .lofthead .sub .pg{font-size:13px}
@@ -1942,8 +1917,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .fcbar{position:relative;display:block;height:4px;border-radius:2px;background:var(--fill-2);overflow:hidden}
 .fcbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--k,var(--tint));transition:width .9s var(--smooth)}
 .fcbar.lost i{background:var(--red)}
-.mapcard.fc.fold .cheerbtn,.mapcard.fc.fold .shareflight{position:absolute;z-index:2;top:18px;right:14px;width:44px;height:44px;min-height:0;margin:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--tint-fill);color:#fff}
-.mapcard.fc.fold .cheerbtn .ico,.mapcard.fc.fold .shareflight .ico{color:#fff;margin:0;font-size:20px}
+.mapcard.fc.fold .cheerbtn,.mapcard.fc.fold .shareflight{position:absolute;z-index:2;top:18px;right:14px;width:44px;height:44px;min-height:0;margin:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--tint-fill);color:var(--on-tint)}
+.mapcard.fc.fold .cheerbtn .ico,.mapcard.fc.fold .shareflight .ico{color:var(--on-tint);margin:0;font-size:20px}
 .mapcard.fc.fold .cheerbtn span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .mapcard.fc.fold .shareflight{font-size:0}
 .mapcard.fc.fold .cheerbtn:active,.mapcard.fc.fold .shareflight:active{transform:scale(1.12)}
@@ -2020,8 +1995,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .fctags .sty{color:var(--teal);background:color-mix(in srgb,var(--teal) 15%,transparent)}
 .fctags .risk{color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent)}
 .mapcard.fc .cheerbtn,.mapcard.fc .shareflight{margin-top:0}
-.mapcard.fc:not(.fold) .cheerbtn{background:var(--tint-fill);color:#fff;min-height:48px;border-radius:16px}
-.mapcard.fc:not(.fold) .cheerbtn .ico{color:#fff}
+.mapcard.fc:not(.fold) .cheerbtn{background:var(--tint-fill);color:var(--on-tint);min-height:48px;border-radius:16px}
+.mapcard.fc:not(.fold) .cheerbtn .ico{color:var(--on-tint)}
 /* (the map has no wind or rain key: hidden too in case an older copy of the app still draws one) */
 .windkey,.rainkey{display:none!important}
 /* the map's buttons step aside while the card is up over them */
@@ -2069,16 +2044,16 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .ccav{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--orange-t);font-weight:700;font-size:14px}
 .ccav.any{color:var(--label-2)}
 .ccav.any svg{width:17px;height:17px;fill:currentColor}
-.cc[aria-checked="true"] .ccav{background:var(--tint-fill);color:#fff}
+.cc[aria-checked="true"] .ccav{background:var(--tint-fill);color:var(--on-tint)}
 .seg{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0 16px;padding:4px;border-radius:18px;background:var(--cell)}
-.segthumb{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:14px;background:var(--tint-fill);box-shadow:0 4px 14px color-mix(in srgb,var(--tint) 30%,transparent);transform:translateX(calc(var(--i,0) * 100%))}
+.segthumb{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:999px;background:var(--tint-fill);box-shadow:var(--glass-shadow);transform:translateX(calc(var(--i,0) * 100%))}
 .segthumb.glide{transition:transform .55s var(--snappy)}
 .seg button{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:1px;min-height:62px;padding:8px 4px;border:0;border-radius:14px;background:none;color:var(--label);font:inherit;cursor:pointer;transition:color .25s,transform .35s var(--snappy)}
 .seg button .ico{font-size:17px;color:var(--label-2);transition:color .25s}
 .seg button b{font-size:14px;font-weight:600}
 .seg button small{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap;transition:color .25s}
-.seg button[aria-checked="true"],.seg button[aria-checked="true"] .ico{color:#fff}
-.seg button[aria-checked="true"] small{color:#fff}
+.seg button[aria-checked="true"],.seg button[aria-checked="true"] .ico{color:var(--on-tint)}
+.seg button[aria-checked="true"] small{color:var(--on-tint)}
 .seg button:active{transform:scale(.96)}
 .waycard{display:flex;flex-direction:column;gap:10px;width:calc(100% - 32px);margin:14px 16px 0;padding:14px 16px 16px;border:0;border-radius:26px;background:var(--cell);color:var(--label);font:inherit;text-align:left;cursor:pointer;transition:transform .45s var(--snappy)}
 .waycard:active{transform:scale(.98)}
@@ -2132,7 +2107,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .ccav.when{color:var(--tint)}
 .ccav.when svg,.ccav.when .ico{width:17px;height:17px;font-size:17px}
 .ccav.when svg.bird{fill:currentColor}
-.cc[aria-checked="true"] .ccav.when{background:var(--tint-fill);color:#fff}
+.cc[aria-checked="true"] .ccav.when{background:var(--tint-fill);color:var(--on-tint)}
 .chiprail .cc[aria-checked="true"] > .av{box-shadow:0 0 0 2px var(--tint)}
 .flysheet .chiprail .cc.picked{animation:fc-pick .4s var(--bouncy)}
 @keyframes fc-pick{40%{transform:scale(1.05)}}
@@ -2142,7 +2117,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .seg .rk{display:block;margin-top:3px;padding:1px 7px;border-radius:999px;font-style:normal;font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--fill);color:var(--label-2);transition:background-color .25s,color .25s}
 .seg .rk.lo{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
 .seg .rk.hi{color:var(--red);background:color-mix(in srgb,var(--red) 13%,transparent)}
-.seg button[aria-checked="true"] .rk{background:rgba(255,255,255,.2);color:#fff}
+.seg button[aria-checked="true"] .rk{background:color-mix(in srgb,var(--on-tint) 10%,transparent);color:var(--on-tint)}
 .fctags .rk.lo{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
 .fctags .rk.mid{color:var(--label-2);background:var(--fill)}
 /* a run of mid-air moments folds into one line; tap to unfold */
@@ -2185,7 +2160,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .b{z-index:0}
 .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before,
 .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{content:"";position:absolute;z-index:-1;bottom:0;width:20px;height:20px}
-.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before{right:-7px;background:var(--tint);border-bottom-left-radius:16px 14px;
+.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before{right:-7px;background:var(--bubble-me);border-bottom-left-radius:16px 14px;
   -webkit-mask:linear-gradient(#000,#000) 0 0/13px 100% no-repeat,radial-gradient(circle at 23px 0,transparent 10px,#000 10.5px) 0 100%/100% 10px no-repeat;
   mask:linear-gradient(#000,#000) 0 0/13px 100% no-repeat,radial-gradient(circle at 23px 0,transparent 10px,#000 10.5px) 0 100%/100% 10px no-repeat}
 .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed))){border-bottom-left-radius:6px}
@@ -2201,9 +2176,8 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 .msgs .stamp b{font-weight:600}
 .meta.rstat{margin:3px 4px 4px;font-size:11px;font-weight:500;color:var(--label-2)}
 .menu-pop .mtime{padding:2px 14px 8px;font-size:12px;line-height:16px;color:var(--label-2);text-align:center;font-variant-numeric:tabular-nums}
-/* the blue settles before the bottom, so the tail meets it exactly */
-.b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:radial-gradient(140% 90% at 12% -20%,rgba(255,255,255,.35),rgba(255,255,255,0) 46%),linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint) calc(100% - 20px));
-  box-shadow:inset 0 1px .5px rgba(255,255,255,.5),0 8px 18px -10px color-mix(in srgb,var(--tint) 80%,#000)}
+/* Outgoing messages keep crisp charcoal contrast alongside lime actions. */
+.b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:var(--bubble-me);color:var(--on-bubble-me);box-shadow:none}
 /* How It Flies, refined: the chosen pigeon tinted, the ones you can't send now a little smaller,
    chips picked with a soft fill rather than an outline, and the sections closer together */
 .flysheet .ghead{margin:20px 36px 8px}
@@ -2236,7 +2210,7 @@ html.arriving.arv-face body::before{content:var(--arv-i,"");z-index:101;pointer-
 @keyframes ring-off{from{box-shadow:inset 0 0 0 1.5px var(--tint)}}
 @keyframes ring-off-gold{from{box-shadow:inset 0 0 0 1.5px #ffd166}}
 @keyframes ring-off2{from{box-shadow:inset 0 0 0 2px var(--tint)}}
-@keyframes tick-off{from{background:var(--tint-fill);box-shadow:none;color:#fff}}
+@keyframes tick-off{from{background:var(--tint-fill);box-shadow:none;color:var(--on-tint)}}
 .flysheet .seg{margin-bottom:10px}
 /* Account: the data credits, under the version */
 .aver .alink{display:block;margin:6px auto 0;padding:4px 8px;border:0;background:none;font:inherit;color:var(--tint);cursor:pointer}
@@ -2271,7 +2245,7 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .ppcard:active{transform:scale(.985)}
 .ppmini{flex:none;width:84px;transform:rotate(-5deg);filter:drop-shadow(0 6px 10px rgba(0,0,0,.28))}.ppmini svg{width:100%;display:block}
 .ppt{display:flex;flex-direction:column;gap:3px;min-width:0}.ppt b{font-size:17px}.ppt small{font-size:13px;color:var(--label-2)}
-.ppt .pill{align-self:flex-start;margin-top:8px;padding:7px 15px;border-radius:99px;background:var(--tint-fill);color:#fff;font-weight:600;font-size:15px}
+.ppt .pill{align-self:flex-start;margin-top:8px;padding:7px 15px;border-radius:99px;background:var(--tint-fill);color:var(--on-tint);font-weight:600;font-size:15px}
 .ppleather{fill:#5a1a26}.ppgold{fill:none;stroke:#d6b45f;stroke-width:2.2}.ppgoldf{fill:#d6b45f;stroke:none}
 .ppc1,.ppc2,.ppc3{fill:#d6b45f;stroke:none;text-anchor:middle;font-family:Georgia,"Times New Roman",serif;font-weight:700}.ppc1{font-size:26px;letter-spacing:7px}.ppc2{font-size:19px;letter-spacing:6px}.ppc3{font-size:8px;letter-spacing:2.5px;font-weight:600}
 .ppdefs{position:absolute;width:0;height:0}
@@ -2320,19 +2294,19 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .pg.lunar{--pg:var(--p-lunar);background:linear-gradient(160deg,#e3e8f3,var(--p-lunar) 55%,#56607a)}
 .pg.lunarx{--pg:var(--p-lunarx);background:linear-gradient(160deg,#b9b8ff,var(--p-lunarx) 55%,#3532a8)}
 .k-lunar{--k:var(--p-lunar)}.k-lunarx{--k:var(--p-lunarx)}
-.mpwrap{position:relative;margin:4px 16px 0;border-radius:22px;overflow:hidden;background:#03050c}
+.mpwrap{position:relative;margin:4px 16px 0;border-radius:22px;overflow:hidden;background:var(--ifl-contrast,#080a08)}
 .moonpick{display:block;width:100%;aspect-ratio:1;max-height:56vh;cursor:crosshair;touch-action:manipulation}
 .mpside{position:absolute;left:0;right:0;bottom:10px;justify-content:center;margin:0}
-.mpside .cc{min-height:36px;padding:4px 12px;background:rgba(20,24,38,.72);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.mpside .cc{min-height:36px;padding:4px 12px;background:rgba(15,18,15,.92);color:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}
 .mpside .cc small{color:rgba(235,235,245,.6)}
 .mpside .cc[aria-checked=true]{box-shadow:inset 0 0 0 1.5px #ffd166}
 .mpsel{display:grid;gap:2px;padding:12px 20px 10px}
 .mpsel b{font-size:20px;letter-spacing:-.3px;text-wrap:balance}
 .mpsel small{color:var(--label-2);font-size:13px}
-.body.moonbody{display:flex;flex-direction:column;background:#03050c;color:#f5f5f7}
+.body.moonbody{display:flex;flex-direction:column;background:var(--ifl-contrast,#080a08);color:#f5f5f7}
 .moonsky{display:block;width:100%;height:min(46vh,380px);flex:none}
-.mooncard{margin:-18px 12px 16px;padding:14px 16px 6px;border-radius:22px;background:rgba(22,26,40,.92);border:1px solid rgba(160,180,230,.14);
-  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);position:relative}
+.mooncard{margin:-18px 12px 16px;padding:14px 16px 6px;border-radius:22px;background:var(--ifl-contrast,#141714);border:1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter:none;backdrop-filter:none;position:relative}
 .mchead{display:flex;align-items:center;gap:10px}
 .mchead .pg{font-size:22px}
 .mct{display:grid;min-width:0;flex:1}
@@ -2353,7 +2327,7 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .mcsteps li.done .mci{background:rgba(255,209,102,.18);color:#ffd166}
 .mcs{flex:1;min-width:0}
 .mcsteps time{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.sheet:has(.moonbody){background:#03050c}
+.sheet:has(.moonbody){background:var(--ifl-contrast,#080a08)}
 .sheet:has(.moonbody) header h2{color:#f5f5f7}
 /* (a flush sheet doesn't scroll, for the Earth's map; a trip to the Moon has its moments below, so it does) */
 .sheet .body.flush.moonbody{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -2372,13 +2346,13 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .k-laser{--k:#e5484d}.k-orbital{--k:#0a84ff}
 
 /* ---- Look up: the sky ahead, with the pigeon where it is (always the night sky's colours: it is the sky) ---- */
-.sheet.looksheet{background:#03050f}
+.sheet.looksheet{background:var(--ifl-contrast,#080a08)}
 .sheet.looksheet > header h2{color:#f5f5f7}
 .sheet.looksheet > header .nbtn{color:#f5f5f7;background:rgba(255,255,255,.14)}
 .look{position:relative;height:100%;overflow:hidden}
 .lookcv{position:absolute;inset:0;width:100%;height:100%;display:block}
 .lookhud{position:absolute;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:3px;padding:14px 16px;border-radius:22px;
-  background:rgba(10,14,28,.62);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:#f5f5f7}
+  background:rgba(15,18,15,.92);-webkit-backdrop-filter:none;backdrop-filter:none;color:#f5f5f7}
 .lkwho{display:flex;align-items:center;gap:8px;font-size:14px;color:rgba(245,245,247,.75)}
 .lkbig{font-size:30px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 .lkwhere{font-size:15px;color:rgba(245,245,247,.85)}
@@ -2388,7 +2362,7 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .lookvid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 .lookbar{position:absolute;top:12px;right:12px;left:12px;display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;pointer-events:none}
 .lookcam,.lookhere{display:flex;align-items:center;gap:6px;height:38px;padding:0 14px 0 11px;border:0;border-radius:19px;pointer-events:auto;
-  background:rgba(10,14,28,.55);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#f5f5f7;font:600 14px/1 -apple-system,system-ui,sans-serif}
+  background:rgba(15,18,15,.92);-webkit-backdrop-filter:none;backdrop-filter:none;color:#f5f5f7;font:600 14px/1 -apple-system,system-ui,sans-serif}
 .lookcam .ico,.lookhere .ico{width:20px;height:20px}
 .lookcam[aria-pressed="true"],.lookhere[aria-pressed="true"]{background:#f5f5f7;color:#0b0f1c}
 .lookcam:focus-visible,.lookhere:focus-visible{outline:2px solid #fff;outline-offset:2px}
@@ -2457,7 +2431,7 @@ details.learn[open] p{animation:fc-in .3s var(--snappy)}
 /* Signed-In Phones: how many places, this phone, any others (a new one marked) */
 .sesshero .wnlogo{position:relative;background:linear-gradient(160deg,color-mix(in srgb,var(--green) 65%,#fff),var(--green));box-shadow:0 8px 22px color-mix(in srgb,var(--green) 35%,transparent)}
 .sesshero.alert .wnlogo{background:linear-gradient(160deg,color-mix(in srgb,var(--orange) 65%,#fff),var(--orange));box-shadow:0 8px 22px color-mix(in srgb,var(--orange) 35%,transparent)}
-.sesshero .wnlogo b{position:absolute;right:-6px;top:-6px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;display:grid;place-items:center;background:var(--tint-fill);color:#fff;font-size:14px;font-weight:700;box-shadow:0 0 0 3px var(--bg)}
+.sesshero .wnlogo b{position:absolute;right:-6px;top:-6px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;display:grid;place-items:center;background:var(--tint-fill);color:var(--on-tint);font-size:14px;font-weight:700;box-shadow:0 0 0 3px var(--bg)}
 .sesshero p{max-width:30ch;text-wrap:balance}
 .sessrow{align-items:flex-start}
 .sessrow .tile{margin-top:2px}
@@ -2476,9 +2450,9 @@ details.learn[open] p{animation:fc-in .3s var(--snappy)}
 /* the way in: "New here?" to the account's own page, and "or with your email" between a passkey and the form */
 .wnew{margin:18px 20px 0;text-align:center;font-size:15px;color:var(--label-2)}
 .wnew a{color:var(--tint);text-decoration:none;font-weight:600;display:inline-block;padding:12px 6px;margin:-12px -6px}
-.welcome .wnew{margin-top:10px;color:rgba(214,224,255,.7)}
-.auth.night .wnew a,.welcome .wnew a{color:#cfe0ff}
-.welcome .winvite{margin:6px 32px 0;max-width:320px;text-align:center;font-size:15px;line-height:1.4;color:rgba(214,224,255,.82);opacity:0;animation:wfade 1.2s ease 1.4s forwards}
+.welcome .wnew{margin-top:10px;color:var(--label-2)}
+.auth.night .wnew a,.welcome .wnew a{color:var(--tint)}
+.welcome .winvite{margin:6px 32px 0;max-width:320px;text-align:center;font-size:15px;line-height:1.4;color:var(--label-2);opacity:0;animation:wfade 1.2s ease 1.4s forwards}
 @media (prefers-reduced-motion:reduce){.welcome .winvite{animation:none;opacity:1}}
 .welcome.again .winvite{animation:none;opacity:1}
 .orline{display:flex;align-items:center;gap:12px;margin:16px 20px 2px;color:var(--label-2);font-size:14px}
@@ -2493,50 +2467,46 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   -webkit-background-clip: text; background-clip: text;
 }
 
-/* ---------- the sky's glass (in keeping with the account page and Weather) ----------
-   Last, so that what lies on the sky is a pane of it wherever an earlier rule gave it a colour of its own. A clear pane
-   with a sheen, a bright rim and a soft lift, and no blur: over the sky's soft light a blur would change next to
-   nothing, and cost one for every pane on the screen (and turn each a shade on ending any fade it's in). What floats
-   over moving things (the bars, sheets, menus) has one. */
-.group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard{background:var(--sheen),var(--pane);box-shadow:var(--edge),var(--lift)}
-.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--sheen),var(--pane);box-shadow:var(--edge),0 0 0 .5px var(--sep)}
+/* Shared card surfaces across lists, flight details, settings and safety screens. */
+.group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard{background:var(--pane);box-shadow:var(--edge),var(--lift)}
+.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--pane);box-shadow:var(--edge),0 0 0 .5px var(--sep)}
 .search{box-shadow:var(--edge),0 0 0 .5px var(--sep)}
 .sheet .group{box-shadow:var(--edge),0 0 0 .5px var(--sep)}
 /* the Messages list: one pane, as Settings' groups are */
-.mlist{margin:0 12px;padding:4px 0;border-radius:28px}
+.mlist{margin:0 16px;padding:4px 0;border-radius:26px}
 .mlist:not(:has(> *)){display:none}         /* (no chats yet: no empty pane) */
 /* friends' bubbles: glass, as the groups are (the photo, voice, gone and big-emoji ones as they were) */
-.b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)){background:var(--sheen),var(--bubble-in);box-shadow:var(--edge),0 6px 16px -10px rgba(0,0,0,.35)}
+.b:where(:not(.me,.pic,.voicem,.once,.gone,.up,.lost,.jumbo,.sealed)){background:var(--bubble-in);box-shadow:none}
 /* tiles and pictures with a little depth: a light along the top, a shadow under */
-.tile{position:relative;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 5px 12px -4px rgba(0,0,0,.35)}
-.tile::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(160deg,rgba(255,255,255,.38),rgba(255,255,255,0) 55%);pointer-events:none}
+.tile{position:relative;box-shadow:none}
+.tile::after{display:none}
 .tile.kb::after,.tile.emo::after{display:none}
-.av{box-shadow:0 0 0 1.5px rgba(255,255,255,.45),0 6px 14px -6px rgba(0,0,0,.45)}
+.av{box-shadow:0 0 0 1px var(--sep)}
 @media (prefers-reduced-motion:reduce){.compose button.down,.rrow button:active,.newpill:active{transform:none!important}}
 
 /* the floating glass that had colours of its own: the same glass as the rest */
-.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel{background:var(--sheen),var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:var(--edge),var(--lift)}
+.menu-pop,.toast,.attach,.replybar,.newpill,.asheet .grp,.asheet .cancel{background:var(--glass);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:var(--edge),var(--lift)}
 @media (prefers-reduced-transparency:reduce){
   .group,.seg,.mlist,.search,.acard,.flyrun,.mycode,.safecard,.waycard,.ppcard,.seasoncard,.lstat,.badge2,.skin2,.pmtile,.bstats div,.loftkit{background:var(--cell)}
-  .b:where(:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.sealed)),.b:not(.me)::before{background:var(--cell)}
-  .sheet,.menu-pop,.toast,.attach,.replybar,.recbar,.newpill,.asheet .grp,.asheet .cancel,.field-wrap,.compose .plus,.compose .mode{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
+  .b:where(:not(.me,.pic,.voicem,.once,.gone,.up,.lost,.jumbo,.sealed)),.b:not(.me)::before{background:var(--cell)}
+  .sheet,.menu-pop,.toast,.attach,.replybar,.newpill,.asheet .grp,.asheet .cancel,.field-wrap,.compose .plus,.compose .mode{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}
 }
 
 /* Powered by InFlite, over Sign in (where it sits: InFlite's way in, at the end), in Chat's night */
-.welcome.night{--ifl-pill:rgba(255,255,255,.08);--ifl-pill-ink:rgba(214,224,255,.8);--ifl-pill-edge:inset 0 0 0 .5px rgba(255,255,255,.14)}
+.welcome.night{--ifl-pill:var(--cell);--ifl-pill-ink:var(--label-2);--ifl-pill-edge:inset 0 0 0 1px var(--sep)}
 
 /* ---- Send to a Friend: its sheet, a card waiting above the message box, a card in a letter (the card's own look:
    cards.css) ---- */
 .sendcard{margin:4px 16px 0}
 .sendsay{margin:0;padding:12px 14px;border-radius:16px;background:var(--cell);font-size:15px;line-height:20px}
 .sendrow .stag{flex:none;margin-left:6px;padding:3px 9px;border-radius:999px;background:var(--fill);color:var(--label-2);font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
-.sendrow .stag.best{background:var(--tint-fill);color:#fff}
+.sendrow .stag.best{background:var(--tint-fill);color:var(--on-tint)}
 .sendrow.dim .ctext,.sendrow.dim .av{opacity:.45}
 .sendrow:disabled{cursor:default}
 .sendrow .csub.why{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal}
 .schips{display:flex;flex-wrap:wrap;gap:8px;margin:0 16px}
 .schip{position:relative;min-height:36px;padding:7px 14px;border:0;border-radius:999px;background:var(--cell);color:var(--label);font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background-color .2s,color .2s,transform .3s var(--snappy)}
-.schip[aria-checked="true"]{background:var(--tint-fill);color:#fff}
+.schip[aria-checked="true"]{background:var(--tint-fill);color:var(--on-tint)}
 .schip:active:not(:disabled){transform:scale(.95)}
 .schip:disabled{opacity:.4;cursor:default}
 .whenlines{margin:10px 20px 0;color:var(--label-2);font-size:13px;line-height:18px}
@@ -2547,7 +2517,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .sendgo{display:grid;gap:8px;margin:20px 16px 0}
 .sendgo .spend{margin:0;text-align:center;color:var(--label-2);font-size:13px;line-height:18px}
 .sendgo .gfoot{margin:0;padding:0 4px;text-align:center}
-.cardatt{position:relative;display:flex;align-items:center;gap:12px;padding:8px 10px 8px 8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
+.cardatt{position:relative;display:flex;align-items:center;gap:12px;padding:8px 10px 8px 8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
 .cardatt:not([hidden]){animation:bubble-in .5s var(--snappy);transform-origin:bottom left}
 .cardatt .cthumb{flex:none;width:44px;height:44px;border-radius:12px;background:var(--fill);display:grid;place-items:center;color:var(--tint)}
 .cardatt .cthumb .ico{font-size:21px}
@@ -2564,27 +2534,27 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 @media (prefers-reduced-transparency:reduce){.cardatt{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--cell)}}
 
 /* ---------- messages now, letters by pigeon (pigeons a switch on each account) ----------
-   The pigeons' own colour where they show (the bird at the top, By Pigeon, a letter's send button); messages keep Chat's blue.
+   The same green action colour for Instant and By Pigeon; delivery state remains in the bird and its flight track.
    Typing dots, ticks under a run of messages, a chat's way as a line, a letter among messages, one sealed until it arrives. */
-:root{--pg-a:#ff8a6b;--pg-b:#e8352a;--pg-grad:linear-gradient(160deg,var(--pg-a),var(--pg-b))}
+:root{--pg-a:var(--ifl-accent,#2ea84d);--pg-b:var(--ifl-accent-fill,#74df36);--pg-grad:var(--ifl-accent-gradient,linear-gradient(110deg,#24c872,#b8eb2b))}
 /* the bird at the top of Messages and Friends: on, in the pigeons' orange */
 .ifh-act.birdt .bird,.nbtn.birdt .bird{width:22px;height:22px;fill:currentColor}
-.ifh-act.birdt[aria-pressed="true"],.nbtn.birdt[aria-pressed="true"]{color:#fff!important;background:var(--pg-grad)}
+.ifh-act.birdt[aria-pressed="true"],.nbtn.birdt[aria-pressed="true"]{color:var(--on-tint)!important;background:var(--pg-grad)}
 /* a chat's way, in its header: Instant, or By Pigeon */
 .nbtn.mpill{width:auto;height:34px;margin-right:4px;padding:0 11px 0 9px;gap:5px;border-radius:999px;background:var(--fill);color:var(--label);font-size:13px;font-weight:650;white-space:nowrap}
 .nbtn.mpill svg{font-size:16px;width:16px;height:16px}
 .nbtn.mpill .bird{fill:currentColor}
-.nbtn.mpill.pigeon{background:var(--pg-grad);color:#fff}
+.nbtn.mpill.pigeon{background:var(--pg-grad);color:var(--on-tint)}
 .nbtn.mpill:active{transform:scale(.94)}
 /* the message box: the Now button, and the pill and send button by pigeon */
 .compose .mode{flex:none;align-self:flex-end;display:inline-flex;align-items:center;gap:4px;height:32px;margin:2px 4px 2px 0;padding:0 10px 0 8px;border:0;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:14px;font-weight:600;letter-spacing:-.2px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .2s var(--snappy)}
 .compose .mode .ico{font-size:16px;color:var(--tint)}
 .compose .mode.round{width:32px;padding:0;justify-content:center}
 .compose .mode:active{transform:scale(.92)}
-.compose .kind.pigeon{background:var(--pg-grad);color:#fff}
-.compose .kind.pigeon > .ico{color:rgba(255,255,255,.85)}
+.compose .kind.pigeon{background:var(--pg-grad);color:var(--on-tint)}
+.compose .kind.pigeon > .ico{color:var(--on-tint)}
 .send.pigeon{background:var(--pg-grad)}
-.send.pigeon .bird{width:20px;height:20px;fill:#fff}
+.send.pigeon .bird{width:20px;height:20px;fill:var(--on-tint)}
 /* ticks: grey, then two, then blue once read */
 .tk{display:inline-flex;vertical-align:-3px;margin-left:3px;color:var(--label-2)}
 .tk .ico{font-size:15px;stroke-width:2.4}
@@ -2630,10 +2600,10 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* the one-time note and the tips, where the In the air strip goes */
 .notecard,.pgtip{display:grid;gap:8px;margin:4px 16px 12px;padding:14px 16px 14px;border-radius:20px;background:var(--cell);box-shadow:inset 0 0 0 1px var(--sep)}
 .notecard .tt,.pgtip .tt{display:flex;align-items:center;gap:11px}
-.notecard .tt i,.pgtip .tt i{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;color:#fff;background:var(--pg-grad)}
+.notecard .tt i,.pgtip .tt i{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;color:var(--on-tint);background:var(--pg-grad)}
 .notecard .tt i{background:var(--tint-fill)}
 .notecard .tt i .ico{font-size:19px}
-.pgtip .tt i .bird{width:21px;height:21px;fill:#fff}
+.pgtip .tt i .bird{width:21px;height:21px;fill:var(--on-tint)}
 .notecard b,.pgtip b{font-size:16px;line-height:21px}
 .notecard p,.pgtip p{margin:0;font-size:14px;line-height:19px;color:var(--label-2);text-wrap:pretty}
 .notecard .tfoot,.pgtip .tfoot{display:flex;flex-wrap:wrap;gap:8px}
@@ -2649,7 +2619,7 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* the way sheet: radio rows */
 .wayopt .tile .bird{fill:#fff}
 .wayopt .tickbox{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1.6px var(--label-3);color:transparent;font-size:14px}
-.wayopt[aria-checked="true"] .tickbox{background:var(--tint-fill);box-shadow:none;color:#fff}
+.wayopt[aria-checked="true"] .tickbox{background:var(--tint-fill);box-shadow:none;color:var(--on-tint)}
 .wayopt .tickbox .ico{stroke-width:3.2}
 /* welcome: under the tagline */
 .welcome .whisper.wsub{margin-top:6px;font-size:14px;opacity:.82}
@@ -2745,18 +2715,18 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
-  color: var(--ifl-pill-ink, rgba(20, 24, 50, 0.62));
-  background: var(--ifl-pill, rgba(255, 255, 255, 0.6));
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  backdrop-filter: blur(14px) saturate(1.4);
-  box-shadow: var(--ifl-pill-edge, 0 0 0 0.5px rgba(20, 24, 60, 0.1), 0 6px 18px -10px rgba(0, 0, 0, 0.3));
+  color: var(--ifl-muted);
+  background: var(--ifl-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-control);
 }
 
 .ifl-in .ifl-brand img {
   width: 22px;
   height: 22px;
   border-radius: 5px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .ifl-in .ifl-go {
@@ -2790,52 +2760,34 @@ html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {
-  --ifm-sheet: rgba(250, 250, 253, 0.86);
-  --ifm-panel: rgba(255, 255, 255, 0.9);
-  --ifm-line: rgba(60, 60, 67, 0.14);
-  --ifm-text: #11131c;
-  --ifm-text-2: rgba(60, 60, 67, 0.62);
-  --ifm-text-3: rgba(60, 60, 67, 0.36);
-  --ifm-press: rgba(120, 120, 128, 0.14);
-  --ifm-red: #e5342a;
-  --ifm-red-bg: rgba(229, 52, 42, 0.1);
-  --ifm-green: #1f9d55;
-  --ifm-dim: rgba(14, 18, 40, 0.14);
-  --ifm-tint: #2f6be6;
-  --ifm-warn: #c86a00;
+  --ifm-sheet: var(--ifl-surface); --ifm-panel: var(--ifl-surface-2);
+  --ifm-line: var(--ifl-line); --ifm-text: var(--ifl-text);
+  --ifm-text-2: var(--ifl-muted); --ifm-text-3: var(--ifl-subtle);
+  --ifm-press: var(--ifl-press); --ifm-red: #c73229; --ifm-red-bg: rgba(199, 50, 41, 0.1);
+  --ifm-green: var(--ifl-accent-ink); --ifm-dim: rgba(14, 18, 16, 0.2);
+  --ifm-tint: var(--ifl-accent-ink); --ifm-warn: #9b5900;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
   }
 }
 :root[data-theme="dark"] :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
 }
-/* each app's own colour: its focus rings, and Update */
-.ifm-in-chat { --ifm-tint: #2b6fe6; }
-.ifm-in-weather { --ifm-tint: #3a86f0; }
-.ifm-in-fitness { --ifm-tint: #f0542e; }
-.ifm-in-markets { --ifm-tint: #12a46a; }
-.ifm-in-mail { --ifm-tint: #1aa58f; }
-.ifm-in-account { --ifm-tint: #5b4fe0; }
 
 .ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
 .ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
 .ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
   text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
 .ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
-.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+.ifm-lit { box-shadow: 0 0 0 2px var(--ifl-accent-ink) !important; border-radius: 50%; }
 
 .ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
-  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 12px 36px -16px rgba(14, 18, 16, 0.24);
   transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
 .ifm-pop.open { transform: none; opacity: 1; }
 .ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
@@ -2845,7 +2797,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
 .ifm-card:active { background: var(--ifm-press) !important; }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
-  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+  background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
 .ifm-photo img { object-fit: cover; display: block; }
 .ifm-who { min-width: 0; }
@@ -2855,20 +2807,21 @@ html { touch-action: pan-x pan-y; }
 
 /* the app's own rows */
 .ifm-rows { display: grid; gap: 6px; }
-.ifm-row.off { opacity: 0.5; }
-.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row.off { color: var(--ifm-text-2); }
+.ifm-row.off .ifm-ic { opacity: 0.55; }
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
 .ifm-row.go:active { background: var(--ifm-press) !important; }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
-.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
-.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
-.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
-.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
-.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
-.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
-.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+.ifm-ic.red { background: #e85850; }
+.ifm-ic.blue { background: #548cd4; }
+.ifm-ic.green { background: #2da75b; }
+.ifm-ic.orange { background: #df9527; }
+.ifm-ic.indigo { background: #8a76c8; }
+.ifm-ic.grey { background: #7b837b; }
+.ifm-ic.teal { background: #29988b; }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
 /* (its own name: an app's .warn, a banner of its own, isn't this) */
@@ -2877,7 +2830,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
 .ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
-.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"] { background: var(--ifl-accent-gradient) !important; }
 .ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
 
 /* its version, and Sign Out */
@@ -2887,7 +2840,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ifm-green); }
 .ifm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ifm-foot .ifm-upd { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px !important; border-radius: 16px !important;
-  background: rgba(47, 107, 230, 0.14) !important; background: color-mix(in srgb, var(--ifm-tint) 15%, transparent) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
+  background: var(--ifl-accent-wash) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
@@ -2900,22 +2853,22 @@ html { touch-action: pan-x pan-y; }
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
 .ifa-layer.on { opacity: 1; }
 .ifa-sheet { box-sizing: border-box; width: min(520px, 100%); padding: 26px 22px calc(env(safe-area-inset-bottom, 0px) + 22px); border-radius: 34px 34px 0 0; text-align: center; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 -8px 30px rgba(14, 18, 16, 0.12);
   transform: translateY(100%); transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
 .ifa-layer.on .ifa-sheet { transform: none; }
 .ifa-ic { width: 62px; height: 62px; border-radius: 15px; }
 .ifa-t { margin: 12px 0 6px; font-size: 21px; font-weight: 700; letter-spacing: -0.2px; }
 .ifa-p { margin: 0 auto 18px; max-width: 340px; color: var(--ifm-text-2); font-size: 15px; line-height: 1.4; }
 .ifa-sheet button { appearance: none; -webkit-appearance: none; border: 0; font: inherit; cursor: pointer; display: block; width: 100%; -webkit-tap-highlight-color: transparent; }
-.ifa-go { height: 50px; border-radius: 25px; background: var(--ifm-tint); color: #fff; font-size: 17px; font-weight: 600; }
+.ifa-go { height: 50px; border-radius: 25px; background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); font-size: 17px; font-weight: 600; }
 .ifa-go[disabled] { opacity: 0.6; }
 .ifa-later { margin-top: 8px; height: 44px; background: none; color: var(--ifm-tint); font-size: 16px; }
 @media (prefers-reduced-motion: reduce) { .ifa-sheet { transition: none; } }
 
 /* the note after an update */
 .ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
-  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), var(--ifl-shadow-card); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
   transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
 .ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
 .ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
@@ -2946,21 +2899,21 @@ img, svg, a { -webkit-user-drag: none; }
 /* (the band behind the header once the page has scrolled: solid the whole way down the header, so nothing reads through
    behind its title, then fading out over the 16px below it) */
 .ifh::before { content: ""; position: absolute; inset: 0 0 -16px; z-index: -1; pointer-events: none; opacity: var(--p);
-  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) calc(100% - 16px), transparent);
+  background: linear-gradient(to bottom, var(--ifl-page) calc(100% - 16px), transparent);
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
 /* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
 .ifh:not(.ifh-up)::before { display: none; }
 /* (the blur on the header itself, not its band: a header with a view-transition-name is a backdrop root, so a blur on
    anything inside it sees nothing of the page behind; on the header, it sees the page) */
-.ifh.ifh-up { -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
+.ifh.ifh-up { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
-.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
-  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
+.ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
+  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
-.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
@@ -2974,11 +2927,11 @@ img, svg, a { -webkit-user-drag: none; }
   font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
 .ifh-line:empty { height: 0; margin: 0; }
 .ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
-.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
-  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifl-surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -2997,12 +2950,12 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
 .ifs-btn:active { transform: scale(0.9); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
-.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
 .ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .ifs-hero span { font-size: 14px; opacity: 0.62; }
 
@@ -3011,28 +2964,26 @@ img, svg, a { -webkit-user-drag: none; }
    colour; it stays put as the pages cross-fade (its view-transition-name). The cross-fade between pages is asked for
    here, of every page (an at-rule can't be kept to html.ifl-hub); off the hub menu.js lets it go as a page is left */
 @view-transition { navigation: auto; }
-.ifl-tabs { --ifl-tab-ink: #3f4250; --ifl-tab-on: #1d55c4; --ifl-tabs-glass: rgba(250, 250, 253, 0.8);
+.ifl-tabs { --ifl-tab-ink: var(--ifl-muted); --ifl-tab-on: var(--ifl-on-accent); --ifl-tabs-glass: var(--ifl-surface-2);
   position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
   width: calc(100% - 32px); max-width: var(--ift-max); height: var(--ift-h); margin: 0 auto; padding: var(--ift-pad); border-radius: 999px;
-  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px var(--ifm-line), 0 10px 28px -14px rgba(20, 30, 70, 0.45);
+  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifl-line), var(--ifl-shadow-control);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); } }
-:root[data-theme="dark"] .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
   -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
-.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: color-mix(in srgb, var(--ifl-tab-on) var(--ift-pill), transparent); }
+.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
 .ifl-tab:active { transform: scale(0.92); }
-.ifl-tab:focus-visible { outline: 2px solid var(--ifl-tab-on); outline-offset: -2px; }
+.ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 6px 14px -8px rgba(20, 30, 70, 0.35); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
 .ifl-back:active { transform: scale(0.94); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
@@ -3057,8 +3008,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 16px 48px -20px rgba(14, 18, 16, 0.3); }
 .ifb-head { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; }
 .ifb-ic { flex: none; width: 26px; height: 26px; padding: 6px; border-radius: 50%; color: var(--ifm-red); background: var(--ifm-red-bg); stroke-width: 2.2; }
 .ifb-code { margin: 14px 0 6px; padding: 10px 12px; border-radius: 14px; background: var(--ifm-panel); box-shadow: inset 0 0 0 0.5px var(--ifm-line);
@@ -3074,7 +3025,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifb-who { margin: -6px 0 12px; color: var(--ifm-text-3); font-size: 12.5px; }
 .ifb-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .ifb-btn { flex: 1 1 auto; min-height: 44px; padding: 0 16px; text-align: center; border: 0; border-radius: 999px; color: var(--ifm-text); background: var(--ifm-press); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
-.ifb-go { flex-basis: 100%; color: #fff; background: var(--ifm-tint); }
+.ifb-go { flex-basis: 100%; color: var(--ifl-on-accent); background: var(--ifl-accent-gradient); }
 .ifb-btn:disabled { opacity: 0.6; cursor: default; }
 .ifb-btn:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 .ifb-link { color: var(--ifm-tint, #4c8dff); font-weight: 600; white-space: nowrap; }
@@ -3083,10 +3034,10 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 /* the status banner (menu.js BANNER): under the app's header while something touching it is wrong, a link to the status
    page; amber for an incident, the app's tint for maintenance */
 .ifl-sb { --sb: #c26a00; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 2px 10px; margin: 6px 16px 10px; padding: 10px 6px 10px 14px; border-radius: 16px;
-  background: color-mix(in srgb, var(--sb) 12%, rgba(255, 255, 255, 0.78)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: #11131c; cursor: pointer;
-  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
-.ifl-sb[data-k="maint"] { --sb: #4c56dc; }
-.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: 0 10px 30px -14px rgba(10, 16, 50, 0.4); }
+  background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: var(--ifl-text); cursor: pointer;
+  -webkit-backdrop-filter: none; backdrop-filter: none; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
+.ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
+.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: var(--ifl-shadow-card); }
 .ifl-sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sb); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb) 22%, transparent); }
 .ifl-sb-t { min-width: 0; display: grid; }
 .ifl-sb-t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3094,20 +3045,28 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifl-sb-go { display: inline-flex; align-items: center; gap: 1px; color: var(--sb); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
 .ifl-sb-go svg, .ifl-sb-x svg { width: 14px; height: 14px; stroke-width: 2.6; }
 .ifl-sb-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.55; display: grid; place-items: center; cursor: pointer; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: #9c93ff; } }
-:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; }
-:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
-/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); } }
+:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); }
+:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
+/* InFlite's shared palette, geometry and motion. Bundled into each app by iflmenu.mjs:
    no extra request, and an app's existing offline/update mechanism keeps it current. */
 :root {
+  --ifl-page: #f8f9f6; --ifl-surface: #ffffff; --ifl-surface-2: #f1f2ef; --ifl-raised: #ffffff;
+  --ifl-text: #171a18; --ifl-muted: #646a66; --ifl-subtle: #676e66;
+  --ifl-line: rgba(24, 31, 26, 0.08); --ifl-press: rgba(24, 31, 26, 0.06);
+  --ifl-accent: #2ea84d; --ifl-accent-ink: #247a35; --ifl-accent-fill: #74df36; --ifl-on-accent: #10150d;
+  --ifl-accent-gradient: linear-gradient(110deg, #24c872, #b8eb2b); --ifl-accent-wash: #e2f5d8;
+  --ifl-contrast: #141714; --ifl-on-contrast: #ffffff;
+  --ifl-shadow-card: 0 1px 2px rgba(14, 18, 16, 0.025), 0 9px 24px -18px rgba(14, 18, 16, 0.18);
+  --ifl-shadow-control: 0 1px 3px rgba(14, 18, 16, 0.05), 0 5px 14px -10px rgba(14, 18, 16, 0.16);
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
-  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
   --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: blur(24px) saturate(160%);
-  --ifl-chrome-solid: #f7f8fc;
+  --ifl-chrome-blur: none;
+  --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
@@ -3116,9 +3075,25 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+  :root:not([data-theme="light"]) {
+    --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+    --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+    --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+    --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+    --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+    --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+    --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+  }
 }
-:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }
+:root[data-theme="dark"] {
+  --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+  --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+  --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+  --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+  --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+  --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+  --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+}
 /* Concentric surfaces: the inset is subtracted from the outer corner. */
 .ifm-pop { padding: var(--ifl-space-2); border-radius: var(--ifl-radius-card);
   -webkit-backdrop-filter: var(--ifl-chrome-blur); backdrop-filter: var(--ifl-chrome-blur);
@@ -3200,7 +3175,7 @@ html.engine .ifm-note,html.engine .ifl-toast{display:none}
 .msgs .stamp::before, .msgs .stamp::after { content: ""; flex: 1; height: .5px; background: var(--sep); }
 .msgs .b { border-radius: 20px; }
 .msgs .rm, .msgs .letter-time { font-size: 11px; line-height: 15px; margin-bottom: 8px; color: var(--label-2); }
-.msgs .b.up.sealed { min-width: min(270px,80vw); max-width: 86%; padding: 13px 15px; gap: 5px; border-radius: 20px; background: color-mix(in srgb,var(--tint) 10%,var(--cell)); color: var(--label); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--tint) 25%,transparent); }
+.msgs .b.up.sealed { min-width: min(270px,80vw); max-width: 86%; padding: 13px 15px; gap: 5px; border-radius: 26px; background: var(--cell); color: var(--label); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--tint) 25%,transparent); }
 .msgs .sealed .sl { font-size: 16px; line-height: 22px; gap: 10px; }
 .msgs .sealed .sealed-time { padding-left: 25px; font-size: 13px; line-height: 18px; color: var(--label-2); }
 .msgs .sealed .trk { margin-top: 7px; height: 4px; }

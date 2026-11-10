@@ -5,8 +5,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0b1024",
-  "theme_color": "#1b2860",
+  "background_color": "#f8f9f6",
+  "theme_color": "#f8f9f6",
   "icons": [
     {
       "src": "/inflite.svg?v=2",

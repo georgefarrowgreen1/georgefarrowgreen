@@ -48,7 +48,9 @@ try {
     await p.goto('https://design.test/');
     await p.evaluate(app => {
       const anchor = document.querySelector('#anchor');
-      Object.assign(anchor.style,{position:'fixed',right:'16px',top:'16px',width:'80px',height:'48px'});
+      const header = IFL.header({ me:'S', title:'InFlite', line:'Shared controls', acts:[] });
+      document.body.append(header);
+      Object.assign(anchor.style,{position:'fixed',right:'16px',top:'16px',width:'80px',height:'48px',zIndex:'31'});
       anchor.onclick = () => IFL.menu(anchor,{app,build:'1.00',me:{name:'AlexandertheverylongunbrokennamereturningtoInFlite',line:'averylongemailaddress@example.example.com'},rows:[
         {label:'Location automatically updated',value:'NorthWalshamandtheverysurroundinglonglocation',icon:'sun'},
         {label:'Notification preferences',on:true,icon:'bell',toggle:v=>v},
@@ -67,6 +69,13 @@ try {
       assert.deepEqual(state,{fits:true,overflow:false,text:false,motion:'none'},`${app} ${width}: usable menu after resize with reduced motion`); checks++;
       await layout(p,app);
     }
+    for (const scheme of ['light','dark']) {
+      await p.emulateMedia({colorScheme:scheme});
+      const paint=await p.locator('.ifm-pop').evaluate(e=>{const c=getComputedStyle(e);return [c.backgroundColor,c.color,c.backdropFilter]});
+      assert.deepEqual(paint,scheme==='light'?['rgb(255, 255, 255)','rgb(23, 26, 24)','none']:['rgb(25, 28, 25)','rgb(244, 247, 242)','none'],`${app}: coherent opaque ${scheme} menu`);checks++;
+      await axe(p,`${app}: ${scheme} menu accessibility`);
+      await p.screenshot({path:`${out}/${app}-menu-${scheme}.png`});
+    }
     await p.keyboard.press('Tab');
     for(let i=0;i<12;i++) await p.keyboard.press('Tab');
     ok(await p.evaluate(()=>document.activeElement.closest('.ifm-pop')!==null),`${app}: keyboard stays in menu, skipping disabled controls`);
@@ -78,7 +87,7 @@ try {
     await cdp.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-transparency',value:'reduce'},{name:'prefers-color-scheme',value:'dark'},{name:'prefers-reduced-motion',value:'reduce'}]});
     await p.locator('#anchor').click(); await p.locator('.ifm-pop.open').waitFor();
     const solid=await p.locator('.ifm-pop').evaluate(e=>{const c=getComputedStyle(e);return [c.backdropFilter,c.backgroundColor,c.color]});
-    assert.deepEqual(solid,['none','rgb(36, 38, 52)','rgb(244, 245, 250)'],`${app}: reduced transparency keeps dark text/surface pairing`);checks++;
+    assert.deepEqual(solid,['none','rgb(25, 28, 25)','rgb(244, 247, 242)'],`${app}: reduced transparency keeps dark text/surface pairing`);checks++;
     assert.deepEqual(errors,[],`${app}: no runtime errors`); checks++;
     await ctx.close();
   }

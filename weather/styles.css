@@ -1,23 +1,18 @@
-/* Weather, in Liquid Glass: the sky behind, and in front of it glass that's
-   clear rather than frosted, saturated by what's behind it, lit along its rim
-   where the light catches, with a sheen across the top, floating on its own
-   shadow. Controls are capsules and circles of the same glass that give
-   under a finger and spring back. (Browsers can't bend the light behind glass
-   the way the phone does, so the lensing is suggested by the rim and the
-   sheen.) With Reduce Transparency on, everything turns solid. */
+/* Weather uses InFlite’s neutral surfaces and shared control geometry. Weather
+   conditions keep their colors in icons, graphs, radar and official warnings. */
 :root {
-  --text: #ffffff;
-  --text-2: rgba(255, 255, 255, 0.84);
-  --text-3: rgba(255, 255, 255, 0.8);
-  --line: rgba(255, 255, 255, 0.14);
-  --temp: #D07A12;
-  --rain: #3B8BE0;
-  --wind: #14A08F;
-  --warn: #ffb020;
-  --alert: #ff5a4f;
-  --good: #34c759;
-  --tint-blue: #9fd0ff;
-  --rain-text: var(--tint-blue);   /* the chances of rain (paler on the palest skies: body) */
+  --text: var(--ifl-text);
+  --text-2: var(--ifl-muted);
+  --text-3: var(--ifl-muted);
+  --line: var(--ifl-line);
+  --temp: #b8650a;
+  --rain: #2f7ad6;
+  --wind: #0e8a7b;
+  --warn: #946000;
+  --alert: #c9362b;
+  --good: var(--ifl-accent-fill, #abe35e);
+  --tint-blue: var(--ifl-accent-ink, #28542a);
+  --rain-text: var(--rain);
   /* the motion, as every app on the site has it: out (quick, then settling), the glide (iOS's own, for things that rise
      and slide: quick then soft, no overshoot), in (for what leaves), and a soft spring (about 2% over, then back: for
      what's let go of, never for a fade); and how long each kind of thing takes */
@@ -32,55 +27,28 @@
   --spring: var(--ease-spring);
   --pad: 16px;
   --card-x: 18px;                /* a card's side margins */
-  /* the glass */
-  --tint: rgba(14, 22, 38, 0.36);               /* panels: how much the glass darkens what's behind (more over a pale sky: body) */
-  --tint-ctl: rgba(255, 255, 255, 0.12);        /* controls: lighter, clearer glass */
-  --blur: blur(22px) saturate(190%) brightness(1.04);      /* (iOS 27's: diffusing busy things behind it more) */
-  --blur-ctl: blur(10px) saturate(200%) brightness(1.08);
-  --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 46%);
-  --body: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 48%, rgba(255, 255, 255, 0.035));
-  --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.55), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), inset 0 0 22px rgba(255, 255, 255, 0.04);
-  /* (iOS 27's darker edge round the glass, a hairline outside its bright rim, setting it apart from what's behind) */
-  --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.34), 0 14px 34px -10px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
-  --rim: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12) 28%, rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.12) 78%, rgba(255, 255, 255, 0.55));
-  --r-card: 26px;
-  --r-inner: 18px;
-  color-scheme: dark;
+  /* Shared neutral surfaces; no per-card backdrop layers. */
+  --tint: var(--ifl-surface);
+  --tint-ctl: var(--ifl-surface-2);
+  --blur: none;
+  --blur-ctl: none;
+  --sheen: none;
+  --body: none;
+  --edge: inset 0 0 0 1px var(--line);
+  --lift: var(--ifl-shadow-card);
+  --rim: none;
+  --r-card: var(--ifl-radius-card, 26px);
+  --r-inner: var(--ifl-radius-row, 16px);
+  color-scheme: light dark;
 }
 /* (where linear() isn't understood: a curve with the same little overshoot) */
 @supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
-/* the page's panels: tinted glass that isn't blurred afresh as the page scrolls (blurring every card at every frame cost
-   a phone most of its frames), its tint for each sky worked out to look as the blurred glass did over it. What's behind
-   a card is only ever the sky, a soft gradient blurring hardly changes: what it did change, the blur's richer, lighter
-   colour, the tint gives instead (--pane: as Settings has the glass, as iOS 27's Liquid Glass slider, clear (--pane-c),
-   between, or tinted (--pane-t)). The top bar and the sheets, over the page's own busy content, are still blurred. (And
-   each place's page beside this one, index.html .pv, by its own sky as it's swiped in, not this one's: app.js placePages) */
-body { --pane: 14 22 38 / 0.36; --pane-c: 14 22 38 / 0.2; --pane-t: 12 21 40 / 0.68; }
-body, .pv { --pane-now: var(--pane); --tint: rgb(var(--pane-now)); }
-:is(body, .pv)[data-sky="clear-day"] { --pane: 0 63 113 / 0.61; --pane-c: 0 99 181 / 0.44; --pane-t: 12 20 36 / 0.88; }
-:is(body, .pv)[data-sky="partly-day"] { --pane: 0 25 87 / 0.43; --pane-c: 0 27 187 / 0.19; --pane-t: 13 22 39 / 0.90; }
-:is(body, .pv)[data-sky="cloudy-day"] { --pane: 0 17 77 / 0.29; --pane-c: 0 13 156 / 0.12; --pane-t: 10 21 40 / 0.66; }
-:is(body, .pv)[data-sky="rain-day"] { --pane: 0 15 77 / 0.28; --pane-c: 0 6 170 / 0.10; --pane-t: 11 22 41 / 0.67; }
-:is(body, .pv)[data-sky="storm"] { --pane: 11 32 92 / 0.33; --pane-c: 12 44 147 / 0.19; --pane-t: 16 26 48 / 0.61; }
-:is(body, .pv)[data-sky="snow-day"] { --pane: 0 21 63 / 0.43; --pane-c: 0 21 115 / 0.20; --pane-t: 13 21 38 / 0.89; }
-:is(body, .pv)[data-sky="fog"] { --pane: 0 16 45 / 0.41; --pane-c: 0 4 66 / 0.17; --pane-t: 13 21 38 / 0.89; }
-:is(body, .pv)[data-sky="clear-night"] { --pane: 0 0 255 / 0.05; --pane-c: 0 0 205 / 0.05; --pane-t: 9 21 46 / 0.50; }
-:is(body, .pv)[data-sky="partly-night"] { --pane: 0 15 136 / 0.15; --pane-c: 0 0 255 / 0.05; --pane-t: 10 22 46 / 0.53; }
-:is(body, .pv)[data-sky="cloudy-night"] { --pane: 0 0 94 / 0.13; --pane-c: 0 0 163 / 0.05; --pane-t: 10 21 42 / 0.53; }
-:is(body, .pv)[data-sky="rain-night"] { --pane: 0 26 81 / 0.24; --pane-c: 0 41 159 / 0.11; --pane-t: 14 25 45 / 0.60; }
-:is(body, .pv)[data-sky="snow-night"] { --pane: 0 2 101 / 0.15; --pane-c: 0 0 232 / 0.05; --pane-t: 9 21 43 / 0.53; }
-:is(body, .pv)[data-sky="dusk"] { --pane: 5 0 20 / 0.31; --pane-c: 0 0 0 / 0.05; --pane-t: 14 21 38 / 0.89; }
-:is(body, .pv)[data-sky="dawn"] { --pane: 0 0 9 / 0.41; --pane-c: 0 0 0 / 0.05; --pane-t: 12 20 37 / 0.88; }
-body[data-glass="clear"], body[data-glass="clear"] .pv { --pane-now: var(--pane-c); --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
-body[data-glass="tinted"], body[data-glass="tinted"] .pv { --pane-now: var(--pane-t); --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
-/* (on the palest skies, the secondary words, the chances of rain and "Uncertain" a little stronger: as far as 4.5:1 over
-   the standard glass takes, the panes left as they were tuned, but for dawn's, a little deeper, where even white fell
-   short over it. With contrast turned up, its own, below. A place's page beside this one by its own sky, as it's swiped
-   in (app.js drawPage, placePages): as :root has them, but on a pale sky) */
-@media not all and (prefers-contrast: more) {
-  :is(.pv, .pg-page) { --text-2: rgba(255, 255, 255, 0.84); --text-3: rgba(255, 255, 255, 0.8); --rain-text: var(--tint-blue); --unsure: initial; }
-  :is(body, .pv, .pg-page):is([data-sky$="-day"], [data-sky="fog"], [data-sky="dusk"], [data-sky="dawn"]) { --text-2: rgba(255, 255, 255, 0.9); --text-3: rgba(255, 255, 255, 0.86); --rain-text: #d8edff; --unsure: #ffe8b8; }
+/* Appearance follows InFlite rather than the current forecast’s sky. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --temp: #f0a040; --rain: #5aa2f0; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
 }
+:root[data-theme="dark"] { --temp: #f0a040; --rain: #5aa2f0; --wind: #2fc4b0; --warn: #ffd182; --alert: #ff7b70; }
+svg [fill="#EEF3F9" i] { fill: var(--cloud-glass, #cbd1c9); }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; -webkit-tap-highlight-color: transparent; }
@@ -105,33 +73,19 @@ a { color: inherit; }
 .muted { color: var(--text-3); }
 .small { font-size: 13px; }
 [hidden] { display: none !important; }
-:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 3px; }
 
-/* ---------- the glass ---------- */
+/* ---------- neutral surfaces ---------- */
 /* panels */
 .card, .ins, .tile, .section-title, dialog.sheet, .c-tip {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint);
   background-image: var(--sheen), var(--body);
   box-shadow: var(--edge), var(--lift);
-  /* (its tint eased, as the sky's changes it or Settings' Glass does, rather than snapped) */
+  /* Surface changes settle without affecting layout. */
   transition: background-color var(--dur-base) var(--ease), --la 0.3s var(--ease);
 }
-dialog.sheet { -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-/* (where there's a pointer, the light it casts across the glass, on the pane it's over (app.js lit): where it is, --lx
-   and --ly, the pane's own and not passed on to what's in it, so the pointer moving restyles that pane alone; and only
-   that pane repainted as the page scrolls, its light fixed to the screen; a phone's panels are spared it. It comes up
-   on the pane the pointer moves on to as it goes down on the one it's left (--la: how bright, eased; .unlit, a moment)) */
-@property --lx { syntax: "<length>"; inherits: false; initial-value: -9999px; }
-@property --ly { syntax: "<length>"; inherits: false; initial-value: -9999px; }
-@property --la { syntax: "<number>"; inherits: false; initial-value: 0; }
-@media (hover: hover) and (pointer: fine) {
-  :is(.card, .ins, .tile, .section-title, dialog.sheet, .c-tip):is(.lit, .unlit) {
-    background-image: radial-gradient(520px circle at var(--lx) var(--ly), rgba(255, 255, 255, calc(0.07 * var(--la, 1))), transparent 45%), var(--sheen), var(--body);
-    background-attachment: fixed, scroll, scroll; }
-  :is(.card, .ins, .tile, .section-title, dialog.sheet, .c-tip).lit { --la: 1; }
-  :is(.card, .ins, .tile, .section-title, dialog.sheet, .c-tip).unlit { --la: 0; }
-}
+dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none;  --tint: var(--ifl-surface);  border-radius: var(--ifl-radius-sheet, 30px);  box-shadow: var(--ifl-shadow-card); }
 /* controls */
 .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
 .map-zoom, :is(.radar-centre, .map-layers), .radar-credit {
@@ -139,24 +93,16 @@ dialog.sheet { -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur
   background-color: var(--tint-ctl);
   background-image: var(--sheen), var(--body);
   -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 0.5px rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--ifl-shadow-control, 0 2px 7px rgb(22 30 18 / .07));
 }
 /* (on a card, over the card: badges, and the card's own buttons; blurred, they'd each cost a layer for nothing. Over the
    radar's map, full screen, its buttons are) */
 .win-rate, .best, main .card :is(.seg, .pill-btn, .icon-btn) { -webkit-backdrop-filter: none; backdrop-filter: none; }
 main .radar.radar-big .icon-btn { -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); }
-/* the rim: a hairline that's bright where the light catches it, top left and bottom right */
-.card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
-.icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, :is(.radar-centre, .map-layers)::before, .radar-credit::before, .win-rate::before, .best::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
-  background: var(--rim);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-}
 /* glass on glass: things inside a panel */
 .win, .stat, .part, .hour.now, .act-edit, .choice, .credits, .detail-now, .way {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  background: var(--ifl-surface-2);
+  box-shadow: none;
 }
 /* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
 .icon-btn, .place, .pill-btn, .day-row, .row-btn, :is(.radar-centre, .map-layers), .link {
@@ -174,152 +120,30 @@ fieldset.opt label:active { filter: brightness(1.15); transition-duration: var(-
   .icon-btn:hover, .place:hover, .pill-btn:hover, :is(.radar-centre, .map-layers):hover { filter: brightness(1.15); }
 }
 
-/* ---------- the sky ---------- */
-/* each sky four colours down the screen (--s1 to --s4, at 0, --p2, --p3 and 100%) and the glows the glass catches, each
-   eased to the next sky's over a second, so a new sky comes in as a crossfade, from wherever the last change had got
-   to (a gradient itself can't be eased); where these can't be eased, it changes at once, as it always did */
-@property --s1 { syntax: "<color>"; inherits: false; initial-value: #3f5670; }
-@property --s2 { syntax: "<color>"; inherits: false; initial-value: #5d7189; }
-@property --s3 { syntax: "<color>"; inherits: false; initial-value: #6c7f95; }
-@property --s4 { syntax: "<color>"; inherits: false; initial-value: #7b8ca0; }
-@property --p2 { syntax: "<percentage>"; inherits: false; initial-value: 60%; }
-@property --p3 { syntax: "<percentage>"; inherits: false; initial-value: 80%; }
-@property --glow { syntax: "<color>"; inherits: true; initial-value: rgba(255, 255, 255, 0.12); }
-@property --glow-2 { syntax: "<color>"; inherits: true; initial-value: rgba(120, 160, 255, 0.12); }
-.sky { position: fixed; inset: 0 0 calc(0px - var(--fix-gap, 0px)); z-index: -1; overflow: hidden;
-  --s1: #3f5670; --s2: #5d7189; --p2: 60%; --s3: #6c7f95; --p3: 80%; --s4: #7b8ca0;
-  background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%);
-  transition: --s1 1s var(--ease), --s2 1s var(--ease), --s3 1s var(--ease), --s4 1s var(--ease), --p2 1s var(--ease), --p3 1s var(--ease), --glow 1s var(--ease), --glow-2 1s var(--ease); }
-/* (on a phone or a tablet, the sky ends above Safari's bar at the foot, fading into the page's own colour, the sky's at its
-   foot (app.js SKY_FOOT), so the page carries on under the bar: with a layer fixed down to the foot of the screen, Safari
-   fills under its bar solid. Its colours laid out over at least an upright phone's sky: on a shorter screen the weather
-   now's small words would otherwise be on its paler part, nearer the foot) */
-@media (hover: none) {
-  .sky { bottom: auto; height: calc(100% - 120px); -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent); mask-image: linear-gradient(#000 calc(100% - 160px), transparent);
-    background-size: 100% max(100%, 720px); }
-}
-/* light in the sky for the glass to catch: a glow where the sun or moon would be (and in the next place's sky as it's
-   swiped in, its own: .sky-alt) */
-:is(.sky, .sky-alt)::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
-:is(.sky, .sky-alt)::after { content: ""; position: absolute; inset: auto auto -30% -25%; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow-2, rgba(120, 160, 255, 0.12)), transparent 60%); pointer-events: none; }
-/* (what shows past the page's ends as it's pulled: the sky's top, app.js sky, eased with it) */
-html { background: #2a3546; transition: background-color 1s var(--ease); }
-body { background: transparent; }
-/* (three colours down the sky make four with the one halfway between the last two, so each looks as it always has) */
-body[data-sky="clear-day"] .sky, .sky-alt[data-sky="clear-day"] { --s1: #1f5fae; --s2: #3b82cf; --p2: 50%; --s3: #5395d9; --p3: 75%; --s4: #6aa7e2; --glow: rgba(255, 236, 180, 0.32); --glow-2: rgba(120, 200, 255, 0.22); }
-body[data-sky="partly-day"] .sky, .sky-alt[data-sky="partly-day"] { --s1: #2c5f99; --s2: #4e7fb6; --p2: 55%; --s3: #6691c0; --p3: 77.5%; --s4: #7ea2c9; --glow: rgba(255, 236, 190, 0.22); }
-body[data-sky="cloudy-day"] .sky, .sky-alt[data-sky="cloudy-day"] { --s1: #43566c; --s2: #5c6f85; --p2: 55%; --s3: #6b7d91; --p3: 77.5%; --s4: #7a8a9c; }
-body[data-sky="rain-day"] .sky, .sky-alt[data-sky="rain-day"] { --s1: #303f52; --s2: #46576b; --p2: 55%; --s3: #526276; --p3: 77.5%; --s4: #5d6d80; --glow-2: rgba(80, 150, 255, 0.16); }
-body[data-sky="storm"] .sky, .sky-alt[data-sky="storm"] { --s1: #1c2130; --s2: #2c3245; --p2: 55%; --s3: #363c4f; --p3: 77.5%; --s4: #3f4559; --glow: rgba(170, 150, 255, 0.14); }
-body[data-sky="snow-day"] .sky, .sky-alt[data-sky="snow-day"] { --s1: #4f6580; --s2: #6d819b; --p2: 55%; --s3: #8092aa; --p3: 77.5%; --s4: #92a3b8; --glow: rgba(255, 255, 255, 0.2); }
-body[data-sky="fog"] .sky, .sky-alt[data-sky="fog"] { --s1: #59626e; --s2: #737c87; --p2: 55%; --s3: #808993; --p3: 77.5%; --s4: #8d959f; --glow: rgba(255, 255, 255, 0.16); }
-body[data-sky="clear-night"] .sky, .sky-alt[data-sky="clear-night"] { --s1: #070d22; --s2: #101c3e; --p2: 55%; --s3: #17244b; --p3: 77.5%; --s4: #1d2c57; --glow: rgba(190, 210, 255, 0.16); --glow-2: rgba(110, 90, 220, 0.16); }
-body[data-sky="partly-night"] .sky, .sky-alt[data-sky="partly-night"] { --s1: #0c1428; --s2: #18233f; --p2: 55%; --s3: #1f2c49; --p3: 77.5%; --s4: #263453; --glow: rgba(190, 210, 255, 0.12); }
-body[data-sky="cloudy-night"] .sky, .sky-alt[data-sky="cloudy-night"] { --s1: #151b27; --s2: #222a3a; --p2: 55%; --s3: #2a3243; --p3: 77.5%; --s4: #313a4c; }
-body[data-sky="rain-night"] .sky, .sky-alt[data-sky="rain-night"] { --s1: #10151f; --s2: #1c2432; --p2: 55%; --s3: #232c3b; --p3: 77.5%; --s4: #2a3343; --glow-2: rgba(70, 120, 220, 0.14); }
-body[data-sky="snow-night"] .sky, .sky-alt[data-sky="snow-night"] { --s1: #1b2335; --s2: #2c374d; --p2: 55%; --s3: #354158; --p3: 77.5%; --s4: #3e4a62; }
-body[data-sky="dusk"] .sky, .sky-alt[data-sky="dusk"] { --s1: #1f2b55; --s2: #5a4a78; --p2: 45%; --s3: #b0666a; --p3: 80%; --s4: #d98b62; --glow: rgba(255, 170, 120, 0.3); --glow-2: rgba(140, 100, 230, 0.2); }
-body[data-sky="dawn"] .sky, .sky-alt[data-sky="dawn"] { --s1: #24376a; --s2: #5b6a9a; --p2: 45%; --s3: #c58a86; --p3: 80%; --s4: #e7ad7c; --glow: rgba(255, 200, 150, 0.3); }
-/* stars on a clear night, rain falling on a wet one, snow on a snowy one: each a layer of its own, there for its skies
-   only, faded in and out with the sky (and once it's faded out, gone, its motion with it) */
-.sky-stars, .sky-rain, .sky-snow { position: absolute; inset: 0; display: none; opacity: 0; pointer-events: none;
-  transition: opacity 1s var(--ease); transition: opacity 1s var(--ease), display 1s var(--ease) allow-discrete; }
-/* (the page's sky's, by the place showing; and each of the skies of the places either side, as it comes in over this one
-   as the page is swiped: styles.css .sky-alt) */
-body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky > .sky-stars, .sky-alt:is([data-sky="clear-night"], [data-sky="partly-night"]) > .sky-stars { display: block; opacity: 0.8; }
-body[data-sky="partly-night"] .sky > .sky-stars, .sky-alt[data-sky="partly-night"] > .sky-stars { opacity: 0.4; }
-body:is([data-sky^="rain"], [data-sky="storm"]) .sky > .sky-rain, .sky-alt:is([data-sky^="rain"], [data-sky="storm"]) > .sky-rain { display: block; opacity: 0.22; }
-body[data-sky^="snow"] .sky > .sky-snow, .sky-alt[data-sky^="snow"] > .sky-snow { display: block; opacity: 1; }
-@starting-style {
-  body:is([data-sky="clear-night"], [data-sky="partly-night"]) .sky > .sky-stars, body:is([data-sky^="rain"], [data-sky="storm"]) .sky > .sky-rain, body[data-sky^="snow"] .sky > .sky-snow { opacity: 0; }
-}
-.sky-stars {
-  background-image: radial-gradient(1.2px 1.2px at 12% 18%, #fff 50%, transparent), radial-gradient(1px 1px at 28% 8%, #fff 50%, transparent),
-    radial-gradient(1.4px 1.4px at 45% 22%, #fff 50%, transparent), radial-gradient(1px 1px at 63% 12%, #fff 50%, transparent),
-    radial-gradient(1.2px 1.2px at 78% 26%, #fff 50%, transparent), radial-gradient(1px 1px at 88% 6%, #fff 50%, transparent),
-    radial-gradient(1px 1px at 8% 38%, #fff 50%, transparent), radial-gradient(1.3px 1.3px at 34% 34%, #fff 50%, transparent),
-    radial-gradient(1px 1px at 56% 40%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 92% 44%, #fff 50%, transparent),
-    radial-gradient(1px 1px at 70% 52%, #fff 50%, transparent), radial-gradient(1px 1px at 20% 56%, #fff 50%, transparent);
-}
-.sky-rain { inset: -50% 0 0;
-  background-image: repeating-linear-gradient(103deg, transparent 0 14px, rgba(255, 255, 255, 0.5) 14px 15px, transparent 15px 31px);
-  background-size: 120px 120px; animation: rain 0.7s linear infinite; }
-@keyframes rain { to { transform: translateY(120px); } }
-/* the sky lives a little: clouds drift slowly over, stars twinkle, snow falls (two layers, the nearer
-   faster), lightning lights the cloud now and then (soft and rare: at most two flickers, every eleven seconds) */
-/* (fog's lower and deeper, eased there and back with the rest of the sky; and drifting at the clouds' own pace, so it
-   doesn't jump along its drift as it comes or goes) */
-.sky-clouds { position: absolute; inset: -12% -50% auto; height: 75%; opacity: 0; transition: opacity 1s var(--ease), top 1s var(--ease), height 1s var(--ease); pointer-events: none;
-  background: radial-gradient(26% 16% at 18% 32%, rgba(255, 255, 255, 0.13), transparent 70%), radial-gradient(20% 12% at 40% 18%, rgba(255, 255, 255, 0.1), transparent 70%),
-    radial-gradient(30% 18% at 66% 36%, rgba(255, 255, 255, 0.12), transparent 70%), radial-gradient(18% 11% at 88% 22%, rgba(255, 255, 255, 0.09), transparent 70%);
-  animation: clouds 80s steps(160) infinite alternate; }
-/* (moved on in small steps, twice a second: a slow drift looks the same, and the glass over it is blurred afresh twice
-   a second rather than at every frame; and held still where there are no clouds to see) */
-body:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) > .sky-clouds { animation-play-state: paused; }
-body[data-sky^="partly"] .sky > .sky-clouds, .sky-alt[data-sky^="partly"] > .sky-clouds { opacity: 0.55; }
-body:is([data-sky^="cloudy"], [data-sky="fog"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="cloudy"], [data-sky="fog"]) > .sky-clouds { opacity: 1; }
-body:is([data-sky^="rain"], [data-sky^="snow"], [data-sky="storm"]) .sky > .sky-clouds, .sky-alt:is([data-sky^="rain"], [data-sky^="snow"], [data-sky="storm"]) > .sky-clouds { opacity: 0.8; }
-body[data-sky$="night"]:not([data-sky="clear-night"]) .sky > .sky-clouds, .sky-alt[data-sky$="night"]:not([data-sky="clear-night"]) > .sky-clouds { opacity: 0.4; }
-body[data-sky="fog"] .sky > .sky-clouds, .sky-alt[data-sky="fog"] > .sky-clouds { inset: 20% -50% auto; height: 90%; }
-@keyframes clouds { from { transform: translateX(-9%); } to { transform: translateX(9%); } }
-/* (the twinkling ones: a layer of them on both nights, a second on a clear one, faded in and out as it clears or
-   clouds over: by a filter, as their twinkle is their opacity) */
-.sky-stars::before, .sky-stars::after {
-  content: ""; position: absolute; inset: 0; animation: twinkle 3.6s steps(14) infinite alternate;
-  background-image: radial-gradient(1.4px 1.4px at 17% 12%, #fff 50%, transparent), radial-gradient(1px 1px at 38% 28%, #fff 50%, transparent),
-    radial-gradient(1.2px 1.2px at 52% 9%, #fff 50%, transparent), radial-gradient(1px 1px at 71% 33%, #fff 50%, transparent),
-    radial-gradient(1.5px 1.5px at 84% 16%, #fff 50%, transparent), radial-gradient(1px 1px at 5% 26%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 60% 47%, #fff 50%, transparent); }
-.sky-stars::after { animation-duration: 5.2s; animation-delay: -2.4s; filter: opacity(0); transition: filter 1s var(--ease);
-  background-image: radial-gradient(1.2px 1.2px at 24% 21%, #fff 50%, transparent), radial-gradient(1px 1px at 46% 14%, #fff 50%, transparent),
-    radial-gradient(1.4px 1.4px at 66% 24%, #fff 50%, transparent), radial-gradient(1px 1px at 93% 30%, #fff 50%, transparent),
-    radial-gradient(1px 1px at 12% 48%, #fff 50%, transparent), radial-gradient(1.2px 1.2px at 79% 42%, #fff 50%, transparent); }
-body[data-sky="clear-night"] .sky > .sky-stars::after, .sky-alt[data-sky="clear-night"] > .sky-stars::after { filter: none; }
-@keyframes twinkle { from { opacity: 0.15; } to { opacity: 1; } }
-.sky-snow::before, .sky-snow::after {
-  content: ""; position: absolute; inset: -240px 0 0; opacity: 0.75;
-  background-image: radial-gradient(2.4px 2.4px at 30px 40px, #fff 60%, transparent), radial-gradient(2px 2px at 150px 90px, #fff 60%, transparent),
-    radial-gradient(2.8px 2.8px at 90px 170px, #fff 60%, transparent), radial-gradient(2px 2px at 200px 210px, #fff 60%, transparent), radial-gradient(2.2px 2.2px at 220px 20px, #fff 60%, transparent);
-  background-size: 240px 240px; animation: snow-near 11s linear infinite, sway 5s ease-in-out infinite alternate; }
-.sky-snow::after { inset: -160px 0 0; opacity: 0.45; background-size: 160px 160px;
-  background-image: radial-gradient(1.4px 1.4px at 20px 30px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 110px 70px, #fff 60%, transparent),
-    radial-gradient(1.6px 1.6px at 60px 130px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 140px 150px, #fff 60%, transparent);
-  animation: snow-far 13s linear infinite, sway 7s ease-in-out -3s infinite alternate; }
-@keyframes snow-near { to { translate: 0 240px; } }
-@keyframes snow-far { to { translate: 0 160px; } }
-@keyframes sway { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
-.sky-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(55% 40% at 72% 14%, rgba(214, 206, 255, 0.55), transparent 72%); }
-body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
-@keyframes lightning { 0%, 84%, 100% { opacity: 0; } 85% { opacity: 0.32; } 86% { opacity: 0.06; } 87.5% { opacity: 0.22; } 90% { opacity: 0; } }
-/* the sky holds still under a sheet, and once the page has scrolled on past the top (behind the cards it's
-   hardly seen, and every pane of glass over it would be blurred afresh each frame it moves); and under a sheet a new
-   sky is just there, not eased in behind it */
-body:is(.sheet-up, .deep, .no-scroll) :is(.sky-stars, .sky-rain, .sky-clouds, .sky-flash), body:is(.sheet-up, .deep, .no-scroll) :is(.sky-stars, .sky-snow)::before, body:is(.sheet-up, .deep, .no-scroll) :is(.sky-stars, .sky-snow)::after { animation-play-state: paused; }
-body.sheet-up :is(.sky, .sky > *) { transition-duration: 0s; }
-/* (with Reduce Motion: nothing in it moves, and a new sky is a quick dissolve) */
-@media (prefers-reduced-motion: reduce) {
-  .sky-stars, .sky-stars::before, .sky-stars::after, .sky-rain, .sky-snow::before, .sky-snow::after, .sky-clouds, .sky-flash { animation: none !important; }
-  html, .sky, .sky-clouds, .sky-stars, .sky-stars::after, .sky-rain, .sky-snow { transition-duration: 0.2s; }
-}
+/* Condition metadata remains available, while decorative sky nodes no longer paint or animate. */
+html { background: var(--ifl-page); }
+body { background: var(--ifl-page); }
+.sky, .sky-alt { display: none; }
 
 /* ---------- the top bar: floating glass ---------- */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
 /* where the page scrolls under the bar, a bar of glass the width of the screen with a hairline under it (iOS 27's
    scroll edge: uniform, so what's under it stays legible, rather than iOS 26's soft fade) */
 .top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) calc(50% - 50vw) 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s, background-color 0.3s;
-  background: rgba(12, 18, 30, 0.5); border-bottom: 0.5px solid rgba(255, 255, 255, 0.16); box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.3);
-  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); }
+  background: var(--ifl-surface); border-bottom: 1px solid var(--line); box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
 .top.scrolled::before { opacity: 1; }
 /* (behind the radar full screen, its glass isn't blurred (as the page's isn't: below): made more solid instead, so the
    cards under it don't show through the bar as if over the buttons; behind a sheet, where the page steps back, it goes:
    stepping back with the page, it was a dark box, short of the screen's edges and the strip at its top, under the dim) */
-body.no-scroll .top::before { background-color: rgba(12, 18, 30, 0.88); }
+body.no-scroll .top::before { background-color: var(--ifl-surface); }
 body.sheet-up .top::before { opacity: 0; }
 /* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
 .top .place, .top .icon-btn { transition: background-color 0.3s, transform var(--dur-release) var(--spring), filter 0.25s; }
-.top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
+.top.scrolled .place, .top.scrolled .icon-btn { background-color: var(--ifl-surface-2); }
 /* your photo, at the top left, signed in: InFlite's menu (app.js youMenu) */
 .me-btn { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; overflow: hidden; display: grid; place-items: center; cursor: pointer;
-  font: 700 19px/1 inherit; color: #fff; background: linear-gradient(160deg, #6fb0ff, #2b62d6); box-shadow: 0 4px 14px -4px rgba(45, 111, 224, 0.7), 0 0 0 0.5px rgba(255, 255, 255, 0.3); -webkit-tap-highlight-color: transparent; }
+  font: 700 19px/1 inherit; color: var(--ifl-on-accent, #10200f); background: var(--ifl-accent-gradient); box-shadow: var(--ifl-shadow-control); -webkit-tap-highlight-color: transparent; }
 .me-btn[hidden] { display: none; }
 .me-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .me-btn:active { transform: scale(0.92); }
@@ -367,7 +191,7 @@ body.sheet-up .top::before { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .ptr { transition: none; } .ptr.armed svg, .ptr.busy svg { animation: none; } }
 /* (the page held open at its top while it refreshes: as far as the spinner's room in app.js, 56 pixels) */
 .page.held { transform: translateY(56px); }
-.icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
+.icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: var(--text); }
 .icon-btn .g { position: relative; z-index: 3; }
 .icon-btn.small { width: 36px; height: 36px; }
 .icon-btn.small::after, .radar-credit::after { content: ""; position: absolute; inset: -5px; border-radius: inherit; }
@@ -455,14 +279,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 
 /* the radar with no rain about, or the layer chosen still being fetched: said on the map, at its top in the middle, in a
    pill that fades in and out (.off: radar.js onMap) */
-.radar-dry { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 3; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff;
-  background: rgba(20, 28, 44, 0.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); pointer-events: none;
+.radar-dry { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 3; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--map-ink);
+  background: var(--map-panel); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--ifl-shadow-control); pointer-events: none;
   transition: opacity 0.3s var(--ease), translate 0.35s var(--glide), visibility 0s; }
 .radar-dry.off { opacity: 0; translate: 0 -6px; visibility: hidden; transition: opacity 0.25s var(--ease), translate 0.35s var(--glide), visibility 0s 0.35s; }
 
 /* a word about the alerts, once, until they're on or it's put away */
 .nudge { display: grid; grid-template-columns: 34px 1fr; gap: 4px 12px; align-items: start; }
-.nudge .ins-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; grid-row: span 2; }
+.nudge .ins-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--ifl-surface-2); color: var(--text); grid-row: span 2; }
 .nudge h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .nudge p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.4; }
 .nudge-btns { grid-column: 2; display: flex; gap: 10px; margin-top: 8px; }
@@ -471,18 +295,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 
 /* ---------- now ---------- */
 /* (positioned: words on their way out are laid over where they were, app.js fadeOff) */
-.hero, .pg-page, .pv-hero { position: relative; padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
-/* (on the palest day skies, where the sun's glow and the clouds lighten the top: a soft shade behind the forecast's words,
-   so the small ones read; none at night, or where the sky's deep enough already. Kept to the weather's own box, gone by
-   its top, foot and right and faded in at its left: the scroller it's in cuts off anything past it, which would show as
-   a box's straight edges. The weather now's by the page's sky; each place's beside it by that place's own (app.js
-   drawPage, placePages), so a shade comes and goes with its page as it's swiped, not as it lands) */
-:is(.hero, .pg-page, .pv-hero) { isolation: isolate; }
-body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"]) .hero::before,
-:is(.pg-page, .pv-hero):is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"])::before {
-  content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
-  background: radial-gradient(ellipse 70% 64% at 32% 50%, rgba(6, 18, 44, 0.26), rgba(6, 18, 44, 0.14) 60%, transparent 78%);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.hero, .pg-page, .pv-hero { position: relative; padding: 10px 4px 8px; text-shadow: none; }
 /* (positioned: a temperature on its way out is laid over the new one, at its start: app.js roll) */
 .hero-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
@@ -517,14 +330,14 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 @media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
 /* (the day's high and low: small, so solid white, to read clearly on the palest day skies) */
-.hero-hl { font-size: 16px; color: #fff; margin-top: 2px; font-weight: 500; }
-.hero-hl, .brief, .status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 0 12px rgba(0, 0, 0, 0.22); }
+.hero-hl { font-size: 16px; color: var(--text); margin-top: 2px; font-weight: 500; }
+.hero-hl, .brief, .status { text-shadow: none; }
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
-.brief b { font-weight: 650; color: #fff; }
+.brief b { font-weight: 650; color: var(--text); }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1.4em; }
 /* (and no room kept for it while it says nothing: the brief and what's under it, a warning, closer) */
 .status:empty { margin: 0; min-height: 0; }
-.status.warn { color: #ffd68a; }
+.status.warn { color: var(--warn); }
 .retry { margin-top: 14px; }
 /* (Try again, and the placeholders as it tries, come in, rather than appearing) */
 .retry:not([hidden]) { animation: rise 0.4s var(--glide) backwards; }
@@ -543,15 +356,15 @@ main[data-empty="error"] .hero .hero-row { display: none; }
 main[data-empty="loading"] .hero .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
 /* (and the lines the hero will have, the high and low and the briefing, kept for them: so the cards come in where the
    placeholders were, not some way further down) */
-main[data-empty="loading"] .hero :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="loading"] .hero :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: var(--ifl-surface-2); }
 main[data-empty="loading"] .hero .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
 main[data-empty="loading"] .hero .brief { width: 88%; height: 49px; }
 /* (the weather as it was last shown, put up as the page opens (boot.js): the temperature and its lines as they were,
    placeholders for the rest) */
-main[data-empty="kept"] .hero .brief:empty { display: block; width: 88%; height: 49px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="kept"] .hero .brief:empty { display: block; width: 88%; height: 49px; border-radius: 8px; background: var(--ifl-surface-2); }
 .sk { display: flex; flex-direction: column; gap: 12px; }
 /* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
-.sk i, main[data-empty="loading"] .hero .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
+.sk i, main[data-empty="loading"] .hero .hero-temp { display: block; position: relative; overflow: hidden; background: var(--ifl-surface-2); }
 .sk i::after, main[data-empty="loading"] .hero .hero-temp::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.09) 50%, transparent 80%); animation: sk 1.6s ease-in-out infinite; }
 .sk-l { height: 12px; border-radius: 6px; width: 100%; }
@@ -582,7 +395,7 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
    more than the screen's height; its glows too, its own sky's (where that has none of its own, the plain ones, not this
    sky's), and over this sky's, the one at its foot and all: so nothing of this one's is left to go, or the next one's to
    come, as it lands) */
-.sky-alt { position: absolute; inset: 0; z-index: 1; overflow: hidden; opacity: 0; pointer-events: none; background: linear-gradient(180deg, var(--s1) 0%, var(--s2) var(--p2), var(--s3) var(--p3), var(--s4) 100%); background-size: inherit;
+.sky-alt { position: absolute; inset: 0; z-index: 1; overflow: hidden; opacity: 0; pointer-events: none; background: var(--ifl-page);
   --glow: rgba(255, 255, 255, 0.12); --glow-2: rgba(120, 160, 255, 0.12); }
 /* (its clouds, stars, rain or snow with it, over this sky's own, as it comes in; there only while it's swiped: nothing of
    them kept moving out of sight) */
@@ -595,7 +408,6 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
    layoutPager) */
 .sky-foot { display: none; position: fixed; inset: calc(100% - 280px) 0 0; z-index: -2; pointer-events: none; }
 .sky-foot > i { position: absolute; inset: 0; opacity: 0; }
-@media (hover: none) { .sky.swiping + .sky-foot { display: block; } }
 .place-name { position: relative; }
 /* (each laid over this one's name, as wide as it is (to the arrow after it), and over the line under it: neither taking
    any room of its own, so the pill's as wide as this place's words, not the widest of the three; as it's swiped, the
@@ -655,10 +467,10 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 .hero-temp.was { position: absolute; left: 0; top: 0; margin: 0; pointer-events: none; }
 /* which place, of the saved ones (an arrow for My Location) */
 .dots { display: flex; gap: 7px; align-items: center; margin: 0 0 6px 2px; height: 10px; }
-.dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); transition: background-color 0.3s, transform 0.4s var(--spring); }
-.dots i.on { background: #fff; transform: scale(1.15); }
-.dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
-.dots i.gps.on { color: #fff; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.dots i.on { background: var(--text); transform: scale(1.15); }
+.dots i.gps { width: 9px; height: 9px; background: none; color: var(--text-3); display: grid; place-items: center; }
+.dots i.gps.on { color: var(--text); }
 .dots i svg { display: block; }
 @media (prefers-reduced-motion: reduce) { main:is(:not([data-empty]), [data-empty="kept"]) .hero, .ins.rise, .retry:not([hidden]) { animation: c-fade 0.2s var(--ease) backwards; } }
 @media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
@@ -672,13 +484,6 @@ main:is(:not([data-empty]), [data-empty="kept"]) .hero { animation: rise 0.55s v
 /* (no glass of its own: a heading over the tiles, as each card's is inside it) */
 .section-title { background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .section-title::before { display: none; }
-/* (on the palest day skies, low on the page where the sky's lightest: a soft shade round the headings between the cards,
-   and the foot's words on a band that darkens towards the page's end, so they read. The headings on a place's page
-   beside this one by that place's sky, as it's swiped in: index.html .pv) */
-:is(body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"], [data-sky="dusk"]) main > .col, .pv:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"], [data-sky="dusk"])) .section-title {
-  padding: 2px 10px; border-radius: 999px; color: #fff; background: rgba(6, 18, 44, 0.32) !important; box-shadow: 0 0 14px 6px rgba(6, 18, 44, 0.3) !important; }
-body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], [data-sky="fog"], [data-sky="cloudy-day"], [data-sky="dawn"], [data-sky="dusk"]) .foot {
-  padding-top: 18px; background: linear-gradient(rgba(6, 18, 44, 0), rgba(6, 18, 44, 0.34) 18px); }
 .ct-icon { display: inline-flex; color: var(--text-3); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack:empty { display: none; }
@@ -690,18 +495,18 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .weather-more > summary:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; border-radius: 8px; }
 
 /* segmented control: a glass track with a lens that glides to the choice */
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: rgba(0, 0, 0, 0.16); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: var(--ifl-surface-2);  box-shadow: none; }
 .seg::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 999px; z-index: 0;
   transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.42s var(--glide);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.16));
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+  background: var(--ifl-raised, #fff);
+  box-shadow: var(--ifl-shadow-control); }
 @media (prefers-reduced-motion: reduce) { .seg::before { transition: none; } }
 .seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color 0.3s, opacity 0.15s; }
-.seg button[aria-selected="true"] { color: #fff; }
+.seg button[aria-selected="true"] { color: var(--text); }
 /* (each a finger's 44 points tall, reaching over the track's edge) */
 .seg button::after { content: ""; position: absolute; inset: -3px 0; }
 .seg button:not([aria-selected="true"]):active { opacity: 0.6; }
-@media (hover: hover) and (pointer: fine) { .seg button:not([aria-selected="true"]):hover { color: #fff; } }
+@media (hover: hover) and (pointer: fine) { .seg button:not([aria-selected="true"]):hover { color: var(--text); } }
 
 /* hour strip */
 /* the hours: they swipe to the card's edges, fading there, but rest and snap inside its margins
@@ -714,7 +519,7 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .strip::-webkit-scrollbar { display: none; }
 .hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 999px; scroll-snap-align: start; }
 .hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
-.hour.now .h-time { color: #fff; }
+.hour.now .h-time { color: var(--text); }
 /* (the icons' row and the temperatures' line each a set height: sunrise and sunset's smaller glyph and word sit in the
    middle of them, level with the hours either side) */
 .hour .h-icon { height: 30px; display: grid; place-items: center; }
@@ -726,20 +531,20 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 /* charts */
 .chart { position: relative; width: 100%; outline-offset: 4px; touch-action: pan-y pinch-zoom; }
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.c-grid { stroke: rgba(255, 255, 255, 0.13); stroke-width: 1; }
-.c-daysep { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
-.c-night { fill: rgba(0, 0, 0, 0.16); }
+.c-grid { stroke: var(--line); stroke-width: 1; }
+.c-daysep { stroke: var(--line); stroke-width: 1; }
+.c-night { fill: color-mix(in srgb, var(--text) 5%, transparent); }
 .c-ytick, .c-xtick { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* scale labels inside a chart, in the middle of their bands: legible over the bars */
-.c-ytick.c-in { fill: rgba(255, 255, 255, 0.85); font-weight: 600; paint-order: stroke; stroke: rgba(14, 22, 38, 0.55); stroke-width: 3px; stroke-linejoin: round; }
-.c-day { fill: #fff; font-weight: 650; }
+.c-ytick.c-in { fill: var(--text); font-weight: 600; paint-order: stroke; stroke: var(--ifl-surface); stroke-width: 3px; stroke-linejoin: round; }
+.c-day { fill: var(--text); font-weight: 650; }
 .c-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .c-band { opacity: 0.22; }
 .c-col { opacity: 0.95; }
-.c-now { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; }
-.c-nowtext { fill: rgba(255, 255, 255, 0.85); font-size: 10.5px; font-weight: 650; }
-.c-label { fill: #fff; font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: rgba(10, 16, 28, 0.55); stroke-width: 3px; }
-.c-dot, .c-crossdot { stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+.c-now { stroke: var(--text-3); stroke-width: 1; }
+.c-nowtext { fill: var(--text-2); font-size: 10.5px; font-weight: 650; }
+.c-label { fill: var(--text); font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: var(--ifl-surface); stroke-width: 3px; }
+.c-dot, .c-crossdot { stroke: var(--ifl-surface); stroke-width: 2; }
 /* a new chart draws in (charts.js): the line traced from the left, its range fading in behind it, columns
    growing from the baseline one after another with a little spring, then the labels */
 /* (--t0: drawn again part way through, it carries on from there) */
@@ -780,7 +585,7 @@ body:is([data-sky="clear-day"], [data-sky="partly-day"], [data-sky="snow-day"], 
 .pre .sunarc .done { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
 .play .sunarc .done { stroke-dasharray: 1 1; animation: c-draw 1.3s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
 .pre .sunarc .sun, .pre .sunarc .under { opacity: 0; }
-.sunarc .sun { transform-box: fill-box; transform-origin: 50% 50%; }
+.sunarc .sun { transform-box: fill-box; transform-origin: 50% 50%;  stroke: var(--ifl-surface); }
 .play .sunarc .sun { animation: c-pop 0.5s var(--spring) backwards, c-fade 0.3s var(--ease) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
 .play .sunarc .under { animation: c-fade 0.8s var(--ease) backwards; animation-delay: var(--t0, 0ms); }
 .play .sunarc .sun.down { animation-delay: calc(0.35s + var(--t0, 0ms)); }
@@ -843,14 +648,14 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 @media (prefers-reduced-motion: reduce) { .c-enter .c-line, .c-enter .c-band, .c-enter .c-col, .c-enter .c-dot, .c-enter .c-label { animation: none; } }
 .c-crossline { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; }
 .c-hit { cursor: crosshair; }
-.c-tip { position: absolute; z-index: 3; pointer-events: none; --tint: rgba(14, 22, 38, 0.72); border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; }
+.c-tip { position: absolute; z-index: 3; pointer-events: none; --tint: var(--ifl-raised); border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; }
 .c-tip-title { color: var(--text-3); font-size: 11.5px; margin-bottom: 2px; }
 .c-tip-row { display: flex; gap: 6px; align-items: baseline; }
 .c-tip-row b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .c-tip-row span { color: var(--text-2); }
 /* (the readout fades in where it comes and out as it goes, rather than blinking on and off: hidden, it's gone once it's
    faded; moving from one hour to the next, it just moves) */
-.c-tip { transition: background-color var(--dur-base) var(--ease), --la 0.3s var(--ease), opacity 0.12s var(--ease), display 0.12s allow-discrete; }
+.c-tip { transition: background-color var(--dur-base) var(--ease), --la 0.3s var(--ease), opacity 0.12s var(--ease), display 0.12s allow-discrete;  --tint: var(--ifl-raised); }
 .c-tip[hidden] { display: none; opacity: 0; }
 @starting-style { .c-tip { opacity: 0; } }
 /* (a chart's last picture, laid over the new one where it was as it fades away: charts.js put) */
@@ -864,7 +669,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .solar-chart { margin-top: 10px; color: var(--text); }
 .solar-chart svg { display: block; }
 .solar-zones:empty { display: none; }
-.zone-add { appearance: none; display: flex; align-items: center; background: none; border: 0; padding: 0 16px; min-height: 52px; font: inherit; font-size: 16px; color: #8cc2ff; font-weight: 600; cursor: pointer; width: 100%; text-align: left; border-radius: inherit; }
+.zone-add { appearance: none; display: flex; align-items: center; background: none; border: 0; padding: 0 16px; min-height: 52px; font: inherit; font-size: 16px; color: var(--tint-blue); font-weight: 600; cursor: pointer; width: 100%; text-align: left; border-radius: inherit; }
 .zone-add[hidden] { display: none; }
 .act-edit > .grp-foot { grid-column: 1 / -1; margin: 0; padding: 0 2px; }
 .solar-zones { margin-top: 6px; }
@@ -885,7 +690,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .far-note { display: block; font-size: 11.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); padding: 14px 8px 6px; border-bottom: 1px solid var(--line); }
 /* (every row the same height, whether or not there's a chance of rain under its icon) */
 .day-row { display: grid; grid-template-columns: 4.6em 40px 2.6em 1fr 2.6em; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 58px; }
-@media (hover: hover) { .day-row:hover { background-color: rgba(255, 255, 255, 0.07); } }
+@media (hover: hover) { .day-row:hover { background-color: var(--ifl-surface-2); } }
 .day-row:active { background-color: rgba(255, 255, 255, 0.1); }
 .d-name { font-weight: 600; font-size: 16px; line-height: 1.15; }
 .d-name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--text-3); }
@@ -913,7 +718,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .seg.icons { min-width: 0; grid-template-columns: repeat(3, 44px); }
 .seg.icons button { padding: 0; display: grid; place-items: center; }
 #daily .card-head { margin-bottom: 4px; }
-.d-bar { position: relative; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
+.d-bar { position: relative; height: 6px; border-radius: 3px; background: var(--line); box-shadow: none; }
 .d-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7cc4ff, #8ee6a8, #ffd166, #ff9a4d, #ff5d5d); background-size: var(--span, 100%) 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
 .d-now { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
 
@@ -924,7 +729,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-row { overflow: hidden; }
 .ins-row + .ins-row { border-top: 0.5px solid var(--line); }
 .ins-head { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 10px 4px; cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent; transition: background-color var(--dur-fast); }
-.ins-head:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.ins-head:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -2px; }
 .ins-row.whole .ins-head { cursor: default; }
 .ins-row .ins-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; margin-top: 1px; }
 .ins-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -942,44 +747,44 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-row.open .ins-chev { transform: rotate(180deg); }
 .ins-row.whole .ins-chev { visibility: hidden; }
 /* open, a way on to its day or its hours (and one that goes somewhere is never just its line: always opens) */
-.ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background-color: rgba(159, 208, 255, 0.12); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
+.ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background-color: var(--ifl-surface-2); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
 .ins-go:active { opacity: 0.6; transition-duration: var(--dur-press); }
 .ins-go { position: relative; }
 .ins-go::after { content: ""; position: absolute; inset: -6px 0; }
 .ins-go span { display: inline-grid; transform: rotate(-90deg); }
 .ins-row.open .ins-go, .ins-row.fold .ins-go { display: inline-flex; }
-.ins-go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ins-go:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .ins-row.rise, .days li.rise { animation: rise 0.6s var(--glide) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
 .ins-more { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 0 8px; border-top: 0.5px solid var(--line); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; transition: background-color var(--dur-fast), opacity var(--dur-fast); }
 /* (all of them shown: a way back to the first few, its chevron the other way up) */
 .ins-more.less svg { transform: rotate(180deg); }
-.ins-more:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
+.ins-more:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -2px; border-radius: 10px; }
 .ins-more:active { opacity: 0.6; }
-@media (hover: hover) { .ins-head:hover, .ins-more:hover { background-color: rgba(255, 255, 255, 0.05); } .ins-row.whole .ins-head:hover { background-color: transparent; } .ins-go:hover { background-color: rgba(159, 208, 255, 0.2); } }
+@media (hover: hover) { .ins-head:hover, .ins-more:hover { background-color: var(--ifl-surface-2); } .ins-row.whole .ins-head:hover { background-color: transparent; } .ins-go:hover { background-color: var(--ifl-surface-2); } }
 @media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.has-short.open .ins-line { animation: c-fade 0.2s var(--ease) backwards; } .ins-chev { transition: none; } }
 .ins { border-radius: 22px; padding: 13px 15px 14px; display: grid; grid-template-columns: 32px 1fr; gap: 2px 11px; }
 .ins-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1); }
+  background: var(--ifl-surface-2); box-shadow: none;  color: var(--text); }
 .ins h3 { margin: 0; font-size: 15.5px; font-weight: 650; line-height: 1.3; }
 .ins p { margin: 0; font-size: 14.5px; color: var(--text-2); line-height: 1.42; }
 /* warnings: glass tinted by what they're about */
-.ins[data-level="alert"] { --tint: rgba(129, 19, 26, 0.51); --rim: linear-gradient(135deg, rgba(255, 150, 140, 0.85), rgba(255, 90, 79, 0.25) 35%, rgba(255, 90, 79, 0.1) 65%, rgba(255, 150, 140, 0.6)); }
+.ins[data-level="alert"] { --tint: color-mix(in srgb, var(--alert) 10%, var(--ifl-surface)); --rim: none; }
 .ins[data-level="alert"] .ins-icon { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
-.ins[data-level="warn"] { --tint: rgba(101, 68, 14, 0.49); --rim: linear-gradient(135deg, rgba(255, 214, 138, 0.85), rgba(255, 176, 32, 0.25) 35%, rgba(255, 176, 32, 0.1) 65%, rgba(255, 214, 138, 0.6)); }
+.ins[data-level="warn"] { --tint: color-mix(in srgb, var(--warn) 10%, var(--ifl-surface)); --rim: none; }
 .ins[data-level="warn"] .ins-icon { background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
-.ins[data-level="good"] .ins-icon, .ins-row[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
-.ins[data-level="tip"] .ins-icon, .ins-row[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
+.ins[data-level="good"] .ins-icon, .ins-row[data-level="good"] .ins-icon { background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); }
+.ins[data-level="tip"] .ins-icon, .ins-row[data-level="tip"] .ins-icon { background: var(--ifl-surface-2); color: var(--text); }
 .ins .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
 /* official warnings: in their own colour, the whole card opening the warning (from its title, so it's said as a button) */
 .ins.official > p { grid-column: 2; }
 .ins.official .ins-from { font-size: 13px; color: var(--text-3); margin-bottom: 2px; }
 .ins-open { all: unset; cursor: pointer; }
 .ins-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
-.ins-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.ins-open:focus-visible::after { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .ins.official { transition: transform var(--dur-release) var(--spring), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
 .ins.official:active { transform: scale(0.985); transition-duration: var(--dur-press); }
 @media (prefers-reduced-motion: reduce) { .ins.official { transition-property: background-color; } .ins.official:active { transform: none; } }
-.ins.official[data-colour="yellow"] { --tint: rgba(133, 106, 6, 0.6); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
+.ins.official[data-colour="yellow"] { --tint: color-mix(in srgb, #d9b12f 13%, var(--ifl-surface)); --rim: none; }
 .ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
 .ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
 /* several at once: one banner saying what they are, that opens to all of them (app.js cards) */
@@ -1006,10 +811,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .win-name { font-weight: 650; font-size: 14.5px; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .win-name > span:first-child { display: inline-flex; flex: none; }
 .win-rate { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
-.win-rate[data-r="Great"] { background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; }
-.win-rate[data-r="Good"] { background-color: rgba(93, 178, 255, 0.34); color: #e1f0ff; }
-.win-rate[data-r="Fair"] { background-color: rgba(255, 204, 110, 0.24); color: #ffeccb; }
-.win-rate[data-r="Poor"] { color: var(--text-2); background-color: rgba(255, 255, 255, 0.06); }
+.win-rate[data-r="Great"] { background-color: var(--ifl-accent-fill); color: var(--ifl-on-accent); }
+.win-rate[data-r="Good"] { background-color: var(--ifl-accent-fill); color: var(--ifl-on-accent); }
+.win-rate[data-r="Fair"] { background-color: color-mix(in srgb, var(--warn) 12%, var(--ifl-surface)); color: var(--warn); }
+.win-rate[data-r="Poor"] { color: var(--text-2); background-color: var(--ifl-surface-2); }
 .win-day { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .win-time { font-size: 16px; font-weight: 650; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
@@ -1018,7 +823,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 0; padding: 10px 0; min-height: 44px; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; transition: opacity var(--dur-fast); }
 .win-poor b { font-weight: 600; color: var(--text-3); }
 .win-poor > span:last-child { flex: none; display: inline-flex; color: var(--text-3); }
-.win-poor:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
+.win-poor:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; border-radius: 6px; }
 .win-grid:empty { display: none; }
 .win-grid:empty + .win-poor { margin-top: 0; }
 
@@ -1028,15 +833,15 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
    push the column's other cards about) */
 @media (min-width: 980px) { #climate-body > p.muted:only-child { min-height: 230px; } }
 .facts li { font-size: 13px; color: var(--text-3); }
-.facts b { display: block; font-size: 16px; color: #fff; font-weight: 620; }
-.r-wide { fill: rgba(255, 255, 255, 0.14); }
-.r-mid { fill: rgba(255, 255, 255, 0.24); }
-.r-mean { stroke: #fff; stroke-width: 2; }
+.facts b { display: block; font-size: 16px; color: var(--text); font-weight: 620; }
+.r-wide { fill: color-mix(in srgb, var(--text) 10%, transparent); }
+.r-mid { fill: color-mix(in srgb, var(--text) 18%, transparent); }
+.r-mean { stroke: var(--text); stroke-width: 2; }
 .r-record { stroke: #ff9a6b; stroke-width: 2; }
-.r-value { fill: var(--temp); stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+.r-value { fill: var(--temp); stroke: var(--ifl-surface); stroke-width: 2; }
 .r-text { fill: var(--text-2); font-size: 11.5px; }
 .r-small { fill: var(--text-3); font-size: 11px; }
-.r-vtext { fill: #fff; font-size: 12.5px; font-weight: 700; }
+.r-vtext { fill: var(--text); font-size: 12.5px; font-weight: 700; }
 
 /* ---------- tiles ---------- */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1045,7 +850,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
    tall as the tallest of them, and where one's in two lines ("Feels like", 320 across), the figures beside it are as far
    down as its own, level with it, rather than a line higher; and only in that row. Where they can't be shared (before
    Safari 16), its own two: its title's, then the rest taking up what's left, as it was) */
-.tile { border-radius: 24px; padding: 13px 14px; display: grid; grid-row: span 2; grid-template-rows: auto 1fr; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); row-gap: 3px; min-width: 0; }
+.tile { border-radius: var(--ifl-radius-card, 26px); padding: 13px 14px; display: grid; grid-row: span 2; grid-template-rows: auto 1fr; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); row-gap: 3px; min-width: 0; }
 /* (a tile at least 136 tall, as ever, its title in a line: the room under its title, less its padding, title and gap) */
 .tile-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: calc(136px - 2 * 13px - 12px * 1.4 - 2px - 3px); }
 .tile.wide { grid-column: span 2; }
@@ -1062,10 +867,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .meter { position: relative; container-type: inline-size; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: linear-gradient(90deg, #34c759, #d7e34b, #ffb020, #ff5a4f, #b45cff); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
 .meter i { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
 .compass { width: 74px; height: 74px; margin: 4px auto 0; display: block; }
-.compass .ring { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; }
-.compass .tick { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1; }
+.compass .ring { fill: var(--ifl-surface-2); stroke: var(--line); stroke-width: 1.5; }
+.compass .tick { stroke: var(--text-3); stroke-width: 1; }
 .compass text { fill: var(--text-3); font-size: 9px; font-weight: 700; }
-.compass .needle { fill: #fff; }
+.compass .needle { fill: var(--text); }
 /* (a figure with its picture beside it: the figure right under the title, where every other tile's is, so a row's
    figures line up) */
 .wind-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
@@ -1075,7 +880,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 @media (prefers-reduced-motion: reduce) { .tile.opens { transition-property: background-color; } .tile.opens:active { transform: none; filter: none; } }
 .tile-open { all: unset; flex: 1; min-width: 0; cursor: pointer; }
 .tile-open::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; }
-.tile-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.tile-open:focus-visible::after { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .tile-chev { display: inline-flex; flex: none; transform: rotate(-90deg); opacity: 0.8; }
 @media (hover: hover) { .tile.opens:hover { filter: brightness(1.08); } }
 /* a tile in full, in its own sheet: what it says now, a little larger, then its hours */
@@ -1088,8 +893,8 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .detail-sheet .sheet-head h2 { display: flex; align-items: center; gap: 8px; }
 /* which tile of them it is (a swipe sideways for the next) */
 .detail-dots { display: flex; justify-content: center; gap: 7px; margin: -4px 0 6px; }
-.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); transition: background-color 0.3s, transform 0.4s var(--spring); }
-.detail-dots i.on { background: #fff; transform: scale(1.15); }
+.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.detail-dots i.on { background: var(--text); transform: scale(1.15); }
 /* the rain tile's next 24 hours, an hour a bar */
 .rbars { display: block; width: 100%; height: 26px; margin: 8px 0 2px; }
 .rbars rect { fill: #5aa9f0; }
@@ -1101,14 +906,14 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ways { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; text-align: center; }
 .way { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; }
 .way .w-time { font-size: 12px; font-weight: 600; color: var(--text-3); }
-.way .w-arrow { display: inline-flex; color: #fff; }
+.way .w-arrow { display: inline-flex; color: var(--text); }
 .way b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
 /* feels like: a thermometer */
 .thermo { width: 40px; height: 74px; display: block; margin: 2px 6px 0 0; }
-.thermo .th-glass { fill: rgba(255, 255, 255, 0.07); stroke: rgba(255, 255, 255, 0.34); stroke-width: 1.4; }
-.thermo .th-mark { fill: #fff; }
+.thermo .th-glass { fill: var(--ifl-surface-2); stroke: var(--line); stroke-width: 1.4; }
+.thermo .th-mark { fill: var(--text); }
 /* humidity: a bar filled to it */
-.fbar { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
+.fbar { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: var(--line); box-shadow: none; }
 .fbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
 .fbar.wet i { background: linear-gradient(90deg, #a9dcff, #5aa9f0 60%, #2f74d0); }
 /* pressure: a dial */
@@ -1124,7 +929,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
   .day-row { grid-template-columns: 3.9em 34px 2.4em 1fr 2.4em; gap: 6px; }
   .days.v-rain .day-row, .days.v-wind .day-row { grid-template-columns: 3.9em 34px 1fr 4.2em; }
 }
-.dial .dl-ticks { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.2; stroke-linecap: round; fill: none; }
+.dial .dl-ticks { stroke: var(--text-3); stroke-width: 1.2; stroke-linecap: round; fill: none; }
 .dial .dl-needle { stroke: #fff; stroke-width: 3.2; stroke-linecap: round; }
 .dial .dl-needle-g { transform-box: view-box; transform-origin: 40px 40px; }
 .dial .dl-way { stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
@@ -1132,11 +937,11 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .meter.clear { background: linear-gradient(90deg, rgba(190, 198, 210, 0.35), rgba(190, 210, 230, 0.7) 45%, #8fd0ff); }
 .ends { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--text-3); margin-top: -1px; }
 .sunarc { width: 100%; max-width: 340px; height: auto; display: block; margin: 4px auto; }
-.sunarc .arc { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.sunarc .arc { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 4; }
 .sunarc .done { fill: none; stroke: #ffd166; stroke-width: 2; }
-.sunarc .hz { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; }
-.sunarc .sun { fill: #ffd166; stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
-.sunarc .under { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.sunarc .hz { stroke: var(--text-3); stroke-width: 1; }
+.sunarc .sun { fill: #ffd166; stroke: var(--ifl-surface); stroke-width: 2; }
+.sunarc .under { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 2 4; }
 .sunarc .sun.down { fill: #ffd166; opacity: 0.55; }
 /* the sun's tile: its path across the sky under when it next sets or rises; bigger in its sheet */
 .tile .sunarc { margin: 2px auto 0; }
@@ -1157,16 +962,16 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .kv.tides { margin: 10px 0 2px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; color: var(--text-2); margin: 0; }
 .kv dt { color: var(--text-3); }
-.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
 
 /* ---------- foot: small print, as the Weather app has it (no panel; centred and quiet) ---------- */
-.foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: #fff; text-align: center;
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 10px rgba(0, 0, 0, 0.25); }   /* (to read over a pale sky too) */
+.foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: var(--text-3); text-align: center;
+  text-shadow: none; }   /* (to read over a pale sky too) */
 .foot p { margin: 2px auto; max-width: 60ch; }
 /* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
 .foot .link { font-size: inherit; padding: 13px 4px; margin: -13px -4px; }
 /* (its links and buttons alike, Refresh too: underlined in the line's own colour, as the Weather app's are) */
-.foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 2px; }
+.foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 2px; }
 .foot a { padding: 13px 2px; margin: -13px -2px; }
 .foot a { transition: opacity var(--dur-fast); }
 .foot a:active { opacity: 0.55; transition-duration: var(--dur-press); }
@@ -1176,17 +981,17 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* (pointed at, with a mouse: a link, or a word that does something, fades a little, as the site's do) */
 @media (hover: hover) and (pointer: fine) { .link:hover, .foot a:hover, .credits a:hover, .credits-lead a:hover, .warn-link a:hover, .acct-new a:hover, .win-poor:hover { opacity: 0.75; } }
 
-/* ---------- sheets: floating glass ---------- */
+/* ---------- sheets ---------- */
 /* (fixed, as a modal dialog is by default, so it stays put if the page behind scrolls, as when a keyboard opens) */
-dialog.sheet { position: fixed; --tint: rgba(26, 34, 52, 0.74); padding: 0; color: var(--text); width: calc(100% - 16px); max-width: 560px; max-height: 86vh; max-height: 86svh;
-  border-radius: 34px; margin: auto 8px 8px; overflow: hidden;
-  -webkit-backdrop-filter: blur(34px) saturate(190%); backdrop-filter: blur(34px) saturate(190%);
-  box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.55); }
+dialog.sheet { position: fixed; --tint: var(--ifl-surface); padding: 0; color: var(--text); width: calc(100% - 16px); max-width: 560px; max-height: 86vh; max-height: 86svh;
+  border-radius: var(--ifl-radius-sheet, 30px); margin: auto 8px 8px; overflow: hidden;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-card); }
 /* opening, it comes up from below on iOS's own curve (not faded in: Safari leaves a fading pane of glass unblurred,
    then snaps it frosted); the dim fades in with it. Opened again while it was going, it comes back up from where it
    had got to (--in-t, --in-o, --dim-o: app.js openSheet) */
 dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in var(--dur-sheet-in) var(--glide); transition: transform 0.45s var(--glide), background-color var(--dur-base) var(--ease), --la 0.3s var(--ease); }
-dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.38); }
+dialog.sheet::backdrop { background: rgb(15 19 13 / .26); }
 dialog.sheet[open]::backdrop { animation: dim-in var(--dur-sheet-in) var(--glide); }
 @keyframes sheet-in { from { transform: var(--in-t, translateY(calc(100% + 12px))); opacity: var(--in-o, 1); } }
 @keyframes dim-in { from { opacity: var(--dim-o, 0); } }
@@ -1236,21 +1041,21 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 .sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 16px); mask-image: linear-gradient(180deg, transparent, #000 16px); }
 /* the grabber */
-.sheet-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(255, 255, 255, 0.32); }
+.sheet-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: var(--line); }
 @media (min-width: 700px) { .sheet-head::before { display: none; } }
 .sheet-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
 .sheet-head h2:focus { outline: none; }
 .sheet-sub { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin: 18px 0 6px; }
 /* search: a capsule */
-.search input { width: 100%; padding: 12px 16px 12px 42px; border-radius: 999px; font-size: 16px; background-color: rgba(118, 118, 128, 0.26);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='.7' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M20 20l-4.2-4.2'/%3E%3C/svg%3E"), var(--sheen);
+.search input { width: 100%; padding: 12px 16px 12px 42px; border-radius: var(--ifl-radius-row, 16px); font-size: 16px; background-color: var(--ifl-surface-2);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360655e' stroke-opacity='.8' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M20 20l-4.2-4.2'/%3E%3C/svg%3E"), var(--sheen);
   background-repeat: no-repeat; background-position: 14px center, 0 0; background-size: 18px, auto; }
 .search input::placeholder { color: var(--text-3); }
-.search input:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.search input:focus { outline: none; box-shadow: 0 0 0 2px var(--tint-blue); }
 .results, .saved { list-style: none; margin: 8px 0 0; padding: 0; }
 .results li + li, .saved li + li { border-top: 1px solid var(--line); }
 .row-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 50px; }
-@media (hover: hover) { .row-btn:hover { background-color: rgba(255, 255, 255, 0.07); } }
+@media (hover: hover) { .row-btn:hover { background-color: var(--ifl-surface-2); } }
 .row-btn .rb-main { flex: 1; min-width: 0; }
 .row-btn .rb-name { font-weight: 600; display: block; overflow-wrap: anywhere; }
 .row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow-wrap: anywhere; }
@@ -1262,23 +1067,23 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
 #here:empty { display: none; }
 #here + .sheet-sub { margin-top: 22px; }
 .pc-li { position: relative; }
-.place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: #fff;
-  background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
-  transition: width 0.35s var(--glide), filter var(--dur-fast); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
-.place-card[aria-current="true"] { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); }
+.place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: var(--ifl-radius-row, 16px); cursor: pointer; text-align: left; color: var(--text);
+  background: var(--ifl-surface-2); box-shadow: none;
+  transition: width 0.35s var(--glide), filter var(--dur-fast); text-shadow: none; }
+.place-card[aria-current="true"] { box-shadow: inset 0 0 0 1.5px var(--ifl-accent-fill);  background: color-mix(in srgb, var(--ifl-accent-fill) 20%, var(--ifl-surface)); }
 .pc-li.swiped .place-card, .pc-li:has(.pc-del:focus-visible) .place-card { width: calc(100% - 100px); }
 .pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
 .pc-r { align-items: flex-end; justify-content: space-between; }
 .pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .pc-here { display: inline-grid; vertical-align: 1px; }
-.pc-sub { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-top: 2px; overflow-wrap: anywhere; }
-.pc-cond { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: auto; padding-top: 10px; }
+.pc-sub { font-size: 13px; font-weight: 600; color: var(--text-2); margin-top: 2px; overflow-wrap: anywhere; }
+.pc-cond { font-size: 13px; font-weight: 500; color: var(--text-2); margin-top: auto; padding-top: 10px; }
 .pc-temp { font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
-.pc-hl { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); white-space: pre; }
+.pc-hl { font-size: 13px; font-weight: 600; color: var(--text-2); white-space: pre; }
 .pc-del { position: absolute; inset: 0 0 0 auto; width: 92px; border: 0; border-radius: 22px; background: #ff453a; color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); transform: scale(0.6); opacity: 0; transition: transform 0.35s var(--spring), opacity 0.2s; }
 .pc-li.swiped .pc-del, .pc-del:focus-visible { transform: none; opacity: 1; }
-.pc-del:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.pc-del:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .pc-bin { display: none; position: absolute; z-index: 2; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.35); color: #fff; place-items: center; cursor: pointer; }
 /* (with a mouse, the bin fades in over the card as it's pointed at, its temperature fading away under it; out of the
    way of the keyboard when it isn't shown: the card's Delete is the keyboard's) */
@@ -1290,11 +1095,6 @@ body.sheet-up .page:has(.radar-big) { transform: none; }
   .pc-li:hover .pc-r { opacity: 0; }
   .place-card:hover { filter: brightness(1.08); }
 }
-:is(.place-card, .acct-chip)[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } :is(.place-card, .acct-chip)[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
-:is(.place-card, .acct-chip)[data-sky="cloudy-day"] { --pa: #6a7d93; --pb: #43566c; } :is(.place-card, .acct-chip)[data-sky="rain-day"] { --pa: #4f6176; --pb: #303f52; }
-:is(.place-card, .acct-chip)[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } :is(.place-card, .acct-chip)[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } :is(.place-card, .acct-chip)[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
-:is(.place-card, .acct-chip)[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } :is(.place-card, .acct-chip)[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
-:is(.place-card, .acct-chip)[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } :is(.place-card, .acct-chip)[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } :is(.place-card, .acct-chip)[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
 @media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: opacity var(--dur-fast), filter var(--dur-fast); } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
 /* (finding you: its arrow turning as the bar's does, app.js locate) */
@@ -1315,7 +1115,7 @@ fieldset.opt label { display: inline-flex; align-items: center; gap: 8px; paddin
 /* a choice of one (°C or °F…): a segmented control, a lens of glass gliding to the chosen one (which, and how
    many there are, found with :has) */
 fieldset.opt:has(> .choice) { display: block; }
-.choice { position: relative; isolation: isolate; --n: 2; --i: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.18); }
+.choice { position: relative; isolation: isolate; --n: 2; --i: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; border-radius: 999px; background-color: var(--ifl-surface-2); }
 .choice:has(> label:nth-child(3)) { --n: 3; }
 .choice:has(> label:nth-child(4)) { --n: 4; }
 .choice:has(> label:nth-child(2) > input:checked) { --i: 1; }
@@ -1323,19 +1123,19 @@ fieldset.opt:has(> .choice) { display: block; }
 .choice:has(> label:nth-child(4) > input:checked) { --i: 3; }
 .choice::before { content: ""; position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 999px;
   transform: translateX(calc(var(--i) * 100%)); transition: transform 0.42s var(--glide);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.16), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+  background: var(--ifl-raised);
+  box-shadow: var(--ifl-shadow-control); }
 .choice:not(:has(input:checked))::before { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .choice::before { transition: none; } }
 .choice > label { z-index: 1; }
 fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 36px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
-fieldset.opt label:has(input[type="radio"]:checked) { color: #fff; }
+fieldset.opt label:has(input[type="radio"]:checked) { color: var(--text); }
 fieldset.opt input[type="radio"] { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
+fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 /* switches */
 label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12px; }
 .switch input[type="checkbox"] { -webkit-appearance: none; appearance: none; order: 9; margin: 0 0 0 auto; flex: none; position: relative; width: 52px; height: 32px; border-radius: 999px; cursor: pointer;
-  background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), inset 0 1px 2px rgba(0, 0, 0, 0.25); transition: background-color 0.3s; }
+  background: var(--line); box-shadow: inset 0 0 0 1px var(--line); transition: background-color 0.3s; }
 .switch input[type="checkbox"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 999px;
   background: linear-gradient(180deg, #ffffff, #eef1f6); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12), inset 0 -1px 1px rgba(0, 0, 0, 0.06);
   transition: transform 0.45s var(--spring), width 0.25s var(--spring); }
@@ -1344,23 +1144,23 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 /* pressed, the knob stretches like a drop of glass */
 .switch input[type="checkbox"]:active::before { width: 34px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 244, 250, 0.82)); }
 .switch input[type="checkbox"]:checked:active::before { transform: translateX(14px); }
-.switch input[type="checkbox"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 /* a time to choose (app.js fillTimes: a quarter of an hour apart, said as the Clock setting says them), in a chip */
-select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 10px;
-  padding: 5px 10px; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25); cursor: pointer; }
-select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: var(--ifl-surface-2); border: 0; border-radius: var(--ifl-radius-row, 16px);
+  padding: 5px 10px; box-shadow: none; cursor: pointer; }
+select.at:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .at-row select.at { margin-left: auto; }
 /* notifications for each saved place: rain alerts and official warnings, each a chip; and the briefing's place */
 .np-row { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 12px 0 16px; }
 .np-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-name small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
 .np-chip { position: relative; flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
-  background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); transition: background-color 0.2s, color 0.2s; }
+  background-color: var(--ifl-surface-2); box-shadow: none; transition: background-color 0.2s, color 0.2s; }
 /* (a finger's 44 points to tap, above and below it, as it looks; not either side, into the chip beside it) */
 .np-chip::after { content: ""; position: absolute; inset: -5px 0; border-radius: inherit; }
-.np-chip[aria-pressed="true"] { color: #fff; background-color: #2f6fde; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
-@media (hover: hover) and (pointer: fine) { .np-chip:hover { background-color: rgba(255, 255, 255, 0.14); } .np-chip[aria-pressed="true"]:hover { background-color: #3b7cf0; } }
-.np-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.np-chip[aria-pressed="true"] { color: var(--ifl-on-accent); background-color: var(--ifl-accent-fill); box-shadow: none; }
+@media (hover: hover) and (pointer: fine) { .np-chip:hover { background-color: rgba(255, 255, 255, 0.14); } .np-chip[aria-pressed="true"]:hover { background-color: var(--ifl-accent-fill); } }
+.np-chip:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .brief-for select.at { max-width: 60%; text-overflow: ellipsis; }
 .at-row { transition: opacity var(--dur-fast); }
 #notify-set:not(:has(input[name="brief"]:checked)) .at-row { opacity: 0.5; }
@@ -1368,8 +1168,8 @@ select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* your account (weather/account.js), at the top of Settings: signed out, what it's for and how to sign in; signed in,
    who, whether your places are in step, and where notifications go */
 .acct { display: grid; gap: 10px; margin: 2px 0 22px; }
-.acct-card { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 20px; background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
-.acct-ic, .acct-av { flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(160deg, #6fb0ff, #2b62d6); box-shadow: 0 4px 14px -4px rgba(45, 111, 224, 0.7); }
+.acct-card { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px); background-color: var(--ifl-surface-2); box-shadow: none; }
+.acct-ic, .acct-av { flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--ifl-on-accent); background: var(--ifl-accent-gradient); box-shadow: var(--ifl-shadow-control); }
 .acct-ic { width: 44px; height: 44px; }
 .acct-av { width: 48px; height: 48px; font-size: 21px; font-weight: 700; }
 .acct-txt { display: grid; gap: 3px; min-width: 0; }
@@ -1379,25 +1179,25 @@ select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   transition: filter var(--dur-fast), background-color var(--dur-fast), transform var(--dur-release) var(--spring), opacity var(--dur-fast); }
 .acct-btn:not(:disabled):active { transform: scale(0.97); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .acct-btn:not(:disabled):hover { filter: brightness(1.12); } }
-.acct-btn.primary { background: linear-gradient(180deg, #4f95ff, #2563d9); color: #fff; box-shadow: 0 8px 22px -10px rgba(37, 99, 217, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.acct-btn.primary { background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); box-shadow: var(--ifl-shadow-control); }
 a.acct-btn { text-decoration: none; }
 .acct-btn:disabled { opacity: 0.55; cursor: default; }
-.acct-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.acct-btn:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .acct-btn > span { display: inline-grid; }
 .acct-rows { list-style: none; margin: 0; padding: 2px 16px; border-radius: 18px; background-color: rgba(255, 255, 255, 0.06); }
 .acct-rows li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; font-size: 14.5px; }
 .acct-rows li + li { border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
 .acct-rows li > span:last-child { color: var(--text-2); text-align: right; display: inline-flex; gap: 5px; align-items: center; min-width: 0; }
-.acct-ok { color: #7fe0a0 !important; }
+.acct-ok { color: var(--ifl-accent-ink) !important; }
 /* the account's card: a way to its own page */
 .acct-card.go { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: transform var(--dur-release) var(--spring), background-color var(--dur-fast); }
 .acct-card.go:active { transform: scale(0.98); background-color: rgba(255, 255, 255, 0.12); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .acct-card.go:hover { background-color: rgba(255, 255, 255, 0.11); } }
-.acct-card.go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.acct-card.go:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 .acct-card .acct-txt { flex: 1; }
 .acct-chev { flex: none; display: inline-grid; color: var(--text-2); }
 .acct-chev svg { transform: rotate(-90deg); }
-.acct-bad { color: #ffb4a8 !important; }
+.acct-bad { color: var(--alert) !important; }
 .notify-acct { display: grid; gap: 8px; justify-items: start; }
 .notify-acct:empty { display: none; }
 .notify-acct .note { margin: 0; }
@@ -1409,7 +1209,7 @@ a.acct-btn { text-decoration: none; }
 /* your profile, being changed: the photo and its buttons, then your name and handle */
 .acct-said { margin: 0 4px; font-size: 13px; line-height: 1.4; color: var(--text-2); }
 .acct-said:empty { display: none; }
-.acct-said.bad { color: #ffb4a8; }
+.acct-said.bad { color: var(--alert); }
 /* the places in step with the account, said beside "Saved" */
 
 /* the day */
@@ -1420,8 +1220,8 @@ a.acct-btn { text-decoration: none; }
 .ds-day { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 46px; min-height: 52px; padding: 4px 2px; border: 0; background: none; border-radius: 14px; cursor: pointer; color: var(--text-2); }
 .ds-day span { font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-3); }
 .ds-day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color 0.3s, color 0.3s, transform 0.4s var(--spring); }
-.ds-day[aria-current] b { background: #fff; color: #0d1626; transform: scale(1.06); }
-.ds-day[aria-current] span { color: #fff; }
+.ds-day[aria-current] b { background: var(--ifl-accent-fill); color: var(--ifl-on-accent); transform: scale(1.06); }
+.ds-day[aria-current] span { color: var(--text); }
 .ds-day:active b { transform: scale(0.9); transition-duration: var(--dur-press); }
 @media (hover: hover) and (pointer: fine) { .ds-day:not([aria-current]):hover b { background-color: rgba(255, 255, 255, 0.12); } }
 /* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
@@ -1452,8 +1252,8 @@ a.acct-btn { text-decoration: none; }
 .models td, .models th { padding: 7px 4px; border-bottom: 1px solid var(--line); }
 .models td:not(:first-child), .models th:not(:first-child) { text-align: right; }
 .conf { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
-.conf-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); position: relative; overflow: hidden; box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3); }
-.conf-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7cc4ff, var(--tint-blue)); border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.conf-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; box-shadow: none; }
+.conf-bar i { position: absolute; inset: 0 auto 0 0; background: var(--ifl-accent-fill); border-radius: 3px; box-shadow: none; }
 .conf b { font-size: 14px; }
 
 /* ---------- radar ---------- */
@@ -1496,8 +1296,8 @@ a.acct-btn { text-decoration: none; }
 @starting-style { .wind-flow:not([hidden]) { opacity: 0; } }
 /* (on the vector map, drawn into the map itself, under its names: radar.js intoMap) */
 .wind-flow.in-map { visibility: hidden; }
-.radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
-.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
+.radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: none; }
+.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: var(--map-ink); background-color: var(--map-panel); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
 .radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
 /* its word, Radar or Forecast: the one not said lies over it, out of sight (the radar's above, as it's before; the
    forecast's below), so going from one to the other, one rises away as the other rises in, and back (radar.js chipTo) */
@@ -1510,14 +1310,15 @@ a.acct-btn { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .radar-chip .rc-l { transition: opacity 0.2s; transform: none !important; filter: none !important; } }
 /* "Tap to explore": at the map's foot with its scale and its ©, as far in from the edge, the same height as the ©; in
    once the credits have folded away (they share the foot) */
-.radar-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: inline-flex; align-items: center; height: 26px; padding: 0 12px; white-space: nowrap; font-size: 12.5px; font-weight: 600; border-radius: 999px; background-color: rgba(14, 22, 38, 0.5); }
+.radar-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: inline-flex; align-items: center; height: 26px; padding: 0 12px; white-space: nowrap; font-size: 12.5px; font-weight: 600; border-radius: 999px; background-color: var(--map-panel);  color: var(--map-ink); }
 .radar-hint:not([hidden]) { animation: hint-in 0.45s var(--glide) both; }
 @keyframes hint-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .radar-hint:not([hidden]) { animation: none; } }
 /* the dock, as Apple's Weather map has it: play, and what's on show (its kind over its day and time), then the
    timeline; in the card under the map, full screen a glass panel over the map's foot */
-.radar { --fill: #fff; --rest: rgba(255, 255, 255, 0.18); --tick: rgba(255, 255, 255, 0.5); --panel: rgba(26, 30, 40, 0.74); --ink: #fff; --ink-2: var(--text-2); }
-.radar.light-map.radar-big { --fill: #1c1c1e; --rest: rgba(60, 60, 67, 0.16); --tick: rgba(60, 60, 67, 0.4); --panel: rgba(250, 250, 252, 0.8); --ink: #1c1c1e; --ink-2: rgba(60, 60, 67, 0.72); }
+.radar { --fill: var(--text); --rest: var(--line); --tick: var(--text-3); --panel: var(--ifl-surface); --ink: var(--text); --ink-2: var(--text-2);  --map-panel: #191c19;  --map-ink: #f4f7f2;  --map-line: rgb(244 247 242 / .12); }
+.radar.light-map { --map-panel: #fff; --map-ink: #171a18; --map-line: rgb(24 31 26 / .1); }
+.radar.light-map.radar-big { --fill: var(--text); --rest: var(--line); --tick: var(--text-3); --panel: var(--ifl-surface); --ink: var(--text); --ink-2: var(--text-2); }
 .radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin-top: 12px; }
 .radar-bar { display: contents; }
 .radar-play { grid-area: play; }
@@ -1576,9 +1377,9 @@ a.acct-btn { text-decoration: none; }
 .radar:not(.radar-big) .radar-legend.tight { font-size: 10.5px; }
 .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
 /* the wind's: the wind or its gusts (radar.js gustSwitch), a small segmented choice beside its colours */
-.rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.2); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); }
+.rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: var(--ifl-surface-2); box-shadow: none; }
 .rl-switch button { font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background-color 0.25s var(--glide), color 0.25s var(--glide); }
-.rl-switch button[aria-pressed="true"] { background-color: rgba(255, 255, 255, 0.22); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.rl-switch button[aria-pressed="true"] { background-color: var(--ifl-raised); color: var(--text); box-shadow: var(--ifl-shadow-control); }
 /* (small to look at, larger to tap: the wind's switch, the map's zoom, an insight's way in) */
 .rl-switch button { position: relative; }
 .rl-switch button::after { content: ""; position: absolute; inset: -8px 0; }
@@ -1589,11 +1390,11 @@ a.acct-btn { text-decoration: none; }
 
 /* full screen, as Apple's Weather map: the map to every edge, an × top left, its controls top right, the legend in a
    panel under the ×, and the dock in glass at the foot */
-.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: rgba(10, 16, 28, 0.9); --top: calc(env(safe-area-inset-top) + 12px);
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: var(--map-panel); --top: calc(env(safe-area-inset-top) + 12px);
   -webkit-backdrop-filter: none; backdrop-filter: none; }
 .radar.radar-big::before { display: none; }
 .radar.radar-big .card-title, .radar.radar-big .radar-note { display: none; }
-.radar.radar-big .radar-full { position: absolute; z-index: 600; top: var(--top); left: max(16px, env(safe-area-inset-left)); width: 44px; height: 44px; }
+.radar.radar-big .radar-full { position: absolute; z-index: 600; top: var(--top); left: max(16px, env(safe-area-inset-left)); width: 44px; height: 44px;  color: var(--map-ink);  background: var(--map-panel); }
 .radar.radar-big .radar-wrap { position: absolute; inset: 0; margin: 0; }
 .radar.radar-big .radar-map { height: 100%; border-radius: 0; box-shadow: none; }
 .radar.radar-big .map-ctl { top: var(--top); right: max(16px, env(safe-area-inset-right)); }
@@ -1602,9 +1403,9 @@ a.acct-btn { text-decoration: none; }
 .radar.radar-big .map-scale { left: max(16px, env(safe-area-inset-left)); }
 .radar.radar-big .radar-credit { right: max(16px, env(safe-area-inset-right)); }
 .radar.radar-big .radar-legend, .radar.radar-big .radar-dock {
-  position: absolute; z-index: 600; color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px -8px rgba(0, 0, 0, 0.35); }
-.radar.radar-big .radar-legend { top: calc(var(--top) + 58px); left: max(16px, env(safe-area-inset-left)); margin: 0; flex-direction: column; gap: 10px; padding: 12px 16px 12px 14px; border-radius: 18px; font-size: 13px; color: var(--ink-2); }
+  position: absolute; z-index: 600; color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-card); }
+.radar.radar-big .radar-legend { top: calc(var(--top) + 58px); left: max(16px, env(safe-area-inset-left)); margin: 0; flex-direction: column; gap: 10px; padding: 12px 16px 12px 14px; border-radius: var(--ifl-radius-row, 16px); font-size: 13px; color: var(--ink-2); }
 .radar.radar-big .rl-title { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
 .radar.radar-big .rl-rain { flex: none; display: flex; gap: 10px; height: 132px; }
 .radar.radar-big .rl-rain .rl-bar { width: 6px; height: 100%; background: linear-gradient(0deg, var(--stops)); }
@@ -1619,7 +1420,7 @@ a.acct-btn { text-decoration: none; }
 .radar.radar-big .rl-switch button[aria-pressed="true"] { color: var(--ink); }
 .radar.light-map.radar-big .rl-switch { background-color: rgba(0, 0, 0, 0.07); }
 .radar.light-map.radar-big .rl-switch button[aria-pressed="true"] { background-color: #fff; }
-.radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: 28px; }
+.radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: var(--ifl-radius-card, 26px); }
 /* (a phone on its side: too short for the legend over the dock, so the dock beside the legend's column instead (the legend
    no wider than that: a long title in two lines), the scale in the corner under the legend, and the © just over the
    dock, clear of the map's buttons above it. Not on a screen too narrow for the dock beside it: a short one upright) */
@@ -1629,8 +1430,8 @@ a.acct-btn { text-decoration: none; }
   .radar.radar-big .map-scale { bottom: calc(env(safe-area-inset-bottom) + 14px); }
   .radar.radar-big .radar-credit { bottom: calc(env(safe-area-inset-bottom) + 140px); }
 }
-.radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: rgba(120, 120, 128, 0.16); color: #1c1c1e; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-.radar.light-map.radar-big .radar-full { background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
+.radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: var(--ifl-surface-2); color: var(--text); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.radar.light-map.radar-big .radar-full { background-color: var(--map-panel); box-shadow: var(--ifl-shadow-control); }
 .radar.radar-big .radar-status { display: none; }
 /* (and what's missing, under it, the same way) */
 .radar-status { display: grid; grid-template-rows: 1fr; margin-top: 8px;
@@ -1651,34 +1452,34 @@ body.no-scroll { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
 /* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
 .map-ctl { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42);  background: var(--map-panel);  box-shadow: var(--ifl-shadow-control); }
 .map-zoom > :first-child { border-radius: 22px 22px 0 0; }
 .map-zoom > :last-child { border-radius: 0 0 22px 22px; }
-.map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
-.map-zoom button + button { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--map-ink); cursor: pointer; }
+.map-zoom button + button { box-shadow: inset 0 1px 0 var(--map-line); }
 .map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
 /* the map's buttons give under a finger and spring back, as the rest do */
-.map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s; }
+.map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s;  color: var(--map-ink); }
 .map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
 @media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
 .map-in, .map-out { position: relative; }
 .map-in::after, .map-out::after, :is(.radar-centre, .map-layers)::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
-:is(.radar-centre, .map-layers) { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
+:is(.radar-centre, .map-layers) { width: 36px; height: 36px; display: grid; place-items: center; color: var(--map-ink); border-radius: 50%; cursor: pointer; padding: 0; background-color: var(--map-panel); }
 :is(.radar-centre, .map-layers) svg { position: relative; z-index: 3; }
 /* the map's layers, chosen from a little menu of glass by its button (radar.js setKind) */
 .layer-wrap { position: relative; }
 .layer-menu { position: absolute; right: 46px; top: 0; z-index: 600; display: flex; flex-direction: column; min-width: 156px; padding: 5px; border-radius: 16px;
-  background-color: rgba(14, 22, 38, 0.72); -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 10px 26px -8px rgba(0, 0, 0, 0.5);
+  background-color: var(--map-panel); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--ifl-shadow-card);
   transform-origin: 100% 0; animation: menu-in 0.22s var(--glide); }
 .layer-menu[hidden] { display: none; }
 /* (it closes the way it opened, a little quicker: radar.js shut) */
 @keyframes menu-in { from { opacity: 0; transform: scale(0.92); } }
-.layer-menu button { -webkit-appearance: none; appearance: none; border: 0; background: none; color: #fff; font: inherit; font-size: 14px; font-weight: 500; text-align: left; padding: 9px 12px; border-radius: 11px; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 40px; transition: background-color var(--dur-fast); }
+.layer-menu button { -webkit-appearance: none; appearance: none; border: 0; background: none; color: var(--map-ink); font: inherit; font-size: 14px; font-weight: 500; text-align: left; padding: 9px 12px; border-radius: var(--ifl-radius-row, 16px); cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 44px; transition: background-color var(--dur-fast); }
 @media (hover: hover) and (pointer: fine) { .layer-menu button:not([aria-pressed="true"]):hover { background-color: rgba(255, 255, 255, 0.08); } .radar.light-map .layer-menu button:not([aria-pressed="true"]):hover { background-color: rgba(0, 0, 0, 0.05); } }
 .layer-menu button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.16); font-weight: 650; }
 .layer-menu button[aria-pressed="true"]::after { content: ""; width: 5px; height: 10px; margin: -3px 2px 0 auto; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.layer-menu button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.radar.light-map .layer-menu { background-color: rgba(255, 255, 255, 0.84); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 26px -8px rgba(0, 0, 0, 0.25); }
+.layer-menu button:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -2px; }
+.radar.light-map .layer-menu { background-color: var(--map-panel); box-shadow: var(--ifl-shadow-card); }
 .radar.light-map .layer-menu button { color: #1c1c1e; }
 .radar.light-map .layer-menu button[aria-pressed="true"] { background: rgba(0, 0, 0, 0.07); }
 @media (prefers-reduced-motion: reduce) { .layer-menu { animation: c-fade 0.15s var(--ease); } }
@@ -1734,7 +1535,7 @@ body.no-scroll { overflow: hidden; }
 @starting-style { .map-other .mo-b { opacity: 0; scale: 0.6; } }
 .map-other:active .mo-b { transform: translateX(-50%) scale(0.92); }
 .map-other:focus-visible { outline: none; }
-.map-other:focus-visible .mo-b { outline: 2px solid #fff; outline-offset: 2px; }
+.map-other:focus-visible .mo-b { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 /* a reading where the map's tapped (radar.js readAt): the layer's say there, and any warning it's in, over a dot */
 .map-read { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
 .mr-b { position: absolute; left: 0; bottom: 12px; transform: translateX(calc(-50% + var(--dx, 0px))); display: grid; gap: 2px; width: max-content; max-width: 172px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
@@ -1771,13 +1572,13 @@ body.no-scroll { overflow: hidden; }
 .map-pin:not([data-on="1"]) .mp-name { opacity: 0; }
 .map-pin-at { width: 0 !important; height: 0 !important; }
 /* the radar's chip (Radar or Forecast): said in the dock now, as Apple's map says it; kept for its state */
-.radar-chip { display: none !important; }
+.radar-chip { display: none !important;  color: var(--map-ink);  background-color: var(--map-panel); }
 /* on the day map, the controls on it in light glass, their ink dark, as Apple's */
 .radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
 /* (and so till radar.js has come and said which, as the card comes near: data-layer, light-map; app.js radarLater) */
 @media (prefers-color-scheme: light) { .radar:not([data-layer]) .radar-map { background: #f2f1ee; } }
 .radar.light-map .map-zoom, .radar.light-map :is(.radar-centre, .map-layers), .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
-  background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
+  background-color: var(--map-panel); color: var(--map-ink); box-shadow: var(--ifl-shadow-control); }
 .radar.light-map .map-zoom button { color: #1c1c1e; }
 .radar.light-map .map-zoom button + button { box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.1); }
 .radar.light-map .map-zoom button:disabled { color: rgba(60, 60, 67, 0.3); }
@@ -1785,14 +1586,14 @@ body.no-scroll { overflow: hidden; }
 .radar.light-map .base-tiles { filter: saturate(0.2) brightness(1.04) contrast(0.92); }
 /* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
 .radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 13px; cursor: pointer;
-  color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: transform 0.42s var(--spring), filter 0.25s; }
+  color: var(--map-ink); font: inherit; font-size: 11px; line-height: 1; background-color: var(--map-panel); transition: transform 0.42s var(--spring), filter 0.25s; }
 .radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
 /* (its names in a line or two (radar.js credited), in glass reaching left from the ©: the © itself never changes size, so
    nothing moves as they fold away into it, clipped back to it) */
 .radar-credit .rc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
-  color: inherit; background-color: rgba(14, 22, 38, 0.62); -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35);
+  color: inherit; background-color: var(--map-panel); -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); box-shadow: var(--ifl-shadow-control);
   clip-path: inset(0 round 13px); transition: clip-path 0.6s var(--glide), opacity 0.3s 0.25s; pointer-events: none; }
-.radar.light-map .radar-credit .rc-t { background-color: rgba(255, 255, 255, 0.82); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+.radar.light-map .radar-credit .rc-t { background-color: var(--map-panel); box-shadow: var(--ifl-shadow-control); }
 .radar-credit.folded .rc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
 .radar-credit:active { transform: scale(0.88); filter: brightness(1.18); transition-duration: 0.1s; }
 @media (hover: hover) { .radar-credit.folded:hover .rc-t, .radar-credit.folded:focus-visible .rc-t { clip-path: inset(0 round 13px); opacity: 1; transition: clip-path 0.4s var(--glide), opacity 0.15s; } }
@@ -1835,7 +1636,7 @@ body.no-scroll { overflow: hidden; }
 
 /* ---------- accuracy ---------- */
 .models.acc td { white-space: nowrap; }
-.best { margin-left: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; vertical-align: 1px; display: inline-block; }
+.best { margin-left: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background-color: var(--ifl-accent-fill); color: var(--ifl-on-accent); vertical-align: 1px; display: inline-block; }
 .tuned-note { color: #cfe7ff; margin: -4px 0 12px; }
 .models .tuned-row td { color: #cfe7ff; font-weight: 650; }
 
@@ -1853,17 +1654,17 @@ body.no-scroll { overflow: hidden; }
    was as it fades, never in the way, never read out: app.js ghost) */
 .ghost { position: absolute; margin: 0; pointer-events: none; box-sizing: border-box; }
 /* a group of rows, as iOS's Settings has them: one rounded pane, a hairline between rows (from where the words start) */
-.grp { list-style: none; margin: 0; padding: 0; border-radius: 22px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08); overflow: hidden; }
+.grp { list-style: none; margin: 0; padding: 0; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2);
+  box-shadow: none; overflow: hidden; }
 .grp:empty { display: none; }
 .grp + .grp { margin-top: 18px; }
-.grp > li + li { background: linear-gradient(rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.11)) no-repeat 16px 0 / calc(100% - 16px) 0.5px; }
+.grp > li + li { background: linear-gradient(var(--line), var(--line)) no-repeat 16px 0 / calc(100% - 16px) 1px; }
 .grp > li > label.switch, .grp > li > label.at-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; font-size: 16px; cursor: pointer; }
 .grp-head { margin: 24px 16px 7px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
 .grp-foot { margin: 7px 16px 0; font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .grp-foot + .grp, .grp-foot + fieldset { margin-top: 22px; }
 /* (signing out: one row of its own, its words in red, in the middle) */
-.grp-out { display: block; width: 100%; min-height: 52px; padding: 0 16px; border: 0; background: none; font: inherit; font-size: 16px; color: #ff6961; text-align: center; cursor: pointer; transition: background-color var(--dur-fast); }
+.grp-out { display: block; width: 100%; min-height: 52px; padding: 0 16px; border: 0; background: none; font: inherit; font-size: 16px; color: var(--alert); text-align: center; cursor: pointer; transition: background-color var(--dur-fast); }
 .grp-out:disabled { opacity: 0.55; cursor: default; }
 .set-page .note { margin: 14px 16px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
 .set-page .note:empty { display: none; }
@@ -1878,10 +1679,10 @@ body.no-scroll { overflow: hidden; }
   transition: background-color 0.2s; }
 .folder:active { background-color: rgba(255, 255, 255, 0.09); transition-duration: 0.05s; }
 @media (hover: hover) and (pointer: fine) { .folder:hover { background-color: rgba(255, 255, 255, 0.06); } .grp-out:hover { background-color: rgba(255, 105, 97, 0.1); } .act-open:hover { background-color: rgba(255, 255, 255, 0.06); } }
-.folder:focus-visible { outline: 2px solid #fff; outline-offset: -3px; border-radius: 16px; }
+.folder:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -3px; border-radius: 16px; }
 .folder::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 0 2px; border: solid var(--text-3); border-width: 2px 2px 0 0; transform: rotate(45deg); }
-.f-ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: #fff; background: linear-gradient(180deg, var(--c1), var(--c2));
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.35); }
+.f-ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--ifl-on-accent); background: var(--ifl-accent-gradient);
+  box-shadow: none; }
 .f-ic[data-c="red"] { --c1: #ff6a5f; --c2: #e5352b; }
 .f-ic[data-c="orange"] { --c1: #ffb340; --c2: #f58a00; }
 .f-ic[data-c="green"] { --c1: #52d973; --c2: #25ad49; }
@@ -1895,12 +1696,12 @@ body.no-scroll { overflow: hidden; }
 /* Arrange your page: each card a row, a switch to show it, and a handle to drag it by (settings.js drawArrange) */
 .arrange li { position: relative; display: flex; align-items: center; }
 .grp.arrange > li > label.switch { padding-right: 6px; }
-.arrange li.dragging { z-index: 2; background: rgba(60, 72, 96, 0.96); border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4); transition: none !important; }
+.arrange li.dragging { z-index: 2; background: var(--ifl-raised); border-radius: 14px; box-shadow: var(--ifl-shadow-card); transition: none !important; }
 .arrange li.shifting { transition: transform 0.25s var(--glide); }
 .arrange .switch { flex: 1; min-width: 0; }
 .arr-grip { flex: none; width: 44px; height: 48px; margin-left: 2px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: grab; touch-action: none; }
 .arr-grip:active { cursor: grabbing; color: var(--text); }
-.arr-grip:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 12px; }
+.arr-grip:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -4px; border-radius: 12px; }
 .arrange li.is-off .switch { color: var(--text-3); }
 /* a card switched off there, left off the page */
 main [data-off] { display: none !important; }
@@ -1908,12 +1709,13 @@ main [data-off] { display: none !important; }
 .f-v { flex: 1; min-width: 0; text-align: right; color: var(--text-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* signing in, a folder of its own */
 .pill-btn { min-height: 44px; border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.pill-btn.primary, .retry .pill-btn { background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); }
 .pill-btn > * { position: relative; z-index: 3; }
 /* an activity: its name and limits (a way to its own page), and its switch */
 .act { display: flex; align-items: center; }
 .act-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 4px 8px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 16px; transition: background-color var(--dur-fast); }
 .act-open:active { background-color: rgba(255, 255, 255, 0.08); }
-.act-open:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.act-open:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: -3px; }
 .act-icon { flex: none; display: inline-flex; color: var(--text-2); }
 .act-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .act-txt b { font-size: 16px; font-weight: 600; }
@@ -1926,60 +1728,39 @@ main [data-off] { display: none !important; }
 fieldset.opt label.fld { align-items: stretch; }
 .fld.wide { grid-column: span 2; }
 .fld-in { display: flex; align-items: center; gap: 6px; }
-.fld input, .fld select { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 12px; padding: 9px 11px; color: #fff; font-size: 15px; width: 100%; min-width: 0; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22); }
-.fld input:focus, .fld select:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(159, 208, 255, 0.45); }
-.fld input:-webkit-autofill { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22), inset 0 0 0 100px rgba(118, 118, 128, 0.26); }
-.fld input:-webkit-autofill:focus { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 0 0 100px rgba(118, 118, 128, 0.26), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.fld input, .fld select { background: var(--ifl-surface-2); border: 0; border-radius: var(--ifl-radius-row, 16px); padding: 9px 11px; color: var(--text); font-size: 16px; width: 100%; min-width: 0; box-shadow: inset 0 0 0 1px var(--line);  min-height: 44px; }
+.fld input:focus, .fld select:focus { outline: none; box-shadow: 0 0 0 2px var(--tint-blue); }
+.fld input:-webkit-autofill { box-shadow: inset 0 0 0 100px var(--ifl-surface-2); }
+.fld input:-webkit-autofill:focus { box-shadow: inset 0 0 0 100px var(--ifl-surface-2), 0 0 0 2px var(--tint-blue); }
 .fld small { color: var(--text-3); }
 .act-btns { grid-column: span 2; display: flex; gap: 16px; align-items: center; }
 /* (both a finger's 44 points, and Remove at the other end from Done) */
 .act-btns .pill-btn { min-height: 44px; }
 .act-btns .link { min-height: 44px; padding: 0 10px; margin-left: auto; }
 .link.danger { color: #ffb3ad; }
-select option { color: #fff; background: #1c2434; }
+select option { color: var(--text); background: var(--ifl-surface); }
 
 /* ---------- a word under the bar ---------- */
 /* something just done that couldn't be (the location not found, say): said under the bar for a few seconds, in glass,
    where it was asked for, then away (app.js toast) */
 .toast { position: fixed; z-index: 30; top: calc(env(safe-area-inset-top) + 74px); left: 50%; translate: -50% 0; width: max-content; max-width: min(420px, calc(100vw - 32px));
-  padding: 10px 16px; border-radius: 18px; font-size: 14px; line-height: 1.35; font-weight: 600; color: #fff; text-align: center; pointer-events: none;
-  background-color: rgba(26, 34, 52, 0.82); -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 12px 30px -10px rgba(0, 0, 0, 0.5); }
+  padding: 10px 16px; border-radius: 18px; font-size: 14px; line-height: 1.35; font-weight: 600; color: var(--text); text-align: center; pointer-events: none;
+  background-color: rgba(26, 34, 52, 0.82); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-card);  background: var(--ifl-raised); }
 .toast:empty { display: none; }
 /* (over an open sheet too, where the browser has a top layer: app.js toast; there, only where the rule above puts it) */
 .toast[popover] { right: auto; bottom: auto; margin: 0; border: 0; overflow: visible; }
 
-/* ---------- when transparency is turned down, or contrast up ---------- */
-@media (prefers-reduced-transparency: reduce) {
-  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-  .map-zoom, :is(.radar-centre, .map-layers), .radar-credit, .top::before, .radar-dry {
-    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
-  .top::before { background: rgb(20, 28, 44); }
-  .radar.radar-big .radar-legend, .radar.radar-big .radar-dock { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(28, 32, 42); }
-  .radar.light-map.radar-big .radar-legend, .radar.light-map.radar-big .radar-dock { background-color: rgb(248, 248, 250); }
-  .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgb(52, 62, 80); }
-  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
-  .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
-  .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
-  .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
-  .icon-btn, .place, .pill-btn, .radar-chip, .radar-hint, fieldset.opt label, :is(.radar-centre, .map-layers), .map-zoom,
-  .radar-credit { background-color: rgb(52, 62, 80); }
-  /* (the map's layers menu, its credits, and a word under the bar: solid too, nothing on the map showing through) */
-  .layer-menu, .radar-credit .rc-t, .toast { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-color: rgb(28, 36, 52); }
-  .radar.light-map :is(.layer-menu, .radar-credit .rc-t) { background-color: rgb(248, 248, 250); }
-}
+/* Solid surfaces are the default; enhanced contrast strengthens their boundaries. */
 @media (prefers-contrast: more) {
-  :root { --text-2: #fff; --text-3: rgba(255, 255, 255, 0.88); --line: rgba(255, 255, 255, 0.3); }
-  /* (the places either side's pages too, which work their tint out again by their own skies: index.html .pv) */
-  body, .pv { --tint: rgba(10, 14, 24, 0.7); }
-  dialog.sheet, .c-tip { --tint: rgba(10, 14, 24, 0.85); }
-  .card::before, .ins::before, .tile::before, .icon-btn::before, .place::before { background: rgba(255, 255, 255, 0.6); }
+  :root { --text-2: var(--text); --text-3: var(--text); --line: color-mix(in srgb, var(--text) 45%, transparent); }
+  .card, .ins, .tile, dialog.sheet { outline: 1px solid var(--line); }
 }
 
 /* signing in, as on every page of the site: "or with your email" between a passkey and the form; a forgotten password and
    a new account on the account's own page */
 .acct-new { margin: 0; text-align: center; font-size: 14px; color: var(--text-2, rgba(255, 255, 255, 0.7)); }
-.acct-new a { color: #9cc6ff; font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }
+.acct-new a { color: var(--tint-blue); font-weight: 600; text-decoration: none; transition: opacity var(--dur-fast); }
 
 /* ---------- signing in on the account's page: the way there, and back ---------- */
 /* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
@@ -1989,10 +1770,7 @@ select option { color: #fff; background: #1c2434; }
    account's card, your places ticked off under it as they go with the account (app.js arriveFrom). None of it takes a tap:
    a tap goes to what's under it */
 /* (the account page's sky exactly, and its dawn) */
-:root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
-  --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
-  --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
-@media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
+:root { --acct-heaven: var(--ifl-page); --acct-dawn: linear-gradient(transparent, transparent); }
 .handoff { position: fixed; inset: 0; width: auto; height: auto; margin: 0; padding: 0; border: 0; overflow: hidden; background: none; color: var(--text); pointer-events: none; }
 .handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
 .back-in { position: fixed; inset: 0; z-index: 50; pointer-events: none;
@@ -2013,8 +1791,8 @@ select option { color: #fff; background: #1c2434; }
 .acct-moved { display: grid; gap: 8px; margin: 0 4px; }
 .acct-moved p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-2); }
 .acct-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.acct-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 30px; padding: 0 12px 0 6px; border-radius: 999px; font-size: 13.5px; font-weight: 650; color: #fff;
-  background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); }
+.acct-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 30px; padding: 0 12px 0 6px; border-radius: 999px; font-size: 13.5px; font-weight: 650; color: var(--text);
+  background: var(--ifl-surface-2); box-shadow: none; text-shadow: none; }
 .acct-chip > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-chip.more { padding: 0 12px; background: rgba(255, 255, 255, 0.1); }
 .acct-tick { flex: none; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--good); box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.4); }
@@ -2036,52 +1814,34 @@ html { touch-action: pan-x pan-y; }
 /* InFlite's menu, the same in every app (.tools/inflite/menu.js): its own colours, type and shapes, whatever the
    app's, light or dark as the app is (data-theme, else the device) */
 .ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer {
-  --ifm-sheet: rgba(250, 250, 253, 0.86);
-  --ifm-panel: rgba(255, 255, 255, 0.9);
-  --ifm-line: rgba(60, 60, 67, 0.14);
-  --ifm-text: #11131c;
-  --ifm-text-2: rgba(60, 60, 67, 0.62);
-  --ifm-text-3: rgba(60, 60, 67, 0.36);
-  --ifm-press: rgba(120, 120, 128, 0.14);
-  --ifm-red: #e5342a;
-  --ifm-red-bg: rgba(229, 52, 42, 0.1);
-  --ifm-green: #1f9d55;
-  --ifm-dim: rgba(14, 18, 40, 0.14);
-  --ifm-tint: #2f6be6;
-  --ifm-warn: #c86a00;
+  --ifm-sheet: var(--ifl-surface); --ifm-panel: var(--ifl-surface-2);
+  --ifm-line: var(--ifl-line); --ifm-text: var(--ifl-text);
+  --ifm-text-2: var(--ifl-muted); --ifm-text-3: var(--ifl-subtle);
+  --ifm-press: var(--ifl-press); --ifm-red: #c73229; --ifm-red-bg: rgba(199, 50, 41, 0.1);
+  --ifm-green: var(--ifl-accent-ink); --ifm-dim: rgba(14, 18, 16, 0.2);
+  --ifm-tint: var(--ifl-accent-ink); --ifm-warn: #9b5900;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-    --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-    --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-    --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+    --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
   }
 }
 :root[data-theme="dark"] :is(.ifm-layer, .ifm-note, .ifa-layer, .ifl-tabs, .ifl-back, .ifb-layer) {
-  --ifm-sheet: rgba(36, 38, 52, 0.86); --ifm-panel: rgba(56, 58, 74, 0.72); --ifm-line: rgba(235, 235, 245, 0.12);
-  --ifm-text: #f4f5fa; --ifm-text-2: rgba(235, 235, 245, 0.62); --ifm-text-3: rgba(235, 235, 245, 0.34);
-  --ifm-press: rgba(235, 235, 245, 0.1); --ifm-red: #ff5a50; --ifm-red-bg: rgba(255, 90, 80, 0.16); --ifm-green: #4fdc8e; --ifm-warn: #ffb44a; --ifm-dim: rgba(0, 0, 0, 0.32);
+  --ifm-red: #ff857c; --ifm-red-bg: rgba(255, 133, 124, 0.12); --ifm-warn: #ffbf69; --ifm-dim: rgba(0, 0, 0, 0.46);
 }
-/* each app's own colour: its focus rings, and Update */
-.ifm-in-chat { --ifm-tint: #2b6fe6; }
-.ifm-in-weather { --ifm-tint: #3a86f0; }
-.ifm-in-fitness { --ifm-tint: #f0542e; }
-.ifm-in-markets { --ifm-tint: #12a46a; }
-.ifm-in-mail { --ifm-tint: #1aa58f; }
-.ifm-in-account { --ifm-tint: #5b4fe0; }
 
 .ifm-layer { position: fixed; inset: 0; z-index: 2147483000; background: transparent; transition: background 0.3s ease, backdrop-filter 0.3s ease; }
 .ifm-layer.open { background: var(--ifm-dim); -webkit-backdrop-filter: blur(3px) saturate(120%); backdrop-filter: blur(3px) saturate(120%); }
 .ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
   text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
 .ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
-.ifm-lit { box-shadow: 0 0 0 2.5px rgba(47, 107, 230, 0.5), 0 0 18px 2px rgba(47, 107, 230, 0.3) !important; border-radius: 50%; }
+.ifm-lit { box-shadow: 0 0 0 2px var(--ifl-accent-ink) !important; border-radius: 50%; }
 
 .ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
-  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(44px) saturate(200%); backdrop-filter: blur(44px) saturate(200%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 2px 6px rgba(20, 30, 60, 0.06), 0 16px 36px -14px rgba(20, 30, 80, 0.32);
+  color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 12px 36px -16px rgba(14, 18, 16, 0.24);
   transform: scale(0.3); opacity: 0; transition: transform 0.5s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.22s; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
 .ifm-pop.open { transform: none; opacity: 1; }
 .ifm-pop.closing { transform: scale(0.5); opacity: 0; transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s; }
@@ -2091,7 +1851,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-card { display: grid !important; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 12px 14px 12px 12px !important; border-radius: 24px; transition: background 0.2s; }
 .ifm-card:active { background: var(--ifm-press) !important; }
 .ifm-photo { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 20px; font-weight: 600; color: #fff;
-  background: linear-gradient(160deg, #8aa0c8, #5a6f99); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(20, 30, 60, 0.45); }
+  background: #556253; box-shadow: none; }
 .ifm-photo > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit; box-shadow: none !important; }
 .ifm-photo img { object-fit: cover; display: block; }
 .ifm-who { min-width: 0; }
@@ -2101,20 +1861,21 @@ html { touch-action: pan-x pan-y; }
 
 /* the app's own rows */
 .ifm-rows { display: grid; gap: 6px; }
-.ifm-row.off { opacity: 0.5; }
-.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: 0 0 0 0.5px var(--ifm-line); }
+.ifm-row.off { color: var(--ifm-text-2); }
+.ifm-row.off .ifm-ic { opacity: 0.55; }
+.ifm-grp { border-radius: 24px; overflow: hidden; background: var(--ifm-panel); box-shadow: none; }
 .ifm-row { position: relative; width: 100% !important; height: 52px !important; padding: 0 14px 0 12px !important; display: grid !important; grid-template-columns: 30px minmax(0, 1fr) auto auto; column-gap: 12px; align-items: center; }
 .ifm-row.go:active { background: var(--ifm-press) !important; }
 .ifm-row + .ifm-row::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 0.5px; background: var(--ifm-line); }
 .ifm-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; }
 .ifm-ic svg { width: 17px; height: 17px; stroke-width: 2.1; }
-.ifm-ic.red { background: linear-gradient(160deg, #ff6b5e, #e5342a); }
-.ifm-ic.blue { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
-.ifm-ic.green { background: linear-gradient(160deg, #4fd27b, #22a352); }
-.ifm-ic.orange { background: linear-gradient(160deg, #ffb340, #f27a12); }
-.ifm-ic.indigo { background: linear-gradient(160deg, #8a7dff, #5546e0); }
-.ifm-ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
-.ifm-ic.teal { background: linear-gradient(160deg, #4fd6c4, #169b8f); }
+.ifm-ic.red { background: #e85850; }
+.ifm-ic.blue { background: #548cd4; }
+.ifm-ic.green { background: #2da75b; }
+.ifm-ic.orange { background: #df9527; }
+.ifm-ic.indigo { background: #8a76c8; }
+.ifm-ic.grey { background: #7b837b; }
+.ifm-ic.teal { background: #29988b; }
 .ifm-l { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ifm-val { font-size: 15px; color: var(--ifm-text-2); white-space: nowrap; }
 /* (its own name: an app's .warn, a banner of its own, isn't this) */
@@ -2123,7 +1884,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-switch { position: relative; width: 51px !important; height: 31px !important; border-radius: 16px !important; background: rgba(120, 120, 128, 0.2) !important; transition: background 0.25s; grid-column: 3 / 5; }
 .ifm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.35s cubic-bezier(0.32, 1.25, 0.5, 1); }
-.ifm-switch[aria-checked="true"] { background: #34c759 !important; }
+.ifm-switch[aria-checked="true"] { background: var(--ifl-accent-gradient) !important; }
 .ifm-switch[aria-checked="true"]::after { transform: translateX(20px); }
 
 /* its version, and Sign Out */
@@ -2133,7 +1894,7 @@ html { touch-action: pan-x pan-y; }
 .ifm-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ifm-green); }
 .ifm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ifm-foot .ifm-upd { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px !important; border-radius: 16px !important;
-  background: rgba(47, 107, 230, 0.14) !important; background: color-mix(in srgb, var(--ifm-tint) 15%, transparent) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
+  background: var(--ifl-accent-wash) !important; color: var(--ifm-tint) !important; font-size: 14px; font-weight: 600; position: relative; }
 .ifm-foot .ifm-upd svg { width: 15px; height: 15px; stroke-width: 2.2; }
 .ifm-foot .ifm-upd::after { content: ""; position: absolute; inset: -6px -2px; }
 .ifm-foot .ifm-out { flex: none; position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center;
@@ -2146,22 +1907,22 @@ html { touch-action: pan-x pan-y; }
 .ifa-layer { position: fixed; inset: 0; z-index: 2147483002; display: flex; align-items: flex-end; justify-content: center; background: var(--ifm-dim); opacity: 0; transition: opacity 0.3s; }
 .ifa-layer.on { opacity: 1; }
 .ifa-sheet { box-sizing: border-box; width: min(520px, 100%); padding: 26px 22px calc(env(safe-area-inset-bottom, 0px) + 22px); border-radius: 34px 34px 0 0; text-align: center; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 -8px 30px rgba(14, 18, 16, 0.12);
   transform: translateY(100%); transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
 .ifa-layer.on .ifa-sheet { transform: none; }
 .ifa-ic { width: 62px; height: 62px; border-radius: 15px; }
 .ifa-t { margin: 12px 0 6px; font-size: 21px; font-weight: 700; letter-spacing: -0.2px; }
 .ifa-p { margin: 0 auto 18px; max-width: 340px; color: var(--ifm-text-2); font-size: 15px; line-height: 1.4; }
 .ifa-sheet button { appearance: none; -webkit-appearance: none; border: 0; font: inherit; cursor: pointer; display: block; width: 100%; -webkit-tap-highlight-color: transparent; }
-.ifa-go { height: 50px; border-radius: 25px; background: var(--ifm-tint); color: #fff; font-size: 17px; font-weight: 600; }
+.ifa-go { height: 50px; border-radius: 25px; background: var(--ifl-accent-gradient); color: var(--ifl-on-accent); font-size: 17px; font-weight: 600; }
 .ifa-go[disabled] { opacity: 0.6; }
 .ifa-later { margin-top: 8px; height: 44px; background: none; color: var(--ifm-tint); font-size: 16px; }
 @media (prefers-reduced-motion: reduce) { .ifa-sheet { transition: none; } }
 
 /* the note after an update */
 .ifm-note { position: fixed; z-index: 2147483001; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: flex; align-items: center; gap: 12px;
-  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 14px 34px -12px rgba(20, 30, 80, 0.4); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
+  padding: 10px 20px 10px 10px; border-radius: 22px; color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), var(--ifl-shadow-card); transform: translate(-50%, 20px) scale(0.92); opacity: 0;
   transition: transform 0.45s cubic-bezier(0.32, 1.25, 0.5, 1), opacity 0.25s; pointer-events: none; }
 .ifm-note.on { transform: translate(-50%, 0); opacity: 1; }
 .ifm-note-ic { width: 36px; height: 36px; border-radius: 9px; }
@@ -2192,21 +1953,21 @@ img, svg, a { -webkit-user-drag: none; }
 /* (the band behind the header once the page has scrolled: solid the whole way down the header, so nothing reads through
    behind its title, then fading out over the 16px below it) */
 .ifh::before { content: ""; position: absolute; inset: 0 0 -16px; z-index: -1; pointer-events: none; opacity: var(--p);
-  background: linear-gradient(to bottom, var(--ifh-band, rgba(240, 242, 250, 0.9)) calc(100% - 16px), transparent);
+  background: linear-gradient(to bottom, var(--ifl-page) calc(100% - 16px), transparent);
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
 /* (at the top, no band at all: its glass isn't worked out, frame after frame, behind whatever's over the page) */
 .ifh:not(.ifh-up)::before { display: none; }
 /* (the blur on the header itself, not its band: a header with a view-transition-name is a backdrop root, so a blur on
    anything inside it sees nothing of the page behind; on the header, it sees the page) */
-.ifh.ifh-up { -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
+.ifh.ifh-up { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ifh button { appearance: none; -webkit-appearance: none; margin: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.ifh button:focus-visible { outline: 2px solid var(--ifh-tint, #2f6be6); outline-offset: 3px; }
-.ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
-  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: #fff; background: var(--ifh-photo, linear-gradient(150deg, #8f7ff0, #5e48c8)) !important;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 6px 14px -6px rgba(20, 30, 70, 0.45); transition: transform 0.2s; }
+.ifh button:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
+.ifh .ifh-me { position: relative; flex: none; width: calc(42px - 8px * var(--p)); height: calc(42px - 8px * var(--p)); padding: 0 !important; border-radius: 50% !important; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(16px - 3px * var(--p)); font-weight: 600; color: var(--ifh-photo-ink, #fff); background: var(--ifh-photo, #556253) !important;
+  box-shadow: var(--ifl-shadow-control); transition: transform 0.2s; }
 .ifh-me > * { width: 100% !important; height: 100% !important; margin: 0 !important; border-radius: 50% !important; font-size: inherit !important; box-shadow: none !important; }
 .ifh-me img { object-fit: cover; display: block; }
-.ifh-me.out { color: var(--ifh-tint, #2f6be6); background: var(--ifh-glass, rgba(255, 255, 255, 0.58)) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.ifh-me.out { color: var(--ifl-accent-ink); background: var(--ifl-surface) !important; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
 .ifh-me.out svg { width: 22px !important; height: 22px !important; stroke-width: 2; }
 .ifh-me:active, .ifh-act:active { transform: scale(0.92); }
 .ifh-t { min-width: 0; display: grid; }
@@ -2220,11 +1981,11 @@ img, svg, a { -webkit-user-drag: none; }
   font-size: 15px; line-height: 20px; color: var(--ifh-ink-2, inherit); white-space: nowrap; text-overflow: ellipsis; }
 .ifh-line:empty { height: 0; margin: 0; }
 .ifh-line i, .ifh-line em { font-style: normal; font-weight: 600; color: var(--ifh-tint, inherit); }
-.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifh-glass, rgba(255, 255, 255, 0.58));
-  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 6px 16px -10px rgba(20, 30, 70, 0.35); }
+.ifh-acts { display: flex; align-items: center; height: 44px; padding: 0 3px; border-radius: 999px; background: var(--ifl-surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: var(--ifl-shadow-control); }
 .ifh-acts:empty { display: none; }
-.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifh-tint, currentColor) !important; transition: transform 0.2s; }
+.ifh-act { position: relative; width: 38px; height: 38px; padding: 0 !important; border-radius: 50% !important; display: grid; place-items: center; color: var(--ifl-text) !important; transition: transform 0.2s; }
 .ifh-act svg { width: 22px; height: 22px; stroke-width: 2; }
 .ifh-act[disabled] { opacity: 0.4; }
 /* (a 44px target round each, over the capsule's padding) */
@@ -2243,12 +2004,12 @@ img, svg, a { -webkit-user-drag: none; }
 /* InFlite's Settings sheet, the same in every app: a round ‹ to go back on a page inside, a round ✕ to close on every one
    (.ifs-btn), and the first page opening on the app (.ifs-hero: its icon, its name, a line about it) */
 .ifs-btn { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-  color: inherit; background: rgba(120, 120, 128, 0.2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  color: inherit; background: var(--ifl-surface-2); -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifs-btn svg { width: 18px; height: 18px; stroke-width: 2.4; }
 .ifs-btn:active { transform: scale(0.9); }
 .ifs-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .ifs-hero { display: grid; justify-items: center; gap: 4px; padding: 4px 0 16px; text-align: center; }
-.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.ifs-hero img { width: 64px; height: 64px; border-radius: 15px; margin-bottom: 6px; box-shadow: var(--ifl-shadow-control); }
 .ifs-hero b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .ifs-hero span { font-size: 14px; opacity: 0.62; }
 
@@ -2257,28 +2018,26 @@ img, svg, a { -webkit-user-drag: none; }
    colour; it stays put as the pages cross-fade (its view-transition-name). The cross-fade between pages is asked for
    here, of every page (an at-rule can't be kept to html.ifl-hub); off the hub menu.js lets it go as a page is left */
 @view-transition { navigation: auto; }
-.ifl-tabs { --ifl-tab-ink: #3f4250; --ifl-tab-on: #1d55c4; --ifl-tabs-glass: rgba(250, 250, 253, 0.8);
+.ifl-tabs { --ifl-tab-ink: var(--ifl-muted); --ifl-tab-on: var(--ifl-on-accent); --ifl-tabs-glass: var(--ifl-surface-2);
   position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom, 0px) - var(--fix-gap, 0px)); z-index: 40; box-sizing: border-box; display: flex; gap: 0;
   width: calc(100% - 32px); max-width: var(--ift-max); height: var(--ift-h); margin: 0 auto; padding: var(--ift-pad); border-radius: 999px;
-  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px var(--ifm-line), 0 10px 28px -14px rgba(20, 30, 70, 0.45);
+  background: var(--ifl-tabs-glass); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifl-line), var(--ifl-shadow-control);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); } }
-:root[data-theme="dark"] .ifl-tabs { --ifl-tab-ink: #d2d3de; --ifl-tab-on: #9dbdff; --ifl-tabs-glass: rgba(36, 38, 52, 0.82); }
 html.ifl-hub .ifl-tabs { view-transition-name: ifl-tabs; }
 .ifl-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 999px;
   color: var(--ifl-tab-ink); font-size: var(--ift-label); font-weight: 600; letter-spacing: 0.1px; line-height: 1.1; text-decoration: none;
   -webkit-tap-highlight-color: transparent; transition: transform 0.2s, color 0.2s, background 0.2s; }
 .ifl-tab-ic { flex: none; width: var(--ift-icon); height: var(--ift-icon); stroke-width: 1.9; }
-.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: color-mix(in srgb, var(--ifl-tab-on) var(--ift-pill), transparent); }
+.ifl-tab[aria-current="page"] { color: var(--ifl-tab-on); background: var(--ifl-accent-gradient); }
 .ifl-tab:active { transform: scale(0.92); }
-.ifl-tab:focus-visible { outline: 2px solid var(--ifl-tab-on); outline-offset: -2px; }
+.ifl-tab:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: -2px; }
 /* (a phone on its side: the bar lower, its labels beside their icons) */
 @media (max-height: 500px) and (orientation: landscape) { .ifl-tabs { height: 48px; } .ifl-tab { flex-direction: row; gap: 6px; } .ifl-tab-ic { width: 20px; height: 20px; } }
 /* Back, in the place of an app's menu button at the hub (IFL.hub.back()) */
 .ifl-back { display: inline-flex; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; height: 42px; margin: 0; padding: 0 14px 0 8px;
   border: 0; border-radius: 999px; background: var(--ifm-panel); color: var(--ifm-tint); font: 600 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  box-shadow: 0 0 0 0.5px var(--ifm-line), 0 6px 14px -8px rgba(20, 30, 70, 0.35); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
+  box-shadow: var(--ifl-shadow-control); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .ifl-back svg { width: 20px; height: 20px; stroke-width: 2.4; }
 .ifl-back:active { transform: scale(0.94); }
 .ifl-back:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
@@ -2303,8 +2062,8 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   background: var(--ifm-dim); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .ifb-layer::backdrop { background: transparent; }
 .ifb { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 20px 16px; border-radius: 28px; color: var(--ifm-text);
-  background: var(--ifm-sheet); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), 0 0 0 0.5px var(--ifm-line), 0 24px 60px -20px rgba(10, 14, 40, 0.55); }
+  background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 0 0 1px var(--ifm-line), 0 16px 48px -20px rgba(14, 18, 16, 0.3); }
 .ifb-head { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; }
 .ifb-ic { flex: none; width: 26px; height: 26px; padding: 6px; border-radius: 50%; color: var(--ifm-red); background: var(--ifm-red-bg); stroke-width: 2.2; }
 .ifb-code { margin: 14px 0 6px; padding: 10px 12px; border-radius: 14px; background: var(--ifm-panel); box-shadow: inset 0 0 0 0.5px var(--ifm-line);
@@ -2320,7 +2079,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifb-who { margin: -6px 0 12px; color: var(--ifm-text-3); font-size: 12.5px; }
 .ifb-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .ifb-btn { flex: 1 1 auto; min-height: 44px; padding: 0 16px; text-align: center; border: 0; border-radius: 999px; color: var(--ifm-text); background: var(--ifm-press); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
-.ifb-go { flex-basis: 100%; color: #fff; background: var(--ifm-tint); }
+.ifb-go { flex-basis: 100%; color: var(--ifl-on-accent); background: var(--ifl-accent-gradient); }
 .ifb-btn:disabled { opacity: 0.6; cursor: default; }
 .ifb-btn:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
 .ifb-link { color: var(--ifm-tint, #4c8dff); font-weight: 600; white-space: nowrap; }
@@ -2329,10 +2088,10 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 /* the status banner (menu.js BANNER): under the app's header while something touching it is wrong, a link to the status
    page; amber for an incident, the app's tint for maintenance */
 .ifl-sb { --sb: #c26a00; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 2px 10px; margin: 6px 16px 10px; padding: 10px 6px 10px 14px; border-radius: 16px;
-  background: color-mix(in srgb, var(--sb) 12%, rgba(255, 255, 255, 0.78)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: #11131c; cursor: pointer;
-  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
-.ifl-sb[data-k="maint"] { --sb: #4c56dc; }
-.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: 0 10px 30px -14px rgba(10, 16, 50, 0.4); }
+  background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); border: 0.5px solid color-mix(in srgb, var(--sb) 30%, transparent); color: var(--ifl-text); cursor: pointer;
+  -webkit-backdrop-filter: none; backdrop-filter: none; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; position: relative; z-index: 5; }
+.ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
+.ifl-sb.float { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 0; right: 0; margin: 0 12px; z-index: 900; box-shadow: var(--ifl-shadow-card); }
 .ifl-sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sb); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb) 22%, transparent); }
 .ifl-sb-t { min-width: 0; display: grid; }
 .ifl-sb-t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2340,20 +2099,28 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .ifl-sb-go { display: inline-flex; align-items: center; gap: 1px; color: var(--sb); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
 .ifl-sb-go svg, .ifl-sb-x svg { width: 14px; height: 14px; stroke-width: 2.6; }
 .ifl-sb-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.55; display: grid; place-items: center; cursor: pointer; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: #9c93ff; } }
-:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 14%, rgba(28, 30, 48, 0.82)); color: #f2f3f9; }
-:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: #9c93ff; }
-/* InFlite's shared geometry and motion. Bundled into each app by iflmenu.mjs:
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); } :root:not([data-theme="light"]) .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); } }
+:root[data-theme="dark"] .ifl-sb { --sb: #ffb24a; background: color-mix(in srgb, var(--sb) 10%, var(--ifl-surface)); color: var(--ifl-text); }
+:root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
+/* InFlite's shared palette, geometry and motion. Bundled into each app by iflmenu.mjs:
    no extra request, and an app's existing offline/update mechanism keeps it current. */
 :root {
+  --ifl-page: #f8f9f6; --ifl-surface: #ffffff; --ifl-surface-2: #f1f2ef; --ifl-raised: #ffffff;
+  --ifl-text: #171a18; --ifl-muted: #646a66; --ifl-subtle: #676e66;
+  --ifl-line: rgba(24, 31, 26, 0.08); --ifl-press: rgba(24, 31, 26, 0.06);
+  --ifl-accent: #2ea84d; --ifl-accent-ink: #247a35; --ifl-accent-fill: #74df36; --ifl-on-accent: #10150d;
+  --ifl-accent-gradient: linear-gradient(110deg, #24c872, #b8eb2b); --ifl-accent-wash: #e2f5d8;
+  --ifl-contrast: #141714; --ifl-on-contrast: #ffffff;
+  --ifl-shadow-card: 0 1px 2px rgba(14, 18, 16, 0.025), 0 9px 24px -18px rgba(14, 18, 16, 0.18);
+  --ifl-shadow-control: 0 1px 3px rgba(14, 18, 16, 0.05), 0 5px 14px -10px rgba(14, 18, 16, 0.16);
   --ifl-space-1: 4px; --ifl-space-2: 8px; --ifl-space-3: 12px;
   --ifl-space-4: 16px; --ifl-space-5: 24px; --ifl-space-6: 32px;
-  --ifl-radius-card: 30px; --ifl-radius-group: 26px; --ifl-radius-sheet: 38px; --ifl-radius-pill: 999px;
+  --ifl-radius-card: 26px; --ifl-radius-group: 22px; --ifl-radius-sheet: 30px; --ifl-radius-row: 16px; --ifl-radius-pill: 999px;
   --ifl-motion-press: 0.1s; --ifl-motion-release: 0.38s; --ifl-motion-fast: 0.18s;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: blur(24px) saturate(160%);
-  --ifl-chrome-solid: #f7f8fc;
+  --ifl-chrome-blur: none;
+  --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
@@ -2362,9 +2129,25 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --ifl-chrome-solid: #242634; }
+  :root:not([data-theme="light"]) {
+    --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+    --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+    --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+    --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+    --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+    --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+    --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+  }
 }
-:root[data-theme="dark"] { --ifl-chrome-solid: #242634; }
+:root[data-theme="dark"] {
+  --ifl-page: #101210; --ifl-surface: #191c19; --ifl-surface-2: #222622; --ifl-raised: #2b302b;
+  --ifl-text: #f4f7f2; --ifl-muted: #bac2b9; --ifl-subtle: #a2aba1;
+  --ifl-line: rgba(244, 247, 242, 0.08); --ifl-press: rgba(244, 247, 242, 0.07);
+  --ifl-accent: #97e84e; --ifl-accent-ink: #97e84e; --ifl-accent-wash: #26391e;
+  --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
+  --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
+  --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+}
 /* Concentric surfaces: the inset is subtracted from the outer corner. */
 .ifm-pop { padding: var(--ifl-space-2); border-radius: var(--ifl-radius-card);
   -webkit-backdrop-filter: var(--ifl-chrome-blur); backdrop-filter: var(--ifl-chrome-blur);
@@ -2419,10 +2202,10 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
    outline that signs in), the place's name large with its line under it (where it is; scrolled, the weather now), and the
    location (and, signed out, Settings) in one capsule; compact as it's scrolled (--p: app.js) */
 /* (held under the status bar as it's scrolled, not under it: the page starts below it, the bar's glass reaching up behind it) */
-.top.wx-ifh { top: env(safe-area-inset-top, 0px); --p: 0; --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: #fff; --ifh-glass: rgba(255, 255, 255, 0.16);
+.top.wx-ifh { top: env(safe-area-inset-top, 0px); --p: 0; --ifh-ink: var(--text); --ifh-ink-2: var(--text-2); --ifh-tint: var(--text); --ifh-glass: var(--ifl-surface);
   justify-content: flex-start; gap: 12px; min-height: 0; box-sizing: border-box; height: calc(80px - 24px * var(--p)); margin-bottom: calc(24px * var(--p));
   padding-top: calc(10px - 4px * var(--p)); padding-bottom: calc(12px - 6px * var(--p)); }
-.wx-ifh .me-btn { --ifh-photo: linear-gradient(160deg, #6fb0ff, #2b62d6); }
+.wx-ifh .me-btn { --ifh-photo: var(--ifl-accent-gradient); --ifh-photo-ink: var(--ifl-on-accent); }
 .wx-ifh .place { flex: 1; max-width: none; min-height: 44px; padding: 0; border-radius: 0; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .wx-ifh .place::before, .wx-ifh .place::after { display: none !important; }
 .wx-ifh .place:active { transform: none; filter: none; opacity: 0.7; }
@@ -2432,7 +2215,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 .wx-ifh .place-line { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--text-2); }
 .wx-ifh .place-now { color: var(--text); }
 .wx-ifh .ifh-acts { flex: none; gap: 0; }
-.wx-ifh .ifh-acts .icon-btn { width: 38px; height: 38px; min-width: 0; padding: 0; border-radius: 50%; color: #fff; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.wx-ifh .ifh-acts .icon-btn { width: 38px; height: 38px; min-width: 0; padding: 0; border-radius: 50%; color: var(--text); background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .wx-ifh .ifh-acts .icon-btn::before { display: none !important; }
 /* (a 44px target round each, over the capsule's padding: two side by side meet between them, each reaching the 3px
    further out on its own side instead, so neither takes the other's taps; its focus ring stays round the button) */
@@ -2451,7 +2234,7 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
   -webkit-tap-highlight-color: transparent; transition: transform 0.2s; }
 .wx-ifh .ifl-back svg { flex: none; width: 22px; height: 22px; stroke-width: 2.4; }
 .wx-ifh .ifl-back:active { transform: scale(0.94); }
-.wx-ifh .ifl-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.wx-ifh .ifl-back:focus-visible { outline: 2px solid var(--tint-blue); outline-offset: 2px; }
 /* (a 44px target however compact the bar's become) */
 .wx-ifh .ifl-back::after { content: ""; position: absolute; inset: -4px 0; }
 .wx-ifh .ifl-back:has(+ .me-btn:not([hidden])) { padding: 0 8px; }
@@ -2480,7 +2263,7 @@ html.ifl-hub #out-grp { display: none; }
 #credits .credits-brand b { font-weight:650; }
 #credits .credits-lead { font-size:12px; margin:0 0 16px; }
 #credits .sheet-sub { margin:20px 2px 8px; font-size:12px; }
-#credits .credits { padding-inline:14px; border-radius:20px; }
+#credits .credits { padding-inline:14px; border-radius:var(--ifl-radius-row, 16px); }
 #credits .credits a { min-height:58px; padding:11px 0; }
 #credits .credits b { font-size:15px; line-height:1.3; }
 #credits .credits small { font-size:12px; line-height:1.4; margin-top:3px; color:var(--text-2); }

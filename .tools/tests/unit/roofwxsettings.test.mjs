@@ -264,6 +264,11 @@ const choose = (sel, v) => { sel.value = v; sel.dispatch('change'); };
 test('the sheet, driven: every page opened and saved, one patch each with only its key, through WX’s core', { skip: roofSkip }, async () => {
   globalThis.document = fakeDocument();
   globalThis.matchMedia ??= () => ({ matches: true });
+  globalThis.requestAnimationFrame ??= (f) => setTimeout(f, 0);
+  globalThis.cancelAnimationFrame ??= (t) => clearTimeout(t);
+  globalThis.scrollX = 0; globalThis.scrollY = 0;
+  globalThis.scrollTo ??= (x, y) => { globalThis.scrollX = Number(x) || 0; globalThis.scrollY = Number(y) || 0; };
+  globalThis.location ??= new URL('https://inflite.ai/weather/');
   const ui = await import(new URL('ui.js', ROOF).href);
   const { createSheets } = await import(new URL('sheet.js', ROOF).href);
   assert.ok(!('STUB' in core), 'WX’s real core');

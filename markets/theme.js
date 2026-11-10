@@ -19,7 +19,7 @@ try {
   const t = localStorage.getItem("markets:appearance");
   if (t === "light" || t === "dark") {
     document.documentElement.dataset.theme = t;
-    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#102238" : "#d2ebe3");
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#101210" : "#f8f9f6");
   }
 } catch (_) {}
 // Back from signing in on the account's page (#signin=…): its sky from the very first frame (styles.css html.arriving),

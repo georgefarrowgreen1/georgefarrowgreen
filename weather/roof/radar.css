@@ -8,19 +8,17 @@
 
 /* the map's own tokens: night (dark map) first, the day map's below */
 .m-weather .wx-radar {
-  --rd-glass: rgba(14, 22, 38, 0.5); --rd-glass-2: rgba(14, 22, 38, 0.42); --rd-glass-3: rgba(14, 22, 38, 0.72); --rd-panel: rgba(26, 30, 40, 0.74);
-  --rd-ink: #fff; --rd-ink-2: rgba(235, 235, 245, 0.72); --rd-ink-off: rgba(255, 255, 255, 0.35); --rd-line: rgba(255, 255, 255, 0.14); --rd-press: rgba(255, 255, 255, 0.22);
-  --rd-hover: rgba(255, 255, 255, 0.12); --rd-sel: rgba(255, 255, 255, 0.16); --rd-map: #0e1420; --rd-mark: #fff; --rd-halo: rgba(8, 11, 17, 0.9); --rd-halo-2: rgba(8, 11, 17, 0.6);
-  --rd-read: rgba(18, 24, 36, 0.86); --rd-read-ink: #fff; --rd-warn: #ffd60a; --rd-warn-amber: #ffb340; --rd-warn-red: #ff6961;
-  --fill: var(--rd-ink); --rest: rgba(255, 255, 255, 0.18); --tick: rgba(255, 255, 255, 0.5); --panel: var(--rd-panel); --ink: var(--rd-ink); --ink-2: var(--rd-ink-2);
-  --rd-blur: blur(20px) saturate(160%);
+  --rd-glass: var(--ifl-surface, #252923); --rd-glass-2: var(--ifl-surface, #252923); --rd-glass-3: var(--ifl-raised, #30362e); --rd-panel: var(--ifl-surface, #252923);
+  --rd-ink: var(--ifl-text); --rd-ink-2: var(--ifl-muted); --rd-ink-off: color-mix(in srgb, var(--ifl-text) 35%, transparent); --rd-line: var(--ifl-line); --rd-press: var(--ifl-press);
+  --rd-hover: var(--ifl-press); --rd-sel: var(--ifl-surface-2); --rd-map: #0e1420; --rd-mark: #fff; --rd-halo: rgba(8, 11, 17, 0.9); --rd-halo-2: rgba(8, 11, 17, 0.6);
+  --rd-read: var(--ifl-raised); --rd-read-ink: var(--ifl-text); --rd-warn: #ffd60a; --rd-warn-amber: #ffb340; --rd-warn-red: #ff6961;
+  --fill: var(--rd-ink); --rest: var(--ifl-line); --tick: var(--ifl-muted); --panel: var(--rd-panel); --ink: var(--rd-ink); --ink-2: var(--rd-ink-2);
+  --rd-blur: none;
 }
 .m-weather .wx-radar.light-map {
-  --rd-glass: rgba(255, 255, 255, 0.8); --rd-glass-2: rgba(255, 255, 255, 0.8); --rd-glass-3: rgba(255, 255, 255, 0.84); --rd-panel: rgba(250, 250, 252, 0.84);
-  --rd-ink: #1c1c1e; --rd-ink-2: rgba(60, 60, 67, 0.76); --rd-ink-off: rgba(60, 60, 67, 0.3); --rd-line: rgba(0, 0, 0, 0.1); --rd-press: rgba(0, 0, 0, 0.1);
-  --rd-hover: rgba(0, 0, 0, 0.05); --rd-sel: rgba(0, 0, 0, 0.07); --rd-map: #f2f1ee; --rd-mark: #fff; --rd-halo: #fff; --rd-halo-2: rgba(255, 255, 255, 0.9);
-  --rd-read: rgba(255, 255, 255, 0.92); --rd-read-ink: #1c1c1e; --rd-warn: #a07800; --rd-warn-amber: #b85c00; --rd-warn-red: #c4271d;
-  --rest: rgba(60, 60, 67, 0.16); --tick: rgba(60, 60, 67, 0.4);
+  --rd-glass: var(--ifl-surface, #fff); --rd-glass-2: var(--ifl-surface, #fff); --rd-glass-3: var(--ifl-raised, #fff); --rd-panel: var(--ifl-surface, #fff);
+  --rd-map: #f2f1ee; --rd-mark: #fff; --rd-halo: #fff; --rd-halo-2: rgba(255, 255, 255, 0.9);
+  --rd-warn: #a07800; --rd-warn-amber: #b85c00; --rd-warn-red: #c4271d;
 }
 
 /* ---- the section: the map fills the window between the header and the tab bar ---- */
@@ -53,8 +51,8 @@
 .m-weather .wx-radar .wx-radar-send { flex: none; }
 .m-weather .wx-radar .wx-radar-send:empty { display: none; }
 .m-weather .wx-radar :is(.radar-legend, .radar-dock) { color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur);
-  box-shadow: inset 0 1px 0.5px color-mix(in srgb, var(--rd-ink) 30%, transparent), 0 0 0 0.5px var(--rd-line), 0 12px 32px -8px rgba(0, 0, 0, 0.35); }
-.m-weather .wx-radar .radar-legend { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 14px; margin: 0; padding: 10px 14px; border-radius: 18px; font-size: 11.5px; color: var(--ink-2); }
+  box-shadow: var(--ifl-shadow-card); }
+.m-weather .wx-radar .radar-legend { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 14px; margin: 0; padding: 10px 14px; border-radius: var(--ifl-radius-row, 16px); font-size: 11.5px; color: var(--ink-2); }
 .m-weather .wx-radar .radar-legend:empty { display: none; }
 .m-weather .wx-radar .rl-title { display: none; }
 .m-weather .wx-radar .rl-rain { flex: 1; min-width: 0; }
@@ -74,7 +72,7 @@
 .m-weather .wx-radar .rl-switch button:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 
 /* the dock, as Apple's Weather map has it: play, what's on show, then the timeline */
-.m-weather .wx-radar .radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin: 0; padding: 12px 16px 8px; border-radius: 24px; }
+.m-weather .wx-radar .radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin: 0; padding: 12px 16px 8px; border-radius: var(--ifl-radius-card, 26px); }
 .m-weather .wx-radar .radar-bar { display: contents; }
 .m-weather .wx-radar .radar-play { grid-area: play; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: var(--ink); background-color: var(--rd-sel); cursor: pointer; }
 .m-weather .wx-radar .radar-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
@@ -242,7 +240,7 @@
   .m-weather .wx-radar :is(.mr-b, .layer-menu) { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .m-weather .wx-radar :is(.radar-legend, .radar-dock, .layer-menu, .wx-radar-said, .radar-credit .rc-t) { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: var(--rd-map); }
+  .m-weather .wx-radar :is(.radar-legend, .radar-dock, .layer-menu, .wx-radar-said, .radar-credit .rc-t) { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: var(--ifl-surface); }
 }
 @media (forced-colors: active) {
   .m-weather .wx-radar :is(.radar-legend, .radar-dock, .map-zoom, .radar-centre, .map-layers) { border: 1px solid CanvasText; }

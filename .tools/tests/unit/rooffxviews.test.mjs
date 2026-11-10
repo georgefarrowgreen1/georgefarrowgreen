@@ -31,6 +31,9 @@ globalThis.document = docWithTemplates();
 globalThis.addEventListener ??= () => {};
 globalThis.removeEventListener ??= () => {};
 globalThis.requestAnimationFrame ??= (f) => setTimeout(f, 0);
+globalThis.cancelAnimationFrame ??= (t) => clearTimeout(t);
+globalThis.scrollX = 0; globalThis.scrollY = 0;
+globalThis.scrollTo ??= (x, y) => { globalThis.scrollX = Number(x) || 0; globalThis.scrollY = Number(y) || 0; };
 globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 const answers = new Map(), asked = [], STATUS = Symbol('status');
 globalThis.fetch = async (url, o = {}) => {

@@ -118,9 +118,9 @@ test('B0’s frame stub: createFrame gives an F with every member of §3.2, and 
   assert.equal(fw.nav.href('day', '2026-11-03'), '/weather/#day=2026-11-03');
 });
 
-test('roof.css’s token block: the framework’s tokens and each app’s accent, dark first and light in both light blocks, as map-design §3.2', { skip: roofSkip }, () => {
+test('roof.css’s token block: neutral shared surfaces, geometry and one action accent in every app and theme', { skip: roofSkip }, () => {
   // (rules by selector, inside a light media block or not; declarations as a map)
-  const css = read(new URL('roof.css', ROOF)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]+;/g, '');
+  const css = (read(new URL('today/public/app.css', IFL)) + '\n' + read(new URL('roof.css', ROOF))).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]+;/g, '');
   const rules = [];
   const walk = (s, media) => {
     let i = 0;
@@ -138,35 +138,45 @@ test('roof.css’s token block: the framework’s tokens and each app’s accent
   };
   walk(css, null);
   const get = (sel, media, prop) => { let v; for (const r of rules) if (r.sel.includes(sel) && (media ? r.media?.includes(media) : !r.media) && prop in r.decl) v = r.decl[prop]; return v; };
-  const ROOT = { '--bar': 'rgba(36, 38, 52, 0.82)', '--r-sheet': '38px', '--r-well': '16px', '--r-pill': '999px', '--ease-in': 'cubic-bezier(0.4, 0, 1, 1)',
+  const ROOT = { '--bar': 'var(--ifl-surface, #191c19)', '--r-sheet': 'var(--ifl-radius-sheet, 30px)', '--r-well': 'var(--ifl-radius-row, 16px)', '--r-pill': 'var(--ifl-radius-pill, 999px)', '--ease-in': 'cubic-bezier(0.4, 0, 1, 1)',
     '--dur-press': '0.1s', '--dur-fast': '0.2s', '--dur-base': '0.35s', '--dur-sheet-in': '0.5s', '--dur-sheet-out': '0.34s', '--tabs-h': 'var(--ift-h, 64px)', '--gutter': '16px',
     '--pos': 'var(--good-text)', '--neg': 'var(--danger)', '--chart-grid': 'var(--line)', '--chart-axis': 'var(--text-2)', '--chart-now': 'var(--text-3)' };
   for (const [k, v] of Object.entries(ROOT)) assert.equal(get(':root', null, k), v, k);
   assert.ok(get(':root', null, '--hd-h'), '--hd-h has a first value');
-  assert.equal(get(':root:not([data-theme="dark"])', 'prefers-color-scheme: light', '--bar'), 'rgba(250, 250, 253, 0.8)');
-  assert.equal(get(':root[data-theme="light"]', null, '--bar'), 'rgba(250, 250, 253, 0.8)');
-  // [app, light acc, dark acc, light ink, dark ink, fill]
-  const ACC = [['inflite', '#5a4fe0', '#9a90ff', '#5a4fe0', '#9a90ff', '#5a4fe0'], ['chat', '#2a6ae6', '#6ea6ff', '#1f63d6', '#6ea6ff', '#1f63d6'],
-    ['weather', '#2f7af0', '#6aa8ff', '#1f63d6', '#6aa8ff', '#1f63d6'], ['fitness', '#e8532f', '#ff8a68', '#b93a1c', '#ff8a68', '#b93a1c'],
-    ['markets', '#138a52', '#4fd18e', '#0a7a4d', '#4fd18e', '#0a7a4d'], ['mail', '#0f8f8a', '#45cfc8', '#096b67', '#45cfc8', '#0b7a76']];
-  for (const [app, la, da, li, di, fill] of ACC) {
-    const sel = `[data-app="${app}"]`;
-    assert.equal(get(sel, null, '--acc'), da, `${app} dark --acc`);
-    assert.equal(get(sel, null, '--acc-ink'), di, `${app} dark --acc-ink`);
-    assert.equal(get(sel, null, '--acc-fill'), fill, `${app} --acc-fill`);
-    assert.equal(get(sel, null, '--on-acc'), '#fff', `${app} --on-acc`);
-    for (const [pre, media] of [[':root:not([data-theme="dark"])', 'prefers-color-scheme: light'], [':root[data-theme="light"]', null]]) {
-      for (const s of [`${pre}${sel}`, `${pre} ${sel}`]) {
-        assert.equal(get(s, media, '--acc'), la, `${s} --acc`);
-        assert.equal(get(s, media, '--acc-ink'), li, `${s} --acc-ink`);
+  // The November neutral refresh replaces six per-app control hues with one shared action accent.
+  // Keep exact aliases and theme values checked, alongside all the motion, chart and geometry hooks above.
+  const ACC = { '--acc': 'var(--ifl-accent, #73d781)', '--acc-ink': 'var(--ifl-accent-ink, #97e84e)',
+    '--acc-fill': 'var(--ifl-accent-fill, #73d781)', '--on-acc': 'var(--ifl-on-accent, #10150d)',
+    '--acc-wash': 'var(--ifl-accent-wash, color-mix(in srgb, var(--acc) 15%, transparent))' };
+  for (const [prop, value] of Object.entries(ACC)) {
+    assert.equal(get(':root', null, prop), value, `root ${prop}`);
+    assert.equal(get('[data-app]', null, prop), value, `all apps ${prop}`);
+    for (const app of ['inflite', 'chat', 'weather', 'fitness', 'markets', 'mail']) {
+      const sel = `[data-app="${app}"]`;
+      for (const [pre, media] of [['', null], [':root:not([data-theme="dark"])', 'prefers-color-scheme: light'], [':root[data-theme="light"]', null], [':root[data-theme="dark"]', null]]) {
+        for (const context of pre ? [`${pre}${sel}`, `${pre} ${sel}`] : [sel]) {
+          const override = get(context, media, prop);
+          assert.equal(override ?? get('[data-app]', null, prop), value, `${context} ${prop} stays shared`);
+        }
       }
     }
   }
-  assert.equal(get(':root', null, '--acc'), '#9a90ff', 'InFlite’s own accent at the root, dark');
-  assert.equal(get(':root', null, '--acc-fill'), '#5a4fe0');
-  assert.equal(get('[data-app]', null, '--acc-wash'), 'color-mix(in srgb, var(--acc) 16%, transparent)');
-  assert.equal(get(':root:not([data-theme="dark"]) [data-app]', 'prefers-color-scheme: light', '--acc-wash'), 'color-mix(in srgb, var(--acc) 13%, transparent)');
-  assert.equal(get(':root[data-theme="light"] [data-app]', null, '--acc-wash'), 'color-mix(in srgb, var(--acc) 13%, transparent)');
+  const LIGHT = { '--ifl-page': '#f8f9f6', '--ifl-surface': '#ffffff', '--ifl-surface-2': '#f1f2ef', '--ifl-raised': '#ffffff',
+    '--ifl-text': '#171a18', '--ifl-muted': '#646a66', '--ifl-accent': '#2ea84d', '--ifl-accent-ink': '#247a35' };
+  const DARK = { '--ifl-page': '#101210', '--ifl-surface': '#191c19', '--ifl-surface-2': '#222622', '--ifl-raised': '#2b302b',
+    '--ifl-text': '#f4f7f2', '--ifl-muted': '#bac2b9', '--ifl-accent': '#97e84e', '--ifl-accent-ink': '#97e84e' };
+  for (const [prop, value] of Object.entries(LIGHT)) {
+    assert.equal(get(':root', null, prop), value, `light default ${prop}`);
+    assert.equal(get(':root:not([data-theme="dark"])', 'prefers-color-scheme: light', prop) ?? get(':root', null, prop), value, `automatic light ${prop}`);
+    assert.equal(get(':root[data-theme="light"]', null, prop) ?? get(':root', null, prop), value, `explicit light ${prop}`);
+  }
+  for (const [prop, value] of Object.entries(DARK)) {
+    assert.equal(get(':root:not([data-theme="light"])', 'prefers-color-scheme: dark', prop), value, `automatic dark ${prop}`);
+    assert.equal(get(':root[data-theme="dark"]', null, prop), value, `explicit dark ${prop}`);
+  }
+  for (const [prop, value] of Object.entries({ '--ifl-radius-card': '26px', '--ifl-radius-group': '22px', '--ifl-radius-sheet': '30px', '--ifl-radius-row': '16px', '--ifl-radius-pill': '999px',
+    '--ifl-accent-gradient': 'linear-gradient(110deg, #24c872, #b8eb2b)', '--ifl-on-accent': '#10150d' })) assert.equal(get(':root', null, prop), value, prop);
+
 });
 
 // ---- Weather's module (MAIN) ----

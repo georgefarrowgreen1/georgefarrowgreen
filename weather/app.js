@@ -2340,14 +2340,14 @@ function sky(wx, now) {
   const s = skyFor(wx, now);
   // (a new sky eases in over the last: styles.css)
   document.body.dataset.sky = s;
-  const top = SKY_TOP[s] || "#2b5d96";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
+  const top = getComputedStyle(document.documentElement).getPropertyValue("--ifl-page").trim() || (matchMedia("(prefers-color-scheme: dark)").matches ? "#101210" : "#f8f9f6");
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", m.media.includes("dark") ? "#101210" : "#f8f9f6");
   // (kept for the page to arrive with, next time, as its theme-color (sw.js tinted): an iPhone tints the strip behind its
   // status bar with that, as the page arrives, and takes no notice of it changed after)
   if (top !== tintKept && "caches" in window) { tintKept = top; caches.open("wx-tint").then((c) => c.put(new URL("./tint", location.href), new Response(top))).catch(() => {}); }
   // (what shows when the page is pulled past its ends; on a phone or a tablet, under Safari's bar at the foot too, so the
   // sky's colour at its foot there)
-  document.documentElement.style.backgroundColor = footed.matches ? SKY_FOOT[s] || top : top;
+  document.documentElement.style.backgroundColor = top;
   // (and kept, for the page to open on next time, before the app has started: early.js)
   const kept = store.get("wx:sky");
   if (kept?.sky !== s || Date.now() - kept.at > 10 * 60e3) store.set("wx:sky", { sky: s, at: Date.now() });
@@ -3680,8 +3680,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "1.96";
-const NEWS = "Refined touch controls, spacing, sheets, focus and motion across InFlite";
+const BUILD = "1.97";
+const NEWS = "A unified neutral design with clearer cards and green controls";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3828,7 +3828,7 @@ async function signedBack(code) {
 // ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
 // (the account page's own curve, for one screen growing into another; and its sky)
 const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
-const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
+const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#101210" : "#f8f9f6");
 // (the top layer: over an open sheet, in the order things are shown there)
 const topLayer = "showPopover" in HTMLElement.prototype;
 const springEase = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";

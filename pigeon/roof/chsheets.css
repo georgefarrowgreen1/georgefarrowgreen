@@ -29,19 +29,19 @@
 /* a line: words on the left, a choice on the right */
 .ifl-sheet[data-app=chats] .chs-line {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px;
-  padding: 6px 14px; border-radius: var(--r-well, 16px); background: var(--glass, transparent); border: 1px solid var(--line);
+  padding: 8px 14px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface, var(--glass)); border: 1px solid var(--line);
 }
 .ifl-sheet[data-app=chats] .chs-line > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ifl-sheet[data-app=chats] .chs-sel, .ifl-sheet[data-app=chats] .chs-dt {
-  min-height: 44px; min-width: 0; max-width: 60%; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line);
-  background: var(--press, transparent); color: inherit; font: inherit;
+  min-height: 44px; min-width: 0; max-width: 60%; padding: 0 12px; border-radius: var(--ifl-radius-row, 16px); border: 1px solid var(--line);
+  background: var(--ifl-surface-2, var(--press)); color: inherit; font: inherit;
 }
 .ifl-sheet[data-app=chats] .chs-credits { margin: 0; text-align: center; }
 
 /* ---- Send ---- */
 .ifl-sheet[data-app=chats] .chsend { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ifl-sheet[data-app=chats] .chsend-card { min-width: 0; }
-.ifl-sheet[data-app=chats] .chsend-say { margin: 0; padding: 12px 14px; border-radius: var(--r-well, 16px); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.ifl-sheet[data-app=chats] .chsend-say { margin: 0; padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px); border: 1px solid var(--line); background: var(--ifl-surface-2, var(--glass)); overflow-wrap: anywhere; }
 .ifl-sheet[data-app=chats] .chsend-note { margin: 0 4px; color: var(--text-2); font-size: 13px; }
 .ifl-sheet[data-app=chats] .chsend-row { position: relative; }
 .ifl-sheet[data-app=chats] .chsend-tag {
@@ -50,10 +50,10 @@
 .ifl-sheet[data-app=chats] .chsend-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ifl-sheet[data-app=chats] .chsend-chip {
   min-height: 44px; padding: 0 14px; border-radius: var(--r-pill, 999px); border: 1px solid var(--line);
-  background: var(--glass, transparent); color: inherit; font: inherit; font-size: 15px; cursor: pointer;
+  background: var(--ifl-surface, var(--glass)); color: inherit; font: inherit; font-size: 15px; cursor: pointer;
   transition: background var(--dur-fast, .2s) var(--ease-out, ease);
 }
-.ifl-sheet[data-app=chats] .chsend-chip[aria-checked=true] { background: var(--acc-fill); border-color: var(--acc-fill); color: var(--on-acc); }
+.ifl-sheet[data-app=chats] .chsend-chip[aria-checked=true] { background: var(--ifl-accent-gradient, var(--acc-fill)); border-color: transparent; color: var(--ifl-on-accent, var(--on-acc)); }
 .ifl-sheet[data-app=chats] .chsend-chip:disabled { opacity: 0.5; }
 .ifl-sheet[data-app=chats] .chsend-go { display: flex; flex-direction: column; gap: 8px; }
 .ifl-sheet[data-app=chats] .chsend-go > .ifl-btn { width: 100%; justify-content: center; }
@@ -74,8 +74,8 @@
 /* ---- hold menus ---- */
 .ifl-sheet[data-app=chats] .chs-react { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; }
 .ifl-sheet[data-app=chats] .chs-emoji {
-  flex: 1 1 0; min-width: 44px; min-height: 48px; border-radius: 14px; border: 1px solid var(--line);
-  background: var(--glass, transparent); font-size: 24px; cursor: pointer; transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)), background-color var(--dur-fast, .18s) ease;
+  flex: 1 1 0; min-width: 44px; min-height: 48px; border-radius: var(--ifl-radius-row, 16px); border: 1px solid var(--line);
+  background: var(--ifl-surface-2, var(--glass)); font-size: 24px; cursor: pointer; transition: transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)), background-color var(--dur-fast, .18s) ease;
 }
 .ifl-sheet[data-app=chats] .chs-emoji:active { transform: scale(.94); }
 .ifl-sheet[data-app=chats] .chs-emoji:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: 2px; }
@@ -87,7 +87,8 @@
 .ifl-sheet[data-app=chats] .chs-photo { max-width: 100%; max-height: 70vh; border-radius: var(--r-well, 16px); object-fit: contain; }
 
 /* ---- voice ---- */
-.ifl-sheet[data-app=chats] .chv { align-items: center; }
+.ifl-sheet[data-app=chats] .chv { align-items: center; padding: 20px; border-radius: var(--ifl-radius-card, 26px); background: var(--ifl-contrast, #141714); color: var(--ifl-on-contrast, #fff); }
+.ifl-sheet[data-app=chats] .chv .chs-foot { color: color-mix(in srgb, var(--ifl-on-contrast, #fff) 75%, transparent); }
 .ifl-sheet[data-app=chats] .chv-time { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ifl-sheet[data-app=chats] .chv-wave { display: flex; align-items: center; justify-content: flex-end; gap: 2px; width: 100%; height: 56px; overflow: hidden; }
 .ifl-sheet[data-app=chats] .chv-wave i { flex: none; width: 3px; height: calc(var(--h, 0.12) * 100%); border-radius: 2px; background: var(--acc); }
@@ -98,7 +99,7 @@
 .ifl-sheet[data-app=chats] .chg-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ifl-sheet[data-app=chats] .chg-tile {
   position: relative; display: block; width: 100%; aspect-ratio: var(--ar, 1); padding: 0; overflow: hidden;
-  border: 0; border-radius: 10px; background: var(--press, var(--line)); cursor: pointer;
+  border: 0; border-radius: var(--ifl-radius-row, 16px); background: var(--press, var(--line)); cursor: pointer;
 }
 .ifl-sheet[data-app=chats] .chg-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ifl-sheet[data-app=chats] .chg-tile.busy { opacity: 0.5; }
@@ -120,8 +121,8 @@
 }
 .ifl-sheet[data-app=chats] .chf-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ifl-sheet[data-app=chats] .chf-stat {
-  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-well, 16px);
-  background: var(--glass, transparent); border: 1px solid var(--line); min-width: 0;
+  display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px);
+  background: var(--ifl-surface, var(--glass)); border: 1px solid var(--line); min-width: 0;
 }
 .ifl-sheet[data-app=chats] .chf-stat b { font-size: 20px; overflow-wrap: anywhere; }
 .ifl-sheet[data-app=chats] .chf-stat span { color: var(--text-2); font-size: 13px; }
@@ -131,7 +132,7 @@
   background: linear-gradient(90deg, var(--acc) calc(var(--w, 0) * 100%), var(--line) 0);
 }
 .ifl-sheet[data-app=chats] .chf-badges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.ifl-sheet[data-app=chats] .chf-badge { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-well, 16px); border: 1px solid var(--line); opacity: 0.6; }
+.ifl-sheet[data-app=chats] .chf-badge { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px); border: 1px solid var(--line); background: var(--ifl-surface-2, var(--glass)); opacity: 0.6; }
 .ifl-sheet[data-app=chats] .chf-badge.earned { opacity: 1; border-color: var(--acc); }
 .ifl-sheet[data-app=chats] .chf-badge small { color: var(--text-2); font-size: 12px; }
 .ifl-sheet[data-app=chats] .chp-stamps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -144,16 +145,13 @@
 .ifl-sheet[data-app=chats] .chp-stamp small { color: var(--text-2); font-size: 11px; }
 .ifl-sheet[data-app=chats] .chp-shape { width: 40px; height: 40px; fill: currentColor; opacity: 0.8; }
 .ifl-sheet[data-app=chats] .chm-map {
-  --chf-sea: #cfe3f5; --chf-land: #e9e3d3;
+  --chf-sea: color-mix(in srgb, var(--ifl-surface-2, #f1f2ef) 78%, var(--ifl-accent, #2ea84d)); --chf-land: var(--ifl-surface, #fff);
   display: block; width: 100%; aspect-ratio: 2; border-radius: var(--r-well, 16px); background: var(--press, var(--line));
 }
 .ifl-sheet[data-app=chats] .chmo-map { display: block; width: 100%; aspect-ratio: 1; border-radius: var(--r-well, 16px); background: #000; cursor: crosshair; }
 .ifl-sheet[data-app=chats] .chb-bird { font-size: 48px; line-height: 1; }
 .ifl-sheet[data-app=chats] .chb-emo { font-size: 24px; }
 
-@media (prefers-color-scheme: dark) {
-  .ifl-sheet[data-app=chats] .chm-map { --chf-sea: #1d2a3a; --chf-land: #3a3f4a; }
-}
 @media (prefers-reduced-motion: reduce) {
   .ifl-sheet[data-app=chats] .chsend-chip, .ifl-sheet[data-app=chats] .chsc-video, .ifl-sheet[data-app=chats] .chs-emoji { transition: none; }
   .ifl-sheet[data-app=chats] .chs-emoji:active { transform: none; }

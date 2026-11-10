@@ -1,7 +1,7 @@
 /* Weather's sections under InFlite's roof (One roof, spec §7.1, WV; map-design §9): Now, 16 Days and Warnings, and the
    content of Weather's day, detail, warning and credits sheets. Everything under .m-weather (the module's root) or
-   .wx-sheet (a sheet's body); nothing on the page's root. Framework glass with Weather's accent; white only inside the
-   hero, which is Today's weather card (.tcard.wx, app.css). Weather's data colours each have a graphics value (≥ 3:1)
+   .wx-sheet (a sheet's body); nothing on the page's root. Neutral framework surfaces, including
+   the hero, which is Today's weather card (.tcard.wx, app.css). Weather's data colours each have a graphics value (≥ 3:1)
    and a text value (≥ 4.5:1) per mode (map-design §9). The hour strip and chart rules are weather/styles.css l.700–762,
    re-tokenised. */
 
@@ -15,34 +15,34 @@
 .m-weather, .wx-sheet {
   --wx-temp: #f0a040; --wx-rain: #5aa2f0; --wx-wind: #2fc4b0;
   --wx-temp-text: #ffc078; --wx-rain-text: #9fd0ff; --wx-wind-text: #6fe0cf;
-  --wx-halo: rgba(14, 22, 38, 0.55); --wx-night: rgba(0, 0, 0, 0.16); --wx-range-a: var(--wx-rain); --wx-range-b: var(--wx-temp);
-  --wx-yellow: #ffd23f; --wx-amber: #f6a01c; --wx-red: #ff6b5f; --wx-chip-ink: #2a1c00;
+  --wx-halo: var(--ifl-surface, #252923); --wx-night: rgba(0, 0, 0, 0.16); --wx-range-a: var(--wx-rain); --wx-range-b: var(--wx-temp);
+  --wx-yellow: #ffd23f; --wx-amber: #f6a01c; --wx-red: #ff6b5f; --wx-red-ink: #2c0905; --wx-chip-ink: #2a1c00;
   --wx-gap: 14px;
 }
 @media (prefers-color-scheme: light) {
   .m-weather, .wx-sheet {
     --wx-temp: #b8650a; --wx-rain: #2f7ad6; --wx-wind: #0e8a7b;
     --wx-temp-text: #8f4c00; --wx-rain-text: #1f63d6; --wx-wind-text: #0b6f63;
-    --wx-halo: rgba(250, 251, 255, 0.85); --wx-night: rgba(30, 50, 90, 0.06);
-    --wx-yellow: #f2c200; --wx-amber: #e8870c; --wx-red: #d9362b;
+    --wx-halo: var(--ifl-surface, #fff); --wx-night: rgba(30, 50, 90, 0.06);
+    --wx-yellow: #f2c200; --wx-amber: #e8870c; --wx-red: #d9362b; --wx-red-ink: #fff;
   }
 }
 [data-theme="dark"] :is(.m-weather, .wx-sheet) {
   --wx-temp: #f0a040; --wx-rain: #5aa2f0; --wx-wind: #2fc4b0;
   --wx-temp-text: #ffc078; --wx-rain-text: #9fd0ff; --wx-wind-text: #6fe0cf;
-  --wx-halo: rgba(14, 22, 38, 0.55); --wx-night: rgba(0, 0, 0, 0.16);
-  --wx-yellow: #ffd23f; --wx-amber: #f6a01c; --wx-red: #ff6b5f;
+  --wx-halo: var(--ifl-surface, #252923); --wx-night: rgba(0, 0, 0, 0.16);
+  --wx-yellow: #ffd23f; --wx-amber: #f6a01c; --wx-red: #ff6b5f; --wx-red-ink: #2c0905;
 }
 [data-theme="light"] :is(.m-weather, .wx-sheet) {
   --wx-temp: #b8650a; --wx-rain: #2f7ad6; --wx-wind: #0e8a7b;
   --wx-temp-text: #8f4c00; --wx-rain-text: #1f63d6; --wx-wind-text: #0b6f63;
-  --wx-halo: rgba(250, 251, 255, 0.85); --wx-night: rgba(30, 50, 90, 0.06);
-  --wx-yellow: #f2c200; --wx-amber: #e8870c; --wx-red: #d9362b;
+  --wx-halo: var(--ifl-surface, #fff); --wx-night: rgba(30, 50, 90, 0.06);
+  --wx-yellow: #f2c200; --wx-amber: #e8870c; --wx-red: #d9362b; --wx-red-ink: #fff;
 }
 
-/* (a white cloud on a light surface: Today's cloud token, outside the hero, whose sky keeps it white) */
+/* Clouds remain legible on both white and charcoal surfaces. */
 :is(.m-weather, .wx-sheet) svg [fill="#EEF3F9" i] { fill: var(--cloud-glass); }
-.m-weather .tcard.wx svg [fill="#EEF3F9" i] { fill: #eef3f9; }
+
 :is(.m-weather, .wx-sheet) :is(.sr-only, .vh) { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* ---- the sections ---- */
@@ -55,7 +55,7 @@
 .m-weather :is(.wx-days, .wx-sec[data-sec="warnings"]) { display: grid; gap: var(--wx-gap); min-width: 0; }
 
 /* ---- Now: the hero (Today's card, app.css .tcard.wx) ---- */
-.m-weather .wx-hero { gap: 10px; }
+.m-weather .wx-hero { gap: 10px; color: var(--ifl-text, var(--text)); background: var(--ifl-surface, var(--solid)); border-radius: var(--ifl-radius-card, 26px); box-shadow: var(--ifl-shadow-card); --wx-ink: var(--ifl-text, var(--text)); --wx-ink2: var(--ifl-muted, var(--text-2)); }
 .m-weather .wx-hero .tc-head { min-height: 32px; gap: 6px; }
 .m-weather .wx-hero .tc-app { font-size: 16px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .m-weather .wx-hero .tc-meta { flex: 1; }
@@ -117,7 +117,7 @@
 .m-weather .wx-strip::-webkit-scrollbar { display: none; }
 .m-weather .wx-strip:focus-visible { -webkit-mask-image: none; mask-image: none; outline: 2px solid var(--acc); outline-offset: -2px; }
 .m-weather .hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: var(--r-pill, 999px); scroll-snap-align: start; }
-.m-weather .hour.now { background: var(--acc-wash); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent); }
+.m-weather .hour.now { background: color-mix(in srgb, var(--ifl-accent-fill, var(--acc)) 20%, var(--ifl-surface, var(--solid))); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 30%, transparent); }
 .m-weather .hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
 .m-weather .hour.now .h-time { color: var(--text); font-weight: 700; }
 .m-weather .hour .h-icon { height: 30px; display: grid; place-items: center; }
@@ -144,7 +144,7 @@
 :is(.m-weather, .wx-sheet) .c-label { fill: var(--text); font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: var(--wx-halo); stroke-width: 3px; }
 :is(.m-weather, .wx-sheet) :is(.c-dot, .c-crossdot) { stroke: var(--solid); stroke-width: 2; }
 :is(.m-weather, .wx-sheet) .c-crossline { stroke: var(--text-2); stroke-width: 1; }
-:is(.m-weather, .wx-sheet) .c-tip { position: absolute; z-index: 3; pointer-events: none; border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; background: var(--solid); color: var(--text); box-shadow: var(--edge), var(--lift); }
+:is(.m-weather, .wx-sheet) .c-tip { position: absolute; z-index: 3; pointer-events: none; border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; background: var(--ifl-raised, var(--solid)); color: var(--text); box-shadow: var(--ifl-shadow-card); }
 :is(.m-weather, .wx-sheet) .c-tip[hidden] { display: none; }
 :is(.m-weather, .wx-sheet) .c-tip-title { color: var(--text-3); font-size: 11.5px; margin-bottom: 2px; }
 :is(.m-weather, .wx-sheet) .c-tip-row { display: flex; gap: 6px; align-items: baseline; }
@@ -178,7 +178,7 @@
 
 /* Right now: the tiles, on the framework's stats grid */
 .m-weather .wx-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; margin: 0; }
-.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--r-well, 16px); text-align: left; color: var(--text); background: var(--glass-ctl); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
+.m-weather .wx-tile { display: grid; align-content: start; gap: 3px; min-height: 84px; padding: 11px 12px; border-radius: var(--ifl-radius-row, 16px); text-align: left; color: var(--text); background: var(--ifl-surface-2, var(--glass-ctl)); transition: transform var(--motion-release, .45s) var(--motion-spring, ease), background-color var(--dur-fast, .2s) ease; }
 .m-weather .wx-tile:active { transform: scale(0.97); background: var(--press); transition-duration: var(--dur-press, .1s); }
 @media (prefers-reduced-motion: reduce) {
   .m-weather :is(.wx-alert, .wx-tile) { transition: none; }
@@ -191,9 +191,9 @@
 .m-weather .wx-tile-s { font-size: 13px; color: var(--text-2); }
 
 /* Highlights, Best times */
-.m-weather .wx-ins .wx-g { width: 34px; height: 34px; border-radius: 10px; background: var(--acc-wash); color: var(--acc-ink); }
+.m-weather .wx-ins .wx-g { width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--ifl-accent-fill, var(--acc)) 20%, var(--ifl-surface, var(--solid))); color: var(--acc-ink); }
 .m-weather .wx-win-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
-.m-weather .wx-win { display: grid; gap: 4px; padding: 11px 12px; border-radius: var(--r-well, 16px); background: var(--glass-ctl); }
+.m-weather .wx-win { display: grid; gap: 4px; padding: 11px 12px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass-ctl)); }
 .m-weather .wx-win.poor { opacity: 0.7; }
 .m-weather .win-name { display: flex; align-items: center; gap: 6px; font-weight: 650; }
 .m-weather .win-name .wx-g { color: var(--acc-ink); }
@@ -245,7 +245,7 @@
 .m-weather .wx-hi { font-weight: 650; }
 .m-weather .wx-val { font-weight: 650; text-align: right; white-space: nowrap; }
 .m-weather .wx-val.rain { color: var(--wx-rain-text); }
-:is(.m-weather, .wx-sheet) .wx-range { position: relative; display: block; height: 6px; border-radius: 3px; background: var(--glass-ctl); }
+:is(.m-weather, .wx-sheet) .wx-range { position: relative; display: block; height: 6px; border-radius: 3px; background: var(--ifl-surface-2, var(--glass-ctl)); }
 :is(.m-weather, .wx-sheet) .wx-fill { position: absolute; top: 0; bottom: 0; left: calc(var(--l, 0) * 100%); width: calc(var(--w, 0) * 100%); border-radius: 3px; background: linear-gradient(90deg, var(--wx-rain), var(--wx-temp)); }
 :is(.m-weather, .wx-sheet) .wx-range[data-mode="rain"] .wx-fill { background: var(--wx-rain); }
 :is(.m-weather, .wx-sheet) .wx-range[data-mode="wind"] .wx-fill { background: var(--wx-wind); }
@@ -279,7 +279,7 @@
 .wx-sheet .wx-sub { margin: 8px 0 0; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); }
 .wx-sheet p { margin: 0; line-height: 1.45; }
 .wx-sheet .wx-about { font-size: 14px; color: var(--text-2); }
-.wx-sheet .wx-detail-now { display: grid; gap: 6px; padding: 12px 14px; border-radius: var(--r-well, 16px); background: var(--glass-ctl); }
+.wx-sheet .wx-detail-now { display: grid; gap: 6px; padding: 12px 14px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass-ctl)); }
 .wx-sheet .big { font-size: 34px; font-weight: 300; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .wx-sheet .big small { margin-left: 6px; font-size: 16px; font-weight: 600; color: var(--text-2); }
 .wx-sheet .sub { font-size: 14.5px; color: var(--text-2); }
@@ -291,7 +291,7 @@
 .wx-sheet .compass text { fill: var(--text-2); font-size: 9px; font-weight: 650; }
 .wx-sheet .compass .hub { fill: var(--text); }
 .wx-sheet .dl-way { fill: none; stroke: var(--acc); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.wx-sheet :is(.fbar, .meter) { position: relative; height: 8px; border-radius: 4px; background: var(--glass-ctl); }
+.wx-sheet :is(.fbar, .meter) { position: relative; height: 8px; border-radius: 4px; background: var(--ifl-surface-2, var(--glass-ctl)); }
 .wx-sheet .fbar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--k, 0) * 100%); border-radius: 4px; background: var(--wx-rain); }
 .wx-sheet .meter { background: linear-gradient(90deg, var(--good), var(--wx-yellow), var(--wx-amber), var(--wx-red)); }
 .wx-sheet .meter.clear { background: linear-gradient(90deg, var(--glass-ctl), var(--acc)); }
@@ -325,12 +325,12 @@
 .wx-sheet .wx-dt-sub { font-size: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .wx-sheet .wx-day-desc { font-size: 15.5px; }
 .wx-sheet .wx-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 6px; }
-.wx-sheet .part { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--r-well, 16px); background: var(--glass-ctl); font-variant-numeric: tabular-nums; }
+.wx-sheet .part { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2, var(--glass-ctl)); font-variant-numeric: tabular-nums; }
 .wx-sheet .p-name { font-size: 12.5px; color: var(--text-2); }
 .wx-sheet .p-temp { font-weight: 650; }
 .wx-sheet .p-pop { font-size: 12px; color: var(--wx-rain-text); min-height: 15px; }
 .wx-sheet .wx-conf { display: flex; align-items: center; gap: 10px; }
-.wx-sheet .wx-conf-bar { flex: 1; position: relative; height: 8px; border-radius: 4px; background: var(--glass-ctl); }
+.wx-sheet .wx-conf-bar { flex: 1; position: relative; height: 8px; border-radius: 4px; background: var(--ifl-surface-2, var(--glass-ctl)); }
 .wx-sheet .wx-conf-bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--k, 0) * 100%); border-radius: 4px; background: var(--acc); }
 .wx-sheet .wx-day-step { display: flex; justify-content: space-between; gap: 8px; padding-top: 4px; }
 /* a warning */

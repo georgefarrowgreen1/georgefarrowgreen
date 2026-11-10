@@ -31,6 +31,9 @@ async function setup() {
   globalThis.matchMedia ??= () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
   globalThis.requestAnimationFrame ??= (f) => setTimeout(f, 0);
   globalThis.cancelAnimationFrame ??= (t) => clearTimeout(t);
+  globalThis.scrollX = 0; globalThis.scrollY = 0;
+  globalThis.scrollTo ??= (x, y) => { globalThis.scrollX = Number(x) || 0; globalThis.scrollY = Number(y) || 0; };
+  globalThis.location ??= new URL('https://inflite.ai/chats/');
   globalThis.getComputedStyle ??= () => ({ getPropertyValue: () => '' });
   globalThis.fetch = async () => { throw new Error('no network in this test: the sheets talk only to the core'); };
   ui ??= await import(new URL('ui.js', ROOF).href);

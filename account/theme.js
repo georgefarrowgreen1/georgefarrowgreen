@@ -20,6 +20,6 @@ try {
   const t = localStorage.getItem("acct:appearance");
   if (t === "light" || t === "dark") {
     document.documentElement.dataset.theme = t;
-    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#1b2860" : "#dde3fb");
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", t === "dark" ? "#101210" : "#f8f9f6");
   }
 } catch (_) {}

@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "1.97";
-export const NEWS = "More reliable app switching and recovery";
+export const BUILD = "1.98";
+export const NEWS = "A unified neutral design with clearer cards and green controls";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

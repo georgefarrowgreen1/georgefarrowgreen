@@ -15,7 +15,7 @@ export const STYLES = ["pigeon/styles.css", "weather/styles.css", "fitness/style
 const APPS = ["chat", "weather", "fitness", "markets", "mail", "account"];
 // (an app in no other app's menu, its name, icon and colour in its own copy alone: Today, at inflite.ai, its folder
 // named today/public)
-const OWN = { today: { name: "Today", tint: "#2a6ae6" } };
+const OWN = { today: { name: "Today", tint: "var(--ifl-accent-ink)" } };
 const ownOf = (dir) => Object.keys(OWN).find((a) => new RegExp(`(^|/)${a}/public/?$`).test(dir)) || null;
 
 // an app's icon, small: no notes, no spaces between its parts

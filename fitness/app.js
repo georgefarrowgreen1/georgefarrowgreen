@@ -1632,8 +1632,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.28";
-const NEWS = "More reliable app switching and recovery";
+const BUILD = "2.29";
+const NEWS = "A unified neutral design with clearer cards and green controls";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -1787,7 +1787,7 @@ function lookOf(v) {
   v = v === "light" || v === "dark" ? v : "auto";
   if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
   try { localStorage.setItem("fitness:appearance", v); } catch (_) {}
-  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", v === "dark" ? "#24224f" : v === "light" ? "#f8e2da" : m.media.includes("dark") ? "#24224f" : "#f8e2da");
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", v === "dark" ? "#101210" : v === "light" ? "#f8f9f6" : m.media.includes("dark") ? "#101210" : "#f8f9f6");
 }
 function appearanceView() {
   const now = store.get("appearance", "auto"), set = (v) => {
