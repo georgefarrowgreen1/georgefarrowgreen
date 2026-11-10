@@ -484,6 +484,8 @@
 .m-markets .field input, .ifl-sheet[data-app=markets] .field input { flex: 1; align-self: stretch; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; }
 .m-markets .field input:placeholder-shown::-webkit-search-cancel-button, .ifl-sheet[data-app=markets] .field input:placeholder-shown::-webkit-search-cancel-button { display: none; }
 .m-markets .field:focus-within, .ifl-sheet[data-app=markets] .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint-text); }
+/* Forced colors removes shadows; the rounded field remains the sole focus owner. */
+@media (forced-colors) { .m-markets .field:focus-within, .ifl-sheet[data-app=markets] .field:focus-within { outline: 2px solid Highlight; outline-offset: -2px; } }
 .m-markets .field svg, .ifl-sheet[data-app=markets] .field svg { flex: none; color: var(--text-3); }
 .m-markets .results, .ifl-sheet[data-app=markets] .results { margin-top: 10px; }
 .m-markets .res, .ifl-sheet[data-app=markets] .res { width: 100%; padding: 14px 12px; border-top: 0.5px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; }

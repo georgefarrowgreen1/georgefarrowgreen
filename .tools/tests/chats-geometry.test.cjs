@@ -107,3 +107,43 @@ test('native Chats reactions, card actions and tracker zoom controls keep rounde
     for (const r of zoom) { assert.equal(r.width, 44); assert.equal(r.height, 44); assert.equal(r.radius, '50%'); assert.ok(Math.abs(r.dx) < 2.5 && Math.abs(r.dy) < 2.5); }
   } finally { await ctx.close(); }
 });
+
+for (const [width, theme] of [[390, 'dark'], [1440, 'light']]) test(`native Chats welcome CTA and invitation text stay opaque throughout entry at ${width}px ${theme}`, async () => {
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme, reducedMotion: 'no-preference' });
+  try {
+    await serveKit(ctx, { main: ROOT + '/', ifl: IFL + '/' });
+    const cta = (busy) => `<p class="wbrand ifl-brand"><img src="/chats/inflite.svg" alt="" width="22" height="22">Powered by InFlite</p><button class="btn wide wglow ifl-go"${busy ? ' disabled' : ''}>${busy ? 'Signing in…' : 'Sign in'}</button>${busy ? '' : '<p class="wnew ifl-new">New here? <a href="#join">Make an account</a></p>'}`;
+    await ctx.route(`${KIT}/geometry-welcome`, r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/chats/styles.css"></head><body><main class="app"><section class="view"><div class="auth welcome night ifl-in"><div class="wtop ifl-top"><div class="wlogo ifl-logo"><img class="appicon" src="/chats/inflite.svg" alt="InFlite"></div><h1 class="wtitle ifl-title" aria-label="Chat">${[...'Chat'].map(c => `<span aria-hidden="true">${c}</span>`).join('')}</h1><p class="winvite">@pat asked you to join. Sign in or make your account, and their request is ready to send.</p><p class="winvite">You’ve been signed out, as this sign-in was ended on another device or by a new password.</p></div><div class="wcta ifl-cta">${cta(false)}</div></div></section></main></body></html>` }));
+    const page = await ctx.newPage(); await page.goto(`${KIT}/geometry-welcome`); await page.bringToFront();
+    assert.equal(await page.locator('.wlogo .appicon').getAttribute('src'), '/chats/inflite.svg');
+    assert.equal(await page.locator('.wtitle span').first().evaluate(n => getComputedStyle(n).animationName), 'wletter', 'decorative wordmark keeps its own animation');
+    for (const reduced of [false, true]) {
+      await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
+      for (const state of [{}, { swap: true }, { again: true }, { again: true, swap: true }, { swap: true, busy: true }]) {
+        await page.evaluate(({ state, html }) => {
+          const welcome = document.querySelector('.welcome'), box = welcome.querySelector('.wcta');
+          welcome.classList.toggle('again', !!state.again); box.classList.toggle('swap', !!state.swap); box.innerHTML = html;
+          for (const n of welcome.querySelectorAll('.wcta, .winvite')) for (const a of n.getAnimations()) a.pause();
+        }, { state, html: cta(!!state.busy) });
+        const timing = await page.locator('.wcta, .winvite').evaluateAll(ns => ns.map(n => ({ name: getComputedStyle(n).animationName, animations: n.getAnimations().map(a => { const t = a.effect.getTiming(); return { duration: t.duration, delay: t.delay }; }) })));
+        if (reduced) assert.ok(timing.every(t => t.name === 'none' && !t.animations.length), 'Reduce Motion disables initial, swap and return entrances');
+        else for (const t of timing) for (const a of t.animations) assert.ok(a.duration <= 360 && a.delay <= 120, 'entry duration/delay stays bounded');
+        for (const phase of ['delay', 'first', 'mid', 'final']) {
+          const text = await page.evaluate(async (phase) => {
+            for (const n of document.querySelectorAll('.wcta, .winvite')) for (const a of n.getAnimations()) {
+              const t = a.effect.getTiming(), duration = Number(t.duration), delay = t.delay;
+              a.currentTime = phase === 'delay' ? Math.max(0, delay - 1) : delay + duration * (phase === 'first' ? 0 : phase === 'mid' ? .5 : 1);
+            }
+            await new Promise(r => requestAnimationFrame(r));
+            return [...document.querySelectorAll('.ifl-brand, .ifl-go, .ifl-new, .winvite')].map(n => {
+              const chain = []; for (let p = n; p; p = p.parentElement) chain.push({ tag: p.className || p.tagName, opacity: getComputedStyle(p).opacity });
+              return { text: n.textContent, chain };
+            });
+          }, phase);
+          assert.ok(text.length >= 4);
+          for (const item of text) assert.ok(item.chain.every(p => p.opacity === '1'), `${JSON.stringify(state)} ${reduced ? 'reduced' : 'full'} ${phase}: ${JSON.stringify(item)}`);
+        }
+      }
+    }
+  } finally { await ctx.close(); }
+});

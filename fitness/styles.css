@@ -1582,8 +1582,8 @@ dialog.sheet.fresh .month-bars .mbars { transform-box: fill-box; transform-origi
 .welcome .wtitle span:nth-child(4) { animation-delay: 0.73s; } .welcome .wtitle span:nth-child(5) { animation-delay: 0.79s; } .welcome .wtitle span:nth-child(6) { animation-delay: 0.85s; }
 .welcome .wtitle span:nth-child(7) { animation-delay: 0.91s; }
 @keyframes w-letter { from { opacity: 0; transform: translateY(14px); } }
-.welcome.dawn .tagline { animation: fade-up 1.2s ease 1.3s backwards; }
-.welcome.dawn .w-cta { animation: w-cta 0.9s var(--ease-out) 1.8s backwards; }
+.welcome.dawn .tagline { opacity: 1; animation: rise var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, ease-out) 72ms backwards; }
+.welcome.dawn .w-cta { opacity: 1; animation: rise var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, ease-out) 96ms backwards; }
 @keyframes w-cta { from { opacity: 0; transform: translateY(10px); } }
 /* Sign in: warm, and pulsing as a heart does (two beats, a rest); its colours deep enough for its white words to read
    (4.5:1 and more, all the way across) */
@@ -1591,8 +1591,8 @@ dialog.sheet.fresh .month-bars .mbars { transform-box: fill-box; transform-origi
 @keyframes w-beat { 0%, 40%, 100% { box-shadow: 0 10px 28px -10px rgba(255, 94, 126, 0.7); } 8% { box-shadow: 0 10px 34px -6px rgba(255, 94, 126, 0.95), 0 0 0 4px rgba(255, 130, 140, 0.25); } 18% { box-shadow: 0 10px 28px -10px rgba(255, 94, 126, 0.7); } 26% { box-shadow: 0 10px 34px -8px rgba(255, 94, 126, 0.85), 0 0 0 3px rgba(255, 130, 140, 0.18); } }
 .welcome .btn.wbeat:disabled { animation: none; }
 /* (shown again, signed out: no slow start) */
-.welcome.again :is(.wlogo .mark, .wlogo::before, .wtitle span, .tagline, .course *) { animation-delay: 0s !important; animation-duration: 0.5s; }
-.welcome.again .w-cta { animation: fade-up 0.5s ease; }
+.welcome.again :is(.wlogo .mark, .wlogo::before, .wtitle span, .course *) { animation-delay: 0s !important; animation-duration: 0.5s; }
+.welcome.again .w-cta { animation: rise var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, ease-out) backwards; }
 .welcome.again .course .c-halo { animation: c-beat 1.6s ease-in-out infinite; }
 
 /* ---- signing in and out, in motion (app.js handOff, arriving, dusk): the account page's sky, exactly ---- */

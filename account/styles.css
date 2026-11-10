@@ -1936,3 +1936,10 @@ html[data-motion-paused] .avatar::before, html[data-motion-paused] .sk::after {
   .field :is(input, textarea, select), .at, .nav-search { transition: none; }
   :is(button.row, a.row, .nav-it, .dk-tech summary, .seg button):active { transform: none; }
 }
+@media (forced-colors: active) {
+  .field :is(input, textarea, select):focus-visible,
+  .dk-text:focus-visible, .qrtype:focus-visible, .at:focus-within, .nav-search:focus-within {
+    outline: 2px solid Highlight; outline-offset: -2px;
+  }
+  .field .at input:focus-visible, .nav-search input:focus-visible { outline: none; }
+}

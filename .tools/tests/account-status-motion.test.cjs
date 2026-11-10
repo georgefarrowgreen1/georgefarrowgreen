@@ -149,6 +149,47 @@ for (const width of [390, 1440]) {
   });
 }
 
+for (const width of [390, 1440]) test(`Account/Auth forced colors keeps native and compound field focus visible ${width}`, async () => {
+  const f = await authFixture(width, 'reduce'), { p } = f;
+  try {
+    await p.emulateMedia({ forcedColors: 'active' });
+    await p.getByRole('button', { name: 'Use your password', exact: true }).click();
+    await p.locator('input[name="email"]').fill('alex@example.com');
+    await p.locator('input[name="password"]').fill('Retained password draft');
+    const focused = el => {
+      const s = getComputedStyle(el);
+      return { outline: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset, shadow: s.boxShadow, radius: parseFloat(s.borderRadius) };
+    };
+    const visible = async locator => {
+      await locator.focus(); const proof = await locator.evaluate(focused);
+      assert.equal(proof.shadow, 'none', 'forced colors removes the shadow used in normal themes');
+      assert.equal(proof.outline, 'solid'); assert.equal(proof.width, '2px'); assert.equal(proof.offset, '-2px');
+      assert.ok(proof.radius > 0, 'the fallback follows the rounded field');
+    };
+    await visible(p.locator('input[name="email"]')); await visible(p.locator('input[name="password"]'));
+    // Actual settings classes, mounted without a real account or settings API.
+    await p.locator('.auth-content').evaluate(el => {
+      const box = document.createElement('div'); box.id = 'hcSettings';
+      box.innerHTML = '<label class="field">Name<input id="hcName" value="Sample name"></label><label class="field">Notes<textarea id="hcNotes">Sample note</textarea></label><label class="field">Units<select id="hcUnits"><option>Metric</option></select></label><textarea class="dk-text" id="hcDiagnostic">Diagnostic draft</textarea><input class="qrtype" id="hcCode" value="12"><label class="field">Handle<span class="at">@<input id="hcHandle" value="alex"></span></label><label class="nav-search"><input id="hcSearch" value="Settings"></label>';
+      el.append(box);
+    });
+    for (const id of ['hcName', 'hcNotes', 'hcUnits', 'hcDiagnostic', 'hcCode']) await visible(p.locator('#' + id));
+    for (const [id, wrapper] of [['hcHandle', '.at'], ...(width >= 1100 ? [['hcSearch', '.nav-search']] : [])]) {
+      const input = p.locator('#' + id); await input.focus();
+      assert.equal((await input.evaluate(focused)).outline, 'none', 'compound input does not draw a second ring');
+      const proof = await input.evaluate((el, wrapper) => {
+        const s = getComputedStyle(el.closest(wrapper));
+        return { outline: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset, shadow: s.boxShadow, radius: parseFloat(s.borderRadius) };
+      }, wrapper);
+      assert.equal(proof.outline, 'solid'); assert.equal(proof.width, '2px'); assert.equal(proof.offset, '-2px');
+      assert.equal(proof.shadow, 'none'); assert.ok(proof.radius > 0);
+    }
+    assert.equal(await p.locator('input[name="email"]').inputValue(), 'alex@example.com');
+    assert.equal(await p.locator('input[name="password"]').inputValue(), 'Retained password draft');
+    assert.deepEqual(f.errors, []);
+  } finally { f.completeReset(); await f.ctx.close(); }
+});
+
 test('Status reopening the same day ignores an older hours response', async () => {
   const ctx = await context(390, 'reduce', 'status-reopen'), p = await ctx.newPage(), data = statusData(), errors = [];
   p.on('pageerror', e => errors.push(e.message));

@@ -580,6 +580,8 @@ body.sheet-up .sheet { transform: none; }
 /* (no room kept for the search's clear button while there's nothing to clear, so its hint's whole on a small phone) */
 .field input:placeholder-shown::-webkit-search-cancel-button { display: none; }
 .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint-text); }
+/* Forced colors removes shadows; the rounded field remains the sole focus owner. */
+@media (forced-colors) { .field:focus-within { outline: 2px solid Highlight; outline-offset: -2px; } }
 .field svg { flex: none; color: var(--text-3); }
 .results { margin-top: 10px; }
 .res { width: 100%; padding: 14px 12px; border-top: 0.5px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; }
@@ -651,8 +653,10 @@ body.sheet-up .sheet { transform: none; }
 .welcome .ifl-logo::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: none; animation: fade 2s ease 0.4s backwards; }
 .welcome .mark { position: relative; width: 96px; height: 96px; border-radius: 22px; box-shadow: var(--lift); animation: logo-in 1.4s var(--ease-out) 0.2s backwards; }
 .welcome .ifl-title span { display: inline-block; animation: letter 0.9s var(--ease-out) backwards; animation-delay: calc(var(--i) * 60ms + 500ms); }
-.welcome .ifl-tagline { color: var(--text-2); animation: fade 1.2s ease 1.2s backwards; }
-.welcome .ifl-cta { animation: cta 0.9s var(--ease-out) 1.6s backwards; }
+.welcome .ifl-tagline { color: var(--text-2); opacity: 1; animation: welcome-copy-in var(--ifl-motion-enter) var(--ease-out) var(--ifl-motion-stagger-cap) backwards; }
+.welcome .ifl-cta { opacity: 1; animation: welcome-copy-in var(--ifl-motion-enter) var(--ease-out) var(--ifl-motion-stagger-cap) backwards; }
+@keyframes welcome-copy-in { from { transform: translateY(var(--ifl-motion-distance)); } }
+@media (prefers-reduced-motion: reduce) { .welcome .ifl-tagline, .welcome .ifl-cta { animation: none; } }
 .welcome .ifl-brand { background: var(--ctl); color: var(--text-2); }
 .welcome .ifl-go { width: 100%; max-width: 420px; }
 .welcome .ifl-new { margin: 14px 0 0; font-size: 15px; color: var(--text-2); }

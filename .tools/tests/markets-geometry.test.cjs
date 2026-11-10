@@ -3,12 +3,12 @@ const {chromium,webkit}=require('playwright'),{resolve,extname}=require('node:pa
 const ROOT=resolve(__dirname,'../..'),IFL=resolve(ROOT,'../inflite'),MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};let browser,serveKit,KIT,fixtures;
 before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));fixtures=await import(pathToFileURL(ROOT+'/.tools/tests/unit/fixtures/mk.mjs'));browser=process.env.GEOMETRY_BROWSER==='webkit'?await webkit.launch():await chromium.launch({executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
-async function world(spec){const ctx=await browser.newContext({viewport:{width:spec.width,height:1000},colorScheme:spec.theme,reducedMotion:'reduce',serviceWorkers:'block'});
+async function world(spec){const ctx=await browser.newContext({viewport:{width:spec.width,height:1000},colorScheme:spec.theme,reducedMotion:spec.welcome?'no-preference':'reduce',serviceWorkers:'block'});
  if(spec.hosted)await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
- else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();const file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));return file.startsWith(ROOT+'/markets/')&&existsSync(file)?r.fulfill({body:readFileSync(file),contentType:MIME[extname(file)]||'application/octet-stream'}):r.fulfill({status:404,body:'not found'});});
- const acc=fixtures.account();acc.cash=[{id:'a0e00701-b227-4f16-b14d-59c16f10873f',name:'Everyday savings',amount:10000,rate:3.96,tier:{limit:5000,rate:.7},payout:{date:'2030-01-31',repeat:'monthly',monthEnd:true}}];const api=fixtures.marketsApi({acc});
+ else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();const file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));return file.startsWith(ROOT+'/markets/')&&existsSync(file)?r.fulfill({body:spec.welcome&&file.endsWith('/app.js')?readFileSync(file,'utf8')+'\nexport { welcome as welcomeProbe };':readFileSync(file),contentType:MIME[extname(file)]||'application/octet-stream'}):r.fulfill({status:404,body:'not found'});});
+ const acc=fixtures.account();acc.cash=[{id:'a0e00701-b227-4f16-b14d-59c16f10873f',name:'Everyday savings',amount:10000,rate:3.96,tier:{limit:5000,rate:.7},payout:{date:'2030-01-31',repeat:'monthly',monthEnd:true}}];const api=fixtures.marketsApi({acc:spec.welcome?null:acc});
  await ctx.route('**/api/markets/**',async r=>{const req=r.request();if(new URL(req.url()).pathname.endsWith('/chart')){const t=Math.floor(Date.now()/1000);return r.fulfill({json:{t:[t-86400*30,t-86400*15,t],c:[2.9,3,3.12],base:3,cur:'GBP',tz:'Europe/London'}});}const v=await api.fetch(req.url(),{method:req.method(),body:req.postData()});return r.fulfill({status:v.ok?200:404,json:await v.json()});});
- const p=await ctx.newPage(),errors=[];p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(spec.hosted?KIT+'/?module=/markets/roof/markets.js&apps=weather,markets':'http://finance.kit.test/');if(spec.hosted){await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/'));await p.locator('.pseg').waitFor();}else await p.locator(spec.width>1000?'.desk':'.pseg').waitFor();return {p,ctx,errors};
+ const p=await ctx.newPage(),errors=[];p.setDefaultTimeout(10000);p.on('pageerror',e=>errors.push(e.message));await p.goto(spec.hosted?KIT+'/?module=/markets/roof/markets.js&apps=weather,markets':'http://finance.kit.test/');if(spec.hosted){await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/'));await p.locator('.pseg').waitFor();}else await p.locator(spec.welcome?'.welcome .ifl-tagline':spec.width>1000?'.desk':'.pseg').waitFor();return {p,ctx,errors};
 }
 const visible=(p,s)=>p.locator(s).filter({visible:true});
 async function geometry(p,root){const result=await p.locator(root).filter({visible:true}).first().evaluate(e=>({square:[...e.querySelectorAll('button')].filter(b=>!b.closest('[hidden]')&&b.getClientRects().length&&parseFloat(getComputedStyle(b).borderRadius)===0).map(b=>b.className+':'+b.textContent.slice(0,30)),overflow:document.documentElement.scrollWidth>innerWidth+1}));assert.deepEqual(result.square,[],'action controls have rounded focus/touch geometry');assert.equal(result.overflow,false,'geometry stays inside the viewport');}
@@ -22,5 +22,47 @@ for(const spec of cases)test(`Markets rounded controls and field focus ${spec.ho
   if(spec.width>1000&&!spec.hosted){const sheet=await p.locator('#sheet').evaluate(e=>({r:[getComputedStyle(e).borderTopLeftRadius,getComputedStyle(e).borderTopRightRadius,getComputedStyle(e).borderBottomLeftRadius,getComputedStyle(e).borderBottomRightRadius].map(parseFloat),bottom:e.getBoundingClientRect().bottom}));assert.ok(sheet.r.every(n=>n>=30));assert.ok(sheet.bottom<1000);await p.locator('.cash-editor button[aria-label=Close]').click();await select.waitFor({state:'detached'});assert.ok(await p.locator('.port .dt th button').evaluateAll(bs=>bs.every(b=>parseFloat(getComputedStyle(b).borderRadius)>=b.getBoundingClientRect().height/2&&parseFloat(getComputedStyle(b).paddingLeft)>=4)));await p.locator('[data-k="m:studies"]').click();await p.locator('.dmenu').waitFor();const menu=await p.locator('.dmenu').evaluate(e=>({radius:parseFloat(getComputedStyle(e).borderRadius),row:parseFloat(getComputedStyle(e.querySelector('button')).borderRadius),padding:parseFloat(getComputedStyle(e.querySelector('button')).paddingInlineStart),dx:[...e.querySelectorAll('.chk')].map(c=>{const r=c.getBoundingClientRect(),b=c.parentElement.getBoundingClientRect();return Math.abs(r.x+r.width/2-b.x-parseFloat(getComputedStyle(c.parentElement).paddingLeft)-8);})}));assert.ok(menu.radius>=22&&menu.row>=16&&menu.padding>=12);assert.ok(menu.dx.every(n=>n<1));await shot(p,name+'-menu');await p.locator('#dcmd').fill('GP');await p.locator('#dsug:not([hidden])').waitFor();assert.ok(await p.locator('#dsug').evaluate(e=>parseFloat(getComputedStyle(e).borderRadius)>=22));await shot(p,name+'-search');}
   if(spec.hosted){await p.evaluate(()=>kit.F.nav.go('/markets/#s=TSCO.L'));await p.locator('.ifl-sheet[data-app=markets] .tool').first().waitFor();await geometry(p,'.ifl-sheet[data-app=markets]');const tools=await p.locator('.ifl-sheet[data-app=markets] .tool').evaluateAll(bs=>bs.map(b=>{const r=b.getBoundingClientRect(),s=b.querySelector('svg').getBoundingClientRect(),label=b.querySelector('span:last-child');return {radius:parseFloat(getComputedStyle(b).borderRadius),inset:parseFloat(getComputedStyle(b).paddingLeft),center:Math.abs(r.x+r.width/2-s.x-s.width/2),clipped:label.scrollWidth>label.clientWidth+1};}));assert.ok(tools.every(t=>t.radius>=16&&t.inset>=8&&t.center<1&&!t.clipped),'stock action glyphs are centered and labels fit inside rounded controls');await shot(p,name+'-stock-actions');}
   assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
+
+// Exercise the actual signed-out renderer and its real CSS, including a fresh replay.
+for(const spec of [{width:390,theme:'dark'},{width:1440,theme:'light'}])test(`Markets welcome copy keeps full contrast through entry and replay ${spec.width}px ${spec.theme}`,async()=>{
+ const {p,ctx,errors}=await world({...spec,hosted:false,welcome:true});
+ try{for(const replay of [false,true]){
+  if(replay)await p.evaluate(async()=>{(await import('/app.js')).welcomeProbe();});
+  const frames=await p.evaluate(()=>{
+   const roots=[...document.querySelectorAll('.welcome .ifl-tagline,.welcome .ifl-cta')],animations=roots.map(e=>e.getAnimations().find(a=>a.animationName));
+   for(const a of animations)a?.pause();
+   const rgb=s=>{const n=s.match(/[\d.]+/g)?.map(Number)||[0,0,0,0];return [n[0],n[1],n[2],n[3]??1];};
+   const blend=(a,b)=>a.slice(0,3).map((v,i)=>v*a[3]+b[i]*(1-a[3]));
+   const lum=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+   const ratio=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+   const sample=()=>[...document.querySelectorAll('.welcome .ifl-tagline,.welcome .ifl-brand,.welcome #sign-in,.welcome .ifl-new button')].map(e=>{
+    const chain=[];let node=e,opacity=1;while(node){chain.unshift(node);opacity*=Number(getComputedStyle(node).opacity);node=node.parentElement;}
+    let bg=[255,255,255];for(const n of chain)bg=blend(rgb(getComputedStyle(n).backgroundColor),bg);
+    const c=getComputedStyle(e),stops=c.backgroundImage.match(/rgba?\([^)]*\)/g),backs=stops?.length?stops.map(rgb).map(v=>blend(v,bg)):[bg];
+    return {text:e.textContent,opacity,contrast:Math.min(...backs.map(b=>ratio(blend(rgb(c.color),b),b)))};
+   });
+   const timings=animations.map(a=>a?.effect.getTiming()),duration=Math.max(...timings.map(t=>Number(t?.duration)||0)),delay=Math.max(...timings.map(t=>t?.delay||0));
+   const frames=[0,delay,delay+duration/2,delay+duration].map(time=>{for(const a of animations)if(a)a.currentTime=time;return {time,copy:sample(),opacity:roots.map(e=>getComputedStyle(e).opacity)};});
+   for(const a of animations)if(a){a.currentTime=0;frames.push({time:'restarted',copy:sample(),opacity:roots.map(e=>getComputedStyle(e).opacity)});}
+   return {timings,frames};
+  });
+  assert.ok(frames.timings.every(t=>t&&Number(t.duration)<=360&&t.delay<=120),'copy entry is bounded to the shared duration and short delay');
+  for(const frame of frames.frames){assert.ok(frame.opacity.every(v=>Number(v)===1));assert.ok(frame.copy.length>=4);for(const copy of frame.copy){assert.equal(copy.opacity,1,`${copy.text}: full opacity through ancestors at ${frame.time}`);assert.ok(copy.contrast>=4.5,`${copy.text}: ${copy.contrast.toFixed(2)}:1 at ${frame.time}`);}}
+ }
+ await p.emulateMedia({reducedMotion:'reduce'});const reduced=await p.evaluate(()=>[...document.querySelectorAll('.welcome .ifl-tagline,.welcome .ifl-cta')].map(e=>({name:getComputedStyle(e).animationName,opacity:getComputedStyle(e).opacity,transform:getComputedStyle(e).transform})));assert.ok(reduced.every(v=>v.name==='none'&&v.opacity==='1'&&v.transform==='none'));
+ assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
+
+for(const hosted of [false,true])test(`Markets cash select retains visible focus in forced colors ${hosted?'Today':'native'}`,{skip:process.env.GEOMETRY_BROWSER==='webkit'?'Chromium forced-colors emulation':false},async()=>{
+ const {p,ctx,errors}=await world({width:390,theme:'light',hosted});
+ try{
+  await p.emulateMedia({forcedColors:'active'});assert.equal(await p.evaluate(()=>matchMedia('(forced-colors: active)').matches),true);
+  if(hosted)await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));else await p.locator('[data-tab=holdings]').click();await visible(p,'.cash-row').first().click();const select=p.locator('#mk-cash-payout-repeat');await select.waitFor();await select.focus();
+  const ring=await select.evaluate(e=>{const field=e.closest('.field'),c=getComputedStyle(field),probe=document.createElement('i');probe.style.color='Highlight';document.body.append(probe);const highlight=getComputedStyle(probe).color;probe.remove();return{focused:document.activeElement===e,within:field.matches(':focus-within'),shadow:c.boxShadow,style:c.outlineStyle,width:c.outlineWidth,offset:c.outlineOffset,color:c.outlineColor,highlight,radius:parseFloat(c.borderRadius),inner:getComputedStyle(e).outlineStyle};});
+  assert.equal(ring.focused,true);assert.equal(ring.within,true);assert.equal(ring.shadow,'none','forced colors removes the decorative shadow');assert.equal(ring.style,'solid','the field retains a visible focus outline');assert.equal(ring.width,'2px');assert.equal(ring.offset,'-2px','the system outline fits inside the rounded field');assert.equal(ring.color,ring.highlight);assert.equal(ring.radius,16);assert.equal(ring.inner,'none','focus has one rounded owner');
+  await p.emulateMedia({forcedColors:'none'});const normal=await select.evaluate(e=>{const c=getComputedStyle(e.closest('.field'));return {outline:c.outlineStyle,shadow:c.boxShadow,focused:document.activeElement===e};});assert.equal(normal.focused,true);assert.equal(normal.outline,'none','the system outline is limited to forced-color mode');assert.notEqual(normal.shadow,'none','regular focus returns when forced colors is off');assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });

@@ -19,3 +19,28 @@ for(const width of [320,390,1440])for(const colorScheme of ['light','dark'])test
   if(process.env.FITNESS_UI_SHOTS){mkdirSync(process.env.FITNESS_UI_SHOTS,{recursive:true});await p.screenshot({path:process.env.FITNESS_UI_SHOTS+`/native-onboarding-${width}-${colorScheme}.png`});}assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });
+
+for(const [width,colorScheme]of [[390,'dark'],[1440,'light']])test(`Fitness welcome copy stays readable throughout entry and replay at ${width}px ${colorScheme}`,async()=>{
+ const ctx=await browser.newContext({viewport:{width,height:900},colorScheme,reducedMotion:'no-preference',serviceWorkers:'block'}),errors=[];
+ try{
+  await ctx.route('**/*',async r=>{const u=new URL(r.request().url());if(u.origin!=='https://fitness.ui.test')return r.abort();if(u.pathname.startsWith('/api/'))return r.fulfill({json:{signedIn:false}});const f=resolve(ROOT+'/fitness','.'+(u.pathname==='/'?'/index.html':u.pathname));if(!f.startsWith(ROOT+'/fitness/')||!existsSync(f))return r.fulfill({status:404,body:''});return r.fulfill({body:readFileSync(f),contentType:{html:'text/html',js:'text/javascript',css:'text/css',svg:'image/svg+xml',png:'image/png',webmanifest:'application/manifest+json'}[f.split('.').pop()]||'application/octet-stream'});});
+  const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto('https://fitness.ui.test/');await p.locator('.welcome.dawn .tagline').waitFor();assert.equal(await p.locator('.tagline').textContent(),'Training that fits your week');assert.equal(await p.locator('#sign-in').isEnabled(),true);
+  await p.evaluate(()=>{
+   const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const paint=canvas.getContext('2d'),color=value=>{paint.clearRect(0,0,1,1);paint.fillStyle=value;paint.fillRect(0,0,1,1);return [...paint.getImageData(0,0,1,1).data];};
+   const blend=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*(fg[3]/255)+bg[i]*(1-fg[3]/255));
+   const luminance=rgb=>rgb.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
+   window.__welcomeRead=()=>[...document.querySelectorAll('.welcome .tagline,.welcome #sign-in,.welcome .ifl-brand,.welcome .new-here .link')].map(el=>{
+    const path=[];for(let n=el;n;n=n.parentElement)path.unshift(n);let bg=[255,255,255],opacity=1;
+    for(const n of path){const c=getComputedStyle(n);bg=blend(color(c.backgroundColor),bg);opacity*=Number(c.opacity);}
+    const fg=color(getComputedStyle(el).color),image=getComputedStyle(el).backgroundImage,stops=image==='none'?[]:(image.match(/rgba?\([^)]*\)|color\([^)]*\)/g)||[]).map(color),backs=stops.length?stops.map(c=>blend(c,bg)):[bg];
+    const contrast=Math.min(...backs.map(b=>{const a=luminance(blend(fg,b)),z=luminance(b);return(Math.max(a,z)+.05)/(Math.min(a,z)+.05);}));return {copy:el.textContent.trim(),opacity,contrast};
+   });
+   window.__welcomeStart=again=>{const root=document.querySelector('.welcome');root.classList.remove('dawn','again');for(const el of root.querySelectorAll('.tagline,.w-cta'))getComputedStyle(el).animationName;root.classList.toggle('again',again);root.classList.add('dawn');window.__welcomeMotion=[...root.querySelectorAll('.tagline,.w-cta')].map(el=>{const a=el.getAnimations()[0];if(!a)return null;a.pause();a.currentTime=0;return a;});return __welcomeMotion.map(a=>a&&{...a.effect.getTiming(),keys:a.effect.getKeyframes()});};
+  });
+  for(const again of [false,true]){
+   const timing=await p.evaluate(again=>__welcomeStart(again),again);assert.equal(timing.length,2);assert.ok(timing.every(t=>t&&t.duration>0&&t.duration<=360&&t.delay>=0&&t.delay<=120&&t.keys.every(k=>!Object.hasOwn(k,'opacity'))),'copy moves using bounded transform-only effects');
+   for(const phase of ['delay','first','middle','final']){await p.evaluate(phase=>{for(const a of __welcomeMotion){const t=a.effect.getTiming();a.currentTime=phase==='delay'?t.delay/2:phase==='first'?t.delay:phase==='middle'?t.delay+t.duration/2:t.delay+t.duration;}},phase);const frames=await p.evaluate(()=>__welcomeRead());assert.equal(frames.length,4);for(const frame of frames){assert.equal(frame.opacity,1,`${frame.copy}: full opacity in ${again?'replay':'entry'} ${phase}, including ancestors`);assert.ok(frame.contrast>=4.5,`${frame.copy}: contrast ${frame.contrast.toFixed(2)} in ${phase}`);}}
+  }
+  await p.emulateMedia({reducedMotion:'reduce'});assert.equal(await p.locator('.tagline,.w-cta').evaluateAll(es=>es.some(e=>e.getAnimations().length>0)),false,'reduced motion skips both copy entrances');for(const frame of await p.evaluate(()=>__welcomeRead())){assert.equal(frame.opacity,1);assert.ok(frame.contrast>=4.5);}assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
+ }finally{await ctx.close();}
+});
