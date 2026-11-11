@@ -39,14 +39,17 @@ export function view(el, ctx) {
   const box = ui.el("div", { class: "ch-lock", data: { state: "locked" }, role: "region", aria: { label: "Chats is locked" }, hidden: true },
     ui.el("h2", { text: "Chats is locked" }), ui.el("p", { text: `Unlock with ${how()}.` }), btn);
   el.append(box);
-  const unlock = async () => {
-    if (busy) return;
+  const unlock = async (current = () => true) => {
+    const allowed = () => !fw.signal?.aborted && fw.visible() && current();
+    if (busy || !allowed()) return false;
     busy = true; btn.disabled = true;
     try {
       await lockCheck();
+      if (!allowed()) return false;
       const r = await svc.call("lock", false);
       if (r?.state === "locked") throw new Error("still locked");
-    } catch (_) { fw.toast("Couldn’t unlock. Try again."); }
+      return allowed();
+    } catch (_) { if (allowed()) fw.toast("Couldn’t unlock. Try again."); return false; }
     finally { busy = false; btn.disabled = false; }
   };
   const onClick = (e) => { if (e.target.closest?.("[data-act=unlock-lock]")) unlock(); };
@@ -55,6 +58,7 @@ export function view(el, ctx) {
     show() { box.hidden = false; },
     hide() { box.hidden = true; },
     busy: () => false,
+    unlock,
     unmount() { box.removeEventListener("click", onClick); box.remove(); },
   };
 }

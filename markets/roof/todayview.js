@@ -80,7 +80,6 @@ function portfolioBox() {
   // (the range chosen kept when the page is drawn again: the day's drawn first, then reshaped to it)
   const kept = PRANGES.some(([r]) => r === S.prange) ? S.prange : "1d";
   const seg = h("div.seg.pseg.range-controls", { role: "group", "aria-label": "Your portfolio over" }, PRANGES.map(([r, label]) => h("button", { type: "button", "aria-pressed": String(r === kept), "data-r": r, text: ({ "1d": "Day", "5d": "Week", "1mo": "Month", "1y": "Year", "5y": "5yr" })[r] || label })));
-  S.prange = "1d";
   if (kept !== "1d") requestAnimationFrame(() => { if (!seg.isConnected) return; const b = seg.querySelector(`[data-r="${kept}"]`); if (b) show(kept); });
   // (the range drawn: where another can't be, it stays, pressed again, and today's goes on being kept fresh: refresh)
   let seq = 0, drawn = "1d";

@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.03";
-export const NEWS = "Open Chats from InFlite OS";
+export const BUILD = "2.04";
+export const NEWS = "Chat windows and shared files";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
@@ -59,9 +59,23 @@ export async function mount(root, fw) {
   root.classList.add("m-chats");
   const store = createStore();
   const ctx = { fw, svc: null, store, open: {} };
-  let dead = false, onScreen = false, episode = 0;
+  let dead = false, onScreen = false, episode = 0, workspace = null, workspaceP = null, pendingReply = null;
   const live = () => !dead && !fw.signal?.aborted;
   const here = (mine) => live() && onScreen && episode === mine;
+  const activateWorkspace = () => {
+    if (!live() || !fw.workspace?.enabled) return Promise.resolve(null);
+    if (stateNow === "device") { stateNow = null; connect(); paint(); if (onScreen) timers(); }
+    return workspaceP ||= fw.lazy((q) => import("./workspace.js" + q)).then((m) => {
+      if (!live()) return null;
+      return workspace = m.connect(root, ctx, { state: () => stateNow, chatId: () => chat.id, unlock: (current) => lock.unlock(current),
+        reply(id) {
+          if (chat.id === id) return chat.focus();
+          pendingReply = { id, episode: episode + 1 };
+          fw.nav.go(`/chats/#open=${encodeURIComponent(id)}`);
+          return true;
+        } });
+    }).catch(() => { workspaceP = null; return null; });
+  };
   // (until the service answers, every call waits for it; a failure says why "offline")
   let svcP = null, svc = null;
   const call = (m, ...a) => !live() ? Promise.reject({ why: "offline" }) : (svc ? svc.call(m, ...a) : (svcP || Promise.reject({ why: "offline" })).then((s) => live() && s ? s.call(m, ...a) : Promise.reject({ why: "offline" })));
@@ -108,7 +122,7 @@ export async function mount(root, fw) {
   const lock = lockView(lockBox, ctx);
   const unwatch = lockWatch(ctx, root);
 
-  let shown = null, route = null, stateNow = deviceOf() === "computer" ? "device" : null, failed = false, syncT = 0, opening = 0;
+  let shown = null, route = null, stateNow = deviceOf() === "computer" && !fw.workspace?.enabled ? "device" : null, failed = false, syncT = 0, opening = 0;
   const offs = [];
 
   // ---- the header ----
@@ -172,6 +186,7 @@ export async function mount(root, fw) {
   function onState(d) {
     const s = d?.state;
     if (!live() || !s || s === stateNow) return;
+    if (s === "device" && fw.workspace?.enabled) { call("start", { visible: onScreen && fw.visible(), screen: onScreen }).catch(() => {}); return; }
     const was = stateNow;
     stateNow = s;
     if (s === "locked" || was === "ready") forgetWords();
@@ -210,6 +225,7 @@ export async function mount(root, fw) {
       for (const s of secs.values()) s.hidden = true;
       const ok = await chat.show(r);
       if (my !== opening || !live() || !onScreen) return;
+      if (ok && pendingReply?.id === r.arg && pendingReply.episode === episode) { pendingReply = null; chat.focus(); }
       if (!ok) {
         chat.hide();
         fw.toast("That chat isn’t on this phone");
@@ -255,6 +271,7 @@ export async function mount(root, fw) {
     async show(r) {
       if (!live()) return;
       episode++;
+      if (pendingReply?.episode !== episode) pendingReply = null;
       route = r || { section: "chats" };
       onScreen = true;
       if (stateNow !== "device") connect();
@@ -262,8 +279,9 @@ export async function mount(root, fw) {
       timers();
       await openRoute(route);
     },
+    workspace: activateWorkspace,
     hide() {
-      episode++; onScreen = false;
+      episode++; onScreen = false; pendingReply = null;
       opening++;
       clearInterval(syncT); syncT = 0;
       for (const v of views.values()) v.hide();
@@ -276,6 +294,7 @@ export async function mount(root, fw) {
     unmount() {
       this.hide();
       dead = true;
+      workspace?.destroy(); workspace = null;
       for (const f of offs) { try { f?.(); } catch (_) {} }
       offs.length = 0;
       globalThis.removeEventListener("online", onLine);

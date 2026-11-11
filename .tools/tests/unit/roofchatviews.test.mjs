@@ -126,6 +126,9 @@ test("the list draws the core's rows, pinned first, escaped; the badge and the h
   await inst.show({ kind: "app", app: "chats", section: "chats", key: null, arg: null });
   await settle();
   const rows = sec(root, "chats").querySelectorAll("a.ch-row");
+  const list = sec(root, "chats").querySelector(".ch-list");
+  assert.equal(list.tagName, "UL");
+  assert.ok([...list.children].every(item => item.tagName === "LI" && item.querySelector("a.ch-row")?.getAttribute("role") == null), "native conversation links retain their link role inside real list items");
   assert.deepEqual(rows.map((r) => r.dataset.id), ["g-one", "f-pat"], "pinned first, then newest");
   assert.ok(rows[1].textContent.includes(`See you ${EVIL}`), "the line as text");
   assert.equal(rows[1].getAttribute("href"), "/chats/#open=f-pat");
@@ -155,6 +158,10 @@ test("Friends: the requests row, friends by name, groups; Add Friend and Request
   await inst.show({ kind: "app", app: "chats", section: "friends", key: null, arg: null });
   await settle();
   const f = sec(root, "friends");
+  for (const list of f.querySelectorAll(".ch-list")) {
+    assert.equal(list.tagName, "UL");
+    assert.ok([...list.children].every(item => item.tagName === "LI" && item.querySelector("a.ch-row")?.getAttribute("role") == null), "friends and groups retain native link and list semantics");
+  }
   assert.equal(f.hidden, false);
   assert.equal(sec(root, "chats").hidden, true);
   assert.deepEqual(f.querySelectorAll(".ch-friends a.ch-row").map((r) => r.dataset.id), ["f-lee", "f-pat"]);

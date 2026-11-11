@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.34";
-export const NEWS = "Ride workspaces with Weather and route files";
+export const BUILD = "2.35";
+export const NEWS = "Workout files and flexible ride workspaces";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -194,7 +194,7 @@ export async function mount(root, fw) {
   const secs = new Map(), views = new Map();
   for (const [id, name] of SECTIONS) {
     const el = doc.createElement("section");
-    el.className = "fx-sec"; el.dataset.sec = id; el.setAttribute("aria-label", name); el.hidden = true;
+    el.className = "fx-sec"; el.dataset.sec = id; el.setAttribute("aria-label", "Fitness " + name); el.hidden = true;
     root.append(el);
     secs.set(id, el);
     views.set(id, VIEWS[id](el, ctx));

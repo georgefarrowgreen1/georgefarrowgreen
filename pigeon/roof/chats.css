@@ -20,11 +20,11 @@
 
 /* ---- the list ---- */
 .m-chats .ch-sec { padding: 0 0 24px; }
-.m-chats .ch-list { display: flex; flex-direction: column; border-radius: var(--ifl-radius-group, 22px); background: var(--ifl-surface, var(--glass)); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--lift)); overflow: hidden; }
+.m-chats .ch-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-radius: var(--ifl-radius-group, 22px); background: var(--ifl-surface, var(--glass)); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--lift)); overflow: hidden; }
 .m-chats .ch-list:empty { display: none; }
 .m-chats .ch-row { display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 14px 16px; border-radius: var(--ifl-radius-row, 16px); color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent;
   transition: background-color var(--dur-fast, .18s) ease, transform var(--motion-release, .38s) var(--motion-spring, cubic-bezier(.22, 1, .36, 1)); }
-.m-chats .ch-row + .ch-row { border-top: 0.5px solid var(--line); }
+.m-chats .ch-item + .ch-item > .ch-row { border-top: 0.5px solid var(--line); }
 .m-chats .ch-row:active { background: var(--press); transform: scale(.994); }
 .m-chats .ch-row:focus-visible { outline: 2px solid var(--acc-ink); outline-offset: -2px; }
 .m-chats .ch-row .ifl-avatar { flex: none; width: 44px; height: 44px; font-size: 18px; }

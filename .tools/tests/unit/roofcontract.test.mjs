@@ -433,7 +433,7 @@ for (const app of APPS2) {
     const graph = await staticGraph(app);
     assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
     const lazyCSS = [...read(fileOf(R.REGISTRY[app].entry)).matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
-    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS, ...(app === 'fitness' ? ['/fitness/roof/workspace.css'] : [])].sort(), 'lazy: import closure, linked CSS and the exact optional Fitness workspace stylesheet, kept offline together');
+    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS, ...(['fitness', 'weather', 'markets', 'chats', 'mail'].includes(app) ? [`/${app}/roof/workspace.css`] : [])].sort(), 'lazy: import closure, linked CSS and the exact optional same-app workspace stylesheet, kept offline together');
     assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
     assert.ok(files.length + lazy.length <= 60, `files ∪ lazy: ${files.length + lazy.length} ≤ 60 (the root worker's cap)`);
     // (static imports stay inside the app's own files: never another module's, never app.js)
@@ -599,7 +599,7 @@ test('chats: connector.files = the static graphs of chats.js, service.js and cor
   // was stamped as it's sent, so the same file fetched and run at two addresses, as Mail's mail.js never imports its own)
   assert.ok(!graph.includes(R3.connector), 'chats.js never imports connector.js');
   assert.deepEqual([...files].sort(), [...graph, ...R3.css, R3.connector].sort(), 'files: the three graphs, the CSS and the connector, no more, no less');
-  assert.deepEqual([...lazy].sort(), (await lazyClosure('chats', graph)).sort(), 'lazy: the closure, less files and NET');
+  assert.deepEqual([...lazy].sort(), [...await lazyClosure('chats', graph), '/chats/roof/workspace.css'].sort(), 'lazy: the closure and exact optional workspace stylesheet, less files and NET');
   assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
   assert.ok(files.length + lazy.length <= 60, `${files.length + lazy.length} ≤ 60`);
   assert.ok(!files.includes('/chats/rank.js'), 'rank.js only through the core’s one import (build I1)');

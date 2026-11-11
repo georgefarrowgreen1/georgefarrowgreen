@@ -1,4 +1,4 @@
-// Markets' connector (One roof stage 2, §2.5, §4.2, C4, C6): read without loading the module. ≤ 4 KB, no imports.
+// Markets' connector: read without loading the module. ≤ 4 KB, no imports.
 export const CONNECTOR = 1;
 
 const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
@@ -26,7 +26,7 @@ export const connector = {
     "/markets/roof/markets.js", "/markets/roof/connector.js", "/markets/roof/core.js", "/markets/roof/mkui.js", "/markets/roof/todayview.js",
     "/markets/cashview.js", "/markets/cash.js", "/markets/cash-store.js", "/markets/account.js", "/markets/income.js", "/markets/send.js", "/markets/session.js", "/markets/live.js", "/markets/charts.js", "/markets/roof/markets.css",
   ],
-  lazy: ["/markets/roof/holdings.js", "/markets/roof/news.js", "/markets/roof/stock.js", "/markets/roof/edit.js", "/markets/roof/money.js", "/markets/stories.js"],
+  lazy: ["/markets/roof/holdings.js", "/markets/roof/news.js", "/markets/roof/stock.js", "/markets/roof/edit.js", "/markets/roof/money.js", "/markets/stories.js", "/markets/roof/workspace.js", "/markets/roof/workspace.css"],
   // mini(answer): the day's percent and its shape, never an amount (as roof/connectors.js's fallback)
   mini(a) {
     const c = a?.cards?.markets, p = Number(c?.pct), v = (c?.spark?.vals || []).map(Number).filter(Number.isFinite), lo = Math.min(...v), d = Math.max(...v) - lo || 1;

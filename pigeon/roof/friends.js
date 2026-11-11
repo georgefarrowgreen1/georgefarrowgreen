@@ -6,7 +6,7 @@
 //   openRequests(ctx) → handle: Friend Requests (data-sheet requests): theirs to say yes or no to, yours waiting.
 //   openAddFriend(ctx, handle?) → handle: Add Friend (data-sheet addfriend): a handle, sent as a request
 //     (meta("friends", { handle })); handle from #add=<handle> filled in.
-import { put, first, patchList, framed, listTime } from "./list.js";
+import { put, first, patchList, framed, listTime, listLink } from "./list.js";
 
 // (under a friend's name: the place they share, else online / last seen)
 export function friendSub(f, now = Date.now()) {
@@ -22,20 +22,20 @@ function build(sec, ctx) {
   const { fw, store } = ctx, ui = fw.ui, el = ui.el;
   const top = el("div", { class: "ch-ftop" });
   const fhead = el("h2", { class: "ifl-label ch-fhead" });
-  const fbox = el("div", { class: "ch-list ch-friends", role: "list", aria: { label: "Friends" } });
+  const fbox = el("ul", { class: "ch-list ch-friends", role: "list", aria: { label: "Friends" } });
   const ghead = el("h2", { class: "ifl-label ch-ghead", text: "Groups" });
-  const gbox = el("div", { class: "ch-list ch-groups", role: "list", aria: { label: "Groups" } });
+  const gbox = el("ul", { class: "ch-list ch-groups", role: "list", aria: { label: "Groups" } });
   const foot = el("div", { class: "ch-ffoot" });
   sec.append(top, fhead, fbox, ghead, gbox, foot);
   let offs = [];
 
-  const friendEl = (f) => el("a", { class: "ch-row ch-friend", href: fw.nav.href("open", f.id), role: "listitem",
+  const friendEl = (f) => listLink(ui, { class: "ch-row ch-friend", href: fw.nav.href("open", f.id),
     data: { k: "friend", act: "open", id: f.id, sig: [f.name, f.avatar, f.online, f.lastSeen, f.place, f.keyChanged, f.verified].join("|") } },
     ui.avatar(f.name),
     el("span", { class: "ch-rtext" },
       el("span", { class: "ch-rtop" }, el("span", { class: "ch-rname", text: first(f.name) }), f.verified ? el("span", { class: "ch-ver", text: "Verified" }) : null),
       el("span", { class: "ch-rbot" }, el("span", { class: "ch-rline", text: f.keyChanged ? "Security key changed" : friendSub(f) }))));
-  const groupEl = (g) => el("a", { class: "ch-row ch-group", href: fw.nav.href("open", g.id), role: "listitem",
+  const groupEl = (g) => listLink(ui, { class: "ch-row ch-group", href: fw.nav.href("open", g.id),
     data: { k: "row", act: "open", id: g.id, sig: [g.name, g.muted, (g.members || []).map((m) => m.name).join(",")].join("|") } },
     ui.avatar(g.name),
     el("span", { class: "ch-rtext" },

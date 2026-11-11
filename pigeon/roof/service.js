@@ -141,7 +141,10 @@ export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
   const call = async (m, ...a) => {
     if (ended) throw why("no");
     if (stale) throw why("no");
-    if (state === "device" && !w) throw why("device");
+    if (state === "device" && !w) {
+      if (!ui?.workspace?.enabled) throw why("device");
+      restart().then(() => { if (state === "device" && !ended) setState("offline"); }, () => { if (!ended) setState("offline"); });
+    }
     await ready;
     if (restarting) {
       let t = 0;
@@ -225,17 +228,19 @@ export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
     refresh() { return call("sync", { quiet: true }).then((r) => !!r?.ok, () => false); },
     signOut() { return call("signOut").then(() => true, () => true); },
   });
-  // a computer: no Worker, ever (S3-D13); the facade says device
+  // Standalone desktop retains its phone handoff. The trusted OS host can
+  // activate the same account-owned service later without replacing its facade.
   let ready;
   if (ended) { ready = Promise.resolve(); return ready.then(() => svc); }
-  if (deviceOf() === "computer") { state = "device"; last.set("state", { state }); ready = Promise.resolve(); return ready.then(() => svc); }
-  make();
+  const blocked = () => deviceOf() === "computer" && !ui?.workspace?.enabled;
+  if (blocked()) { state = "device"; last.set("state", { state }); ready = Promise.resolve(); }
+  else { make();
   // (a Worker that never answered hello or start (its file not found, or it failed as it loaded): offline, not signed
   // out, so Today doesn't ask you to sign in; made again on the next visible)
-  ready = boot().catch(() => { if (!stale && !ended) setState("offline"); });
+  ready = boot().catch(() => { if (!stale && !ended) setState("offline"); }); }
   // the page's comings and goings, to the core; a Worker that died, made again (risk 6); a push, one quiet sync (S3-C5)
   const ping = () => { if (!w || ended || stale) return; raw("state", [], PING_WAIT).then(() => {}, () => { if (!ended && !stale) restart(); }); };
-  offs.push(ui?.on?.("visible", () => { if (ended) return; if (!alive) restart(); else { ping(); call("start", { visible: true }).catch(() => {}); } }));
+  offs.push(ui?.on?.("visible", () => { if (ended || blocked()) return; if (!alive) restart(); else { ping(); call("start", { visible: true }).catch(() => {}); } }));
   offs.push(ui?.on?.("hidden", () => { if (!ended) call("start", { visible: false }).catch(() => {}); }));
   offs.push(ui?.on?.("push", () => { if (!ended) call("sync", { quiet: true }).catch(() => {}); }));
   return ready.then(() => svc);

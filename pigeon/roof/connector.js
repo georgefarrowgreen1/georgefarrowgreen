@@ -41,7 +41,7 @@ export const connector = {
     "/chats/roof/chsheets.css",
     "/chats/cards.css",
   ],
-  lazy: ["/chats/roof/send.js", "/chats/roof/sheets.js", "/chats/roof/settings.js", "/chats/roof/media.js", "/chats/rank.js", "/chats/qr.js"],
+  lazy: ["/chats/roof/send.js", "/chats/roof/sheets.js", "/chats/roof/settings.js", "/chats/roof/media.js", "/chats/rank.js", "/chats/qr.js", "/chats/roof/workspace.js", "/chats/roof/workspace.css"],
   preload: ["/chats/roof/chats.js", "/chats/roof/connector.js"],
   mini(answer) {
     const u = answer?.cards?.chat?.unread;

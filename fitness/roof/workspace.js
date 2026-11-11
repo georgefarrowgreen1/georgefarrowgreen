@@ -7,10 +7,12 @@ import { openRideAt, sendableToday } from "./todayview.js";
 
 const number = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
 const fileRef = (route) => ({ id: `fitness:route:${route.id}`, app: "fitness", kind: "file", name: `inflite-${route.id}.gpx`, mime: "application/gpx+xml", routeId: route.id, intent: "export-route" });
+const workoutId = (value) => typeof value === "string" && /^[\w-]{1,100}$/.test(value) ? value : null;
+const workoutRef = (w, format = "fit") => ({ id: `fitness:workout:${w.id}:${format}`, objectId: `fitness:workout:${w.id}:${format}`, app: "fitness", name: `${String(w.name || "Workout").replace(/[\u0000-\u001f/\\]/g, " ").slice(0, 170)}.${format}`, mime: format === "fit" ? "application/vnd.ant.fit" : "application/xml", source: "Workout library · Fitness", intent: "view-workout", downloadIntent: `download-workout-${format}` });
 
 export function createWorkspace(root, ctx, { current = () => true } = {}) {
   const { S, core: c, fw } = ctx, api = fw.workspace, owner = fw.session.user.id;
-  let dead = false, linked = null;
+  let dead = false, linked = null, fileGate = null;
   const live = () => !dead && !fw.signal?.aborted && current() && fw.session.user.id === owner;
   const owned = () => live() && S.me?.id === owner;
   const active = () => owned() && api.active() !== false;
@@ -25,7 +27,22 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     return { workout, activity, measured: workout ? measure(workout, c.paceFor(workout.sport)) : null, sum: activity ? c.sumOf(activity) : null };
   };
   const route = () => readRoutePlan(owner, { signal: fw.signal });
+  const library = () => (typeof c.allWorkouts === "function" ? c.allWorkouts() : S.mine || []).filter((w) => workoutId(w.id) && w.sport !== "strength" && Array.isArray(w.steps)).slice(0, 80);
   const unavailable = () => ({ status: S.loading ? "loading" : S.error ? "error" : "signin", error: S.error || null, ride: null, route: null, files: [], actions: [] });
+  async function files({ query = "", current: asking = () => true } = {}) {
+    const permitted = () => owned() && asking();
+    if (S.loading || !permitted()) return { status: S.loading ? "loading" : S.error ? "error" : "signin", files: [] };
+    // The existing account route and library remain authoritative. No coordinates,
+    // activity tracks or generated download URLs enter the workspace index.
+    let plan = null, failed = false;
+    try { plan = await route(); } catch (_) { failed = true; }
+    if (!permitted()) return { status: "signin", files: [] };
+    const values = library().flatMap((w) => [workoutRef(w), ...(w.sport === "ride" ? [workoutRef(w, "zwo")] : [])]);
+    if (plan) { const ref = fileRef(plan.route); values.unshift({ ...ref, objectId: ref.id, source: "Saved route · Fitness", intent: "view-route", downloadIntent: "export-route", modifiedAt: plan.route.generatedAt }); }
+    const words = String(query).slice(0, 160).toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const matching = values.filter((f) => words.every((word) => `${f.name} ${f.source}`.toLowerCase().includes(word)));
+    return { status: failed ? "error" : "ready", files: matching.slice(0, 100), more: matching.length > 100 };
+  }
   async function snapshot() {
     if (!owned()) return unavailable();
     let plan = null, routeError = null;
@@ -51,11 +68,50 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     ] };
   }
   async function run(intent, object, { current: presenting = () => true } = {}) {
-    const permitted = () => active() && presenting();
-    if (!permitted()) return { ok: false, error: "Open Fitness to continue." };
+    const inView = () => live() && presenting() && api.active() !== false;
+    const permitted = () => owned() && inView();
+    if (!inView()) return { ok: false, error: "Open Fitness to continue." };
     const id = typeof intent === "string" ? intent : intent?.id || intent?.intent;
     const requested = typeof object === "string" ? object : object?.id || intent?.objectId;
     const { workout: w } = session();
+    if (id === "import-files") {
+      const picker = root.querySelector?.('input[type="file"][data-k="files"]');
+      if (!picker) return { ok: false, error: "Open Fitness to add files." };
+      const choose = () => { if (!permitted()) return; picker.value = ""; picker.click(); };
+      if (owned() && globalThis.navigator?.userActivation?.isActive !== false) choose();
+      else {
+        fileGate?.close();
+        const words = fw.ui.el("p", { role: "status" }), button = fw.ui.btn("Choose files", { disabled: true, run: () => { if (permitted()) { fileGate?.close(); choose(); } } });
+        let sheet;
+        const gate = { close: () => sheet?.now(), refresh() {
+          if (!inView()) return gate.close();
+          button.disabled = !owned();
+          words.textContent = owned() ? "Add a ride or workout file to Fitness." : S.error ? "Fitness couldn’t load. Close and try again." : "Loading Fitness…";
+        } };
+        sheet = fw.sheet.open({ sheet: "fitness-files", title: "Add files", body: fw.ui.el("div", { class: "ifs-page" }, words, button), onClose: () => { if (fileGate === gate) fileGate = null; } });
+        fileGate = gate; gate.refresh();
+      }
+      return { ok: true, pending: true };
+    }
+    if (!permitted()) return { ok: false, error: "Open Fitness to continue." };
+    if (["view-workout", "download-workout-fit", "download-workout-zwo"].includes(id)) {
+      const match = /^fitness:workout:([\w-]{1,100}):(fit|zwo)$/.exec(requested || ""), available = () => match && library().find((item) => item.id === match[1]);
+      const chosen = available();
+      if (!chosen || match[2] === "zwo" && chosen.sport !== "ride" || id === "download-workout-fit" && match[2] !== "fit" || id === "download-workout-zwo" && match[2] !== "zwo") return { ok: false, error: "That workout is no longer available. Open Fitness to review it." };
+      if (id === "view-workout") {
+        const view = await fw.lazy((q) => import("./planview.js" + (q || "")));
+        if (!permitted() || !available()) return { ok: false, error: "Open Fitness to continue." };
+        view.openWorkout(ctx, chosen.id); return { ok: true, pending: true };
+      }
+      const formats = await fw.lazy((q) => import("../formats.js" + (q || "")));
+      if (!permitted() || !available()) return { ok: false, error: "Open Fitness to continue." };
+      const fresh = available(), ref = workoutRef(fresh, match[2]), name = formats.fileName(fresh.name, match[2]);
+      const payload = match[2] === "fit" ? formats.fitFromWorkout(fresh, { pace: c.paceFor(fresh.sport) }) : formats.zwoFromWorkout(fresh);
+      const file = new File([payload], name, { type: ref.mime });
+      if (!permitted()) return { ok: false, error: "Open Fitness to continue." };
+      await c.saveFile(name, file);
+      return { ok: permitted(), file, ref };
+    }
     if (id === "schedule") return { ok: !!openRideAt(ctx), pending: true };
     if (id === "share") { const spec = sendableToday(); return spec ? { ok: !!(await fw.send(spec)) } : { ok: false, error: "There is no session to share today." }; }
     if (id === "export-workout") {
@@ -82,6 +138,7 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
   }
   function changed() {
     if (!live()) return;
+    fileGate?.refresh();
     // A link established by the person's Weather action follows a subsequently confirmed Ride At time only.
     const currentPlace = api.context.get()?.location;
     if (owned() && linked?.current() && currentPlace?.lat === linked.lat && currentPlace?.lon === linked.lon) {
@@ -90,10 +147,10 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     }
     api.changed();
   }
-  const off = api.provide({ snapshot, run }), stops = c.EVENTS.map((event) => c.on(event, changed));
+  const off = api.provide({ snapshot, run, files }), stops = c.EVENTS.map((event) => c.on(event, changed));
   function destroy() {
     if (dead) return;
-    dead = true; linked = null; off(); for (const stop of stops) stop();
+    dead = true; linked = null; fileGate?.close(); fileGate = null; off(); for (const stop of stops) stop();
     fw.signal?.removeEventListener("abort", destroy); root.classList.remove("fx-workspace"); forgetRoutePlans();
   }
   fw.signal?.addEventListener("abort", destroy, { once: true });

@@ -54,7 +54,10 @@
   // unlike a laptop with a touchscreen)
   var touched = navigator.maxTouchPoints > 1;
   var mobile = /iPhone|iPod|iPad|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && touched) || (/Linux/.test(ua) && touched && matchMedia("(pointer: coarse)").matches);
-  if (!mobile) root.setAttribute("data-device", "computer");
+  // OS uses the existing key page on its own origin. This exception starts only
+  // that first-party unlock page; standalone desktop Chat keeps its handoff.
+  var osUnlock = location.hostname === "os.inflite.ai" && !!document.querySelector('meta[name="ifl-hub"]') && ["/chats/in/", "/chats/in/index.html"].includes(location.pathname);
+  if (!mobile && !osUnlock) root.setAttribute("data-device", "computer");
   // back from signing in on the account's page (#signin=…): the page's last picture, its sky, its dawn and you, from
   // the very first frame (styles.css html.arriving), until app.js puts up its own copy (arriving). You: the initial
   // and a small copy of your photo the page sent in the # (f, p), the photo made a blob: here, as images are only ever
@@ -87,7 +90,7 @@
   // Chat itself (app.js, and what it brings) not arriving, or stopping before it's up: rather than "Opening Chat…" for
   // ever (a Home Screen app has no reload of its own), what happened, and Try Again. Once it's up, anything that goes
   // wrong is app.js's to say (bootFail)
-  if (mobile) {
+  if (mobile || osUnlock) {
     var stuck = function (lost) {
       var s = document.getElementById("screen"), l = s && s.firstElementChild;
       // (it's up: app.js has put its own screen in place of "Opening Chat…" (mount), whatever's still loading inside it.

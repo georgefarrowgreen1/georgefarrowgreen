@@ -1,0 +1,15 @@
+/* Optional first-party OS pane geometry. Native full-screen layouts are unchanged. */
+.ifl-pane-screen:has(> .m-chats.ifl-in-pane) { position: relative; width: 100%; max-width: none; height: 100%; min-height: 0; margin: 0; padding: 0; }
+.m-chats.ifl-in-pane { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.m-chats.ifl-in-pane > .ch-host { position: relative; flex: 1; min-height: 0; }
+.m-chats.ifl-in-pane > .ch-host:has(> .ch-chat[hidden]) { display: none; }
+.m-chats.ifl-in-pane .ch-chat { position: absolute; inset: 0; width: 100%; height: min(100%, var(--ch-pane-vh, 100%)); max-width: 100%; margin: 0; transform: none; }
+.m-chats.ifl-in-pane .ch-scroller { padding: 8px 12px; }
+.m-chats.ifl-in-pane .ch-composer { padding-bottom: 10px; }
+.m-chats.ifl-in-pane .ch-chat.ch-kbup .ch-composer { padding-bottom: 6px; }
+.m-chats.ifl-in-pane .ch-state, .m-chats.ifl-in-pane .ch-lock { min-height: min(300px, 100%); padding: 20px 16px; }
+.m-chats.ifl-in-pane .ch-sec { overflow: auto; min-height: 0; }
+@media (max-width: 440px) {
+  .m-chats.ifl-in-pane .ch-b { max-width: 88%; }
+  .m-chats.ifl-in-pane .ch-composer { gap: 6px; padding-left: 8px; padding-right: 8px; }
+}

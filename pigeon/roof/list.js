@@ -73,6 +73,11 @@ export function patchList(box, items, keyOf, make) {
     at = n; i++;
   }
 }
+// Keep native links inside real list items: an anchor cannot take role=listitem.
+export function listLink(ui, attrs, ...children) {
+  const link = ui.el("a", attrs, ...children);
+  return ui.el("li", { class: "ch-item", data: { sig: link.dataset.sig } }, link);
+}
 // (box's children replaced by these, the null and false ones left out)
 export const put = (box, ...kids) => box.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 // (one requestAnimationFrame per view: draw() asked many times in a frame runs once)
@@ -104,7 +109,7 @@ function build(sec, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el;
   const warn = el("div", { class: "ch-warns" });
   const air = el("div", { class: "ch-air", data: { k: "air" }, hidden: true, aria: { label: "In the air" }, role: "region" });
-  const box = el("div", { class: "ch-list", role: "list", aria: { label: "Chats" } });
+  const box = el("ul", { class: "ch-list", role: "list", aria: { label: "Chats" } });
   const empty = el("div", { class: "ch-empty" });
   sec.append(warn, air, box, empty);
   let offs = [], asked = "";
@@ -112,7 +117,7 @@ function build(sec, ctx) {
 
   function rowEl(r) {
     const name = r.name || "", line = r.line == null ? "" : String(r.line);
-    const n = el("a", { class: `ch-row${r.unread ? " unread" : ""}${r.kind === "group" ? " group" : ""}`, href: fw.nav.href("open", r.id), role: "listitem",
+    const n = listLink(ui, { class: `ch-row${r.unread ? " unread" : ""}${r.kind === "group" ? " group" : ""}`, href: fw.nav.href("open", r.id),
       data: { k: "row", act: "open", id: r.id, sig: [r.name, r.avatar, r.unread, r.flying, r.pinned, r.at, r.keyChanged, line].join("|") } },
       ui.avatar(name, {}),
       el("span", { class: "ch-rtext" },

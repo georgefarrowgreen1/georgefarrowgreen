@@ -277,8 +277,13 @@ function build(host, ctx) {
     const h = vv ? vv.height : ih;
     box.style.setProperty("--ch-vvh", `${Math.round(h)}px`);
     if (vv) box.style.setProperty("--ch-vvtop", `${Math.round(vv.offsetTop || 0)}px`);
+    if (fw.workspace?.enabled && rootInPane()) {
+      const top = host.getBoundingClientRect().top, bottom = vv ? vv.height + (vv.offsetTop || 0) : ih;
+      box.style.setProperty("--ch-pane-vh", `${Math.max(0, Math.round(Math.min(host.clientHeight, bottom - top)))}px`);
+    }
     if (stick) toBottom();
   };
+  const rootInPane = () => fw.screenEl?.querySelector?.(".m-chats.ifl-in-pane");
 
   // ---- the composer ----
   const sizeInput = () => { input.style.setProperty("--ch-rows", String(Math.min(6, Math.max(1, input.value.split("\n").length)))); };
@@ -377,7 +382,7 @@ function build(host, ctx) {
   msgs.addEventListener("animationend", onMotionEnd);
   msgs.addEventListener("animationcancel", onMotionEnd);
 
-  let hiddenOff = null;
+  let hiddenOff = null, paneObserver = null;
   function leave() {
     if (!id) return;
     flushDraft();
@@ -389,6 +394,7 @@ function build(host, ctx) {
     hiddenOff?.(); hiddenOff = null;
     vv?.removeEventListener("resize", fit);
     vv?.removeEventListener("scroll", fit);
+    paneObserver?.disconnect(); paneObserver = null;
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
     msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = ""; latest.hidden = true;
@@ -407,7 +413,7 @@ function build(host, ctx) {
       if (!cid) return false;
       if (id && id !== cid) leave();
       if (id === cid) { header(); return true; }
-      id = cid; episode++; stick = true; lastFirst = null;
+      id = cid; episode++; const mine = episode; stick = true; lastFirst = null;
       box.hidden = false;
       fw.fill(true);
       fw.tabs?.away?.(true);
@@ -419,6 +425,7 @@ function build(host, ctx) {
       ];
       vv?.addEventListener("resize", fit);
       vv?.addEventListener("scroll", fit);
+      if (fw.workspace?.enabled && typeof ResizeObserver === "function") { paneObserver = new ResizeObserver(fit); paneObserver.observe(host); }
       hiddenOff = fw.on("hidden", onHidden);
       const visOff = fw.on("visible", () => { fit(); markRead(); });
       offs.push(visOff);
@@ -426,7 +433,7 @@ function build(host, ctx) {
       header();
       t.start();
       const r = await svc.call("open", cid).catch((e) => ({ err: e?.why || "failed" }));
-      if (id !== cid) return false;
+      if (id !== cid || mine !== episode) return false;
       if (!r || r.err || r.ok === false) {
         const why = r?.err || r?.why;
         if (why === "no" || why === "failed" || why == null) return false;     // (chats.js says it and goes to the list)
@@ -434,6 +441,8 @@ function build(host, ctx) {
         return true;
       }
       if (r.id === cid && Array.isArray(r.msgs)) store.apply(`chat:${cid}`, r);
+      if (typeof r.draft === "string" && !input.value) { input.value = r.draft.slice(0, MAX_TEXT); draftSent = input.value; }
+      sendBtn.disabled = !words().trim(); sizeInput();
       const a = anchors.get(cid);
       draw.now();
       if (a && restore(a)) stick = atBottom(); else { stick = true; toBottom(); }
@@ -448,6 +457,7 @@ function build(host, ctx) {
       fw.fill(false);
     },
     busy: () => !!(id && (words().trim() || sending)),
+    focus: () => { if (!id || box.hidden || !fw.visible()) return false; input.focus({ preventScroll: true }); return true; },
     flush() { flushDraft(); return { lost: 0 }; },
     back: () => false,
     get id() { return id; },

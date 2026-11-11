@@ -1,5 +1,4 @@
 import { cashEditor } from "../cashview.js";
-import { cashContext, pushSheet } from "./mkui.js";
 // Markets' module: its entry under InFlite's roof (One roof stage 2, spec §2.1, §2.5, §2.6, §4.1, §4.2, §4.7, S2-D2–D7,
 // D9, D18, D19, D21, D22). Loaded by the framework (roof/modules.js) with import("/markets/roof/markets.js") on first open
 // and kept for the life of the page.
@@ -20,12 +19,12 @@ import { cashContext, pushSheet } from "./mkui.js";
 // A section out of sight for five minutes lets go of its DOM and is drawn afresh from core.S on its next show (S2-D22).
 import * as core from "./core.js";
 import { connector, want } from "./connector.js";
-import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, topArg } from "./mkui.js";
+import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, topArg } from "./mkui.js";
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.35";
-export const NEWS = "Open Markets from InFlite OS";
+export const BUILD = "2.36";
+export const NEWS = "Markets windows and commands";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }
@@ -115,7 +114,7 @@ export async function mount(root, fw) {
     const el = doc.createElement("section");
     el.className = "mk-sec";
     el.dataset.sec = id;
-    el.setAttribute("aria-label", name);
+    el.setAttribute("aria-label", "Markets " + name);
     el.hidden = true;
     root.append(el);
     secs.set(id, el);
@@ -194,6 +193,7 @@ export async function mount(root, fw) {
   core.start(fw);
 
   return {
+    workspace: () => fw.workspace?.enabled ? fw.lazy((q) => import("./workspace.js" + q)).then((m) => live() ? m.connect(ctx, root, live) : null) : null,
     async show(route) {
       if (!live()) return;
       episode++; opening++;

@@ -57,7 +57,7 @@ function graphFrom(start) {
 }
 // (every import( is the body of fw.lazy(: `fw.lazy((q) => import("./x.js" + q))` (s24-contracts §7) or `fw.lazy(() => import("./x.js"))`)
 const lazyOutside = (s0) => { const s = uncomment(s0), bad = []; for (const m of s.matchAll(/\bimport\s*\(/g)) if (!/fw\.lazy\(\s*(?:async\s*)?(?:\(\s*(?:[\w$]+\s*)?\)|[\w$]+)\s*=>\s*(?:await\s+)?$/.test(s.slice(Math.max(0, m.index - 60), m.index))) bad.push(s.slice(Math.max(0, m.index - 40), m.index + 30)); return bad; };
-const lazyTargets = (s0) => [...uncomment(s0).matchAll(/fw\.lazy\(\s*(?:async\s*)?(?:\(\s*(?:[\w$]+\s*)?\)|[\w$]+)\s*=>\s*(?:await\s+)?import\(\s*["']\.\/([\w.-]+)["']\s*(?:\+\s*[\w$]+\s*)?\)/g)].map((m) => m[1]);
+const lazyTargets = (s0) => [...uncomment(s0).matchAll(/fw\.lazy\(\s*(?:async\s*)?(?:\(\s*(?:[\w$]+\s*)?\)|[\w$]+)\s*=>\s*(?:await\s+)?import\(\s*["']\.\/([\w.-]+)["']\s*(?:\+\s*(?:[\w$]+|\(\s*[\w$]+\s*\|\|\s*(?:""|'')\s*\))\s*)?\)/g)].map((m) => m[1]);
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([;{},)\]])[ \t]*\/\/(?![^\n]*["'`])[^\n]*$/gm, '$1');
 const gz = (files) => gzipSync(files.map((f) => strip(read(f))).join('\n'), { level: 9 }).length;
 
@@ -65,7 +65,7 @@ const SECTIONS = [['people', 'People'], ['updates', 'Updates'], ['later', 'Later
 const FILES = ['mail.js', 'store.js', 'api.js', 'logic.js', 'actions.js', 'list.js', 'rows.js', 'menus.js', 'icons.js', 'reader.js', 'bodyframe.js', 'outbox.js'].map((f) => `/mail/roof/${f}`);
 const CSS = ['mail.css', 'reader.css', 'mailsheets.css'].map((f) => `/mail/roof/${f}`);
 // (s24-contracts §8: Mail's NET is none, so lazy is every fw.lazy target less files; it overrides s4/spec §4.4's two)
-const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js'].map((f) => `/mail/roof/${f}`);
+const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js', 'workspace.js', 'workspace.css'].map((f) => `/mail/roof/${f}`);
 const R = skip || fx.roofSkip ? null : await import(new URL('router.js', fx.ROOF));
 const { connector, CONNECTOR } = skip ? {} : await import(new URL('connector.js', MOD));
 const stubs = () => jsFiles().filter((f) => exportsOf(src(f)).has('STUB'));
@@ -201,7 +201,7 @@ test('the connector: no imports, ≤ 4 KB, the agreed words, Mail’s sections a
   assert.deepEqual(connector.mini({ cards: { mail: { people: 3, updates: 5, later: { n: 1, next: null } } } }), { kind: 'num', num: '3', label: 'From people' });
 });
 
-test('connector.files is exactly the static import graph from mail.js and the three stylesheets; lazy is the four lazy files, reached only through fw.lazy', { skip }, () => {
+test('connector.files remains the static Mail graph and three stylesheets; native tools and workspace assets remain lazy', { skip }, () => {
   const files = connector.files;
   assert.equal(new Set(files).size, files.length, 'no repeats');
   assert.deepEqual([...files].sort(), [...FILES, ...CSS].sort(), 'the 15 files (§4.4)');
@@ -210,10 +210,10 @@ test('connector.files is exactly the static import graph from mail.js and the th
   assert.deepEqual(graph.sort(), [...FILES].sort(), 'the static graph from mail.js is the 12');
   assert.ok(!graph.includes('/mail/roof/connector.js'), 'mail.js never imports the connector');
   for (const f of LAZY) assert.ok(!graph.includes(f), `${f}: lazy, never static`);
-  assert.deepEqual(lazyTargets(src('mail.js')).map((f) => `/mail/roof/${f}`).sort(), [...LAZY].sort(), 'mail.js reaches the four lazy files through fw.lazy, and lazy is exactly them (s24-contracts §8)');
+  assert.deepEqual(lazyTargets(src('mail.js')).map((f) => `/mail/roof/${f}`).sort(), LAZY.filter(f => f.endsWith('.js')).sort(), 'mail.js reaches the native lazy JS and optional workspace adapter through fw.lazy');
   assert.deepEqual(files.filter((f) => LAZY.includes(f)), [], 'files ∩ lazy = ∅');
-  assert.deepEqual([...files, ...LAZY].filter((f) => f.endsWith('.css')).sort(), [...CSS].sort());
-  assert.deepEqual(cssFiles(), ['mail.css', 'mailsheets.css', 'reader.css'], 'no other stylesheet');
+  assert.deepEqual([...files, ...LAZY].filter((f) => f.endsWith('.css')).sort(), [...CSS, '/mail/roof/workspace.css'].sort());
+  assert.deepEqual(cssFiles(), ['mail.css', 'mailsheets.css', 'reader.css', 'workspace.css'], 'only three initial stylesheets and the exact optional workspace stylesheet');
   assert.ok(files.length + LAZY.length <= 60, 'files ∪ lazy ≤ 60 (C11)');
 });
 
@@ -303,7 +303,12 @@ test('only bodyframe.js names the body shell or posts a message; blob: URLs only
       assert.ok(ok, `${f}:${i + 1}: /api/messages/… is only …/meta (§3.1): ${line.trim()}`);
     }
     // (Mail's keys at inflite.ai are named once, in store.js's STORAGE and SESSION, S4-D16)
-    if (f !== 'store.js') assert.ok(!/["'`]mail:/.test(s), `${f}: a mail:* key outside store.js`);
+    if (f !== 'store.js') {
+      // Optional workspace resource IDs are opaque RAM references, never storage keys.
+      const checked = f === 'workspace.js' ? s.replace(/(["'`])mail:file:/g, '$1resource-file:') : s;
+      assert.ok(!/["'`]mail:/.test(checked), `${f}: a mail:* key outside store.js`);
+      if (f === 'workspace.js') assert.ok(!/\b(?:localStorage|sessionStorage|indexedDB)\b/.test(s), 'workspace resource IDs never become storage keys');
+    }
   }
 });
 

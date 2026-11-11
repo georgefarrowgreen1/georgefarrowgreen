@@ -241,6 +241,47 @@ test('a computer: no Worker, ever; the facade says device (S3-D13)', async () =>
   nav.maxTouchPoints = 5;
 });
 
+test('trusted OS desktop activation owns one service Worker and retains the standalone desktop gate', async () => {
+  fresh(); nav.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'; nav.maxTouchPoints = 0;
+  FakeWorker.impl = scripted();
+  const { ui, subs } = makeUI(), ac = new AbortController();
+  const svc = await (await loadService()).startService({ ui, signal: ac.signal });
+  assert.equal(svc.state, 'device'); assert.equal(FakeWorker.made.length, 0);
+  ui.fire('visible'); await settle(); assert.equal(FakeWorker.made.length, 0, 'ordinary desktop visible never starts a worker');
+  ui.workspace = { enabled: true };
+  const same = svc.facade;
+  const answers = await Promise.all([svc.call('start', { screen: true }), svc.call('state')]);
+  assert.equal(FakeWorker.made.length, 1); assert.equal(svc.state, 'ready'); assert.equal(svc.facade, same);
+  assert.equal(answers[0].state, 'ready');
+  ac.abort(); assert.ok(FakeWorker.made[0].dead);
+  assert.ok(Object.values(subs).every((s) => s.size === 0));
+  await assert.rejects(svc.call('state'), (e) => e.why === 'no');
+  nav.maxTouchPoints = 5;
+});
+
+test('an OS desktop service starts immediately when its trusted capability was assigned before mounting', async () => {
+  fresh(); nav.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'; nav.maxTouchPoints = 0;
+  FakeWorker.impl = scripted({ state: 'key' });
+  const { ui } = makeUI(); ui.workspace = { enabled: true };
+  const svc = await (await loadService()).startService({ ui });
+  assert.equal(FakeWorker.made.length, 1); assert.equal(svc.state, 'key', 'OS still requires the account encryption key');
+  svc.release({ terminate: true }); nav.maxTouchPoints = 5;
+});
+
+test('late OS desktop activation retains the bounded restart wait when its Worker never answers', async () => {
+  fresh(); nav.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  FakeWorker.impl = scripted({ deaf: () => true });
+  const { ui } = makeUI(), ac = new AbortController();
+  const svc = await (await loadService()).startService({ ui, signal: ac.signal });
+  try {
+    ui.workspace = { enabled: true };
+    const at = Date.now();
+    await assert.rejects(svc.call('state'), e => e.why === 'offline');
+    assert.ok(Date.now() - at < 6500, 'late OS startup uses the existing five-second restart bound');
+    assert.equal(FakeWorker.made.length, 1);
+  } finally { ac.abort(); }
+});
+
 test('release({ terminate }): the Worker ended, every listener dropped, calls refused', async () => {
   fresh(); FakeWorker.impl = scripted({ deaf: (w, d) => d.m === 'waiting' });
   const { ui, subs } = makeUI();

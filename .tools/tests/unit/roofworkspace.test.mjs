@@ -67,10 +67,10 @@ test('the OS updater and worker list exactly the optional closure and the manife
 
 test('only curated pane adapters and styles are lazy, same-app cache-safe assets; normal module graphs exclude them', { skip }, async () => {
   const { WORKSPACE_APPS } = await import(new URL('workspace-catalog.js', ROOF));
-  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), ['fitness', 'weather']);
-  for (const app of ['fitness', 'weather']) {
+  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), ['chats', 'fitness', 'mail', 'markets', 'weather']);
+  for (const app of ['fitness', 'weather', 'markets', 'chats', 'mail']) {
     const { connector } = await import(fileOf(`/${app}/roof/connector.js`));
-    const graph = await staticGraph(app), closure = await lazyClosure(app, graph), optional = bridges.filter(p => p.startsWith('/' + app + '/'));
+    const graph = app === 'chats' ? [...new Set([...await staticGraph(app), ...await staticGraph(app, '/chats/roof/service.js'), ...await staticGraph(app, '/chats/roof/core.js')])] : await staticGraph(app), closure = await lazyClosure(app, graph), optional = bridges.filter(p => p.startsWith('/' + app + '/'));
     const linkedCss = [...readFileSync(fileOf(graph[0]), 'utf8').matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
     assert.deepEqual([...connector.lazy].sort(), [...closure, ...linkedCss, optional[1]].sort(), 'only the import closure, explicitly linked app CSS and curated workspace stylesheet are lazy');
     assert.deepEqual(WORKSPACE_APPS.find(a => a.id === app).workspace, { css: optional[1] });
@@ -93,12 +93,26 @@ test('all existing app connector assets remain valid static JS/CSS under the str
   }
 });
 
-test('the optional OS shell plus both adapters stays within 24 KiB JS and 8 KiB CSS served gzip', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
+test('OS v2 has independently bounded shell, Commands, Files and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
   const costs = [...osFiles.filter(p => /\.(?:js|css)$/.test(p)), ...bridges].map(path => ({ path, bytes: gzipSync(minified(readFileSync(published(path), 'utf8'), path.endsWith('.css')), { level: 9 }).length }));
-  const total = ext => costs.filter(f => f.path.endsWith(ext)).reduce((n, f) => n + f.bytes, 0);
-  t.diagnostic(JSON.stringify({ js: total('.js'), css: total('.css'), files: costs }));
-  assert.ok(total('.js') <= 24 * 1024, `${total('.js')} bytes optional JS exceeds 24576`);
-  assert.ok(total('.css') <= 8 * 1024, `${total('.css')} bytes optional CSS exceeds 8192`);
+  const features = ['commands', 'files'], base = p => p.startsWith('/roof/') && !features.some(f => p.startsWith('/roof/workspace-' + f + '.'));
+  const group = predicate => costs.filter(f => predicate(f.path));
+  const sum = (files, ext) => files.filter(f => f.path.endsWith(ext)).reduce((n, f) => n + f.bytes, 0);
+  const check = (name, files, jsKiB, cssKiB) => {
+    const jsBytes = sum(files, '.js'), cssBytes = sum(files, '.css');
+    t.diagnostic(JSON.stringify({ name, jsBytes, cssBytes, jsLimit: jsKiB * 1024, cssLimit: cssKiB * 1024 }));
+    assert.ok(jsBytes <= jsKiB * 1024, `${name}: ${jsBytes} bytes JS exceeds ${jsKiB * 1024}`);
+    assert.ok(cssBytes <= cssKiB * 1024, `${name}: ${cssBytes} bytes CSS exceeds ${cssKiB * 1024}`);
+  };
+  // The v1 aggregate cannot describe v2's five-app windows, command actions and
+  // federated Files. Allow 0.5 KiB beyond the v1 shell ceiling for window scroll ownership, activation guards and geometry restoration,
+  // then explicitly bound each reviewed addition and the whole optional graph.
+  check('base/window shell', group(base), 24.5, 5.5);
+  check('Commands', group(p => p.startsWith('/roof/workspace-commands.')), 3.5, 1);
+  check('Files', group(p => p.startsWith('/roof/workspace-files.')), 4.25, 1);
+  for (const [app, cap] of [['fitness', 3.75], ['weather', 2.75], ['markets', 1.5], ['chats', 2.75], ['mail', 3.5]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
+  check('complete optional OS v2', costs, 46, 10);
+  t.diagnostic(JSON.stringify({ files: costs }));
 });
 
 test('workspace routing is an explicit host opt-in and does not widen app or origin access', { skip }, async () => {
