@@ -27,7 +27,7 @@ export const connector = {
     "/weather/account.js", "/weather/send.js", "/weather/charts.js", "/weather/icons.js",
     "/weather/roof/weather.css", "/weather/roof/wxcore.css", "/weather/roof/wxsettings.css", "/weather/roof/radar.css",
   ],
-  lazy: ["/weather/roof/days.js", "/weather/roof/warnings.js", "/weather/roof/places.js", "/weather/roof/wxsettings.js", "/weather/roof/wxdetail.js"],
+  lazy: ["/weather/roof/days.js", "/weather/roof/warnings.js", "/weather/roof/places.js", "/weather/roof/wxsettings.js", "/weather/roof/wxdetail.js", "/weather/roof/workspace.js", "/weather/roof/workspace.css"],
   // mini(answer) → { kind: "num-bars", num, bars: [0..100 ×5], label } | null, from answer.cards.weather (functions/
   // _todaywx.js weatherCard), null unless state "ok": num = now.temp as it is (already "14°"); bars = hours.list[0..4].pop;
   // label from rain (v=2): "Raining now", "Rain from 15:00" (at, on the place's clock: offset s, clock "12"/"24"), else "".

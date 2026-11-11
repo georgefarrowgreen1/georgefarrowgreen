@@ -24,8 +24,8 @@ import { h, M, init, release, openSheet, closeSheet, paint, icon, Sheet, topView
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.34";
-export const NEWS = "Rounded controls, clearer spacing and centred icons";
+export const BUILD = "2.35";
+export const NEWS = "Open Markets from InFlite OS";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }

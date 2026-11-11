@@ -110,7 +110,7 @@ test('every other file: the files’ own answer, untouched (and the API as it wa
   assert.equal(ASSETS.asked.length, 4);
 });
 
-test('wrangler.jsonc: the page runs the Worker first, and the hubs’ addresses are InFlite’s and its staging hub’s', { skip }, () => {
+test('wrangler.jsonc: the page runs the Worker first, and only the apex, staging and OS hubs are allowed', { skip }, () => {
   const text = readFileSync(new URL('wrangler.jsonc', MAIL), 'utf8');
   const conf = JSON.parse(text.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
   // (and, where the inflite repo beside has Mail's module, One roof stage 4's: /body and /body/* the body shell, /roof/*
@@ -119,8 +119,8 @@ test('wrangler.jsonc: the page runs the Worker first, and the hubs’ addresses 
   const roof = existsSync(new URL('public/roof/mail.js', MAIL)), parts = existsSync(new URL('public/parts/', MAIL));
   for (const path of ['/api/*', '/version', '/', '/index.html', ...(roof ? ['/body', '/body/*', '/roof/*'] : []), ...(parts ? ['/parts/*'] : [])])
     assert.ok(conf.assets.run_worker_first === true || conf.assets.run_worker_first.includes(path), `Worker runs first for ${path}`);
-  // (the staging hub, next.inflite.ai, frames Mail too, for the phone checks before going live: spec §15.2 K7)
-  assert.equal(conf.vars.HUB_ORIGIN, 'https://inflite.ai https://next.inflite.ai');
+  // (the staging hub and the OS shell frame Mail through the same exact-origin boundary)
+  assert.equal(conf.vars.HUB_ORIGIN, 'https://inflite.ai https://next.inflite.ai https://os.inflite.ai');
   // (_headers keeps 'none' for every file: the Worker's answer is the only one framed by the hub)
   assert.match(filesPolicy(), /frame-ancestors 'none'$/);
 });
@@ -158,12 +158,12 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
 test('embed mode: only in a frame named ifl-mail; the hubs are Mail’s own address with email. taken off, and its staging hub’s', { skip }, () => {
   let m = embed();
   assert.equal(m.EMBED, true);
-  assert.deepEqual(plain(m.HUBS), ['https://inflite.ai', 'https://next.inflite.ai']);
+  assert.deepEqual(plain(m.HUBS), ['https://inflite.ai', 'https://next.inflite.ai', 'https://os.inflite.ai']);
   assert.equal(m.hub(), null, 'which one holds the frame: not known yet, where the browser doesn’t say');
   assert.deepEqual(m.classes, ['embed'], 'html.embed');
-  assert.deepEqual(m.posted, [[HELLO, 'https://inflite.ai'], [HELLO, 'https://next.inflite.ai']], 'its hello, to the hubs’ addresses alone');
+  assert.deepEqual(m.posted, [[HELLO, 'https://inflite.ai'], [HELLO, 'https://next.inflite.ai'], [HELLO, 'https://os.inflite.ai']], 'its hello, to the hubs’ addresses alone');
   assert.equal(typeof m.listeners.message, 'function');
-  assert.deepEqual(plain(embed({ origin: 'http://email.ifl.test:8788' }).HUBS), ['http://ifl.test:8788', 'http://next.ifl.test:8788'], 'the tests’ site the same');
+  assert.deepEqual(plain(embed({ origin: 'http://email.ifl.test:8788' }).HUBS), ['http://ifl.test:8788', 'http://next.ifl.test:8788', 'http://os.ifl.test:8788'], 'the tests’ site the same');
   for (const o of [{ framed: false }, { name: 'other' }, { name: '' }, { framed: false, name: 'ifl-mail' }]) {
     m = embed(o);
     assert.equal(m.EMBED, false, JSON.stringify(o));
@@ -180,7 +180,7 @@ test('embed mode: only in a frame named ifl-mail; the hubs are Mail’s own addr
 });
 
 test('the hub holding the frame, as the browser says it: the hello to it alone, and only its word heard', { skip }, () => {
-  for (const at of ['https://inflite.ai', 'https://next.inflite.ai']) {
+  for (const at of ['https://inflite.ai', 'https://next.inflite.ai', 'https://os.inflite.ai']) {
     const m = embed({ ancestors: [at] });
     assert.equal(m.hub(), at);
     assert.deepEqual(m.posted, [[HELLO, at]], `${at}: the hello to it alone`);
@@ -194,14 +194,14 @@ test('the hub holding the frame, as the browser says it: the hello to it alone, 
   for (const ancestors of [['https://evil.example'], ['https://email.inflite.ai'], [], 'throws']) {
     const m = embed({ ancestors });
     assert.equal(m.hub(), null, JSON.stringify(ancestors));
-    assert.deepEqual(m.posted, [[HELLO, 'https://inflite.ai'], [HELLO, 'https://next.inflite.ai']], JSON.stringify(ancestors));
+    assert.deepEqual(m.posted, [[HELLO, 'https://inflite.ai'], [HELLO, 'https://next.inflite.ai'], [HELLO, 'https://os.inflite.ai']], JSON.stringify(ancestors));
   }
 });
 
 test('the hub’s word: heard only from the window holding the frame, at a hub’s address, and only its hello, which fixes the hub', { skip }, () => {
   let m = embed();
   assert.equal(m.toHub({ ifl: 'back' }), false, 'nothing but the hello said before the hub answers');
-  assert.equal(m.posted.length, 2);
+  assert.equal(m.posted.length, 3);
   assert.equal(m.fromHub({ source: m.parent, origin: 'https://next.inflite.ai', data: HELLO }), true);
   assert.equal(m.heard(), true);
   assert.equal(m.hub(), 'https://next.inflite.ai', 'the hub: the one that answered');
@@ -214,6 +214,7 @@ test('the hub’s word: heard only from the window holding the frame, at a hub�
   for (const e of [{ source: {}, origin: 'https://inflite.ai', data: HELLO }, { source: m.win, origin: 'https://inflite.ai', data: HELLO },
     { source: m.parent, origin: 'https://evil.example', data: HELLO }, { source: m.parent, origin: 'https://email.inflite.ai', data: HELLO },
     { source: m.parent, origin: 'https://inflite.ai.evil.example', data: HELLO }, { source: m.parent, origin: 'https://next.next.inflite.ai', data: HELLO },
+    { source: m.parent, origin: 'https://os.inflite.ai.evil.example', data: HELLO }, { source: m.parent, origin: 'https://os.os.inflite.ai', data: HELLO },
     { source: m.parent, origin: 'http://inflite.ai', data: HELLO }, { source: m.parent, origin: 'null', data: HELLO }, { source: m.parent, origin: 'https://inflite.ai', data: { ifl: 'hello', v: 2 } },
     { source: m.parent, origin: 'https://inflite.ai', data: 'hello' }, { source: m.parent, origin: 'https://inflite.ai', data: null }, { source: m.parent, origin: 'https://inflite.ai', data: { ifl: 'signin', ask: 'x' } }])
     assert.equal(m.fromHub(e), false, JSON.stringify({ ...e, source: e.source === m.parent ? 'parent' : 'other' }));

@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { IFL, roofSkip } from './fixtures/roof.mjs';
+import { OS_FILES } from './fixtures/workspace.mjs';
 
 const SW = IFL && new URL('today/public/sw.js', IFL);
 const skip = !IFL && 'the inflite repo isn’t beside this one';
@@ -138,9 +139,12 @@ test('every file Today’s page loads as it opens is one the worker keeps, and e
   for (const f of [...want]) if (MODPATH.test(f)) want.delete(f);
   // (the icons a phone asks for as Today's added to its Home Screen, never as it opens, needn't be kept)
   for (const f of ['/icon-512.png', '/icon-maskable-512.png', '/og.png']) want.delete(f);
-  const missing = [...want].filter((f) => !FILES.includes(f));
+  const optional = /\nconst OS_FILES = (\[[^\]]*\]);/.exec(read('sw.js'));
+  const osFiles = optional ? JSON.parse(optional[1]) : [];
+  if (optional) assert.deepEqual(osFiles, [...OS_FILES], 'the explicit optional OS closure is checked separately in roofworkspace');
+  const missing = [...want].filter((f) => !FILES.includes(f) && !osFiles.includes(f));
   assert.deepEqual(missing, [], 'loaded as Today opens, not kept for offline');
-  for (const f of FILES) {
+  for (const f of [...FILES, ...osFiles]) {
     assert.ok(existsSync(new URL(f === '/' ? 'index.html' : f.slice(1), pub)), `${f} is in FILES but not there`);
   }
 });
@@ -326,6 +330,24 @@ test('One roof: a keep that isn’t right is ignored whole: another app, a build
   // (sixty, at the most: kept)
   await keepFrom(w, { ifl: 'keep', app: 'weather', build: '1.64', files: Array.from({ length: 60 }, (_, i) => `/weather/roof/f${i}.js`) });
   assert.equal(w.stores.get('roof-weather-1.64').size, 60);
+});
+
+test('module build caches reject API aliases, private documents and non-code files and cannot replay an old cached API response', { skip: roofCase }, async () => {
+  const privateResponse = () => Object.defineProperty(Response.json({ account: 'private-account-value' }), 'type', { value: 'basic' });
+  const w = worker(() => privateResponse());
+  const paths = ['/fitness/api/plan', '/weather/api/settings', '/markets/api/holdings', '/mail/api/threads', '/chats/roof/api/messages.js', '/fitness/roof/API/plan.css', '/weather/roof/account.json', '/fitness/route.gpx', '/mail/private.html'];
+  for (const path of paths) {
+    const app = path.split('/')[1];
+    await keepFrom(w, { ifl: 'keep', app, build: '9.99', files: [path] });
+  }
+  assert.deepEqual(w.asked, [], 'no credentialed fetch of any non-static or API path');
+  assert.deepEqual([...w.stores.keys()], [], 'no private/account response cached under an app build');
+  for (const path of paths) {
+    const app = path.split('/')[1];
+    w.stores.set(`roof-${app}-9.99`, new Map([[path, privateResponse()]]));
+    assert.equal(await w.get(path), null, path + ': a previous malformed cache entry is not used as a fallback');
+  }
+  assert.deepEqual(w.asked, [], 'the service worker leaves these requests to normal routing');
 });
 
 test('One roof: Weather’s files from the network first; the kept copy only with no answer or a 5xx; a 404 (the roof off) passed on; never its worker, version or a query', { skip: roofCase }, async () => {

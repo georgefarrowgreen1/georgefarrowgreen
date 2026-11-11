@@ -612,7 +612,8 @@ const IFL = (() => {
   if (document.body) fitScreen(); else document.addEventListener("DOMContentLoaded", fitScreen, { once: true });
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
+  const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
+  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -625,7 +626,7 @@ const IFL = (() => {
       try { u = new URL(String(url), location.href); } catch (_) { return url; }
       if (!/^https?:$/.test(u.protocol) || u.username || u.password) return url;
       // (the site: this page's, the staging hub's next. taken off, so its links to the apps' own addresses come here too)
-      const site = location.host.replace(/^next\./, ""), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
+      const site = hubSite(), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
       let p = null;
       if (u.host === location.host || u.host === site) p = rest;
       else if (sub && sub[2] === site && SUBS[sub[1]]) p = SUBS[sub[1]].slice(0, -1) + rest;
@@ -1102,7 +1103,7 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1218,8 +1219,8 @@ const ENGINE = engineRule(HUB, location.search, window, window.parent);
 // that page). Written as /pigeon/in/ so each address says it as its own (functions/_app.js atRoot); nowhere else.
 const IN_PAGE = ["/pigeon/in/", "/pigeon/in/index.html"].includes(location.pathname), IN_AT = IN_PAGE ? location.hash : "";
 if (ENGINE) document.documentElement.classList.add("engine");
-// the site, as the hub's own address has it (its staging copy's next. taken off): for the account's page beside it
-const hubSite = () => location.host.replace(/^next\./, "");
+// the site, with the hub's next. or os. prefix taken off, for the account's page beside it
+const hubSite = () => location.host.replace(/^(next|os)\./, "");
 // (opened from the account's Notifications page to turn them on here: #notify, asked as soon as Chat's ready; never at
 // the hub, where notifications are You's)
 const ASK_NOTIFY = IFL.wantsAllow() && !HUB;
@@ -1228,8 +1229,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.02";            // shown in InFlite's menu
-const APP_NEWS = "Rounded controls, clearer spacing and centred icons";       // (said once it's in)
+const APP_VERSION = "2.03";            // shown in InFlite's menu
+const APP_NEWS = "Open Chats from InFlite OS";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

@@ -880,7 +880,7 @@
 .m-fitness .ph-vs:not(.up):not(.down){color: var(--tint-text); background: color-mix(in srgb, var(--tint) 13%, transparent);}
 .m-fitness .t-today .cols{grid-template-columns: minmax(0, 1fr) 360px;}
 .m-fitness .wgrid{display: grid; gap: 14px; padding: 14px 16px 16px; margin-bottom: 18px; border-radius: var(--r-group);}
-.m-fitness .wg-week h3{display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);}
+.m-fitness .wg-week h2{display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);}
 .m-fitness .wg-week .aside{text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text-2);}
 .m-fitness .wg-days{display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;}
 .m-fitness .gday{position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; min-height: 92px; padding: 10px 11px; border: 0; border-radius: 16px; background: var(--glass-ctl);
@@ -892,11 +892,12 @@
 .m-fitness .gday .mini svg{display: block; width: 100%; height: 20px;}
 .m-fitness .gday .g-ok{position: absolute; top: 9px; right: 9px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: var(--on-tint); background: var(--good);}
 .m-fitness .gday.rest b{color: var(--text-2); font-weight: 600;}
-.m-fitness .gday.past:not(.on){opacity: 0.72;}
+.m-fitness .gday.past:not(.on){color: var(--text-2);}
 .m-fitness .gday.missed em{color: var(--warn, #d9822b);}
 .m-fitness .gday.today small{color: var(--tint-text);}
 .m-fitness .gday.did{box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--good) 55%, transparent);}
 .m-fitness .gday.on{background: color-mix(in srgb, var(--tint) 12%, var(--glass-ctl)); box-shadow: inset 0 0 0 2px var(--tint);}
+.m-fitness .gday.on :is(small,b,em){color: var(--text);}
 .m-fitness .gday:active{transform: scale(0.97); transition-duration: var(--dur-press);}
 .m-fitness .gday[draggable="true"]{cursor: grab;}
 .m-fitness .gday.dragging{opacity: 0.4;}

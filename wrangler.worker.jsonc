@@ -26,7 +26,10 @@
   "observability": { "enabled": true },
   // Scheduled jobs use this Worker address, past the custom domains' bot checks.
   "workers_dev": true,
-  "vars": { "TICK_HOST": "inflite-apps.georgefarrowgreen.workers.dev" },
+  "vars": {
+    "TICK_HOST": "inflite-apps.georgefarrowgreen.workers.dev",
+    "HUB_ORIGINS": "https://inflite.ai,https://next.inflite.ai,https://os.inflite.ai"
+  },
   // Custom domains, each with its own DNS record.
   "routes": [
     { "pattern": "finance.inflite.ai", "custom_domain": true },

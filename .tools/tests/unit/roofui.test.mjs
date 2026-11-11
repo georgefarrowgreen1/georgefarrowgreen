@@ -11,6 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { ROOF, IFL, roofSkip } from './fixtures/roof.mjs';
+import { OS_CORE_JS } from './fixtures/workspace.mjs';
 import { fakeDocument } from '../roofkit/fakedom.mjs';
 import { JS_START, JS_END } from '../../iflmenu.mjs';
 
@@ -172,26 +173,30 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // Motion audit: 512 B for cancellable route snapshots, gesture cleanup and sheet
 // animation completion. No new runtime dependency; the framework remains under 30 KB.
 // Lifetime ownership, stylesheet recovery and the account/screen task helpers add
-// about 2.1 KiB of executable code. Keep a bounded 33 KiB layer. Moving the API
+// about 2.1 KiB of executable code. Keep a bounded core layer. Moving the API
 // contract to docs reduces the actual framework files served over the network.
-test('roof UI stays within 33 KB; requests stay within 2 KB + 128 B gzip', { skip: roofSkip }, () => {
-  const all = files().filter(f => f !== 'requests.js').map((f) => strip(read(f))).join('\n');
+// Workspace v1 adds controlled view ownership to the core (35 KiB); its five
+// optional scripts have their own served-size budget in roofworkspace.test.mjs.
+const OPTIONAL_WORKSPACE = new Set(OS_CORE_JS);
+test('roof core UI stays within 35 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
+  const all = files().filter(f => f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
   assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
-  assert.ok(gz <= 33 * 1024, `roof/*.js is ${gz} bytes gzipped (comments stripped), over 33792`);
+  console.log(`# roof core: ${gz} bytes gzip (comments stripped, optional OS scripts separately bounded)`);
+  assert.ok(gz <= 35 * 1024, `roof core is ${gz} bytes gzipped (comments stripped), over 35840`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 
 // ---- stages 2–4's additions to fw and F (s24-contracts §4–§7), where the inflite repo beside has them ----
-const s24 = roofSkip || (!/fw\.nav\.depth|depth: \(\) => curDepth\(\)/.test(read('frame.js')) && 'the inflite repo beside is from before stages 2–4 (frame.js has no nav.depth)');
+const s24 = roofSkip || (!/fw\.nav\.depth|depth: \(\) => (?:m\.host \? m\.host\.depth\?\.\(\) \|\| 0 : )?curDepth\(\)/.test(read('frame.js')) && 'the inflite repo beside is from before stages 2–4 (frame.js has no nav.depth)');
 test('stages 2–4, frame.js: sections false hides the switcher, back: { label } from the module, nav.go with replace and kind, nav.depth, stay keys left by the tidy, fw.changed, session.hubAgain', { skip: s24 }, () => {
   const f = strip(read('frame.js'));
   assert.match(f, /sections: h\.sections === false \|\| h\.sections === null \? null : R\.sections/, 'false (and null) hide it; anything else shows it');
   assert.match(f, /back: (?:t \? null : )?\{ label: h\.back\?\.label \|\| \(to \? `Back to \$\{to\}` : "Back"\) \}/, 'the module’s label, the action always F.nav.back (none at the root of an app that’s a tab screen: stage 3)');
-  assert.match(f, /go: \(path, o\) => (?:live\(\) && )?F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: KINDS\.includes\(o\?\.kind\) \? o\.kind : null \}\)/, 'a module’s kind: push, tab, zoom or section only (roofframe.test runs it)');
-  assert.match(f, /depth: \(\) => curDepth\(\)/);
+  assert.match(f, /F\.nav\.go\(path, \{ from: app, replace: !!o\?\.replace, kind: KINDS\.includes\(o\?\.kind\) \? o\.kind : null \}\)/, 'a module’s kind: push, tab, zoom or section only (roofframe.test runs it)');
+  assert.match(f, /depth: \(\) => (?:m\.host \? m\.host\.depth\?\.\(\) \|\| 0 : )?curDepth\(\)/);
   assert.match(f, /function tidy\(r\) \{\n\s*if \(REGISTRY\[r\.app\]\?\.stay\?\.includes\(r\.key\)\) return;/, 'a stay key stays in the address');
-  assert.match(f, /changed: \(\) => \{ (?:if \(live\(\)\) )?T\(\(\) => opts\.changed\?\.\(app\)\); \}/);
+  assert.match(f, /T\(\(\) => opts\.changed\?\.\(app\)\);/);
   assert.match(f, /hubAgain: \(\) => (?:live\(\) \? )?F\.hubAgain\(\)/);
   assert.ok(!/roofOn\(\)/.test(f), 'no single flag for every app: roofs() gives parse the map');
   assert.match(f, /const roofs = \(\) => sess\(\)\.apps;/, 'the map, {} with the hub off (no app route is ours)');
@@ -221,7 +226,8 @@ test('stages 2–4: toast() gives { close() }; connectors.js has a provider per 
   assert.equal(await connectorOf('chats', F({})), STATIC.chats);
   const m = strip(read('modules.js'));
   assert.match(m, /if \(!s\.apps\?\.\[app\]\) throw new Error\(`the hub or the roof is off/, 'stage 1’s words (roofshell allows exactly that error)');
-  assert.match(m, /const ln = R\.link \|\| app, base = links\[ln\]/);
+  assert.match(m, /const ln = R\.link \|\| app,/);
+  assert.match(m, /base = links\[ln\] \|\|/, 'an explicit app origin remains preferred to the host fallback');
   assert.match(m, /if \(lazy\.length && home\(\)\)[\s\S]*keepOffline\(app, m\.BUILD, \[\.\.\.\(c\.files \|\| \[\]\), \.\.\.lazy\][\s\S]*10e3\)/, 'lazy kept only on the Home Screen, 10 s on (cancellation may wrap the callback)');
 });
 

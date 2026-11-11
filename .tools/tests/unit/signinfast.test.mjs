@@ -85,6 +85,16 @@ test("a browser's tab, whose sign-in is the site's: just back, nothing to swap (
   assert.match(hashOf(await go({ signin: "today", ask: w.ask, back: "https://inflite.ai/", jar: "shared" }, cookie)).get("signin"), /^[A-Za-z0-9_-]{20,}$/);
 });
 
+test("OS uses the existing Today identity and a one-use verifier-bound handback", async () => {
+  const cookie = await siteSignIn(), w = await word(), back = "https://os.inflite.ai/";
+  const r = await go({ signin: "today", ask: w.ask, back }, cookie);
+  assert.equal(new URL(r.headers.get("Location")).origin, "https://os.inflite.ai");
+  const code = hashOf(r).get("signin"), req = new Request(back, { headers: { "CF-Connecting-IP": "203.0.113.19" } });
+  const result = await takeHandback(env, req, "today", { code, verifier: w.verifier });
+  assert.equal(result.u.id, ANN);
+  await assert.rejects(takeHandback(env, req, "today", { code, verifier: w.verifier }), /run out/);
+});
+
 test("anything else: on to the sign-in page, with all the app said after its # (signin= first)", async () => {
   const cookie = await siteSignIn(), handed = await siteSignIn({ handed: true }), w = await word();
   const page = (r) => { assert.equal(r.status, 302); const to = new URL(r.headers.get("Location")); assert.equal(to.origin + to.pathname, "https://auth.inflite.ai/"); return to.hash; };
@@ -106,6 +116,9 @@ test("anything else: on to the sign-in page, with all the app said after its # (
 test("backOf: each app's own address on this site, as the page's backFor has it", () => {
   const at = new URL("https://auth.inflite.ai/go"), local = new URL("http://auth.ifl.test:8788/go");
   assert.equal(backOf(at, "today", "https://next.inflite.ai/"), "https://next.inflite.ai/");
+  assert.equal(backOf(at, "today", "https://os.inflite.ai/"), "https://os.inflite.ai/");
+  for (const back of ["https://os.inflite.ai.evil.example/", "https://os.os.inflite.ai/", "http://os.inflite.ai/", "https://os.inflite.ai:444/", "https://u:p@os.inflite.ai/", "https://os.inflite.ai/?next=x", "https://os.inflite.ai/#x", "https://os.inflite.ai/chats/"])
+    assert.equal(backOf(at, "today", back), null, back);
   assert.equal(backOf(at, "markets", "https://finance.inflite.ai/"), "https://finance.inflite.ai/");
   assert.equal(backOf(at, "markets", "https://markets.inflite.ai/"), null);
   assert.equal(backOf(local, "weather", "http://weather.ifl.test:8788/"), "http://weather.ifl.test:8788/");

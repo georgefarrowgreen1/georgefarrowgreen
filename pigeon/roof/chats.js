@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.02";
-export const NEWS = "Rounded controls, clearer spacing and centred icons";
+export const BUILD = "2.03";
+export const NEWS = "Open Chats from InFlite OS";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

@@ -39,6 +39,9 @@ jobs:
         working-directory: georgefarrowgreen
       - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
         working-directory: georgefarrowgreen
+      - name: OS workspace composition, real schedules, downloads and lifetime
+        working-directory: georgefarrowgreen
+        run: node --test --test-concurrency=1 .tools/tests/workspace-integration.test.cjs .tools/tests/weather-workspace-ui.test.cjs .tools/tests/fitnessworkspace-pane.test.cjs
       - name: UI controls, focus, history shortcuts and reduced motion
         working-directory: georgefarrowgreen
         run: node --test --test-concurrency=1 .tools/tests/shared-modal-ui.test.cjs .tools/tests/shared-chrome-continuity.test.cjs .tools/tests/chats-ui-refinement.test.cjs .tools/tests/chats-actions.test.cjs .tools/tests/weather-places-ui.test.cjs .tools/tests/weather-flow-ui.test.cjs .tools/tests/fitness-ui-refinement.test.cjs .tools/tests/fitness-filter-continuity.test.cjs .tools/tests/fitting-dialogs.test.cjs .tools/tests/account-status-motion.test.cjs .tools/tests/chats-motion.test.cjs .tools/tests/weather-motion-ui.test.cjs .tools/tests/shared-geometry.test.cjs .tools/tests/chats-geometry.test.cjs .tools/tests/fitness-geometry.test.cjs .tools/tests/markets-geometry.test.cjs

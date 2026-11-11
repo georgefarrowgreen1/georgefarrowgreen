@@ -433,7 +433,7 @@ for (const app of APPS2) {
     const graph = await staticGraph(app);
     assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
     const lazyCSS = [...read(fileOf(R.REGISTRY[app].entry)).matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
-    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS].sort(), 'lazy: import closure and lazily linked CSS, kept offline together');
+    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS, ...(app === 'fitness' ? ['/fitness/roof/workspace.css'] : [])].sort(), 'lazy: import closure, linked CSS and the exact optional Fitness workspace stylesheet, kept offline together');
     assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
     assert.ok(files.length + lazy.length <= 60, `files ∪ lazy: ${files.length + lazy.length} ≤ 60 (the root worker's cap)`);
     // (static imports stay inside the app's own files: never another module's, never app.js)

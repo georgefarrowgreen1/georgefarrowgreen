@@ -626,7 +626,8 @@ const IFL = (() => {
   if (document.body) fitScreen(); else document.addEventListener("DOMContentLoaded", fitScreen, { once: true });
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
+  const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
+  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -639,7 +640,7 @@ const IFL = (() => {
       try { u = new URL(String(url), location.href); } catch (_) { return url; }
       if (!/^https?:$/.test(u.protocol) || u.username || u.password) return url;
       // (the site: this page's, the staging hub's next. taken off, so its links to the apps' own addresses come here too)
-      const site = location.host.replace(/^next\./, ""), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
+      const site = hubSite(), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
       let p = null;
       if (u.host === location.host || u.host === site) p = rest;
       else if (sub && sub[2] === site && SUBS[sub[1]]) p = SUBS[sub[1]].slice(0, -1) + rest;
@@ -1116,7 +1117,7 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1196,8 +1197,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.19";
-const NEWS = "Rounded controls, clearer spacing and centred icons";
+const BUILD = "2.20";
+const NEWS = "One sign-in for Today and InFlite OS";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1562,14 +1563,14 @@ const homeVia = (to, fresh = false) => {
 // Where an app that sent you here to sign in is (back, as it said), so long as it's that app's own address on this site:
 // chat.<site>/, weather.<site>/, fitness.<site>/, finance.<site>/ (Markets), email.<site>/ (Mail), <site>/ itself (InFlite
 // Today), or the home page (beside this page's account.<site>, on the same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
-// (And InFlite in one window, <site> and its staging copy next.<site>: Chat at /chats/, Mail at /mail/, Today at /.)
+// (InFlite's main, next. and os. windows: Chat at /chats/, Mail at /mail/, Today at /.)
 function backFor(app, back) {
   const usual = siteUrl(APPS[app].sub);
   try {
     const u = new URL(back), site = location.hostname.replace(/^(account|auth)\./, ""), home = new URL(siteUrl("")).hostname;
     // (and Chat at /pigeon/, where the home page and the apps are one: locally)
-    const ok = { inflight: [`chat.${site}/`, `${site}/chats/`, `next.${site}/chats/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`],
-      mail: [`email.${site}/`, `${site}/mail/`, `next.${site}/mail/`], today: [`${site}/`, `next.${site}/`], home: [`${home}/`] }[app];
+    const ok = { inflight: [`chat.${site}/`, `${site}/chats/`, `next.${site}/chats/`, `os.${site}/chats/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`],
+      mail: [`email.${site}/`, `${site}/mail/`, `next.${site}/mail/`, `os.${site}/mail/`], today: [`${site}/`, `next.${site}/`, `os.${site}/`], home: [`${home}/`] }[app];
     return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
   } catch (_) { return usual; }
 }

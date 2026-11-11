@@ -79,9 +79,13 @@ test('InFlite Today, at the apps’ site itself: a sign-in goes back only there 
 });
 test('InFlite in one window (Today First): a sign-in goes back to Chat at /chats/, Mail at /mail/ and Today, at the site and its staging copy, and nowhere looser', () => {
   const site = backFor('https://account.inflite.ai/');
-  for (const ok of ['https://inflite.ai/chats/', 'https://next.inflite.ai/chats/', 'https://chat.inflite.ai/']) assert.equal(site('inflight', ok), ok, ok);
-  for (const ok of ['https://inflite.ai/mail/', 'https://next.inflite.ai/mail/', 'https://email.inflite.ai/']) assert.equal(site('mail', ok), ok, ok);
-  for (const ok of ['https://inflite.ai/', 'https://next.inflite.ai/']) assert.equal(site('today', ok), ok, ok);
+  for (const ok of ['https://inflite.ai/chats/', 'https://next.inflite.ai/chats/', 'https://os.inflite.ai/chats/', 'https://chat.inflite.ai/']) assert.equal(site('inflight', ok), ok, ok);
+  for (const ok of ['https://inflite.ai/mail/', 'https://next.inflite.ai/mail/', 'https://os.inflite.ai/mail/', 'https://email.inflite.ai/']) assert.equal(site('mail', ok), ok, ok);
+  for (const ok of ['https://inflite.ai/', 'https://next.inflite.ai/', 'https://os.inflite.ai/']) assert.equal(site('today', ok), ok, ok);
+  for (const [app, good] of [['today', 'https://os.inflite.ai/'], ['inflight', 'https://os.inflite.ai/chats/'], ['mail', 'https://os.inflite.ai/mail/']]) {
+    for (const bad of [good.replace('os.inflite.ai', 'os.inflite.ai.evil.example'), good.replace('os.inflite.ai', 'os.os.inflite.ai'), good.replace('https:', 'http:'), good.replace('os.inflite.ai', 'os.inflite.ai:444'), good.replace('https://', 'https://u:p@'), good + '?next=x', good + 'other/'])
+      assert.notEqual(site(app, bad), bad, `${app}: ${bad}`);
+  }
   // (the same rules as ever: its protocol and port, no query, no one's name and password, the path exactly)
   for (const bad of ['https://inflite.ai/chats/x', 'https://inflite.ai/chats', 'https://inflite.ai/chats/?a=1', 'http://inflite.ai/chats/', 'https://inflite.ai:444/chats/', 'https://u:p@inflite.ai/chats/',
     'https://next.inflite.ai/', 'https://nextx.inflite.ai/chats/', 'https://next.next.inflite.ai/chats/', 'https://evil.example/chats/', 'https://inflite.ai.evil.example/chats/', 'https://inflite.ai/mail/',

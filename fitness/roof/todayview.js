@@ -140,7 +140,7 @@ function weekGrid(sel) {
     const planned = ds.reduce((a, d) => { const id = idOn(d), w = id && id !== "event" ? wkById(id) : null; return a + (w ? measure(w, paceFor(w.sport)).secs : 0); }, 0);
     const done = ds.reduce((a, d) => a + actsOn(d).reduce((b, x) => b + (sumOf(x)?.moving || 0), 0), 0);
     const said = mon > thisMon ? (planned ? `${dur(planned)} planned` : "") : done || planned ? `${dur(done)} done${planned && mon === thisMon ? ` of ${dur(planned)}` : ""}` : "";
-    return h("div.wg-week", {}, h("h3", {}, name, said && h("span.aside", { text: said })), h("div.wg-days", {}, ds.map(cell)));
+    return h("div.wg-week", {}, h("h2", {}, name, said && h("span.aside", { text: said })), h("div.wg-days", {}, ds.map(cell)));
   };
   return h("nav.wgrid.glass", { "aria-label": "Two weeks" }, week(first), week(addDays(first, 7)));
 }
@@ -396,6 +396,13 @@ function rideAtRow(w) {
     h("span.tx", {}, h("b", { text: t ? `Ride at ${hhmm(t.start)}${t.source !== "set" ? " · from Today" : ""}` : "Ride at a time" }),
       h("small", { text: t ? `Till ${hhmm(t.stop)}. Today plans your day around it.` : "Set one, and Today plans your day around it." })),
     h("button.pill.small", { type: "button", onclick: () => openSheet(() => rideAtView(w), { sheet: "ride-at" }) }, t ? "Change" : "Ride At"));
+}
+// Workspace scheduling uses this same confirmation sheet and validated time transport.
+export function openRideAt(c) {
+  use(c);
+  const id = plannedOn(TODAY), w = id && id !== "event" ? wkById(id) : null;
+  if (!S.me || (w?.sport !== "ride" && !rideTimeOn(TODAY))) return null;
+  return openSheet(() => rideAtView(w), { sheet: "ride-at" });
 }
 // (the next five minutes on the clock, at or after a moment)
 const nextFive = (t) => Math.ceil(t / 300e3) * 300e3;

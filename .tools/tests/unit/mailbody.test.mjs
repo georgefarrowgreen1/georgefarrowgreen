@@ -188,8 +188,8 @@ test('through Mail’s Worker: every /body path goes to body.js, and /body/ is 4
 });
 
 test('through MW’s gate: /body/ framed by exactly hubOrigins(env), and the shell answers those alone', { skip: gateSkip }, async () => {
-  const HUB_ORIGIN = 'https://inflite.ai https://next.inflite.ai http://ifl.test:8788';
-  for (const sw of [{ HUB_API: '1' }, { HUB_API_NEXT: '1' }, { HUB_API: '1', HUB_API_NEXT: '1', HUB_API_TEST: '1' }, {}]) {
+  const HUB_ORIGIN = 'https://inflite.ai https://next.inflite.ai https://os.inflite.ai http://ifl.test:8788';
+  for (const sw of [{ HUB_API: '1' }, { HUB_API_NEXT: '1' }, { HUB_API_OS: '1' }, { HUB_API: '1', HUB_API_NEXT: '1', HUB_API_TEST: '1' }, {}]) {
     const env = { ASSETS: assets(), HUB_ORIGIN, ...sw };
     const on = await gate.hubOrigins(env);
     const res = await route.body(req('/body/'), env);

@@ -44,7 +44,7 @@ export function openPlaces(ctx) {
     locate.disabled = true; locate.setAttribute("aria-busy", "true");
     const p = await core.locate(false);
     locate.disabled = false; locate.removeAttribute("aria-busy");
-    if (p) handle?.close();
+    if (p) { ctx.workspace?.placeSelected(p); handle?.close(); }
   } } }, svg(doc, ARROW, "wx-ic"), "Use My Location");
   const field = h(doc, "input", { type: "search", class: "wx-find", placeholder: "Find a place", "aria-label": "Find a place", autocomplete: "off", enterkeyhint: "search", spellcheck: "false" });
   const found = h(doc, "div", { class: "ifl-list wx-found", role: "list", "aria-label": "Places found" });
@@ -55,7 +55,7 @@ export function openPlaces(ctx) {
     const sub = [p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : (p.region || "").split(",")[0], k ? f.time(Date.now() + (k.offset || 0) * 1000) : null].filter(Boolean).join(" · ");
     const go = h(doc, "button", { class: "wx-place-go", type: "button", disabled: editing,
       "aria-label": `${nameOf(p)}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}` : ""}${current ? ", showing" : ""}`,
-      on: { click: () => { if (editing) return; handle?.close(); if (!current) core.setPlace(i); } } },
+      on: { click: () => { if (editing) return; handle?.close(); if (!current) core.setPlace(i); ctx.workspace?.placeSelected(core.place()); } } },
       h(doc, "span", { class: "wx-place-tick", "aria-hidden": "true" }, current ? svg(doc, TICK, "wx-ic") : null),
       h(doc, "span", { class: "wx-place-t" }, h(doc, "span", { class: "wx-place-name" }, p.gps ? svg(doc, ARROW, "wx-ic wx-here") : null, nameOf(p)), sub ? h(doc, "span", { class: "wx-place-sub" }, sub) : null),
       k ? svg(doc, weatherIcon(iconOf(k.code, k.isDay), 26), "wx-place-icon") : null,
@@ -74,6 +74,7 @@ export function openPlaces(ctx) {
       S.places.length > 1 ? h(doc, "button", { class: "ifl-icon-btn wx-del", type: "button", data: { act: "delete" }, "aria-label": `Delete ${nameOf(p)}`, on: { click: () => {
         const name = nameOf(p);
         core.removePlace(i);
+        if (current) ctx.workspace?.placeSelected(core.place());
         draw();
         say.textContent = `${name} removed.`;
         (list.querySelector(`[data-place="${Math.min(i, S.places.length - 1)}"] [data-act=delete]`) || edit).focus();
@@ -107,6 +108,7 @@ export function openPlaces(ctx) {
         const i = core.addPlace(p, false);
         handle?.close();
         core.setPlace(i);
+        ctx.workspace?.placeSelected(core.place());
       } } }, h(doc, "span", { class: "wx-place-t" }, h(doc, "span", { class: "wx-place-name" }, p.name), p.region ? h(doc, "span", { class: "wx-place-sub" }, p.region) : null))));
       foundSaid.textContent = got.length ? `${got.length} ${got.length === 1 ? "place" : "places"} found` : "No places found.";
     }, 280);

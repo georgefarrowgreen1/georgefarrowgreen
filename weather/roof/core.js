@@ -311,13 +311,13 @@ export function shown(on) {
 async function boot() {
   const owner = P.fw;
   P.checkedAt = Date.now();
-  if (!S.places.length) {
+  if (!place()) {
     const found = await locate(true);
     if (P.fw !== owner) return;
     if (!P.shown || !P.fw?.visible?.()) { P.booted = false; return; }
     if (!found) await firstPlace();
     if (P.fw !== owner) return;
-  } else locate(true);
+  } else if (!P.look) locate(true);
   if (!S.wx && !S.loading) go();
   // Find the name if it could not be found when saved.
   const unnamed = S.places.find((x) => x.gps && x.name === "My Location");

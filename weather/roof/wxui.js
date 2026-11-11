@@ -144,7 +144,7 @@ export function strip(wx, now, f, hrs = I.hoursFrom(wx, now, 48)) {
   const items = [];
   hrs.forEach((x, i) => {
     const isNow = i === 0, c = isNow && wx.current ? wx.current : x, wet = (x.pop ?? 0) >= 20;
-    items.push(h("div", { class: `hour${isNow ? " now" : ""}`, role: "listitem", "aria-label": `${isNow ? "Now" : f.time(x.t)}: ${f.temp(c.temp)}, ${label(c.code, c.isDay)}${wet ? `, ${Math.round(x.pop)}% chance of rain` : ""}` },
+    items.push(h("div", { class: `hour${isNow ? " now" : ""}`, data: { hour: x.t }, role: "listitem", "aria-label": `${isNow ? "Now" : f.time(x.t)}: ${f.temp(c.temp)}, ${label(c.code, c.isDay)}${wet ? `, ${Math.round(x.pop)}% chance of rain` : ""}` },
       h("span", { class: "h-time" }, isNow ? "Now" : f.hour(x.t)),
       h("span", { class: "h-icon", svg: weatherIcon(iconOf(c.code, c.isDay), 30) }),
       h("span", { class: "h-pop" }, wet ? `${Math.round(x.pop / 10) * 10}%` : ""),

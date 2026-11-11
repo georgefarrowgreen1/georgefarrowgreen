@@ -122,7 +122,7 @@ export function view(el, ctx) {
     const at = (q) => S.places.findIndex((x) => (q.gps ? x.gps : !x.gps && A.keyOf(x) === A.keyOf(q)));
     r.others(S.places.map((q, i) => ({ q, i })).filter(({ q, i }) => (core.looking() || i !== S.cur) && cell(q.lat, q.lon) !== here).map(({ q }) => {
       const k = core.peek(q);
-      return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? core.pinHue(k.temp) : null, go: () => { const i = at(q); if (i >= 0) core.setPlace(i); } };
+      return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? core.pinHue(k.temp) : null, go: () => { const i = at(q); if (i >= 0) { core.setPlace(i); ctx.workspace?.placeSelected(core.place()); } } };
     }));
     r.warnings(inForce(wx.official).filter((w) => w.areas?.length).map((w) => ({ id: w.id, title: w.event || titleOf(w), colour: colourOf(w), onset: w.onset, expires: w.expires, open: !!w.open, rings: w.areas })));
   }

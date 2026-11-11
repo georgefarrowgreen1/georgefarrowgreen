@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.33";
-export const NEWS = "Rounded controls, clearer spacing and centred icons";
+export const BUILD = "2.34";
+export const NEWS = "Ride workspaces with Weather and route files";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -42,6 +42,18 @@ export async function mount(root, fw) {
   let mounted = true, onScreen = false, episode = 0;
   const live = () => mounted && !fw.signal?.aborted;
   const here = (mine) => live() && onScreen && episode === mine;
+  let workspace = null, workspaceLoad = null;
+  const startWorkspace = () => {
+    if (!live() || !fw.workspace?.enabled) return null;
+    if (workspace || workspaceLoad) return workspaceLoad || workspace;
+    root.classList.add("fx-workspace");
+    const owner = fw.session.user.id;
+    workspaceLoad = fw.lazy((q) => import("./workspace.js" + (q || ""))).then((m) => {
+      if (live() && fw.session.user.id === owner) workspace = m.createWorkspace(root, ctx, { current: live });
+      return workspace;
+    }).catch((error) => { if (live()) console.error("Fitness workspace unavailable", error); }).finally(() => { workspaceLoad = null; });
+    return workspaceLoad;
+  };
   // Routes are lazy; their stylesheet should not delay every opening of Today.
   let routeCSS = null;
   const routeStyles = () => routeCSS ||= new Promise((resolve, reject) => {
@@ -214,7 +226,7 @@ export async function mount(root, fw) {
       return await kit.renderRoutePlan(secs.get("today"), { owner, current: () => live() && fw.session.user.id === owner, metric: core.U.metric !== false, onBusy: on => core.hold(routeHold, on), onOpen: plan => { ctx.routeToOpen = plan; fw.nav.section("routes"); } });
     } catch (error) { if (live()) console.error("Planned route unavailable", error); }
   };
-  ctx.refreshRoute = () => routePlan();
+  ctx.refreshRoute = () => { workspace?.changed(); return routePlan(); };
   const draw = (id = shown, force = false) => {
     if (!onScreen || !id) return;
     if (!force && S.me && drawnAt.get(id) === ver) { try { views.get(id)?.resume?.(); if (id === "today") routePlan(); } catch (e) { console.error(e); } return; }
@@ -304,8 +316,10 @@ export async function mount(root, fw) {
   }
 
   return {
+    workspace: startWorkspace,
     async show(route) {
       if (!live()) return;
+      startWorkspace();
       episode++;
       const id = SECTIONS.some(([k]) => k === route?.section) ? route.section : "today";
       if (shown && shown !== id) { try { views.get(shown).hide(); } catch (e) { console.error(e); } away.set(shown, Date.now()); }
@@ -344,6 +358,7 @@ export async function mount(root, fw) {
     sendable() { try { return shown === "today" || !shown ? sendableToday() : null; } catch (e) { console.error(e); return null; } },
     unmount() {
       mounted = false; onScreen = false; uploads = []; opening++; episode++; clearTimeout(warmT);
+      workspace?.destroy();
       guard(false);
       for (const [t, f] of [["dragenter", enter], ["dragover", over], ["dragleave", leave], ["drop", drop]]) screen.removeEventListener(t, f);
       for (const off of offs) off();

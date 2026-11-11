@@ -67,6 +67,7 @@ export function view(el, ctx) {
     const list = ctx.fw.ui.list(rows.slice(0, 7));
     const later = rows.length > 7 ? ctx.fw.ui.list(rows.slice(7), { label: "Less certain" }) : null;
     box.replaceChildren(...[list, later].filter(Boolean));
+    ctx.workspace?.paint();
   }
   return { draw, hide() {}, destroy() { sig = null; el.replaceChildren(); } };
 }

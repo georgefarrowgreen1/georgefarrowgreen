@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
+import vm from 'node:vm';
 import * as fx from './fixtures/roof.mjs';
 
 const IFL = fx.IFL;
@@ -136,7 +137,20 @@ test('each file exports its frozen names: openers, views, the store’s keys, th
   for (const k of METHODS) assert.match(uncomment(api), new RegExp(String.raw`\b${k}\s*(?::|\()`), `api has ${k}`);
   for (const k of ['checkAddress', 'logout', 'pushKey', 'pushSubscribe', 'pushUnsubscribe', 'message', 'send', 'createAddress', 'deleteAddress', 'contacts', 'count', 'threadAction']) assert.ok(!new RegExp(String.raw`(?<![\w.])${k}\s*:\s*(?:async\s*)?(?:\(|[\w$]+\s*=>|function\b)`).test(uncomment(api)), `api has no ${k} (§4.7)`);
   assert.ok(!/addresses\/check/.test(uncomment(api)), 'no address check: it would put what was typed into a URL, and the module makes no addresses (B0-b review I6)');
-  assert.match(api, /export const MAIL = `\$\{location\.protocol\}\/\/email\.\$\{location\.host\.replace\(\/\^next\\\.\/, ""\)\}`;/);
+  const mailOrigin = /^export const MAIL = (.+);$/m.exec(api);
+  assert.ok(mailOrigin, 'the API exports its derived Mail origin');
+  for (const [href, expected] of [
+    ['https://inflite.ai', 'https://email.inflite.ai'],
+    ['https://next.inflite.ai', 'https://email.inflite.ai'],
+    ['https://os.inflite.ai', 'https://email.inflite.ai'],
+    ['http://ifl.test:8788', 'http://email.ifl.test:8788'],
+    ['http://next.ifl.test:8788', 'http://email.ifl.test:8788'],
+    ['http://os.ifl.test:8788', 'http://email.ifl.test:8788'],
+    ['https://other.inflite.ai', 'https://email.other.inflite.ai'],
+    ['https://os.inflite.ai.evil.example', 'https://email.os.inflite.ai.evil.example'],
+    ['https://os.inflite.ai:444', 'https://email.os.inflite.ai:444'],
+    ['http://os.inflite.ai', 'http://email.os.inflite.ai'],
+  ]) assert.equal(vm.runInNewContext(mailOrigin[1], { location: new URL(href) }), expected, href);
   // (the body frame's message and its limits, §3.2)
   const bf = src('bodyframe.js');
   assert.equal(literalOf(bf, 'BODY'), '/body/');

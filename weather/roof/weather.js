@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.01";
-export const NEWS = "Rounded controls, clearer spacing and centred icons";
+export const BUILD = "2.02";
+export const NEWS = "Weather in your workspace and for your ride";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
@@ -60,7 +60,7 @@ function lazyView(load) {
         on = true;
         if (real) return real.draw();
         if (!el.firstChild || el.dataset.failed) { delete el.dataset.failed; el.replaceChildren(ctx.fw.ui.skeleton("rows", 3)); }
-        get().then((rv) => { if (rv && on && !dead) rv.draw(); }).catch((e) => {
+        get().then((rv) => { if (rv && on && !dead) { rv.draw(); ctx.workspace?.paint(); } }).catch((e) => {
           console.error(e);
           if (dead || real) return;
           el.dataset.failed = "1";
@@ -79,7 +79,7 @@ function lazyView(load) {
 const titleOf = (p) => (p ? (p.gps && p.name === "My Location" ? "My Location" : p.name) : "Weather");
 
 export async function mount(root, fw) {
-  const ctx = { S: core.S, core, fw, open: {}, hint: null };
+  const ctx = { S: core.S, core, fw, open: {}, hint: null, workspace: null };
   let alive = true;
   // the lazy files (C4: each a literal, for connector.lazy's test), asked for once; a failure lets the next ask try again
   // (fw.lazy's q: "" at first, "?retry=<n>" after a failed import, so Try Again fetches afresh: joint contracts §7;
@@ -90,12 +90,22 @@ export async function mount(root, fw) {
     places: () => fw.lazy((q) => import("./places.js" + (q || ""))),
     wxsettings: () => fw.lazy((q) => import("./wxsettings.js" + (q || ""))),
     wxdetail: () => fw.lazy((q) => import("./wxdetail.js" + (q || ""))),
+    workspace: () => fw.lazy((q) => import("./workspace.js" + (q || ""))),
   };
   const mods = {}, asked = {};
   const load = (f) => (asked[f] ||= LAZY[f]().then((m) => (mods[f] = m), (e) => { delete asked[f]; throw e; }));
   // (on screen: show() sets it, hide() clears it; seen: how many times Weather has been left, so a sheet asked for before
   // the person left never opens over what they went to, nor when they come back)
-  let shown = null, onScreen = false, opening = 0, seen = 0;
+  let shown = null, onScreen = false, opening = 0, seen = 0, showing = 0, workspaceAsked = null;
+  const workspaceReady = () => {
+    if (!fw.workspace?.enabled || !alive || fw.signal?.aborted) return Promise.resolve(null);
+    return (workspaceAsked ||= load("workspace").then((m) => {
+      if (!alive || fw.signal?.aborted) return null;
+      const bridge = (ctx.workspace ||= m.connect(ctx, root));
+      if (onScreen) bridge.show();
+      return bridge;
+    }).catch((e) => { workspaceAsked = null; if (alive && !fw.signal?.aborted) { console.error(e); fw.toast("Workspace tools didn’t load. Open Weather again to retry."); } return null; }));
+  };
   // an opener from a lazy file: at once once it's in; else, past LOADING_MS, a skeleton sheet of its name till it is. One
   // ask at a time: a second tap while the file comes gets the first's promise and opens nothing more. The real sheet opens
   // only if Weather still shows (never left meanwhile) and the skeleton sheet, if it came, wasn't put away (its close
@@ -103,6 +113,7 @@ export async function mount(root, fw) {
   const opener = (f, sheet, run) => {
     let pending = null;
     return (...a) => {
+      if (!alive || !onScreen) return null;
       if (mods[f]) return run(mods[f], ...a);
       if (pending) return pending;
       const mine = seen, here = () => alive && onScreen && seen === mine;
@@ -149,7 +160,7 @@ export async function mount(root, fw) {
   // (the other sections' files fetched once (not when Save Data is asked for), a moment after Weather first shows, so a first switch to one is instant)
   let warmed = false, warmT = 0;
   const warm = () => { if (warmed || warmT) return; warmT = setTimeout(() => { warmT = 0; if (!onScreen || fw.stale?.() || globalThis.navigator?.connection?.saveData) return; warmed = true; for (const v of views.values()) v.warm?.(); }, 1200); };
-  const draw = (id = shown) => { if (onScreen && id) { try { views.get(id)?.draw(); } catch (e) { console.error(e); } } };
+  const draw = (id = shown) => { if (onScreen && id) { try { views.get(id)?.draw(); ctx.workspace?.paint(); } catch (e) { console.error(e); } } };
   const header = () => {
     if (!onScreen) return;
     const p = core.place(), S = core.S, t = titleOf(p), c = S.wx && (S.wx.current || I.hourAt(S.wx, nowWall(S.wx.place.offset)));
@@ -188,7 +199,7 @@ export async function mount(root, fw) {
   }) || (() => {});
   // (a day asked for in the address: opened once there's a forecast to open it on, up to 20 s; a later one takes over)
   const whenReady = (my) => new Promise((done) => {
-    const t0 = Date.now(), look = () => (my !== opening ? done(false) : core.S.wx ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
+    const t0 = Date.now(), look = () => (!alive || !onScreen || my !== opening ? done(false) : core.S.wx ? done(true) : Date.now() - t0 > 20e3 ? done(false) : setTimeout(look, 150));
     look();
   });
   const openDayWhenReady = async (key) => {
@@ -199,12 +210,16 @@ export async function mount(root, fw) {
   };
   return {
     async show(route, hint = null) {
+      const mine = ++showing; opening++;
+      if (fw.workspace?.enabled) await workspaceReady();
+      if (!alive || fw.signal?.aborted || mine !== showing) return;
       const id = core.sectionOf(route);
       ctx.hint = hint || null;
-      if (route?.query) core.fromLink(route.query, { confirm: (p) => ctx.open.confirm(p) }).catch((e) => console.error(e));
       if (shown && shown !== id) { try { views.get(shown).hide(); } catch (e) { console.error(e); } }
       for (const [k, el] of secs) el.hidden = k !== id;
       shown = id; onScreen = true;
+      if (route?.query) core.fromLink(route.query, { confirm: (p) => ctx.open.confirm(p) }).then((answer) => { if (answer && alive && onScreen && mine === showing) ctx.workspace?.placeSelected(core.place()); }).catch((e) => console.error(e));
+      ctx.workspace?.show();
       core.shown(true);
       header();
       draw(id);
@@ -214,11 +229,13 @@ export async function mount(root, fw) {
     },
     hide() {
       onScreen = false;
-      seen++;
+      seen++; opening++; showing++;
+      ctx.workspace?.hide();
       core.shown(false);
       if (shown) { try { views.get(shown).hide(); } catch (e) { console.error(e); } }
     },
     back: () => false,
+    workspace: workspaceReady,
     busy: () => core.busy(),
     sendable() {
       const S = core.S, wx = S.wx;
@@ -231,8 +248,9 @@ export async function mount(root, fw) {
     },
     unmount() {
       alive = false;
-      opening++;
+      opening++; showing++;
       onScreen = false;
+      ctx.workspace?.destroy();
       for (const off of offs) off();
       unprovide();
       for (const v of views.values()) { try { v.destroy(); } catch (e) { console.error(e); } }

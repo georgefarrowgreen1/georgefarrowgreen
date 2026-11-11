@@ -638,7 +638,8 @@ const IFL = (() => {
   if (document.body) fitScreen(); else document.addEventListener("DOMContentLoaded", fitScreen, { once: true });
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${location.host.replace(/^next\./, "")}`;
+  const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
+  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -651,7 +652,7 @@ const IFL = (() => {
       try { u = new URL(String(url), location.href); } catch (_) { return url; }
       if (!/^https?:$/.test(u.protocol) || u.username || u.password) return url;
       // (the site: this page's, the staging hub's next. taken off, so its links to the apps' own addresses come here too)
-      const site = location.host.replace(/^next\./, ""), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
+      const site = hubSite(), rest = u.pathname + u.search + u.hash, sub = /^([a-z]+)\.(.+)$/.exec(u.host);
       let p = null;
       if (u.host === location.host || u.host === site) p = rest;
       else if (sub && sub[2] === site && SUBS[sub[1]]) p = SUBS[sub[1]].slice(0, -1) + rest;
@@ -1128,7 +1129,7 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1664,8 +1665,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.33";
-const NEWS = "Rounded controls, clearer spacing and centred icons";
+const BUILD = "2.34";
+const NEWS = "Ride workspaces with Weather and route files";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

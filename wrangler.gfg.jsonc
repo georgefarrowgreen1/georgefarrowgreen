@@ -23,6 +23,7 @@
   "observability": { "enabled": true },
   // (its workers.dev address, for looking at it before the move; the scheduled jobs call inflite-apps)
   "workers_dev": true,
+  "vars": { "HUB_ORIGINS": "https://inflite.ai,https://next.inflite.ai,https://os.inflite.ai" },
   // Custom domains.
   "routes": [
     // (www had no address of its own before: a custom domain gives it one, and it goes on to georgefarrowgreen.com)

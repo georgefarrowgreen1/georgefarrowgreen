@@ -16,7 +16,7 @@ import { makeHandback } from "./_handback.js";
 const FAST = new Set(["today", "weather", "fitness", "markets"]), SHARED = new Set(["weather", "fitness", "markets"]);
 const WORD = /^[A-Za-z0-9_-]{43}$/;
 // where each app is, on the site this sign-in page is for (as the page's own backFor has it, account/app.js)
-const HOMES = { today: (s) => [`${s}/`, `next.${s}/`], weather: (s) => [`weather.${s}/`], fitness: (s) => [`fitness.${s}/`], markets: (s) => [`finance.${s}/`] };
+const HOMES = { today: (s) => [`${s}/`, `next.${s}/`, `os.${s}/`], weather: (s) => [`weather.${s}/`], fitness: (s) => [`fitness.${s}/`], markets: (s) => [`finance.${s}/`] };
 
 // back, if it's that app's own address (over the same scheme and port as this page), else null
 export function backOf(url, app, back) {

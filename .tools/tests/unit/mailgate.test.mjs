@@ -85,6 +85,9 @@ test('the hubs: only those whose switch is on, by exact origin; the framed page 
   assert.deepEqual(hubOrigins({ ...base, HUB_API: '1' }), ['https://inflite.ai']);
   assert.deepEqual(hubOrigins({ ...base, HUB_API_NEXT: '1' }), ['https://next.inflite.ai']);
   assert.deepEqual(hubOrigins({ ...base, HUB_API_TEST: '1' }), ['http://ifl.test:8788'], 'the test hub only by its own switch');
+  const os = { ...base, HUB_ORIGIN: HUBS + ' https://os.inflite.ai' };
+  assert.deepEqual(hubOrigins({ ...os, HUB_API_OS: '1' }), ['https://os.inflite.ai'], 'OS has an exact production switch');
+  assert.deepEqual(hubOrigins({ ...os, HUB_API_TEST: '1' }), ['http://ifl.test:8788'], 'test switch never enables OS');
   assert.deepEqual(hubOrigins({ ...base, HUB_API: '0', HUB_API_NEXT: 'true' }), [], 'only "1" turns one on');
   assert.deepEqual(hubOrigins({ ...base, HUB_API: '1', HUB_ORIGIN: 'https://inflite.ai not-an-origin' }), [], 'a list with anything not an origin in it: none');
   assert.deepEqual(hubOrigins({ HUB_API: '1' }), [], 'no list: none');
@@ -120,6 +123,12 @@ test('CORS: the switched-on hub answered with its own origin and credentials; an
   // (the next hub by its own switch, the test hub by its own)
   assert.equal((await ask('/api/counts', { origin: 'https://next.inflite.ai', env: { ...base, HUB_API_NEXT: '1' } })).status, 200);
   assert.equal((await ask('/api/counts', { origin: 'http://ifl.test:8788', env: { ...base, HUB_API_TEST: '1' } })).status, 200);
+  const os = { ...base, HUB_ORIGIN: HUBS + ' https://os.inflite.ai', HUB_API_OS: '1' };
+  const osCounts = await ask('/api/counts', { origin: 'https://os.inflite.ai', env: os });
+  assert.equal(osCounts.status, 200); assert.equal(osCounts.headers.get('access-control-allow-origin'), 'https://os.inflite.ai');
+  for (const origin of ['https://os.inflite.ai.evil.example', 'http://os.inflite.ai', 'https://os.inflite.ai:444', 'https://os.os.inflite.ai'])
+    assert.equal((await ask('/api/counts', { origin, env: os })).status, 403, origin);
+  assert.equal((await ask('/api/counts', { origin: 'https://os.inflite.ai', env: { ...os, HUB_API_OS: '0', HUB_API_TEST: '1' } })).status, 403);
   // (the account's own page, for Mail's notifications: as before)
   const acct = await ask('/api/notify', { origin: 'https://account.inflite.ai' });
   assert.equal(acct.status, 200);
