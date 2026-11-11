@@ -29,7 +29,7 @@ await part(1, 'the switch off: the hub’s word, milestone 1’s page at /chats/
   ok(mod && mod.status === 404, '1. /chats/roof/chats.js: 404 with Chats off (§8)', String(mod?.status));
   await A.p.goto(`${HUB}/chats/`);
   await wait(2500);
-  ok(!(await count(A.p, H.mScreen('chats'))) && !(await count(A.p, H.HTML_ROUTE)), '1. /chats/: Chat’s own page, not the framework (no main#m-chats, no data-route)', here(A.p));
+  ok(!(await count(A.p, H.mScreen('chats'))) && !(await count(A.p, H.HTML_ROUTE)), '1. /chats/: Chat’s own page, not the framework (no #m-chats, no data-route)', here(A.p));
   ok(workers(A.p).core === 0, '1. no chats-core Worker', js(workers(A.p)));
 });
 

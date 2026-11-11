@@ -124,8 +124,8 @@ try {
     await p.evaluate(() => scrollTo(0, 300)); await settle(p, 150);
     await p.$eval('.ifl-tile[data-app=weather] .ifl-tile-main', (a) => a.click()); await p.waitForFunction(() => window.kitMod?.shows?.length > 0); await settle(p);
     same(await at(p), { route: '/weather/', app: 'weather', url: '/weather/', d: 2, y: 0 }, 'Weather from its tile: a push, html[data-app=weather], at the top');
-    ok(await p.isVisible(H.M_WEATHER) && !(await p.isVisible(H.APPS)), 'main#m-weather shown, Apps hidden');
-    same(await p.evaluate(() => [document.querySelector('main#m-weather').className, document.querySelector('main#m-weather > .m-weather')?.getAttribute('role')]), ['view ifl-screen', 'tabpanel'], 'the module’s screen: main#m-weather.view.ifl-screen holding div.m-weather (the tabpanel)');
+    ok(await p.isVisible(H.M_WEATHER) && !(await p.isVisible(H.APPS)), '#m-weather shown, Apps hidden');
+    same(await p.evaluate(() => [document.querySelector('#m-weather').className, document.querySelector('#m-weather').getAttribute('role'), document.querySelector('#m-weather > .m-weather')?.getAttribute('role')]), ['view ifl-screen', 'main', 'tabpanel'], 'the module’s stable screen has main semantics when full-screen and holds div.m-weather (the tabpanel)');
     same(await text(p, H.HD_CRUMB), 'Weather', 'the crumb is the app (icon and name)');
     ok(await p.$eval(H.HD_CRUMB, (c) => !!c.querySelector('img') && getComputedStyle(c).color !== ''), 'the crumb carries the app’s icon');
     same(await text(p, H.HD_TITLE), 'London', 'the module’s title');
@@ -231,8 +231,8 @@ try {
       new MutationObserver(() => { const v = document.documentElement.dataset.vt; if (v && window.vts.at(-1) !== v) window.vts.push(v); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-vt'] });
     });
     await p.click(H.TODAY_WX_OPEN);
-    await p.waitForSelector('main#m-weather .ifl-zoom-slot .tcard', { state: 'attached', timeout: 600 }).catch(() => null);
-    const z = await p.evaluate(() => { const s = document.querySelector('main#m-weather .ifl-zoom-slot'); return s && { inert: s.inert, hidden: s.getAttribute('aria-hidden'), sky: s.querySelector('.tcard')?.classList.contains('wx-sk-rain-day'), ids: s.querySelectorAll('[id]').length, mod: !!window.kitMod, skel: !!document.querySelector('main#m-weather .ifl-skeleton') }; });
+    await p.waitForSelector('#m-weather .ifl-zoom-slot .tcard', { state: 'attached', timeout: 600 }).catch(() => null);
+    const z = await p.evaluate(() => { const s = document.querySelector('#m-weather .ifl-zoom-slot'); return s && { inert: s.inert, hidden: s.getAttribute('aria-hidden'), sky: s.querySelector('.tcard')?.classList.contains('wx-sk-rain-day'), ids: s.querySelectorAll('[id]').length, mod: !!window.kitMod, skel: !!document.querySelector('#m-weather .ifl-skeleton') }; });
     same(z, { inert: true, hidden: 'true', sky: true, ids: 0, mod: false, skel: true }, 'the card’s clone is in Weather’s skeleton at once, inert and aria-hidden, before the module is in');
     same(await p.evaluate(() => window.vts), ['zoom'], 'a zoom View Transition (html[data-vt=zoom])');
     await p.waitForFunction(() => window.kitMod?.shows?.length > 0, null, { timeout: 15000 }); await settle(p, 400);
@@ -460,11 +460,11 @@ try {
     const k = await kit(), p = k.p;
     await p.route(`${KIT}/weather/roof/weather.js`, async (r) => { await sleep(1500); r.fallback(); });
     await p.evaluate(() => kit.F.nav.go('/weather/'));
-    await p.waitForSelector('main#m-weather .ifl-skeleton', { state: 'attached', timeout: 3000 }).catch(() => {});
-    ok(await p.evaluate(() => !window.kitMod && !!document.querySelector('main#m-weather .ifl-skeleton')), 'Weather still loading: its skeleton, no module yet');
+    await p.waitForSelector('#m-weather .ifl-skeleton', { state: 'attached', timeout: 3000 }).catch(() => {});
+    ok(await p.evaluate(() => !window.kitMod && !!document.querySelector('#m-weather .ifl-skeleton')), 'Weather still loading: its skeleton, no module yet');
     await p.click(H.hdSec('radar'));
     await p.waitForFunction(() => window.kitMod?.shows?.length > 0, null, { timeout: 15000 }).catch(() => {}); await settle(p, 400);
-    same(await p.evaluate(() => [window.kitMod?.shows.map((s) => s.section), location.pathname + location.hash, document.querySelector('main#m-weather section[data-sec=radar]')?.hidden, document.querySelector('#hd [aria-selected=true]')?.dataset.sec]), [['radar'], '/weather/#radar', false, 'radar'], 'Radar tapped during the skeleton: once the module is in, it shows Radar (never a blank screen)');
+    same(await p.evaluate(() => [window.kitMod?.shows.map((s) => s.section), location.pathname + location.hash, document.querySelector('#m-weather section[data-sec=radar]')?.hidden, document.querySelector('#hd [aria-selected=true]')?.dataset.sec]), [['radar'], '/weather/#radar', false, 'radar'], 'Radar tapped during the skeleton: once the module is in, it shows Radar (never a blank screen)');
     ok(await p.evaluate(() => document.documentElement.classList.contains('ifl-fill')), 'and Radar fills the window');
     await p.evaluate(() => kit.F.destroy()); await settle(p, 100);
     same(await p.evaluate(() => { const h = document.documentElement; return [h.classList.contains('ifl-fill'), h.dataset.app, h.dataset.route ?? null, h.dataset.vt ?? null, [h, document.body].some((x) => getComputedStyle(x).overflowY === 'hidden'), kitMod.unmounts, document.getElementById('in').hidden]; }), [false, 'inflite', null, null, false, 1, true], 'signed out from Radar: no ifl-fill, the page InFlite’s again (no data-route or data-vt), it scrolls; the module unmounted, the frame hidden');
@@ -507,11 +507,11 @@ try {
     same(await p.evaluate(() => kit.F.session.apps), { weather: true, markets: true, fitness: false, mail: false, chats: false }, 'the session’s apps: each REGISTRY app’s flag, from ?apps=');
     await p.evaluate(() => kit.F.nav.go('/weather/')); await mounted(p, 'weather');
     await p.evaluate(() => kit.F.nav.go('/markets/')); await mounted(p, 'markets'); await settle(p);
-    same(await p.evaluate(() => [document.documentElement.dataset.app, location.pathname, !!document.querySelector('main#m-markets .kit-sec[data-sec=today]:not([hidden])')]), ['markets', '/markets/', true], 'a second app in the page: Markets’ stand-in at /markets/, its own sections');
+    same(await p.evaluate(() => [document.documentElement.dataset.app, location.pathname, !!document.querySelector('#m-markets .kit-sec[data-sec=today]:not([hidden])')]), ['markets', '/markets/', true], 'a second app in the page: Markets’ stand-in at /markets/, its own sections');
     let loads = 0; p.on('load', () => { loads++; });
     await p.evaluate(() => { window.stay1 = 1; kit.set({ apps: { weather: false, markets: true } }); kit.F.setRoof(false, { weather: false, markets: true }); });
     await settle(p, 1500);
-    same(await p.evaluate(() => [kitMods.weather.unmounts, kitMods.markets.unmounts, !!document.querySelector('main#m-weather'), window.stay1, location.pathname]), [1, 0, false, 1, '/markets/'], 'Weather switched off while Markets shows: Weather unmounted, Markets untouched, no reload');
+    same(await p.evaluate(() => [kitMods.weather.unmounts, kitMods.markets.unmounts, !!document.querySelector('#m-weather'), window.stay1, location.pathname]), [1, 0, false, 1, '/markets/'], 'Weather switched off while Markets shows: Weather unmounted, Markets untouched, no reload');
     await p.evaluate(() => { kitMods.markets.busy = true; kit.set({ apps: { weather: false, markets: false } }); kit.F.setRoof(false, { weather: false, markets: false }); });
     await settle(p, 2600);
     same(await p.evaluate(() => [window.stay1, kitMods.markets.flushes >= 1, sessionStorage.getItem('ifl-roof-bounce')]), [1, true, null], 'Markets switched off while it shows with something unsaved: flushed, and no reload while busy');
@@ -625,7 +625,7 @@ try {
     let loads6 = 0; p6.on('load', () => { loads6++; });
     await p6.evaluate(() => { window.stay6 = 1; kit.set({ apps: { weather: true, markets: false } }); kit.F.setRoof(true, { weather: true, markets: false }); });
     await settle(p6, 400);
-    same(await p6.evaluate(() => [location.pathname, !!document.querySelector('main#m-markets'), kitMods.markets.unmounts, window.stay6]), ['/weather/', false, 1, 1], 'Markets switched off while Weather shows: Markets let go of, Weather stays, no reload');
+    same(await p6.evaluate(() => [location.pathname, !!document.querySelector('#m-markets'), kitMods.markets.unmounts, window.stay6]), ['/weather/', false, 1, 1], 'Markets switched off while Weather shows: Markets let go of, Weather stays, no reload');
     const today6 = () => p6.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay6 ?? null]);
     await k6.ctx.setOffline(true);
     await p6.goForward(); await settle(p6, 2500);
@@ -657,9 +657,9 @@ try {
     let loads7 = 0; p7.on('load', () => { loads7++; });
     await p7.evaluate(() => { window.stay7 = 1; kitMods.markets.busy = true; kit.set({ apps: { weather: true, markets: false } }); kit.F.setRoof(true, { weather: true, markets: false }); });
     await settle(p7, 600);
-    ok(await p7.evaluate(() => !!document.querySelector('main#m-markets') && window.stay7 === 1), 'switched off while busy: still there, waiting to save');
+    ok(await p7.evaluate(() => !!document.querySelector('#m-markets') && window.stay7 === 1), 'switched off while busy: still there, waiting to save');
     await p7.goBack(); await settle(p7, 2600);
-    same([loads7, await p7.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay7 ?? null, sessionStorage.getItem('ifl-roof-bounce'), !!document.querySelector('main#m-markets'), kitMods.markets.unmounts])], [0, ['/', true, 1, null, false, 1]], 'Back to Today while it waited: Markets flushed and let go of there; no reload, no bounce marker');
+    same([loads7, await p7.evaluate(() => [location.pathname, !document.getElementById('today').hidden, window.stay7 ?? null, sessionStorage.getItem('ifl-roof-bounce'), !!document.querySelector('#m-markets'), kitMods.markets.unmounts])], [0, ['/', true, 1, null, false, 1]], 'Back to Today while it waited: Markets flushed and let go of there; no reload, no bounce marker');
     await clean(k7, 'a module switched off while busy, then left');
     await k7.ctx.close();
   }
@@ -673,11 +673,11 @@ try {
     const CARD = { v: 1, kind: 'weather', from: 'weather', at: 1793750000000, say: 'Rain in Leeds from 15:00.', snap: { place: 'Leeds', tz: 'Europe/London', temp: 12, code: 61, isDay: true, rain: { now: true } } };
     const k = await kit({ path: '/?apps=weather,chats&service=stub&state=ready', phone: true }), p = k.p;
     await p.goto(KIT + '/chats/');
-    await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('main#m-chats section.ch-sec'), null, { timeout: 15000 });
+    await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('#m-chats section.ch-sec'), null, { timeout: 15000 });
     await settle(p, 600);
     same(await p.evaluate(() => [document.documentElement.dataset.app, document.documentElement.dataset.route, kit.F.session.apps.chats]), ['chats', '/chats/', true], 'Chats on: /chats/ is the framework’s, html[data-app=chats]');
     same(await p.evaluate((s) => [...document.querySelectorAll(s)].map((e) => [e.dataset.sec, e.hidden]), H.CH_SEC), [['chats', false], ['friends', true]], 'the stub module: its two sections, Chats shown');
-    ok(await p.isVisible(H.M_CHATS), 'main#m-chats shown');
+    ok(await p.isVisible(H.M_CHATS), '#m-chats shown');
     const svc = await p.evaluate(async () => {
       const f = await kit.F.service('chats'), s = await kit.F.forModule('chats').service(), again = await kit.F.service('chats');
       return { keys: Object.keys(f), frozen: Object.isFrozen(f), call: 'call' in f, state: f.state, same: f === again && s.facade === f, full: ['protocol', 'state', 'call', 'on', 'facade', 'release'].every((x) => x in s),

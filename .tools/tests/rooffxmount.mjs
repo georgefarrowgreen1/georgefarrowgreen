@@ -1,7 +1,7 @@
 // Fitness's real module on InFlite's framework, at the kit page (One roof stage 2, §9.2 FXA): roofkit/serve.mjs at
 // http://kit.test with ?module=/fitness/roof/fitness.js&apps=weather,fitness, MAIN's fitness/ and the inflite repo's
 // today/public/ from disk, Fitness's API stood in by mocks/fitnessmock.mjs. Selectors only from roofhooks.mjs. Checked:
-//   1 the module mounts in main#m-fitness, its three sections, Today first with its day card; the header: Today, a line,
+//   1 the module mounts in #m-fitness, its three sections, Today first with its day card; the header: Today, a line,
 //     Add Files and Fitness Settings; Today's own rides waiting (the offers) on the first paint, Keep answers the
 //     account; Today's snapshot sent (POST /api/fitness/today); IndexedDB: only "fitness";
 //   2 a ride as a FIT file through Add Files: read by the reader Worker, which is gone after the batch; the read
@@ -83,7 +83,7 @@ const offerId = meAnswer().offers[0].id;
 // ===================== 1. mount, header, offers on first paint, snapshot, IndexedDB =====================
 {
   const { p, st, seen, ctx } = await phone();
-  ok(await openFitness(p), 'the module mounts in main#m-fitness and Today shows its day card');
+  ok(await openFitness(p), 'the module mounts in #m-fitness and Today shows its day card');
   ok(await p.locator(`${H.M_FITNESS} ${H.FX_SEC}`).count() === 4, 'four sections: Today, Activities, Routes, Progress');
   ok(await visible(p, `${H.M_FITNESS} ${H.fxSec('today')}`), 'Today is the one showing');
   ok((await text(p, H.HD_TITLE)).trim() === 'Today', 'the header’s title: Today', await text(p, H.HD_TITLE));

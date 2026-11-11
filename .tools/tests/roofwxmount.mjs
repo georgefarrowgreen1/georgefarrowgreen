@@ -161,7 +161,7 @@ async function revealDetails(p) {
 // ===================== 1. mount, sections, header, Places, links, settings, 401 =====================
 {
   const { p, st, ctx } = await phone();
-  ok(await openWeather(p), 'the module mounts in main#m-weather and Now shows (§5.1)');
+  ok(await openWeather(p), 'the module mounts in #m-weather and Now shows (§5.1)');
   ok(await p.locator(`${H.M_WEATHER} ${H.WX_SEC}`).count() === 4, 'four sections: Now, 16 Days, Radar, Warnings');
   const stubs = await p.evaluate(async () => Object.fromEntries(await Promise.all(['now', 'days', 'warnings', 'wxui', 'wxsettings'].map(async (f) => [f, (await import(`/weather/roof/${f}.js`)).STUB === true]))));
   note(`B0 stubs still in: ${Object.entries(stubs).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none'}`);

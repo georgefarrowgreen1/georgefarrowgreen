@@ -52,7 +52,7 @@ async function kit({ state = 'ready', scheme = 'light' } = {}) {
   await p.goto(`${KIT}/?apps=weather,chats&module=/chats/roof/chats.js&service=stub&state=${state}`);
   await p.waitForFunction(() => window.kit?.ready, null, { timeout: 15000 });
   await p.goto(`${KIT}/chats/`);
-  await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('main#m-chats'), null, { timeout: 15000 });
+  await p.waitForFunction(() => window.kit?.ready && !!document.querySelector('#m-chats'), null, { timeout: 15000 });
   // (the module's own fw and full service, a store fed by its patches, and every opener bound, as chats.js gives them)
   await p.evaluate(async () => {
     const fw = kit.F.forModule('chats'), svc = await fw.service(), { createStore } = await import('/chats/roof/store.js');

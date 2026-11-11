@@ -393,11 +393,11 @@ await part('at the hub, under the roof: Radar in the page', async () => {
   await p.evaluate(() => { window.__same = 1; });
   await p.click(RAIN);
   await p.waitForURL(`${BASE}/weather/#radar`, { timeout: 5000 });
-  await p.waitForSelector('main#m-weather:not([hidden]) .ifl-error [data-act=retry]', { timeout: 20000 });
+  await p.waitForSelector('#m-weather:not([hidden]) .ifl-error [data-act=retry]', { timeout: 20000 });
   ok(await p.evaluate(() => window.__same === 1), 'Radar: /weather/#radar in the same document (pushState), never a page load');
   same(loads, 0, 'no page loaded');
   same(await p.evaluate(() => [document.documentElement.dataset.app, document.getElementById('today').hidden]), ['weather', true], 'Weather’s screen shown, Today’s hidden');
-  ok(await p.$('main#m-weather .ifl-error [data-act=own]'), 'the error state offers Open Weather on Its Own beside Try Again');
+  ok(await p.$('#m-weather .ifl-error [data-act=own]'), 'the error state offers Open Weather on Its Own beside Try Again');
   await p.screenshot({ path: `${OUT}/hub-radar-error.png` });
   await p.goBack();
   await p.waitForFunction(() => !document.getElementById('today').hidden, null, { timeout: 5000 });

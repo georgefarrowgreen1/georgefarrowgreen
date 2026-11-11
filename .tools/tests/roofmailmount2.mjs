@@ -65,7 +65,7 @@ async function kitMail(ctx) {
 if (!kitHasMail) note('the kit page doesn’t serve Mail yet: this test puts Mail’s files, the session’s apps and Mail’s origin in the CSP in front of it');
 
 // hooks (roofhooks.mjs, s4 §10.2), with the spec's selectors where a name isn't there yet
-const M_MAIL = H.M_MAIL || 'main#m-mail';
+const M_MAIL = H.M_MAIL || '#m-mail';
 const ROW = H.MAIL_THREAD || '.m-mail [data-thread]';
 const BODY = H.MAIL_BODY || '.m-mail iframe.mail-body';
 const sheet = (n) => (H.mailSheet ? H.mailSheet(n) : `dialog.ifl-sheet[data-sheet=${n}]`);

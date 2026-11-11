@@ -88,6 +88,7 @@ const pat = FX.IDS.pat;
 {
   const { p, st, ctx } = await phone();
   ok(await openChats(p), 'the module mounts');
+  ok(await p.locator(H.M_CHATS).getAttribute('role') === 'main', 'the native app screen keeps main landmark semantics');
   ok(await until(() => visible(p, H.chSec('chats'))), 'the Chats section shows');
   const ids = await until(async () => { const v = await shownIds(p, H.CH_ROW); return v.length >= 3 && v; });
   ok(ids && ids[0] === pat, 'the rows, pinned first (Pat)', String(await shownIds(p, H.CH_ROW)));

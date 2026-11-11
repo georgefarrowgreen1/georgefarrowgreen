@@ -897,7 +897,7 @@
 .m-fitness .gday.today small{color: var(--tint-text);}
 .m-fitness .gday.did{box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--good) 55%, transparent);}
 .m-fitness .gday.on{background: color-mix(in srgb, var(--tint) 12%, var(--glass-ctl)); box-shadow: inset 0 0 0 2px var(--tint);}
-.m-fitness .gday.on :is(small,b,em){color: var(--text);}
+.m-fitness .gday.on small,.m-fitness .gday.on b,.m-fitness .gday.on em{color: var(--text);}
 .m-fitness .gday:active{transform: scale(0.97); transition-duration: var(--dur-press);}
 .m-fitness .gday[draggable="true"]{cursor: grab;}
 .m-fitness .gday.dragging{opacity: 0.4;}

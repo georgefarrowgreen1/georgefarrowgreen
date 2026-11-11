@@ -83,7 +83,7 @@ async function swipe(page, sel, x0, dx) {
   ok(await page.evaluate(() => window.kit.F.session.apps?.mail === true), 'the kit’s session has Mail on (?apps=weather,mail)');
   await go(page, '/mail/');
   await page.waitForSelector(ROW, { timeout: 15000 }).catch(() => {});
-  ok(await page.$(M_MAIL), 'the module mounted in main#m-mail');
+  ok(await page.$(M_MAIL), 'the module mounted in #m-mail');
   // (the remembered lens, on the first show: Updates)
   await page.waitForFunction(() => document.documentElement.dataset.route === '/mail/#updates', null, { timeout: 5000 }).catch(() => {});
   ok(await page.evaluate(() => location.hash === '#updates'), 'the first show of a bare /mail/ goes to the remembered lens (mail:lens = updates, S4-D25)', await page.evaluate(() => location.href));

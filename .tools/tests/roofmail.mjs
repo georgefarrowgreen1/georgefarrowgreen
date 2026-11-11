@@ -36,7 +36,7 @@ const MAIL = 'http://email.ifl.test:8788', MAILHOST = 'email.ifl.test:8788';
 const shot = (p, name) => p.screenshot({ path: `${out}/${name}.png` }).catch(() => {});
 
 // ---- Mail's hooks (roofhooks.mjs, spec §10.2) ----
-const M_MAIL = H.M_MAIL;                                   // main#m-mail
+const M_MAIL = H.M_MAIL;                                   // #m-mail
 const ROW = H.MAIL_THREAD;                                 // .m-mail [data-thread]
 const row = (id) => H.mailThread(id);                     // that conversation's row
 const BODY = H.MAIL_BODY;                                  // .m-mail iframe.mail-body

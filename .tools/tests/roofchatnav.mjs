@@ -162,7 +162,7 @@ await part(2, 'Chats switched off mid-session: Weather stays, the core goes, a s
   const docs2 = loads(q);
   R.off = true;
   await hide(q); await R.ctx.clock.fastForward('06:00'); R.fail = false; await show(q);
-  const m1 = await q.waitForFunction(() => !document.querySelector('main#m-chats') && !!document.querySelector('#msg, .tabs, .welcome'), null, { timeout: 30000 }).then(() => true, () => false);
+  const m1 = await q.waitForFunction(() => !document.querySelector('#m-chats') && !!document.querySelector('#msg, .tabs, .welcome'), null, { timeout: 30000 }).then(() => true, () => false);
   await wait(2000);
   const marker = await q.evaluate(() => sessionStorage.getItem('ifl-roof-bounce')).catch(() => null);
   ok(m1 && docs2.n() === 1 && new URL(docs2.list[0] || 'http://x/').pathname === '/chats/', '2b. the shown Chats bounces once, to /chats/: milestone 1’s page (D14’s bounce, S3-D12)', js(docs2.list));

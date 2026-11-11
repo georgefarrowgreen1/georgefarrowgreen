@@ -2,7 +2,7 @@
 // kit page (roofkit/serve.mjs) at http://kit.test with ?module=/markets/roof/markets.js and Markets switched on in the
 // session (?apps=weather,markets), MAIN's markets/ and the inflite repo's today/public/ from disk, Markets' API stood in
 // by mocks/mkroof.mjs. Selectors only from roofhooks.mjs. Checked:
-//   the module mounts in main#m-markets, its three sections show and the address follows; the header: the section's
+//   the module mounts in #m-markets, its three sections show and the address follows; the header: the section's
 //   name, Add a Stock (plus); Add a Stock's field focused in the same tap, its results; Today's portfolio hero and its
 //   Send; a stock's sheet (Send, Remove, Alert Me's own percent sent as PUT /api/markets/alert), the holding sheet;
 //   Holdings: Change Order (Move Down: PUT order, the live line), an account's sheet, About These Prices; News: a story's
@@ -71,7 +71,7 @@ async function openMarkets(p, path = '/markets/') {
 
 // ===================== 1. mount, sections, header, Add a Stock, Today =====================
 const { p, st, ctx } = await phone();
-ok(await openMarkets(p), 'the module mounts in main#m-markets and a section shows (§5.1)');
+ok(await openMarkets(p), 'the module mounts in #m-markets and a section shows (§5.1)');
 ok(await p.locator(`${H.M_MARKETS} ${H.MK_SEC}`).count() === 3, 'three sections: Today, Holdings, News');
 ok(await until(async () => (await text(p, H.HD_TITLE)).trim() === 'Today'), 'the header’s title: the section’s name', await text(p, H.HD_TITLE));
 ok(await until(() => visible(p, H.MK_HERO), 10000), 'Today: the portfolio hero (MK_HERO)');

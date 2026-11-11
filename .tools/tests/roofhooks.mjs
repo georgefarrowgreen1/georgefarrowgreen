@@ -61,7 +61,7 @@ export const TODAY_WX_OPEN = 'main#today .tcard[data-app="weather"] a.tc-head'; 
 export const TODAY_WX_WARN = 'main#today .tcard[data-app="weather"] a.wx-warn'; // TD: the card's warning chip (→ that place's Warnings)
 
 // ---- Weather's screen (WX: the frame of it; WV: what's in Now, 16 Days, Warnings) ----
-export const M_WEATHER = 'main#m-weather';                // FW makes it, WX mounts in it
+export const M_WEATHER = '#m-weather';                // FW makes it, WX mounts in it
 export const WX_SEC = 'section.wx-sec[data-sec]';         // WX
 export const wxSec = (id) => `section.wx-sec[data-sec="${id}"]`; // WX: now, days, radar, warnings
 export const WX_HERO = '.wx-hero';                        // WV
@@ -117,11 +117,12 @@ export const WX_NOTIFY_ROW = 'dialog.ifl-sheet[data-sheet=wxsettings] a[href="/#
 
 // ==== Stages 2–4 (batch j0: s2/handoff.md B0 step 4, s4/spec.md §10.2; roof/s24-contracts.md). Gain only. ====
 
-// ---- the modules' screens (FW makes each main#m-<app>; the module mounts in it) ----
-export const M_MARKETS = 'main#m-markets';                // FW makes it, MK mounts in it
-export const M_FITNESS = 'main#m-fitness';                // FW makes it, FXA mounts in it
-export const M_MAIL = 'main#m-mail';                      // FW makes it, MM mounts in it
-export const mScreen = (app) => `main#m-${app}`;          // FW
+// ---- the modules' screens (FW keeps each #m-<app> stable across pane/full-screen presentation) ----
+// Use the stable ID for identity; native main and pane region semantics are asserted separately.
+export const M_MARKETS = '#m-markets';                // FW makes it, MK mounts in it
+export const M_FITNESS = '#m-fitness';                // FW makes it, FXA mounts in it
+export const M_MAIL = '#m-mail';                      // FW makes it, MM mounts in it
+export const mScreen = (app) => `#m-${app}`;          // FW
 export const FX_DROP = M_FITNESS;                         // FXA: Fitness's drop target (S2-D12)
 // header acts (FW's buttons, data-act = the icon)
 export const HD_PLUS = hdAct('plus');                     // MK: Add a Stock
@@ -193,9 +194,9 @@ export const mailSheet = (k) => `dialog.ifl-sheet[data-sheet="${MAIL_SHEETS[k] |
 export const SIGNOUT_ANYWAY = 'dialog.ifl-sheet[data-sheet=confirm]'; // FW (j0): "Sign Out Anyway?" (C10)
 
 // ---- stage 3: Chats (roof/s3/spec.md §2, §10.2; frozen by stage 3's B0: may only gain) ----
-// Chats' module draws in main#m-chats > .m-chats (FW makes it, UI-A mounts in it). Owners: UI-A (entry, list, Friends,
+// Chats' module draws in #m-chats > .m-chats (FW makes it, UI-A mounts in it). Owners: UI-A (entry, list, Friends,
 // chat, lock), UI-B (sheets), HOST (tab bar, Today), FW (the frame's own, as above).
-export const M_CHATS = 'main#m-chats';                    // FW makes it, UI-A mounts in it
+export const M_CHATS = '#m-chats';                    // FW makes it, UI-A mounts in it
 export const CH_SEC = 'section.ch-sec[data-sec]';         // UI-A
 export const chSec = (id) => `section.ch-sec[data-sec="${id}"]`; // UI-A: chats, friends
 export const CH_ROW = '.m-chats [data-k=row][data-id]';   // UI-A: a chat's or group's row on the list
