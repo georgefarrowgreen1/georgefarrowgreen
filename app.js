@@ -33,7 +33,12 @@ if (accountChecked) {
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)", GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
 // Read the same rhythm CSS uses once, before any interaction. Frame loops never read computed styles.
 const MOTION = (() => {
-  const style = getComputedStyle(body), read = (name, fallback) => parseFloat(style.getPropertyValue(`--bio-${name}`)) || fallback;
+  const style = getComputedStyle(body), read = (name, fallback) => {
+    const value = style.getPropertyValue(`--bio-${name}`).trim(), number = parseFloat(value);
+    if (!Number.isFinite(number) || number <= 0) return fallback;
+    // CSS optimisation can rewrite 420ms as .42s. Web Animations always expects milliseconds.
+    return number * (value.endsWith("ms") ? 1 : value.endsWith("s") ? 1000 : 1);
+  };
   return { fast: read("fast", 180), enter: read("enter", 420), exit: read("exit", 260), layout: read("layout", 340), stagger: read("stagger", 50) };
 })();
 let lightMotion = !!navigator.connection?.saveData;
@@ -1303,6 +1308,7 @@ addEventListener("pagehide", () => stopSenderMorph());
 function stopSenderMorph() {
   if (!senderMorph) return;
   const state = senderMorph; senderMorph = null;
+  contact.sheet.classList.remove("sender-compacting");
   state.animations.forEach(a => a.cancel());
   state.words.forEach(w => w.ghost.remove());
   state.restore.reverse().forEach(restore => restore());
@@ -1320,11 +1326,8 @@ function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
   if (s.classList.contains("known") === on) return;
   const pairs = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
-  // Capture the painted positions before releasing an interrupted transition. Live form controls never move or clone.
-  const oldSurface = d._surface.getBoundingClientRect(), oldTextTop = box.getBoundingClientRect().top;
-  const shape = $(".sender-surface", s), oldShape = shape.getBoundingClientRect();
-  const moving = [$(".sheet-head", d), $(".fields.msg", d), contact.send, ...(!contact.err.hidden ? [contact.err] : [])];
-  const oldPositions = moving.map(el => el.getBoundingClientRect());
+  // Capture the painted positions before releasing an interrupted transition; never duplicate live form controls.
+  const oldShape = s.getBoundingClientRect(), oldScroll = box.scrollTop;
   const oldRows = rows.map(el => el.getBoundingClientRect()), oldFrom = from.getBoundingClientRect();
   const oldLabels = rows.map(row => $("span", row));
   const oldWords = pairs.map(([input, shown]) => {
@@ -1338,40 +1341,37 @@ function morphFrom(on) {
   stopSenderMorph();
   from.hidden = !on; s.classList.toggle("known", on); if (!on) fit();
   if (motion.matches || !d.open) { steady(); return; }
+  const duration = MOTION.enter + MOTION.stagger * 2, easing = "cubic-bezier(.4,0,.2,1)";
   const state = senderMorph = { animations: [], restore: [], words: [] };
+  d.classList.add("sender-compacting");
   const style = (el, key, value) => {
     const was = el.style.getPropertyValue(key), priority = el.style.getPropertyPriority(key);
     state.restore.push(() => was ? el.style.setProperty(key, was, priority) : el.style.removeProperty(key));
     el.style.setProperty(key, value);
   };
   const animate = (el, frames, options = {}) => {
-    const a = el.animate(frames, { duration: MOTION.enter, easing: GLIDE, fill: "both", ...options });
+    const a = el.animate(frames, { duration, easing, fill: "both", ...options });
     state.animations.push(a); return a;
   };
-  // Correct scroll anchoring once, before making keyframes. There are no layout reads in an animation frame loop.
-  const message = $("#c-message"), messageGroup = $(".fields.msg", d);
-  if (document.activeElement === message && box.scrollHeight > box.clientHeight) {
-    box.scrollTop += messageGroup.getBoundingClientRect().top - oldPositions[1].top;
-  }
-  const nextPositions = moving.map(el => el.getBoundingClientRect());
-  const nextShape = s.getBoundingClientRect(), frame = d.getBoundingClientRect();
+  // The panel's actual height carries the message and button through normal layout. Hold the painted height
+  // before starting so the editable and compact states never swap sizes in a single frame.
+  const message = $("#c-message"), nextShape = s.getBoundingClientRect();
   const targets = pairs.map(([input, shown]) => {
     const el = on ? shown : input, rect = el.getBoundingClientRect(), cs = getComputedStyle(el);
     const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
     return { el, x: rect.left + (parseFloat(cs.paddingLeft) || 0), y: rect.top + rect.height / 2, size: parseFloat(cs.fontSize), width: rect.width,
       line, font: cs.font, spacing: cs.letterSpacing, color: cs.color };
   });
-  resizeContact(d, oldSurface, oldTextTop, false, MOTION.enter);
-  state.animations.push(...d._resize);
-  animate(shape, [{ transform: `translate(${oldShape.left - nextShape.left}px,${oldShape.top - nextShape.top}px) scale(${oldShape.width / nextShape.width},${oldShape.height / nextShape.height})` }, { transform: "none" }]);
-  moving.forEach((el, i) => animate(el, [{ translate: `0 ${oldPositions[i].top - nextPositions[i].top}px` }, { translate: "0 0" }]));
+  style(s, "height", `${oldShape.height}px`);
+  box.scrollTop = oldScroll;
+  animate(s, [{ height: `${oldShape.height}px` }, { height: `${nextShape.height}px` }]);
   // Keep the departing controls out of layout until their labels/portrait have faded. The actual inputs remain unique.
   const departing = on ? rows : [from], oldBounds = on ? oldRows : [oldFrom];
   departing.forEach((el, i) => {
     el.hidden = false; if (on) el.classList.add("ghost");
     const rect = oldBounds[i], wasInert = el.inert;
     state.restore.push(() => { el.inert = wasInert; }); el.inert = true;
-    for (const [key, value] of Object.entries({ position: "absolute", left: `${rect.left - nextShape.left}px`, top: `${rect.top - nextShape.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, "pointer-events": "none" })) style(el, key, value);
+    for (const [key, value] of Object.entries({ position: "absolute", left: `${rect.left - oldShape.left}px`, top: `${rect.top - oldShape.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, "pointer-events": "none" })) style(el, key, value);
     animate(el, [{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.fast });
   });
   pairs.forEach(([input, shown], i) => {
@@ -1385,21 +1385,21 @@ function morphFrom(on) {
     const initialScale = was.size * was.scale / target.size;
     ghost.style.font = target.font; ghost.style.letterSpacing = target.spacing;
     ghost.style.lineHeight = `${target.line}px`; ghost.style.color = target.color;
-    d.append(ghost);
+    s.append(ghost);
     const word = { ghost, input, animations: [] }; state.words.push(word);
     style(input, "opacity", "0"); style(shown, "opacity", "0"); style(input, "caret-color", "transparent");
     ghost.style.maxWidth = `${Math.max(1, Math.min(was.width / initialScale, target.width))}px`;
     word.animations.push(animate(ghost, [
-      { transform: `translate(${was.x - frame.left}px,${was.y - frame.top - target.line * initialScale / 2}px) scale(${initialScale})` },
-      { transform: `translate(${target.x - frame.left}px,${target.y - frame.top - target.line / 2}px) scale(1)` }
-    ], { duration: MOTION.enter - MOTION.fast }));
-    const fade = { duration: MOTION.fast, delay: MOTION.enter - MOTION.fast, easing: EASE_OUT };
+      { transform: `translate(${was.x - oldShape.left}px,${was.y - oldShape.top - target.line * initialScale / 2}px) scale(${initialScale})` },
+      { transform: `translate(${target.x - nextShape.left}px,${target.y - nextShape.top - target.line / 2}px) scale(1)` }
+    ], { duration: duration - MOTION.fast }));
+    const fade = { duration: MOTION.fast, delay: duration - MOTION.fast, easing: EASE_OUT };
     word.animations.push(animate(ghost, [{ opacity: 1 }, { opacity: 0 }], fade));
     word.animations.push(animate(target.el, [{ opacity: 0 }, { opacity: 1 }], fade));
   });
   const arriving = on ? [$("#from-face"), $("#from-change")] : oldLabels;
   arriving.forEach((el, i) => animate(el, [{ opacity: 0, translate: on ? "-4px 0" : "4px 0" }, { opacity: 1, translate: "0 0" }],
-    { duration: MOTION.layout, delay: MOTION.stagger + i * 20, easing: EASE_OUT }));
+    { duration: duration - MOTION.fast - i * 20, delay: MOTION.fast + i * 20, easing: EASE_OUT }));
   if (document.activeElement === message) caretHidden();
   Promise.all(state.animations.map(a => a.finished.catch(() => {}))).then(() => {
     if (senderMorph !== state) return;
@@ -1427,7 +1427,7 @@ const grow = () => {
   if (!t.offsetHeight || Math.abs(h1 - t.offsetHeight) < 1) return;
   t.style.height = `${h1}px`;
   if (document.activeElement === t) caretHidden();
-  if (document.activeElement === t) setTimeout(steady, 260);      // (once it's grown: styles.css)
+  if (document.activeElement === t) setTimeout(() => { if (!senderMorph) steady(); }, 260);      // (once it's grown: styles.css)
 };
 // (a name or email too long for its row is made a little smaller to fit rather than cut off, down to 16 px: any
 // smaller and an iPhone zooms the page in on the field when it's tapped)

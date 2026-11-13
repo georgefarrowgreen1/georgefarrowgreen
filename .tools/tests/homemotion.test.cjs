@@ -185,13 +185,16 @@ for(const assets of ['', 'min/'])for(const kb of [0,330])test(`${assets||'source
   if(kb){await f.p.evaluate(k=>document.documentElement.style.setProperty('--kb',k+'px'),kb);await f.p.waitForTimeout(400);}
   await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
   const start=await f.p.evaluate(()=>{
-   const msg=document.querySelector('#c-message');msg.focus({preventScroll:true});const before=msg.getBoundingClientRect().top;
+   const msg=document.querySelector('#c-message');msg.focus({preventScroll:true});const before=msg.getBoundingClientRect().top,sender=document.querySelector('#sender'),height=sender.getBoundingClientRect().height;
    msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));
-   return{before,after:msg.getBoundingClientRect().top,words:document.querySelectorAll('.sender-word').length,
-    frames:document.querySelector('#contact-sheet').getAnimations({subtree:true}).flatMap(a=>a.effect.getKeyframes())};
+   const after=msg.getBoundingClientRect().top,a=sender.getAnimations().find(a=>a.effect.getKeyframes().some(f=>'height'in f)),duration=a.effect.getTiming().duration,frames=a.effect.getKeyframes();
+   a.currentTime=duration/2;const halfway=sender.getBoundingClientRect().height;a.currentTime=0;
+   return{before,after,height,halfway,end:parseFloat(frames.at(-1).height),duration,words:document.querySelectorAll('.sender-word').length,
+    box:document.querySelector('.sheet-in').getAnimations().flatMap(a=>a.effect.getKeyframes())};
   });
   assert.ok(Math.abs(start.after-start.before)<1,'message starts from its painted position');assert.equal(start.words,2);
-  assert.ok(start.frames.every(frame=>!('height'in frame)&&!('width'in frame)),'morph animates surfaces and positions, never layout dimensions');
+  assert.ok(start.halfway<start.height-2&&start.halfway>start.end+2,'the panel itself passes through intermediate heights');
+  assert.ok(start.duration>=500,'compaction remains visibly gradual');assert.ok(start.box.every(f=>!('height'in f)),'only the sender panel animates its height; the sheet flows naturally');
   await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));await f.p.waitForTimeout(40);
   assert.equal(await f.p.locator('#from-name').innerText(),'Sam Rider');assert.equal(await f.p.locator('#c-message').inputValue(),'Hi');
   assert.equal(await f.p.locator('#c-message').evaluate(el=>el===document.activeElement),true);
@@ -231,5 +234,10 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}sending during the se
   await open(f);await f.p.locator('#contact-sheet.shown').waitFor();await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
   await f.p.evaluate(()=>{const msg=document.querySelector('#c-message');msg.focus({preventScroll:true});msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#contact-form').requestSubmit();});
   await f.p.locator('#contact-sent:not([hidden])').waitFor();assert.equal(await f.p.locator('.sender-word').count(),0);assert.equal(await f.p.locator('#sender .ghost').count(),0);assert.equal(f.posts.length,1);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+for(const assets of ['', 'min/'])test(`${assets||'source/'}motion tokens preserve milliseconds when CSS converts units to seconds`,async()=>{
+ const f=await fixture(assets);try{
+  assert.deepEqual(await f.p.evaluate(()=>({...MOTION})),{fast:180,enter:420,exit:260,layout:340,stagger:50});assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
