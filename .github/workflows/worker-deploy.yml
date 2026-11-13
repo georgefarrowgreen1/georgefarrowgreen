@@ -32,6 +32,9 @@ jobs:
         if: steps.ready.outputs.go == '1'
         with:
           node-version: 22
+      - name: Provision and verify private InFlite Files storage
+        if: steps.ready.outputs.go == '1'
+        run: node .tools/workers/prepare-files-storage.mjs
       - name: Build the Worker and deploy
         if: steps.ready.outputs.go == '1'
         run: |

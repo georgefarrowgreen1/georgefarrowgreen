@@ -30,11 +30,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: georgefarrowgreen
-      - name: Production InFlite framework
-        run: git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
+      - name: Matching InFlite framework
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          R=https://github.com/georgefarrowgreen1/inflite
+          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
+          git clone --quiet --depth 1 --branch "$B" "$R" inflite
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci --prefix .tools/tests --no-audit --no-fund
         working-directory: georgefarrowgreen
       - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium
@@ -45,6 +50,49 @@ jobs:
       - name: UI controls, focus, history shortcuts and reduced motion
         working-directory: georgefarrowgreen
         run: node --test --test-concurrency=1 .tools/tests/shared-modal-ui.test.cjs .tools/tests/shared-chrome-continuity.test.cjs .tools/tests/chats-ui-refinement.test.cjs .tools/tests/chats-actions.test.cjs .tools/tests/weather-places-ui.test.cjs .tools/tests/weather-flow-ui.test.cjs .tools/tests/fitness-ui-refinement.test.cjs .tools/tests/fitness-filter-continuity.test.cjs .tools/tests/fitting-dialogs.test.cjs .tools/tests/account-status-motion.test.cjs .tools/tests/chats-motion.test.cjs .tools/tests/weather-motion-ui.test.cjs .tools/tests/shared-geometry.test.cjs .tools/tests/chats-geometry.test.cjs .tools/tests/fitness-geometry.test.cjs .tools/tests/markets-geometry.test.cjs
+
+  files-integration:
+    # Current pinned engines, native private HTTPS downloads and real D1/R2.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: georgefarrowgreen
+      - name: Matching InFlite framework
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          R=https://github.com/georgefarrowgreen1/inflite
+          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
+          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Locked browser and workerd tools
+        run: npm ci --prefix georgefarrowgreen/.tools/tests --no-audit --no-fund
+      - name: Mail runtime dependencies
+        run: npm ci --prefix inflite/email --omit=dev --no-audit --no-fund
+      - name: Install pinned browser engine
+        working-directory: georgefarrowgreen
+        run: .tools/tests/node_modules/.bin/playwright install --with-deps ${{ matrix.browser }}
+      - name: Real Files proxy, private Drive and Explorer integration
+        working-directory: georgefarrowgreen
+        env:
+          WEB_UI_BROWSER: ${{ matrix.browser }}
+          FILES_SCREENSHOTS: ${{ runner.temp }}/files-${{ matrix.browser }}
+        run: npm run test:files-integration --prefix .tools/tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: files-${{ matrix.browser }}-reliability
+          path: ${{ runner.temp }}/files-${{ matrix.browser }}
+          if-no-files-found: ignore
+          retention-days: 7
 
   check:
     runs-on: ubuntu-latest
@@ -63,7 +111,7 @@ jobs:
           echo "The inflite repo beside: $B at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       # (Mail's one package, which its tests' mail goes through; not its tools)
       - name: Mail's package
         run: |
@@ -98,7 +146,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$B" "$R" inflite
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci --prefix .tools/tests --no-audit --no-fund
         working-directory: georgefarrowgreen
       - run: .tools/tests/node_modules/.bin/playwright install --with-deps chromium

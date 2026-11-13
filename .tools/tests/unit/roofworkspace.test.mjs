@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
-import { OS_CORE_JS, OS_FILES as osFiles, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
+import { OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
 import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
@@ -52,14 +52,18 @@ test('the OS updater and worker list exactly the optional closure and the manife
   assert.match(host, /\.\.\.\(OS_MODE \? OS_FILES : \[\]\)/, 'the normal updater does not fetch OS assets');
   const html = pub('index.html');
   for (const f of osFiles) { assert.ok(existsSync(published(f)), f); assert.ok(!html.includes(`href="${f}"`), f + ' is not statically preloaded or linked on the ordinary page'); }
-  const loaded = new Set(['/roof/workspace.js']), walk = p => {
-    for (const spec of staticImports(readFileSync(published(p), 'utf8'))) {
+  const shared = new Set(['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send', 'modules', 'connectors', 'requests', 'tasks', 'screens'].map(name => '/roof/' + name + '.js'));
+  const loaded = new Set(OS_ENTRIES), walk = p => {
+    const source = readFileSync(published(p), 'utf8');
+    const dynamic = [...source.matchAll(/\bimport\(\s*["']([^"']+)["']/g)].map(match => match[1]);
+    for (const spec of [...staticImports(source), ...dynamic]) {
       const path = new URL(spec, 'https://os.inflite.ai' + p).pathname;
-      if (!path.includes('/workspace')) continue;
+      if (!path.startsWith('/roof/') || !path.endsWith('.js') || shared.has(path)) continue;
       if (!loaded.has(path)) { loaded.add(path); walk(path); }
     }
   };
-  walk('/roof/workspace.js'); assert.deepEqual([...loaded].sort(), [...js].sort(), 'optional JS list is the reachable workspace graph');
+  for (const entry of OS_ENTRIES) walk(entry);
+  assert.deepEqual([...loaded].sort(), [...js].sort(), 'optional JS is exactly the reachable host/picker graph, including literal lazy imports');
   const manifest = JSON.parse(pub('os.webmanifest'));
   assert.equal(manifest.name, 'InFlite OS'); assert.equal(manifest.start_url, '/#workspace'); assert.equal(manifest.scope, '/');
   assert.ok(manifest.icons.length); for (const icon of manifest.icons) assert.ok(existsSync(new URL('today/public/' + icon.src.replace(/^\//, ''), IFL)), icon.src);
@@ -93,9 +97,10 @@ test('all existing app connector assets remain valid static JS/CSS under the str
   }
 });
 
-test('OS v2 has independently bounded shell, Commands, Files and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
+test('OS v3 has independently bounded shell, Commands, Files and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
   const costs = [...osFiles.filter(p => /\.(?:js|css)$/.test(p)), ...bridges].map(path => ({ path, bytes: gzipSync(minified(readFileSync(published(path), 'utf8'), path.endsWith('.css')), { level: 9 }).length }));
-  const features = ['commands', 'files'], base = p => p.startsWith('/roof/') && !features.some(f => p.startsWith('/roof/workspace-' + f + '.'));
+  const fileAssets = new Set([...OS_FILES_JS, ...OS_FILES_CSS].map(name => '/roof/' + name)), commandAssets = new Set(['/roof/workspace-commands.js', '/roof/workspace-commands.css']);
+  const base = p => p.startsWith('/roof/') && !fileAssets.has(p) && !commandAssets.has(p);
   const group = predicate => costs.filter(f => predicate(f.path));
   const sum = (files, ext) => files.filter(f => f.path.endsWith(ext)).reduce((n, f) => n + f.bytes, 0);
   const check = (name, files, jsKiB, cssKiB) => {
@@ -104,14 +109,14 @@ test('OS v2 has independently bounded shell, Commands, Files and five adapters; 
     assert.ok(jsBytes <= jsKiB * 1024, `${name}: ${jsBytes} bytes JS exceeds ${jsKiB * 1024}`);
     assert.ok(cssBytes <= cssKiB * 1024, `${name}: ${cssBytes} bytes CSS exceeds ${cssKiB * 1024}`);
   };
-  // The v1 aggregate cannot describe v2's five-app windows, command actions and
-  // federated Files. Allow 0.5 KiB beyond the v1 shell ceiling for window scroll ownership, activation guards and geometry restoration,
-  // then explicitly bound each reviewed addition and the whole optional graph.
-  check('base/window shell', group(base), 24.5, 5.5);
-  check('Commands', group(p => p.startsWith('/roof/workspace-commands.')), 3.5, 1);
-  check('Files', group(p => p.startsWith('/roof/workspace-files.')), 4.25, 1);
+  // Files v3 adds a lazy private Drive/Explorer, transfer lifecycle and safe route
+  // ownership. Bound its exact reviewed graph independently from ordinary apps
+  // and the shared core; no filename-prefix exclusion or native cap increase.
+  check('base/window shell', group(base), 26, 5.5);
+  check('Commands', group(p => commandAssets.has(p)), 3.5, 1);
+  check('Files', group(p => fileAssets.has(p)), 32, 4);
   for (const [app, cap] of [['fitness', 3.75], ['weather', 2.75], ['markets', 1.5], ['chats', 2.75], ['mail', 3.5]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
-  check('complete optional OS v2', costs, 46, 10);
+  check('complete optional OS v3', costs, 74, 13);
   t.diagnostic(JSON.stringify({ files: costs }));
 });
 

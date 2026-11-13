@@ -7,6 +7,7 @@ import { dropAccount } from "./_wxpush.js";
 import { dropFitness } from "./_fitness.js";
 import { dropMarkets } from "./_markets.js";
 import { dropToday } from "./_today.js";
+import { dropFiles } from "./_files.js";
 
 import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
@@ -17,6 +18,7 @@ export async function removeAccount(env, id) {
   await dropFitness(env, id);
   await dropMarkets(env, id);
   await dropToday(env, id);
+  await dropFiles(env, id);
   await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);
@@ -61,6 +63,7 @@ export async function removeAccount(env, id) {
     // lately stay held as long as they were going to be, for no one too)
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
     D.prepare("UPDATE pg_handles_held SET user_id = NULL WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM ifl_files_accounts WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
 }

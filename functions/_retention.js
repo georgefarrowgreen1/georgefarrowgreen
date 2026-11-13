@@ -18,6 +18,7 @@ import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { stampPassports } from "./_passport.js";
 import { settleBirds } from "./_birds.js";
 import { removeAccount } from "./_accounts.js";
+import { sweepFileUploads } from "./_files.js";
 
 export const KEEP_MS = 30 * DAY;
 const GRACE_MS = 45 * DAY, GEVENTS_MS = 30 * DAY, ADMIN_LOG_MS = 180 * DAY;
@@ -227,9 +228,10 @@ export async function housekeeping(env, D, t, origin) {
   if (!claim.meta?.changes) return null;
   const purged = await keepMonth(env, D, t).catch((e) => { console.error("pigeon keep", e && e.message); return 0; });
   const files = await sweepFiles(env, D, t).catch((e) => { console.error("pigeon files", e && e.message); return 0; });
+  const drive = await sweepFileUploads(env, t).catch((e) => { console.error("Files cleanup", e && e.message); return 0; });
   const accounts = await idleAccounts(env, D, t, origin).catch((e) => { console.error("pigeon idle", e && e.message); return {}; });
   const asked = await dueDeletions(env, D, t, origin).catch((e) => { console.error("pigeon deletions", e && e.message); return 0; });
-  return { purged, files, ...accounts, asked };
+  return { purged, files, drive, ...accounts, asked };
 }
 
 // The admin's look at what's kept, across the site: each table's rows and roughly how much is in them, by the app it's
@@ -237,11 +239,11 @@ export async function housekeeping(env, D, t, origin) {
 // app's share of it is its tables' share of what's in them, so an estimate; the files' sizes are exact)
 const ACCOUNT_TABLES = new Set(["pg_users", "pg_sessions", "pg_passkeys", "pg_challenges", "pg_resets", "pg_handoff", "pg_handback", "pg_handles_held",
   "pg_invites", "pg_events", "pg_limits", "pg_errors", "pg_admin_log", "pg_meta", "pg_active"]);
-export const appOfTable = (name) => name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
+export const appOfTable = (name) => name.startsWith("ifl_files_") ? "files" : name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
   : name.startsWith("pg_") ? "inflight" : "home";
 // (each store of files: its prefix, its app, and what's in it; Fitness's by where in it a file is)
 const STORES = [["pigeon/", "inflight", "photos"], ["pigeon-g/", "inflight", "group"], ["pigeon-avatars/", "account", "avatars"],
-  ["pigeon-posters/", "account", "posters"], ["bg/", "home", "bg"], ["fitness/", "fitness", null]];
+  ["pigeon-posters/", "account", "posters"], ["bg/", "home", "bg"], ["fitness/", "fitness", null], ["files/", "files", "drive", "FILES_R2"]];
 const fitnessKind = (key) => (/^fitness\/[^/]+\/garmin\//.test(key) ? "garmin" : /^fitness\/[^/]+\/strava\//.test(key) ? "strava" : "rides");
 // (rows: false for the files alone, as Admin's figures want them)
 export async function storageReport(env, D, t, { rows = true } = {}) {
@@ -266,12 +268,13 @@ export async function storageReport(env, D, t, { rows = true } = {}) {
   // the whole database's size, as D1 reports it after any statement
   const probe = await D.prepare("SELECT 1").run().catch(() => null);
   const files = [];
-  if (env.BIO_R2) for (const [prefix, app, kind] of STORES) {
+  for (const [prefix, app, kind, binding = "BIO_R2"] of STORES) {
+    const bucket = env[binding]; if (!bucket) continue;
     const got = new Map(), add = (k) => { const f = got.get(k) || { prefix, app, kind: k, n: 0, bytes: 0, more: false }; got.set(k, f); return f; };
     if (kind) add(kind);
     let cursor, pages = 0, more = true;
     while (more && pages < 20) {
-      const l = await env.BIO_R2.list({ prefix, cursor, limit: 1000 }); pages++;
+      const l = await bucket.list({ prefix, cursor, limit: 1000 }); pages++;
       for (const o of l.objects) { const f = add(kind || fitnessKind(o.key)); f.n++; f.bytes += o.size || 0; }
       more = l.truncated; cursor = l.cursor;
     }

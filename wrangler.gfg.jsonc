@@ -14,7 +14,7 @@
     "not_found_handling": "404-page"
   },
   "kv_namespaces": [{ "binding": "BIO_KV", "id": "10ec6d961a224b3a8b68a7c993ca0caf" }],
-  "r2_buckets": [{ "binding": "BIO_R2", "bucket_name": "bio-media" }],
+  "r2_buckets": [{ "binding": "BIO_R2", "bucket_name": "bio-media" }, { "binding": "FILES_R2", "bucket_name": "inflite-private-files" }],
   "d1_databases": [{ "binding": "DB", "database_name": "bio-db", "database_id": "de4ad515-52c6-4cb3-9f8f-008384ef813a" }],
   "durable_objects": { "bindings": [{ "name": "TYPING", "class_name": "Typing", "script_name": "georgefarrowgreen-live" }] },
   // (direct links to InFlite's other Workers, Mail's and Today's, for this one's own requests to them: functions/_sites.js

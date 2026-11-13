@@ -52,6 +52,8 @@ import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
+import { FILES_ROUTES } from "../../_filesapp.js";
+import { exportFiles } from "../../_files.js";
 import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today.js";
 import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
@@ -413,6 +415,7 @@ const ROUTES = {
   // Mail's and InFlite Today's, asked by their servers (functions/_mailapp.js, functions/_todayapp.js)
   ...MAIL_ROUTES,
   ...TODAY_ROUTES,
+  ...FILES_ROUTES,
   // InFlite Today's version, for its About sheet here: asked of inflite.ai as the sheet opens, never as the page loads
   "GET apps/today-build": async ({ request, env }) => {
     await signedIn(request, env);
@@ -1050,6 +1053,7 @@ const ROUTES = {
       },
       // (InFlite Today: the cards' order and those hidden, its morning notification, and how many devices it's on)
       today,
+      files: { items: await exportFiles(env, u.id), note: "File contents can be downloaded from InFlite Files." },
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);
