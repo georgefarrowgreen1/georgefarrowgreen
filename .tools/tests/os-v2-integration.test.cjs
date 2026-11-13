@@ -167,33 +167,53 @@ test('five real apps share one saved workspace and survive floating, snap, minim
   } finally { await t.ctx.close(); }
 });
 
-test('Files Add files reaches the actual native Fitness chooser from a cold Today screen without an account write', async () => {
+test('OS search reaches the actual native Fitness chooser from a cold Today screen without an account write', async () => {
   for(let attempt=0;attempt<3;attempt++) {
-  const t = await env.open({ initialPath: '/?os=1#workspace', ready: 'home' });
-  try {
-    await t.page.getByRole('button', { name: 'Files', exact: true }).click();
-    const chooser = t.page.waitForEvent('filechooser', { timeout: 10000 });
-    await t.page.getByRole('button', { name: 'Add files to Fitness', exact: true }).click();
-    let picked;
+    const t = await env.open({ initialPath: '/?os=1#workspace', ready: 'home' });
     try {
-      const gate=t.page.locator('dialog[data-sheet=fitness-files][open]');
-      const result=await Promise.race([chooser.then(file=>({file})),gate.waitFor({state:'visible',timeout:10000}).then(()=>({gate:true}))]);
-      if(result.gate) {
-        await gate.getByRole('button',{name:'Choose files',exact:true}).click();
-      }
-      picked=result.file||await chooser;
-    }
-    catch (e) { console.log('CHOOSER STATE', JSON.stringify({url:t.page.url(),unknown:t.state.unknown,errors:t.errors,inputs:await t.page.locator('input[type=file]').evaluateAll(ns=>ns.map(n=>({connected:n.isConnected,hidden:n.hidden,inert:!!n.closest('[inert]'),accept:n.accept})))})); throw e; }
-    assert.equal(await picked.element().getAttribute('type'), 'file');
-    assert.equal(await picked.element().getAttribute('accept'), '.fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip');
-    assert.deepEqual(t.state.routeWrites, []); assert.deepEqual(t.state.fx.times, []); await t.clean();
-  } finally { await t.ctx.close(); }
+      // Files now uploads private Drive objects. The existing native Fitness
+      // import remains an app action: wake it through the actual OS command UI
+      // and activate the header's genuine file picker in the next user tap.
+      await t.page.keyboard.press('Control+k');
+      const query=t.page.getByRole('combobox',{name:'Search everything',exact:true});
+      await query.fill('open fitness');
+      await t.page.getByRole('option').filter({hasText:/^Open Fitness/}).first().click();
+      await t.page.locator('#views > #m-fitness').waitFor();
+      const chooser=t.page.waitForEvent('filechooser',{timeout:10000});
+      await t.page.getByRole('button',{name:'Add Files',exact:true}).click();
+      let picked;
+      try { picked=await chooser; }
+      catch(e) { console.log('CHOOSER STATE',JSON.stringify({url:t.page.url(),unknown:t.state.unknown,errors:t.errors,inputs:await t.page.locator('input[type=file]').evaluateAll(ns=>ns.map(n=>({connected:n.isConnected,hidden:n.hidden,inert:!!n.closest('[inert]'),accept:n.accept})))}));throw e; }
+      assert.equal(await picked.element().getAttribute('type'),'file');
+      assert.equal(await picked.element().getAttribute('accept'),'.fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip');
+      assert.deepEqual(t.state.routeWrites,[]);assert.deepEqual(t.state.fx.times,[]);await t.clean();
+    } finally { await t.ctx.close(); }
   }
 });
+
+// This legacy app-export case does not exercise private Drive storage. Keep its
+// only Drive transport empty, read-only and fenced to the real fixture account;
+// all app metadata, Mail viewers and Fitness export encoders remain unmodified.
+async function emptyDrive(t) {
+  await t.ctx.route(ORIGIN+'/api/files/list**',route=>{
+    const request=route.request(),owner=t.state.view.user.id;
+    assert.equal(request.method(),'GET');assert.equal(request.headers()['x-inflite-files-owner'],owner);
+    t.state.requests.push({path:'/api/files/list',method:request.method(),body:request.postData()});
+    return route.fulfill({contentType:'application/json',headers:{'X-Inflite-Files-Owner':owner},body:JSON.stringify({folder:null,ancestors:[],items:[],cursor:null,revision:1,usage:{used:0,reserved:0,limit:1073741824,nodes:0,nodeLimit:10000,fileLimit:104857600}})});
+  });
+}
+async function collection(page,app) {
+  const explorer=page.locator('.ifl-files-explorer:visible');
+  await explorer.locator('.ifx-location-list').getByRole('button',{name:'From apps',exact:true}).click();
+  await explorer.getByRole('button',{name:'Select '+app,exact:true}).dblclick();
+  await explorer.getByRole('searchbox',{name:'Search '+app,exact:true}).waitFor();
+  return explorer;
+}
 
 test('real keyboard commands, native unsent Mail editor and Files exports work across all-app desktop/mobile transitions', async () => {
   const t = await env.open(); const { page } = t;
   try {
+    await emptyDrive(t);
     await createAll(page, t.state);
     await page.keyboard.press('Control+k'); const query = page.getByRole('combobox', { name: 'Search everything', exact: true });
     await query.fill('write email'); const compose = page.getByRole('option').filter({ hasText: /Compose (a message|Mail)/ }); await compose.waitFor();
@@ -209,27 +229,36 @@ test('real keyboard commands, native unsent Mail editor and Files exports work a
     const launcher=page.locator('dialog[data-sheet=workspace-apps][open]');
     assert.equal(await launcher.getByRole('button',{name:'Notifications',exact:true}).isVisible(),true);
     await launcher.getByRole('button',{name:'Files',exact:true}).click();
-    const library=page.getByRole('dialog',{name:'Files',exact:true});await library.waitFor();await library.locator('[data-close]').click();
+    await page.locator('.ifl-files-explorer:visible').waitFor();
+    await page.goBack();await page.locator('.ifl-workspace-pane:visible').first().waitFor();
     await page.getByRole('button', { name: 'Open windows', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Switch to Chats', exact: true }).click();
     assert.equal(await pane(page, 'chats').isVisible(), true); assert.equal(await pane(page, 'mail').isHidden(), true);
     assert.equal(await sameRoots(page), true);
     await page.setViewportSize({ width: 1440, height: 940 }); await settled(page);
     await page.getByRole('button', { name: 'Files', exact: true }).click();
-    await page.getByRole('button', { name: 'Download inflite-r-workspace-fixture.gpx', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Open October-update-notes.pdf', exact: true }).waitFor();
+    let library=await collection(page,'Fitness');
+    await library.getByRole('button',{name:'Select inflite-r-workspace-fixture.gpx',exact:true}).waitFor();
+    library=await collection(page,'Mail');
+    await library.getByRole('button',{name:'Select October-update-notes.pdf',exact:true}).waitFor();
     assert.ok(t.state.mail.log.some(r=>r.path === '/api/threads/search'));
     assert.equal(t.state.mail.log.some(r=>/^\/api\/messages\/[^/]+$/.test(r.path) && !r.navigate), false, 'Root Files only reads Mail metadata');
     assert.equal(t.state.mail.log.some(r=>/^\/api\/attachments\//.test(r.path)), false, 'listing never downloads attachment content');
-    await page.getByRole('button', { name: 'Open October-update-notes.pdf', exact: true }).click();
+    await library.getByRole('button',{name:'Select October-update-notes.pdf',exact:true}).click();
+    await library.locator('.ifx-inspector').getByRole('button',{name:'Open',exact:true}).click();
     const mailLink=page.getByRole('link',{name:'Open in Mail',exact:true}); await mailLink.waitFor();
     assert.equal(new URL(await mailLink.getAttribute('href')).origin,MAIL);
     assert.equal(t.state.mail.log.some(r=>/^\/api\/attachments\//.test(r.path)&&!r.navigate),false,'PDF opens a native Mail navigation choice without CORS fetching content');
     await page.locator('dialog[open] [data-close]').click();
     await page.getByRole('button', { name: 'Files', exact: true }).click();
-    const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download inflite-r-workspace-fixture.gpx', exact: true }).click();
+    library=await collection(page,'Fitness');
+    await library.getByRole('button',{name:'Select inflite-r-workspace-fixture.gpx',exact:true}).click();
+    const download=page.waitForEvent('download');await library.locator('.ifx-inspector').getByRole('button',{name:'Download',exact:true}).click();
     const file = await download; const gpx = readFileSync(await file.path(), 'utf8'); assert.match(gpx, /<gpx /); assert.equal((gpx.match(/<trkpt /g)||[]).length, t.state.plan.route.coords.length);
-    assert.equal(await sameRoots(page), true); assert.equal(t.state.mail.sends.length, 0);
+    await pane(page,'fitness').waitFor({state:'visible'});
+    assert.equal(await page.evaluate(()=>__allRoots.fitness===document.getElementById('m-fitness')),true,'the native export reuses the saved Fitness root');
+    await page.waitForFunction(()=>Object.entries(__allRoots).every(([app,root])=>root===document.getElementById('m-'+app)));
+    assert.equal(await sameRoots(page),true);assert.equal(t.state.mail.sends.length,0);
     await assertNoChatSends(page);
     assert.deepEqual(t.state.routeWrites, []); await t.clean();
   } finally { await t.ctx.close(); }
