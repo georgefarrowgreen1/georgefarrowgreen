@@ -1,0 +1,7 @@
+/* The bio's departure ends on this exact icon position and backdrop. The app's real theme is revealed underneath. */
+html.bio-arrival::before, html.bio-arrival::after { content: ""; position: fixed; pointer-events: none; z-index: 10000; opacity: 1; animation: bio-arrival-safety 220ms ease-out 900ms forwards; }
+html.bio-arrival::before { inset: 0; background: #090c10; }
+html.bio-arrival::after { width: 88px; height: 88px; top: max(40px, calc(50% - 74px)); left: calc(50% - 44px); background: var(--bio-entry-icon, none) center / contain no-repeat; border-radius: 23%; }
+html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { animation: none; opacity: 0; transition: opacity 260ms cubic-bezier(.22,1,.36,1); }
+@keyframes bio-arrival-safety { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { html.bio-arrival::before, html.bio-arrival::after { display: none; } }

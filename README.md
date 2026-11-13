@@ -65,6 +65,15 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   clears the transition. The existing message sheet keeps its grouped fields and opening motion: sending uses a
   compact activity indicator, then shows a check only after the server accepts the message. Closing/reopening while
   a request finishes cannot replace a new draft with the earlier confirmation.
+  Motion uses one timing scale, with quicker exits and a shared settling response. A new card gesture retargets from
+  the painted position and current velocity; old inputs never queue behind an animation. Message confirmation scales
+  the sheet's separate material layer while its text fades without scaling. The face clears before the photograph,
+  headline and actions enter at 50 ms intervals; interaction immediately releases that entrance to normal scrolling.
+  A bounded frame sample recognises 60/120 Hz cadence and disables decorative drift/parallax after sustained slow
+  frames; Save Data selects that mode immediately. It sends no telemetry and leaves interaction motion intact.
+  App connections warm on intent. The matching icon/backdrop continues into the app's selected appearance via its
+  existing early bundles (`node .tools/bio-arrival.mjs` after editing `.tools/inflite/bio-arrival.{js,css}`); CSS and
+  script both bound the cover, and Back, focus, pointer input and Reduce Motion release it immediately.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
   description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
   page takes them from there, rather than asking for them again (except back by the browser's Back or Forward, when it

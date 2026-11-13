@@ -788,6 +788,15 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 /* ==== end of InFlite design tokens ==== */
 
 /* The approved bio layout: one reading column and quiet project rows beneath the app stack. */
+:root { --bio-press: 90ms; --bio-fast: 180ms; --bio-enter: 420ms; --bio-exit: 260ms; --bio-layout: 340ms; --bio-stagger: 50ms; }
+body.bio { --dur-press: var(--bio-press); --dur-release: var(--bio-enter); --dur-fast: var(--bio-fast); --dur-base: var(--bio-layout); --dur-sheet-in: var(--bio-enter); --dur-sheet-out: var(--bio-exit); }
+/* Separate the contact sheet's material from its unscaled, scrollable text. Only the material changes scale. */
+#contact-sheet.surface-sheet { overflow: visible; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; isolation: isolate; }
+.sheet-surface { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--glass-strong); box-shadow: var(--rim), 0 30px 80px -10px #0008; -webkit-backdrop-filter: blur(36px) saturate(190%); backdrop-filter: blur(36px) saturate(190%); pointer-events: none; transform-origin: 50% 0; }
+#contact-sheet.surface-sheet .sheet-in { border-radius: inherit; }
+@media (prefers-reduced-transparency: reduce) { .sheet-surface { background: #20222c; -webkit-backdrop-filter: none; backdrop-filter: none; } }
+.bio .hero, .bio .grid, .bio .foot { animation-duration: var(--bio-enter); }
+body.bio.motion-lite .bg > * { translate: none; }
 body.bio { background: #090c10; }
 .bio .bg { position: absolute; bottom: auto; height: var(--hero-height, max(470px, min(560px, 65svh))); max-height: none; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); }
 .bio .bg::after { background: linear-gradient(90deg, rgba(7,10,14,.6), rgba(7,10,14,.12)), linear-gradient(0deg, #090c10, transparent 65%); }

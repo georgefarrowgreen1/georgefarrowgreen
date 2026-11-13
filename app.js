@@ -31,11 +31,41 @@ if (accountChecked) {
 
 // The site's motion, in script as in the styles (styles.css: --ease-out for what arrives, --ease-glide for what slides)
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)", GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
+// Read the same rhythm CSS uses once, before any interaction. Frame loops never read computed styles.
+const MOTION = (() => {
+  const style = getComputedStyle(body), read = (name, fallback) => parseFloat(style.getPropertyValue(`--bio-${name}`)) || fallback;
+  return { fast: read("fast", 180), enter: read("enter", 420), exit: read("exit", 260), layout: read("layout", 340), stagger: read("stagger", 50) };
+})();
+let lightMotion = !!navigator.connection?.saveData;
+body.classList.toggle("motion-lite", lightMotion);
+// Critically damped positions and velocities, sampled once into native keyframes. Retargeting retains momentum
+// without a JS animation loop or a queue of old gestures. Velocities are in units per second.
+function springValue(from, to, velocity, seconds, omega = 22) {
+  const delta = from - to, b = velocity + omega * delta, decay = Math.exp(-omega * seconds);
+  return [to + (delta + b * seconds) * decay, (velocity - omega * b * seconds) * decay];
+}
+// The face has fully cleared before this event. The photo, headline and actions now share a short, ordered entrance.
+{
+  let entrances = [];
+  const finish = () => { entrances.forEach(a => a.cancel()); entrances = []; };
+  addEventListener("home:revealed", () => {
+    if (motion.matches || scrollY > 40) return;
+    $(".hero").style.animationName = "none";
+    entrances.push($("#bg").animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.layout, easing: EASE_OUT }));
+    $$(".hero > *").forEach((el, i) => entrances.push(el.animate([
+      { opacity: 0, translate: "0 6px" }, { opacity: 1, translate: "0 0" }
+    ], { duration: MOTION.enter, delay: (i + 1) * MOTION.stagger, easing: EASE_OUT, fill: "backwards" })));
+  }, { once: true });
+  addEventListener("scroll", () => { if (scrollY > 2) finish(); }, { passive: true });
+  document.addEventListener("pointerdown", finish, { passive: true });
+  motion.addEventListener("change", () => { if (motion.matches) finish(); });
+  addEventListener("pagehide", finish);
+}
 // (words changed in place fade in, rather than snapping; only where they're actually different, and in sight)
 function fadeText(el, t) {
   if (el.textContent === t) return;
   el.textContent = t;
-  if (!motion.matches && el.isConnected && Number(getComputedStyle(el).opacity) > 0.5) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT });
+  if (!motion.matches && el.isConnected && Number(getComputedStyle(el).opacity) > 0.5) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT });
 }
 
 // (the words as the page came with them: the server writes them in as it sends it (functions/_home.js), so they're
@@ -101,7 +131,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
   });
   const FADE = 64;      // the least scroll a line fades over
   let ranges = [], name = null, queued = false;
-  const depth = () => $("#bg").style.setProperty("--hero-depth", `${motion.matches ? 0 : clamp(scrollY / heroHeight) * 24}px`);
+  const depth = () => $("#bg").style.setProperty("--hero-depth", `${motion.matches || lightMotion ? 0 : clamp(scrollY / heroHeight) * 24}px`);
   const draw = () => {
     queued = false;
     depth();
@@ -164,6 +194,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
   for (const el of [$(".hero"), ...fades]) watch.observe(el);
   document.fonts?.ready.then(measure);
   motion.addEventListener("change", depth);
+  addEventListener("home:light-motion", depth);
   window.redrawScroll = () => (linked ? measure() : draw());
   requestAnimationFrame(measure);
 }
@@ -182,7 +213,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
         if (!entry.isIntersecting) { if (entry.boundingClientRect.top >= innerHeight) below.add(el); continue; }
         observer.unobserve(el);
         if (!below.has(el) || body.matches(".sheet-up, .edit") || root.matches(".intro-loading, .intro-revealing") || el.contains(document.activeElement)) continue;
-        const a = el.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 460, easing: EASE_OUT });
+        const a = el.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: MOTION.enter, easing: EASE_OUT });
         animations.push(a);
         a.finished.then(() => { animations = animations.filter(x => x !== a); }, () => {});
       }
@@ -310,7 +341,7 @@ async function show(i) {
   at = i; s.classList.add("on");
   // the drift, from a touch larger to its own size; the one before stays where it got to as it's covered, then lets go
   const was = drift;
-  drift = motion.matches ? null : s.animate([{ transform: "scale(1.08)" }, { transform: "scale(1)" }], { duration: DRIFT, easing: "linear", fill: "forwards" });
+  drift = motion.matches || lightMotion ? null : s.animate([{ transform: "scale(1.08)" }, { transform: "scale(1)" }], { duration: DRIFT, easing: "linear", fill: "forwards" });
   if (was && was !== drift) setTimeout(() => was.cancel(), 1800);
   markSegs(i);
   // (its softened copy made now, so it's there however soon the page is scrolled: made small off this thread, so
@@ -335,7 +366,33 @@ function hold() {
   if (h === held) return;
   held = h; body.classList.toggle("paused", h);
   if (h) { clearTimeout(timer); clearTimeout(early); left = Math.max(0, left - (performance.now() - since)); drift?.pause(); }
-  else { drift?.play(); schedule(); }
+  else { if (!lightMotion) drift?.play(); schedule(); }
+}
+
+// A bounded sample of visible, idle hero frames. Infer the display cadence (including 120 Hz); sustained missed
+// frames disable only decorative drift/parallax. No telemetry, permanent RAF, or changes to gestures/data/navigation.
+{
+  let frame = 0, previous = 0, intervals = [], started = false;
+  const stop = () => { cancelAnimationFrame(frame); frame = 0; };
+  const sample = now => {
+    frame = 0;
+    if (document.hidden || body.matches(".sheet-up, .edit, .leaving") || scrollY > 40 || motion.matches) return;
+    if (previous) intervals.push(now - previous);
+    previous = now;
+    if (intervals.length < 100) { frame = requestAnimationFrame(sample); return; }
+    const sorted = intervals.slice(4).sort((a, b) => a - b), cadence = sorted[Math.floor(sorted.length * .2)];
+    const missed = sorted.filter(ms => ms > Math.max(20, cadence * 1.75)).length;
+    const slow = cadence > 24 || missed / sorted.length > .15;
+    try { performance.measure?.("bio.motion.sample", { start: now - intervals.reduce((a, b) => a + b, 0), end: now,
+      detail: { frames: sorted.length, cadence: Math.round(cadence * 10) / 10, missed, light: slow } }); } catch (_) {}
+    if (slow) { lightMotion = true; body.classList.add("motion-lite"); drift?.pause(); dispatchEvent(new Event("home:light-motion")); }
+  };
+  const start = () => { if (started || lightMotion || motion.matches || document.hidden) return; started = true; previous = 0; intervals = []; frame = requestAnimationFrame(sample); };
+  addEventListener("home:intro-finished", () => setTimeout(start, 600), { once: true });
+  if (!root.matches(".intro-loading, .intro-revealing")) setTimeout(start, 700);
+  addEventListener("pagehide", stop);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
+  motion.addEventListener("change", () => { if (motion.matches) stop(); });
 }
 // (a different set when the screen changes size past a phone's, only if it's actually different)
 phone.addEventListener("change", () => { if (forScreen().map((p) => p.id).join() !== shown.map((p) => p.id).join()) updateSlides(); });
@@ -536,50 +593,78 @@ function showLines() {
   if (!region || !viewport || !track) return;
   const cards = $$('.app', track), count = cards.length, status = $('#app-carousel-status');
   if (count < 2) return;
-  let index = 0, busy = false, pending = 0, gesture = null, ignoreClick = 0, version = 0, animations = [];
-  const slot = depth => `translate3d(0,${Math.min(depth, 2) * 8}px,0) scale(${1 - Math.min(depth, 2) * .025})`;
+  let index = 0, busy = false, gesture = null, ignoreClick = 0, version = 0, animations = [];
+  const paths = new Map();
+  const stateAt = depth => ({ x: 0, y: Math.min(depth, 2) * 8, s: 1 - Math.min(depth, 2) * .025, r: 0, o: depth < 3 ? 1 : 0 });
+  const transform = p => `translate3d(${p.x}px,${p.y}px,0) scale(${p.s}) rotate(${p.r}deg)`;
+  const slot = depth => transform(stateAt(depth));
+  const snapshot = card => {
+    const style = getComputedStyle(card), matrix = new DOMMatrixReadOnly(style.transform);
+    return { x: matrix.m41, y: matrix.m42, s: Math.hypot(matrix.a, matrix.b), r: Math.atan2(matrix.b, matrix.a) * 180 / Math.PI, o: Number(style.opacity) };
+  };
+  const velocity = card => {
+    const path = paths.get(card); if (!path) return {};
+    const t = Math.min(path.duration, Math.max(0, performance.now() - path.at)) / 1000;
+    return Object.fromEntries(Object.keys(path.from).map(k => [k, springValue(path.from[k], path.to[k], path.v[k] || 0, t)[1]]));
+  };
   const blocked = () => body.matches('.sheet-up, .edit, .leaving') || root.matches('.intro-loading, .intro-revealing') || document.hidden;
   function render() {
     cards.forEach((card, i) => {
-      const depth = (i - index + count) % count;
-      card.style.transform = slot(depth); card.style.opacity = depth < 3 ? '1' : '0'; card.style.zIndex = String(count - depth);
+      const depth = (i - index + count) % count, target = stateAt(depth);
+      card.style.transform = transform(target); card.style.opacity = String(target.o); card.style.zIndex = String(count - depth);
       card.inert = depth !== 0; card.setAttribute('aria-hidden', String(depth !== 0));
       $('.app-count', card).textContent = `${i + 1} / ${count}`;
     });
   }
-  function cancel() { version++; animations.forEach(a => a.cancel()); animations = []; }
-  function animate(el, frames, options) { const a = el.animate(frames, options); animations.push(a); return a.finished.catch(() => {}); }
+  function cancel() { version++; animations.forEach(a => a.cancel()); animations = []; paths.clear(); }
+  function springTo(card, from, to, v = {}, duration = MOTION.enter) {
+    const steps = 36, frames = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = duration * i / steps / 1000;
+      const p = Object.fromEntries(Object.keys(to).map(k => [k, i === steps ? to[k] : springValue(from[k], to[k], v[k] || 0, t)[0]]));
+      frames.push({ transform: transform(p), opacity: clamp(p.o), offset: i / steps });
+    }
+    const a = card.animate(frames, { duration, easing: 'linear', fill: 'both' }); animations.push(a);
+    paths.set(card, { from, to, v, duration, at: performance.now() });
+    return a;
+  }
   const focusRole = card => card.contains(document.activeElement) ? document.activeElement.closest('.app-next') ? '.app-next' : document.activeElement.closest('.app-link') ? '.app-link' : '.app-grab' : null;
-  async function move(direction = 1) {
+  async function move(direction = 1, thrown = null) {
     if (blocked()) return;
-    if (busy) { pending = Math.max(-3, Math.min(3, pending + direction)); return; }
-    busy = true;
-    const outgoing = cards[index], focus = focusRole(outgoing), before = new Map(cards.map(c => [c, getComputedStyle(c).transform]));
-    cancel(); const token = version;
+    const outgoing = cards[index], focus = focusRole(outgoing), before = new Map(cards.map(c => [c, snapshot(c)])), velocities = new Map(cards.map(c => [c, velocity(c)]));
+    if (thrown) velocities.set(outgoing, thrown);
+    cancel(); busy = true; const token = version;
     index = (index + direction + count) % count; render(); outgoing.style.zIndex = String(count + 1);
     if (focus) $(focus, cards[index]).focus({ preventScroll: true });
     status.textContent = `${$('b', cards[index]).textContent}, app ${index + 1} of ${count}`;
     if (!motion.matches) {
-      const settling = cards.filter(c => c !== outgoing).map(c => animate(c, [{ transform: before.get(c) }, { transform: slot((cards.indexOf(c) - index + count) % count) }], { duration: 520, easing: EASE_OUT }));
-      await animate(outgoing, [{ transform: before.get(outgoing), opacity: 1 }, { transform: `translate3d(${-direction * 58}px,-3px,0) scale(.99) rotate(${-direction * .45}deg)`, opacity: 0 }], { duration: 322, easing: 'cubic-bezier(.3,0,.3,1)', fill: 'forwards' });
-      if (token !== version) return;
+      const settling = cards.filter(c => c !== outgoing).map(c => springTo(c, before.get(c), stateAt((cards.indexOf(c) - index + count) % count), velocities.get(c)).finished.catch(() => {}));
+      const from = before.get(outgoing), target = { ...from, x: from.x - direction * 58, y: -3, s: .99, r: -direction * .45, o: 0 };
+      const exit = springTo(outgoing, from, target, velocities.get(outgoing), MOTION.exit);
+      await exit.finished.catch(() => {}); if (token !== version) return;
       const depth = (cards.indexOf(outgoing) - index + count) % count;
-      outgoing.style.zIndex = String(count - depth);
-      animations[animations.length - 1].cancel(); outgoing.style.transform = slot(depth);
-      if (depth < 3) await Promise.all([...settling, animate(outgoing, [{ opacity: 0 }, { opacity: 1 }], { duration: 146, easing: 'ease-out' })]);
-      else await Promise.all(settling);
-      if (token !== version) return;
+      outgoing.style.zIndex = String(count - depth); exit.cancel(); paths.delete(outgoing);
+      outgoing.style.transform = slot(depth); outgoing.style.opacity = '0';
+      if (depth < 3) {
+        const a = outgoing.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT, fill: 'both' });
+        animations.push(a); settling.push(a.finished.catch(() => {}));
+      }
+      await Promise.all(settling); if (token !== version) return;
     }
-    animations.forEach(a => a.cancel()); animations = []; render(); busy = false;
-    if (pending) { const next = Math.sign(pending); pending -= next; move(next); }
+    cancel(); render(); busy = false;
   }
-  function settle() {
-    const before = cards.map(c => getComputedStyle(c).transform); cancel(); render();
-    if (!motion.matches) cards.forEach((c, i) => animate(c, [{ transform: before[i] }, { transform: slot((i - index + count) % count) }], { duration: 360, easing: 'cubic-bezier(.18,.9,.25,1)' }));
+  async function settle(thrown = {}) {
+    const before = cards.map(snapshot), velocities = cards.map(velocity); cancel(); render(); busy = false;
+    const token = version;
+    if (!motion.matches) {
+      busy = true;
+      await Promise.all(cards.map((c, i) => springTo(c, before[i], stateAt((i - index + count) % count), i === index ? thrown : velocities[i]).finished.catch(() => {})));
+      if (version === token) { cancel(); render(); busy = false; }
+    }
   }
   function reset() {
     const focus = focusRole(cards.find(c => c.contains(document.activeElement)) || cards[index]);
-    gesture = null; pending = 0; cancel(); busy = false; render();
+    gesture = null; cancel(); busy = false; render();
     if (focus) $(focus, cards[index]).focus({ preventScroll: true });
   }
   cards.forEach((card, i) => {
@@ -596,10 +681,10 @@ function showLines() {
     });
     grab.addEventListener('dragstart', e => e.preventDefault());
     grab.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || !e.isPrimary || busy || blocked() || i !== index) return;
-      const held = cards.map(c => getComputedStyle(c).transform), originX = new DOMMatrixReadOnly(held[i]).m41;
-      cancel(); cards.forEach((c, n) => c.style.transform = held[n]);
-      gesture = { id: e.pointerId, grab, x: e.clientX, y: e.clientY, lastX: e.clientX, time: e.timeStamp, dx: 0, v: 0, originX, drag: false, vertical: false };
+      if (e.button !== 0 || !e.isPrimary || blocked() || i !== index) return;
+      const held = cards.map(snapshot), originX = held[i].x;
+      cancel(); busy = false; cards.forEach((c, n) => { c.style.transform = transform(held[n]); c.style.opacity = String(held[n].o); });
+      gesture = { id: e.pointerId, grab, x: e.clientX, y: e.clientY, lastX: e.clientX, time: e.timeStamp, dx: 0, v: 0, originX, base: held[i], drag: false, vertical: false };
       grab.setPointerCapture(e.pointerId);
     });
     grab.addEventListener('pointermove', e => {
@@ -611,7 +696,7 @@ function showLines() {
       g.v = .65 * g.v + .35 * (e.clientX - g.lastX) / Math.max(8, e.timeStamp - g.time); g.lastX = e.clientX; g.time = e.timeStamp; g.dx = dx;
       if (!g.drag) return;
       const x = g.originX + 80 * Math.tanh(dx / 100), progress = Math.min(1, Math.abs(dx) / 160);
-      card.style.transform = `translate3d(${x}px,${-progress * 2}px,0) rotate(${x * .006}deg)`;
+      card.style.transform = transform({ ...g.base, x, y: g.base.y - progress * 2, r: g.base.r + (x - g.originX) * .006 });
       cards[(index + 1) % count].style.transform = slot(1 - progress * .65);
       cards[(index + 2) % count].style.transform = slot(2 - progress * .35);
     });
@@ -620,8 +705,9 @@ function showLines() {
       gesture = null;
       if (g.drag || g.vertical) ignoreClick = performance.now() + 400;
       const projected = g.dx + (e.timeStamp - g.time < 85 ? g.v : 0) * 65;
-      if (g.drag && !aborted && Math.abs(projected) > Math.min(65, viewport.clientWidth * .15)) move(projected < 0 ? 1 : -1);
-      else if (g.drag) settle();
+      const vx = e.timeStamp - g.time < 85 ? g.v * 800 / Math.cosh(g.dx / 100) ** 2 : 0, momentum = { x: vx, r: vx * .006 };
+      if (g.drag && !aborted && Math.abs(projected) > Math.min(65, viewport.clientWidth * .15)) move(projected < 0 ? 1 : -1, momentum);
+      else settle(aborted ? {} : momentum);
       if (grab.hasPointerCapture(e.pointerId)) grab.releasePointerCapture(e.pointerId);
     };
     grab.addEventListener('pointerup', e => release(e)); grab.addEventListener('pointercancel', e => release(e, true)); grab.addEventListener('lostpointercapture', e => release(e, true));
@@ -796,6 +882,15 @@ function land(a) {
 // An app's real icon comes forward as the source page recedes. Preserve the exact account-aware URL and native
 // modified/new-tab clicks. Navigation has a short safety deadline; Back restores the original page immediately.
 let appDeparture = null;
+const warmOrigins = new Set();
+function warmApp(link) {
+  if (!link || navigator.connection?.saveData) return;
+  const origin = new URL(link.href).origin;
+  if (warmOrigins.has(origin)) return;
+  warmOrigins.add(origin);
+  const hint = document.createElement("link"); hint.rel = "preconnect"; hint.href = origin; document.head.append(hint);
+}
+for (const type of ["pointerover", "focusin", "pointerdown"]) document.addEventListener(type, e => warmApp(e.target.closest("a[data-app-link]")), { passive: true });
 function openApp(link) {
   if (appDeparture) return;
   const image = $(".app-grab img", link.closest(".app"));
@@ -818,15 +913,15 @@ function openApp(link) {
   let went = false;
   const go = () => { if (went || appDeparture !== state) return; went = true; location.assign(link.href); state.recovery = setTimeout(undo, 4000); };
   state.go = go;
-  state.deadline = setTimeout(go, 550);
+  state.deadline = setTimeout(go, MOTION.enter + MOTION.fast);
   try {
     const scale = 88 / bounds.width;
     state.animations = [
-      sky.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: EASE_OUT, fill: "forwards" }),
+      sky.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.layout, easing: EASE_OUT, fill: "forwards" }),
       icon.animate([
         { transform: `translate3d(${bounds.left}px,${bounds.top}px,0) scale(1)` },
         { transform: `translate3d(${(innerWidth - 88) / 2}px,${Math.max(40, (innerHeight - 88) / 2 - 30)}px,0) scale(${scale})` }
-      ], { duration: 420, easing: GLIDE, fill: "forwards" })
+      ], { duration: MOTION.enter, easing: GLIDE, fill: "forwards" })
     ];
     state.animations[1].finished.then(go, go);
   } catch (_) { undo(); location.assign(link.href); }
@@ -860,7 +955,7 @@ function openSheet(d) {
     d.getAnimations().forEach((a) => a.cancel());
     d.classList.remove("closing"); d.classList.add("shown");
     d.style.transform = ""; d.style.removeProperty("--from");
-    if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: 500, easing: GLIDE });
+    if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: MOTION.enter, easing: GLIDE });
   } else if (!d.open) d.classList.remove("shown");
   if (!d.open) d.showModal();
   pin();
@@ -896,6 +991,7 @@ function unpin() {
 }
 function finishClose(d) {
   clearTimeout(d._done); d._throw = null;
+  d._resize?.forEach(a => a.cancel()); d._resize = [];
   d.classList.remove("closing", "dragging", "shown");
   d.style.transform = ""; d.style.removeProperty("--from");
   if (d.open) d.close();
@@ -924,8 +1020,30 @@ function closeSheet(d, thrown = null) {
 }
 // A sheet whose contents change (something said, the message giving way to Sent, a photo added): it moves to its new
 // height rather than jumping there, and what's new fades in. Changed again on the way, it goes on from where it's got to.
+function resizeContact(d, previous, previousTextTop, moveText = true) {
+  d._resize?.forEach(a => a.cancel()); d._resize = [];
+  if (motion.matches || !d.open || d.classList.contains("closing")) return;
+  const box = $(".sheet-in", d), next = d.getBoundingClientRect();
+  if (Math.abs(previous.height - next.height) > 1 || Math.abs(previous.top - next.top) > 1) {
+    const dy = previous.top - next.top, scale = previous.height / next.height;
+    d._resize.push(d._surface.animate([
+      { transform: `translateY(${dy}px) scaleY(${scale})` }, { transform: "none" }
+    ], { duration: MOTION.layout, easing: EASE_OUT }));
+    if (moveText) d._resize.push(box.animate([
+      { transform: `translateY(${previousTextTop - box.getBoundingClientRect().top}px)` }, { transform: "none" }
+    ], { duration: MOTION.layout, easing: EASE_OUT }));
+  }
+}
 function settle(d, change, inEl) {
   const box = $(".sheet-in", d), h0 = box.getBoundingClientRect().height;
+  if (d._surface) {
+    const previous = d._surface.getBoundingClientRect(), previousTextTop = box.getBoundingClientRect().top;
+    change(); resizeContact(d, previous, previousTextTop, inEl?.id !== "contact-sent");
+    if (!motion.matches && d.open && inEl) d._resize.push(inEl.animate([
+      { opacity: 0, translate: "0 6px" }, { opacity: 1, translate: "0 0" }
+    ], { duration: MOTION.layout, delay: MOTION.stagger, easing: EASE_OUT, fill: "backwards" }));
+    return;
+  }
   for (const a of box.getAnimations()) a.cancel();
   change();
   if (motion.matches || !d.open) return;
@@ -987,7 +1105,10 @@ for (const d of $$("dialog.sheet")) {
     body.classList.remove("pulling");
     for (const el of behind) el.style.transform = "";
     d.style.transform = "";
-    if (dy && !motion.matches) d.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], { duration: 600, easing: spring() });
+    if (dy && !motion.matches) {
+      const frames = Array.from({ length: 37 }, (_, i) => ({ transform: `translateY(${i === 36 ? 0 : springValue(dy, 0, v * 1000, MOTION.enter * i / 36000)[0]}px)`, offset: i / 36 }));
+      d.animate(frames, { duration: MOTION.enter, easing: "linear" });
+    }
   };
   d.addEventListener("pointerup", end);
   d.addEventListener("pointercancel", end);
@@ -1103,6 +1224,9 @@ function hideToast() {
 
 /* ---------------- Get in touch ---------------- */
 const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send"), version: 0 };
+contact.sheet._surface = document.createElement("div");
+contact.sheet._surface.className = "sheet-surface"; contact.sheet._surface.setAttribute("aria-hidden", "true");
+contact.sheet.prepend(contact.sheet._surface); contact.sheet.classList.add("surface-sheet");
 contact.sheet.addEventListener("close", () => contact.version++);
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.version++;
@@ -1195,7 +1319,7 @@ function morphFrom(on) {
   swap();
   // (and where it all goes)
   const hBox1 = box.getBoundingClientRect().height, hS1 = s.getBoundingClientRect().height;
-  const T = 520, slide = { duration: T, easing: GLIDE };
+  const T = MOTION.enter, slide = { duration: T, easing: GLIDE };
   box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
   s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
   box.scrollTop = st;       // (cut back, for the moment the rows were at their new size before that took over)
@@ -1281,7 +1405,7 @@ contact.form.addEventListener("submit", async (e) => {
     const activity = $(".send-activity", contact.send);
     activity?.replaceChildren($(".tick svg", contact.sent).cloneNode(true));
     if (!motion.matches) {
-      await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: 240, easing: EASE_OUT }).finished.catch(() => {});
+      await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT }).finished.catch(() => {});
     }
     if (version !== contact.version || !contact.sheet.open) return;
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;

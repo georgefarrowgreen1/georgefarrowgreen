@@ -3,15 +3,16 @@ const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync,existsSync,statSync}=require('node:fs');
 const {resolve,extname}=require('node:path');
-const {chromium}=require('playwright');
+const {chromium,webkit}=require('playwright');
 const ROOT=resolve(__dirname,'../..'),HOME='https://motion.test';
 let browser;
-before(async()=>{browser=await chromium.launch({executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
+before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-async function fixture(assets,{width=390,reduce=false}={}){
+async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false}={}){
  const ctx=await browser.newContext({viewport:{width,height:740},isMobile:width<600,hasTouch:width<600,reducedMotion:reduce?'reduce':'no-preference'});
  await ctx.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/i.test(type)?null:get.call(this,type,...args);};});
+ await ctx.addInitScript(({cadence,saveData})=>{if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData});
  const errors=[],posts=[],gates=[];let response={status:200,body:{ok:true},gate:null};
  await ctx.route(`${HOME}/**`,async route=>{
   const url=new URL(route.request().url()),path=url.pathname;
@@ -71,7 +72,7 @@ for(const assets of ['', 'min/']){
    await f.p.waitForFunction(()=>!document.querySelector('.projects').getAnimations().length);
    await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.locator('.projects').scrollIntoViewIfNeeded();
    assert.equal(await f.p.locator('.projects').evaluate(e=>e.getAnimations().length),0,'one-time entrance does not loop');
-   await f.p.evaluate(()=>scrollTo({top:120,behavior:'instant'}));await f.p.waitForFunction(()=>parseFloat(document.querySelector('#bg').style.getPropertyValue('--hero-depth'))>0);
+   await f.p.evaluate(()=>scrollTo({top:120,behavior:'instant'}));await f.p.waitForFunction(()=>document.body.classList.contains('motion-lite')||parseFloat(document.querySelector('#bg').style.getPropertyValue('--hero-depth'))>0);
    const depth=await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth'));await open(f);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),depth);
    await close(f);await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.waitForFunction(()=>document.querySelector('#bg').style.getPropertyValue('--hero-depth')==='0px');
    await f.p.locator('.app[aria-hidden=false] .app-link').scrollIntoViewIfNeeded();
@@ -84,8 +85,12 @@ for(const assets of ['', 'min/']){
     },kind);
     assert.equal(prevented,false,kind+' retains the browser default');assert.equal(await f.p.locator('.app-handoff').count(),0);
    }
-   await f.p.locator('.app[aria-hidden=false] .app-link').click();await f.p.locator('.app-handoff').waitFor();assert.equal(await f.p.locator('.app[aria-hidden=false] .app-grab img').evaluate(e=>e.style.opacity),'0');
-   await f.p.evaluate(()=>dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+   const departure=await f.p.locator('.app[aria-hidden=false] .app-link').evaluate(el=>{
+    el.click();const icon=document.querySelector('.app[aria-hidden=false] .app-grab img');
+    const result={cover:!!document.querySelector('.app-handoff'),opacity:icon.style.opacity};
+    dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));return result;
+   });
+   assert.equal(departure.cover,true);assert.equal(departure.opacity,'0');
    await f.p.waitForTimeout(700);assert.equal(new URL(f.p.url()).hostname,'motion.test');assert.equal(await f.p.locator('.app-handoff').count(),0);assert.equal(await f.p.locator('.app[aria-hidden=false] .app-grab img').evaluate(e=>e.style.opacity),'');
    assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('leaving')),false);
    await f.p.locator('.app[aria-hidden=false] .app-link').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
@@ -101,3 +106,67 @@ for(const assets of ['', 'min/']){
   }finally{await f.cleanup();}
  });
 }
+
+for(const assets of ['', 'min/']){
+ test(`${assets||'source/'}rapid reversals keep the current card position and momentum without queued moves`,async()=>{
+  const f=await fixture(assets,{width:1440});
+  try{
+   await f.p.locator('.app[aria-hidden=false] .app-grab').focus();
+   const continuity=await f.p.evaluate(()=>{
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    const start=performance.now();while(performance.now()-start<70){}
+    document.querySelector('#apps').getAnimations({subtree:true}).forEach(a=>a.currentTime=70);
+    const card=document.querySelector('#app-inflight'),old=new DOMMatrixReadOnly(getComputedStyle(card).transform).m41;
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+    const a=card.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),frames=a.effect.getKeyframes();
+    return{before:old,start:new DOMMatrixReadOnly(frames[0].transform).m41,next:new DOMMatrixReadOnly(frames[1].transform).m41,name:document.querySelector('.app[aria-hidden=false] b').textContent};
+   });
+   assert.equal(continuity.name,'Chat');assert.ok(Math.abs(continuity.before-continuity.start)<.5,'retarget starts from the currently painted position');
+   assert.ok(continuity.next<continuity.start,'inherited velocity is retained before reversing direction');
+   for(let i=0;i<7;i++)await f.p.keyboard.press('ArrowRight');
+   assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Markets','every new input retargets immediately');
+   await f.p.waitForFunction(()=>!document.querySelector('#apps').getAnimations({subtree:true}).length);
+   await f.p.waitForTimeout(600);assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Markets');
+   assert.equal(await f.p.locator('.app:not([inert])').count(),1);assert.deepEqual(f.errors,[]);
+  }finally{await f.cleanup();}
+ });
+ test(`${assets||'source/'}message confirmation scales only its surface and leaves text unscaled`,async()=>{
+  const f=await fixture(assets);
+  try{
+   await open(f);await fill(f);
+   await f.p.evaluate(()=>{
+    const watch=new MutationObserver(()=>{
+     if(document.querySelector('#contact-sent').hidden)return;
+     window.confirmationFrames={
+      surface:document.querySelector('.sheet-surface').getAnimations().map(a=>a.effect.getKeyframes()),
+      text:document.querySelector('.sheet-in').getAnimations().map(a=>a.effect.getKeyframes()),
+      sent:document.querySelector('#contact-sent').getAnimations().map(a=>a.effect.getKeyframes())
+     };watch.disconnect();
+    });watch.observe(document.querySelector('#contact-sheet'),{subtree:true,attributes:true,attributeFilter:['hidden']});
+   });
+   await f.p.locator('#contact-send').click();await f.p.locator('#contact-sent:not([hidden])').waitFor();
+   const transition=await f.p.evaluate(()=>window.confirmationFrames);
+   assert.ok(transition.surface.flat().some(f=>f.transform?.includes('scaleY')));
+   assert.ok(transition.text.flat().every(f=>!f.transform?.includes('scale')&&!('height'in f)));
+   assert.ok(transition.sent.flat().every(f=>!f.transform?.includes('scale')&&!('height'in f)));
+   await close(f);await open(f);assert.equal(await f.p.locator('#contact-form').isVisible(),true);assert.deepEqual(f.errors,[]);
+  }finally{await f.cleanup();}
+ });
+}
+for(const cadence of [1000/120,1000/60,1000/30])test(`frame monitor recognises ${Math.round(1000/cadence)} Hz and only reduces decoration on slow frames`,async()=>{
+ const f=await fixture('',{width:1440,cadence});
+ try{
+  await f.p.waitForFunction(()=>performance.getEntriesByName('bio.motion.sample').length>0);
+  const result=await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample')[0].detail);
+  assert.ok(Math.abs(result.cadence-cadence)<.2);assert.equal(result.light,cadence>24);
+  assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),cadence>24);
+  await f.p.locator('.app[aria-hidden=false] .app-next').click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');
+  await f.p.waitForTimeout(300);assert.equal(await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample').length),1,'monitor is bounded');assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+test('Save Data keeps the page decorative motion still while all card controls work',async()=>{
+ const f=await fixture('',{saveData:true});try{
+  assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),true);
+  await f.p.locator('.app[aria-hidden=false] .app-next').click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
