@@ -46,7 +46,7 @@
   <script src="loader-portrait.js" defer></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="bio">
   <div class="site-loader" id="site-loader" hidden>
     <svg class="loader-filters" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
       <defs>
@@ -98,33 +98,32 @@
     <div class="grid">
       <section class="app-carousel" id="app-carousel" aria-labelledby="apps-h">
         <h2 class="head" id="apps-h">Apps</h2>
-        <button class="app-rotation vh" type="button" data-app-play hidden>Pause automatic carousel</button>
         <div class="app-viewport" id="app-viewport">
         <div class="apps" id="apps">
-          <a class="app inflight glass" id="app-inflight" href="https://chat.inflite.ai/">
-            <img src="/apps/inflight.png" alt="" width="56" height="56" />
-            <b>Chat</b>
-            <small data-about="Messages, and letters by pigeon">Messages, and letters by pigeon</small>
-            <span class="open">Open <span aria-hidden="true">›</span></span>
-          </a>
-          <a class="app weather glass" id="app-weather" href="https://weather.inflite.ai/">
-            <img src="/apps/weather.png" alt="" width="56" height="56" />
-            <b>Weather</b>
-            <small data-about="Forecasts, radar and alerts">Forecasts, radar and alerts</small>
-            <span class="open">Open <span aria-hidden="true">›</span></span>
-          </a>
-          <a class="app fitness glass" id="app-fitness" href="https://fitness.inflite.ai/">
-            <img src="/apps/fitness.png" alt="" width="56" height="56" />
-            <b>Fitness</b>
-            <small data-about="Training, using AI">Training, using AI</small>
-            <span class="open">Open <span aria-hidden="true">›</span></span>
-          </a>
-          <a class="app markets glass" id="app-markets" href="https://finance.inflite.ai/">
-            <img src="/apps/markets.png" alt="" width="56" height="56" />
-            <b>Markets</b>
-            <small data-about="Your money, said simply">Your money, said simply</small>
-            <span class="open">Open <span aria-hidden="true">›</span></span>
-          </a>
+          <article class="app inflight" id="app-inflight">
+            <button class="app-grab" type="button" disabled aria-label="Chat. Show next app">
+              <img src="/apps/inflight.png" alt="" width="56" height="56" /><span class="app-text"><b>Chat</b><small data-about="Messages, and letters by pigeon">Messages, and letters by pigeon</small></span>
+            </button>
+            <div class="app-bottom"><a class="app-link" data-app-link href="https://chat.inflite.ai/">Open Chat</a><span class="app-step"><span class="app-count" aria-hidden="true" hidden></span><button class="app-next" type="button" hidden>Next app <span aria-hidden="true">›</span></button></span></div>
+          </article>
+          <article class="app weather" id="app-weather">
+            <button class="app-grab" type="button" disabled aria-label="Weather. Show next app">
+              <img src="/apps/weather.png" alt="" width="56" height="56" /><span class="app-text"><b>Weather</b><small data-about="Forecasts, radar and alerts">Forecasts, radar and alerts</small></span>
+            </button>
+            <div class="app-bottom"><a class="app-link" data-app-link href="https://weather.inflite.ai/">Open Weather</a><span class="app-step"><span class="app-count" aria-hidden="true" hidden></span><button class="app-next" type="button" hidden>Next app <span aria-hidden="true">›</span></button></span></div>
+          </article>
+          <article class="app fitness" id="app-fitness">
+            <button class="app-grab" type="button" disabled aria-label="Fitness. Show next app">
+              <img src="/apps/fitness.png" alt="" width="56" height="56" /><span class="app-text"><b>Fitness</b><small data-about="Training, using AI">Training, using AI</small></span>
+            </button>
+            <div class="app-bottom"><a class="app-link" data-app-link href="https://fitness.inflite.ai/">Open Fitness</a><span class="app-step"><span class="app-count" aria-hidden="true" hidden></span><button class="app-next" type="button" hidden>Next app <span aria-hidden="true">›</span></button></span></div>
+          </article>
+          <article class="app markets" id="app-markets">
+            <button class="app-grab" type="button" disabled aria-label="Markets. Show next app">
+              <img src="/apps/markets.png" alt="" width="56" height="56" /><span class="app-text"><b>Markets</b><small data-about="Your money, said simply">Your money, said simply</small></span>
+            </button>
+            <div class="app-bottom"><a class="app-link" data-app-link href="https://finance.inflite.ai/">Open Markets</a><span class="app-step"><span class="app-count" aria-hidden="true" hidden></span><button class="app-next" type="button" hidden>Next app <span aria-hidden="true">›</span></button></span></div>
+          </article>
         </div>
         </div>
         <p class="vh" id="app-carousel-status" role="status" aria-live="polite"></p>
@@ -132,33 +131,15 @@
       <section class="projects" aria-labelledby="projects-h">
         <h2 class="head" id="projects-h">Projects</h2>
         <div class="project-grid">
-          <a class="project" href="https://inflite.ai/" target="_blank" rel="noopener noreferrer" aria-labelledby="inflite-project-h inflite-project-link">
-            <div class="project-identity">
-              <span class="project-brand"><img src="/inflite.svg" alt="" width="54" height="54" loading="lazy" decoding="async" /></span>
-              <div class="project-name">
-                <h3 id="inflite-project-h">InFlite</h3>
-                <span class="project-type">Everyday apps</span>
-              </div>
-            </div>
-            <p>Chat, weather, fitness and more, together in one place.</p>
-            <div class="project-bottom">
-              <span class="project-link" id="inflite-project-link">Explore InFlite</span>
-              <span class="project-arrow" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18 18 6M6 6h12v12"/></svg></span>
-            </div>
+          <a class="project" href="https://inflite.ai/" target="_blank" rel="noopener noreferrer" aria-labelledby="inflite-project-h">
+            <img class="project-logo" src="/inflite.svg" alt="" width="42" height="42" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="inflite-project-h">InFlite</h3><span>Everyday apps, together in one place.</span></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
           </a>
-          <a class="project project-cottage" href="https://www.cottageholidaysblakeney.co.uk/" target="_blank" rel="noopener noreferrer" aria-labelledby="cottage-project-h cottage-project-link">
-            <div class="project-identity">
-              <span class="project-brand project-brand-cottage"><img src="/projects/cottage-holidays-blakeney.svg" alt="" width="40" height="24" loading="lazy" decoding="async" /></span>
-              <div class="project-name">
-                <h3 id="cottage-project-h">Cottage Holidays<br />Blakeney</h3>
-                <span class="project-type">North Norfolk stays</span>
-              </div>
-            </div>
-            <p>Three family-run holiday cottages in Blakeney, North Norfolk.</p>
-            <div class="project-bottom">
-              <span class="project-link" id="cottage-project-link">Discover the cottages</span>
-              <span class="project-arrow" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18 18 6M6 6h12v12"/></svg></span>
-            </div>
+          <a class="project project-cottage" href="https://www.cottageholidaysblakeney.co.uk/" target="_blank" rel="noopener noreferrer" aria-labelledby="cottage-project-h">
+            <img class="project-logo project-crown" src="/projects/cottage-holidays-blakeney.svg" alt="" width="36" height="24" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="cottage-project-h">Cottage Holidays Blakeney</h3><span>Three family-run cottages in North Norfolk.</span></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
           </a>
         </div>
       </section>

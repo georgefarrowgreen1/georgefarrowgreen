@@ -48,9 +48,12 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
   name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and
   the page is opened afresh.
-- **Apps:** Chat, Weather and Fitness, each with its icon (served here at `/apps/`, from each app), what it is, and
-  **Open**. Signed in, each says what's yours in it instead: "8 friends · 137 sent", "1 place · Alerts on", "12
-  activities · On a plan" (`GET /api/me`).
+- **Apps:** Chat, Weather, Fitness and Markets form a compact manual stack. Swipe or tap the card, choose **Next app**,
+  or use the arrow keys (Home/End go to the first/last app). **Open** retains each app's real account-aware link.
+  The next card rises from underneath; a short drag settles back, and Reduce Motion changes cards immediately.
+  Only the active card is focusable. Without JavaScript the four original links remain horizontally scrollable.
+  Signed in, each says what's yours in it: "8 friends · 137 sent", "1 place · Alerts on", "12 activities · On a plan"
+  (`GET /api/me`). Projects use simple rows beneath the stack, and the photograph ends at the editable hero.
 - **Get in touch:** **Send a message** opens a sheet (the page steps back behind it; swipe it down, tap outside or
   press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
   tick and a thank-you. One that's slow to be answered says it may have gone all the same (not that you're offline),

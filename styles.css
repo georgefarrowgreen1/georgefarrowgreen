@@ -287,104 +287,61 @@ body.leaving .page, body.leaving .bar { opacity: 0.6; transform: scale(0.985); t
 body.paused .segs i.on::after { animation-play-state: paused; }
 @keyframes fill { to { transform: none; } }
 
-.head { margin: 30px 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-.apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.app { position: relative; overflow: hidden; border-radius: var(--ifl-radius-card, 30px); padding: 16px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 3px; align-content: start; }
-/* The tint fades within the card itself. A blurred off-edge layer can reveal its rectangular raster boundary
-   while the carousel is composited, especially on phones. A radial gradient needs no filtered backing surface. */
-.app::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(ellipse 180px 170px at 28px 20px, var(--glow), transparent 100%); opacity: 0.24; }
-.app > * { position: relative; }
-.app.inflight { --glow: #2f7bff; }
-.app.weather { --glow: #ffb43a; }
-.app.fitness { --glow: #ff6a3d; }
-.app.markets { --glow: #2fd384; }
-/* The native swipe row reserves the enhanced carousel's card size and centred first position before JavaScript
-   arrives. Enhancement adds looping without resizing the cards or shifting the sections below them. */
-@media (max-width: 600px) {
-  .apps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: min(244px, calc(100vw - 96px));
-    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
-    margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
-    padding: 4px max(48px, calc((100vw - 244px) / 2)) 20px;
-    scroll-padding-inline: max(48px, calc((100vw - 244px) / 2)); }
-  .apps::-webkit-scrollbar { display: none; }
-  .apps > .app { scroll-snap-align: center; }
-}
-.app img { width: 56px; height: 56px; border-radius: 13px; margin-bottom: 10px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
-.app b { font-size: 19px; font-weight: 600; }
-.app small { font-size: 14px; color: var(--text-2); line-height: 1.3; min-height: 36px; text-wrap: balance; transition: color var(--dur-fast) var(--ease-out); }
+/* Native horizontal links are the fallback; enhancement changes only the cards' positioning, not their size. */
+.head { margin: 28px 0 18px; font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
+.app-carousel, .app-viewport { min-width: 0; }
+.app-viewport { overflow: hidden; overflow: clip; padding: 3px 0; }
+.apps { display: flex; gap: 16px; position: relative; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; padding-bottom: 16px; }
+.apps::-webkit-scrollbar { display: none; }
+.app { position: relative; flex: 0 0 100%; min-width: 0; height: 170px; border: 1px solid rgba(255,255,255,.08); border-radius: 22px; background: #191e28; overflow: hidden; scroll-snap-align: start; transition: none; }
+.app-grab { display: flex; align-items: center; gap: 20px; width: 100%; height: 112px; padding: 24px 26px 14px; text-align: left; touch-action: pan-y; cursor: grab; }
+.app-grab:disabled { cursor: default; opacity: 1; color: inherit; }
+.app-grab:active { cursor: grabbing; }
+.app-grab img { width: 54px; height: 54px; border-radius: 14px; flex: none; pointer-events: none; -webkit-user-drag: none; }
+.app-text { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.app b { font-size: 21px; font-weight: 500; letter-spacing: -.025em; }
+.app small { display: block; color: #b3bac9; font-size: 13px; line-height: 1.45; transition: color var(--dur-fast) var(--ease-out); }
 .app small.mine { color: var(--text); }
-.app .open { margin-top: 12px; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 15px; color: var(--tint-text); background: rgba(61, 139, 255, 0.16); transition: background-color var(--dur-fast) var(--ease-out); }
-
-
-/* The app carousel keeps the four real links in the document. With no script it is the usual swipeable row;
-   on a phone the enhanced track moves as one composited layer. Copies at either end make the loop continuous. */
-.app-copy { display: none; }
-.app-carousel { position: relative; min-width: 0; }
-@media (max-width: 600px) {
-  .app-carousel.is-carousel .app-viewport {
-    overflow: hidden; overflow: clip; touch-action: pan-y pinch-zoom; cursor: grab;
-    margin-inline: calc(-1 * max(16px, env(safe-area-inset-left))) calc(-1 * max(16px, env(safe-area-inset-right)));
-  }
-  .app-carousel.is-carousel .app-viewport.dragging { cursor: grabbing; }
-  .app-carousel.is-carousel .apps {
-    display: flex; gap: 14px; overflow: visible; margin: 0; padding: 4px 0 20px;
-    scroll-snap-type: none; transform: translate3d(0, 0, 0); will-change: transform;
-  }
-  .app-carousel .app {
-    display: grid; flex: 0 0 min(244px, calc(100% - 96px)); min-height: 240px; padding: 20px;
-    /* The photograph is already softened behind this part of the page. An opaque glass tint keeps moving cards
-       crisp without resampling a backdrop blur for every frame of the glide. */
-    background: rgba(28, 30, 40, 0.94); -webkit-backdrop-filter: none; backdrop-filter: none;
-    /* Keep the inset glass rim. An outside shadow is cut off by the moving viewport, drawing a line below the row. */
-    box-shadow: var(--rim);
-  }
-  .app-carousel .app img { margin-bottom: 14px; }
-  .app-carousel .app b { font-size: 21px; }
-  .app-carousel .app .open { margin-top: 16px; }
-  .app-carousel .app:focus-visible { outline-offset: -3px; }
-  .app-carousel.is-carousel .app-viewport.dragging .app { transform: none; }
-  /* A keyboard/screen-reader pause action, revealed only when focused. The visible control strip is removed. */
-  .app-rotation:focus-visible {
-    position: absolute; z-index: 1; top: 0; right: 0; width: auto; height: auto; margin: 0; padding: 10px 14px;
-    clip-path: none; border-radius: 999px; background: var(--glass-strong); color: var(--text); font-size: 13px;
-  }
+.app-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 26px 12px; font-size: 12px; }
+.app-link { color: #9fc3ff; min-height: 44px; display: inline-flex; align-items: center; }
+.app-step { display: flex; align-items: center; gap: 15px; }
+.app-count { font-size: 11px; color: #8e97a8; white-space: nowrap; }
+.app-next { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 0 8px 8px; color: #d2d8e5; font-size: 12px; transition: color .16s, transform .3s var(--ease-out); }
+.app-next > span { font-size: 22px; color: #9ca6b9; }
+.app-next:hover { color: #fff; }
+.app-next:active { transform: translateX(2px); }
+.app :focus-visible { outline-offset: -3px; }
+.app-carousel.is-stack .apps { display: block; height: 186px; overflow: visible; scroll-snap-type: none; isolation: isolate; }
+.is-stack .app { position: absolute; inset: 0 0 auto; width: 100%; transform-origin: 50% 0; backface-visibility: hidden; will-change: transform, opacity; }
+.is-stack .app[aria-hidden=true] { pointer-events: none; }
+.is-stack .app:hover { filter: none; }
+@media(prefers-reduced-motion:reduce) {
+  .app-next, .app small { transition: none; }
+  .app-next:active { transform: none; }
 }
-
-/* Projects stay together beneath Apps: both businesses visible, with their original marks. Their tint is painted
-   within each rounded card, without a filtered glow that could leave a square edge or an extra moving backdrop. */
 .projects { margin-top: 28px; }
-.projects .head { margin: 0 0 18px; }
-.project-grid { display: grid; gap: 14px; }
-.project {
-  min-width: 0; min-height: 212px; padding: 23px; border-radius: 26px;
-  display: flex; flex-direction: column;
-  background: radial-gradient(ellipse at 0 0, rgba(82, 109, 228, 0.18), transparent 82%), #181b24;
-  box-shadow: var(--rim);
-  transition: transform 0.28s var(--ease-out), box-shadow 0.28s var(--ease-out);
+.projects .head { margin: 0 0 6px; }
+.project-grid { display: block; }
+.project { display: flex; align-items: center; gap: 17px; min-height: 102px; padding: 24px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.project-logo { width: 42px; height: 42px; object-fit: contain; flex: none; }
+.project-crown { width: 36px; height: 24px; margin: 0 3px; }
+.project-copy { flex: 1; min-width: 0; }
+.project h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.025em; font-weight: 500; margin-bottom: 7px; }
+.project-copy > span { display: block; font-size: 13px; line-height: 1.4; color: #a5aab6; }
+.project-arrow { width: 17px; height: 17px; flex: none; color: #9aa4b6; transition: transform .2s var(--ease-out); }
+.project:active .project-arrow { transform: translate(2px,-2px); }
+@media(max-width:520px) {
+  .app-grab { padding: 21px 18px 10px; gap: 14px; }
+  .app-grab img { width: 47px; height: 47px; border-radius: 12px; }
+  .app b { font-size: 19px; }
+  .app small { font-size: 12px; }
+  .app-bottom { padding: 0 18px 12px; }
+  .project { gap: 13px; }
+  .project-logo { width: 36px; height: 36px; }
+  .project-crown { width: 30px; height: 24px; }
+  .project h3 { font-size: 16px; }
+  .project-copy > span { font-size: 12px; }
 }
-.project-cottage { background: radial-gradient(ellipse at 0 0, rgba(186, 142, 115, 0.19), transparent 82%), #1c1c21; }
-.project-identity { display: flex; gap: 15px; align-items: center; }
-.project-brand { flex: none; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; }
-.project-brand img { display: block; border-radius: inherit; }
-.project-brand-cottage { background: linear-gradient(140deg, #473831, #302a29); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13); }
-.project-brand-cottage img { border-radius: 0; }
-.project-name { min-width: 0; }
-.project h3 { font-size: 22px; line-height: 1.12; font-weight: 600; letter-spacing: -0.7px; }
-.project-type { display: block; margin-top: 6px; font-size: 12px; line-height: 1.4; letter-spacing: 0.02em; color: #b2b7d2; }
-.project-cottage .project-type { color: #c5b2a9; }
-.project p { max-width: 270px; margin: 20px 0 18px; color: #b9bdc9; font-size: 15px; line-height: 1.5; }
-.project-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; }
-.project-link { color: #b7caff; font-size: 13px; font-weight: 600; }
-.project-cottage .project-link { color: #dfbaa7; }
-.project-arrow {
-  flex: none; display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); color: #d8deef;
-  transition: transform 0.28s var(--ease-out);
-}
-.project-cottage .project-arrow { color: #dfbaa7; }
-.project:active { transform: scale(0.985); transition-duration: var(--dur-press); }
-@media (max-width: 360px) { .project h3 { font-size: 20px; } }
 
 .group { border-radius: 26px; overflow: hidden; }
 .row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; text-align: left; }
@@ -415,7 +372,7 @@ body.paused .segs i.on::after { animation-play-state: paused; }
   .lost .row > .val { grid-column: 2; grid-row: 2; font-size: 14px; white-space: normal; }
   .lost .row:has(> .val) > .chev { grid-column: 3; grid-row: 1 / 3; }
 }
-.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 13px; color: var(--text-2); }
+.foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 11px; color: var(--text-2); }
 .foot a { color: var(--text-2); display: inline-block; padding: 13px 4px; margin: -13px -4px; transition: color var(--dur-fast) var(--ease-out); }
 .foot-row { flex-basis: 100%; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px; }
 .foot .foot-brand { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 -8px; padding: 8px 6px;
@@ -695,45 +652,17 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
   .page { max-width: 720px; margin: 0 auto; }
   /* (the bar's buttons over the page's edges, not in the screen's corners) */
   .bar { padding-inline: calc(max(0px, (100% - 720px) / 2) + max(16px, env(safe-area-inset-left))) calc(max(0px, (100% - 720px) / 2) + max(16px, env(safe-area-inset-right))); }
-  /* (the apps side by side, all four, so the page still fits on one screen) */
-  .apps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-  .app { padding: 14px; border-radius: 24px; }
-  .app img { width: 50px; height: 50px; border-radius: 12px; }
-  .app b { font-size: 18px; }
-  .projects { margin-top: 38px; }
-  .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .project { min-height: 284px; padding: 22px; }
-  .project-identity { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .project h3 { font-size: 21px; }
-  .project-type { font-size: 11px; }
-  .project p { margin: 17px 0; font-size: 14px; }
   .sheet { inset: 0; margin: auto; width: min(440px, calc(100% - 32px)); height: fit-content; border-radius: 30px; }
   .sheet .grab { visibility: hidden; height: 2px; }
   @keyframes up { from { transform: translateY(24px) scale(0.97); opacity: 0; } }
   @keyframes down { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(16px) scale(0.98); opacity: 0; } }
 }
-@media (min-width: 900px) {
-  .bar { padding: 22px calc(max(0px, (100% - 1120px) / 2) + max(40px, env(safe-area-inset-right, 0px))) 12px calc(max(0px, (100% - 1120px) / 2) + max(40px, env(safe-area-inset-left, 0px))); }
-  .page { max-width: 1120px; padding: 0 max(40px, env(safe-area-inset-right, 0px)) 48px max(40px, env(safe-area-inset-left, 0px)); }
-  .hero { min-height: 560px; padding-bottom: 32px; }
-  .hero h1 { font-size: 80px; }
-  .lede { font-size: 21px; }
-  .head { margin-top: 18px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-areas: "apps contact" "projects contact"; gap: 38px 28px; align-items: start; }
-  .grid > section { min-width: 0; }
-  .app-carousel { grid-area: apps; }
-  .projects { grid-area: projects; margin-top: 0; }
-  .contact { grid-area: contact; }
-}
 /* a pointer over something it can press: it lights, smoothly */
 @media (hover: hover) {
-  .app:hover, .pill.glass:hover, .round.glass:hover, .back-top:hover { background-color: rgba(40, 44, 58, 0.5); }
+  .pill.glass:hover, .round.glass:hover, .back-top:hover { background-color: rgba(40, 44, 58, 0.5); }
   .row:hover { background-color: rgba(255, 255, 255, 0.05); }
   .tint:hover { filter: brightness(1.08); }
-  .app:hover .open { background-color: rgba(61, 139, 255, 0.24); }
-  .project:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 14px 30px rgba(0, 0, 0, 0.13); }
   .project:hover .project-arrow { transform: translate(2px, -2px); }
-  .project:active { transform: scale(0.985); }
   .foot a:hover { color: var(--text); }
   .sheet-head .x:hover, .editbar .add:hover, .toast button:hover, .tile .ask .no:hover { background-color: rgba(255, 255, 255, 0.16); }
   .fld.from .change:hover { background-color: rgba(61, 139, 255, 0.28); }
@@ -837,3 +766,23 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
 }
 /* ==== end of InFlite design tokens ==== */
+
+/* The approved bio layout: one reading column and quiet project rows beneath the app stack. */
+body.bio { background: #090c10; }
+.bio .bg { position: absolute; bottom: auto; height: var(--hero-height, max(470px, min(560px, 65svh))); max-height: none; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); }
+.bio .bg::after { background: linear-gradient(90deg, rgba(7,10,14,.6), rgba(7,10,14,.12)), linear-gradient(0deg, #090c10, transparent 65%); }
+.bio .soft { display: none; }
+.bio .page { max-width: 820px; margin: 0 auto; padding-inline: max(24px, env(safe-area-inset-left)); }
+.bio .hero { min-height: max(470px, min(560px, 65svh)); padding-bottom: 36px; }
+.bio .hero h1 { font-size: clamp(36px, 6vw, 62px); }
+.bio .lede { font-size: 16px; }
+.bio .grid { display: block; }
+.bio .contact { margin-top: 18px; }
+.bio .contact .head { font-size: 18px; }
+.bio .contact .group { background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; }
+.bio .contact .row { padding-inline: 0; font-size: 15px; }
+.bio .contact .row::before { left: 46px; }
+.bio .contact .row .val { font-size: 13px; }
+.bio .foot { margin-top: 28px; }
+@media(min-width:601px) { .bio .bar { padding-inline: calc(max(0px, (100% - 820px) / 2) + 24px); } }
+@media(max-width:520px) { .bio .page { padding-inline: max(20px, env(safe-area-inset-left)); } }

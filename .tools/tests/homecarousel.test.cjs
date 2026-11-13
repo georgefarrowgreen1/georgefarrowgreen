@@ -1,5 +1,5 @@
-// The actual homepage and source/minified assets, isolated from accounts and email. The carousel's interactions,
-// loop, focus, responsive fallback and signed-in copies run in Chromium without a Worker or production writes.
+// The actual homepage and source/minified assets, isolated from accounts and email. Exercise the manual stack,
+// original account links, touch/mouse gestures, focus, reduced motion and the native fallback without production writes.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync, existsSync, mkdirSync } = require('node:fs');
@@ -41,116 +41,69 @@ async function fixture(assets, { width = 390, reduce = false, js = true } = {}) 
   await p.mouse.move(0, 0);
   return { ctx, p, errors };
 }
-async function settled(p) {
-  await p.waitForFunction(() => !document.querySelector('#apps').getAnimations().length);
-}
-async function centre(p, id) {
-  await p.waitForFunction(id => {
-    const a = document.querySelector(id).getBoundingClientRect(), v = document.querySelector('#app-viewport').getBoundingClientRect();
-    return Math.abs(a.x + a.width / 2 - v.x - v.width / 2) < 1;
-  }, id, { timeout: 8000 });
-  await settled(p);
-}
-async function pause(p) {
-  await p.locator('[data-app-play]').focus();
-  await p.keyboard.press('Space');
-}
+const active = p => p.locator('.app[aria-hidden="false"]');
+const wait = p => p.waitForFunction(() => !document.querySelector('#apps').getAnimations({subtree:true}).length);
+const title = p => active(p).locator('b').innerText();
 for (const assets of ['', 'min/']) {
-  test(`${assets || 'source/'}no control strip; autoplay, seamless wrap and accessible pause retain live summaries`, async () => {
-    const { ctx, p, errors } = await fixture(assets);
+  test(`${assets || 'source/'}stack retains real account links, summaries and exactly one accessible card`, async () => {
+    const f = await fixture(assets);
     try {
-      assert.equal(await p.locator('.app-controls, .app-dots, [data-app-prev], [data-app-next]').count(), 0);
-      assert.equal(await p.locator('[data-app-play]').evaluate(el => el.getBoundingClientRect().width), 1, 'pause has no visible footprint before keyboard focus');
-      assert.equal(await p.locator('.app').count(), 12);
-      assert.equal(await p.locator('[id="app-weather"]').count(), 1);
-      assert.equal(await p.locator('#app-weather small').innerText(), '3 places · Alerts on');
-      assert.deepEqual(await p.locator('.app-copy.weather small').allTextContents(), ['3 places · Alerts on', '3 places · Alerts on']);
-      assert.deepEqual(await p.locator('.app-copy.weather').evaluateAll(links => links.map(a => a.href)), [signed.links.weather, signed.links.weather]);
-      await centre(p, '#app-weather');
-      await pause(p);
-      const at = await p.locator('#apps').evaluate(el => getComputedStyle(el).transform);
-      await p.waitForTimeout(4200);
-      assert.equal(await p.locator('#apps').evaluate(el => getComputedStyle(el).transform), at, 'pause holds the frame');
-      assert.ok(await p.locator('[data-app-play]').evaluate(el => el.getBoundingClientRect().width > 100), 'keyboard pause action is visible while focused');
-      await p.locator('#app-markets').focus(); await centre(p, '#app-markets');
-      await pause(p); // resume, then cross the automatic join without rewinding
-      await centre(p, '#app-inflight');
-      assert.equal(await p.locator('.app-copy:not([aria-hidden="true"]), .app-copy:not([tabindex="-1"])').count(), 0);
-      assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      if (process.env.CAROUSEL_SCREENSHOTS) {
-        mkdirSync(process.env.CAROUSEL_SCREENSHOTS, { recursive: true });
-        await p.locator('#app-inflight').focus(); await p.keyboard.press('Tab'); await p.locator('[data-contact]').first().focus();
-        await p.screenshot({ path: `${process.env.CAROUSEL_SCREENSHOTS}/${assets ? 'min' : 'source'}-mobile.png`, fullPage: true });
-      }
-      assert.deepEqual(errors, []);
-    } finally { await ctx.close(); }
+      assert.equal(await f.p.locator('.app').count(),4); assert.equal(await f.p.locator('.app-copy').count(),0);
+      assert.equal(await title(f.p),'Chat'); assert.equal(await f.p.locator('.app:not([inert])').count(),1);
+      assert.equal(await f.p.locator('#app-weather small').innerText(),'3 places · Alerts on');
+      assert.equal(await f.p.locator('#app-weather .app-link').getAttribute('href'),signed.links.weather);
+      await active(f.p).locator('.app-next').click(); await wait(f.p); assert.equal(await title(f.p),'Weather');
+      assert.equal(await active(f.p).locator('.app-next').evaluate(e=>e===document.activeElement),true);
+      assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('leaving')),false,'Next never triggers the app navigation transition');
+      await f.p.waitForTimeout(700); assert.equal(await title(f.p),'Weather','the approved stack moves only on interaction');
+      assert.deepEqual(f.errors,[]);
+    } finally { await f.ctx.close(); }
   });
-  test(`${assets || 'source/'}swipe interrupts a glide without jumping or opening a link; keyboard focus stays visible`, async () => {
-    const { ctx, p, errors } = await fixture(assets);
+  test(`${assets || 'source/'}keyboard wrap, rapid inputs and reduced motion work on the same real cards`, async () => {
+    const f=await fixture(assets,{width:1440});
     try {
-      await p.waitForFunction(() => document.querySelector('#apps').getAnimations().length > 0, null, { timeout: 8000 });
-      await p.waitForTimeout(300);
-      const box = await p.locator('#app-viewport').boundingBox();
-      await p.mouse.move(box.x + box.width / 2, box.y + 80);
-      const stopped = await p.locator('#apps').evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m41);
-      await p.mouse.down();
-      const held = await p.locator('#apps').evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m41);
-      assert.ok(Math.abs(stopped - held) < 1, 'catching the animation preserves the current frame');
-      await p.mouse.move(box.x + box.width / 2 - 160, box.y + 82, { steps: 12 });
-      await p.mouse.up(); await settled(p);
-      assert.equal(p.url(), 'https://home.test/', 'a swipe does not open the app');
-      await centre(p, '#app-fitness');
-      await p.mouse.move(0, 0); await p.waitForTimeout(450);
-      await p.keyboard.press('Tab');
-      await p.locator('#app-markets').focus(); await centre(p, '#app-markets');
-      await p.keyboard.press('ArrowRight'); await centre(p, '#app-inflight');
-      assert.equal(await p.locator('#app-inflight').evaluate(el => el === document.activeElement), true);
-      assert.equal(await p.locator('[data-app-play]').innerText(), 'Play automatic carousel');
-      await p.keyboard.press('End'); await centre(p, '#app-markets');
-      await p.keyboard.press('Home'); await centre(p, '#app-inflight');
-      assert.equal(await p.locator('#app-viewport').evaluate(el => el.scrollLeft), 0, 'native focus never offsets the track');
-      assert.deepEqual(errors, []);
-    } finally { await ctx.close(); }
+      await active(f.p).locator('.app-grab').focus(); await f.p.keyboard.press('ArrowLeft'); await wait(f.p); assert.equal(await title(f.p),'Markets');
+      await f.p.keyboard.press('Home'); assert.equal(await title(f.p),'Chat');
+      await f.p.keyboard.press('ArrowRight'); await f.p.keyboard.press('ArrowRight'); await f.p.keyboard.press('ArrowRight');
+      await f.p.waitForFunction(()=>document.querySelector('.app[aria-hidden="false"] b')?.textContent==='Markets');await wait(f.p);
+      await f.p.emulateMedia({reducedMotion:'reduce'});await active(f.p).locator('.app-next').click();assert.equal(await title(f.p),'Chat');
+      assert.equal(await f.p.locator('#apps').evaluate(e=>e.getAnimations({subtree:true}).length),0);
+      await active(f.p).locator('.app-grab').focus();await f.p.keyboard.press('End');assert.equal(await title(f.p),'Markets');
+      assert.deepEqual(f.errors,[]);
+    }finally{await f.ctx.close()}
   });
-  test(`${assets || 'source/'}responsive layout, reduced motion and sheet suspension`, async () => {
-    const { ctx, p, errors } = await fixture(assets, { reduce: true });
-    try {
-      assert.equal(await p.locator('[data-app-play]').isDisabled(), true);
-      await p.keyboard.press('Tab'); await p.locator('#app-markets').focus(); await centre(p, '#app-markets');
-      assert.equal(await p.locator('#apps').evaluate(el => el.getAnimations().length), 0);
-      for (const width of [320, 360, 600]) {
-        await p.setViewportSize({ width, height: 844 }); await centre(p, '#app-markets');
-        assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      }
-      await p.setViewportSize({ width: 1440, height: 900 });
-      await p.locator('#app-carousel:not(.is-carousel)').waitFor();
-      assert.equal(await p.locator('.app').count(), 4);
-      assert.equal(await p.locator('[data-app-play]').isVisible(), false);
-      assert.equal(await p.locator('#apps').evaluate(el => getComputedStyle(el).display), 'grid');
-      assert.equal(await p.locator('#apps').evaluate(el => el.style.transform), '');
-      await p.setViewportSize({ width: 390, height: 844 });
-      await p.locator('#app-carousel.is-carousel').waitFor(); await centre(p, '#app-inflight');
-      await p.emulateMedia({ reducedMotion: 'no-preference' });
-      await p.waitForFunction(() => !document.querySelector('[data-app-play]').disabled);
-      await pause(p); // keyboard focus paused rotation; explicitly resume before testing the sheet
-      await p.getByRole('button', { name: 'Get in touch', exact: true }).click();
-      await p.locator('#contact-sheet[open]').waitFor();
-      const at = await p.locator('#apps').evaluate(el => getComputedStyle(el).transform);
-      await p.waitForTimeout(4200);
-      assert.equal(await p.locator('#apps').evaluate(el => getComputedStyle(el).transform), at, 'contact sheet suspends autoplay');
-      await p.locator('#contact-sheet button[aria-label="Close"]').click();
-      await p.waitForFunction(() => !document.body.classList.contains('sheet-up'));
-      await p.locator('#app-viewport').scrollIntoViewIfNeeded();
-      await centre(p, '#app-weather');
-      assert.deepEqual(errors, []);
-    } finally { await ctx.close(); }
+  test(`${assets || 'source/'}mouse dragging promotes the next card, short drags return without navigation`, async()=>{
+    const f=await fixture(assets,{width:1440});
+    try{
+      let r=await active(f.p).locator('.app-grab').boundingBox();const x=r.x+r.width*.65,y=r.y+r.height*.5;
+      await f.p.mouse.move(x,y);await f.p.mouse.down();await f.p.mouse.move(x-130,y,{steps:12});await f.p.mouse.up();await wait(f.p);assert.equal(await title(f.p),'Weather');
+      r=await active(f.p).locator('.app-grab').boundingBox();await f.p.mouse.move(r.x+100,r.y+35);await f.p.mouse.down();await f.p.mouse.move(r.x+124,r.y+35,{steps:8});await f.p.waitForTimeout(110);await f.p.mouse.up();await wait(f.p);
+      assert.equal(await title(f.p),'Weather');assert.match(f.p.url(),/^https:\/\/home.test\//);assert.deepEqual(f.errors,[]);
+    }finally{await f.ctx.close()}
+  });
+  test(`${assets || 'source/'}real touch swipes and sheet interruptions leave a usable stack`,async()=>{
+    const f=await fixture(assets);
+    try{
+      const r=await active(f.p).locator('.app-grab').boundingBox(),cdp=await f.ctx.newCDPSession(f.p),x=r.x+r.width*.75,y=r.y+40;
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});for(let i=1;i<=10;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-i*12,y}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();await wait(f.p);assert.equal(await title(f.p),'Weather');
+      await active(f.p).locator('.app-next').click();await f.p.evaluate(()=>document.querySelector('[data-contact]').click());await f.p.locator('body.sheet-up').waitFor();await wait(f.p);
+      assert.equal(await f.p.locator('.app:not([inert])').count(),1);await f.p.keyboard.press('Escape');await f.p.locator('body:not(.sheet-up)').waitFor();
+      await active(f.p).locator('.app-next').click();await wait(f.p);assert.deepEqual(f.errors,[]);
+    }finally{await f.ctx.close()}
+  });
+  for(const width of [320,390,768,1440])test(`${assets || 'source/'}${width}px stack and simple project rows fit without overflow`,async()=>{
+    const f=await fixture(assets,{width,reduce:true});try{
+      const bounds=await f.p.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,rows:[...document.querySelectorAll('.project')].map(e=>{const r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom}}),height:document.querySelector('#apps').offsetHeight}));
+      assert.equal(bounds.overflow,false);assert.ok(bounds.rows[1].top>=bounds.rows[0].bottom);assert.equal(bounds.height,186);
+      await active(f.p).locator('.app-grab').click();assert.equal(await title(f.p),'Weather');
+      assert.deepEqual(f.errors,[]);
+    }finally{await f.ctx.close()}
   });
 }
-test('without JavaScript all four apps remain swipeable links', async () => {
-  const { ctx, p } = await fixture('', { js: false });
-  try {
-    assert.equal(await p.locator('.app').count(), 4);
-    assert.equal(await p.locator('[data-app-play]').isVisible(), false);
-    assert.equal(await p.locator('#apps').evaluate(el => getComputedStyle(el).overflowX), 'auto');
-  } finally { await ctx.close(); }
+test('without JavaScript all four native app links remain horizontally reachable',async()=>{
+  const f=await fixture('',{js:false});try{
+    assert.equal(await f.p.locator('.app-link').count(),4);assert.equal(await f.p.locator('.app-next:visible').count(),0);
+    assert.equal(await f.p.locator('#apps').evaluate(e=>getComputedStyle(e).overflowX),'auto');
+    await f.p.locator('#app-markets .app-link').focus();assert.ok(await f.p.locator('#apps').evaluate(e=>e.scrollLeft)>0);
+  }finally{await f.ctx.close()}
 });
