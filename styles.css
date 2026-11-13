@@ -801,6 +801,14 @@ body.bio { --dur-press: var(--bio-press); --dur-release: var(--bio-enter); --dur
 #contact-sheet.surface-sheet { overflow: visible; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; isolation: isolate; }
 .sheet-surface { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--glass-strong); box-shadow: var(--rim), 0 30px 80px -10px #0008; -webkit-backdrop-filter: blur(36px) saturate(190%); backdrop-filter: blur(36px) saturate(190%); pointer-events: none; transform-origin: 50% 0; }
 #contact-sheet.surface-sheet .sheet-in { border-radius: inherit; }
+.sheet.contact-travelling { animation: none; }
+.contact-travelling > .sheet-surface { opacity: 0; }
+.contact-flight { position: fixed; left: 0; top: 0; z-index: -1; transform-origin: 0 0; background: var(--glass-strong); box-shadow: var(--rim), 0 30px 80px -10px #0008; pointer-events: none; }
+.contact-flight-copy { position: fixed; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.contact-source { opacity: 0; }
+.viewport-moving .sheet { transition: none; }
+.sheet-in { scroll-padding-block: 12px; }
+.sheet-in input, .sheet-in textarea { scroll-margin-block: 12px; }
 @media (prefers-reduced-transparency: reduce) { .sheet-surface { background: #20222c; -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .bio .hero, .bio .grid, .bio .foot { animation-duration: var(--bio-enter); }
 body.bio.motion-lite .bg > * { translate: none; }

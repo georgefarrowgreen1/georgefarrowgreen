@@ -9,8 +9,14 @@ let browser;
 before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,interruptIntro=false}={}){
+async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,interruptIntro=false,viewportEvents=false}={}){
  const ctx=await browser.newContext({viewport:{width,height:740},isMobile:width<600,hasTouch:width<600,reducedMotion:reduce?'reduce':'no-preference'});
+ if(viewportEvents)await ctx.addInitScript(()=>{
+  const vv=new EventTarget(),state={height:innerHeight,offsetTop:0,scale:1};window.viewportReads=0;
+  for(const key of Object.keys(state))Object.defineProperty(vv,key,{get:()=>{if(key==='height')window.viewportReads++;return state[key];}});
+  Object.defineProperty(window,'visualViewport',{value:vv,configurable:true});
+  window.setTestViewport=patch=>{Object.assign(state,patch);vv.dispatchEvent(new Event('resize'));};
+ });
  await ctx.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/i.test(type)?null:get.call(this,type,...args);};});
  await ctx.addInitScript(({cadence,saveData,interruptIntro})=>{if(interruptIntro)addEventListener('home:revealed',()=>queueMicrotask(()=>{document.querySelector('.cta [data-contact]').focus({preventScroll:true});window.focusedIntroFrames=[...document.querySelectorAll('.hero>*')].flatMap(e=>e.getAnimations()).flatMap(a=>a.effect.getKeyframes()).filter(f=>f.translate).length;}),{once:true});if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData,interruptIntro});
  const errors=[],posts=[],gates=[];let response={status:200,body:{ok:true},gate:null};
@@ -239,5 +245,54 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}sending during the se
 for(const assets of ['', 'min/'])test(`${assets||'source/'}motion tokens preserve milliseconds when CSS converts units to seconds`,async()=>{
  const f=await fixture(assets);try{
   assert.deepEqual(await f.p.evaluate(()=>({...MOTION})),{fast:180,enter:420,exit:260,layout:340,stagger:50});assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+for(const assets of ['', 'min/'])for(const launcher of [0,1])test(`${assets||'source/'}contact material grows from launcher ${launcher+1} and returns without scaling form text`,async()=>{
+ const f=await fixture(assets);try{
+  await f.p.locator('[data-contact]').nth(launcher).scrollIntoViewIfNeeded();
+  const opening=await f.p.evaluate(index=>{
+   const b=document.querySelectorAll('[data-contact]')[index];b.focus({preventScroll:true});if(index===0)b.style.transform='scale(.96)';const source=b.getBoundingClientRect(),restingWidth=b.offsetWidth;b.click();
+   const d=document.querySelector('#contact-sheet'),surface=d.querySelector('.contact-flight'),a=surface.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);
+   a.pause();a.currentTime=0;const start=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration/2;const middle=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration;const end=surface.getBoundingClientRect();a.currentTime=0;a.play();
+   return{source:{left:source.left,top:source.top,width:source.width,height:source.height},start:{left:start.left,top:start.top,width:start.width,height:start.height},middle:middle.height,end:end.height,restingWidth,forms:d.querySelectorAll('form').length,
+    textFrames:d.querySelector('.sheet-in').getAnimations().flatMap(a=>a.effect.getKeyframes())};
+  },launcher);
+  for(const key of ['left','top','width','height'])assert.ok(Math.abs(opening.source[key]-opening.start[key])<1,`surface starts at launcher ${key}`);
+  assert.ok(opening.middle>opening.start.height&&opening.middle<opening.end);assert.equal(opening.forms,1);
+  assert.ok(opening.textFrames.every(frame=>!frame.transform?.includes('scale')));
+  await f.p.waitForFunction(()=>!document.querySelector('.contact-flight'));
+  const closing=await f.p.evaluate(index=>{document.querySelectorAll('[data-contact]')[index].style.transform='';const d=document.querySelector('#contact-sheet');closeSheet(d);const s=d.querySelector('.contact-flight'),a=s.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),last=a.effect.getKeyframes().at(-1),width=parseFloat(s.style.width)*new DOMMatrixReadOnly(last.transform).a;return{width,closing:d.classList.contains('closing')};},launcher);
+  assert.ok(Math.abs(closing.width-opening.restingWidth)<1,'return lands on the resting button rather than its pressed size');assert.equal(closing.closing,true);await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
+  assert.equal(await f.p.locator('.contact-flight,.contact-flight-copy,.contact-source').count(),0);
+  assert.equal(await f.p.locator('[data-contact]').nth(launcher).evaluate(b=>b===document.activeElement),true);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+for(const assets of ['', 'min/'])test(`${assets||'source/'}contact flight reverses from its painted shape and a field tap takes priority`,async()=>{
+ const f=await fixture(assets);try{
+  const continuity=await f.p.evaluate(()=>{
+   const b=document.querySelector('[data-contact]');b.click();const d=document.querySelector('#contact-sheet');
+   const position=()=>{const el=d.querySelector('.contact-flight'),a=el.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);a.pause();return el.getBoundingClientRect();};
+   d.querySelector('.contact-flight').getAnimations().forEach(a=>a.currentTime=160);const before=position();closeSheet(d);const closed=position();b.click();const reopened=position();
+   return{before:{top:before.top,width:before.width,height:before.height},closed:{top:closed.top,width:closed.width,height:closed.height},reopened:{top:reopened.top,width:reopened.width,height:reopened.height}};
+  });
+  for(const key of ['top','width','height']){assert.ok(Math.abs(continuity.before[key]-continuity.closed[key])<1);assert.ok(Math.abs(continuity.closed[key]-continuity.reopened[key])<1);}
+  await f.p.locator('#c-name').fill('Sam Rider');assert.equal(await f.p.locator('.contact-flight').count(),0);assert.equal(await f.p.locator('#c-name').evaluate(el=>el===document.activeElement),true);
+  await f.p.keyboard.press('Escape');await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard viewport frames track directly, settle without polling, and preserve the draft`,async()=>{
+ const f=await fixture(assets,{viewportEvents:true});try{
+  await open(f);await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');await f.p.locator('#c-message').fill('Keep this draft');await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));
+  for(const inset of [100,190,330]){
+   await f.p.evaluate(inset=>setTestViewport({height:innerHeight-inset}),inset);
+   await f.p.waitForFunction(inset=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))===inset,inset);
+   const state=await f.p.evaluate(()=>({bottom:parseFloat(getComputedStyle(document.querySelector('#contact-sheet')).bottom),transition:getComputedStyle(document.querySelector('#contact-sheet')).transitionDuration}));
+   assert.ok(Math.abs(state.bottom-inset-8)<1,'sheet follows the actual viewport rather than easing behind it');assert.equal(state.transition,'0s');
+  }
+  await f.p.waitForTimeout(850);const reads=await f.p.evaluate(()=>viewportReads);await f.p.waitForTimeout(160);assert.equal(await f.p.evaluate(()=>viewportReads),reads,'no permanent frame loop while typing');
+  assert.equal(await f.p.locator('#c-message').inputValue(),'Keep this draft');assert.equal(await f.p.locator('#c-message').evaluate(el=>el===document.activeElement),true);
+  await f.p.evaluate(()=>setTestViewport({height:innerHeight-440,scale:1.5}));await f.p.waitForTimeout(80);assert.equal(await f.p.evaluate(()=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))),330,'pinch zoom does not masquerade as a keyboard');
+  for(const inset of [190,50,0]){await f.p.evaluate(inset=>setTestViewport({height:innerHeight-inset,scale:1}),inset);await f.p.waitForFunction(inset=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))===inset,inset);}
+  await close(f);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
