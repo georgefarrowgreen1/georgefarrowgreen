@@ -226,3 +226,10 @@ test('Reduce Motion folds the sender without transitional text copies',async()=>
   assert.equal(await f.p.locator('.sender-word').count(),0);await f.p.locator('#from-change').click();assert.equal(await f.p.locator('#c-name').isVisible(),true);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
+for(const assets of ['', 'min/'])test(`${assets||'source/'}sending during the sender morph clears its transient text before confirmation`,async()=>{
+ const f=await fixture(assets);try{
+  await open(f);await f.p.locator('#contact-sheet.shown').waitFor();await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
+  await f.p.evaluate(()=>{const msg=document.querySelector('#c-message');msg.focus({preventScroll:true});msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#contact-form').requestSubmit();});
+  await f.p.locator('#contact-sent:not([hidden])').waitFor();assert.equal(await f.p.locator('.sender-word').count(),0);assert.equal(await f.p.locator('#sender .ghost').count(),0);assert.equal(f.posts.length,1);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});

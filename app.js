@@ -1299,6 +1299,7 @@ function refocus() {
   });
 }
 let senderMorph = null;
+addEventListener("pagehide", () => stopSenderMorph());
 function stopSenderMorph() {
   if (!senderMorph) return;
   const state = senderMorph; senderMorph = null;
@@ -1473,7 +1474,7 @@ contact.form.addEventListener("submit", async (e) => {
     }
     if (version !== contact.version || !contact.sheet.open) return;
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
-    settle(contact.sheet, () => { contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
+    settle(contact.sheet, () => { stopSenderMorph(); contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
     $("button", contact.sent).focus({ preventScroll: true });
   } catch (err) {
     // (too slow to answer, it may have gone all the same: said so, so it isn't sent twice without a thought)
