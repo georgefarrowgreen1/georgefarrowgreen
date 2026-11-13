@@ -15,7 +15,7 @@ async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,i
   const vv=new EventTarget(),state={height:innerHeight,offsetTop:0,scale:1};window.viewportReads=0;
   for(const key of Object.keys(state))Object.defineProperty(vv,key,{get:()=>{if(key==='height')window.viewportReads++;return state[key];}});
   Object.defineProperty(window,'visualViewport',{value:vv,configurable:true});
-  window.setTestViewport=patch=>{Object.assign(state,patch);vv.dispatchEvent(new Event('resize'));};
+  window.setTestViewport=(patch,silent=false)=>{Object.assign(state,patch);if(!silent)vv.dispatchEvent(new Event('resize'));};
  });
  await ctx.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/i.test(type)?null:get.call(this,type,...args);};});
  await ctx.addInitScript(({cadence,saveData,interruptIntro})=>{if(interruptIntro)addEventListener('home:revealed',()=>queueMicrotask(()=>{document.querySelector('.cta [data-contact]').focus({preventScroll:true});window.focusedIntroFrames=[...document.querySelectorAll('.hero>*')].flatMap(e=>e.getAnimations()).flatMap(a=>a.effect.getKeyframes()).filter(f=>f.translate).length;}),{once:true});if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData,interruptIntro});
@@ -291,7 +291,9 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard viewport fra
   }
   await f.p.waitForTimeout(850);const reads=await f.p.evaluate(()=>viewportReads);await f.p.waitForTimeout(160);assert.equal(await f.p.evaluate(()=>viewportReads),reads,'no permanent frame loop while typing');
   assert.equal(await f.p.locator('#c-message').inputValue(),'Keep this draft');assert.equal(await f.p.locator('#c-message').evaluate(el=>el===document.activeElement),true);
-  await f.p.evaluate(()=>setTestViewport({height:innerHeight-440,scale:1.5}));await f.p.waitForTimeout(80);assert.equal(await f.p.evaluate(()=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))),330,'pinch zoom does not masquerade as a keyboard');
+  await f.p.evaluate(()=>setTestViewport({height:innerHeight-360},true));await f.p.locator('#c-message').press('End');await f.p.keyboard.type('!');
+  await f.p.waitForFunction(()=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))===360);assert.equal(await f.p.locator('#c-message').inputValue(),'Keep this draft!','typing catches silent viewport movement without losing input');
+  await f.p.evaluate(()=>setTestViewport({height:innerHeight-440,scale:1.5}));await f.p.waitForTimeout(80);assert.equal(await f.p.evaluate(()=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))),360,'pinch zoom does not masquerade as a keyboard');
   for(const inset of [190,50,0]){await f.p.evaluate(inset=>setTestViewport({height:innerHeight-inset,scale:1}),inset);await f.p.waitForFunction(inset=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))===inset,inset);}
   await close(f);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}

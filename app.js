@@ -1262,6 +1262,7 @@ if (window.visualViewport) {
   addEventListener("resize", () => { const d = $("dialog.sheet[open]"); if (d?._flight && !d.classList.contains("closing")) stopContactFlight(d); queue(700); });
   addEventListener("pageshow", () => queue(700));
   document.addEventListener("focusin", () => { if (typingInSheet()) queue(700); });
+  document.addEventListener("input", () => { if (typingInSheet()) queue(); });
   document.addEventListener("focusout", () => { if (kb || $("dialog.sheet[open]")) queue(700); });
   for (const d of $$("dialog.sheet")) d.addEventListener("close", () => queue(0));
   addEventListener("pagehide", () => { cancelAnimationFrame(frame); frame = 0; until = 0; clearTimeout(moved); root.classList.remove("viewport-moving"); });
