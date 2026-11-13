@@ -60,7 +60,7 @@ const BIKE = [
   {g:'Reach & drop', k:'tipShifter', label:'Saddle tip to shifter', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
-  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'F'},
+  {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'SF'},
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
   {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
