@@ -81,7 +81,8 @@ function showContent() {
 }
 
 // Keep the hero photograph aligned with editable text without measuring during scrolling.
-{ const hero = $(".hero"); const size = () => root.style.setProperty("--hero-height", `${hero.offsetHeight}px`);
+let heroHeight = 470;
+{ const hero = $(".hero"); const size = () => { heroHeight = hero.offsetHeight; root.style.setProperty("--hero-height", `${heroHeight}px`); };
   new ResizeObserver(size).observe(hero); size(); }
 
 /* ---------------- scrolling: the name comes into the bar, the hero fades under it ---------------- */
@@ -100,8 +101,10 @@ const linked = CSS.supports("animation-timeline: scroll()");
   });
   const FADE = 64;      // the least scroll a line fades over
   let ranges = [], name = null, queued = false;
+  const depth = () => $("#bg").style.setProperty("--hero-depth", `${motion.matches ? 0 : clamp(scrollY / heroHeight) * 24}px`);
   const draw = () => {
     queued = false;
+    depth();
     const y = scrollY, k = name ? clamp((y - name[0]) / (name[1] - name[0])) : 0;
     for (const el of veil) { el.style.opacity = k; el.style.visibility = k > 0 ? "visible" : "hidden"; }
     mid.style.opacity = k; mid.style.transform = `translateY(${(1 - k) * 8}px)`;
@@ -148,19 +151,46 @@ const linked = CSS.supports("animation-timeline: scroll()");
       fades.forEach((el, i) => setRange(el, ranges[i]));
       for (const el of [mid, ...veil]) setRange(el, name);
     } else draw();
+    if (linked) depth();
   };
   addEventListener("scroll", () => {
     if (pinned !== null) return;      // (held behind a sheet: it reads as the top, but it's still where it was)
     hold();
-    if (!linked && !queued) { queued = true; requestAnimationFrame(draw); }
+    if (!queued) { queued = true; requestAnimationFrame(linked ? () => { queued = false; depth(); } : draw); }
   }, { passive: true });
   addEventListener("resize", measure);
   // (again whenever a line changes size: its words, the typeface arriving, the slideshow's marker appearing)
   const watch = new ResizeObserver(measure);
   for (const el of [$(".hero"), ...fades]) watch.observe(el);
   document.fonts?.ready.then(measure);
+  motion.addEventListener("change", depth);
   window.redrawScroll = () => (linked ? measure() : draw());
   requestAnimationFrame(measure);
+}
+
+// Reveal a section once as it enters from below. Nothing starts hidden: without observers, script, or motion,
+// every link remains visible, and a keyboard focus always wins over an entrance animation.
+{
+  let observer, animations = [];
+  const start = () => {
+    observer?.disconnect(); animations.forEach(a => a.cancel()); animations = [];
+    if (motion.matches || !window.IntersectionObserver) return;
+    const below = new WeakSet();
+    observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const el = entry.target;
+        if (!entry.isIntersecting) { if (entry.boundingClientRect.top >= innerHeight) below.add(el); continue; }
+        observer.unobserve(el);
+        if (!below.has(el) || body.matches(".sheet-up, .edit") || root.matches(".intro-loading, .intro-revealing") || el.contains(document.activeElement)) continue;
+        const a = el.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 460, easing: EASE_OUT });
+        animations.push(a);
+        a.finished.then(() => { animations = animations.filter(x => x !== a); }, () => {});
+      }
+    }, { threshold: 0.08 });
+    $$("#app-carousel, .projects, .contact").forEach(el => observer.observe(el));
+  };
+  document.addEventListener("focusin", e => { for (const a of animations) if (a.effect.target.contains(e.target)) a.finish(); });
+  motion.addEventListener("change", start); start();
 }
 
 /* ---------------- the photos: a slideshow, the set for this screen ---------------- */
@@ -763,14 +793,54 @@ function land(a) {
   later(a, () => arriveEnd(a), still ? 0 : 240);
 }
 
-// Leaving for one of the apps, or the account's page (on addresses of their own, so nothing can carry across): the page
-// steps back a touch as it goes (styles.css body.leaving), so the tap's seen to have been taken while the next one loads
+// An app's real icon comes forward as the source page recedes. Preserve the exact account-aware URL and native
+// modified/new-tab clicks. Navigation has a short safety deadline; Back restores the original page immediately.
+let appDeparture = null;
+function openApp(link) {
+  if (appDeparture) return;
+  const image = $(".app-grab img", link.closest(".app"));
+  if (motion.matches || !image?.complete || !image.naturalWidth) { location.assign(link.href); return; }
+  const bounds = image.getBoundingClientRect(), overlay = document.createElement("div");
+  if (bounds.width < 1) { location.assign(link.href); return; }
+  overlay.className = "app-handoff"; overlay.setAttribute("aria-hidden", "true");
+  const sky = document.createElement("div"), icon = image.cloneNode();
+  sky.className = "app-handoff-sky"; icon.className = "app-handoff-icon";
+  icon.removeAttribute("id"); icon.alt = ""; icon.src = image.currentSrc || image.src;
+  Object.assign(icon.style, { width: `${bounds.width}px`, height: `${bounds.height}px`, left: "0", top: "0" });
+  const opacity = image.style.opacity;
+  image.style.opacity = "0";
+  overlay.append(sky, icon); body.append(overlay); body.classList.add("leaving");
+  const state = appDeparture = { animations: [], deadline: null, recovery: null };
+  const undo = state.undo = () => {
+    clearTimeout(state.deadline); clearTimeout(state.recovery); state.animations.forEach(a => a.cancel()); overlay.remove();
+    image.style.opacity = opacity; body.classList.remove("leaving"); if (appDeparture === state) appDeparture = null;
+  };
+  let went = false;
+  const go = () => { if (went || appDeparture !== state) return; went = true; location.assign(link.href); state.recovery = setTimeout(undo, 4000); };
+  state.go = go;
+  state.deadline = setTimeout(go, 550);
+  try {
+    const scale = 88 / bounds.width;
+    state.animations = [
+      sky.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: EASE_OUT, fill: "forwards" }),
+      icon.animate([
+        { transform: `translate3d(${bounds.left}px,${bounds.top}px,0) scale(1)` },
+        { transform: `translate3d(${(innerWidth - 88) / 2}px,${Math.max(40, (innerHeight - 88) / 2 - 30)}px,0) scale(${scale})` }
+      ], { duration: 420, easing: GLIDE, fill: "forwards" })
+    ];
+    state.animations[1].finished.then(go, go);
+  } catch (_) { undo(); location.assign(link.href); }
+}
 document.addEventListener("click", (e) => {
-  if (!e.target.closest("a[data-app-link], [data-account]") || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const link = e.target.closest("a[data-app-link], [data-account]");
+  if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || link.hasAttribute("download") || (link.target && link.target !== "_self")) return;
+  if (link.matches("a[data-app-link]") && !editing) { e.preventDefault(); openApp(link); return; }
   body.classList.add("leaving");
   setTimeout(() => body.classList.remove("leaving"), 4000);    // (in case it never goes)
 });
-addEventListener("pageshow", () => body.classList.remove("leaving"));   // (back again, from the browser's history)
+addEventListener("pageshow", () => { appDeparture?.undo(); body.classList.remove("leaving"); });
+addEventListener("pagehide", () => appDeparture?.undo());
+motion.addEventListener("change", () => { if (motion.matches) { const state = appDeparture; state?.go(); state?.undo(); } });
 
 /* ---------------- sheets ---------------- */
 // A sheet glides up and the page steps back behind it (styles.css: --ease-glide). Dragged down by its top it follows the
@@ -832,6 +902,7 @@ function finishClose(d) {
 }
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
+  if (d.id === "contact-sheet") contact.version++;
   body.classList.remove("sheet-up", "pulling");
   unpin();
   for (const el of behind) el.style.transform = "";
@@ -972,7 +1043,18 @@ function scrollsIn(el, top) {
 // A button busy with something: what it says changes smoothly, with a ring turning beside it while it's on its way
 function busyLabel(b, t, busy) {
   b.disabled = busy; b.classList.toggle("busy", busy);
+  b.setAttribute("aria-busy", String(busy));
   fadeText($(".lbl", b), t);
+  if (b.id === "contact-send") {
+    let activity = $(".send-activity", b);
+    if (busy && !activity) {
+      activity = document.createElement("span"); activity.className = "send-activity"; activity.setAttribute("aria-hidden", "true");
+      for (let i = 0; i < 3; i++) activity.append(document.createElement("i"));
+      b.prepend(activity);
+      if (!motion.matches) activity.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: EASE_OUT });
+    } else if (!busy) { activity?.remove(); b.classList.remove("confirmed"); }
+    return;
+  }
   let s = $(".spin", b);
   if (busy && !s) {
     s = document.createElement("span"); s.className = "spin"; s.setAttribute("aria-hidden", "true");
@@ -1020,8 +1102,10 @@ function hideToast() {
 }
 
 /* ---------------- Get in touch ---------------- */
-const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send") };
+const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $("#contact-sent"), err: $("#contact-err"), send: $("#contact-send"), version: 0 };
+contact.sheet.addEventListener("close", () => contact.version++);
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
+  contact.version++;
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
   // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
   fromMe();
@@ -1185,17 +1269,31 @@ contact.form.addEventListener("submit", async (e) => {
   if (!EMAIL.test(msg.email)) return wrong("#c-email", "That email doesn’t look right.");
   if (!msg.message) return wrong("#c-message", "Please write a message.");
   say(""); busyLabel(contact.send, "Sending…", true);
+  const version = contact.version;
+  contact.form.setAttribute("aria-busy", "true");
   try {
     await api("/api/contact", { method: "POST", body: msg });
-    $("#c-message").value = "";
+    // A draft edited while the request was in flight belongs to the writer, even after the earlier message succeeds.
+    if ($("#c-message").value.trim() === msg.message) $("#c-message").value = "";
+    if (version !== contact.version || !contact.sheet.open) return;
+    contact.send.classList.add("confirmed");
+    fadeText($(".lbl", contact.send), "Sent");
+    const activity = $(".send-activity", contact.send);
+    activity?.replaceChildren($(".tick svg", contact.sent).cloneNode(true));
+    if (!motion.matches) {
+      await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: 240, easing: EASE_OUT }).finished.catch(() => {});
+    }
+    if (version !== contact.version || !contact.sheet.open) return;
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
     settle(contact.sheet, () => { contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
-    $("button", contact.sent).focus();
+    $("button", contact.sent).focus({ preventScroll: true });
   } catch (err) {
     // (too slow to answer, it may have gone all the same: said so, so it isn't sent twice without a thought)
-    say(err.slow ? "That’s taking too long. It may still have sent: if you don’t hear back in a day or two, try again." : err.message);
+    if (version === contact.version) say(err.slow ? "That’s taking too long. It may still have sent: if you don’t hear back in a day or two, try again." : err.message);
+  } finally {
+    contact.form.removeAttribute("aria-busy");
+    busyLabel(contact.send, "Send", false); ready(); grow();
   }
-  busyLabel(contact.send, "Send", false); ready(); grow();
   // (Send, busy, couldn't keep the focus, which went from the sheet with it: back to it, if it's gone nowhere else)
   if (contact.sheet.open && !contact.form.hidden && document.activeElement === document.body) contact.send.focus({ preventScroll: true });
 });

@@ -176,6 +176,9 @@ jobs:
       - name: Homepage back-to-top navigation and keyboard focus
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/homebacktotop.test.cjs
+      - name: Homepage motion, app handoff and contact feedback
+        working-directory: georgefarrowgreen
+        run: node --test .tools/tests/homemotion.test.cjs
       - name: Chat keyboard, resume, rotation, scrolling and tap targets
         working-directory: georgefarrowgreen
         run: |

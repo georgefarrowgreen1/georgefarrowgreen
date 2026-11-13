@@ -58,6 +58,13 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   press Escape to close): name, email and message, filled in with yours when you're signed in. Sent, it turns into a
   tick and a thank-you. One that's slow to be answered says it may have gone all the same (not that you're offline),
   so it isn't sent twice. See **Contact form** below.
+- **Quiet interactions:** the hero photo moves by at most 24 px as it scrolls away, independently of the slideshow's
+  drift, and stays still behind a sheet. Sections enter once from 8 px below; content remains visible without script
+  or with Reduce Motion. Project links have a faint hover/focus highlight. Opening an app brings its icon forward
+  before following its exact account-aware link; modified clicks retain the browser's normal behaviour, and Back
+  clears the transition. The existing message sheet keeps its grouped fields and opening motion: sending uses a
+  compact activity indicator, then shows a check only after the server accepts the message. Closing/reopening while
+  a request finishes cannot replace a new draft with the earlier confirmation.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
   description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo. The
   page takes them from there, rather than asking for them again (except back by the browser's Back or Forward, when it
