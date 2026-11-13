@@ -9,10 +9,10 @@ let browser;
 before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false}={}){
+async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,interruptIntro=false}={}){
  const ctx=await browser.newContext({viewport:{width,height:740},isMobile:width<600,hasTouch:width<600,reducedMotion:reduce?'reduce':'no-preference'});
  await ctx.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/i.test(type)?null:get.call(this,type,...args);};});
- await ctx.addInitScript(({cadence,saveData})=>{if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData});
+ await ctx.addInitScript(({cadence,saveData,interruptIntro})=>{if(interruptIntro)addEventListener('home:revealed',()=>queueMicrotask(()=>{document.querySelector('.cta [data-contact]').focus({preventScroll:true});window.focusedIntroFrames=[...document.querySelectorAll('.hero>*')].flatMap(e=>e.getAnimations()).flatMap(a=>a.effect.getKeyframes()).filter(f=>f.translate).length;}),{once:true});if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData,interruptIntro});
  const errors=[],posts=[],gates=[];let response={status:200,body:{ok:true},gate:null};
  await ctx.route(`${HOME}/**`,async route=>{
   const url=new URL(route.request().url()),path=url.pathname;
@@ -168,5 +168,13 @@ test('Save Data keeps the page decorative motion still while all card controls w
  const f=await fixture('',{saveData:true});try{
   assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),true);
   await f.p.locator('.app[aria-hidden=false] .app-next').click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+
+for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard focus releases the intro immediately`,async()=>{
+ const f=await fixture(assets,{interruptIntro:true});try{
+  assert.equal(await f.p.evaluate(()=>window.focusedIntroFrames),0);
+  assert.equal(await f.p.locator('.cta [data-contact]').evaluate(e=>e===document.activeElement),true);
+  assert.equal(await f.p.locator('.cta').evaluate(e=>getComputedStyle(e).opacity),'1');assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });

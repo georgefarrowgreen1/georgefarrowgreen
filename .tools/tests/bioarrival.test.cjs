@@ -5,7 +5,7 @@ const {readFileSync,existsSync}=require('node:fs');
 const {resolve}=require('node:path');
 const {chromium,webkit}=require('playwright');
 const ROOT=resolve(__dirname,'../..');let browser;
-before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||'/usr/bin/chromium',args:['--no-sandbox']});});
+before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const apps=[['pigeon','theme'],['weather','early'],['fitness','theme'],['markets','theme']];
 async function fixture(app,script,min,{reduce=false,referrer='https://georgefarrowgreen.com/',back=false,theme='light'}={}){

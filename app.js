@@ -49,7 +49,7 @@ function springValue(from, to, velocity, seconds, omega = 22) {
   let entrances = [];
   const finish = () => { entrances.forEach(a => a.cancel()); entrances = []; };
   addEventListener("home:revealed", () => {
-    if (motion.matches || scrollY > 40) return;
+    if (motion.matches || scrollY > 40 || $("#page").contains(document.activeElement)) return;
     $(".hero").style.animationName = "none";
     entrances.push($("#bg").animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.layout, easing: EASE_OUT }));
     $$(".hero > *").forEach((el, i) => entrances.push(el.animate([
@@ -58,6 +58,7 @@ function springValue(from, to, velocity, seconds, omega = 22) {
   }, { once: true });
   addEventListener("scroll", () => { if (scrollY > 2) finish(); }, { passive: true });
   document.addEventListener("pointerdown", finish, { passive: true });
+  document.addEventListener("focusin", finish);
   motion.addEventListener("change", () => { if (motion.matches) finish(); });
   addEventListener("pagehide", finish);
 }
