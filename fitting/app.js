@@ -61,6 +61,7 @@ const BIKE = [
   {g:'Reach & drop', k:'barReach', label:'Saddle to bar reach', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'hoods', label:'Saddle to hoods reach', u:'mm', step:5, f:'F'},
   {g:'Reach & drop', k:'drop', label:'Saddle to bar drop', u:'mm', step:5, f:'SF'},
+  {g:'Reach & drop', k:'frontH', label:'Front end height', u:'mm', step:5, hint:'Front axle to centre of bar', f:'SF'},
   {g:'Cockpit', k:'stemL', label:'Stem length', u:'mm', step:10},
   {g:'Cockpit', k:'stemA', label:'Stem angle', u:'°'},
   {g:'Cockpit', k:'barW', label:'Handlebar width', u:'mm', step:20, f:'SF'},
@@ -979,7 +980,7 @@ async function markPhotos(){
 
 /* ---------------- insights ---------------- */
 function changes(){
-  const order = ['sadH','setback','drop','padDrop','hoods','barReach','padStack','padReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padW','baseW','extLen','extA','noseToPad','noseToShifter','tipBar','tipShifter','postOff','hx','hy','sx','sy','nose','extFront'];
+  const order = ['sadH','setback','drop','frontH','padDrop','hoods','barReach','padStack','padReach','stemL','spacers','stemA','barW','crank','tilt','sadW','padW','baseW','extLen','extA','noseToPad','noseToShifter','tipBar','tipShifter','postOff','hx','hy','sx','sy','nose','extFront'];
   return order.map(k => ALLROWS.find(r => r.k === k)).filter(r => r && applies(r) && (S.fit === 'tt' || !TTROWS.includes(r)))
     .map(r => ({r, ...deltaOf(r)})).filter(x => x.ch && isNum(x.d));
 }
@@ -1027,7 +1028,12 @@ function draftSummary(){
   else if (c.setback) out.push(`Moved your saddle ${mm(c.setback)} ${c.setback.d < 0 ? 'forward' : 'back'}.`);
   if (filled(v.sadModel_post) && v.sadModel_post !== v.sadModel_pre) out.push(`Changed your saddle to a ${v.sadModel_post}${v.ischialW ? ` to suit your ${v.ischialW.toLowerCase()} sit-bone width` : ''}.`);
   if (c.tilt) out.push(`Adjusted saddle tilt from ${fmt(v.tilt_pre)}° to ${fmt(v.tilt_post)}°.`);
-  if (c.drop || c.spacers || c.stemA) out.push(`${c.drop && c.drop.d < 0 ? 'Raised the front end' : 'Adjusted the front end'}${c.drop ? `, so the drop from saddle to bars is now ${fmt(v.drop_post)} mm (was ${fmt(v.drop_pre)} mm)` : ''}.`);
+  if (c.frontH || c.drop || c.spacers || c.stemA){
+    const details = [], heightRecorded = isNum(v.frontH_pre) || isNum(v.frontH_post);
+    if (c.frontH) details.push(`front end height is now ${fmt(v.frontH_post)} mm (was ${fmt(v.frontH_pre)} mm)`);
+    if (c.drop) details.push(`drop from saddle to bars is now ${fmt(v.drop_post)} mm (was ${fmt(v.drop_pre)} mm)`);
+    out.push(`${!heightRecorded && c.drop && c.drop.d < 0 ? 'Raised the front end' : 'Adjusted the front end'}${details.length ? `, so the ${details.join(' and the ')}` : ''}.`);
+  }
   if (c.hoods || c.stemL) out.push(`${c.hoods && c.hoods.d < 0 ? 'Shortened' : 'Changed'} your reach${c.stemL ? ` with a ${fmt(v.stemL_post)} mm stem` : ''}${c.hoods ? ` (saddle to hoods ${fmt(v.hoods_pre)} → ${fmt(v.hoods_post)} mm)` : ''}.`);
   if (c.barW) out.push(`Fitted ${fmt(v.barW_post)} mm handlebars${isNum(v.shWidth) ? ` to match your ${fmt(v.shWidth)} cm shoulders` : ''}.`);
   if (c.crank) out.push(`Changed cranks from ${fmt(v.crank_pre)} to ${fmt(v.crank_post)} mm to open your hip angle at the top of the stroke.`);
@@ -1134,7 +1140,8 @@ function cardCols(){
        has('padW') && row('Arm pad width', mm('padW'), 'Centre to centre'), has('extLen') && row('Extension', [mm('extLen'), has('extA') ? `${fmt(P('extA'))}°` : ''].filter(Boolean).join(' · ')),
        stem && row('Stem', stem), v.cleatR && row('Cleat, right', v.cleatR)]
     : [has('barReach') ? row('Saddle to bar reach', mm('barReach')) : has('hoods') ? row('Saddle to hoods reach', mm('hoods')) : has('tipBar') && row('Saddle tip to bar', mm('tipBar')),
-       has('drop') && row('Saddle to bar drop', mm('drop')), stem && row('Stem', stem), has('spacers') && row('Headset spacers', mm('spacers')),
+       has('drop') && row('Saddle to bar drop', mm('drop')), has('frontH') && row('Front end height', mm('frontH'), 'Front axle to centre of bar'),
+       stem && row('Stem', stem), has('spacers') && row('Headset spacers', mm('spacers')),
        has('barW') && row('Handlebar width', mm('barW')), v.cleatR && row('Cleat, right', v.cleatR)];
   return [left, right.filter(Boolean)];
 }
@@ -1248,7 +1255,10 @@ function cardPages(){
     <div class="sc-foot">Being serviced, rebuilt or packed for travel? Give this card to the mechanic: these numbers put your position back exactly. Questions: Pedal Revolution, 63–67 Bethel Street, Norwich · 01603 614400</div></div>`;
   // the back: where each is measured from, with this rider's numbers on it
   const svg = bikeSVG();
-  const back = `<div class="sc-page"><div class="sc-back"><h3>Where we measure from</h3><p>All in millimetres, from the centre of the bottom bracket (BB) and the top of the saddle, with the bike level.</p>${svg}</div>
+  const reference = S.fit !== 'tt' && filled(P('frontH'))
+    ? 'All in millimetres, with the bike level. Front end height: front axle to centre of bar. Other reference points are shown below.'
+    : 'All in millimetres, from the centre of the bottom bracket (BB) and the top of the saddle, with the bike level.';
+  const back = `<div class="sc-page"><div class="sc-back"><h3>Where we measure from</h3><p>${reference}</p>${svg}</div>
     <div class="sc-foot">Measured at Pedal Revolution’s Precision Fit Studio${when ? ` on ${esc(when)}` : ''}. Your full fit report has the angles behind these numbers.</div></div>`;
   return [front, back];
 }
@@ -1353,8 +1363,9 @@ function reportBlocks(){
     return `${gh}<tr><td>${esc(r.label)}</td><td>${cell(r, r.k + '_pre')}</td><td class="c">${cell(r, r.k + '_post')}</td><td class="${d.ch ? 'ch' : 'same'}">${d.txt === '–' ? '' : d.txt}</td></tr>`; }); };
   const TH = `<table class="rp-tbl"><thead><tr><th style="width:36%">Measurement</th><th>${was}</th><th>${now}</th><th>Change</th></tr></thead><tbody>`;
   const bike = trs(BIKE);
+  const heightNote = S.fit !== 'tt' && (filled(v.frontH_pre) || filled(v.frontH_post)) ? ' Front end height is measured from the front axle to the centre of the bar.' : '';
   if (bike.length) B.push({title:'Bike measurements', head:TH, foot:'</tbody></table>', rows:bike,
-    tail:'<p class="rp-note">All measurements in millimetres unless shown. Keep this report with your bike: it lets any mechanic put your position back exactly.</p>'});
+    tail:`<p class="rp-note">All measurements in millimetres unless shown.${heightNote} Keep this report with your bike: it lets any mechanic put your position back exactly.</p>`});
   if (v.cleatL || v.cleatR) B.push({html:sec('Cleats', `<dl class="rp-dl"><dt>Left</dt><dd>${esc(v.cleatL || '–')}</dd><dt>Right</dt><dd>${esc(v.cleatR || '–')}</dd></dl>`)});
   if (S.fit === 'tt'){ const t = ttScore(); if (t.complete) B.push({html:sec('Triathlon starting point', `<p class="rp-p">Score ${t.total} of 10 (${esc(TT_START.cols[t.band])}): ${TT_START.rows.map(r => `${esc(r[0].toLowerCase())} ${esc(r[t.band + 1])}`).join(', ')}.</p>`)}); }
   const pains = Object.entries(S.pain).filter(([, x]) => x);

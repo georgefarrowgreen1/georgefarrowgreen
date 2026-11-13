@@ -223,7 +223,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
 .delta.ch{color:var(--ink)}
 .step{display:grid;grid-template-columns:44px 1fr 44px;gap:4px;align-items:center}
 .step button{display:grid;place-items:center;height:44px;padding:0;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:22px;line-height:1;font-weight:500}
-.step .num input{text-align:center;padding:10px 26px 10px 8px;min-height:44px}
+.brow .step .num input{text-align:center;padding:10px 26px 10px 4px;min-height:44px}
 .step .num .u{right:8px;font-size:12px}
 .brow input[type=text]{min-height:44px;font-size:14.5px;padding-inline:12px;text-overflow:ellipsis}
 .brow input[type=text]:focus{text-overflow:clip}
@@ -234,6 +234,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--focus);background:var
   .brow.hd{display:none}
   .brow .cell::before{content:attr(data-l);display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-bottom:4px}
 }
+@media (max-width:400px){.brow{grid-template-columns:1fr}}
 .uci{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px}
 .uci .u-c{border-radius:14px;padding:14px 16px;background:var(--field);display:flex;flex-direction:column;gap:6px}
 .uci .u-c b{font-size:15px}
