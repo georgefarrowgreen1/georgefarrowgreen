@@ -30,11 +30,11 @@ before(async()=>{
   // real private HTTPS listener therefore serves every unmodified Root proxy
   // response, including ordinary fetch/XHR with genuine browser Cookie headers.
   certificateDir=mkdtempSync(resolve(tmpdir(),'inflite-files-tls-'));
-  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',resolve(certificateDir,'key.pem'),'-out',resolve(certificateDir,'cert.pem'),'-subj','/CN=os.inflite.ai','-days','1'],{stdio:'ignore'});
+  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',resolve(certificateDir,'key.pem'),'-out',resolve(certificateDir,'cert.pem'),'-subj','/CN=os.inflite.ai','-addext','subjectAltName=DNS:os.inflite.ai','-days','1'],{stdio:'ignore'});
   downloadServer=createServer({key:readFileSync(resolve(certificateDir,'key.pem')),cert:readFileSync(resolve(certificateDir,'cert.pem'))},async(req,res)=>{
-    nativeRequests.push({url:req.url,cookie:!!req.headers.cookie});
+    const nativeRecord={url:req.url,cookie:!!req.headers.cookie};nativeRequests.push(nativeRecord);
     const state=fileStates.get(req.headers.cookie?.match(/__Secure-account=([^;]+)/)?.[1]);
-    if(!req.url.startsWith('/api/files/')||!state){res.writeHead(404);res.end();return;}
+    if(!req.url.startsWith('/api/files/')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
     const controller=new AbortController(),url=new URL(req.url,ORIGIN);
     const record={url:url.href,action:url.pathname.slice('/api/files/'.length),method:req.method,owner:req.headers.cookie?.includes(accounts.b.cookie)?accounts.b.owner:accounts.a.owner,expectedOwner:req.headers['x-inflite-files-owner']||null,controller,status:null,cookiePresent:!!req.headers.cookie,bytes:0};state.fileRequests.push(record);state.fileControllers.set(req,controller);
     req.on('aborted',()=>controller.abort());res.on('close',()=>{if(!res.writableFinished)controller.abort();});
@@ -70,13 +70,19 @@ async function setupOS(){
     const requireOriginal=m.require.bind(m);let start,stop;
     m.require=id=>id==='node:test'?{test(){},before(fn){start=fn;},after(fn){stop=fn;}}:requireOriginal(id);
     m.augmentFiles=augmentFiles;
-    m.rewriteHarness=source=>source.replace('acceptDownloads: true',`acceptDownloads: true, ignoreHTTPSErrors: true, proxy: {server:${JSON.stringify(proxyURL)}}`).replace("args: ['--no-sandbox']","args: ['--no-sandbox', '--ignore-certificate-errors']");
+    m.rewriteHarness=source=>source.replace("colorScheme: width === 390 ? 'light' : 'dark'","colorScheme: mode.filesTheme || (width === 390 ? 'light' : 'dark')").replace('acceptDownloads: true',`acceptDownloads: true, ignoreHTTPSErrors: true, proxy: {server:${JSON.stringify(proxyURL)}}`).replace("args: ['--no-sandbox']","args: ['--no-sandbox', '--ignore-certificate-errors']");
     const source=readFileSync(filename,'utf8').replaceAll('http://os.ifl.test:8788',ORIGIN).replaceAll('http://email.ifl.test:8788','https://email.inflite.ai').replace('async function augment(ctx, state, json) {','async function augment(ctx, state, json) { await module.augmentFiles(ctx,state,json);').replace('m._compile(source +','m._compile(module.rewriteHarness(source) +');
     m._compile(source+'\nmodule.exports={open:(...args)=>env.open(...args),createAll};',filename);
     os={open:m.exports.open,createAll:m.exports.createAll,stop:()=>stop()};await start();
   })();return startOS;
 }
 async function augmentFiles(ctx,state){
+  state.workerTransport=[];
+  const workerAsset=request=>/\/(?:chats\/roof\/core\.js|kit\/fixtures\/chats\.mjs)/.test(request.url());
+  ctx.on('request',request=>{if(workerAsset(request))state.workerTransport.push({event:'request',url:request.url(),headers:{origin:request.headers().origin,site:request.headers()['sec-fetch-site'],mode:request.headers()['sec-fetch-mode']},type:request.resourceType()});});
+  ctx.on('response',response=>{if(workerAsset(response.request()))state.workerTransport.push({event:'response',url:response.url(),status:response.status(),headers:response.headers()});});
+  ctx.on('requestfailed',request=>{if(workerAsset(request))state.workerTransport.push({event:'failed',url:request.url(),failure:request.failure()});});
+  ctx.on('page',page=>{page.on('pageerror',error=>state.workerTransport.push({event:'pageerror',name:error.name,message:error.message,stack:error.stack,page:page.url()}));page.on('worker',worker=>{state.workerTransport.push({event:'worker',url:worker.url(),page:page.url()});worker.on('close',()=>state.workerTransport.push({event:'worker-closed',url:worker.url(),page:page.url()}));});});
   state.account=accounts.a;fileStates.set(accounts.a.cookie.split('=')[1],state);state.fileRequests=[];state.fileBridgeErrors=[];state.gates=[];state.fileControllers=new Map();
   const split=accounts.a.cookie.indexOf('=');
   await ctx.addCookies([{name:accounts.a.cookie.slice(0,split),value:accounts.a.cookie.slice(split+1),url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
@@ -88,13 +94,13 @@ async function augmentFiles(ctx,state){
   await ctx.route(ORIGIN+'/api/files/**',route=>route.continue());
   state.releaseFiles=()=>{for(const gate of state.gates)gate.release();for(const controller of state.fileControllers.values())controller.abort();};
 }
-async function openFiles({width=1440}={}){
-  await setupOS();const t=await os.open({width,initialPath:'/?os=1#workspace',ready:'home'});
+async function openFiles({width=1440,colorScheme}={}){
+  await setupOS();const t=await os.open({width,mode:{filesTheme:colorScheme},initialPath:'/?os=1#workspace',ready:'home'});
   if(width>=960)await t.page.getByRole('button',{name:'Files',exact:true}).click();
   else{await t.page.getByRole('button',{name:'All apps',exact:true}).click();await t.page.locator('dialog[data-sheet=workspace-apps][open]').getByRole('button',{name:'Files',exact:true}).click();}
   await t.page.locator('.ifl-files-explorer:visible').waitFor();
   try{await t.page.getByRole('button',{name:'New folder',exact:true}).waitFor();}catch(error){console.log('FILES OPEN DIAGNOSTIC',JSON.stringify({body:await t.page.locator('body').innerText(),requests:t.state.fileRequests.map(({controller,...r})=>r),bridge:t.state.fileBridgeErrors,errors:t.errors,csp:await t.page.evaluate(()=>[__osCsp,__osRejected]),unknown:t.state.unknown}));t.state.releaseFiles();await t.ctx.close();throw error;}
-  return{...t,clean:async()=>{assert.deepEqual(t.state.fileBridgeErrors,[]);await t.clean();},close:async()=>{t.state.releaseFiles();for(const [key,value]of fileStates)if(value===t.state)fileStates.delete(key);await t.ctx.close();}};
+  return{...t,clean:async()=>{assert.deepEqual(t.state.fileBridgeErrors,[]);try{await t.clean();}catch(error){console.log('FILES TRANSPORT DIAGNOSTIC',JSON.stringify({nativeRequests,workers:t.state.workerTransport,security:await t.page.evaluate(()=>({url:location.href,origin:location.origin,domain:document.domain,secure:isSecureContext,base:document.baseURI})),errors:t.errors,unknown:t.state.unknown}));throw error;}},close:async()=>{t.state.releaseFiles();for(const [key,value]of fileStates)if(value===t.state)fileStates.delete(key);await t.ctx.close();}};
 }
 async function gateReached(t,gate){let timer;try{return await Promise.race([gate.reached,new Promise((_,reject)=>{timer=setTimeout(async()=>{console.log('FILES GATE DIAGNOSTIC',JSON.stringify({body:await t.page.locator('body').innerText().catch(()=>'<closed>'),requests:t.state.fileRequests.map(({controller,...r})=>r)}));reject(new Error('Expected Files transport gate was not reached'));},15000);})]);}finally{clearTimeout(timer);}}
 async function goFiles(page){
@@ -309,40 +315,42 @@ test('full Files app collections use real Fitness exports and Mail metadata with
 test('actual private Files desktop and phone screenshots have no overflow or new accessibility violations',async()=>{
   const parent=await backend.folder(accounts.a,'Ride archive');await backend.folder(accounts.a,'Weekend routes',parent.id);
   await backend.uploaded(accounts.a,'Coast route notes.txt','Coast loop\nMeet at the café at09:00.\nBring lights and a spare tube.',{parentId:parent.id,mime:'text/plain'});
-  const t=await openFiles();const{page}=t,dir=resolve(process.env.FILES_SCREENSHOTS||'/tmp/inflite-files-20261111/all-app-qa',BROWSER);mkdirSync(dir,{recursive:true});const report=[];
-  try{
-    await select(page,'Ride archive').dblclick();await select(page,'Coast route notes.txt').click();await page.locator('.ifx-inspector').getByRole('button',{name:'Preview',exact:true}).click();await page.locator('.ifx-preview pre').waitFor();
-    await t.clean();
-    await page.evaluate(readFileSync(require.resolve('axe-core/axe.min.js',{paths:[__dirname,IFL]}),'utf8'));
-    const auditorCsp=[];
-    async function capture(name){
-      assert.deepEqual(await page.evaluate(()=>__osCsp),auditorCsp,'product transitions remain CSP clean before an audit scan');
-
-      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-      const overflow=await page.evaluate(()=>({page:document.documentElement.scrollWidth>innerWidth+1,items:[...document.querySelectorAll('.ifl-files-explorer button,.ifl-files-explorer input,dialog[open] input,dialog[open] button')].filter(n=>{const r=n.getBoundingClientRect();return r.width&&r.height&&(r.left<-.9||r.right>innerWidth+1);}).map(n=>n.getAttribute('aria-label')||n.textContent)}));
-      const violations=await page.evaluate(async()=>{const r=await axe.run(document,{preload:false,runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21a','wcag21aa']}});return r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))}));});
-      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-      // axe probes inline CSS support while measuring contrast. Preserve those
-      // expected audit-only policy violations explicitly; all normal UI actions
-      // before/between scans retain the exact strict CSP assertion above.
-      const probes=await page.evaluate(count=>__osCsp.slice(count),auditorCsp.length);
-      assert.ok(probes.length<=2&&probes.every(value=>value==='style-src-elem inline'),'only known axe CSS probes may violate the policy');auditorCsp.push(...probes);
-      await page.screenshot({path:resolve(dir,name+'.png'),fullPage:false});report.push({name,viewport:page.viewportSize(),overflow,violations,auditorCsp:probes});
-
-    }
-    for(const theme of ['dark','light']){await page.emulateMedia({colorScheme:theme,reducedMotion:'reduce'});await capture('desktop-'+theme+'-preview');}
-    await page.setViewportSize({width:390,height:844});await select(page,'Coast route notes.txt').click();await page.locator('dialog[data-sheet=files-details][open]').waitFor();await capture('phone390-light-details');
-    await page.setViewportSize({width:320,height:740});await capture('phone320-light-details');
-    await page.locator('dialog[data-sheet=files-details][open] [data-close]').click();await page.getByRole('button',{name:'New folder',exact:true}).click();await page.locator('dialog[data-sheet=files-new-folder][open]').getByRole('textbox',{name:'Folder name',exact:true}).fill('Winter rides');await capture('phone320-light-folder');
-    await page.emulateMedia({colorScheme:'dark',reducedMotion:'reduce'});await page.setViewportSize({width:320,height:540});await capture('phone320-dark-folder');
-    writeFileSync(resolve(dir,'report.json'),JSON.stringify(report,null,2));
-    for(const shot of report){assert.equal(shot.overflow.page,false,shot.name);assert.deepEqual(shot.overflow.items,[],shot.name);// The owner retains Root's historical zoom clamp for this release; keep its
-      // critical meta-viewport finding in the artifact instead of hiding it.
-      assert.deepEqual(shot.violations.filter(v=>v.id!=='meta-viewport'),[],shot.name);}
-    assert.deepEqual(t.errors,[]);assert.deepEqual(t.state.unknown,[]);assert.deepEqual(t.state.fileBridgeErrors,[]);
-    assert.deepEqual(await page.evaluate(()=>[__osCsp,__osRejected]),[auditorCsp,[]]);
-
-  }finally{await t.close();}
+  const dir=resolve(process.env.FILES_SCREENSHOTS||'/tmp/inflite-files-20261111/all-app-qa',BROWSER),report=[];
+  const axeSource=readFileSync(require.resolve('axe-core/axe.min.js',{paths:[__dirname,IFL]}),'utf8');mkdirSync(dir,{recursive:true});
+  // Initial contexts exercise each real preferred theme. WebKit's emulateMedia
+  // override can leave inherited custom-property colors stale until a resize.
+  for(const theme of ['dark','light']){
+    const t=await openFiles({colorScheme:theme}),{page}=t,auditorCsp=[];
+    try{
+      await select(page,'Ride archive').dblclick();await select(page,'Coast route notes.txt').click();await page.locator('.ifx-inspector').getByRole('button',{name:'Preview',exact:true}).click();await page.locator('.ifx-preview pre').waitFor();await t.clean();
+      async function capture(name){
+        assert.deepEqual(await page.evaluate(()=>__osCsp),auditorCsp,'product transitions remain CSP clean before an audit scan');
+        await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+        const overflow=await page.evaluate(()=>({page:document.documentElement.scrollWidth>innerWidth+1,items:[...document.querySelectorAll('.ifl-files-explorer button,.ifl-files-explorer input,dialog[open] input,dialog[open] button')].filter(n=>{const r=n.getBoundingClientRect();return r.width&&r.height&&(r.left<-.9||r.right>innerWidth+1);}).map(n=>n.getAttribute('aria-label')||n.textContent)}));
+        await page.evaluate(axeSource);
+        const violations=await page.evaluate(async()=>{const r=await axe.run(document,{preload:false,runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21a','wcag21aa']}});return r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))}));});
+        await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+        const probes=await page.evaluate(count=>__osCsp.slice(count),auditorCsp.length);
+        assert.ok(probes.length<=2&&probes.every(value=>value==='style-src-elem inline'),'only known axe CSS probes may violate the policy');auditorCsp.push(...probes);
+        // WebKit's screenshot driver itself injects an inline animation-sync
+        // style. Keep its scan strict; Chromium supplies the shareable PNGs.
+        if(BROWSER!=='webkit')await page.screenshot({path:resolve(dir,name+'.png'),fullPage:false,caret:'initial'});
+        report.push({name,theme,viewport:page.viewportSize(),overflow,violations,auditorCsp:probes,screenshot:BROWSER!=='webkit'?name+'.png':null});
+      }
+      await capture('desktop-'+theme+'-preview');
+      if(theme==='light'){
+        await page.setViewportSize({width:390,height:844});await select(page,'Coast route notes.txt').click();await page.locator('dialog[data-sheet=files-details][open]').waitFor();await capture('phone390-light-details');
+        await page.setViewportSize({width:320,height:740});await capture('phone320-light-details');
+        await page.locator('dialog[data-sheet=files-details][open] [data-close]').click();
+      }else await page.setViewportSize({width:320,height:540});
+      await page.getByRole('button',{name:'New folder',exact:true}).click();await page.locator('dialog[data-sheet=files-new-folder][open]').getByRole('textbox',{name:'Folder name',exact:true}).fill('Winter rides');await capture('phone320-'+theme+'-folder');
+      assert.deepEqual(t.errors,[]);assert.deepEqual(t.state.unknown,[]);assert.deepEqual(t.state.fileBridgeErrors,[]);assert.deepEqual(await page.evaluate(()=>[__osCsp,__osRejected]),[auditorCsp,[]]);
+    }finally{await t.close();writeFileSync(resolve(dir,'report.json'),JSON.stringify(report,null,2));}
+  }
+  for(const shot of report){assert.equal(shot.overflow.page,false,shot.name);assert.deepEqual(shot.overflow.items,[],shot.name);
+    // Retain the owner-approved historical zoom-clamp finding in the report.
+    assert.deepEqual(shot.violations.filter(v=>v.id!=='meta-viewport'),[],shot.name);
+  }
 });
 
 

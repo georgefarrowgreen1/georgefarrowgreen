@@ -268,6 +268,28 @@ test('an OS desktop service starts immediately when its trusted capability was a
   svc.release({ terminate: true }); nav.maxTouchPoints = 5;
 });
 
+test('hidden desktop OS activation never bootstraps a Worker and visible resumes the same service', async () => {
+  fresh(); nav.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'; nav.maxTouchPoints = 0;
+  FakeWorker.impl = scripted();
+  const { ui } = makeUI(), ac = new AbortController();
+  const svc = await (await loadService()).startService({ ui, signal: ac.signal });
+  try {
+    const facade = svc.facade;
+    assert.equal(svc.state, 'device'); assert.equal(FakeWorker.made.length, 0);
+    ui.workspace = { enabled: true };
+    ui.fire('hidden'); await settle();
+    assert.equal(FakeWorker.made.length, 0, 'pagehide cannot construct a Worker in an inactive document');
+    assert.equal(svc.state, 'device');
+    ui.fire('visible'); await settle();
+    assert.equal(FakeWorker.made.length, 1, 'visible retains late OS startup');
+    assert.equal(svc.state, 'ready'); assert.equal(svc.facade, facade);
+    const worker = FakeWorker.made[0];
+    ui.fire('hidden'); await settle();
+    assert.equal(FakeWorker.made.length, 1, 'hiding an active service reuses its Worker');
+    assert.deepEqual(worker.got.at(-1), { id: worker.got.at(-1).id, m: 'start', a: [{ visible: false }] });
+  } finally { ac.abort(); nav.maxTouchPoints = 5; }
+});
+
 test('late OS desktop activation retains the bounded restart wait when its Worker never answers', async () => {
   fresh(); nav.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
   FakeWorker.impl = scripted({ deaf: () => true });

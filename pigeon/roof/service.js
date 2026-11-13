@@ -241,7 +241,9 @@ export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
   // the page's comings and goings, to the core; a Worker that died, made again (risk 6); a push, one quiet sync (S3-C5)
   const ping = () => { if (!w || ended || stale) return; raw("state", [], PING_WAIT).then(() => {}, () => { if (!ended && !stale) restart(); }); };
   offs.push(ui?.on?.("visible", () => { if (ended || blocked()) return; if (!alive) restart(); else { ping(); call("start", { visible: true }).catch(() => {}); } }));
-  offs.push(ui?.on?.("hidden", () => { if (!ended) call("start", { visible: false }).catch(() => {}); }));
+  // Hiding may run after the document becomes inactive. Notify an existing
+  // Worker only; late OS activation must wait for a visible event or real call.
+  offs.push(ui?.on?.("hidden", () => { if (w && !ended) call("start", { visible: false }).catch(() => {}); }));
   offs.push(ui?.on?.("push", () => { if (!ended) call("sync", { quiet: true }).catch(() => {}); }));
   return ready.then(() => svc);
 }
