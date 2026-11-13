@@ -992,6 +992,7 @@ function unpin() {
 }
 function finishClose(d) {
   clearTimeout(d._done); d._throw = null;
+  if (d.id === "contact-sheet") stopSenderMorph();
   d._resize?.forEach(a => a.cancel()); d._resize = [];
   d.classList.remove("closing", "dragging", "shown");
   d.style.transform = ""; d.style.removeProperty("--from");
@@ -1021,7 +1022,7 @@ function closeSheet(d, thrown = null) {
 }
 // A sheet whose contents change (something said, the message giving way to Sent, a photo added): it moves to its new
 // height rather than jumping there, and what's new fades in. Changed again on the way, it goes on from where it's got to.
-function resizeContact(d, previous, previousTextTop, moveText = true) {
+function resizeContact(d, previous, previousTextTop, moveText = true, duration = MOTION.layout) {
   d._resize?.forEach(a => a.cancel()); d._resize = [];
   if (motion.matches || !d.open || d.classList.contains("closing")) return;
   const box = $(".sheet-in", d), next = d.getBoundingClientRect();
@@ -1029,10 +1030,10 @@ function resizeContact(d, previous, previousTextTop, moveText = true) {
     const dy = previous.top - next.top, scale = previous.height / next.height;
     d._resize.push(d._surface.animate([
       { transform: `translateY(${dy}px) scaleY(${scale})` }, { transform: "none" }
-    ], { duration: MOTION.layout, easing: EASE_OUT }));
+    ], { duration, easing: EASE_OUT }));
     if (moveText) d._resize.push(box.animate([
       { transform: `translateY(${previousTextTop - box.getBoundingClientRect().top}px)` }, { transform: "none" }
-    ], { duration: MOTION.layout, easing: EASE_OUT }));
+    ], { duration, easing: EASE_OUT }));
   }
 }
 function settle(d, change, inEl) {
@@ -1228,7 +1229,7 @@ const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $(
 contact.sheet._surface = document.createElement("div");
 contact.sheet._surface.className = "sheet-surface"; contact.sheet._surface.setAttribute("aria-hidden", "true");
 contact.sheet.prepend(contact.sheet._surface); contact.sheet.classList.add("surface-sheet");
-contact.sheet.addEventListener("close", () => contact.version++);
+contact.sheet.addEventListener("close", () => { contact.version++; stopSenderMorph(); });
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
   contact.version++;
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
@@ -1297,53 +1298,114 @@ function refocus() {
     caretShown();
   });
 }
+let senderMorph = null;
+function stopSenderMorph() {
+  if (!senderMorph) return;
+  const state = senderMorph; senderMorph = null;
+  state.animations.forEach(a => a.cancel());
+  state.words.forEach(w => w.ghost.remove());
+  state.restore.reverse().forEach(restore => restore());
+  for (const row of $$("label.fld", $("#sender"))) row.classList.remove("ghost");
+  $("#from").hidden = !$("#sender").classList.contains("known");
+  caretShown();
+}
+function releaseSenderWord(input) {
+  const word = senderMorph?.words.find(w => w.input === input);
+  if (!word) return;
+  word.animations.forEach(a => a.cancel()); word.ghost.remove();
+  input.style.opacity = ""; input.style.caretColor = "";
+}
 function morphFrom(on) {
   const d = contact.sheet, box = $(".sheet-in", d), s = $("#sender"), from = $("#from"), rows = $$("label.fld", s);
-  const words = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
-  const swap = () => { from.hidden = !on; s.classList.toggle("known", on); if (!on) fit(); };
-  for (const el of [box, s, ...$$("*", s)]) for (const a of el.getAnimations()) a.cancel();
-  if (motion.matches || !d.open) { swap(); return steady(); }
-  // (where everything is now: the sheet, the box, each line of words; and what's leaving, copied to fade where it was)
-  const at = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, h: r.height }; };
-  const hBox = box.getBoundingClientRect().height, hS = s.getBoundingClientRect().height, sAt = s.getBoundingClientRect();
-  const y0 = $("#c-message").getBoundingClientRect().top, st = box.scrollTop;
-  const was = words.map((w) => at(w[on ? 0 : 1])), size = words.map((w) => parseFloat(getComputedStyle(w[on ? 0 : 1]).fontSize));
-  const ghosts = (on ? rows : [from]).map((el) => {
-    const r = el.getBoundingClientRect(), g = el.cloneNode(true);
-    g.removeAttribute("id"); g.classList.add("ghost"); g.hidden = false; g.setAttribute("aria-hidden", "true"); g.inert = true;
-    for (const x of $$("[id]", g)) x.removeAttribute("id");
-    for (const x of $$("input, b, small", g)) x.style.visibility = "hidden";      // (the words themselves are moving)
-    Object.assign(g.style, { position: "absolute", left: `${r.left - sAt.left}px`, top: `${r.top - sAt.top}px`, width: `${r.width}px`, height: `${r.height}px`, pointerEvents: "none", margin: 0 });
-    s.append(g);
-    return g;
+  if (s.classList.contains("known") === on) return;
+  const pairs = [[$("#c-name"), $("#from-name")], [$("#c-email"), $("#from-email")]];
+  // Capture the painted positions before releasing an interrupted transition. Live form controls never move or clone.
+  const oldSurface = d._surface.getBoundingClientRect(), oldTextTop = box.getBoundingClientRect().top;
+  const shape = $(".sender-surface", s), oldShape = shape.getBoundingClientRect();
+  const moving = [$(".sheet-head", d), $(".fields.msg", d), contact.send, ...(!contact.err.hidden ? [contact.err] : [])];
+  const oldPositions = moving.map(el => el.getBoundingClientRect());
+  const oldRows = rows.map(el => el.getBoundingClientRect()), oldFrom = from.getBoundingClientRect();
+  const oldLabels = rows.map(row => $("span", row));
+  const oldWords = pairs.map(([input, shown]) => {
+    const previous = senderMorph?.words.find(w => w.input === input && w.ghost.isConnected);
+    const source = previous?.ghost || (on ? input : shown), rect = source.getBoundingClientRect(), style = getComputedStyle(source);
+    const scale = previous ? new DOMMatrixReadOnly(style.transform).a : 1;
+    return { ghost: previous?.ghost, x: rect.left + (previous ? 0 : parseFloat(style.paddingLeft) || 0),
+      y: rect.top + rect.height / 2,
+      scale, size: parseFloat(style.fontSize), text: input.value, width: rect.width };
   });
-  swap();
-  // (and where it all goes)
-  const hBox1 = box.getBoundingClientRect().height, hS1 = s.getBoundingClientRect().height;
-  const T = MOTION.enter, slide = { duration: T, easing: GLIDE };
-  box.animate([{ height: `${hBox}px`, overflow: "hidden" }, { height: `${hBox1}px`, overflow: "hidden" }], slide);
-  s.animate([{ height: `${hS}px` }, { height: `${hS1}px` }], slide).finished.then(steady, () => {});
-  box.scrollTop = st;       // (cut back, for the moment the rows were at their new size before that took over)
-  // (and the message, being typed in, kept where it is on the screen all the while: with the keyboard up the sheet's
-  // at its tallest and scrolled within, so as the rows close up above it the scroll's moved with them, and it's the
-  // top of the sheet that closes in; an iPhone wouldn't move its caret with it)
-  const msg = $("#c-message"), until = performance.now() + T + 60;
-  const keep = () => {
-    const dy = msg.getBoundingClientRect().top - y0;
-    if (Math.abs(dy) > 0.5 && box.scrollHeight > box.clientHeight) box.scrollTop += dy;
-    if (performance.now() < until) requestAnimationFrame(keep);
+  stopSenderMorph();
+  from.hidden = !on; s.classList.toggle("known", on); if (!on) fit();
+  if (motion.matches || !d.open) { steady(); return; }
+  const state = senderMorph = { animations: [], restore: [], words: [] };
+  const style = (el, key, value) => {
+    const was = el.style.getPropertyValue(key), priority = el.style.getPropertyPriority(key);
+    state.restore.push(() => was ? el.style.setProperty(key, was, priority) : el.style.removeProperty(key));
+    el.style.setProperty(key, value);
   };
-  if (document.activeElement === msg) { caretHidden(); requestAnimationFrame(keep); }
-  words.forEach(([input, shown], i) => {
-    const el = on ? shown : input, to = at(el), k = size[i] / parseFloat(getComputedStyle(el).fontSize);
-    el.animate([{ transformOrigin: "0 50%", transform: `translate(${was[i].x - to.x}px, ${was[i].y - to.y}px) scale(${k})` }, { transformOrigin: "0 50%", transform: "none" }], slide);
+  const animate = (el, frames, options = {}) => {
+    const a = el.animate(frames, { duration: MOTION.enter, easing: GLIDE, fill: "both", ...options });
+    state.animations.push(a); return a;
+  };
+  // Correct scroll anchoring once, before making keyframes. There are no layout reads in an animation frame loop.
+  const message = $("#c-message"), messageGroup = $(".fields.msg", d);
+  if (document.activeElement === message && box.scrollHeight > box.clientHeight) {
+    box.scrollTop += messageGroup.getBoundingClientRect().top - oldPositions[1].top;
+  }
+  const nextPositions = moving.map(el => el.getBoundingClientRect());
+  const nextShape = s.getBoundingClientRect(), frame = d.getBoundingClientRect();
+  const targets = pairs.map(([input, shown]) => {
+    const el = on ? shown : input, rect = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
+    return { el, x: rect.left + (parseFloat(cs.paddingLeft) || 0), y: rect.top + rect.height / 2, size: parseFloat(cs.fontSize), width: rect.width,
+      line, font: cs.font, spacing: cs.letterSpacing, color: cs.color };
   });
-  // (the labels or the face and Change: out quickly where they were, the others in a moment after, rising to their place)
-  for (const g of ghosts) g.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: on ? "translateX(-10px)" : "scale(0.96)" }], { duration: 220, easing: EASE_OUT, fill: "forwards" }).finished.then(() => g.remove(), () => g.remove());
-  const arriving = on ? [$("#from-face"), $("#from-change")] : rows.map((r) => $("span", r));
-  arriving.forEach((el, i) => el.animate(on ? [{ opacity: 0, transform: "scale(0.5)" }, { opacity: 1, transform: "none" }] : [{ opacity: 0, transform: "translateX(-10px)" }, { opacity: 1, transform: "none" }],
-    { duration: 420, delay: 120 + i * 50, easing: on ? "cubic-bezier(0.2, 1.3, 0.4, 1)" : EASE_OUT, fill: "backwards" }));
+  resizeContact(d, oldSurface, oldTextTop, false, MOTION.enter);
+  state.animations.push(...d._resize);
+  animate(shape, [{ transform: `translate(${oldShape.left - nextShape.left}px,${oldShape.top - nextShape.top}px) scale(${oldShape.width / nextShape.width},${oldShape.height / nextShape.height})` }, { transform: "none" }]);
+  moving.forEach((el, i) => animate(el, [{ translate: `0 ${oldPositions[i].top - nextPositions[i].top}px` }, { translate: "0 0" }]));
+  // Keep the departing controls out of layout until their labels/portrait have faded. The actual inputs remain unique.
+  const departing = on ? rows : [from], oldBounds = on ? oldRows : [oldFrom];
+  departing.forEach((el, i) => {
+    el.hidden = false; if (on) el.classList.add("ghost");
+    const rect = oldBounds[i], wasInert = el.inert;
+    state.restore.push(() => { el.inert = wasInert; }); el.inert = true;
+    for (const [key, value] of Object.entries({ position: "absolute", left: `${rect.left - nextShape.left}px`, top: `${rect.top - nextShape.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, "pointer-events": "none" })) style(el, key, value);
+    animate(el, [{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.fast });
+  });
+  pairs.forEach(([input, shown], i) => {
+    const was = oldWords[i], target = targets[i], ghost = was.ghost || document.createElement("span");
+    if (!was.ghost) {
+      ghost.className = "sender-word"; ghost.setAttribute("aria-hidden", "true");
+      ghost.textContent = was.text;
+    }
+    // Land on the destination's exact font, baseline and pixels before revealing its live text. This avoids a
+    // doubled/blurred label when the editable font becomes the compact row's smaller email and heavier name.
+    const initialScale = was.size * was.scale / target.size;
+    ghost.style.font = target.font; ghost.style.letterSpacing = target.spacing;
+    ghost.style.lineHeight = `${target.line}px`; ghost.style.color = target.color;
+    d.append(ghost);
+    const word = { ghost, input, animations: [] }; state.words.push(word);
+    style(input, "opacity", "0"); style(shown, "opacity", "0"); style(input, "caret-color", "transparent");
+    ghost.style.maxWidth = `${Math.max(1, Math.min(was.width / initialScale, target.width))}px`;
+    word.animations.push(animate(ghost, [
+      { transform: `translate(${was.x - frame.left}px,${was.y - frame.top - target.line * initialScale / 2}px) scale(${initialScale})` },
+      { transform: `translate(${target.x - frame.left}px,${target.y - frame.top - target.line / 2}px) scale(1)` }
+    ], { duration: MOTION.enter - MOTION.fast }));
+    const fade = { duration: MOTION.fast, delay: MOTION.enter - MOTION.fast, easing: EASE_OUT };
+    word.animations.push(animate(ghost, [{ opacity: 1 }, { opacity: 0 }], fade));
+    word.animations.push(animate(target.el, [{ opacity: 0 }, { opacity: 1 }], fade));
+  });
+  const arriving = on ? [$("#from-face"), $("#from-change")] : oldLabels;
+  arriving.forEach((el, i) => animate(el, [{ opacity: 0, translate: on ? "-4px 0" : "4px 0" }, { opacity: 1, translate: "0 0" }],
+    { duration: MOTION.layout, delay: MOTION.stagger + i * 20, easing: EASE_OUT }));
+  if (document.activeElement === message) caretHidden();
+  Promise.all(state.animations.map(a => a.finished.catch(() => {}))).then(() => {
+    if (senderMorph !== state) return;
+    stopSenderMorph(); if (d.open && !d.classList.contains("closing")) steady();
+  });
 }
+
 // Send looks ready once there's something to send (tapped before, it says what's missing, and takes you there); the
 // message grows as it's written, a line at a time, smoothly (styles.css)
 const ready = () => { contact.send.classList.toggle("idle", !["#c-name", "#c-email", "#c-message"].every((sel) => $(sel).value.trim())); };
@@ -1379,6 +1441,7 @@ const fit = () => {
 const say = (t) => settle(contact.sheet, () => { contact.err.textContent = t; contact.err.hidden = !t; }, t ? contact.err : null);
 contact.form.addEventListener("input", (e) => {
   e.target.removeAttribute?.("aria-invalid");
+  if (e.target.matches("#c-name, #c-email")) releaseSenderWord(e.target);
   if (!contact.err.hidden) say("");
   ready();
   if (e.target.id === "c-message") grow(); else fit();

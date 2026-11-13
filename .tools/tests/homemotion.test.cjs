@@ -178,3 +178,51 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard focus releas
   assert.equal(await f.p.locator('.cta').evaluate(e=>getComputedStyle(e).opacity),'1');assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
+
+for(const assets of ['', 'min/'])for(const kb of [0,330])test(`${assets||'source/'}sender folds and unfolds smoothly${kb?' above the keyboard':''}`,async()=>{
+ const f=await fixture(assets);try{
+  await open(f);await f.p.locator('#contact-sheet.shown').waitFor();
+  if(kb){await f.p.evaluate(k=>document.documentElement.style.setProperty('--kb',k+'px'),kb);await f.p.waitForTimeout(400);}
+  await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
+  const start=await f.p.evaluate(()=>{
+   const msg=document.querySelector('#c-message');msg.focus({preventScroll:true});const before=msg.getBoundingClientRect().top;
+   msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));
+   return{before,after:msg.getBoundingClientRect().top,words:document.querySelectorAll('.sender-word').length,
+    frames:document.querySelector('#contact-sheet').getAnimations({subtree:true}).flatMap(a=>a.effect.getKeyframes())};
+  });
+  assert.ok(Math.abs(start.after-start.before)<1,'message starts from its painted position');assert.equal(start.words,2);
+  assert.ok(start.frames.every(frame=>!('height'in frame)&&!('width'in frame)),'morph animates surfaces and positions, never layout dimensions');
+  await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));await f.p.waitForTimeout(40);
+  assert.equal(await f.p.locator('#from-name').innerText(),'Sam Rider');assert.equal(await f.p.locator('#c-message').inputValue(),'Hi');
+  assert.equal(await f.p.locator('#c-message').evaluate(el=>el===document.activeElement),true);
+  assert.equal(await f.p.locator('#c-name').count(),1);assert.equal(await f.p.locator('#c-email').count(),1);
+  await f.p.locator('#from-change').click();await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));
+  assert.equal(await f.p.locator('#c-name').isVisible(),true);assert.equal(await f.p.locator('#c-name').evaluate(el=>el===document.activeElement),true);
+  assert.equal(await f.p.locator('#c-name').inputValue(),'Sam Rider');assert.equal(await f.p.locator('#c-email').inputValue(),'sam@example.com');
+  assert.equal(await f.p.evaluate(()=>document.querySelectorAll('#sender .ghost').length),0);assert.equal(f.posts.length,0);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+for(const assets of ['', 'min/'])test(`${assets||'source/'}sender reverses from its current position and lets typing take priority`,async()=>{
+ const f=await fixture(assets);try{
+  await open(f);await f.p.locator('#contact-sheet.shown').waitFor();await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
+  await f.p.evaluate(()=>{const msg=document.querySelector('#c-message');msg.focus();msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));});
+  const jump=await f.p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>{
+   const ghost=document.querySelector('.sender-word'),before=ghost.getBoundingClientRect();
+   document.querySelector('#from-change').click();const after=document.querySelector('.sender-word').getBoundingClientRect();
+   resolve(Math.hypot(after.left-before.left,after.top-before.top));
+  })));
+  assert.ok(jump<1,'reversal keeps the painted text position');
+  await f.p.locator('#c-name').fill('Sam Changed');
+  assert.equal(await f.p.locator('#c-name').evaluate(el=>getComputedStyle(el).opacity),'1','typing is immediately visible');
+  await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));
+  assert.equal(await f.p.locator('#c-name').inputValue(),'Sam Changed');assert.equal(await f.p.locator('#c-message').inputValue(),'Hi');
+  await f.p.evaluate(()=>document.querySelector('#c-message').focus());await close(f);
+  assert.equal(await f.p.locator('.sender-word').count(),0);assert.equal(await f.p.locator('#sender .ghost').count(),0);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
+test('Reduce Motion folds the sender without transitional text copies',async()=>{
+ const f=await fixture('',{reduce:true});try{
+  await open(f);await fill(f);assert.equal(await f.p.locator('#sender').evaluate(el=>el.classList.contains('known')),true);
+  assert.equal(await f.p.locator('.sender-word').count(),0);await f.p.locator('#from-change').click();assert.equal(await f.p.locator('#c-name').isVisible(),true);assert.deepEqual(f.errors,[]);
+ }finally{await f.cleanup();}
+});
