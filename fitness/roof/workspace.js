@@ -69,6 +69,26 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       ...(api.files?.save ? [{ id: "save-route-drive", label: "Save route to InFlite Files", keywords: ["save", "drive", "gpx"], enabled: !!plan }, { id: "save-workout-drive", label: "Save workout to InFlite Files", keywords: ["save", "drive", "fit"], enabled: !!w && w.sport !== "strength" }] : []),
     ] };
   }
+  function chooseFiles(device, asking = () => true, sources = true) {
+    const present = () => live() && asking() && api.active() !== false;
+    if (!present()) return false;
+    fileGate?.close();
+    let sheet, closed = false;
+    const words = fw.ui.el("p", { role: "status" });
+    const allowed = () => !closed && owned() && present();
+    const button = fw.ui.btn(sources ? "From this device" : "Choose files", { run: () => { if (allowed()) { gate.close(); device(); } } });
+    const drive = sources && api.files?.open ? fw.ui.btn("From InFlite Files", { run: () => {
+      if (!allowed()) return;
+      gate.close(); run("import-drive", undefined, { current: present }).catch(error => { if (present()) fw.toast(error?.message || "Those files couldn’t open."); });
+    } }) : null;
+    const gate = { close: () => sheet?.now(), refresh() {
+      if (!present()) return gate.close();
+      button.disabled = !owned(); if (drive) drive.disabled = !owned();
+      words.textContent = owned() ? "Import a route or recorded activity." : S.error ? "Fitness couldn’t load. Close and try again." : "Loading Fitness…";
+    } };
+    sheet = fw.sheet.open({ sheet: "fitness-files", title: "Add files", body: fw.ui.el("div", { class: "ifs-page" }, words, button, drive), onClose: () => { closed = true; if (fileGate === gate) fileGate = null; } });
+    fileGate = gate; gate.refresh(); return true;
+  }
   async function run(intent, object, { current: presenting = () => true } = {}) {
     const inView = () => live() && presenting() && api.active() !== false;
     const permitted = () => owned() && inView();
@@ -106,18 +126,7 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       if (!picker) return { ok: false, error: "Open Fitness to add files." };
       const choose = () => { if (!permitted()) return; picker.value = ""; picker.click(); };
       if (owned() && globalThis.navigator?.userActivation?.isActive !== false) choose();
-      else {
-        fileGate?.close();
-        const words = fw.ui.el("p", { role: "status" }), button = fw.ui.btn("Choose files", { disabled: true, run: () => { if (permitted()) { fileGate?.close(); choose(); } } });
-        let sheet;
-        const gate = { close: () => sheet?.now(), refresh() {
-          if (!inView()) return gate.close();
-          button.disabled = !owned();
-          words.textContent = owned() ? "Import a route or recorded activity." : S.error ? "Fitness couldn’t load. Close and try again." : "Loading Fitness…";
-        } };
-        sheet = fw.sheet.open({ sheet: "fitness-files", title: "Add files", body: fw.ui.el("div", { class: "ifs-page" }, words, button), onClose: () => { if (fileGate === gate) fileGate = null; } });
-        fileGate = gate; gate.refresh();
-      }
+      else chooseFiles(choose, inView, false);
       return { ok: true, pending: true };
     }
     if (!permitted()) return { ok: false, error: "Open Fitness to continue." };
@@ -182,5 +191,5 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
   }
   fw.signal?.addEventListener("abort", destroy, { once: true });
   if (fw.signal?.aborted) destroy();
-  return { changed, destroy };
+  return { changed, destroy, chooseFiles };
 }

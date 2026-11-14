@@ -1203,8 +1203,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.21";
-const NEWS = "Sign in on InFlite";
+const BUILD = "2.22";
+const NEWS = "Smoother sign-in";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1691,7 +1691,7 @@ async function anew(fn) {
 // made all the same, so what it'd have said is let go
 function viewTransition(fn) {
   const t = document.startViewTransition(fn);
-  t.ready.catch(() => {}); t.finished.catch(() => {});
+  t.ready.catch(() => {}); t.finished.catch(() => {}); t.updateCallbackDone.catch(() => {});
   return t;
 }
 // once the page has settled in, less a moment (a sheet coming up as it rises made too much move at once)
@@ -2580,7 +2580,11 @@ function gate(to) {
   }
   gating++; main.classList.add("vt-gate");
   const t = viewTransition(go), done = () => { if (!--gating) main.classList.remove("vt-gate"); };
-  t.updateCallbackDone.then(ready);
+  t.updateCallbackDone.then(ready).catch(error => {
+    // A failed render or focus callback is still an application error. Only the
+    // browser-owned transition promises are observed by the helper above.
+    if (globalThis.reportError) reportError(error); else setTimeout(() => { throw error; });
+  });
   t.finished.then(done, done);
 }
 function signedOut(r) {

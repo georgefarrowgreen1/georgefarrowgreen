@@ -179,13 +179,30 @@ test('OS search reaches the actual native Fitness chooser from a cold Today scre
       await query.fill('open fitness');
       await t.page.getByRole('option').filter({hasText:/^Open Fitness/}).first().click();
       await t.page.locator('#views > #m-fitness').waitFor();
-      const chooser=t.page.waitForEvent('filechooser',{timeout:10000});
+      await t.page.getByRole('button',{name:'Fitness Settings',exact:true}).waitFor();
+      assert.equal(await t.page.getByRole('button',{name:'Fitness Settings',exact:true}).isVisible(),true,'Settings remains reachable beside Search and Add Files');
       await t.page.getByRole('button',{name:'Add Files',exact:true}).click();
+      const sources=t.page.getByRole('dialog',{name:'Add files',exact:true});
+      await sources.waitFor();
+      assert.equal(await sources.getByRole('button',{name:'From InFlite Files',exact:true}).isVisible(),true);
+      const chooser=t.page.waitForEvent('filechooser',{timeout:10000});
+      await sources.getByRole('button',{name:'From this device',exact:true}).click();
       let picked;
       try { picked=await chooser; }
       catch(e) { console.log('CHOOSER STATE',JSON.stringify({url:t.page.url(),unknown:t.state.unknown,errors:t.errors,inputs:await t.page.locator('input[type=file]').evaluateAll(ns=>ns.map(n=>({connected:n.isConnected,hidden:n.hidden,inert:!!n.closest('[inert]'),accept:n.accept})))}));throw e; }
       assert.equal(await picked.element().getAttribute('type'),'file');
       assert.equal(await picked.element().getAttribute('accept'),'.fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip');
+      await picked.setFiles([]);
+      if(attempt===0){
+        await emptyDrive(t);
+        await t.page.getByRole('button',{name:'Add Files',exact:true}).click();
+        const from=t.page.getByRole('dialog',{name:'Add files',exact:true});
+        await from.getByRole('button',{name:'From InFlite Files',exact:true}).click();
+        const files=t.page.getByRole('dialog',{name:'Import to Fitness',exact:true});await files.waitFor();
+        await files.getByText('No files in this folder yet.',{exact:true}).waitFor();
+        await files.getByRole('button',{name:'Cancel',exact:true}).click();
+        assert.equal(await t.page.getByRole('button',{name:'Fitness Settings',exact:true}).isVisible(),true);
+      }
       assert.deepEqual(t.state.routeWrites,[]);assert.deepEqual(t.state.fx.times,[]);await t.clean();
     } finally { await t.ctx.close(); }
   }

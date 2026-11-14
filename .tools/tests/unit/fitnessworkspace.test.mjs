@@ -238,3 +238,34 @@ test('Fitness dock handoff resolves its owned opaque token into the existing par
   assert.equal((await e.provided.run('import-drive','drop:'+token)).ok,true);assert.deepEqual(calls,[token]);assert.equal(imports[0][0],file);assert.equal(e.downloads.length,0);assert.deepEqual(e.writes,[]);
  }finally{e.close();}
 });
+
+test('Add Files offers one owned Device/Drive choice and keeps the actual device picker synchronous with its button tap',async()=>{
+ const e=setup(),ui=filePicker(e),files=[new File(['ride'],'Ride.fit')],imports=[],picks=[];
+ try{
+  e.ctx.importFiles=async got=>imports.push(got);e.fw.toast=()=>{};
+  e.fw.workspace.files={open:async options=>{picks.push(options);return files;}};
+  let devices=0;
+  assert.equal(e.bridge.chooseFiles(()=>{assert.equal(ui.activation.isActive,true,'the genuine chooser remains inside the activated tap');devices++;ui.picker.click();}),true);
+  const sheet=ui.sheets.at(-1),[,device,drive]=sheet.spec.body.children;
+  assert.equal(device.label,'From this device');assert.equal(drive.label,'From InFlite Files');assert.equal(devices,0);assert.equal(picks.length,0);
+  ui.activation.isActive=true;device.run();ui.activation.isActive=false;
+  assert.equal(devices,1);assert.equal(ui.picks,1);assert.equal(sheet.closed,true);device.run();drive.run();assert.equal(devices,1);assert.equal(picks.length,0,'callbacks from a closed source menu cannot choose files');
+  e.bridge.chooseFiles(()=>devices++);const source=ui.sheets.at(-1);source.spec.body.children[2].run();
+  for(let i=0;i<8;i++)await Promise.resolve();
+  assert.equal(source.closed,true);assert.equal(picks.length,1);assert.equal(imports[0],files);assert.equal(devices,1);assert.equal(picks[0].current(),true);
+ }finally{e.close();ui.restore();}
+});
+
+test('Device/Drive source choices and delayed Drive files stop after caller retirement, account change, hidden app or abort',async()=>{
+ for(const change of ['caller','owner','hidden','abort']){
+  const e=setup(),ui=filePicker(e),gate=deferred();let current=true,devices=0,imports=0;
+  try{
+   e.fw.toast=()=>{};e.ctx.importFiles=async()=>imports++;e.fw.workspace.files={open:()=>gate.promise};
+   e.bridge.chooseFiles(()=>devices++,()=>current);const [,device,drive]=ui.sheets.at(-1).spec.body.children;drive.run();await Promise.resolve();
+   if(change==='caller')current=false;if(change==='owner'){e.fw.session.user.id='bea';e.S.me={id:'bea'};}if(change==='hidden')e.setActive(false);if(change==='abort')e.controller.abort();
+   device.run();drive.run();gate.resolve([new File(['private'],'Private.fit')]);
+   for(let i=0;i<8;i++)await Promise.resolve();
+   assert.equal(devices,0,change);assert.equal(imports,0,change);assert.equal(e.bridge.chooseFiles(()=>devices++,()=>current),false,change);
+  }finally{e.close();ui.restore();}
+ }
+});

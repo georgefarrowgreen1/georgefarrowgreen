@@ -115,12 +115,12 @@ test('OS next has independently bounded shell, file workflows, activity, sync, r
   // Six explicitly reviewed additions stay OS-only. Each known asset belongs
   // to a component and the complete graph also has a tighter aggregate bound.
   // Ordinary core and native first-open caps are unchanged.
-  check('base/window shell', group(base), 30, 6);
+  check('base/window shell', group(base), 31, 7);
   check('Commands', group(p => commandAssets.has(p)), 4.75, 1);
   check('Files', group(p => fileAssets.has(p)), 36, 4.5);
   for (const [name, jsCap, cssCap] of [['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 4, 0.5]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
   for (const [app, cap] of [['fitness', 4.5], ['weather', 2.75], ['markets', 1.5], ['chats', 2.75], ['mail', 3.75]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
-  check('complete optional OS next', costs, 100, 16);
+  check('complete optional OS next', costs, 102, 17);
   t.diagnostic(JSON.stringify({ files: costs }));
 });
 

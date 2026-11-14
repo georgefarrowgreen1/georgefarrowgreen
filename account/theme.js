@@ -1,3 +1,14 @@
+// Observe cross-document transitions before the account module loads. A slow
+// stylesheet or a navigation to a page without opt-in can cancel these browser
+// promises; observing them does not cancel the transition or hide other errors.
+(() => {
+  const observe = transition => {
+    if (transition) for (const key of ["ready", "finished", "updateCallbackDone"]) transition[key]?.catch?.(() => {});
+  };
+  try { observe(document.activeViewTransition); } catch (_) {}
+  addEventListener("pageswap", event => observe(event.viewTransition));
+  addEventListener("pagereveal", event => observe(event.viewTransition));
+})();
 // ==== InFlite motion: shared lifecycle ====
 // Pause presentation motion before first paint and while the page is in the app
 // switcher. This does not pause data, requests, navigation or authentication.

@@ -27,7 +27,7 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.36";
+export const BUILD = "2.37";
 export const NEWS = "Files and imported routes";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
@@ -277,12 +277,11 @@ export async function mount(root, fw) {
     const name = SECTIONS.find(([k]) => k === shown)?.[1] || "Fitness", line = lineOf(shown);
     fw.header.set({
       title: name, compactTitle: line ? (/^Fitness\b/.test(line) ? line : `Fitness · ${line}`) : "Fitness", pick: null, line,
-      acts: [{ icon: "upload", label: "Add Files", run: choose }, ...(fw.workspace?.files?.open ? [{ icon: "folder", label: "Open from InFlite Files", run: async () => {
-        const owner = S.me?.id, current = () => owned(owner) && onScreen;
-        if (!current()) return;
-        try { const files = await fw.workspace.files.open({ title: "Import to Fitness", accept: ACCEPT, multiple: true, current }); if (current() && files?.length) await take(files); }
-        catch (error) { if (current() && error?.name !== "AbortError") fw.toast(error?.message || "Those files couldn’t be opened."); }
-      } }] : []), { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
+      acts: [{ icon: "upload", label: "Add Files", run: () => {
+        if (!fw.workspace?.files?.open) return choose();
+        const mine = episode;
+        Promise.resolve(startWorkspace()).then(adapter => adapter?.chooseFiles(choose, () => here(mine)));
+      } }, { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
     });
   };
   // (one redraw a frame however many events come; and Activities drawn again only for what it shows, never for the plan,

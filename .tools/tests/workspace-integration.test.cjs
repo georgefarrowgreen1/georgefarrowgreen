@@ -150,9 +150,14 @@ test('mobile foreground, desktop return and full-app expansion reuse the actual 
     await pane(page, 'weather').waitFor({ state: 'visible' }); assert.equal(await pane(page, 'fitness').isHidden(), true);
     await tabs.getByRole('tab', { name: 'Fitness', exact: true }).click();
     await pane(page, 'fitness').waitFor({ state: 'visible' }); assert.equal(await pane(page, 'weather').isHidden(), true);
-    await page.setViewportSize({ width: 844, height: 390 }); await settle(page);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForFunction(()=>matchMedia('(min-width:600px) and (max-width:959px) and (max-height:500px)').matches);await settle(page);
     const landscape = await pane(page, 'fitness').locator('.ws-module-slot').evaluate(n => ({ height: n.getBoundingClientRect().height, width: document.documentElement.scrollWidth, viewport: innerWidth }));
     assert.ok(landscape.height >= 150 && landscape.width <= landscape.viewport + 1, 'landscape retains a usable scrolling app: ' + JSON.stringify(landscape));
+    const pageGeometry=await page.evaluate(()=>({height:innerHeight,doc:document.documentElement.scrollHeight,body:document.body.scrollHeight,main:document.querySelector('.ws-main')?.getBoundingClientRect().height,canvas:document.querySelector('.ws-canvas')?.getBoundingClientRect().height}));
+    assert.ok(pageGeometry.doc<=pageGeometry.height+1,'short landscape keeps scrolling inside the app pane: '+JSON.stringify(pageGeometry));
+    await page.getByRole('button',{name:'Open windows',exact:true}).click();await page.getByRole('menuitem',{name:'Switch to Weather',exact:true}).click();await pane(page,'weather').waitFor({state:'visible'});
+    await page.getByRole('button',{name:'Open windows',exact:true}).click();await page.getByRole('menuitem',{name:'Switch to Fitness',exact:true}).click();await pane(page,'fitness').waitFor({state:'visible'});
     await page.setViewportSize({ width: 1440, height: 940 }); await page.waitForFunction(() => [...document.querySelectorAll('.ifl-workspace-pane')].filter(n => n.getClientRects().length).length === 2);
     await page.locator('.ws-dock [data-ws-action="app:fitness"]').click();
     await page.locator('#m-fitness').waitFor({ state: 'visible' });
@@ -194,10 +199,10 @@ test('OS search opens the existing Fitness app and modal focus survives the mobi
     await search.locator('a[href="/fitness/#progress"]').first().click();
     await page.locator('#m-fitness .fx-sec[data-sec=progress]:not([hidden])').waitFor();
     assert.equal(await page.evaluate(() => __originalFitness === document.getElementById('m-fitness') && document.querySelectorAll('#m-fitness').length === 1), true);
-    const settings = page.getByRole('button', { name: 'Fitness Settings', exact: true });
+    const settings = page.locator('#hd').getByRole('button', { name: 'Fitness Settings', exact: true });
     await settings.click(); const sheet = page.locator('dialog[data-app=fitness][open]').last(); await sheet.waitFor();
     await sheet.locator('[data-close]').click(); await sheet.waitFor({ state: 'detached' });
-    assert.equal(await settings.evaluate(n => document.activeElement === n), true, 'modal returns focus to its actual origin pane');
+    assert.equal(await settings.evaluate(n => document.activeElement === n), true, 'modal returns focus to its actual native header control');
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goBack(); await page.locator('.ifl-workspace[data-mode=workspace]').waitFor();
     assert.equal(await same(), true);
