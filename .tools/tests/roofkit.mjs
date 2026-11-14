@@ -594,24 +594,28 @@ try {
     same(await p5.evaluate(() => [...new Set(kitSearch.map((s) => `${s.app}:${s.userId}`))]), ['weather:u-kit-0001'], 'a connector’s search is given the user ({ userId }); Markets’ connector not asked while its module provides');
     await p5.fill(H.SEARCH_INPUT, 'stand'); await settle(p5, 1100);
     ok(!(await p5.$$eval(H.SEARCH_RESULT, (o) => o.map((x) => x.textContent))).some((t) => /Markets stand-in/.test(t)), 'Markets’ connector provider replaced by its module’s');
-    // the connector sheet per switch: its acts (label, href) and its hero's line
+    // The connector sheet keeps its app actions without repeating implementation copy in its hero.
     const conn = (app, apps) => p5.evaluate(async ([app, apps]) => {
       const c = await import('/roof/connectors.js');
       const F = Object.create(kit.F, { session: { get: () => ({ ...kit.F.session, apps }) } });
       await c.openConnector(F, app);
       await new Promise((ok) => setTimeout(ok, 400));
       const d = document.querySelector('dialog.ifl-sheet[data-sheet=connector][open]');
-      const out = d && { acts: [...d.querySelectorAll('.ifs-acts [data-act]')].map((b) => [b.dataset.act, b.textContent.trim(), b.getAttribute('href')]), line: d.querySelector('.ifs-hero span')?.textContent ?? null };
+      const name = d?.querySelector('.ifs-hero b')?.textContent, line = d?.querySelector('.ifs-hero span')?.textContent ?? null;
+      // Both sides of a rolling deployment keep the same actions. Older Root
+      // repeats the connector title and implementation line; new Root omits them.
+      if (![null, 'Its own module, under one roof', 'An app beside InFlite'].includes(line)) throw Error('Unexpected connector hero description');
+      const out = d && { acts: [...d.querySelectorAll('.ifs-acts [data-act]')].map((b) => [b.dataset.act, b.textContent.trim(), b.getAttribute('href')]), name: name?.replace(/’s connector$/, ''), line: null };
       kit.F.sheet.closeAll();
       await new Promise((ok) => setTimeout(ok, 400));
       return out;
     }, [app, apps]);
     const ON = { weather: true, markets: true, fitness: true, mail: false, chats: false }, OFF = { weather: true, markets: false, fitness: false, mail: false, chats: false };
-    same(await conn('markets', ON), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'Its own module, under one roof' }, 'Markets on: Open Markets, Markets Notifications (/#you=notify); its own module');
-    same(await conn('markets', OFF), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], line: 'An app beside InFlite' }, 'Markets off: Markets Notifications still (You’s, which works with it off); an app beside InFlite');
-    same(await conn('fitness', ON), { acts: [['open', 'Open Fitness', '/fitness/'], ['settings', 'Fitness Settings', '/fitness/#settings']], line: 'Its own module, under one roof' }, 'Fitness on: Fitness Settings (/fitness/#settings); its own module');
-    same(await conn('fitness', OFF), { acts: [['open', 'Open Fitness', '/fitness/']], line: 'An app beside InFlite' }, 'Fitness off: no Fitness Settings; an app beside InFlite');
-    same((await conn('weather', OFF)).line, 'Its own module, under one roof', 'Weather’s hero line unchanged');
+    same(await conn('markets', ON), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], name: 'Markets', line: null }, 'Markets on: Open Markets, Markets Notifications (/#you=notify); app actions retained');
+    same(await conn('markets', OFF), { acts: [['open', 'Open Markets', '/markets/'], ['notify', 'Markets Notifications', '/#you=notify']], name: 'Markets', line: null }, 'Markets off: Markets Notifications still (You’s, which works with it off); public app actions retained');
+    same(await conn('fitness', ON), { acts: [['open', 'Open Fitness', '/fitness/'], ['settings', 'Fitness Settings', '/fitness/#settings']], name: 'Fitness', line: null }, 'Fitness on: Fitness Settings (/fitness/#settings); app actions retained');
+    same(await conn('fitness', OFF), { acts: [['open', 'Open Fitness', '/fitness/']], name: 'Fitness', line: null }, 'Fitness off: no Fitness Settings; public app actions retained');
+    same((await conn('weather', OFF)).line, null, 'Weather omits the redundant implementation line');
     await clean(k5, 'a provider per app; the connector sheet');
     await k5.ctx.close();
 

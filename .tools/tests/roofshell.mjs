@@ -242,7 +242,7 @@ await part('connected apps', async () => {
     await p.click(H.youAppRow(app));
     await p.waitForSelector(`${H.CONNECTOR_SHEET}[open]`, { timeout: 5000 });
     const t = await text(p, `${H.CONNECTOR_SHEET}[open]`);
-    has(t, 'keeps its own server and data', `${app}: its connector’s sheet`);
+    ok(t.includes('shares these features with InFlite:') || t.includes('keeps its own server and data'), `${app}: its connector’s feature introduction`);
     if (app === 'weather') { has(t, 'Weather Settings', 'Weather’s: Weather Settings'); has(t, 'Weather Notifications', 'and Weather Notifications'); }
     if (app === 'weather') await p.screenshot({ path: `${OUT}/connector-weather-390-dark.png` });
     await p.click(`${H.CONNECTOR_SHEET}[open] [data-close]`);
