@@ -368,3 +368,18 @@ test("keepPush: a phone kept with its sign-in (via, for InFlite's), ten an accou
   assert.deepEqual(row(a.endpoint), null, "the oldest of Ben's went");
   await assert.rejects(keepPush(env, ben, { endpoint: "https://evil.example/x", keys: a.keys }), /push subscription/);
 });
+
+test('keepPush keeps the ten most recently inserted phones when their timestamps share one millisecond', async t => {
+  const env = { DB: d1() }, fixed = 1794696000000;
+  t.mock.method(Date, 'now', () => fixed);
+  env.DB.sql.exec("CREATE TABLE pg_sessions (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL)");
+  env.DB.sql.exec("CREATE TABLE mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0, via TEXT)");
+  env.DB.sql.prepare('INSERT INTO pg_sessions (hash,user_id,created_at,seen_at) VALUES (?,?,?,?)').run('same-ms-session','same-ms-owner',fixed,fixed);
+  const key = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' },true,['deriveBits']);
+  const keys = { p256dh:Buffer.from(await crypto.subtle.exportKey('raw',key.publicKey)).toString('base64url'),auth:Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url') };
+  const endpoints = Array.from({length:12},(_,i)=>`https://fcm.googleapis.com/fcm/send/same-ms-${i}`);
+  for (const endpoint of endpoints) await keepPush(env,{id:'same-ms-owner',sessionHash:'same-ms-session'},{endpoint,keys});
+  const kept = env.DB.sql.prepare('SELECT endpoint,added,session FROM mk_push WHERE user_id=? ORDER BY rowid').all('same-ms-owner').map(row=>({...row}));
+  assert.deepEqual(kept.map(row=>row.endpoint),endpoints.slice(2),'the earliest inserts are evicted and the newest phone stays subscribed');
+  assert.ok(kept.every(row=>row.added===fixed&&row.session==='same-ms-session'));
+});

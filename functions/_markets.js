@@ -741,7 +741,7 @@ export async function keepPush(env, u, sub, { via = null } = {}) {
     ON CONFLICT (endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, added = ?5, session = ?6, fails = 0${v == null ? "" : ", via = ?7"}
     WHERE mk_push.user_id = ?2 OR mk_push.session IS NULL OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = mk_push.session)`)
     .bind(sub.endpoint, u.id, keys.p256dh, keys.auth, Date.now(), u.sessionHash || null, v).run();
-  await D.prepare("DELETE FROM mk_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM mk_push WHERE user_id = ?1 ORDER BY added DESC LIMIT 10)").bind(u.id).run();
+  await D.prepare("DELETE FROM mk_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM mk_push WHERE user_id = ?1 ORDER BY added DESC, rowid DESC LIMIT 10)").bind(u.id).run();
   return { on: true, kept: !!w.meta?.changes };
 }
 // (its name from before; what POST push answers, as it always has)
