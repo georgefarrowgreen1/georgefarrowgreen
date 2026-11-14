@@ -12,6 +12,8 @@ import { oldApp } from "./_sites.js";
 import { assets } from "./_min.js";
 import { fastSignIn } from "./_signinfast.js";
 import { AUTH_LOADING } from "../account/auth-frame.js";
+import { identityPrefix } from "./_identity.js";
+import { publicApp } from "./_canonical.js";
 export const ACCOUNT_HOST = "account.inflite.ai";
 // (ACCOUNT_HOST in the environment: tests, which run the address on local names, a comma between them)
 // (and its old address on georgefarrowgreen.com, whose pages go on to the new one, but whose API still answers what was
@@ -89,6 +91,13 @@ async function stamped(ctx, url, html) {
 }
 
 export async function accountHost(ctx, url) {
+  const prefix = identityPrefix(ctx.request);
+  // Only human documents move. API calls, static resources, OAuth callbacks and
+  // authenticated service requests keep working at their historical origins.
+  const dest = ctx.request.headers.get("Sec-Fetch-Dest"), document = dest ? dest === "document" : /text\/html/i.test(ctx.request.headers.get("Accept") || "");
+  if (["auth.inflite.ai", "account.inflite.ai"].includes(url.hostname) && !prefix && ctx.request.headers.get("X-Hub-Ok") !== "1" && /^(GET|HEAD)$/.test(ctx.request.method) && document && ["/", "/index.html", "/go"].includes(url.pathname)) {
+    return new Response(null, { status: 308, headers: { Location: publicApp(isAuth(url, ctx.env) ? "auth" : "account", ctx.env, ctx.request) + (url.pathname === "/index.html" ? "/" : url.pathname) + url.search, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  }
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
   // (its version as deployed, the sign-in page's too, for the updater every app shares: functions/_version.js)
   if (url.pathname === "/version") return versionResponse(ctx, url, "account");
@@ -112,10 +121,17 @@ export async function accountHost(ctx, url) {
   const authHtml = page && !head && isAuth(url, ctx.env) ? html.replace('src="app.js"', 'src="signin.js"')
     .replace('<main id="main"', '<main id="main" class="signin-main"')
     .replace(/<!-- account-loading:start -->[\s\S]*?<!-- account-loading:end -->/, AUTH_LOADING) : html;
-  const body = head ? null : page ? await stamped(ctx, url, authHtml) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
+  let body = head ? null : page ? await stamped(ctx, url, authHtml) : script ? await asSent(ctx, url, name, await res.text()) : res.body;
+  if (prefix && page && body) body = body.replaceAll('src="/inflite.svg', `src="${prefix}/inflite.svg`).replaceAll('https://account.inflite.ai/', 'https://inflite.ai/account/');
+  if (prefix && !head && name === "manifest.webmanifest" && res.ok) {
+    const manifest = JSON.parse(await res.text());
+    manifest.start_url = manifest.scope = prefix + "/";
+    manifest.icons = (manifest.icons || []).map(icon => ({ ...icon, src: prefix + icon.src }));
+    body = JSON.stringify(manifest);
+  }
   const out = new Response(body, res);
   for (const [k, v] of Object.entries(isAuth(url, ctx.env) ? AUTH_SECURITY : ACCT_SECURITY)) out.headers.set(k, v);
-  if (page || script) { out.headers.delete("content-length"); out.headers.delete("etag"); }
+  if (page || script || (prefix && name === "manifest.webmanifest")) { out.headers.delete("content-length"); out.headers.delete("etag"); }
   // (the asset service's own preload hints name the files unstamped: each would be fetched again, and could be a copy kept from before)
   if (page) out.headers.delete("Link");
   // (a stamped file kept only when it's what was asked for: just after a deploy the old one can come under the new stamp)

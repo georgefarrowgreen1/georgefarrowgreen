@@ -274,7 +274,7 @@ test("the day: Mail's trip with its weather, its zone and how far from home; its
   assert.deepEqual(d.trip.items.map((b) => [b.id, b.wx]), [
     ["K7QX2M-1", "/weather/?lat=38.71667&lon=-9.13333&name=Lisbon#day=2026-11-07"], ["bk-5521876", "/weather/?lat=38.71667&lon=-9.13333&name=Lisbon#day=2026-11-07"],
     ["gyg-GYG8K2", "/weather/?lat=38.71667&lon=-9.13333&name=Lisbon#day=2026-11-08"], ["K7QX2M-2", "/weather/?lat=38.71667&lon=-9.13333&name=Lisbon#day=2026-11-10"]]);
-  assert.equal(d.trip.items[0].href, `${OWN}/#thread=0d3e9a51-1b2c-4d5e-8f60-7a8b9c0d1e2f`);
+  assert.equal(d.trip.items[0].href, "https://ifl.test/mail/#thread=0d3e9a51-1b2c-4d5e-8f60-7a8b9c0d1e2f");
   const mailRows = d.upcoming.filter((r) => r.app === "mail");
   assert.deepEqual(mailRows.map((r) => r.id), ["mail-rock-0611"], "tonight's table; the flight's in the trip");
   assert.ok(Array.isArray(cards.mail.ahead) && cards.mail.ahead.length === 6, "Mail's card among the cards, with its bookings");

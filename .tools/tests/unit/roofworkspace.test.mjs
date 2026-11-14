@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
-import { OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
+import { OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
 import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
@@ -25,10 +25,10 @@ function hostMode(url) {
   return vm.runInNewContext(match[1], { location: new URL(url), URL });
 }
 
-test('OS assets are cacheable only on the exact OS host or an explicit local preview; apex and lookalikes keep their ordinary shell', { skip }, () => {
+test('unified assets are cacheable only on the exact Apex/legacy OS host or an explicit local preview; lookalikes keep their ordinary shell', { skip }, () => {
   for (const [url, enabled] of [
     ['https://os.inflite.ai/sw.js', true], ['https://os.inflite.ai/sw.js?os=0', true],
-    ['https://inflite.ai/sw.js', false], ['https://inflite.ai/sw.js?os=1', false],
+    ['https://inflite.ai/sw.js', true], ['https://inflite.ai/sw.js?os=1', true],
     ['https://next.inflite.ai/sw.js?os=1', false], ['https://evil-os.inflite.ai/sw.js?os=1', false],
     ['https://os.inflite.ai.evil.example/sw.js?os=1', false],
     ['http://localhost:4173/sw.js?os=1', true], ['http://workspace.test/sw.js?os=1', true],
@@ -65,7 +65,7 @@ test('the OS updater and worker list exactly the optional closure and the manife
   for (const entry of OS_ENTRIES) walk(entry);
   assert.deepEqual([...loaded].sort(), [...js].sort(), 'optional JS is exactly the reachable host/picker graph, including literal lazy imports');
   const manifest = JSON.parse(pub('os.webmanifest'));
-  assert.equal(manifest.name, 'InFlite OS'); assert.equal(manifest.start_url, '/#workspace'); assert.equal(manifest.scope, '/');
+  assert.equal(manifest.name, 'InFlite'); assert.equal(manifest.start_url, '/'); assert.equal(manifest.scope, '/');
   assert.ok(manifest.icons.length); for (const icon of manifest.icons) assert.ok(existsSync(new URL('today/public/' + icon.src.replace(/^\//, ''), IFL)), icon.src);
 });
 
@@ -97,10 +97,13 @@ test('all existing app connector assets remain valid static JS/CSS under the str
   }
 });
 
-test('OS v3 has independently bounded shell, Commands, Files and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
+test('OS next has independently bounded shell, file workflows, activity, sync, recovery and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
   const costs = [...osFiles.filter(p => /\.(?:js|css)$/.test(p)), ...bridges].map(path => ({ path, bytes: gzipSync(minified(readFileSync(published(path), 'utf8'), path.endsWith('.css')), { level: 9 }).length }));
   const fileAssets = new Set([...OS_FILES_JS, ...OS_FILES_CSS].map(name => '/roof/' + name)), commandAssets = new Set(['/roof/workspace-commands.js', '/roof/workspace-commands.css']);
-  const base = p => p.startsWith('/roof/') && !fileAssets.has(p) && !commandAssets.has(p);
+  const extras = { OpenSave: [...OS_DIALOG_JS, ...OS_DIALOG_CSS], Activity: [...OS_ACTIVITY_JS, ...OS_ACTIVITY_CSS], Sync: OS_SYNC_JS, Recovery: [...OS_RECOVERY_JS, ...OS_RECOVERY_CSS] };
+  const extraAssets = Object.fromEntries(Object.entries(extras).map(([name, files]) => [name, new Set(files.map(file => '/roof/' + file))]));
+  const reviewed = new Set([...fileAssets, ...commandAssets, ...Object.values(extraAssets).flatMap(set => [...set])]);
+  const base = p => p.startsWith('/roof/') && !reviewed.has(p);
   const group = predicate => costs.filter(f => predicate(f.path));
   const sum = (files, ext) => files.filter(f => f.path.endsWith(ext)).reduce((n, f) => n + f.bytes, 0);
   const check = (name, files, jsKiB, cssKiB) => {
@@ -109,14 +112,15 @@ test('OS v3 has independently bounded shell, Commands, Files and five adapters; 
     assert.ok(jsBytes <= jsKiB * 1024, `${name}: ${jsBytes} bytes JS exceeds ${jsKiB * 1024}`);
     assert.ok(cssBytes <= cssKiB * 1024, `${name}: ${cssBytes} bytes CSS exceeds ${cssKiB * 1024}`);
   };
-  // Files v3 adds a lazy private Drive/Explorer, transfer lifecycle and safe route
-  // ownership. Bound its exact reviewed graph independently from ordinary apps
-  // and the shared core; no filename-prefix exclusion or native cap increase.
-  check('base/window shell', group(base), 26, 5.5);
-  check('Commands', group(p => commandAssets.has(p)), 3.5, 1);
-  check('Files', group(p => fileAssets.has(p)), 32, 4);
-  for (const [app, cap] of [['fitness', 3.75], ['weather', 2.75], ['markets', 1.5], ['chats', 2.75], ['mail', 3.5]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
-  check('complete optional OS v3', costs, 74, 13);
+  // Six explicitly reviewed additions stay OS-only. Each known asset belongs
+  // to a component and the complete graph also has a tighter aggregate bound.
+  // Ordinary core and native first-open caps are unchanged.
+  check('base/window shell', group(base), 30, 6);
+  check('Commands', group(p => commandAssets.has(p)), 4.75, 1);
+  check('Files', group(p => fileAssets.has(p)), 36, 4.5);
+  for (const [name, jsCap, cssCap] of [['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 4, 0.5]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
+  for (const [app, cap] of [['fitness', 4.5], ['weather', 2.75], ['markets', 1.5], ['chats', 2.75], ['mail', 3.75]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
+  check('complete optional OS next', costs, 100, 16);
   t.diagnostic(JSON.stringify({ files: costs }));
 });
 

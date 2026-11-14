@@ -1,3 +1,4 @@
+import { publicApp } from "./_canonical.js";
 // The two sites. The apps live at inflite.ai: Chat at chat., Weather at weather., Fitness at fitness., and the
 // account they all sign in with at account. (one sign-in there for them all). georgefarrowgreen.com is the home page,
 // which signs in with that account too, and where the apps used to be: their old addresses there send you on to the
@@ -44,7 +45,7 @@ export function todayOrigin(env, request) {
 }
 // the apps' addresses, as Today links to them (request: null for production's, as the morning's tick has none)
 export function todayLinks(env, request) {
-  return Object.fromEntries(["chat", "weather", "fitness", "finance", "account", "auth"].map((name) => [name, appOrigin(name, env, request)]));
+  return Object.fromEntries(["chat", "weather", "fitness", "finance", "email", "account", "auth"].map((name) => [name, publicApp(name, env, request)]));
 }
 // InFlite's hub (inflite.ai, Today First): the origins whose pages are this site's apps too, in one window with Today
 // (the IFL repo's today/src/hub.js serves them, as the apps, at /chats/, /weather/, …). HUB_ORIGINS in the environment

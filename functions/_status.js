@@ -1,3 +1,4 @@
+import { publicApp } from "./_canonical.js";
 // status.inflite.ai: whether each of InFlite's apps, its sign-in, its scheduled jobs, what they rely on outside InFlite
 // and the home page are working, for anyone to see. Every five minutes the ticker (workers/ticker) asks for each address
 // as a phone would and runs each job, then hands what it found to the site here (POST /api/status/report, at the site's
@@ -108,7 +109,7 @@ export async function setAlertPrefs(env, b) {
 // The owner's email about an incident (from "InFlite Status", status@): opened, what and since when, and the Incident
 // Desk's own page for it; closed, how long it lasted and a nudge to write it up
 export function incidentMail(env, e) {
-  const desk = `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, names = and((e.svcs || []).map(nameOf).filter(Boolean));
+  const desk = `${publicApp("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, names = and((e.svcs || []).map(nameOf).filter(Boolean));
   const monitored = (e.svcs || []).some(id => MONITOR_IDS.has(id));
   const hm = (t) => ukHM.format(t), up = e.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "");
   const { text, html } = e.open && e.held
@@ -133,10 +134,10 @@ async function tell(env, events) {
   try {
     const p = await alertPrefs(env), D = await db(env);
     const admin = p.push ? (await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first().catch(() => null))?.v : null;
-    const to = p.email && emailReady(env) ? env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO : null, page = `https://${statusHostOf(env)}/`;
+    const to = p.email && emailReady(env) ? env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO : null, page = publicApp("status", env) + "/";
     await Promise.allSettled(events.flatMap((e) => [
       // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
-      admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${appOrigin("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
+      admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${publicApp("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),
       to && sendEmail(env, { brand: "status", to, ...incidentMail(env, e) }),
       // (one held off the page, the owner's alone)
       !e.held && tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "")}: working again`, body: e.text, id: e.id }),
@@ -405,7 +406,7 @@ export async function bannerFor(env, app, t = Date.now()) {
   const hits = (svcs, all) => !scope || (all && !svcs.length) || svcs.some((s) => scope.includes(s) || s === "db");
   const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL AND held IS NOT 1 ORDER BY started DESC LIMIT 10").all();
   const inc = (results || []).map((x) => ({ ...x, svcs: JSON.parse(x.svcs || "[]"), updates: JSON.parse(x.updates || "[]") })).find((x) => hits(x.svcs));
-  const page = `https://${statusHostOf(env)}/`;
+  const page = publicApp("status", env) + "/";
   if (inc) return { banner: { kind: "incident", id: inc.id, title: inc.title, text: inc.updates[0]?.w || "", since: inc.started, url: page } };
   const m = (await maintNow(D, t)).find((x) => hits(x.svcs, true));
   return { banner: m ? { kind: "maint", id: m.id, title: m.title, text: m.text || "", until: m.ends, url: page } : null };
@@ -575,7 +576,7 @@ export async function tellSubscribers(env, { svcs = [], maint = false, title, bo
     const { results } = await D.prepare("SELECT endpoint, p256dh, auth, apps, maint FROM status_subs LIMIT 2000").all();
     const hit = (apps) => !svcs.length || apps.some((a) => (COVERS[a] || []).some((x) => svcs.includes(x)) || svcs.includes("db"));
     const to = (results || []).filter((r) => { const apps = JSON.parse(r.apps || "[]"); return maint ? r.maint && (hit(apps) || !svcs.length) : hit(apps); });
-    const url = `https://${statusHostOf(env)}/#${encodeURIComponent(id || "")}`;
+    const url = `${publicApp("status", env)}/#${encodeURIComponent(id || "")}`;
     await Promise.all(to.map(async (r) => {
       const res = await pushToSub(env, r, { title: String(title).slice(0, 120), body: String(body || "").slice(0, 240), tag: `status-${id}`, url, ttl: 6 * 3600 });
       if (res === "gone") await D.prepare("DELETE FROM status_subs WHERE endpoint = ?").bind(r.endpoint).run();
@@ -587,7 +588,7 @@ export async function tellSubscribers(env, { svcs = [], maint = false, title, bo
 // ---- the incident feed (Atom), for any news reader ----
 const xml = (s) => String(s ?? "").replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]);
 async function feed(env, t = Date.now()) {
-  const s = await summary(env, t), page = `https://${statusHostOf(env)}/`, iso = (x) => new Date(x).toISOString();
+  const s = await summary(env, t), page = publicApp("status", env) + "/", iso = (x) => new Date(x).toISOString();
   const items = s.incidents.map((x) => {
     const u = x.updates[0] || {}, when = u.at || x.started;
     return `<entry><id>${page}#${xml(x.id)}</id><title>${xml(`${x.ended ? "Resolved" : "Ongoing"}: ${x.title}`)}</title><updated>${iso(when)}</updated><link href="${page}"/>`

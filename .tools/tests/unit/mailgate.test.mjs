@@ -284,3 +284,26 @@ test('writes reject missing, opaque and untrusted origins even with the custom h
     assert.equal(r.status,403,String(origin));
   }
 });
+
+test('explicit attachment export transfers bounded bytes inertly, preserves raster-only previews and requires the existing account/hub/write gates', {skip}, async()=>{
+ await seed();
+ const before=sql.prepare("SELECT v FROM meta WHERE k='v'").get();
+ for(const id of ['a-svg','a-pdf','a-png']){
+  const r=await ask('/api/attachments/'+id+'/export',{method:'POST',headers:W,body:{}});
+  assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'application/octet-stream');
+  assert.match(r.headers.get('content-disposition'),/^attachment;/);assert.equal(r.headers.get('cache-control'),'private, no-store');
+  assert.equal(r.headers.get('x-content-type-options'),'nosniff');assert.match(r.headers.get('content-security-policy'),/^sandbox; default-src 'none'/);
+  assert.equal(r.headers.get('access-control-allow-origin'),'https://inflite.ai');assert.deepEqual([...new Uint8Array(await r.arrayBuffer())],[1,2,3,4]);
+ }
+ att('export-html','m1','text/html',{filename:'page.html'});const html='<script>parent.location="https://evil.test"</script>';r2.set('att/export-html',new TextEncoder().encode(html));
+ const active=await ask('/api/attachments/export-html/export',{method:'POST',headers:W,body:{}});assert.equal(active.status,200);assert.equal(active.headers.get('content-type'),'application/octet-stream');assert.match(active.headers.get('content-security-policy'),/^sandbox;/);assert.equal(await active.text(),html);
+ assert.equal((await ask('/api/attachments/a-svg')).status,403);assert.equal((await ask('/api/attachments/a-pdf')).status,403);
+ for(const options of [{},{origin:'https://evil.test',headers:W},{env:base,headers:W},{site:'cross-site',headers:W},{headers:{...W,Cookie:''}}]){
+  const r=await ask('/api/attachments/a-pdf/export',{method:'POST',body:{},...options});assert.ok([401,403].includes(r.status),JSON.stringify(options));
+ }
+ assert.equal((await ask('/api/attachments/missing/export',{method:'POST',headers:W,body:{}})).status,404);
+ sql.prepare('UPDATE attachments SET size=? WHERE id=?').run(25*1024*1024+1,'a-pdf');
+ assert.equal((await ask('/api/attachments/a-pdf/export',{method:'POST',headers:W,body:{}})).status,413);
+ sql.prepare('UPDATE attachments SET size=4 WHERE id=?').run('a-pdf');
+ assert.deepEqual(sql.prepare("SELECT v FROM meta WHERE k='v'").get(),before,'export does not mutate mailbox version');
+});

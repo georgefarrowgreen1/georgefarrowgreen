@@ -2,12 +2,12 @@
 import { cleanRoute } from "./routes-geometry.js";
 let generation = 0, revision = 0;
 const cache = /* @__PURE__ */ new Map(), pending = /* @__PURE__ */ new Map();
-async function call(path, { method = "GET", body, signal, wait = 3e4 } = {}) {
+async function call(path, { method = "GET", body, signal, owner, wait = 3e4 } = {}) {
   const abort = new AbortController(), cancel = () => abort.abort(), timer = setTimeout(cancel, wait);
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   try {
-    const r = await fetch("/api/fitness/routes/" + path, { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : void 0, signal: abort.signal, cache: "no-store" });
+    const r = await fetch("/api/fitness/routes/" + path, { method, credentials: "same-origin", headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(owner ? {"X-Inflite-Route-Owner":owner} : {}) }, body: body ? JSON.stringify(body) : void 0, signal: abort.signal, cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new Error(j.error || "Routes could not be loaded. Please try again."), { status: r.status });
     return j;
@@ -32,7 +32,7 @@ async function readRoutePlan(owner, { force = false, signal } = {}) {
   const hit = cache.get(owner);
   if (!force && hit && Date.now() - hit.at < 3e4) return hit.plan;
   if (!force && pending.has(owner)) return pending.get(owner);
-  const gen = generation, rev = revision, p = call("plan", { signal }).then((j) => {
+  const gen = generation, rev = revision, p = call("plan", { signal, owner }).then((j) => {
     const plan = check(j.plan);
     if (gen === generation && rev === revision) {
       cache.clear();
@@ -50,7 +50,7 @@ async function readRoutePlan(owner, { force = false, signal } = {}) {
 async function saveRoutePlan(owner, plan, { signal } = {}) {
   const gen = generation;
   revision++;
-  const r = await call("plan", { method: "PUT", body: plan, signal });
+  const r = await call("plan", { method: "PUT", body: plan, signal, owner });
   const saved = check(r.plan);
   if (!saved) throw Error("The saved route could not be read. Please try again.");
   if (gen === generation) {
@@ -62,7 +62,7 @@ async function saveRoutePlan(owner, plan, { signal } = {}) {
 async function removeRoutePlan(owner, planToRemove, { signal } = {}) {
   const gen = generation;
   revision++;
-  const r = await call("plan", { method: "DELETE", body: { id: planToRemove.route.id, version: planToRemove.version }, signal });
+  const r = await call("plan", { method: "DELETE", body: { id: planToRemove.route.id, version: planToRemove.version }, signal, owner });
   const plan = check(r.plan);
   if (gen === generation) {
     cache.clear();

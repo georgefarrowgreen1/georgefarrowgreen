@@ -29,17 +29,18 @@ function trackStats(coords) {
   return { metres: Math.round(metres), ascent: elevation ? Math.round(ascent) : null, elevation };
 }
 function cleanRoute(r) {
-  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !["road", "mixed"].includes(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < 10 || r.coords.length > MAX_POINTS) return null;
+  const imported = r?.source === "imported-gpx";
+  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !["road", "mixed"].includes(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < (imported ? 2 : 10) || r.coords.length > MAX_POINTS) return null;
   const coords = [];
   for (const c of r.coords) {
     if (!pointOK(c) || c.length > 3 || c[2] != null && (!Number.isFinite(c[2]) || c[2] < -500 || c[2] > 1e4)) return null;
     coords.push([c[0], c[1], Number.isFinite(c[2]) ? c[2] : null]);
   }
   const stats = trackStats(coords), snap = metresBetween(r.start, coords[0]);
-  if (stats.metres < 1e3 || stats.metres > 22e4 || metresBetween(coords[0], coords.at(-1)) > 25 || snap > 250) return null;
+  if (stats.metres < (imported ? 100 : 1e3) || stats.metres > (imported ? 5e5 : 22e4) || !imported && metresBetween(coords[0], coords.at(-1)) > 25 || snap > (imported ? 1 : 250)) return null;
   for (let i = 1; i < coords.length; i++) if (metresBetween(coords[i - 1], coords[i]) > 2500) return null;
-  const planning=Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
-  return { ...planning,id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), provider: "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+  const planning=!imported&&Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
+  return { ...planning,id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
 }
 const shapes = /* @__PURE__ */ new WeakMap();
 function geometry(route) {
@@ -64,7 +65,7 @@ function profile(route) {
 const xml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
 function toGPX(route) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="InFlite Fitness" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${xml(route.name)}</name><desc>Cycling route calculated by BRouter using OpenStreetMap contributors (ODbL). Access and conditions can change.</desc></metadata><trk><name>${xml(route.name)}</name><trkseg>${route.coords.map(([lon, lat, ele]) => `<trkpt lat="${lat}" lon="${lon}">${ele == null ? "" : `<ele>${ele}</ele>`}</trkpt>`).join("")}</trkseg></trk></gpx>`;
+<gpx version="1.1" creator="InFlite Fitness" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${xml(route.name)}</name><desc>${route.source === "imported-gpx" ? "Route imported from a GPX file. Road access and suitability have not been checked." : "Cycling route calculated by BRouter using OpenStreetMap contributors (ODbL). Access and conditions can change."}</desc></metadata><trk><name>${xml(route.name)}</name><trkseg>${route.coords.map(([lon, lat, ele]) => `<trkpt lat="${lat}" lon="${lon}">${ele == null ? "" : `<ele>${ele}</ele>`}</trkpt>`).join("")}</trkseg></trk></gpx>`;
 }
 export {
   MAX_POINTS,

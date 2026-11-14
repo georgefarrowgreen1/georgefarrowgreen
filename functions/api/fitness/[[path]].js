@@ -93,6 +93,10 @@ async function view(env, u, since = null, { today = false, tz = null, t = Date.n
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
+function routeOwner(request, user) {
+  const expected = request.headers.get("X-Inflite-Route-Owner");
+  if (expected !== null && (!/^[A-Za-z0-9_-]{1,128}$/.test(expected) || expected !== user.id)) throw new HttpError(401, "Your account changed. Refresh Fitness before continuing.", "session");
+}
 const routing = new Set();
 const ROUTES = {
   "GET rhythm2": async ({request,env}) => {const u=await signedIn(request,env);return json({records:await trainingRecords(env,u.id)});},
@@ -114,17 +118,22 @@ const ROUTES = {
   },
   "GET routes/plan": async ({ request, env }) => {
     const u = await signedIn(request, env);
+    routeOwner(request, u);
     return json({ plan: await routePlan(env, u.id) });
   },
   "PUT routes/plan": async ({ request, env }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 768 * 1024);
+    const u = await signedIn(request, env);
+    routeOwner(request, u);
+    const b = await body(request, 768 * 1024);
     await pace(env, `fxrouteplan:${u.id}`, 60, 3600e3);
     return json({ plan: await saveRoutePlan(env, u.id, b) });
   },
   "DELETE routes/plan": async ({ request, env }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 1024);
+    const u = await signedIn(request, env);
+    routeOwner(request, u);
+    const b = await body(request, 1024);
     if (typeof b.id !== 'string' || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(b.id) || !UUID_RE.test(b.version || '')) throw new HttpError(400, "Choose the route to remove.");
     await pace(env, `fxrouteplan:${u.id}`, 60, 3600e3);
     await dropRoutePlan(env, u.id, { expected: b.id, version: b.version });

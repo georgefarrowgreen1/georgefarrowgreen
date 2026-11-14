@@ -433,22 +433,22 @@ test("degrade(): a page of the hub whose Worker can't serve the apps yet links t
   assert.equal(p.hub.degrade({ chat: "https://chat.inflite.ai", weather: "https://weather.inflite.ai", fitness: "https://fitness.inflite.ai", finance: "https://finance.inflite.ai", email: "javascript:x" }), true);
   assert.equal(p.hub.degraded, true);
   assert.equal(p.hub.on, true);
-  const map = { "/weather/#radar": "https://weather.inflite.ai/#radar", "/fitness/#activities": "https://fitness.inflite.ai/#activities", "/markets/#s=TSCO": "https://finance.inflite.ai/#s=TSCO",
-    "/chats/#open=abc": "https://chat.inflite.ai/#open=abc", "/mail/": "https://email.inflite.ai/", "/weather/?lat=1&lon=2": "https://weather.inflite.ai/?lat=1&lon=2",
-    "https://weather.inflite.ai/#radar": "https://weather.inflite.ai/#radar", "/#apps": "/#apps", "/": "/", "https://account.inflite.ai/": "https://account.inflite.ai/" };
+  const map = { "/weather/#radar": "https://inflite.ai/weather/#radar", "/fitness/#activities": "https://inflite.ai/fitness/#activities", "/markets/#s=TSCO": "https://inflite.ai/markets/#s=TSCO",
+    "/chats/#open=abc": "https://inflite.ai/chats/#open=abc", "/mail/": "https://inflite.ai/mail/", "/weather/?lat=1&lon=2": "https://inflite.ai/weather/?lat=1&lon=2",
+    "https://weather.inflite.ai/#radar": "https://inflite.ai/weather/#radar", "/#apps": "/#apps", "/": "/", "https://account.inflite.ai/": "https://account.inflite.ai/" };
   for (const [from, to] of Object.entries(map)) assert.equal(p.hub.go(from), to, from);
-  assert.equal(p.hub.href("weather", "radar"), "https://weather.inflite.ai/#radar");
-  assert.equal(p.hub.href("markets", "s=TSCO"), "https://finance.inflite.ai/#s=TSCO");
+  assert.equal(p.hub.href("weather", "radar"), "https://inflite.ai/weather/#radar");
+  assert.equal(p.hub.href("markets", "s=TSCO"), "https://inflite.ai/markets/#s=TSCO");
   const nav = p.hub.tabs(p.doc.createElement("nav"), "today");
-  assert.deepEqual(nav.children.map((a) => a.getAttribute("href")), ["/", "https://chat.inflite.ai/", "/#apps", "/#you"]);
+  assert.deepEqual(nav.children.map((a) => a.getAttribute("href")), ["/", "https://inflite.ai/chats/", "/#apps", "/#you"]);
   assert.equal(await p.hub.chat(), null);
   assert.equal(await p.hub.send("London today: rain", "eyJ2IjoxfQ"), true);
-  assert.deepEqual(p.assigned, ["https://chat.inflite.ai/#share=London%20today%3A%20rain&card=eyJ2IjoxfQ"]);
+  assert.deepEqual(p.assigned, ["https://inflite.ai/chats/#share=London%20today%3A%20rain&card=eyJ2IjoxfQ"]);
   assert.equal(p.hub.signIn(), false);
   assert.equal(p.store.has("ifl-crumb"), false, "no breadcrumb for another site's page");
   // (no links given: <app>.<site>, the staging hub's next. taken off, a test's site with its port)
   assert.equal((() => { const q = page("http://ifl.test:8788/", { marker: "/" }); q.hub.degrade(); return q.hub.go("/weather/#radar"); })(), "http://weather.ifl.test:8788/#radar");
-  assert.equal((() => { const q = page("https://next.inflite.ai/", { marker: "/" }); q.hub.degrade(); return q.hub.href("chat"); })(), "https://chat.inflite.ai/");
+  assert.equal((() => { const q = page("https://next.inflite.ai/", { marker: "/" }); q.hub.degrade(); return q.hub.href("chat"); })(), "https://inflite.ai/chats/");
   // (off the hub: nothing to degrade)
   assert.equal(page("https://weather.inflite.ai/").hub.degrade(), false);
 });
@@ -583,7 +583,7 @@ test("a notification tapped while a page is open: heard, it says so on the worke
   p = page("https://inflite.ai/", { marker: "/" }); p.hub.degrade(); a = port();
   p.message({ ifl: "open", url: "/chats/#open=abc" }, [a]);
   assert.deepEqual(a.got, [{ ifl: "opened" }]);
-  assert.deepEqual(p.assigned, ["https://chat.inflite.ai/#open=abc"]);
+  assert.deepEqual(p.assigned, ["https://inflite.ai/chats/#open=abc"]);
   // (another site's, or no word for this layer: no answer, so the worker goes its own way)
   for (const data of [{ ifl: "open", url: "//evil.example/" }, { ifl: "open", url: "https://evil.example/" }, { inflight: "sync" }]) {
     p = page("https://inflite.ai/", { marker: "/" }); a = port();

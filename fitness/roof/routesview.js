@@ -17,6 +17,6 @@ export function view(el, ctx) {
       onBusy:on=>c.hold(hold,on), onSaved:()=>ctx.refreshRoute?.(), onToday:()=>ctx.fw.nav.section('today')});
     return real;
   };
-  const openPending = () => { const plan=ctx.routeToOpen;if(plan){ctx.routeToOpen=null;make().open(plan.route,plan);} };
+  const openPending = () => { const plan=ctx.routeToOpen;if(plan){ctx.routeToOpen=null;make().open(plan.route,plan.imported ? undefined : plan);} };
   return { draw(){make().draw();openPending();},resume(){make().resume();openPending();},hide(){real?.hide();},destroy(){real?.destroy();real=null;} };
 }

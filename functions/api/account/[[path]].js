@@ -1,3 +1,4 @@
+import { publicApp } from "../../_canonical.js";
 // The account's own API, for its page at account.inflite.ai (functions/_acctapp.js), and only there:
 //   GET  /api/account/me              who's signed in: the profile, email, passkeys, signed-in devices, preferences, the apps
 //   (signing in and out, and the profile: functions/_accountapi.js)
@@ -54,6 +55,8 @@ import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
 import { FILES_ROUTES } from "../../_filesapp.js";
 import { exportFiles } from "../../_files.js";
+import { WORKSPACE_ROUTES } from "../../_workspacesapp.js";
+import { exportWorkspaces } from "../../_workspaces.js";
 import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today.js";
 import { snapshotOf } from "../../_fittoday.js";
 import { avatarKey } from "../../_profile.js";
@@ -384,9 +387,9 @@ const resetMail = (env, request, u, token, { to = u.email, line = "someone asked
   pill: ["link", "Works once, for 1 hour"], rows: [["Asked from", whereFrom(request), "phone"]],
   button: { label: "Choose a new password", url: `${authOf(request, env)}/#reset=${token}` } }, linkOrigin(request));
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
-const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin.replace("//auth.", "//account.") : ACCOUNT_APP);
+const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin.replace("//auth.", "//account.") : publicApp("account", env, request));
 // (a reset link's: the sign-in page's, where it's asked for)
-const authOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : AUTH_APP);
+const authOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : publicApp("auth", env, request));
 const saltOk = (s) => { const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || "")); return !!m && fromB64url(m[2]).length === 16; };
 const tokenOk = (s) => /^[A-Za-z0-9_-]{40,50}$/.test(String(s || ""));
 // (a sign-in an app handed over (handoff), which hasn't shown it's you here: refused, and asked to)
@@ -416,6 +419,7 @@ const ROUTES = {
   ...MAIL_ROUTES,
   ...TODAY_ROUTES,
   ...FILES_ROUTES,
+  ...WORKSPACE_ROUTES,
   // InFlite Today's version, for its About sheet here: asked of inflite.ai as the sheet opens, never as the page loads
   "GET apps/today-build": async ({ request, env }) => {
     await signedIn(request, env);
@@ -1054,6 +1058,7 @@ const ROUTES = {
       // (InFlite Today: the cards' order and those hidden, its morning notification, and how many devices it's on)
       today,
       files: { items: await exportFiles(env, u.id), note: "File contents can be downloaded from InFlite Files." },
+      workspaces: await exportWorkspaces(env, u.id),
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

@@ -234,7 +234,7 @@ test('stage 2, app.js: each module’s old worker at its own path let go of once
   const { REGISTRY } = await import(new URL('today/public/roof/router.js', IFL));
   assert.equal(REGISTRY.markets?.link, 'finance', 'Markets on its own: links.finance');
   assert.equal(REGISTRY.fitness?.link, undefined, 'Fitness on its own: links.fitness (its name)');
-  assert.match(js, /finance: at\("finance"\)/, 'DEFAULT_LINKS has finance');
+  assert.match(js, /finance: "markets"/, 'DEFAULT_LINKS has finance');
 });
 
 // ---- stage 3 HOST (roof/s3/spec.md §4.2, S3-D6, S3-D8, S3-D12, S3-D14; risk I3, I4, I11; build I5): Today with Chats in

@@ -59,7 +59,7 @@ function rig({ me = { displayName: 'George', defaultFrom: 'hello@inflite.ai', id
   const calls = [], toasts = [], sheets = [], navs = [], confirms = [];
   const rec = (name, answer) => (...a) => { calls.push([name, ...a]); return typeof answer === 'function' ? answer(...a) : Promise.resolve(answer); };
   const fw = {
-    ui, app: 'mail', toast: (t) => toasts.push(t), theme: () => 'light', on: () => () => {}, lazy: (fn) => Promise.resolve(fn()),
+    ui, app: 'mail', session:{user:{id:'george'}}, signal:new AbortController().signal, toast: (t) => toasts.push(t), theme: () => 'light', on: () => () => {}, lazy: (fn) => Promise.resolve(fn()),
     nav: { go: (p) => navs.push(p), section: (s) => navs.push(`section:${s}`) },
     sheet: {
       open(spec) {
@@ -533,4 +533,27 @@ test('reader: Mail on Your Day’s strip above the messages, as Mail’s own pag
   assert.equal(text(again.querySelector('.mr-spot-state')), 'Not on Your Day', 'drawn again from Mail’s answer');
   assert.ok(again.querySelector('[data-act=back]') && !again.querySelector('[data-act=wrong]'), 'Put It Back');
   v.destroy();
+});
+
+test('reader: Save to Files explicitly exports PDF bytes and abandons delayed account/thread/access results', {skip}, async()=>{
+ for(const change of [null,'account','thread','access','hide']){
+  let release;const bytes=new Promise(resolve=>release=resolve),saves=[],exports=[];
+  const message={id:'save-msg',threadId:'save-thread',folder:'inbox',from:{name:'Pat',email:'pat@example.test'},to:[],date:Date.now(),subject:'Trip',unread:false};
+  const attachment={id:'save-pdf',filename:'Ticket.pdf',type:'application/pdf',size:4};
+  const r=rig({api:{thread:async()=>({id:'save-thread',subject:'Trip',messages:[message]}),meta:async()=>({...message,attachments:[attachment]}),picture:async(id,options)=>{exports.push({id,options});return bytes;}}});
+  r.ctx.fw.workspace={files:{save:async(file,options)=>{saves.push({file,options});return{id:'committed'};}}};
+  r.store.set({access:'ok',threadId:'save-thread',list:{rows:[{id:'save-thread',latestId:'save-msg',from:message.from,date:message.date}],more:false,loading:false,err:null}});
+  const host=ui.el('section',{class:'ml-reader'}),view=M.reader.view(host,r.ctx);view.draw();await tick(10);view.draw();await tick(4);
+  assert.deepEqual(exports,[],'PDF is never fetched as a preview');
+  host.querySelector('[data-act=save-drive]').dispatch('click');await tick(2);
+  assert.deepEqual(exports,[{id:'save-pdf',options:{export:true}}]);
+  if(change==='account')r.ctx.fw.session.user.id='other';
+  if(change==='thread')r.store.set({threadId:null});
+  if(change==='access')r.store.set({access:'reauth'});
+  if(change==='hide')view.hide();
+  release(new Blob(['%PDF'],{type:'application/octet-stream'}));await tick(5);
+  assert.equal(saves.length,change?0:1,change||'current');
+  if(!change){assert.equal(saves[0].file.name,'Ticket.pdf');assert.equal(saves[0].file.type,'application/pdf');assert.equal(await saves[0].file.text(),'%PDF');assert.equal(saves[0].options.current(),true);assert.ok(r.toasts.includes('Saved to InFlite Files'));}
+  view.destroy();
+ }
 });

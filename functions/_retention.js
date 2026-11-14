@@ -239,7 +239,7 @@ export async function housekeeping(env, D, t, origin) {
 // app's share of it is its tables' share of what's in them, so an estimate; the files' sizes are exact)
 const ACCOUNT_TABLES = new Set(["pg_users", "pg_sessions", "pg_passkeys", "pg_challenges", "pg_resets", "pg_handoff", "pg_handback", "pg_handles_held",
   "pg_invites", "pg_events", "pg_limits", "pg_errors", "pg_admin_log", "pg_meta", "pg_active"]);
-export const appOfTable = (name) => name.startsWith("ifl_files_") ? "files" : name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
+export const appOfTable = (name) => name.startsWith("ifl_files_") ? "files" : name === "ifl_workspaces" ? "today" : name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
   : name.startsWith("pg_") ? "inflight" : "home";
 // (each store of files: its prefix, its app, and what's in it; Fitness's by where in it a file is)
 const STORES = [["pigeon/", "inflight", "photos"], ["pigeon-g/", "inflight", "group"], ["pigeon-avatars/", "account", "avatars"],

@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.35";
-export const NEWS = "Workout files and flexible ride workspaces";
+export const BUILD = "2.36";
+export const NEWS = "Files and imported routes";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -112,6 +112,14 @@ export async function mount(root, fw) {
     presenting = true;
     const batch = uploads[0];
     try {
+      if (batch.got.routes?.length) {
+        const routes = await fw.lazy((q) => import("./route-files.js" + (q || "")));
+        if (owned(batch.owner) && onScreen && routes.reviewRoutes(ctx, batch.got.routes, () => owned(batch.owner) && onScreen)) {
+          batch.got.routes = [];
+          if (!batch.got.acts.length && !batch.got.skipped.length && !batch.got.dupes) uploads = uploads.filter(x => x !== batch);
+        }
+        return;
+      }
       const m = loaded.acts || await L.acts();
       if (!owned(batch.owner)) return;
       loaded.acts = m;
@@ -130,26 +138,38 @@ export async function mount(root, fw) {
     batches++;
     fw.toast(`Reading ${files.length === 1 ? "1 file" : `${files.length} files`}…`);
     try {
-      const got = await core.importFiles(files);
-      if (!owned(owner)) return;
+      const got = files.some(f => /\.gpx$/i.test(f.name))
+        ? await (await fw.lazy((q) => import("./route-files.js" + (q || "")))).importFiles(ctx, files, () => owned(owner))
+        : await core.importFiles(files);
+      if (!owned(owner) || !got) return;
       uploads.push({ owner, got });
       await presentUploads();
     } finally { batches--; }
   };
+  ctx.importFiles = take;
   picker.addEventListener("change", () => { const f = [...picker.files]; picker.value = ""; take(f); });
   const choose = () => { picker.value = ""; picker.click(); };
   setPicker(choose);
 
   // ---- a drop on Fitness's screen (Files only), and none anywhere else while it shows ----
   const screen = fw.screenEl || root;
+  const driveDrop = event => !!fw.workspace?.files?.fromDrop && [...(event.dataTransfer?.types || [])].includes("application/x-inflite-files-token");
+  const acceptsDrop = event => hasFiles(event) || driveDrop(event);
   let depth = 0;
   const lit = (v) => root.classList.toggle("fx-drop-on", v);
-  const enter = (e) => { if (!hasFiles(e) || !S.me) return; e.preventDefault(); depth++; lit(true); };
-  const over = (e) => { if (hasFiles(e)) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; } };
-  const leave = (e) => { if (!hasFiles(e)) return; if (--depth <= 0) { depth = 0; lit(false); } };
-  const drop = (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; lit(false); take(e.dataTransfer.files); };
+  const enter = (e) => { if (!acceptsDrop(e) || !S.me) return; e.preventDefault(); depth++; lit(true); };
+  const over = (e) => { if (acceptsDrop(e)) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; } };
+  const leave = (e) => { if (!acceptsDrop(e)) return; if (--depth <= 0) { depth = 0; lit(false); } };
+  const drop = async (e) => {
+    if (!acceptsDrop(e)) return; e.preventDefault(); e.stopPropagation(); depth = 0; lit(false);
+    if (!driveDrop(e)) return take(e.dataTransfer.files);
+    const owner = S.me?.id, current = () => owned(owner) && onScreen;
+    if (!current()) return;
+    try { const files = await fw.workspace.files.fromDrop(e.dataTransfer, { accept: ACCEPT, current }); if (current() && files?.length) await take(files); }
+    catch (error) { if (current() && error?.name !== "AbortError") fw.toast(error?.message || "Those files couldn’t be opened."); }
+  };
   for (const [t, f] of [["dragenter", enter], ["dragover", over], ["dragleave", leave], ["drop", drop]]) screen.addEventListener(t, f);
-  const refuse = (e) => { if (hasFiles(e)) e.preventDefault(); };
+  const refuse = (e) => { if (acceptsDrop(e)) e.preventDefault(); };
   let guarded = false;
   const guard = (v) => {
     if (v === guarded) return;
@@ -242,7 +262,7 @@ export async function mount(root, fw) {
   // the header line: today's plan; Activities, this year's; Progress, fitness and form
   const lineOf = (id) => {
     if (!S.me) return S.loading ? "Loading…" : "";
-    if (id === "routes") return "Loops from your location";
+    if (id === "routes") return "Your routes and cycling loops";
     if (id === "activities") { const y = new Date().getFullYear(), n = S.acts.filter((a) => new Date(a.start).getFullYear() === y).length; return `${n} this year`; }
     if (id === "progress") { const f = S.acts.length ? core.fitnessSeries().at(-1) : null; return f ? `Fitness ${Math.round(f.ctl)} · Form ${core.signed(f.tsb)}` : "Your fitness, as your rides come in"; }
     const T = core.TODAY, done = core.actsOn(T), pid = core.plannedOn(T), w = pid && pid !== "event" ? core.wkById(pid) : null;
@@ -257,7 +277,12 @@ export async function mount(root, fw) {
     const name = SECTIONS.find(([k]) => k === shown)?.[1] || "Fitness", line = lineOf(shown);
     fw.header.set({
       title: name, compactTitle: line ? (/^Fitness\b/.test(line) ? line : `Fitness · ${line}`) : "Fitness", pick: null, line,
-      acts: [{ icon: "upload", label: "Add Files", run: choose }, { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
+      acts: [{ icon: "upload", label: "Add Files", run: choose }, ...(fw.workspace?.files?.open ? [{ icon: "folder", label: "Open from InFlite Files", run: async () => {
+        const owner = S.me?.id, current = () => owned(owner) && onScreen;
+        if (!current()) return;
+        try { const files = await fw.workspace.files.open({ title: "Import to Fitness", accept: ACCEPT, multiple: true, current }); if (current() && files?.length) await take(files); }
+        catch (error) { if (current() && error?.name !== "AbortError") fw.toast(error?.message || "Those files couldn’t be opened."); }
+      } }] : []), { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
     });
   };
   // (one redraw a frame however many events come; and Activities drawn again only for what it shows, never for the plan,

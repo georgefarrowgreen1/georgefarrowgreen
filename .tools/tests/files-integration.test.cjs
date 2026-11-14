@@ -13,36 +13,37 @@ const {resolve}=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {Module}=require('node:module');
 const ROOT=resolve(__dirname,'../..'),IFL=resolve(ROOT,'../inflite');
-const ORIGIN='https://os.inflite.ai';
+const ORIGIN='https://inflite.ai';
 const BROWSER=process.env.WEB_UI_BROWSER||process.env.WORKSPACE_UI_BROWSER||'chromium';
 process.env.WORKSPACE_UI_BROWSER=BROWSER;
-let backend,accounts,filesAPI,os,startOS,downloadServer,downloadProxy,proxyURL,certificateDir,chatIDs;
+let backend,accounts,filesAPI,workspacesAPI,os,startOS,downloadServer,downloadProxy,proxyURL,certificateDir,chatIDs;
 const proxySockets=new Set();
 const fileStates=new Map(), nativeRequests=[];
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 before(async()=>{
-  const {createFilesBackend}=await import('./fixtures/files-backend.mjs');
+  const {createFilesBackend}=await import('./fixtures/os-next-backend.mjs');
   backend=await createFilesBackend();
   const {UID}=await import('./mocks/fitnessmock.mjs');({IDS:chatIDs}=await import('./unit/fixtures/chats.mjs'));
   accounts={a:await backend.session(UID),b:await backend.session('files_browser_owner_b')};
   ({filesAPI}=await import(pathToFileURL(resolve(IFL,'today/src/files.js'))));
+  ({workspacesAPI}=await import(pathToFileURL(resolve(IFL,'today/src/workspaces.js'))));
   // Native browser downloads can bypass Playwright's request interception. A
   // real private HTTPS listener therefore serves every unmodified Root proxy
   // response, including ordinary fetch/XHR with genuine browser Cookie headers.
   certificateDir=mkdtempSync(resolve(tmpdir(),'inflite-files-tls-'));
-  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',resolve(certificateDir,'key.pem'),'-out',resolve(certificateDir,'cert.pem'),'-subj','/CN=os.inflite.ai','-addext','subjectAltName=DNS:os.inflite.ai','-days','1'],{stdio:'ignore'});
+  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',resolve(certificateDir,'key.pem'),'-out',resolve(certificateDir,'cert.pem'),'-subj','/CN=inflite.ai','-addext','subjectAltName=DNS:inflite.ai','-days','1'],{stdio:'ignore'});
   downloadServer=createServer({key:readFileSync(resolve(certificateDir,'key.pem')),cert:readFileSync(resolve(certificateDir,'cert.pem'))},async(req,res)=>{
     const nativeRecord={url:req.url,cookie:!!req.headers.cookie};nativeRequests.push(nativeRecord);
-    const state=fileStates.get(req.headers.cookie?.match(/__Secure-account=([^;]+)/)?.[1]);
-    if(!req.url.startsWith('/api/files/')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
+    const state=fileStates.get('client:'+req.headers.cookie?.match(/fixture_context=([^;]+)/)?.[1])||fileStates.get(req.headers.cookie?.match(/__Secure-account=([^;]+)/)?.[1]);
+    if(!(req.url.startsWith('/api/files/')||req.url==='/api/workspaces')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
     const controller=new AbortController(),url=new URL(req.url,ORIGIN);
-    const record={url:url.href,action:url.pathname.slice('/api/files/'.length),method:req.method,owner:req.headers.cookie?.includes(accounts.b.cookie)?accounts.b.owner:accounts.a.owner,expectedOwner:req.headers['x-inflite-files-owner']||null,controller,status:null,cookiePresent:!!req.headers.cookie,bytes:0};state.fileRequests.push(record);state.fileControllers.set(req,controller);
+    const record={url:url.href,action:url.pathname==='/api/workspaces'?'workspaces':url.pathname.slice('/api/files/'.length),method:req.method,owner:req.headers.cookie?.includes(accounts.b.cookie)?accounts.b.owner:accounts.a.owner,expectedOwner:req.headers['x-inflite-files-owner']||null,controller,status:null,cookiePresent:!!req.headers.cookie,bytes:0};state.fileRequests.push(record);state.fileControllers.set(req,controller);
     req.on('aborted',()=>controller.abort());res.on('close',()=>{if(!res.writableFinished)controller.abort();});
     try{
       const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?Buffer.concat(chunks):null;record.bytes=body?.length||0;
       if(req.headers['content-type']?.startsWith('application/json'))try{record.json=JSON.parse(body?.toString('utf8')||'{}');}catch{}
       await state.gateAt(record,'request');
-      const response=await filesAPI(new Request(url,{method:req.method,headers:req.headers,signal:controller.signal,...(body?{body}:{})}),proxyEnv());
+      const response=await (url.pathname==='/api/workspaces'?workspacesAPI:filesAPI)(new Request(url,{method:req.method,headers:req.headers,signal:controller.signal,...(body?{body}:{})}),proxyEnv());
       const bytes=Buffer.from(await response.arrayBuffer());record.status=response.status;
       if(response.headers.get('content-type')?.startsWith('application/json'))try{record.answer=JSON.parse(bytes.toString('utf8'));}catch{}
       await state.gateAt(record,'response');res.writeHead(response.status,Object.fromEntries(response.headers));res.end(bytes);
@@ -52,7 +53,7 @@ before(async()=>{
   await new Promise(resolve=>downloadServer.listen(0,'127.0.0.1',resolve));
   downloadProxy=createProxy((_req,res)=>{res.writeHead(403);res.end();});
   downloadProxy.on('connect',(req,socket,head)=>{
-    if(req.url!=='os.inflite.ai:443'){socket.destroy();return;}
+    if(req.url!=='inflite.ai:443'){socket.destroy();return;}
     const upstream=connect(downloadServer.address().port,'127.0.0.1',()=>{socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(head.length)upstream.write(head);socket.pipe(upstream);upstream.pipe(socket);});
     for(const peer of [socket,upstream]){proxySockets.add(peer);peer.on('close',()=>proxySockets.delete(peer));peer.on('error',()=>{socket.destroy();upstream.destroy();});}
   });
@@ -77,6 +78,9 @@ async function setupOS(){
   })();return startOS;
 }
 async function augmentFiles(ctx,state){
+  state.fixtureClient=require('node:crypto').randomUUID().replaceAll('-','');fileStates.set('client:'+state.fixtureClient,state);
+  await ctx.addCookies([{name:'fixture_context',value:state.fixtureClient,url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
+  await ctx.route(ORIGIN+'/api/workspaces',route=>route.continue());
   state.workerTransport=[];
   const workerAsset=request=>/\/(?:chats\/roof\/core\.js|kit\/fixtures\/chats\.mjs)/.test(request.url());
   ctx.on('request',request=>{if(workerAsset(request))state.workerTransport.push({event:'request',url:request.url(),headers:{origin:request.headers().origin,site:request.headers()['sec-fetch-site'],mode:request.headers()['sec-fetch-mode']},type:request.resourceType()});});
@@ -128,15 +132,21 @@ test('real Root Files proxy and real D1/R2 preserve binary bytes and private res
   const foreign=await filesAPI(proxyRequest(accounts.b,'GET','content?id='+item.id),proxyEnv());assert.equal(foreign.status,404);
 });
 
-test('actual Explorer uploads/downloads exact bytes, renames, moves and deletes real Drive objects',async()=>{
+test('actual Explorer uploads/downloads exact bytes, renames, moves, restores and permanently deletes real Drive objects',async()=>{
   const t=await openFiles();const{page}=t;try{
     await folderUI(page,'Browser CRUD');await select(page,'Browser CRUD').dblclick();await page.getByRole('searchbox',{name:'Search Browser CRUD',exact:true}).waitFor();
     await folderUI(page,'Destination');const bytes=Buffer.from([0,255,128,0,13,10,42]);await uploadUI(page,'Roundtrip.bin',bytes);
     await select(page,'Roundtrip.bin').click();const download=page.waitForEvent('download');await page.locator('.ifx-inspector').getByRole('button',{name:'Download',exact:true}).click();const file=await download;try{assert.deepEqual(readFileSync(await file.path()),bytes);}catch(error){console.log('FILES DOWNLOAD DIAGNOSTIC',JSON.stringify({failure:await file.failure(),downloadURL:file.url(),nativeRequests,unknown:t.state.unknown,requests:t.state.fileRequests.map(({controller,...r})=>r),bridge:t.state.fileBridgeErrors,errors:t.errors,csp:await page.evaluate(()=>[__osCsp,__osRejected])}));throw error;}
     await action(page,'Roundtrip.bin','Rename');const rename=page.locator('dialog[data-sheet=files-rename][open]');await rename.getByRole('textbox',{name:'File name',exact:true}).fill('Renamed.bin');await rename.getByRole('button',{name:'Save name',exact:true}).click();await select(page,'Renamed.bin').waitFor();
     await action(page,'Renamed.bin','Move');const move=page.locator('dialog[data-sheet=files-move][open]');await move.getByRole('button',{name:'Browser CRUD',exact:true}).click();await move.getByRole('button',{name:'Destination',exact:true}).click();await move.getByRole('button',{name:'Move here',exact:true}).click();await move.waitFor({state:'detached'});await select(page,'Renamed.bin').waitFor({state:'detached'});
-    await select(page,'Destination').dblclick();await select(page,'Renamed.bin').waitFor();await action(page,'Renamed.bin','Delete');const remove=page.locator('dialog[data-sheet=files-delete][open]');await remove.getByRole('button',{name:'Delete',exact:true}).click();await remove.waitFor({state:'detached'});await select(page,'Renamed.bin').waitFor({state:'detached'});
-    const committed=t.state.fileRequests.find(r=>r.action==='content'&&r.method==='PUT'&&r.status===200)?.answer?.item;assert.ok(committed);assert.equal((await backend.api(accounts.a,'GET','item',undefined,{query:'?id='+committed.id})).status,404);
+    await select(page,'Destination').dblclick();await select(page,'Renamed.bin').waitFor();await action(page,'Renamed.bin','Move to Trash');let remove=page.locator('dialog[data-sheet=files-delete][open]');await remove.getByRole('button',{name:'Move to Trash',exact:true}).click();await remove.waitFor({state:'detached'});await select(page,'Renamed.bin').waitFor({state:'detached'});
+    const committed=t.state.fileRequests.find(r=>r.action==='content'&&r.method==='PUT'&&r.status===200)?.answer?.item;assert.ok(committed);
+    assert.equal((await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+committed.id})).status,404,'Trash stops private content downloads');
+    await page.locator('.ifx-location-list').getByRole('button',{name:'Trash',exact:true}).click();await select(page,'Renamed.bin').waitFor();await action(page,'Renamed.bin','Restore');await select(page,'Renamed.bin').waitFor({state:'detached'});
+    const restored=await filesAPI(proxyRequest(accounts.a,'GET','content?id='+committed.id),proxyEnv());assert.equal(restored.status,200);assert.deepEqual(new Uint8Array(await restored.arrayBuffer()),new Uint8Array(bytes));
+    await page.locator('.ifx-location-list').getByRole('button',{name:'My Drive',exact:true}).click();await select(page,'Browser CRUD').dblclick();await select(page,'Destination').dblclick();await select(page,'Renamed.bin').waitFor();await action(page,'Renamed.bin','Move to Trash');remove=page.locator('dialog[data-sheet=files-delete][open]');await remove.getByRole('button',{name:'Move to Trash',exact:true}).click();await remove.waitFor({state:'detached'});
+    await page.locator('.ifx-location-list').getByRole('button',{name:'Trash',exact:true}).click();await select(page,'Renamed.bin').waitFor();await action(page,'Renamed.bin','Delete forever');remove=page.locator('dialog[data-sheet=files-delete][open]');await remove.getByRole('button',{name:'Delete forever',exact:true}).click();await remove.waitFor({state:'detached'});await select(page,'Renamed.bin').waitFor({state:'detached'});
+    assert.equal((await backend.api(accounts.a,'GET','item',undefined,{query:'?id='+committed.id})).status,404);
     const metadata=await page.evaluate(()=>JSON.stringify({url:location.href,state:history.state,storage:{...localStorage,...sessionStorage}}));assert.doesNotMatch(metadata,/Browser CRUD|Destination|Roundtrip|Renamed|Proxy bytes/);await t.clean();
   }finally{await t.close();}
 });
@@ -315,7 +325,7 @@ test('full Files app collections use real Fitness exports and Mail metadata with
 test('actual private Files desktop and phone screenshots have no overflow or new accessibility violations',async()=>{
   const parent=await backend.folder(accounts.a,'Ride archive');await backend.folder(accounts.a,'Weekend routes',parent.id);
   await backend.uploaded(accounts.a,'Coast route notes.txt','Coast loop\nMeet at the café at09:00.\nBring lights and a spare tube.',{parentId:parent.id,mime:'text/plain'});
-  const dir=resolve(process.env.FILES_SCREENSHOTS||'/tmp/inflite-files-20261111/all-app-qa',BROWSER),report=[];
+  const dir=resolve(process.env.FILES_SCREENSHOTS||'/tmp/inflite-os-next-20261114/files-ui',BROWSER),report=[];
   const axeSource=readFileSync(require.resolve('axe-core/axe.min.js',{paths:[__dirname,IFL]}),'utf8');mkdirSync(dir,{recursive:true});
   // Initial contexts exercise each real preferred theme. WebKit's emulateMedia
   // override can leave inherited custom-property colors stale until a resize.
@@ -393,5 +403,41 @@ test('a cookie-only account swap cannot redirect an old Frame reader or writer i
     assert.doesNotMatch(await page.locator('body').innerText(),/Cookie replacement private folder/);
     const read=t.state.fileRequests.find(r=>r.action==='list'&&r.status===401);assert.equal(read.owner,accounts.b.owner);assert.equal(read.expectedOwner,accounts.a.owner);
     const after=await backend.api(accounts.b,'GET','list');assert.equal(after.value.usage.nodes,before.value.usage.nodes);assert.equal(after.value.items.some(item=>item.name==='Must stay out of owner B'),false);await t.clean();
+  }finally{await t.close();}
+});
+
+
+test('real Drive favourites, independent file copies, multi-selection and opaque folder drops preserve actual bytes and versions',async()=>{
+  const t=await openFiles();const{page}=t;try{
+    await folderUI(page,'Batch destination');
+    const a=Buffer.from('first private byte sequence'),b=Buffer.from([0,255,17,128]);
+    await uploadUI(page,'Batch first.bin',a);await uploadUI(page,'Batch second.bin',b);
+    const upload=name=>t.state.fileRequests.find(r=>r.method==='PUT'&&r.action==='content'&&r.answer?.item?.name===name)?.answer.item;
+    const first=upload('Batch first.bin'),second=upload('Batch second.bin');assert.ok(first&&second);
+    await action(page,'Batch first.bin','Add favourite');
+    await page.locator('.ifx-location-list').getByRole('button',{name:'Favourites',exact:true}).click();await select(page,'Batch first.bin').waitFor();
+    assert.equal(await select(page,'Batch second.bin').count(),0);
+    await action(page,'Batch first.bin','Remove favourite');await select(page,'Batch first.bin').waitFor({state:'detached'});
+    await page.locator('.ifx-location-list').getByRole('button',{name:'My Drive',exact:true}).click();await select(page,'Batch first.bin').waitFor();
+    await action(page,'Batch first.bin','Copy');const copy=page.locator('dialog[data-sheet=files-move][open]');
+    await copy.getByRole('textbox',{name:'Copy name',exact:true}).fill('Independent copy.bin');await copy.getByRole('button',{name:'Batch destination',exact:true}).click();await copy.getByRole('button',{name:'Copy here',exact:true}).click();await copy.waitFor({state:'detached'});
+    const copied=t.state.fileRequests.find(r=>r.method==='POST'&&r.action==='copy'&&r.status===200)?.answer?.item;assert.ok(copied);assert.notEqual(copied.id,first.id);
+    const copiedBytes=await filesAPI(proxyRequest(accounts.a,'GET','content?id='+copied.id),proxyEnv());assert.deepEqual(Buffer.from(await copiedBytes.arrayBuffer()),a);
+    await page.getByRole('button',{name:'Select files',exact:true}).click();
+    await page.getByRole('checkbox',{name:'Include Batch first.bin in selection',exact:true}).check();await page.getByRole('checkbox',{name:'Include Batch second.bin in selection',exact:true}).check();
+    const payload=await page.evaluate(()=>{
+      const rows=[...document.querySelectorAll('[data-file-key]')],source=rows.find(n=>n.querySelector('[aria-label="Select Batch first.bin"]')||n.getAttribute('aria-label')==='Select Batch first.bin'),target=rows.find(n=>n.querySelector('[aria-label="Select Batch destination"]')||n.getAttribute('aria-label')==='Select Batch destination');
+      if(!source||!target)throw Error('Actual Files drag rows were not rendered');
+      const data=new DataTransfer();source.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:data}));target.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));return{types:[...data.types],token:data.getData('application/x-inflite-files-token'),plain:data.getData('text/plain')};
+    });
+    assert.deepEqual(payload.types,['application/x-inflite-files-token']);assert.match(payload.token,/^[a-f0-9]{32}$/);assert.equal(payload.plain,'');
+    await select(page,'Batch first.bin').waitFor({state:'detached'});await select(page,'Batch second.bin').waitFor({state:'detached'});
+    await select(page,'Batch destination').dblclick();await select(page,'Batch first.bin').waitFor();await select(page,'Batch second.bin').waitFor();await select(page,'Independent copy.bin').waitFor();
+    for(const[id,bytes]of[[first.id,a],[second.id,b]]){const content=await filesAPI(proxyRequest(accounts.a,'GET','content?id='+id),proxyEnv());assert.deepEqual(Buffer.from(await content.arrayBuffer()),bytes);}
+    await page.getByRole('button',{name:'Select files',exact:true}).click();await page.getByRole('checkbox',{name:'Include Batch first.bin in selection',exact:true}).check();await page.getByRole('checkbox',{name:'Include Batch second.bin in selection',exact:true}).check();
+    await page.getByRole('group',{name:'Selected files',exact:true}).getByRole('button',{name:'Move to Trash',exact:true}).click();const batch=page.locator('dialog[data-sheet=files-batch][open]');await batch.getByRole('button',{name:'Move to Trash',exact:true}).click();await batch.waitFor({state:'detached'});await select(page,'Batch first.bin').waitFor({state:'detached'});await select(page,'Batch second.bin').waitFor({state:'detached'});assert.equal(await select(page,'Independent copy.bin').count(),1);
+    await page.locator('.ifx-location-list').getByRole('button',{name:'Trash',exact:true}).click();await select(page,'Batch first.bin').waitFor();await select(page,'Batch second.bin').waitFor();
+    for(const id of[first.id,second.id])assert.equal((await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+id})).status,404);
+    const metadata=await page.evaluate(()=>JSON.stringify({url:location.href,state:history.state,storage:{...localStorage,...sessionStorage}}));assert.doesNotMatch(metadata,/Batch first|Batch second|Independent copy|Batch destination/);await t.clean();
   }finally{await t.close();}
 });

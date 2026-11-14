@@ -72,7 +72,7 @@ const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 1
 // Origin of its own, and a Shortcut sends none. The frame's link when it gives one; else as the frame's DEFAULT_LINKS
 // makes it (https://fitness.inflite.ai live; fitness.<host> elsewhere); Fitness's own page keeps its own.
 export function fitnessOrigin(fw, loc = location) {
-  try { const l = fw?.session?.links?.fitness; if (l) { const u = new URL(l); if (/^https?:$/.test(u.protocol)) return u.origin; } } catch (_) {}
+  try { const l = fw?.session?.links?.fitness; if (l) { const u = new URL(l); if (/^https?:$/.test(u.protocol) && /^fitness\./.test(u.hostname)) return u.origin; } } catch (_) {}
   if (/^fitness\./.test(loc.hostname)) return loc.origin;
   if (/(^|\.)inflite\.ai$/.test(loc.hostname)) return "https://fitness.inflite.ai";
   return `${loc.protocol}//fitness.${loc.hostname}${loc.port ? ":" + loc.port : ""}`;

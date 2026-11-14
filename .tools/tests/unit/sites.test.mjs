@@ -25,20 +25,20 @@ test('Chat’s API answers at its own address (not only at the addresses a test 
   const api = readFileSync(new URL('../../../functions/api/pigeon/[[path]].js', import.meta.url), 'utf8');
   assert.match(api, /const hostOk = \(h, env\) => HOSTS\.test\(h\) \|\| isChat\(\{ hostname: h \}, env\);/);
 });
-test('InFlite Today is at the apps’ site itself, and links to each app at its own address', () => {
+test('InFlite Today is at the apps’ site itself, and links directly to each app under its canonical origin', () => {
   assert.equal(todayOrigin({}), 'https://inflite.ai');
   assert.equal(todayOrigin({}, new Request('https://account.inflite.ai/api/account/today/me')), 'https://inflite.ai', 'production: never the request’s own');
   assert.equal(todayOrigin({}, new Request('https://gfg.georgefarrowgreen.workers.dev/x')), 'https://inflite.ai');
-  assert.deepEqual(todayLinks({}, null), { chat: 'https://chat.inflite.ai', weather: 'https://weather.inflite.ai', fitness: 'https://fitness.inflite.ai',
-    finance: 'https://finance.inflite.ai', account: 'https://account.inflite.ai', auth: 'https://auth.inflite.ai' });
+  assert.deepEqual(todayLinks({}, null), { chat: 'https://inflite.ai/chats', weather: 'https://inflite.ai/weather', fitness: 'https://inflite.ai/fitness',
+    finance: 'https://inflite.ai/markets', email: 'https://inflite.ai/mail', account: 'https://inflite.ai/account', auth: 'https://inflite.ai/auth' });
   // the tests' stood-in site, on the port the server's on
   const env = { APPS_SITE: 'ifl.test' }, req = new Request('http://account.ifl.test:8788/api/account/today/me');
   assert.equal(todayOrigin(env, req), 'http://ifl.test:8788');
   assert.equal(todayOrigin(env, 'http://account.ifl.test:8788/'), 'http://ifl.test:8788');
   assert.equal(todayOrigin(env), 'https://ifl.test', 'with no request (the About sheet’s ask): the site’s own, over https');
-  assert.equal(todayLinks(env, req).chat, 'http://chat.ifl.test:8788');
-  assert.equal(todayLinks(env, req).auth, 'http://auth.ifl.test:8788');
-  assert.equal(todayLinks(env, null).finance, 'https://finance.ifl.test');
+  assert.equal(todayLinks(env, req).chat, 'http://ifl.test:8788/chats');
+  assert.equal(todayLinks(env, req).auth, 'http://ifl.test:8788/auth');
+  assert.equal(todayLinks(env, null).finance, 'https://ifl.test/markets');
 });
 test('InFlite’s hub: its origins (HUB_ORIGINS, each exactly, else Today’s own), and the browser’s place only on the hub’s word (cfOf)', () => {
   assert.deepEqual(hubOrigins({}), ['https://inflite.ai']);

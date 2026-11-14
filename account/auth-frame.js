@@ -10,7 +10,7 @@ function el(tag, cls, children = [], props = {}) {
 }
 
 export function authScreen({ state, title, description, content, footer, back, destination, identity, mark, extra }) {
-  const brand = el("div", "signin-brand", [el("img", "", [], { src: "/inflite.svg?v=1", alt: "", width: 44, height: 44 }), "InFlite"]);
+  const brand = el("div", "signin-brand", [el("img", "", [], { src: (/^\/(auth|account)(?=\/|$)/.exec(globalThis.location?.pathname || "")?.[0] || "") + "/inflite.svg?v=1", alt: "", width: 44, height: 44 }), "InFlite"]);
   const intro = el("div", "signin-intro");
   if (destination) intro.append(el("div", "signin-destination", [
     destination.icon && el("img", "", [], { src: destination.icon, alt: "", width: 28, height: 28 }),

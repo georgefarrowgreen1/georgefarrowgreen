@@ -17,13 +17,13 @@ import { HttpError } from "./_http.js";
 
 // (the home page's address: the emails' pictures are kept there, and it stands for "this is production" below)
 export const SITE = "https://georgefarrowgreen.com";
-export const ACCOUNT_APP = "https://account.inflite.ai";
+export const ACCOUNT_APP = "https://inflite.ai/account";
 // (where every sign-in on the site happens: functions/_acctapp.js AUTH_HOST)
-export const AUTH_APP = "https://auth.inflite.ai";
+export const AUTH_APP = "https://inflite.ai/auth";
 // (where the apps' emails' pictures come from: inflite.ai, as they do; the home page's from its own site)
 export const APPS_PICS = ACCOUNT_APP;
 // the account's page, for links in emails (this site's, or a local test server's copy)
-export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
+export const accountLink = (origin = SITE) => (origin === SITE ? "https://inflite.ai/account" : origin + "/account");
 // Where links in emails point: this site, or a local test server. Never a
 // *.workers.dev or preview host (the notification tick runs through one).
 export function linkOrigin(request) {
@@ -72,7 +72,7 @@ export const BRANDS = {
     ink: "#2f5bd3", inkDark: "#9db7ff", btn: ["#5b86f0", "#2f5bd3"], glow: "rgba(47,91,211,.7)", pill: "#e9effd", pillDark: "#1c2a4f",
     sky: ["#e6ecf8", "#eff2f9", "#f7f8fc"], night: ["#16244a", "#0a1024", "#05060e"], card: "#151a2b", box: "#1f2539", sep: "#2c3450",
     art: { badge: "status/icon-180.png", ink: "#3a63d8", syms: ["warn"], tiles: { "warn-red": ["#ff7a6e", "#e5302a"], check: ["#4ad471", "#1f9d4b"] } },
-    foot: () => ({ line: "From the status checks, for the site’s owner", label: "Open the status page", url: "https://status.inflite.ai/" }),
+    foot: () => ({ line: "From the status checks, for the site’s owner", label: "Open the status page", url: "https://inflite.ai/status/" }),
   },
   // the site's own page (its contact form, to its owner)
   website: {

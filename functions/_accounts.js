@@ -8,11 +8,13 @@ import { dropFitness } from "./_fitness.js";
 import { dropMarkets } from "./_markets.js";
 import { dropToday } from "./_today.js";
 import { dropFiles } from "./_files.js";
+import { closeWorkspaces } from "./_workspaces.js";
 
 import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
 
 export async function removeAccount(env, id) {
+  await closeWorkspaces(env, id);
   // (what the site's other apps kept with the account first: should that fail, the account's still here to try again)
   await dropAccount(env, id);
   await dropFitness(env, id);
@@ -64,6 +66,7 @@ export async function removeAccount(env, id) {
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
     D.prepare("UPDATE pg_handles_held SET user_id = NULL WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM ifl_files_accounts WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM ifl_workspaces WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
 }

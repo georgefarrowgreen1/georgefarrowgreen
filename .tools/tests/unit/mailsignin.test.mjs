@@ -39,12 +39,13 @@ function signIn({ embed, hash = '', heard = embed }) {
     EMBED: embed, hubHeard: heard, crypto: globalThis.crypto, TextEncoder, btoa, URLSearchParams,
     window: { open: (...a) => (opened.push(a), null) },
     sessionStorage: { setItem: (k, v) => kept.set(k, String(v)), getItem: (k) => kept.get(k) ?? null, removeItem: (k) => kept.delete(k) },
-    location: { origin: 'https://email.inflite.ai', pathname: '/', search: '', hash, assign: (u) => went.push(u) },
+    location: { origin: 'https://email.inflite.ai', hostname: 'email.inflite.ai', pathname: '/', search: '', hash, assign: (u) => went.push(u) },
     history: { state: null, replaceState: (s, t, u) => replaced.push(u) },
     toHub: (m) => (told.push(JSON.parse(JSON.stringify(m))), true),
     api: { handback: async (code, verifier) => (handed.push([code, verifier]), { access: 'ok' }) },
   };
   const code = `let accountOrigin = "https://account.inflite.ai";
+    ${part(/\n {2}const MAIL_PAGE = .+;\n/, 'MAIL_PAGE')}
     ${part(/\n {2}const authOrigin = .+;\n/, 'authOrigin')}${part(/\n {2}const VERIFIER_KEY = .+;\n/, 'VERIFIER_KEY')}${part(/\n {2}const b64url = [\s\S]*?;\n/, 'b64url')}
     ${fn('goToAccount')}${fn('finishSignIn')} ({ goToAccount, finishSignIn, VERIFIER_KEY })`;
   return { ...vm.runInNewContext(code, ctx), kept, told, went, handed, replaced, opened };
@@ -66,7 +67,7 @@ test('in the hub’s frame: Sign In keeps its word in this tab, as ever, and ask
 test('in a frame no hub has answered (not the hub’s, or it can’t be heard): Mail on its own, in a window of its own, to sign in there', { skip: tfSkip }, async () => {
   const m = signIn({ embed: true, heard: false });
   assert.equal(await m.goToAccount(), false, 'no trip asked of a hub');
-  assert.deepEqual(m.opened, [['https://email.inflite.ai/', '_blank', 'noopener']], 'Mail at its own address, as Open Mail on Its Own opens it');
+  assert.deepEqual(m.opened, [['https://inflite.ai/mail/standalone/', '_blank', 'noopener']], 'Mail at its own address, as Open Mail on Its Own opens it');
   assert.deepEqual(m.told, [], 'nothing said to a hub that hasn’t answered');
   assert.deepEqual(m.went, [], 'the frame goes nowhere itself');
   assert.equal(m.kept.size, 0, 'no word made: it couldn’t go with it');
@@ -80,7 +81,7 @@ test('at its own address: the trip to the sign-in page as before, back to Mail',
   assert.deepEqual(m.opened, []);
   assert.equal(m.went.length, 1);
   const u = new URL(m.went[0]), p = new URLSearchParams(u.hash.slice(1));
-  assert.equal(u.origin, 'https://auth.inflite.ai');
+  assert.equal(u.origin, 'https://inflite.ai'); assert.equal(u.pathname, '/auth/');
   assert.deepEqual([p.get('signin'), p.get('ask'), p.get('back')], ['mail', hashOf(word), 'https://email.inflite.ai/']);
 });
 

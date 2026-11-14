@@ -613,7 +613,9 @@ const IFL = (() => {
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
+  const origin = (sub) => /(^|\.)inflite\.ai$/.test(location.hostname)
+    ? `https://inflite.ai${SUBS[sub]?.slice(0, -1) || "/" + sub}`
+    : links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -1103,7 +1105,8 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      if (/(^|\.)inflite\.ai$/.test(hostname)) return "https://inflite.ai";
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1229,8 +1232,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.05";            // shown in InFlite's menu
-const APP_NEWS = "Smoother window and page transitions";       // (said once it's in)
+const APP_VERSION = "2.06";            // shown in InFlite's menu
+const APP_NEWS = "Chats on InFlite";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1787,9 +1790,9 @@ function keptAdd() {
   try { const k = JSON.parse(localStorage.getItem("inflight-add") || "null"); if (k && /^[a-z0-9_]{3,20}$/.test(k.h) && Date.now() - k.at < DAY) return k.h; localStorage.removeItem("inflight-add"); } catch (_) {}
   return null;
 }
-const toAccount = (hash = "") => (accountPage() || "https://account.inflite.ai/") + hash;
+const toAccount = (hash = "") => (accountPage() || "https://inflite.ai/account/") + hash;
 // (signing in, making an account and signing out: on the sign-in page beside it, auth.<site>; locally, the account's)
-const toAuth = (hash = "") => { const p = accountPage() || "https://account.inflite.ai/"; return (/\.localhost[:/]/.test(p) ? p : p.replace("//account.", "//auth.")) + hash; };
+const toAuth = (hash = "") => { if (/(^|\.)inflite\.ai$/.test(location.hostname)) return "https://inflite.ai/auth/" + hash; const p = accountPage() || "https://inflite.ai/auth/"; return (/\.localhost[:/]/.test(p) ? p : p.replace("//account.", "//auth.")) + hash; };
 // (InFlite, whose one account signs you in to every app: its mark and name, over Sign in)
 const brandLine = `<p class="wbrand ifl-brand"><img src="inflite.svg" alt="" width="22" height="22">Powered by InFlite</p>`;
 const newHere = () => `<p class="wnew ifl-new"><a href="${esc(toAuth("#join"))}" data-act="acctjoin">Create an account</a></p>`;
@@ -4033,10 +4036,10 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 // The account's own page (account.<site>, beside chat.<site>), where your password, passkeys and devices are for every
 // app on the site; none where Chat's served at an address of another kind
-const accountPage = () => location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
+const accountPage = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai/account/" : location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
   // (at the hub, the account's page beside it: account.<site>, a deliberate pop-up)
   : HUB ? `${location.protocol}//account.${hubSite()}/`
-  : location.hostname === "georgefarrowgreen.com" ? "https://account.inflite.ai/"
+  : location.hostname === "georgefarrowgreen.com" ? "https://inflite.ai/account/"
   : /(^|\.)localhost$/.test(location.hostname) ? `${location.protocol}//account.localhost${location.port ? ":" + location.port : ""}/` : null;
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
@@ -7054,11 +7057,11 @@ function openLink(hash) {
    ("How's yours?"), and plans made together, which go to each person's Fitness to add. */
 const NO_SIGNAL = "No signal. Try again when you have some.";
 // another of the site's apps, beside Chat (chat.<site> → weather.<site>); none where Chat's at another kind of address
-const appOrigin = (name) => (/^chat\./.test(location.host) ? location.origin.replace("//chat.", `//${name}.`) : null);
+const appOrigin = (name) => /(^|\.)inflite\.ai$/.test(location.hostname) ? `https://inflite.ai/${name === "finance" ? "markets" : name}` : (/^chat\./.test(location.host) ? location.origin.replace("//chat.", `//${name}.`) : null);
 // (at the hub, the apps are its own pages, /weather/ and /markets/: the card's links are drawn for their own addresses,
 // then made the hub's paths, in the same window, by linkActs)
 const HUB_APP = { weather: "/weather/", finance: "/markets/" };
-const hubOwn = (name) => `${location.protocol}//${name}.${hubSite()}`;
+const hubOwn = (name) => /(^|\.)inflite\.ai$/.test(location.hostname) ? `https://inflite.ai${HUB_APP[name]?.slice(0, -1) || "/" + name}` : `${location.protocol}//${name}.${hubSite()}`;
 // (none to Weather on the weather where a friend is, at the hub or off it: its place is that friend's Chat place, and
 // Weather's address would carry it)
 const cardLinks = (c) => {

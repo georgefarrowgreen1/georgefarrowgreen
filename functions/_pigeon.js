@@ -10,6 +10,7 @@
 
 import { HttpError } from "./_http.js";
 import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
+import { publicApp } from "./_canonical.js";
 import { siteOf, homeSite, appsSite, appOrigin, hubOrigins, cfOf } from "./_sites.js";
 export { HttpError };
 
@@ -1133,7 +1134,7 @@ export function cleanPlace(b, approx = false) {
 
 // Where links into the app point: Chat's address (chat.inflite.ai), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
 // (The site's email, every app's, is functions/_email.js.)
-export const APP = "https://chat.inflite.ai";
+export const APP = "https://inflite.ai/chats";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
 
 /* ---------------- password resets ----------------
@@ -1195,13 +1196,13 @@ export function accountPage(request, env) {
   const u = new URL(typeof request === "string" ? request : request.url), port = u.port ? ":" + u.port : "";
   if (env?.ACCOUNT_SITE && siteOf(u.hostname, env)) return appOrigin("account", env, request);
   if (u.hostname === "localhost" || u.hostname.endsWith(".localhost")) return `${u.protocol}//account.localhost${port}`;
-  return ACCOUNT_APP;
+  return publicApp("account", env, request);
 }
 // (and to the sign-in page, where accounts are made and passwords reset: functions/_acctapp.js AUTH_HOST; locally, the
 // account's page, which does both there)
 export function authPage(request, env) {
   const page = accountPage(request, env);
-  return page === ACCOUNT_APP ? AUTH_APP : /\/\/account\.localhost(:|$)/.test(page) ? page : page.replace("//account.", "//auth.");
+  return page === publicApp("account", env, request) ? publicApp("auth", env, request) : /\/\/account\.localhost(:|$)/.test(page) ? page : page.replace("//account.", "//auth.");
 }
 export const resetUrl = (request, env, token) => `${authPage(request, env)}/#reset=${token}`;
 export function maskEmail(e) {

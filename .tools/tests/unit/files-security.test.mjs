@@ -88,6 +88,16 @@ async function reserve(f, name, size, { parentId = null, mime = 'text/plain', op
 async function uploaded(f, name = 'file.txt', content = 'hello', options = {}) { const item = await reserve(f, name, new TextEncoder().encode(content).length, options), r = await api(f, 'PUT', 'content', content, { query: '?id=' + item.id, headers: { 'Content-Type': 'application/octet-stream' } }); assert.equal(r.status, 200, JSON.stringify(r.value)); return r.value.item; }
 const metadata = value => assert.doesNotMatch(JSON.stringify(value), /storage_key|storageKey|upload_nonce|uploadNonce|operation_id|user_id|files\/files_test_/);
 
+test('an existing v1 drive migrates Trash/favourite fields without replacing owned files or quota',async()=>{
+ const D=await mf.getD1Database('DB');
+ await D.exec("CREATE TABLE ifl_files_accounts (user_id TEXT PRIMARY KEY,used INTEGER NOT NULL DEFAULT 0,reserved INTEGER NOT NULL DEFAULT 0,nodes INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1,closed INTEGER NOT NULL DEFAULT 0)");
+ await D.exec("CREATE TABLE ifl_files_nodes (user_id TEXT NOT NULL,id TEXT NOT NULL,parent_id TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,name TEXT NOT NULL,name_key TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL,created INTEGER NOT NULL,modified INTEGER NOT NULL,version INTEGER NOT NULL DEFAULT 1,operation_id TEXT NOT NULL,storage_key TEXT,upload_nonce TEXT,expires INTEGER,PRIMARY KEY(user_id,id),UNIQUE(user_id,parent_id,name_key),UNIQUE(user_id,operation_id))");
+ const f=await fixture(),id='L'.repeat(32);await D.prepare('INSERT INTO ifl_files_accounts (user_id,nodes) VALUES (?,1)').bind(f.owner).run();
+ await D.prepare("INSERT INTO ifl_files_nodes (user_id,id,kind,name,name_key,mime,state,created,modified,operation_id) VALUES (?,?,'folder','Legacy folder','legacy folder','inode/directory','ready',1,1,'legacy_operation_0001')").bind(f.owner,id).run();
+ const list=await api(f,'GET','list');assert.equal(list.status,200,JSON.stringify(list.value));assert.equal(list.value.items[0].id,id);assert.equal(list.value.items[0].name,'Legacy folder');assert.equal(list.value.usage.nodes,1);
+ const columns=await D.prepare('PRAGMA table_info(ifl_files_nodes)').all();for(const name of ['trash_at','trash_root','trash_parent','favourite'])assert.ok(columns.results.some(column=>column.name===name),name);
+});
+
 test('real cookie sessions and exact canonical Today origin protect private Files routes', async () => {
   const a = await fixture();
   assert.equal((await api(null, 'GET', 'list')).status, 401);
@@ -363,4 +373,71 @@ test('malformed names, oversized reservations and foreign references never becom
   assert.equal((await api(f, 'POST', 'uploads', { name: 'large', size: 25 * 1024 * 1024 + 1, operationId: operation() })).status, 413);
   assert.equal((await api(f, 'GET', 'item', undefined, { query: '?id=../secret' })).status, 400);
   assert.deepEqual((await api(f, 'GET', 'list')).value.items, []);
+});
+
+test('Trash restores an owned folder tree atomically, keeps quota charged and never serves trashed bytes',async()=>{
+ const f=await fixture(),root=await folder(f,'Archive'),child=await folder(f,'Nested',root.id),file=await uploaded(f,'Private.txt','private bytes',{parentId:child.id});
+ const fav=await api(f,'POST','favourite',{id:file.id,version:file.version,favourite:true});assert.equal(fav.status,200);assert.equal(fav.value.item.favourite,true);
+ const before=(await api(f,'GET','list')).value.usage;
+ const moved=await api(f,'POST','trash',{id:root.id,version:root.version});assert.equal(moved.status,200,JSON.stringify(moved.value));assert.equal(moved.value.count,3);
+ assert.equal((await api(f,'GET','list')).value.items.some(item=>item.id===root.id),false);
+ const trash=await api(f,'GET','list',undefined,{query:'?view=trash'});assert.equal(trash.value.items.length,1);assert.equal(trash.value.items[0].id,root.id);assert.deepEqual(trash.value.usage,before);metadata(trash.value);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+file.id})).status,404);
+ assert.equal((await api(f,'POST','uploads',{name:'late.txt',size:1,mime:'text/plain',parentId:child.id,operationId:operation()})).status,404);
+ const collision=await folder(f,'Archive');const stale=await api(f,'POST','restore',{id:root.id,version:root.version});assert.equal(stale.status,409);
+ assert.equal((await api(f,'POST','restore',{id:root.id,version:moved.value.item.version})).status,409);
+ assert.equal((await api(f,'DELETE','item',undefined,{query:'?id='+collision.id+'&version='+collision.version})).status,200);
+ const restored=await api(f,'POST','restore',{id:root.id,version:moved.value.item.version});assert.equal(restored.status,200,JSON.stringify(restored.value));assert.equal(restored.value.count,3);assert.equal(restored.value.item.trashedAt,undefined);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+file.id})).value,'private bytes');
+ const favourites=await api(f,'GET','list',undefined,{query:'?view=favourites'});assert.equal(favourites.value.items[0].id,file.id);assert.equal(favourites.value.items[0].favourite,true);
+ const movedAgain=await api(f,'POST','trash',{id:root.id,version:restored.value.item.version});assert.equal(movedAgain.status,200);
+ const purge=await api(f,'DELETE','item',undefined,{query:'?id='+root.id+'&version='+movedAgain.value.item.version});assert.equal(purge.status,200,JSON.stringify(purge.value));
+ assert.equal((await api(f,'GET','list',undefined,{query:'?view=trash'})).value.items.length,0);
+ const after=(await api(f,'GET','list')).value.usage;assert.equal(after.used,0);assert.equal(after.nodes,0);assert.deepEqual((await internal('objects',{prefix:'files/'+f.owner+'/'})).value,[]);
+});
+
+test('file copies have independent immutable bytes, quota, operations and observed-version protection',async()=>{
+ const f=await fixture(),source=await uploaded(f,'Source.txt','copied bytes'),destination=await folder(f,'Copies');
+ const spec={id:source.id,version:source.version,parentId:destination.id,name:'Copied.txt',operationId:operation()};
+ const copied=await api(f,'POST','copy',spec);assert.equal(copied.status,200,JSON.stringify(copied.value));assert.notEqual(copied.value.item.id,source.id);metadata(copied.value);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+copied.value.item.id})).value,'copied bytes');
+ const replay=await api(f,'POST','copy',spec);assert.equal(replay.status,200);assert.equal(replay.value.item.id,copied.value.item.id);
+ const usage=(await api(f,'GET','list')).value.usage;assert.equal(usage.used,24);assert.equal(usage.nodes,3);
+ const renamed=await api(f,'PATCH','item',{id:source.id,version:source.version,name:'Renamed.txt'});assert.equal(renamed.status,200);
+ assert.equal((await api(f,'POST','copy',{...spec,name:'Stale.txt',operationId:operation()})).status,409);
+ const other=await fixture();for(const action of ['copy','trash','restore','favourite'])assert.equal((await api(other,'POST',action,{...spec,favourite:true,operationId:operation()})).status,404,action);
+ await sql('UPDATE ifl_files_accounts SET used=? WHERE user_id=?',[1024*1024*1024,f.owner]);
+ assert.equal((await api(f,'POST','copy',{...spec,version:renamed.value.item.version,name:'Over quota.txt',operationId:operation()})).status,413);
+});
+
+test('Trash rejects a folder with unfinished uploads and restore falls back from a deleted original parent',async()=>{
+ const f=await fixture(),parent=await folder(f,'Old parent'),child=await folder(f,'Child',parent.id),pending=await reserve(f,'Pending.txt',3,{parentId:child.id});
+ assert.equal((await api(f,'POST','trash',{id:child.id,version:child.version})).status,409);
+ assert.equal((await api(f,'DELETE','item',undefined,{query:'?id='+pending.id+'&version='+pending.version})).status,200);
+ const trash=await api(f,'POST','trash',{id:child.id,version:child.version});assert.equal(trash.status,200);
+ assert.equal((await api(f,'DELETE','item',undefined,{query:'?id='+parent.id+'&version='+parent.version})).status,200);
+ const restored=await api(f,'POST','restore',{id:child.id,version:trash.value.item.version});assert.equal(restored.status,200);assert.equal(restored.value.item.parentId,null);
+});
+
+test('new file mutations require the captured owner before parsing and stale versions cannot alter favourites',async()=>{
+ const f=await fixture(),other=await fixture(),file=await uploaded(f);
+ for(const action of ['copy','trash','restore','favourite']){
+  const denied=await api(other,'POST',action,'not json',{headers:{'X-Inflite-Files-Owner':f.owner}});assert.equal(denied.status,401,action);
+ }
+ const first=await api(f,'POST','favourite',{id:file.id,version:file.version,favourite:true});assert.equal(first.status,200);
+ assert.equal((await api(f,'POST','favourite',{id:file.id,version:file.version,favourite:false})).status,409);
+ const current=(await api(f,'GET','item',undefined,{query:'?id='+file.id})).value.item;assert.equal(current.favourite,true);
+});
+
+test('scheduled Trash retention purges only expired owned subtrees and releases their charged storage',async()=>{
+ const f=await fixture(),other=await fixture(),root=await folder(f,'Expired archive'),child=await folder(f,'Child',root.id),old=await uploaded(f,'Expired bytes.txt','old private bytes',{parentId:child.id}),live=await uploaded(f,'Keep.txt','keep'),recent=await uploaded(other,'Recently trashed.txt','recent bytes');
+ const retired=await api(f,'POST','trash',{id:root.id,version:root.version});assert.equal(retired.status,200);
+ assert.equal((await api(other,'POST','trash',{id:recent.id,version:recent.version})).status,200);
+ const now=Date.now();await sql('UPDATE ifl_files_nodes SET trash_at=? WHERE user_id=? AND trash_root=?',[now-31*86400e3,f.owner,root.id]);
+ const sweep=await internal('domain',{op:'sweepFileUploads',args:[now,100]});assert.equal(sweep.status,200);
+ for(const item of[root,child,old])assert.equal((await api(f,'GET','item',undefined,{query:'?id='+item.id})).status,404);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+live.id})).value,'keep');
+ const usage=(await api(f,'GET','list')).value.usage;assert.equal(usage.nodes,1);assert.equal(usage.used,4);
+ const remaining=(await api(other,'GET','list',undefined,{query:'?view=trash'})).value;assert.equal(remaining.items.length,1);assert.equal(remaining.items[0].id,recent.id);assert.equal(remaining.usage.used,12);
+ const objects=(await internal('objects',{prefix:'files/'+f.owner+'/'})).value;assert.equal(objects.length,1);assert.equal(objects[0].size,4);
 });

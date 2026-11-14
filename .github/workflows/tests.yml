@@ -7,7 +7,7 @@ name: Chat checks
 #
 # The tests that read the inflite repo look for it beside this one (../inflite), and skip where it isn't, so both are
 # checked out side by side in the workspace: this repo in georgefarrowgreen/, the inflite repo (public: no token) in
-# inflite/, at the branch of the same name as this push's where it has one, else its live branch (claude/inflite). This
+# inflite/, at the canonical production branch (claude/inflite). This
 # repo goes live before the inflite repo does, so a test whose inflite file isn't on that branch yet skips (Today
 # First's: where the inflite repo beside has no today/src/hub.js).
 on:
@@ -31,12 +31,8 @@ jobs:
         with:
           path: georgefarrowgreen
       - name: Matching InFlite framework
-        env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          R=https://github.com/georgefarrowgreen1/inflite
-          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
-          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+          git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -64,12 +60,8 @@ jobs:
         with:
           path: georgefarrowgreen
       - name: Matching InFlite framework
-        env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          R=https://github.com/georgefarrowgreen1/inflite
-          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
-          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+          git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -86,6 +78,17 @@ jobs:
           WEB_UI_BROWSER: ${{ matrix.browser }}
           FILES_SCREENSHOTS: ${{ runner.temp }}/files-${{ matrix.browser }}
         run: npm run test:files-integration --prefix .tools/tests
+      - name: OS Open/Save, sync, Activity and recovery with the real backend
+        working-directory: georgefarrowgreen
+        env:
+          WEB_UI_BROWSER: ${{ matrix.browser }}
+          FILES_SCREENSHOTS: ${{ runner.temp }}/os-next-${{ matrix.browser }}
+        run: node --test --test-concurrency=1 .tools/tests/os-next-integration.test.cjs
+      - name: Canonical account and passkey flow
+        working-directory: georgefarrowgreen
+        env:
+          IDENTITY_BROWSER: ${{ matrix.browser }}
+        run: node --test --test-concurrency=1 .tools/tests/identity-ui.test.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -102,13 +105,9 @@ jobs:
         with:
           path: georgefarrowgreen
       - name: The inflite repo beside it
-        env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          R=https://github.com/georgefarrowgreen1/inflite
-          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
-          git clone --quiet --depth 1 --branch "$B" "$R" inflite
-          echo "The inflite repo beside: $B at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+          git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
+          echo "The production inflite repo beside: claude/inflite at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -138,12 +137,8 @@ jobs:
         with:
           path: georgefarrowgreen
       - name: Matching InFlite framework
-        env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          R=https://github.com/georgefarrowgreen1/inflite
-          if [ -n "$BRANCH" ] && git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
-          git clone --quiet --depth 1 --branch "$B" "$R" inflite
+          git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
       - uses: actions/setup-node@v4
         with:
           node-version: 24

@@ -3,7 +3,7 @@
 import { HttpError, pace } from "./_pigeon.js";
 import { signedIn, json, body } from "./_accountapi.js";
 import { todayOrigin } from "./_sites.js";
-import { FILE_LIMITS, listFiles, getFile, createFolder, reserveUpload, uploadFile, renameFile, moveFile, deleteFile, fileContent } from "./_files.js";
+import { FILE_LIMITS, listFiles, getFile, createFolder, reserveUpload, uploadFile, renameFile, moveFile, deleteFile, fileContent, trashFile, restoreFile, favouriteFile, copyFile } from "./_files.js";
 
 const SAFE = {
   "Cache-Control": "private, no-store",
@@ -42,6 +42,10 @@ export const FILES_ROUTES = {
   "POST today/files/uploads": route(true, async (request, env, owner) => answer(await reserveUpload(env, owner, await body(request, 4096)), 201)),
   "PUT today/files/content": route(true, async (request, env, owner) => answer(await uploadFile(env, owner, query(request).get("id"), request))),
   "PATCH today/files/item": route(true, async (request, env, owner) => answer(await renameFile(env, owner, await body(request, 4096)))),
+  "POST today/files/trash": route(true, async(request,env,owner)=>answer(await trashFile(env,owner,await body(request,4096)))),
+  "POST today/files/restore": route(true, async(request,env,owner)=>answer(await restoreFile(env,owner,await body(request,4096)))),
+  "POST today/files/favourite": route(true, async(request,env,owner)=>answer(await favouriteFile(env,owner,await body(request,4096)))),
+  "POST today/files/copy": route(true, async(request,env,owner)=>answer(await copyFile(env,owner,await body(request,4096),request))),
   "POST today/files/move": route(true, async (request, env, owner) => answer(await moveFile(env, owner, await body(request, 4096)))),
   "DELETE today/files/item": route(true, async (request, env, owner) => { const q = query(request); return answer(await deleteFile(env, owner, { id: q.get("id"), version: Number(q.get("version")) })); }),
   "GET today/files/content": route(false, async (request, env, owner) => {

@@ -158,7 +158,7 @@ test('each file exports its frozen names: openers, views, the store’s keys, th
   assert.equal(literalOf(bf, 'SANDBOX'), 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
   assert.match(bf, /export const ID_RE = \/\^\[\\w-\]\{1,64\}\$\/;/);
   assert.deepEqual([literalOf(bf, 'H_START'), literalOf(bf, 'H_MIN'), literalOf(bf, 'H_MAX'), literalOf(bf, 'MAILTO_MAX'), literalOf(bf, 'SILENT_MS')], [120, 40, 40000, 2000, 6000]);
-  assert.match(uncomment(bf), /import\s*\{\s*MAIL\s*\}\s*from\s*"\.\/api\.js"/, 'the frames’ origin is api.js’s MAIL');
+  assert.match(uncomment(bf), /import\s*\{\s*MAIL,\s*MAIL_PAGE\s*\}\s*from\s*"\.\/api\.js"/, 'the frames’ origin is api.js’s MAIL');
   // (the sheets' names the hooks know, §2.2; the outbox's undo window, S4-D18; the swipe edge, D19; the icons, BI12)
   assert.match(src('menus.js'), /export const SHEETS = \{ views: "mail-views", later: "mail-later", rowMenu: "mail-rowmenu", unsub: "mail-unsub", confirm: "mail-confirm" \};/);
   assert.equal(literalOf(src('outbox.js'), 'UNDO_MS'), 6000);

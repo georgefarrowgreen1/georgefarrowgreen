@@ -46,14 +46,16 @@ test('middleware shares app document 404s, preserving portfolio, APIs, files and
   let forwarded = 0;
   const env = {ASSETS:{fetch:async () => missing()}, TODAY_APP:{fetch:async () => {forwarded++; return page();}}};
   const call = (host, path='/gone', headers={}) => onRequest({request:new Request(`https://${host}${path}`, {headers:{Accept:'text/html',...headers}}),env,next:async () => missing(),params:{},data:{},waitUntil(){}});
-  for (const host of ['weather','fitness','finance','chat','account','auth','status']) {
+  for (const host of ['weather','fitness','finance','chat','account','auth']) {
     const response = await call(`${host}.inflite.ai`);
     assert.equal(response.status,404,host);
     assert.equal(response.headers.get('X-Inflite-Error'),'404',host);
   }
-  assert.equal(forwarded,7);
+  assert.equal(forwarded,6);
+  const moved = await call('status.inflite.ai');
+  assert.equal(moved.status,308); assert.equal(moved.headers.get('Location'),'https://inflite.ai/status/gone');
   for (const [host,path,headers] of [['fitness.inflite.ai','/gone.js',{}],['fitness.inflite.ai','/api/gone',{}],['fitness.inflite.ai','/gone', {Accept:'application/json'}],['georgefarrowgreen.com','/gone',{}],['fitting.georgefarrowgreen.com','/gone',{}]]) {
     assert.notEqual((await call(host,path,headers)).headers.get('X-Inflite-Error'),'404');
   }
-  assert.equal(forwarded,7);
+  assert.equal(forwarded,6);
 });

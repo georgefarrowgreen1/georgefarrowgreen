@@ -301,6 +301,13 @@ export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date
     }
     if (path === '/api/contacts' && method === 'GET') return u.searchParams.get('q') ? no(403, 'Search by POST.') : json({ contacts: contacts.slice(0, 6) });
     if (path === '/api/contacts/find' && method === 'POST') { const s = String(body?.q || '').toLowerCase(); return json({ contacts: contacts.filter((c) => (c.name + c.email).toLowerCase().includes(s)).slice(0, 6) }); }
+    // Explicit app-to-Files export is a write with the existing owner/header gate.
+    // Ordinary GET keeps its raster-only cross-origin preview policy.
+    if ((m = /^\/api\/attachments\/([\w-]+)\/export$/.exec(path)) && method === 'POST') {
+      const a = allAtts().find((x) => x.id === m[1]);
+      if (!a) return no(404, 'Not found');
+      return [200, RASTER.test(a.type) ? PNG : Buffer.from('Private attachment: ' + a.filename), 'application/octet-stream'];
+    }
     if ((m = /^\/api\/attachments\/([\w-]+)$/.exec(path)) && method === 'GET') {
       const a = allAtts().find((x) => x.id === m[1]);
       if (!a) return no(404, 'Not found');

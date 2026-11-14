@@ -639,7 +639,9 @@ const IFL = (() => {
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
+  const origin = (sub) => /(^|\.)inflite\.ai$/.test(location.hostname)
+    ? `https://inflite.ai${SUBS[sub]?.slice(0, -1) || "/" + sub}`
+    : links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -1129,7 +1131,8 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      if (/(^|\.)inflite\.ai$/.test(hostname)) return "https://inflite.ai";
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1665,8 +1668,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.35";
-const NEWS = "Workout files and flexible ride workspaces";
+const BUILD = "2.36";
+const NEWS = "Files and imported routes";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,

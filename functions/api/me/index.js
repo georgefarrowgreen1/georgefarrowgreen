@@ -6,13 +6,13 @@
 import { visitor, failed, json, ownerFresh } from "../../_auth.js";
 import { appFigures } from "../account/[[path]].js";
 import { accountPage, authPage } from "../../_pigeon.js";
-import { appOrigin } from "../../_sites.js";
+import { publicApp } from "../../_canonical.js";
 import { withCookie } from "../../_account.js";
 
 export async function onRequestGet({ request, env }) {
   const headers = { "Cache-Control": "private, no-store" }, account = accountPage(request, env), auth = authPage(request, env);
   // (and the apps' addresses, on their own site: inflite.ai, or the tests')
-  const links = Object.fromEntries([["inflight", "chat"], ["weather", "weather"], ["fitness", "fitness"], ["markets", "finance"]].map(([k, a]) => [k, appOrigin(a, env, request) + "/"]));
+  const links = Object.fromEntries([["inflight", "chat"], ["weather", "weather"], ["fitness", "fitness"], ["markets", "finance"]].map(([k, a]) => [k, publicApp(a, env, request) + "/"]));
   try {
     const { u, owner } = await visitor(request, env);
     if (!u) return json({ signedIn: false, account, auth, links }, 200, headers);

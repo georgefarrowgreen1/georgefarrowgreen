@@ -84,9 +84,9 @@ test("Today's address, and the apps' as it links to them", () => {
   const req = new Request("http://account.ifl.test:8788/api/account/today/me");
   assert.equal(todayOrigin({}, req), "https://inflite.ai");
   assert.equal(todayOrigin(env, req), ORIGIN);
-  assert.deepEqual(todayLinks(env, req), { chat: "http://chat.ifl.test:8788", weather: "http://weather.ifl.test:8788", fitness: "http://fitness.ifl.test:8788",
-    finance: "http://finance.ifl.test:8788", account: "http://account.ifl.test:8788", auth: "http://auth.ifl.test:8788" });
-  assert.equal(todayLinks({}, null).auth, "https://auth.inflite.ai");
+  assert.deepEqual(todayLinks(env, req), { chat: "http://ifl.test:8788/chats", weather: "http://ifl.test:8788/weather", fitness: "http://ifl.test:8788/fitness",
+    finance: "http://ifl.test:8788/markets", email: "http://ifl.test:8788/mail", account: "http://ifl.test:8788/account", auth: "http://ifl.test:8788/auth" });
+  assert.equal(todayLinks({}, null).auth, "https://inflite.ai/auth");
 });
 
 test("a hand-back's tries are counted under the network's address, or under a key of the app's own where it's given one", async () => {
@@ -313,7 +313,7 @@ test("every route only with Today's Origin; a change never straight from a brows
   assert.deepEqual(r.j.user, { id: "ann", name: "Ann Tester", first: "Ann", handle: "ann", photoAt: null, appearance: "auto" });
   assert.deepEqual(r.j.prefs, { order: ["weather", "chat", "fitness", "markets"], hidden: [] });
   assert.deepEqual(r.j.morning, { on: false, at: 420, devices: 9 });
-  assert.equal(r.j.links.auth, "http://auth.ifl.test:8788");
+  assert.equal(r.j.links.auth, "http://ifl.test:8788/auth");
   assert.match(r.set || "", /^account=[A-Za-z0-9_-]+; Path=\/; Domain=ifl\.test; HttpOnly; SameSite=Lax; Max-Age=\d+$/, "the cookie renewed");
   assert.equal(one("SELECT apps FROM pg_sessions WHERE hash = 'sAnn'").apps.split(",").includes("today"), true, "the sign-in knows it's Today's");
   // (a sign-in handed over from an app to a browser signed in to nothing: the account's page's alone)

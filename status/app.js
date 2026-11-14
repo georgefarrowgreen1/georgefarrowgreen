@@ -475,7 +475,7 @@
     const m = (data.maint || []).find((x) => x.id === id); if (!m) return;
     const z = (t) => new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//InFlite//Status//EN", "BEGIN:VEVENT", `UID:${m.id}@status.inflite.ai`, `DTSTAMP:${z(Date.now())}`, `DTSTART:${z(m.starts)}`, `DTEND:${z(m.ends)}`,
-      `SUMMARY:InFlite maintenance: ${m.title.replace(/[,;\\]/g, " ")}`, `DESCRIPTION:${(m.text || "Planned maintenance").replace(/[,;\\]/g, " ")} https://status.inflite.ai/`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+      `SUMMARY:InFlite maintenance: ${m.title.replace(/[,;\\]/g, " ")}`, `DESCRIPTION:${(m.text || "Planned maintenance").replace(/[,;\\]/g, " ")} https://inflite.ai/status/`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "inflite-maintenance.ics"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }

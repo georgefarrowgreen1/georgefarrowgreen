@@ -6,13 +6,13 @@ import { MONITORS } from "./_monitorlist.js";
 //   app: the version it's on, where it's this Worker's own (functions/_version.js).
 export const STATUS_SERVICES = [
   { id: "today", name: "Today", group: "apps", address: "inflite.ai", probe: "https://inflite.ai/version" },
-  { id: "chat", name: "Chat", group: "apps", address: "chat.inflite.ai", probe: "https://chat.inflite.ai/version", app: "chat" },
-  { id: "weather", name: "Weather", group: "apps", address: "weather.inflite.ai", probe: "https://weather.inflite.ai/version", app: "weather" },
-  { id: "fitness", name: "Fitness", group: "apps", address: "fitness.inflite.ai", probe: "https://fitness.inflite.ai/version", app: "fitness" },
-  { id: "markets", name: "Markets", group: "apps", address: "finance.inflite.ai", probe: "https://finance.inflite.ai/version", app: "markets" },
-  { id: "mail", name: "Mail", group: "apps", address: "email.inflite.ai", probe: "https://email.inflite.ai/version" },
-  { id: "auth", name: "Signing in", group: "account", address: "auth.inflite.ai", probe: "https://auth.inflite.ai/version", app: "account" },
-  { id: "account", name: "Account", group: "account", address: "account.inflite.ai", probe: "https://account.inflite.ai/version", app: "account" },
+  { id: "chat", name: "Chat", group: "apps", address: "inflite.ai/chats", probe: "https://chat.inflite.ai/version", app: "chat" },
+  { id: "weather", name: "Weather", group: "apps", address: "inflite.ai/weather", probe: "https://weather.inflite.ai/version", app: "weather" },
+  { id: "fitness", name: "Fitness", group: "apps", address: "inflite.ai/fitness", probe: "https://fitness.inflite.ai/version", app: "fitness" },
+  { id: "markets", name: "Markets", group: "apps", address: "inflite.ai/markets", probe: "https://finance.inflite.ai/version", app: "markets" },
+  { id: "mail", name: "Mail", group: "apps", address: "inflite.ai/mail", probe: "https://email.inflite.ai/version" },
+  { id: "auth", name: "Signing in", group: "account", address: "inflite.ai/auth", probe: "https://auth.inflite.ai/version", app: "account" },
+  { id: "account", name: "Account", group: "account", address: "inflite.ai/account", probe: "https://account.inflite.ai/version", app: "account" },
   { id: "home", name: "Home page", group: "home", address: "georgefarrowgreen.com", probe: "https://georgefarrowgreen.com/" },
 ];
 // (the ticker's jobs, every five minutes, by the path it asks for)

@@ -1,3 +1,4 @@
+import { publicApp } from "./_canonical.js";
 // Mail's card on Today (One roof stage 4, S4-D10, spec §2.5, §6.3): numbers only, asked of Mail's own Worker
 // (email.inflite.ai, the inflite repo's email/) with the key the two share, for the site's admin alone. Never a word of
 // anyone's mail: how many conversations from people are unread, how many in Updates, and how many are in Later with
@@ -255,7 +256,7 @@ export async function mailCard(env, u, request = null, t = Date.now()) {
   const ask = (async () => {
     const admin = await pigeon().then((m) => m.adminOf(env)).catch(() => null);
     if (!admin || admin.id !== u.id || ac.signal.aborted) return null;
-    const own = appOrigin("email", env, request);
+    const own = publicApp("email", env, request);
     const res = await siteFetch(env, `${mailAt(env, request)}/api/connector/card`, {
       headers: { Authorization: `Bearer ${key}`, Accept: "application/json" }, redirect: "manual",
       signal: AbortSignal.any([ac.signal, AbortSignal.timeout(Math.max(1, until - Date.now()))]),

@@ -65,6 +65,8 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       { id: "view-route", label: "Open route in Fitness", enabled: !!plan },
       { id: "export-route", label: "Download GPX", enabled: !!plan },
       { id: "weather-for-ride", label: "Weather at route start", enabled: !!plan },
+      ...(api.files?.open ? [{ id: "import-drive", label: "Import from InFlite Files", keywords: ["open", "drive", "gpx", "fit"], enabled: true }] : []),
+      ...(api.files?.save ? [{ id: "save-route-drive", label: "Save route to InFlite Files", keywords: ["save", "drive", "gpx"], enabled: !!plan }, { id: "save-workout-drive", label: "Save workout to InFlite Files", keywords: ["save", "drive", "fit"], enabled: !!w && w.sport !== "strength" }] : []),
     ] };
   }
   async function run(intent, object, { current: presenting = () => true } = {}) {
@@ -74,6 +76,31 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     const id = typeof intent === "string" ? intent : intent?.id || intent?.intent;
     const requested = typeof object === "string" ? object : object?.id || intent?.objectId;
     const { workout: w } = session();
+    if (id === "import-drive") {
+      if (!permitted() || !api.files?.open || typeof ctx.importFiles !== "function") return { ok: false, error: "Open Fitness to import files." };
+      const token = typeof object === "string" && /^drop:[a-f0-9]{32}$/.test(object) ? object.slice(5) : null;
+      const options = { title: "Import to Fitness", accept: ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip", multiple: true, current: permitted };
+      const files = token && api.files.fromDrop ? await api.files.fromDrop({ getData: type => type === "application/x-inflite-files-token" ? token : "" }, options) : await api.files.open(options);
+      if (!permitted() || !files?.length) return { ok: false, cancelled: true };
+      await ctx.importFiles(files); return { ok: permitted(), pending: true };
+    }
+    if (id === "save-route-drive" || id === "save-workout-drive") {
+      if (!permitted() || !api.files?.save) return { ok: false, error: "Open Fitness in InFlite OS to save files." };
+      let file;
+      if (id === "save-route-drive") {
+        const plan = await route();
+        if (!permitted() || !plan) return { ok: false, error: "There is no saved route to export." };
+        const ref = fileRef(plan.route); file = new File([toGPX(plan.route)], ref.name, { type: ref.mime });
+      } else {
+        if (!w || w.sport === "strength") return { ok: false, error: "There is no workout to export today." };
+        const formats = await fw.lazy((q) => import("../formats.js" + (q || "")));
+        if (!permitted()) return { ok: false, cancelled: true };
+        file = new File([formats.fitFromWorkout(w, { pace: c.paceFor(w.sport) })], formats.fileName(w.name, "fit"), { type: "application/vnd.ant.fit" });
+      }
+      const result = await api.files.save(file, { title: "Save from Fitness", current: permitted });
+      if (!permitted() || !result?.id) return { ok: false, cancelled: true };
+      fw.toast("Saved to InFlite Files"); return { ok: true, item: result };
+    }
     if (id === "import-files") {
       const picker = root.querySelector?.('input[type="file"][data-k="files"]');
       if (!picker) return { ok: false, error: "Open Fitness to add files." };
@@ -86,7 +113,7 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
         const gate = { close: () => sheet?.now(), refresh() {
           if (!inView()) return gate.close();
           button.disabled = !owned();
-          words.textContent = owned() ? "Add a ride or workout file to Fitness." : S.error ? "Fitness couldn’t load. Close and try again." : "Loading Fitness…";
+          words.textContent = owned() ? "Import a route or recorded activity." : S.error ? "Fitness couldn’t load. Close and try again." : "Loading Fitness…";
         } };
         sheet = fw.sheet.open({ sheet: "fitness-files", title: "Add files", body: fw.ui.el("div", { class: "ifs-page" }, words, button), onClose: () => { if (fileGate === gate) fileGate = null; } });
         fileGate = gate; gate.refresh();

@@ -14,7 +14,9 @@ test("every probe is the app's public /version, or the home page itself", () => 
   for (const s of STATUS_SERVICES) {
     const u = new URL(s.probe);
     assert.equal(u.protocol, "https:", s.id);
-    assert.equal(u.hostname, s.address, `${s.id}: its own address`);
+    const native = { chat: "chat.inflite.ai", weather: "weather.inflite.ai", fitness: "fitness.inflite.ai", markets: "finance.inflite.ai", mail: "email.inflite.ai", auth: "auth.inflite.ai", account: "account.inflite.ai" };
+    assert.equal(u.hostname, native[s.id] || s.address, `${s.id}: native version service remains monitored`);
+    if (native[s.id]) assert.equal(new URL("https://" + s.address).origin, "https://inflite.ai", `${s.id}: displayed public app links share the canonical origin`);
     assert.ok(s.id === "home" ? u.pathname === "/" : u.pathname === "/version", `${s.id}: ${u.pathname} (never /api/…, which may want a sign-in)`);
   }
 });

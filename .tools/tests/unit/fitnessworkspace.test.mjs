@@ -49,7 +49,7 @@ test('cold import opens the native file gate, enables only after the domain owne
   ui.choose();assert.equal(ui.picks,0,'even a queued button callback cannot choose before Fitness owns the account');
   assert.equal((await e.provided.run('view-route')).ok,false,'other actions retain their domain ownership guard');assert.equal(e.requests.length,0);
   e.S.me={id:'ann'};e.S.loading=false;e.emit('me');
-  assert.equal(button.disabled,false);assert.match(words.textContent,/Add a ride or workout/);assert.equal(ui.picks,0,'account readiness never opens a picker automatically');
+  assert.equal(button.disabled,false);assert.match(words.textContent,/Import a route or recorded activity/);assert.equal(ui.picks,0,'account readiness never opens a picker automatically');
   ui.choose();assert.equal(ui.picks,1);assert.equal(ui.picker.value,'');assert.equal(sheet.closed,true);
   assert.equal([...e.listeners.values()].reduce((n,s)=>n+s.size,0),3,'opening and closing the gate adds no core subscriptions');
  }finally{e.close();ui.restore();}
@@ -205,4 +205,36 @@ const contextFile=new URL('../../../../inflite/today/public/roof/workspace-conte
 test('the real shared context rounds route coordinates and still follows confirmed ride-time changes; old scheduled metadata never becomes a fake forecast interval',{skip:!existsSync(contextFile)},async()=>{
  const {createWorkspaceContext}=await import(contextFile),bus=createWorkspaceContext(),e=setup();e.fw.workspace.context=bus;
  try{assert.equal((await e.provided.run('weather-for-ride')).ok,true);assert.equal(bus.get().location.lat,Number(realRoute.start[1].toFixed(6)));e.S.times[0]={...e.S.times[0],start:TODAY+17*3600e3,stop:TODAY+18.5*3600e3};e.emit('times');assert.deepEqual(bus.get().interval,{start:e.S.times[0].start,end:e.S.times[0].stop});e.S.times[0]={...e.S.times[0],start:TODAY-2*864e5,stop:TODAY-2*864e5+5400e3};e.emit('times');assert.equal(bus.get().interval,null);const snapshot=await e.provided.snapshot();assert.equal(snapshot.ride.scheduled.start,e.S.times[0].start,'the actual account time is still reported without reinterpretation');assert.equal((await e.provided.run('weather-for-ride')).ok,true);assert.equal(bus.get().interval,null);}finally{e.close();bus.dispose();}
+});
+
+test('explicit Drive import reaches the real native parser and stops if its account changes',async()=>{
+ for(const changed of [false,true]){
+  const e=setup(),gate=deferred(),imports=[];try{
+   e.fw.workspace.files={open:()=>gate.promise};e.ctx.importFiles=async files=>imports.push(files);
+   const pending=e.provided.run('import-drive');await Promise.resolve();
+   if(changed)e.fw.session.user.id='bea';
+   const file=new File(['GPX bytes'],'Ride.gpx',{type:'application/gpx+xml'});gate.resolve([file]);
+   const result=await pending;assert.equal(result.ok,!changed);assert.equal(imports.length,changed?0:1);if(!changed)assert.equal(imports[0][0],file);
+   assert.deepEqual(e.writes,[]);assert.equal(e.downloads.length,0);
+  }finally{e.close();}
+ }
+});
+test('native route and workout Save produce real GPX and FIT files and await actual Drive commits',async()=>{
+ const e=setup(),saved=[];try{
+  e.fw.lazy=fn=>fn('');e.fw.toast=()=>{};
+  e.fw.workspace.files={save:async(file,options)=>{saved.push({file,options});return{id:'saved-'+saved.length,name:file.name};}};
+  const route=await e.provided.run('save-route-drive');assert.equal(route.ok,true);assert.equal(e.downloads.length,0);
+  assert.match(await saved[0].file.text(),/<gpx /);assert.equal(((await saved[0].file.text()).match(/<trkpt /g)||[]).length,realRoute.coords.length);
+  const fit=await e.provided.run('save-workout-drive');assert.equal(fit.ok,true);
+  const bytes=new Uint8Array(await saved[1].file.arrayBuffer());assert.equal(new TextDecoder().decode(bytes.slice(8,12)),'.FIT');assert.ok(bytes.length>40);
+  e.setActive(false);assert.equal((await e.provided.run('save-route-drive')).ok,false);assert.equal(saved.length,2);assert.deepEqual(e.writes,[]);
+ }finally{e.close();}
+});
+
+test('Fitness dock handoff resolves its owned opaque token into the existing parser without another picker',async()=>{
+ const e=setup(),token='a'.repeat(32),file=new File(['GPX'],'Ride.gpx'),calls=[],imports=[];try{
+  e.fw.workspace.files={open:async()=>{throw Error('unexpected picker');},fromDrop:async(transfer,options)=>{calls.push(transfer.getData('application/x-inflite-files-token'));assert.equal(options.current(),true);return[file];}};
+  e.ctx.importFiles=async files=>imports.push(files);
+  assert.equal((await e.provided.run('import-drive','drop:'+token)).ok,true);assert.deepEqual(calls,[token]);assert.equal(imports[0][0],file);assert.equal(e.downloads.length,0);assert.deepEqual(e.writes,[]);
+ }finally{e.close();}
 });

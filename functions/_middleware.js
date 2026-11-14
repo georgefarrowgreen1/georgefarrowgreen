@@ -1,3 +1,4 @@
+import { canonicalDocument } from "./_canonical.js";
 // chat.inflite.ai: Chat, the app at the address's root.
 // weather.inflite.ai: Weather, the same way (functions/_wxapp.js).
 // fitness.inflite.ai: Fitness, the same way (functions/_fitapp.js).
@@ -48,6 +49,8 @@ async function route(ctx0) {
   await fillSecrets(ctx0.env).catch(() => {});
   // (what's below, and every helper it hands ctx to, sees the request as the hub's key says it is)
   const ctx = hubRequest(ctx0);
+  const moved = canonicalDocument(ctx.request, ctx.env);
+  if (moved) return moved;
   const url = new URL(ctx.request.url);
   // (bug reports, at every address, each app's own: functions/_bugs.js)
   if (url.pathname.startsWith("/api/bugs") || url.pathname === "/api/account/bugs") { const r = await bugsRoute(ctx, url); if (r) return r; }

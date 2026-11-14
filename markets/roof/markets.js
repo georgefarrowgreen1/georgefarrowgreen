@@ -23,8 +23,8 @@ import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint,
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.36";
-export const NEWS = "Markets windows and commands";
+export const BUILD = "2.37";
+export const NEWS = "Markets on InFlite";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }

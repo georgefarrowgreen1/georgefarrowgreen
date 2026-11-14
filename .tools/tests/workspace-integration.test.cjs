@@ -44,6 +44,7 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
   const j = (r, value, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value), headers: { 'Access-Control-Allow-Origin': '*' } });
   const policy = /const CSP = "([^"]+)"/.exec(readFileSync(resolve(IFL, 'today/src/roof.js'), 'utf8'))?.[1] || /Content-Security-Policy: (.*)/.exec(readFileSync(resolve(PUBLIC, '_headers'), 'utf8'))[1];
   const build = /const BUILD = "([^"]+)"/.exec(readFileSync(resolve(PUBLIC, 'app.js'), 'utf8'))[1];
+  let workspaceCloud={revision:0,state:null,updatedAt:0};
   await ctx.route('**/*', async r => {
     const req = r.request(), url = new URL(req.url()), p = url.pathname;
     // WebKit exposes native object-URL image loads to routing; keep those in the browser's blob store.
@@ -52,6 +53,7 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
     if (p.startsWith('/api/')) {
       state.requests.push({ path: p, method: req.method(), body: req.postData() });
       if (state.offline) return r.abort();
+      if(p==='/api/workspaces'){if(req.method()==='PUT'){const body=req.postDataJSON();if(body.revision!==workspaceCloud.revision)return j(r,{error:'Conflict',...workspaceCloud},409);workspaceCloud={revision:workspaceCloud.revision+1,state:body.state,updatedAt:Date.now()};}return j(r,workspaceCloud);}
       if (p === '/api/vitals') return r.fulfill({ status: 204, body: '' });
       if (p === '/api/weather/obs') return j(r, { station: null, days: {} });
       const api = { '/api/session': view, '/api/boot': { view, cards }, '/api/today': cards, '/api/hub': { ready: true, roof: true, apps: view.apps }, '/api/rules': fixture('rules'), '/api/notify': fixture('notify'), '/api/devices': { devices: [], here: [] }, '/api/status-banner': { banner: null }, '/api/weather/me': { signedIn: false }, '/api/weather/where': places[0], '/api/weather/warnings': { warnings: [] } };

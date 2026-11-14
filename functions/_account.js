@@ -25,6 +25,7 @@ import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
 import { siteName, cfOf } from "./_sites.js";
 import { logEvent } from "./_activity.js";
+import { identityOrigin } from "./_identity.js";
 
 // The cookie: for the whole of the site the address is on (inflite.ai, for every app; georgefarrowgreen.com, for the
 // home page: functions/_sites.js), production's or the tests'; for that address alone anywhere else (a preview's,
@@ -48,7 +49,7 @@ export function cookieToken(request, env) {
 // in answer to the app's own pages (the browser says where a request's from; sure: known otherwise, as by a bearer token
 // a page of another site couldn't send)
 export async function withSession(res, request, env, sessionHash, sure = false) {
-  if (!sure && request.headers.get("Origin") !== new URL(request.url).origin) return res;
+  if (!sure && request.headers.get("Origin") !== new URL(request.url).origin && !identityOrigin(request)) return res;
   const token = randomToken(32);
   await (await db(env)).prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(hex(await sha256(token)), sessionHash).run();
   return withCookie(res, request, env, token);
@@ -91,7 +92,7 @@ function refuseDeleting(u) {
 // page elsewhere on the site would send the cookie too
 export function sameOrigin(request) {
   const o = request.headers.get("Origin");
-  if (!o || o !== new URL(request.url).origin) throw new HttpError(403, "That request didn't come from this app.");
+  if ((!o || o !== new URL(request.url).origin) && !identityOrigin(request)) throw new HttpError(403, "That request didn't come from this app.");
 }
 
 // The salt for an email's password (public input to the stretching on the phone). Unknown emails get a stable made-up

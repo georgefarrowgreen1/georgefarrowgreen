@@ -53,7 +53,7 @@ test('the page: its own rules, every one of them, and built here, never from the
   assert.equal((html.match(/<iframe\b/g) || []).length, 1, 'one frame');
   assert.match(html, /<html lang="en-GB" data-mail="https:\/\/email\.inflite\.ai" data-auth="https:\/\/auth\.inflite\.ai">/);
   assert.match(html, /<button type="button" class="mh-back" aria-label="Back to Apps">/);
-  assert.match(html, /<a class="mh-own" href="https:\/\/email\.inflite\.ai\/" target="_blank" rel="noopener">Open Mail on Its Own/);
+  assert.match(html, /<a class="mh-own" href="https:\/\/inflite\.ai\/mail\/standalone\/" target="_blank" rel="noopener">Open Mail on Its Own/);
   // (its own files only: no script or style written into the page, which its rules would refuse anyway)
   const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
   assert.deepEqual(scripts.map((s) => /src="([^"]+)"/.exec(s)?.[1]), ['/theme.js', '/mailhost.js']);

@@ -627,7 +627,9 @@ const IFL = (() => {
   // degraded: the apps' own addresses (degrade's links, else <app>.<site>), and a hub path back to its app's
   let links = {};
   const hubSite = () => location.hostname === "os.inflite.ai" ? "inflite.ai" : location.host.replace(/^next\./, "");
-  const origin = (sub) => links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
+  const origin = (sub) => /(^|\.)inflite\.ai$/.test(location.hostname)
+    ? `https://inflite.ai${SUBS[sub]?.slice(0, -1) || "/" + sub}`
+    : links[sub] || `${location.protocol}//${sub}.${hubSite()}`;
   const ownAt = (p) => { const m = /^\/(chats|weather|fitness|markets|mail)(?=$|[/?#])\/?([\s\S]*)$/.exec(p); return m ? `${origin(OWN[m[1]])}/${m[2]}` : null; };
   const stillHere = (say) => (/still here/i.test(say) ? say : `${say.replace(/[.\s]+$/, "")}. You’re still here`);
   const hub = {
@@ -1117,7 +1119,8 @@ const IFL = (() => {
       if (typeof location === "undefined") return null;
       const { protocol, hostname, port } = location;
       if (!hostname.includes(".") || /(^|\.)localhost$/.test(hostname)) return null;
-      const site = hostname === "os.inflite.ai" ? "inflite.ai" : hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
+      if (/(^|\.)inflite\.ai$/.test(hostname)) return "https://inflite.ai";
+      const site = hostname.replace(/^(chat|weather|fitness|finance|email|account|auth|next|www)\./, "");
       return `${protocol}//auth.${site}${port ? ":" + port : ""}`;
     };
     function warm() {
@@ -1180,13 +1183,16 @@ const IFL = (() => {
   return api;
 })();
 // ==== end of InFlite's menu ====
+import { identityBase, siteUrlFor, returnFor } from "./identity-location.js";
 
 // The sign-in page's own copy of this script (auth.<site>: min/account/signin.js, made by node .tools/minify.mjs) is
 // this file made with SIGNIN_PAGE true: what only the account's page draws (the account itself, its sheets, InFlite's
 // menu) is left out of it, so the sign-in page has about half as much to fetch and read (functions/_acctapp.js sends
 // it there, and this file itself should that copy be out of date). Here, as written, it's false.
 globalThis.SIGNIN_PAGE ??= false;
-const API = "/api/account";
+const IDENTITY_BASE = identityBase(location);
+const identityAsset = path => IDENTITY_BASE + path;
+const API = IDENTITY_BASE + "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
@@ -1197,8 +1203,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.20";
-const NEWS = "One sign-in for Today and InFlite OS";
+const BUILD = "2.21";
+const NEWS = "Sign in on InFlite";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1206,8 +1212,8 @@ try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // (the home page's site, for the apps' one: siteUrl)
 const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.test" };
 // (Mail's icon, asked for by its version, so a copy kept from before its new look isn't shown)
-const MAIL_ICON = "/apps/mail.png?v=2";
-const appIcon = (id) => (id === "mail" ? MAIL_ICON : `/apps/${id}.png`);
+const MAIL_ICON = identityAsset("/apps/mail.png?v=2");
+const appIcon = (id) => (id === "mail" ? MAIL_ICON : identityAsset(`/apps/${id}.png`));
 const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, markets: { name: "Markets", sub: "finance" }, mail: { name: "Mail", sub: "email" }, today: { name: "Today", sub: "@" }, home: { name: "Home", sub: "" } };
 const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
 // The sign-in page (auth.<site>: functions/_acctapp.js) and the account's page (account.<site>) are these same files,
@@ -1217,6 +1223,8 @@ const ARRIVED = location.hash;            // (what the address said, before what
 // (here: this is the sign-in page; auth, account: their addresses)
 const AUTH = (() => {
   const { hostname: hn, origin } = location;
+  if (IDENTITY_BASE) return { here: IDENTITY_BASE === "/auth", auth: origin + "/auth", account: origin + "/account" };
+  if (/^(auth|account)\.inflite\.ai$/.test(hn)) return { here: hn.startsWith("auth."), auth: "https://inflite.ai/auth", account: "https://inflite.ai/account" };
   if (hn.startsWith("auth.")) return { here: true, auth: origin, account: origin.replace("//auth.", "//account.") };
   if (hn.startsWith("account.") && !/(^|\.)localhost$/.test(hn)) return { here: false, auth: origin.replace("//account.", "//auth."), account: origin };
   return null;
@@ -1545,11 +1553,7 @@ async function startAutofill(field, picked) {
 // the apps, from here (account.inflite.ai → chat.inflite.ai, weather.inflite.ai), InFlite Today at the apps' site
 // itself ("@": inflite.ai; the tests' ifl.test), and the home page, on a site of its own (georgefarrowgreen.com; the
 // tests' ifl.test → gfg.test; localhost's own)
-function siteUrl(sub) {
-  const { protocol, hostname, port } = location, p = port ? ":" + port : "", apps = hostname.replace(/^(account|auth)\./, "");
-  if (!/^(account|auth)\./.test(hostname)) return sub === "@" ? "https://inflite.ai/" : sub ? `https://${sub}.inflite.ai/` : "https://georgefarrowgreen.com/";
-  return sub === "@" ? `${protocol}//${apps}${p}/` : sub ? `${protocol}//${sub}.${apps}${p}/` : `${protocol}//${HOME_SITES[apps] || apps}${p}/`;
-}
+function siteUrl(sub) { return siteUrlFor(location, sub); }
 // (to the home page, signed in there too: its sign-in carried over, functions/_hop.js. fresh: one just made here, so
 // carried over even if the home page was signed in to before, perhaps as someone else)
 // (what's after the # of where it's going (#signedin, with the picture this page ends on and a small copy of your photo)
@@ -1564,16 +1568,7 @@ const homeVia = (to, fresh = false) => {
 // chat.<site>/, weather.<site>/, fitness.<site>/, finance.<site>/ (Markets), email.<site>/ (Mail), <site>/ itself (InFlite
 // Today), or the home page (beside this page's account.<site>, on the same port); else the app's usual address. (Nowhere else, so a link can't make this page send a sign-in elsewhere.)
 // (InFlite's main, next. and os. windows: Chat at /chats/, Mail at /mail/, Today at /.)
-function backFor(app, back) {
-  const usual = siteUrl(APPS[app].sub);
-  try {
-    const u = new URL(back), site = location.hostname.replace(/^(account|auth)\./, ""), home = new URL(siteUrl("")).hostname;
-    // (and Chat at /pigeon/, where the home page and the apps are one: locally)
-    const ok = { inflight: [`chat.${site}/`, `${site}/chats/`, `next.${site}/chats/`, `os.${site}/chats/`, ...(home === site ? [`${site}/pigeon/`] : [])], weather: [`weather.${site}/`], fitness: [`fitness.${site}/`], markets: [`finance.${site}/`],
-      mail: [`email.${site}/`, `${site}/mail/`, `next.${site}/mail/`, `os.${site}/mail/`], today: [`${site}/`, `next.${site}/`, `os.${site}/`], home: [`${home}/`] }[app];
-    return ok.includes(u.hostname + u.pathname) && u.protocol === location.protocol && u.port === location.port && !u.search && !u.username && !u.password ? u.origin + u.pathname : usual;
-  } catch (_) { return usual; }
-}
+function backFor(app, back) { return returnFor(location, APPS[app].sub, back); }
 
 // ---- words for times ----
 const rtf = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" }), rtfShort = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto", style: "short" });
@@ -1888,16 +1883,16 @@ function signedIn(r) {
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
   const apps = r(sec("apps", section("Your apps", h("div.apps", {},
     // (InFlite Today, at inflite.ai itself: every app's day on one page, and a morning notification from them all)
-    app("today", "Today", "/apps/today.png", td.morning?.on ? `Morning at ${hhmm(td.morning.at ?? 420)}` : "Your day, from all your apps", "One page, every app"),
+    app("today", "Today", identityAsset("/apps/today.png"), td.morning?.on ? `Morning at ${hhmm(td.morning.at ?? 420)}` : "Your day, from all your apps", "One page, every app"),
     // (with pigeons off, just friends: the letters sent and the passport are pigeons')
-    f.pigeons === false ? app("inflight", "Chat", "/apps/inflight.png", f.friends ? plural(f.friends, "friend", "friends") : "No friends yet", "Messages, and letters by pigeon")
-      : app("inflight", "Chat", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
+    f.pigeons === false ? app("inflight", "Chat", identityAsset("/apps/inflight.png"), f.friends ? plural(f.friends, "friend", "friends") : "No friends yet", "Messages, and letters by pigeon")
+      : app("inflight", "Chat", identityAsset("/apps/inflight.png"), f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
         f.places ? `${plural(f.places, "place", "places")} in your passport` : "Messages, and letters by pigeon"),
-    app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
+    app("weather", "Weather", identityAsset("/apps/weather.png"), w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"),
-    app("fitness", "Fitness", "/apps/fitness.png", fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
+    app("fitness", "Fitness", identityAsset("/apps/fitness.png"), fx.activities ? plural(fx.activities, "activity", "activities") : "No rides yet",
       fx.plan ? "On a plan" : "Training, using AI"),
-    app("markets", "Markets", "/apps/markets.png", mk.holdings ? plural(mk.holdings, "holding", "holdings") : "Nothing added yet",
+    app("markets", "Markets", identityAsset("/apps/markets.png"), mk.holdings ? plural(mk.holdings, "holding", "holdings") : "Nothing added yet",
       mk.owned ? `${mk.owned} you own` : "Your money, said simply"),
     // (Mail, the site's inbox, is the admin's alone: functions/_mailapp.js)
     m.admin && app("mail", "Mail", MAIL_ICON, "The site’s inbox", "Yours alone, as admin")))));
@@ -2303,7 +2298,7 @@ async function startScan(video, said) {
     }
     const m = text && /^(.+)\/#qr=([A-Za-z0-9_-]{32})$/.exec(text);
     // (a code from the sign-in page, where computers sign in: said yes or no to here, as you scanned it yourself)
-    if (m && m[1] === (AUTH ? AUTH.auth : location.origin)) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; QR_IN.scanned = true; return pushSheet(qrView); }
+    if (m && [AUTH ? AUTH.auth : location.origin, location.origin.replace("//account.", "//auth.")].includes(m[1])) { stopScan(stream); navigator.vibrate?.(25); QR_IN.code = m[2]; QR_IN.scanned = true; return pushSheet(qrView); }
     if (text && text !== SCAN.last) { SCAN.last = text; said.textContent = "That isn’t an InFlite sign-in code. Point it at the one on the computer’s sign-in page."; said.classList.add("bad"); }
     setTimeout(look, det ? 150 : 250);
   };
@@ -2318,7 +2313,7 @@ function appView(id) {
   if (id === "mail") return mailView();
   if (id === "today") return todayAboutView();
   const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
-  const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
+  const head = h("div.app-head", {}, h("img", { src: inflight ? identityAsset("/apps/inflight.png") : identityAsset("/apps/weather.png"), alt: "", width: 64, height: 64 }),
     h("b", { text: inflight ? "Chat" : "Weather" }), h("span", { text: inflight ? "Messages, and letters by pigeon" : "A forecast that explains itself" }));
   const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
   const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "Chat" : "Weather"}`, icon("open", 18, 2.4));
@@ -2347,7 +2342,7 @@ function marketsView() {
   const x = S.me.apps?.markets || {};
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
   return { title: "Markets", quiet: true, body: [
-    h("div.app-head", {}, h("img", { src: "/apps/markets.png", alt: "", width: 64, height: 64 }), h("b", { text: "Markets" }), h("span", { text: "Your money, said simply" })),
+    h("div.app-head", {}, h("img", { src: identityAsset("/apps/markets.png"), alt: "", width: 64, height: 64 }), h("b", { text: "Markets" }), h("span", { text: "Your money, said simply" })),
     h("div.group", {}, row("In your list", String(x.holdings || 0)), row("That you own", String(x.owned || 0))),
     h("p.hint", { text: "Markets keeps what you add with your account: each one, how many you own and what you paid, if you said. Prices and news are the markets’, fetched for everyone, not about you." }),
     h("a.btn", { href: siteUrl(APPS.markets.sub) }, "Open Markets", icon("open", 18, 2.4))] };
@@ -2364,7 +2359,7 @@ function todayAboutView() {
   const ver = row("Version", todayBuild || "–");
   if (!todayBuild) todayAsked.then((b) => { if (b) ver.querySelector(".val").textContent = b; });
   return { title: "Today", quiet: true, body: [
-    h("div.app-head", {}, h("img", { src: "/apps/today.png", alt: "", width: 64, height: 64 }), h("b", { text: "Today" }), h("span", { text: "One page, every app" })),
+    h("div.app-head", {}, h("img", { src: identityAsset("/apps/today.png"), alt: "", width: 64, height: 64 }), h("b", { text: "Today" }), h("span", { text: "One page, every app" })),
     h("div.group", {},
       known && row("Cards", shown.length ? `${shown.length} of ${x.order.length} shown` : "All hidden"),
       known && h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: [shown.map((k) => CARD_NAMES[k]).join(" · "), hidden.length && `Hidden: ${hidden.map((k) => CARD_NAMES[k]).join(", ")}`].filter(Boolean).join(" · ") }))),
@@ -2384,7 +2379,7 @@ function fitnessView() {
   const x = S.me.apps?.fitness || {}, mb = (x.bytes || 0) / 1048576;
   const row = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
   return { title: "Fitness", quiet: true, body: [
-    h("div.app-head", {}, h("img", { src: "/apps/fitness.png", alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, using AI" })),
+    h("div.app-head", {}, h("img", { src: identityAsset("/apps/fitness.png"), alt: "", width: 64, height: 64 }), h("b", { text: "Fitness" }), h("span", { text: "Training, using AI" })),
     h("div.group", {}, row("Activities", String(x.activities || 0)), x.last && row("Latest", day(x.last)),
       row("Files", mb < 0.1 ? "None" : mb < 1000 ? `${mb.toFixed(mb < 10 ? 1 : 0)} MB` : `${(mb / 1024).toFixed(1)} GB`),
       row("Plan", x.plan ? "On a plan" : "None"), row("Your workouts", String(x.workouts || 0))),
@@ -2942,10 +2937,10 @@ function drawQr(card = $("#qrc")) {
     QRS.err ? h("p.said", { text: QRS.err }) : null,
     h("div.qrbox.rest", {}, h("button.btn.quiet", { type: "button", onclick: () => { Object.assign(QRS, { state: "waiting", made: 0, fails: 0, err: null }); drawQr(); qrTick(); } }, icon("qr", 19, 2), "Show a code")),
     QRS.err ? null : h("p", { text: "Codes stop after ten minutes unused." }));
-  const link = QRS.code ? `${location.origin}/#qr=${QRS.code}` : "";
+  const link = QRS.code ? `${AUTH?.auth || location.origin}/#qr=${QRS.code}` : "";
   // (InFlite's mark in its middle: small enough that the code reads without what it covers)
   const qr = h("div.qrbox", { "data-link": link }, QRS.code ? null : h("span.spin"));
-  if (QRS.code) import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: "A QR code to sign in here with your phone" }); qr.append(h("span.qrlogo", { "aria-hidden": "true" }, h("img", { src: "/inflite.svg?v=1", alt: "" }))); },
+  if (QRS.code) import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "transparent", title: "A QR code to sign in here with your phone" }); qr.append(h("span.qrlogo", { "aria-hidden": "true" }, h("img", { src: identityAsset("/inflite.svg?v=1"), alt: "" }))); },
     () => qr.replaceChildren(h("span.qr-none", { text: "The code couldn’t be drawn here." })));
   qrPut(card, QRS.err || QRS.note,
     h("h2.qrc-title", { text: "Sign in with your phone" }),
@@ -4472,7 +4467,7 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
-const APP_MARK = { Chat: "/apps/inflight.png", Weather: "/apps/weather.png", Fitness: "/apps/fitness.png", Markets: "/apps/markets.png", Mail: MAIL_ICON, Today: "/apps/today.png", Account: "/icon.svg?v=2" };
+const APP_MARK = { Chat: identityAsset("/apps/inflight.png"), Weather: identityAsset("/apps/weather.png"), Fitness: identityAsset("/apps/fitness.png"), Markets: identityAsset("/apps/markets.png"), Mail: MAIL_ICON, Today: identityAsset("/apps/today.png"), Account: identityAsset("/icon.svg?v=2") };
 function activityView() {
   let events = null, show = "all";
   // (as tall as a list, near enough, while it's asked for; the list faded up into place as it comes, and each time the
@@ -4728,7 +4723,7 @@ const pickRow = (title, sel, said) => h("label.row.plain.info.pick", {}, h("span
 const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 const QUARTERS = Array.from({ length: 96 }, (_, i) => hhmm(i * 15));
 // (the account's own: its icon, beside the apps')
-const appImg = (id) => (id === "mail" ? MAIL_ICON : id === "account" ? "/icon.svg" : `/apps/${id}.png`);
+const appImg = (id) => (id === "mail" ? MAIL_ICON : id === "account" ? identityAsset("/icon.svg") : identityAsset(`/apps/${id}.png`));
 const appRow = (id, title, sub, onclick) => h("button.row.app-row", { type: "button", onclick, "data-k": title },
   h("img.ic-img", { src: appImg(id), alt: "" }), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })), h("span.chev", {}, icon("chev", 16, 2.4)));
 // (a folder's head: the app, and how many devices it can tell you on; none, the way to turn it on there)
@@ -5078,7 +5073,7 @@ function ifBlockedView() {
 }
 
 // ---- an app's settings sheet: its head, its rows, and the way into the app ----
-const setHead = (id, name) => h("div.app-head.set", {}, h("img", { src: `/apps/${id}.png`, alt: "", width: 64, height: 64 }), h("b", { text: name }),
+const setHead = (id, name) => h("div.app-head.set", {}, h("img", { src: identityAsset(`/apps/${id}.png`), alt: "", width: 64, height: 64 }), h("b", { text: name }),
   h("span", { text: "Kept with your account, on every device" }));
 // (what's set in the app itself, on each device: the way in, and what's there)
 const openIn = (id, name, what) => [h("a.pill.open-in", { href: siteUrl(APPS[id].sub) }, `Open ${name}`, icon("open", 15, 2.6)), h("p.hint", { text: what })];

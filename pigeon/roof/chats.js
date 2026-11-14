@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.05";
-export const NEWS = "Smoother window and page transitions";
+export const BUILD = "2.06";
+export const NEWS = "Chats on InFlite";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
@@ -142,8 +142,7 @@ export async function mount(root, fw) {
     panel.replaceChildren();
     if (failed) {
       panel.append(el("div", { data: { state: "error" } }, ui.error({ title: "Chats couldn’t open", body: "Something went wrong starting Chats on this phone.",
-        acts: [{ label: "Try Again", primary: true, act: "retry", run: () => { failed = false; svcP = null; svc = null; connect(); paint(); } },
-          { label: "Open Chats on Its Own", act: "own", href: `${fw.session?.links?.chat || "https://chat.inflite.ai"}/` }] })));
+        acts: [{ label: "Try Again", primary: true, act: "retry", run: () => { failed = false; svcP = null; svc = null; connect(); paint(); } }] })));
       return;
     }
     // (before the core's first answer: placeholder rows, not an empty screen)

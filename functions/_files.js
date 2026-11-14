@@ -24,8 +24,8 @@ export function fileName(value) {
 const mimeOf = value => typeof value === "string" && /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(value) && value.length <= 100 ? value.toLowerCase() : "application/octet-stream";
 const nameKey = name => name.toLocaleLowerCase("en-US");
 const liveSQL = "EXISTS (SELECT 1 FROM pg_users WHERE id = ?1 AND delete_at IS NULL)";
-const columns = "id, parent_id, kind, name, mime, size, state, created, modified, version";
-const itemOf = row => row ? { id: row.id, parentId: row.parent_id || null, kind: row.kind, name: row.name, mime: row.kind === "folder" ? "inode/directory" : row.mime, size: row.kind === "folder" ? 0 : row.size, createdAt: row.created, modifiedAt: row.modified, version: row.version, status: row.state === "ready" ? "ready" : "pending" } : null;
+const columns = "id, parent_id, kind, name, mime, size, state, created, modified, version, trash_at, trash_root, trash_parent, favourite";
+const itemOf = row => row ? { id: row.id, parentId: (row.trash_root === row.id ? row.trash_parent : row.parent_id) || null, kind: row.kind, name: row.name, mime: row.kind === "folder" ? "inode/directory" : row.mime, size: row.kind === "folder" ? 0 : row.size, createdAt: row.created, modifiedAt: row.modified, version: row.version, status: row.state === "ready" ? "ready" : "pending", ...(row.trash_at ? { trashedAt: row.trash_at, trashRoot: row.trash_root } : {}), ...(row.favourite ? { favourite: true } : {}) } : null;
 
 async function make(D) {
   await D.batch([
@@ -39,10 +39,16 @@ async function make(D) {
     D.prepare("CREATE INDEX IF NOT EXISTS ifl_files_operations_age ON ifl_files_operations (created)"),
     D.prepare("CREATE INDEX IF NOT EXISTS ifl_files_operations_owner_age ON ifl_files_operations (user_id,created)"),
   ]);
+  const { results } = await D.prepare("PRAGMA table_info(ifl_files_nodes)").all();
+  const known = new Set(results.map(column => column.name));
+  for (const [name, definition] of [["trash_at", "INTEGER NOT NULL DEFAULT 0"], ["trash_root", "TEXT"], ["trash_parent", "TEXT"], ["favourite", "INTEGER NOT NULL DEFAULT 0"]]) {
+    if (!known.has(name)) try { await D.prepare(`ALTER TABLE ifl_files_nodes ADD COLUMN ${name} ${definition}`).run(); }
+    catch (error) { const current = await D.prepare("PRAGMA table_info(ifl_files_nodes)").all(); if (!current.results.some(column => column.name === name)) throw error; }
+  }
 }
 export async function filesdb(env, { requireStorage = true } = {}) {
   if (!env.DB || requireStorage && !env.FILES_R2) return failure(503, "Files storage is unavailable. Try again later.");
-  const D = await tablesOnce(env, "files", make);
+  const D = await tablesOnce(env, "files-v2", make);
   return D.withSession ? D.withSession("first-primary") : D;
 }
 const rowOf = (D, owner, id) => D.prepare("SELECT * FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2").bind(owner, id).first();
@@ -59,7 +65,7 @@ async function ancestors(D, owner, id) {
     if (seen.has(id) || list.length >= FILE_LIMITS.depth) return failure(409, "This folder structure changed. Open My Drive again.");
     seen.add(id);
     const row = await rowOf(D, owner, id);
-    if (!row || row.kind !== "folder" || row.state !== "ready") return failure(404, "That folder is no longer available.");
+    if (!row || row.kind !== "folder" || row.state !== "ready" || row.trash_at) return failure(404, "That folder is no longer available.");
     list.unshift(row); id = row.parent_id;
   }
   return list;
@@ -88,7 +94,7 @@ async function mutate(env, owner, prepare, { deleting = false } = {}) {
         plan.statement(D), ...(plan.after || []).map(statement => statement(D)),
       ]);
       if (result[0].meta?.changes) {
-        if (result.slice(1).some(change => change.meta?.changes !== 1)) return failure(500, "Files couldn’t finish that action.");
+        if (result.slice(1).some((change, index) => change.meta?.changes !== (plan.changes?.[index] ?? 1))) return failure(500, "Files couldn’t finish that action.");
         return plan.result ? await plan.result(D) : { ok: true };
       }
       if (!deleting && !await D.prepare("SELECT 1 FROM pg_users WHERE id = ? AND delete_at IS NULL").bind(owner).first()) return failure(401, "Your account is unavailable. Sign in again.");
@@ -103,10 +109,10 @@ async function mutate(env, owner, prepare, { deleting = false } = {}) {
   }
   return failure(409, "Files changed on another device. Try again.");
 }
-async function create(env, owner, input, kind) {
+async function create(env, owner, input, kind, source = null) {
   const spec = { kind, parent: parentId(input.parentId), name: fileName(input.name), size: kind === "file" ? bytesOf(input.size) : 0, mime: kind === "file" ? mimeOf(input.mime) : "inode/directory", operation: operation(input.operationId) };
   const id = randomToken(24), nonce = randomToken(24), now = Date.now();
-  const signature = hex(await sha256(JSON.stringify([spec.kind, spec.parent, spec.name, spec.size, spec.mime])));
+  const signature = hex(await sha256(JSON.stringify([spec.kind, spec.parent, spec.name, spec.size, spec.mime, ...(source ? [source.id, source.version] : [])])));
   const replay = async D => {
     const operation = await D.prepare("SELECT node_id,signature FROM ifl_files_operations WHERE user_id = ? AND operation_id = ?").bind(owner, spec.operation).first();
     if (!operation) return null;
@@ -120,6 +126,7 @@ async function create(env, owner, input, kind) {
     const recent = await D.prepare("SELECT COUNT(*) AS n FROM ifl_files_operations WHERE user_id = ? AND created > ?").bind(owner, now - DAY).first();
     if (recent.n >= 10000) return failure(429, "Files has handled many changes today. Try again tomorrow.");
     await parentAt(D, owner, spec.parent);
+    if (source) { const row = await rowOf(D, owner, source.id); if (!row || row.trash_at || row.kind !== "file" || row.state !== "ready" || row.version !== source.version) return failure(409, "The source file changed. Refresh before copying it."); }
     return { reserved: spec.size, nodes: 1, replay,
       statement: X => X.prepare(`INSERT INTO ifl_files_nodes (user_id,id,parent_id,kind,name,name_key,mime,size,state,created,modified,operation_id,storage_key,upload_nonce,expires) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10,?11,?12,?13,?14 WHERE changes() > 0`).bind(owner, id, spec.parent, kind, spec.name, nameKey(spec.name), spec.mime, spec.size, kind === "folder" ? "ready" : "pending", now, spec.operation, kind === "file" ? `files/${owner}/${id}/${nonce}` : null, kind === "file" ? nonce : null, kind === "file" ? now + FILE_LIMITS.uploadMs : null),
       after: [X => X.prepare("INSERT INTO ifl_files_operations (user_id,operation_id,node_id,signature,created) SELECT ?1,?2,?3,?4,?5 WHERE changes() > 0").bind(owner, spec.operation, id, signature, now)],
@@ -133,7 +140,7 @@ export const reserveUpload = (env, owner, input) => create(env, owner, input, "f
 export async function listFiles(env, owner, { parentId: parent, q = "", view = "folder", sort, kind, cursor = null } = {}) {
   const D = await filesdb(env); await ensure(D, owner);
   parent = parentId(parent);
-  if (!["folder", "recent", "search"].includes(view)) return failure(400, "That view is invalid.");
+  if (!["folder", "recent", "search", "trash", "favourites"].includes(view)) return failure(400, "That view is invalid.");
   sort ??= view === "recent" ? "modified" : "name";
   if (!["name", "modified", "size"].includes(sort)) return failure(400, "That sort order is invalid.");
   if (kind != null && kind !== "folder") return failure(400, "That file filter is invalid.");
@@ -146,7 +153,7 @@ export async function listFiles(env, owner, { parentId: parent, q = "", view = "
     if (+match[1] !== account.revision) return failure(409, "This folder changed. Refresh to see the latest files.");
     offset = +match[2];
   }
-  const query = q.trim().toLocaleLowerCase("en-US"), scope = view === "folder" ? "parent_id = ?2" : view === "recent" ? "kind = 'file' AND state = 'ready'" : "state = 'ready'";
+  const query = q.trim().toLocaleLowerCase("en-US"), scope = view === "trash" ? "trash_at > 0 AND trash_root = id" : "trash_at = 0 AND " + (view === "folder" ? "parent_id = ?2" : view === "recent" ? "kind = 'file' AND state = 'ready'" : view === "favourites" ? "favourite = 1 AND state = 'ready'" : "state = 'ready'");
   const condition = scope + (kind === "folder" ? " AND kind = 'folder'" : "") + (query ? " AND instr(name_key, ?3) > 0" : ""), order = ({ name: "name_key ASC", modified: "modified DESC", size: "size DESC" })[sort];
   // Indexed folder pages and a deliberately bounded recent/search listing.
   const sql = `SELECT ${columns} FROM ifl_files_nodes WHERE user_id = ?1 AND ${condition} ORDER BY ${view === "recent" ? "" : "kind DESC, "}${order}, id ASC LIMIT ?4 OFFSET ?5`;
@@ -168,7 +175,7 @@ export async function renameFile(env, owner, input) {
   return mutate(env, owner, async D => {
     const row = await rowOf(D, owner, id);
     if (!row) return failure(404, "That file is no longer available.");
-    if (row.state !== "ready" || row.version !== expected) return failure(409, "That file changed. Open it again.");
+    if (row.state !== "ready" || row.trash_at || row.version !== expected) return failure(409, "That file changed. Open it again.");
     if (row.name === name) return { done: true, value: { item: itemOf(row) } };
     return { statement: X => X.prepare("UPDATE ifl_files_nodes SET name = ?3, name_key = ?4, modified = ?5, version = version + 1 WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id, name, nameKey(name), Date.now()), result: async X => ({ item: itemOf(await rowOf(X, owner, id)) }) };
   });
@@ -178,7 +185,7 @@ export async function moveFile(env, owner, input) {
   return mutate(env, owner, async D => {
     const row = await rowOf(D, owner, id);
     if (!row) return failure(404, "That file is no longer available.");
-    if (row.state !== "ready" || row.version !== expected) return failure(409, "That file changed. Open it again.");
+    if (row.state !== "ready" || row.trash_at || row.version !== expected) return failure(409, "That file changed. Open it again.");
     if (row.parent_id === parent) return { done: true, value: { item: itemOf(row) } };
     const chain = await parentAt(D, owner, parent);
     if (id === parent || chain.some(x => x.id === id)) return failure(409, "A folder can’t be moved inside itself.");
@@ -195,14 +202,78 @@ async function removeNode(env, owner, id, expected, { stale = false } = {}) {
     if (!row) return stale ? { done: true, value: { ok: true } } : failure(404, "That file is no longer available.");
     if (expected != null && row.version !== expected) return failure(409, "That file changed. Open it again.");
     if (stale && (row.state === "ready" || row.expires > Date.now())) return { done: true, value: { ok: false } };
+    if (row.kind === "folder" && row.trash_at && row.trash_root === id && !stale) {
+      const rows = await subtree(D, owner, id);
+      if (rows.some(node => node.trash_root !== id)) return failure(409, "This folder changed in Trash. Refresh to check.");
+      return { used: -rows.filter(node => node.state === "ready").reduce((sum,node)=>sum+node.size,0), reserved: -rows.filter(node=>node.state!=="ready").reduce((sum,node)=>sum+node.size,0), nodes: -rows.length, changes:[rows.length],
+        statement:X=>X.prepare("DELETE FROM ifl_files_nodes WHERE user_id=?1 AND trash_root=?2 AND changes()>0").bind(owner,id), result:()=>({ok:true,keys:rows.map(node=>node.storage_key).filter(Boolean)}) };
+    }
     if (row.kind === "folder" && await D.prepare("SELECT 1 FROM ifl_files_nodes WHERE user_id = ? AND parent_id = ? LIMIT 1").bind(owner, id).first()) return failure(409, "This folder still contains files. Empty it before deleting it.");
     return { used: row.state === "ready" ? -row.size : 0, reserved: row.state === "ready" ? 0 : -row.size, nodes: -1,
       statement: X => X.prepare("DELETE FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id), result: () => ({ ok: true, key: row.storage_key }) };
   }, { deleting: stale });
+  if (result.keys?.length) for(let at=0;at<result.keys.length;at+=500) await env.FILES_R2.delete(result.keys.slice(at,at+500)).catch(error=>console.error("Files object cleanup",error?.message));
   if (result.key) await env.FILES_R2.delete(result.key).catch(error => console.error("Files object cleanup", error?.message));
   return { ok: result.ok };
 }
 export const deleteFile = (env, owner, input) => removeNode(env, owner, fileId(input.id), version(input.version));
+
+// Tree changes share the same account revision as ordinary files. No snapshot
+// of a subtree may delete or restore rows added by a competing transaction.
+async function subtree(D, owner, id) {
+  const { results } = await D.prepare(`WITH RECURSIVE tree(id,depth) AS (SELECT id,1 FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2 UNION ALL SELECT n.id,t.depth+1 FROM ifl_files_nodes n JOIN tree t ON n.parent_id=t.id WHERE n.user_id=?1 AND t.depth < ?3) SELECT n.*,t.depth FROM tree t JOIN ifl_files_nodes n ON n.user_id=?1 AND n.id=t.id LIMIT ?4`).bind(owner,id,FILE_LIMITS.depth,FILE_LIMITS.nodes + 1).all();
+  if (!results.length || results.length > FILE_LIMITS.nodes || new Set(results.map(row=>row.id)).size!==results.length) return failure(409,"That folder changed. Refresh to check.");
+  return results;
+}
+export async function trashFile(env, owner, input) {
+  const id=fileId(input.id), expected=version(input.version), now=Date.now();
+  return mutate(env,owner,async D=>{
+    const row=await rowOf(D,owner,id);
+    if(!row) return failure(404,"That file is no longer available.");
+    if(row.version!==expected || row.trash_at) return failure(409,"That file changed. Refresh before moving it to Trash.");
+    const rows=await subtree(D,owner,id);
+    if(rows.some(node=>node.state!=="ready")) return failure(409,"Wait for uploads in this folder to finish, or cancel them first.");
+    return { changes:[rows.length], statement:X=>X.prepare(`UPDATE ifl_files_nodes SET trash_at=?3,trash_root=?2,trash_parent=CASE WHEN id=?2 THEN parent_id ELSE NULL END,parent_id=CASE WHEN id=?2 THEN ?4 ELSE parent_id END,modified=?3,version=version+1 WHERE user_id=?1 AND id IN (WITH RECURSIVE tree(id) AS (SELECT id FROM ifl_files_nodes WHERE user_id=?1 AND id=?2 UNION ALL SELECT n.id FROM ifl_files_nodes n JOIN tree t ON n.parent_id=t.id WHERE n.user_id=?1) SELECT id FROM tree) AND changes()>0`).bind(owner,id,now,"trash:"+id),result:async X=>({item:itemOf(await rowOf(X,owner,id)),count:rows.length}) };
+  });
+}
+export async function restoreFile(env, owner, input) {
+  const id=fileId(input.id),expected=version(input.version);
+  return mutate(env,owner,async D=>{
+    const row=await rowOf(D,owner,id);
+    if(!row) return failure(404,"That file is no longer in Trash.");
+    if(row.version!==expected || !row.trash_at || row.trash_root!==id) return failure(409,"Restore the containing folder first, or refresh Trash.");
+    let parent=Object.hasOwn(input,"parentId")?parentId(input.parentId):row.trash_parent||ROOT;
+    if(!Object.hasOwn(input,"parentId")&&parent){const old=await rowOf(D,owner,parent);if(!old||old.trash_at||old.kind!=="folder")parent=ROOT;}
+    const chain=await parentAt(D,owner,parent),rows=await subtree(D,owner,id);
+    if(chain.length+Math.max(...rows.map(node=>node.depth))>FILE_LIMITS.depth) return failure(409,"Choose a less deeply nested destination.");
+    if(rows.some(node=>node.trash_root!==id)) return failure(409,"This folder changed in Trash. Refresh to check.");
+    const name=input.name===undefined?row.name:fileName(input.name);
+    return {changes:[rows.length],statement:X=>X.prepare("UPDATE ifl_files_nodes SET parent_id=CASE WHEN id=?2 THEN ?3 ELSE parent_id END,name=CASE WHEN id=?2 THEN ?4 ELSE name END,name_key=CASE WHEN id=?2 THEN ?5 ELSE name_key END,trash_at=0,trash_root=NULL,trash_parent=NULL,modified=?6,version=version+1 WHERE user_id=?1 AND trash_root=?2 AND changes()>0").bind(owner,id,parent,name,nameKey(name),Date.now()),result:async X=>({item:itemOf(await rowOf(X,owner,id)),count:rows.length})};
+  });
+}
+export async function favouriteFile(env,owner,input){
+  const id=fileId(input.id),expected=version(input.version);
+  if(typeof input.favourite!=="boolean")return failure(400,"Choose whether to favourite this file.");
+  return mutate(env,owner,async D=>{
+    const row=await rowOf(D,owner,id);if(!row)return failure(404,"That file is no longer available.");
+    if(row.trash_at||row.state!=="ready"||row.version!==expected)return failure(409,"That file changed. Refresh to check.");
+    if(!!row.favourite===input.favourite)return{done:true,value:{item:itemOf(row)}};
+    return{statement:X=>X.prepare("UPDATE ifl_files_nodes SET favourite=?3,version=version+1 WHERE user_id=?1 AND id=?2 AND changes()>0").bind(owner,id,input.favourite?1:0),result:async X=>({item:itemOf(await rowOf(X,owner,id))})};
+  });
+}
+export async function copyFile(env,owner,input,request){
+  const source={id:fileId(input.id),version:version(input.version)},D=await filesdb(env);await ensure(D,owner);
+  const row=await rowOf(D,owner,source.id);
+  if(!row||row.trash_at)return failure(404,"That source file is no longer available.");
+  if(row.kind!=="file"||row.state!=="ready"||row.version!==source.version)return failure(409,"Choose a current file to copy. Folders can be moved or restored with their contents.");
+  const answer=await create(env,owner,{name:input.name===undefined?row.name:input.name,parentId:input.parentId,size:row.size,mime:row.mime,operationId:input.operationId},"file",source);
+  if(answer.item.status==="ready")return{item:answer.item};
+  try{
+    const current=await rowOf(D,owner,source.id);if(!current||current.trash_at||current.version!==source.version)return failure(409,"The source changed before copying. Refresh to check.");
+    const {object}=await fileContent(env,owner,source.id);
+    return await uploadFile(env,owner,answer.item.id,new Request("https://files.internal/copy",{method:"PUT",body:object.body,headers:{"Content-Length":String(row.size)},signal:request?.signal}),{source});
+  }catch(error){try{const fresh=await rowOf(D,owner,answer.item.id);if(fresh?.state==="pending"&&fresh.version===1)await removeNode(env,owner,fresh.id,fresh.version);}catch(_){}throw error;}
+}
 
 // FixedLengthStream gives R2 a trustworthy length while rejecting both short
 // and oversized/chunked bodies. Bytes never collect in a Worker-sized buffer.
@@ -226,13 +297,13 @@ async function putExact(env, key, request, size) {
   catch (error) { abort(); await pump.catch(() => {}); throw error; }
   finally { request.signal.removeEventListener("abort", abort); }
 }
-export async function uploadFile(env, owner, id, request) {
+export async function uploadFile(env, owner, id, request, { source = null } = {}) {
   id = fileId(id);
   const lease = randomToken(24);
   let taken;
   try { taken = await mutate(env, owner, async D => {
     const row = await rowOf(D, owner, id);
-    if (!row || row.kind !== "file") return failure(404, "That upload is no longer available.");
+    if (!row || row.trash_at || row.kind !== "file") return failure(404, "That upload is no longer available.");
     if (row.state === "ready") return { done: true, value: { item: itemOf(row), alreadyUploaded: true } };
     if (row.state !== "pending") return failure(409, "That file is already uploading. Refresh in a moment.");
     if (row.expires <= Date.now()) return failure(410, "That upload expired. Choose the file again.");
@@ -253,6 +324,7 @@ export async function uploadFile(env, owner, id, request) {
     return await mutate(env, owner, async D => {
       const row = await rowOf(D, owner, id);
       if (!row || row.state !== "uploading" || row.upload_nonce !== claim.upload_nonce || row.storage_key !== claim.storage_key || row.expires <= Date.now() || request.signal.aborted) return failure(409, "That upload is no longer current.");
+      if (source) { const original = await rowOf(D, owner, source.id); if (!original || original.trash_at || original.state !== "ready" || original.version !== source.version) return failure(409, "The source file changed while copying. Refresh to check."); }
       return { used: row.size, reserved: -row.size, statement: X => X.prepare("UPDATE ifl_files_nodes SET state = 'ready', expires = NULL, upload_nonce = NULL, modified = ?3, version = version + 1 WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id, Date.now()), result: async X => ({ item: itemOf(await rowOf(X, owner, id)) }) };
     });
   } catch (error) {
@@ -278,7 +350,7 @@ export async function uploadFile(env, owner, id, request) {
 export async function fileContent(env, owner, id, { range } = {}) {
   const D = await filesdb(env); await ensure(D, owner);
   const row = await rowOf(D, owner, fileId(id));
-  if (!row || row.kind !== "file" || row.state !== "ready") return failure(404, "That file is no longer available.");
+  if (!row || row.trash_at || row.kind !== "file" || row.state !== "ready") return failure(404, "That file is no longer available.");
   let part = null;
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
@@ -316,6 +388,9 @@ export async function sweepFileUploads(env, now = Date.now(), limit = 50) {
   const { results } = await D.prepare("SELECT user_id,id FROM ifl_files_nodes WHERE state != 'ready' AND expires < ? ORDER BY expires LIMIT ?").bind(now, Math.max(1, Math.min(100, limit))).all();
   let removed = 0;
   for (const row of results) { const result = await removeNode(env, row.user_id, row.id, null, { stale: true }); if (result?.ok) removed++; }
+  // Trash is retained for 30 days; quota remains charged until permanent purge.
+  const expired = await D.prepare("SELECT user_id,id,version FROM ifl_files_nodes WHERE trash_at > 0 AND trash_at < ? AND trash_root=id ORDER BY trash_at LIMIT 10").bind(now-30*DAY).all();
+  for(const row of expired.results) { try{await removeNode(env,row.user_id,row.id,row.version);removed++;}catch(_){} }
   // A failed R2 delete after a committed metadata deletion is harmless to users,
   // but still needs physical cleanup. Scan only our prefix, with a day of grace.
   const marker = await D.prepare("SELECT v FROM fx_meta WHERE k = 'files_sweep'").first();

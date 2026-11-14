@@ -211,13 +211,13 @@ test("Mail's card on Today: the admin's alone, asked with the key, numbers only;
   mailSays = () => Response.json({ people: 3, updates: 5, later: { n: 2, next: t0 + 3600e3 }, subject: "SECRET" });
   asked = [];
   const card = await mailCard(env, { id: "gf" });
-  assert.deepEqual(card, { state: "ok", href: `${OWN}/`, people: 3, updates: 5, later: { n: 2, next: t0 + 3600e3, href: `${OWN}/#later` } });
+  assert.deepEqual(card, { state: "ok", href: "https://ifl.test/mail/", people: 3, updates: 5, later: { n: 2, next: t0 + 3600e3, href: "https://ifl.test/mail/#later" } });
   assert.deepEqual(asked, [{ url: `${VIA}/api/connector/card`, auth: `Bearer ${KEY}`, cookie: null }], "Mail's Worker, with the key and no cookie");
   // (Mail's own address, the test site's, where there's no stand-in)
   const req = new Request("http://account.ifl.test:8788/api/account/today/cards");
   asked = [];
   const { MAIL_VIA, ...noVia } = env;
-  assert.equal((await mailCard(noVia, { id: "gf" }, req)).href, `${MAILO}/`);
+  assert.equal((await mailCard(noVia, { id: "gf" }, req)).href, "http://ifl.test:8788/mail/");
   assert.equal(asked[0].url, `${MAILO}/api/connector/card`);
   // (no key, or anyone but the admin: none, and Mail never asked)
   asked = [];
@@ -257,7 +257,7 @@ test("Today's day: Mail's card among the cards and its line on Apps, where Mail 
   let cards = {};
   let d = await dayFor(env, U, at, cards, { tz: "Europe/London" });
   assert.equal(d.apps.mail, "3 from people");
-  assert.deepEqual(cards.mail, { state: "ok", href: `${OWN}/`, people: 3, updates: 5, later: { n: 0, next: null, href: `${OWN}/#later` } });
+  assert.deepEqual(cards.mail, { state: "ok", href: "https://ifl.test/mail/", people: 3, updates: 5, later: { n: 0, next: null, href: "https://ifl.test/mail/#later" } });
   assert.ok(!("mail" in d), "the card is among the cards, not one of the day's keys");
   mailSays = () => Response.json({ people: 0, updates: 2, later: { n: 0, next: null } });
   d = await dayFor(env, U, at, cards = {}, { tz: "Europe/London" });

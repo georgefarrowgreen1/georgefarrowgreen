@@ -8,7 +8,7 @@ if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.time
 async function call(path, { method = "GET", body, wait = 30000 } = {}) {
   let r;
   try {
-    r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin", signal: AbortSignal.timeout(wait) });
+    r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(wait) });
   } catch (e) {
     // (no answer in time, though this phone's online: Markets is slow just now, not you)
     if (navigator.onLine !== false && /^(TimeoutError|AbortError)$/.test(e?.name || "")) throw Object.assign(new Error("Markets is slow to answer just now. Try again in a minute."), { offline: true, slow: true });
@@ -59,7 +59,7 @@ export const pushOff = (endpoint) => call("push", { method: "DELETE", body: { en
 
 // ---- the account's own page ----
 // (beside this app's own address: finance.<site> → account.<site>; nowhere else is there one to sign in on)
-export const accountPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//account.")}/` : null);
+export const accountPage = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai/account/" : (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//account.")}/` : null);
 // At InFlite's hub (inflite.ai/markets/: IFL.hub.on, the marker the hub's server puts on the page, never the address)
 // there's no account page beside it: a signed-out Markets signs in through Chats there, and comes back to this page
 // (IFL.hub.signIn: /chats/#signin-start&then=/markets/…). The hub is handed over once, as the app starts (app.js)
@@ -68,11 +68,11 @@ export const atHub = (h) => { hub = h?.on ? h : null; };
 // signed out at the hub: on to the hub's sign-in → true; anywhere else nothing done → false (the account's page, above)
 export const hubSignIn = () => (hub ? hub.signIn() === true : false);
 // (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
-export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
+export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("account", "auth") : null; };
 // signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)
 export const outVia = (app) => { const p = authPage(); if (p) location.assign(`${p}#${new URLSearchParams({ signout: app, back: `${location.origin}/` })}`); };
 // and Chat, beside it, for sending a stock to a friend
-export const chatPage = () => (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//chat.")}/` : null);
+export const chatPage = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai/chats/" : (location.hostname.startsWith("finance.") ? `${location.origin.replace("//finance.", "//chat.")}/` : null);
 export const accountLink = () => call("account-link", { method: "POST", body: {} });
 export const signOut = () => call("signout", { method: "POST", body: {} });
 export const photoUrl = (at) => `${API}/me/photo?v=${at}`;

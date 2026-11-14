@@ -14,7 +14,7 @@ const env={DB:{prepare:q=>st(q),batch:async list=>{const out=[];for(const s of l
 await db(env);await fitdb(env);
 const FIT='http://fitness.localhost',cookies={};
 for(const id of ['ann','bo']){sql.prepare('INSERT INTO pg_users (id,handle,name,email,pub,salt,proof_hash,vault,swift,swift_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id,id,id,id+'@example.com','{}','s','p','v',9,0,0);const h=hex(await sha256(await issueSession(env,id,new Request(FIT+'/api/fitness/me'))));cookies[id]=('f'+id).padEnd(43,'x');sql.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').run(hex(await sha256(cookies[id])),h);}
-const api=(method,path,{who='ann',origin=FIT,data}={})=>onRequest({env,params:{path:path.split('/')},waitUntil(){},request:new Request(FIT+'/api/fitness/'+path,{method,headers:{...(who?{Cookie:'account='+cookies[who]}:{}),...(origin?{Origin:origin}:{}),'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})})}).then(async r=>({status:r.status,body:await r.json()}));
+const api=(method,path,{who='ann',origin=FIT,data,headers={}}={})=>onRequest({env,params:{path:path.split('/')},waitUntil(){},request:new Request(FIT+'/api/fitness/'+path,{method,headers:{...(who?{Cookie:'account='+cookies[who]}:{}),...(origin?{Origin:origin}:{}),'Content-Type':'application/json',...headers},...(data?{body:JSON.stringify(data)}:{})})}).then(async r=>({status:r.status,body:await r.json()}));
 const day=new Date(Date.now()+86400e3).toISOString().slice(0,10),plan={route,day,time:'09:00',tz:'UTC'};
 test('location and route filters are bounded; each waypoint loop starts and ends at the requested GPS point',()=>{
  assert.deepEqual(cleanQuery(query),{...query,roadPreference:"main",avoidUnpaved:true});for(const b of [{start:[181,51]},{metres:0},{metres:120001},{metres:5.5},{surface:'motorcar'},{seed:-1},{start:['-0.2',51]}])assert.throws(()=>cleanQuery({...query,...b}),{status:400});
@@ -76,4 +76,29 @@ test('distance drives recalibration and rejects candidates outside ten percent',
  assert.ok(calls.length<=9);assert.ok(metresBetween(calls[1][0],calls[1][1])<metresBetween(calls[0][0],calls[0][1]),'an overlong candidate shrinks the next attempt');
  assert.equal(got.routes[0].targetMetres,query.metres);
  await assert.rejects(generateRoutes({...query,metres:5000},{fetcher:async()=>Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]})}),{status:422});
+});
+
+test('imported A-to-B GPX routes retain actual geometry and provenance through real account save, export and delete',async()=>{
+ const coords=route.coords.slice(0,45).map(c=>c.slice()), imported=cleanRoute({...route,id:'r-imported-route-1',source:'imported-gpx',name:'Imported coast route',coords,start:coords[0].slice(0,2)});
+ assert.ok(imported);assert.equal(imported.provider,'Imported GPX');assert.equal(imported.source,'imported-gpx');assert.ok(metresBetween(imported.coords[0],imported.coords.at(-1))>25);
+ assert.equal(imported.targetMetres,undefined);assert.equal(cleanRoute({...imported,source:undefined}),null,'import does not weaken generated loop validation');
+ const out=await api('PUT','routes/plan',{data:{...plan,route:imported}});assert.equal(out.status,200);assert.equal(out.body.plan.route.provider,'Imported GPX');
+ const kept=(await api('GET','routes/plan')).body.plan;assert.deepEqual(kept.route.coords,coords);assert.equal(kept.route.source,'imported-gpx');
+ const xml=toGPX(kept.route);assert.ok(!xml.includes('BRouter'));assert.match(xml,/Route imported from a GPX file/);assert.equal((xml.match(/<trkpt /g)||[]).length,coords.length);
+ assert.deepEqual((await exportRouteData(env,'ann')).route.coords,coords);
+ for(const change of [{coords:[[0,0],[1,1]]},{coords:[[0,0],[0,0]]},{start:[0,0]}])assert.equal(cleanRoute({...imported,...change}),null);
+ await dropRoutePlan(env,'ann');
+});
+
+
+test('captured route owners reject cookie-only account swaps before reading geometry, parsing input or writing another account',async()=>{
+ const kept=await saveRoutePlan(env,'bo',plan),headers={'X-Inflite-Route-Owner':'ann'};
+ for(const method of ['GET','PUT','DELETE']){
+  const r=await api(method,'routes/plan',{who:'bo',headers,data:method==='GET'?undefined:{...plan,route:{...route,name:'Old account geometry'}}});
+  assert.equal(r.status,401,method);assert.equal(r.body.field,'session');
+ }
+ assert.equal((await routePlan(env,'bo')).version,kept.version);
+ const own=await api('GET','routes/plan',{who:'bo',headers:{'X-Inflite-Route-Owner':'bo'}});assert.equal(own.status,200);assert.equal(own.body.plan.version,kept.version);
+ assert.equal((await api('GET','routes/plan',{who:'bo',headers:{'X-Inflite-Route-Owner':''}})).status,401);
+ await dropRoutePlan(env,'bo');
 });

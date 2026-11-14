@@ -85,10 +85,10 @@ export const atHub = (h) => { hub = h?.on ? h : null; };
 export const hubSignIn = () => (hub ? hub.signIn() === true : false);
 // (beside this app's own address: fitness.<site> → account.<site>; at the hub, the site's; nowhere else is there one to
 // sign in on)
-export const accountPage = () => (hub ? `${location.protocol}//account.${location.host.replace(/^next\./, "")}/`
+export const accountPage = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai/account/" : (hub ? `${location.protocol}//account.${location.host.replace(/^next\./, "")}/`
   : location.hostname.startsWith("fitness.") ? `${location.origin.replace("//fitness.", "//account.")}/` : null);
 // (and the sign-in page beside it, auth.<site>, where every sign-in and sign-out on the site happens; none locally)
-export const authPage = () => { const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
+export const authPage = () => { if (/(^|\.)inflite\.ai$/.test(location.hostname)) return "https://inflite.ai/auth/"; const p = accountPage(); return p && !/\.localhost[:/]/.test(p) ? p.replace("//account.", "//auth.") : null; };
 // signed out here: on to the sign-in page, which says so and offers the way back (app: this one's name there)
 export const outVia = (app) => { const p = authPage(); if (p) location.assign(`${p}#${new URLSearchParams({ signout: app, back: `${location.origin}/` })}`); };
 // opened signed in as you: a code good once, for a minute (functions/api/fitness account-link)

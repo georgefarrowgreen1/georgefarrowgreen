@@ -317,9 +317,9 @@ function createLiveRoutes(root, opts = {}) {
     root.replaceChildren(btn("‹ All routes", () => showList(true), "link fr-back"));
     const layout = e("div", "cols fr-detail-grid"), main = e("div", "fr-detail-main"), aside = e("div", "fr-detail-aside"), hero = e("section", "card glass session fr-route-hero"), kind = e("span", "sport"), tile = e("i", "s-ride");
     tile.append(sportIcon("ride", 14));
-    kind.append(tile, doc.createTextNode(r.surface === "road" ? "Ride · Road cycling" : "Ride · Mixed surface"));
+    kind.append(tile, doc.createTextNode(r.source === "imported-gpx" ? "Ride · Imported GPX" : r.surface === "road" ? "Ride · Road cycling" : "Ride · Mixed surface"));
     const heading = e("div", "fr-detail-title"), h = e("h2", "", r.name);
-    heading.append(kind, h, e("p", "about", "A cycling loop back to your starting point."));
+    heading.append(kind, h, e("p", "about", r.source === "imported-gpx" ? "Review your imported route before planning the ride." : "A cycling loop back to your starting point."));
     hero.append(heading);
     main.append(hero);
     layout.append(main, aside);
@@ -342,7 +342,7 @@ function createLiveRoutes(root, opts = {}) {
     }
     hero.append(stats);
     const note = e("p", "fr-fit-note");
-    note.append(icon("today", 15, 2), e("span", "", r.snap > 15 ? `Starts and finishes on a cycling road ${r.snap} m from your selected location.` : "Starts and finishes at your selected location, snapped to a cycling road."));
+    note.append(icon("today", 15, 2), e("span", "", r.source === "imported-gpx" ? "Imported GPX · Road access, surface and cycling suitability have not been checked." : r.snap > 15 ? `Starts and finishes on a cycling road ${r.snap} m from your selected location.` : "Starts and finishes at your selected location, snapped to a cycling road."));
     hero.append(note);
     const exportButton = btn("Export GPX", () => {
       const url = URL.createObjectURL(new Blob([toGPX(r)], { type: "application/gpx+xml" })), a = e("a");
@@ -411,7 +411,7 @@ function createLiveRoutes(root, opts = {}) {
     save.type = "submit";
     status.setAttribute("role", "status");
     next.hidden = true;
-    form.append(save, next, status, e("p", "fr-demo-foot", "Your planned route syncs across devices. Saving it leaves your training session unchanged."));
+    form.append(save, next, status, e("p", "fr-demo-foot", "Your planned route syncs across devices. Saving replaces your current planned route and leaves your training session unchanged."));
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!alive() || saving) return;

@@ -16,12 +16,6 @@ import { h, C, el, M, toast, render, openSheet, pushSheet, closeBtn, incomeBars,
 import { itemRow, figOf, emptyView, notIn } from "./todayview.js";
 
 const { S, A, ACCOUNT_NAME, BENCHES, KINDS_SAID, fmt, money, signed, pct, tone, plainSym, plural, kindOf, valueOf, divsOf, paidFor, totals, leftOutSaid, byAccount, income, isaYear, tracksIsa, aroundMonth, owned, rate } = core;
-// (Markets on its own, where the desk is: its own address, finance. on this page's site, as Chat's links have it, and
-// never next.'s; read from the page's address through the module's root)
-function deskHref() {
-  try { const u = new URL(M.root.baseURI); return `${u.protocol}//finance.${u.host.replace(/^next\./, "")}/`; } catch (_) { return "https://finance.inflite.ai/"; }
-}
-
 // ---- the section ----
 // (Change Order: on while it's on, the live line saying where the last one moved went)
 const E = { on: false, said: "" };
@@ -50,8 +44,7 @@ function holdingsView() {
   parts.push(h("div.links", {}, h("button", { type: "button", onclick: () => M.open.addStock(), text: "Add a Stock" }), editBtn));
   if (T.o.length || S.cash?.length) side.push(...accountsPart(T), ...incomePart(), ...vsPart());
   const out = [top.length ? h("div.mk-htop", {}, top) : null, h("div.mk-hmain", {}, parts), side.length ? h("div.mk-hside", {}, side) : null,
-    h("p.foot.mk-foot", {}, h("button.inline", { type: "button", "data-k": "about", onclick: () => M.open.about(), text: "About These Prices" })),
-    h("p.foot.mk-desk", {}, "The desk view is in Markets on its own. ", h("a.inline", { href: deskHref(), target: "_blank", rel: "noopener", text: "Open Markets" }))];
+    h("p.foot.mk-foot", {}, h("button.inline", { type: "button", "data-k": "about", onclick: () => M.open.about(), text: "About These Prices" }))];
   out.hold = true;
   return out;
 }
