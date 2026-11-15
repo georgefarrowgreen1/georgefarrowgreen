@@ -1203,7 +1203,7 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.22";
+const BUILD = "2.23";
 const NEWS = "Smoother sign-in";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
@@ -1595,6 +1595,10 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // still on its way doesn't undo one asked for since: a choice put back, as it couldn't be kept.)
 let themed;
 function theme(pref, fade) {
+  if (globalThis.InFliteAppearance) {
+    InFliteAppearance.accept({ appearance: ["light", "dark"].includes(pref) ? pref : "auto", palette: S.me?.prefs?.palette || InFliteAppearance.snapshot().palette, id: S.me?.id }, { animate: !!fade });
+    return;
+  }
   themed = pref;
   const go = () => {
     const root = document.documentElement, pref = themed;
@@ -1916,7 +1920,7 @@ function signedIn(r) {
     row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
     row({ icon: "data", tint: "grey", title: "Your Data", onclick: () => openSheet(exportView) })))));
   const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
-    row({ icon: "moon", tint: "grey", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
+    row({ icon: "moon", tint: "grey", title: "Appearance", value: `${{ auto: "System", light: "Light", dark: "Dark" }[m.prefs.appearance] || "System"} · ${globalThis.InFliteAppearance?.palettes[m.prefs.palette || "inflite"]?.name || "InFlite"}`, onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "bell", tint: "red", title: "Notifications", value: ntSaid(m.prefs), onclick: () => openSheet(notifyView) })))));
   // (signing out is in InFlite's menu, at its foot, as in every app)
@@ -4601,7 +4605,7 @@ function checkView() {
 }
 
 // ---- preferences, for every app on the site that has them ----
-const APPEAR = [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]];
+const APPEAR = [["auto", "System"], ["light", "Light"], ["dark", "Dark"]];
 // (S.me is only ever what was kept, so a choice that wasn't is put back from it, and said why: once the last of that
 // sheet's saves is back, not as each fails, so replies that come back in another order than they were asked for still
 // end on what's kept. out: that sheet's saves on their way, and whether one of them wasn't kept)
@@ -4613,18 +4617,55 @@ async function setPrefs(changes, out, putBack) {
   if (--out.n || !out.missed) return;
   out.missed = false; putBack();
 }
+// One in-flight save, with the newest local choice queued behind it. A slow
+// response cannot overwrite a newer selection or another signed-in account.
+let appearanceWanted = null, appearanceSaving = false;
+function paintAppearance() {
+  const pref = globalThis.InFliteAppearance?.snapshot() || S.me?.prefs || {};
+  for (const b of sheetEl.querySelectorAll("[data-appearance-mode], [data-appearance-palette]")) {
+    const on = b.dataset.appearanceMode ? b.dataset.appearanceMode === pref.appearance : b.dataset.appearancePalette === pref.palette;
+    b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+  }
+  const status = sheetEl.querySelector(".appearance-status");
+  if (status) status.textContent = appearanceSaving ? "Saving…" : "Applies across your InFlite apps.";
+}
+async function chooseAppearance(change) {
+  const id = S.me.id, current = InFliteAppearance.snapshot();
+  appearanceWanted = { id, appearance: current.appearance, palette: current.palette, ...change };
+  InFliteAppearance.accept(appearanceWanted, { animate: true });
+  if (appearanceSaving) { paintAppearance(); return; }
+  appearanceSaving = true; paintAppearance();
+  try {
+    while (appearanceWanted && S.me?.id === id) {
+      const choice = appearanceWanted; appearanceWanted = null;
+      try {
+        const kept = await call("prefs", { method: "PUT", body: { appearance: choice.appearance, palette: choice.palette } });
+        if (S.me?.id !== id) break;
+        Object.assign(S.me.prefs, { appearance: kept.prefs.appearance, palette: kept.prefs.palette });
+        patch();
+        if (!appearanceWanted) InFliteAppearance.accept({ ...kept.prefs, id });
+      } catch (e) {
+        if (S.me?.id !== id) break;
+        toast(e.message, true);
+        if (!appearanceWanted) InFliteAppearance.accept({ ...S.me.prefs, id }, { animate: true });
+      }
+    }
+  } finally { appearanceSaving = false; if (S.me?.id !== id) appearanceWanted = null; paintAppearance(); }
+}
+globalThis.addEventListener("inflite:appearance", paintAppearance);
 function appearanceView() {
-  const m = S.me;
-  const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: () => {
-    theme(k, true);
-    for (const b of sheetEl.querySelectorAll(".appear")) { const on = b === opts[APPEAR.findIndex(([x]) => x === k)]; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
-    setPrefs({ appearance: k }, prefsOut.appearance, () => {
-      theme(S.me.prefs.appearance, true);
-      if (Sheet.stack.at(-1) === appearanceView) redraw();
-    });
-  } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
+  const pref = InFliteAppearance.snapshot(), palettes = InFliteAppearance.palettes;
+  const opts = APPEAR.map(([k, label]) => h(`button.appear${pref.appearance === k ? ".on" : ""}`, { type: "button", "data-appearance-mode": k, "aria-pressed": String(pref.appearance === k), onclick: () => chooseAppearance({ appearance: k }) }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
+  const choices = Object.entries(palettes).map(([k, p]) => {
+    const swatches = h("span.appearance-swatches", { "aria-hidden": "true" });
+    for (const i of [0, 2, 6, 3]) { const swatch = h("i"); swatch.style.backgroundColor = `light-dark(${p.light[i]}, ${p.dark[i]})`; swatches.append(swatch); }
+    return h(`button.appearance-palette${pref.palette === k ? ".on" : ""}`, { type: "button", "data-appearance-palette": k, "aria-pressed": String(pref.palette === k), onclick: () => chooseAppearance({ palette: k }) }, swatches, h("span", { text: p.name }), h("span.appearance-check", { "aria-hidden": "true" }, icon("check", 16, 2.5)));
+  });
   return { title: "Appearance", body: [
-    h("div.appears", {}, opts)] };
+    h("h3.appearance-label", { text: "Display mode" }), h("div.appears", { role: "group", "aria-label": "Appearance mode" }, opts),
+    h("h3.appearance-label", { text: "Colour palette" }), h("div.appearance-palettes", { role: "group", "aria-label": "Colour palette" }, choices),
+    h("p.appearance-status", { role: "status", text: appearanceSaving ? "Saving…" : "Applies across your InFlite apps." }),
+    h("p.appearance-foot", { text: "App icons keep their familiar colours." })] };
 }
 // the units where the account has none chosen yet, whatever the device's language (as Weather starts with them)
 const unitsHere = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
@@ -5455,7 +5496,7 @@ async function refresh() {
   }
   if (m.signedIn && same(was) !== same(m)) {
     S.me = m;
-    if (m.prefs && m.prefs.appearance !== was.prefs?.appearance) theme(m.prefs.appearance, true);
+    if (m.prefs && (m.prefs.appearance !== was.prefs?.appearance || m.prefs.palette !== was.prefs?.palette)) theme(m.prefs.appearance, true);
     patch();
   }
 }

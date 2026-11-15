@@ -663,7 +663,7 @@ const SECURITY = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
 };
-const FILES = /^\/(app\.js|styles\.css|icon\.svg|icon-180\.png|icons\/(today|chat|weather|fitness|markets|mail|account|home)\.svg|sw\.js|manifest\.webmanifest)$/;
+const FILES = /^\/(app\.js|theme\.js|styles\.css|icon\.svg|icon-180\.png|icons\/(today|chat|weather|fitness|markets|mail|account|home)\.svg|sw\.js|manifest\.webmanifest)$/;
 export async function statusHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return (await statusRoute(ctx, url)) || json({ error: "Not found." }, 404);
   if (!["GET", "HEAD"].includes(ctx.request.method)) return new Response("Not allowed.", { status: 405 });

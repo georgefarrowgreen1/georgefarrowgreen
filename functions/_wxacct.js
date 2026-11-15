@@ -1,3 +1,4 @@
+import { appearanceOf } from "./_appearance.js";
 // Weather and the site's account (functions/_account.js). Signed in anywhere on the site in this browser, Weather is
 // too; or it sends you to the account's page to sign in, and is handed the sign-in back (functions/_handback.js), and
 // that sign-in is the site's. It never holds the session itself: each request carries the site's cookie, and only from
@@ -52,7 +53,7 @@ export async function kept(env, userId) {
 // what's kept, and which devices get its notifications
 async function view(env, u) {
   const k = await kept(env, u.id);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
+  return { signedIn: true, ...appearanceOf(u), id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
 }
 export const ACCOUNT_ROUTES = {
   // who's signed in (and what's kept), or { signedIn: false }; the cookie's life renewed while it's used

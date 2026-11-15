@@ -1,3 +1,4 @@
+import { appearanceOf } from "./_appearance.js";
 // Mail (email.inflite.ai): the site's own inbox, its admin's alone. Mail is a Worker of its own (the inflite repo's
 // email/), not part of this project, so it asks here, at the account's address, passing on what its page sent it: the
 // browser's cookie for the site, its Origin, and who it is (the browser's own words for it). Signing in is the
@@ -91,7 +92,7 @@ async function mailView(env, u) {
     signedIn: true, admin: isAdmin, passkey: isAdmin && admin.passkeys > 0, fresh: Date.now() - (u.authAt || 0) < ADMIN_LOOK,
     name: u.name, handle: u.handle, email: isAdmin ? u.email : null, photoAt: u.avatar_at || null,
     // (the account's look, for every app on the site: Automatic, Light or Dark)
-    appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto",
+    ...appearanceOf(u),
     // (the account's Quiet Hours, every app's, from its Notifications page: Mail keeps new mail's notices to them)
     ...(isAdmin ? { quiet: ((p) => ({ on: !!p.quiet, from: p.quietFrom, to: p.quietTo, tz: p.tz }))(prefsOf(u)) } : {}),
   };

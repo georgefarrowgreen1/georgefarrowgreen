@@ -1232,7 +1232,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.06";            // shown in InFlite's menu
+const APP_VERSION = "2.07";            // shown in InFlite's menu
 const APP_NEWS = "Chats on InFlite";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
@@ -6891,6 +6891,7 @@ function keepTheme(t) {
 // account's appearance is every app's on the site, so only a choice is kept).
 function syncTheme() {
   if (!S.me) return;
+  globalThis.InFliteAppearance?.fromApp(S.me);
   const mine = S.me.appearance;
   // (one chosen here that the account hasn't had yet: this phone's stands, and goes again)
   if (themeWaits()) { if (!themeSaving) saveTheme(theme()); return; }

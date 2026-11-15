@@ -41,3 +41,11 @@ accessibility ownership; delayed animation callbacks may never reopen them or st
 ## Verification
 
 Check native and Today-hosted screens at narrow-phone and desktop sizes, in light/dark and explicit appearance settings. Review populated, empty, loading, error and editor/sheet states. Check overflow, contrast, focus, keyboard clearance and route/sheet transitions. Run app regressions and shared contract/budget checks before generating minified assets and deploying both repositories.
+
+## Account Appearance
+
+Six curated palettes (InFlite, Coast, Iris, Ember, Rose, Graphite) are independent of the account's System/Light/Dark mode. The source is `appearance.js`; run `node .tools/appearance.mjs ../inflite/today/public/theme.js ../inflite/email/public/theme.js` after changes. This bundles the same runtime into early scripts and Status. Run `iflmenu.mjs` for shared colour-transition tokens, then `minify.mjs` and `wxshell.mjs` for production assets.
+
+The runtime applies validated cached preferences before first paint. Shared `--ifl-*` colours update in place without moving or remounting views. App icons, warning/error colours and market gain/loss colours retain their meanings. Theme choices use a short native View Transition cross-fade, with the dock held stationary. Ordinary inherited colour tokens avoid WebKit interpolation issues; reduced motion and browsers without View Transitions apply colours directly. Only palette/mode/account identifier are cached; drafts and app data are never part of the preference.
+
+The account API validates palette IDs and modes before updating `pg_users.appearance` / `theme_palette`. GET appearance is a small private/no-store response; signed-out requests return no preferences. Same-origin authenticated PUT prefs is unchanged as the write boundary. Appearance serializes rapid UI saves, rolls back failed final choices, and ignores old hydration responses after newer local changes. Storage events update same-account tabs; visibility/focus refreshes the canonical account choice. App-specific appearance readers cannot replace the shared mode. Standalone app session responses also carry their account palette.

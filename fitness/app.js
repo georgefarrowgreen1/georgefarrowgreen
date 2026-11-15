@@ -1668,7 +1668,7 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.37";
+const BUILD = "2.38";
 const NEWS = "Files and imported routes";
 function youMenu(at) {
   IFL.menu(at, {
@@ -2953,6 +2953,7 @@ async function fetchMe(base = meBase) {
 // (kept: the copy kept on this phone, drawn at once; it may be another account's, the site having been signed into as
 // someone else since, so nothing's done for it, nothing fetched or kept, till the account says it's the same one)
 function arrive(m, kept = false) {
+  if (!kept) globalThis.InFliteAppearance?.fromApp(m);
   if (!kept && m.appearance) lookOf(m.appearance);
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
   // (plans from Chat only from the account's own answer, never the copy kept here: one said no to on another device
@@ -3014,6 +3015,7 @@ function todayRides() {
 // the account as fetched, taken up over what's on the screen (this device's changes not yet kept winning)
 function takeUp(m) {
   document.body.dataset.fresh = "1";
+  globalThis.InFliteAppearance?.fromApp(m);
   if (m.appearance) lookOf(m.appearance);
   S.me = { ...S.me, name: m.name, handle: m.handle, photoAt: m.photoAt, garmin: m.garmin }; S.ver = m.ver; S.pulledAt = Date.now();
   adopt(S.dirty.size ? A.merge(m.data, record(), S.dirty, S.inStepWorkouts) : m.data); S.inStepWorkouts = A.workoutIds(m.data);

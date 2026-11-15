@@ -78,12 +78,7 @@
       ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>'
       : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15a8 8 0 0 1-11-11 8.5 8.5 0 1 0 11 11Z"/></svg>';
   }
-  function setTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("status:theme", theme); } catch (_) {}
-    syncTheme();
-  }
-  try { const theme = localStorage.getItem("status:theme"); if (["light", "dark"].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
+  globalThis.addEventListener("inflite:appearance", syncTheme);
   systemTheme.addEventListener?.("change", syncTheme);
   syncTheme();
 
@@ -504,7 +499,7 @@
   document.addEventListener("click", (e) => {
     const t = e.target.closest("button, a"); if (!t) return;
     if (t.dataset.history) { const kind = t.dataset.history; expandedHistory.has(kind) ? expandedHistory.delete(kind) : expandedHistory.add(kind); syncHistory(kind); return; }
-    if (t.id === "themeSwitch") { setTheme((document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark" ? "light" : "dark"); return; }
+    if (t.id === "themeSwitch") { location.assign("https://inflite.ai/account/#open=appearance"); return; }
     if (t.dataset.operationToggle) { toggleOperation(t.dataset.operationToggle); return; }
     if (t.dataset.toggle) { const id = t.dataset.toggle; opened.has(id) ? opened.delete(id) : opened.add(id); groups(); document.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); return; }
     if (t.dataset.period != null) { period = +t.dataset.period; verdict(); groups(); return; }

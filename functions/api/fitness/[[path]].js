@@ -1,3 +1,4 @@
+import { appearanceOf } from "../../_appearance.js";
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
 //   POST   /api/fitness/routes/generate  bicycle loops from a GPS point, duration and surface
@@ -89,7 +90,7 @@ async function view(env, u, since = null, { today = false, tz = null, t = Date.n
   return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, acts: got.acts, ...(got.more ? { more: true } : {}), ...(got.ids ? { ids: got.ids, since } : {}), at, garmin, health, strava,
     offers: offers || [], ...(today && offers ? { offersToday: true } : {}), times,
     // (the look, as the account has it: its page's Appearance)
-    appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
+    ...appearanceOf(u) };
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 

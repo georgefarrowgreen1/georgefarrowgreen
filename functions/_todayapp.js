@@ -1,3 +1,4 @@
+import { appearanceOf } from "./_appearance.js";
 // InFlite Today (inflite.ai): its API, at the account's address. Today is a Worker of its own (the inflite repo's
 // today/), not part of this project, so it asks here, passing on what its page sent it: the browser's cookie for the
 // site, who it is (the browser's own words for it), and its own Origin, which every route here checks
@@ -89,7 +90,7 @@ async function todayView(env, u, request) {
     signedIn: true,
     user: { id: u.id, name: u.name, first: firstName(u), handle: u.handle, photoAt: u.avatar_at || null,
       // (the account's look, for every app on the site: Automatic, Light or Dark)
-      appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" },
+      ...appearanceOf(u) },
     prefs: row.cards,
     morning: { on: !!row.m_on, at: row.m_at, devices: devs.length },
     links: todayLinks(env, request),

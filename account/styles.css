@@ -1647,6 +1647,19 @@ dialog.ifl-engine-box::backdrop { background: transparent; }
 :root[data-theme="dark"] .ifl-sb[data-k="maint"] { --sb: var(--ifl-accent-ink); }
 /* InFlite's shared palette, geometry and motion. Bundled into each app by iflmenu.mjs:
    no extra request, and an app's existing offline/update mechanism keeps it current. */
+/* A theme cross-fades its snapshots; colour tokens stay ordinary inherited
+   properties. This avoids stale inherited action text in WebKit. */
+html.ifl-colour-change::view-transition { pointer-events: none; }
+html.ifl-colour-change::view-transition-group(*) { animation: none; }
+html.ifl-colour-change::view-transition-old(*) { animation: ifl-theme-out .18s ease both; }
+html.ifl-colour-change::view-transition-new(*) { animation: ifl-theme-in .18s ease both; }
+html.ifl-colour-change::view-transition-old(inflite-dock) { display: none; }
+html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix-blend-mode: normal; }
+@keyframes ifl-theme-out { to { opacity: 0; } }
+@keyframes ifl-theme-in { from { opacity: 0; } }
+@media(prefers-reduced-motion:reduce) {
+  html.ifl-colour-change::view-transition-old(*), html.ifl-colour-change::view-transition-new(*) { animation: none; }
+}
 :root {
   --ifl-page: #f8f9f6; --ifl-surface: #ffffff; --ifl-surface-2: #f1f2ef; --ifl-raised: #ffffff;
   --ifl-text: #171a18; --ifl-muted: #646a66; --ifl-subtle: #676e66;
@@ -1943,3 +1956,21 @@ html[data-motion-paused] .avatar::before, html[data-motion-paused] .sk::after {
   }
   .field .at input:focus-visible, .nav-search input:focus-visible { outline: none; }
 }
+
+/* Account-wide Appearance: stable choices retain focus while colours change. */
+.appearance-label { margin: 8px 0 12px; font-size: 15px; font-weight: 600; }
+.appearance-palettes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-bottom: 8px; }
+.appearance-palette { position: relative; display: grid; justify-items: start; gap: 14px; min-width: 0; min-height: 100px; padding: 16px; border: 1px solid var(--ifl-line); border-radius: 20px; background: var(--ifl-surface-2); color: var(--ifl-text); font: inherit; text-align: start; }
+.appearance-palette.on { border-color: var(--ifl-accent-ink); box-shadow: inset 0 0 0 1px var(--ifl-accent-ink); }
+.appearance-palette:focus-visible { outline: 2px solid var(--ifl-accent-ink); outline-offset: 3px; }
+.appearance-swatches { display: flex; gap: 5px; }
+.appearance-swatches i { width: 22px; height: 25px; border-radius: 8px; }
+.appearance-swatches i:first-child { width: 30px; }
+.appearance-check { position: absolute; bottom: 16px; right: 16px; display: grid; place-items: center; width: 20px; height: 20px; color: var(--ifl-accent-ink); opacity: 0; }
+.appearance-palette.on .appearance-check { opacity: 1; }
+.appearance-status, .appearance-foot { color: var(--ifl-muted); font-size: 14px; line-height: 1.5; margin: 8px 0; }
+.appearance-status { min-height: 21px; }
+.appear .tick { color: var(--ifl-on-accent); }
+.appear.on .tick { background: var(--ifl-accent-fill); }
+@media(min-width:700px) { .appearance-palettes { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media(max-width:360px) { .appearance-swatches { gap: 4px; } .appearance-swatches i { width: 18px; } .appearance-swatches i:first-child { width: 22px; } }

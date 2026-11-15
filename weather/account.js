@@ -12,6 +12,7 @@ async function call(path, { method = "GET", body } = {}) {
   catch (_) { throw Object.assign(new Error("You're offline. Try again when you're back online."), { offline: true }); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok && r.status !== 409) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status });
+  if (j.signedIn) globalThis.InFliteAppearance?.fromApp(j);
   return { status: r.status, ...j };
 }
 // who's signed in, and what's kept: { signedIn, name, handle, ver, data: { places, settings, notify }, devices }

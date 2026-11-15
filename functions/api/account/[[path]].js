@@ -1,3 +1,4 @@
+import { appearanceOf, PALETTES } from "../../_appearance.js";
 import { publicApp } from "../../_canonical.js";
 // The account's own API, for its page at account.inflite.ai (functions/_acctapp.js), and only there:
 //   GET  /api/account/me              who's signed in: the profile, email, passkeys, signed-in devices, preferences, the apps
@@ -181,7 +182,7 @@ async function view(env, u) {
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
     // (and Quiet Hours, every app's, for the row that says them, before Notifications has been opened)
-    prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null,
+    prefs: { ...appearanceOf(u), units: Object.keys(units).length ? units : null,
       quiet: ((n) => ({ on: !!n.quiet, from: n.quietFrom, to: n.quietTo }))(prefsOf(u)) },
     // (the emails each app sends: the account's, about signing in and its security, always; Chat's, as it has them;
     // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
@@ -516,6 +517,11 @@ const ROUTES = {
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     return withKnown(await withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash), request, env, u);
   },
+  "GET appearance": async ({ request, env }) => {
+    const u = await cookieUser(request, env, false, { deleting: true });
+    if (!u) return json({ signedIn: false });
+    return json({ signedIn: true, id: u.id, ...appearanceOf(u) });
+  },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env, false, { deleting: true });
     if (!u) return json({ signedIn: false });
@@ -796,10 +802,16 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096), now = { ...u };
     await pace(env, "prefs:" + u.id, 120, 3600e3);
-    if (b.appearance !== undefined) {
-      if (!["auto", "light", "dark"].includes(b.appearance)) throw new HttpError(400, "Choose Automatic, Light or Dark.");
-      await (await db(env)).prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
-      now.appearance = b.appearance;
+    if (b.appearance !== undefined && !["auto", "light", "dark"].includes(b.appearance)) throw new HttpError(400, "Choose System, Light or Dark.");
+    if (b.palette !== undefined && !PALETTES.includes(b.palette)) throw new HttpError(400, "Choose one of the colour palettes shown.");
+    if (b.appearance !== undefined || b.palette !== undefined) {
+      const current = appearanceOf(u), appearance = b.appearance ?? current.appearance, palette = b.palette ?? current.palette;
+      // Independent partial updates never overwrite the other setting from a stale read.
+      const D = await db(env);
+      if (b.appearance !== undefined && b.palette !== undefined) await D.prepare("UPDATE pg_users SET appearance = ?, theme_palette = ? WHERE id = ?").bind(appearance, palette, u.id).run();
+      else if (b.appearance !== undefined) await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(appearance, u.id).run();
+      else await D.prepare("UPDATE pg_users SET theme_palette = ? WHERE id = ?").bind(palette, u.id).run();
+      now.appearance = appearance; now.theme_palette = palette;
     }
     // Chat's emails, on or off (as its own Notifications have them: which ones, it says)
     if (b.emails?.inflight !== undefined) {
@@ -1019,7 +1031,7 @@ const ROUTES = {
       about: "Everything kept with your inflite.ai account that can be read. Chat's letters aren't here: they're end-to-end encrypted, with keys only your phones have.",
       exportedAt: iso(Date.now()),
       account: { id: u.id, name: u.name, handle: u.handle, email: u.email, emailConfirmed: !!u.email_ok, createdAt: iso(u.created_at), photo,
-        appearance: u.appearance || "auto" },
+        ...appearanceOf(u) },
       signIn: {
         passkeys: pks.map((p) => ({ name: p.label, savedIn: p.provider, createdAt: iso(p.created_at), lastUsedAt: iso(p.used_at) })),
         devices: ss.map((s) => ({ device: s.label, place: s.place, signedInAt: iso(s.created_at), lastActiveAt: iso(s.seen_at) })),
@@ -1189,7 +1201,7 @@ const AUTH_ONLY = new Set(["POST signin/salt", "POST signin/password", "POST sig
   "POST signin/qr/take", "POST handback", "POST join", "POST signup", "POST reset/request", "POST reset/check", "POST reset/complete"]);
 // (a computer's code, said yes or no to by a phone: at either, as the phone's camera opens the sign-in page, and the
 // account's page has a scanner of its own)
-const AUTH_ROUTES = new Set([...AUTH_ONLY, "POST qr/look", "POST qr/answer", "POST signin/options", "POST signout", "GET me", "GET me/photo", "GET handle", "POST reauth", "POST password/vault",
+const AUTH_ROUTES = new Set([...AUTH_ONLY, "POST qr/look", "POST qr/answer", "POST signin/options", "POST signout", "GET appearance", "GET me", "GET me/photo", "GET handle", "POST reauth", "POST password/vault",
   "POST delete/cancel", "POST password/upgrade", "POST password/checked", "GET pwned", "POST passkeys/options", "POST passkeys", "POST passkeys/vault"]);
 
 export async function onRequest(ctx) {

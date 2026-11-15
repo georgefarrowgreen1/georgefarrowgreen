@@ -1,3 +1,4 @@
+import { appearanceOf } from "../../_appearance.js";
 // Markets's own API, at finance.inflite.ai only, and only signed in with the site's account (the site's cookie, from
 // Markets's own pages: functions/_markets.js has what's kept and where the prices come from).
 //   GET    /api/markets/me            who's signed in, what you own and follow, their prices, the markets', and the day's rates
@@ -48,7 +49,7 @@ async function view(env, u) {
   const fx = await rates(env, Object.values(q).map((x) => x.cur), by);
   const D = await mkdb(env), phone = await D.prepare("SELECT 1 FROM mk_off WHERE user_id = ?").bind(u.id).first(), wrap = await D.prepare("SELECT off FROM mk_wrap WHERE user_id = ?").bind(u.id).first();
   return { signedIn: true, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null, holdings: list, cash, quotes: q, rates: fx, indices: INDICES, alertsOff: !!phone, wrap: !wrap?.off, isa: await isaOf(env, u.id), at: Date.now(),
-    appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto" };
+    ...appearanceOf(u) };
 }
 // a few symbols from the address (s=A,B,C)
 const symbolsOf = (request, max = 70) => {

@@ -1189,7 +1189,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.37";
+const BUILD = "2.38";
 const NEWS = "Markets on InFlite";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
@@ -3300,6 +3300,7 @@ function forget() {
 
 // ---- signed in: your list and its prices ----
 function take(m) {
+  globalThis.InFliteAppearance?.fromApp(m);
   if (S.me?.id !== m.id) cashEpoch++;
   S.me = { id: m.id, name: m.name, handle: m.handle, photoAt: m.photoAt };
   S.list = m.holdings || []; S.cash = cashRows(m.cash); S.q = { ...S.q, ...(m.quotes || {}) }; S.fx = { ...S.fx, ...(m.rates || {}) }; S.alertsOff = !!m.alertsOff; S.isa = m.isa ?? S.isa; S.wrap = m.wrap ?? S.wrap;
