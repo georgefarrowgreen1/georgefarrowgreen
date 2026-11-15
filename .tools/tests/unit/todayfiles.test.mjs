@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { IFL, roofSkip } from './fixtures/roof.mjs';
-import { OS_FILES } from './fixtures/workspace.mjs';
+import { OS_FILES, OS_RETIRED_JS } from './fixtures/workspace.mjs';
 
 const PUB = new URL('../../../../inflite/today/public/', import.meta.url);
 const ROOT = new URL('../../../', import.meta.url);
@@ -115,6 +115,7 @@ test('One roof: the CSP matches PAGE_HEADERS and allows only the apps’ explici
   const optional = /\nconst OS_FILES = (\[[^\]]*\]);/.exec(sw);
   const osFiles = optional ? JSON.parse(optional[1]) : [];
   if (optional) assert.deepEqual(osFiles, [...OS_FILES], 'only the reviewed optional OS asset closure');
-  for (const f of readdirSync(new URL('roof/', PUB)).filter((f) => /\.(js|css)$/.test(f))) assert.ok(FILES.includes(`/roof/${f}`) || osFiles.includes(`/roof/${f}`), `/roof/${f} kept in its ordinary or optional OS shell`);
+  // Retained compatibility modules are deliberately outside the active shell cache.
+  for (const f of readdirSync(new URL('roof/', PUB)).filter((f) => /\.(js|css)$/.test(f))) assert.ok(FILES.includes(`/roof/${f}`) || osFiles.includes(`/roof/${f}`) || OS_RETIRED_JS.includes(f), `/roof/${f} kept in its ordinary or optional OS shell, or explicitly retired`);
   assert.ok(!osFiles.some(f => FILES.includes(f)), 'optional OS assets do not inflate the ordinary shell');
 });
