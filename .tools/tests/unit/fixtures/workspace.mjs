@@ -1,15 +1,21 @@
 // Explicit optional asset boundary. Every new path is deliberately reviewed;
 // unrelated roof files still count toward the ordinary core/cache checks.
+import { existsSync, readFileSync } from 'node:fs';
+import { ROOF } from './roof.mjs';
+const host = ROOF && new URL('workspace.js', ROOF);
+const savedLayouts = host && existsSync(host) && /import\s*\{\s*createWorkspaceStore\s*\}/.test(readFileSync(host, 'utf8'));
+// Keep compatibility tests independent of which repository deploys first.
+export const OS_RETIRED_JS = Object.freeze(['workspace-state.js', 'workspace-context.js', 'workspace-sync.js', 'workspace-sync-view.js']);
 export const OS_FILES_JS = Object.freeze(['workspace-files.js', 'files-service.js', 'files-apps.js', 'files-metadata.js', 'files-location.js', 'files-drive.js', 'files-explorer.js', 'files-view.js']);
 export const OS_FILES_CSS = Object.freeze(['workspace-files.css', 'files-view.css']);
 export const OS_DIALOG_JS = Object.freeze(['files-dialogs.js']);
 export const OS_DIALOG_CSS = Object.freeze(['files-dialogs.css']);
 export const OS_ACTIVITY_JS = Object.freeze(['workspace-activity.js', 'workspace-activity-state.js']);
 export const OS_ACTIVITY_CSS = Object.freeze(['workspace-activity.css']);
-export const OS_SYNC_JS = Object.freeze(['workspace-sync.js', 'workspace-sync-view.js']);
+export const OS_SYNC_JS = Object.freeze(savedLayouts ? ['workspace-sync.js', 'workspace-sync-view.js'] : []);
 export const OS_RECOVERY_JS = Object.freeze(['workspace-recovery.js', 'workspace-recovery-view.js']);
 export const OS_RECOVERY_CSS = Object.freeze(['workspace-recovery.css']);
-export const OS_CORE_JS = Object.freeze(['workspace.js', 'workspace-view.js', 'workspace-state.js', 'workspace-catalog.js', 'workspace-context.js', 'workspace-windows.js', 'workspace-commands.js', ...OS_FILES_JS, ...OS_DIALOG_JS, ...OS_ACTIVITY_JS, ...OS_SYNC_JS, ...OS_RECOVERY_JS]);
+export const OS_CORE_JS = Object.freeze(['workspace.js', 'workspace-view.js', ...(savedLayouts ? ['workspace-state.js'] : []), 'workspace-catalog.js', ...(savedLayouts ? ['workspace-context.js'] : []), 'workspace-windows.js', 'workspace-commands.js', ...OS_FILES_JS, ...OS_DIALOG_JS, ...OS_ACTIVITY_JS, ...OS_SYNC_JS, ...OS_RECOVERY_JS]);
 export const OS_FILES = Object.freeze([...OS_CORE_JS.map(f => '/roof/' + f), '/roof/workspace.css', '/roof/workspace-commands.css', ...OS_FILES_CSS.map(f => '/roof/' + f), ...OS_DIALOG_CSS.map(f => '/roof/' + f), ...OS_ACTIVITY_CSS.map(f => '/roof/' + f), ...OS_RECOVERY_CSS.map(f => '/roof/' + f), '/os.webmanifest']);
 // Quick picker is a public optional primitive beside the Explorer host entry.
 export const OS_ENTRIES = Object.freeze(['/roof/workspace.js', '/roof/workspace-files.js']);

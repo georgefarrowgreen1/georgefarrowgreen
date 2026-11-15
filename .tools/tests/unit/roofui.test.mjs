@@ -11,7 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { ROOF, IFL, roofSkip } from './fixtures/roof.mjs';
-import { OS_CORE_JS } from './fixtures/workspace.mjs';
+import { OS_CORE_JS, OS_RETIRED_JS } from './fixtures/workspace.mjs';
 import { fakeDocument } from '../roofkit/fakedom.mjs';
 import { JS_START, JS_END } from '../../iflmenu.mjs';
 
@@ -177,7 +177,7 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // contract to docs reduces the actual framework files served over the network.
 // Workspace v1 adds controlled view ownership to the core (35 KiB); its five
 // optional scripts have their own served-size budget in roofworkspace.test.mjs.
-const OPTIONAL_WORKSPACE = new Set(OS_CORE_JS);
+const OPTIONAL_WORKSPACE = new Set([...OS_CORE_JS, ...OS_RETIRED_JS]);
 test('roof core UI stays within 35 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
   const all = files().filter(f => f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
   assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
