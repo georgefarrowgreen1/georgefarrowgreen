@@ -90,6 +90,19 @@ async function augment(ctx, state, json) {
 const pane = (page, app) => page.locator(`.ifl-workspace-pane[data-pane="${app}"]`);
 async function settled(page) { await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))); }
 async function createAll(page, state) {
+  if (!await page.getByRole('button', { name: 'New workspace', exact: true }).count()) {
+    for (const app of APPS) {
+      await page.locator('.ws-dock').getByRole('button', { name: app[0].toUpperCase()+app.slice(1), exact: true }).click();
+      const root=page.locator('#m-'+app);await root.waitFor({state:'visible'});
+      if(app==='fitness')await root.locator('.week-overview').waitFor();
+      if(app==='weather')await root.locator('[data-card=hourly] .chart svg').first().waitFor();
+      if(app==='markets')await root.locator('.pchart path[data-draw]').waitFor();
+      if(app==='chats')await root.locator('.ch-row').first().waitFor();
+      if(app==='mail')await root.locator('.ml-row').first().waitFor();
+    }
+    await page.evaluate(apps => window.__allRoots=Object.fromEntries(apps.map(app=>[app,document.getElementById('m-'+app)])),APPS);
+    return;
+  }
   await page.getByRole('button', { name: 'New workspace', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'New workspace', exact: true });
   await sheet.getByRole('textbox', { name: 'Workspace name', exact: true }).fill('All five apps');

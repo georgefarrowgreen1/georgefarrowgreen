@@ -109,34 +109,25 @@ async function home(page){await page.locator('.ws-sidebar').getByRole('button',{
 async function settleView(page){await page.evaluate(async()=>{await Promise.allSettled(document.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});}
 async function newWorkspace(page,name){await home(page);await page.getByRole('button',{name:'New workspace',exact:true}).click();const d=sheet(page,'workspace-create');await d.getByRole('textbox',{name:'Workspace name',exact:true}).fill(name);await d.getByRole('button',{name:'Create workspace',exact:true}).click();await d.waitFor({state:'detached'});}
 
-test('two real devices synchronize layouts and resolve a genuine stale-D1 write explicitly',async()=>{
+test('two real devices retain Files access without starting retired workspace synchronization',async()=>{
  const a=await kit.openFiles(),b=await kit.openFiles();try{
-  // Both browser contexts use the same real account, with independent local
-  // storage and independent transport gates, just like separate devices.
-  await a.page.waitForFunction(()=>document.querySelector('.ws-sync-state')?.textContent==='Synced');
-  await b.page.waitForFunction(()=>document.querySelector('.ws-sync-state')?.textContent==='Synced');
-  const gate=a.state.hold(r=>r.action==='workspaces'&&r.method==='PUT');
-  await newWorkspace(a.page,'Device A layout');await kit.gateReached(a,gate);
-  const ack=b.page.waitForResponse(r=>new URL(r.url()).pathname==='/api/workspaces'&&r.request().method()==='PUT'&&r.status()===200);
-  await newWorkspace(b.page,'Device B layout');await ack;const conflict=a.page.waitForResponse(r=>new URL(r.url()).pathname==='/api/workspaces'&&r.request().method()==='PUT'&&r.status()===409);gate.release();await conflict;
-  await command(a.page,'review workspace conflict','Review workspace conflict');const d=sheet(a.page,'workspace-sync');await d.waitFor();
-  await d.getByRole('button',{name:'Use cloud workspaces',exact:true}).click();await d.waitFor({state:'detached'});await home(a.page);
-  await a.page.locator('.ws-sidebar').getByRole('button',{name:'Device B layout',exact:true}).waitFor();
-  assert.equal(await a.page.locator('.ws-sidebar').getByRole('button',{name:'Device A layout',exact:true}).count(),0);
-  assert.ok(a.state.fileRequests.some(r=>r.action==='workspaces'&&r.status===409));
-  const saved=(await(await workspaceRequest(kit.accounts().a)).json()).state;assert.ok(saved.workspaces.some(w=>w.name==='Device B layout'));assert.equal(saved.workspaces.some(w=>w.name==='Device A layout'),false);
-  assert.doesNotMatch(JSON.stringify(saved),/private Drive|Native attach|Activity transport|unsent/i);
-  await clean(a);await clean(b);
- }catch(error){await diagnose(a,'cloud-A');await diagnose(b,'cloud-B');throw error;}finally{a.state.releaseFiles();b.state.releaseFiles();await a.close();await b.close();}
+  for(const t of [a,b]){
+   await home(t.page);
+   assert.equal(await t.page.getByRole('button',{name:/workspace|sync/i}).count(),0);
+   await kit.goFiles(t.page);await t.page.locator('.ifl-files-explorer:visible').waitFor();
+   assert.equal(t.state.fileRequests.some(r=>r.action==='workspaces'),false);
+   await clean(t);
+  }
+ }finally{await a.close();await b.close();}
 });
 
 test('canonical unified home has usable real desktop and phone layouts',async()=>{
- const t=await kit.openFiles({colorScheme:'light'});try{await home(t.page);assert.equal(new URL(t.page.url()).origin,ORIGIN);await t.page.getByRole('button',{name:'Open Workspaces',exact:true}).waitFor();
+ const t=await kit.openFiles({colorScheme:'light'});try{await home(t.page);assert.equal(new URL(t.page.url()).origin,ORIGIN);assert.equal(await t.page.getByRole('button',{name:'Open Workspaces',exact:true}).count(),0);
   const out=process.env.FILES_SCREENSHOTS||'/tmp/inflite-os-next-20261114/combined';mkdirSync(out,{recursive:true});
   await settleView(t.page);assert.equal(await t.page.locator('.ifl-files-explorer:visible').count(),0);assert.equal(await t.page.locator('.ws-home').isVisible(),true);assert.equal(await t.page.locator('.ws-files-view').isVisible(),false);if(BROWSER==='chromium')await t.page.screenshot({path:resolve(out,'unified-home-desktop.png'),fullPage:true,animations:'disabled'});
   await t.page.setViewportSize({width:390,height:844});await t.page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth+1);
   await settleView(t.page);if(BROWSER==='chromium')await t.page.screenshot({path:resolve(out,'unified-home-phone.png'),fullPage:true,animations:'disabled'});
-  assert.equal(await t.page.getByRole('button',{name:'Show Today',exact:true}).getAttribute('aria-pressed'),'true');await clean(t);
+  assert.equal(await t.page.locator('.ws-dock-button[data-ws-action=today]').getAttribute('aria-current'),'page');await clean(t);
  }finally{await t.close();}
 });
 
