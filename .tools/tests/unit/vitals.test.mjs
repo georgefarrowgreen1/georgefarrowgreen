@@ -44,7 +44,7 @@ test('never kept: an unknown app, device or measure, a number out of range, or a
   await record(env, { app: 'weather', dev: 'computer', m: { lcp: 1200, path: '/weather/?lat=1' } });
   assert.deepEqual(sent.map((x) => x.a[3]), ['lcp'], 'only the known measures, never what else came');
   assert.ok(!APPS.includes('fitting'));
-  assert.deepEqual(Object.keys(METRICS).sort(), ['cls', 'fcp', 'inp', 'lcp', 'ttfb']);
+  assert.deepEqual(Object.keys(METRICS).sort(), ['cls', 'cold', 'fcp', 'inp', 'lcp', 'open_fail', 'startup', 'ttfb', 'warm']);
 });
 
 test('the admin’s figures: the 75th in a hundred over the days asked, and each day’s, by app and device', async () => {
@@ -160,4 +160,16 @@ test('every address takes them: the site’s middleware, and Today’s and Mail�
   const menu = readFileSync(new URL('../../inflite/menu.js', import.meta.url), 'utf8');
   assert.match(menu, /sendBeacon\("\/api\/vitals"/, 'the shared menu sends them, in every app');
   assert.match(menu, /window\.top !== window/, 'never from a frame');
+});
+
+
+test('shell timings remain numeric and coarse, with exact binary failure summaries', async () => {
+ const sent=[],env={DB:fakeDb(sent)};
+ await record(env,{app:'files',dev:'phone',account:'private',route:'/files/Private name',m:{startup:900,cold:350,warm:80,open_fail:1,filename:'Private name'}});
+ assert.deepEqual(sent.map(x=>x.a[3]),['startup','cold','warm','open_fail']);
+ for(const row of sent){assert.equal(row.a.length,5);assert.equal(row.a.includes('private'),false)}
+ for(const value of [-1,.5,2,Infinity,'1'])assert.equal(await record(env,{app:'files',dev:'phone',m:{open_fail:value}}),false);
+ const rows=[{day:20,app:'files',dev:'phone',metric:'open_fail',b:0,n:18},{day:20,app:'files',dev:'phone',metric:'open_fail',b:1,n:2}];
+ const D={prepare:()=>({bind:()=>({all:async()=>({results:rows})})})};
+ const result=await speed(D,20,20);assert.equal(result.rows[0].m.open_fail.rate,10);assert.equal(result.rows[0].m.open_fail.n,20);
 });

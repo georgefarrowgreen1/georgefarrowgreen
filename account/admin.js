@@ -795,8 +795,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
   // Speed, from people's own phones and computers, in numbers only (functions/_vitals.js): for each app and kind of device,
   // the time 3 visits in 4 beat over the last 30 days, each judged as the web's own measures are (good, needs work, poor)
-  const SPEED_APPS = { today: "Today", hub: "InFlite", chats: "Chats", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account", auth: "Sign in", home: "georgefarrowgreen.com" };
-  const SPEED_BARS = { lcp: [2500, 4000], fcp: [1800, 3000], ttfb: [800, 1800], inp: [200, 500], cls: [0.1, 0.25] };
+  const SPEED_APPS = { today: "Today", hub: "InFlite", chats: "Chats", chat: "Chat", weather: "Weather", fitness: "Fitness", markets: "Markets", mail: "Mail", account: "Account", auth: "Sign in", home: "georgefarrowgreen.com", files: "Files" };
+  const SPEED_BARS = { lcp: [2500, 4000], fcp: [1800, 3000], ttfb: [800, 1800], inp: [200, 500], cls: [0.1, 0.25], startup: [1500, 3000], cold: [1200, 2500], warm: [200, 500] };
   const msOf = (v) => (v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
   function speedPart(sp) {
     if (!sp) return [];
@@ -807,11 +807,11 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     };
     const rows = (sp.rows || []).map((r) => {
       const m = r.m, n = Math.max(0, ...Object.values(m).map((x) => x.n || 0)), drawn = m.lcp?.p75 != null ? ["lcp", m.lcp.p75] : ["fcp", m.fcp?.p75];
-      return h("div.row.plain.spd-row", {}, h("span.tx", {}, h("b", { text: `${SPEED_APPS[r.app] || r.app} · ${r.dev === "phone" ? "Phone" : "Computer"}` }), h("small", { text: `${num(n)} visit${n === 1 ? "" : "s"}` })),
-        h("span.spds", {}, chip(drawn[0], "Appears", drawn[1]), chip("inp", "Answers a tap", m.inp?.p75), chip("cls", "Jumps", m.cls?.p75), chip("ttfb", "First answer", m.ttfb?.p75)));
+      return h("div.row.plain.spd-row", {}, h("span.tx", {}, h("b", { text: `${SPEED_APPS[r.app] || r.app} · ${r.dev === "phone" ? "Phone" : "Computer"}` }), h("small", { text: `${num(n)} sample${n === 1 ? "" : "s"}` })),
+        h("span.spds", {}, chip(drawn[0], "Appears", drawn[1]), chip("inp", "Answers a tap", m.inp?.p75), chip("cls", "Jumps", m.cls?.p75), chip("ttfb", "First answer", m.ttfb?.p75), chip("startup", "Ready to use", m.startup?.p75), chip("cold", "First app open", m.cold?.p75), chip("warm", "Return to app", m.warm?.p75), m.open_fail?.rate == null ? null : h("span.spd", {}, h("small", { text: "Samples with failed opens" }), h("b", { text: `${m.open_fail.rate}%` }))));
     });
     return [h("h4.app-k", { text: "Speed, on people’s own devices" }),
-      rows.length ? h("div.group.spd-list", {}, rows, h("p.spd-note", { text: "What 3 visits in 4 beat, over the last 30 days. Phones include tablets. Appears is when the largest part of the first screen was drawn (Safari: when anything was)." }))
+      rows.length ? h("div.group.spd-list", {}, rows, h("p.spd-note", { text: "75th percentile over the last 30 days. Phones include tablets. App timings measure a ready view and exclude background time. Each shell sample keeps the slowest switch before leaving the page; at most two samples per app. Failed opens is the share of samples with an unsuccessful opening." }))
         : h("div.group", {}, h("div.empty", { text: "No visits measured yet." }))];
   }
   function admInsightsView() {

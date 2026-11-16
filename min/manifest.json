@@ -1,7 +1,6 @@
 {
- "status/theme.js": "fc206c8819d7c163b813fba82bbe2fcb340788808ca48fd52d6191d3a23899c6",
- "account/admin.js": "2cc2efe4312410fd4e0d4a5bd1299828d4a047c18316d152b080cc389e7c857a",
- "account/app.js": "69460f7f481fb27ee9a5fd293f5a08c1f5b616b9705d1374c1b7332f9cedb343",
+ "account/admin.js": "f40e391941254dd2eaead05bbb6deee3e431c4c39ef10f4e0777c5472678ea5d",
+ "account/app.js": "d77db0e6849283f8c56612574509ef3675bd550d0b224655203e5b041cdedd99",
  "account/auth-frame.js": "49ac4f9a175da6959924f543f0c7ecb74b183435c70ee967b1a2816771b18c27",
  "account/boot.js": "f391188b7ca1ec9239f2580b5d96ec333f5ed1a7fb34c60d98fcfb312434e291",
  "account/datapdf.js": "729e3db2202e927bba887b2ffc6366baebc3e3fd6ef94c75748078c7b7ce8411",
@@ -149,6 +148,7 @@
  "pigeon/tracker.js": "367fca4b4cb6cc549498ffcf957904b654c3d38f92586dcec16c100ec0e3ebda",
  "status/app.js": "9f1335cb851836f944071a13531aec3c326120513598b8974c72f010be3c9b88",
  "status/styles.css": "13a2bd527aaa14ff7ce031ec1717d7b69a534a4308ba76c90e7c4ac0b8a703ee",
+ "status/theme.js": "fc206c8819d7c163b813fba82bbe2fcb340788808ca48fd52d6191d3a23899c6",
  "styles.css": "8ab279d88e690c2a3a5b9bbdc101f45ea88f80ad31c8adb7c4fe813a47898ba3",
  "weather/account.js": "38f35fbc4e5b8790809a67bb5fde95e949c6b10f8d2fb3a06a5aa9e1d38a24d6",
  "weather/agree.js": "e8fed04798501bd421539a09482e4d65aa04e016792a195386e97c4d3f06708a",
@@ -199,5 +199,5 @@
  "weather/sky.js": "128215c544ac0acf2f86120988c8b2317b006430747d7f43baea5711735bd44e",
  "weather/solar.js": "ae7af6fecaf6f75dda1e05efce5c07c71571f4f48a7fdac889840cf46e860cfb",
  "weather/styles.css": "d9b66d44c6ccaa1a88d5fbb04f4933f7b4873ac9440b3698b9584256301b9c4d",
- "account/signin.js": "69460f7f481fb27ee9a5fd293f5a08c1f5b616b9705d1374c1b7332f9cedb343"
+ "account/signin.js": "d77db0e6849283f8c56612574509ef3675bd550d0b224655203e5b041cdedd99"
 }

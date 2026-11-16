@@ -13,10 +13,10 @@ import { db, DAY, londonOffset, pace, clientNet, readCapped } from "./_pigeon.js
 
 // (the apps that send: Today, and each app as a part of it at InFlite's hub; the hub's other pages; the sign-in page;
 // the home site)
-export const APPS = ["today", "hub", "chat", "chats", "weather", "fitness", "markets", "mail", "account", "auth", "home"];
+export const APPS = ["today", "hub", "chat", "chats", "weather", "fitness", "markets", "mail", "account", "auth", "home", "files"];
 export const DEVS = ["phone", "computer"];
 // (each in milliseconds but cls, a score: kept as thousandths. The upper end refused, not kept: a tab left in the back)
-export const METRICS = { ttfb: 60e3, fcp: 60e3, lcp: 60e3, inp: 30e3, cls: 10 };
+export const METRICS = { ttfb: 60e3, fcp: 60e3, lcp: 60e3, inp: 30e3, cls: 10, startup: 60e3, cold: 60e3, warm: 60e3, open_fail: 1 };
 const STEP = 1.2, TOP = 70;
 // (the most kept of one measure for one app and kind of device in a day: past it, a day's figures are what they are, and
 // anyone sending made-up numbers can't swamp them)
@@ -31,6 +31,7 @@ export async function record(env, body, t = Date.now()) {
   for (const [k, max] of Object.entries(METRICS)) {
     const v = body.m[k];
     if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > max) continue;
+    if (k === "open_fail" && v !== 0 && v !== 1) continue;
     rows.push([k, band(k === "cls" ? v * 1000 : v)]);
   }
   if (!rows.length) return false;
@@ -69,6 +70,7 @@ export async function speed(D, first, last) {
   const scale = (k, v) => (v == null ? null : k === "cls" ? Math.round(v) / 1000 : Math.round(v));
   const rows = [...by.values()].map(({ app, dev, m }) => ({ app, dev, m: Object.fromEntries(Object.entries(m).map(([k, x]) => [k, {
     p75: scale(k, p75(x.all)), n: Object.values(x.all).reduce((s, n) => s + n, 0), days: x.days.map((d) => scale(k, p75(d))),
+    ...(k === "open_fail" ? { rate: Math.round(1000 * Object.entries(x.all).reduce((n, [b, count]) => n + (Number(b) > 0 ? count : 0), 0) / Object.values(x.all).reduce((n, count) => n + count, 0)) / 10 } : {}),
   }])) }));
   rows.sort((a, b) => APPS.indexOf(a.app) - APPS.indexOf(b.app) || DEVS.indexOf(a.dev) - DEVS.indexOf(b.dev));
   return { rows };

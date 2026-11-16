@@ -22,7 +22,7 @@ const oldSkip = tfSkip || (!roofSkip && 'the inflite repo beside has the roof: i
 const roofOnly = tfSkip || roofSkip;
 const pub = (f) => readFileSync(new URL(f, PUB));
 const STATIC = ['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send',
-  ...['tasks', 'screens'].filter(f => existsSync(new URL(`roof/${f}.js`, PUB)))];
+  ...['tasks', 'screens', 'preload', 'performance'].filter(f => existsSync(new URL(`roof/${f}.js`, PUB)))];
 // (app.js after the shared block, which is a copy of MAIN's menu.js, unchanged here)
 const own = () => { const js = String(pub('app.js')), end = js.indexOf('// ==== end of InFlite’s menu ===='.replace('’', "'")); return end > 0 ? js.slice(end) : js; };
 
