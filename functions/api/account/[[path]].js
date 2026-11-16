@@ -54,6 +54,8 @@ import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
+import { SYSTEM_ROUTES } from "../../_systemapp.js";
+import { exportSystem } from "../../_system350.js";
 import { FILES_ROUTES } from "../../_filesapp.js";
 import { exportFiles } from "../../_files.js";
 import { WORKSPACE_ROUTES } from "../../_workspacesapp.js";
@@ -421,6 +423,7 @@ const ROUTES = {
   ...MAIL_ROUTES,
   ...TODAY_ROUTES,
   ...FILES_ROUTES,
+  ...SYSTEM_ROUTES,
   ...WORKSPACE_ROUTES,
   // InFlite Today's version, for its About sheet here: asked of inflite.ai as the sheet opens, never as the page loads
   "GET apps/today-build": async ({ request, env }) => {
@@ -1073,6 +1076,7 @@ const ROUTES = {
       files: { items: await exportFiles(env, u.id), note: "File contents can be downloaded from InFlite Files." },
       workspaces: await exportWorkspaces(env, u.id),
       continuation: (await readContinuity(env,u.id)).devices,
+      system: await exportSystem(env,u.id),
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

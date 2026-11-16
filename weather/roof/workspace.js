@@ -91,6 +91,7 @@ export function connect(ctx, root) {
       selection = read(value); received = true; apply(); return { ok: true };
     }
     if (!alive || !active || !ctx.fw.visible()) return false;
+    if(intent==="saved-place"){const p=S.places?.[Number(arg)];if(!p||!Number.isInteger(Number(arg)))return false;core.look(p);return true;}
     if (intent === "refresh") { core.refresh(); return true; }
     if (intent === "places") return ctx.open.places();
     if (intent === "use-place") return placeSelected(core.place());
@@ -98,7 +99,12 @@ export function connect(ctx, root) {
     if ((intent === "window" || intent === "day") && S.wx?.daily?.some((d) => d.key === key)) return ctx.open.day(key);
     return false;
   }
-  const offs = [sdk.provide({ snapshot, run }), sdk.context.subscribe((value, meta) => {
+  function search(query,{current=()=>true}={}) {
+    if(!alive||!current())return {status:"error",entries:[]};
+    const place=core.place(),q=String(query).toLowerCase();
+    return {status:S.wx?"ready":S.loading?"loading":"error",entries:(S.places||[place]).map((p,i)=>({p,i})).filter(({p})=>p?.name?.toLowerCase().includes(q)).slice(0,8).map(({p,i})=>({title:p.name,sub:"Saved forecast",intent:"saved-place",objectId:String(i)}))};
+  }
+  const offs = [sdk.provide({ snapshot, run, search }), sdk.context.subscribe((value, meta) => {
     selection = read(value);
     if (!String(meta?.source || "").startsWith("weather")) apply(); else { paint(); changed(); }
   }), ...["wx", "place", "settings", "loading", "error"].map((event) => core.on(event, () => { paint(); changed(); }))];

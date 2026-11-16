@@ -81,5 +81,5 @@ export async function sweepReplacements(env,now=Date.now()){
 }
 
 export async function cancelReplacement(env,owner,uploadId){
- uploadId=op(uploadId);return mutate(env,owner,async D=>{const r=await reservation(D,owner,uploadId);if(!r||r.state==='committed')return {done:true,value:{ok:true}};return {reserved:-r.size,statement:X=>X.prepare('DELETE FROM ifl_files_replacements WHERE user_id=? AND operation_id=? AND changes()>0').bind(owner,uploadId)}});
+ uploadId=op(uploadId);return mutate(env,owner,async D=>{const r=await reservation(D,owner,uploadId);if(!r||r.state==='committed')return {done:true,value:{ok:true,committed:r?.state==='committed'}};return {reserved:-r.size,statement:X=>X.prepare('DELETE FROM ifl_files_replacements WHERE user_id=? AND operation_id=? AND changes()>0').bind(owner,uploadId)}});
 }

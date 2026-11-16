@@ -57,6 +57,8 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
       if (state.offline) return r.abort();
       return r.fulfill({ status: req.method() === 'GET' ? 200 : 405, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ signedIn: true, id: view.user.id, appearance: view.user.appearance || 'auto', palette: view.user.palette || 'inflite' }) });
     }
+    if(p.startsWith('/api/system/'))return j(r,p.endsWith('/focus')?{dismissed:[]}:p.endsWith('/devices')?{devices:[]}:p.endsWith('/drafts')?{backups:[]}:{actions:[],counts:{open:0,done:0},cursor:null});
+    if(p==='/api/files/search')return j(r,{items:[],folder:null,ancestors:[],revision:1,cursor:null,usage:{used:0,reserved:0,limit:1073741824,nodes:0,nodeLimit:5000,fileLimit:26214400}});
     if (p.startsWith('/api/')) {
       state.requests.push({ path: p, method: req.method(), body: req.postData() });
       if (state.offline) return r.abort();

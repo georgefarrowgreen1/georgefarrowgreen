@@ -70,6 +70,7 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       { id: "export-route", label: "Download GPX", enabled: !!plan },
       { id: "weather-for-ride", label: "Weather at route start", enabled: !!plan },
       ...(api.handoffs?.can("weather", "ride") ? [{ id: "check-ride-weather", label: "Check saved route weather", keywords: ["forecast", "ride", "weather"], enabled: !!plan }] : []),
+      ...(api.actions?.capture?[{id:'remind',label:'Remind me about this ride',keywords:['reminder','todo'],enabled:owned()}]:[]),
       ...(api.files?.open ? [{ id: "import-drive", label: "Import from InFlite Files", keywords: ["open", "drive", "gpx", "fit"], enabled: true }] : []),
       ...(api.files?.save ? [{ id: "save-route-drive", label: "Save route to InFlite Files", keywords: ["save", "drive", "gpx"], enabled: !!plan }, { id: "save-workout-drive", label: "Save workout to InFlite Files", keywords: ["save", "drive", "fit"], enabled: !!w && w.sport !== "strength" }] : []),
     ] };
@@ -153,6 +154,7 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       await c.saveFile(name, file);
       return { ok: permitted(), file, ref };
     }
+    if(id==='remind')return {ok:!!(await api.actions?.capture({id:dayStamp(c.TODAY)})),pending:true};
     if (id === "schedule") return { ok: !!openRideAt(ctx), pending: true };
     if (id === "share") { const spec = sendableToday(); return spec ? { ok: !!(await fw.send(spec)) } : { ok: false, error: "There is no session to share today." }; }
     if (id === "export-workout") {
@@ -189,7 +191,13 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     }
     api.changed();
   }
-  const off = api.provide({ snapshot, run, files }), stops = c.EVENTS.map((event) => c.on(event, changed));
+  async function search(query,{current:asking=()=>true}={}){
+    if(!live()||!asking())return {status:'error',entries:[]};if(!owned()||S.loading)return {status:S.loading?'loading':'signin',entries:[]};
+    const q=String(query||'').trim().toLowerCase(),entries=library().filter(w=>w.name.toLowerCase().includes(q)).slice(0,5).map(w=>({title:w.name,sub:'Workout',intent:'view-workout',objectId:workoutRef(w).objectId}));
+    for(const a of(S.acts||[]).filter(a=>String(a.name||'').toLowerCase().includes(q)).slice(0,4))if(/^[\w-]{1,40}$/.test(a.id||''))entries.push({title:a.name,sub:'Activity',path:'/fitness/#act='+a.id});
+    const plan=await route();if(!live()||!asking())return {status:'error',entries:[]};if(plan?.route&&String(plan.route.name).toLowerCase().includes(q))entries.unshift({title:plan.route.name,sub:'Saved route',intent:'view-route',objectId:plan.route.id});return {status:'ready',entries};
+  }
+  const off = api.provide({ snapshot, run, files,search }), stops = c.EVENTS.map((event) => c.on(event, changed));
   function destroy() {
     if (dead) return;
     dead = true; linked = null; fileGate?.close(); fileGate = null; off(); for (const stop of stops) stop();

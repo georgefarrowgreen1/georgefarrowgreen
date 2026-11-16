@@ -48,7 +48,11 @@ export function connect(ctx, root, current = () => true) {
     if (!active() || !owned()) return { ok: false };
     return { ok: module[target[1]](ctx, objectId) !== null, pending: true };
   }
-  const off = api.provide({ snapshot, run, files }), stops = core.EVENTS.map((event) => core.on(event, () => { if (live()) api.changed(); }));
+  function search(query,{current=()=>true}={}){
+    const status=snapshot().status;if(!live()||!current()||status!=='ready')return {status,entries:[]};const q=String(query).toLowerCase();
+    return {status:'ready',entries:(S.list||[]).filter(h=>String(h.name||h.sym||'').toLowerCase().includes(q)||String(h.sym||'').toLowerCase().includes(q)).slice(0,8).map(h=>({title:h.name||h.sym,sub:h.sym||'Holding',path:'/markets/#s='+encodeURIComponent(h.sym)}))};
+  }
+  const off = api.provide({ snapshot, run, files,search }), stops = core.EVENTS.map((event) => core.on(event, () => { if (live()) api.changed(); }));
   root.classList.add("mk-workspace");
   function destroy() {
     if (dead) return;

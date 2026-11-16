@@ -53,7 +53,7 @@ async function copyGraph() {
   const d = mkdtempSync(join(tmpdir(), 'chatsvc-')); tmp.push(d);
   mkdirSync(join(d, 'roof'));
   for (const f of ['crypto.js', 'cards.js', 'digest.js', 'links.js', 'rank.js', 'argon2.js', 'argon2w.js']) copyFileSync(new URL('pigeon/' + f, MAIN), join(d, f));
-  for (const f of ['core.js', 'idb.js', 'service.js']) copyFileSync(new URL('pigeon/roof/' + f, MAIN), join(d, 'roof', f));
+  for (const f of ['core.js', 'idb.js', 'service.js', 'draft-cloud350.js']) copyFileSync(new URL('pigeon/roof/' + f, MAIN), join(d, 'roof', f));
   return d;
 }
 async function loadService() { const d = await copyGraph(); return import(pathToFileURL(join(d, 'roof', 'service.js')).href); }

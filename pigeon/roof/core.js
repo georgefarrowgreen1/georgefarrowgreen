@@ -184,6 +184,9 @@ export const RPC = fz({
   recall: O({ args: fz(["id", "id"]), v: "{ ok }", patches: fz(["chat:", "rows"]) }),
   read: O({ args: fz(["id"]), v: "{ ok }", patches: fz(["rows", "unread"]) }),
   draft: O({ args: fz(["id", "text"]), v: "{ ok }", patches: fz([]) }),
+  draftDevice: O({args:fz(["str:32"]),v:"{ ok }",patches:fz([])}),
+  draftCopies: O({args:fz(["id"]),v:"DraftCopy[]",patches:fz([])}),
+  restoreDraftCopy: O({args:fz(["str:32","id","text"]),v:"{ text }",patches:fz([])}),
   share: O({ args: fz(["card", "words"]), v: "Row[]", patches: fz([]) }),
   rank: O({ args: fz(["card"]), v: "{ [id]: { why, score } }", patches: fz([]) }),
   sendRun: O({ args: fz([O({ card: "card", words: "words", pick: "ids", when: "str:20?", ask: B, plan: B, note: "text?" })]), v: "SendResult", patches: fz(["send", "outbox", "rows"]) }),
@@ -794,7 +797,15 @@ async function cacheLoad() {
 }
 /* ---------- drafts (app.js 3880-3915): sealed with your own key; merged by chat under the lock ---------- */
 const draftsMeta = () => ({ type: "draft", id: "drafts", from: S.me.id, to: S.me.id });
-let draftsTimer = 0;
+let draftsTimer = 0, cloudDrafts=null, cloudDevice=null;
+async function draftCloud(){
+ if(cloudDrafts)return cloudDrafts;
+ const me=S.me?.id;if(!me||!S.priv||isGone())throw refuse('locked');
+ const m=await import('./draft-cloud350.js');
+ if(S.me?.id!==me||!S.priv||isGone())throw refuse('locked');
+ return cloudDrafts=m.connect({owner:me,idb,locked,live:()=>S.me?.id===me&&!!S.priv&&!S.locked&&!isGone(),seal:async values=>E2E.seal(await pairFor(S.myPub),draftsMeta(),{d:values}),open:openDrafts,read:async()=>openDrafts(await idb.get('drafts:'+me))});
+}
+function backupDrafts(){if(cloudDevice)draftCloud().then(c=>c.save(cloudDevice)).catch(()=>{});}
 const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(draftsSave, 800); };
 async function openDrafts(ct) {
   try { const o = await E2E.open(await pairFor(S.myPub), draftsMeta(), ct); return Array.isArray(o?.d) ? o.d.filter(([id, v]) => typeof id === "string" && typeof v === "string") : []; } catch (_) { return []; }
@@ -811,7 +822,8 @@ async function draftsSave() {
       const d = new Map([...there, ...[...S.drafts].filter(([, v]) => v.trim())]);
       const ct = d.size ? await E2E.seal(await pairFor(S.myPub), draftsMeta(), { d: [...d] }) : null;
       if (S.me?.id !== me) return false;
-      if (ct) await idb.set(key, ct); else await idb.del(key);
+      if (ct) { if(await idb.set(key, ct)!==key)return false; } else { await idb.del(key);if(await idb.get(key)!=null)return false; }
+      backupDrafts();
       return true;
     });
   } catch (_) { return false; }
@@ -1002,7 +1014,8 @@ async function forget(ended) {
   clearTimeout(S.live.timer); clearTimeout(S.live.syncTimer); clearTimeout(hideTimer);
   gone();                                          // (from here every write is refused but these: S3-D4, risk I3)
   if (me) { await wipe("cache:" + me);
-    if (!ended) { await wipe("outbox:" + me); await wipe("drafts:" + me); }
+    if (!ended) { await wipe("outbox:" + me); await wipe("drafts:" + me); await wipe("draft-cloud:"+me); }
+    cloudDrafts=null;cloudDevice=null;
     if (await idb.get("pinsup:" + me).catch(() => null)) { await wipe("pins:" + me); await wipe("pinsup:" + me); } }
   await wipe("session");
   if (S.chat) dropTopics(S.chat);
@@ -1500,6 +1513,22 @@ const methods = {
     // The view already debounces typing. Acknowledgement means its encrypted
     // IndexedDB write finished, without a second timer at page suspension.
     return { ok: await draftsSave() === true };
+  },
+  async draftDevice(id){needReady();if(!/^[a-f0-9]{32}$/.test(id))throw refuse('no');cloudDevice=id;draftCloud().then(c=>c.resume(id)).catch(()=>{});return {ok:true};},
+  async draftCopies(id){needReady();if(!chatOf(id))throw refuse('no');return (await draftCloud()).copies(id,cloudDevice);},
+  async restoreDraftCopy(device,id,expected){
+    needReady();if(!chatOf(id))throw refuse('no');const owner=S.me.id;
+    const text=await (await draftCloud()).restore(device,id);
+    needReady();if(S.me.id!==owner||(S.drafts.get(id)||'')!==expected)throw refuse('no');
+    const key='drafts:'+owner;
+    return locked(key,async()=>{
+      needReady();if(S.me.id!==owner)throw refuse('no');
+      const values=new Map(await openDrafts(await idb.get(key)));
+      if((values.get(id)||'')!==expected||(S.drafts.get(id)||'')!==expected)throw refuse('no');
+      values.set(id,text);const ct=await E2E.seal(await pairFor(S.myPub),draftsMeta(),{d:[...values]});
+      needReady();if(S.me.id!==owner||await idb.set(key,ct)!==key)throw refuse('failed');
+      S.drafts.set(id,text);S.draftsTouched.add(id);backupDrafts();return {text};
+    });
   },
   async share(c, words) {
     needReady();

@@ -63,6 +63,7 @@ export function connect(root, ctx, { state, chatId, reply, unlock } = {}) {
       if (!ID.test(objectId || "") || ![...(store.get("rows") || []), ...(store.get("friends") || []), ...(store.get("groups") || [])].some((item) => item.id === objectId)) return { ok: false, error: "That conversation is not available here." };
       return { ok: !!reply(objectId), pending: true };
     }
+    if(intent==='reveal-source'&&ID.test(objectId||'')){const node=root.querySelector('[data-mid="'+CSS.escape(objectId)+'"]');if(node)node.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});return {ok:true,pending:!node}}
     const file = currentFile(objectId);
     if (!file || !["open-file", "download-file"].includes(intent)) return { ok: false, error: "Open the original chat to use this file." };
     const mid = objectId.split(":")[1];
@@ -85,7 +86,15 @@ export function connect(root, ctx, { state, chatId, reply, unlock } = {}) {
     const timer = setTimeout(() => { timers.delete(timer); urls.delete(url); url.revoke(); }, 1000); timers.add(timer);
     return { ok: true, file: downloaded, ref: { ...file, name: downloaded.name, mime: downloaded.type, size: downloaded.size } };
   }
-  const off = api.provide({ snapshot, files, run }), changed = () => { if (live()) api.changed(); }, stop = store.on("*", changed);
+  let configured=false;
+  const configure=()=>{const device=api.drafts?.device?.();if(!configured&&live()&&state()==='ready'&&/^[a-f0-9]{32}$/.test(device||'')){configured=true;svc.call('draftDevice',device).catch(()=>{configured=false})}};
+  async function search(query,{current=()=>true}={}){
+   const status=stateOf(state());if(!live()||!current()||status!=='ready')return {status,entries:[]};
+   const q=String(query).slice(0,100),people=[...(store.get('friends')||[]),...(store.get('groups')||[])].filter(p=>!p.blocked&&ID.test(p.id||'')&&String(p.name||'').toLowerCase().includes(q.toLowerCase())).slice(0,5).map(p=>({title:p.name,sub:'Conversation',path:'/chats/#open='+p.id}));
+   const hits=await svc.call('search',q);if(!live()||!current()||state()!=='ready')return {status:'locked',entries:[]};
+   return {status:'ready',entries:[...people,...(Array.isArray(hits)?hits:[]).filter(h=>ID.test(h.chatId||'')).slice(0,5).map(h=>({title:String(h.title||''),sub:String(h.sub||''),path:'/chats/#open='+h.chatId}))]};
+  }
+  const off = api.provide({ snapshot, files, run,search }), changed = () => { if (live()) {api.changed();configure();} }, stop = store.on("*", changed);configure();
   function destroy() {
     if (dead) return;
     dead = true; off(); stop();

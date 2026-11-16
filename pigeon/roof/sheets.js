@@ -452,6 +452,7 @@ export function holdItems(ctx, target = {}) {
   const x = msgId ? k.msgOf(msgId) : null, m = x?.m;
   if (kind === "msg") {
     const items = [{ label: "Reply", act: "reply", run: on("reply", msgId) }];
+    if(k.fw.workspace?.actions?.capture&&m&&!m.recalled&&!m.expires&&m.kind!=="viewonce"&&!m.flight?.flying&&!m.flight?.lost)items.push({label:"Remind me",act:"remind",run:()=>k.fw.workspace.actions.capture({id:chatId,item:msgId})});
     if (m?.text && !m.recalled) items.push({ label: "Copy", act: "copy", run: () => navigator.clipboard?.writeText(m.text).then(() => k.fw.toast("Copied."), () => {}) });
     if (m?.card) items.push({ label: "Send to a Friend", act: "cardfwd", run: () => k.fw.lazy((q) => import("./send.js" + q)).then((S) => S.openSend(k.fw, k.svc, { card: m.card, words: m.card.say || "" })) });
     if (m?.flight && (m.flight.flying || m.flight.way)) items.push({ label: "Show the Flight", act: "map", run: k.go("openMap", msgId) });

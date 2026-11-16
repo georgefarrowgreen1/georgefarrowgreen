@@ -23,8 +23,8 @@ import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint,
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.39";
-export const NEWS = "Markets on InFlite";
+export const BUILD = "2.40";
+export const NEWS = "Find holdings across InFlite";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }
@@ -169,10 +169,10 @@ export async function mount(root, fw) {
     }),
   ];
   // your holdings on this phone, Markets' sheets, and Find (connector.search, from what's live here)
-  const unprovide = fw.search?.provide?.({
+  const unprovide = (!fw.workspace?.discovery350 && fw.search?.provide?.({
     id: "markets", group: "Markets", order: 30,
     search: (q) => connector.search(q, { userId: fw.session?.user?.id ?? null, kept: S.me ? { id: S.me.id, holdings: S.list, quotes: S.q } : null }),
-  }) || (() => {});
+  })) || (() => {});
   // a search's Find: Add a Stock with what was typed, here if Markets shows, else once it does
   const takeWant = () => { if (!want.q || Date.now() - want.at > 30e3) return false; const q = want.q; want.q = null; openAdd(q); return true; };
   want.open = () => { if (onScreen) takeWant(); else fw.nav.go("/markets/"); };

@@ -505,7 +505,7 @@ import { chatsSkip, CHATS_ROOF } from './fixtures/roof.mjs';
 const CH = CHATS_ROOF;
 const chRead = (f) => read(new URL(f, CH));
 const chFiles = () => existsSync(CH) ? readdirSync(CH).filter((f) => f.endsWith('.js')) : [];
-const WORKER_FILES = ['core.js', 'idb.js'];
+const WORKER_FILES = ['core.js', 'idb.js', 'draft-cloud350.js'];
 // (with later.js, the part of app.js loaded once the first screen is up)
 const PIGEON_APP = read(new URL('pigeon/app.js', MAIN)) + '\n' + read(new URL('pigeon/later.js', MAIN));
 // (the frozen names of each file, spec §2.2, §3.1, §5.4; the openers' first parameter: ctx, or (ui, svc) for openSend)
@@ -658,7 +658,7 @@ test('chats: the Worker’s graph (core.js, idb.js) keeps its own rules (S3-C2):
     const s = uncomment(chRead(f));
     for (const [re, why] of CH_WORKER_RULES) assert.ok(!re.test(s), `pigeon/roof/${f}: ${why} (${re.exec(s)?.[0]})`);
     const dyn = [...s.matchAll(/\bimport\s*\(\s*([^)]*)\)/g)].map((m) => m[1].trim());
-    assert.ok(dyn.every((d) => /^["']\.\.\/rank\.js["']$/.test(d)), `pigeon/roof/${f}: dynamic import only of ../rank.js (${dyn})`);
+    assert.ok(dyn.every((d) => /^["'](?:\.\.\/rank|\.\/draft-cloud350)\.js["']$/.test(d)), `pigeon/roof/${f}: dynamic import only of ../rank.js (${dyn})`);
     if (f !== 'idb.js') assert.ok(!/\bindexedDB\b/.test(s), `pigeon/roof/${f}: indexedDB only in idb.js`);
     for (const m of s.matchAll(/indexedDB\s*\.\s*open\(\s*([^,)]+)/g)) assert.ok(/^["']inflight["']$|^NAME$/.test(m[1].trim()), `idb.js opens only "inflight" (${m[1]})`);
     assert.ok(!/\bnew\s+Worker\s*\(/.test(s), `pigeon/roof/${f}: no Worker of its own`);
@@ -674,7 +674,7 @@ test('chats: the Worker’s graph (core.js, idb.js) keeps its own rules (S3-C2):
 test('chats: the core’s RPC table and META are spec §5.4’s: every method there and no other, args and patches given; META carries no message words; WHY, STATES and TOPICS', { skip: chatsSkip }, async () => {
   const core = await import(new URL('core.js', CH));
   assert.deepEqual(Object.keys(core.RPC).sort(), ['hello', 'start', 'state', 'lock', 'signOut', 'forget', 'sync', 'open', 'leave', 'older', 'rows', 'search', 'waiting', 'since', 'photo',
-    'sendText', 'sendBlob', 'note', 'react', 'recall', 'read', 'draft', 'share', 'rank', 'sendRun', 'safety', 'verify', 'trust', 'meta'].sort());
+    'sendText', 'sendBlob', 'note', 'react', 'recall', 'read', 'draft', 'draftDevice', 'draftCopies', 'restoreDraftCopy', 'share', 'rank', 'sendRun', 'safety', 'verify', 'trust', 'meta'].sort());
   for (const [m, d] of Object.entries(core.RPC)) {
     assert.ok(Object.isFrozen(d) && Array.isArray(d.args) && typeof d.v === 'string' && Array.isArray(d.patches), m);
     for (const t of d.patches) assert.ok(core.TOPICS.includes(t), `${m}: patch ${t} is a topic`);

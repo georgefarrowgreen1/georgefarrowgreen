@@ -102,3 +102,12 @@ test('desktop Mail restores the visible conversation even when its address shows
   await page.goto('http://os.ifl.test:8788/?os=1',{waitUntil:'domcontentloaded'});await page.locator('#m-mail .ml-reader:not([hidden])').waitFor();assert.equal(t.state.mail.sends.length,0);await t.clean();
  }finally{await t.ctx.close()}
 });
+test('cold account search opens native Mail and unlocked Chat results without retaining private snippets',async()=>{
+ const t=await env.open({width:390,initialPath:'/?os=1',ready:'home'}),{page}=t;try{
+  const field=page.getByRole('combobox',{name:'Search everything',exact:true});await page.keyboard.press('Control+k');await field.waitFor();await field.fill('Glass explorations');
+  const result=page.getByRole('option').filter({hasText:'Liquid Glass explorations'});await result.first().waitFor();await result.first().click();await page.waitForFunction(()=>location.pathname==='/mail/'&&location.hash.startsWith('#thread='));await page.locator('#m-mail .ml-reader').waitFor();
+  assert.equal((await page.evaluate(()=>localStorage.getItem('ifl:recent')||'')).includes('Liquid Glass explorations'),false);
+  await page.keyboard.press('Control+k');await field.waitFor();await field.fill('Pat');const person=page.getByRole('option').filter({hasText:'Pat Jones'});await person.first().waitFor();await person.first().click();await page.waitForFunction(()=>location.pathname==='/chats/'&&location.hash.startsWith('#open='));await page.locator('#m-chats .ch-input').waitFor();
+  assert.equal((await page.evaluate(()=>localStorage.getItem('ifl:recent')||'')).includes('Pat Jones'),false);assert.equal(t.state.mail.sends.length,0);await env.assertNoChatSends(page);await t.clean();
+ }finally{await t.ctx.close()}
+});

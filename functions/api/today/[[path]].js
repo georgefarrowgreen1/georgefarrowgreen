@@ -7,6 +7,7 @@ import { tickHost } from "../../_sites.js";
 import { json } from "../../_accountapi.js";
 import { tickAuthOk } from "../../_notify.js";
 import { HttpError, logError } from "../../_pigeon.js";
+import { reminderTick } from "../../_actiontick.js";
 import { morningTick } from "../../_todaymorning.js";
 
 export async function onRequest(ctx) {
@@ -17,7 +18,9 @@ export async function onRequest(ctx) {
     tickAuthOk(request, env);
     // (what Markets fetches for everyone is written down after the answer's gone, and the dividends it asks for in the
     // background aren't dropped: its waitUntil, carried with the environment, as Markets' own router does)
-    return json(await morningTick({ ...env, waitUntil: (p) => ctx.waitUntil(p) }, Date.now()));
+    const use={...env,waitUntil:p=>ctx.waitUntil(p)},t=Date.now();
+    const [morning,reminders]=await Promise.all([morningTick(use,t),reminderTick(use,t).catch(e=>{console.error("reminder tick",e?.message);return {error:true}})]);
+    return json({...morning,reminders});
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
     const code = await logError(env, "today tick", e);

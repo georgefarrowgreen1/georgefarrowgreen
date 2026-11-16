@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.39";
-export const NEWS = "Files and imported routes";
+export const BUILD = "2.40";
+export const NEWS = "Linked reminders and cross-app discovery";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -299,7 +299,7 @@ export async function mount(root, fw) {
   const offs = core.EVENTS.filter(e => e !== "sync").map((e) => core.on(e, (d) => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (d?.patched && shown === "activities") { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
-  const unprovide = fw.search?.provide?.({
+  const unprovide = (fw.workspace?.discovery350?null:fw.search?.provide?.({
     id: "fitness", group: "Fitness", order: 40,
     search(q) {
       const s = String(q || "").toLowerCase().trim();
@@ -316,7 +316,7 @@ export async function mount(root, fw) {
         .map((w) => ({ title: w.name, sub: "Workout · Fitness", icon: "fitness", run: () => ctx.open.workout(w.id) }));
       return [...out, ...acts, ...days, ...lib];
     },
-  }) || (() => {});
+  })) || (() => {});
 
   // (an address's ride, day or plan: once the account's in, up to 20 s; a later one takes over)
   const whenReady = (my) => new Promise((done) => {

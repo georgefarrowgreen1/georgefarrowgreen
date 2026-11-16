@@ -6,7 +6,7 @@
   "scripts": {
     "unit": "node --test unit/*.test.mjs",
     "e2e": "./run.sh",
-    "test:files-integration": "node --test --test-concurrency=1 files-integration.test.cjs"
+    "test:files-integration": "node --test --test-concurrency=1 files-integration.test.cjs system350-integration.test.cjs"
   },
   "devDependencies": {
     "axe-core": "4.10.2",

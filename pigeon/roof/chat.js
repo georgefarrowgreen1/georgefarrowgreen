@@ -93,7 +93,7 @@ function build(host, ctx) {
     const line = flying ? `Pigeon in flight · ${untilWords(flying.flight.landsAt)}` : w.g ? (w.g.members || []).map((m) => first(m.name)).join(", ") : w.f ? friendSub(w.f) : "";
     if (headerName !== w.name) { headerName = w.name; headerAvatar = ui.avatar(w.name); }
     fw.header.set({ conversation: true, avatar: headerAvatar, title: w.kind === "group" ? w.name : first(w.name) || "Chat", compactTitle: w.kind === "group" ? w.name : first(w.name) || "Chat", line, pick: null, sections: false, back: { label: "Back to Chats" },
-      acts: [{ icon: "info", label: w.kind === "group" ? "Group Info" : "Info", run: () => (w.kind === "group" ? ctx.open.groupInfo(id) : ctx.open.friendInfo(id)) }] });
+      acts: [...(fw.workspace?.drafts ? [{icon:"restore",label:"Recover draft",run:async()=>{const cid=id,at=episode;const saved=await flushDraft();if(!saved?.ok||id!==cid||at!==episode)return;const m=await fw.lazy((q) => import("./draft-recovery350.js" + q));if(id===cid&&at===episode)m.openRecovery(ctx,cid,{current:()=>id===cid&&at===episode,read:()=>input.value,freeze:on=>{if(id===cid&&at===episode)input.readOnly=on},apply:text=>{input.value=text;draftSent=text;onInput();}})}}]:[]),{ icon: "info", label: w.kind === "group" ? "Group Info" : "Info", run: () => (w.kind === "group" ? ctx.open.groupInfo(id) : ctx.open.friendInfo(id)) }] });
   }
 
   // ---- a message ----
@@ -405,7 +405,7 @@ function build(host, ctx) {
     paneObserver?.disconnect(); paneObserver = null;
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
-    msgs.replaceChildren(); warn.replaceChildren(); input.value = ""; draftSent = ""; latest.hidden = true;
+    msgs.replaceChildren(); warn.replaceChildren(); input.readOnly=false;input.value = ""; draftSent = ""; latest.hidden = true;
     episode++; selectReply(null);
     paintedMessages = null; newestMessageAt = 0;
     store.apply(`chat:${id}`, null);
