@@ -40,7 +40,7 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.05";
+export const BUILD = "2.06";
 export const NEWS = "Weather on InFlite";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
@@ -217,7 +217,12 @@ export async function mount(root, fw) {
       const mine = ++showing; opening++;
       // Forecast controls do not wait for optional integration tools. Their
       // eventual bridge adopts the currently visible view, never an old route.
-      if (fw.workspace?.enabled) workspaceReady();
+      if (fw.workspace?.enabled) {
+        // A legacy explicit selection already present at first show must be
+        // applied before GPS/default bootstrap; ordinary openings stay parallel.
+        if (fw.workspace.context?.get?.()?.location) await workspaceReady();
+        else workspaceReady();
+      }
       if (!alive || fw.signal?.aborted || mine !== showing) return;
       const id = core.sectionOf(route);
       ctx.hint = hint || null;
