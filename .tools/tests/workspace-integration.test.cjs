@@ -50,6 +50,13 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
     // WebKit exposes native object-URL image loads to routing; keep those in the browser's blob store.
     if (url.protocol === 'blob:' && url.origin === ORIGIN) return r.continue();
     if (url.origin !== ORIGIN) { state.unknown.push(url.href); return r.fulfill({ status: 503, body: 'No unmocked external requests' }); }
+    // Files reuses this transport at the canonical origin, where the shared
+    // theme performs its real account-scoped read before opening an app.
+    if (p === '/account/api/account/appearance') {
+      state.requests.push({ path: p, method: req.method(), body: req.postData() });
+      if (state.offline) return r.abort();
+      return r.fulfill({ status: req.method() === 'GET' ? 200 : 405, contentType: 'application/json', headers: { 'Cache-Control': 'no-store' }, body: JSON.stringify({ signedIn: true, id: view.user.id, appearance: view.user.appearance || 'auto', palette: view.user.palette || 'inflite' }) });
+    }
     if (p.startsWith('/api/')) {
       state.requests.push({ path: p, method: req.method(), body: req.postData() });
       if (state.offline) return r.abort();

@@ -232,7 +232,7 @@ test('Drive uploads survive Files navigation with their captured destination and
     await page.locator('.ws-sidebar').getByRole('button',{name:'Today',exact:true}).click();
     await page.getByRole('heading',{name:'Today',exact:true}).waitFor();gate.release();
     await page.waitForResponse(r=>new URL(r.url()).pathname==='/api/files/content'&&r.request().method()==='PUT'&&r.status()===200);
-    await goFiles(page);await select(page,'Uploads captured').dblclick();await select(page,'Across navigation.bin').waitFor();
+    await goFiles(page);await page.getByRole('searchbox',{name:'Search Uploads captured',exact:true}).waitFor();await select(page,'Across navigation.bin').waitFor();
     const ready=t.state.fileRequests.find(r=>r.action==='content'&&r.method==='PUT'&&r.status===200)?.answer?.item;
     assert.equal(ready.parentId,parent.id);assert.equal((await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+ready.id})).status,200);
     const cancel=t.state.hold(r=>r.action==='content'&&r.method==='PUT');
