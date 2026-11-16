@@ -30,7 +30,7 @@ import * as A from "../account.js";
 import { marked as markDivs, health, taxYearOf, yearDivs, yearOn } from "../income.js";
 import { stockSendCard, chatHash } from "../send.js";
 
-export const EVENTS = Object.freeze(["me", "quotes", "news", "list", "settings", "loading", "error"]);
+export const EVENTS = Object.freeze(["me", "quotes", "news", "list", "settings", "loading", "error", "sync"]);
 export const S = { me: null, list: [], cash: [], q: {}, fx: { GBP: 1 }, years: {}, news: null, charts: new Map(), alertsOff: false, isa: null, wrap: true, vs: null, paid: null, prange: "1d", mix: "holding", fig: "day",
   inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null };
 export const store = {
@@ -51,11 +51,12 @@ export const section = () => P.sec;
 // a Markets sheet up (mkui.js), a reorder waiting to be kept (holdings.js): the page isn't drawn again behind, and the
 // framework's reload waits (busy)
 export function sheetIs(v) { P.sheet = !!v; }
-export function ordering(n, q) { P.ordering = Math.max(0, P.ordering + n); if (q) P.orderQ = q; }
+export function ordering(n, q) { P.ordering = Math.max(0, P.ordering + n); if (q) P.orderQ = q; emit("sync"); }
+export const syncStatus = () => ({ pending: P.ordering || (P.orderLost ? 1 : 0), saving: P.ordering > 0, error: P.orderLost });
 // reorders still on their way (Change Order stays on while one is: holdings.js)
 export const orderingNow = () => P.ordering;
 // a reorder that couldn't be kept (true), or one kept since (false): what flush() answers until the next one's kept
-export function orderLost(v) { P.orderLost = !!v; }
+export function orderLost(v) { P.orderLost = !!v; emit("sync"); }
 // what isn't kept yet waited for (a reorder on its way): → { lost } (instance.flush, s24 contracts §4): 1 while the
 // last reorder couldn't be kept with your account, so sign-out asks first
 export async function flush() { try { await P.orderQ; } catch (_) {} return { lost: P.orderLost ? 1 : 0 }; }

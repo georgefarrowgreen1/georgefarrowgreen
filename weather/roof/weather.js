@@ -40,7 +40,7 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.04";
+export const BUILD = "2.05";
 export const NEWS = "Weather on InFlite";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
@@ -103,6 +103,7 @@ export async function mount(root, fw) {
       if (!alive || fw.signal?.aborted) return null;
       const bridge = (ctx.workspace ||= m.connect(ctx, root));
       if (onScreen) bridge.show();
+      header();
       return bridge;
     }).catch((e) => { workspaceAsked = null; if (alive && !fw.signal?.aborted) { console.error(e); fw.toast("Workspace tools didn’t load. Open Weather again to retry."); } return null; }));
   };
@@ -169,7 +170,10 @@ export async function mount(root, fw) {
       compactTitle: c ? `${t} · ${S.f.temp(c.temp)}` : t,
       pick: { label: "Places", run: () => ctx.open.places() },
       line: core.headerLine() || (S.loading ? "Loading the forecast…" : S.error && S.error !== core.SYNC_ERROR ? S.error : ""),
-      acts: [{ icon: "settings", label: "Weather Settings", run: () => ctx.open.settings(null) }],
+      acts: [...(fw.workspace?.handoffs?.can("mail", "text") && S.wx ? [{ icon: "share", label: "Draft forecast in Mail", run: () => {
+        const mine = seen;
+        workspaceReady().then(bridge => { if (alive && onScreen && seen === mine && fw.visible()) return bridge?.emailForecast(); }).catch(() => {});
+      } }] : []), { icon: "settings", label: "Weather Settings", run: () => ctx.open.settings(null) }],
       badges: { warnings: core.warningsInForce() },
     });
   };
@@ -211,7 +215,9 @@ export async function mount(root, fw) {
   return {
     async show(route, hint = null) {
       const mine = ++showing; opening++;
-      if (fw.workspace?.enabled) await workspaceReady();
+      // Forecast controls do not wait for optional integration tools. Their
+      // eventual bridge adopts the currently visible view, never an old route.
+      if (fw.workspace?.enabled) workspaceReady();
       if (!alive || fw.signal?.aborted || mine !== showing) return;
       const id = core.sectionOf(route);
       ctx.hint = hint || null;

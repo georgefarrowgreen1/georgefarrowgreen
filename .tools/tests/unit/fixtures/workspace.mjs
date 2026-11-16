@@ -13,9 +13,10 @@ export const OS_DIALOG_CSS = Object.freeze(['files-dialogs.css']);
 export const OS_ACTIVITY_JS = Object.freeze(['workspace-activity.js', 'workspace-activity-state.js']);
 export const OS_ACTIVITY_CSS = Object.freeze(['workspace-activity.css']);
 export const OS_SYNC_JS = Object.freeze(savedLayouts ? ['workspace-sync.js', 'workspace-sync-view.js'] : []);
-export const OS_RECOVERY_JS = Object.freeze(['workspace-recovery.js', 'workspace-recovery-view.js']);
+export const OS_RECOVERY_JS = Object.freeze(['workspace-recovery.js', 'workspace-recovery-view.js', 'connection.js']);
+export const OS_HANDOFF_JS = Object.freeze(['handoffs.js']);
 export const OS_RECOVERY_CSS = Object.freeze(['workspace-recovery.css']);
-export const OS_CORE_JS = Object.freeze(['workspace.js', 'workspace-view.js', ...(savedLayouts ? ['workspace-state.js'] : []), 'workspace-catalog.js', ...(savedLayouts ? ['workspace-context.js'] : []), 'workspace-windows.js', 'workspace-commands.js', ...OS_FILES_JS, ...OS_DIALOG_JS, ...OS_ACTIVITY_JS, ...OS_SYNC_JS, ...OS_RECOVERY_JS]);
+export const OS_CORE_JS = Object.freeze(['workspace.js', 'workspace-view.js', ...(savedLayouts ? ['workspace-state.js'] : []), 'workspace-catalog.js', ...(savedLayouts ? ['workspace-context.js'] : []), 'workspace-windows.js', 'workspace-commands.js', ...OS_FILES_JS, ...OS_DIALOG_JS, ...OS_ACTIVITY_JS, ...OS_SYNC_JS, ...OS_RECOVERY_JS, ...OS_HANDOFF_JS]);
 export const OS_FILES = Object.freeze([...OS_CORE_JS.map(f => '/roof/' + f), '/roof/workspace.css', '/roof/workspace-commands.css', ...OS_FILES_CSS.map(f => '/roof/' + f), ...OS_DIALOG_CSS.map(f => '/roof/' + f), ...OS_ACTIVITY_CSS.map(f => '/roof/' + f), ...OS_RECOVERY_CSS.map(f => '/roof/' + f), '/os.webmanifest']);
 // Quick picker is a public optional primitive beside the Explorer host entry.
 export const OS_ENTRIES = Object.freeze(['/roof/workspace.js', '/roof/workspace-files.js']);

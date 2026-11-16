@@ -356,6 +356,7 @@ function createLiveRoutes(root, opts = {}) {
     exportButton.prepend(icon("download", 17, 2));
     const acts = e("div", "acts");
     acts.append(exportButton);
+    if (typeof opts.onWeather === "function") acts.append(btn("Check weather", () => opts.onWeather(r, saved?.route.id === r.id ? saved.day : localDay())));
     hero.append(acts);
     const elev = e("section", "card glass fr-elevation");
     elev.append(title("Elevation", "mountain"));

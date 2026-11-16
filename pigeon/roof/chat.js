@@ -71,6 +71,7 @@ function build(host, ctx) {
 
   let headerAvatar = null, headerName = "";
   let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
+  let draftPending = null, draftWriting = null;
   let episode = 0, replyTo = null, replyAt = 0;
   // Only identities in the current rendered window are remembered. A receipt,
   // sync or older page may replace a keyed row without making it a new arrival.
@@ -303,11 +304,18 @@ function build(host, ctx) {
   }
   const flushDraft = () => {
     clearTimeout(draftT); draftT = 0;
-    if (!id) return;
-    const v = input.value;
-    if (v === draftSent) return;
-    draftSent = v;
-    svc.call("draft", id, v).catch(() => {});
+    if (!id) return Promise.resolve({ ok: true });
+    const v = input.value, chatId = id;
+    if (v === draftSent && !draftPending) return Promise.resolve({ ok: true });
+    if (draftWriting?.id === chatId && draftWriting.text === v) return draftPending;
+    draftWriting = { id: chatId, text: v };
+    const job = svc.call("draft", chatId, v).then(result => {
+      if (result?.ok && id === chatId && input.value === v) draftSent = v;
+      return { ok: result?.ok === true };
+    }, () => ({ ok: false }));
+    draftPending = job;
+    job.finally(() => { if (draftPending === job) { draftPending = null; draftWriting = null; } });
+    return job;
   };
   const onInput = () => {
     sendBtn.disabled = !words().trim();
@@ -458,7 +466,7 @@ function build(host, ctx) {
     },
     busy: () => !!(id && (words().trim() || sending)),
     focus: () => { if (!id || box.hidden || !fw.visible()) return false; input.focus({ preventScroll: true }); return true; },
-    flush() { flushDraft(); return { lost: 0 }; },
+    async flush() { const result = await flushDraft(); return { lost: result?.ok ? 0 : 1 }; },
     back: () => false,
     get id() { return id; },
     unmount() {

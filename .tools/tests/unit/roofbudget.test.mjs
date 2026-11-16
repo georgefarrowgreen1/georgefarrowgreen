@@ -6,6 +6,8 @@
 //   longer B0's stub; 104.9 before, §4.5), CSS ≤ 14 KB. Markets: JS ≤ 40, CSS ≤ 12. Fitness: JS ≤ 85, CSS ≤ 22.
 //   9 November architecture: Fitness ≤86 KB for cancellable lazy views and retained
 //   import batches across navigation (measured85.384 KB); its CSS ceiling stays22 KB.
+//   3.11: bounded sync status adds at most 128 B to Markets and 256 B to Fitness
+//   (including the explicit route-weather callback); optional adapters stay separate.
 //   Requests: the static graph, never more than connector.files (the root worker keeps exactly those).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +15,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { MAIN, ROOF, roofSkip, appsSkip } from './fixtures/roof.mjs';
 import { staticGz, haveEsbuild } from './fixtures/budget.mjs';
 
-const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40, css: 12 }, fitness: { js: 86, css: 22 } };
+const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40.125, css: 12 }, fitness: { js: 86.25, css: 22 } };
 const stubbed = (rel) => existsSync(new URL(rel, MAIN)) && /^export const STUB = true;/m.test(readFileSync(new URL(rel, MAIN), 'utf8'));
 const kib = (n) => `${n.toFixed(1)} KB`;
 

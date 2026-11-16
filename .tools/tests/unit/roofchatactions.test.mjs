@@ -13,7 +13,7 @@ if (!('scrollHeight' in El.prototype)) Object.defineProperties(El.prototype, {
   scrollHeight: { get: () => 1000 }, clientHeight: { get: () => 400 },
   scrollTop: { get() { return this._scrollTop || 0; }, set(v) { this._scrollTop = v; } },
 });
-async function fixture(send = async () => ({ ok: true })) {
+async function fixture(send = async () => ({ ok: true }), draft = async () => ({ ok: true })) {
   const document = globalThis.document = fakeDocument();
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.CSS ??= { escape: (v) => v };
@@ -27,6 +27,7 @@ async function fixture(send = async () => ({ ok: true })) {
     calls.push([method, ...args]);
     if (method === 'open') return W.chats[args[0]];
     if (method === 'sendText') return send(...args);
+    if (method === 'draft') return draft(...args);
     return { ok: true };
   } };
   const fw = { ui, header: { set() {} }, fill() {}, tabs: { away() {} }, toast() {}, visible: () => true, on: () => () => {} };
@@ -100,4 +101,20 @@ test('a successful earlier send cannot clear a newer draft in the same conversat
   assert.equal(input.value, 'A newer draft');
   assert.equal(calls.filter(([m, , text]) => m === 'draft' && text === '').length, 0, 'the old send does not overwrite the newer core draft');
   v.unmount(); live.delete(v);
+});
+
+
+test('flush waits for durable draft acknowledgement, reports failure, and retries the same text', {skip}, async()=>{
+ let finish,calls=0;const t=await fixture(undefined,()=>{calls++;return new Promise(resolve=>finish=resolve)});
+ t.input.value='Keep this private draft';t.input.dispatch('input');let done=false;
+ const first=t.v.flush().then(value=>{done=true;return value});await settle();assert.equal(done,false);assert.equal(calls,1);
+ finish({ok:false});assert.deepEqual(await first,{lost:1});const retry=t.v.flush();await settle();assert.equal(calls,2);finish({ok:true});assert.deepEqual(await retry,{lost:0});
+ assert.deepEqual(await t.v.flush(),{lost:0});assert.equal(calls,2);t.v.unmount();live.delete(t.v);
+});
+
+test('returning to previously saved words while a different write is pending still persists the latest text', {skip}, async()=>{
+ const jobs=[];const t=await fixture(undefined,(id,text)=>new Promise(resolve=>jobs.push({text,resolve})));
+ t.input.value='Saved';const first=t.v.flush();await settle();jobs.shift().resolve({ok:true});await first;
+ t.input.value='Temporary edit';const edit=t.v.flush();await settle();t.input.value='Saved';const reverted=t.v.flush();await settle();
+ assert.deepEqual(jobs.map(j=>j.text),['Temporary edit','Saved']);jobs.shift().resolve({ok:true});await edit;jobs.shift().resolve({ok:true});assert.deepEqual(await reverted,{lost:0});t.v.unmount();live.delete(t.v);
 });

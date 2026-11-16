@@ -27,6 +27,10 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
     return { workout, activity, measured: workout ? measure(workout, c.paceFor(workout.sport)) : null, sum: activity ? c.sumOf(activity) : null };
   };
   const route = () => readRoutePlan(owner, { signal: fw.signal });
+  async function checkWeather(selected, day = dayStamp(c.TODAY)) {
+    if (!active() || !api.handoffs?.can("weather", "ride") || !Array.isArray(selected?.start)) return { ok: false };
+    return api.handoffs.send("weather", "ride", { location: { name: `Start of ${selected.name}`, lat: selected.start[1], lon: selected.start[0] }, interval: intervalOn(day) });
+  }
   const library = () => (typeof c.allWorkouts === "function" ? c.allWorkouts() : S.mine || []).filter((w) => workoutId(w.id) && w.sport !== "strength" && Array.isArray(w.steps)).slice(0, 80);
   const unavailable = () => ({ status: S.loading ? "loading" : S.error ? "error" : "signin", error: S.error || null, ride: null, route: null, files: [], actions: [] });
   async function files({ query = "", current: asking = () => true } = {}) {
@@ -58,13 +62,14 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       bestWindow: best ? { start: best.start, end: best.end, rating: best.rating, dry: best.dry } : null,
       place: wx?.place?.name ? { name: wx.place.name, rough: wx.place.rough === true } : null, route: routeInfo, files } : null;
     const share = sendableToday();
-    return { status: "ready", ride, route: routeInfo, routeError, files, actions: [
+    return { status: "ready", availability: { local: true, pending: (S.dirty?.size || 0) + (c.inStep?.busy ? 1 : 0), saving: !!c.inStep?.busy, error: !!S.offline }, ride, route: routeInfo, routeError, files, actions: [
       { id: "schedule", label: scheduled ? "Change ride time" : "Set ride time", enabled: w?.sport === "ride" || !!scheduled },
       { id: "share", label: "Share ride", enabled: !!share },
       { id: "export-workout", label: "Send workout to device", enabled: !!w && w.sport !== "strength" },
       { id: "view-route", label: "Open route in Fitness", enabled: !!plan },
       { id: "export-route", label: "Download GPX", enabled: !!plan },
       { id: "weather-for-ride", label: "Weather at route start", enabled: !!plan },
+      ...(api.handoffs?.can("weather", "ride") ? [{ id: "check-ride-weather", label: "Check saved route weather", keywords: ["forecast", "ride", "weather"], enabled: !!plan }] : []),
       ...(api.files?.open ? [{ id: "import-drive", label: "Import from InFlite Files", keywords: ["open", "drive", "gpx", "fit"], enabled: true }] : []),
       ...(api.files?.save ? [{ id: "save-route-drive", label: "Save route to InFlite Files", keywords: ["save", "drive", "gpx"], enabled: !!plan }, { id: "save-workout-drive", label: "Save workout to InFlite Files", keywords: ["save", "drive", "fit"], enabled: !!w && w.sport !== "strength" }] : []),
     ] };
@@ -155,11 +160,12 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
       const opened = await ctx.open.sendDevice(w.id, c.TODAY);
       return { ok: permitted() && opened !== null, pending: true };
     }
-    if (!["view-route", "export-route", "weather-for-ride"].includes(id)) return { ok: false, error: "That action is not available." };
+    if (!["view-route", "export-route", "weather-for-ride", "check-ride-weather"].includes(id)) return { ok: false, error: "That action is not available." };
     const plan = await route();
     if (!permitted()) return { ok: false, error: "Open Fitness to continue." };
     if (!plan || requested && requested !== plan.route.id && requested !== fileRef(plan.route).id) return { ok: false, error: "That route is no longer the saved route. Open Fitness to review it." };
     if (id === "view-route") { ctx.routeToOpen = plan; fw.nav.section("routes"); return { ok: true, pending: true }; }
+    if (id === "check-ride-weather") return checkWeather(plan.route, plan.day);
     if (id === "weather-for-ride") {
       const interval = intervalOn(plan.day), rideLocation = { name: `Start of ${plan.route.name}`, lat: plan.route.start[1], lon: plan.route.start[0] };
       api.context.update({ location: rideLocation, interval }, { source: "fitness:weather-for-ride" });
@@ -191,5 +197,5 @@ export function createWorkspace(root, ctx, { current = () => true } = {}) {
   }
   fw.signal?.addEventListener("abort", destroy, { once: true });
   if (fw.signal?.aborted) destroy();
-  return { changed, destroy, chooseFiles };
+  return { changed, destroy, chooseFiles, checkWeather };
 }

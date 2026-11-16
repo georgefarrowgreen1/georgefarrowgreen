@@ -801,19 +801,20 @@ async function openDrafts(ct) {
 }
 async function draftsSave() {
   clearTimeout(draftsTimer);
-  if (!S.me || !S.priv || !S.myPub || isGone()) return;
+  if (!S.me || !S.priv || !S.myPub || isGone()) return false;
   const me = S.me.id, key = "drafts:" + me;
   try {
-    await locked(key, async () => {
+    return await locked(key, async () => {
       // (another tab's drafts for chats this one hasn't touched stay: by chat id)
       const there = new Map(await openDrafts(await idb.get(key)));
       for (const id of S.draftsTouched) there.delete(id);
       const d = new Map([...there, ...[...S.drafts].filter(([, v]) => v.trim())]);
       const ct = d.size ? await E2E.seal(await pairFor(S.myPub), draftsMeta(), { d: [...d] }) : null;
-      if (S.me?.id !== me) return;
+      if (S.me?.id !== me) return false;
       if (ct) await idb.set(key, ct); else await idb.del(key);
+      return true;
     });
-  } catch (_) {}
+  } catch (_) { return false; }
 }
 async function draftsLoad() {
   try {
@@ -1490,14 +1491,15 @@ const methods = {
     emitLists();
     return { ok: true };
   },
-  draft(id, text) {
+  async draft(id, text) {
     needReady();
     if (!chatOf(id)) throw refuse("no");
     if (text.trim()) S.drafts.set(id, text); else S.drafts.delete(id);
     S.draftsTouched.add(id);
     if (id === S.chat) { S.live.keyAt = Date.now(); if (typingSay(id)) { S.live.quietSince = Date.now(); pulseNow(); } }
-    draftsSoon();
-    return { ok: true };
+    // The view already debounces typing. Acknowledgement means its encrypted
+    // IndexedDB write finished, without a second timer at page suspension.
+    return { ok: await draftsSave() === true };
   },
   async share(c, words) {
     needReady();

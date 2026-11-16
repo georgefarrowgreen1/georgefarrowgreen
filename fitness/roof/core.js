@@ -33,7 +33,7 @@ import { effortFigs } from "./fxcalc.js";
 export { A, BT, C, E, G, R };
 export { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "../workouts.js";
 export { summarise, fitness, formSaid, perSecond, rescale, tssOf, stayingOf } from "../load.js";
-export const EVENTS = Object.freeze(["me", "acts", "plan", "feel", "offers", "times", "settings", "loading", "error"]);
+export const EVENTS = Object.freeze(["me", "acts", "plan", "feel", "offers", "times", "settings", "loading", "error", "sync"]);
 
 const subs = new Map(EVENTS.map((e) => [e, new Set()]));
 export function on(evt, fn) { const s = subs.get(evt); if (!s) throw new Error(`no event ${evt}`); s.add(fn); return () => s.delete(fn); }
@@ -170,6 +170,7 @@ export function inStep() {
 }
 async function saveNow() {
   inStep.busy = true;
+  emit("sync");
   const dirty = new Set(S.dirty); S.dirty.clear();
   let again = 700;
   const t = mark();
@@ -189,7 +190,7 @@ async function saveNow() {
     if (e.status === 401) { inStep.busy = false; signedOutHere(); return; }
     toast(e.offline ? notSaved(e) : e.message, true);
     again = e.offline ? 15000 : 30000;
-  } finally { inStep.busy = false; }
+  } finally { inStep.busy = false; if (still(t)) emit("sync"); }
   if (S.dirty.size && Q.fw) { clearTimeout(saveT); saveT = setTimeout(inStep, again); }
 }
 export function setActs() {

@@ -181,3 +181,21 @@ test('real untimed GPX review saves an imported A-to-B route in D1 and exports r
   });assert.equal(malformed.rejected,true);assert.equal(malformed.attached,false);assert.ok(malformed.blocked.every(s=>s==='style-src-attr inline'));
  }catch(error){await diagnose(t,'GPX');throw error;}finally{await t.close();}
 });
+
+test('Files direct actions attach real bytes in Mail and open Fitness import review without sending or saving',async()=>{
+ const account=kit.accounts().a,item=await kit.backend().uploaded(account,'Direct handoff proof.txt','Explicit exact private bytes');
+ const gpx='<?xml version="1.0"?><gpx version="1.1"><rte><name>Direct route</name><rtept lat="52" lon="1"/><rtept lat="52.001" lon="1"/></rte></gpx>';
+ const route=await kit.backend().uploaded(account,'Direct handoff route.gpx',gpx);const t=await kit.openFiles({width:390}),{page}=t;
+ try{
+  await kit.action(page,item.name,'Attach in Mail');const compose=sheet(page,'mail-compose');await compose.waitFor();await compose.getByRole('button',{name:'Remove '+item.name,exact:true}).waitFor();
+  assert.equal(t.state.mail.sends.length,0);assert.ok(t.state.fileRequests.some(r=>r.action==='content'&&r.method==='GET'&&r.status===200));await compose.locator('[data-close]').click();await compose.waitFor({state:'detached'});
+  await kit.goFiles(page);await kit.action(page,route.name,'Import into Fitness');await sheet(page,'fitness-route-import').waitFor();assert.equal(t.state.fileRequests.some(r=>r.action==='fitness-plan'&&r.method==='PUT'),false);assert.equal(t.state.mail.sends.length,0);await clean(t);
+ }catch(error){await diagnose(t,'direct-handoff');throw error;}finally{await t.close();}
+});
+test('reopening Files restores the owner folder reference but never the previous search text',async()=>{
+ const t=await kit.openFiles({width:390}),{page}=t;try{
+  await kit.folderUI(page,'Reopen private folder');await kit.select(page,'Reopen private folder').click();await page.getByRole('searchbox',{name:'Search Reopen private folder',exact:true}).waitFor();
+  const path=new URL(page.url()).hash;assert.match(path,/^#files=[A-Za-z0-9_-]{32}$/);await page.evaluate(()=>dispatchEvent(new Event('pagehide')));
+  await page.goto(ORIGIN+'/?os=1',{waitUntil:'domcontentloaded'});await page.getByRole('searchbox',{name:'Search Reopen private folder',exact:true}).waitFor();assert.equal(new URL(page.url()).hash,path);assert.equal(await page.getByRole('searchbox',{name:'Search Reopen private folder',exact:true}).inputValue(),'');await clean(t);
+ }catch(error){await diagnose(t,'folder-reopen');throw error;}finally{await t.close();}
+});

@@ -14,7 +14,8 @@ export function view(el, ctx) {
     real = createLiveRoutes(el,{owner:id,current:()=>ctx.fw.session.user.id===id,metric:c.U.metric!==false,workout,speed:speeds.length?speeds[Math.floor(speeds.length/2)]:22,speedFromHistory:!!speeds.length,
       openMapData: (body,onClose) => ctx.fw.sheet.open({sheet:"credits",title:"Map and Data",app:"fitness",body,onClose}),
       map: (host,o) => { if(!c.M.able())return Promise.reject(new Error('WebGL unavailable'));return c.M.routeMap(host,{...o,light:ctx.fw.theme()==='light'}); },
-      onBusy:on=>c.hold(hold,on), onSaved:()=>ctx.refreshRoute?.(), onToday:()=>ctx.fw.nav.section('today')});
+      onBusy:on=>c.hold(hold,on), onSaved:()=>ctx.refreshRoute?.(), onToday:()=>ctx.fw.nav.section('today'),
+      onWeather: ctx.fw.workspace?.handoffs?.can('weather','ride') ? (route,day)=>ctx.checkWeather?.(route,day) : null });
     return real;
   };
   const openPending = () => { const plan=ctx.routeToOpen;if(plan){ctx.routeToOpen=null;make().open(plan.route,plan.imported ? undefined : plan);} };

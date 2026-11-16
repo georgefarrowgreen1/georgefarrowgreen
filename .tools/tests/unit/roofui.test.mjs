@@ -179,13 +179,14 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // optional scripts have their own served-size budget in roofworkspace.test.mjs.
 const OPTIONAL_WORKSPACE = new Set([...OS_CORE_JS, ...OS_RETIRED_JS]);
 // Bounded route memory, two-app preloading and coarse timing reports add under
-// 2 KiB gzip in 3.10, without another dependency. Keep that addition capped.
-test('roof core UI stays within 37 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
+// 2 KiB gzip in 3.10. Verified, curated reopen references add a separately
+// reviewed 2 KiB ceiling in 3.11. Neither adds a runtime dependency.
+test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
   const all = files().filter(f => f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
   assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
   console.log(`# roof core: ${gz} bytes gzip (comments stripped, optional OS scripts separately bounded)`);
-  assert.ok(gz <= 37 * 1024, `roof core is ${gz} bytes gzipped (comments stripped), over 37888`);
+  assert.ok(gz <= 39 * 1024, `roof core is ${gz} bytes gzipped (comments stripped), over 39936`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 

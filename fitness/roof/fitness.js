@@ -27,7 +27,7 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.38";
+export const BUILD = "2.39";
 export const NEWS = "Files and imported routes";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
@@ -53,6 +53,10 @@ export async function mount(root, fw) {
       return workspace;
     }).catch((error) => { if (live()) console.error("Fitness workspace unavailable", error); }).finally(() => { workspaceLoad = null; });
     return workspaceLoad;
+  };
+  ctx.checkWeather = (route, day) => {
+    const mine = episode;
+    return Promise.resolve(startWorkspace()).then(adapter => here(mine) ? adapter?.checkWeather(route, day) : null);
   };
   // Routes are lazy; their stylesheet should not delay every opening of Today.
   let routeCSS = null;
@@ -292,7 +296,7 @@ export async function mount(root, fw) {
   // (a section about to be swiped to and never drawn: drawn now, out of sight, then told it's hidden: Today's swipe.js)
   const peek = (e) => { const id = e.detail, v = views.get(id); if (!onScreen || !v || secs.get(id)?.childElementCount) return; try { v.draw(); drawnAt.set(id, ver); v.hide?.(); } catch (x) { console.error(x); } };
   root.addEventListener("ifl-peek", peek);
-  const offs = core.EVENTS.map((e) => core.on(e, (d) => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (d?.patched && shown === "activities") { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
+  const offs = core.EVENTS.filter(e => e !== "sync").map((e) => core.on(e, (d) => { if (S.me && (e === "loading" || e === "error")) { header(); return; } if (d?.patched && shown === "activities") { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); return; } if (shown === "activities" && !ACTS_EVENTS.has(e)) { const fresh = drawnAt.get("activities") === ver; ver++; if (fresh) drawnAt.set("activities", ver); header(); } else all(); }));
 
   // (the module's search while mounted: Fitness Settings and the like, your activities, the days coming, the library)
   const unprovide = fw.search?.provide?.({

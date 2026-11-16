@@ -28,7 +28,7 @@ export function connect(ctx, root, current = () => true) {
   };
   function snapshot() {
     const ready = owned();
-    return { app: "markets", status: status(), error: S.err?.words || null, files: [],
+    return { app: "markets", status: status(), error: S.err?.words || null, files: [], availability: { local: ready, ...(core.syncStatus?.() || {}), updatedAt: S.pricesAt || null },
       actions: descriptors.map(([id, label, keywords]) => ({ id, label, keywords, enabled: ready || id === "refresh" && live() })) };
   }
   // Markets currently has no document/export resource. Do not turn account

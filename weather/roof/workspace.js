@@ -32,7 +32,7 @@ export function periodFor(wx, selection) {
 
 export function connect(ctx, root) {
   const sdk = ctx.fw.workspace, core = ctx.core, S = ctx.S;
-  let alive = true, active = false, selection = read(sdk.context.get()), published = "";
+  let alive = true, active = false, received = false, selection = read(sdk.context.get()), published = "";
   root.setAttribute("data-workspace", "");
   const title = h("b", {}, "Ride forecast"), detail = h("p"), info = h("p", { class: "wx-note" });
   const viewDay = h("button", { class: "ifl-btn ifl-btn-sm", type: "button", onclick: () => run("window") }, "View day");
@@ -41,7 +41,7 @@ export function connect(ctx, root) {
 
   function snapshot() {
     const wx = S.wx, c = wx && (wx.current || hourAt(wx, nowWall(wx.place.offset))), window = periodFor(wx, selection);
-    return { app: "weather", ready: !!wx, loading: !!S.loading, stale: !!S.stale, error: S.error || null, place: placeOf(core.place()), interval: selection.interval,
+    return { app: "weather", ready: !!wx, loading: !!S.loading, stale: !!S.stale, error: S.error || null, availability: { local: !!wx, updatedAt: wx?.fetchedAt || S.updatedAt || null }, place: placeOf(core.place()), interval: selection.interval,
       forecast: c ? { temperature: S.f.temp(c.temp), condition: label(c.code), fetchedAt: wx.fetchedAt || S.updatedAt || null } : null, window,
       actions: [{ id: "places", label: "Choose location" }, { id: "use-place", label: "Use this location" }, { id: "window", label: "View selected day" }, { id: "refresh", label: "Refresh" }] };
   }
@@ -85,6 +85,11 @@ export function connect(ctx, root) {
     return true;
   }
   function run(intent, arg) {
+    if (intent === "handoff") {
+      const value = sdk.handoffs?.take(arg);
+      if (!alive || !active || !ctx.fw.visible() || value?.kind !== "ride") return { ok: false };
+      selection = read(value); received = true; apply(); return { ok: true };
+    }
     if (!alive || !active || !ctx.fw.visible()) return false;
     if (intent === "refresh") { core.refresh(); return true; }
     if (intent === "places") return ctx.open.places();
@@ -105,5 +110,11 @@ export function connect(ctx, root) {
     banner.remove(); root.removeAttribute("data-workspace");
   }
   ctx.fw.signal?.addEventListener("abort", destroy, { once: true });
-  return { paint, placeSelected, show() { if (!alive) return; active = true; selection = read(sdk.context.get()); apply(); }, hide() { active = false; }, destroy };
+  async function emailForecast() {
+    const wx = S.wx, c = wx && (wx.current || hourAt(wx, nowWall(wx.place.offset)));
+    if (!alive || !active || !ctx.fw.visible() || !c || !sdk.handoffs?.can("mail", "text")) return { ok: false };
+    const place = core.place(), period = periodFor(wx, selection);
+    return sdk.handoffs.send("mail", "text", { subject: `Weather for ${place.name}`, text: `${place.name}: ${S.f.temp(c.temp)}, ${label(c.code)}.\n${period?.summary || "Forecast from InFlite Weather."}` });
+  }
+  return { paint, placeSelected, emailForecast, show() { if (!alive) return; active = true; if (!received) selection = read(sdk.context.get()); apply(); }, hide() { active = false; }, destroy };
 }
