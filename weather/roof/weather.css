@@ -367,3 +367,20 @@
 .wx-credits-sheet .wx-credits-brand { margin-bottom:4px; }
 .wx-credits-sheet .wx-credits-lead { margin-bottom:0; }
 .wx-credits-sheet .wx-sub { margin-top:16px; }
+
+/* Liquid Glass: shared surface depth, geometry and accessible controls. */
+.m-weather { --wx-gap: var(--ifl-space-4, 16px); }
+.m-weather .wx-hero { background: var(--ifl-glass-strong, var(--ifl-surface)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)), var(--ifl-glass-shadow, var(--ifl-shadow-card)); }
+.m-weather :is(.wx-tile, .wx-win) { background: var(--ifl-glass-control, var(--ifl-surface-2)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.m-weather :is(.wx-tile-k, .win-name, .wx-card-title, .wx-facts > li) { min-width: 0; overflow-wrap: anywhere; }
+.m-weather :is(.wx-g, .wx-chev) { flex: none; place-items: center; }
+.m-weather :is(.wx-alert, .wx-card, .wx-hero) { min-width: 0; }
+:is(.m-weather, .wx-sheet) .c-tip { border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-glass-strong, var(--ifl-raised)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)), var(--ifl-shadow-card); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .m-weather .wx-hero { background: var(--ifl-surface); }
+  .m-weather :is(.wx-tile, .wx-win) { background: var(--ifl-surface-2); }
+  :is(.m-weather, .wx-sheet) .c-tip { background: var(--ifl-raised); }
+}
+@media (forced-colors: active) {
+  .m-weather :is(.wx-hero, .wx-tile, .wx-win, .wx-alert), :is(.m-weather, .wx-sheet) .c-tip { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }
+}

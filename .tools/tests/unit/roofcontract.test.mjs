@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { MAIN, ROOF, IFL, roofSkip, appsSkip, mailSkip, fileOf } from './fixtures/roof.mjs';
 import { staticGraph, lazyClosure, isNet, NET } from './fixtures/budget.mjs';
+import { splitSelectorList, hasScopedPrefix } from './fixtures/scoped-css.mjs';
 
 const WX = new URL('weather/', MAIN), MOD = new URL('weather/roof/', MAIN);
 const read = (u) => readFileSync(u, 'utf8');
@@ -132,7 +133,7 @@ test('roof.css’s token block: neutral shared surfaces, geometry and one action
       for (; j < s.length && depth; j++) depth += s[j] === '{' ? 1 : s[j] === '}' ? -1 : 0;
       const body = s.slice(open + 1, j - 1);
       if (head.startsWith('@media')) walk(body, head);
-      else if (!head.startsWith('@')) rules.push({ media, sel: head.split(',').map((x) => x.trim().replace(/\s+/g, ' ')), decl: Object.fromEntries(body.split(';').map((d) => d.split(/:(.*)/s).map((x) => x.trim())).filter((d) => d[0])) });
+      else if (!head.startsWith('@')) rules.push({ media, sel: splitSelectorList(head).map((x) => x.replace(/\s+/g, ' ')), decl: Object.fromEntries(body.split(';').map((d) => d.split(/:(.*)/s).map((x) => x.trim())).filter((d) => d[0])) });
       i = j;
     }
   };
@@ -477,9 +478,9 @@ for (const app of APPS2) {
       for (const m of css.matchAll(/([^{}]+)\{/g)) {
         const sel = m[1].trim();
         if (sel.startsWith('@') || /^(from|to|\d+%)(\s*,\s*(from|to|\d+%))*$/.test(sel)) continue;
-        for (const one of sel.split(',').map((x) => x.trim())) {
+        for (const one of splitSelectorList(sel)) {
           assert.ok(!/(^|[\s,>+~(])(?::root|html|body)(?![\w-])/.test(one), `${app}/roof/${f}: ${one}`);
-          assert.ok(one.startsWith(`.m-${app}`) || one.startsWith(`.ifl-sheet[data-app=${app}]`) || one.startsWith(`.ifl-sheet[data-app="${app}"]`) || one.startsWith(`[data-app="${app}"]`) || one.startsWith(`[data-app=${app}]`), `${app}/roof/${f}: ${one} isn’t scoped`);
+          assert.ok(hasScopedPrefix(one, [`.m-${app}`, `.ifl-sheet[data-app=${app}]`, `.ifl-sheet[data-app="${app}"]`, `[data-app="${app}"]`, `[data-app=${app}]`]), `${app}/roof/${f}: ${one} isn’t scoped`);
         }
       }
     }
@@ -753,9 +754,9 @@ test('chats: the CSS is scoped: chats.css under .m-chats, chsheets.css under .if
     for (const m of css.matchAll(/([^{}]+)\{/g)) {
       const sel = m[1].trim();
       if (sel.startsWith('@') || /^(from|to|\d+%)(\s*,\s*(from|to|\d+%))*$/.test(sel)) continue;
-      for (const one of sel.split(',').map((x) => x.trim())) {
+      for (const one of splitSelectorList(sel)) {
         assert.ok(!/(^|[\s,>+~(])(?::root|html|body)(?![\w-])/.test(one), `pigeon/roof/${f}: ${one}`);
-        assert.ok(pre.some((p) => one.startsWith(p)), `pigeon/roof/${f}: ${one} isn’t scoped`);
+        assert.ok(hasScopedPrefix(one, pre), `pigeon/roof/${f}: ${one} isn’t scoped`);
       }
     }
   }

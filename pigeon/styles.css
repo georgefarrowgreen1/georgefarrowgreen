@@ -1565,12 +1565,6 @@ svg.fillico{fill:currentColor;stroke:none}
 .large.brandh .brand{gap:7px}
 .nb-title .brand{gap:7px;justify-content:center;font-size:17px}
 
-/* the passport: a stamp for each place, in postal ink, perforated, each a little askew */
-  background:var(--paper);color:color-mix(in srgb,var(--ink) 78%,var(--label));font:inherit;text-align:center;cursor:pointer;transform:rotate(var(--tilt,0deg));
-  box-shadow:inset 0 0 0 4px var(--paper),inset 0 0 0 5.5px color-mix(in srgb,var(--ink) 50%,transparent);
-  -webkit-mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
-  mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
-  transition:transform .3s var(--bouncy);-webkit-tap-highlight-color:transparent}
 .passport + .stack{display:flex;justify-content:center;margin:8px 16px 0}
 .sysline.stamps{display:block;border:0;font-family:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .sysline.stamps .ico{font-size:14px;margin-right:5px;vertical-align:-3px}
@@ -2721,10 +2715,11 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   font-weight: 500;
   line-height: 22px;
   color: var(--ifl-muted);
-  background: var(--ifl-surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--ifl-shadow-control);
+  background: var(--ifl-glass-strong, var(--ifl-surface));
+  border: 1px solid var(--ifl-glass-line, var(--ifl-line));
+  -webkit-backdrop-filter: var(--ifl-glass-blur, none);
+  backdrop-filter: var(--ifl-glass-blur, none);
+  box-shadow: var(--ifl-glass-shadow, var(--ifl-shadow-control));
 }
 
 .ifl-in .ifl-brand img {
@@ -3088,11 +3083,29 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: none;
+  /* Liquid Glass materials inherit the selected palette. Content uses the
+     strong material; floating chrome alone samples the backdrop. */
+  --ifl-glass: color-mix(in srgb, var(--ifl-surface) 86%, transparent);
+  --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) 96%, transparent);
+  --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) 90%, transparent);
+  --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
+  --ifl-glass-highlight: color-mix(in srgb, var(--ifl-raised) 62%, transparent);
+  --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 10px 30px -22px rgb(0 0 0 / .25);
+  --ifl-glass-blur: blur(20px) saturate(135%);
+  --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+}
+@media (forced-colors: active) {
+  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
@@ -3162,6 +3175,21 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
 html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
+.ifm-pop, .ifm-note, .ifa-sheet, .ifb {
+  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  background: var(--ifl-glass); border-color: var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
+.ifh-act svg, .ifs-btn svg { display: block; }
+.ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
+.ifm-card, .ifm-row { transition: background-color var(--ifl-motion-fast) ease, transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
   .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
@@ -3249,3 +3277,27 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 @keyframes bio-arrival-safety { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { html.bio-arrival::before, html.bio-arrival::after { display: none; } }
 /* ==== End Bio arrival ==== */
+
+/* Liquid Glass: static content rims; blur is reserved for floating conversation chrome. */
+:root { --chat-rim: inset 0 1px 0 var(--ifl-glass-highlight,#ffffff30), inset 0 0 0 1px var(--ifl-glass-line,var(--sep)); --chat-sheen: linear-gradient(155deg,var(--ifl-glass-highlight,#ffffff18),transparent 42%); }
+:is(.group, .acard, .heldrow, .replybar, .attach) { background-image: var(--chat-sheen); box-shadow: var(--chat-rim), var(--ifl-glass-shadow,var(--lift)); }
+:is(.sheet, .menu-pop, .asheet .grp, .asheet .cancel) { background: var(--chat-sheen), var(--ifl-glass-strong,var(--pane-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur,none); backdrop-filter: var(--ifl-glass-blur,none); box-shadow: var(--chat-rim), var(--ifl-glass-shadow,var(--lift)); }
+.compose { background: var(--ifl-glass-strong,var(--bg)); border-top-color: var(--ifl-glass-line,var(--sep)); -webkit-backdrop-filter: var(--ifl-glass-blur,none); backdrop-filter: var(--ifl-glass-blur,none); }
+.compose .field-wrap { background: var(--chat-sheen), var(--cell-2); box-shadow: var(--chat-rim); }
+.compose .field-wrap:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
+.compose .mic { width: 44px; min-height: 44px; }
+:is(.plus, .nbtn, .compose .send) { box-shadow: var(--chat-rim), var(--ifl-shadow-control,none); }
+.rpill.mine { box-shadow: inset 0 0 0 1px var(--tint), 0 0 0 2px var(--bg); }
+.rrow button { background: var(--chat-sheen), var(--cell-2); box-shadow: var(--chat-rim); }
+.rrow button.on { background: var(--ifl-accent-wash,var(--fill)); box-shadow: inset 0 0 0 1.5px var(--tint); }
+.btn.small { min-height: 44px; }
+:is(.replybar button, .attach button) { width: 44px; height: 44px; }
+@media (hover: hover) and (pointer: fine) { :is(.mrow, .cell, .menu-pop .mi):hover { background-color: var(--fill); } }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --chat-sheen: linear-gradient(transparent,transparent); --chat-rim: inset 0 0 0 1px var(--sep); }
+  :is(.sheet, .menu-pop, .asheet .grp, .asheet .cancel, .compose) { background: var(--pane-strong); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  :is(.group, .acard, .heldrow, .replybar, .attach, .sheet, .menu-pop, .asheet .grp, .asheet .cancel, .compose, .compose .field-wrap, .rpill, .rrow button, .b, .b.me, .btn) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .rpill.mine, .rrow button.on { background: Highlight; color: HighlightText; }
+}

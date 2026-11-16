@@ -79,10 +79,11 @@
   font-weight: 500;
   line-height: 22px;
   color: var(--ifl-muted);
-  background: var(--ifl-surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--ifl-shadow-control);
+  background: var(--ifl-glass-strong, var(--ifl-surface));
+  border: 1px solid var(--ifl-glass-line, var(--ifl-line));
+  -webkit-backdrop-filter: var(--ifl-glass-blur, none);
+  backdrop-filter: var(--ifl-glass-blur, none);
+  box-shadow: var(--ifl-glass-shadow, var(--ifl-shadow-control));
 }
 
 .ifl-in .ifl-brand img {

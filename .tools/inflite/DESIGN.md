@@ -4,7 +4,9 @@ All InFlite apps use the palette and geometry in `tokens.css`. The generated sha
 
 ## Surfaces and type
 
-Use `--ifl-page` for the canvas, `--ifl-surface` for cards and sheets, and `--ifl-surface-2` for nested rows, fields and segmented tracks. `--ifl-raised` provides separation in dark mode. Keep surfaces opaque: layered glass, coloured skies and glowing edges are no longer part of the app chrome. Use the shared low shadows and fine borders sparingly.
+Use `--ifl-page` for the canvas. InFlite's Liquid Glass materials derive from each selected palette: `--ifl-glass` for floating chrome, `--ifl-glass-strong` for readable content, and `--ifl-glass-control` for inset controls. Use `--ifl-glass-line`, `--ifl-glass-highlight` and `--ifl-glass-shadow` for a restrained rim and depth. `--ifl-raised` provides separation in dark mode. Keep imagery and data legible through the material; text surfaces must retain sufficient opacity and contrast.
+
+Apply `--ifl-glass-blur` only to floating bars, menus and dialog chrome. Repeated scrolling cards, chart/map canvases and document/message bodies use a static material with blur disabled. Never animate backdrop filters or add an endless sheen. Reduced transparency, increased contrast, unsupported filters and forced colours use the shared opaque fallbacks.
 
 Use `--ifl-text` for primary content and `--ifl-muted` for supporting text. Text and numbers retain system typography and tabular figures where comparisons matter. Allow flex/grid children to shrink and wrap long names without moving actions off screen.
 

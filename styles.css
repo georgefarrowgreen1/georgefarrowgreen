@@ -776,11 +776,29 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: none;
+  /* Liquid Glass materials inherit the selected palette. Content uses the
+     strong material; floating chrome alone samples the backdrop. */
+  --ifl-glass: color-mix(in srgb, var(--ifl-surface) 86%, transparent);
+  --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) 96%, transparent);
+  --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) 90%, transparent);
+  --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
+  --ifl-glass-highlight: color-mix(in srgb, var(--ifl-raised) 62%, transparent);
+  --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 10px 30px -22px rgb(0 0 0 / .25);
+  --ifl-glass-blur: blur(20px) saturate(135%);
+  --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+}
+@media (forced-colors: active) {
+  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }

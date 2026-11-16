@@ -1302,11 +1302,29 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: none;
+  /* Liquid Glass materials inherit the selected palette. Content uses the
+     strong material; floating chrome alone samples the backdrop. */
+  --ifl-glass: color-mix(in srgb, var(--ifl-surface) 86%, transparent);
+  --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) 96%, transparent);
+  --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) 90%, transparent);
+  --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
+  --ifl-glass-highlight: color-mix(in srgb, var(--ifl-raised) 62%, transparent);
+  --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 10px 30px -22px rgb(0 0 0 / .25);
+  --ifl-glass-blur: blur(20px) saturate(135%);
+  --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+}
+@media (forced-colors: active) {
+  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
@@ -1376,6 +1394,21 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
 html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
+.ifm-pop, .ifm-note, .ifa-sheet, .ifb {
+  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  background: var(--ifl-glass); border-color: var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
+.ifh-act svg, .ifs-btn svg { display: block; }
+.ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
+.ifm-card, .ifm-row { transition: background-color var(--ifl-motion-fast) ease, transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
   .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
@@ -1474,10 +1507,11 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
   font-weight: 500;
   line-height: 22px;
   color: var(--ifl-muted);
-  background: var(--ifl-surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--ifl-shadow-control);
+  background: var(--ifl-glass-strong, var(--ifl-surface));
+  border: 1px solid var(--ifl-glass-line, var(--ifl-line));
+  -webkit-backdrop-filter: var(--ifl-glass-blur, none);
+  backdrop-filter: var(--ifl-glass-blur, none);
+  box-shadow: var(--ifl-glass-shadow, var(--ifl-shadow-control));
 }
 
 .ifl-in .ifl-brand img {
@@ -1619,3 +1653,51 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 @keyframes bio-arrival-safety { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { html.bio-arrival::before, html.bio-arrival::after { display: none; } }
 /* ==== End Bio arrival ==== */
+
+/* Liquid Glass: quiet specular rims on content; chart geometry remains renderer-owned. */
+:root {
+  --mk-rim: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line));
+  --mk-sheen: linear-gradient(160deg, var(--ifl-glass-highlight, #ffffff18), transparent 40%);
+}
+:is(.glass, .list:not(.flush), .bcard) { background: var(--mk-sheen), var(--glass); box-shadow: var(--mk-rim), var(--ifl-glass-shadow, var(--lift)); }
+:is(.plan, .ystat, .ryou, .tool:not(.on)) { background: var(--mk-sheen), var(--ctl); box-shadow: var(--mk-rim); }
+:is(.field, .range-controls, .per) { background: var(--mk-sheen), var(--field); }
+.field { min-height: 52px; }
+.field input::placeholder { color: var(--text-2); opacity: 1; }
+:is(.btn, .readit, .choice button, .chip, .rtwo button) { box-shadow: var(--mk-rim), var(--ifl-shadow-control, none); }
+:is(.nfilter button, .chip) { min-height: 44px; }
+.nfilter button { height: auto; }
+.nmore { width: 44px; height: 44px; margin-top: 4px; }
+.nstory { grid-template-columns: minmax(0, 1fr) 44px; }
+:is(.addb, .del) { min-width: 44px; min-height: 44px; }
+.res { grid-template-columns: minmax(0, 1fr) auto 44px; }
+:is(.nmore, .addb, .del)::after { inset: 0; }
+:is(.mv, .addb, .nmore, .del, .rtwo button) { box-shadow: var(--mk-rim); }
+:is(.mk-ic, .tool svg, .mv svg, .addb svg) { flex-shrink: 0; }
+:is(.item, .res, .srow) { border-radius: var(--ifl-radius-row, 16px); }
+.bcard { width: 176px; }
+.bcard b { padding-right: 44px; }
+.bcard .bp b { padding-right: 0; }
+.bcard .addb { top: 8px; right: 8px; }
+.btn:disabled { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  :is(.item, .res, .srow, .story):hover { background-color: var(--ifl-press, var(--ctl)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live, .nowdot::after { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --mk-sheen: linear-gradient(transparent, transparent); --mk-rim: inset 0 0 0 1px var(--line); }
+}
+@media (forced-colors: active) {
+  :is(.glass, .list:not(.flush), .bcard, .plan, .ystat, .ryou, .field, .btn, .tool, .choice button, .chip, .rtwo button, .range-controls) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }
+  :is(.choice button, .range-controls button, .nfilter button)[aria-pressed=true] { background: Highlight; color: HighlightText; }
+}
+
+/* Only floating chrome samples the content behind it. */
+:is(.sheet, .amg, .amc, .dmenu, .tabs) { background: var(--mk-sheen), var(--ifl-glass-strong, var(--glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); box-shadow: var(--mk-rim), var(--ifl-glass-shadow, var(--lift)); }
+.dmenu button { min-height: 44px; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :is(.sheet, .amg, .amc, .dmenu, .tabs) { background: var(--glass-strong); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) { :is(.sheet, .amg, .amc, .dmenu, .tabs) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; } }

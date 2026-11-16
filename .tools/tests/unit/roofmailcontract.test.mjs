@@ -16,6 +16,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import * as fx from './fixtures/roof.mjs';
+import { splitSelectorList, hasScopedPrefix } from './fixtures/scoped-css.mjs';
 
 const IFL = fx.IFL;
 const MAILDIR = IFL && new URL('email/', IFL), MOD = IFL && new URL('email/public/roof/', IFL);
@@ -319,7 +320,7 @@ test('the module’s CSS: nothing on :root, html or body, every rule under .m-ma
       const sel = m[1].trim();
       if (sel.startsWith('@') || /^(from|to|\d+%)(\s*,\s*(from|to|\d+%))*$/.test(sel)) continue;
       assert.ok(!/(^|[\s,>+~(])(?::root|html|body)(?![\w-])/.test(sel), `email/public/roof/${f}: ${sel}`);
-      for (const one of sel.split(',')) assert.ok(/\.m-mail\b|\[data-app=["']?mail["']?\]/.test(one), `email/public/roof/${f}: ${one.trim()} is under .m-mail or .ifl-sheet[data-app=mail]`);
+      for (const one of splitSelectorList(sel)) assert.ok(hasScopedPrefix(one, ['.m-mail', '.ifl-sheet[data-app=mail]', '.ifl-sheet[data-app="mail"]', ".ifl-sheet[data-app='mail']", '[data-app=mail]', '[data-app="mail"]', "[data-app='mail']"]), `email/public/roof/${f}: ${one.trim()} is under .m-mail or .ifl-sheet[data-app=mail]`);
     }
   }
 });

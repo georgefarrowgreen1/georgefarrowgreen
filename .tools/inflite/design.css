@@ -43,6 +43,21 @@
 html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
+.ifm-pop, .ifm-note, .ifa-sheet, .ifb {
+  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  background: var(--ifl-glass); border-color: var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
+.ifh-act svg, .ifs-btn svg { display: block; }
+.ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
+.ifm-card, .ifm-row { transition: background-color var(--ifl-motion-fast) ease, transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
   .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }

@@ -194,14 +194,12 @@
 .m-fitness .p-card-top small { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-2); }
 .m-fitness .p-card > b { font: 700 21px/1.18 var(--font-d); letter-spacing: -0.3px; } .m-fitness .p-card > span { font-size: 14px; line-height: 1.4; color: var(--text-2); }
 /* Insight surfaces stay quiet; the small icons keep their warning, record and training meaning. */
-.m-fitness .p-card, .m-fitness .p-mini.green { color: var(--text); background: var(--glass);
+.m-fitness .p-mini.green { color: var(--text); background: var(--glass);
   box-shadow: var(--edge), var(--lift); -webkit-backdrop-filter: none; backdrop-filter: none; }
-.m-fitness .p-card small { color: var(--text-2); } .m-fitness .p-card > span, .m-fitness .p-mini.green small { color: var(--text-2); }
+.m-fitness .p-card small { color: var(--text-2); } .m-fitness .p-mini.green small { color: var(--text-2); }
 .m-fitness .p-card.gold { --pc: #f2a516; } .m-fitness .p-card.red { --pc: #f0483d; } .m-fitness .p-card.blue { --pc: #3a86f5; } .m-fitness .p-card.green, .m-fitness .p-mini.green { --pc: #26b866; }
 .m-fitness .p-card.gold .ic { background: linear-gradient(160deg, #ffc65a, #f29a12); } .m-fitness .p-card.red .ic { background: linear-gradient(160deg, #ff7b70, #e5372c); }
 .m-fitness .p-card.blue .ic { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } .m-fitness .p-card.green .ic { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
-@media (prefers-color-scheme: light) { .m-fitness .p-card.gold .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ffc65a, #f29a12); } .m-fitness .p-card.red .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #ff7b70, #e5372c); } .m-fitness .p-card.blue .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } .m-fitness .p-card.green .ic:not([data-theme="dark"] *) { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
-} .m-fitness .p-card.gold .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #ffc65a, #f29a12); } .m-fitness .p-card.red .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #ff7b70, #e5372c); } .m-fitness .p-card.blue .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); } .m-fitness .p-card.green .ic:is([data-theme="light"] *) { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
 /* every day: a square each */
 .m-fitness .p-cal { padding: 14px; }
 .m-fitness .p-cal-grid { display: grid; grid-template-columns: repeat(var(--n, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: 3px; }
@@ -439,3 +437,11 @@
 .m-fitness .stepper button, .m-fitness .rh-day .track i { transition: none; box-shadow: none; }
 .m-fitness .stepper button:active { transform: none; }
 }
+
+/* Liquid Glass: shared surface depth, geometry and accessible controls. */
+.m-fitness :is(.p-hero, .p-tile, .p-card, .p-mini, .p-history, .p-nights, .p-record, .rh-choice, .rh-goal, .rh-tile) { box-shadow: var(--edge), var(--lift); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.m-fitness :is(.p-card-top, .p-head, .p-rider, .choice .tx > b) { min-width: 0; }
+.m-fitness :is(.p-card p, .p-record b, .p-tile b, .p-mini b) { overflow-wrap: anywhere; }
+.m-fitness .p-lens button { padding-inline: 12px; }
+.m-fitness .drop-zone { padding: 24px 16px; }
+@media (forced-colors: active) { .m-fitness :is(.p-hero, .p-tile, .p-card, .p-mini, .p-history, .p-nights, .p-record, .rh-choice, .rh-goal, .rh-tile) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; } }

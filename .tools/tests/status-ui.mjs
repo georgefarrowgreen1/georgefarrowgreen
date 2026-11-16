@@ -227,12 +227,20 @@ for(const width of (process.env.STATUS_WIDTHS?process.env.STATUS_WIDTHS.split(',
  if(out)await page.screenshot({path:`${out}/status-${width}-${colorScheme}-${problem?'issue':'healthy'}.png`,fullPage:true});
  if(width>=1100) {
   const before=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg'));
-  await page.locator('#themeSwitch').click();
-  const chosen=await page.evaluate(()=>document.documentElement.dataset.theme);
+  // Appearance is account-wide. The shared runtime persists a choice; Status's
+  // Appearance button opens the account setting instead of cycling a local mode.
+  const chosen=colorScheme==='light'?'dark':'light';
+  await page.evaluate(appearance=>InFliteAppearance.accept({...InFliteAppearance.snapshot(),appearance}),chosen);
   assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg')),before);
   await page.reload();await page.waitForSelector('.operation-toggle');
   assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),chosen,'theme selection persists');
   assert.equal(await page.locator('.operation-toggle[aria-expanded="true"]').count(),0);
+  await page.route('https://inflite.ai/account/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Account Appearance fixture</title>'}));
+  await Promise.all([
+   page.waitForURL('https://inflite.ai/account/#open=appearance'),
+   page.locator('#themeSwitch').click(),
+  ]);
+  assert.equal(await page.title(),'Account Appearance fixture','Appearance opens the canonical account setting without live requests');
  }
  assert.deepEqual(errors,[]);
  console.log(`PASS ${width}px ${colorScheme} ${problem?'issue':'healthy'}: layout, refresh, history, keyboard, sheets, lookup and navigation`);

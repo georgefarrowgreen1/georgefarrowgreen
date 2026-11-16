@@ -7,7 +7,7 @@
   --sky-top: var(--ifl-page);
   --aura-1: transparent; --aura-2: transparent; --aura-3: transparent;
   --text: var(--ifl-text); --text-2: var(--ifl-muted); --text-3: var(--ifl-muted);
-  --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --glass-ctl: var(--ifl-surface-2); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
+  --glass: var(--ifl-glass-strong, var(--ifl-surface)); --glass-strong: var(--ifl-glass-strong, var(--ifl-raised)); --glass-ctl: var(--ifl-glass-control, var(--ifl-surface-2)); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
   --line: var(--ifl-line); --press: color-mix(in srgb, var(--text) 5%, transparent); --field: var(--ifl-surface-2);
   /* (buttons and links in the site's blue, as the account page's, Chat's and Weather's; coral is Fitness's own, for its icon and rides) */
   --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --on-tint: var(--ifl-on-accent); --ift-tint: var(--ifl-accent-ink);
@@ -19,7 +19,7 @@
   /* each sport's tile */
   --s-ride: linear-gradient(160deg, #ff9a6a, #ee4b2f); --s-run: linear-gradient(160deg, #4fdc8e, #1fa75a); --s-swim: linear-gradient(160deg, #5ad8f0, #1b8fc0);
   --s-strength: linear-gradient(160deg, #8a86ff, #5a4fe0); --s-walk: linear-gradient(160deg, #9aa3b8, #6b7389);
-  --edge: inset 0 0 0 1px var(--line);
+  --edge: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line));
   --lift: var(--ifl-shadow-card);
   --blur: none;
   --sheen: none;
@@ -44,14 +44,14 @@
     --sky-a: var(--ifl-page); --sky-b: var(--ifl-page); --sky-c: var(--ifl-page); --sky-top: var(--ifl-page);
     --aura-1: transparent; --aura-2: transparent; --aura-3: transparent;
     --text: var(--ifl-text); --text-2: var(--ifl-muted); --text-3: var(--ifl-muted);
-    --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --glass-ctl: var(--ifl-surface-2); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
+    --glass: var(--ifl-glass-strong, var(--ifl-surface)); --glass-strong: var(--ifl-glass-strong, var(--ifl-raised)); --glass-ctl: var(--ifl-glass-control, var(--ifl-surface-2)); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
     --line: var(--ifl-line); --press: color-mix(in srgb, var(--text) 5%, transparent); --field: var(--ifl-surface-2);
     --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --ift-tint: var(--ifl-accent-ink);
     --danger: #d12a1f; --good: var(--ifl-accent); --good-text: var(--ifl-accent-ink); --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
     --hr: #e5395f; --pwr: #f08a10; --ele: rgba(90, 100, 140, 0.2); --spd: #1aa3d6;
-    --edge: inset 0 0 0 1px var(--line);
+    --edge: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line));
     --lift: var(--ifl-shadow-card);
     --sheen: none;
     --dim: rgba(10, 14, 30, 0.32);
@@ -62,14 +62,14 @@
     --sky-a: var(--ifl-page); --sky-b: var(--ifl-page); --sky-c: var(--ifl-page); --sky-top: var(--ifl-page);
     --aura-1: transparent; --aura-2: transparent; --aura-3: transparent;
     --text: var(--ifl-text); --text-2: var(--ifl-muted); --text-3: var(--ifl-muted);
-    --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --glass-ctl: var(--ifl-surface-2); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
+    --glass: var(--ifl-glass-strong, var(--ifl-surface)); --glass-strong: var(--ifl-glass-strong, var(--ifl-raised)); --glass-ctl: var(--ifl-glass-control, var(--ifl-surface-2)); --cell: var(--ifl-surface); --sheet: var(--ifl-surface);
     --line: var(--ifl-line); --press: color-mix(in srgb, var(--text) 5%, transparent); --field: var(--ifl-surface-2);
     --tint: var(--ifl-accent); --tint-deep: var(--ifl-accent-fill); --tint-text: var(--ifl-accent-ink); --ift-tint: var(--ifl-accent-ink);
     --danger: #d12a1f; --good: var(--ifl-accent); --good-text: var(--ifl-accent-ink); --warn: #945600;
     --z1: #8b93a8; --z2: #2f86f0; --z3: #1fae6b; --z4: #e8b400; --z5: #f27318; --z6: #e53935; --z7: #9b51e0;
     --fit: #2f86f0; --fat: #e0447f; --form-up: #1fae6b; --form-down: #e88a10;
     --hr: #e5395f; --pwr: #f08a10; --ele: rgba(90, 100, 140, 0.2); --spd: #1aa3d6;
-    --edge: inset 0 0 0 1px var(--line);
+    --edge: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line));
     --lift: var(--ifl-shadow-card);
     --sheen: none;
     --dim: rgba(10, 14, 30, 0.32);
@@ -1920,10 +1920,11 @@ dialog.sheet.full .sheet-body:has(> .onb-hero) { align-content: safe center; }
   font-weight: 500;
   line-height: 22px;
   color: var(--ifl-muted);
-  background: var(--ifl-surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--ifl-shadow-control);
+  background: var(--ifl-glass-strong, var(--ifl-surface));
+  border: 1px solid var(--ifl-glass-line, var(--ifl-line));
+  -webkit-backdrop-filter: var(--ifl-glass-blur, none);
+  backdrop-filter: var(--ifl-glass-blur, none);
+  box-shadow: var(--ifl-glass-shadow, var(--ifl-shadow-control));
 }
 
 .ifl-in .ifl-brand img {
@@ -2304,11 +2305,29 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: none;
+  /* Liquid Glass materials inherit the selected palette. Content uses the
+     strong material; floating chrome alone samples the backdrop. */
+  --ifl-glass: color-mix(in srgb, var(--ifl-surface) 86%, transparent);
+  --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) 96%, transparent);
+  --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) 90%, transparent);
+  --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
+  --ifl-glass-highlight: color-mix(in srgb, var(--ifl-raised) 62%, transparent);
+  --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 10px 30px -22px rgb(0 0 0 / .25);
+  --ifl-glass-blur: blur(20px) saturate(135%);
+  --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+}
+@media (forced-colors: active) {
+  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
@@ -2378,6 +2397,21 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
 html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion-paused] *::after { animation-play-state: paused !important; }
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
+.ifm-pop, .ifm-note, .ifa-sheet, .ifb {
+  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  background: var(--ifl-glass); border-color: var(--ifl-glass-line);
+  box-shadow: var(--ifl-glass-shadow);
+  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+}
+.ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
+.ifh-act svg, .ifs-btn svg { display: block; }
+.ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
+.ifm-card, .ifm-row { transition: background-color var(--ifl-motion-fast) ease, transform var(--ifl-motion-release) var(--ifl-motion-spring); }
 @media (prefers-reduced-motion: reduce) {
   .ifm-pop, .ifm-pop.closing, .ifa-sheet, .ifm-note { transform: none !important; transition: opacity 0.12s ease !important; }
   .ifh-me, .ifh-act, .ifl-back, .ifs-btn, .ifm-switch::after, .ifm-row, .ifm-card, .ifa-go, .ifa-later, .ifb-btn { transition: none; }
@@ -2453,3 +2487,31 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 @keyframes bio-arrival-safety { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { html.bio-arrival::before, html.bio-arrival::after { display: none; } }
 /* ==== End Bio arrival ==== */
+
+/* Liquid Glass: shared surface depth, geometry and accessible controls. */
+.glass { background-image: linear-gradient(145deg, color-mix(in srgb, var(--ifl-glass-highlight, transparent) 32%, transparent), transparent 55%); }
+.card, .group { min-width: 0; }
+:is(.verdict, .fit-tiles > div, .mv-day, .pt-part, .hk-box, .nt, .nc-effect, .rv-day, .gday, .ride-at, .repeat, .p-record, .p-lens button) { border-radius: var(--ifl-radius-row, 16px); }
+:is(.note, .drop-zone, .note-garmin) { border-radius: var(--ifl-radius-group, 22px); }
+:is(.pill, .pill.small, .map .map-show, .act-links > .pill, .chip-btn) { min-height: 44px; }
+.checkin .checkin-row .seg3 { background: none; }
+.checkin .checkin-row .seg3 button { min-height: 44px; border-radius: var(--ifl-radius-row, 16px); }
+:is(.pill, .btn, .chip-btn, .choice, .rh-choice, .rh-goal) { max-width: 100%; }
+:is(.pill, .btn) { text-align: center; }
+:is(.pill, .btn, .choice, .rh-choice) > svg { display: block; flex: none; }
+:is(.choice .tx, .rh-choice .tx, .session .meta, .offer-when, .feel-row > span) { overflow-wrap: anywhere; }
+:is(.pick, .field, .stepper) { box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); }
+.pick select { max-width: 100%; text-overflow: ellipsis; }
+:is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --glass-ctl: var(--ifl-surface-2); --field: var(--ifl-surface-2); }
+  .glass { background-image: none; }
+}
+@media (forced-colors: active) {
+  :is(.glass, .choice, .pick, .field, .seg, .seg3 button, .pill, .btn, .stepper) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }
+  :is(.seg button, .seg3 button)[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -3px; }
+}
+
+dialog.sheet { background: var(--ifl-glass-strong, var(--ifl-raised)); box-shadow: var(--edge), var(--ifl-glass-shadow, var(--lift)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { dialog.sheet { background: var(--ifl-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+@media (forced-colors: active) { dialog.sheet { background: Canvas; color: CanvasText; box-shadow: none; border: 1px solid ButtonText; -webkit-backdrop-filter: none; backdrop-filter: none; } }

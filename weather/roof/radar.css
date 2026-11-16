@@ -252,3 +252,21 @@
 @media (forced-colors: active) {
   .m-weather .wx-radar :is(.radar-legend, .radar-dock, .map-zoom, .radar-centre, .map-layers) { border: 1px solid CanvasText; }
 }
+
+/* Liquid Glass: shared surface depth, geometry and accessible controls. */
+/* Only floating map controls sample the backdrop; map tiles and data layers stay unfiltered. */
+.m-weather .wx-radar, .m-weather .wx-radar.light-map {
+  --rd-glass: var(--ifl-glass, var(--ifl-surface)); --rd-glass-2: var(--ifl-glass-strong, var(--ifl-surface)); --rd-glass-3: var(--ifl-glass-strong, var(--ifl-raised)); --rd-panel: var(--ifl-glass-strong, var(--ifl-surface)); --rd-blur: var(--ifl-glass-blur, none);
+}
+.m-weather .wx-radar :is(.radar-legend, .radar-dock, .layer-menu, .map-zoom, .radar-centre, .map-layers) { box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--rd-line)), var(--ifl-shadow-control); }
+.m-weather .wx-radar :is(.map-zoom, .radar-centre, .map-layers) { -webkit-backdrop-filter: var(--rd-blur); backdrop-filter: var(--rd-blur); }
+.m-weather .wx-radar .layer-menu { padding: 6px; border-radius: var(--ifl-radius-group, 22px); }
+.m-weather .wx-radar .layer-menu button { border-radius: var(--ifl-radius-row, 16px); }
+.m-weather .wx-radar :is(.wx-radar-said, .wx-radar-off, .radar-status) { border-radius: var(--ifl-radius-row, 16px); }
+.m-weather .wx-radar .radar-credit::before { content: ""; position: absolute; inset: -9px; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .m-weather .wx-radar, .m-weather .wx-radar.light-map { --rd-glass: var(--ifl-surface); --rd-glass-2: var(--ifl-surface); --rd-glass-3: var(--ifl-raised); --rd-panel: var(--ifl-surface); --rd-blur: none; }
+}
+@media (forced-colors: active) {
+  .m-weather .wx-radar :is(.radar-legend, .radar-dock, .layer-menu, .map-zoom, .radar-centre, .map-layers, .radar-status, .wx-radar-said) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

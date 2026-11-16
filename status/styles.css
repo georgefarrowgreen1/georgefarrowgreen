@@ -509,7 +509,7 @@ a, button, summary, [tabindex] { -webkit-tap-highlight-color: transparent; }
 .scrim { transition: opacity .22s ease; }
 .toast { opacity: 0; transition: transform .3s var(--ifl-motion-spring, ease), opacity .18s ease, visibility 0s linear .3s; }
 .toast.on { opacity: 1; transition: transform .3s var(--ifl-motion-spring, ease), opacity .18s ease, visibility 0s; }
-.operation-panel:not([hidden]), .app.open .more,
+.app.open .more,
 :is(.incident-detail, .report-detail)[open] > .steps,
 .sheet.on > :is(.sh, .three, .hours) {
   animation: status-detail-in var(--ifl-motion-layout, .28s) var(--ifl-motion-glide, ease) backwards;
@@ -527,7 +527,7 @@ html[data-motion-paused] .verdict .halo b { animation-play-state: paused !import
   .chev, .mini, .sheet, .sheet.on, .scrim, .toast, .toast.on { transition: none; }
   :is(.big, .operation-toggle, .arow, .look button, .days button,
       .incident-detail > summary, .report-detail > summary):active { transform: none; }
-  .operation-panel:not([hidden]), .app.open .more,
+  .app.open .more,
   :is(.incident-detail, .report-detail)[open] > .steps,
   .sheet.on > :is(.sh, .three, .hours), .verdict[data-s="down"] .halo b { animation: none; }
 }
@@ -567,11 +567,29 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ifl-chrome-blur: none;
+  /* Liquid Glass materials inherit the selected palette. Content uses the
+     strong material; floating chrome alone samples the backdrop. */
+  --ifl-glass: color-mix(in srgb, var(--ifl-surface) 86%, transparent);
+  --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) 96%, transparent);
+  --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) 90%, transparent);
+  --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
+  --ifl-glass-highlight: color-mix(in srgb, var(--ifl-raised) 62%, transparent);
+  --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 10px 30px -22px rgb(0 0 0 / .25);
+  --ifl-glass-blur: blur(20px) saturate(135%);
+  --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
   --ease-glide: var(--ifl-motion-glide); --ease-spring: var(--ifl-motion-spring);
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+}
+@media (forced-colors: active) {
+  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
@@ -597,3 +615,126 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
 }
 /* ==== end of InFlite design tokens ==== */
+
+/* Status uses the same materials as Account. Dense data stays on a static
+   reading surface; the floating summary and detail sheet alone use live blur. */
+:root[data-theme], :root:not([data-theme]) {
+  --card: var(--ifl-glass, var(--ifl-surface));
+  --card-solid: var(--ifl-surface);
+  --line: var(--ifl-glass-line, var(--ifl-line));
+  --line-2: var(--ifl-glass-line, var(--ifl-line));
+}
+body {
+  background: radial-gradient(ellipse at 8% 0%, color-mix(in srgb, var(--ifl-accent-fill) 7%, transparent), transparent 54%), var(--bg);
+  background-attachment: scroll;
+}
+.glass {
+  border-radius: var(--ifl-radius-card, 26px);
+  background: linear-gradient(155deg, var(--ifl-glass-highlight, transparent), transparent 48%), var(--card);
+  box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), var(--ifl-glass-shadow, var(--shadow));
+}
+.mark { background: var(--ifl-surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.word { letter-spacing: -.04em; }
+.word span { letter-spacing: -.02em; }
+.page-nav { background: var(--ifl-surface-2); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent); }
+.page-nav a, .jump a { display: inline-flex; align-items: center; justify-content: center; }
+.page-nav a[aria-current], .jump a[aria-current] { background: var(--ifl-surface); }
+.verdict { padding: 24px; gap: 16px; }
+.verdict h2 { line-height: 1.2; }
+.verdict p { line-height: 1.5; }
+.vstats > * { border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2); padding: 12px; gap: 4px; }
+.vstats span { line-height: 1.4; }
+.gh h2 { letter-spacing: -.02em; }
+.operation-group, .status-list { background: var(--ifl-surface); }
+.operation-group { border-radius: var(--ifl-radius-group, 22px); }
+.operation-toggle { padding: 16px 18px; font-size: 14px; gap: 12px; }
+.operation-state { line-height: 1.4; }
+.status-row { padding: 14px 16px; }
+.status-row small { line-height: 1.45; margin-top: 3px; }
+.arow :is(b, .st), .operation-state, .inc h3, .report-title { overflow-wrap: anywhere; }
+.arow .lg, .status-row .lg, .ib svg, .big svg { flex-shrink: 0; }
+.support-services .app { border-radius: var(--ifl-radius-group, 22px); }
+.look input { background: var(--ifl-surface-2); border-color: var(--line); }
+.look input:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.look input::placeholder { color: var(--text-2); opacity: 1; }
+:is(.copy, .cpy, .pill, .history-toggle, .seg button, .incident-detail > summary, .report-detail > summary),
+.maint .pill, .history-panels :is(.copy, .cpy, summary) { min-height: 44px; }
+:is(.copy, .cpy, .pill, .history-toggle) { padding-inline: 14px; }
+.seg { padding: 4px; border-radius: var(--ifl-radius-row, 16px); background: var(--ifl-surface-2); }
+.seg button { border-radius: 12px; }
+.history-toggle { color: var(--tint); font-size: 12.5px; background: var(--ifl-surface-2); }
+.copy, .cpy { font-size: 12.5px; }
+.history-panels :is(.copy, .cpy) { font-size: 12px; }
+.theme-switch, .ib, .pill, .big.g {
+  background: var(--ifl-surface-2); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent);
+}
+.big, .look button { box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent), var(--ifl-shadow-control, none); }
+.mini, .sheet { background: var(--card-solid); border: 1px solid var(--line); }
+.mini { box-shadow: 0 8px 24px -18px color-mix(in srgb, var(--text) 32%, transparent); border-inline: 0; border-top: 0; }
+.sheet {
+  border-radius: var(--ifl-radius-sheet, 30px);
+  box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), var(--ifl-glass-shadow, var(--shadow));
+  padding-top: 12px; gap: 16px;
+  max-height: calc(100svh - max(16px, env(safe-area-inset-top, 0px)));
+  overscroll-behavior: contain;
+}
+.sh { gap: 10px; }
+.sh h3 { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.sh h3 small { margin-top: 4px; line-height: 1.4; }
+.grab { background: var(--text-3); opacity: .4; }
+.three div { border-radius: var(--ifl-radius-row, 16px); padding: 14px 12px; background: var(--ifl-surface-2); }
+.three small { display: block; margin-top: 4px; line-height: 1.4; }
+.sheet .card { background: var(--ifl-surface); }
+.toast { white-space: normal; text-align: center; overflow-wrap: anywhere; line-height: 1.45; padding: 12px 18px; }
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .mini, .sheet {
+    background: var(--ifl-glass-strong, var(--card-solid));
+    -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none);
+  }
+}
+@media (min-width: 1100px) {
+  .page-nav { padding: 4px; top: 21px; border: 1px solid var(--line); border-radius: 999px; }
+  .page-nav a { font-size: 12px; }
+  .verdict { border-radius: var(--ifl-radius-card, 26px); padding: 26px; }
+  .vstats > *, .vstats > :first-child { background: none; border-radius: 0; }
+  .vstats span, .operation-state, .job-group .status-row small, .operation-group .status-row small { font-size: 11.5px; }
+  .operation-toggle { font-size: 13px; min-height: 60px; }
+  .job-group .status-row { min-height: 48px; padding-block: 12px; }
+  .job-group .status-row b, .operation-group .status-row b { font-size: 12.5px; }
+  .history-panels .inc h3 { font-size: 14px; line-height: 1.4; }
+  .history-panels .inc .sub { font-size: 12px; line-height: 1.5; }
+  .history-panels summary { font-size: 12.5px; }
+  .seg button { font-size: 12px; }
+}
+@media (max-width: 359px) {
+  .verdict { padding: 20px 16px; gap: 12px; }
+  .verdict h2 { font-size: 20px; }
+  .vstats { gap: 6px; }
+  .vstats > * { padding: 10px 8px; }
+  .vstats b { white-space: normal; overflow: visible; font-size: 14px; }
+  .page-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: var(--ifl-radius-group, 22px); }
+  .page-nav a { padding-inline: 6px; font-size: 12px; }
+  .three div { padding-inline: 8px; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass, .mini, .sheet, .support-services .app {
+    background: var(--card-solid); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  :root[data-theme], :root:not([data-theme]) {
+    --line: color-mix(in srgb, var(--ifl-text) 36%, var(--ifl-surface)); --line-2: var(--line); --text-3: var(--text-2);
+  }
+  .meta, .hint, .status-legend, .key, .foot-note { color: var(--text); }
+  .days button, .hours .q i { opacity: 1; }
+}
+@media (forced-colors: active) {
+  .glass, .mini, .sheet, .toast, .support-services .app, .operation-group, .status-list, .vstats > *, .three > div {
+    color: CanvasText; background: Canvas; border: 1px solid CanvasText; box-shadow: none;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  :is(.big, .pill, .ib, .history-toggle, .theme-switch, .page-nav, .seg, .look input, .look button) { border: 1px solid ButtonText; box-shadow: none; }
+  .page-nav a[aria-current], .jump a[aria-current], .seg button[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -3px; }
+  :focus-visible { outline: 2px solid Highlight; }
+  .days button, .hours .q i { forced-color-adjust: none; }
+}

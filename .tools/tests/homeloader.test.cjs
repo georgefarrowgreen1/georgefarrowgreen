@@ -134,8 +134,9 @@ for (const assets of ['', 'min/']) {
       await active(f.p); await f.p.locator('#cover img').waitFor({ state: 'attached' });
       await f.p.evaluate(() => { loaderTest.readyAt = performance.now(); }); f.cover.done();
       await f.p.waitForFunction(() => { const el = document.getElementById('loader-portrait'); return el?.classList.contains('shown') && Number(getComputedStyle(el).opacity) > .025; });
-      await f.p.waitForTimeout(700);
-      assert.equal(await f.p.evaluate(() => document.documentElement.classList.contains('intro-loading')), true, 'ready content retains the approved visible showcase');
+      // Assert the complete visible duration from browser-frame timestamps
+      // below. A host-side sleep can resume after the whole showcase on a busy
+      // runner, even when the production two-second animation is correct.
       await released(f.p, 3500);
       const timing = await f.p.evaluate(() => ({ elapsed: performance.now() - loaderTest.readyAt, reveals: loaderTest.reveals.length, known: document.body.classList.contains('known'), frames: loaderTest.frames }));
       const firstVisible = timing.frames.find(x => x.head > .98);
