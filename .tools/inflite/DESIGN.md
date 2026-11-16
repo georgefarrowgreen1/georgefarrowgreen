@@ -10,6 +10,10 @@ Apply `--ifl-glass-blur` only to floating bars, menus and dialog chrome. Repeate
 
 Use `--ifl-text` for primary content and `--ifl-muted` for supporting text. Text and numbers retain system typography and tabular figures where comparisons matter. Allow flex/grid children to shrink and wrap long names without moving actions off screen.
 
+Windows use `--ifl-glass-window` and `--ifl-glass-window-blur`; floating toolbars use `--ifl-glass`. At the default intensity 70 these transmit 16.8% and 21% of the backdrop. Use `--ifl-glass-inset` for nested groups rather than stacking near-opaque surfaces. One outer frame owns backdrop sampling; repeated content and text-entry wells do not add their own filters. The stronger content material remains available for data and documents.
+
+Clear windows must scope primary/secondary legacy aliases to `--ifl-glass-text` / `--ifl-glass-muted`. `--ifl-glass-accent` provides readable unfilled link ink; never replace semantic chart colors or the on-accent foreground. Destructive text actions keep opaque wells without a white specular wash. Preserve opaque accessibility fallbacks without requiring an unsupported media feature to report a positive `no-preference` value. Under reduced motion, floating panes explicitly disable CSS transitions so the global short-duration fallback cannot animate their geometry.
+
 ## Actions and meaning
 
 Primary and selected controls use `--ifl-accent-gradient` with `--ifl-on-accent`, a dark foreground. Links, focus rings and unfilled actions use `--ifl-accent-ink`, which has separate light and dark values. Never put white text over the bright action gradient. Secondary controls use neutral surfaces and dark/light text. Charcoal contrast cards can carry voice messages or outgoing chat bubbles.

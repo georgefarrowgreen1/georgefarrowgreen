@@ -650,3 +650,12 @@
   :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.glass, .list:not(.flush), .bcard, .plan, .ystat, .ryou, .field, .btn, .tool, .choice button, .chip, .rtwo button, .range-controls, .amg, .amc) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.choice button, .range-controls button, .nfilter button)[aria-pressed=true] { background: Highlight; color: HighlightText; }
 }
+
+/* Translucent windows: backdrop detail stays in the frame; content keeps static inset layers. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+.ifl-sheet[data-app=markets],.ifl-sheet[data-app=markets] .m-markets{--text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); --tint-text: var(--ifl-glass-accent, var(--ifl-accent-ink)); color: var(--text);--glass: var(--ifl-glass-inset, var(--ifl-glass-control));}
+:is(.m-markets[class],.ifl-sheet[data-app=markets]) :is(.amg,.amc){--text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); --tint-text: var(--ifl-glass-accent, var(--ifl-accent-ink)); color: var(--text);background: var(--ifl-glass-window, var(--ifl-glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur)); backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur));}
+.ifl-sheet[data-app=markets] .cash-error:not(:empty){padding:10px 12px;border-radius:var(--ifl-radius-row);background:color-mix(in srgb,var(--down,var(--danger)) 7%,var(--ifl-surface));}
+}
+}

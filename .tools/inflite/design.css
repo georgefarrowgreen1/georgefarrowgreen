@@ -44,16 +44,20 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
 .ifm-pop, .ifm-note, .ifa-sheet, .ifb {
-  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  --ifm-text: var(--ifl-glass-text); --ifm-text-2: var(--ifl-glass-muted); --ifm-text-3: var(--ifl-glass-muted);
+  color: var(--ifl-glass-text); background: var(--ifl-glass-window); border: 1px solid var(--ifl-glass-line);
   box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
   -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
 }
-.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifm-grp { background: var(--ifl-glass-inset); border: 1px solid var(--ifl-glass-line); }
 .ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  --ifh-tint: var(--ifl-glass-text); color: var(--ifl-glass-text);
   background: var(--ifl-glass); border-color: var(--ifl-glass-line);
   box-shadow: var(--ifl-glass-shadow);
   -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
 }
+.ifl-tabs { --ifl-tab-ink: var(--ifl-glass-muted); }
+.ifa-later { color: var(--ifl-glass-accent); }
 .ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
 .ifh-act svg, .ifs-btn svg { display: block; }
 .ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
@@ -101,4 +105,24 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 @media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
   [data-ifl-pointer], :root[data-glass="on"] :focus-visible { --ifl-glass-shine: none; }
   :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row) { translate: none !important; }
+}
+
+/* Floating frames sample once; their content cards retain a static material. */
+.ifl-workspace :is(.ws-window-menu, .ws-window-hint) {
+  --ws-text: var(--ifl-glass-text); --ws-muted: var(--ifl-glass-muted);
+  color: var(--ws-text); background: var(--ifl-glass-window);
+  -webkit-backdrop-filter: var(--ifl-glass-window-blur); backdrop-filter: var(--ifl-glass-window-blur);
+}
+@media (min-width: 900px) {
+  .ifl-workspace[data-layout="float"] .ifl-workspace-pane {
+    --ifl-text: var(--ifl-glass-text); --ifl-muted: var(--ifl-glass-muted); --ifl-subtle: var(--ifl-glass-muted);
+    --text: var(--ifl-glass-text); --text-2: var(--ifl-glass-muted); --text-3: var(--ifl-glass-muted);
+    --ws-text: var(--ifl-glass-text); --ws-muted: var(--ifl-glass-muted);
+    color: var(--ws-text); background: var(--ifl-glass-window);
+    -webkit-backdrop-filter: var(--ifl-glass-window-blur); backdrop-filter: var(--ifl-glass-window-blur);
+  }
+  .ifl-workspace[data-layout="float"] .ws-pane-header { background: transparent; }
+}
+@media (forced-colors: active) {
+  .ifl-workspace :is(.ws-window-menu, .ws-window-hint, .ifl-workspace-pane) { background: Canvas; color: CanvasText; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }

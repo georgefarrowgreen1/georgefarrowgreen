@@ -192,3 +192,8 @@
   .ifl-sheet[data-app=chats] :is(.chs-line, .chsend-say, .chs-safedig, .chf-stat, .chf-badge, .chsend-chip, .chs-emoji, .chs-play, .chv) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }
   .ifl-sheet[data-app=chats] :is(.chsend-chip[aria-checked=true], .chs-emoji[aria-pressed=true]) { background: Highlight; color: HighlightText; }
 }
+
+/* Semantic action ink keeps an opaque well inside the translucent window. */
+.ifl-sheet[data-app=chats] .chs-danger{background:color-mix(in srgb,var(--danger) 7%,var(--ifl-surface));border-radius:var(--ifl-radius-row)}
+
+.ifl-sheet[data-app=chats] .chs p a:not([role=button]){color:var(--ifl-glass-accent,var(--acc-ink))}

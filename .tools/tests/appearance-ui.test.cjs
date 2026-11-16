@@ -81,6 +81,10 @@ for(const width of [320,390,1440])test(`account Appearance persists, handles rap
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
   await page.goto('https://inflite.ai/account/#open=appearance');
   await page.locator('[data-appearance-palette=coast]').waitFor();
+  const material=await page.locator('#sheet').evaluate(node=>{const style=getComputedStyle(node),canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d');c.fillStyle=style.backgroundColor;c.fillRect(0,0,1,1);return{alpha:c.getImageData(0,0,1,1).data[3]/255,blur:style.backdropFilter||style.webkitBackdropFilter,background:style.backgroundColor,glass:document.documentElement.dataset.glass,strength:InFliteAppearance.snapshot().glassStrength};});
+  assert.equal(material.strength,70,'default Account material level');
+  console.log('Account glass material',engine,width,JSON.stringify(material));
+  assert.equal(material.glass,'on');assert.ok(material.alpha<.94&&material.alpha>.5,`the real default Account window remains visibly translucent: ${JSON.stringify(material)}`);assert.match(material.blur,/blur\((?!0(?:px)?\))/,'the real default Account window samples its backdrop');
   assert.equal(await page.locator('[data-appearance-palette]').count(),6);
   await page.locator('[data-appearance-palette=coast]').focus();await page.keyboard.press('Enter');
   await page.waitForFunction(()=>document.documentElement.dataset.palette==='coast');

@@ -1679,16 +1679,23 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-press-scale: 0.97; --ifl-press-icon: 0.94; --ifl-press-card: 0.985;
   --ifl-motion-glide: cubic-bezier(0.32, 0.72, 0, 1);
   --ifl-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Liquid Glass materials inherit the selected palette. Content uses the
-     strong material; floating chrome alone samples the backdrop. */
+  /* One translucent window material; readable static content and lightweight
+     inset layers avoid stacking opaque glass over opaque glass. */
   --ifl-glass-strength: .7;
-  --ifl-glass: color-mix(in srgb, var(--ifl-surface) var(--ifl-glass-opacity, 90.2%), transparent);
+  --ifl-glass-tint: light-dark(var(--ifl-surface), color-mix(in srgb, var(--ifl-surface) 70%, black));
+  --ifl-glass: color-mix(in srgb, var(--ifl-glass-tint) var(--ifl-glass-opacity, 79%), transparent);
+  --ifl-glass-window: color-mix(in srgb, var(--ifl-glass-tint) var(--ifl-glass-window-opacity, 83.2%), transparent);
+  --ifl-glass-inset: color-mix(in srgb, var(--ifl-surface-2) var(--ifl-glass-inset-opacity, 23.2%), transparent);
+  --ifl-glass-text: var(--ifl-text);
+  --ifl-glass-muted: color-mix(in srgb, var(--ifl-text) 92%, var(--ifl-muted));
+  --ifl-glass-accent: color-mix(in srgb, var(--ifl-text) 65%, var(--ifl-accent-ink));
   --ifl-glass-strong: color-mix(in srgb, var(--ifl-surface) var(--ifl-glass-strong-opacity, 97.9%), transparent);
   --ifl-glass-control: color-mix(in srgb, var(--ifl-surface-2) var(--ifl-glass-control-opacity, 93%), transparent);
   --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 11%, transparent);
   --ifl-glass-highlight: color-mix(in srgb, white var(--ifl-glass-rim-opacity, 43.4%), transparent);
   --ifl-glass-shadow: inset 0 1px 0 var(--ifl-glass-highlight), inset 0 0 0 .5px var(--ifl-glass-line), 0 calc(10px * var(--ifl-glass-strength)) calc(30px * var(--ifl-glass-strength)) calc(-22px * var(--ifl-glass-strength)) rgb(0 0 0 / .25);
-  --ifl-glass-blur: blur(var(--ifl-glass-radius, 19.6px)) saturate(var(--ifl-glass-saturation, 135%));
+  --ifl-glass-blur: blur(var(--ifl-glass-radius, 22.4px)) saturate(var(--ifl-glass-saturation, 135%));
+  --ifl-glass-window-blur: var(--ifl-glass-blur);
   --ifl-chrome-blur: var(--ifl-glass-blur);
   --ifl-chrome-solid: var(--ifl-surface);
   --r-card: var(--ifl-radius-card); --r-group: var(--ifl-radius-group); --r-sheet: var(--ifl-radius-sheet);
@@ -1696,15 +1703,15 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --dur-press: var(--ifl-motion-press); --dur-release: var(--ifl-motion-release);
 }
 :root, [data-ifl-pointer] { --ifl-glass-shine: radial-gradient(180px circle at var(--ifl-pointer-x, 50%) var(--ifl-pointer-y, 0%), color-mix(in srgb, white var(--ifl-glass-light-opacity, 2.1%), transparent), transparent 72%); }
-:root[data-glass="off"] { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-highlight: transparent; --ifl-glass-shadow: var(--ifl-shadow-control); --ifl-glass-blur: none; --ifl-glass-shine: none; }
+:root[data-glass="off"] { --ifl-glass: var(--ifl-surface); --ifl-glass-window: var(--ifl-surface); --ifl-glass-inset: var(--ifl-surface-2); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-highlight: transparent; --ifl-glass-shadow: var(--ifl-shadow-control); --ifl-glass-blur: none; --ifl-glass-window-blur: none; --ifl-glass-shine: none; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; }
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-window: var(--ifl-surface); --ifl-glass-inset: var(--ifl-surface-2); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-blur: none; --ifl-glass-window-blur: none; }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; }
+  :root { --ifl-glass: var(--ifl-surface); --ifl-glass-window: var(--ifl-surface); --ifl-glass-inset: var(--ifl-surface-2); --ifl-glass-strong: var(--ifl-surface); --ifl-glass-control: var(--ifl-surface-2); --ifl-glass-line: color-mix(in srgb, var(--ifl-text) 25%, transparent); --ifl-glass-blur: none; --ifl-glass-window-blur: none; }
 }
 @media (forced-colors: active) {
-  :root { --ifl-glass: Canvas; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; }
+  :root, :root[data-glass] { --ifl-glass-window: Canvas; --ifl-glass-inset: Canvas; --ifl-glass-text: CanvasText; --ifl-glass-muted: CanvasText; --ifl-glass-accent: LinkText; --ifl-glass: Canvas; --ifl-glass-window: Canvas; --ifl-glass-inset: Canvas; --ifl-glass-text: CanvasText; --ifl-glass-muted: CanvasText; --ifl-glass-strong: Canvas; --ifl-glass-control: Canvas; --ifl-glass-line: ButtonText; --ifl-glass-highlight: transparent; --ifl-glass-shadow: none; --ifl-glass-blur: none; --ifl-glass-window-blur: none; }
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ifl-motion-spring: linear(0, 0.12, 0.36, 0.59, 0.77, 0.89, 0.96, 0.994, 1.006, 1.008, 1.005, 1.002, 1); }
@@ -1775,16 +1782,20 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 
 /* Accessibility preferences apply to the shared chrome in every standalone app. */
 .ifm-pop, .ifm-note, .ifa-sheet, .ifb {
-  background: var(--ifl-glass-strong); border: 1px solid var(--ifl-glass-line);
+  --ifm-text: var(--ifl-glass-text); --ifm-text-2: var(--ifl-glass-muted); --ifm-text-3: var(--ifl-glass-muted);
+  color: var(--ifl-glass-text); background: var(--ifl-glass-window); border: 1px solid var(--ifl-glass-line);
   box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
   -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
 }
-.ifm-grp { background: var(--ifl-glass-control); border: 1px solid var(--ifl-glass-line); }
+.ifm-grp { background: var(--ifl-glass-inset); border: 1px solid var(--ifl-glass-line); }
 .ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {
+  --ifh-tint: var(--ifl-glass-text); color: var(--ifl-glass-text);
   background: var(--ifl-glass); border-color: var(--ifl-glass-line);
   box-shadow: var(--ifl-glass-shadow);
   -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
 }
+.ifl-tabs { --ifl-tab-ink: var(--ifl-glass-muted); }
+.ifa-later { color: var(--ifl-glass-accent); }
 .ifh-act, .ifh-me, .ifs-btn, .ifm-ic { display: grid; place-items: center; }
 .ifh-act svg, .ifs-btn svg { display: block; }
 .ifm-card:hover, .ifm-row:hover { background: var(--ifl-press); }
@@ -1832,6 +1843,26 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 @media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
   [data-ifl-pointer], :root[data-glass="on"] :focus-visible { --ifl-glass-shine: none; }
   :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row) { translate: none !important; }
+}
+
+/* Floating frames sample once; their content cards retain a static material. */
+.ifl-workspace :is(.ws-window-menu, .ws-window-hint) {
+  --ws-text: var(--ifl-glass-text); --ws-muted: var(--ifl-glass-muted);
+  color: var(--ws-text); background: var(--ifl-glass-window);
+  -webkit-backdrop-filter: var(--ifl-glass-window-blur); backdrop-filter: var(--ifl-glass-window-blur);
+}
+@media (min-width: 900px) {
+  .ifl-workspace[data-layout="float"] .ifl-workspace-pane {
+    --ifl-text: var(--ifl-glass-text); --ifl-muted: var(--ifl-glass-muted); --ifl-subtle: var(--ifl-glass-muted);
+    --text: var(--ifl-glass-text); --text-2: var(--ifl-glass-muted); --text-3: var(--ifl-glass-muted);
+    --ws-text: var(--ifl-glass-text); --ws-muted: var(--ifl-glass-muted);
+    color: var(--ws-text); background: var(--ifl-glass-window);
+    -webkit-backdrop-filter: var(--ifl-glass-window-blur); backdrop-filter: var(--ifl-glass-window-blur);
+  }
+  .ifl-workspace[data-layout="float"] .ws-pane-header { background: transparent; }
+}
+@media (forced-colors: active) {
+  .ifl-workspace :is(.ws-window-menu, .ws-window-hint, .ifl-workspace-pane) { background: Canvas; color: CanvasText; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 /* ==== end of InFlite's menu ==== */
 
@@ -2322,3 +2353,15 @@ button.mini, .row .val button.mini, .seg button, .seg.mini button, .dk-seg butto
 }
 
 .appearance-glass-preview-pane[data-ifl-pointer]{background-image:var(--ifl-glass-shine)}
+
+/* Translucent windows: backdrop detail stays in the frame; content keeps static inset layers. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+dialog.sheet:not(.pane), dialog.sheet.pane, .toast { --text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); --tint-text: var(--ifl-glass-accent, var(--ifl-accent-ink)); color: var(--text); --glass: var(--ifl-glass-inset, var(--ifl-glass-control)); background: var(--ifl-glass-window, var(--ifl-glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur)); backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur)); }
+.status { --text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); --tint-text: var(--ifl-glass-accent, var(--ifl-accent-ink)); color: var(--text); background: var(--ifl-glass); -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur); }
+dialog.sheet :is(.row.danger, .mini:not(.sure)) { background: color-mix(in srgb, var(--danger) 7%, var(--ifl-surface)); border-radius: var(--ifl-radius-row); }
+dialog.sheet .group { background-color: var(--ifl-glass-inset, var(--ifl-glass-control)); }
+dialog.sheet .sheet-head .link { background: color-mix(in srgb, var(--tint-text) 7%, var(--ifl-surface)); }
+dialog.sheet .mini { border-radius: var(--ifl-radius-pill); }
+}
+}

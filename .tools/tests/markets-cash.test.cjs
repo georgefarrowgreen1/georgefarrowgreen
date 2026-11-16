@@ -33,6 +33,14 @@ for(const width of [320,390,1440])for(const hosted of [true,false])test(`cash ca
   assert.deepEqual(errors,[]);const amount=p.locator('#mk-cash-amount'),rate=p.locator('#mk-cash-rate'),name=p.locator('#mk-cash-name');await amount.waitFor();
   await name.fill(width===320?'<img src=x onerror="alert(1)">':'Savings');await amount.fill('12,000.00');await rate.fill('101');await p.locator('#mk-cash-save').click();
   await p.locator('#mk-cash-error').waitFor({state:'visible'});assert.match(await p.locator('#mk-cash-error').textContent(),/interest rate/);assert.equal(writes.length,0);assert.equal(await amount.inputValue(),'12,000.00');
+  const feedback=await p.locator('#mk-cash-error').evaluate(el=>{
+   const s=getComputedStyle(el),canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d'),rgba=value=>{c.clearRect(0,0,1,1);c.fillStyle=value;c.fillRect(0,0,1,1);return [...c.getImageData(0,0,1,1).data]};
+   const ink=rgba(s.color),background=rgba(s.backgroundColor),foreground=ink.slice(0,3).map((v,i)=>v*ink[3]/255+background[i]*(1-ink[3]/255));
+   const luminance=rgb=>rgb.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0),a=luminance(foreground),b=luminance(background);
+   return{ink,background,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),padding:parseFloat(s.paddingLeft),radius:parseFloat(s.borderTopLeftRadius)};
+  });
+  assert.equal(feedback.background[3],255,'financial validation keeps an opaque well inside the glass window');
+  assert.ok(feedback.contrast>=4.5,`cash error remains readable: ${JSON.stringify(feedback)}`);assert.ok(feedback.padding>=12&&feedback.radius>=12);
   await rate.fill('4');assert.match(await p.locator('.cash-echo').textContent(),/£480.00 a year.*£40.00 monthly/);await p.locator('#mk-cash-save').click();await amount.waitFor({state:'detached'});
   assert.equal(writes.length,1);assert.equal(writes[0].amount,12000);assert.equal(writes[0].rate,4);assert.match(writes[0].id,/^[a-f\d-]{36}$/);
   await holdings(p,hosted);const row=visible(p,'.cash-row').first();await row.waitFor();assert.equal(await row.locator('img').count(),0);assert.match(await row.textContent(),/12,000.00/);

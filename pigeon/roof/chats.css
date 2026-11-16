@@ -240,3 +240,10 @@
   .m-chats .ch-r.mine { background: Highlight; color: HighlightText; border-color: Highlight; }
   .m-chats .ch-m.me .ch-b, .m-chats .ch-m.me .ch-photo, .m-chats .ch-vn { background: Canvas; color: CanvasText; }
 }
+
+/* Translucent windows: backdrop detail stays in the frame; content keeps static inset layers. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+.m-chats .ch-composer{--text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); color: var(--text);background: var(--ifl-glass); -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);}
+}
+}
