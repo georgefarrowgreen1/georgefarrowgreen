@@ -441,3 +441,20 @@ test('real Drive favourites, independent file copies, multi-selection and opaque
     const metadata=await page.evaluate(()=>JSON.stringify({url:location.href,state:history.state,storage:{...localStorage,...sessionStorage}}));assert.doesNotMatch(metadata,/Batch first|Batch second|Independent copy|Batch destination/);await t.clean();
   }finally{await t.close();}
 });
+
+test('actual Explorer replacement and history restore preserve bytes and fit a narrow phone',async()=>{
+ const t=await openFiles({width:390});const {page}=t;try{
+  await folderUI(page,'History phone');await select(page,'History phone').dblclick();
+  await uploadUI(page,'history.txt',Buffer.from('Original version'),'text/plain');
+  const choosing=page.waitForEvent('filechooser');await action(page,'history.txt','Replace file');
+  const finished=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/files/replacement-content'&&r.status()===200);
+  await(await choosing).setFiles({name:'changed.txt',mimeType:'text/plain',buffer:Buffer.from('New version')});await finished;
+  try{await action(page,'history.txt','Version history')}catch(error){console.log('HISTORY MENU DIAGNOSTIC',JSON.stringify({body:await page.locator('body').innerText(),errors:t.errors,requests:t.state.fileRequests.map(({controller,...r})=>r),unknown:t.state.unknown}));throw error}let history=page.locator('dialog[data-sheet=file-history][open]');try{await history.getByRole('button',{name:'Restore this version',exact:true}).waitFor()}catch(error){console.log('HISTORY DIAGNOSTIC',JSON.stringify({body:await page.locator('body').innerText(),requests:t.state.fileRequests.map(({controller,...r})=>r),errors:t.errors,unknown:t.state.unknown}));throw error;}
+  const info=await history.evaluate(el=>({scroll:el.scrollWidth,width:el.clientWidth}));assert.ok(info.scroll<=info.width+2);
+  await history.getByRole('button',{name:'Restore this version',exact:true}).click();await history.waitFor({state:'detached'});
+  await action(page,'history.txt','Version history');history=page.locator('dialog[data-sheet=file-history][open]');await history.getByRole('button',{name:'Restore this version',exact:true}).first().waitFor();assert.equal(await history.getByRole('button',{name:'Restore this version',exact:true}).count(),2);
+  const restored=t.state.fileRequests.filter(r=>r.action==='restore-version'&&r.status===200).at(-1).answer.item;
+  const actual=await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+restored.id});assert.equal(actual.value,'Original version');
+  await t.clean();
+ }finally{await t.close()}
+});

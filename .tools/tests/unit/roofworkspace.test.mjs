@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
-import { OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
+import { OS_CONTINUITY_JS, OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
 import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
@@ -52,7 +52,7 @@ test('the OS updater and worker list exactly the optional closure and the manife
   assert.match(host, /\.\.\.\(OS_MODE \? OS_FILES : \[\]\)/, 'the normal updater does not fetch OS assets');
   const html = pub('index.html');
   for (const f of osFiles) { assert.ok(existsSync(published(f)), f); assert.ok(!html.includes(`href="${f}"`), f + ' is not statically preloaded or linked on the ordinary page'); }
-  const shared = new Set(['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send', 'modules', 'connectors', 'requests', 'tasks', 'screens'].map(name => '/roof/' + name + '.js'));
+  const shared = new Set(['frame', 'router', 'header', 'tabs', 'sheet', 'toast', 'ui', 'search', 'send', 'modules', 'connectors', 'requests', 'tasks', 'screens','restore'].map(name => '/roof/' + name + '.js'));
   const loaded = new Set(OS_ENTRIES), walk = p => {
     const source = readFileSync(published(p), 'utf8');
     const dynamic = [...source.matchAll(/\bimport\(\s*["']([^"']+)["']/g)].map(match => match[1]);
@@ -100,7 +100,7 @@ test('all existing app connector assets remain valid static JS/CSS under the str
 test('OS next has independently bounded shell, file workflows, activity, sync, recovery and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
   const costs = [...osFiles.filter(p => /\.(?:js|css)$/.test(p)), ...bridges].map(path => ({ path, bytes: gzipSync(minified(readFileSync(published(path), 'utf8'), path.endsWith('.css')), { level: 9 }).length }));
   const fileAssets = new Set([...OS_FILES_JS, ...OS_FILES_CSS].map(name => '/roof/' + name)), commandAssets = new Set(['/roof/workspace-commands.js', '/roof/workspace-commands.css']);
-  const extras = { OpenSave: [...OS_DIALOG_JS, ...OS_DIALOG_CSS], Activity: [...OS_ACTIVITY_JS, ...OS_ACTIVITY_CSS], Sync: OS_SYNC_JS, Recovery: [...OS_RECOVERY_JS, ...OS_RECOVERY_CSS], Handoffs: OS_HANDOFF_JS };
+  const extras = { OpenSave: [...OS_DIALOG_JS, ...OS_DIALOG_CSS], Activity: [...OS_ACTIVITY_JS, ...OS_ACTIVITY_CSS], Sync: OS_SYNC_JS, Recovery: [...OS_RECOVERY_JS, ...OS_RECOVERY_CSS], Handoffs: OS_HANDOFF_JS, Continuity:OS_CONTINUITY_JS };
   const extraAssets = Object.fromEntries(Object.entries(extras).map(([name, files]) => [name, new Set(files.map(file => '/roof/' + file))]));
   const reviewed = new Set([...fileAssets, ...commandAssets, ...Object.values(extraAssets).flatMap(set => [...set])]);
   const base = p => p.startsWith('/roof/') && !reviewed.has(p);
@@ -118,9 +118,9 @@ test('OS next has independently bounded shell, file workflows, activity, sync, r
   check('base/window shell', group(base), 31, 7);
   check('Commands', group(p => commandAssets.has(p)), 4.75, 1);
   check('Files', group(p => fileAssets.has(p)), 36, 4.5);
-  for (const [name, jsCap, cssCap] of [['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 5.25, 0.5], ['Handoffs', 1.5, 0]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
+  for (const [name, jsCap, cssCap] of [['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 5.25, 0.5], ['Handoffs', 1.5, 0],['Continuity',12,0]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
   for (const [app, cap] of [['fitness', 4.75], ['weather', 3.25], ['markets', 1.5], ['chats', 2.75], ['mail', 3.75]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
-  check('complete optional OS next', costs, 102, 17);
+  check('complete optional OS next', costs, 114, 17);
   t.diagnostic(JSON.stringify({ files: costs }));
 });
 

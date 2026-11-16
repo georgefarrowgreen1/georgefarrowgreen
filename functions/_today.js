@@ -94,7 +94,9 @@ const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${Stri
 // (the cards in the account's order, those it doesn't know left out and any missing put at the end; and those it hid)
 function cardsOf(c) {
   const order = [...new Set((Array.isArray(c?.order) ? c.order : []).filter((k) => CARDS.includes(k)))];
-  return { order: [...order, ...LINES.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))] };
+  return { order: [...order, ...LINES.filter((k) => !order.includes(k))], hidden: [...new Set((Array.isArray(c?.hidden) ? c.hidden : []).filter((k) => CARDS.includes(k)))],
+    ...(c?.density==='compact'?{density:'compact'}:{}),
+    ...(c?.sections&&['waiting','coming','rest'].some(k=>c.sections[k]===false)?{sections:Object.fromEntries(['waiting','coming','rest'].filter(k=>c.sections[k]===false).map(k=>[k,false]))}:{}) };
 }
 // (the lines turned off: false for each, nothing for one that's on)
 const linesOf = (l) => Object.fromEntries(LINES.filter((k) => l?.[k] === false).map((k) => [k, false]));
@@ -112,21 +114,23 @@ export async function todayPrefs(env, userId) {
 }
 // Edit's: the cards' order and those hidden, either or both ({ order, hidden }: lists of the cards' names; one the
 // server doesn't know is left out). The one not sent stays as it was, kept against a change made meanwhile elsewhere.
-export async function savePrefs(env, userId, { order, hidden }) {
+export async function savePrefs(env, userId, { order, hidden, density, sections, expected }) {
   const list = (v) => {
     if (v === undefined) return undefined;
     if (!Array.isArray(v) || v.length > 20 || !v.every((k) => typeof k === "string")) throw new HttpError(400, "Bad request.");
     return v;
   };
   const o = list(order), hid = list(hidden), D = await tddb(env), t = Date.now();
-  if (o && hid) {
-    await D.prepare("INSERT INTO td_prefs (user_id, cards, updated) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET cards = ?2, updated = ?3")
-      .bind(userId, JSON.stringify(cardsOf({ order: o, hidden: hid })), t).run();
-    return todayPrefs(env, userId);
+  const extra={...(density===undefined?{}:{density:density==='compact'?'compact':'comfortable'}),...(sections===undefined?{}:{sections})};
+  if(expected!==undefined){
+    const current=await D.prepare('SELECT cards FROM td_prefs WHERE user_id=?').bind(userId).first(),was=cardsOf(parsed(current?.cards,{})),next=cardsOf({order:o??was.order,hidden:hid??was.hidden,...was,...extra,...(o?{order:o}:{}),...(hid?{hidden:hid}:{})});
+    if(JSON.stringify(was)!==JSON.stringify(cardsOf(expected))){if(JSON.stringify(was)===JSON.stringify(next))return todayPrefs(env,userId);throw new HttpError(409,'Today was changed on another device. Review which layout to keep.');}
+    const write=current?D.prepare("UPDATE td_prefs SET cards=?2,updated=?3 WHERE user_id=?1 AND cards=?4 AND EXISTS(SELECT 1 FROM pg_users WHERE id=?1 AND delete_at IS NULL)").bind(userId,JSON.stringify(next),t,current.cards):D.prepare("INSERT INTO td_prefs(user_id,cards,updated) SELECT ?1,?2,?3 WHERE EXISTS(SELECT 1 FROM pg_users WHERE id=?1 AND delete_at IS NULL) ON CONFLICT(user_id) DO NOTHING").bind(userId,JSON.stringify(next),t);
+    if(!(await write.run()).meta?.changes)throw new HttpError(409,'Today changed while saving. Review the latest layout.');return todayPrefs(env,userId);
   }
   for (let i = 0; i < 3; i++) {
     const r = await D.prepare("SELECT cards FROM td_prefs WHERE user_id = ?").bind(userId).first(), was = cardsOf(parsed(r?.cards, {}));
-    const now = JSON.stringify(cardsOf({ order: o ?? was.order, hidden: hid ?? was.hidden }));
+    const now = JSON.stringify(cardsOf({ ...was, order: o ?? was.order, hidden: hid ?? was.hidden,...extra }));
     const w = r
       ? await D.prepare("UPDATE td_prefs SET cards = ?2, updated = ?3 WHERE user_id = ?1 AND cards = ?4").bind(userId, now, t, r.cards).run()
       : await D.prepare("INSERT INTO td_prefs (user_id, cards, updated) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO NOTHING").bind(userId, now, t).run();

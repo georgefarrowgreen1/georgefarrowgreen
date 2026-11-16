@@ -331,3 +331,15 @@ test('outbox: flush sends what waits out its Undo now, saves queued ones and an 
   b.ob.destroy();
   mem.clear();
 });
+
+test('open text drafts autosave without shortening an explicit send undo window or sending recovered text', { skip }, async(t)=>{
+ t.mock.timers.enable({apis:['setTimeout','setInterval']});mem.clear();online=true;
+ const {calls,ob}=outboxSetup();await ob.send({...DRAFT,subject:'Explicit send'},[]);
+ const off=ob.track(()=>({...DRAFT,subject:'Autosaved draft',text:'Still typing',files:[]}));
+ t.mock.timers.tick(5000);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.filter(c=>c[0]==='save'&&c[1].subject==='Autosaved draft').length,1);
+ assert.equal(calls.filter(c=>c[0]==='send').length,0);
+ t.mock.timers.tick(1000);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.filter(c=>c[0]==='send').length,1);
+ off();ob.destroy();
+});

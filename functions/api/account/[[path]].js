@@ -57,6 +57,7 @@ import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
 import { FILES_ROUTES } from "../../_filesapp.js";
 import { exportFiles } from "../../_files.js";
 import { WORKSPACE_ROUTES } from "../../_workspacesapp.js";
+import {readContinuity} from "../../_continuity.js";
 import { exportWorkspaces } from "../../_workspaces.js";
 import { todayPrefs, todayDevices, saveMorning, todayExport } from "../../_today.js";
 import { snapshotOf } from "../../_fittoday.js";
@@ -1071,6 +1072,7 @@ const ROUTES = {
       today,
       files: { items: await exportFiles(env, u.id), note: "File contents can be downloaded from InFlite Files." },
       workspaces: await exportWorkspaces(env, u.id),
+      continuation: (await readContinuity(env,u.id)).devices,
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json(out);

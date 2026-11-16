@@ -15,6 +15,7 @@ let mf, sequence = 0;
 const worker = `
 import * as files from './functions/_files.js';
 import {FILES_ROUTES} from './functions/_filesapp.js';
+import {savePrefs} from './functions/_today.js';
 import {db,issueSession,hex,sha256} from './functions/_pigeon.js';
 import {withSession} from './functions/_account.js';
 import {removeAccount} from './functions/_accounts.js';
@@ -29,6 +30,7 @@ if(path==='/_seed'){
  const token=await issueSession(env,owner,new Request(HOST+'/api/account/today/files/list',{headers:{Origin:'https://inflite.ai'}}));
  return withSession(json({owner}),new Request(HOST+'/api/account/today/files/list'),env,hex(await sha256(token)),true);
 }
+if(path==='/_legacy-prefs'){const {owner,input}=await request.json();return json(await savePrefs(env,owner,input))}
 if(path==='/_sql'){const {sql,params=[]}=await request.json();return json(await (await files.filesdb(env)).prepare(sql).bind(...params).all())}
 if(path==='/_domain'){const {op,owner,args=[]}=await request.json();if(!['listFiles','getFile','createFolder','reserveUpload','renameFile','moveFile','deleteFile','dropFiles','sweepFileUploads','exportFiles'].includes(op))return json({error:'unknown test operation'},400);return json(await files[op](env,...(op==='sweepFileUploads'?args:[owner,...args])))}
 if(path==='/_objects'){const {prefix='',put,binding='files'}=await request.json(),bucket=binding==='native'?env.BIO_R2:env.FILES_R2;if(put)await bucket.put(put.key,put.body);return json((await bucket.list({prefix})).objects.map(o=>({key:o.key,size:o.size})))}
@@ -440,4 +442,66 @@ test('scheduled Trash retention purges only expired owned subtrees and releases 
  const usage=(await api(f,'GET','list')).value.usage;assert.equal(usage.nodes,1);assert.equal(usage.used,4);
  const remaining=(await api(other,'GET','list',undefined,{query:'?view=trash'})).value;assert.equal(remaining.items.length,1);assert.equal(remaining.items[0].id,recent.id);assert.equal(remaining.usage.used,12);
  const objects=(await internal('objects',{prefix:'files/'+f.owner+'/'})).value;assert.equal(objects.length,1);assert.equal(objects[0].size,4);
+});
+
+async function replacement(f,item,content,operationId=operation()){
+ const bytes=new TextEncoder().encode(content),r=await api(f,'POST','replacements',{id:item.id,version:item.version,size:bytes.length,mime:'text/plain',operationId});assert.equal(r.status,200,JSON.stringify(r.value));
+ const result=await api(f,'PUT','replacement-content',content,{query:'?uploadId='+r.value.uploadId,headers:{'Content-Type':'application/octet-stream'}});assert.equal(result.status,200,JSON.stringify(result.value));return result.value.item;
+}
+test('replacement preserves exact historical bytes, restore keeps the displaced version, and purge releases all quota',async()=>{
+ const f=await fixture(),first=await uploaded(f,'versions.txt','original');
+ const second=await replacement(f,first,'replacement');assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'replacement');
+ const history=await api(f,'GET','history',undefined,{query:'?id='+first.id});assert.equal(history.status,200);assert.equal(history.value.versions.length,1);metadata(history.value);
+ const previous=history.value.versions[0];assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id+'&versionId='+previous.id})).value,'original');
+ const restored=await api(f,'POST','restore-version',{id:first.id,version:second.version,versionId:previous.id,operationId:operation()});assert.equal(restored.status,200,JSON.stringify(restored.value));assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'original');
+ assert.equal((await api(f,'GET','list')).value.usage.used,8+11+8);
+ const removed=await api(f,'DELETE','item',undefined,{query:'?id='+first.id+'&version='+restored.value.item.version});assert.equal(removed.status,200,JSON.stringify(removed.value));assert.equal((await api(f,'GET','list')).value.usage.used,0);assert.equal((await internal('objects',{prefix:'files/'+f.owner+'/'})).value.length,0);
+});
+test('file version boundaries reject foreign owners, stale replacement targets and mismatched idempotent payloads',async()=>{
+ const f=await fixture(),other=await fixture(),first=await uploaded(f,'guard.txt','one'),operationId=operation();
+ const spec={id:first.id,version:first.version,size:3,mime:'text/plain',operationId};
+ assert.equal((await api(other,'POST','replacements',spec)).status,404);
+ assert.equal((await api({...f,cookie:other.cookie},'POST','replacements',spec)).status,401);
+ assert.equal((await api(f,'POST','replacements',spec)).status,200);
+ assert.equal((await api(f,'POST','replacements',{...spec,size:4})).status,409);
+ await replacement(f,first,'two');
+ assert.equal((await api(f,'PUT','replacement-content','bad',{query:'?uploadId='+operationId,headers:{'Content-Type':'application/octet-stream'}})).status,409);
+ assert.equal((await api(other,'GET','history',undefined,{query:'?id='+first.id})).status,404);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'two');
+});
+test('history retains twenty earlier versions and bounds charged quota after repeated replacements',async()=>{
+ const f=await fixture();let item=await uploaded(f,'bounded.txt','x');for(let i=0;i<23;i++)item=await replacement(f,item,'x');
+ const history=await api(f,'GET','history',undefined,{query:'?id='+item.id});assert.equal(history.value.versions.length,20);assert.equal((await api(f,'GET','list')).value.usage.used,21);
+});
+test('continuation shares curated screens between devices, fences account swaps and rejects sensitive URLs',async()=>{
+ const f=await fixture(),other=await fixture(),id='a'.repeat(32),spec={id,revision:0,label:'Phone',target:{path:'/chats/#open=friend_1',y:230}};
+ const first=await api(f,'PUT','continuity',spec);assert.equal(first.status,200,JSON.stringify(first.value));assert.equal(first.value.revision,1);
+ assert.equal((await api(f,'PUT','continuity',spec)).status,409);
+ assert.equal((await api({...f,cookie:other.cookie},'GET','continuity')).status,401);
+ assert.equal((await api(other,'GET','continuity')).value.devices.length,0);
+ assert.equal((await api(f,'GET','continuity')).value.devices[0].target.path,spec.target.path);
+ for(const path of ['/mail/?token=private','https://evil.test','/weather/#now?lat=52','/#files=%00','//evil.test'])assert.equal((await api(f,'PUT','continuity',{...spec,revision:1,target:{path}})).status,400,path);
+ for(const path of ['/','/fitness/','/weather/','/markets/','/mail/','/#files']){const current=(await api(f,'GET','continuity')).value.devices[0];assert.equal((await api(f,'PUT','continuity',{...spec,revision:current.revision,target:{path}})).status,200,path)}
+});
+test('offline Today preferences use account-scoped compare-and-swap and replay a lost acknowledgement safely',async()=>{
+ const f=await fixture(),before=await api(f,'GET','preferences');assert.equal(before.status,200,JSON.stringify(before.value));const expected=before.value.prefs,value={...expected,density:'compact',sections:{coming:false}};
+ const saved=await api(f,'PUT','preferences',{...value,expected});assert.equal(saved.status,200,JSON.stringify(saved.value));assert.equal(saved.value.prefs.density,'compact');assert.equal(saved.value.prefs.sections.coming,false);
+ assert.equal((await api(f,'PUT','preferences',{...value,expected})).status,200);
+ assert.equal((await api(f,'PUT','preferences',{...expected,hidden:['weather'],expected})).status,409);
+ const legacy=await internal('legacy-prefs',{owner:f.owner,input:{order:expected.order,hidden:['weather']}});assert.equal(legacy.status,200,JSON.stringify(legacy.value));assert.equal(legacy.value.cards.density,'compact');assert.equal(legacy.value.cards.sections.coming,false);
+});
+
+test('replacement cancellation releases quota and never removes a committed current version',async()=>{
+ const f=await fixture(),item=await uploaded(f,'cancel-version.txt','old'),operationId=operation();
+ await api(f,'POST','replacements',{id:item.id,version:item.version,size:50,operationId});assert.equal((await api(f,'GET','list')).value.usage.reserved,50);
+ assert.equal((await api(f,'DELETE','replacements',undefined,{query:'?uploadId='+operationId})).status,200);assert.equal((await api(f,'GET','list')).value.usage.reserved,0);assert.equal((await api(f,'GET','content',undefined,{query:'?id='+item.id})).value,'old');
+ const completed=operation(),next=await replacement(f,item,'new',completed);assert.equal((await api(f,'DELETE','replacements',undefined,{query:'?uploadId='+completed})).status,200);assert.equal((await api(f,'GET','content',undefined,{query:'?id='+next.id})).value,'new');
+});
+test('large Trash subtrees purge historical metadata with a constant SQL parameter count',async()=>{
+ const f=await fixture(),dir=await folder(f,'Many versions');
+ await sql("WITH RECURSIVE many(n) AS(SELECT 1 UNION ALL SELECT n+1 FROM many WHERE n<150) INSERT INTO ifl_files_nodes(user_id,id,parent_id,kind,name,name_key,mime,size,state,created,modified,operation_id,storage_key) SELECT ?1,printf('%032d',n),?2,'file','file '||n,'file '||n,'text/plain',0,'ready',1,1,'many-operation-'||n,'files/'||?1||'/many/'||n FROM many",[f.owner,dir.id]);
+ await sql("INSERT INTO ifl_files_history(user_id,file_id,id,storage_key,size,mime,created,version) SELECT user_id,id,id,storage_key||'/old',0,mime,1,1 FROM ifl_files_nodes WHERE user_id=? AND kind='file'",[f.owner]);
+ await sql('UPDATE ifl_files_accounts SET nodes=151 WHERE user_id=?',[f.owner]);
+ const trash=await api(f,'POST','trash',{id:dir.id,version:dir.version});assert.equal(trash.status,200,JSON.stringify(trash.value));
+ const purge=await api(f,'DELETE','item',undefined,{query:'?id='+dir.id+'&version='+trash.value.item.version});assert.equal(purge.status,200,JSON.stringify(purge.value));assert.equal((await sql('SELECT COUNT(*) AS n FROM ifl_files_history WHERE user_id=?',[f.owner]))[0].n,0);assert.equal((await api(f,'GET','list')).value.usage.nodes,0);
 });
