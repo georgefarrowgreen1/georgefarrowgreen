@@ -118,7 +118,7 @@ const IFL = (() => {
   // (an app's icon, by its name or the hub's for it (its sections: chats, finance); one it hasn't, no picture at all, never
   // a broken one)
   const APP_AS = { chats: "chat", finance: "markets", email: "mail" };
-  const iconUrl = (a) => { a = APP_AS[a] || a; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
+  const iconUrl = (a) => { a = APP_AS[a] || a; if (["calendar","notes","people"].includes(a)) return "/apps/"+a+".svg"; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
   const el = (tag, cls, ...kids) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -1189,7 +1189,7 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.40";
+const BUILD = "2.41";
 const NEWS = "Find holdings across InFlite";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };

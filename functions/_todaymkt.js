@@ -1,5 +1,5 @@
 import { cashHoldings } from "./_marketcash.js";
-import { cashTotals } from "../markets/cash.js";
+import { cashTotals, cashNextPayout, cashToday } from "../markets/cash.js";
 // InFlite Today's Markets card: what you own is worth, and its change today as Markets says it (functions/_markets.js
 // wrapFigures: only what traded today, by each exchange's own day; a market shut today named), the next dividend as
 // Markets expects it (never a promised date), and what's left of this tax year's ISA allowance. From Markets' own kept
@@ -92,6 +92,7 @@ export async function marketsCard(env, u, ctx) {
     low: traded && F.low && F.day(F.low) < 0 ? one(F.low) : null,
     spark: traded && !morning ? daySeries(held, fx, F.value, cashValue) : null,
     dividend,
+    ...(!morning&&cash.some(h=>h.payout)?{payouts:cash.map(h=>({id:h.id,name:h.name,date:cashNextPayout(h.payout,cashToday(t))})).filter(x=>x.date).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,12)}:{}),
     isa,
     leftOut: mine.filter((h) => !held.some((r) => r.symbol === h.symbol)).map((h) => h.name),
     stale: held.some((r) => !!r.x.stale),

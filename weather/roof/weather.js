@@ -40,7 +40,7 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.07";
+export const BUILD = "2.08";
 export const NEWS = "Find saved forecasts across InFlite";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 

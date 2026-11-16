@@ -100,7 +100,7 @@ const IFL = (() => {
   // (an app's icon, by its name or the hub's for it (its sections: chats, finance); one it hasn't, no picture at all, never
   // a broken one)
   const APP_AS = { chats: "chat", finance: "markets", email: "mail" };
-  const iconUrl = (a) => { a = APP_AS[a] || a; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
+  const iconUrl = (a) => { a = APP_AS[a] || a; if (["calendar","notes","people"].includes(a)) return "/apps/"+a+".svg"; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
   const el = (tag, cls, ...kids) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -1232,7 +1232,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.09";            // shown in InFlite's menu
+const APP_VERSION = "2.10";            // shown in InFlite's menu
 const APP_NEWS = "Encrypted draft recovery and linked reminders";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));

@@ -54,6 +54,8 @@ import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
+import { ORGANISE_ROUTES } from '../../_organiseapp.js';
+import { streamOrganiseExport } from '../../_organise400.js';
 import { SYSTEM_ROUTES } from "../../_systemapp.js";
 import { exportSystem } from "../../_system350.js";
 import { FILES_ROUTES } from "../../_filesapp.js";
@@ -424,6 +426,7 @@ const ROUTES = {
   ...TODAY_ROUTES,
   ...FILES_ROUTES,
   ...SYSTEM_ROUTES,
+  ...ORGANISE_ROUTES,
   ...WORKSPACE_ROUTES,
   // InFlite Today's version, for its About sheet here: asked of inflite.ai as the sheet opens, never as the page loads
   "GET apps/today-build": async ({ request, env }) => {
@@ -1079,9 +1082,9 @@ const ROUTES = {
       system: await exportSystem(env,u.id),
     };
     waitUntil(logEvent(env, u.id, "export", request));
-    const res = json(out);
+    const res = json({});
     res.headers.set("Content-Disposition", `attachment; filename="inflite-account-${u.handle}.json"`);
-    return res;
+    return new Response(await streamOrganiseExport(env,u.id,out),{status:res.status,headers:res.headers});
   },
 
   // ---- deleting the account: in 7 days, unless it's kept. Signed out everywhere now; signing in again is only here,

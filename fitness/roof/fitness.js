@@ -27,7 +27,7 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.40";
+export const BUILD = "2.41";
 export const NEWS = "Linked reminders and cross-app discovery";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 

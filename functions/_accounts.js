@@ -7,6 +7,7 @@ import { dropAccount } from "./_wxpush.js";
 import { dropFitness } from "./_fitness.js";
 import { dropMarkets } from "./_markets.js";
 import { dropToday } from "./_today.js";
+import { organisedb } from './_organise400.js';
 import { systemdb } from "./_system350.js";
 import { continuitydb } from "./_continuity.js";
 import { dropFiles } from "./_files.js";
@@ -19,6 +20,7 @@ export async function removeAccount(env, id) {
   await closeWorkspaces(env, id);
   await continuitydb(env);
   await systemdb(env);
+  await organisedb(env);
   // (what the site's other apps kept with the account first: should that fail, the account's still here to try again)
   await dropAccount(env, id);
   await dropFitness(env, id);
@@ -70,7 +72,7 @@ export async function removeAccount(env, id) {
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
     D.prepare("UPDATE pg_handles_held SET user_id = NULL WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM ifl_files_accounts WHERE user_id = ?").bind(id),
-    ...["ifl_actions","ifl_action_operations","ifl_focus_dismissals","ifl_draft_backups"].map(table=>D.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(id)),
+    ...["ifl_actions","ifl_action_operations","ifl_focus_dismissals","ifl_draft_backups","ifl_records","ifl_record_operations"].map(table=>D.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(id)),
     D.prepare("DELETE FROM ifl_continuity WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM ifl_workspaces WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),

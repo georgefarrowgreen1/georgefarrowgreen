@@ -173,7 +173,7 @@ test('the router is pure: no DOM, no storage, no history, no network', { skip },
 
 // ---- stages 2–4 (s24-contracts §3) ----
 test('stages 2–4: REGISTRY’s Markets, Fitness and Mail exactly; link, stay and idb only where named; all frozen', { skip: s24 }, () => {
-  assert.deepEqual(Object.keys(R.REGISTRY), ['weather', 'markets', 'fitness', 'mail', ...(S3 ? ['chats'] : [])]);
+  assert.deepEqual(Object.keys(R.REGISTRY), ['calendar','notes','people','weather', 'markets', 'fitness', 'mail', ...(S3 ? ['chats'] : [])]);
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.markets)), { app: 'markets', name: 'Markets', path: '/markets/', link: 'finance',
     entry: '/markets/roof/markets.js', connector: '/markets/roof/connector.js', css: ['/markets/roof/markets.css'],
     sections: [['today', 'Today'], ['holdings', 'Holdings'], ['news', 'News']],

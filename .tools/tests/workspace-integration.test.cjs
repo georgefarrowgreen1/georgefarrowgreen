@@ -62,7 +62,7 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
     if (p.startsWith('/api/')) {
       state.requests.push({ path: p, method: req.method(), body: req.postData() });
       if (state.offline) return r.abort();
-      if(p==='/api/workspaces'){if(req.method()==='PUT'){const body=req.postDataJSON();if(body.revision!==workspaceCloud.revision)return j(r,{error:'Conflict',...workspaceCloud},409);workspaceCloud={revision:workspaceCloud.revision+1,state:body.state,updatedAt:Date.now()};}return j(r,workspaceCloud);}
+      if(p==='/api/organise/list')return j(r,{records:[],cursor:null});if(p==='/api/workspaces'){if(req.method()==='PUT'){const body=req.postDataJSON();if(body.revision!==workspaceCloud.revision)return j(r,{error:'Conflict',...workspaceCloud},409);workspaceCloud={revision:workspaceCloud.revision+1,state:body.state,updatedAt:Date.now()};}return j(r,workspaceCloud);}
       if (p === '/api/vitals') return r.fulfill({ status: 204, body: '' });
       if (p === '/api/weather/obs') return j(r, { station: null, days: {} });
       const api = { '/api/session': view, '/api/boot': { view, cards }, '/api/today': cards, '/api/hub': { ready: true, roof: true, apps: view.apps }, '/api/rules': fixture('rules'), '/api/notify': fixture('notify'), '/api/devices': { devices: [], here: [] }, '/api/status-banner': { banner: null }, '/api/weather/me': { signedIn: false }, '/api/weather/where': places[0], '/api/weather/warnings': { warnings: [] } };

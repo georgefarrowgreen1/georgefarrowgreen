@@ -71,7 +71,7 @@ test('the OS updater and worker list exactly the optional closure and the manife
 
 test('only curated pane adapters and styles are lazy, same-app cache-safe assets; normal module graphs exclude them', { skip }, async () => {
   const { WORKSPACE_APPS } = await import(new URL('workspace-catalog.js', ROOF));
-  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), ['chats', 'fitness', 'mail', 'markets', 'weather']);
+  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), ['calendar','chats', 'fitness', 'mail', 'markets','notes','people', 'weather']);
   for (const app of ['fitness', 'weather', 'markets', 'chats', 'mail']) {
     const { connector } = await import(fileOf(`/${app}/roof/connector.js`));
     const graph = app === 'chats' ? [...new Set([...await staticGraph(app), ...await staticGraph(app, '/chats/roof/service.js'), ...await staticGraph(app, '/chats/roof/core.js')])] : await staticGraph(app), closure = await lazyClosure(app, graph), optional = bridges.filter(p => p.startsWith('/' + app + '/'));

@@ -25,7 +25,7 @@ const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
 const S3 = S24 && /\bchats: \{ name: "Chats"/.test(readFileSync(SW, 'utf8'));
 const SHELL_NOW = S24 ? 'today-app-4' : 'today-app-3';
 // (stage 3's B0: Chats' module files are the hub's too, kept in roof-chats-*, once REGISTRY names them)
-const MODPATH = S24 ? /^\/(weather|markets|fitness|mail|chats)\// : /^\/weather\//;
+const MODPATH = S24 ? /^\/(weather|markets|fitness|mail|chats|calendar|notes|people|organise)\// : /^\/weather\//;
 const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const m1Case = tfSkip || (hasRoof && 'the inflite repo beside has the roof (today/src/roof.js): its case is One roof’s, below');
 const ORIGIN = 'https://inflite.ai';

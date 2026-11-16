@@ -149,7 +149,7 @@ test('stages 2–4: roofOn(env, app) opt-in for Markets, Fitness and Mail ("1" o
   }
   assert.equal(R.roofOn({}, 'weather'), true); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '1' }), false); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '0' }), true);
   assert.equal(R.roofOn({ ROOF_WEATHER: '0' }), true, 'no other spelling turns Weather off');
-  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false, ...(hasChats ? { chats: false } : {}) });
+  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false, ...(hasChats ? { chats: false } : {}),calendar:true,notes:true,people:true });
   for (const [p, a] of [['/markets/', 'markets'], ['/fitness/index.html', 'fitness'], ['/weather/', 'weather'], ['/mail/', 'mail'], ['/markets', null], ['/markets/x.html', null], ['/chats/', hasChats ? 'chats' : null], ['/', null]]) assert.equal(R.modOf(p), a, p);
   assert.ok(R.filesOf('fitness').test('/fitness/roof/core.js')); assert.ok(!R.filesOf('fitness').test('/fitness/roofs.js'));
   assert.equal(R.RETIRE_SW, R.retireSw('weather'), 'Weather’s retiring worker as stage 1 had it');
@@ -164,8 +164,8 @@ test('stage 3: roofOn(env, "chats") by ROOF_CHATS "1" alone; modOf Chats’ docu
   for (const v of ['0', '', 'true', ' 1']) assert.equal(R.roofOn({ ROOF_CHATS: v }, 'chats'), false, JSON.stringify(v));
   assert.equal(R.roofOn({ ROOF_CHATS: '1', ROOF_OFF: '1' }, 'chats'), false, 'ROOF_OFF wins');
   assert.equal(R.roofOn({ ROOF_OFF_CHATS: '1' }, 'chats'), false, 'no opt-out spelling turns it on or off: opt-in alone');
-  assert.deepEqual(R.appsOn({ ROOF_CHATS: '1' }), { weather: true, markets: false, fitness: false, mail: false, chats: true });
-  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', 'chats']);
+  assert.deepEqual(R.appsOn({ ROOF_CHATS: '1' }), { weather: true, markets: false, fitness: false, mail: false, chats: true,calendar:true,notes:true,people:true });
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', 'chats','calendar','notes','people']);
   for (const [p, q, a] of [['/chats/', '', 'chats'], ['/chats/index.html', '?x=1', 'chats'], ['/chats/', '?engined=1', 'chats'], ['/chats/', '?engine=1', null], ['/chats/index.html', '?a=1&engine', null],
     ['/chats/in/', '', null], ['/chats/in/index.html', '', null], ['/chats', '', null], ['/chats/x.html', '', null], ['/weather/', '?engine=1', 'weather']]) assert.equal(R.modOf(p, q), a, p + q);
   assert.ok(R.filesOf('chats').test('/chats/roof/core.js')); assert.ok(!R.filesOf('chats').test('/chats/app.js'));

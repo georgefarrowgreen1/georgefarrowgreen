@@ -26,7 +26,7 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.09";
+export const BUILD = "2.10";
 export const NEWS = "Encrypted draft recovery and linked reminders";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];

@@ -1,5 +1,5 @@
 // Public navigation belongs to InFlite's one origin. Service origins stay in _sites.js.
-export const APP_PATHS = Object.freeze({ chat: "/chats", chats: "/chats", weather: "/weather", fitness: "/fitness", finance: "/markets", markets: "/markets", email: "/mail", mail: "/mail", account: "/account", auth: "/auth", status: "/status", os: "" });
+export const APP_PATHS = Object.freeze({ calendar: "/calendar", notes: "/notes", people: "/people", chat: "/chats", chats: "/chats", weather: "/weather", fitness: "/fitness", finance: "/markets", markets: "/markets", email: "/mail", mail: "/mail", account: "/account", auth: "/auth", status: "/status", os: "" });
 export function publicApp(name, env = {}, request) {
   const path = APP_PATHS[name];
   if (path == null) throw new TypeError("Unknown InFlite app");

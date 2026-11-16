@@ -30,7 +30,7 @@ export const appsSkip = roofSkip || (!/\bmarkets: fz\(\{|\bmarkets: Object\.free
 // (where a REGISTRY app's module files are: MAIN's <app>/roof/ for Weather, Markets and Fitness; IFL's email/public/roof/
 // for Mail; MAIN's pigeon/ for Chats (stage 3: /chats/x is the hub's copy of Chat's /pigeon/x, S3-D1). A published path
 // /<app>/x → the file it is on disk, or null for an app with no files here)
-export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), chats: new URL('pigeon/', MAIN), ...(IFL ? { mail: new URL('email/public/', IFL) } : {}) });
+export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), chats: new URL('pigeon/', MAIN), ...(IFL ? { calendar:new URL('today/public/calendar/',IFL),notes:new URL('today/public/notes/',IFL),people:new URL('today/public/people/',IFL),organise:new URL('today/public/organise/',IFL),roof:new URL('today/public/roof/',IFL),mail: new URL('email/public/', IFL) } : {}) });
 export const fileOf = (path) => { const m = /^\/(\w+)\/(.+)$/.exec(path || ''); return m && MODULE_HOME[m[1]] ? new URL(m[2], MODULE_HOME[m[1]]) : null; };
 
 // Stage 3 (Chats; roof/s3/spec.md §5, §10.1). CHATS_ROOF: MAIN's pigeon/roof/ (served at /chats/roof/ through the hub).

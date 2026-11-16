@@ -5,7 +5,7 @@ const fail=(s,m)=>{throw new HttpError(s,m)};
 const device=v=>typeof v==="string"&&/^[a-f0-9]{32}$/.test(v);
 export function continuationTarget(v){
  if(!v||typeof v.path!=="string"||v.path.length>180||/[?%\\\s\u0000-\u001f]/.test(v.path))return fail(400,"That continuation is invalid.");
- const allowed=/^\/(?:$|fitness\/(?:#(?:today|activities|routes|progress)(?:=[A-Za-z0-9_-]{1,40})?)?$|weather\/(?:#(?:now|days|radar|warnings))?$|markets\/(?:#(?:today|holdings|news))?$|chats\/(?:#(?:chats|friends|open=[A-Za-z0-9_-]{1,40}))?$|mail\/(?:#(?:people|updates|later|done|thread=[A-Za-z0-9_-]{1,40}))?$|#files(?:=[A-Za-z0-9_-]{32})?$)/;
+ const allowed=/^\/(?:$|(?:calendar|notes|people)\/(?:#(?:agenda|week|all|contacts|item=[a-f0-9]{32}))?$|fitness\/(?:#(?:today|activities|routes|progress)(?:=[A-Za-z0-9_-]{1,40})?)?$|weather\/(?:#(?:now|days|radar|warnings))?$|markets\/(?:#(?:today|holdings|news))?$|chats\/(?:#(?:chats|friends|open=[A-Za-z0-9_-]{1,40}))?$|mail\/(?:#(?:people|updates|later|done|thread=[A-Za-z0-9_-]{1,40}))?$|#files(?:=[A-Za-z0-9_-]{32})?$)/;
  if(!allowed.test(v.path))return fail(400,"That screen cannot be continued.");
  return {path:v.path,y:Number.isFinite(v.y)?Math.min(1e6,Math.max(0,Math.round(v.y))):0};
 }

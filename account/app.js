@@ -114,7 +114,7 @@ const IFL = (() => {
   // (an app's icon, by its name or the hub's for it (its sections: chats, finance); one it hasn't, no picture at all, never
   // a broken one)
   const APP_AS = { chats: "chat", finance: "markets", email: "mail" };
-  const iconUrl = (a) => { a = APP_AS[a] || a; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
+  const iconUrl = (a) => { a = APP_AS[a] || a; if (["calendar","notes","people"].includes(a)) return "/apps/"+a+".svg"; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
   const el = (tag, cls, ...kids) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -1203,7 +1203,7 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.26";
+const BUILD = "2.27";
 const NEWS = "Reminders and encrypted device continuity";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #

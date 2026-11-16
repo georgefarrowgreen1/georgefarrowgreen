@@ -105,7 +105,7 @@ const IFL = (() => {
   // (an app's icon, by its name or the hub's for it (its sections: chats, finance); one it hasn't, no picture at all, never
   // a broken one)
   const APP_AS = { chats: "chat", finance: "markets", email: "mail" };
-  const iconUrl = (a) => { a = APP_AS[a] || a; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
+  const iconUrl = (a) => { a = APP_AS[a] || a; if (["calendar","notes","people"].includes(a)) return "/apps/"+a+".svg"; return !ICONS[a] ? "" : urls[a] || (urls[a] = URL.createObjectURL(new Blob([ICONS[a]], { type: "image/svg+xml" }))); };
   const el = (tag, cls, ...kids) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -3716,7 +3716,7 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.07";
+const BUILD = "2.08";
 const NEWS = "Find saved forecasts across InFlite";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)

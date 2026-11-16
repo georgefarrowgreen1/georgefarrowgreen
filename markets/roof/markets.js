@@ -23,7 +23,7 @@ import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint,
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.40";
+export const BUILD = "2.41";
 export const NEWS = "Find holdings across InFlite";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 

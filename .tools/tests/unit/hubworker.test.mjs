@@ -566,7 +566,7 @@ const chatsCase = appsCase || (!hasChats && 'the inflite repo beside has no Chat
 test('stages 2–4: /api/hub says each module’s switch: Weather on unless ROOF_OFF or ROOF_OFF_WEATHER is "1"; Markets, Fitness and Mail only with ROOF_<APP> "1"', { skip: appsCase }, async () => {
   H.forgetProbe(); apps(() => new Response('{}'));
   // (stage 3's Chats, where the inflite repo beside has it: off unless ROOF_CHATS "1"; the earlier answers else)
-  const A = async (o) => { const a = { ...(await hubAll(env(o))).apps }; if (hasChats) { assert.equal(a.chats, o.ROOF_CHATS === '1' && o.ROOF_OFF !== '1', 'chats by ROOF_CHATS'); delete a.chats; } return a; };
+  const A = async (o) => { const a = { ...(await hubAll(env(o))).apps }; if (hasChats) { assert.equal(a.chats, o.ROOF_CHATS === '1' && o.ROOF_OFF !== '1', 'chats by ROOF_CHATS'); delete a.chats; } for(const app of ['calendar','notes','people'])if(Object.hasOwn(a,app)){assert.equal(a[app],o.ROOF_OFF!=='1');delete a[app]}return a; };
   assert.deepEqual(await A({}), { weather: true, markets: false, fitness: false, mail: false }, 'absent: only Weather');
   assert.deepEqual(await A({ ROOF_MARKETS: '1' }), { weather: true, markets: true, fitness: false, mail: false });
   assert.deepEqual(await A({ ROOF_FITNESS: '1', ROOF_MAIL: '1' }), { weather: true, markets: false, fitness: true, mail: true });
@@ -575,7 +575,7 @@ test('stages 2–4: /api/hub says each module’s switch: Weather on unless ROOF
   assert.equal((await hubAll(env({ ROOF_OFF_WEATHER: '1' }))).roof, false, 'roof is Weather’s');
   assert.equal((await A({ ROOF_OFF_WEATHER: '0' })).weather, true, 'only "1" turns Weather off');
   assert.deepEqual(await A({ ROOF_OFF: '1', ROOF_MARKETS: '1', ROOF_FITNESS: '1', ROOF_MAIL: '1', ROOF_CHATS: '1' }), { weather: false, markets: false, fitness: false, mail: false }, 'ROOF_OFF: every module off');
-  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', ...(hasChats ? ['chats'] : [])]);
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', ...(hasChats ? ['chats'] : []), 'calendar','notes','people']);
   H.forgetProbe();
 });
 
