@@ -1203,7 +1203,7 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.28";
+const BUILD = "2.29";
 const NEWS = "Liquid Glass across InFlite";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
@@ -1468,10 +1468,10 @@ const underBar = () => { if (navigator.standalone !== true || !matchMedia("(orie
 if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-async function call(path, { method = "GET", body, type } = {}) {
+async function call(path, { method = "GET", body, type, keepalive = false } = {}) {
   let r;
   const headers = { ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
-  try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000) }); }
+  try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000), ...(keepalive ? { keepalive: true } : {}) }); }
   catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status, field: j.field });
@@ -1596,7 +1596,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 let themed;
 function theme(pref, fade) {
   if (globalThis.InFliteAppearance) {
-    InFliteAppearance.accept({ appearance: ["light", "dark"].includes(pref) ? pref : "auto", palette: S.me?.prefs?.palette || InFliteAppearance.snapshot().palette, id: S.me?.id }, { animate: !!fade });
+    InFliteAppearance.accept({ appearance: ["light", "dark"].includes(pref) ? pref : "auto", palette: S.me?.prefs?.palette || InFliteAppearance.snapshot().palette, ...glassSettings(S.me?.prefs || InFliteAppearance.snapshot()), id: S.me?.id }, { animate: !!fade });
     return;
   }
   themed = pref;
@@ -4619,40 +4619,149 @@ async function setPrefs(changes, out, putBack) {
 }
 // One in-flight save, with the newest local choice queued behind it. A slow
 // response cannot overwrite a newer selection or another signed-in account.
-let appearanceWanted = null, appearanceSaving = false;
+let appearanceWanted = null, appearanceSaving = false, appearanceGlassDraft = null, appearanceGlassOwner = null, appearanceGlassPending = null, appearanceGlassTimer = 0;
+function appearanceOwnerMatches(id) {
+  const owner = globalThis.InFliteAppearance?.snapshot().id;
+  return S.me?.id === id && (!owner || owner === id);
+}
+function glassSettings(pref) {
+  return { glass: typeof pref.glass === "boolean" ? pref.glass : true, glassStrength: Number.isInteger(pref.glassStrength) && pref.glassStrength >= 0 && pref.glassStrength <= 100 ? pref.glassStrength : 70 };
+}
+const glassStrengthName = (strength) => strength < 35 ? "Subtle" : strength > 75 ? "Pronounced" : "Balanced";
+const glassDisplayPreferences = [matchMedia("(prefers-reduced-transparency: reduce)"), matchMedia("(prefers-contrast: more)"), matchMedia("(forced-colors: active)")];
+function glassPreferenceExplanation() {
+  if (glassDisplayPreferences[0].matches) return "Reduced transparency is on for this device. Surfaces stay solid; your glass setting is saved.";
+  if (glassDisplayPreferences[1].matches || glassDisplayPreferences[2].matches) return "Higher contrast is on for this device. Surfaces stay solid and clearly outlined; your glass setting is saved.";
+  if (!CSS.supports("backdrop-filter", "blur(1px)") && !CSS.supports("-webkit-backdrop-filter", "blur(1px)")) return "This browser uses solid surfaces. Your glass setting applies in browsers that support it.";
+  return "";
+}
+function cancelAppearanceGlassPreview() {
+  if (!appearanceGlassDraft) return;
+  appearanceGlassDraft = null; appearanceGlassOwner = null;
+  InFliteAppearance.cancelGlassPreview();
+  paintAppearance();
+}
 function paintAppearance() {
   const pref = globalThis.InFliteAppearance?.snapshot() || S.me?.prefs || {};
+  if (appearanceGlassDraft && pref.id && pref.id !== appearanceGlassOwner) { appearanceGlassDraft = null; appearanceGlassOwner = null; }
+  if (appearanceGlassPending && pref.id && pref.id !== appearanceGlassPending.id) { clearTimeout(appearanceGlassTimer); appearanceGlassTimer = 0; appearanceGlassPending = null; }
   for (const b of sheetEl.querySelectorAll("[data-appearance-mode], [data-appearance-palette]")) {
     const on = b.dataset.appearanceMode ? b.dataset.appearanceMode === pref.appearance : b.dataset.appearancePalette === pref.palette;
     b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
   }
   const status = sheetEl.querySelector(".appearance-status");
-  if (status) status.textContent = appearanceSaving ? "Saving…" : "Applies across your InFlite apps.";
+  if (status) status.textContent = appearanceSaving || appearanceGlassPending ? "Saving…" : "Applies across your InFlite apps.";
+  const glass = glassSettings(pref), strengthName = glassStrengthName(glass.glassStrength);
+  const toggle = sheetEl.querySelector("[data-appearance-glass]");
+  if (toggle) { toggle.checked = glass.glass; toggle.setAttribute("aria-checked", String(glass.glass)); }
+  const range = sheetEl.querySelector("[data-appearance-glass-strength]");
+  if (range) {
+    range.value = glass.glassStrength; range.disabled = !glass.glass;
+    range.style.setProperty("--appearance-glass-fill", `${glass.glassStrength}%`);
+    range.setAttribute("aria-valuetext", `${glass.glassStrength} percent, ${strengthName.toLowerCase()}`);
+    range.closest(".appearance-glass-intensity").classList.toggle("off", !glass.glass);
+  }
+  const value = sheetEl.querySelector(".appearance-glass-value");
+  if (value) value.textContent = `${glass.glassStrength}% · ${strengthName}`;
+  const hint = sheetEl.querySelector("#appearance-glass-range-hint");
+  if (hint) hint.textContent = glass.glass ? "Higher intensity adds depth and translucency." : "Turn on Liquid Glass to adjust intensity. Your level is remembered.";
+  const preview = sheetEl.querySelector(".appearance-glass-preview");
+  if (preview) {
+    preview.classList.toggle("off", !glass.glass);
+    preview.setAttribute("aria-label", glass.glass ? `Liquid Glass preview, ${glass.glassStrength} percent intensity, ${strengthName.toLowerCase()}.` : "Liquid Glass preview, solid surfaces.");
+    preview.querySelector("small").textContent = glass.glass ? "Glass in your colours." : "Solid surfaces, in your colours.";
+  }
+  const explanation = sheetEl.querySelector("#appearance-glass-preference");
+  if (explanation) { explanation.textContent = glassPreferenceExplanation(); explanation.hidden = !explanation.textContent; }
 }
-async function chooseAppearance(change) {
+async function chooseAppearance(change, { animate = true } = {}) {
   const id = S.me.id, current = InFliteAppearance.snapshot();
-  appearanceWanted = { id, appearance: current.appearance, palette: current.palette, ...change };
-  InFliteAppearance.accept(appearanceWanted, { animate: true });
+  if (!appearanceOwnerMatches(id)) return paintAppearance();
+  // A mode or palette choice includes the latest material level in its save.
+  clearTimeout(appearanceGlassTimer); appearanceGlassTimer = 0; appearanceGlassPending = null;
+  appearanceWanted = { id, appearance: current.appearance, palette: current.palette, ...glassSettings(current), ...change };
+  InFliteAppearance.accept(appearanceWanted, { animate });
   if (appearanceSaving) { paintAppearance(); return; }
   appearanceSaving = true; paintAppearance();
   try {
-    while (appearanceWanted && S.me?.id === id) {
+    while (appearanceWanted && appearanceOwnerMatches(id)) {
       const choice = appearanceWanted; appearanceWanted = null;
       try {
-        const kept = await call("prefs", { method: "PUT", body: { appearance: choice.appearance, palette: choice.palette } });
-        if (S.me?.id !== id) break;
-        Object.assign(S.me.prefs, { appearance: kept.prefs.appearance, palette: kept.prefs.palette });
+        const kept = await call("prefs", { method: "PUT", body: { appearance: choice.appearance, palette: choice.palette, ...glassSettings(choice) }, keepalive: true });
+        if (!appearanceOwnerMatches(id)) break;
+        Object.assign(S.me.prefs, { appearance: kept.prefs.appearance, palette: kept.prefs.palette, ...glassSettings(kept.prefs) });
         patch();
-        if (!appearanceWanted) InFliteAppearance.accept({ ...kept.prefs, id });
+        if (!appearanceWanted && !appearanceGlassPending) {
+          InFliteAppearance.accept({ ...kept.prefs, ...glassSettings(kept.prefs), id });
+          if (appearanceGlassDraft) InFliteAppearance.setGlass(appearanceGlassDraft, { preview: true });
+        }
       } catch (e) {
-        if (S.me?.id !== id) break;
+        if (!appearanceOwnerMatches(id)) break;
         toast(e.message, true);
-        if (!appearanceWanted) InFliteAppearance.accept({ ...S.me.prefs, id }, { animate: true });
+        if (!appearanceWanted && !appearanceGlassPending) {
+          InFliteAppearance.accept({ ...S.me.prefs, ...glassSettings(S.me.prefs), id }, { animate: true });
+          if (appearanceGlassDraft) InFliteAppearance.setGlass(appearanceGlassDraft, { preview: true });
+        }
       }
     }
-  } finally { appearanceSaving = false; if (S.me?.id !== id) appearanceWanted = null; paintAppearance(); }
+  } finally {
+    appearanceSaving = false;
+    const next = appearanceWanted; appearanceWanted = null;
+    if (next && appearanceOwnerMatches(next.id)) chooseAppearance(next, { animate: false });
+    paintAppearance();
+  }
 }
 globalThis.addEventListener("inflite:appearance", paintAppearance);
+for (const preference of glassDisplayPreferences) preference.addEventListener?.("change", paintAppearance);
+function flushGlassAppearance() {
+  clearTimeout(appearanceGlassTimer); appearanceGlassTimer = 0;
+  const pending = appearanceGlassPending; appearanceGlassPending = null;
+  if (pending && appearanceOwnerMatches(pending.id)) chooseAppearance(pending, { animate: false });
+  else paintAppearance();
+}
+sheetEl.addEventListener("close", () => { cancelAppearanceGlassPreview(); flushGlassAppearance(); });
+// A committed choice need not wait for its debounce when this page is leaving.
+// Keep the same save queue; an unfinished drag is only a preview and is restored.
+function settleAppearanceOnLeave() { cancelAppearanceGlassPreview(); flushGlassAppearance(); }
+document.addEventListener("visibilitychange", () => { if (document.hidden) settleAppearanceOnLeave(); });
+addEventListener("pagehide", settleAppearanceOnLeave);
+function chooseGlass(change, preview) {
+  if (!appearanceOwnerMatches(S.me?.id)) return paintAppearance();
+  appearanceGlassDraft = preview ? { ...glassSettings(InFliteAppearance.snapshot()), ...change } : null;
+  appearanceGlassOwner = preview ? S.me.id : null;
+  if (!preview) {
+    clearTimeout(appearanceGlassTimer);
+    appearanceGlassPending = { id: S.me.id, ...glassSettings(InFliteAppearance.snapshot()), ...change };
+    appearanceGlassTimer = setTimeout(flushGlassAppearance, 350);
+  }
+  InFliteAppearance.setGlass(change, { preview });
+  paintAppearance();
+}
+function glassAppearanceControls(pref) {
+  const glass = glassSettings(pref), strengthName = glassStrengthName(glass.glassStrength), explanation = glassPreferenceExplanation();
+  const toggle = h("input.switch.appearance-glass-switch", { type: "checkbox", role: "switch", id: "appearance-glass", checked: glass.glass,
+    "data-appearance-glass": "", "aria-labelledby": "appearance-glass-label", "aria-describedby": "appearance-glass-description appearance-glass-preference", "aria-checked": String(glass.glass),
+    onchange: (e) => chooseGlass({ glass: e.currentTarget.checked }, false) });
+  const range = h("input.appearance-glass-range", { type: "range", id: "appearance-glass-strength", min: 0, max: 100, step: 1, value: glass.glassStrength, disabled: !glass.glass,
+    "data-appearance-glass-strength": "", "aria-describedby": "appearance-glass-range-hint appearance-glass-preference", "aria-valuetext": `${glass.glassStrength} percent, ${strengthName.toLowerCase()}`,
+    oninput: (e) => chooseGlass({ glassStrength: e.currentTarget.valueAsNumber }, true),
+    onchange: (e) => chooseGlass({ glassStrength: e.currentTarget.valueAsNumber }, false),
+    onpointercancel: cancelAppearanceGlassPreview,
+    onkeydown: (e) => { if (e.key === "Escape" && appearanceGlassDraft) { e.preventDefault(); e.stopPropagation(); cancelAppearanceGlassPreview(); } } });
+  range.style.setProperty("--appearance-glass-fill", `${glass.glassStrength}%`);
+  const preview = h(`div.appearance-glass-preview${glass.glass ? "" : ".off"}`, { role: "img", "aria-label": glass.glass ? `Liquid Glass preview, ${glass.glassStrength} percent intensity, ${strengthName.toLowerCase()}.` : "Liquid Glass preview, solid surfaces." },
+    h("div.appearance-glass-preview-content", { "aria-hidden": "true" }, h("span.appearance-glass-preview-orb"),
+      h("div.appearance-glass-preview-pane", {}, h("span.appearance-glass-preview-icon", {}, icon("sliders", 22, 1.8)),
+        h("span", {}, h("b", { text: "Your InFlite" }), h("small", { text: glass.glass ? "Glass in your colours." : "Solid surfaces, in your colours." })), icon("chev", 16, 2.2))));
+  return h("section.appearance-glass", { "aria-labelledby": "appearance-glass-label" },
+    h("label.appearance-glass-toggle", { for: "appearance-glass" }, h("span", {}, h("b", { id: "appearance-glass-label", text: "Liquid Glass" }), h("small", { id: "appearance-glass-description", text: "Depth and translucency for app controls." })), toggle),
+    preview,
+    h(`div.appearance-glass-intensity${glass.glass ? "" : ".off"}`, {},
+      h("div.appearance-glass-range-head", {}, h("label", { for: "appearance-glass-strength", text: "Intensity" }), h("span.appearance-glass-value", { "aria-hidden": "true", text: `${glass.glassStrength}% · ${strengthName}` })),
+      range, h("div.appearance-glass-range-ends", { "aria-hidden": "true" }, h("span", { text: "Subtle" }), h("span", { text: "Pronounced" })),
+      h("p.appearance-glass-hint", { id: "appearance-glass-range-hint", text: glass.glass ? "Higher intensity adds depth and translucency." : "Turn on Liquid Glass to adjust intensity. Your level is remembered." })),
+    h("p.appearance-glass-preference", { id: "appearance-glass-preference", hidden: !explanation, text: explanation }));
+}
 function appearanceView() {
   const pref = InFliteAppearance.snapshot(), palettes = InFliteAppearance.palettes;
   const opts = APPEAR.map(([k, label]) => h(`button.appear${pref.appearance === k ? ".on" : ""}`, { type: "button", "data-appearance-mode": k, "aria-pressed": String(pref.appearance === k), onclick: () => chooseAppearance({ appearance: k }) }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
@@ -4664,7 +4773,8 @@ function appearanceView() {
   return { title: "Appearance", body: [
     h("h3.appearance-label", { text: "Display mode" }), h("div.appears", { role: "group", "aria-label": "Appearance mode" }, opts),
     h("h3.appearance-label", { text: "Colour palette" }), h("div.appearance-palettes", { role: "group", "aria-label": "Colour palette" }, choices),
-    h("p.appearance-status", { role: "status", text: appearanceSaving ? "Saving…" : "Applies across your InFlite apps." }),
+    glassAppearanceControls(pref),
+    h("p.appearance-status", { role: "status", text: appearanceSaving || appearanceGlassPending ? "Saving…" : "Applies across your InFlite apps." }),
     h("p.appearance-foot", { text: "App icons keep their familiar colours." })] };
 }
 // the units where the account has none chosen yet, whatever the device's language (as Weather starts with them)
@@ -5485,9 +5595,19 @@ function deleteView() {
 async function refresh() {
   if (document.hidden || !S.me || Date.now() - S.pulled < 15000) return;
   S.pulled = Date.now();
+  const appearanceBefore = globalThis.InFliteAppearance?.snapshot();
   let m;
   try { m = await call("me"); } catch (_) { return; }
   const was = S.me, same = (x) => JSON.stringify({ ...x, fresh: 0, devices: x.devices?.map((d) => ({ ...d, seenAt: 0 })) });
+  // A /me request begun before a local choice may arrive after that choice was
+  // saved. Keep the last acknowledged preferences, and leave the live preview
+  // alone, while still accepting the response's other account information.
+  const appearanceNow = globalThis.InFliteAppearance?.snapshot();
+  const appearanceMoved = appearanceSaving || appearanceGlassPending || appearanceGlassDraft ||
+    appearanceBefore && appearanceNow && ["appearance", "palette", "glass", "glassStrength", "id"].some((key) => appearanceBefore[key] !== appearanceNow[key]);
+  if (m.signedIn && was.signedIn && m.id === was.id && m.prefs && was.prefs && appearanceMoved) {
+    m.prefs = { ...m.prefs, appearance: was.prefs.appearance, palette: was.prefs.palette, ...glassSettings(was.prefs) };
+  }
   if (!!was.signedIn !== !!m.signedIn || !!was.deleting !== !!m.deleting) {
     S.me = m;
     anew(() => { S.settled = false; render(); });
@@ -5496,7 +5616,7 @@ async function refresh() {
   }
   if (m.signedIn && same(was) !== same(m)) {
     S.me = m;
-    if (m.prefs && (m.prefs.appearance !== was.prefs?.appearance || m.prefs.palette !== was.prefs?.palette)) theme(m.prefs.appearance, true);
+    if (m.prefs && (m.id !== was.id || m.prefs.appearance !== was.prefs?.appearance || m.prefs.palette !== was.prefs?.palette || m.prefs.glass !== was.prefs?.glass || m.prefs.glassStrength !== was.prefs?.glassStrength)) theme(m.prefs.appearance, true);
     patch();
   }
 }

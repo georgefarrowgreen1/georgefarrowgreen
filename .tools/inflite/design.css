@@ -72,3 +72,33 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 @media (forced-colors: active) {
   .ifm-pop, .ifm-grp, .ifm-note, .ifa-sheet, .ifl-tabs, .ifl-back { background: Canvas; color: CanvasText; border: 1px solid ButtonText; }
 }
+
+/* Pointer light follows one curated surface; content, primary fills and input geometry stay stable. */
+@media (hover: hover) and (pointer: fine) {
+  :root[data-glass="on"] :is(.ifm-pop, .ifm-grp, .ifm-note, .ifm-card, .ifm-row, .ifh-acts, .ifh-act, .ifl-back, .ifl-tabs, .ifs-btn, .ifa-sheet, .ifb, .ifl-sheet, .glass, .ifl-card, .ifl-list, .ifl-tile, .ws-dock, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-composer, .ch-field, .mr-bar, .ifx-toolbar, .ifx-sidebar, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row)[data-ifl-pointer]:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+    background-image: var(--ifl-glass-shine, none);
+  }
+}
+:root[data-glass="on"] :is(.ifh-act, .ifl-back, .ifs-btn, .ifm-card, .ifm-row, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):focus-visible:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+  background-image: var(--ifl-glass-shine, none);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row) {
+    transition: transform var(--ifl-motion-release) var(--ifl-motion-spring), translate var(--ifl-motion-fast) ease, background-color var(--ifl-motion-fast) ease;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):hover:not(:is(:active, :disabled, [aria-disabled="true"])) {
+      translate: 0 calc(-1px * var(--ifl-glass-strength, .7));
+    }
+  }
+  @media (hover: none) and (pointer: coarse) {
+    :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .ifm-row, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-dock-button, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):active:not(:is(:disabled, [aria-disabled="true"])) {
+      transform: scale(calc(1 - .025 * var(--ifl-glass-strength, .7)));
+      transition-duration: 60ms;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  [data-ifl-pointer], :root[data-glass="on"] :focus-visible { --ifl-glass-shine: none; }
+  :root[data-glass="on"] :is(.ifh-act, .ifs-btn, .ifm-card, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ws-launcher button, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row) { translate: none !important; }
+}

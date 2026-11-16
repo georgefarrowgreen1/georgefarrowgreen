@@ -310,7 +310,7 @@ test("every route only with Today's Origin; a change never straight from a brows
   assert.deepEqual(r.j, { signedIn: false, links: todayLinks(env, new Request("http://account.ifl.test:8788/")) });
   r = await call("GET", "me", { cookie: annC });
   assert.equal(r.s, 200); assert.equal(r.j.signedIn, true);
-  assert.deepEqual(r.j.user, { id: "ann", name: "Ann Tester", first: "Ann", handle: "ann", photoAt: null, appearance: "auto", palette: "inflite" });
+  assert.deepEqual(r.j.user, { id: "ann", name: "Ann Tester", first: "Ann", handle: "ann", photoAt: null, appearance: "auto", palette: "inflite", glass: true, glassStrength: 70 });
   assert.deepEqual(r.j.prefs, { order: ["weather", "chat", "fitness", "markets"], hidden: [] });
   assert.deepEqual(r.j.morning, { on: false, at: 420, devices: 9 });
   assert.equal(r.j.links.auth, "http://ifl.test:8788/auth");

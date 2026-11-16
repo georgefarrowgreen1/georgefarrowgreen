@@ -809,16 +809,19 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request, 4096), now = { ...u };
     await pace(env, "prefs:" + u.id, 120, 3600e3);
+    if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).some(k => !["appearance", "palette", "glass", "glassStrength", "emails", "units"].includes(k))) throw new HttpError(400, "Choose one of the preferences shown.");
     if (b.appearance !== undefined && !["auto", "light", "dark"].includes(b.appearance)) throw new HttpError(400, "Choose System, Light or Dark.");
     if (b.palette !== undefined && !PALETTES.includes(b.palette)) throw new HttpError(400, "Choose one of the colour palettes shown.");
-    if (b.appearance !== undefined || b.palette !== undefined) {
-      const current = appearanceOf(u), appearance = b.appearance ?? current.appearance, palette = b.palette ?? current.palette;
-      // Independent partial updates never overwrite the other setting from a stale read.
+    if (b.glass !== undefined && typeof b.glass !== "boolean") throw new HttpError(400, "Choose Liquid Glass on or off.");
+    if (b.glassStrength !== undefined && (!Number.isInteger(b.glassStrength) || b.glassStrength < 0 || b.glassStrength > 100)) throw new HttpError(400, "Choose a Liquid Glass intensity from 0 to 100.");
+    const appearanceChanges = [["appearance", "appearance"], ["palette", "theme_palette"], ["glass", "glass_enabled"], ["glassStrength", "glass_strength"]]
+      .filter(([key]) => b[key] !== undefined).map(([key, column]) => [column, key === "glass" ? Number(b[key]) : b[key]]);
+    if (appearanceChanges.length) {
+      // Only fixed, validated column names are interpolated. Old clients and
+      // independent partial updates never overwrite settings they did not send.
       const D = await db(env);
-      if (b.appearance !== undefined && b.palette !== undefined) await D.prepare("UPDATE pg_users SET appearance = ?, theme_palette = ? WHERE id = ?").bind(appearance, palette, u.id).run();
-      else if (b.appearance !== undefined) await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(appearance, u.id).run();
-      else await D.prepare("UPDATE pg_users SET theme_palette = ? WHERE id = ?").bind(palette, u.id).run();
-      now.appearance = appearance; now.theme_palette = palette;
+      await D.prepare("UPDATE pg_users SET " + appearanceChanges.map(([column]) => column + " = ?").join(", ") + " WHERE id = ?").bind(...appearanceChanges.map(([, value]) => value), u.id).run();
+      Object.assign(now, Object.fromEntries(appearanceChanges));
     }
     // Chat's emails, on or off (as its own Notifications have them: which ones, it says)
     if (b.emails?.inflight !== undefined) {

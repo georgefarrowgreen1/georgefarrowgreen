@@ -234,6 +234,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN notify_prefs TEXT",  // notification settings (JSON), defaults if null
   "ALTER TABLE pg_users ADD COLUMN appearance TEXT",
   "ALTER TABLE pg_users ADD COLUMN theme_palette TEXT",
+  "ALTER TABLE pg_users ADD COLUMN glass_enabled INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN glass_strength INTEGER",
   "ALTER TABLE pg_users ADD COLUMN turbo INTEGER",       // turbo pigeons in the loft; null = full
   "ALTER TABLE pg_users ADD COLUMN turbo_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN pigeon TEXT",          // standard, swift or turbo (older rows: from swift)

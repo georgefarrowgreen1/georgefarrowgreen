@@ -33,14 +33,18 @@ for(const spec of [{width:390,theme:'dark'},{width:1440,theme:'light'}])test(`Ma
   const frames=await p.evaluate(()=>{
    const roots=[...document.querySelectorAll('.welcome .ifl-tagline,.welcome .ifl-cta')],animations=roots.map(e=>e.getAnimations().find(a=>a.animationName));
    for(const a of animations)a?.pause();
-   const rgb=s=>{const n=s.match(/[\d.]+/g)?.map(Number)||[0,0,0,0];return [n[0],n[1],n[2],n[3]??1];};
+   // color-mix() backgrounds serialize as color(srgb ...), whose channels are
+   // 0..1. Resolve the browser's actual CSS colour instead of treating those
+   // channels as RGB bytes and accidentally measuring white glass as black.
+   const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const paint=canvas.getContext('2d',{willReadFrequently:true});
+   const rgb=s=>{paint.clearRect(0,0,1,1);paint.fillStyle=s;paint.fillRect(0,0,1,1);const n=paint.getImageData(0,0,1,1).data;return [n[0],n[1],n[2],n[3]/255];};
    const blend=(a,b)=>a.slice(0,3).map((v,i)=>v*a[3]+b[i]*(1-a[3]));
    const lum=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
    const ratio=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
    const sample=()=>[...document.querySelectorAll('.welcome .ifl-tagline,.welcome .ifl-brand,.welcome #sign-in,.welcome .ifl-new button')].map(e=>{
     const chain=[];let node=e,opacity=1;while(node){chain.unshift(node);opacity*=Number(getComputedStyle(node).opacity);node=node.parentElement;}
     let bg=[255,255,255];for(const n of chain)bg=blend(rgb(getComputedStyle(n).backgroundColor),bg);
-    const c=getComputedStyle(e),stops=c.backgroundImage.match(/rgba?\([^)]*\)/g),backs=stops?.length?stops.map(rgb).map(v=>blend(v,bg)):[bg];
+    const c=getComputedStyle(e),stops=c.backgroundImage.match(/(?:rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/g),backs=stops?.length?stops.map(rgb).map(v=>blend(v,bg)):[bg];
     return {text:e.textContent,opacity,contrast:Math.min(...backs.map(b=>ratio(blend(rgb(c.color),b),b)))};
    });
    const timings=animations.map(a=>a?.effect.getTiming()),duration=Math.max(...timings.map(t=>Number(t?.duration)||0)),delay=Math.max(...timings.map(t=>t?.delay||0));

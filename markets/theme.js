@@ -101,12 +101,16 @@ try {
   Object.freeze(palettes);
   const modes = ['auto','light','dark'];
   const valid = p => p && typeof p === 'object' && modes.includes(p.appearance) && Object.hasOwn(palettes,p.palette);
+  const glassOf=(p,fallback={glass:true,glassStrength:70})=>({glass:typeof p?.glass==='boolean'?p.glass:fallback.glass,glassStrength:Number.isInteger(p?.glassStrength)&&p.glassStrength>=0&&p.glassStrength<=100?p.glassStrength:fallback.glassStrength});
   const read = () => { try { const p=JSON.parse(localStorage.getItem(key)); return valid(p)?p:null; } catch { return null; } };
   const legacy = () => { for(const k of ['acct:appearance','today:appearance','inflight-theme','fitness:appearance','markets:appearance','mail:appearance']){try{const v=localStorage.getItem(k);if(modes.includes(v))return v;}catch{}}return modes.includes(root.dataset.theme)?root.dataset.theme:'auto'; };
-  let state=read() || {appearance:legacy(),palette:'inflite'}, revision=0, loading=null, lastSync=0, colourTransition=null;
+  let state=read() || {appearance:legacy(),palette:'inflite'}, revision=0, loading=null, lastSync=0, colourTransition=null, glassPreview=null;
+  state={...state,...glassOf(state)};
   const mq=matchMedia('(prefers-color-scheme: dark)'), still=matchMedia('(prefers-reduced-motion: reduce)');
+  const hover=matchMedia('(hover: hover) and (pointer: fine)'),transparent=matchMedia('(prefers-reduced-transparency: reduce)'),contrast=matchMedia('(prefers-contrast: more)'),forced=matchMedia('(forced-colors: active)');
+  let pointer=null,pointerFrame=0,pointerX=0,pointerY=0;
   const snapshot=()=>Object.freeze({...state});
-  function cache(){try{localStorage.setItem(key,JSON.stringify(state));for(const k of ['acct:appearance','today:appearance','inflight-theme','fitness:appearance','markets:appearance','mail:appearance'])localStorage.setItem(k,state.appearance);}catch{}}
+  function cache(){try{localStorage.setItem(key,JSON.stringify({...state,...(glassPreview||{})}));for(const k of ['acct:appearance','today:appearance','inflight-theme','fitness:appearance','markets:appearance','mail:appearance'])localStorage.setItem(k,state.appearance);}catch{}}
   function bars(){for(const m of document.querySelectorAll('meta[name="theme-color"]')){const dark=state.appearance==='dark'||(state.appearance==='auto'&&m.media?.includes('dark'));const colour=palettes[state.palette][dark?'dark':'light'][0];if(m.getAttribute('content')!==colour)m.setAttribute('content',colour);}}
   function apply(animate=false){
     const draw=()=>{
@@ -119,7 +123,7 @@ try {
     root.style.cssText=style.cssText;
     if(state.appearance==='auto')delete root.dataset.theme;else root.dataset.theme=state.appearance;
     root.dataset.palette=state.palette;
-    bars();
+    applyGlass();bars();
     globalThis.dispatchEvent(new CustomEvent('inflite:appearance',{detail:snapshot()}));
     };
     if(!animate||still.matches||document.hidden||!document.startViewTransition||document.activeViewTransition){draw();return;}
@@ -131,7 +135,54 @@ try {
       t.finished.catch(()=>{}).finally(()=>{if(colourTransition===t){colourTransition=null;root.classList.remove('ifl-colour-change');}});
     }catch{colourTransition=null;root.classList.remove('ifl-colour-change');draw();}
   }
-  function accept(p,{animate=false}={}){if(!valid(p))return false;revision++;state={appearance:p.appearance,palette:p.palette,...(typeof p.id==='string'?{id:p.id}:state.id?{id:state.id}:{})};cache();apply(animate);return true;}
+  function accept(p,{animate=false,persist=true}={}){
+    if(!valid(p))return false;revision++;const replaced=typeof p.id==='string'&&state.id&&p.id!==state.id;
+    const glass=glassOf(p,replaced?undefined:state);if(replaced)clearPointer();
+    state={appearance:p.appearance,palette:p.palette,...glass,...(typeof p.id==='string'?{id:p.id}:state.id?{id:state.id}:{})};
+    if(replaced||Object.hasOwn(p,'glass')||Object.hasOwn(p,'glassStrength'))glassPreview=null;
+    if(persist)cache();apply(animate);return true;
+  }
+  function applyGlass(){
+    const amount=state.glass?state.glassStrength/100:0;
+    root.dataset.glass=state.glass?'on':'off';
+    const values={'glass-strength':amount,'glass-opacity':(100-14*amount)+'%','glass-strong-opacity':(100-3*amount)+'%','glass-control-opacity':(100-10*amount)+'%','glass-radius':(28*amount)+'px','glass-saturation':(100+50*amount)+'%','glass-rim-opacity':(62*amount)+'%','glass-light-opacity':(3*amount)+'%'};
+    for(const[k,v]of Object.entries(values))root.style.setProperty('--ifl-'+k,String(v));
+    if(!pointerAllowed())clearPointer();
+  }
+  function setGlass(change,{preview=false}={}){
+    if(!change||typeof change!=='object'||Object.keys(change).some(k=>!['glass','glassStrength'].includes(k))||Object.hasOwn(change,'glass')&&typeof change.glass!=='boolean'||Object.hasOwn(change,'glassStrength')&&(!Number.isInteger(change.glassStrength)||change.glassStrength<0||change.glassStrength>100))return false;
+    if(preview&&!glassPreview)glassPreview=glassOf(state);revision++;state={...state,...change};
+    if(!preview){glassPreview=null;cache()}applyGlass();globalThis.dispatchEvent(new CustomEvent('inflite:appearance',{detail:snapshot()}));return true;
+  }
+  function cancelGlassPreview(){if(!glassPreview)return;revision++;state={...state,...glassPreview};glassPreview=null;applyGlass();globalThis.dispatchEvent(new CustomEvent('inflite:appearance',{detail:snapshot()}));}
+  function pointerAllowed(){return state.glass&&state.glassStrength>0&&hover.matches&&!still.matches&&!transparent.matches&&!contrast.matches&&!forced.matches&&!document.hidden}
+  function clearPointer(){if(pointerFrame)cancelAnimationFrame(pointerFrame);pointerFrame=0;if(pointer){pointer.removeAttribute('data-ifl-pointer');pointer.style.removeProperty('--ifl-pointer-x');pointer.style.removeProperty('--ifl-pointer-y')}pointer=null}
+  const surfaces='.ifm-pop,.ifm-grp,.ifm-note,.ifm-card,.ifm-row,.ifh-acts,.ifh-act,.ifl-back,.ifl-tabs,.ifs-btn,.ifa-sheet,.ifb,.ifl-sheet,.glass,.ifl-card,.ifl-list,.ifl-tile,.ws-dock,.ws-dock-button,.ws-launcher button,.pill,.ifl-btn,.ifl-chip.action,.ifl-icon-btn,.appearance-glass-preview-pane,.ch-composer,.ch-field,.mr-bar,.ifx-toolbar,.ifx-sidebar,.ch-attach,.ch-send,.mk-ib,.mv,.ib,.chip-btn,.addb,.tool,.btn:is(.quiet,.ghost),.appearance-palette,.appear,.org-record,.org-date,.ifx-button,.ifx-icon-button,.ifx-action,.ifx-file-main,.ifx-location,button.gbtn,button.c-tool,button.menu-item,.icon-btn,.pill-btn,.row-btn,.acct-btn,.round:not(.me),button.row';
+  const excluded='.primary,.destructive,.filled,.on,.selected,.warn,.error,.danger,.is-primary,.is-destructive,:disabled,[aria-disabled=true],[aria-pressed=true],[aria-selected=true],[data-selected=true],[aria-current],[data-glass-static]';
+  function surface(target){
+    if(!(target instanceof Element))return null;
+    for(let node=target.closest(surfaces);node;node=node.parentElement?.closest(surfaces)){
+      if(node.matches(excluded)||node.closest('[inert], [hidden], .ibars, .ichart')||node.matches('.ib')&&node.querySelector(':scope > i'))continue;
+      if(node===pointer)return node;
+      if(node.querySelector('canvas,iframe,video,.map,.chart,.sparkline,[data-map]'))continue;
+      const image=getComputedStyle(node).backgroundImage;
+      if(image.includes('url(')||node.matches('button,a')&&image!=='none')continue;
+      return node;
+    }return null;
+  }
+  function movePointer(e){
+    if(e.pointerType!=='mouse'||e.buttons||!pointerAllowed()){clearPointer();return}
+    const next=surface(e.target);if(next!==pointer){clearPointer();pointer=next;if(pointer)pointer.setAttribute('data-ifl-pointer','')}
+    if(!pointer)return;pointerX=e.clientX;pointerY=e.clientY;
+    if(!pointerFrame)pointerFrame=requestAnimationFrame(()=>{pointerFrame=0;if(!pointer?.isConnected||!pointerAllowed()){clearPointer();return}const r=pointer.getBoundingClientRect();if(!r.width||!r.height)return clearPointer();pointer.style.setProperty('--ifl-pointer-x',Math.round(Math.max(0,Math.min(1,(pointerX-r.left)/r.width))*100)+'%');pointer.style.setProperty('--ifl-pointer-y',Math.round(Math.max(0,Math.min(1,(pointerY-r.top)/r.height))*100)+'%')});
+  }
+  document.addEventListener('pointermove',movePointer,{passive:true});
+  document.addEventListener('pointerdown',clearPointer,{passive:true});
+  document.addEventListener('pointerout',e=>{if(pointer&&(!(e.relatedTarget instanceof Node)||!pointer.contains(e.relatedTarget)))clearPointer()},{passive:true});
+  document.addEventListener('scroll',clearPointer,{passive:true,capture:true});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPointer()});
+  globalThis.addEventListener('pagehide',clearPointer);
+  for(const q of [hover,still,transparent,contrast,forced])q.addEventListener?.('change',clearPointer);
   const canonical=location.hostname==='inflite.ai'||location.hostname==='os.inflite.ai';
   const endpoint=canonical?'/account/api/account/appearance':/^(account|auth)\.inflite\.ai$/.test(location.hostname)?'/api/account/appearance':null;
   async function refresh(){
@@ -139,13 +190,13 @@ try {
     lastSync=Date.now();const mine=revision, controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),8000);
     loading=fetch(endpoint,{credentials:'same-origin',cache:'no-store',signal:controller.signal}).then(r=>r.ok?r.json():null).then(p=>{if(revision===mine&&p?.signedIn===true)accept(p);}).catch(()=>{}).finally(()=>{clearTimeout(timeout);loading=null;});return loading;
   }
-  globalThis.InFliteAppearance=Object.freeze({palettes,snapshot,accept,refresh,fromApp:p=>{if(!endpoint&&p?.palette)accept({...p,appearance:p.appearance||'auto'});}});
+  globalThis.InFliteAppearance=Object.freeze({palettes,snapshot,accept,setGlass,cancelGlassPreview,refresh,fromApp:p=>{if(!endpoint&&p?.palette)accept({...p,appearance:p.appearance||'auto'});}});
   apply();
   // Old app-specific appearance readers cannot replace the unified account mode.
   new MutationObserver(()=>{const expected=state.appearance==='auto'?undefined:state.appearance;if(root.dataset.theme!==expected)apply();}).observe(root,{attributes:true,attributeFilter:['data-theme']});
   for(const m of document.querySelectorAll('meta[name="theme-color"]'))new MutationObserver(bars).observe(m,{attributes:true,attributeFilter:['content']});
   mq.addEventListener?.('change',()=>{if(state.appearance==='auto')apply();});
-  globalThis.addEventListener('storage',e=>{if(e.key!==key)return;const p=read();if(p&&(!state.id||!p.id||p.id===state.id))accept(p,{animate:true});});
+  globalThis.addEventListener('storage',e=>{if(e.key!==key)return;const p=read();if(p&&(!state.id||!p.id||p.id===state.id))accept(p,{animate:true,persist:false});});
   globalThis.addEventListener('pageshow',refresh);
   globalThis.addEventListener('focus',refresh);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
