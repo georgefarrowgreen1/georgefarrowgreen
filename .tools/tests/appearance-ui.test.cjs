@@ -183,7 +183,7 @@ for(const width of [320,390,1440])test(`account Appearance persists, handles rap
    await page.waitForFunction(()=>InFliteAppearance.snapshot().glassStrength===25);
    assert.equal(await page.evaluate(()=>InFliteAppearance.snapshot().glassStrength),25);
    assert.equal(putRequests.length,beforeClose,'closing a preview does not persist it');
-   await page.locator('main [data-k="Appearance"]').click();await strength.waitFor();
+   await page.goto('https://inflite.ai/account/#open=appearance');await strength.waitFor();
    let release,seen;const held=new Promise(resolve=>{release=resolve;}),requested=new Promise(resolve=>{seen=resolve;});
    await page.route('**/api/account/prefs',async route=>{if(route.request().postDataJSON().glassStrength===80){seen();await held;}await route.continue();});
    try{

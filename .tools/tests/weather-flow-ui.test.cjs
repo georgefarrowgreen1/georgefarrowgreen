@@ -8,13 +8,13 @@ before(async()=>{
 });
 after(async()=>browser?.close());
 const places=[{name:'London',region:'England',lat:51.5072,lon:-.1276},{name:'Leeds',region:'England',lat:53.8,lon:-1.55}];
-async function open(hosted,width){
+async function open(hosted,width,standaloneOrigin='https://weather.inflite.ai'){
  const ctx=await browser.newContext({viewport:{width,height:900},colorScheme:width===320?'light':'dark',isMobile:width===320,hasTouch:width===320,serviceWorkers:'block',locale:'en-GB'}),now=Date.now();
  await ctx.addInitScript(places=>{localStorage.setItem('wx:places',JSON.stringify(places));localStorage.setItem('wx:cur','0');localStorage.setItem('wx:settings',JSON.stringify({glass:'clear',temp:'c'}));Object.defineProperty(navigator,'connection',{configurable:true,value:{saveData:true}});},places);
  // No request can escape the fixture, including a newly introduced provider.
  await ctx.route('**/*',r=>r.fulfill({status:503,body:'Unmocked request'}));
  if(hosted)await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
- const origin=hosted?KIT:'https://weather.inflite.ai',j=(r,o,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(o),headers:{'Access-Control-Allow-Origin':'*'}});
+ const origin=hosted?KIT:standaloneOrigin,j=(r,o,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(o),headers:{'Access-Control-Allow-Origin':'*'}});
  // Explicitly choose the real Weather files in every engine. The generic kit's
  // cookie selector can otherwise serve its fake module in WebKit.
  if(hosted)await ctx.route(KIT+'/weather/**',r=>{const p=new URL(r.request().url()).pathname;if(p==='/weather/version')return j(r,{build:null});const file=ROOT+p;if(!existsSync(file))return r.fulfill({status:404,body:''});return r.fulfill({contentType:extname(file)==='.js'?'text/javascript':extname(file)==='.css'?'text/css':'application/octet-stream',body:readFileSync(file)});});
@@ -58,8 +58,17 @@ async function open(hosted,width){
  await page.waitForFunction(async hosted=>{const {S}=await import(hosted?'/weather/roof/core.js':'/app.js');return!S.loading&&!!S.wx?.models&&!!S.wx?.ensemble&&!!S.wx?.air&&!!S.wx?.climate;},hosted);
  return{ctx,page,errors};
 }
+test('Weather settings opens the Weather section in unified Settings',async()=>{
+ const {ctx,page}=await open(false,390);
+ try{
+  await page.route('https://inflite.ai/',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>InFlite</title>'}));
+  await page.locator('#settings-btn').click();
+  await page.waitForURL('https://inflite.ai/#settings=weather');
+ }finally{await ctx.close();}
+});
 for(const hosted of [false,true])for(const width of [320,1440])test(`Weather flow continuity ${hosted?'hosted':'native'} ${width}px`,async()=>{
- const {ctx,page,errors}=await open(hosted,width),name=`${hosted?'hosted':'native'}-${width}`;
+ // Independent installations retain a local settings editor.
+ const {ctx,page,errors}=await open(hosted,width,'https://weather.example.test'),name=`${hosted?'hosted':'native'}-${width}`;
  const shot=async what=>{if(OUT)await page.screenshot({path:`${OUT}/${name}-${what}.png`});};
  try{
   if(!hosted)assert.equal(await page.locator('#place-name').evaluate(n=>n.scrollWidth<=n.clientWidth+1),true,'a short London title fits without clipping');
