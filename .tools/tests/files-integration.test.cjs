@@ -1,3 +1,4 @@
+const {launchApp}=require('./fixtures/launcher.cjs');
 // Real Root boot, Frame, Files host/service/Explorer/Drive client and real
 // workerd Files routes, cookie sessions, D1 and R2. Only account bootstrap and
 // browser-to-Worker transport are fixtures; no domain, editor or UI is replaced.
@@ -113,7 +114,7 @@ async function goFiles(page){
   const direct=page.getByRole('button',{name:'Files',exact:true}),launcher=page.getByRole('button',{name:'All apps',exact:true});
   if(await direct.isVisible())await direct.click();
   else if(await launcher.isVisible()){await launcher.click();await page.locator('dialog[data-sheet=workspace-apps][open]').getByRole('button',{name:'Files',exact:true}).click();}
-  else{await page.locator('.ws-dock').getByRole('button',{name:'Today',exact:true}).click();await direct.click();}
+  else{await launchApp(page,'Today');await direct.click();}
   await page.locator('.ifl-files-explorer:visible').waitFor();
 }
 
@@ -309,14 +310,14 @@ test('full Files app collections use real Fitness exports and Mail metadata with
     const native=page.getByRole('link',{name:'Open in Mail',exact:true});await native.waitFor();assert.equal(new URL(await native.getAttribute('href')).origin,'https://email.inflite.ai');
     assert.equal(t.state.mail.log.some(r=>/^\/api\/attachments\//.test(r.path)&&!r.navigate),false);
     await page.locator('dialog[open] [data-close]').click();
-    await page.locator('.ws-dock').getByRole('button',{name:'Chats',exact:true}).click();
+    await launchApp(page,'Chats');
     try{await page.locator('#m-chats .ch-row[data-id=\"'+chatIDs.pat+'\"]').click();}catch(error){console.log('CHAT FILES STATE',JSON.stringify({url:page.url(),body:await page.locator('body').innerText(),unknown:t.state.unknown,errors:t.errors}));throw error;}await page.locator('#m-chats .ch-input').waitFor();await page.locator('#m-chats .ch-input').fill('A private unsent Files draft');
     await page.locator('#m-chats').evaluate(n=>window.__filesChatRoot=n);
     await page.getByRole('button',{name:'Back to Chats',exact:true}).click();
     await goFiles(page);await page.locator('.ifx-location-list').getByRole('button',{name:'Chats',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.ifx-status')?.textContent==='0 items');
     assert.equal(await page.locator('.ifx-items [data-file-key]').count(),0,'hidden Chats retires its current-conversation media rather than indexing private history');
-    await page.locator('.ws-dock').getByRole('button',{name:'Chats',exact:true}).click();await page.locator('#m-chats .ch-row[data-id=\"'+chatIDs.pat+'\"]').click();await page.locator('#m-chats .ch-input').waitFor();
+    await launchApp(page,'Chats');await page.locator('#m-chats .ch-row[data-id=\"'+chatIDs.pat+'\"]').click();await page.locator('#m-chats .ch-input').waitFor();
     // The visible composer precedes the asynchronous Worker open response.
     // Await the restored draft, rather than sampling its initial empty value.
     await page.waitForFunction(()=>document.querySelector('#m-chats .ch-input')?.value==='A private unsent Files draft',null,{timeout:5000});

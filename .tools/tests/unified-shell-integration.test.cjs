@@ -11,7 +11,7 @@ before(async()=>{
  env={...m.exports,stop};await start();
 });
 after(async()=>env?.stop());
-const app=(page,name)=>page.locator('.ws-dock').getByRole('button',{name,exact:true}).click();
+const {launchApp:app}=require('./fixtures/launcher.cjs');
 for(const width of [390,1440])test(`five native apps retain their singleton views and Chat draft at ${width}px`,async()=>{
  const t=await env.open({width,initialPath:'/?os=1',ready:'home'});const{page}=t;
  try{

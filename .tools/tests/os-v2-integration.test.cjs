@@ -1,3 +1,4 @@
+const {launchApp}=require('./fixtures/launcher.cjs');
 // Real Root boot/frame/controller and all five real app modules. Only network
 // transports and the Chats Worker RPC boundary use existing account fixtures;
 // no pane, editor, app store, chart, Files or window implementation is replaced.
@@ -92,7 +93,7 @@ async function settled(page) { await page.evaluate(() => new Promise(r => reques
 async function createAll(page, state) {
   if (!await page.getByRole('button', { name: 'New workspace', exact: true }).count()) {
     for (const app of APPS) {
-      await page.locator('.ws-dock').getByRole('button', { name: app[0].toUpperCase()+app.slice(1), exact: true }).click();
+      await launchApp(page,app[0].toUpperCase()+app.slice(1));
       const root=page.locator('#m-'+app);await root.waitFor({state:'visible'});
       if(app==='fitness')await root.locator('.week-overview').waitFor();
       if(app==='weather')await root.locator('[data-card=hourly] .chart svg').first().waitFor();

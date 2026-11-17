@@ -1,3 +1,4 @@
+const {launchApp}=require('./fixtures/launcher.cjs');
 // Real OS host + real Fitness and Weather modules. Only account/weather transport
 // is replaced; no application, frame, editor, chart or workspace implementation.
 const { test, before, after } = require('node:test');
@@ -170,7 +171,7 @@ test('mobile foreground, desktop return and full-app expansion reuse the actual 
     await page.getByRole('button',{name:'Open windows',exact:true}).click();await page.getByRole('menuitem',{name:'Switch to Weather',exact:true}).click();await pane(page,'weather').waitFor({state:'visible'});
     await page.getByRole('button',{name:'Open windows',exact:true}).click();await page.getByRole('menuitem',{name:'Switch to Fitness',exact:true}).click();await pane(page,'fitness').waitFor({state:'visible'});
     await page.setViewportSize({ width: 1440, height: 940 }); await page.waitForFunction(() => [...document.querySelectorAll('.ifl-workspace-pane')].filter(n => n.getClientRects().length).length === 2);
-    await page.locator('.ws-dock [data-ws-action="app:fitness"]').click();
+    await launchApp(page,'Fitness');
     await page.locator('#m-fitness').waitFor({ state: 'visible' });
     await page.waitForFunction(() => !document.documentElement.classList.contains('os-workspace'));
     assert.equal(await page.locator('#m-fitness .m-fitness').evaluate(n => n.classList.contains('ifl-in-pane')), false);
@@ -279,7 +280,7 @@ test('workspace pane metadata survives reload and an API-offline return preserve
     assert.equal(cached.activityIds.length, 30); assert.equal(cached.dayKeys.length, 16);
     await page.evaluate(() => { window.__originalFitness = document.getElementById('m-fitness'); window.__originalWeather = document.getElementById('m-weather'); });
     state.offline = true; await ctx.setOffline(true);
-    await page.locator('.ws-dock [data-ws-action="app:fitness"]').click(); await page.locator('#m-fitness').waitFor({ state: 'visible' });
+    await launchApp(page,'Fitness'); await page.locator('#m-fitness').waitFor({ state: 'visible' });
     try { await page.waitForFunction(() => !document.documentElement.classList.contains('os-workspace')); }
     catch (e) { console.log('Offline expansion did not complete', await page.evaluate(() => ({ url: location.href, classes: document.documentElement.className, dock: document.querySelector('.ws-dock')?.outerHTML, dialogs: [...document.querySelectorAll('dialog[open]')].map(n => n.textContent.slice(0, 200)), text: document.body.innerText.slice(0, 1000) }))); throw e; }
     await page.goBack(); await page.locator('.ifl-workspace[data-mode=workspace]').waitFor();
@@ -396,7 +397,7 @@ test('creating, renaming, restoring and removing a Weather-only workspace change
 for (const app of ['fitness', 'weather']) test(`the actual native ${app} screen commits a touch section swipe after leaving its pane`, async () => {
   const { ctx, page, clean } = await open({ width: 390 });
   try {
-    await page.locator(`.ws-dock [data-ws-action="app:${app}"]`).click();
+    await launchApp(page,app[0].toUpperCase()+app.slice(1));
     await page.locator(`#views #m-${app}:not([hidden])`).waitFor();
     const from = app === 'fitness' ? 'today' : 'now', to = app === 'fitness' ? 'activities' : 'days';
     await page.locator(`#m-${app} [data-sec="${from}"]:not([hidden])`).waitFor(); await settle(page);
