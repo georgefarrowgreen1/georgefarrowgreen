@@ -50,7 +50,7 @@ import { appearanceOf } from "../../_appearance.js";
 import {trainingRecords,prescribe,sessionFeedback} from "../../_fitrhythm2.js";
 import { cleanQuery, generateRoutes, routePlan, saveRoutePlan, dropRoutePlan, ROUTER_URL } from "../../_fitroutes.js";
 import { tickHost } from "../../_sites.js";
-import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace } from "../../_pigeon.js";
+import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace, readCapped } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
 import { takeHandback } from "../../_handback.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -168,7 +168,10 @@ const ROUTES = {
     if (!(said > 0)) throw new HttpError(411, "Bad request.");
     if (!(said <= MAX_FILE + 64 * 1024)) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
     let form;
-    try { form = await request.formData(); } catch (_) { throw new HttpError(400, "Bad request."); }
+    try {
+      form = await new Response(await readCapped(request, MAX_FILE + 64 * 1024, "That file is too big to keep (25 MB at most)."),
+        { headers: { "Content-Type": request.headers.get("Content-Type") || "" } }).formData();
+    } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, "Bad request."); }
     const file = form.get("file"), metaText = form.get("meta");
     if (!file || typeof file === "string" || typeof metaText !== "string" || metaText.length > 16 * 1024) throw new HttpError(400, "Bad request.");
     let meta; try { meta = cleanAct(JSON.parse(metaText)); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, "Bad request."); }
@@ -195,7 +198,10 @@ const ROUTES = {
     if (!(said > 0)) throw new HttpError(411, "Bad request.");
     if (!(said <= MAX_FILE + 16 * 1024)) throw new HttpError(413, "That file is too big to keep (25 MB at most).");
     let form;
-    try { form = await request.formData(); } catch (_) { throw new HttpError(400, "Bad request."); }
+    try {
+      form = await new Response(await readCapped(request, MAX_FILE + 16 * 1024, "That file is too big to keep (25 MB at most)."),
+        { headers: { "Content-Type": request.headers.get("Content-Type") || "" } }).formData();
+    } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, "Bad request."); }
     const file = form.get("file"), metaText = form.get("meta");
     if (!file || typeof file === "string" || typeof metaText !== "string" || metaText.length > 4096) throw new HttpError(400, "Bad request.");
     let meta; try { meta = JSON.parse(metaText); } catch (_) { throw new HttpError(400, "Bad request."); }

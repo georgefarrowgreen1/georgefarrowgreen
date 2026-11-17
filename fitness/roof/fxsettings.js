@@ -87,6 +87,14 @@ export function openSettings(ctx, page = null) {
   try { shown?.close(); } catch (_) {}
   const offs = [];
   let h = null, alive = true;
+  const owner = S.me?.id;
+  const current = () => alive && !!owner && !fw.signal?.aborted && S.me?.id === owner && (fw.session?.user?.id ?? fw.session?.view?.id ?? owner) === owner;
+  async function owned(task) {
+    if (!current()) throw Object.assign(new Error("This settings window has closed."), { name: "AbortError" });
+    const value = await task();
+    if (!current()) throw Object.assign(new Error("This settings window has closed."), { name: "AbortError" });
+    return value;
+  }
   const redraws = new Map();
   const track = (node, fn) => redraws.set(fn, node);
   const prune = () => { const body = h?.body; if (body) for (const [fn, node] of redraws) if (!body.contains(node)) redraws.delete(fn); };
@@ -210,9 +218,9 @@ export function openSettings(ctx, page = null) {
   // the frame told once and not asked again: a redraw never asks after a failure)
   let stravaUrl = null, stravaAt = 0, stravaAsking = null, stravaGone = false, stravaFailed = false, stravaOut = false;
   const askStrava = () => {
-    if (stravaAsking || stravaOut) return stravaAsking;
-    stravaAsking = A.stravaConnect().then((r) => { stravaUrl = typeof r?.url === "string" && /^https:\/\//.test(r.url) ? r.url : null; stravaAt = Date.now(); stravaFailed = false; },
-      (e) => { stravaUrl = null; stravaAt = Date.now(); stravaFailed = true; if (e?.status === 401) { stravaOut = true; lost(); } }).finally(() => { stravaAsking = null; if (alive) redraw(); });
+    if (!current() || stravaAsking || stravaOut) return stravaAsking;
+    stravaAsking = A.stravaConnect().then((r) => { if (!current()) return; stravaUrl = typeof r?.url === "string" && /^https:\/\//.test(r.url) ? r.url : null; stravaAt = Date.now(); stravaFailed = false; },
+      (e) => { if (!current()) return; stravaUrl = null; stravaAt = Date.now(); stravaFailed = true; if (e?.status === 401) { stravaOut = true; lost(); } }).finally(() => { stravaAsking = null; if (current()) redraw(); });
     return stravaAsking;
   };
   const stravaLink = (label) => {
@@ -239,7 +247,7 @@ export function openSettings(ctx, page = null) {
     const go2 = async (b, acts) => {
       b.disabled = true;
       let r;
-      try { r = await c.off(acts); } catch (e) { b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
+      try { r = await owned(() => c.off(acts)); } catch (e) { if (!current()) return; b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
       if (on) c.set({ ...r, gone: undefined });
       if (acts) { for (const a of S.own) if (re.test(a.id)) dropFile(fileKey(a)); S.own = S.own.filter((a) => !re.test(a.id)); for (const k of [...S.sums.keys()]) if (re.test(k)) S.sums.delete(k); setActs(); try { estimate(); } catch (_) {} }
       h.pop(); core.emit?.("acts"); redraw();
@@ -265,8 +273,8 @@ export function openSettings(ctx, page = null) {
       const add = async (b) => {
         if (!key.value.trim()) return key.focus();
         b.disabled = true;
-        try { S.garmin = await A.garminConnect(key.value); key.value = ""; }
-        catch (e) { b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
+        try { S.garmin = await owned(() => A.garminConnect(key.value)); key.value = ""; }
+        catch (e) { if (!current()) return; b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
         toActs(); bring({});
       };
       const keyForm = (label) => { const b = ui.btn(label, { primary: true, act: "connect", run: () => add(b) }); key.addEventListener("keydown", (e) => { if (e.key === "Enter") add(b); }); return [field, b]; };
@@ -281,13 +289,13 @@ export function openSettings(ctx, page = null) {
       }
       const check = async (b) => {
         b.disabled = true;
-        try { S.garmin = await A.garminFetch(true); } catch (e) { b.disabled = false; return toast(e.message); }
+        try { S.garmin = await owned(() => A.garminFetch(true)); } catch (e) { if (!current()) return; b.disabled = false; return toast(e.message); }
         const n = (await core.fromSource?.("garmin", { quiet: true })) || 0;
         redraw(); toast(n ? `${plural(n, "activity", "activities")} from Garmin` : S.garmin.ok ? "Nothing new" : "Your key has stopped working: add a new one");
       };
       const all = async (b) => {
         b.disabled = true;
-        try { S.garmin = await A.garminAll(); } catch (e) { b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
+        try { S.garmin = await owned(() => A.garminAll()); } catch (e) { if (!current()) return; b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
         toActs(); bring({ all: true });
       };
       const backTo = g.back && g.backAt > Date.UTC(2000, 0, 2) ? new Date(g.backAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : null;
@@ -320,13 +328,13 @@ export function openSettings(ctx, page = null) {
       }
       const check = async (b) => {
         b.disabled = true;
-        try { S.strava = await A.stravaFetch(true); } catch (e) { b.disabled = false; return toast(e.message); }
+        try { S.strava = await owned(() => A.stravaFetch(true)); } catch (e) { if (!current()) return; b.disabled = false; return toast(e.message); }
         const n = (await core.fromSource?.("strava", { quiet: true })) || 0;
         redraw(); toast(n ? `${plural(n, "activity", "activities")} from Strava` : S.strava.ok && !S.strava.said ? "Nothing new" : "Strava didn’t say anything new");
       };
       const all = async (b) => {
         b.disabled = true;
-        try { S.strava = await A.stravaAll(); } catch (e) { b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
+        try { S.strava = await owned(() => A.stravaAll()); } catch (e) { if (!current()) return; b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
         toActs(); bring({ all: true, src: "strava" });
       };
       box.replaceChildren(el("p", { class: "fxs-lead", text: g.ok ? (g.name ? `Connected as ${g.name}` : "Connected") : "Strava’s stopped letting Fitness in" }),
@@ -352,8 +360,8 @@ export function openSettings(ctx, page = null) {
       const x = S.health, key = healthKey;
       const make = async (b) => {
         b.disabled = true;
-        try { const r = await A.healthKey(); healthKey = r.key; S.health = { ...r, key: undefined }; }
-        catch (e) { b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
+        try { const r = await owned(() => A.healthKey()); healthKey = r.key; S.health = { ...r, key: undefined }; }
+        catch (e) { if (!current()) return; b.disabled = false; if (e.status === 401) return lost(); return toast(e.message); }
         redraw();
       };
       const copy = (text, what) => ui.btn("Copy", { small: true, act: "copy", run: () => navigator.clipboard?.writeText(text).then(() => toast(`${what} copied`), () => toast("Couldn’t copy: press and hold to select it")) });
@@ -381,12 +389,12 @@ export function openSettings(ctx, page = null) {
       const off = ui.btn("Turn Off", { destructive: true, act: "off", run: async (e) => {
         const b = e.currentTarget;
         if (!b.dataset.sure) { b.dataset.sure = "1"; b.querySelector("span").textContent = "Turn Off Apple Health"; return; }
-        try { S.health = await A.healthOff(); healthKey = null; } catch (err) { return toast(err.message); }
+        try { S.health = await owned(() => A.healthOff()); healthKey = null; } catch (err) { if (!current()) return; return toast(err.message); }
         h.pop(); redraw(); toast("Apple Health off");
       } });
       const again = ui.btn("Check Again", { act: "again", run: async (e) => {
         const b = e.currentTarget; b.disabled = true;
-        try { S.health = await A.health(); } catch (err) { toast(err.message); } finally { b.disabled = false; }
+        try { S.health = await owned(() => A.health()); } catch (err) { if (!current()) return; toast(err.message); } finally { b.disabled = false; }
         redraw();
       } });
       box.replaceChildren(el("p", { class: "fxs-lead", text: x?.last ? `Last sent ${ago(x.last)}` : "Waiting for the Shortcut’s first morning" }),

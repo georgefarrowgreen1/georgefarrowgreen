@@ -9,8 +9,9 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { onAccountPage } from '../join.mjs';
+import { trustedSignInSite } from './trusted-site.mjs';
 
-const SITE = new URL(process.env.SITE || 'https://inflite.ai').origin, host = new URL(SITE).host;
+const SITE = trustedSignInSite(process.env.SITE, process.env.CHECK_LOCAL === '1'), host = new URL(SITE).host;
 const at = (sub) => `${new URL(SITE).protocol}//${sub}.${host}`;
 const EMAIL = process.env.CHECK_EMAIL, PASSWORD = process.env.CHECK_PASSWORD, OUT = process.argv[2] || 'signin-check';
 if (!EMAIL || !PASSWORD) { console.log('No CHECK_EMAIL / CHECK_PASSWORD: nothing checked.'); process.exit(0); }
@@ -36,6 +37,12 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefi
 const rows = [];
 for (const d of DEVICES) for (const a of APPS) {
   const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, isMobile: !!d.mobile, hasTouch: !!d.mobile, userAgent: d.ua, locale: 'en-GB', timezoneId: 'Europe/London' });
+  const allowedOrigins = new Set([SITE, ...['auth', 'account', 'weather', 'fitness', 'finance'].map(at)]);
+  await ctx.route('**/*', route => {
+    const request = route.request();
+    if (request.isNavigationRequest() && !allowedOrigins.has(new URL(request.url()).origin)) return route.abort();
+    return route.continue();
+  });
   const p = await ctx.newPage(), t0 = Date.now(), errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   let step = 'opening', ok = false, why = '';

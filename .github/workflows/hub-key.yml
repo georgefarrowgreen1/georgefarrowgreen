@@ -32,6 +32,7 @@ defaults:
 
 jobs:
   key:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
@@ -40,8 +41,9 @@ jobs:
       WRANGLER_SEND_METRICS: "false"
       HUBS: ${{ inputs.hub }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           sparse-checkout: .github/hub
       - name: Check the token's there
         id: token
@@ -50,7 +52,7 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN isn't set (Settings → Secrets and variables → Actions): a Cloudflare API token with Account › Workers Scripts › Edit. Nothing was changed."
             exit 1
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       # (and leaves it for the steps after as HUB_ACCOUNT: each step is a shell of its own)

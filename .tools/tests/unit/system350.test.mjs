@@ -74,3 +74,19 @@ test('account deletion clears actions, draft copies and revocation records and f
 });
 test('delete Undo is versioned and a stale Undo cannot restore a newer deleted action',async()=>{const o=await owner(),a=await create(o),deleted=await edit(o,a,{status:'deleted'});assert.equal(deleted.status,200);assert.equal((await api(o,'GET','action?id='+a.id)).status,404);const restored=await edit(o,deleted.value.action,{status:'open'});assert.equal(restored.status,200,JSON.stringify(restored.value));assert.equal(restored.value.action.version,3);assert.equal((await edit(o,deleted.value.action,{status:'open'})).status,409);const gone=await edit(o,restored.value.action,{status:'deleted'});assert.equal((await edit(o,gone.value.action,{status:'open',title:'Unexpected edit'})).status,404)});
 test('remembered device count stays bounded and expired encrypted copies can be replaced safely',async()=>{const o=await owner();let last;for(let i=0;i<14;i++)last=await remember(o);const devices=await api(o,'GET','devices');assert.equal(devices.value.devices.length,12);const v=await cipher(o.id),save={id:last.id,revision:0,cipher:v.sealed,operationId:op()};assert.equal((await api(o,'PUT','draft',save)).status,200);await internal('sql',{sql:'UPDATE ifl_draft_backups SET modified=? WHERE user_id=?',args:[Date.now()-15*864e5,o.id]});assert.equal((await api(o,'GET','drafts')).value.backups.length,0);assert.equal((await api(o,'PUT','draft',{...save,operationId:op()})).status,200)});
+
+test('valid foreign owner requests cannot read, edit, delete or restore another account action or encrypted draft',async()=>{
+ const a=await owner(),b=await owner(),item=await create(a,{title:'Owner private action'}),d=await remember(a),envelope=await cipher(a.id);
+ assert.equal((await api(a,'PUT','draft',{id:d.id,revision:0,operationId:op(),cipher:envelope.sealed})).status,200);
+ assert.equal((await api(b,'GET','action?id='+item.id)).status,404);
+ assert.equal((await edit(b,item,{title:'Foreign overwrite'})).status,404);
+ assert.equal((await api(b,'DELETE','action?id='+item.id+'&version='+item.version+'&operation='+op())).status,404);
+ assert.equal((await api(b,'POST','search',{q:'Owner private'})).value.actions.length,0);
+ assert.equal((await api(b,'GET','draft?device='+d.id)).status,410);
+ assert.equal((await api(b,'DELETE','device?id='+d.id+'&version='+d.revision)).status,409);
+ assert.equal((await api(a,'GET','action?id='+item.id)).value.action.title,'Owner private action');
+ assert.equal((await api(a,'GET','draft?device='+d.id)).value.cipher,envelope.sealed);
+ // A valid cursor containing someone else's ID remains an owner-local position.
+ const cursor=item.createdAt+':'+item.id;
+ const page=await api(b,'GET','actions?cursor='+cursor);assert.equal(page.status,200);assert.deepEqual(page.value.actions,[]);
+});

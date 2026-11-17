@@ -107,5 +107,5 @@ test('both production Workers retain native storage and bind the private drive o
     assert.match(config, /"binding":\s*"FILES_R2",\s*"bucket_name":\s*"inflite-private-files"/);
   }
   const workflow = readFileSync(new URL('../../../.github/workflows/worker-deploy.yml', import.meta.url), 'utf8');
-  assert.ok(workflow.indexOf('node .tools/workers/prepare-files-storage.mjs') < workflow.indexOf('wrangler@4.158.0 deploy'));
+  assert.ok(workflow.indexOf('node .tools/workers/prepare-files-storage.mjs') < workflow.indexOf('node .tools/tests/node_modules/wrangler/bin/wrangler.js deploy'));
 });

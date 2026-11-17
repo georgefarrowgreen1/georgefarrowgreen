@@ -23,8 +23,8 @@ import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint,
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.44";
-export const NEWS = "Liquid Glass across InFlite";
+export const BUILD = "2.45";
+export const NEWS = "Safer private diagnostics";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }

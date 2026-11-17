@@ -85,5 +85,5 @@ export async function setFocus(env, u, focus) {
 export async function photoOf(env, id, headers = {}, key = avatarKey) {
   const obj = env.BIO_R2 && (await env.BIO_R2.get(key(id)));
   if (!obj) return null;
-  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff", ...headers } });
+  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", ...headers } });
 }

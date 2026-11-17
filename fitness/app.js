@@ -38,11 +38,7 @@ import { todaySwaps, openOffer } from "./invites.js";
 import * as X from "./app.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
-// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
-// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself,
-// the updater every app shares (updates, below), and the hub (hub, below: every app as a page of inflite.ai).
-// (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
-// as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
+// Shared profile menu, updates, navigation and private diagnostics; plain script for modules and Mail.
 const IFL = (() => {
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
@@ -940,8 +936,16 @@ const IFL = (() => {
       for (let i = 0; i < 5; i++) { out += ALPHA[h % 32]; h = Math.floor(h / 32); }
       return `IF-${letterOf(app)}-${out}`;
     };
-    const scrub = (s, n = 400) => String(s ?? "").replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
-      .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
+    const scrub = (s, n = 400) => String(s ?? "").split("\n").map((line) => {
+  // JSON parsers include a fragment of the rejected body in their error. Never report that fragment.
+  if (!/^\s*(?:at\s|[\w.$]+@)/.test(line) && /(?:JSON (?:Parse|parse)|not valid JSON|in JSON at position|after JSON|(?:Unexpected token|Expected property name).*(?:JSON|position))/i.test(line)) {
+    const at = /(?:position|line|column)\s+\d+(?:\s+(?:column|line)\s+\d+)?/i.exec(line);
+    return "JSON parse failed" + (at ? " (" + at[0] + ")" : "");
+  }
+  return line;
+}).join("\n").replace(/(["']?)(password|passwd|secret|token|authorization|cookie|access_token|refresh_token|api[_-]?key)\1\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|Bearer\s+[^\s,;}]+|[^\s,;}]+)/gi, "$2=<redacted>")
+  .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
+  .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
     // (the app it's in: at the hub, the section's (its own page's own app aside); else the app's address, or what it said)
     const appNow = () => {
       const host = HOSTS[location.hostname.split(".")[0]], seg = HUB[location.pathname.split("/")[1]];
@@ -1258,7 +1262,10 @@ function dropFile(k) {
 // (and once a session, what's here squared with that: files kept before there was a limit, or not in the list, counted
 // the longest unused)
 async function tidyFiles() {
+  const lease = privateLease();
+  if (!privateLive(lease)) return;
   const keys = (await idb.keys().catch(() => [])).filter((k) => typeof k === "string" && k !== "me:last"), have = new Set(keys), list = filesUsed();
+  if (!privateLive(lease)) return;
   const all = [...keys.filter((k) => !list.includes(k)), ...list.filter((k) => have.has(k))], gone = all.splice(0, Math.max(0, all.length - FILES));
   store.set("files", all);
   for (const k of gone) idb.del(k).catch(() => {});
@@ -1293,6 +1300,14 @@ const S = {
   // (the rides' times of day, today's and the next 7 days': Ride At, and Today's: GET me's times, { day, start, stop, source })
   times: [],
 };
+// Private asynchronous work belongs to one signed-in lifetime, including signing back in as the same account.
+let privateEpoch = 0;
+const privateLease = () => ({ owner: S.me?.id, epoch: privateEpoch });
+const privateLive = (lease) => !!lease.owner && lease.epoch === privateEpoch && lease.owner === S.me?.id;
+function privateCheck(lease) {
+  if (!privateLive(lease)) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
+}
+function endPrivateWork() { privateEpoch++; healthView.key = null; held.clear(); }
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
   changed();
@@ -1508,10 +1523,16 @@ function readOff(name, bytes) {
 // (keep: false, read only for what's worked out from it, as activities.js routes reads old ones a few at a time: not
 // kept here, nor counted as used)
 async function load(a, keep = true) {
+  const lease = privateLease(), key = fileKey(a);
+  privateCheck(lease);
   if (full(a)) return full(a);
-  const here = await idb.get(fileKey(a)).catch(() => null), bytes = here || await A.fileOf(a.id);
-  if (keep) keepFile(fileKey(a), here ? null : bytes);
+  const here = await idb.get(key).catch(() => null);
+  privateCheck(lease);
+  const bytes = here || await A.fileOf(a.id);
+  privateCheck(lease);
+  if (keep) keepFile(key, here ? null : bytes);
   const r = await readOff(a.file || `activity.${a.type}`, bytes);
+  privateCheck(lease);
   // (a file of several parts, a triathlon's: the part that's this one, by when it started)
   const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
   if (!x) throw new Error("That file has no activity in it any more.");
@@ -1668,8 +1689,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.44";
-const NEWS = "Liquid Glass across InFlite";
+const BUILD = "2.45";
+const NEWS = "Stronger privacy across accounts";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -1992,22 +2013,28 @@ async function squash() {
   if (squash.busy || !A.canGzip() || !S.me) return;
   squash.busy = true;
   try {
-    const me = S.me.id, todo = S.own.filter((a) => !a.gz && !squash.tried.has(a.id)).slice(0, 25);
+    const lease = privateLease(), todo = S.own.filter((a) => !a.gz && !squash.tried.has(a.id)).slice(0, 25);
     for (const a of todo) {
-      if (S.me?.id !== me || document.querySelector(".btn[disabled]")) break;
+      if (!privateLive(lease) || document.querySelector(".btn[disabled]")) break;
       squash.tried.add(a.id);
       try {
-        const here = await idb.get(fileKey(a)).catch(() => null), bytes = here || await A.fileOf(a.id);
+        const key = fileKey(a), here = await idb.get(key).catch(() => null);
+        if (!privateLive(lease)) break;
+        const bytes = here || await A.fileOf(a.id);
+        if (!privateLive(lease)) break;
         const r = await readOff(a.file || `activity.${a.type}`, bytes), parts = r.activities;
+        if (!privateLive(lease)) break;
         const x = parts.find((y) => Math.abs(y.start - a.start) < 2000) || (parts.length === 1 ? parts[0] : null);
         if (!x) continue;
         // (only where it's smaller: the server takes nothing bigger than the file it replaces)
         const k = keptFile(x, a.sum, parts.length), gz = await A.gzip(k.bytes);
+        if (!privateLive(lease)) break;
         if (a.size && gz.length >= a.size) continue;
         const got = await A.replaceFile(a.id, { type: k.type, file: k.name }, k.name, gz);
+        if (!privateLive(lease)) break;
         Object.assign(a, { gz: true, type: k.type, file: k.name, size: got.size });
         // (this phone's copy, where it had one, as the account has it now; none kept that wasn't)
-        if (here) idb.put(fileKey(a), k.bytes).catch(() => {});
+        if (here) idb.put(key, k.bytes).catch(() => {});
       } catch (e) { if (e.status === 401 || e.offline) break; }
     }
   } finally { squash.busy = false; }
@@ -2021,9 +2048,12 @@ const near = (start) => S.own.some((x) => Math.abs(x.start - start) < 60e3) || [
 // Each activity kept with your account (its file as it came, and its figures as worked out here), one at a time, the
 // sheet saying how far it's got
 async function upload(got, btn) {
+  const lease = privateLease();
+  if (!privateLive(lease)) return;
   btn.disabled = true;
   const done = [], failed = [];
   for (const [i, a] of got.acts.entries()) {
+    if (!privateLive(lease)) return;
     btn.lastChild.textContent = got.acts.length > 1 ? `Uploading ${i + 1} of ${got.acts.length}…` : "Uploading…";
     // (come in meanwhile, from Garmin or Strava: here already)
     if (near(a.start)) continue;
@@ -2032,9 +2062,13 @@ async function upload(got, btn) {
     try {
       sum = figuresOf(a); k = keptFile(a, sum, a.parts || 1);
       meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
-      const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
+      const gz = await A.gzip(k.bytes);
+      if (!privateLive(lease)) return;
+      const r = await A.upload(meta, k.name, gz);
+      if (!privateLive(lease)) return;
       if (r.already) continue;
     } catch (e) {
+      if (!privateLive(lease)) return;
       if (e.status === 401) return signedOutHere();
       failed.push({ a, said: `${a.name}: ${e.message}` }); continue;
     } finally { upping.delete(a.start); }
@@ -2078,7 +2112,8 @@ const fromGarmin = (o) => fromSource("garmin", o);
 // (Garmin's files are zips, and Strava's gzipped: unpacked by the browser, which Safari before 16.4 can't do)
 const canUnpack = () => { try { new DecompressionStream("deflate-raw"); return true; } catch (_) { return false; } };
 async function fromSource(src, { quiet = false } = {}) {
-  const c = SRC[src], waiting = c.state()?.waiting || [];
+  const lease = privateLease(), c = SRC[src], waiting = c.state()?.waiting || [];
+  if (!privateLive(lease)) return 0;
   if (!waiting.length || fromSource[src]) return 0;
   // (a browser that can't unpack them leaves them waiting, for a phone or computer that can, rather than taking each for
   // a file with nothing in it)
@@ -2090,9 +2125,10 @@ async function fromSource(src, { quiet = false } = {}) {
   const added = [], left = [];
   try {
     for (const w of waiting) {
+      if (!privateLive(lease)) return 0;
       let acts;
-      try { acts = await c.read(w, await c.file(w.id)); }
-      catch (e) { if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
+      try { const bytes = await c.file(w.id); if (!privateLive(lease)) return 0; acts = await c.read(w, bytes); if (!privateLive(lease)) return 0; }
+      catch (e) { if (!privateLive(lease)) return 0; if (e.status === 401) return signedOutHere(true); if (e.offline || e.status >= 500) break; acts = []; }
       let kept = 0;
       for (const [k, a] of acts.entries()) {
         // (one you have already, or on its way: the same ride, uploaded, or from the other)
@@ -2103,8 +2139,12 @@ async function fromSource(src, { quiet = false } = {}) {
         try {
           sum = figuresOf(a); f = keptFile(a, sum, acts.length);
           meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
-          r = await A.upload(meta, f.name, await A.gzip(f.bytes));
+          const gz = await A.gzip(f.bytes);
+          if (!privateLive(lease)) return 0;
+          r = await A.upload(meta, f.name, gz);
+          if (!privateLive(lease)) return 0;
         } catch (e) {
+          if (!privateLive(lease)) return 0;
           if (e.status === 401) return signedOutHere(true);
           // (one the account won't take as it is (its date can't be right, say), or that couldn't be worked out here: left
           // out, and said, so it doesn't hold up every one after it; anything else (offline, the server busy, your space
@@ -2123,6 +2163,7 @@ async function fromSource(src, { quiet = false } = {}) {
       if (kept < 0) break;
       // (nothing in it to keep: one you have already, or one with nothing Fitness can read)
       if (!kept) await c.done(w.id).catch(() => {});
+      if (!privateLive(lease)) return 0;
       c.state().waiting = c.state().waiting.filter((x) => x.id !== w.id);
     }
   } finally { fromSource[src] = false; }
@@ -2422,12 +2463,13 @@ function heldKey() {
   return null;
 }
 function healthView() {
-  const x = S.health, key = healthView.key || heldKey();
+  const lease = privateLease(), x = S.health, key = healthView.key || heldKey();
   const copy = (text, what) => h("button.pill.small", { type: "button", onclick: () => navigator.clipboard?.writeText(text).then(() => toast(`${what} copied`), () => toast("Couldn’t copy: press and hold to select it", true)) }, "Copy");
   const make = async (btn) => {
+    if (!privateLive(lease)) return;
     btn.disabled = true; btn.textContent = "Making Your Key…";
-    try { const r = await A.healthKey(); healthView.key = r.key; S.health = { ...r, key: undefined }; store.set("hk", { id: S.me?.id, key: r.key, at: Date.now() }); }
-    catch (e) { btn.disabled = false; btn.textContent = "Try Again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
+    try { const r = await A.healthKey(); if (!privateLive(lease)) return; healthView.key = r.key; S.health = { ...r, key: undefined }; store.set("hk", { id: lease.owner, key: r.key, at: Date.now() }); }
+    catch (e) { if (!privateLive(lease)) return; btn.disabled = false; btn.textContent = "Try Again"; if (e.status === 401) return signedOutHere(); return toast(e.message, true); }
     Sheet.redraw();
   };
   const step = (n, title, sub) => h("div.row.plain", {}, h("span.ic.blue", {}, h("b", { text: String(n) })), h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })));
@@ -2453,14 +2495,16 @@ function healthView() {
   const sure = h("p.foot", { text: "The key stops working, and the nights it sent are forgotten." });
   sure.hidden = true;
   const off = async (e) => {
+    if (!privateLive(lease)) return;
     const b = e.currentTarget;
     if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Turn Off Apple Health"; sure.hidden = false; return; }
-    try { S.health = await A.healthOff(); healthView.key = null; store.set("hk", null); } catch (e) { return toast(e.message, true); }
+    try { const r = await A.healthOff(); if (!privateLive(lease)) return; S.health = r; healthView.key = null; store.set("hk", null); } catch (e) { if (!privateLive(lease)) return; return toast(e.message, true); }
     sheetBack(); redraw(); toast("Apple Health off");
   };
   const check = async (btn) => {
+    if (!privateLive(lease)) return;
     btn.disabled = true; btn.textContent = "Checking…";
-    try { S.health = await A.health(); } catch (e) { return toast(e.message, true); } finally { btn.disabled = false; btn.textContent = "Check Again"; }
+    try { const r = await A.health(); if (!privateLive(lease)) return; S.health = r; } catch (e) { if (!privateLive(lease)) return; return toast(e.message, true); } finally { btn.disabled = false; btn.textContent = "Check Again"; }
     Sheet.redraw(); redraw();
   };
   const again = h("button.btn.quiet", { type: "button", onclick: () => check(again) }, "Check Again");
@@ -2733,6 +2777,7 @@ addEventListener("scroll", () => document.documentElement.style.setProperty("--b
 function welcome(note = null, { again = !!welcome.shown } = {}) {
   welcome.shown = true;
   coach.reset();
+  endPrivateWork();
   S.me = null;
   document.body.classList.add("out");
   IFL.warm();                    // (Sign in's connection to the sign-in page made ahead, while it's on the screen)
@@ -2937,6 +2982,7 @@ const lastMe = {
 // the account now: what's changed since the copy here (its activities put together with those it has, and those gone
 // left out), or all of it where there's no copy, or it's another account's
 async function fetchMe(base = meBase) {
+  const epoch = privateEpoch;
   let m = await A.me(base?.id && base.at ? base.at : null);
   if (m.signedIn && m.ids) {
     if (base?.id !== m.id) m = await A.me();
@@ -2947,12 +2993,14 @@ async function fetchMe(base = meBase) {
       m = { ...m, acts: [...byId.values()].sort((a, b) => b.start - a.start), ids: undefined, more: !!base.more || m.ids.length > byId.size };
     }
   }
+  if (epoch !== privateEpoch) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
   if (m.signedIn) lastMe.put(m);
   return m;
 }
 // (kept: the copy kept on this phone, drawn at once; it may be another account's, the site having been signed into as
 // someone else since, so nothing's done for it, nothing fetched or kept, till the account says it's the same one)
 function arrive(m, kept = false) {
+  if (S.me?.id && S.me.id !== m.id) endPrivateWork();
   if (!kept) globalThis.InFliteAppearance?.fromApp(m);
   if (!kept && m.appearance) lookOf(m.appearance);
   S.me = m; S.ver = m.ver || 0; S.pulledAt = Date.now(); S.inStepWorkouts = A.workoutIds(m.data);
@@ -3087,6 +3135,7 @@ async function signOutHere(already = false) {
   // (at InFlite's hub, signing out is You's, for the whole of InFlite: its device, Chats' keys and Today's copies go with
   // it, spec §11.5; Fitness's own would sign the site out and leave the window. Found signed out there, just this page's)
   if (already !== true && HUB.on) return toYou();
+  endPrivateWork();
   // (this phone's morning reminder goes with the sign-in: found signed out, here only, the account's server forgetting it
   // with the sign-in, functions/_fitpush.js)
   if (already !== true && morningOf()) await morningOffHere();
@@ -3110,11 +3159,13 @@ const signedOutHere = () => signOutHere(true);
 // (this phone's copies of your files, all of them: the account as last fetched, the activities' files, and what's kept
 // for them; → when they're gone)
 function forgetCopies() {
+  endPrivateWork(); meBase = null;
   for (const k of ["meAt", "files", "hk", "today-sent", "today-swaps"]) store.set(k, null);
   return idb.clear().catch(() => {});
 }
 // (another account's activities' files, and what's kept for them, found here: let go)
 function forgetFiles() {
+  endPrivateWork();
   for (const k of filesUsed()) idb.del(k).catch(() => {});
   for (const k of ["files", "hk", "today-sent"]) store.set(k, null);
 }

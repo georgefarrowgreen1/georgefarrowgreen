@@ -142,7 +142,7 @@ async function tell(env, events) {
       // (one held off the page, the owner's alone)
       !e.held && tellSubscribers(env, { svcs: e.svcs || [], title: e.open ? e.title : `${e.title.replace(/(?: not (?:answering|running|working)| needs attention)$/, "")}: working again`, body: e.text, id: e.id }),
     ].filter(Boolean)));
-  } catch (e) { console.error("status tell", e && e.message); }
+  } catch (e) { console.error("status notification failed"); }
 }
 
 // ---- from inside: the other Workers over the direct links, the database and storage, and what the apps rely on ----
@@ -582,7 +582,7 @@ export async function tellSubscribers(env, { svcs = [], maint = false, title, bo
       if (res === "gone") await D.prepare("DELETE FROM status_subs WHERE endpoint = ?").bind(r.endpoint).run();
     }));
     return to.length;
-  } catch (e) { console.error("status subscribers", e && e.message); return 0; }
+  } catch (e) { console.error("status subscriber notification failed"); return 0; }
 }
 
 // ---- the incident feed (Atom), for any news reader ----
@@ -648,7 +648,7 @@ export async function statusRoute(ctx, url) {
     return await cached(cacheKey(env, `/api/status/day?svc=${svc}`), () => dayOfChecks(env, svc), 60);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    console.error("status", e && (e.stack || e.message || e));
+    console.error("status request failed");
     return json({ error: "The status checks can’t be read just now." }, 500);
   }
 }
@@ -669,7 +669,7 @@ export async function statusHost(ctx, url) {
   if (!["GET", "HEAD"].includes(ctx.request.method)) return new Response("Not allowed.", { status: 405 });
   if (url.pathname === "/feed.xml") {
     try { return await cached(cacheKey(ctx.env, "/feed.xml"), () => feed(ctx.env), 120, (x) => new Response(x, { headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "public, max-age=120", "X-Content-Type-Options": "nosniff" } })); }
-    catch (e) { console.error("status feed", e && e.message); return new Response("The feed can’t be read just now.", { status: 503 }); }
+    catch (e) { console.error("status feed failed"); return new Response("The feed can’t be read just now.", { status: 503 }); }
   }
   const page = url.pathname === "/" || url.pathname === "/index.html";
   if (!page && !FILES.test(url.pathname)) return notFound();

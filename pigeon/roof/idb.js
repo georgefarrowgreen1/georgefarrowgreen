@@ -34,8 +34,10 @@ const idb = {
       r.onerror = () => { clearTimeout(late); rej(r.error); };
     });
   },
-  async run(mode, fn, again = true) {
+  async run(mode, fn, again = true, allowGone = false) {
     const db = await this.open();
+    // Opening or reconnecting can outlast forget(). Recheck at the actual transaction boundary.
+    if (mode === "readwrite" && goneAt && !allowGone) return null;
     try {
       return await new Promise((res, rej) => {
         const tx = db.transaction(STORE, mode), req = fn(tx.objectStore(STORE));
@@ -43,7 +45,7 @@ const idb = {
         tx.onabort = () => rej(tx.error || new Error("Storage write was cancelled."));
       });
     } catch (e) {
-      if (again && e?.name === "InvalidStateError") { this.db = null; return this.run(mode, fn, false); }
+      if (again && e?.name === "InvalidStateError") { this.db = null; return this.run(mode, fn, false, allowGone); }
       throw e;
     }
   },
@@ -51,7 +53,7 @@ const idb = {
   set(k, v) { if (goneAt) return Promise.resolve(null); return this.run("readwrite", (s) => s.put(v, k)).catch(() => null); },
   del(k) { if (goneAt) return Promise.resolve(null); return this.run("readwrite", (s) => s.delete(k)).catch(() => null); },
   // (forget's own deletes: the one writer allowed after gone(), as it's what makes the account go)
-  wipe(k) { return this.run("readwrite", (s) => s.delete(k)).catch(() => null); },
+  wipe(k) { return this.run("readwrite", (s) => s.delete(k), true, true).catch(() => null); },
 };
 export function locked(key, fn) {
   const L = globalThis.navigator?.locks;

@@ -29,7 +29,15 @@ export function issueCode(app, kind, words, where = "") {
   return `IF-${APP_LETTER[app] || "X"}-${out}`;
 }
 // (words that could be anyone's: emails, long runs that could be keys or tokens, the query of any address)
-export const scrub = (s, n = 500) => String(s ?? "").replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
+export const scrub = (s, n = 500) => String(s ?? "").split("\n").map((line) => {
+  // JSON parsers include a fragment of the rejected body in their error. Never report that fragment.
+  if (!/^\s*(?:at\s|[\w.$]+@)/.test(line) && /(?:JSON (?:Parse|parse)|not valid JSON|in JSON at position|after JSON|(?:Unexpected token|Expected property name).*(?:JSON|position))/i.test(line)) {
+    const at = /(?:position|line|column)\s+\d+(?:\s+(?:column|line)\s+\d+)?/i.exec(line);
+    return "JSON parse failed" + (at ? " (" + at[0] + ")" : "");
+  }
+  return line;
+}).join("\n").replace(/(["']?)(password|passwd|secret|token|authorization|cookie|access_token|refresh_token|api[_-]?key)\1\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|Bearer\s+[^\s,;}]+|[^\s,;}]+)/gi, "$2=<redacted>")
+  .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
   .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
 const CODE = /^IF-[A-Z]-[0-9A-Z]{4,6}$/;
 const text = (v, n) => (typeof v === "string" ? scrub(v, n) : "");
@@ -56,7 +64,7 @@ async function keep(env, r) {
     .bind(id, r.code, r.app, r.kind, Date.now(), r.version || null, r.words || null, r.where || null, r.stack || null, r.path || null, r.device || null, r.note || null, r.detail ? JSON.stringify(r.detail) : null, r.user || null, r.reporter || null).run();
   // (the same code five times in ten minutes: an incident on status.inflite.ai, where the owner has that on (a problem
   // reported by hand is each its own, never a burst))
-  if (r.kind !== "manual") await import("./_status.js").then((m) => m.burstCheck(env, r.code, r.app)).catch((e) => console.error("status burst", e && e.message));
+  if (r.kind !== "manual") await import("./_status.js").then((m) => m.burstCheck(env, r.code, r.app)).catch((e) => console.error("status burst failed"));
   return id;
 }
 
@@ -146,7 +154,7 @@ export async function bugsRoute(ctx, url) {
     return json({ error: "Not found." }, 404);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    console.error("bugs", e && (e.stack || e.message || e));
+    console.error("bug report storage failed");
     return json({ error: "That report couldn’t be kept just now." }, 500);
   }
 }

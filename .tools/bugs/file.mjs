@@ -4,6 +4,7 @@
 // wrong and where, the page's path, the kind of device, and how often. What a sender wrote stays in the database, for
 // Admin (account/admin.js: Server, Bug reports); the issue says only that a note came with it.
 //   SITE=… TICK_SECRET=… GITHUB_TOKEN=… GITHUB_REPOSITORY=owner/repo node .tools/bugs/file.mjs
+import { scrub } from "../../functions/_bugs.js";
 const SITE = (process.env.SITE || "https://inflite-apps.georgefarrowgreen.workers.dev").replace(/\/+$/, "");
 const SECRET = process.env.TICK_SECRET, GH = process.env.GITHUB_TOKEN, REPO = process.env.GITHUB_REPOSITORY;
 if (!SECRET || !GH || !REPO) { console.log("No tick secret, GitHub token or repository: nothing filed."); process.exit(0); }
@@ -35,7 +36,13 @@ if ((await gh(`/repos/${REPO}`))?.has_issues === false) {
   process.exit(0);
 }
 const byCode = new Map();
-for (const b of bugs) (byCode.get(b.code) || byCode.set(b.code, []).get(b.code)).push(b);
+for (const raw of bugs) {
+  // Older pending reports predate current redaction. Sanitize again at the public publication boundary.
+  const b = { ...raw };
+  for (const key of ["app", "kind", "version", "words", "at_where", "path", "device", "stack"]) b[key] = scrub(raw[key], key === "stack" ? 1500 : 500);
+  b.path = b.path.replace(/[?#].*$/, "");
+  (byCode.get(b.code) || byCode.set(b.code, []).get(b.code)).push(b);
+}
 
 // (the issues already filed under a code: their titles start [IF-…])
 const filed = new Map();

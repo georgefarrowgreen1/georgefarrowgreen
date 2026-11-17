@@ -12,11 +12,7 @@ import { waitingDigest } from "./digest.js";
 import { surfaceKm, moonKm, marsKm, spaceKinds, spaceFlight, spaceNow, legOf, lunarDay, marsClock } from "./space.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
-// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
-// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself,
-// the updater every app shares (updates, below), and the hub (hub, below: every app as a page of inflite.ai).
-// (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
-// as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
+// Shared profile menu, updates, navigation and private diagnostics; plain script for modules and Mail.
 const IFL = (() => {
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
@@ -914,8 +910,16 @@ const IFL = (() => {
       for (let i = 0; i < 5; i++) { out += ALPHA[h % 32]; h = Math.floor(h / 32); }
       return `IF-${letterOf(app)}-${out}`;
     };
-    const scrub = (s, n = 400) => String(s ?? "").replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
-      .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
+    const scrub = (s, n = 400) => String(s ?? "").split("\n").map((line) => {
+  // JSON parsers include a fragment of the rejected body in their error. Never report that fragment.
+  if (!/^\s*(?:at\s|[\w.$]+@)/.test(line) && /(?:JSON (?:Parse|parse)|not valid JSON|in JSON at position|after JSON|(?:Unexpected token|Expected property name).*(?:JSON|position))/i.test(line)) {
+    const at = /(?:position|line|column)\s+\d+(?:\s+(?:column|line)\s+\d+)?/i.exec(line);
+    return "JSON parse failed" + (at ? " (" + at[0] + ")" : "");
+  }
+  return line;
+}).join("\n").replace(/(["']?)(password|passwd|secret|token|authorization|cookie|access_token|refresh_token|api[_-]?key)\1\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|Bearer\s+[^\s,;}]+|[^\s,;}]+)/gi, "$2=<redacted>")
+  .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
+  .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
     // (the app it's in: at the hub, the section's (its own page's own app aside); else the app's address, or what it said)
     const appNow = () => {
       const host = HOSTS[location.hostname.split(".")[0]], seg = HUB[location.pathname.split("/")[1]];
@@ -1232,8 +1236,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.13";            // shown in InFlite's menu
-const APP_NEWS = "Liquid Glass across InFlite";       // (said once it's in)
+const APP_VERSION = "2.14";            // shown in InFlite's menu
+const APP_NEWS = "Stronger message and account privacy";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1322,6 +1326,10 @@ const S = {
   live: { since: Date.now(), seen: new Map(), typingIn: new Map(), typingOut: null, typingOk: true, quietSince: Date.now(), timer: 0, fails: 0, off: false,
     lastSync: 0, lastGroupLoad: new Map(), busy: false, again: false, lastAt: 0, next: 3000, okAt: 0, keyAt: 0, after: new Map(), fullAt: new Map(), tsig: "" },
 };
+// A private read/decrypt must never complete into a later account or sign-in lifetime.
+let privacyEpoch = 0;
+const privacyLease = () => ({ id: S.me?.id, token: S.token, priv: S.priv, pub: S.myPub, epoch: privacyEpoch });
+const privacyLive = (lease) => !!lease.id && lease.epoch === privacyEpoch && lease.id === S.me?.id && lease.token === S.token && lease.priv === S.priv && lease.pub === S.myPub;
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
 // passkeys belong to georgefarrowgreen.com, which lets Chat's address on inflite.ai use them (as the server has it: rpIdFor)
@@ -1740,14 +1748,16 @@ const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 // server: safety numbers and "Your Encryption Key" are built from it, so a
 // server that showed friends a different key for you couldn't hide it.
 async function useKeys(token, me, privJwk) {
+  const epoch = ++privacyEpoch;
+  const current = () => { if (epoch !== privacyEpoch || S.token !== token || S.me?.id !== me.id) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" }); };
   S.token = token; S.me = me; S.ended = null;
   S.secretJwk = privJwk;                          // memory only: lets a new passkey lock its own copy
-  S.priv = await E2E.importPriv(privJwk);
+  const priv = await E2E.importPriv(privJwk); current(); S.priv = priv;
   S.myPub = { kty: "EC", crv: "P-256", x: privJwk.x, y: privJwk.y };
-  S.fp = await E2E.fingerprint(S.myPub);
+  const fp = await E2E.fingerprint(S.myPub); current(); S.fp = fp;
   S.pairs = new Map(); S.plain = new Map(); S.msgs = new Map();
-  S.pins = (await idb.get("pins:" + me.id)) || {};
-  await restorePins();
+  const pins = (await idb.get("pins:" + me.id)) || {}; current(); S.pins = pins;
+  await restorePins(); current();
   checkMyKey(me);
   const saved = await idb.set("session", { token, me, priv: S.priv, pub: S.myPub });
   if (saved === null) console.warn("Chat: couldn’t save the session on this phone; you’ll sign in again next time.");
@@ -1756,6 +1766,7 @@ async function useKeys(token, me, privJwk) {
 // Pigeons still waiting for signal, and what you'd started writing, stay on this phone, sealed as they are, for when
 // you're back in as you (afterSignIn), and the welcome says why you're there)
 async function forget(ended) {
+  privacyEpoch++;
   if (ended && S.me) S.ended ||= { waiting: S.outbox.filter((o) => !o.err).length };
   S.photos.forEach((u) => URL.revokeObjectURL(u));
   S.avatars?.forEach((u) => { if (u) URL.revokeObjectURL(u); });
@@ -2261,6 +2272,8 @@ let syncing = null;
 // What the server says (fresh, or the copy kept on this phone): friends,
 // groups and each chat's last message, opened with the key on this phone.
 async function applySync(d) {
+  const lease = privacyLease();
+  if (!privacyLive(lease) || d.me?.id !== lease.id) return;
   S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn; S.birds = d.birds?.birds || []; S.hall = d.birds?.hall || []; S.feathers = d.feathers ?? S.feathers ?? 0;
   // (Today First's: whether your notifications are held now (a ride, quiet hours), your calls and rides agreed with a
   // friend, for the held row at the hub and the send sheet's reasons)
@@ -2269,6 +2282,7 @@ async function applySync(d) {
   for (const f of S.friends) {
     checkPin(f);
     if (f.last) await decrypt(f.id, f.last);
+    if (!privacyLive(lease)) return;
     // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
     if (f.last && !f.last.flying && !f.last.lost && !f.last.waiting && !S.seenLanded.has(f.last.id)) {
       S.seenLanded.add(f.last.id);                 // (one landing in front of you comes down on screen: playKeyed)
@@ -2287,6 +2301,7 @@ async function applySync(d) {
     if (!known) { S.pins["g:" + g.id] = ids; savePins(); }
     g.unseen = known ? ids.filter((id) => !known.includes(id)) : [];
     if (g.last) await decryptGroup(g, g.last);
+    if (!privacyLive(lease)) return;
     const l = g.last;
     if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
       S.seenLanded.add(l.id);
@@ -2392,22 +2407,34 @@ function mergePins(mine, theirs) {
 }
 // the copy on the server, opened (null: there's none, or it won't open, which asking again won't change; no answer throws)
 async function serverPins() {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return null;
   const r = await api("pins");
-  const p = r.pins ? await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins).catch(() => null) : null;
+  if (!privacyLive(lease)) return null;
+  const p = r.pins ? await E2E.open(await pairFor(lease.pub), { type: "pins", id: "pins", from: lease.id, to: lease.id }, r.pins).catch(() => null) : null;
+  if (!privacyLive(lease)) return null;
   return p?.pins && typeof p.pins === "object" ? p.pins : null;
 }
 let pinsTimer = 0;
 function savePins() {
-  if (!S.me) return;
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   idb.set("pins:" + S.me.id, S.pins);
   clearTimeout(pinsTimer);
   pinsTimer = setTimeout(async () => {
-    if (S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
+    if (!privacyLive(lease) || S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
     try {
       const had = await serverPins();            // (what another of your phones saved since stays)
+      if (!privacyLive(lease)) return;
       if (had) { S.pins = mergePins(S.pins, had); await idb.set("pins:" + S.me.id, S.pins); }
-      const ct = await E2E.seal(await pairFor(S.myPub), pinsMeta(), { pins: S.pins, at: Date.now() });
-      await api("pins", { method: "POST", body: { pins: ct } }); await idb.set("pinsup:" + S.me.id, Date.now());
+      if (!privacyLive(lease)) return;
+      const pair = await pairFor(lease.pub);
+      if (!privacyLive(lease)) return;
+      const ct = await E2E.seal(pair, { type: "pins", id: "pins", from: lease.id, to: lease.id }, { pins: S.pins, at: Date.now() });
+      if (!privacyLive(lease)) return;
+      await api("pins", { method: "POST", body: { pins: ct } });
+      if (!privacyLive(lease)) return;
+      await idb.set("pinsup:" + lease.id, Date.now());
     } catch (_) {}
   }, 1500);
 }
@@ -2415,21 +2442,24 @@ function savePins() {
 // (no answer: the next sync asks again, before it trusts anything it shows; noted on the
 // phone, so a restart before then still does)
 async function restorePins() {
-  const tok = S.token, id = S.me.id;
-  S.pinsUnread = !!(await idb.get("pinsunread:" + id).catch(() => null));
+  const lease = privacyLease(), tok = S.token, id = S.me.id;
+  const unread = !!(await idb.get("pinsunread:" + id).catch(() => null));
+  if (!privacyLive(lease)) return;
+  S.pinsUnread = unread;
   if (Object.keys(S.pins).length) return;
   let p;
   // (a sign-in that had ended signs out as it's asked: that's not "no answer", and start carries on to the welcome)
-  try { p = await serverPins(); } catch (_) { if (S.token === tok) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
-  if (p && S.token === tok) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
+  try { p = await serverPins(); } catch (_) { if (privacyLive(lease)) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
+  if (p && privacyLive(lease)) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
 }
 // ...and once it answers, the server's copy wins for each friend's key, so one that changed meanwhile is
 // flagged, with what this phone trusted meanwhile added. True once done.
 async function pinsCatchUp() {
-  const tok = S.token; let p;
+  const lease = privacyLease(); let p;
   try { p = await serverPins(); } catch (_) { return false; }
-  if (S.token !== tok) return false;
-  S.pinsUnread = false; await idb.del("pinsunread:" + S.me.id);
+  if (!privacyLive(lease)) return false;
+  S.pinsUnread = false; await idb.del("pinsunread:" + lease.id);
+  if (!privacyLive(lease)) return false;
   if (p) S.pins = mergePins(p, S.pins);
   savePins();
   return true;
@@ -2490,16 +2520,21 @@ function keepPlain(id, ctx, o) {
 }
 const seenPlain = (id, ctx) => S.plain.has(id) && (!S.pctx.has(id) || S.pctx.get(id) === ctx);
 async function decrypt(fid, m, kind = m.stopover ? "via" : "msg") {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   const ctx = ctxOf(kind, m, fid);
   if (!m.ct || seenPlain(m.id, ctx)) return;
   const f = friend(fid);
   const tries = keysOf(f);
   for (const k of tries) {
+    if (!privacyLive(lease)) return;
     try {
       const o = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: m.to, type: kind }, m.ct);
+      if (!privacyLive(lease)) return;
       return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
     } catch (_) {}
   }
+  if (!privacyLive(lease)) return;
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!f.keyChanged });
 }
 /* ---------- groups ----------
@@ -2516,19 +2551,24 @@ const memberMs = (p, k) => {
 const member = (g, id) => g?.members.find((p) => p.id === id);
 const others = (g) => g.members.filter((p) => p.id !== S.me.id);
 async function decryptGroup(g, m, kind = "msg") {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   const ctx = ctxOf(kind, m, g.id);
   if (!m.body || !m.key || seenPlain(m.id, ctx)) return;
   const from = m.from === S.me.id ? { id: S.me.id, pub: S.myPub || S.me.pub } : member(g, m.from);
   const tries = !from ? [] : from.id === S.me.id ? [keyId(from.pub)] : keysOf(from);
   for (const k of tries) {
+    if (!privacyLive(lease)) return;
     try {
-      const w = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: S.me.id, type: "wrap" }, m.key);
+      const w = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: lease.id, type: "wrap" }, m.key);
       // the sender's sealed key vouches for the body (v2); an older body has no hash to check
       if (w.h ? (await E2E.hash(m.body)) !== w.h : JSON.parse(m.body).v !== 1) throw new Error("not the sender’s body");
       const o = await E2E.openGroup({ id: m.id, from: m.from, group: g.id, type: kind }, w.k, m.body);
+      if (!privacyLive(lease)) return;
       return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
     } catch (_) {}
   }
+  if (!privacyLive(lease)) return;
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
 async function loadGroup(gid) { return loadChat(gid); }
@@ -2836,9 +2876,10 @@ function cacheSave() {
   }, 600);
 }
 async function cacheLoad() {
+  const lease = privacyLease();
   let c = null; const me = S.me;                   // (who's signed in, from the session: a bad copy mustn't change it)
   try { c = await idb.get("cache:" + S.me.id); } catch (_) {}
-  if (!c || c.v !== CACHE_V || !c.sync) return false;
+  if (!privacyLive(lease) || !c || c.v !== CACHE_V || !c.sync) return false;
   try {
     S.chatRaw = new Map(Array.isArray(c.chats) ? c.chats : []);
     if (c.skies) S.skies = c.skies;
@@ -2847,10 +2888,12 @@ async function cacheLoad() {
   }
   catch (e) {
     // a saved copy this version can't read: start from the server instead of not at all
-    console.warn("cache", e?.message); S.me = me; idb.del("cache:" + me.id);
+    if (!privacyLive(lease)) return false;
+    console.warn("cache could not be restored"); S.me = me; idb.del("cache:" + me.id);
     Object.assign(S, { raw: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [], birds: [], hall: [], chatRaw: new Map(), msgs: new Map() });
     return false;
   }
+  if (!privacyLive(lease)) return false;
   S.fromCache = true;
   return true;
 }
@@ -2864,19 +2907,26 @@ const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(d
 async function draftsSave() {
   clearTimeout(draftsTimer);
   if (!S.me || !S.priv || !S.myPub) return;
-  const me = S.me.id, d = new Map(S.drafts);
+  const lease = privacyLease(), me = lease.id, meta = { type: "draft", id: "drafts", from: me, to: me }, d = new Map(S.drafts);
   // (the open chat's as it is in the box; not words going up with a photo or a voice pigeon)
   if (S.view === "chat" && S.chat && $ta) { const v = $ta.value; if (v.trim() && !(S.busy && S.sending && S.sendingTo === S.chat)) d.set(S.chat, v); else d.delete(S.chat); }
   try {
-    const ct = d.size ? await E2E.seal(await pairFor(S.myPub), draftsMeta(), { d: [...d] }) : null;
-    if (S.me?.id !== me) return;                   // (signed out meanwhile: nothing of theirs kept)
+    const pair = d.size ? await pairFor(lease.pub) : null;
+    if (!privacyLive(lease)) return;
+    const ct = d.size ? await E2E.seal(pair, meta, { d: [...d] }) : null;
+    if (!privacyLive(lease)) return;                   // (signed out meanwhile: nothing of theirs kept)
     if (ct) await idb.set("drafts:" + me, ct); else await idb.del("drafts:" + me);
   } catch (_) {}
 }
 async function draftsLoad() {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   try {
-    const ct = await idb.get("drafts:" + S.me.id); if (!ct) return;
-    const o = await E2E.open(await pairFor(S.myPub), draftsMeta(), ct);
+    const ct = await idb.get("drafts:" + lease.id); if (!ct || !privacyLive(lease)) return;
+    const pair = await pairFor(lease.pub);
+    if (!privacyLive(lease)) return;
+    const o = await E2E.open(pair, { type: "draft", id: "drafts", from: lease.id, to: lease.id }, ct);
+    if (!privacyLive(lease)) return;
     for (const [id, v] of Array.isArray(o?.d) ? o.d : []) if (typeof id === "string" && typeof v === "string" && v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
   } catch (_) {}                                   // (one this key can't open: as if there were none)
 }
@@ -6593,22 +6643,29 @@ const outKey = () => "outbox:" + S.me.id;
 async function outboxSave() { try { await idb.set(outKey(), S.outbox.map(({ id, to, path, meta, blob, kind, at, err }) => ({ id, to, path, meta, blob, kind, at, err }))); } catch (_) {} }
 async function outboxAdd(o) { S.outbox.push(o); await outboxSave(); }
 async function outboxLoad() {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   let list = [];
   try { list = (await idb.get(outKey())) || []; } catch (_) {}
+  if (!privacyLive(lease)) return;
   S.outbox = list.filter((o) => o && o.id);
   for (const o of S.outbox) { try { await outboxOpen(o); } catch (e) { console.warn("outbox", e?.message); o.err = o.err || "This pigeon couldn’t be opened on this phone."; } }
 }
 // what one says, opened again with this phone's key (after a reload)
 async function outboxOpen(o) {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   if (!S.plain.has(o.id)) {
     const g = group(o.to);
     if (g) await decryptGroup(g, { id: o.id, from: S.me.id, body: o.meta.body, key: o.meta.keys[S.me.id] });
     else if (friend(o.to)) await decrypt(o.to, { id: o.id, from: S.me.id, to: o.to, ct: o.meta.ct });
   }
+  if (!privacyLive(lease)) return;
   const p = S.plain.get(o.id);
   if (o.blob && (p?.p || p?.v) && !S.photos.has(o.id)) {
     try {
       const plain = p.v ? await E2E.openPhoto(o.id, p.v, o.blob, "voice") : await E2E.openPhoto(o.id, p.p, o.blob);
+      if (!privacyLive(lease)) return;
       S.photos.set(o.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
     } catch (_) {}
   }

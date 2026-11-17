@@ -1,14 +1,14 @@
 // Immutable, quota-charged file revisions. A replacement never hides the current
 // file; the account CAS commits bytes + history + quota in one transaction.
 import { HttpError, randomToken } from './_pigeon.js';
-import { filesdb, mutate, putExact, fileId, itemOf, FILE_LIMITS } from './_files.js';
+import { filesdb, ensureFilesAccount, mutate, putExact, fileId, itemOf, FILE_LIMITS } from './_files.js';
 const fail=(s,m)=>{throw new HttpError(s,m)};
 const op=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{16,80}$/.test(v)?v:fail(400,'That upload reference is invalid.');
 const node=(D,o,id)=>D.prepare('SELECT * FROM ifl_files_nodes WHERE user_id=? AND id=?').bind(o,id).first();
 const reservation=(D,o,id)=>D.prepare('SELECT * FROM ifl_files_replacements WHERE user_id=? AND operation_id=?').bind(o,id).first();
 const ready=r=>{if(!r||r.kind!=='file'||r.state!=='ready'||r.trash_at)fail(404,'That file is no longer available.');return r};
 export async function fileHistory(env,owner,id){
- const D=await filesdb(env),r=ready(await node(D,owner,fileId(id)));
+ const D=await filesdb(env);await ensureFilesAccount(D,owner);const r=ready(await node(D,owner,fileId(id)));
  const rows=await D.prepare('SELECT id,size,mime,created,version FROM ifl_files_history WHERE user_id=? AND file_id=? ORDER BY version DESC LIMIT 20').bind(owner,id).all();
  return {item:itemOf(r),versions:rows.results.map(v=>({id:v.id,size:v.size,mime:v.mime,createdAt:v.created,version:v.version}))};
 }
@@ -60,7 +60,7 @@ export async function uploadReplacement(env,owner,uploadId,request){
  }
 }
 export async function historicalContent(env,owner,id,versionId){
- const D=await filesdb(env),current=ready(await node(D,owner,fileId(id)));
+ const D=await filesdb(env);await ensureFilesAccount(D,owner);const current=ready(await node(D,owner,fileId(id)));
  const r=await D.prepare('SELECT * FROM ifl_files_history WHERE user_id=? AND file_id=? AND id=?').bind(owner,id,fileId(versionId)).first();if(!r)fail(404,'That version is no longer available.');
  const object=await env.FILES_R2.get(r.storage_key);if(!object||object.size!==r.size)fail(404,'That version is no longer available.');return {row:{...current,size:r.size,mime:r.mime},object,range:null};
 }

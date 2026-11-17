@@ -254,6 +254,7 @@ test('Strava (S2-D13, RI6): Devices asks POST strava/connect as it opens; the li
   globalThis.document = docWithTemplates();
   core.S.me = null;
   core.adopt(JSON.parse(JSON.stringify(RECORD)));
+  core.S.me = { id: "u-fx-1" }; // Private provider requests require the same authenticated owner as fw.session.
   core.S.strava = { on: false, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
   const URL_ = 'https://www.strava.com/oauth/authorize?client_id=1&state=abc';
   let release;
@@ -324,6 +325,7 @@ test('Strava failing (offline, then signed out): asked once as Devices opens, ne
     globalThis.document = docWithTemplates();
     core.S.me = null;
     core.adopt(JSON.parse(JSON.stringify(RECORD)));
+    core.S.me = { id: "u-fx-1" }; // Private provider requests require the same authenticated owner as fw.session.
     core.S.strava = { on: false, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
     if (mode === '401') answers.set('strava/connect', () => ({ [STATUS]: 401, error: 'Signed out' }));
     else answers.delete('strava/connect');
@@ -366,6 +368,7 @@ test('Apple Health’s address is Fitness’s own host, never the hub’s (the h
   globalThis.document = docWithTemplates();
   core.S.me = null;
   core.adopt(JSON.parse(JSON.stringify(RECORD)));
+  core.S.me = { id: "u-fx-1" }; // Health setup belongs to the authenticated sheet owner.
   core.S.strava = { on: true, ok: true, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
   answers.set('health/key', () => ({ key: 'k123abc', on: true }));
   const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} };
@@ -455,4 +458,31 @@ test('Experimental cannot save into a different account when the lazy planner fi
 test('Experimental can be switched off without contacting an unavailable planner',async()=>{
  globalThis.document=docWithTemplates();const {createExperimentalControl}=await import(new URL('rhythm2-view.js',FX));let loads=0,state={rhythm:{days:[60,0,0,0,0,0,0],engine:2}};
  const c=createExperimentalControl({coach:{load:()=>{loads++;throw Error('offline');}},state:()=>state,owner:()=> 'ann',today:()=>Date.now(),save:patch=>{state={...state,...patch};}});const input=c.control.querySelector('input');assert.equal(input.checked,true);input.checked=false;input.dispatch('change');await flush();assert.equal(loads,0);assert.equal(state.rhythm.engine,1);assert.equal(input.disabled,false);
+});
+
+test('a late Strava setup reply cannot expose the old address or redraw into a retry loop after owner replacement', { skip: skip || roofSkip }, async () => {
+  globalThis.document = docWithTemplates();
+  core.S.me = null;
+  core.adopt(JSON.parse(JSON.stringify(RECORD)));
+  core.S.me = { id: 'u-fx-1' };
+  core.S.strava = { on: false, ready: true }; core.S.garmin = { on: false }; core.S.health = { on: false };
+  const log = { navs: [], sections: [], toasts: [], lost: 0, on: {} }, fw = fwFor(log);
+  let release;
+  answers.set('strava/connect', () => new Promise((r) => { release = () => r({ url: 'https://www.strava.com/oauth/authorize?state=old-owner-only' }); }));
+  asked.length = 0;
+  const h = SET.openSettings({ S: core.S, core: { ...core }, fw, open: {} }, 'devices');
+  try {
+    await flush();
+    assert.equal(asked.filter((x) => x === 'POST strava/connect').length, 1);
+    core.S.me = { id: 'u-fx-2' }; fw.session.user = { id: 'u-fx-2' };
+    release();
+    for (let i = 0; i < 5; i++) await flush();
+    core.emit('me');
+    for (let i = 0; i < 5; i++) await flush();
+    assert.equal(asked.filter((x) => x === 'POST strava/connect').length, 1, 'stale reply/redraw never starts another private setup request');
+    const link = h.el.querySelector('a[data-k=strava]');
+    assert.equal(link.getAttribute('href'), null, 'old account setup address is not exposed');
+    assert.equal(link.getAttribute('aria-disabled'), 'true');
+    assert.equal(log.lost, 0, 'a stale request cannot sign out the new account');
+  } finally { h.close(); answers.delete('strava/connect'); }
 });

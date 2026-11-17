@@ -15,33 +15,70 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    timeout-minutes: 20
     steps:
       - name: Check the token's there
         id: ready
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::notice::CLOUDFLARE_API_TOKEN isn't set, so nothing's deployed."; echo "go=0" >> "$GITHUB_OUTPUT"; exit 0; fi
           echo "go=1" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
         if: steps.ready.outputs.go == '1'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.ready.outputs.go == '1'
         with:
-          node-version: 22
+          node-version: 24
+      - name: Required production framework fixture
+        if: steps.ready.outputs.go == '1'
+        run: |
+          git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite ../inflite
+          echo "Security fixture: claude/inflite at $(git -C ../inflite rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install locked tools without install scripts or production credentials
+        if: steps.ready.outputs.go == '1'
+        run: |
+          npm ci --prefix .tools/tests --ignore-scripts --no-audit --no-fund
+          npm ci --prefix ../inflite/email --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Required release supply-chain and dependency security gate
+        if: steps.ready.outputs.go == '1'
+        run: node .tools/security/check.mjs --require-root --audit --out "$RUNNER_TEMP/release-security"
+      - name: Required complete backend and client regression suite
+        if: steps.ready.outputs.go == '1'
+        run: node --test .tools/tests/unit/*.test.mjs
+      - name: Verify dependency locks were preserved
+        if: steps.ready.outputs.go == '1'
+        run: |
+          git diff --exit-code -- .tools/tests/package.json .tools/tests/package-lock.json workers/routing/package.json workers/routing/package-lock.json
+          git -C ../inflite diff --exit-code -- package.json package-lock.json email/package.json email/package-lock.json
+      - name: Retain release audit evidence
+        if: always() && steps.ready.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-security
+          path: ${{ runner.temp }}/release-security
+          if-no-files-found: warn
+          retention-days: 14
       - name: Provision and verify private InFlite Files storage
         if: steps.ready.outputs.go == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node .tools/workers/prepare-files-storage.mjs
       - name: Build the Worker and deploy
         if: steps.ready.outputs.go == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           node .tools/workers/build.mjs
-          npx --yes wrangler@4.158.0 deploy -c wrangler.worker.jsonc
-          npx --yes wrangler@4.158.0 deploy -c wrangler.gfg.jsonc
+          node .tools/tests/node_modules/wrangler/bin/wrangler.js deploy -c wrangler.worker.jsonc
+          node .tools/tests/node_modules/wrangler/bin/wrangler.js deploy -c wrangler.gfg.jsonc
       - name: Verify the deployed Fitness routing backend
         if: steps.ready.outputs.go == '1'
         env:

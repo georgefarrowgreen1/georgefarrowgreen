@@ -27,13 +27,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: georgefarrowgreen
       - name: Matching InFlite framework
         run: |
           git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: npm ci --prefix .tools/tests --no-audit --no-fund
@@ -56,13 +57,14 @@ jobs:
       matrix:
         browser: [chromium, webkit]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: georgefarrowgreen
       - name: Matching InFlite framework
         run: |
           git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - name: Locked browser and workerd tools
@@ -89,7 +91,7 @@ jobs:
         env:
           IDENTITY_BROWSER: ${{ matrix.browser }}
         run: node --test --test-concurrency=1 .tools/tests/identity-ui.test.cjs .tools/tests/appearance-ui.test.cjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: files-${{ matrix.browser }}-reliability
@@ -99,16 +101,17 @@ jobs:
 
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: georgefarrowgreen
       - name: The inflite repo beside it
         run: |
           git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
           echo "The production inflite repo beside: claude/inflite at $(git -C inflite rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       # (Mail's one package, which its tests' mail goes through; not its tools)
@@ -124,6 +127,17 @@ jobs:
       - name: Install locked test and performance-budget tools
         working-directory: georgefarrowgreen
         run: npm ci --prefix .tools/tests --no-audit --no-fund
+      - name: Release supply-chain policy and dependency audits
+        working-directory: georgefarrowgreen
+        run: node .tools/security/check.mjs --require-root --audit --out "$RUNNER_TEMP/ci-security"
+      - name: Retain dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-security
+          path: ${{ runner.temp }}/ci-security
+          if-no-files-found: warn
+          retention-days: 14
       - name: Unit tests
         working-directory: georgefarrowgreen
         run: node --test .tools/tests/unit/*.test.mjs
@@ -133,13 +147,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: georgefarrowgreen
       - name: Matching InFlite framework
         run: |
           git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite inflite
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: npm ci --prefix .tools/tests --no-audit --no-fund
@@ -180,7 +195,7 @@ jobs:
           node .tools/tests/roofchatcomposer.mjs "$RUNNER_TEMP/iphone" "$RUNNER_TEMP/iphone/composer"
           node .tools/tests/roofchatmount.mjs "$RUNNER_TEMP/iphone" "$RUNNER_TEMP/iphone/mount" | tee "$RUNNER_TEMP/iphone/mount.log"
           grep -q '^FAILS 0$' "$RUNNER_TEMP/iphone/mount.log"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: iphone-reliability

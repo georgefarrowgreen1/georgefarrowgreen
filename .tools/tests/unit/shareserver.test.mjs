@@ -242,6 +242,38 @@ test("a session's look is gated with no letter named: a friend with a landed let
   void D;
 });
 
+test("cached fitness figures never outlive share, friendship or landed-letter authorization", async () => {
+  // Exercise the production one-minute cache through the actual card-now route,
+  // rather than the fixture's default cache-disabled authorization cases.
+  const memoBefore = env.FITNOW_MEMO_MS;
+  env.FITNOW_MEMO_MS = "60000";
+  user("memo-owner"); user("memo-reader");
+  tokens["memo-reader"] = await issueSession(env, "memo-reader", new Request("http://chat.localhost/api/pigeon/sync"));
+  const day = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/London"}).format(new Date(now));
+  const span = daySpan(day, "Europe/London");
+  put("fx_acts", {user_id:"memo-owner",id:"private-ride",start:span.start+120e3,sport:"ride",type:"fit",size:1,added:0,sum:JSON.stringify({secs:3720,dist:30400,tss:48})});
+  const letterId = crypto.randomUUID();
+  const letter = () => put("pg_msgs", {id:letterId,sender:"memo-owner",recipient:"memo-reader",ct:"sealed",km:100,sent_at:now-2*H,deliver_at:now-H,from_lat:0,from_lon:0,to_lat:0,to_lon:0});
+  const read = async share => (await call("POST card-now", "memo-reader", {body:{items:[{k:"fitness",share}]}})).body.now[0];
+  try {
+    for (const revoke of [
+      share => sql.prepare("DELETE FROM fx_shares WHERE id=?").run(share),
+      share => sql.prepare("UPDATE fx_shares SET until=? WHERE id=?").run(now-1,share),
+      () => link("memo-owner","memo-reader","blocked"),
+      () => sql.prepare("DELETE FROM pg_links WHERE a=? AND b=?").run("memo-owner","memo-reader"),
+      () => sql.prepare("UPDATE pg_msgs SET recalled=1 WHERE id=?").run(letterId),
+      () => sql.prepare("UPDATE pg_msgs SET gone_at=? WHERE id=?").run(now-1,letterId),
+    ]) {
+      link("memo-owner","memo-reader"); letter();
+      const share = await shareFor(env,"memo-owner",{day,tz:"Europe/London",sport:"ride"});
+      sql.prepare("UPDATE fx_shares SET made=? WHERE id=?").run(now-3*H,share);
+      assert.deepEqual(await read(share),{done:true,secs:3720,dist:30400,tss:48});
+      revoke(share);
+      assert.deepEqual(await read(share),{gone:true},"a warm cache cannot authorize a new request");
+    }
+  } finally {env.FITNOW_MEMO_MS=memoBefore;}
+});
+
 // (an answer as text, to look for what it mustn't say: its moments (at, end: ms, whose digits can be anything) left out)
 const sayOf = (b) => JSON.stringify(b, (k, v) => (k === "at" || k === "end" ? 0 : v));
 
@@ -455,6 +487,49 @@ test("Fitness: GET me's offers (past ones not shown, and not deleted), and POST 
   assert.deepEqual(after.body.offers.map((o) => [o.id, o.state]), [[one.id, "yes"]], "a yes kept (to add to the plan), a no gone from the list");
   assert.deepEqual((await fit("POST", `offers/${crypto.randomUUID()}`, { data: { answer: "yes" } })).status, 404);
   assert.equal(limitOf("fxoffer:ann"), 4, "each signed-in answer from its own pages"); assert.equal(limitOf("fxoffer:bo"), 1);
+});
+
+test("Fitness multipart uploads stop reading at the byte limit even with an understated Content-Length", async () => {
+  const FIT="http://fitness.localhost", cookie="bounded-upload".padEnd(43,"x");
+  const hash=hex(await sha256(await issueSession(env,"ann",new Request(FIT+"/api/fitness/me"))));
+  sql.prepare("UPDATE pg_sessions SET site_hash=? WHERE hash=?").run(hex(await sha256(cookie)),hash);
+  for (const [method,path] of [["POST","acts"],["PUT","acts/private-ride"]]) {
+    let pulls=0,cancelled=false;
+    const chunk=new Uint8Array(1024*1024).fill(97),boundary="bounded-activity-upload";
+    const stream=new ReadableStream({pull(c){
+      pulls++;
+      if(pulls===1)c.enqueue(new TextEncoder().encode("--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"ride.fit\"\r\nContent-Type: application/octet-stream\r\n\r\n"));
+      else if(pulls<42)c.enqueue(chunk);
+      else {c.enqueue(new TextEncoder().encode("\r\n--"+boundary+"--\r\n"));c.close();}
+    },cancel(){cancelled=true;}});
+    const request=new Request(FIT+"/api/fitness/"+path,{method,headers:{Origin:FIT,Cookie:"account="+cookie,"Content-Type":"multipart/form-data; boundary="+boundary,"Content-Length":"1"},body:stream,duplex:"half"});
+    const response=await fitnessApi({request,env,params:{path:path.split("/")},waitUntil:env.waitUntil});
+    assert.equal(response.status,413,await response.clone().text());
+    assert.equal(cancelled,true,"oversized stream is cancelled before eager multipart parsing");
+    assert.ok(pulls<40,"the rest of the upload was never buffered");
+  }
+});
+
+test("Fitness multipart upload remains usable and activity bytes and edits stay owner-scoped", async () => {
+  const FIT="http://fitness.localhost",cookies={},objects=new Map(),oldStore=env.BIO_R2;
+  env.BIO_R2={put:async(k,v)=>objects.set(k,v),get:async k=>objects.has(k)?{body:objects.get(k)}:null,delete:async k=>objects.delete(k)};
+  for(const who of ["ann","bo"]){cookies[who]=("activity-owner-"+who).padEnd(43,"x");const hash=hex(await sha256(await issueSession(env,who,new Request(FIT+"/api/fitness/me"))));sql.prepare("UPDATE pg_sessions SET site_hash=? WHERE hash=?").run(hex(await sha256(cookies[who])),hash);}
+  const callFit=async(who,method,path,data)=>{
+    let request=new Request(FIT+"/api/fitness/"+path,{method,headers:{Origin:FIT,Cookie:"account="+cookies[who],...(data instanceof FormData?{}: {"Content-Type":"application/json"})},...(data===undefined?{}:{body:data instanceof FormData?data:JSON.stringify(data)})});
+    if(data instanceof FormData){const bytes=await request.arrayBuffer();request=new Request(request,{body:bytes,headers:{...Object.fromEntries(request.headers),"Content-Length":String(bytes.byteLength)}});}
+    return fitnessApi({request,env,params:{path:path.split("/")},waitUntil:env.waitUntil});
+  };
+  try{
+    const bytes=new Uint8Array(64);bytes[0]=14;bytes.set([46,70,73,84],8);
+    const form=new FormData();form.set("meta",JSON.stringify({id:"security-upload",start:now-12*H,sport:"ride",name:"Private ride",type:"fit",file:"ride.fit",sum:{secs:3600}}));form.set("file",new Blob([bytes]),"ride.fit");
+    const created=await callFit("ann","POST","acts",form);assert.equal(created.status,200,await created.clone().text());assert.equal((await created.json()).kept,true);
+    const own=await callFit("ann","GET","acts/security-upload");assert.equal(own.status,200);assert.deepEqual(new Uint8Array(await own.arrayBuffer()),bytes);
+    assert.equal((await callFit("bo","GET","acts/security-upload")).status,404);
+    assert.equal((await callFit("bo","PATCH","acts/security-upload",{name:"Stolen"})).status,404);
+    assert.equal((await callFit("bo","DELETE","acts/security-upload")).status,200);
+    assert.equal((await callFit("ann","GET","acts/security-upload")).status,200,"foreign delete cannot remove the owned activity");
+    assert.equal(sql.prepare("SELECT name FROM fx_acts WHERE user_id=? AND id=?").get("ann","security-upload").name,"Private ride");
+  }finally{env.BIO_R2=oldStore;}
 });
 
 // ================================ together ================================

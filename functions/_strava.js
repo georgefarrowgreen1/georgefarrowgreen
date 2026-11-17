@@ -91,7 +91,7 @@ export async function connectBack(env, userId, q) {
   await D.prepare(`INSERT INTO fx_strava (user_id, athlete, access, refresh, exp, since, seen, last, due, back, ok, said, added, name) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', NULL, 1, 0, 1, NULL, ?7, ?8)
     ON CONFLICT(user_id) DO UPDATE SET athlete = ?2, access = ?3, refresh = ?4, exp = ?5, ok = 1, said = NULL, due = 1, name = ?8`)
     .bind(userId, athlete, await lockVault(env, owner(userId), t.access_token), await lockVault(env, owner(userId), t.refresh_token), Number(t.expires_at) * 1000, now - FIRST * 86400e3, now, name).run();
-  await ensureHook(env).catch((e) => console.error("strava hook", e.message));
+  await ensureHook(env).catch((e) => console.error("strava webhook setup failed"));
   return "on";
 }
 // the tokens, fresh: refreshed where they're about to run out → the access token

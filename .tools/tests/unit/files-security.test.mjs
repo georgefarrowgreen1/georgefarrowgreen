@@ -14,6 +14,7 @@ let mf, sequence = 0;
 
 const worker = `
 import * as files from './functions/_files.js';
+import {uploadReplacement} from './functions/_fileversions.js';
 import {FILES_ROUTES} from './functions/_filesapp.js';
 import {savePrefs} from './functions/_today.js';
 import {db,issueSession,hex,sha256} from './functions/_pigeon.js';
@@ -55,6 +56,15 @@ if(path==='/_stream'){
  const result=files.uploadFile(env,owner,id,next).then(value=>({ok:true,value}),error=>({ok:false,status:error.status||500,error:error.message}));
  if(markDeleting||remove||cancel){await uploading(env,owner,id);if(markDeleting)await env.DB.prepare('UPDATE pg_users SET delete_at=? WHERE id=?').bind(Date.now(),owner).run();if(remove)await removeAccount(env,owner);if(cancel)controller.abort()}
  release();return json(await result);
+}
+if(path==='/_replacement-stream'){
+ const {owner,uploadId,chunks,remove=false,cancel=false}=await request.json();let release;
+ const gate=new Promise(r=>release=r),controller=new AbortController();
+ const stream=new ReadableStream({async start(s){for(let i=0;i<chunks.length;i++){if(i===1)await gate;if(controller.signal.aborted)return;s.enqueue(Uint8Array.from(chunks[i]))}s.close()}});
+ const next=new Request(HOST+'/api/account/today/files/replacement-content?uploadId='+uploadId,{method:'PUT',body:stream,signal:controller.signal});
+ const result=uploadReplacement(env,owner,uploadId,next).then(value=>({ok:true,value}),error=>({ok:false,status:error.status||500,error:error.message}));
+ for(let n=0;n<100;n++){const row=await env.DB.prepare('SELECT state FROM ifl_files_replacements WHERE user_id=? AND operation_id=?').bind(owner,uploadId).first();if(row?.state==='uploading')break;if(n===99)throw Error('replacement claim never appeared');await pause()}
+ if(remove)await removeAccount(env,owner);if(cancel)controller.abort();release();return json(await result);
 }
 const key=request.method+' '+path.replace(/^\\/api\\/account\\//,'');
 const route=FILES_ROUTES[key];return route?await route({request,env,waitUntil:ctx.waitUntil.bind(ctx)}):json({error:'unknown test route'},404);
@@ -448,6 +458,37 @@ async function replacement(f,item,content,operationId=operation()){
  const bytes=new TextEncoder().encode(content),r=await api(f,'POST','replacements',{id:item.id,version:item.version,size:bytes.length,mime:'text/plain',operationId});assert.equal(r.status,200,JSON.stringify(r.value));
  const result=await api(f,'PUT','replacement-content',content,{query:'?uploadId='+r.value.uploadId,headers:{'Content-Type':'application/octet-stream'}});assert.equal(result.status,200,JSON.stringify(result.value));return result.value.item;
 }
+test('closing a drive fences historical metadata and bytes as well as current content',async()=>{
+ const f=await fixture(),first=await uploaded(f,'closing.txt','private original');
+ await replacement(f,first,'private replacement');
+ const history=await api(f,'GET','history',undefined,{query:'?id='+first.id});assert.equal(history.status,200);
+ const versionId=history.value.versions[0].id;
+ // Account deletion closes the drive before object and metadata cleanup. Keep
+ // both here to exercise that real intermediate boundary without deleting data.
+ await sql('UPDATE ifl_files_accounts SET closed=1,revision=revision+1 WHERE user_id=?',[f.owner]);
+ assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).status,401);
+ const deniedHistory=await api(f,'GET','history',undefined,{query:'?id='+first.id});
+ const deniedBytes=await api(f,'GET','content',undefined,{query:'?id='+first.id+'&versionId='+versionId});
+ assert.deepEqual([deniedHistory.status,deniedBytes.status],[401,401]);
+});
+test('replacement streams reject hostile lengths/cancellation and cannot resurrect account-deleted bytes',async()=>{
+ for(const scenario of [{name:'oversized',chunks:[[65],[66,67]],status:413},{name:'short',chunks:[[65],[]],status:400},{name:'cancelled',chunks:[[65],[66]],cancel:true},{name:'account removed',chunks:[[65],[66]],remove:true}]){
+  const f=await fixture(),first=await uploaded(f,'stream.txt','original'),operationId=operation();
+  const reserved=await api(f,'POST','replacements',{id:first.id,version:first.version,size:2,mime:'text/plain',operationId});assert.equal(reserved.status,200);
+  const result=await internal('replacement-stream',{owner:f.owner,uploadId:operationId,...scenario});assert.equal(result.status,200,scenario.name);assert.equal(result.value.ok,false,scenario.name);
+  if(scenario.status)assert.equal(result.value.status,scenario.status,scenario.name);
+  if(scenario.remove){
+   assert.deepEqual(await sql('SELECT id FROM ifl_files_nodes WHERE user_id=?',[f.owner]),[]);
+   assert.deepEqual(await sql('SELECT operation_id FROM ifl_files_replacements WHERE user_id=?',[f.owner]),[]);
+   assert.deepEqual((await internal('objects',{prefix:'files/'+f.owner+'/'})).value,[]);
+  }else{
+   assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'original',scenario.name);
+   assert.equal((await api(f,'DELETE','replacements',undefined,{query:'?uploadId='+operationId})).status,200);
+   const usage=(await api(f,'GET','list')).value.usage;assert.equal(usage.used,8);assert.equal(usage.reserved,0);
+   const objects=(await internal('objects',{prefix:'files/'+f.owner+'/'})).value;assert.equal(objects.length,1);assert.equal(objects[0].size,8);
+  }
+ }
+});
 test('replacement preserves exact historical bytes, restore keeps the displaced version, and purge releases all quota',async()=>{
  const f=await fixture(),first=await uploaded(f,'versions.txt','original');
  const second=await replacement(f,first,'replacement');assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'replacement');
@@ -467,6 +508,10 @@ test('file version boundaries reject foreign owners, stale replacement targets a
  await replacement(f,first,'two');
  assert.equal((await api(f,'PUT','replacement-content','bad',{query:'?uploadId='+operationId,headers:{'Content-Type':'application/octet-stream'}})).status,409);
  assert.equal((await api(other,'GET','history',undefined,{query:'?id='+first.id})).status,404);
+ const history=(await api(f,'GET','history',undefined,{query:'?id='+first.id})).value,versionId=history.versions[0].id;
+ const ownOther=await uploaded(other,'other.txt','other');
+ for(const id of [first.id,ownOther.id])assert.equal((await api(other,'GET','content',undefined,{query:'?id='+id+'&versionId='+versionId})).status,404);
+ assert.equal((await api(other,'POST','restore-version',{id:ownOther.id,version:ownOther.version,versionId,operationId:operation()})).status,404);
  assert.equal((await api(f,'GET','content',undefined,{query:'?id='+first.id})).value,'two');
 });
 test('history retains twenty earlier versions and bounds charged quota after repeated replacements',async()=>{

@@ -166,7 +166,9 @@ export async function doneIn(env, userId, start, end, sport = null) {
 
 // ---- a friend's look ----
 const GONE = Object.freeze({ gone: true });
-// (each (share, asker)'s answer kept a minute in this copy of the server; FITNOW_MEMO_MS: tests only)
+// Workout figures may be reused for a minute, but never the authorization.
+// Recheck the share, friendship and landed letter on every request, including a
+// warm-cache hit, so revocation takes effect across every server instance.
 const memo = new Map(), MEMO_MAX = 500;
 // One answer for each share, in order: { done: false }, { done: true, secs?, dist?, tss? }, or { gone: true } for every
 // refusal alike (no share, out of date, not a friend, no letter that would let them look)
@@ -176,8 +178,7 @@ export async function fitNowMany(env, shares, asker) {
   const want = [];
   list.forEach((id, i) => {
     if (typeof id !== "string" || !SHARE_ID.test(id) || !asker) return;
-    const m = memo.get(`${id}|${asker}`);
-    if (m && t - m.at < keep) out[i] = m.v; else want.push(i);
+    want.push(i);
   });
   if (!want.length) return out.map((v) => ({ ...v }));
   const D = await sharesDb(env), ids = [...new Set(want.map((i) => list[i]))];
@@ -193,14 +194,22 @@ export async function fitNowMany(env, shares, asker) {
     others.forEach((r, i) => { if (gates[i]?.results?.length) ok.add(r.id); });
   }
   // whether each one let through got done, on its day in its zone, of its sport (one trip)
-  const open = [...rows.values()].filter((r) => ok.has(r.id)), F = await fitdb(env);
-  const got = await doneMany(F, open.map((r) => ({ userId: r.user_id, ...daySpan(r.day, r.tz) })));
-  const ans = new Map(open.map((r, i) => { const d = pick(rowsOf(got[i]), r.sport); return [r.id, d ? { done: true, ...figures(d) } : { done: false }]; }));
+  const open = [...rows.values()].filter((r) => ok.has(r.id)), ans = new Map(), fresh = [];
+  for (const r of open) {
+    const m = memo.get(`${r.id}|${asker}`);
+    if (m && t - m.at < keep) ans.set(r.id, m.v); else fresh.push(r);
+  }
+  if (fresh.length) {
+    const F = await fitdb(env), got = await doneMany(F, fresh.map((r) => ({ userId: r.user_id, ...daySpan(r.day, r.tz) })));
+    fresh.forEach((r, i) => { const d = pick(rowsOf(got[i]), r.sport), v = d ? { done: true, ...figures(d) } : { done: false };
+      ans.set(r.id, v); memo.delete(`${r.id}|${asker}`); memo.set(`${r.id}|${asker}`, { at: t, v });
+      if (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value);
+    });
+  }
   for (const i of want) {
     const v = ans.get(list[i]) || GONE;
     out[i] = v;
-    memo.delete(`${list[i]}|${asker}`); memo.set(`${list[i]}|${asker}`, { at: t, v });
-    if (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value);
+    if (!ok.has(list[i])) memo.delete(`${list[i]}|${asker}`);
   }
   return out.map((v) => ({ ...v }));
 }

@@ -733,7 +733,9 @@ const ROUTES = {
     const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE email_code = ?").bind(hex(await sha256(token))).first();
     if (!u) throw new HttpError(400, "This confirm link has already been used, or a newer one was sent.");
     if (Date.now() - (u.email_sent || 0) > CONFIRM_TTL) throw new HttpError(410, "This confirm link has expired. Send a new one from your account.");
-    await D.prepare("UPDATE pg_users SET email_ok = ?, email_code = NULL WHERE id = ?").bind(Date.now(), u.id).run();
+    const confirmed = await D.prepare("UPDATE pg_users SET email_ok = ?, email_code = NULL WHERE id = ? AND email = ? AND email_code = ? AND email_sent >= ?")
+      .bind(Date.now(), u.id, u.email, hex(await sha256(token)), Date.now() - CONFIRM_TTL).run();
+    if (!confirmed.meta?.changes) throw new HttpError(400, "This confirm link has already been used, or a newer one was sent.");
     waitUntil(logEvent(env, u.id, "email-confirmed", request));
     return json({ ok: true, email: u.email });
   },
@@ -777,10 +779,14 @@ const ROUTES = {
     if (Date.now() - (u.email_new_at || 0) > CHANGE_TTL) throw new HttpError(410, "This link has expired. Ask for a new email again from your account.");
     if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ? AND id != ?").bind(u.email_new, u.id).first()) throw new HttpError(409, "That email is now used by another account.");
     try {
-      await D.batch([
-        D.prepare("UPDATE pg_users SET email = email_new, email_ok = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL, email_code = NULL WHERE id = ?").bind(Date.now(), u.id),
-        D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
+      // Consume exactly the pending address this token proved, in the same transaction as reset revocation.
+      // A new request or another confirmation may have replaced it since the lookup above.
+      const changed = await D.batch([
+        D.prepare("UPDATE pg_users SET email = email_new, email_ok = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL, email_code = NULL WHERE id = ? AND email = ? AND email_new = ? AND email_new_code = ? AND email_new_at >= ? RETURNING id")
+          .bind(Date.now(), u.id, u.email, u.email_new, hex(await sha256(token)), Date.now() - CHANGE_TTL),
+        D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND changes() > 0").bind(u.id),
       ]);
+      if (!(changed[0]?.results || changed[0])?.length) throw new HttpError(400, "This link has already been used, or a newer one was sent.");
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
     // (and what to do if it wasn't them: password sign-ins and resets go by the new address now, so the site's admin)

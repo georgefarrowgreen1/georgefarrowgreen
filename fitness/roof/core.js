@@ -328,9 +328,13 @@ export async function importFiles(files) {
 export async function load(a, kept = true) {
   if (full(a)) return full(a);
   const t = mark(), key = fileKey(a);
-  const here = await idb.get(key).catch(() => null), bytes = here || await A.fileOf(a.id);
-  if (kept && still(t)) I.keepFile(key, here ? null : bytes);
+  const here = await idb.get(key).catch(() => null);
+  if (!still(t)) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
+  const bytes = here || await A.fileOf(a.id);
+  if (!still(t)) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
+  if (kept) I.keepFile(key, here ? null : bytes);
   const r = await readOff(a.file || `activity.${a.type}`, bytes);
+  if (!still(t)) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
   const x = r.activities.find((y) => Math.abs(y.start - a.start) < 2000) || r.activities[0];
   if (!x) throw new Error("That file has no activity in it any more.");
   Object.assign(x, { id: a.id, name: a.name });
@@ -625,7 +629,9 @@ export async function upload(got, btn, then = null) {
       try {
         sum = figuresOf(a); k = keptFile(a, sum, a.parts || 1);
         meta = { id: `i${a.start}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: k.name, type: k.type, sum };
-        const r = await A.upload(meta, k.name, await A.gzip(k.bytes));
+        const gz = await A.gzip(k.bytes);
+        if (!still(t)) return;
+        const r = await A.upload(meta, k.name, gz);
         if (!still(t)) return;
         if (r.already) continue;
       } catch (e) {
@@ -677,7 +683,9 @@ export async function fromSource(src, { quiet = false } = {}) {
         try {
           sum = figuresOf(a); f = keptFile(a, sum, acts.length);
           meta = { id: k ? `${c.prefix}${w.id}-${k + 1}` : `${c.prefix}${w.id}`, start: a.start, sport: a.sport, indoor: a.indoor, name: a.name, device: a.device, file: f.name, type: f.type, sum };
-          r = await A.upload(meta, f.name, await A.gzip(f.bytes));
+          const gz = await A.gzip(f.bytes);
+          if (!still(t)) { kept = -1; break; }
+          r = await A.upload(meta, f.name, gz);
         } catch (e) {
           if (!still(t)) { kept = -1; break; }
           if (e.status === 401) return signedOutHere();

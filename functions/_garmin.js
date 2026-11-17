@@ -115,7 +115,7 @@ export async function connect(env, userId, rawKey) {
   catch (e) {
     if (e.status === 401 || e.status === 403 || e.status === 400) throw new HttpError(400, "Garmin didn’t take that key. Check it’s the whole key, and that it hasn’t been deleted or expired.", "key");
     // (what Garmin said, or why it didn't answer, in the words shown: a 502 of our own is taken over by Cloudflare's)
-    console.error("garmin token", e.status, e.message);
+    console.error("garmin token failed", Number.isInteger(e.status) ? e.status : null);
     throw new HttpError(424, `Garmin Connect didn’t answer (${e.status || e.name || "no answer"}). Try again in a moment.`);
   }
   // (already another Fitness account's: refused, not moved; its rides are that account's)
@@ -234,7 +234,7 @@ export async function fetchNew(env, userId, { force = false } = {}) {
     await D.prepare("UPDATE fx_garmin SET seen = ?2, since = ?3, ok = 1, said = ?5, back = ?4, missed = ?6 WHERE user_id = ?1")
       .bind(userId, JSON.stringify([...seen].filter((x) => /^\d+$/.test(x)).slice(-SEEN)), since || g.since, back ? 1 : 0, stuck ? "unreachable" : null, Object.keys(missed).length ? JSON.stringify(missed) : null).run();
     // (and your nights: every few hours, the last few days; two months the first time)
-    if (!g.well_at || now - g.well_at > WELL_EVERY) await wellness(env, D, userId, token, g.well_at ? now - 4 * 86400e3 : now - 60 * 86400e3, now).catch((e) => console.error("garmin well", e.status, e.message));
+    if (!g.well_at || now - g.well_at > WELL_EVERY) await wellness(env, D, userId, token, g.well_at ? now - 4 * 86400e3 : now - 60 * 86400e3, now).catch((e) => console.error("garmin wellness failed", Number.isInteger(e.status) ? e.status : null));
     return { ...(await garminOf(env, userId)), more: !stuck && (found.length > MOST || back) };
   } catch (e) {
     if (e instanceof HttpError) throw e;

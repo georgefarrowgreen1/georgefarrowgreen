@@ -58,7 +58,7 @@ export async function filesdb(env, { requireStorage = true } = {}) {
 }
 const rowOf = (D, owner, id) => D.prepare("SELECT * FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2").bind(owner, id).first();
 const accountOf = (D, owner) => D.prepare("SELECT * FROM ifl_files_accounts WHERE user_id = ?").bind(owner).first();
-async function ensure(D, owner, allowClosed = false) {
+export async function ensureFilesAccount(D, owner, allowClosed = false) {
   await D.prepare(`INSERT OR IGNORE INTO ifl_files_accounts (user_id) SELECT ?1 WHERE ${liveSQL}`).bind(owner).run();
   const account = await accountOf(D, owner);
   if (!account || account.closed && !allowClosed) return failure(401, "Your account is unavailable. Sign in again.");
@@ -83,7 +83,7 @@ async function parentAt(D, owner, id, extra = 1) {
 // A conditional account update and its dependent node statement run in one D1
 // transaction. A concurrent tree/quota change retries all preconditions afresh.
 export async function mutate(env, owner, prepare, { deleting = false } = {}) {
-  const D = await filesdb(env); await ensure(D, owner, deleting);
+  const D = await filesdb(env); await ensureFilesAccount(D, owner, deleting);
   for (let attempt = 0; attempt < 4; attempt++) {
     const account = await accountOf(D, owner);
     if (!account || account.closed && !deleting) return failure(401, "Your account is unavailable. Sign in again.");
@@ -143,7 +143,7 @@ export const createFolder = (env, owner, input) => create(env, owner, input, "fo
 export const reserveUpload = (env, owner, input) => create(env, owner, input, "file");
 
 export async function listFiles(env, owner, { parentId: parent, q = "", view = "folder", sort, kind, cursor = null } = {}) {
-  const D = await filesdb(env); await ensure(D, owner);
+  const D = await filesdb(env); await ensureFilesAccount(D, owner);
   parent = parentId(parent);
   if (!["folder", "recent", "search", "trash", "favourites"].includes(view)) return failure(400, "That view is invalid.");
   sort ??= view === "recent" ? "modified" : "name";
@@ -170,7 +170,7 @@ export async function listFiles(env, owner, { parentId: parent, q = "", view = "
   return { folder: itemOf(chain.at(-1)), ancestors: chain.map(itemOf), items: results.slice(0, FILE_LIMITS.page).map(itemOf), cursor: more ? `${account.revision}:${offset + FILE_LIMITS.page}` : null, revision: account.revision, usage: usageOf(account) };
 }
 export async function getFile(env, owner, id) {
-  const D = await filesdb(env); await ensure(D, owner);
+  const D = await filesdb(env); await ensureFilesAccount(D, owner);
   const row = await rowOf(D, owner, fileId(id));
   if (!row) return failure(404, "That file is no longer available.");
   return { item: itemOf(row) };
@@ -275,7 +275,7 @@ export async function favouriteFile(env,owner,input){
   });
 }
 export async function copyFile(env,owner,input,request){
-  const source={id:fileId(input.id),version:version(input.version)},D=await filesdb(env);await ensure(D,owner);
+  const source={id:fileId(input.id),version:version(input.version)},D=await filesdb(env);await ensureFilesAccount(D,owner);
   const row=await rowOf(D,owner,source.id);
   if(!row||row.trash_at)return failure(404,"That source file is no longer available.");
   if(row.kind!=="file"||row.state!=="ready"||row.version!==source.version)return failure(409,"Choose a current file to copy. Folders can be moved or restored with their contents.");
@@ -362,7 +362,7 @@ export async function uploadFile(env, owner, id, request, { source = null } = {}
 }
 
 export async function fileContent(env, owner, id, { range } = {}) {
-  const D = await filesdb(env); await ensure(D, owner);
+  const D = await filesdb(env); await ensureFilesAccount(D, owner);
   const row = await rowOf(D, owner, fileId(id));
   if (!row || row.trash_at || row.kind !== "file" || row.state !== "ready") return failure(404, "That file is no longer available.");
   let part = null;

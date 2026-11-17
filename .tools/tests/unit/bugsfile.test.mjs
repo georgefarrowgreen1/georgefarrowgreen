@@ -92,3 +92,17 @@ test("a report's words can't write the issue: no link, picture, heading, mention
   assert.ok(st, "the stack in its fence"); assert.ok(st[1].length > 4, "longer than the ```` inside");
   assert.ok(st[2].includes("# Heading") && !st[2].includes(st[1]), "all of it inside, as it was");
 });
+
+test('old pending report values are redacted again before any public issue or comment', async () => {
+  const gh = await run([{id:'old',code:'IF-C-PPPPP',app:'chat',kind:'crash',at:1793860000000,
+    words:`SyntaxError: Unexpected token 'p', "old-private-parser-echo" is not valid JSON`,
+    stack:`SyntaxError: Unexpected token 'p', "old-private-parser-echo" is not valid JSON\n at read (https://inflite.ai/notes/app.js:45:9)`,
+    at_where:'password=short-private-password',path:'/notes/?token=private-query',device:'iPhone',note:'still-owner-only'},
+    {id:'old2',code:'IF-C-QQQQQ',app:'chat',kind:'crash',at:1793860000000,words:'token=short-private-token',stack:'at app.js:9',path:'/notes/'}],
+    [{number:7,state:'open',title:'[IF-C-QQQQQ] Chat: previous'}]);
+  const publicCalls=gh.filter(x=>x.m==='POST'&&(/\/issues$|\/comments$/.test(x.u)));
+  assert.equal(publicCalls.length,2);
+  const body=JSON.stringify(publicCalls);
+  for(const secret of ['old-private-parser-echo','short-private-password','private-query','short-private-token','still-owner-only'])assert.ok(!body.includes(secret),secret);
+  assert.ok(body.includes('app.js:45:9'));assert.ok(body.includes('JSON parse failed'));
+});

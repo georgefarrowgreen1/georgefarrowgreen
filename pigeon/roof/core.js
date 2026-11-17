@@ -276,6 +276,10 @@ const S = {
   live: { since: Date.now(), seen: new Map(), typingIn: new Map(), typingOut: null, typingOk: true, quietSince: Date.now(), timer: 0, fails: 0, off: false,
     busy: false, again: false, lastAt: 0, next: 3000, okAt: 0, keyAt: 0, after: new Map(), fullAt: new Map(), tsig: "", force: false, forceChat: false },
 };
+// A private read/decrypt must never complete into a later account or sign-in lifetime.
+let privacyEpoch = 0;
+const privacyLease = () => ({ id: S.me?.id, token: S.token, priv: S.priv, pub: S.myPub, epoch: privacyEpoch });
+const privacyLive = (lease) => !!lease.id && lease.epoch === privacyEpoch && lease.id === S.me?.id && lease.token === S.token && lease.priv === S.priv && lease.pub === S.myPub;
 const now = () => Date.now() + S.skew;
 // (pins: read, merged with mergePins and written under the lock, as another tab may have trusted a key meanwhile;
 // every other key as it is: S3-D4, risk I9)
@@ -387,32 +391,42 @@ function keepPlain(id, ctx, o) {
   S.pctx.set(id, ctx); S.plain.set(id, o);
 }
 async function decrypt(fid, m, kind = m.stopover ? "via" : "msg") {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   const ctx = ctxOf(kind, m, fid);
   if (!m.ct || seenPlain(m.id, ctx)) return;
   const f = friend(fid);
   const tries = keysOf(f);
   for (const k of tries) {
+    if (!privacyLive(lease)) return;
     try {
       const o = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: m.to, type: kind }, m.ct);
+      if (!privacyLive(lease)) return;
       return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
     } catch (_) {}
   }
+  if (!privacyLive(lease)) return;
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!f.keyChanged });
 }
 async function decryptGroup(g, m, kind = "msg") {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   const ctx = ctxOf(kind, m, g.id);
   if (!m.body || !m.key || seenPlain(m.id, ctx)) return;
   const from = m.from === S.me.id ? { id: S.me.id, pub: S.myPub || S.me.pub } : member(g, m.from);
   const tries = !from ? [] : from.id === S.me.id ? [keyId(from.pub)] : keysOf(from);
   for (const k of tries) {
+    if (!privacyLive(lease)) return;
     try {
-      const w = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: S.me.id, type: "wrap" }, m.key);
+      const w = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: lease.id, type: "wrap" }, m.key);
       // the sender's sealed key vouches for the body (v2); an older body has no hash to check
       if (w.h ? (await E2E.hash(m.body)) !== w.h : JSON.parse(m.body).v !== 1) throw new Error("not the sender’s body");
       const o = await E2E.openGroup({ id: m.id, from: m.from, group: g.id, type: kind }, w.k, m.body);
+      if (!privacyLive(lease)) return;
       return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
     } catch (_) {}
   }
+  if (!privacyLive(lease)) return;
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
 function group(id) { return S.groups.find((g) => g.id === id); }
@@ -424,39 +438,54 @@ const memberMs = (p, k) => {
   return sk ? spaceMs(sk[0], a, b) : flightMs(memberKm(p), mySpeed(k));
 };
 async function pinsCatchUp() {
-  const tok = S.token; let p;
+  const lease = privacyLease(); let p;
   try { p = await serverPins(); } catch (_) { return false; }
-  if (S.token !== tok) return false;
-  S.pinsUnread = false; await idb.del("pinsunread:" + S.me.id);
+  if (!privacyLive(lease)) return false;
+  S.pinsUnread = false; await idb.del("pinsunread:" + lease.id);
+  if (!privacyLive(lease)) return false;
   if (p) S.pins = mergePins(p, S.pins);
   savePins();
   return true;
 }
 async function restorePins() {
-  const tok = S.token, id = S.me.id;
-  S.pinsUnread = !!(await idb.get("pinsunread:" + id).catch(() => null));
+  const lease = privacyLease(), tok = S.token, id = S.me.id;
+  const unread = !!(await idb.get("pinsunread:" + id).catch(() => null));
+  if (!privacyLive(lease)) return;
+  S.pinsUnread = unread;
   if (Object.keys(S.pins).length) return;
   let p;
   // (a sign-in that had ended signs out as it's asked: that's not "no answer", and start carries on to the welcome)
-  try { p = await serverPins(); } catch (_) { if (S.token === tok) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
-  if (p && S.token === tok) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
+  try { p = await serverPins(); } catch (_) { if (privacyLive(lease)) { S.pinsUnread = true; await idb.set("pinsunread:" + id, 1); } return; }
+  if (p && privacyLive(lease)) { S.pins = p; await idb.set("pins:" + id, S.pins); await idb.set("pinsup:" + id, Date.now()); }
 }
 async function serverPins() {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return null;
   const r = await api("pins");
-  const p = r.pins ? await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins).catch(() => null) : null;
+  if (!privacyLive(lease)) return null;
+  const p = r.pins ? await E2E.open(await pairFor(lease.pub), { type: "pins", id: "pins", from: lease.id, to: lease.id }, r.pins).catch(() => null) : null;
+  if (!privacyLive(lease)) return null;
   return p?.pins && typeof p.pins === "object" ? p.pins : null;
 }
 function savePins() {
-  if (!S.me) return;
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   idb.set("pins:" + S.me.id, S.pins);
   clearTimeout(pinsTimer);
   pinsTimer = setTimeout(async () => {
-    if (S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
+    if (!privacyLive(lease) || S.pinsUnread) return;                    // (kept on the phone till then: pinsCatchUp saves it)
     try {
       const had = await serverPins();            // (what another of your phones saved since stays)
+      if (!privacyLive(lease)) return;
       if (had) { S.pins = mergePins(S.pins, had); await idb.set("pins:" + S.me.id, S.pins); }
-      const ct = await E2E.seal(await pairFor(S.myPub), pinsMeta(), { pins: S.pins, at: Date.now() });
-      await api("pins", { method: "POST", body: { pins: ct } }); await idb.set("pinsup:" + S.me.id, Date.now());
+      if (!privacyLive(lease)) return;
+      const pair = await pairFor(lease.pub);
+      if (!privacyLive(lease)) return;
+      const ct = await E2E.seal(pair, { type: "pins", id: "pins", from: lease.id, to: lease.id }, { pins: S.pins, at: Date.now() });
+      if (!privacyLive(lease)) return;
+      await api("pins", { method: "POST", body: { pins: ct } });
+      if (!privacyLive(lease)) return;
+      await idb.set("pinsup:" + lease.id, Date.now());
     } catch (_) {}
   }, 1500);
 }
@@ -829,8 +858,12 @@ async function draftsSave() {
   } catch (_) { return false; }
 }
 async function draftsLoad() {
+  const lease = privacyLease();
+  if (!privacyLive(lease)) return;
   try {
-    for (const [id, v] of await openDrafts(await idb.get("drafts:" + S.me.id))) if (v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
+    const values = await openDrafts(await idb.get("drafts:" + lease.id));
+    if (!privacyLive(lease)) return;
+    for (const [id, v] of values) if (v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
   } catch (_) {}
 }
 /* ---------- the outbox (app.js 10642-10760): sealed, never words; merged by id under the lock ---------- */
@@ -1008,6 +1041,7 @@ async function resume() {
   return false;
 }
 async function forget(ended) {
+  privacyEpoch++;
   const me = S.me?.id;
   clearTimeout(cacheTimer); clearTimeout(draftsTimer); clearTimeout(pinsTimer);
   if (tickTimer) { clearInterval(tickTimer); tickTimer = 0; }

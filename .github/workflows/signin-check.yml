@@ -4,7 +4,7 @@
 # any sign-in didn't work fails, so GitHub tells the repository's owner, with what didn't work in its summary. The
 # screenshots of each show the account's email, and a public repository's artifacts are anyone's to download: so they're
 # kept (a day) only while the repository's private; otherwise they stay on the runner, and the summary says which failed.
-# Run it by hand from the Actions tab too (another site, say the staging copy, as SITE).
+# Run it by hand from the Actions tab too (a trusted InFlite site, as SITE).
 name: Sign-in check
 
 on:
@@ -25,17 +25,20 @@ concurrency:
 
 jobs:
   check:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: A browser
         run: |
-          npm install --no-save --no-audit --no-fund playwright@1.63.0
-          npx playwright install --with-deps chromium
+          npm ci --prefix .tools/tests --ignore-scripts --no-audit --no-fund
+          .tools/tests/node_modules/.bin/playwright install --with-deps chromium
       - name: Sign in, from every app, on a phone and a computer
         env:
           SITE: ${{ inputs.site || 'https://inflite.ai' }}
@@ -52,7 +55,7 @@ jobs:
           exit $code
       - name: Screenshots of any that didn't work (a private repository's only)
         if: failure() && github.event.repository.private
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signin-check
           path: signin-check/

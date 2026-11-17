@@ -26,11 +26,7 @@ import { E2E, b64url, fromB64url } from "./crypto.js";
 import { authScreen, updateAuthScreen } from "./auth-frame.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
-// InFlite's menu: one menu, the same in every app, opened from your photo. You (a tap to your account), the app's own
-// few rows, and a foot with its version and Sign Out. With it: the same note in every app after it's updated itself,
-// the updater every app shares (updates, below), and the hub (hub, below: every app as a page of inflite.ai).
-// (Plain script, no imports: it's the same in a module and in Mail's script. Images only ever blob: or the app's own,
-// as each app's rules allow; the apps' icons are drawn here, made blob: once each.)
+// Shared profile menu, updates, navigation and private diagnostics; plain script for modules and Mail.
 const IFL = (() => {
   const APPS = [["chat", "Chat"], ["weather", "Weather"], ["fitness", "Fitness"], ["markets", "Markets"], ["mail", "Mail"], ["account", "Account"]];
   const NAME = Object.fromEntries(APPS);
@@ -928,8 +924,16 @@ const IFL = (() => {
       for (let i = 0; i < 5; i++) { out += ALPHA[h % 32]; h = Math.floor(h / 32); }
       return `IF-${letterOf(app)}-${out}`;
     };
-    const scrub = (s, n = 400) => String(s ?? "").replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
-      .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
+    const scrub = (s, n = 400) => String(s ?? "").split("\n").map((line) => {
+  // JSON parsers include a fragment of the rejected body in their error. Never report that fragment.
+  if (!/^\s*(?:at\s|[\w.$]+@)/.test(line) && /(?:JSON (?:Parse|parse)|not valid JSON|in JSON at position|after JSON|(?:Unexpected token|Expected property name).*(?:JSON|position))/i.test(line)) {
+    const at = /(?:position|line|column)\s+\d+(?:\s+(?:column|line)\s+\d+)?/i.exec(line);
+    return "JSON parse failed" + (at ? " (" + at[0] + ")" : "");
+  }
+  return line;
+}).join("\n").replace(/(["']?)(password|passwd|secret|token|authorization|cookie|access_token|refresh_token|api[_-]?key)\1\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|Bearer\s+[^\s,;}]+|[^\s,;}]+)/gi, "$2=<redacted>")
+  .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, "<email>")
+  .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "<long>").replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, "$1").slice(0, n);
     // (the app it's in: at the hub, the section's (its own page's own app aside); else the app's address, or what it said)
     const appNow = () => {
       const host = HOSTS[location.hostname.split(".")[0]], seg = HUB[location.pathname.split("/")[1]];
@@ -1203,8 +1207,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.30";
-const NEWS = "Liquid Glass across InFlite";
+const BUILD = "2.31";
+const NEWS = "Stronger account and privacy protection";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,

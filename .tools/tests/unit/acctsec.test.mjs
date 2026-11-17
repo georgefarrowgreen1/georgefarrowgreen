@@ -163,6 +163,41 @@ async function signedInHere(u) {
   await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hex(await sha256(await issueSession(env, u.id, req('/api/account/me'))))).run();
   return `account=${site}`;
 }
+
+test('profile and admin images reauthorize after sign-out and never retain account-dependent bytes in HTTP caches', async () => {
+  const { onRequestGet: homePhoto } = await import('../../../functions/api/me/photo.js');
+  const { ADMIN_ROUTES } = await import('../../../functions/api/pigeon/[[path]].js');
+  const a = await account('photocachea', 'a long test password'), b = await account('photocacheb', 'a long test password');
+  const ca = await signedInHere(a), cb = await signedInHere(b), savedBucket = PAGE_ENV.BIO_R2;
+  const oldAdmin = await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first();
+  PAGE_ENV.BIO_R2 = { async get(key) { return { body: new Response('private-image:' + key).body }; } };
+  try {
+    for (const [owner, cookie] of [[a, ca], [b, cb]]) {
+      const response = await homePhoto({ request: req('/api/me/photo?v=unchanged', { cookie }), env: PAGE_ENV });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+      assert.equal(await response.text(), 'private-image:pigeon-avatars/' + owner.id);
+    }
+    const response = await accountApi({ request: req('/api/account/me/photo', { cookie: ca }), env: PAGE_ENV, params: { path: ['me', 'photo'] }, waitUntil() {} });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    assert.equal(await response.text(), 'private-image:pigeon-avatars/' + a.id);
+    await D.prepare("INSERT OR REPLACE INTO pg_meta (k,v) VALUES ('admin_user', ?)").bind(a.id).run();
+    await D.prepare('INSERT INTO pg_passkeys (id,user_id,public_key,alg,created_at) VALUES (?,?,?,-7,?)').bind('photo-cache-fixture', a.id, 'fixture-only', Date.now()).run();
+    const admin = await ADMIN_ROUTES['GET admin/avatar']({ request: req('/api/account/admin/avatar?id=' + b.id, { cookie: ca }), env: PAGE_ENV });
+    assert.equal(admin.headers.get('Cache-Control'), 'private, no-store');
+    assert.equal(await admin.text(), 'private-image:pigeon-avatars/' + b.id);
+    await D.prepare('DELETE FROM pg_sessions WHERE user_id = ?').bind(a.id).run();
+    const signedOut = await homePhoto({ request: req('/api/me/photo?v=unchanged', { cookie: ca }), env: PAGE_ENV });
+    assert.equal(signedOut.status, 404);
+    assert.doesNotMatch(await signedOut.text(), /private-image/);
+    await assert.rejects(ADMIN_ROUTES['GET admin/avatar']({ request: req('/api/account/admin/avatar?id=' + b.id, { cookie: ca }), env: PAGE_ENV }), { status: 403 });
+  } finally {
+    PAGE_ENV.BIO_R2 = savedBucket;
+    if (oldAdmin) await D.prepare("UPDATE pg_meta SET v = ? WHERE k = 'admin_user'").bind(oldAdmin.v).run();
+    else await D.prepare("DELETE FROM pg_meta WHERE k = 'admin_user'").run();
+  }
+});
 const changePassword = (u, cookie, extra = {}) => onPage('password', { oldProof: proofOf('a long test password'), salt: E2E.newSalt(), proof: proofOf('a newer password'), vault: 'w'.repeat(40), ...extra }, { cookie });
 
 test('a password changed on the account’s page: the device that changed it is given a word for the new one', async () => {
@@ -205,6 +240,62 @@ test('a new email confirmed in a browser signed in to the account: a word for th
   // (opened elsewhere, signed in to nothing: none)
   await ask().bind('wes.newer@example.com', hex(await sha256(token)), Date.now(), u.id).run();
   assert.equal(knownIn(await onPage('email/change-confirm', { token }, { ip: '198.51.100.51' })), undefined);
+});
+
+// Pause immediately after a token lookup, to reproduce an intervening request against the real SQLite schema.
+async function afterTokenLookup(column, intervene, work) {
+  const prepare = D.prepare;
+  D.prepare = (sql) => {
+    const wrap = (st) => ({ ...st, bind: (...args) => wrap(st.bind(...args)), first: async (...args) => {
+      const row = await st.first(...args);
+      if (sql === `SELECT * FROM pg_users WHERE ${column} = ?`) await intervene(row);
+      return row;
+    } });
+    return wrap(prepare(sql));
+  };
+  try { return await work(); } finally { D.prepare = prepare; }
+}
+
+test('an email-change link cannot confirm a newer address requested while its lookup was in flight', async () => {
+  const u = await account('emailrace', 'a long test password'), token = 'E'.repeat(43), newer = 'N'.repeat(43);
+  await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?')
+    .bind('first@example.com', hex(await sha256(token)), Date.now(), u.id).run();
+  const reset = await createReset(env, u.id, 'user', 3600e3);
+  const res = await afterTokenLookup('email_new_code', async () => {
+    await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?')
+      .bind('replacement@example.com', hex(await sha256(newer)), Date.now(), u.id).run();
+  }, () => onPage('email/change-confirm', { token }, { ip: '198.51.100.101' }));
+  assert.equal(res.status, 400, await res.clone().text());
+  const now = await D.prepare('SELECT email, email_new, email_new_code FROM pg_users WHERE id = ?').bind(u.id).first();
+  assert.equal(now.email, u.email);
+  assert.equal(now.email_new, 'replacement@example.com');
+  assert.equal(now.email_new_code, hex(await sha256(newer)));
+  assert.ok(await findReset(env, reset), 'a rejected stale link does not revoke password-reset links');
+});
+
+test('concurrent copies of one email-change link succeed once and preserve a non-null address', async () => {
+  const u = await account('emailonce', 'a long test password'), token = 'O'.repeat(43);
+  await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?')
+    .bind('confirmed@example.com', hex(await sha256(token)), Date.now(), u.id).run();
+  let lookups = 0, release;
+  const both = new Promise((yes) => { release = yes; });
+  const results = await afterTokenLookup('email_new_code', async () => {
+    if (++lookups === 2) release();
+    await both;
+  }, () => Promise.all([onPage('email/change-confirm', { token }, { ip: '198.51.100.102' }), onPage('email/change-confirm', { token }, { ip: '198.51.100.103' })]));
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 400]);
+  assert.equal((await D.prepare('SELECT email FROM pg_users WHERE id = ?').bind(u.id).first()).email, 'confirmed@example.com');
+});
+
+test('an old email-confirmation lookup cannot verify an address that changed before its write', async () => {
+  const u = await account('confirmrace', 'a long test password'), token = 'C'.repeat(43);
+  await D.prepare('UPDATE pg_users SET email_ok = NULL, email_code = ?, email_sent = ? WHERE id = ?')
+    .bind(hex(await sha256(token)), Date.now(), u.id).run();
+  const res = await afterTokenLookup('email_code', async () => {
+    await D.prepare('UPDATE pg_users SET email = ?, email_code = NULL WHERE id = ?').bind('unverified@example.com', u.id).run();
+  }, () => onPage('email/confirm', { token }, { ip: '198.51.100.104' }));
+  assert.equal(res.status, 400, await res.clone().text());
+  assert.equal((await D.prepare('SELECT email_ok FROM pg_users WHERE id = ?').bind(u.id).first()).email_ok, null);
 });
 
 test('an account made here: said to have been sent its confirm link only if it went', async () => {

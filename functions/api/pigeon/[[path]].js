@@ -1567,7 +1567,7 @@ async function adminAvatar({ request, env }, id) {
   await requireAdmin(request, env, false, { look: true });
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(String(id || ""))));
   if (!obj) throw new HttpError(404, "No picture.");
-  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
 // Give someone extra swift, turbo or rocket pigeons, even past a full loft.
 // (Standard and dumb pigeons are unlimited: they just wait their turn.)

@@ -2,6 +2,7 @@
 // page sends: made for this site, a person there and verified, the same id and the same public key.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { checkRegistration, b64url } from '../../../functions/_pigeon.js';
 
 const request = new Request('https://account.georgefarrowgreen.com/api/account/passkeys', { method: 'POST' });
@@ -47,6 +48,23 @@ test('an id or a public key other than the one in it: refused', async () => {
 test('nothing said of it at all: asked to update the browser', async () => {
   const b = await made();
   await assert.rejects(checkRegistration(request, {}, { ...b, authenticatorData: undefined }), /Update it/);
+});
+
+test('malformed COSE collections cannot claim billions of children or exhaust the call stack', async () => {
+  const b = await made(), ad = fromB64(b.authenticatorData), keyAt = 55 + fromB64(b.id).length;
+  // Isolate the worst input so the pre-fix parser's billion-iteration loop has a hard process timeout.
+  const bad = { ...b, authenticatorData: b64url(new Uint8Array([...ad.slice(0, keyAt), 0x9a, 0xff, 0xff, 0xff, 0xff])) };
+  const module = new URL('../../../functions/_pigeon.js', import.meta.url).href;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { checkRegistration } from ${JSON.stringify(module)};
+    try { await checkRegistration(new Request(${JSON.stringify(request.url)}), {}, ${JSON.stringify(bad)}); process.exitCode = 1; }
+    catch (e) { if (e.status !== 400) throw e; }
+  `], { timeout: 2000, encoding: 'utf8' });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+  for (const suffix of [[0xba, 0xff, 0xff, 0xff, 0xff], [0x58], [0x59, 0], [0x5a, 0, 0, 0], [...new Array(32).fill(0x81), 0]]) {
+    await assert.rejects(checkRegistration(request, {}, { ...b, authenticatorData: b64url(new Uint8Array([...ad.slice(0, keyAt), ...suffix])) }), { status: 400 });
+  }
 });
 
 // ---- whose a passkey is (functions/_pigeon.js passkeySites, newRpFor, askRp, verifyAssertion) ----

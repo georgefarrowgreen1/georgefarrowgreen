@@ -124,7 +124,7 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
   const bounced = cf && r?.ok && d.result?.permanent_bounces?.length;
   if (!r?.ok || (cf && d.success === false) || bounced) {
     const why = bounced ? "The address bounced" : cf ? (d.errors || []).map((e) => e.message).filter(Boolean).join(", ") : d.message || d.error || "";
-    console.error("email", service, brand, r?.status, why);
+    console.error("email delivery failed", service, brand, r?.status);
     await noteSend(env, why || (r ? `${service} refused it (${r.status})` : `Couldn’t reach ${service}`));
     // The service's own reason is shown to the admin only; it can mention the sending setup.
     throw new HttpError(502, explain && why ? `${service} refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");

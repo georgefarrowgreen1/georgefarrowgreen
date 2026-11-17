@@ -286,12 +286,12 @@ test('/version reads BUILD from the app.js deployed, carries no CORS, and is no-
   assert.deepEqual(assets, ['/', '/app.js', '/sw.js', '/nope', '/apiary']);
 });
 
-test('a picture comes back as it came, kept for good under its v=, and only if it is one', { skip }, async () => {
+test('a picture comes back as it came, never cached across accounts even under its v=, and only if it is one', { skip }, async () => {
   let asked = account(() => new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } }));
   let { res } = await call(req('/api/avatar?id=4f6c8d2e-1a3b-4c5d-8e9f-0a1b2c3d4e5f&v=17&x=1'));
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('content-type'), 'image/png');
-  assert.equal(res.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+  assert.equal(res.headers.get('cache-control'), 'private, no-store');
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(res.headers.get('content-security-policy'), "default-src 'none'; frame-ancestors 'none'");
   assert.deepEqual([...new Uint8Array(await res.arrayBuffer())], [137, 80, 78, 71]);

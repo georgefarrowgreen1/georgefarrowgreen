@@ -58,6 +58,7 @@ defaults:
 
 jobs:
   switch:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -68,8 +69,9 @@ jobs:
       ROOF_STATE: ${{ inputs.state }}
       ROOF_WHERE: ${{ inputs.where }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           sparse-checkout: .github/hub
       - name: Check the token's there
         id: token
@@ -81,7 +83,7 @@ jobs:
           case "$ROOF_STATE" in off|on) ;; *) echo "::error::No such state: \"$ROOF_STATE\" (off or on). Nothing was changed."; exit 1 ;; esac
           case "${ROOF_APP:-all}" in all|weather|markets|fitness|mail|chats) ;; *) echo "::error::No such module: \"$ROOF_APP\" (all, weather, markets, fitness, mail or chats). Nothing was changed."; exit 1 ;; esac
           case "$ROOF_WHERE" in both|inflite.ai|next.inflite.ai) ;; *) echo "::error::No such hub: \"$ROOF_WHERE\" (both, inflite.ai or next.inflite.ai). Nothing was changed."; exit 1 ;; esac
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       # (and leaves it for the steps after as HUB_ACCOUNT: each step is a shell of its own)

@@ -13,8 +13,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           path: georgefarrowgreen
       - name: Shared InFlite UI
         env:
@@ -23,7 +24,7 @@ jobs:
           R=https://github.com/georgefarrowgreen1/inflite
           if git ls-remote --exit-code --heads "$R" "refs/heads/$BRANCH" >/dev/null 2>&1; then B=$BRANCH; else B=claude/inflite; fi
           git clone --quiet --depth 1 --branch "$B" "$R" inflite
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - run: npm ci --prefix .tools/tests --no-audit --no-fund
@@ -45,7 +46,7 @@ jobs:
           ROUTES_LIVE_SCREENSHOTS: test-results/routes/live
           RIDE_SCREENSHOTS: test-results/routes/ride-share
           ROUTES_DEMO_HTML: ${{ github.workspace }}/georgefarrowgreen/artifacts/InFlite-Fitness-Routes-Demo.html
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: fitness-routes-demo

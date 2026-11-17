@@ -69,7 +69,7 @@ export function extract(src, name) {
 }
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
-const VERBATIM = ['keyId', 'pubFromId', 'mergePins', 'pairFor', 'trustedPub', 'keysOf', 'shapeOK', 'ctxOf', 'keepPlain', 'decrypt', 'decryptGroup', 'group', 'member',
+const VERBATIM = ['privacyLease', 'privacyLive', 'keyId', 'pubFromId', 'mergePins', 'pairFor', 'trustedPub', 'keysOf', 'shapeOK', 'ctxOf', 'keepPlain', 'decrypt', 'decryptGroup', 'group', 'member',
   'others', 'memberMs', 'pinsCatchUp', 'restorePins', 'serverPins', 'savePins', 'checkPin', 'trustNewKey', 'setVerified', 'isVerified', 'wasVerified', 'seenPlain', 'base', 'checkMyKey', 'pinsMeta'];
 
 test('parity: the trust gate, pins, pairs and decrypt are app.js’s, verbatim (S3-D5, risk B3)', () => {
@@ -363,12 +363,12 @@ test('no Chat session here: signed in to InFlite → key; not → signin; a 401 
 
 // ---- app.js's own storage code, run on the same fake phone (the rollback's reader, risk I8)
 function appStorage(S, extra = {}) {
-  const names = ['CACHE_V', 'idb', 'cacheSave', 'cacheLoad', 'draftsMeta', 'draftsSave', 'draftsLoad', 'outKey', 'outboxSave', 'outboxAdd', 'outboxLoad', 'outboxOpen', 'outboxFlush'];
+  const names = ['privacyLease', 'privacyLive', 'CACHE_V', 'idb', 'cacheSave', 'cacheLoad', 'draftsMeta', 'draftsSave', 'draftsLoad', 'outKey', 'outboxSave', 'outboxAdd', 'outboxLoad', 'outboxOpen', 'outboxFlush'];
   const src = names.map((n) => { const t = extract(APP, n); assert.ok(t, `app.js has ${n}`); return t; }).join('\n');
   const deps = { S, E2E, ENGINE: false, MIN: 60e3, $ta: null, URL, Blob, navigator: { onLine: true }, console, toast() {}, haptic() {}, render() {}, renderOffline() {},
     loadChat: async () => {}, voiceMime: (m) => m, applySync: async () => {}, decrypt: async () => {}, decryptGroup: async () => {}, group: () => null, friend: () => ({}),
     pairFor: (pub) => E2E.pair(S.priv, pub), api: async () => ({}), ...extra };
-  const f = new Function(...Object.keys(deps), `"use strict"; let cacheTimer = 0, draftsTimer = 0, flushing = null, outRest = { n: 0, until: 0 };\n${src}\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`);
+  const f = new Function(...Object.keys(deps), `"use strict"; let privacyEpoch = 0, cacheTimer = 0, draftsTimer = 0, flushing = null, outRest = { n: 0, until: 0 };\n${src}\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`);
   return f(...Object.values(deps));
 }
 

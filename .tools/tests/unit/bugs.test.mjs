@@ -115,3 +115,35 @@ test("the window's code-maker, in the shared menu, works it out as the server do
     assert.equal(codeOf("chat", "crash", w, at), issueCode("chat", "crash", w, at));
   assert.match(menu, /label: "Report a Problem"/, "Report a Problem in every app's menu");
 });
+
+test('parser-body echoes and explicit credentials are removed in server and canonical client diagnostics', () => {
+  const menu = readFileSync(new URL('../../inflite/menu.js', import.meta.url), 'utf8');
+  const start = menu.indexOf('    const scrub = '), end = menu.indexOf('.slice(0, n);', start) + '.slice(0, n)'.length;
+  const client = new Function(`return (${menu.slice(start + '    const scrub = '.length, end)})`)();
+  const samples = [
+    `SyntaxError: Unexpected token 'p', "private-message-echo" is not valid JSON`,
+    `JSON Parse error: Unexpected identifier "private-message-echo"`,
+    `Expected property name or '}' in JSON at position 37: {"note":"private-message-echo"}`,
+    `password="private-password" token=short-key Authorization: Bearer short-bearer refresh_token='short-refresh'`,
+  ];
+  for (const value of samples) for (const redact of [scrub, client]) {
+    const output = redact(value, 1500);
+    for (const secret of ['private-message-echo', 'private-password', 'short-key', 'short-bearer', 'short-refresh']) assert.ok(!output.includes(secret), output);
+  }
+  const stack = `SyntaxError: Unexpected token 'p', "private-message-echo" is not valid JSON\n    at read (https://inflite.ai/notes/app.js:45:9)`;
+  assert.match(scrub(stack), /notes\/app\.js:45:9/);
+  assert.equal(client(stack, 1500), scrub(stack, 1500));
+});
+
+test('server diagnostics neither log nor persist a JSON parser private fragment', async () => {
+  const logs = [], original = console.error;
+  console.error = (...args) => logs.push(args);
+  let code;
+  try { code = await logError(env, 'synthetic parser test', new SyntaxError(`Unexpected token 'p', "private-report-echo" is not valid JSON`)); }
+  finally { console.error = original; }
+  assert.ok(!JSON.stringify(logs).includes('private-report-echo'));
+  const rows = DB.sql.prepare('SELECT words, stack FROM pg_bugs WHERE code = ?').all(code);
+  assert.ok(rows.length); assert.ok(!JSON.stringify(rows).includes('private-report-echo'));
+  const errors = DB.sql.prepare("SELECT msg FROM pg_errors WHERE src = 'synthetic parser test'").all();
+  assert.ok(errors.length); assert.ok(!JSON.stringify(errors).includes('private-report-echo'));
+});

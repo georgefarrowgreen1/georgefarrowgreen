@@ -721,13 +721,13 @@ let errWindow = 0, errCount = 0;
 // (→ the issue's code, "IF-S-XXXXX", which the API's answer carries, so the window each app shows names it, and the bug
 // report it's filed under: functions/_bugs.js)
 export async function logError(env, src, e) {
-  console.error(src, e && (e.stack || e.message || e));
-  let code = null;
-  try { code = await (await import("./_bugs.js")).fileServerBug(env, src, e); } catch (_) {}
+  console.error(src, "request failed");
+  let code = null, message = "Request failed.";
+  try { const bugs = await import("./_bugs.js"); message = bugs.scrub(e && (e.message || e), 300); code = await bugs.fileServerBug(env, src, e); } catch (_) {}
   const t = Date.now();
   if (t - errWindow > MIN) { errWindow = t; errCount = 0; }
   if (++errCount > 20 || !env?.DB) return code;
-  try { await (await db(env)).prepare("INSERT INTO pg_errors (at, src, msg) VALUES (?, ?, ?)").bind(t, String(src).slice(0, 40), String(e && (e.message || e)).slice(0, 300)).run(); } catch (_) {}
+  try { await (await db(env)).prepare("INSERT INTO pg_errors (at, src, msg) VALUES (?, ?, ?)").bind(t, String(src).slice(0, 40), message).run(); } catch (_) {}
   return code;
 }
 export async function sessionUser(env, token, inflight = true, site = false, request = null) {
@@ -1048,9 +1048,14 @@ export async function checkRegistration(request, env, b, { quiet = false } = {})
   return ((ad[33] << 24) | (ad[34] << 16) | (ad[35] << 8) | ad[36]) >>> 0;
 }
 // (the least of CBOR, for a passkey's public key: numbers, byte and text strings, arrays and maps; { v, at: where it ends })
-function cbor(u8, at) {
+function cbor(u8, at, depth = 0, budget = { left: 256 }) {
+  // A COSE public key is a small map. Bound work by both the input and a small nesting/node budget;
+  // a forged collection length must never turn a short registration response into billions of iterations.
+  if (at >= u8.length || depth > 8 || --budget.left < 0) throw new Error("cbor");
   const head = u8[at++], major = head >> 5, info = head & 31;
   let len = info;
+  const extra = info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : 0;
+  if (at + extra > u8.length) throw new Error("cbor");
   if (info === 24) len = u8[at++];
   else if (info === 25) { len = (u8[at] << 8) | u8[at + 1]; at += 2; }
   else if (info === 26) { len = ((u8[at] << 24) | (u8[at + 1] << 16) | (u8[at + 2] << 8) | u8[at + 3]) >>> 0; at += 4; }
@@ -1058,8 +1063,14 @@ function cbor(u8, at) {
   if (major === 0) return { v: len, at };
   if (major === 1) return { v: -1 - len, at };
   if (major === 2 || major === 3) { if (at + len > u8.length) throw new Error("cbor"); const x = u8.slice(at, at + len); return { v: major === 2 ? x : new TextDecoder().decode(x), at: at + len }; }
-  if (major === 4) { const a = []; for (let i = 0; i < len; i++) { const r = cbor(u8, at); a.push(r.v); at = r.at; } return { v: a, at }; }
-  if (major === 5) { const m = new Map(); for (let i = 0; i < len; i++) { const k = cbor(u8, at), v = cbor(u8, k.at); m.set(k.v, v.v); at = v.at; } return { v: m, at }; }
+  if (major === 4) {
+    if (len > u8.length - at || len > budget.left) throw new Error("cbor");
+    const a = []; for (let i = 0; i < len; i++) { const r = cbor(u8, at, depth + 1, budget); a.push(r.v); at = r.at; } return { v: a, at };
+  }
+  if (major === 5) {
+    if (len > Math.floor((u8.length - at) / 2) || len * 2 > budget.left) throw new Error("cbor");
+    const m = new Map(); for (let i = 0; i < len; i++) { const k = cbor(u8, at, depth + 1, budget), v = cbor(u8, k.at, depth + 1, budget); m.set(k.v, v.v); at = v.at; } return { v: m, at };
+  }
   throw new Error("cbor");
 }
 export async function verifyAssertion(cred, request, b, env) {
