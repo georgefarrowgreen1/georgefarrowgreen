@@ -61,9 +61,10 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   assert.equal(exported.account.id,me.id);assert.ok(Array.isArray(exported.organise));assert.ok(exported.life);assert.ok(Array.isArray(exported.system.actions));
   await backend.env.DB.prepare('UPDATE pg_sessions SET auth_at=0 WHERE user_id=?').bind(me.id).run();
   await page.goto('https://inflite.ai/account/#open=confirm');await page.getByRole('heading',{name:'Confirm it’s you',exact:true}).waitFor();
+  const redirectChecks=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/account/api/account/pwned')redirectChecks.push(r.url())});
   await page.route('https://inflite.ai/',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><title>InFlite</title><h1>Security Module</h1>'}));
   await page.locator('input[type=password]').fill(password);await page.locator('form').filter({has:page.locator('input[type=password]')}).getByRole('button',{name:'Continue',exact:true}).click();
-  await page.waitForURL('https://inflite.ai/#you=security');const confirmed=await page.evaluate(()=>fetch('/account/api/account/me').then(r=>r.json()));assert.equal(confirmed.id,me.id);assert.equal(confirmed.fresh,true);
+  await page.waitForURL('https://inflite.ai/#you=security');const confirmed=await page.evaluate(()=>fetch('/account/api/account/me').then(r=>r.json()));assert.equal(confirmed.id,me.id);assert.equal(confirmed.fresh,true);assert.deepEqual(redirectChecks,[],'redirecting reauthentication must not start a background breach request');
   assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);assert.deepEqual([...new Set(origins)],['https://inflite.ai']);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  }catch(e){const pages=context.pages();if(pages[0]){await pages[0].screenshot({path:out+'/'+engine+'-'+width+'-failure.png'});console.error(JSON.stringify({width,url:pages[0].url(),cookies:(await context.cookies()).map(c=>c.name),errors,failed,text:(await pages[0].locator('body').innerText()).slice(0,1800)}));}throw e;}finally{await context.close();}

@@ -4047,7 +4047,7 @@ function askAt(b) {
   if (after && after !== Sheet.ask.card) after.after(Sheet.ask.card); else b.append(Sheet.ask.card);
 }
 // the ways to show it's you: a passkey, or your password (ok once it's done)
-function confirmWays(ok) {
+function confirmWays(ok, { checkBreaches = true } = {}) {
   const m = S.me, said = h("p.said", { role: "alert" }), pk = passkeysWork() && m.passkeys.length > 0;
   const pw = h("input", { type: "password", autocomplete: "current-password", name: "password" });
   const go = h("button.btn" + (pk ? ".quiet" : ""), { type: "submit" }, "Continue");
@@ -4073,7 +4073,7 @@ function confirmWays(ok) {
     try {
       let proof;
       await busy(go, "Checking…", async () => { ({ proof } = await E2E.fromPassword(pw.value, m.salt)); return post("reauth", { proof }); });
-      ok(); checkQuietly(pw.value, proof);
+      ok(); if (checkBreaches) checkQuietly(pw.value, proof);
     }
     catch (err) { say(said, err.message, pw); }
   } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
@@ -4081,10 +4081,11 @@ function confirmWays(ok) {
 }
 function securityConfirmView(){
   const owner=S.me?.id,back=()=>location.assign("/#you=security");
-  return confirmView(()=>{if(S.me?.id!==owner)return;S.me.fresh=true;back()},back);
+  // This dedicated confirmation redirects. Keep optional breach checks on Account, not after leaving it.
+  return confirmView(()=>{if(S.me?.id!==owner)return;S.me.fresh=true;back()},back,{checkBreaches:false});
 }
-function confirmView(ok, back) {
-  const w = confirmWays(ok);
+function confirmView(ok, back, options) {
+  const w = confirmWays(ok, options);
   return { title: "Confirm it’s you", onBack: back, body: [
     h("p", { text: "This needs you to show it’s you again, with a passkey or your password." }),
     w.key, w.pk && h("div.or", { text: "or your password" }), w.form, w.said] };
