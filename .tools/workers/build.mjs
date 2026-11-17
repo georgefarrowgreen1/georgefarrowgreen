@@ -7,6 +7,7 @@ import { existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { MADE_FROM } from "../../functions/_min.js";
+import { HOME_FILES } from "../../functions/_minfresh.js";
 const ROOT = new URL("../../", import.meta.url).pathname, OUT = `${ROOT}.tools/workers/dist`;
 const local = `${ROOT}.tools/tests/node_modules/.bin/wrangler`;
 const [cmd, pre] = existsSync(local) ? [local, []] : ["npx", ["--yes", "wrangler@4.158.0"]];
@@ -19,9 +20,15 @@ const src = (f) => MADE_FROM[f] || f;
 const fresh = Object.entries(manifest).filter(([f, sum]) => existsSync(`${ROOT}min/${f}`) && existsSync(`${ROOT}${src(f)}`)
   && createHash("sha256").update(readFileSync(`${ROOT}${src(f)}`)).digest("hex") === sum).map(([f]) => f).sort();
 const stale = Object.keys(manifest).length - fresh.length;
+const homeStamps = Object.fromEntries(HOME_FILES.map(file => {
+  const path = fresh.includes(file) ? `min/${file}` : file;
+  return [file, createHash("sha256").update(readFileSync(ROOT + path)).digest("hex").slice(0, 12)];
+}));
 let r;
 try {
-  writeFileSync(FRESH_JS, was.replace(/^export const FRESH = null;$/m, `export const FRESH = new Set(${JSON.stringify(fresh)});`));
+  writeFileSync(FRESH_JS, was
+    .replace(/^export const FRESH = null;$/m, `export const FRESH = new Set(${JSON.stringify(fresh)});`)
+    .replace(/^export const HOME_STAMPS = null;$/m, `export const HOME_STAMPS = ${JSON.stringify(homeStamps)};`));
   r = spawnSync(cmd, [...pre, "pages", "functions", "build", "--outdir", OUT, "--compatibility-date", date], { cwd: ROOT, stdio: "inherit" });
 } finally { writeFileSync(FRESH_JS, was); }
 if (r.status !== 0) process.exit(r.status || 1);
