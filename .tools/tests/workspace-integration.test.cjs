@@ -62,6 +62,8 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
     if (p.startsWith('/api/')) {
       state.requests.push({ path: p, method: req.method(), body: req.postData() });
       if (state.offline) return r.abort();
+      if (p === '/api/organise/preferences') return j(r, { prefs: { hidden: [], version: 0 } });
+      if (p === '/api/organise/calendar-events') return j(r, { events: [], calendars: [], warnings: [] });
       if(p==='/api/organise/list')return j(r,{records:[],cursor:null});if(p==='/api/workspaces'){if(req.method()==='PUT'){const body=req.postDataJSON();if(body.revision!==workspaceCloud.revision)return j(r,{error:'Conflict',...workspaceCloud},409);workspaceCloud={revision:workspaceCloud.revision+1,state:body.state,updatedAt:Date.now()};}return j(r,workspaceCloud);}
       if (p === '/api/vitals') return r.fulfill({ status: 204, body: '' });
       if (p === '/api/weather/obs') return j(r, { station: null, days: {} });
