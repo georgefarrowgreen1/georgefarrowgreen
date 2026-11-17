@@ -315,6 +315,9 @@ test('full Files app collections use real Fitness exports and Mail metadata with
     await page.waitForFunction(()=>document.querySelector('.ifx-status')?.textContent==='0 items');
     assert.equal(await page.locator('.ifx-items [data-file-key]').count(),0,'hidden Chats retires its current-conversation media rather than indexing private history');
     await page.locator('.ws-dock').getByRole('button',{name:'Chats',exact:true}).click();await page.locator('#m-chats .ch-row[data-id=\"'+chatIDs.pat+'\"]').click();await page.locator('#m-chats .ch-input').waitFor();
+    // The visible composer precedes the asynchronous Worker open response.
+    // Await the restored draft, rather than sampling its initial empty value.
+    await page.waitForFunction(()=>document.querySelector('#m-chats .ch-input')?.value==='A private unsent Files draft',null,{timeout:5000});
     assert.equal(await page.locator('#m-chats .ch-input').inputValue(),'A private unsent Files draft');assert.equal(await page.locator('#m-chats').evaluate(n=>n===window.__filesChatRoot),true);
     const workers=page.workers().filter(w=>new URL(w.url()).pathname==='/chats/roof/core.js');assert.equal(workers.length,1);const calls=await workers[0].evaluate(()=>self.kitCalls);for(const method of ['sendText','sendBlob','sendRun'])assert.equal(calls[method]||0,0);
     assert.equal(t.state.mail.sends.length,0);assert.deepEqual(t.state.routeWrites,[]);await t.clean();
