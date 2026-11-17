@@ -1,7 +1,7 @@
 /* One InFlite account: neutral surfaces, clear grouped controls and green-to-lime actions.
    Account appearance and accessibility preferences apply throughout. */
 
-:root {
+:root, :host {
   color-scheme: dark;
   --sky-a: var(--ifl-page, #101210); --sky-b: var(--ifl-page, #101210); --sky-c: var(--ifl-page, #101210);
   --sky-top: var(--ifl-page, #101210);   /* (the sky at the very top, its light on it: what a phone tints its status bar with) */
@@ -40,7 +40,7 @@
 @supports not (transition-timing-function: linear(0, 1)) { :root { --ease-spring: cubic-bezier(0.2, 1.1, 0.4, 1); } }
 /* light: by the device's setting (Automatic), or chosen for the account (data-theme, set by app.js) */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme="dark"]), :host(:not([data-theme="dark"])) {
     color-scheme: light;
     --sky-a: var(--ifl-page, #f8f9f6); --sky-b: var(--ifl-page, #f8f9f6); --sky-c: var(--ifl-page, #f8f9f6);
     --sky-top: var(--ifl-page, #f8f9f6);
@@ -59,7 +59,7 @@
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
   }
 }
-:root[data-theme="light"] {
+:root[data-theme="light"], :host([data-theme="light"]) {
     --pc-base: var(--ifl-contrast, #141714); --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55);
     --pc-pill: rgba(255, 255, 255, .14); --pc-pill-text: #fff; --pc-go: var(--ifl-accent-gradient, linear-gradient(110deg, #24c872, #b8eb2b)); --pc-go-text: var(--ifl-on-accent, #10150d);
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
@@ -2439,3 +2439,20 @@ dialog.sheet .mini { border-radius: var(--ifl-radius-pill); }
 html.account-embedded, .account-embedded body { overflow-x: clip; overscroll-behavior-x: none; }
 html.account-embedded { touch-action: pan-x pan-y pinch-zoom; }
 .account-embedded .account-detail { grid-template-columns: minmax(0, 1fr); }
+
+:host {
+  display: block; min-width: 0; color: var(--text); color-scheme: inherit;
+  font: 17px/1.35 var(--font); -webkit-tap-highlight-color: transparent;
+}
+:host #page { overflow-x: clip; }
+:host #main { padding: 0; }
+:host .account-layout { display: block; }
+:host .account-detail { grid-template-columns: minmax(0, 1fr); }
+:host dialog.sheet { max-height: calc(var(--vvh, 100dvh) - env(safe-area-inset-top, 0px) - 16px); }
+@media (max-width: 599px) {
+  :host dialog.sheet {
+    inset: auto 0 var(--sheet-foot, 0px); width: 100%; max-width: none; margin: 0;
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

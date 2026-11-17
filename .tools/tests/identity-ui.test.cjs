@@ -45,12 +45,13 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   // This fixture serves identity only. Supply its same-origin host document so
   // real password, editor and download flows exercise the framed response.
   const seededUser = await seeded.clone().json();
-  const fade = readFileSync(resolve(__dirname,'../../../inflite/today/public/fade.js'));
-  await page.route('https://inflite.ai/fade.js', route => route.fulfill({contentType:'text/javascript',body:fade}));
-  await page.route('https://inflite.ai/', route => route.fulfill({contentType:'text/html',body:`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings</title><style>@view-transition{navigation:auto}</style><script src="/fade.js"></script><main id="you"></main>
-    <script>const frame=document.createElement("iframe");frame.title="Account";frame.dataset.owner=${JSON.stringify(seededUser.id)};
-    frame.style.cssText="border:0;width:100%;height:90vh";frame.src="/settings/account/?embed=1"+(location.hash.startsWith("#settings=account-")?"#open="+location.hash.slice("#settings=account-".length):"");document.querySelector("main").append(frame);</script>`}));
-  const account = page.frameLocator('iframe[title=Account]');
+  for (const file of ['fade.js','settings-account.js','roof/sheet.js','roof/ui.js']) {
+    await page.route('https://inflite.ai/'+file, route => route.fulfill({contentType:'text/javascript',body:readFileSync(resolve(__dirname,'../../../inflite/today/public',file))}));
+  }
+  await page.route('https://inflite.ai/', route => route.fulfill({contentType:'text/html',body:`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings</title><script src="/fade.js"></script><main id="you"><inflite-settings-account></inflite-settings-account></main>
+    <script type="module">import "/settings-account.js";import {createSheets} from "/roof/sheet.js";
+    document.querySelector("inflite-settings-account").mount({owner:${JSON.stringify(seededUser.id)},sheets:createSheets({}),part:location.hash.split("account-")[1]});</script>`}));
+  const account = page.locator('inflite-settings-account');
   const fromSettings = width === 390;
   await page.goto(fromSettings ? 'https://inflite.ai/settings/account/#open=profile' : 'https://inflite.ai/auth/');
   await page.locator('.auth-panel[data-auth-state="signin"]').waitFor();
@@ -71,9 +72,12 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   await page.waitForFunction(()=>{const p=document.querySelector('.poster-card');return p&&Number(getComputedStyle(p).opacity)>.95&&Number(getComputedStyle(document.querySelector('#main')).opacity)>.95;});
   await page.screenshot({path:out+'/'+engine+'-'+width+'.png',fullPage:false});
   for(const appearance of ['light','dark']){await page.evaluate(appearance=>InFliteAppearance.accept({...InFliteAppearance.snapshot(),appearance}),appearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));await page.locator('.app.glass').first().waitFor();const colours=await page.locator('.app.glass').evaluateAll(nodes=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d');return nodes.map(n=>{c.clearRect(0,0,1,1);c.fillStyle=getComputedStyle(n).backgroundColor;c.fillRect(0,0,1,1);return[...c.getImageData(0,0,1,1).data]})});for(const colour of colours)assert.ok(Math.max(...colour.slice(0,3))-Math.min(...colour.slice(0,3))<=2,'Account card material stays neutral');await page.screenshot({path:out+'/'+engine+'-'+width+'-neutral-'+appearance+'.png',fullPage:false})}
+  await backend.env.DB.prepare("INSERT OR REPLACE INTO pg_meta(k,v) VALUES ('admin_user',?)").bind(me.id).run();
+  await backend.env.DB.prepare("INSERT INTO pg_passkeys (id,user_id,public_key,alg,label,created_at,sign_count) VALUES (?,?,?,-7,'Fixture',?,0)").bind('key'+width,me.id,'fixture',Date.now()).run();
   await page.goto('https://inflite.ai/settings/account/');
   await page.waitForURL('https://inflite.ai/#settings=account');
   await account.locator('.poster-card').waitFor();
+  assert.equal(page.frames().length,1);
   const layout = await account.locator('.poster-card').evaluate(poster => {
     const viewport = document.documentElement.clientWidth;
     const pageWidth = document.documentElement.scrollWidth;
@@ -85,13 +89,28 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   assert.ok(layout.left >= -1 && layout.right <= layout.viewport + 1, JSON.stringify(layout));
   assert.ok(layout.pageWidth <= layout.viewport + 1, JSON.stringify(layout));
   assert.equal(layout.pageScroll, 0);
-  assert.equal(layout.end, layout.left);
+  assert.ok(Math.abs(layout.end-layout.left)<0.5,JSON.stringify(layout));
   assert.equal(await account.getByRole('heading',{name:'Your apps',exact:true}).count(),0);
   assert.equal(await account.locator('[data-sec="apps"], .apps, .open-app').count(),0);
   assert.ok(await account.getByRole('button',{name:/Sign-in and security/i}).isVisible());
   assert.equal(await account.locator('.account-categories, .account-heading').count(),0);
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.screenshot({path:out+'/'+engine+'-'+width+'-settings-account.png'});
+  await account.getByRole('button',{name:/^Admin/}).click();
+  const admin = account.getByRole('dialog');
+  await admin.getByRole('heading',{name:'Admin',exact:true}).waitFor();
+  await admin.getByRole('button',{name:/^Accounts/}).click();
+  await admin.getByRole('heading',{name:'Accounts',exact:true}).waitFor();
+  assert.equal(await admin.evaluate(el => el.matches(':modal') && el.ownerDocument === document),true);
+  await admin.getByRole('button',{name:'Back',exact:true}).click();
+  await admin.getByRole('heading',{name:'Admin',exact:true}).waitFor();
+  if (width===390) {
+    await admin.evaluate(el=>Promise.allSettled(el.getAnimations().map(a=>a.finished)));
+    const bounds=await admin.boundingBox();
+    assert.ok(bounds.x<=1 && bounds.width>=width-2,JSON.stringify(bounds));
+  }
+  await admin.getByRole('button',{name:'Close',exact:true}).click();
+  await admin.waitFor({state:'hidden'});
   const edit = account.getByRole('button',{name:'Edit profile',exact:true});
   await edit.click();
   await account.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
@@ -104,7 +123,13 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
   await page.goto('https://inflite.ai/settings/account/#open=data');
   const archiveButton=account.getByRole('button',{name:/Download full archive \(JSON\)/});await archiveButton.waitFor();
-  assert.equal(await archiveButton.evaluate(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1}),true);
+  const archiveBounds = await archiveButton.evaluate(n => {
+    const dialog = n.closest('dialog');
+    return Promise.allSettled(dialog.getAnimations().map(a=>a.finished)).then(() => ({
+      button:n.getBoundingClientRect().toJSON(), dialog:dialog.getBoundingClientRect().toJSON(), width:innerWidth
+    }));
+  });
+  assert.ok(archiveBounds.button.width>0 && archiveBounds.button.left>=0 && archiveBounds.button.right<=archiveBounds.width+1, JSON.stringify(archiveBounds));
   const downloaded=page.waitForEvent('download');await archiveButton.click();const file=await downloaded,exported=JSON.parse(readFileSync(await file.path(),'utf8'));
   assert.equal(exported.account.id,me.id);assert.ok(Array.isArray(exported.organise));assert.ok(exported.life);assert.ok(Array.isArray(exported.system.actions));
   await backend.env.DB.prepare('UPDATE pg_sessions SET auth_at=0 WHERE user_id=?').bind(me.id).run();

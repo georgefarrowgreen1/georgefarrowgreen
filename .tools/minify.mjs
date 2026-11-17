@@ -21,6 +21,12 @@ export const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 // nothing more goes, as taking out one thing can leave another unused. Nothing renamed, as everywhere here.
 export function signinPage(src, transformSync) {
   const o = { loader: "js", format: "esm", treeShaking: true, minifySyntax: true, legalComments: "none", charset: "utf8" };
+  // Sign-in owns its entire document. Expose the controller body at module scope
+  // so esbuild can remove Account-only views from this specialised entry point.
+  const entry = 'if (document.querySelector("script[data-account-page]")) startAccount();';
+  const controller = "export function startAccount(host) {";
+  if (!src.includes(entry) || !src.includes(controller) || !src.trimEnd().endsWith("return ready;\n}")) throw Error("Account entry point changed");
+  src = src.replace(entry, "").replace(controller, "const host = null;").trimEnd().slice(0,-"return ready;\n}".length);
   let out = transformSync(src.replace("const IFL = (() => {", "const IFL = /* @__PURE__ */ (() => {"), { ...o, define: { SIGNIN_PAGE: "true" } }).code;
   for (let was = "", n = 0; was !== out && n < 8; n++) { was = out; out = transformSync(out, o).code; }
   return transformSync(out, { ...o, minifyWhitespace: true }).code;

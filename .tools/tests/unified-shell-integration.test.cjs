@@ -165,15 +165,33 @@ for (const width of [390,1440]) test(`Account stays inside Settings at ${width}p
   const t = await env.open({width,initialPath:'/?os=1',ready:'home'});
   const {page} = t;
   try {
+    const {createIdentityBackend} = await import('./fixtures/identity-backend.mjs');
+    const backend = await createIdentityBackend();
+    t.ctx.once('close',()=>backend.close());
     let loads = 0;
-    await page.route('**/settings/account/?embed=1', route => {
-      loads++;
-      return route.fulfill({contentType:'text/html',body:'<label>Profile name <input></label>'});
+    await page.route('**/account/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/account/api/account/me') {
+        loads++;
+        assert.equal(route.request().headers()['x-inflite-owner'],String(t.state.view.user.id));
+        return route.fulfill({json:{...t.state.view.user,signedIn:true,fresh:true,emailOk:true,devices:[],passkeys:[],prefs:{},admin:{ready:true}}});
+      }
+      if (url.pathname === '/account/api/account/admin/summary')
+        return route.fulfill({json:{accounts:3,today:1,messages:0,email:true}});
+      const res = await backend.request(new Request('https://inflite.ai'+url.pathname+url.search));
+      return route.fulfill({status:res.status,headers:Object.fromEntries(res.headers),body:Buffer.from(await res.arrayBuffer())});
     });
     await page.evaluate(() => { window.shellBeforeAccount = document; location.hash = 'settings'; });
     await page.locator('#youAcct').click();
-    const pane = page.frameLocator('iframe[title="Account"]');
-    await pane.getByLabel('Profile name').fill('Draft name');
+    const pane = page.locator('inflite-settings-account');
+    assert.equal(await page.locator('#you iframe').count(),0);
+    await pane.getByRole('button',{name:/^Admin/}).click();
+    const dialog = pane.getByRole('dialog');
+    await dialog.getByRole('heading',{name:'Admin',exact:true}).waitFor();
+    await dialog.getByRole('button',{name:/^Accounts/}).waitFor();
+    assert.ok(await dialog.evaluate(d=>d.matches(':modal') && d.ownerDocument===document));
+    await dialog.getByRole('button',{name:'Close',exact:true}).click();
+    await dialog.waitFor({state:'hidden'});
     assert.equal(await page.evaluate(() => document === window.shellBeforeAccount),true);
     assert.equal(new URL(page.url()).hash,'#settings=account');
     assert.equal(await page.locator('.settings-back').isVisible(),width<900);
@@ -183,10 +201,9 @@ for (const width of [390,1440]) test(`Account stays inside Settings at ${width}p
       const bar = page.locator('.settings-account-bar');
       assert.equal(await bar.getByRole('heading',{name:'Account & security'}).isVisible(),true);
       assert.equal(await page.locator('#hd .ifh').isVisible(),false);
-      const header = await bar.boundingBox(), frame = await page.locator('.settings-account-frame').boundingBox();
+      const header = await bar.boundingBox(), frame = await page.locator('inflite-settings-account').boundingBox();
       assert.ok(header.height >= 44 && frame.y - header.y <= header.height + 12);
-      const dock = await page.locator('.ws-dock:visible').boundingBox();
-      assert.ok(frame.y + frame.height <= dock.y + 1, JSON.stringify({frame,dock}));
+      assert.ok(await pane.evaluate(el => el.scrollHeight <= el.clientHeight+1),'the shell owns vertical scrolling');
       await bar.getByRole('button',{name:'Search'}).click();
       await page.getByRole('combobox',{name:'Search everything'}).waitFor();
       await page.keyboard.press('Escape');
@@ -194,14 +211,17 @@ for (const width of [390,1440]) test(`Account stays inside Settings at ${width}p
       await page.locator('#hd .ifh').waitFor();
     }
     else await page.locator('#you [data-category=apps]').click();
-    await page.locator('.settings-account-frame').waitFor({state:'detached'});
+    await page.locator('inflite-settings-account').waitFor({state:'detached'});
     await page.locator('#you [data-category=account]').click();
-    await pane.getByLabel('Profile name').waitFor();
+    await pane.getByRole('button',{name:'Edit profile'}).click();
+    await pane.locator('input[autocomplete=name]').fill('Draft name');
     assert.equal(loads,2);
     t.state.view.user.name = 'Updated Profile';
-    await page.locator('.settings-account-frame').evaluate(frame => frame.dispatchEvent(new Event('inflite-profile-updated')));
+    await page.locator('inflite-settings-account').evaluate(frame => frame.dispatchEvent(new Event('inflite-profile-updated')));
     await page.locator('#youAcct').getByText('Updated Profile',{exact:true}).waitFor({state:'attached'});
     assert.equal(loads,2,'profile refresh keeps the current editor mounted');
+    assert.equal(await pane.locator('input[autocomplete=name]').inputValue(),'Draft name');
+    await pane.getByRole('button',{name:'Cancel',exact:true}).click();
     assert.equal(await page.evaluate(()=>document === window.shellBeforeAccount && document.documentElement.scrollWidth <= innerWidth + 1),true);
     await t.clean();
   } finally { await t.ctx.close(); }

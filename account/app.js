@@ -25,6 +25,7 @@
 import { E2E, b64url, fromB64url } from "./crypto.js";
 import { authScreen, updateAuthScreen } from "./auth-frame.js";
 
+function standaloneMenu() {
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // Shared profile menu, updates, navigation and private diagnostics; plain script for modules and Mail.
 const IFL = (() => {
@@ -1190,6 +1191,9 @@ const IFL = (() => {
   return api;
 })();
 // ==== end of InFlite's menu ====
+return IFL;
+}
+
 import { identityBase, siteUrlFor, returnFor } from "./identity-location.js";
 
 // The sign-in page's own copy of this script (auth.<site>: min/account/signin.js, made by node .tools/minify.mjs) is
@@ -1197,25 +1201,35 @@ import { identityBase, siteUrlFor, returnFor } from "./identity-location.js";
 // menu) is left out of it, so the sign-in page has about half as much to fetch and read (functions/_acctapp.js sends
 // it there, and this file itself should that copy be out of date). Here, as written, it's false.
 globalThis.SIGNIN_PAGE ??= false;
-const IDENTITY_BASE = identityBase(location);
-const inSettings = !SIGNIN_PAGE && location.pathname.startsWith("/settings/account/");
-const embeddedAccount = inSettings && location.search === "?embed=1" && !!window.frameElement;
-const settingsWindow = embeddedAccount ? window.parent : window;
-if (embeddedAccount) document.documentElement.classList.add("account-embedded");
+if (document.querySelector("script[data-account-page]")) startAccount();
+
+// One controller per visit. Settings supplies its own DOM, signed-in owner and modal manager.
+export function startAccount(host) {
+const IFL = SIGNIN_PAGE || host ? null : standaloneMenu();
+const scope = host?.root || document;
+const alive = () => !host || (!host.signal.aborted && host.element.isConnected);
+const listen = (target, type, callback, options = {}) =>
+  target.addEventListener(type, callback, host ? {...options, signal: host.signal} : options);
+
+const IDENTITY_BASE = host ? "/account" : identityBase(location);
+const inSettings = !!host || (!SIGNIN_PAGE && location.pathname.startsWith("/settings/account/"));
+const embeddedAccount = !!host || (inSettings && location.search === "?embed=1" && !!window.frameElement);
+const settingsWindow = embeddedAccount && !host ? window.parent : window;
+if (embeddedAccount && !host) document.documentElement.classList.add("account-embedded");
 const identityAsset = path => IDENTITY_BASE + path;
 const API = IDENTITY_BASE + "/api/account";
-const $ = (s, r = document) => r.querySelector(s);
+const $ = (s, r = scope) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
 // the motion the stylesheet sets out (its :root: the curves and times every app on the site shares), read for what's
 // animated from here: tok("--ease-glide"), ms("--dur-base") (with none, a plain curve and a third of a second)
-const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined;
+const tok = (name) => getComputedStyle(host?.element || document.documentElement).getPropertyValue(name).trim() || undefined;
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.34";
-const NEWS = "Full account data archives and connected calendars";
+const BUILD = "2.35";
+const NEWS = "Account and Admin open directly inside InFlite Settings";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1226,7 +1240,7 @@ const HOME_SITES = { "inflite.ai": "georgefarrowgreen.com", "ifl.test": "gfg.tes
 const MAIL_ICON = identityAsset("/apps/mail.png?v=2");
 const appIcon = (id) => (id === "mail" ? MAIL_ICON : identityAsset(`/apps/${id}.png`));
 const APPS = { inflight: { name: "Chat", sub: "chat" }, weather: { name: "Weather", sub: "weather" }, fitness: { name: "Fitness", sub: "fitness" }, markets: { name: "Markets", sub: "finance" }, mail: { name: "Mail", sub: "email" }, today: { name: "Today", sub: "@" }, home: { name: "Home", sub: "" } };
-const ARRIVED = location.hash;            // (what the address said, before what's below takes it out)
+const ARRIVED = host ? "" : location.hash;            // (what the address said, before what's below takes it out)
 // The sign-in page (auth.<site>: functions/_acctapp.js) and the account's page (account.<site>) are these same files,
 // each knowing which it is by its address. Every way in (signing in, making an account, a new password, a computer
 // signed in by phone, Continue as for an app) and out (signing out) is the sign-in page's; the account, once you're in,
@@ -1250,7 +1264,7 @@ function settingsAccountPath(part) {
   return "/#settings=account" + (accountSections.has(part) ? "-" + part : "");
 }
 function settingsSignIn() {
-  const part = new URLSearchParams(location.hash.slice(1)).get("open");
+  const part = host?.part || new URLSearchParams(location.hash.slice(1)).get("open");
   return AUTH.auth + "/?return=settings-account" + (accountSections.has(part) ? "&part=" + part : "");
 }
 function accountAfterSignIn(welcome) {
@@ -1274,7 +1288,7 @@ const WELCOME_IN = (() => {
   history.replaceState(null, "", location.pathname + location.search);
   return WELCOMES[m[1]] ? m[1] : null;
 })();
-const HANDOFF = (() => {
+const HANDOFF = host ? null : (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   // (opened from an app in a browser, which needs no hand-over, as the browser's signed in here too: #from=<app>, for the
   // way back, and open=, the part to open; a code only from an app with a sign-in of its own, as on an iPhone's Home
@@ -1304,7 +1318,7 @@ if (/^#from=home$/.test(location.hash)) {
 // two minutes, in that tab alone. Taken out of the address at once, and kept for the visit (half an hour), so a reload,
 // or making an account on the way, doesn't lose it; arriving any other way (an app's other links, the home page's)
 // drops one kept from before.
-const SIGN_FOR = (() => {
+const SIGN_FOR = host ? null : (() => {
   const m = /^#(signin|join)=(inflight|weather|fitness|markets|mail|today|home)(&|$)/.exec(ARRIVED);
   if (!m) {
     try {
@@ -1356,7 +1370,7 @@ function takeQr(hash) {
   } catch (_) { if (m) QR_IN.code = m[1]; }
   return !!m;
 }
-takeQr(ARRIVED);
+if (!host) takeQr(ARRIVED);
 const qrNext = () => { if (!QR_IN.code || !S.me?.signedIn) return null; try { sessionStorage.removeItem("acct-qr"); } catch (_) {} return qrView; };
 // (the way back warmed while you sign in: its connection open before it's wanted)
 if (SIGN_FOR?.back) try { document.head.append(Object.assign(document.createElement("link"), { rel: "preconnect", href: new URL(SIGN_FOR.back).origin })); } catch (_) {}
@@ -1377,7 +1391,7 @@ function confirmForHome() {
     confirmCard(edit, () => { closeSheet(); backToApp(); })] }));
 }
 // a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
-addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
+if (!host) addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 // (which app sent you here: Chat's profile, or Weather's account card)
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
@@ -1496,25 +1510,30 @@ const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator
 // (and opened from an app any other way, as by a link in an email read in Mail: iOS's own small browser, still
 // "standalone", but under its bar, so with no status bar inset, upright. As Chat, Mail and Markets tell it: behindBar)
 const underBar = () => { if (navigator.standalone !== true || !matchMedia("(orientation: portrait)").matches) return false; const p = document.createElement("div"); p.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none"; document.body.appendChild(p); const t = p.offsetHeight; p.remove(); return t === 0; };
-if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
+if (!host && matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 function matchesSettingsOwner(me) {
-  if (me?.signedIn && String(me.id) === window.frameElement?.dataset.owner) return true;
+  if (!alive()) return false;
+  if (me?.signedIn && String(me.id) === (host?.owner ?? window.frameElement?.dataset.owner)) return true;
   // Recheck the shell session before rendering any other account into this pane.
-  if (window.frameElement?.isConnected) {
+  if (host || window.frameElement?.isConnected) {
     if (me?.signedIn) settingsWindow.location.reload();
     else settingsWindow.location.replace(settingsSignIn());
   }
   return false;
 }
 async function call(path, { method = "GET", body, type, keepalive = false, owner } = {}) {
-  if (embeddedAccount) owner ??= window.frameElement?.dataset.owner;
+  if (!alive()) throw new DOMException("Account closed", "AbortError");
+  if (embeddedAccount) owner ??= host?.owner ?? window.frameElement?.dataset.owner;
   let r;
   const headers = { ...(owner ? {"X-Inflite-Owner":owner} : {}), ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
-  try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000), ...(keepalive ? { keepalive: true } : {}) }); }
+  const timeout = AbortSignal.timeout(30000);
+  const signal = host && AbortSignal.any ? AbortSignal.any([timeout, host.signal]) : timeout;
+  try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal, ...(keepalive ? { keepalive: true } : {}) }); }
   catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
   const j = await r.json().catch(() => ({}));
+  if (!alive()) throw new DOMException("Account closed", "AbortError");
   if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status, field: j.field });
   return j;
 }
@@ -1773,7 +1792,7 @@ async function fromLink() {
   } catch (e) { S.said = { kind, bad: true, text: e.message }; }
 }
 // (and one opened in a tab where the page is already open)
-addEventListener("hashchange", async () => {
+if (!host) addEventListener("hashchange", async () => {
   if (AUTH && !AUTH.here && WAY_IN.test(location.hash)) return location.replace(`${AUTH.auth}/${location.hash}`);
   Sheet.hist = 0;          // (a link arrived over an open sheet: its steps are behind this one now, and stay there)
   if (takeQr(location.hash)) { if (qrNext()) return openSheet(qrView); return anew(() => { S.settled = false; render(); }); }
@@ -1786,9 +1805,11 @@ addEventListener("hashchange", async () => {
 });
 let presentedProfile;
 function render() {
+  if (!alive()) return;
+  if (host && !matchesSettingsOwner(S.me)) return;
   if (embeddedAccount && S.me?.signedIn) {
     const profile = JSON.stringify([S.me.name, S.me.handle, S.me.photoAt]);
-    if (presentedProfile && presentedProfile !== profile) window.frameElement?.dispatchEvent(new Event("inflite-profile-updated"));
+    if (presentedProfile && presentedProfile !== profile) (host?.element ?? window.frameElement)?.dispatchEvent(new Event("inflite-profile-updated"));
     presentedProfile = profile;
   }
   // (settling into place the first time each way round: signed in, out, or being deleted; after that, drawn again in
@@ -1801,9 +1822,9 @@ function render() {
   if (rise) settle(risers); else moved(was);
   main.classList.toggle("signin-main", !!main.querySelector(".signin-shell"));
   main.removeAttribute("aria-busy");
-  document.title = inSettings ? "Account · InFlite Settings" : AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
-  if (!SIGNIN_PAGE) IFL.watch(window);
-  scrolled();
+  if (!host) document.title = inSettings ? "Account · InFlite Settings" : AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
+  if (!host && !SIGNIN_PAGE) IFL.watch(window);
+  if (!host) scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
 }
 // the page drawn again with what's new, once it's settled into place (what changed behind the scenes)
@@ -1824,7 +1845,7 @@ function where() {
   }
   for (const el of main.querySelectorAll("[data-k]")) vals.set(el.dataset.k, says(el));
   for (const el of main.querySelectorAll(".rise")) el.classList.remove("rise");      // (risen once: not again as it's put back)
-  return { secs, vals, focus: main.contains(document.activeElement) ? keyOf(document.activeElement) : null };
+  return { secs, vals, focus: main.contains(scope.activeElement) ? keyOf(scope.activeElement) : null };
 }
 const says = (row) => [row.querySelector(".val"), row.querySelector(".tx small")].map((x) => x?.textContent ?? null);
 // The page drawn again, from where everything was: a part that's moved slides from there to where it is now, a new one
@@ -1850,7 +1871,7 @@ function moved(was) {
     const w = was.vals.get(el.dataset.k), now = says(el), parts = [el.querySelector(".val"), el.querySelector(".tx small")];
     if (w) now.forEach((t, i) => { if (t != null && t !== w[i]) parts[i].animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") }); });
   }
-  if (was.focus && (!document.activeElement || document.activeElement === document.body)) refocus(main, was.focus);
+  if (was.focus && (!scope.activeElement || scope.activeElement === document.body)) refocus(main, was.focus);
 }
 // Something going, folded away: it fades (a row sliding off as it does), then the room it took closes up, the list, or
 // the sheet, closing round it. With Reduce Motion it just fades.
@@ -1971,7 +1992,7 @@ function signedIn(r) {
   const account = r(sec("account", section("Account", h("div.group.glass", {},
     row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
     row({ icon: "data", tint: "grey", title: "Your Data", onclick: () => openSheet(exportView) })))));
-  const settingsUrl = IFL.hub.settings();
+  const settingsUrl = host ? "/#settings" : IFL.hub.settings();
   const prefs = settingsUrl ? r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({icon:"sliders", tint:"grey", title:"InFlite Settings", sub:"Appearance, notifications and app preferences", onclick:()=>location.assign(settingsUrl)}))))) : r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "moon", tint: "grey", title: "Appearance", value: `${{ auto: "System", light: "Light", dark: "Dark" }[m.prefs.appearance] || "System"} · ${globalThis.InFliteAppearance?.palettes[m.prefs.palette || "inflite"]?.name || "InFlite"}`, onclick: () => openSheet(appearanceView) }),
@@ -2048,7 +2069,7 @@ function openPart(k) {
   if ((k === "admin" || k.startsWith("admin/")) && S.me?.admin) return loadAdmin().then((a) => { const v = a.parts?.[k]; if (v) openSheet(v); }, () => toast("Admin couldn’t be loaded. Try again.", true));
 }
 const OPEN_HASH = /^#open=([\w/-]{1,40})$/;
-const partAddress = (k) => { try { history.replaceState(history.state, "", `${location.pathname}${location.search}${k ? `#open=${k}` : ""}`); } catch (_) {} };
+const partAddress = (k) => { if (host) return; try { history.replaceState(history.state, "", `${location.pathname}${location.search}${k ? `#open=${k}` : ""}`); } catch (_) {} };
 // (search: every part, and what's in each, by name: typed in the list's field, "/" from anywhere)
 const FINDS = () => [
   ["Sign-in and Security", "security"], ["Password", "security", () => passwordView], ["Passkeys", "security", () => passkeysView], ["Email address", "security", () => emailView],
@@ -3580,7 +3601,7 @@ function say(el, text, input, bad = !!text, invalidField = false) {
   // retires this association without removing any other hint the field already had.
   if (input && text) {
     if (!el.id) {
-      let id; do { id = `account-feedback-${++feedbackSerial}`; } while (document.getElementById(id));
+      let id; do { id = `account-feedback-${++feedbackSerial}`; } while (scope.getElementById(id));
       el.id = id;
     }
     const descriptions = new Set((input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
@@ -3606,7 +3627,7 @@ function shake(el) {
 // (a button busy: as wide as it was, so what's beside it stays put, and what it says now faded in; the focus back on
 // it after, if it had it, as being held loses it)
 async function busy(btn, label, fn) {
-  const kids = [...btn.childNodes], was = btn.disabled, wasBusy = btn.getAttribute("aria-busy"), wide = btn.style.minWidth, had = document.activeElement === btn;
+  const kids = [...btn.childNodes], was = btn.disabled, wasBusy = btn.getAttribute("aria-busy"), wide = btn.style.minWidth, had = scope.activeElement === btn;
   btn.style.minWidth = `${btn.offsetWidth}px`;
   btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(h("span.spin"), h("span", { text: label }));
   if (!still.matches && !document.hidden) for (const k of btn.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
@@ -3614,7 +3635,7 @@ async function busy(btn, label, fn) {
   finally {
     btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
     if (wasBusy === null) btn.removeAttribute("aria-busy"); else btn.setAttribute("aria-busy", wasBusy);
-    if (had && btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus({ preventScroll: true });
+    if (had && btn.isConnected && (!scope.activeElement || scope.activeElement === document.body)) btn.focus({ preventScroll: true });
   }
 }
 // (your photo up top, busy: a ring turning round it, the photo kept, as busy's words don't fit in it; said to a screen
@@ -3622,23 +3643,23 @@ async function busy(btn, label, fn) {
 function photoBusy(label) {
   const me = $(".ahead .ifh-me");
   if (!me) return () => {};
-  const was = me.getAttribute("aria-label"), had = document.activeElement === me, ring = h("span.spin", { "aria-hidden": "true" });
+  const was = me.getAttribute("aria-label"), had = scope.activeElement === me, ring = h("span.spin", { "aria-hidden": "true" });
   me.append(ring); me.disabled = true; me.setAttribute("aria-busy", "true"); me.setAttribute("aria-label", label);
   return () => {
     ring.remove(); me.disabled = false; me.removeAttribute("aria-busy"); me.setAttribute("aria-label", was);
-    if (had && me.isConnected && (!document.activeElement || document.activeElement === document.body)) me.focus({ preventScroll: true });
+    if (had && me.isConnected && (!scope.activeElement || scope.activeElement === document.body)) me.focus({ preventScroll: true });
   };
 }
 // A switch or a list held while its change is kept (disabled, so it isn't changed again meanwhile): let go by what this
 // gives back, once the sheet's been drawn again (if it is), with the focus it had put back, as being held loses it: on
 // it, or on the one drawn in its place, found by its id
 function hold(input) {
-  const had = document.activeElement === input;
+  const had = scope.activeElement === input;
   input.disabled = true;
   return () => {
     input.disabled = false;
-    const el = input.isConnected ? input : input.id && document.getElementById(input.id);
-    if (had && el && (!document.activeElement || document.activeElement === document.body)) el.focus({ preventScroll: true });
+    const el = input.isConnected ? input : input.id && scope.getElementById(input.id);
+    if (had && el && (!scope.activeElement || scope.activeElement === document.body)) el.focus({ preventScroll: true });
   };
 }
 // A sign-in's button while it works: drawn in to a circle, turning (what it's doing said to a screen reader); and, once
@@ -3748,7 +3769,8 @@ function morph(box, change, fade = true) {
 }
 let toastT = 0, toastAt = 0;
 // (act: { label, fn }, a button on it, Undo, there while it shows: the toast takes taps then, and stays longer)
-function toast(text, bad, ms = bad ? 5000 : 2800, act = null) {     // (something gone wrong stays long enough to read)
+function toast(text, bad, ms = bad ? 5000 : 2800, act = null) {
+  if (!alive()) return;     // (something gone wrong stays long enough to read)
   const top = !!toastEl.showPopover, showing = toastEl.classList.contains("on");
   if (act) ms = Math.max(ms, 8000);
   const btn = act && h("button.toast-act", { type: "button", onclick: () => { clearTimeout(toastT); toastEl.classList.remove("on"); act.fn(); } }, act.label);
@@ -3780,7 +3802,7 @@ function toast(text, bad, ms = bad ? 5000 : 2800, act = null) {     // (somethin
 }
 // (where the toast lives: in the open sheet, else the page; moved shut and shown again, as a popover moved is shut)
 function toastHome() {
-  const home = sheetEl.open && !sheetEl.classList.contains("closing") ? sheetEl : document.body;
+  const home = sheetEl.open && !sheetEl.classList.contains("closing") ? sheetEl : (host?.root || document.body);
   if (toastEl.parentNode === home) return;
   const open = !!toastEl.matches?.(":popover-open");
   if (open) toastEl.hidePopover();
@@ -3847,14 +3869,16 @@ const leave = (el) => fold(el);
 // a computer's Back) closes it, or goes back a step in it, rather than leaving the page. (Sheet.hist: the steps added.)
 const Sheet = { stack: [], cancel: null, ask: null, from: null, hist: 0 };
 let histSkip = 0;
-function histPush() { try { history.pushState({ sheet: Sheet.hist + 1 }, ""); Sheet.hist++; } catch (_) {} }
+function histPush() { if (host) return; try { history.pushState({ sheet: Sheet.hist + 1 }, ""); Sheet.hist++; } catch (_) {} }
 function histDrop(n) { n = Math.min(n, Sheet.hist); if (n > 0) { Sheet.hist -= n; histSkip++; history.go(-n); } }
-addEventListener("popstate", () => {
+if (!host) addEventListener("popstate", () => {
   if (histSkip) { histSkip--; return; }                 // (ours, from a sheet closed here)
   if (!sheetEl.open || !Sheet.hist) return;
   Sheet.hist--; stepBack();
 });
+let shellSheet;
 function openSheet(view) {
+  if (!alive()) return;
   if (sheetEl.classList.contains("closing")) Sheet.shut?.();      // (opened again as one goes: that one's gone at once)
   // (one opened over another: on to it, as from one sheet to the next)
   if (sheetEl.open) {
@@ -3869,11 +3893,21 @@ function openSheet(view) {
   Sheet.stack = [view]; draw();
   // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
   // nor a button, with a ring round it; the row it was opened from has it back when it closes)
-  Sheet.from = document.activeElement?.closest?.("[data-k]")?.dataset.k || null; Sheet.at = performance.now();
+  Sheet.from = scope.activeElement?.closest?.("[data-k]")?.dataset.k || null; Sheet.at = performance.now();
   $("#page").style.setProperty("--sy", `${scrollY}px`);       // (the page steps back where it's scrolled to)
   // (on a computer: beside the list of the account's parts, in place of the page's right-hand column, the page still
   // there and in reach; elsewhere over the page, which steps back)
-  if (pane()) { paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); navOn(Sheet.from && document.querySelector(`.acct-nav [data-nav="${CSS.escape(Sheet.from)}"]`) ? Sheet.from : null); }
+  if (host) {
+    Sheet.closed = new Promise(resolve => {
+      shellSheet = host.sheets.openEl(sheetEl, {onClose() {
+        const cancel = Sheet.cancel;
+        Sheet.stack = []; Sheet.cancel = Sheet.ask = null;
+        shellSheet = null; sheetEl.replaceChildren(); cancel?.(); resolve();
+        if (alive()) main.querySelector(`[data-k="${CSS.escape(Sheet.from || "")}"]`)?.focus({preventScroll:true});
+      }});
+    });
+  }
+  else if (pane()) { paneAt(); sheetEl.classList.add("pane"); sheetEl.show(); navOn(Sheet.from && document.querySelector(`.acct-nav [data-nav="${CSS.escape(Sheet.from)}"]`) ? Sheet.from : null); }
   else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); }
   sheetEl.focus({ preventScroll: true }); histPush();
   const pk = partOf(view);
@@ -3892,9 +3926,9 @@ function paneAt() {
   sheetEl.style.setProperty("--pw", `${Math.round(b.width)}px`);
   sheetEl.style.setProperty("--pt", `${Math.round(Math.min(top, 140))}px`);
 }
-addEventListener("resize", () => { if (sheetEl.open && sheetEl.classList.contains("pane")) paneAt(); });
+if (!host) addEventListener("resize", () => { if (sheetEl.open && sheetEl.classList.contains("pane")) paneAt(); });
 // (the window made narrower or wider past where the panes start, with a sheet up: drawn again the other way, as it is)
-PANE_MQ.addEventListener?.("change", () => {
+if (!host) PANE_MQ.addEventListener?.("change", () => {
   if (S.me?.signedIn) patch();      // (At a glance, only on a computer)
   if (!sheetEl.open || sheetEl.classList.contains("closing")) return;
   sheetEl.close();
@@ -3902,9 +3936,9 @@ PANE_MQ.addEventListener?.("change", () => {
   else { sheetEl.classList.remove("pane"); sheetEl.showModal(); document.body.classList.add("sheet-up"); navOn(""); }
 });
 // (on a computer: "/" searches every setting; ↑ and ↓ move through the list, when you're not typing or in a part)
-addEventListener("keydown", (e) => {
+if (!host) addEventListener("keydown", (e) => {
   if (!pane() || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-  const t = document.activeElement, typing = t?.closest?.("input, textarea, select, [contenteditable]");
+  const t = scope.activeElement, typing = t?.closest?.("input, textarea, select, [contenteditable]");
   if (e.key === "/" && !typing) { const q = document.querySelector(".acct-nav .nav-q"); if (q) { e.preventDefault(); q.focus(); } return; }
   if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !typing && !(sheetEl.contains(t) && t !== sheetEl)) {
     const items = [...document.querySelectorAll(".acct-nav .nav-it:not(.nav-hit)")].filter((b) => b.getClientRects().length);
@@ -3915,7 +3949,7 @@ addEventListener("keydown", (e) => {
   }
 });
 // (Escape closes the pane, as it closes a sheet: a pane isn't modal, so the dialog doesn't hear it itself)
-addEventListener("keydown", (e) => { if (e.key === "Escape" && sheetEl.open && sheetEl.classList.contains("pane") && !e.defaultPrevented) { e.preventDefault(); closeSheet(); } });
+if (!host) addEventListener("keydown", (e) => { if (e.key === "Escape" && sheetEl.open && sheetEl.classList.contains("pane") && !e.defaultPrevented) { e.preventDefault(); closeSheet(); } });
 sheetEl.tabIndex = -1;
 function pushSheet(view) { Sheet.ask?.no(); Sheet.stack.push(view); draw("push"); histPush(); }
 function popSheet() { if (Sheet.hist > 1) histDrop(1); stepBack(); }
@@ -3934,7 +3968,7 @@ function draw(mode) {
   const right = v.right || h("button.x", { type: "button", "aria-label": "Close", onclick: closeSheet }, icon("x", 17, 2.6));
   if (mode === "same" && body0 && head0) return again(v, left, right, body0, head0);
   const head = h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title, tabindex: "-1" }), h("div.r", {}, right));
-  const body = h("div.sheet-body", {}, ...v.body);
+  const body = h(host ? "div.sheet-body.ifs-body" : "div.sheet-body", {}, ...v.body);
   // (still waiting for what it shows: as tall as the one before meanwhile, so the sheet fits just once, to what comes)
   if (body0 && body.querySelector(".adm-wait, [aria-busy='true']")) body.style.minHeight = `${body0.offsetHeight}px`;
   body.classList.add("arriving"); setTimeout(() => body.classList.remove("arriving"), 250);
@@ -3955,7 +3989,7 @@ function draw(mode) {
       // (the one before, kept a moment where it was, sliding away from however far it had come in)
       for (const [k, x] of [["--y", `${y}px`], ["--h", `${ht}px`], ["--o", o], ["--tf", tf]]) el.style.setProperty(k, x);
       el.querySelector("#sheet-title")?.removeAttribute("id");
-      el.classList.remove("swap", "push", "back"); el.classList.add("going", mode); el.inert = true;
+      el.classList.remove("swap", "push", "back"); el.classList.add("going", mode); el.inert = true; el.setAttribute("aria-hidden","true");
       el.addEventListener("animationend", (e) => { if (e.target === el) el.remove(); });
       setTimeout(() => el.remove(), 600);
     }
@@ -3967,7 +4001,7 @@ function draw(mode) {
 // the same sheet; where it was scrolled to and what had the focus kept; what's come in place of a spinner faded in, and
 // anything new in a list growing in where it goes
 function again(v, left, right, body, head) {
-  const active = sheetEl.contains(document.activeElement) ? document.activeElement : null, key = keyOf(active), top = body.scrollTop;
+  const active = sheetEl.contains(scope.activeElement) ? scope.activeElement : null, key = keyOf(active), top = body.scrollTop;
   const sel = active?.selectionStart != null ? [active.selectionStart, active.selectionEnd] : null;
   const had = new Set([...body.querySelectorAll("[data-id]")].map((x) => x.dataset.id));
   const t = $("#sheet-title", head); t.textContent = v.title; t.classList.toggle("vh", !!v.quiet);
@@ -3976,7 +4010,7 @@ function again(v, left, right, body, head) {
   if (Sheet.ask) { body.classList.add("asking"); askAt(body); }
   body.style.minHeight = "";
   body.scrollTop = top;
-  if (key && !sheetEl.contains(document.activeElement)) refocus(sheetEl, key, sel);
+  if (key && !sheetEl.contains(scope.activeElement)) refocus(sheetEl, key, sel);
   if (Sheet.waited) for (const k of body.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: tok("--ease-out") });
   else for (const el of body.querySelectorAll("[data-id]")) if (!had.has(el.dataset.id)) grow(el);
 }
@@ -3992,6 +4026,7 @@ function grow(el) {
 const swapped = () => Promise.all(($(".sheet-body:not(.going)", sheetEl)?.getAnimations() || []).map((a) => a.finished.catch(() => {})));
 // (done once it's gone: Sheet.closed, for what waits on that)
 function closeSheet() {
+  if (shellSheet) { shellSheet.close(); return Sheet.closed; }
   if (!sheetEl.open) return Promise.resolve();
   if (sheetEl.classList.contains("closing")) return Sheet.closed;
   queueMicrotask(toastHome);     // (a toast in it, out to the page as it goes)
@@ -4011,7 +4046,7 @@ function closeSheet() {
     sheetEl.close(); sheetEl.replaceChildren(); sheetEl.classList.remove("pane"); Sheet.stack = []; Sheet.ck = null; cancel?.(); navOn("");
     // (the page may have been drawn again meanwhile: the row it was opened from, found again by what it says)
     const back = from && [...main.querySelectorAll("[data-k]")].find((el) => el.dataset.k === from);
-    if (back && (document.activeElement === document.body || !document.activeElement)) back.focus({ preventScroll: true });
+    if (back && (scope.activeElement === document.body || !scope.activeElement)) back.focus({ preventScroll: true });
     gone();
   };
   const end = (e) => { if (e.target === sheetEl && !e.pseudoElement) done(); };
@@ -4088,7 +4123,9 @@ function scrollsIn(el, top) {
 // height, as layout, for that moment: cheap enough on the one sheet. What's in it doesn't scroll meanwhile.)
 {
   let shown = 0;
-  new ResizeObserver(([e]) => { shown = e.borderBoxSize?.[0]?.blockSize ?? sheetEl.offsetHeight; }).observe(sheetEl);
+  const sizeObserver = new ResizeObserver(([e]) => { shown = e.borderBoxSize?.[0]?.blockSize ?? sheetEl.offsetHeight; });
+  sizeObserver.observe(sheetEl);
+  host?.signal.addEventListener("abort", () => sizeObserver.disconnect(), {once:true});
   const fit = (start, more = 1) => {
     if (!sheetEl.open || !shown || sheetEl.matches(".closing, .dragging")) return;
     const run = sheetEl.getAnimations().find((a) => a.id === "fit"), from = start ?? (run ? sheetEl.offsetHeight : shown);
@@ -4542,9 +4579,13 @@ const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) /
 // ---- the site's admin: its own file (admin.js), fetched only for the account that's the site's admin, so no one
 // else's page carries it; until it's here, its row as it will be, without its figures ----
 let ADM = null, admComing = null;
+function redrawAdmin() {
+  const first = Sheet.stack[0];
+  if (ADM && (first === ADM.adminView || Object.values(ADM.parts).includes(first))) redraw();
+}
 function loadAdmin() {
   admComing ||= import("./admin.js").then((mod) => {
-    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when, wide: pane, cols });
+    ADM = mod.setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw: redrawAdmin, row, say, section, siteUrl, still, toast, tok, when, wide: pane, cols });
     patch();
     return ADM;
   }, (e) => { admComing = null; throw e; });
@@ -4552,7 +4593,7 @@ function loadAdmin() {
 }
 const ADMIN_HASH = /^#admin(?:=([\w:%.-]{1,80}))?$/;
 // (an incident's notification tapped with the page already open: the address's # changes, the page isn't loaded again)
-if (!SIGNIN_PAGE) addEventListener("hashchange", () => {
+if (!host && !SIGNIN_PAGE) addEventListener("hashchange", () => {
   // (a part's address typed or followed with the page open: that part)
   const part = S.me?.signedIn && OPEN_HASH.exec(location.hash);
   if (part) { if (partOf(Sheet.stack[0]) !== part[1]) { partAddress(null); openPart(part[1]); } return; }
@@ -4820,7 +4861,7 @@ async function chooseAppearance(change, { animate = true } = {}) {
     paintAppearance();
   }
 }
-globalThis.addEventListener("inflite:appearance", paintAppearance);
+listen(window, "inflite:appearance", paintAppearance);
 for (const preference of glassDisplayPreferences) preference.addEventListener?.("change", paintAppearance);
 function flushGlassAppearance() {
   clearTimeout(appearanceGlassTimer); appearanceGlassTimer = 0;
@@ -4832,8 +4873,8 @@ sheetEl.addEventListener("close", () => { cancelAppearanceGlassPreview(); flushG
 // A committed choice need not wait for its debounce when this page is leaving.
 // Keep the same save queue; an unfinished drag is only a preview and is restored.
 function settleAppearanceOnLeave() { cancelAppearanceGlassPreview(); flushGlassAppearance(); }
-document.addEventListener("visibilitychange", () => { if (document.hidden) settleAppearanceOnLeave(); });
-addEventListener("pagehide", settleAppearanceOnLeave);
+listen(document, "visibilitychange", () => { if (document.hidden) settleAppearanceOnLeave(); });
+listen(window, "pagehide", settleAppearanceOnLeave);
 function chooseGlass(change, preview) {
   if (!appearanceOwnerMatches(S.me?.id)) return paintAppearance();
   appearanceGlassDraft = preview ? { ...glassSettings(InFliteAppearance.snapshot()), ...change } : null;
@@ -4908,7 +4949,7 @@ function seg(name, opts, value, onpick) {
   el.addEventListener("keydown", (e) => {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!step) return;
     e.preventDefault();
-    const bs = [...el.querySelectorAll("button")], i = bs.indexOf(document.activeElement), j = (Math.max(0, i) + step + bs.length) % bs.length;
+    const bs = [...el.querySelectorAll("button")], i = bs.indexOf(scope.activeElement), j = (Math.max(0, i) + step + bs.length) % bs.length;
     bs[j].focus(); pick(bs[j], opts[j][0], opts[j][1]);
   });
   if (!opts.some(([v]) => v === value)) el.querySelector("button")?.setAttribute("tabindex", "0");
@@ -5732,8 +5773,8 @@ async function refresh() {
     patch();
   }
 }
-document.addEventListener("visibilitychange", refresh);
-addEventListener("focus", refresh);
+listen(document, "visibilitychange", refresh);
+listen(window, "focus", refresh);
 // (back online: what a sheet couldn't fetch let go, and the sheet that's up drawn again, asking for it afresh, if it's
 // the one that said so: any other's left as it is, as drawing it again would lose what's being typed in it)
 function unfail() {
@@ -5747,8 +5788,8 @@ function unfail() {
   if (MAILN?.error) { MAILN = null; here ||= top === mailNotifyView; }
   if (here) redraw();
 }
-addEventListener("online", unfail);
-setInterval(refresh, 5 * 60000);      // (and on coming back to the page: a look every minute redid the account's figures for nothing)
+listen(window, "online", unfail);
+const refreshTimer = setInterval(refresh, 5 * 60000);      // (and on coming back to the page: a look every minute redid the account's figures for nothing)
 
 // ---- glass behind the status bar, once the page has scrolled under it ----
 // (how far, on the bar itself: on the page's root, every part of the page was styled anew at each frame of a scroll)
@@ -5770,11 +5811,25 @@ function scrolled() {
     }
   });
 }
-addEventListener("scroll", scrolled, { passive: true });
+if (!host) addEventListener("scroll", scrolled, { passive: true });
 
-if (!SIGNIN_PAGE) IFL.built("account", BUILD, NEWS);
+if (!host && !SIGNIN_PAGE) IFL.built("account", BUILD, NEWS);
 // (a new version put in by itself, the same in every app: never with a sheet up or something saving; how far down you
 // were, kept for it. Not on the sign-in page, there only for as long as a sign-in takes, where a reload would lose what
 // you'd typed)
-if (!SIGNIN_PAGE && !AUTH?.here) IFL.updates({ app: "account", build: BUILD, busy: () => sheetEl.open || !!document.querySelector(".working"), save: () => (S.me?.signedIn ? { y: Math.round(scrollY) } : null) });
-load().then(() => { const was = SIGNIN_PAGE ? null : IFL.here("account"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 400); });
+if (!host && !SIGNIN_PAGE && !AUTH?.here) IFL.updates({ app: "account", build: BUILD, busy: () => sheetEl.open || !!document.querySelector(".working"), save: () => (S.me?.signedIn ? { y: Math.round(scrollY) } : null) });
+function loadComponent() {
+  host.signal.addEventListener("abort", () => {
+    clearInterval(refreshTimer); clearTimeout(S.patchT); clearTimeout(toastT);
+    shellSheet?.now(); stopScan(); forgetPhoto();
+  }, {once:true});
+  return call("me").then(me => {
+    if (!matchesSettingsOwner(me)) return;
+    S.me = me; S.pulled = Date.now(); S.settled = true;
+    render();
+    if (host.part && accountSections.has(host.part)) openPart(host.part);
+  });
+}
+const ready = host && !SIGNIN_PAGE ? loadComponent() : load().then(() => { const was = SIGNIN_PAGE ? null : IFL.here("account"); if (was?.y) setTimeout(() => scrollTo(0, was.y), 400); });
+return ready;
+}
