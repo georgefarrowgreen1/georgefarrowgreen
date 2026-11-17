@@ -47,6 +47,17 @@
 .ifl-sheet[data-app=markets] .mk-sheet > * { animation: mk-rise var(--ifl-motion-enter) var(--ease-out) backwards; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .mk-sparkline { width: 100%; height: 44px; margin-top: 6px; overflow: visible; }
 .m-markets[class] .mk-herohead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m-markets[class] .mk-portfolio {
+  margin: 12px clamp(8px, 3vw, 24px) 0; padding: 0 0 16px;
+  min-width: 0; border-radius: var(--ifl-radius-card, 26px);
+}
+.m-markets[class] .mk-portfolio .hero { padding: 14px 18px 0; }
+.m-markets[class] .mk-portfolio .pbox { margin-inline: 12px; }
+.m-markets[class] .mk-portfolio .pseg { margin-inline: 16px; }
+.m-markets[class] .mk-portfolio .say { padding-inline: 18px; }
+.m-markets[class] .mk-herohead .ifl-btn {
+  min-height: 44px; padding: 0 14px; border-radius: 999px; background: var(--ifl-glass-control);
+}
 .m-markets[class] .big.small { font-size: 40px; }
 .m-markets[class] .mk-edit { font-size: 15px; font-weight: 600; color: var(--tint-text); padding: 10px 12px; }
 .m-markets[class] .mk-order .item.ord { grid-template-columns: minmax(0, 1fr) 44px 44px; }

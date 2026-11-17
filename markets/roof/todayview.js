@@ -18,19 +18,21 @@ function todayView() {
   if (wait) return wait;
   if (!S.list.length && !S.cash?.length) return emptyView();
   const T = totals(), parts = [];
+  const detail = h("p.say", { "data-el": "say" }, ...daySaid(T));
   if (T.o.length || S.cash?.length) {
     const [a, b] = fmt(T.value).split(".");
-    parts.push(h("div.hero", { "data-k": "portfolio" },
+    const heading = h("div.hero", { "data-k": "portfolio" },
       h("div.mk-herohead", {}, h("span.eyebrow", { text: "Your portfolio" }), core.portfolioSend() ? sendBtn() : null),
       h("span.big.num", { "data-el": "pv" }, `£${a}`, h("span.p", { text: "." + b })),
       h("span.delta.num", {}, h("span", { "data-el": "pd", class: tone(T.day), text: signed(T.day) }), h("span", { "data-el": "pp", class: tone(T.day), text: pct(T.dayPct) }), h("span.muted", { "data-el": "ps", text: "today" })),
-      leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null));
-    parts.push(T.value > 0 || T.o.length ? portfolioBox() : h("p.hint.cash-chart-note", { text: "Add an amount to see your portfolio chart." }));
+      leftOutSaid() ? h("span.leftout", { text: leftOutSaid() }) : null);
+    const chart = T.value > 0 || T.o.length ? portfolioBox() : h("p.hint.cash-chart-note", { text: "Add an amount to see your portfolio chart." });
+    parts.push(h("section.mk-portfolio.glass", { "aria-label": "Your portfolio" }, heading, chart, detail));
   } else {
     const up = S.list.filter((x) => (S.q[x.symbol]?.chgPct || 0) > 0).length;
     parts.push(h("div.hero", {}, h("span.eyebrow", { text: "Your list" }), h("span.big.small", {}, `${up} of ${S.list.length} up`), h("span.delta", {}, h("span.muted", { text: "today" }))));
+    parts.push(detail);
   }
-  parts.push(h("p.say", { "data-el": "say" }, ...daySaid(T)));
   const cards = insights();
   if (cards.length) {
     parts.push(h("h3.label", {}, "Worth knowing", h("span", { "data-el": "cardn", text: cards.length > 1 ? `1 of ${cards.length}` : "" })));
