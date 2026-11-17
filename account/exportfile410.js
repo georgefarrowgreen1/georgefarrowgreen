@@ -1,0 +1,6 @@
+// Download-only archive. Verify the captured account before materializing bytes.
+export function archiveFile(data,owner){
+ if(!owner||data?.account?.id!==owner)throw Error('Your account changed. Open Your Data again before exporting.');
+ const name=String(data.account.handle||'account').replace(/[^A-Za-z0-9_.-]/g,'_').slice(0,80)||'account';
+ return new File([JSON.stringify(data,null,2)],'inflite-'+name+'-data.json',{type:'application/json'});
+}

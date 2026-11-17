@@ -975,7 +975,7 @@ const unreadNow = () => [...S.friends, ...S.groups].reduce((n, x) => n + Math.ma
 function msgView(chatId, m, g) {
   const me = S.me.id, mine = m.from === me, p = S.locked ? null : readable(m.id), pp = partsOf(p, !!g);
   const hidden = !mine && (m.flying || m.lost);                 // (theirs still in the air: not opened yet, nothing to read)
-  const kind = !p || hidden ? "text" : p.v ? "voice" : p.p ? (m.once || p.p.once ? "viewonce" : "photo") : pp?.plan ? "plan" : pp?.ans ? "answer" : pp?.when ? "when" : pp?.ask ? "ask" : pp?.card ? "card" : "text";
+  const kind = !p || hidden ? "text" : p.v ? "voice" : p.p ? (p.p.f ? "file" : m.once || p.p.once ? "viewonce" : "photo") : pp?.plan ? "plan" : pp?.ans ? "answer" : pp?.when ? "when" : pp?.ask ? "ask" : pp?.card ? "card" : "text";
   const reacts = (S.reacts.get(chatId) || []).filter((r) => r.msg === m.id), counts = {};
   let mineR;
   for (const r of reacts) { const e = readable(r.id)?.r; if (!REACTIONS.includes(e)) continue; counts[e] = (counts[e] || 0) + 1; if (r.from === me) mineR = e; }
@@ -988,7 +988,7 @@ function msgView(chatId, m, g) {
     if (t) v.text = t;
     if (pp?.q?.id) v.replyTo = pp.q.id; else if (p.q?.id) v.replyTo = p.q.id;
     if (pp?.card) v.card = pp.card;
-    if (p.p || p.v) v.media = { ref: m.id, kind: p.v ? "voice" : "photo", ...(p.v && Number.isFinite(p.v.d) ? { secs: Math.round(p.v.d / 100) / 10 } : {}) };
+    if (p.p || p.v) v.media = { ref: m.id, kind: p.v ? "voice" : p.p.f ? "file" : "photo", ...(p.p?.f ? {name:String(p.p.f.n||"Attachment").replace(/[\/\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,"_").slice(0,180)} : {}), ...(p.v && Number.isFinite(p.v.d) ? { secs: Math.round(p.v.d / 100) / 10 } : {}) };
   } else if (S.plain.get(m.id)?.bad && !hidden) v.kind = "system";
   // (a view-once photo: how many have opened it, yours (a group's, each one who has), or whether you have, theirs)
   if (v.kind === "viewonce") v.opened = mine ? (g ? (m.flock || []).filter((x) => x.viewedAt).length : m.viewedAt ? 1 : 0) : m.viewedAt ? 1 : 0;
@@ -1349,7 +1349,7 @@ async function photo(id) {
   const p = readable(id), o = S.outbox.find((x) => x.id === id && x.to === chat);
   if (!m && !o) return null;
   if (!p || !(p.p || p.v)) return null;
-  const type = p.v ? (typeof p.v.m === "string" && /^audio\/[\w.+-]+$/.test(p.v.m) ? p.v.m : "audio/mp4") : p.p.m === "image/gif" ? "image/gif" : "image/jpeg";
+  const type = p.p?.f ? "application/octet-stream" : p.v ? (typeof p.v.m === "string" && /^audio\/[\w.+-]+$/.test(p.v.m) ? p.v.m : "audio/mp4") : p.p.m === "image/gif" ? "image/gif" : "image/jpeg";
   try {
     let bytes;
     if (o?.blob) bytes = o.blob;
@@ -1470,15 +1470,20 @@ const methods = {
   },
   async sendBlob(id, blob, kind) {
     needReady();
-    const bytes = new Uint8Array(await blob.arrayBuffer()), mid = uuid();
+    if(kind==="file"&&blob.size>8*1024*1024)throw refuse("no");
+    const lease=privacyLease();if(!privacyLive(lease))throw refuse("signin");
+    const bytes = new Uint8Array(await blob.arrayBuffer()), mid = uuid();if(!privacyLive(lease))throw refuse("signin");
     const sealed = await E2E.sealPhoto(mid, bytes, kind === "voice" ? "voice" : "photo");
+    if(!privacyLive(lease))throw refuse("signin");
     const payload = { t: "" };
-    if (kind === "voice") payload.v = { k: sealed.k, iv: sealed.iv, m: /^audio\/[\w.+-]+$/.test(blob.type) ? blob.type : "audio/mp4", d: 0, w: [] };
+    if (kind === "file") payload.p={k:sealed.k,iv:sealed.iv,w:0,h:0,f:{n:typeof blob.name==="string"?blob.name.replace(/[\/\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,"_").slice(0,180):"Attachment",m:"application/octet-stream",s:blob.size}};
+    else if (kind === "voice") payload.v = { k: sealed.k, iv: sealed.iv, m: /^audio\/[\w.+-]+$/.test(blob.type) ? blob.type : "audio/mp4", d: 0, w: [] };
     else {
       let w = 0, h = 0;
       try { const b = await createImageBitmap(blob); w = b.width; h = b.height; b.close?.(); } catch (_) {}
       payload.p = { k: sealed.k, iv: sealed.iv, w, h, ...(blob.type === "image/gif" ? { m: "image/gif" } : {}) };
     }
+    if(!privacyLive(lease))throw refuse("signin");
     return sendOne(id, payload, { blob: sealed.data, once: kind === "photo" && blob.type !== "image/gif", id: mid });
   },
   async note(id, msgId, text) {
@@ -1653,7 +1658,7 @@ const ARGS = {
   card: (v) => isPlain(v) && JSON.stringify(v).length <= 8000,
   name: (v) => typeof v === "string" && Object.hasOwn(META, v),
   obj: (v) => isPlain(v) && Object.keys(v).length <= 30,
-  media: (v) => v === "photo" || v === "voice",
+  media: (v) => v === "photo" || v === "voice" || v === "file",
   stocks: (v) => Array.isArray(v) && v.length <= 50 && v.every((x) => isPlain(x) && Object.keys(x).every((k) => (k === "sym" && str(12)(x.sym)) || (k === "name" && str(60)(x.name)))),
 };
 function argOk(rule, v) {

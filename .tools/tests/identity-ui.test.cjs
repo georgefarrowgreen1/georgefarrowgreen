@@ -54,6 +54,11 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.waitForFunction(()=>{const p=document.querySelector('.poster-card');return p&&Number(getComputedStyle(p).opacity)>.95&&Number(getComputedStyle(document.querySelector('#main')).opacity)>.95;});
   await page.screenshot({path:out+'/'+engine+'-'+width+'.png',fullPage:false});
+  await page.goto('https://inflite.ai/account/#open=data');
+  const archiveButton=page.getByRole('button',{name:/Download full archive \(JSON\)/});await archiveButton.waitFor();
+  assert.equal(await archiveButton.evaluate(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1}),true);
+  const downloaded=page.waitForEvent('download');await archiveButton.click();const file=await downloaded,exported=JSON.parse(readFileSync(await file.path(),'utf8'));
+  assert.equal(exported.account.id,me.id);assert.ok(Array.isArray(exported.organise));assert.ok(exported.life);assert.ok(Array.isArray(exported.system.actions));
   assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);assert.deepEqual([...new Set(origins)],['https://inflite.ai']);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  }catch(e){const pages=context.pages();if(pages[0]){await pages[0].screenshot({path:out+'/'+engine+'-'+width+'-failure.png'});console.error(JSON.stringify({width,url:pages[0].url(),cookies:(await context.cookies()).map(c=>c.name),errors,failed,text:(await pages[0].locator('body').innerText()).slice(0,1800)}));}throw e;}finally{await context.close();}

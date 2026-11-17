@@ -57,6 +57,7 @@ import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
 import { ORGANISE_ROUTES } from '../../_organiseapp.js';
 import { streamOrganiseExport } from '../../_organise400.js';
 import { SYSTEM_ROUTES } from "../../_systemapp.js";
+import {exportLife} from '../../_life410.js';
 import { exportSystem } from "../../_system350.js";
 import { FILES_ROUTES } from "../../_filesapp.js";
 import { exportFiles } from "../../_files.js";
@@ -1089,6 +1090,7 @@ const ROUTES = {
       workspaces: await exportWorkspaces(env, u.id),
       continuation: (await readContinuity(env,u.id)).devices,
       system: await exportSystem(env,u.id),
+      life: await exportLife(env,u.id),
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json({});

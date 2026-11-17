@@ -1207,8 +1207,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.31";
-const NEWS = "Stronger account and privacy protection";
+const BUILD = "2.32";
+const NEWS = "Full account data archives and connected calendars";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -5539,6 +5539,8 @@ function exportView() {
       toast("Your data is downloading.");
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
+  const getJSON=async e=>{const owner=S.me?.id,button=e.currentTarget;try{const file=await freshly(()=>busy(button,'Preparing archive…',async()=>{const data=await post('export');if(S.me?.id!==owner)throw Error('Your account changed. Reopen Your Data.');const m=await import('./exportfile410.js');return m.archiveFile(data,owner)}));if(S.me?.id!==owner)return;const url=URL.createObjectURL(file),link=h('a',{href:url,download:file.name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Your archive is downloading.')}catch(error){if(S.me?.id===owner&&!error.quiet)say(said,error.message)}};
+  const archiveRow=()=>h('div.group',{},h('button.row',{type:'button',onclick:getJSON},h('span.ic.blue',{},icon('download',19)),h('span.tx',{},h('b',{text:'Download full archive (JSON)'}),h('small',{text:'Notes, events, contacts, reminders, settings and file metadata. File contents download separately.'})),h('span.get',{},icon('download',20,2.2))));
   // (on a computer: what each app keeps of yours, in a table, beside the copy and deleting)
   if (pane()) {
     const ap = S.me.apps || {}, f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, mk = ap.markets || {}, td = ap.today || {};
@@ -5553,8 +5555,8 @@ function exportView() {
       h("div.group.dtable", {}, h("div.dt-row.dt-head", {}, h("span", { text: "App" }), h("span", { text: "What" }), h("span", { text: "How much" })),
         kept.map(([id, name, what, much]) => h("div.dt-row", {}, h("span.dt-app", {}, h("img.ic-img", { src: appImg(id), alt: "" }), h("b", { text: name })), h("span", { text: what }), h("span.dt-n", { text: much })))),
       cols([h("h4.app-k", { text: "A copy of everything" }),
-        h("div.group", {}, h("button.row", { type: "button", onclick: get }, h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" }), h("small", { text: "Every app’s, to read or keep" })), h("span.get", {}, icon("download", 20, 2.2)))),
-        said],
+        h("div.group", {}, h("button.row", { type: "button", onclick: get }, h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" }), h("small", { text: "A readable account summary" })), h("span.get", {}, icon("download", 20, 2.2)))),
+        archiveRow(),said],
       [h("h4.app-k", { text: "Delete your account" }),
         h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Everything, in every app" }), h("small", { text: "Deleted after 7 days. Sign in, or use the email’s link, to keep it." }))),
           h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…"))])] };
@@ -5563,7 +5565,7 @@ function exportView() {
   return { title: "Your Data", body: [
     h("div.group", {}, h("button.row", { type: "button", onclick: get },
       h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" })), h("span.get", {}, icon("download", 20, 2.2)))),
-    said,
+    archiveRow(),said,
     h("div.group.apart", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…"))] };
 }
 

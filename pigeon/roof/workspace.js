@@ -7,11 +7,11 @@ const stateOf = (state) => state === "ready" ? "ready" : state === "locked" || s
 export function mediaFiles(chatId, chat, now = Date.now()) {
   if (!ID.test(chatId || "") || !chat || chat.id !== chatId || !Array.isArray(chat.msgs)) return [];
   const once = new Set(chat.msgs.filter((m) => m?.kind === "viewonce").flatMap((m) => [m.id, m.media?.ref]));
-  return chat.msgs.filter((m) => m && ID.test(m.id || "") && ["photo", "voice"].includes(m.kind) && ID.test(m.media?.ref || "") && !m.recalled && !m.expires && !m.flight?.flying && !m.flight?.lost && !once.has(m.media.ref))
+  return chat.msgs.filter((m) => m && ID.test(m.id || "") && ["photo", "voice", "file"].includes(m.kind) && ID.test(m.media?.ref || "") && !m.recalled && !m.expires && !m.flight?.flying && !m.flight?.lost && !once.has(m.media.ref))
     .slice(-200).map((m) => {
       const at = Number.isSafeInteger(m.at) && m.at >= 0 && m.at <= Math.min(now, 864e13) ? m.at : null;
-      const type = m.kind === "voice" ? "Voice message" : "Photo", date = at == null ? "" : new Date(at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-      return { id: `chats:file:${chatId}:${m.id}`, app: "chats", kind: "file", name: `${type}${date ? " · " + date : ""}`, mime: "application/octet-stream", category: m.kind === "voice" ? "audio" : "image", ...(at == null ? {} : { modifiedAt: at }),
+      const type = m.kind === "file" ? words(m.media?.name)||"Attachment" : m.kind === "voice" ? "Voice message" : "Photo", date = at == null ? "" : new Date(at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      return { id: `chats:file:${chatId}:${m.id}`, app: "chats", kind: "file", name: `${type}${date ? " · " + date : ""}`, mime: "application/octet-stream", category: m.kind === "file" ? "document" : m.kind === "voice" ? "audio" : "image", ...(at == null ? {} : { modifiedAt: at }),
         objectId: `${chatId}:${m.id}`, intent: "open-file", downloadIntent: "download-file" };
     });
 }
@@ -52,6 +52,10 @@ export function connect(root, ctx, { state, chatId, reply, unlock } = {}) {
     if (intent === "unlock" && state() === "locked") return { ok: !!(await unlock?.(permitted)) && permitted(), pending: true };
     if (intent === "unlock") { fw.nav.go("/chats/in/#signin-start&then=%2Fchats%2F"); return { ok: true, pending: true }; }
     if (!active()) return { ok: false, error: "Unlock Chats to continue." };
+    if(intent==='compose-attach'){
+      const m=await fw.lazy((q) => import("./file-share410.js" + q));
+      return permitted()&&active()?m.attachFromFiles(ctx,objectId,{current:()=>permitted()&&active()}):{ok:false};
+    }
     if (intent === "new-chat") return { ok: !!open.newChat(), pending: true };
     if (intent === "new-group") return { ok: !!open.newGroup(), pending: true };
     if (intent === "requests") return { ok: !!open.requests(), pending: true };

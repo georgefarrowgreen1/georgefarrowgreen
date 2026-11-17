@@ -132,6 +132,8 @@ function build(host, ctx) {
     if (group && !mine) b.append(el("span", { class: "ch-from", text: nameOf(m.from) }));
     if (m.replyTo) b.append(el("span", { class: "ch-quote", text: "Reply" }));
     switch (m.kind) {
+      case "file":
+        b.append(el("button",{type:"button",class:"ch-file-download",data:{act:"file",id:m.id}},ui.icon("file"),el("span",{text:m.media?.name||"Download attachment"})));break;
       case "photo":
         b.append(el("button", { type: "button", class: "ch-photo", data: { act: "view", id: m.id }, text: "Photo" }));
         break;
@@ -356,6 +358,7 @@ function build(host, ctx) {
       case "latest": e.preventDefault(); stick = true; toBottom(); break;
       case "cancel-reply": selectReply(null); input.focus({ preventScroll: true }); break;
       case "send": e.preventDefault(); send(); break;
+      case "file": fw.lazy((q) => import("./media.js" + q)).then(m=>m.downloadAttachment(ctx,mid,id)).catch(()=>fw.toast('The attachment could not open.'));break;
       case "photo": ctx.open.photo(id); break;
       case "voice": ctx.open.voice(id); break;
       case "view": e.stopPropagation(); ctx.open.view(mid); break;

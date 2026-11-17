@@ -247,3 +247,5 @@
 .m-chats .ch-composer{--text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); color: var(--text);background: var(--ifl-glass); -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);}
 }
 }
+
+.m-chats .ch-file-download{display:flex;align-items:center;gap:12px;min-height:52px;max-width:100%;padding:14px 18px;border-radius:20px;border:1px solid var(--ifl-line);background:var(--ifl-surface-2);color:inherit;font:inherit;text-align:start}.m-chats .ch-file-download .ifl-glyph{flex:none;width:24px;height:24px}.m-chats .ch-file-download span{overflow-wrap:anywhere;min-width:0}

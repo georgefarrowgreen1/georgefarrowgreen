@@ -189,3 +189,6 @@ export function openGifs(ctx, id) {
   load(false);
   return h;
 }
+
+// Attachments are downloaded as inert bytes. Never embed provider MIME in HTML.
+export async function downloadAttachment(ctx,mid,cid){const {fw,svc,store}=ctx,owner=fw.session.user.id,route=fw.route,live=()=>!fw.signal.aborted&&fw.session.user.id===owner&&fw.workspace?.active()&&fw.route===route,row=store.get(`chat:${cid}`)?.msgs?.find(m=>m.id===mid);if(!row||row.kind!=='file'||!live())return;const blob=await svc.call('photo',mid);if(!live()||!(blob instanceof Blob))return;const name=String(row.media?.name||'Attachment').replace(/[\/\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,'_').slice(0,180),link=fw.ui.el('a',{href:URL.createObjectURL(new Blob([blob],{type:'application/octet-stream'})),download:name,hidden:true});document.body.append(link);link.click();link.remove();const revoke=()=>URL.revokeObjectURL(link.href);setTimeout(revoke,1000);fw.signal.addEventListener('abort',revoke,{once:true});}

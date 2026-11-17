@@ -85,7 +85,7 @@ jobs:
         env:
           WEB_UI_BROWSER: ${{ matrix.browser }}
           FILES_SCREENSHOTS: ${{ runner.temp }}/os-next-${{ matrix.browser }}
-        run: node --test --test-concurrency=1 .tools/tests/os-next-integration.test.cjs .tools/tests/organise400-integration.test.cjs
+        run: node --test --test-concurrency=1 .tools/tests/os-next-integration.test.cjs .tools/tests/organise400-integration.test.cjs .tools/tests/life410-integration.test.cjs
       - name: Canonical account and passkey flow
         working-directory: georgefarrowgreen
         env:

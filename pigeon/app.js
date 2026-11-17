@@ -1236,8 +1236,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.14";            // shown in InFlite's menu
-const APP_NEWS = "Stronger message and account privacy";       // (said once it's in)
+const APP_VERSION = "2.15";            // shown in InFlite's menu
+const APP_NEWS = "Encrypted file attachments from InFlite Files";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2968,7 +2968,7 @@ async function loadPhoto(fid, m, p) {
     const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true }), bytes = await r.arrayBuffer();
     got = true;
     const plain = p.v ? await E2E.openPhoto(m.id, p.v, bytes, "voice") : await E2E.openPhoto(m.id, p.p, bytes);
-    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); bornAt.set(S.photos.get(m.id), Date.now());
+    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.p?.f ? "application/octet-stream" : p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); bornAt.set(S.photos.get(m.id), Date.now());
     trimPhotos(fid);
   } catch (e) {
     S.photos.delete(m.id);
@@ -2978,13 +2978,14 @@ async function loadPhoto(fid, m, p) {
   }
   if (S.view === "chat" && S.chat === fid) render();
 }
+async function downloadAttachment(id){const lease=privacyLease(),chat=S.chat,m=(S.msgs.get(chat)||[]).find(v=>v.id===id),p=S.plain.get(id),live=()=>privacyLive(lease)&&S.view==='chat'&&S.chat===chat&&!S.locked;if(!live()||!m||!p?.p?.f||m.photo!==1||m.recalled||m.flying&&m.from!==lease.id)return;try{const r=await api((group(chat)?'group-photo/':'photo/')+encodeURIComponent(id),{raw:true}),bytes=await r.arrayBuffer();if(!live())return;const plain=await E2E.openPhoto(id,p.p,bytes);if(!live())return;const name=String(p.p.f.n||'Attachment').replace(/[\/\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,'_').slice(0,180),url=URL.createObjectURL(new Blob([plain],{type:'application/octet-stream'})),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(_){if(live())toast('The attachment could not be downloaded. Try again.')}}
 const passing = (e) => e.offline || !e.status || e.status >= 500 || [408, 425, 429].includes(e.status);
 // the photos, GIFs and voice pigeons a chat should have and doesn't yet (none on its way, none gone): fetched
 function fetchMedia(fid) {
   const g = group(fid);
   for (const m of S.msgs.get(fid) || []) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
-    if (m.photo === 1 && (p?.p || p?.v) && !onceP(p) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
+    if (m.photo === 1 && (p?.p || p?.v) && !p.p?.f && !onceP(p) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
   }
 }
 // opened photos and voice notes are kept for the chats you've been in, up to a point: the oldest from other chats go first
@@ -4094,8 +4095,8 @@ const accountPage = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https:
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
-const onceP = (p) => !!p?.p && p.p.m !== "image/gif";
-const picWord = (p, m) => (p.v ? (m?.instant || !pigeonsOn() ? "Voice message" : "Voice pigeon") : p.p?.m === "image/gif" ? "GIF" : "Photo");
+const onceP = (p) => !!p?.p && !p.p.f && p.p.m !== "image/gif";
+const picWord = (p, m) => (p.p?.f ? String(p.p.f.n||"Attachment").slice(0,180) : p.v ? (m?.instant || !pigeonsOn() ? "Voice message" : "Voice pigeon") : p.p?.m === "image/gif" ? "GIF" : "Photo");
 // A pigeon in the air, in a list: yours with its pigeon and when it lands, theirs sealed
 const riderIcon = (m) => `<span class="rider k-${kindOf(m)}">${I.bird}</span>`;
 const sealedIcon = (m) => `<span class="sealedi k-${kindOf(m)}">${I.lock}</span>`;
@@ -4571,6 +4572,9 @@ function bubble(f, m, gapTop, g) {
     const words = p.t || quote;
     html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${kk(st + ":gone")}${tapAct}>${by}<span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
     if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${kk(st, ":c")}${tapAct}>${by}${quote}${text}${tail}</div>`;
+  } else if (p.p?.f) {
+    const name=String(p.p.f.n||'Attachment').replace(/[\/\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,'_').slice(0,180);
+    html=`<div class="b${cls}" data-mid="${esc(m.id)}"${kk(st+":file")}>${by}${lt}${quote}<button type="button" class="pill" data-act="file-download" data-id="${esc(m.id)}">Download ${esc(name)}</button>${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
@@ -6075,6 +6079,7 @@ async function onClick1(e, t) {
         ...(c.can ? [{ label: `Cheer ${c.them ? "Them" : "It"} On`, sub: `${c.them ? "They land" : "It lands"} a little sooner${c.left < CHEER_EACH ? ` · ${c.left} left` : ""}`, icon: I.wind, act: "cheer", id }] : []),
         { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
     }
+    case "file-download": return downloadAttachment(id);
     case "view": S.sheet = { type: "view", id }; return renderSheet();
     case "chatmenu": {
       const f = friend(S.chat); if (!f) return;
@@ -6666,7 +6671,7 @@ async function outboxOpen(o) {
     try {
       const plain = p.v ? await E2E.openPhoto(o.id, p.v, o.blob, "voice") : await E2E.openPhoto(o.id, p.p, o.blob);
       if (!privacyLive(lease)) return;
-      S.photos.set(o.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
+      S.photos.set(o.id, URL.createObjectURL(new Blob([plain], { type: p.p?.f ? "application/octet-stream" : p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
     } catch (_) {}
   }
 }
