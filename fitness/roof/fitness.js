@@ -285,7 +285,7 @@ export async function mount(root, fw) {
         if (!fw.workspace?.files?.open) return choose();
         const mine = episode;
         Promise.resolve(startWorkspace()).then(adapter => adapter?.chooseFiles(choose, () => here(mine)));
-      } }, { icon: "settings", label: "Fitness Settings", run: () => ctx.open.settings(null) }],
+      } }, { icon: "settings", label: "Fitness Settings", run: () => fw.settings ? fw.settings() : ctx.open.settings(null) }],
     });
   };
   // (one redraw a frame however many events come; and Activities drawn again only for what it shows, never for the plan,
@@ -327,7 +327,7 @@ export async function mount(root, fw) {
   async function openTo(route) {
     const my = ++opening, key = route?.key, arg = route?.arg;
     if (!key || key === "plan") return;
-    if (key === "settings") { ctx.open.settings(arg || null); return; }
+    if (key === "settings") { if (!arg && fw.settings) fw.settings({replace:true}); else ctx.open.settings(arg || null); return; }
     if (!(await whenReady(my))) return;
     if (key === "act" && arg) {
       const find = () => S.acts.find((x) => x.id === arg);
@@ -344,6 +344,10 @@ export async function mount(root, fw) {
   }
 
   return {
+    async settingsPanel(host,current,page) {
+      const panel = await L.set();
+      if (current()) return panel.openPreferences({...ctx,fw:host},current,page);
+    },
     workspace: startWorkspace,
     async show(route) {
       if (!live()) return;

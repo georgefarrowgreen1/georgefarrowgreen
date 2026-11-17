@@ -32,7 +32,7 @@ const WEATHER = {
 test('the registry and the tab bar: Weather’s paths, files, sections and aliases; the four tabs as the shared block has them', { skip }, () => {
   if (S24) assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.weather)), WEATHER, 'Weather’s entry as stage 1 had it');
   else assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY)), { weather: WEATHER });
-  assert.deepEqual(JSON.parse(JSON.stringify(R.TABS)), { today: ['Today', '/', 'sun'], chats: ['Chats', '/chats/', 'bubble'], apps: ['Apps', '/#apps', 'grid'], you: ['You', '/#you', 'person'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(R.TABS)), { today: ['Today', '/', 'sun'], chats: ['Chats', '/chats/', 'bubble'], apps: ['Apps', '/#apps', 'grid'], you: ['Settings', '/#settings', 'sliders'] });
   assert.ok(Object.isFrozen(R.REGISTRY) && Object.isFrozen(R.REGISTRY.weather) && Object.isFrozen(R.TABS), 'nobody changes them at run time');
 });
 

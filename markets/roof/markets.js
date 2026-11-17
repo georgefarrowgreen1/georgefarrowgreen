@@ -188,16 +188,17 @@ export async function mount(root, fw) {
     if (key === "s") {
       const sym = String(arg || "").toUpperCase();
       if (SYMBOL.test(sym)) ctx.open.stock(sym); else fw.toast("That isn’t a stock Markets knows.");
-    } else if (key === "income" || key === "isa" || key === "vs" || key === "about") ctx.open[key]();
+    } else if (["income", "isa", "vs", "about"].includes(key)) ctx.open[key]();
   };
   core.start(fw);
 
   return {
+    settingsPanel: (...args) => LAZY.holdings().then(panel => panel.settingsPanel(...args)),
     workspace: () => fw.workspace?.enabled ? fw.lazy((q) => import("./workspace.js" + q)).then((m) => live() ? m.connect(ctx, root, live) : null) : null,
     async show(route) {
       if (!live()) return;
       episode++; opening++;
-      const id = SECTIONS.some((s) => s[0] === route?.section) ? route.section : "today";
+      const id = secs.has(route?.section) ? route.section : "today";
       if (shown && shown !== id) {
         try { if (views2.get(shown).hide()) stale.add(shown); } catch (e) { console.error(e); }
         if (shown === "news") core.leftNews();

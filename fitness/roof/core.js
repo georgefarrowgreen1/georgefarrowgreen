@@ -786,7 +786,14 @@ export function start(fw) {
   Q.offs.push(fw.on?.("visible", () => { if (Q.shownOn) opened(); }) || (() => {}));
 }
 // (the first show: the kept copy (the framework's user's only), then the account)
-async function boot() {
+let booting;
+export function boot() {
+  if (booting?.generation === Q.gen) return booting.promise;
+  const entry = {generation:Q.gen};
+  booting = entry;
+  return entry.promise = loadAccount().finally(() => { if (booting === entry) booting = null; });
+}
+async function loadAccount() {
   const fw = Q.fw, g = Q.gen, gone = () => Q.fw !== fw || Q.gen !== g, uid = fw.session?.user?.id ?? null;
   setLoading(true);
   let kept = null, early = false;

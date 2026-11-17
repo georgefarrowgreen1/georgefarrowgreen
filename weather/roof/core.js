@@ -560,6 +560,7 @@ export const warningsInForce = (wx = S.wx) => (wx ? inForce(wx.official).length 
 export const nothingYet = () => !S.wx && !(place() && hasKept(place()));
 
 /* ---------- start and stop ---------- */
+export const refreshSettings = () => sync.pull();
 export function start(fw) {
   P.fw = fw;
   loadSettings();

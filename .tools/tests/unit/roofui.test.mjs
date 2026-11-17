@@ -117,7 +117,7 @@ test('the framework’s ARIA, as written: switcher, sheets, Back, tab bar, toast
   assert.ok(sh.includes('d.setAttribute("aria-labelledby", `${id}-t`)') && sh.includes('d.setAttribute("aria-label", spec.label'), 'every sheet is labelled: by its h2, else by its label');
   assert.ok(sh.includes('showModal()'), 'sheets are modal dialogs (focus trap, Escape, inert page)');
   assert.ok(sh.includes('"aria-label": "Close"') && sh.includes('"aria-label": "Back"'), 'close and back are named');
-  assert.ok(t.includes('"aria-current", c === "apps" && inApp() ? "true" : "page"') && t.includes('"aria-hidden", "true"'), 'tabs: aria-current page / true, the pill aria-hidden');
+  assert.ok(t.includes('"aria-current", c === "apps" && app ? "true" : "page"') && t.includes('"aria-hidden", "true"'), 'tabs: aria-current page / true, the pill aria-hidden');
   assert.ok(to.includes('d.querySelector(".ifm-say")') && !/createElement\("p"\)|"aria-live"/.test(strip(to)), 'the toast speaks through the shared block’s one live region, and never makes a second');
   assert.ok(se.includes('role: "combobox"') && se.includes('"aria-controls"') && se.includes('"listbox"') && se.includes('"option"'), 'search: a combobox over a listbox of options');
   assert.ok(fr.includes('"#hd h1.ifh-name"') && fr.includes('backTo'), 'focus: the h1 on a new screen, the opener on a pop (§3.15)');

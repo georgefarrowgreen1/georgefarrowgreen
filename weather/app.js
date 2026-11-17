@@ -548,7 +548,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -637,6 +637,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;
@@ -3746,7 +3751,7 @@ function menuRows() {
     { icon: "ruler", color: "blue", label: "Units", value: [UNIT_SAID[s.temp], UNIT_SAID[s.wind]].filter(Boolean).join(" · "), open: () => toAccount("weather") },
     { icon: "moon", color: "grey", label: "Appearance", value: GLASS_SAID[s.glass] || "", open: () => openSettings("look") },
     "-",
-    { icon: "sliders", color: "grey", label: "Settings", open: () => openSettings() },
+    { icon: "sliders", color: "grey", label: "Settings", open: openPreferences },
   ];
 }
 function youMenu(e) {
@@ -4447,6 +4452,10 @@ function askNotify() {
     try { await syncNotify(true); await refreshDevices(); return true; } catch (e) { toast(e.message || "Couldn't turn them on just now. Try again."); return false; }
   });
 }
+function openPreferences() {
+    const url = IFL.hub.settings("weather");
+    return url ? location.assign(url) : openSettings();
+  }
 function openSettings(page) {
   // (signed in, what Weather tells you is set in your account: its Notifications page, at Weather)
   if (page === "notify" && S.acct && !S.noAcct) return toAccount("notify-weather");
@@ -4612,7 +4621,7 @@ function wire() {
   });
   $("locate-btn").addEventListener("click", () => locate());
   // (what's in Settings answers once settings.js has come: settings.js)
-  $("settings-btn").addEventListener("click", () => openSettings());
+  $("settings-btn").addEventListener("click", openPreferences);
   $("me-btn").addEventListener("click", youMenu);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
   // (full screen, it closes with an ×, as Apple's Weather map does)

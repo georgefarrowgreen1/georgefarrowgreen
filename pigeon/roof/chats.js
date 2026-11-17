@@ -134,7 +134,7 @@ export async function mount(root, fw) {
     if (!onScreen || chat.id) return;
     const ready = stateNow === "ready" && !failed;
     fw.header.set({ title: "Chats", compactTitle: "Chats", line: ready ? lineNow() : "", pick: null, sections: ready ? true : false, back: null,
-      acts: ready ? [{ icon: "compose", label: "New Chat", run: () => ctx.open.newChat() }, { icon: "settings", label: "Chat Settings", run: () => ctx.open.settings() }] : [] });
+      acts: ready ? [{ icon: "compose", label: "New Chat", run: () => ctx.open.newChat() }, { icon: "settings", label: "Chat Settings", run: () => fw.settings ? fw.settings() : ctx.open.settings() }] : [] });
   }
 
   // ---- states (§2.1) ----
@@ -234,7 +234,8 @@ export async function mount(root, fw) {
     }
     if (chat.id) leaveChat();
     switch (r.key) {
-      case "settings": case "account": ctx.open.settings(r.key === "account" ? "account" : null); break;
+      case "settings": if (fw.settings) { fw.settings({replace:true}); break; }
+      case "account": ctx.open.settings(r.key === "account" ? "account" : null); break;
       case "flightlog": ctx.open.flightLog(); break;
       case "requests": ctx.open.requests(); break;
       case "add": ctx.open.addFriend(r.arg || ""); break;
@@ -277,6 +278,18 @@ export async function mount(root, fw) {
       paint();
       timers();
       await openRoute(route);
+    },
+    async settingsPanel(host,current,page) {
+      if (fw.workspace?.enabled && stateNow === "device") await activateWorkspace();
+      const service = await connect();
+      if (!current()) return;
+      if (service?.state !== "ready") throw Error("Open Chats and unlock your conversations to change Chat settings.");
+      const module = await L.settings();
+      if (!current() || service.state !== "ready") return;
+      const panel = module.openChatSettings({...ctx,fw:host},page);
+      const off = service.on("state", state => { if (state?.state !== "ready") panel.now(); });
+      panel.el.addEventListener("close",off,{once:true});
+      return panel;
     },
     workspace: activateWorkspace,
     hide() {

@@ -543,7 +543,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -632,6 +632,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;
@@ -4041,6 +4046,10 @@ function youMenu(at) {
   backStep();
 }
 // (an act of the app's, as a tap on a row with it would be)
+function openPreferences() {
+    const url = IFL.hub.settings("chats");
+    return url ? location.assign(url) : (accountPage() ? doAct("ifsettings") : go("account"));
+  }
 const doAct = (name, id) => onClick1({ preventDefault() {} }, { dataset: { act: name, ...(id != null ? { id: String(id) } : {}) }, closest: () => null, getAttribute: () => null });
 function phoneRows() {
   const ps = pushState(), lock = lockPrefs(), again = () => IFL.redraw(phoneRows());
@@ -4070,7 +4079,7 @@ function phoneRows() {
     { key: "share", icon: "link", color: "blue", label: "Share My Link", open: () => doAct("share") },
     "-",
     // (Chat's settings: the account's, on its page, opened signed in; where Chat has no account page, the Account tab)
-    { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: () => (accountPage() ? doAct("ifsettings") : go("account")) },
+    { key: "settings", icon: "sliders", color: "grey", label: "Settings", open: openPreferences },
   ];
 }
 // The app's own name where Messages' title would be: its icon and Chat

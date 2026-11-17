@@ -223,7 +223,7 @@ function aboutView() {
 aboutView.sheet = "mk-about";
 
 export function openAccount(ctx, name) { return openSheet(accountView, name); }
-export function openAbout(ctx) { return openSheet(aboutView); }
+export function openAbout(ctx) { return ctx.fw.settings ? ctx.fw.settings() : openSheet(aboutView); }
 
 export function view(el, ctx) {
   const sec = el;
@@ -238,3 +238,21 @@ export function view(el, ctx) {
 }
 
 export { holdingsView, mixSlices, mixRing, mixPart, statsPart, accountsPart, incomePart, vsQuick, vsPart, accountView, aboutView };
+
+export function settingsPanel(host, current) {
+  if (!current()) return;
+  const owner = host.session.user.id, ui = host.ui;
+  const livePrices = ui.sw(core.store.get("live:" + owner) === true, enabled => {
+    if (!current() || host.session.user.id !== owner) return;
+    if (S.me?.id === owner) core.setLiveEnabled(enabled);
+    else core.store.set("live:" + owner, enabled);
+  }, {label: "Live prices"});
+  return host.sheet.open({
+    sheet: "market-preferences", title: "Markets settings", body: ui.list([
+      ui.row({title: "Live prices", sub: "US shares and crypto. Followed symbols go directly to Yahoo on this device. London prices are delayed.", trail: livePrices}),
+      ui.row({title: "Portfolio currency", value: "Pounds", sub: "Other currencies use today’s exchange rate."}),
+      ui.row({title: "Price source", value: "Yahoo Finance", sub: "Delays vary by exchange."}),
+      ui.row({title: "Price alerts and evening wrap", trail: "chevron", href: "/#settings=notifications"})
+    ])
+  });
+}

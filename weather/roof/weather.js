@@ -173,7 +173,7 @@ export async function mount(root, fw) {
       acts: [...(fw.workspace?.handoffs?.can("mail", "text") && S.wx ? [{ icon: "share", label: "Draft forecast in Mail", run: () => {
         const mine = seen;
         workspaceReady().then(bridge => { if (alive && onScreen && seen === mine && fw.visible()) return bridge?.emailForecast(); }).catch(() => {});
-      } }] : []), { icon: "settings", label: "Weather Settings", run: () => ctx.open.settings(null) }],
+      } }] : []), { icon: "settings", label: "Weather Settings", run: () => fw.settings ? fw.settings() : ctx.open.settings(null) }],
       badges: { warnings: core.warningsInForce() },
     });
   };
@@ -235,7 +235,7 @@ export async function mount(root, fw) {
       header();
       draw(id);
       if (route?.key === "day" && route.arg) openDayWhenReady(route.arg);
-      else if (route?.key === "settings") ctx.open.settings(route.arg || null);
+      else if (route?.key === "settings") { if (fw.settings && !route.arg) fw.settings({replace:true}); else ctx.open.settings(route.arg || null); }
       warm();
     },
     hide() {
@@ -246,6 +246,12 @@ export async function mount(root, fw) {
       if (shown) { try { views.get(shown).hide(); } catch (e) { console.error(e); } }
     },
     back: () => false,
+    async settingsPanel(host, current, page) {
+      const panel = await LAZY.wxsettings();
+      if (!current()) return;
+      await core.refreshSettings();
+      if (current()) return panel.openSettings({...ctx, fw:host},page);
+    },
     workspace: workspaceReady,
     busy: () => core.busy(),
     sendable() {

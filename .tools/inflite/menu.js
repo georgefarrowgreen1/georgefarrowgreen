@@ -529,7 +529,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -618,6 +618,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;

@@ -569,7 +569,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -658,6 +658,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;
@@ -1704,7 +1709,7 @@ function youMenu(at) {
       { icon: "watch", color: "teal", label: "Devices", value: devicesSaid(), warn: !!stopped(), open: () => openAccount("fitness") },
       { icon: "upload", color: "indigo", label: "Upload Files", open: () => openSheet(uploadFilesView) },
       "-",
-      { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
+      { icon: "sliders", color: "grey", label: "Settings", open: openPreferences },
     ].filter(Boolean),
     // (at the hub, no Sign Out of Fitness's own: signing out is You's, for the whole of InFlite)
     account: openAccount, signOut: HUB.on ? null : () => signOutHere(),
@@ -1762,6 +1767,10 @@ function bigMapView(name, route) {
 }
 
 // ---- you, and settings ----
+function openPreferences() {
+    const url = IFL.hub.settings("fitness");
+    return url ? location.assign(url) : openSheet(settingsView);
+  }
 function settingsView() {
   const experimental=createExperimentalControl({coach,state:()=>({rhythm:S.rhythm,swaps:S.swaps}),owner:()=>S.me?.id,today:()=>TODAY,save:patch=>{if(patch.rhythm)S.rhythm=patch.rhythm;if(patch.swaps)S.swaps=patch.swaps;keep(...Object.keys(patch));changed();redraw();todayRefresh();},refresh:()=>Sheet.redraw?.(),notify:toast});
   const p = P(), wkg = (p.ftp / p.weight).toFixed(2);
@@ -3191,6 +3200,7 @@ function tabOf(hash) {
 const dayOfKey = (k) => { const [y, mo, d] = k.split("-").map(Number), t = new Date(y, mo - 1, d).getTime(); return Number.isFinite(t) && dayStamp(t) === k ? startOfDay(t) : null; };
 // → whether it was a section Fitness knows
 function openTo(hash) {
+  if (hash === "#settings" && S.me) { openSheet(settingsView); return true; }
   const m = SECTION.exec(hash || "");
   if (!m || !S.me) return false;
   const tab = tabOf(hash), shut = () => { if (sheetEl.open) closeSheet(); };
@@ -3271,7 +3281,7 @@ addEventListener("hashchange", () => { if (S.me) openTo(location.hash); });
   if (early) takeUp(m); else { arrive(m); document.body.dataset.fresh = "1"; }
   arv?.in();
   // (the section the address asked for: one ride, a day, a plan; the tab's already drawn)
-  if (wantTab && !fromStrava) openTo(want);
+  if ((wantTab || want === "#settings") && !fromStrava) openTo(want);
   if (fromStrava === "on") { if (!store.get(ONB, null)) go("activities"); bringIn({ src: "strava" }); }
   else if (fromStrava === "taken") toast("That Strava account is connected to another Fitness account. On Strava’s page, sign in as yourself, or disconnect it from the other account first.", true, 9000);
   else if (fromStrava) toast(fromStrava === "no" ? "Strava wasn’t connected: Fitness needs to see your activities. Try again, and leave the activities box ticked on Strava’s page." : "Strava didn’t connect. Try again in a moment.", true, 7000);

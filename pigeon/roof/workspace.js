@@ -60,6 +60,7 @@ export function connect(root, ctx, { state, chatId, reply, unlock } = {}) {
     if (intent === "new-group") return { ok: !!open.newGroup(), pending: true };
     if (intent === "requests") return { ok: !!open.requests(), pending: true };
     if (intent === "settings") {
+      if (fw.settings && permitted() && active()) { fw.settings(); return {ok:true}; }
       const m = await fw.lazy((q) => import("./settings.js" + q));
       return permitted() && active() ? { ok: !!m.openChatSettings(ctx), pending: true } : { ok: false };
     }

@@ -561,7 +561,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -650,6 +650,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;
@@ -1551,7 +1556,7 @@ function sparkCard(sym) {
 function head(title) {
   const line = lineIn(h("span.eyebrow", { style: "font-size:15px" }), lineSaid());
   const hd = IFL.header({ title, me: meFace(), onMe: youMenu, cls: "mhead", lineNode: line,
-    acts: [{ icon: "search", label: "Find and add", onclick: () => openSheet(searchView) }, IFL.hub.on && { icon: "sliders", label: "Settings", onclick: () => openSheet(settingsView) }] });
+    acts: [{ icon: "search", label: "Find and add", onclick: () => openSheet(searchView) }, IFL.hub.on && { icon: "sliders", label: "Settings", onclick: openPreferences }] });
   // (at InFlite's hub the menu button is Back, and Markets' own few settings sit beside Find and Add: your account,
   // notifications and signing out are InFlite's there, in You)
   if (IFL.hub.on) hd.querySelector(".ifh-me")?.replaceWith(hubBack());
@@ -1577,6 +1582,7 @@ const SECTIONS = ["today", "holdings", "news"];
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
 // → { sym } or { tab }, or null for a hash that asks for neither
 function sectionOf(hash) {
+  if (hash === "#settings") return {settings:true};
   const s = String(hash || "").replace(/^#/, ""), m = /(?:^|&)s=([^&]*)/.exec(s);
   if (m) { let sym = null; try { sym = decodeURIComponent(m[1]).toUpperCase(); } catch (_) {} return sym && SYMBOL.test(sym) ? { sym } : null; }
   return SECTIONS.includes(s) ? { tab: s } : null;
@@ -1598,6 +1604,7 @@ function openTo(hash) {
   }
   addressSays();
   if (at.tab) { if (Sheet.stack.length) closeSheet(); if (S.tab !== at.tab) go(at.tab); }
+  else if (at.settings) openSheet(settingsView);
   else openStock(at.sym);
   return true;
 }
@@ -3179,11 +3186,15 @@ function youMenu(at) {
       { key: "notify", icon: "bell", color: "red", label: "Notifications", value: hub ? "In You" : S.pushOn ? "On" : "Off here", warn: !hub && !S.pushOn, open: () => openAccount("notify-markets") },
       { icon: "plus", color: "green", label: "Find and Add", open: () => openSheet(searchView) },
       "-",
-      { icon: "sliders", color: "grey", label: "Settings", open: () => openSheet(settingsView) },
+      { icon: "sliders", color: "grey", label: "Settings", open: openPreferences },
     ],
     account: openAccount, signOut: hub ? null : () => signOutHere(),
   });
 }
+function openPreferences() {
+    const url = IFL.hub.settings("markets");
+    return url ? location.assign(url) : openSheet(settingsView);
+  }
 function settingsView() {
   return [h("div.shead", {}, h("span"), closeBtn()),
     h("div.ifs-hero", {}, h("img", { src: "icon.svg", alt: "", width: 64, height: 64 }), h("b", { text: "Markets" }), h("span", { text: "Your money, said simply" })),
@@ -3540,6 +3551,7 @@ async function start() {
   loadPaid();
   // (a stock asked for: at the hub, as the address says it now, which a notification tapped while Markets was opening
   // may have changed; the address back to the tab under it as it opens)
+  if (asked?.settings) openSheet(settingsView);
   const stock = IFL.hub.on ? sectionOf(location.hash)?.sym : asked?.sym;
   if (stock) { if (IFL.hub.on) addressSays(); openStock(stock); }
   // (off the hub, opened from an old Home Screen icon: once, that InFlite is one app now, with a way to turn

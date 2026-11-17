@@ -78,7 +78,7 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   assert.match(inner, /<nav class="ifl-tabs" id="tabs" aria-label="InFlite"><\/nav>/, 'the tab bar’s host, empty: the frame’s');
   assert.match(inner, /<main id="today" class="view ifl-screen" aria-label="Today">/);
   assert.match(inner, /<main id="apps" class="view ifl-screen" aria-label="Apps" hidden>/);
-  assert.match(inner, /<main id="you" class="view ifl-screen" aria-label="You" hidden>/);
+  assert.match(inner, /<main id="you" class="view ifl-screen" aria-label="Settings" hidden>/);
   const today = inner.slice(inner.indexOf('id="today"'), inner.indexOf('id="apps"'));
   assert.ok(!/<(input|textarea|select)\b/.test(today), 'nothing to type in on Today');
   assert.ok(!/signinToday|Sign In Without Chats/.test(html), 'one way in: Sign in is Today’s own trip, never through Chats, so no second line');
@@ -302,7 +302,8 @@ test('stage 3, app.js: the core let go of on every way out (sign-out ends it bef
   assert.match(ss, /if \(app !== "chats" \|\| state !== "locked"\) return;/);
   assert.match(ss, /#today \.dw-words, #today \.dw-chips, #today \.dt-said/); assert.match(ss, /day\?\.forgetHeard\?\.\(\);/);
   assert.match(String(pub('day.js')), /export function forgetHeard\(\) \{ heard\.clear\(\); wroteHeard\.clear\(\); \}/);
-  if (existsSync(new URL('roof/screens.js', PUB))) assert.match(js, /chatSettings: \(\) => task\.active\(\) && \(chatsHere \? task\.frame\.nav\.go\("\/chats\/#settings"\)/);
+  if (js.includes('function editAppSettings(')) assert.match(js, /if \(!task\.active\(\) \|\| editing\) return;/, 'app settings are scoped to the active visit');
+  else if (existsSync(new URL('roof/screens.js', PUB))) assert.match(js, /chatSettings: \(\) => task\.active\(\) && \(chatsHere \? task\.frame\.nav\.go\("\/chats\/#settings"\)/);
   else assert.match(js, /chatSettings: \(\) => \(chatsHere && F \? F\.nav\.go\("\/chats\/#settings"\)/);
   assert.match(js, /if \(S\.hub && !chatsHere\) IFL\.hub\.chat\(\)\.then\(\(c\) => c\?\.refresh\?\.\(\)\)/, 'the push’s sync: the frame relays it with Chats here');
 });

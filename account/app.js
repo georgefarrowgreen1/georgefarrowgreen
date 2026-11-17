@@ -557,7 +557,7 @@ const IFL = (() => {
   // (each hub path's app, by its own address's first part: degraded, the way back to it)
   const OWN = { chats: "chat", weather: "weather", fitness: "fitness", markets: "finance", mail: "email" };
   // (keys, not words: no app's copy but Today's names Today as an app, iflmenu.test.mjs)
-  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["You", "/#you", "person"] };
+  const TABS = { today: ["Today", "/", "sun"], chats: ["Chats", "/chats/", "bubble"], apps: ["Apps", "/#apps", "grid"], you: ["Settings", "/#settings", "sliders"] };
   const marker = typeof document !== "undefined" ? document.querySelector?.('meta[name="ifl-hub"]') : null;
   // (a path of this site's: starts /, not //, no \ and nothing unseen (a tab or a new line, which an address drops, so
   // "/\n/x" would be "//x"), no more than 200 characters)
@@ -646,6 +646,11 @@ const IFL = (() => {
       if (hub.degraded) return ownAt(p) || (ownPath(p) ? p : url);
       if (leaving(p)) crumb();
       return p;
+    },
+    settings(section = "") {
+      const path = "/#settings" + (section ? "=" + encodeURIComponent(section) : "");
+      if (hub.on) return path;
+      return /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai" + path : null;
     },
     href(app, section = "") {
       if (!hub.on) return null;
@@ -1923,7 +1928,9 @@ function signedIn(r) {
   const account = r(sec("account", section("Account", h("div.group.glass", {},
     row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and Security", value: todo ? `${todo} to do` : "Secure", warn: !!todo, onclick: () => openSheet(securityView) }),
     row({ icon: "data", tint: "grey", title: "Your Data", onclick: () => openSheet(exportView) })))));
-  const prefs = r(sec("prefs", section("Preferences", h("div.group.glass", {},
+  const settingsUrl = IFL.hub.settings();
+  const prefs = settingsUrl ? r(sec("prefs", section("Preferences", h("div.group.glass", {},
+    row({icon:"sliders", tint:"grey", title:"InFlite Settings", sub:"Appearance, notifications and app preferences", onclick:()=>location.assign(settingsUrl)}))))) : r(sec("prefs", section("Preferences", h("div.group.glass", {},
     row({ icon: "moon", tint: "grey", title: "Appearance", value: `${{ auto: "System", light: "Light", dark: "Dark" }[m.prefs.appearance] || "System"} · ${globalThis.InFliteAppearance?.palettes[m.prefs.palette || "inflite"]?.name || "InFlite"}`, onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "bell", tint: "red", title: "Notifications", value: ntSaid(m.prefs), onclick: () => openSheet(notifyView) })))));

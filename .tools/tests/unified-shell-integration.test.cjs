@@ -111,3 +111,52 @@ test('cold account search opens native Mail and unlocked Chat results without re
   assert.equal((await page.evaluate(()=>localStorage.getItem('ifl:recent')||'')).includes('Pat Jones'),false);assert.equal(t.state.mail.sends.length,0);await env.assertNoChatSends(page);await t.clean();
  }finally{await t.ctx.close()}
 });
+
+for (const width of [390,1440]) test(`Settings opens native app preferences and returns to the same category at ${width}px`, async () => {
+  const t = await env.open({width, initialPath:'/?os=1', ready:'home'});
+  const {page} = t;
+  try {
+    await app(page,'Chats');
+    await page.locator('#m-chats .ch-row').first().waitFor();
+    await page.getByRole('button',{name:'Chat Settings',exact:true}).click();
+    const chat = page.locator('dialog[open][data-sheet="chatsettings"]');
+    await chat.waitFor();
+    assert.equal(new URL(page.url()).hash,'#settings=chats');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => location.hash === '#settings=apps');
+    await page.locator('[data-setting=weather]').waitFor();
+    assert.equal(await page.locator('.ws-sidebar-button[data-ws-action=settings]').getAttribute('aria-current'),'page');
+    if (process.env.SETTINGS_SCREENSHOTS) {
+      await page.waitForFunction(() => !document.documentElement.dataset.vt && !document.querySelector('.ifl-screen[class*="ifl-enter-"]'));
+      await page.screenshot({path:resolve(process.env.SETTINGS_SCREENSHOTS,`apps-${width}.png`),caret:'initial'});
+    }
+    for (const [key,sheet] of [['weather','wxsettings'],['fitness','fxsettings'],['markets','market-preferences'],['chats','chatsettings'],['mail','mail-settings']]) {
+      await page.locator('[data-setting="'+key+'"]').click();
+      const panel = page.locator('dialog[open][data-sheet="'+sheet+'"]');
+      await panel.waitFor({timeout:6500});
+      if (key === 'markets') {
+        const live = panel.getByRole('switch',{name:'Live prices'});
+        const was = await live.isChecked();
+        await live.click();
+        assert.notEqual(await live.isChecked(),was);
+      }
+      await page.keyboard.press('Escape');
+      await panel.waitFor({state:'hidden'});
+      assert.equal(new URL(page.url()).hash,'#settings=apps');
+    }
+    const search = page.getByRole('searchbox',{name:'Search settings'});
+    await search.fill('solar panels');
+    await page.getByRole('button',{name:'Solar panels Weather'}).click();
+    const solar = page.locator('dialog[open][data-sheet=wxsettings]');
+    await solar.getByRole('heading',{name:'Solar',exact:true}).waitFor();
+    await solar.getByRole('button',{name:'Close',exact:true}).click();
+    await search.fill('');
+    await page.evaluate(() => { location.hash = 'settings=markets'; });
+    const markets = page.locator('dialog[open][data-sheet=market-preferences]');
+    await markets.getByRole('link',{name:'Price alerts and evening wrap'}).click();
+    await page.locator('[data-group=notifications]').waitFor();
+    assert.equal(new URL(page.url()).hash,'#settings=notifications');
+    await env.assertNoChatSends(page);
+    await t.clean();
+  } finally { await t.ctx.close(); }
+});

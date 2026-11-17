@@ -443,3 +443,10 @@ export function openSettings(ctx, page = null) {
   if (page) go(page);
   return h;
 }
+
+export async function openPreferences(ctx,current,page) {
+  if (!ctx.S.me) await ctx.core.boot();
+  if (!current()) return;
+  if (ctx.S.me?.id !== ctx.fw.session.user.id) throw Error(ctx.S.error || "Sign in to Fitness to change these settings.");
+  return openSettings(ctx,page);
+}

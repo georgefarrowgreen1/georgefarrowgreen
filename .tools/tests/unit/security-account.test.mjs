@@ -11,3 +11,20 @@ test('a captured account mismatch is rejected before account-action confirmation
 test('account client never submits an action after the account changes during confirmation',async()=>{let current=true;const calls=[];await assert.rejects(()=>protectedPost({path:'export',body:{},owner:'a',current:()=>current,call:async(p,o)=>{calls.push(p);current=false;return{token:'one'}}}),/account changed/);assert.deepEqual(calls,['security/confirmation'])});
 test('account client binds approvals to immutable action input and fences response delivery',async()=>{let current=true;const body={others:true},calls=[];await assert.rejects(()=>protectedPost({path:'devices/end',body,owner:'a',current:()=>current,call:async(p,o)=>{calls.push({p,o});if(p==='security/confirmation'){body.others=false;return{token:'one'}}current=false;return{ok:true}}}),/account changed/);assert.equal(calls[0].o.body.target,'others');assert.equal(calls[1].o.body.others,true);assert.equal(calls[1].o.owner,'a')});
 test('canonical Account proxy preserves the captured owner for sensitive actions',async()=>{const a=await owner(),b=await owner();const r=await B.request(new Request('https://inflite.ai/account/api/account/security/confirmation',{method:'POST',headers:{Origin:'https://inflite.ai','Content-Type':'application/json','X-Inflite-Owner':a.id,Cookie:b.cookie},body:JSON.stringify({action:'account-devices',target:'others'})}));assert.equal(r.status,401)});
+
+test('Settings saves preferences for the captured account and rejects a switched session',async()=>{
+  const a=await owner(), b=await owner();
+  const request=(path,method,account,body)=>B.request(new Request('https://inflite.ai/account/api/account/'+path,{
+    method, headers:{Origin:'https://inflite.ai','Content-Type':'application/json','X-Inflite-Owner':a.id,Cookie:account.cookie},
+    body:body ? JSON.stringify(body) : undefined
+  }));
+  const saved=await request('prefs','PUT',a,{glassStrength:33});
+  assert.equal(saved.status,200);
+  assert.equal((await saved.json()).prefs.glassStrength,33);
+  assert.equal((await request('prefs','PUT',b,{glassStrength:19})).status,401);
+  assert.equal((await request('notify','PATCH',b,{account:{fixed:false}})).status,401);
+  assert.equal((await request('notify','GET',b)).status,401);
+  const notifications=await request('notify','PATCH',a,{account:{fixed:false}});
+  assert.equal(notifications.status,200);
+  assert.equal((await notifications.json()).account.fixed,false);
+});
