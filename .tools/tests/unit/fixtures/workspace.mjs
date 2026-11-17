@@ -22,10 +22,10 @@ export const OS_SYSTEM350_CSS=Object.freeze(['system350.css', 'files-viewer350.c
 export const OS_SECURITY_JS=Object.freeze(['security-module.js','security-client.js']);
 export const OS_SECURITY_CSS=Object.freeze(['security-module.css']);
 export const OS_LIFE_JS=Object.freeze(['life410.js']);
-export const OS_CAPTURE_FILES=Object.freeze(['/organise/releases/4.10/store.js']);
+export const OS_CAPTURE_FILES=Object.freeze([ROOF&&existsSync(new URL('../organise/releases/4.30/store.js',ROOF))?'/organise/releases/4.30/store.js':'/organise/releases/4.10/store.js']);
 export const OS_LIFE_CSS=Object.freeze(['life410.css']);
 const launcher420=ROOF&&existsSync(new URL('launcher-model.js',ROOF));
-export const OS_LAUNCHER_JS=Object.freeze(launcher420?['launcher-model.js','launcher-motion.js']:[]);
+export const OS_LAUNCHER_JS=Object.freeze(launcher420?['launcher-model.js','launcher-motion.js',...(existsSync(new URL('launcher-input.js',ROOF))?['launcher-input.js']:[])]:[]);
 export const OS_LAUNCHER_CSS=Object.freeze(launcher420?['launcher.css']:[]);
 export const OS_CORE_JS = Object.freeze([...OS_LAUNCHER_JS,...OS_SECURITY_JS,...OS_LIFE_JS,...OS_SYSTEM350_JS,...OS_CONTINUITY_JS,'workspace.js', 'workspace-view.js', ...(savedLayouts ? ['workspace-state.js'] : []), 'workspace-catalog.js', ...(savedLayouts ? ['workspace-context.js'] : []), 'workspace-windows.js', 'workspace-commands.js', ...OS_FILES_JS, ...OS_DIALOG_JS, ...OS_ACTIVITY_JS, ...OS_SYNC_JS, ...OS_RECOVERY_JS, ...OS_HANDOFF_JS]);
 export const OS_FILES = Object.freeze([...OS_CORE_JS.map(f => '/roof/' + f), ...OS_LAUNCHER_CSS.map(f=>'/roof/'+f), ...OS_SECURITY_CSS.map(f=>'/roof/'+f), ...OS_LIFE_CSS.map(f=>'/roof/'+f), ...OS_SYSTEM350_CSS.map(f=>'/roof/'+f), '/roof/workspace.css', '/roof/workspace-commands.css', ...OS_FILES_CSS.map(f => '/roof/' + f), ...OS_DIALOG_CSS.map(f => '/roof/' + f), ...OS_ACTIVITY_CSS.map(f => '/roof/' + f), ...OS_RECOVERY_CSS.map(f => '/roof/' + f), ...OS_CAPTURE_FILES, '/os.webmanifest']);

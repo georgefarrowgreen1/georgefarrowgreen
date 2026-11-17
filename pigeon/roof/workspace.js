@@ -33,7 +33,7 @@ export function connect(root, ctx, { state, chatId, reply, unlock } = {}) {
   function snapshot() {
     const status = live() ? stateOf(state()) : "signin", ready = status === "ready";
     const outbox = store.get("outbox") || [];
-    return { status, availability: { local: ready, pending: outbox.length, saving: outbox.some(item => item.state === "sending"), error: outbox.some(item => item.state === "failed") }, files: files().files, actions: [
+    return { status,unread:ready?store.get('unread'):null, availability: { local: ready, pending: outbox.length, saving: outbox.some(item => item.state === "sending"), error: outbox.some(item => item.state === "failed") }, files: files().files, actions: [
       { id: "new-chat", label: "New chat", enabled: ready, keywords: ["compose", "message", "write"] },
       { id: "new-group", label: "New group", enabled: ready, keywords: ["people", "conversation"] },
       { id: "requests", label: "Friend requests", enabled: ready, keywords: ["friends"] },
