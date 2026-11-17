@@ -194,11 +194,11 @@ test("the breadcrumb: written as a page is left for another, read by back(), tak
   assert.equal(p.store.has("ifl-crumb"), false);
 });
 
-test("tabs(): Today · Chats · Apps · You as links, the one you're on marked, each to another page leaving the breadcrumb", () => {
+test("tabs(): Today · Chats · Apps · Settings as links, the one you're on marked, each to another page leaving the breadcrumb", () => {
   const p = page("https://inflite.ai/chats/", { marker: "/chats/" });
   const nav = p.hub.tabs(p.doc.createElement("nav"), "chats");
   assert.deepEqual(nav.children.map((a) => [a.tagName, a.textContent, a.getAttribute("href"), a.getAttribute("aria-current")]), [
-    ["A", "Today", "/", null], ["A", "Chats", "/chats/", "page"], ["A", "Apps", "/#apps", null], ["A", "You", "/#you", null],
+    ["A", "Today", "/", null], ["A", "Chats", "/chats/", "page"], ["A", "Apps", "/#apps", null], ["A", "Settings", "/#settings", null],
   ]);
   assert.ok(nav.classList.contains("ifl-tabs"));
   nav.children[2].dispatch("click");
@@ -440,7 +440,7 @@ test("degrade(): a page of the hub whose Worker can't serve the apps yet links t
   assert.equal(p.hub.href("weather", "radar"), "https://inflite.ai/weather/#radar");
   assert.equal(p.hub.href("markets", "s=TSCO"), "https://inflite.ai/markets/#s=TSCO");
   const nav = p.hub.tabs(p.doc.createElement("nav"), "today");
-  assert.deepEqual(nav.children.map((a) => a.getAttribute("href")), ["/", "https://inflite.ai/chats/", "/#apps", "/#you"]);
+  assert.deepEqual(nav.children.map((a) => a.getAttribute("href")), ["/", "https://inflite.ai/chats/", "/#apps", "/#settings"]);
   assert.equal(await p.hub.chat(), null);
   assert.equal(await p.hub.send("London today: rain", "eyJ2IjoxfQ"), true);
   assert.deepEqual(p.assigned, ["https://inflite.ai/chats/#share=London%20today%3A%20rain&card=eyJ2IjoxfQ"]);

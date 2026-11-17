@@ -235,7 +235,7 @@ test('in the frame: nothing in your photo’s place (the hub’s bar has Back to
   assert.doesNotMatch(css, /hub-back/);
   // (the line under the lens's name lined up with the name, at the bar's edge, where your photo isn't)
   assert.match(css, /\nhtml\.embed \.pane\.list \.subtitle \{\n {2}padding-left: calc\(12px \+ var\(--sal\) \+ 4px\);\n\}/);
-  assert.match(fn('listMenu'), /if \(EMBED\)\s*items\.push\("-", \{ label: "Remote Images"[\s\S]*label: "Settings", icon: "sliders", action: \(\) => openSettings\(\) \}\)/);
+  assert.match(fn('listMenu'), /if \(EMBED\)\s*items\.push\("-", \{ label: "Remote Images"[\s\S]*label: "Settings", icon: "sliders", action: openPreferences \}\)/);
   // (no notification asked for as it opens from #notify; no Home Screen fit; no badge)
   assert.match(src, /\n {2}let ASK_NOTIFY = IFL\.wantsAllow\(\) && !EMBED;\n/);
   assert.match(src, /\n {2}if \(navigator\.standalone === true && screen\.width && screen\.height && !EMBED\) \{\n/);
