@@ -10,7 +10,8 @@ import { record, speed, vitalsRoute, band, bandValue, APPS, METRICS, DAY_CAP } f
 
 const fakeDb = (sent) => ({
   prepare: (sql) => ({ bind: (...a) => ({ sql, a, first: async () => (/pg_limits/.test(sql) ? { count: 1, reset_at: Date.now() + 1000 } : null), all: async () => ({ results: [] }), run: async () => ({}) }), first: async () => null, all: async () => ({ results: [] }), run: async () => ({}) }),
-  batch: async (xs) => { sent.push(...xs.filter((x) => /pg_vitals/.test(x.sql))); return xs.map(() => ({ results: [] })); }, exec: async () => ({}),
+  // Capture sample writes, not the independent probabilistic retention cleanup.
+  batch: async (xs) => { sent.push(...xs.filter((x) => /^INSERT INTO pg_vitals/.test(x.sql))); return xs.map(() => ({ results: [] })); }, exec: async () => ({}),
 });
 
 test('bands: each a fifth wider than the last, and the number a band stands for inside it', () => {
