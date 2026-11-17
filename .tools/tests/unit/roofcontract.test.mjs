@@ -162,9 +162,9 @@ test('roof.css’s token block: neutral shared surfaces, geometry and one action
       }
     }
   }
-  const LIGHT = { '--ifl-page': '#f8f9f6', '--ifl-surface': '#ffffff', '--ifl-surface-2': '#f1f2ef', '--ifl-raised': '#ffffff',
+  const LIGHT = { '--ifl-page': '#f8f9f6', '--ifl-surface': '#ffffff', '--ifl-surface-2': '#f1f1f1', '--ifl-raised': '#ffffff',
     '--ifl-text': '#171a18', '--ifl-muted': '#646a66', '--ifl-accent': '#2ea84d', '--ifl-accent-ink': '#247a35' };
-  const DARK = { '--ifl-page': '#101210', '--ifl-surface': '#191c19', '--ifl-surface-2': '#222622', '--ifl-raised': '#2b302b',
+  const DARK = { '--ifl-page': '#101210', '--ifl-surface': '#1b1b1b', '--ifl-surface-2': '#262626', '--ifl-raised': '#303030',
     '--ifl-text': '#f4f7f2', '--ifl-muted': '#bac2b9', '--ifl-accent': '#97e84e', '--ifl-accent-ink': '#97e84e' };
   for (const [prop, value] of Object.entries(LIGHT)) {
     assert.equal(get(':root', null, prop), value, `light default ${prop}`);
