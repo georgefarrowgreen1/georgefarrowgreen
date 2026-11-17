@@ -4,3 +4,7 @@
 // fingerprint each file again in every new copy of the server. null (as here, in the repository and the local test
 // stack): not known, so _min.js checks each one as it's first asked for.
 export const FRESH = null;
+
+// Exact bytes served by the bundled Worker, including the unminified standalone scripts.
+export const HOME_FILES = ["styles.css", "app.js", "404.js", "signedin.js", "loader.js", "loader-portrait.js"];
+export const HOME_STAMPS = null;

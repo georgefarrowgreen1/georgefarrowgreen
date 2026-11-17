@@ -5,6 +5,7 @@
 // scripts and styles are stamped with what's in them (?v=), so a browser never runs a new page with an old copy of any.
 import { getContent } from "./_content.js";
 import { assets } from "./_min.js";
+import { HOME_FILES, HOME_STAMPS } from "./_minfresh.js";
 import { cookieToken } from "./_account.js";
 import { homeSite } from "./_sites.js";
 import { hop } from "./_hop.js";
@@ -21,18 +22,18 @@ export async function homeArrival(ctx, url) {
   return hop(new Request(start, ctx.request), ctx.env, "start");
 }
 
-const STAMPED = ["styles.css", "app.js", "404.js", "signedin.js", "loader.js", "loader-portrait.js"];
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
-// (worked out once a minute by each copy of the server, not for every visit: the files only change with a deploy)
+// Local builds without embedded fingerprints recheck the files at most once a minute.
 let memo = { at: 0, v: null };
 async function stamps(ctx, url) {
+  if (HOME_STAMPS) return HOME_STAMPS;
   if (memo.v && Date.now() - memo.at < 60e3) return memo.v;
   const out = {};
-  await Promise.all(STAMPED.map(async (f) => {
+  await Promise.all(HOME_FILES.map(async (f) => {
     const r = await assets(ctx.env).fetch(new Request(new URL(`/${f}`, url))).catch(() => null);
     if (r?.ok) out[f] = await stampOf(await r.arrayBuffer());
   }));
-  if (Object.keys(out).length === STAMPED.length) memo = { at: Date.now(), v: out };
+  if (Object.keys(out).length === HOME_FILES.length) memo = { at: Date.now(), v: out };
   return out;
 }
 
@@ -40,7 +41,7 @@ export async function homePage(ctx, url, res) {
   // the script and styles, asked for by the stamp the page gave them: kept for good, as that address only ever means
   // this copy (asked for any other way, or by a stamp that isn't this copy's, they're checked each time)
   const f = url.pathname.slice(1);
-  if (STAMPED.includes(f) && ["GET", "HEAD"].includes(ctx.request.method) && res.status === 200) {
+  if (HOME_FILES.includes(f) && ["GET", "HEAD"].includes(ctx.request.method) && res.status === 200) {
     const want = url.searchParams.get("v"), v = want ? (await stamps(ctx, url))[f] : null;
     const out = new Response(res.body, res);
     out.headers.set("Cache-Control", want && want === v ? "public, max-age=31536000, immutable" : "no-cache");
