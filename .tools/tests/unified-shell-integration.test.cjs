@@ -179,7 +179,20 @@ for (const width of [390,1440]) test(`Account stays inside Settings at ${width}p
     assert.equal(await page.locator('.settings-back').isVisible(),width<900);
     assert.equal(await page.locator('#you nav[aria-label="Settings categories"]').isVisible(),width>=900);
     assert.equal(await page.locator(width<900 ? '.ws-dock:visible' : '.ws-sidebar-button[data-ws-action=settings]:visible').count()>0,true);
-    if (width<900) await page.locator('.settings-back').click();
+    if (width<900) {
+      const bar = page.locator('.settings-account-bar');
+      assert.equal(await bar.getByRole('heading',{name:'Account & security'}).isVisible(),true);
+      assert.equal(await page.locator('#hd .ifh').isVisible(),false);
+      const header = await bar.boundingBox(), frame = await page.locator('.settings-account-frame').boundingBox();
+      assert.ok(header.height >= 44 && frame.y - header.y <= header.height + 12);
+      const dock = await page.locator('.ws-dock:visible').boundingBox();
+      assert.ok(frame.y + frame.height <= dock.y + 1, JSON.stringify({frame,dock}));
+      await bar.getByRole('button',{name:'Search'}).click();
+      await page.getByRole('combobox',{name:'Search everything'}).waitFor();
+      await page.keyboard.press('Escape');
+      await page.locator('.settings-back').click();
+      await page.locator('#hd .ifh').waitFor();
+    }
     else await page.locator('#you [data-category=apps]').click();
     await page.locator('.settings-account-frame').waitFor({state:'detached'});
     await page.locator('#you [data-category=account]').click();

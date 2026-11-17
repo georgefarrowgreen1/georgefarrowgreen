@@ -10,6 +10,7 @@ const helper = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.in
 const fixture = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/styles.css"><main></main><script type="module">
 import { setup } from '/admin.js';
+const embeddedAccount = false;
 ${helper('function h(spec, props, ...kids)', 'const ICONS =')}
 ${helper('function photo(src, props = {}, spec = "img")', 'function avatar(')}
 const SHOWN = new Set(), still = { matches: true }, ms = () => 0, tok = () => 'linear';
