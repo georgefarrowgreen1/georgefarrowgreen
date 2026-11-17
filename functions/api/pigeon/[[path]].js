@@ -1,3 +1,4 @@
+import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 import { tickHost } from "../../_sites.js";
 import { adminIncidents, adminMaint, noteIncident, openIncidents, jobsNow, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
@@ -1838,7 +1839,8 @@ const ROUTES = {
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
 // (and Chat's own address, chat.inflite.ai, or the tests' own for it: CHAT_HOST, functions/_app.js)
 const hostOk = (h, env) => HOSTS.test(h) || isChat({ hostname: h }, env);
-export async function onRequest(ctx) {
+export async function onRequest(context) {
+  const ctx = schemaContext(context);
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   // (the scheduled notify job calls the site's workers.dev address (TICK_HOST), past the custom domains' bot checks: only that, there)

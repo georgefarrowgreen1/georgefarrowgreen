@@ -1,3 +1,4 @@
+import { schemaContext } from "../../_schema.js";
 import { appearanceOf, PALETTES } from "../../_appearance.js";
 import { publicApp } from "../../_canonical.js";
 // The account's own API, for its page at account.inflite.ai (functions/_acctapp.js), and only there:
@@ -1233,7 +1234,8 @@ const AUTH_ONLY = new Set(["POST signin/salt", "POST signin/password", "POST sig
 const AUTH_ROUTES = new Set([...AUTH_ONLY, "POST qr/look", "POST qr/answer", "POST signin/options", "POST signout", "GET appearance", "GET me", "GET me/photo", "GET handle", "POST reauth", "POST password/vault",
   "POST delete/cancel", "POST password/upgrade", "POST password/checked", "GET pwned", "POST passkeys/options", "POST passkeys", "POST passkeys/vault"]);
 
-export async function onRequest(ctx) {
+export async function onRequest(context) {
+  const ctx = schemaContext(context);
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []), key = `${ctx.request.method} ${parts.join("/")}`, route = ROUTES[key];
   // (only at the account's own address, or the sign-in page's, each its own half)
   const auth = isAuth(url, ctx.env);

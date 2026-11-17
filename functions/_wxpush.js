@@ -33,6 +33,7 @@
 //
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 
+import { schemaSetup } from "./_schema.js";
 import { pushEndpointOk, pushToSub as pushOne, vapid, unsubToken, prefsOf, isQuiet as quietNow } from "./_notify.js";
 import { HttpError, fromB64url, logError, MIN } from "./_pigeon.js";
 import { emailBody, emailReady, sendEmail, SITE, accountLink } from "./_email.js";
@@ -84,16 +85,15 @@ export const LEASE = 3 * 60e3;
 const MAIL_DAY = 60, MAIL = "mail:";
 // roofs looked at for the sun coming out a tick, at most; and how long before a sunny spell it's told of
 const SUN_PLACES = 20, SUN_AHEAD = 90 * 60e3;
-let ready = null;
+const ensureSchema = schemaSetup(async (env) => {
+  // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a dozen trips)
+  if ((await env.DB.prepare("SELECT v FROM wx_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+  await setup(env);
+  await env.DB.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
+});
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
-  if (!ready) ready = (async () => {
-    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a dozen trips)
-    if ((await env.DB.prepare("SELECT v FROM wx_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
-    await setup(env);
-    await env.DB.prepare("INSERT OR REPLACE INTO wx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
+  await ensureSchema(env);
   return env.DB;
 }
 // The tables and their columns (each step safe to run again). SCHEMA_FP is its own text's fingerprint, so any change

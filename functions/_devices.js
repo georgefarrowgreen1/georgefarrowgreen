@@ -27,6 +27,7 @@
 // and ten an account (Chat's), ten an account (Markets'), and a push address another account's still signed in with
 // never taken over (all three, Weather's too). A device turned off here (deviceDrop) or stopped there (devicesStop) is
 // only ever this account's.
+import { schemaSetup } from "./_schema.js";
 import { HttpError, db, serverSecret, b64url, logError, OTHERS, othersOf } from "./_pigeon.js";
 import { keepSub } from "./_notify.js";
 import { mkdb, keepPush } from "./_markets.js";
@@ -47,20 +48,14 @@ const MAIL = "mail:";
 // ---- the tables ----
 // Chat's, Markets', Weather's and Today's made (each its own setup, as they always are), and the via column on the three
 // that are fanned out into (its failure ignored: it's there already), once per database a copy of the server uses
-const readied = new WeakMap();
+const ensureSchema = schemaSetup(async (env) => {
+  const D = await db(env);
+  await mkdb(env); await wxdb(env); await tddb(env);
+  for (const tb of ["pg_push", "mk_push", "wx_devs"]) await D.prepare(`ALTER TABLE ${tb} ADD COLUMN via TEXT`).run().catch(() => {});
+});
 export async function ready(env) {
   if (!env?.DB) throw new HttpError(503, "Not set up.");
-  let p = readied.get(env.DB);
-  if (!p) {
-    p = (async () => {
-      const D = await db(env);
-      await mkdb(env); await wxdb(env); await tddb(env);
-      for (const tb of ["pg_push", "mk_push", "wx_devs"]) await D.prepare(`ALTER TABLE ${tb} ADD COLUMN via TEXT`).run().catch(() => {});
-    })();
-    readied.set(env.DB, p);
-    p.catch(() => readied.delete(env.DB));
-  }
-  await p;
+  await ensureSchema(env);
   return db(env);
 }
 // (a statement on a table that may not be made yet, Fitness's fx_push: nothing, rather than a failure)

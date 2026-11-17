@@ -12,6 +12,7 @@
 // The cards themselves are worked out by functions/_todaycards.js, and the morning composed and sent by
 // functions/_todaymorning.js. (This never imports those, nor Weather's or Fitness's: they import it.)
 
+import { schemaSetup } from "./_schema.js";
 import { HttpError, sha256, b64url, fromB64url } from "./_pigeon.js";
 import { pushEndpointOk } from "./_notify.js";
 import { timesExport, dropTimes } from "./_times.js";
@@ -27,16 +28,15 @@ export const LINES = ["weather", "chat", "fitness", "markets"];
 // never one in use)
 const DEVICES = 10;
 
-let ready = null;
+const ensureSchema = schemaSetup(async (env) => {
+  // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips)
+  if ((await env.DB.prepare("SELECT v FROM td_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+  await setup(env);
+  await env.DB.prepare("INSERT OR REPLACE INTO td_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
+});
 export async function tddb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
-  if (!ready) ready = (async () => {
-    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips)
-    if ((await env.DB.prepare("SELECT v FROM td_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
-    await setup(env);
-    await env.DB.prepare("INSERT OR REPLACE INTO td_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
+  await ensureSchema(env);
   return env.DB;
 }
 // The tables (each step safe to run again; a column added later is an ALTER TABLE here, its failure ignored).

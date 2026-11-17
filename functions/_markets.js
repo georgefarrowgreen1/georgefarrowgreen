@@ -20,6 +20,7 @@
 // mk_wrap:     the evening wrap (how your day went, once your markets have closed): off, and the last day it was sent.
 // mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
+import { schemaSetup } from "./_schema.js";
 import { HttpError, db, fromB64url, b64url, safeEqual, serverSecret } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
 import { busyMap, holdsFor, heldMark, heldAdd } from "./_busy.js";
@@ -30,43 +31,42 @@ export const MAX_HOLDINGS = 60;
 export const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
 export const cleanSymbol = (s) => { const v = String(s || "").trim().toUpperCase(); if (!SYMBOL.test(v)) throw new HttpError(400, "That isn’t a symbol."); return v; };
 
-let ready = null;
-export async function mkdb(env) {
+const ensureSchema = schemaSetup(async (env) => {
   const D = await db(env);
-  if (!ready) ready = (async () => {
-    await D.batch([
-      D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
-        ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, since INTEGER, PRIMARY KEY (user_id, symbol))`),
-      D.prepare(`CREATE TABLE IF NOT EXISTS mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
-        amount REAL NOT NULL CHECK(amount >= 0 AND amount <= 1000000000000), rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
-        account TEXT CHECK(account IS NULL OR account IN ('isa', 'sipp', 'gia')), tier TEXT, payout TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL,
-        PRIMARY KEY (user_id, id))`),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
-      D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_off (user_id TEXT PRIMARY KEY)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
-      D.prepare("CREATE INDEX IF NOT EXISTS mk_cache_at ON mk_cache (at)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_wrap (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, sent TEXT)"),
-      D.prepare("CREATE TABLE IF NOT EXISTS mk_buys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, symbol TEXT NOT NULL, qty REAL NOT NULL, price REAL, at INTEGER NOT NULL, added INTEGER NOT NULL)"),
-      D.prepare("CREATE INDEX IF NOT EXISTS mk_buys_of ON mk_buys (user_id, symbol)"),
-    ]);
-    // (cash options and accounts added to a list kept from before them)
-    await D.prepare("ALTER TABLE mk_cash ADD COLUMN tier TEXT").run().catch(() => {});
-    await D.prepare("ALTER TABLE mk_cash ADD COLUMN payout TEXT").run().catch(() => {});
-    await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
-    // (and when each was bought, likewise)
-    await D.prepare("ALTER TABLE mk_holdings ADD COLUMN since INTEGER").run().catch(() => {});
-    // (and the phones' sign-ins and failures, added to a list kept from before them)
-    await D.prepare("ALTER TABLE mk_push ADD COLUMN session TEXT").run().catch(() => {});
-    await D.prepare("ALTER TABLE mk_push ADD COLUMN fails INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
-    // (and, for a phone InFlite's one device route added (functions/_devices.js), via: "hub", so a rollback can take
-    // back exactly those)
-    await D.prepare("ALTER TABLE mk_push ADD COLUMN via TEXT").run().catch(() => {});
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
-  return D;
+  await D.batch([
+    D.prepare(`CREATE TABLE IF NOT EXISTS mk_holdings (user_id TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, cost REAL,
+      ord INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL, account TEXT, since INTEGER, PRIMARY KEY (user_id, symbol))`),
+    D.prepare(`CREATE TABLE IF NOT EXISTS mk_cash (user_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      amount REAL NOT NULL CHECK(amount >= 0 AND amount <= 1000000000000), rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
+      account TEXT CHECK(account IS NULL OR account IN ('isa', 'sipp', 'gia')), tier TEXT, payout TEXT, added INTEGER NOT NULL, updated INTEGER NOT NULL,
+      PRIMARY KEY (user_id, id))`),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_alerts (user_id TEXT NOT NULL, symbol TEXT NOT NULL, pct REAL NOT NULL DEFAULT 3, fired TEXT, PRIMARY KEY (user_id, symbol))"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, added INTEGER NOT NULL, session TEXT, fails INTEGER NOT NULL DEFAULT 0)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS mk_push_user ON mk_push (user_id)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_off (user_id TEXT PRIMARY KEY)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_cache (k TEXT PRIMARY KEY, at INTEGER NOT NULL, v TEXT NOT NULL)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS mk_cache_at ON mk_cache (at)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_isa (user_id TEXT PRIMARY KEY, year TEXT NOT NULL, paid REAL NOT NULL DEFAULT 0)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_wrap (user_id TEXT PRIMARY KEY, off INTEGER NOT NULL DEFAULT 0, sent TEXT)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS mk_buys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, symbol TEXT NOT NULL, qty REAL NOT NULL, price REAL, at INTEGER NOT NULL, added INTEGER NOT NULL)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS mk_buys_of ON mk_buys (user_id, symbol)"),
+  ]);
+  // (cash options and accounts added to a list kept from before them)
+  await D.prepare("ALTER TABLE mk_cash ADD COLUMN tier TEXT").run().catch(() => {});
+  await D.prepare("ALTER TABLE mk_cash ADD COLUMN payout TEXT").run().catch(() => {});
+  await D.prepare("ALTER TABLE mk_holdings ADD COLUMN account TEXT").run().catch(() => {});
+  // (and when each was bought, likewise)
+  await D.prepare("ALTER TABLE mk_holdings ADD COLUMN since INTEGER").run().catch(() => {});
+  // (and the phones' sign-ins and failures, added to a list kept from before them)
+  await D.prepare("ALTER TABLE mk_push ADD COLUMN session TEXT").run().catch(() => {});
+  await D.prepare("ALTER TABLE mk_push ADD COLUMN fails INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  // (and, for a phone InFlite's one device route added (functions/_devices.js), via: "hub", so a rollback can take
+  // back exactly those)
+  await D.prepare("ALTER TABLE mk_push ADD COLUMN via TEXT").run().catch(() => {});
+});
+export async function mkdb(env) {
+  await ensureSchema(env);
+  return db(env);
 }
 
 // ---------------- the markets' data ----------------

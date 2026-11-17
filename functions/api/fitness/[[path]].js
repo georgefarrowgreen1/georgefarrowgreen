@@ -1,3 +1,4 @@
+import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
@@ -415,7 +416,8 @@ const ROUTES = {
   ...accountRoutes(view, { signIn: false }),
 };
 
-export async function onRequest(ctx) {
+export async function onRequest(context) {
+  const ctx = schemaContext(context);
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
     : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]

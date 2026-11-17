@@ -18,6 +18,7 @@
 //   POST /api/weather/email-off    scanners that follow links turn nothing off); POST turns them off, and is the mail
 //                                  app's own one-click Unsubscribe too (RFC 8058)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
+import { schemaContext } from "../../_schema.js";
 import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped, pace } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { linkOrigin } from "../../_email.js";
@@ -137,7 +138,8 @@ const ROUTES = {
   ...Object.fromEntries(Object.entries(ACCOUNT_ROUTES).map(([k, fn]) => [k, (ctx) => (isWeather(new URL(ctx.request.url), ctx.env) ? fn(ctx) : json({ error: "Not found." }, 404))])),
 };
 
-export async function onRequest(ctx) {
+export async function onRequest(context) {
+  const ctx = schemaContext(context);
   const parts = [].concat(ctx.params.path || []), route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
   if (!route) return json({ error: "Not found." }, 404);
   // (the site's traffic keeps Weather's notifications going between the scheduler's late ticks: functions/_wxpush.js)

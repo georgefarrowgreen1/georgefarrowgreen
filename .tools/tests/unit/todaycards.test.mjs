@@ -477,6 +477,9 @@ test("Markets, for the morning's notification: only what its line says (the valu
   const seen = [];
   const wrap = (q, s, a = []) => ({ bind: (...b) => wrap(q, s.bind(...b), b), first: (...x) => (seen.push([q, a]), s.first(...x)), all: (...x) => (seen.push([q, a]), s.all(...x)), run: (...x) => (seen.push([q, a]), s.run(...x)) });
   const spy = { ...env, DB: { prepare: (q) => wrap(q, env.DB.prepare(q)), batch: (list) => env.DB.batch(list) } };
+  // Measure card reads with the instrumented binding warmed, as the fixture database is.
+  await mkdb(spy);
+  seen.length = 0;
   const page = await marketsCard(spy, { id: "mk9" }, ctxAt(WEEKDAY));
   await settle();
   const forPage = seen.length;

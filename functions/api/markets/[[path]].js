@@ -1,3 +1,4 @@
+import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 // Markets's own API, at finance.inflite.ai only, and only signed in with the site's account (the site's cookie, from
 // Markets's own pages: functions/_markets.js has what's kept and where the prices come from).
@@ -258,7 +259,8 @@ const ROUTES = {
   ...accountRoutes(view, { signIn: false }),
 };
 
-export async function onRequest(ctx) {
+export async function onRequest(context) {
+  const ctx = schemaContext(context);
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
   const route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
   // (only at Markets's own address; the scheduler's turn at the site's own, as the other apps' are)

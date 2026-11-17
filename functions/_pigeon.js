@@ -8,6 +8,7 @@
 // Storage: D1 (env.DB) for everything structured, R2 (env.BIO_R2) for the
 // encrypted photo blobs under pigeon/. Tables are created on first use.
 
+import { schemaSetup } from "./_schema.js";
 import { HttpError } from "./_http.js";
 import {capturedAccountMatches} from "./_security-policy.js";
 import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
@@ -475,11 +476,10 @@ const MIGRATIONS = [
 // copy of the server starts without re-running ~150 statements (any change to
 // SCHEMA or MIGRATIONS changes it, so nothing needs bumping by hand).
 const SCHEMA_FP = (() => { let h = 2166136261; for (const c of [...SCHEMA, ...MIGRATIONS].join("\n")) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "s" + h.toString(36); })();
-let schemaReady = null;
+const ensureSchema = schemaSetup(setUp);
 export async function db(env) {
   if (!env.DB) throw new HttpError(503, "Chat isn’t set up on this server yet (no database).");
-  // one setup per copy of the server, shared by every request that arrives while it runs
-  await (schemaReady ||= setUp(env).catch((e) => { schemaReady = null; throw e; }));
+  await ensureSchema(env);
   return env.PIGEON_COUNT_DB ? counted(env.DB) : env.DB;
 }
 // Tests only (PIGEON_COUNT_DB): how many trips to the database this copy of the server has made, each

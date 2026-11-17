@@ -12,6 +12,7 @@
 //   as FIT, every sample kept, and gzipped by the phone (gz), so it's a fraction of the size.
 // Nothing here reads a file: the phone did that. What's kept is checked to be what it says, and limited in size.
 
+import { schemaSetup } from "./_schema.js";
 import { HttpError, limit, pace } from "./_pigeon.js";
 import { dropShares } from "./_fitshare.js";
 import { deleteRouteData } from "./_fitroutes.js";
@@ -22,19 +23,20 @@ export const SPORTS = ["ride", "run", "swim", "walk", "strength", "row", "other"
 const TYPES = ["fit", "gpx", "tcx"];
 export const fileKey = (userId, id) => `fitness/${userId}/${id}`;
 
-let ready = null, made = new Map();
-export async function fitdb(env) {
+const ensureSchema = schemaSetup(async (env) => {
   if (!env.DB) throw new HttpError(503, "Not set up.");
-  if (!ready) ready = (async () => {
-    // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips;
-    // the same look saying which of the other parts' tables are made too: tablesOnce)
-    const { results } = (await env.DB.prepare("SELECT k, v FROM fx_meta WHERE k LIKE 'schema%'").all().catch(() => null)) || {};
-    made = new Map((results || []).map((r) => [r.k, r.v]));
-    if (made.get("schema_fp") === SCHEMA_FP) return;
+  // (the tables made as setup() makes them already, by this or another copy of the server: one look, not a few trips;
+  // the same look saying which of the other parts' tables are made too: tablesOnce)
+  const { results } = (await env.DB.prepare("SELECT k, v FROM fx_meta WHERE k LIKE 'schema%'").all().catch(() => null)) || {};
+  const made = new Map((results || []).map((r) => [r.k, r.v]));
+  if (made.get("schema_fp") !== SCHEMA_FP) {
     await setup(env);
     await env.DB.prepare("INSERT OR REPLACE INTO fx_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
+  }
+  return { made, sure: new Set() };
+});
+export async function fitdb(env) {
+  await ensureSchema(env);
   return env.DB;
 }
 // The tables (each step safe to run again). SCHEMA_FP is its own text's fingerprint, so a change here has every copy of
@@ -57,9 +59,9 @@ const SCHEMA_FP = fingerprint(setup.toString());
 // Another part's tables (Garmin's, Strava's, Apple Health's, the morning notification's), made as its make(D) makes them
 // (each step safe to run again), once for each change to make, as setup's are: whether they're made known from fitdb's
 // one look, so a new copy of the server makes no trips for them at all. → the database
-const sure = new Set();
 export async function tablesOnce(env, name, make) {
-  const D = await fitdb(env), k = `schema_${name}`;
+  const { made, sure } = await ensureSchema(env);
+  const D = env.DB, k = `schema_${name}`;
   if (sure.has(k)) return D;
   const fp = fingerprint(make.toString());
   if (made.get(k) !== fp) {
