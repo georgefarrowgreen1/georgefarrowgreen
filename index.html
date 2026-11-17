@@ -82,6 +82,10 @@
   </header>
 
   <main class="page" id="page">
+    <div class="bio-mast">
+      <a class="bio-wordmark" href="#top"><img src="/favicon-32.png?v=4" width="30" height="30" alt="" /><span data-c="name">George Farrow-Green</span></a>
+      <nav aria-label="Page sections"><a href="#app-carousel">Apps</a><a href="#projects">Projects</a><a href="#get-in-touch">Contact</a></nav>
+    </div>
     <section class="hero" id="top" tabindex="-1" aria-label="About">
       <p class="eyebrow" data-c="role" data-edit>Photography · Cycling · Apps</p>
       <h1 data-c="name" data-edit>George Farrow-Green</h1>
@@ -95,8 +99,7 @@
       <div class="segs" id="segs" aria-hidden="true"></div>
     </section>
 
-    <div class="grid">
-      <section class="app-carousel" id="app-carousel" aria-labelledby="apps-h">
+    <section class="app-carousel" id="app-carousel" aria-labelledby="apps-h">
         <h2 class="head" id="apps-h">Apps</h2>
         <div class="app-viewport" id="app-viewport">
         <div class="apps" id="apps">
@@ -126,24 +129,35 @@
           </article>
         </div>
         </div>
+        <div class="app-picker" role="group" aria-label="Choose an app" hidden></div>
         <p class="vh" id="app-carousel-status" role="status" aria-live="polite"></p>
       </section>
-      <section class="projects" aria-labelledby="projects-h">
+    <div class="grid">
+      <section id="projects" class="projects" aria-labelledby="projects-h">
         <h2 class="head" id="projects-h">Projects</h2>
         <div class="project-grid">
           <a class="project" href="https://inflite.ai/" target="_blank" rel="noopener noreferrer" aria-labelledby="inflite-project-h">
+            <div class="project-art inflite-art" aria-hidden="true">
+              <img src="/apps/weather.png" width="52" height="52" alt="" loading="lazy" decoding="async" />
+              <img src="/apps/inflight.png" width="68" height="68" alt="" loading="lazy" decoding="async" />
+              <img src="/apps/fitness.png" width="52" height="52" alt="" loading="lazy" decoding="async" />
+            </div>
             <img class="project-logo" src="/inflite.svg" alt="" width="42" height="42" loading="lazy" decoding="async" />
             <div class="project-copy"><h3 id="inflite-project-h">InFlite</h3><span>Everyday apps, together in one place.</span></div>
             <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
           </a>
-          <a class="project project-cottage" href="https://www.cottageholidaysblakeney.co.uk/" target="_blank" rel="noopener noreferrer" aria-labelledby="cottage-project-h">
+          <a class="project project-cottage" href="https://cottageholidaysblakeney.co.uk/" target="_blank" rel="noopener noreferrer" aria-labelledby="cottage-project-h">
+            <picture class="project-art cottage-art">
+              <source media="(min-width: 700px)" srcset="/projects/blakeney-cottages.webp" />
+              <img src="/projects/cottage-holidays-blakeney.svg" alt="" width="880" height="300" loading="lazy" decoding="async" />
+            </picture>
             <img class="project-logo project-crown" src="/projects/cottage-holidays-blakeney.svg" alt="" width="36" height="24" loading="lazy" decoding="async" />
             <div class="project-copy"><h3 id="cottage-project-h">Cottage Holidays Blakeney</h3><span>Three family-run cottages in North Norfolk.</span></div>
             <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
           </a>
         </div>
       </section>
-      <section class="contact" aria-labelledby="touch-h">
+      <section id="get-in-touch" class="contact" aria-labelledby="touch-h">
         <h2 class="head" id="touch-h">Get in touch</h2>
         <div class="group glass">
           <button class="row" type="button" data-contact>

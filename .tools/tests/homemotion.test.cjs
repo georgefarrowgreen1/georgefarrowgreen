@@ -73,11 +73,11 @@ for(const assets of ['', 'min/']){
  test(`${assets||'source/'}hero depth freezes behind a sheet, sections reveal once, app handoff preserves navigation and Back`,async()=>{
   const f=await fixture(assets,{width:1440});
   try{
-   await f.p.evaluate(()=>scrollTo({top:document.querySelector('.projects').offsetTop-180,behavior:'instant'}));
-   await f.p.waitForFunction(()=>document.querySelector('.projects').getAnimations().length>0);
-   await f.p.waitForFunction(()=>!document.querySelector('.projects').getAnimations().length);
-   await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.locator('.projects').scrollIntoViewIfNeeded();
-   assert.equal(await f.p.locator('.projects').evaluate(e=>e.getAnimations().length),0,'one-time entrance does not loop');
+   await f.p.evaluate(()=>scrollTo({top:document.querySelector('.contact').offsetTop-180,behavior:'instant'}));
+   await f.p.waitForFunction(()=>document.querySelector('.contact').getAnimations().length>0);
+   await f.p.waitForFunction(()=>!document.querySelector('.contact').getAnimations().length);
+   await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.locator('.contact').scrollIntoViewIfNeeded();
+   assert.equal(await f.p.locator('.contact').evaluate(e=>e.getAnimations().length),0,'one-time entrance does not loop');
    await f.p.evaluate(()=>scrollTo({top:120,behavior:'instant'}));await f.p.waitForFunction(()=>document.body.classList.contains('motion-lite')||parseFloat(document.querySelector('#bg').style.getPropertyValue('--hero-depth'))>0);
    const depth=await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth'));await open(f);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),depth);
    await close(f);await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.waitForFunction(()=>document.querySelector('#bg').style.getPropertyValue('--hero-depth')==='0px');

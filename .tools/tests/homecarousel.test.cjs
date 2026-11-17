@@ -91,10 +91,15 @@ for (const assets of ['', 'min/']) {
       await active(f.p).locator('.app-next').click();await wait(f.p);assert.deepEqual(f.errors,[]);
     }finally{await f.ctx.close()}
   });
-  for(const width of [320,390,768,1440])test(`${assets || 'source/'}${width}px stack and simple project rows fit without overflow`,async()=>{
+  for(const width of [320,390,768,1440])test(`${assets || 'source/'}${width}px stack, app picker and projects adapt without overflow`,async()=>{
     const f=await fixture(assets,{width,reduce:true});try{
-      const bounds=await f.p.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,rows:[...document.querySelectorAll('.project')].map(e=>{const r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom}}),height:document.querySelector('#apps').offsetHeight}));
-      assert.equal(bounds.overflow,false);assert.ok(bounds.rows[1].top>=bounds.rows[0].bottom);assert.equal(bounds.height,186);
+      const bounds=await f.p.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,rows:[...document.querySelectorAll('.project')].map(e=>{const r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right}}),height:document.querySelector('#apps').offsetHeight}));
+      assert.equal(bounds.overflow,false);if(width>=700)assert.ok(bounds.rows[1].left>=bounds.rows[0].right);
+      else assert.ok(bounds.rows[1].top>=bounds.rows[0].bottom);
+      assert.equal(bounds.height,width>=900?198:186);
+      const markets=f.p.getByRole('button',{name:'Markets',exact:true});
+      await markets.click();assert.equal(await title(f.p),'Markets');assert.equal(await markets.getAttribute('aria-pressed'),'true');
+      await f.p.getByRole('button',{name:'Chat',exact:true}).click();
       await active(f.p).locator('.app-grab').click();assert.equal(await title(f.p),'Weather');
       assert.deepEqual(f.errors,[]);
     }finally{await f.ctx.close()}

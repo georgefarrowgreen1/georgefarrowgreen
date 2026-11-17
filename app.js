@@ -137,7 +137,13 @@ const linked = CSS.supports("animation-timeline: scroll()");
   });
   const FADE = 64;      // the least scroll a line fades over
   let ranges = [], name = null, queued = false;
-  const depth = () => $("#bg").style.setProperty("--hero-depth", `${motion.matches || lightMotion ? 0 : clamp(scrollY / heroHeight) * 24}px`);
+  const background = $("#bg");
+  let lastDepth;
+  const depth = () => {
+    const value = motion.matches || lightMotion ? 0 : clamp(scrollY / heroHeight) * 24;
+    if (value !== lastDepth) background.style.setProperty("--hero-depth", `${value}px`);
+    lastDepth = value;
+  };
   const draw = () => {
     queued = false;
     depth();
@@ -361,9 +367,9 @@ async function show(i) {
 function schedule() {
   clearTimeout(timer); clearTimeout(early);
   const n = shown.length;
-  if (n > 1 && !motion.matches && !held) {
+  if (n > 1 && !motion.matches && !navigator.connection?.saveData && !held) {
     since = performance.now(); timer = setTimeout(() => show((at + 1) % n), left);
-    if (!navigator.connection?.saveData) { const next = (at + 1) % n; early = setTimeout(() => prepare(next), Math.max(0, left - 2500)); }
+    const next = (at + 1) % n; early = setTimeout(() => prepare(next), Math.max(0, left - 2500));
   }
 }
 // (held still, where it got to: scrolled down, a sheet up, or the page out of sight)
@@ -599,6 +605,17 @@ function showLines() {
   if (!region || !viewport || !track) return;
   const cards = $$('.app', track), count = cards.length, status = $('#app-carousel-status');
   if (count < 2) return;
+  const picker = $('.app-picker', region);
+  const choices = cards.map((card, i) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = $('b', card).textContent;
+    button.setAttribute('aria-controls', card.id);
+    button.addEventListener('click', () => { if (i !== index) move(i - index); });
+    picker.append(button);
+    return button;
+  });
+  picker.hidden = false;
   let index = 0, busy = false, gesture = null, ignoreClick = 0, version = 0, animations = [];
   const paths = new Map();
   const stateAt = depth => ({ x: 0, y: Math.min(depth, 2) * 8, s: 1 - Math.min(depth, 2) * .025, r: 0, o: depth < 3 ? 1 : 0 });
@@ -619,6 +636,7 @@ function showLines() {
       const depth = (i - index + count) % count, target = stateAt(depth);
       card.style.transform = transform(target); card.style.opacity = String(target.o); card.style.zIndex = String(count - depth);
       card.inert = depth !== 0; card.setAttribute('aria-hidden', String(depth !== 0));
+      choices[i].setAttribute('aria-pressed', String(depth === 0));
       $('.app-count', card).textContent = `${i + 1} / ${count}`;
     });
   }
@@ -645,7 +663,7 @@ function showLines() {
     status.textContent = `${$('b', cards[index]).textContent}, app ${index + 1} of ${count}`;
     if (!motion.matches) {
       const settling = cards.filter(c => c !== outgoing).map(c => springTo(c, before.get(c), stateAt((cards.indexOf(c) - index + count) % count), velocities.get(c)).finished.catch(() => {}));
-      const from = before.get(outgoing), target = { ...from, x: from.x - direction * 58, y: -3, s: .99, r: -direction * .45, o: 0 };
+      const from = before.get(outgoing), target = { ...from, x: from.x - Math.sign(direction) * 58, y: -3, s: .99, r: -Math.sign(direction) * .45, o: 0 };
       const exit = springTo(outgoing, from, target, velocities.get(outgoing), MOTION.exit);
       await exit.finished.catch(() => {}); if (token !== version) return;
       const depth = (cards.indexOf(outgoing) - index + count) % count;
