@@ -1937,7 +1937,7 @@ function signedIn(r) {
   const f = ap.inflight || {}, w = ap.weather || {}, fx = ap.fitness || {}, mk = ap.markets || {}, td = ap.today || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   // (each part named, so it's found again when the page is drawn anew: render, moved)
   const sec = (k, el) => { if (el) el.dataset.sec = k; return el; };
-  const apps = r(sec("apps", section("Your apps", h("div.apps", {},
+  const apps = !inSettings && r(sec("apps", section("Your apps", h("div.apps", {},
     // (InFlite Today, at inflite.ai itself: every app's day on one page, and a morning notification from them all)
     app("today", "Today", identityAsset("/apps/today.png"), td.morning?.on ? `Morning at ${hhmm(td.morning.at ?? 420)}` : "Your day, from all your apps", "One page, every app"),
     // (with pigeons off, just friends: the letters sent and the passport are pigeons')
@@ -2002,10 +2002,10 @@ function signedIn(r) {
       row({icon:"data",tint:"grey",title:"Your data",onclick:()=>openSheet(exportView)}),
       row({icon:"signout",tint:"grey",title:"Sign out",sub:"On this device",onclick:()=>settingsWindow.location.assign("/#settings=signout")}));
     if (embeddedAccount) return [h("div.account-layout", {},
-      h("div.account-detail", {}, top.filter(Boolean), security, apps, ...ending.filter(Boolean)))];
+      h("div.account-detail", {}, top.filter(Boolean), security, ...ending.filter(Boolean)))];
     return [heading, h("div.cols.account-layout", {},
       h("aside.col-a", {}, navigation),
-      h("div.col-b.account-detail", {}, top.filter(Boolean), security, apps, ...ending.filter(Boolean)))];
+      h("div.col-b.account-detail", {}, top.filter(Boolean), security, ...ending.filter(Boolean)))];
   }
   return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean), acctNav([account, prefs, ...ending], !!m.admin)), h("div.col-b", {}, [apps, pane() && glanceSec(m), account, prefs, ...ending].filter(Boolean)))];
 }

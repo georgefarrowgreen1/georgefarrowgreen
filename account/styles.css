@@ -2435,8 +2435,7 @@ dialog.sheet .mini { border-radius: var(--ifl-radius-pill); }
 .account-embedded #main { max-width: none; padding: 4px 2px 18px; }
 .account-embedded .account-layout { display: block; }
 
-/* The shell supplies the outer gutters. Keep sideways scrolling inside the app list. */
+/* The embedded Account pane scrolls vertically inside the Settings shell. */
 html.account-embedded, .account-embedded body { overflow-x: clip; overscroll-behavior-x: none; }
 html.account-embedded { touch-action: pan-x pan-y pinch-zoom; }
 .account-embedded .account-detail { grid-template-columns: minmax(0, 1fr); }
-.account-embedded .apps { margin-inline: 0; padding-inline: 0; scroll-padding-inline: 0; }

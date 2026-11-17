@@ -75,21 +75,20 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   await page.waitForURL('https://inflite.ai/#settings=account');
   await account.locator('.poster-card').waitFor();
   const layout = await account.locator('.poster-card').evaluate(poster => {
-    const apps = document.querySelector('.apps');
     const viewport = document.documentElement.clientWidth;
     const pageWidth = document.documentElement.scrollWidth;
-    const bounds = apps.getBoundingClientRect();
-    const start = poster.getBoundingClientRect().left;
-    apps.scrollLeft = apps.clientWidth;
+    const bounds = poster.getBoundingClientRect();
     window.scrollTo(120, 0);
-    return {viewport, pageWidth, left: bounds.left, right: bounds.right, start,
-      end: poster.getBoundingClientRect().left, pageScroll: scrollX, carouselScroll: apps.scrollLeft};
+    return {viewport, pageWidth, left: bounds.left, right: bounds.right,
+      end: poster.getBoundingClientRect().left, pageScroll: scrollX};
   });
   assert.ok(layout.left >= -1 && layout.right <= layout.viewport + 1, JSON.stringify(layout));
   assert.ok(layout.pageWidth <= layout.viewport + 1, JSON.stringify(layout));
   assert.equal(layout.pageScroll, 0);
-  assert.equal(layout.end, layout.start);
-  if (width === 390) assert.ok(layout.carouselScroll > 0);
+  assert.equal(layout.end, layout.left);
+  assert.equal(await account.getByRole('heading',{name:'Your apps',exact:true}).count(),0);
+  assert.equal(await account.locator('[data-sec="apps"], .apps, .open-app').count(),0);
+  assert.ok(await account.getByRole('button',{name:/Sign-in and security/i}).isVisible());
   assert.equal(await account.locator('.account-categories, .account-heading').count(),0);
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.screenshot({path:out+'/'+engine+'-'+width+'-settings-account.png'});
