@@ -1,11 +1,11 @@
+import {securityOrigin,securityOwner,PRIVATE_HEADERS} from './_security-core.js';
 import {HttpError,pace} from './_pigeon.js';
 import {signedIn,body,json} from './_accountapi.js';
 import {todayOrigin} from './_sites.js';
 import {createAction,updateAction,listActions,getAction,focusState,dismissFocus,listRemembered,forgetDevice,rememberDevice,draftBackups,readDraftBackup,saveDraftBackup} from './_system350.js';
-const SAFE={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin','Referrer-Policy':'no-referrer','Content-Security-Policy':"sandbox; default-src 'none'; frame-ancestors 'none'"};
+const SAFE=PRIVATE_HEADERS;
 function route(write,fn){return async({request,env})=>{
- if(request.headers.get('Origin')!==todayOrigin(env,request)||request.headers.has('Sec-Fetch-Site')&&request.headers.get('Sec-Fetch-Site')!=='same-origin')throw new HttpError(403,'That request did not come from InFlite.');
- const user=await signedIn(request,env),owner=request.headers.get('X-Inflite-Owner');if(!/^[\w-]{1,80}$/.test(owner||'')||owner!==user.id)throw new HttpError(401,'Your account changed. Refresh before continuing.','session');
+ securityOrigin(request,env);const user=await signedIn(request,env);securityOwner(request,user,'system');
  await pace(env,'system350:'+user.id,240,60e3);const value=await fn(request,env,user.id),r=json(value);for(const[k,v]of Object.entries(SAFE))r.headers.set(k,v);return r;
 }}
 const query=r=>new URL(r.url).searchParams;

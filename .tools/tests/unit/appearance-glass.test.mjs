@@ -38,7 +38,8 @@ test('real glass preferences persist in SQL, survive old-client partial updates 
   await backend.close();backend=await createIdentityBackend();p=await settings(backend,cookie);
   assert.deepEqual([p.appearance,p.palette,p.glass,p.glassStrength],['light','iris',true,100]);
   let r=await backend.request(req('me','GET',undefined,cookie));assert.equal(r.status,200);p=(await r.json()).prefs;assert.equal(p.glass,true);assert.equal(p.glassStrength,100);
-  r=await backend.request(req('export','POST',{},cookie));assert.equal(r.status,200,await r.clone().text());p=(await r.json()).account;assert.equal(p.glass,true);assert.equal(p.glassStrength,100);
+  const confirmation=await backend.request(req('security/confirmation','POST',{action:'account-export',target:owner},cookie));assert.equal(confirmation.status,200);const approval=await confirmation.json();
+  r=await backend.request(req('export','POST',{securityTicket:approval.token},cookie));assert.equal(r.status,200,await r.clone().text());p=(await r.json()).account;assert.equal(p.glass,true);assert.equal(p.glassStrength,100);
  }finally{await backend.close()}
 });
 

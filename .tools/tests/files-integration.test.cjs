@@ -16,7 +16,7 @@ const ROOT=resolve(__dirname,'../..'),IFL=resolve(ROOT,'../inflite');
 const ORIGIN='https://inflite.ai';
 const BROWSER=process.env.WEB_UI_BROWSER||process.env.WORKSPACE_UI_BROWSER||'chromium';
 process.env.WORKSPACE_UI_BROWSER=BROWSER;
-let backend,accounts,filesAPI,workspacesAPI,os,startOS,downloadServer,downloadProxy,proxyURL,certificateDir,chatIDs;
+let backend,accounts,filesAPI,securityAPI,workspacesAPI,os,startOS,downloadServer,downloadProxy,proxyURL,certificateDir,chatIDs;
 const proxySockets=new Set();
 const fileStates=new Map(), nativeRequests=[];
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
@@ -25,6 +25,7 @@ before(async()=>{
   backend=await createFilesBackend();
   const {UID}=await import('./mocks/fitnessmock.mjs');({IDS:chatIDs}=await import('./unit/fixtures/chats.mjs'));
   accounts={a:await backend.session(UID),b:await backend.session('files_browser_owner_b')};
+  ({securityAPI}=await import(pathToFileURL(resolve(IFL,'today/src/security.js'))));
   ({filesAPI}=await import(pathToFileURL(resolve(IFL,'today/src/files.js'))));
   ({workspacesAPI}=await import(pathToFileURL(resolve(IFL,'today/src/workspaces.js'))));
   // Native browser downloads can bypass Playwright's request interception. A
@@ -35,7 +36,7 @@ before(async()=>{
   downloadServer=createServer({key:readFileSync(resolve(certificateDir,'key.pem')),cert:readFileSync(resolve(certificateDir,'cert.pem'))},async(req,res)=>{
     const nativeRecord={url:req.url,cookie:!!req.headers.cookie};nativeRequests.push(nativeRecord);
     const state=fileStates.get('client:'+req.headers.cookie?.match(/fixture_context=([^;]+)/)?.[1])||fileStates.get(req.headers.cookie?.match(/__Secure-account=([^;]+)/)?.[1]);
-    if(!(req.url.startsWith('/api/files/')||req.url==='/api/workspaces')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
+    if(!(req.url.startsWith('/api/security/')||req.url.startsWith('/api/files/')||req.url==='/api/workspaces')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
     const controller=new AbortController(),url=new URL(req.url,ORIGIN);
     const record={url:url.href,action:url.pathname==='/api/workspaces'?'workspaces':url.pathname.slice('/api/files/'.length),method:req.method,owner:req.headers.cookie?.includes(accounts.b.cookie)?accounts.b.owner:accounts.a.owner,expectedOwner:req.headers['x-inflite-files-owner']||null,controller,status:null,cookiePresent:!!req.headers.cookie,bytes:0};state.fileRequests.push(record);state.fileControllers.set(req,controller);
     req.on('aborted',()=>controller.abort());res.on('close',()=>{if(!res.writableFinished)controller.abort();});
@@ -43,7 +44,7 @@ before(async()=>{
       const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?Buffer.concat(chunks):null;record.bytes=body?.length||0;
       if(req.headers['content-type']?.startsWith('application/json'))try{record.json=JSON.parse(body?.toString('utf8')||'{}');}catch{}
       await state.gateAt(record,'request');
-      const response=await (url.pathname==='/api/workspaces'?workspacesAPI:filesAPI)(new Request(url,{method:req.method,headers:req.headers,signal:controller.signal,...(body?{body}:{})}),proxyEnv());
+      const response=await (url.pathname.startsWith('/api/security/')?securityAPI:url.pathname==='/api/workspaces'?workspacesAPI:filesAPI)(new Request(url,{method:req.method,headers:req.headers,signal:controller.signal,...(body?{body}:{})}),proxyEnv());
       const bytes=Buffer.from(await response.arrayBuffer());record.status=response.status;
       if(response.headers.get('content-type')?.startsWith('application/json'))try{record.answer=JSON.parse(bytes.toString('utf8'));}catch{}
       await state.gateAt(record,'response');res.writeHead(response.status,Object.fromEntries(response.headers));res.end(bytes);
@@ -95,6 +96,7 @@ async function augmentFiles(ctx,state){
   // Browser fetch, XHR and native download all traverse real TLS/HTTP, Cookie
   // handling and exact binary request bodies. Only account/bootstrap fixtures
   // and the Node-to-workerd service-binding translation remain artificial.
+  await ctx.route(ORIGIN+'/api/security/**',route=>route.continue());
   await ctx.route(ORIGIN+'/api/files/**',route=>route.continue());
   state.releaseFiles=()=>{for(const gate of state.gates)gate.release();for(const controller of state.fileControllers.values())controller.abort();};
 }

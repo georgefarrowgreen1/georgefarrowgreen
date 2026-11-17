@@ -1,8 +1,4 @@
-// Who's signed in, asked of the nearest copy of the database where D1 keeps them (its read replicas: env.DB.withSession,
-// functions/_pigeon.js sessionUser), as every request starts there: only for a request that changes nothing (GET), from
-// a browser that hasn't just changed its sign-in (the ifl_rw mark, functions/_account.js markWrote, set with every
-// sign-in cookie and on showing it's you again); and asked again of the main copy whenever the nearby one hasn't the
-// sign-in, or has it as handed over, as a copy can be a moment behind. Here a copy is a second database that's behind.
+// Security Module: session authority always comes from the primary; stale replicas cannot revive access.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -33,7 +29,7 @@ test.after(() => { console.error = said; });
 
 const main = d1(), copy = d1();
 let sessions = 0;
-main.withSession = (b) => { sessions++; assert.equal(b, "first-unconstrained"); return copy; };
+main.withSession = (b) => { sessions++; assert.equal(b, "first-primary"); return main; };
 const env = { DB: main };
 await db(env);
 // (the copy: the main one as it was, a moment ago)
@@ -47,12 +43,12 @@ main.sql.prepare("INSERT INTO pg_users (id, handle, name, email, pub, salt, proo
 const req = (method = "GET", cookie = "") => new Request("https://inflite.ai/api/session", { method, headers: cookie ? { Cookie: cookie } : {} });
 const asked = () => { const n = { main: main.seen.filter((q) => /FROM pg_sessions s JOIN/.test(q)).length, copy: copy.seen.filter((q) => /FROM pg_sessions s JOIN/.test(q)).length }; main.seen.length = 0; copy.seen.length = 0; return n; };
 
-test("a GET: asked of the nearby copy, which has it; the main one not asked", async () => {
+test("a GET resolves session authority on the primary even when a replica has a copy", async () => {
   const token = await issueSession(env, ANN, req("POST"));
   snapshot(); asked();
   const u = await sessionUser(env, token, false, false, req());
   assert.equal(u.id, ANN);
-  assert.deepEqual(asked(), { main: 0, copy: 1 });
+  assert.deepEqual(asked(), { main: 1, copy: 0 });
 });
 
 test("a sign-in made a moment ago, not on the copy yet: asked again of the main one, and found", async () => {
@@ -61,7 +57,7 @@ test("a sign-in made a moment ago, not on the copy yet: asked again of the main 
   asked();
   const u = await sessionUser(env, token, false, false, req());
   assert.equal(u.id, ANN, "never turned away for the copy being behind");
-  assert.deepEqual(asked(), { main: 1, copy: 1 });
+  assert.deepEqual(asked(), { main: 1, copy: 0 });
 });
 
 test("anything that changes something (POST), or a browser that's just changed its sign-in (ifl_rw): the main one only", async () => {
@@ -71,7 +67,7 @@ test("anything that changes something (POST), or a browser that's just changed i
   assert.deepEqual(asked(), { main: 1, copy: 0 });
   await sessionUser(env, token, false, false, req("GET", "ifl_rw=1; other=2"));
   assert.deepEqual(asked(), { main: 1, copy: 0 });
-  assert.equal(sessions, before, "no copy asked for at all");
+  assert.equal(sessions, before + 2, "both requests explicitly use primary consistency");
 });
 
 test("handed over, on the copy: asked of the main one, where showing it's you may have ended it", async () => {
@@ -82,7 +78,7 @@ test("handed over, on the copy: asked of the main one, where showing it's you ma
   asked();
   const u = await sessionUser(env, token, false, false, req());
   assert.equal(u.handed, false, "the main one's word");
-  assert.deepEqual(asked(), { main: 1, copy: 1 });
+  assert.deepEqual(asked(), { main: 1, copy: 0 });
 });
 
 test("no copies (no withSession, as here without D1's replicas, and in the tests' database): the main one, as ever", async () => {
@@ -96,3 +92,7 @@ test("every sign-in cookie set carries the mark, for a minute, for the whole sit
   const set = res.headers.getSetCookie();
   assert.ok(set.some((c) => /^ifl_rw=1; .*Domain=inflite\.ai.*Max-Age=60$/.test(c)), set.join(" | "));
 });
+
+
+test('a revoked session is refused while its old replica copy still exists', async()=>{const token=await issueSession(env,ANN,req('POST'));snapshot();main.sql.prepare('DELETE FROM pg_sessions WHERE hash=?').run(hex(await sha256(token)));await assert.rejects(()=>sessionUser(env,token,false,false,req()),e=>e.status===401);assert.ok(copy.sql.prepare('SELECT 1 FROM pg_sessions WHERE hash=?').get(hex(await sha256(token))));});
+test('every session resolver rejects a captured account mismatch before returning private identity',async()=>{const token=await issueSession(env,ANN,req('POST'));const hash=hex(await sha256(token));main.sql.prepare('UPDATE pg_sessions SET seen_at=? WHERE hash=?').run(Date.now()-7200000,hash);const before=main.sql.prepare('SELECT apps,seen_at FROM pg_sessions WHERE hash=?').get(hash);const r=new Request('https://inflite.ai/api/fitness/me',{headers:{'X-Inflite-Owner':'another-account'}});await assert.rejects(()=>sessionUser(env,token,false,false,r),e=>e.status===401&&e.field==='session'&&e.capturedAccount);assert.deepEqual(main.sql.prepare('SELECT apps,seen_at FROM pg_sessions WHERE hash=?').get(hash),before);});

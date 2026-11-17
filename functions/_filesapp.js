@@ -1,3 +1,4 @@
+import {securityOrigin,securityOwner,PRIVATE_HEADERS} from './_security-core.js';
 // The private cloud drive is a Today account capability. Root validates its own
 // browser origin before forwarding here with Today's canonical identity.
 import { HttpError, pace } from "./_pigeon.js";
@@ -8,30 +9,14 @@ import { FILE_LIMITS, listFiles, getFile, createFolder, reserveUpload, uploadFil
 import {cancelReplacement,fileHistory,reserveReplacement,uploadReplacement,historicalContent,restoreVersion} from './_fileversions.js';
 import {todayPrefs,savePrefs} from './_today.js';
 import {readContinuity,writeContinuity} from './_continuity.js';
-const SAFE = {
-  "Cache-Control": "private, no-store",
-  "X-Content-Type-Options": "nosniff",
-  "Cross-Origin-Resource-Policy": "same-origin",
-  "Content-Security-Policy": "sandbox; default-src 'none'; frame-ancestors 'none'",
-  "Referrer-Policy": "no-referrer",
-};
-function fromToday(request, env, changing) {
-  if (request.headers.get("Origin") !== todayOrigin(env, request)) throw new HttpError(403, "That request didn’t come from InFlite.");
-  const site = request.headers.get("Sec-Fetch-Site");
-  if (site && site !== "same-origin") throw new HttpError(403, "That request didn’t come from InFlite.");
-  if (changing && request.method === "OPTIONS") throw new HttpError(405, "Files doesn’t do that here.");
-}
+const SAFE=PRIVATE_HEADERS;
 const answer = (value, status = 200) => { const response = json(value, status); for (const [key, val] of Object.entries(SAFE)) response.headers.set(key, val); return response; };
 const query = request => new URL(request.url).searchParams;
 function route(changing, handler) {
   return async ({ request, env }) => {
-    fromToday(request, env, changing);
+    securityOrigin(request,env);
     const user = await signedIn(request, env);
-    // The cookie may change in another visible tab before this frame learns
-    // about the new account. This header is a precondition, never an owner.
-    const expected = request.headers.get("X-Inflite-Files-Owner");
-    const nativeDownload = /^(GET|HEAD)$/.test(request.method) && new URL(request.url).pathname === "/api/account/today/files/content";
-    if (!(nativeDownload && expected === null) && (!/^[A-Za-z0-9_-]{1,80}$/.test(expected || "") || expected !== user.id)) throw new HttpError(401, "Your account changed. Refresh InFlite before continuing.", "session");
+    securityOwner(request,user,'files');
     await pace(env, `files:${changing ? "write" : "read"}:${user.id}`, 320, 60e3);
     return handler(request, env, user.id);
   };

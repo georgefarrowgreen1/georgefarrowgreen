@@ -18,6 +18,7 @@ import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { stampPassports } from "./_passport.js";
 import { settleBirds } from "./_birds.js";
 import { removeAccount } from "./_accounts.js";
+import {purgeSecurityTickets} from "./_security-store.js";
 import { sweepFileUploads } from "./_files.js";
 
 export const KEEP_MS = 30 * DAY;
@@ -228,6 +229,7 @@ export async function housekeeping(env, D, t, origin) {
   if (!claim.meta?.changes) return null;
   const purged = await keepMonth(env, D, t).catch((e) => { console.error("pigeon keep", e && e.message); return 0; });
   const files = await sweepFiles(env, D, t).catch((e) => { console.error("pigeon files", e && e.message); return 0; });
+  await purgeSecurityTickets(env,t).catch(()=>console.error("Security Module cleanup unavailable"));
   const drive = await sweepFileUploads(env, t).catch((e) => { console.error("Files cleanup", e && e.message); return 0; });
   const accounts = await idleAccounts(env, D, t, origin).catch((e) => { console.error("pigeon idle", e && e.message); return {}; });
   const asked = await dueDeletions(env, D, t, origin).catch((e) => { console.error("pigeon deletions", e && e.message); return 0; });
@@ -237,7 +239,7 @@ export async function housekeeping(env, D, t, origin) {
 // The admin's look at what's kept, across the site: each table's rows and roughly how much is in them, by the app it's
 // for; the database's size; and the files in storage, by app and kind. (D1 says only the whole database's size: each
 // app's share of it is its tables' share of what's in them, so an estimate; the files' sizes are exact)
-const ACCOUNT_TABLES = new Set(["pg_users", "pg_sessions", "pg_passkeys", "pg_challenges", "pg_resets", "pg_handoff", "pg_handback", "pg_handles_held",
+const ACCOUNT_TABLES = new Set(["ifl_security_permissions","ifl_security_tickets","pg_users", "pg_sessions", "pg_passkeys", "pg_challenges", "pg_resets", "pg_handoff", "pg_handback", "pg_handles_held",
   "pg_invites", "pg_events", "pg_limits", "pg_errors", "pg_admin_log", "pg_meta", "pg_active"]);
 export const appOfTable = (name) => name.startsWith("ifl_files_") ? "files" : name === "ifl_workspaces" ? "today" : name.startsWith("fx_") ? "fitness" : name.startsWith("wx_") ? "weather" : ACCOUNT_TABLES.has(name) ? "account"
   : name.startsWith("pg_") ? "inflight" : "home";

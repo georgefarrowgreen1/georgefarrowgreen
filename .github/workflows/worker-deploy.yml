@@ -38,7 +38,8 @@ jobs:
         if: steps.ready.outputs.go == '1'
         run: |
           git clone --quiet --depth 1 --branch claude/inflite https://github.com/georgefarrowgreen1/inflite ../inflite
-          echo "Security fixture: claude/inflite at $(git -C ../inflite rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          node .tools/security/framework-fixture.mjs ../inflite
+          echo "Paired framework fixture at $(git -C ../inflite rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - name: Install locked tools without install scripts or production credentials
         if: steps.ready.outputs.go == '1'
         run: |

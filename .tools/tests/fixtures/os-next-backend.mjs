@@ -17,8 +17,9 @@ export async function createFilesBackend() {
   const filesImport = "import {FILES_ROUTES} from './functions/_filesapp.js';";
   const lookup = "const route=FILES_ROUTES[key];";
   if (!source.includes(filesImport) || !source.includes(lookup)) throw new Error('Actual Files backend fixture route seams changed.');
-  source = source.replace(filesImport, filesImport + "\nimport {ORGANISE_ROUTES} from './functions/_organiseapp.js';\nimport {SYSTEM_ROUTES} from './functions/_systemapp.js';\nimport {WORKSPACE_ROUTES} from './functions/_workspacesapp.js';\nimport {onRequest as fitnessRequest} from './functions/api/fitness/[[path]].js';")
-    .replace(lookup, "if(path==='/api/fitness/routes/plan')return fitnessRequest({request,env,params:{path:['routes','plan']},waitUntil:ctx.waitUntil.bind(ctx)});const route=FILES_ROUTES[key]||WORKSPACE_ROUTES[key]||SYSTEM_ROUTES[key]||ORGANISE_ROUTES[key];");
+  source = source.replace(filesImport, filesImport + "\nimport {SECURITY_ROUTES} from './functions/_security-app.js';\nimport {ORGANISE_ROUTES} from './functions/_organiseapp.js';\nimport {SYSTEM_ROUTES} from './functions/_systemapp.js';\nimport {WORKSPACE_ROUTES} from './functions/_workspacesapp.js';\nimport {onRequest as fitnessRequest} from './functions/api/fitness/[[path]].js';")
+    .replace(lookup, "if(path==='/api/fitness/routes/plan')return fitnessRequest({request,env,params:{path:['routes','plan']},waitUntil:ctx.waitUntil.bind(ctx)});const route=SECURITY_ROUTES[key]||FILES_ROUTES[key]||WORKSPACE_ROUTES[key]||SYSTEM_ROUTES[key]||ORGANISE_ROUTES[key];");
+  source=source.replace("if(path==='/_sql')","if(path==='/_remove'){await removeAccount(env,(await request.json()).owner);return json({ok:true})}if(path==='/_sql')");
   source = source.replace(registration, `const {after,before,test}=globalThis[${JSON.stringify(key)}];`)
     .replaceAll('import.meta.url', JSON.stringify(pathToFileURL(filename).href));
   source += '\nexport {mf,fixture,api,internal,sql,folder,reserve,uploaded};';

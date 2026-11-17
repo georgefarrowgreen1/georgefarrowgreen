@@ -1,22 +1,23 @@
-import {HttpError,pace} from './_pigeon.js';
+import {HttpError,pace,hex,sha256} from './_pigeon.js';
+import {securityOrigin,securityOwner,PRIVATE_HEADERS} from './_security-core.js';
+import {permit,securityEvent} from './_security-store.js';
 import {signedIn,body,json} from './_accountapi.js';
 import {todayOrigin} from './_sites.js';
 import {saveRecord,getRecord,listRecords} from './_organise400.js';
 import {calendars,previewCalendar,saveCalendar,disconnectCalendar,refreshCalendar,calendarEvents,lifePrefs} from './_life410.js';
 import {searchDocuments} from './_documentsearch410.js';
-const SAFE={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin','Referrer-Policy':'no-referrer','Content-Security-Policy':"sandbox; default-src 'none'; frame-ancestors 'none'"};
+const SAFE=PRIVATE_HEADERS;
 const route=fn=>async({request:r,env:e})=>{
- if(r.headers.get('Origin')!==todayOrigin(e,r)||r.headers.has('Sec-Fetch-Site')&&r.headers.get('Sec-Fetch-Site')!=='same-origin')throw new HttpError(403,'That request did not come from InFlite.');
- const u=await signedIn(r,e);if(r.headers.get('X-Inflite-Owner')!==u.id)throw new HttpError(401,'Your account changed. Refresh before continuing.','session');
- await pace(e,'organise400:'+u.id,240,60e3);const v=await fn(r,e,u.id),answer=json(v);for(const[k,v]of Object.entries(SAFE))answer.headers.set(k,v);return answer;
+ securityOrigin(r,e);const u=await signedIn(r,e);securityOwner(r,u,'organise');
+ await pace(e,'organise400:'+u.id,240,60e3);const v=await fn(r,e,u.id,u),answer=json(v);for(const[k,v]of Object.entries(SAFE))answer.headers.set(k,v);return answer;
 };
 export const ORGANISE_ROUTES={
- 'POST today/organise/document-search':route(async(r,e,o)=>searchDocuments(e,o,await body(r,2048))),
+ 'POST today/organise/document-search':route(async(r,e,o,u)=>{const b=await body(r,2048);await permit(e,u,'files.content-search','',r.headers.get('X-Inflite-Security'));const result=await searchDocuments(e,o,b);await securityEvent(e,u,'content-search','files.content-search').catch(()=>{});return result}),
  'GET today/organise/calendars':route((r,e,o)=>calendars(e,o)),
- 'POST today/organise/calendar-preview':route(async(r,e,o)=>previewCalendar(e,o,await body(r,768*1024))),
- 'PUT today/organise/calendar':route(async(r,e,o)=>saveCalendar(e,o,await body(r,768*1024))),
+ 'POST today/organise/calendar-preview':route(async(r,e,o,u)=>{const b=await body(r,768*1024);if(b.url&&typeof b.url!=='string')throw new HttpError(400,'Choose a valid calendar link.');if(b.url)await permit(e,u,'calendar.subscription',hex(await sha256(b.url)),r.headers.get('X-Inflite-Security'));return previewCalendar(e,o,b)}),
+ 'PUT today/organise/calendar':route(async(r,e,o,u)=>{const b=await body(r,768*1024);if(b.url&&typeof b.url!=='string')throw new HttpError(400,'Choose a valid calendar link.');if(b.url)await permit(e,u,'calendar.subscription',hex(await sha256(b.url)),r.headers.get('X-Inflite-Security'));return saveCalendar(e,o,b)}),
  'DELETE today/organise/calendar':route((r,e,o)=>disconnectCalendar(e,o,Object.fromEntries(new URL(r.url).searchParams))),
- 'POST today/organise/calendar-refresh':route(async(r,e,o)=>refreshCalendar(e,o,await body(r,2048))),
+ 'POST today/organise/calendar-refresh':route(async(r,e,o,u)=>{const b=await body(r,2048);await permit(e,u,'calendar.subscription',b.id,r.headers.get('X-Inflite-Security'));return refreshCalendar(e,o,b)}),
  'POST today/organise/calendar-events':route(async(r,e,o)=>calendarEvents(e,o,await body(r,2048))),
  'GET today/organise/preferences':route((r,e,o)=>lifePrefs(e,o)),
  'PUT today/organise/preferences':route(async(r,e,o)=>lifePrefs(e,o,await body(r,2048))),

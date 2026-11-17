@@ -9,6 +9,7 @@
 // encrypted photo blobs under pigeon/. Tables are created on first use.
 
 import { HttpError } from "./_http.js";
+import {capturedAccountMatches} from "./_security-policy.js";
 import { SITE, ACCOUNT_APP, AUTH_APP } from "./_email.js";
 import { publicApp } from "./_canonical.js";
 import { siteOf, homeSite, appsSite, appOrigin, hubOrigins, cfOf } from "./_sites.js";
@@ -731,24 +732,20 @@ export async function logError(env, src, e) {
   return code;
 }
 export async function sessionUser(env, token, inflight = true, site = false, request = null) {
-  const D = await db(env), h = hex(await sha256(token)), t = Date.now();
+  const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source, h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
   const look = (X) => X.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
-  // (asked of the nearest copy of the database, where D1 keeps copies near the visitor (its read replicas), as every
-  // request starts here: but only for a request that changes nothing (GET), from a browser that hasn't just changed its
-  // sign-in (functions/_account.js markWrote); and asked again of the main copy whenever the nearby one hasn't it, or has
-  // it as handed over (which showing it's you ends), as a copy can be a moment behind. Without copies, it's the main one)
-  const near = env.DB?.withSession && /^(GET|HEAD)$/.test(request?.method || "") && !/(?:^|;\s*)ifl_rw=1(?:;|$)/.test(request.headers.get("Cookie") || "")
-    ? env.DB.withSession("first-unconstrained") : null;
-  let u = near ? await look(near).catch(() => null) : null;
-  if (!u || u.s_handed) u = await look(D);
+  // Security Module resolves session authority on the primary, including reads.
+  // A lagging replica must never resurrect a revoked session or its old account.
+  const u = await look(D);
   // (a sign-in lasts while it's used, up to a year from when it was made: then it's asked for again, wherever it's in use)
   const over = u && t - (u.s_made || t) > SESSION_MAX;
   if (u && (!u.s_held || over)) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();
   if (!u || t - u.s_seen > SESSION_TTL || !u.s_held || over) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
+  if (!capturedAccountMatches(request,u)) {const error=new HttpError(401,"Your account changed. Refresh before continuing.","session");error.capturedAccount=true;throw error;}
   // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
   // browser's own sign-in now, listed by itself)
   const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);

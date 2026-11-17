@@ -1207,7 +1207,7 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.32";
+const BUILD = "2.33";
 const NEWS = "Full account data archives and connected calendars";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
@@ -1472,16 +1472,16 @@ const underBar = () => { if (navigator.standalone !== true || !matchMedia("(orie
 if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-async function call(path, { method = "GET", body, type, keepalive = false } = {}) {
+async function call(path, { method = "GET", body, type, keepalive = false, owner } = {}) {
   let r;
-  const headers = { ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
+  const headers = { ...(owner ? {"X-Inflite-Owner":owner} : {}), ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
   try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000), ...(keepalive ? { keepalive: true } : {}) }); }
   catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status, field: j.field });
   return j;
 }
-const post = (path, body = {}) => call(path, { method: "POST", body });
+const post = async(path,body={}) => {const owner=S.me?.id;if(owner&&["export","delete","devices/end"].includes(path)){const {protectedPost}=await import("./security-module.js");return protectedPost({path,body,owner,current:()=>S.me?.id===owner,call})}return call(path,{method:"POST",body})};
 // (what went wrong signing in, as one of a few words, for the site's counts of how signing in is going: nothing else
 // goes with it, and it's never waited on: functions/_signincount.js)
 function told(kind) { try { fetch(`${API}/signin/said`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }), keepalive: true, credentials: "same-origin" }).catch(() => {}); } catch (_) {} }
@@ -1958,7 +1958,7 @@ function glanceSec(m) {
 }
 // Each part, by its address (#open=<part>): opened from the list, a link, or an app; the address follows the part you're
 // on, so Reload, Back and Forward keep your place
-const PARTS = { security: () => securityView, data: () => exportView, appearance: () => appearanceView, units: () => unitsView, notify: () => notifyView, emails: () => emailsView, profile: () => profileView };
+const PARTS = { confirm:()=>securityConfirmView, security: () => securityView, data: () => exportView, appearance: () => appearanceView, units: () => unitsView, notify: () => notifyView, emails: () => emailsView, profile: () => profileView };
 function partOf(fn) {
   // (none on the sign-in page, whose script leaves the account's parts out: .tools/minify.mjs signinPage)
   if (SIGNIN_PAGE) return null;
@@ -4078,6 +4078,10 @@ function confirmWays(ok) {
     catch (err) { say(said, err.message, pw); }
   } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), pwField("Password", pw), go);
   return { pk, key, form, pw, said };
+}
+function securityConfirmView(){
+  const owner=S.me?.id,back=()=>location.assign("/#you=security");
+  return confirmView(()=>{if(S.me?.id!==owner)return;S.me.fresh=true;back()},back);
 }
 function confirmView(ok, back) {
   const w = confirmWays(ok);

@@ -81,7 +81,7 @@ export async function cookieUser(request, env, inflight = false, { deleting = fa
   const token = cookieToken(request, env);
   if (!token) return null;
   try { const u = await sessionUser(env, token, inflight, true, request); u.token = token; return u.delete_at && !deleting ? null : u; }
-  catch (e) { if (e instanceof HttpError && e.status === 401) return null; throw e; }
+  catch (e) { if (e instanceof HttpError && e.status === 401 && !e.capturedAccount) return null; throw e; }
 }
 // (said only to someone who's shown it's their account)
 function refuseDeleting(u) {

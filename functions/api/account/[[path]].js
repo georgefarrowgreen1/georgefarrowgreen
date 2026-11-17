@@ -54,6 +54,9 @@ import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
+import {SECURITY_ROUTES} from '../../_security-app.js';
+import {exportSecurity,consumeConfirmation} from '../../_security-store.js';
+import {confirmation as securityConfirmation} from '../../_security-service.js';
 import { ORGANISE_ROUTES } from '../../_organiseapp.js';
 import { streamOrganiseExport } from '../../_organise400.js';
 import { SYSTEM_ROUTES } from "../../_systemapp.js";
@@ -536,6 +539,8 @@ const ROUTES = {
     return withCookie(json(await view(env, u)), request, env, u.token);
   },
   ...accountRoutes(view, { deleting: true }),
+  ...SECURITY_ROUTES,
+  "POST security/confirmation":async({request,env})=>{sameOrigin(request);const u=await signedIn(request,env);await pace(env,"security-confirmation:"+u.id,30,60000);return json(await securityConfirmation(env,u,await body(request,1024)));},
   "POST reauth": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request), D = await db(env);
@@ -691,6 +696,7 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request), D = await db(env);
     requireFresh(u);
+    await consumeConfirmation(env,u,b.securityTicket,"account-devices",b.others?"others":b.stale?"stale":typeof b.id==="string"?b.id:"");
     if (b.others) {
       // (and an email change still waiting called off: if a device here wasn't yours, nor might that be)
       await D.batch([D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
@@ -1012,6 +1018,7 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env);
     requireFresh(u);
+    await consumeConfirmation(env,u,(await body(request,1024)).securityTicket,"account-export",u.id);
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
@@ -1091,6 +1098,7 @@ const ROUTES = {
       continuation: (await readContinuity(env,u.id)).devices,
       system: await exportSystem(env,u.id),
       life: await exportLife(env,u.id),
+      securityModule: await exportSecurity(env,u.id),
     };
     waitUntil(logEvent(env, u.id, "export", request));
     const res = json({});
@@ -1104,7 +1112,8 @@ const ROUTES = {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
     requireFresh(u);
-    if (String(b.confirm || "").trim().replace(/^@/, "").toLowerCase() !== u.handle) throw new HttpError(400, `Type ${u.handle} to confirm.`, "confirm");
+    if ((typeof b.confirm==="string"?b.confirm:"").trim().replace(/^@/, "").toLowerCase() !== u.handle) throw new HttpError(400, `Type ${u.handle} to confirm.`, "confirm");
+    await consumeConfirmation(env,u,b.securityTicket,"account-delete",u.id);
     const token = randomToken(32), at = Date.now() + GRACE, D = await db(env);
     await D.batch([
       D.prepare("UPDATE pg_users SET delete_at = ?, delete_code = ? WHERE id = ?").bind(at, hex(await sha256(token)), u.id),
