@@ -62,19 +62,26 @@ const stampOf = async (text) => [...new Uint8Array(await crypto.subtle.digest("S
 // (worked out again each minute: just after a deploy the files can briefly be last version's. Kept from when it's begun,
 // so the files are read side by side, not one by one, and one that two others bring in is read once, with one stamp;
 // one that couldn't be read is tried again next time)
-const memo = new Map();
+const stampsByStore = new WeakMap();
+const pendingByRequest = new WeakMap();
 function fingerprint(ctx, url, name) {
-  const hit = memo.get(name);
-  if (hit && Date.now() - hit.at < 60_000) return hit.p;
-  const e = { at: Date.now(), p: (async () => {
+  const store = ctx.env.ASSETS;
+  let stamps = stampsByStore.get(store);
+  if (!stamps) stampsByStore.set(store, stamps = new Map());
+  const hit = stamps.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  // Concurrent document requests can end independently. Share only completed
+  // fingerprints across them, and deduplicate outstanding reads within each one.
+  let pending = pendingByRequest.get(ctx.request);
+  if (!pending) pendingByRequest.set(ctx.request, pending = new Map());
+  if (!pending.has(name)) pending.set(name, (async () => {
     const r = await assets(ctx.env).fetch(new Request(new URL(where(name), url)));
     if (!r.ok) return "";
-    return stampOf(await asSent(ctx, url, name, await r.text()));
-  })() };
-  memo.set(name, e);
-  const done = (v) => { if (memo.get(name) === e) { if (v) e.at = Date.now(); else memo.delete(name); } };
-  e.p.then(done, () => done(""));
-  return e.p;
+    const value = await stampOf(await asSent(ctx, url, name, await r.text()));
+    stamps.set(name, {at: Date.now(), value});
+    return value;
+  })());
+  return pending.get(name);
 }
 // a file as sent: a module with its imports stamped (each by its address here: crypto.js's argon2.js is this page's)
 async function asSent(ctx, url, name, text) {
@@ -96,7 +103,10 @@ export async function accountHost(ctx, url) {
   // authenticated service requests keep working at their historical origins.
   const dest = ctx.request.headers.get("Sec-Fetch-Dest"), document = dest ? dest === "document" : /text\/html/i.test(ctx.request.headers.get("Accept") || "");
   if (["auth.inflite.ai", "account.inflite.ai"].includes(url.hostname) && !prefix && ctx.request.headers.get("X-Hub-Ok") !== "1" && /^(GET|HEAD)$/.test(ctx.request.method) && document && ["/", "/index.html", "/go"].includes(url.pathname)) {
-    return new Response(null, { status: 308, headers: { Location: publicApp(isAuth(url, ctx.env) ? "auth" : "account", ctx.env, ctx.request) + (url.pathname === "/index.html" ? "/" : url.pathname) + url.search, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+    const home = url.hostname === "account.inflite.ai" && url.pathname !== "/go"
+      ? new URL("/settings/account", publicApp("account", ctx.env, ctx.request)).href
+      : publicApp(isAuth(url, ctx.env) ? "auth" : "account", ctx.env, ctx.request);
+    return new Response(null, { status: 308, headers: { Location: home + (url.pathname === "/index.html" ? "/" : url.pathname) + url.search, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   }
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
   // (its version as deployed, the sign-in page's too, for the updater every app shares: functions/_version.js)

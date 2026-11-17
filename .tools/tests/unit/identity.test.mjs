@@ -47,7 +47,7 @@ test('only authenticated identity service requests accept Apex Origin; passkey R
 });
 test('native legacy documents move while APIs/static resources and fixed callbacks keep their transport',{skip:!IFL&&'companion InFlite repository unavailable'},async()=>{
  const b=await createIdentityBackend();try{
-  for(const role of ['auth','account']){const r=await b.dispatch(new Request('https://'+role+'.inflite.ai/',{headers:{Accept:'text/html'}}));assert.equal(r.status,308);assert.equal(r.headers.get('Location'),'https://inflite.ai/'+role+'/');}
+  for(const role of ['auth','account']){const r=await b.dispatch(new Request('https://'+role+'.inflite.ai/',{headers:{Accept:'text/html'}}));assert.equal(r.status,308);assert.equal(r.headers.get('Location'),'https://inflite.ai/'+(role==='account'?'settings/account':role)+'/');}
   const {accountHost}=await import('../../../functions/_acctapp.js');const sandboxURL=new URL('http://auth.ifl.test:8788/');const sandbox=await accountHost({request:new Request(sandboxURL,{headers:{Accept:'text/html'}}),env:{...b.env,APPS_SITE:'ifl.test',ACCOUNT_SITE:'gfg.test',AUTH_HOST:'auth.ifl.test'},next:()=>new Response('not found',{status:404})},sandboxURL);assert.equal(sandbox.status,200);assert.equal(sandbox.headers.get('Location'),null);
   const api=await b.dispatch(new Request('https://auth.inflite.ai/api/account/me',{headers:{Accept:'application/json'}}));assert.equal(api.status,200);
   const staticAsset=await b.dispatch(new Request('https://auth.inflite.ai/theme.js'));assert.equal(staticAsset.status,200);

@@ -42,20 +42,38 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   const seeded=await backend.request(new Request('https://inflite.ai/auth/api/account/signup',{method:'POST',headers:{Origin:'https://inflite.ai','Content-Type':'application/json'},body:JSON.stringify({name:'Identity Tester',handle:'identity'+width,email,salt,proof,vault:'v'.repeat(40),pub})}));assert.equal(seeded.status,201,await seeded.clone().text());
   await context.addInitScript(()=>{if(window.PublicKeyCredential)PublicKeyCredential.isConditionalMediationAvailable=async()=>false;});
   const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('https://inflite.ai/auth/');await page.locator('.auth-panel[data-auth-state="signin"]').waitFor();
+  const fromSettings = width === 390;
+  await page.goto(fromSettings ? 'https://inflite.ai/settings/account/#open=profile' : 'https://inflite.ai/auth/');
+  await page.locator('.auth-panel[data-auth-state="signin"]').waitFor();
   assert.equal(new URL(page.url()).pathname,'/auth/');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
   const choice=page.getByRole('button',{name:'Use your password',exact:true});if(await choice.isVisible())await choice.click();
   await page.locator('input[type="email"]').fill(email);await page.locator('input[type="password"]').fill(password);
   await page.locator('.auth-panel button[type="submit"]').click();
-  await page.waitForURL('https://inflite.ai/account/**');await page.locator('.poster-card').waitFor();
+  await page.waitForURL(fromSettings ? 'https://inflite.ai/settings/account/**' : 'https://inflite.ai/account/**');
+  if (fromSettings) {
+    await page.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
+    await page.goto('https://inflite.ai/account/');
+  }
+  await page.locator('.poster-card').waitFor();
   const me=await page.evaluate(()=>fetch('/account/api/account/me').then(r=>r.json()));assert.equal(me.email,email);assert.equal(me.signedIn,true);
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.waitForFunction(()=>{const p=document.querySelector('.poster-card');return p&&Number(getComputedStyle(p).opacity)>.95&&Number(getComputedStyle(document.querySelector('#main')).opacity)>.95;});
   await page.screenshot({path:out+'/'+engine+'-'+width+'.png',fullPage:false});
   for(const appearance of ['light','dark']){await page.evaluate(appearance=>InFliteAppearance.accept({...InFliteAppearance.snapshot(),appearance}),appearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));await page.locator('.app.glass').first().waitFor();const colours=await page.locator('.app.glass').evaluateAll(nodes=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d');return nodes.map(n=>{c.clearRect(0,0,1,1);c.fillStyle=getComputedStyle(n).backgroundColor;c.fillRect(0,0,1,1);return[...c.getImageData(0,0,1,1).data]})});for(const colour of colours)assert.ok(Math.max(...colour.slice(0,3))-Math.min(...colour.slice(0,3))<=2,'Account card material stays neutral');await page.screenshot({path:out+'/'+engine+'-'+width+'-neutral-'+appearance+'.png',fullPage:false})}
-  await page.goto('https://inflite.ai/account/#open=data');
+  await page.goto('https://inflite.ai/settings/account/');
+  await page.getByRole('heading',{name:'Account',exact:true}).waitFor();
+  assert.equal(await page.locator('.account-back').getAttribute('href'),'/#settings');
+  assert.equal(await page.locator('.account-categories').isVisible(),width>=900);
+  await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
+  await page.screenshot({path:out+'/'+engine+'-'+width+'-settings-account.png'});
+  const edit = page.getByRole('button',{name:'Edit profile',exact:true});
+  await edit.click();
+  await page.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
+  assert.equal(new URL(page.url()).pathname,'/settings/account/');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
+  await page.goto('https://inflite.ai/settings/account/#open=data');
   const archiveButton=page.getByRole('button',{name:/Download full archive \(JSON\)/});await archiveButton.waitFor();
   assert.equal(await archiveButton.evaluate(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1}),true);
   const downloaded=page.waitForEvent('download');await archiveButton.click();const file=await downloaded,exported=JSON.parse(readFileSync(await file.path(),'utf8'));

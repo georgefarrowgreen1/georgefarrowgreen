@@ -1200,6 +1200,7 @@ import { identityBase, siteUrlFor, returnFor } from "./identity-location.js";
 // it there, and this file itself should that copy be out of date). Here, as written, it's false.
 globalThis.SIGNIN_PAGE ??= false;
 const IDENTITY_BASE = identityBase(location);
+const inSettings = !SIGNIN_PAGE && location.pathname.startsWith("/settings/account/");
 const identityAsset = path => IDENTITY_BASE + path;
 const API = IDENTITY_BASE + "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
@@ -1241,6 +1242,21 @@ const AUTH = (() => {
 const WAY_IN = /^#(signin|join)(=|$)|^#(forgot|invite=|reset=|qr=)/;
 // (a way in, arriving at the account's page: an app's Sign in from before this, a link in an email: on to the sign-in
 // page, as it came, before anything here takes it out of the address)
+// Settings returns carry only an allowlisted section name. Identity credentials
+// and fragment-based recovery codes stay in their original flows.
+const accountSections = new Set(["profile","security","data"]);
+function settingsSignIn() {
+  const part = new URLSearchParams(location.hash.slice(1)).get("open");
+  return AUTH.auth + "/?return=settings-account" + (accountSections.has(part) ? "&part=" + part : "");
+}
+function accountAfterSignIn(welcome) {
+  const query = new URLSearchParams(location.search);
+  if (IDENTITY_BASE === "/auth" && query.get("return") === "settings-account") {
+    const part = query.get("part");
+    return "/settings/account/" + (accountSections.has(part) ? "#open=" + part : "");
+  }
+  return AUTH.account + "/" + (welcome ? "#welcome=" + welcome : "");
+}
 const AWAY = !!AUTH && !AUTH.here && WAY_IN.test(ARRIVED);
 if (AWAY) location.replace(`${AUTH.auth}/${ARRIVED}`);
 // (back at the account's page from signing in: the word to greet you with, by name, never words of the address's own,
@@ -1676,8 +1692,8 @@ async function load() {
   }
   // (each page its own: signed in, the sign-in page has nothing more to ask, unless a computer's code or an app's waiting,
   // and it's on to your account; signed out, the account's page is on to the sign-in page)
-  if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && !S.out && S.gate !== "join") return location.replace(`${AUTH.account}/`);
-  if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said && !S.stay) return location.replace(`${AUTH.auth}/`);
+  if (AUTH?.here && S.me.signedIn && !S.signFor && !QR_IN.code && !S.reset && !S.keep && !S.out && S.gate !== "join") return location.replace(accountAfterSignIn());
+  if (AUTH && !AUTH.here && !S.me.signedIn && !S.handoff && !S.keep && !S.said && !S.stay) return location.replace(inSettings ? settingsSignIn() : `${AUTH.auth}/`);
   // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
   if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
   if (S.me?.signedIn) S.gate = null;
@@ -1758,7 +1774,7 @@ function render() {
   if (rise) settle(risers); else moved(was);
   main.classList.toggle("signin-main", !!main.querySelector(".signin-shell"));
   main.removeAttribute("aria-busy");
-  document.title = AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
+  document.title = inSettings ? "Account · InFlite Settings" : AUTH?.here ? "Sign in · InFlite" : S.me?.signedIn ? `${S.me.name} · Account` : "Account · InFlite";
   if (!SIGNIN_PAGE) IFL.watch(window);
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
@@ -1940,6 +1956,28 @@ function signedIn(r) {
     // #admin, from the old dashboard or its email, opens it, once the page has settled)
     m.admin && r(sec("admin", ADM ? ADM.adminRow(m) : adminRowSoon())),
   ];
+  if (inSettings) {
+    const back = h("a.account-back", { href: "/#settings" }, icon("back", 18), "Settings");
+    const heading = h("header.account-heading", {}, back, h("h1", { text: "Account" }));
+    const categories = [
+      ["account", "Account & security", "shield"], ["personalise", "Appearance & Today", "moon"],
+      ["notifications", "Notifications", "bell"], ["apps", "Apps & connections", "sliders"],
+      ["devices", "Devices", "devices"], ["about", "About InFlite", "info"]
+    ];
+    const navigation = h("nav.group.glass.account-categories", { "aria-label": "Settings categories" },
+      categories.map(([key,label,symbol]) => h("a.row", {
+        href: key === "account" ? "/settings/account/" : "/#settings=" + key,
+        "aria-current": key === "account" ? "page" : null
+      }, icon(symbol, 19), h("span", {text: label}))));
+    const security = h("div.group.glass", {},
+      row({icon:"shield",tint:todo ? "amber" : "green",title:"Sign-in and security",value:todo ? `${todo} to do` : "Secure",onclick:()=>openSheet(securityView)}),
+      row({icon:"key",tint:"grey",title:"Security Module",sub:"App access, devices and activity",onclick:()=>location.assign("/#settings=module")}),
+      row({icon:"data",tint:"grey",title:"Your data",onclick:()=>openSheet(exportView)}),
+      row({icon:"signout",tint:"grey",title:"Sign out",sub:"On this device",onclick:()=>location.assign("/#settings=signout")}));
+    return [heading, h("div.cols.account-layout", {},
+      h("aside.col-a", {}, navigation),
+      h("div.col-b.account-detail", {}, top.filter(Boolean), security, apps, ...ending.filter(Boolean)))];
+  }
   return [r(sec("title", acctHead(m, todo))), h("div.cols", {}, h("div.col-a", {}, top.filter(Boolean), acctNav([account, prefs, ...ending], !!m.admin)), h("div.col-b", {}, [apps, pane() && glanceSec(m), account, prefs, ...ending].filter(Boolean)))];
 }
 // At a glance, under your apps on a computer (styles.css shows it only there): your account's recent activity, and what
@@ -2089,7 +2127,7 @@ function posterCard(m) {
       h("div.pc-shade", { "aria-hidden": "true" }),
       pic ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", "data-k": "photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
         : h("button.pc-add", { type: "button", "data-k": "photo", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
-      h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }))),
+      h("div.pc-id", {}, inSettings && h("span.pc-handle", {text: "@" + m.handle}), h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }))),
     file);
   // (Edit profile and Your code under it, on the page)
   const wrap = h("div.pc-wrap", {}, el,
@@ -3404,7 +3442,7 @@ async function welcome(m, word, next, code = "back") {
   next ||= qrNext();
   // (signed in on the sign-in page, for nothing else: on to the account's page, which greets you, or, for an account
   // being deleted, asks whether to keep it)
-  if (AUTH?.here && !next) { stopAutofill(); return location.replace(`${AUTH.account}/#welcome=${code}`); }
+  if (AUTH?.here && !next) { stopAutofill(); return location.replace(accountAfterSignIn(code)); }
   S.pulled = Date.now(); stopAutofill(); signalPasskeys(m);
   await anew(() => {
     S.settled = !!next;

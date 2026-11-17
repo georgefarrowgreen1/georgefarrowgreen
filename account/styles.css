@@ -2384,3 +2384,40 @@ dialog.sheet .sheet-head .link { background: color-mix(in srgb, var(--tint-text)
 dialog.sheet .mini { border-radius: var(--ifl-radius-pill); }
 }
 }
+
+/* Account detail in unified Settings. The portrait uses the existing crop controls. */
+.account-heading { margin: 0 0 20px; }
+.account-back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--text-2); font-weight: 600; text-decoration: none; }
+.account-heading h1 { margin: 2px 0 0; font-size: clamp(2.25rem, 5vw, 3.5rem); line-height: 1.05; letter-spacing: -.055em; }
+.account-layout .account-detail { display: grid; gap: 20px; min-width: 0; }
+.account-detail > *, .account-detail .pc-wrap { min-width: 0; margin-block: 0; }
+.account-layout .pc-top { border-radius: inherit; }
+.account-layout .pc-acts { gap: 10px; }
+.account-layout .pc-acts button { min-height: 46px; }
+.account-layout .col-a { display: none; }
+.account-layout a:focus-visible, .account-back:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+@media (min-width: 900px) {
+  main:has(.account-layout) { max-width: 1120px; }
+  .account-layout { display: grid; grid-template-columns: minmax(240px,.8fr) minmax(0,1.65fr); gap: 32px; align-items: start; }
+  .account-layout .col-a { display: block; position: sticky; top: max(20px, env(safe-area-inset-top)); }
+  .account-categories a { min-height: 56px; color: inherit; text-decoration: none; font-weight: 550; }
+  .account-categories a[aria-current] { background: color-mix(in srgb, currentColor 8%, transparent); }
+}
+
+.account-layout .pc-handle { display: block; margin-bottom: 5px; font-size: .95rem; font-weight: 600; }
+@media (max-width: 899px) { .cols.account-layout { display: block; } }
+
+.account-layout .pc-handle { color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / .5); }
+.account-layout .poster-card.none .pc-photo {
+  background: radial-gradient(ellipse at 24% 4%, #575757, transparent 56%), linear-gradient(125deg, #323232, #141414 86%);
+}
+.account-layout .poster-card.none .pc-initial {
+  inset: 18px auto auto 20px; display: grid; place-items: center; width: 55px; height: 55px;
+  border-radius: 50%; color: white; background: rgb(255 255 255 / .08);
+  border: 1px solid rgb(255 255 255 / .26); font: 600 1.5rem/1 var(--font-d);
+}
+.account-layout .poster-card.none .pc-photo::after {
+  content: ""; position: absolute; right: -12%; top: -60%; width: 55%; height: 170%; border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / .15); transform: rotate(-26deg);
+  box-shadow: 0 0 0 18px rgb(255 255 255 / .025), 0 0 0 38px rgb(255 255 255 / .025);
+}

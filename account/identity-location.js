@@ -1,6 +1,6 @@
 // Public routes and allowlisted returns for both historical identity hosts and
 // the same service presented at InFlite's canonical /auth and /account paths.
-export const identityBase = (where) => /^\/(auth|account)(?=\/|$)/.exec(where.pathname)?.[0] || '';
+export const identityBase = (where) => /^\/settings\/account(?:\/|$)/.test(where.pathname) ? '/account' : /^\/(auth|account)(?=\/|$)/.exec(where.pathname)?.[0] || '';
 const PATHS = { '@': '/', chat: '/chats/', weather: '/weather/', fitness: '/fitness/', finance: '/markets/', email: '/mail/', auth: '/auth/', account: '/account/' };
 const production = where => /^(?:(?:auth|account)\.)?inflite\.ai$/.test(where.hostname);
 export function siteUrlFor(where, sub) {

@@ -9,7 +9,7 @@ try {
     // iOS 15 has no AbortSignal.timeout)
     const home = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true, stop = new AbortController();
     setTimeout(() => stop.abort(), 30000);
-    self.acctMe = fetch((/^\/(auth|account)(?=\/|$)/.exec(location.pathname)?.[0] || "") + "/api/account/me", { credentials: "same-origin", cache: "no-store", headers: home ? { "X-Home-Screen": "1" } : {}, signal: stop.signal })
+    self.acctMe = fetch((location.pathname.startsWith("/settings/account/") ? "/account" : /^\/(auth|account)(?=\/|$)/.exec(location.pathname)?.[0] || "") + "/api/account/me", { credentials: "same-origin", cache: "no-store", headers: home ? { "X-Home-Screen": "1" } : {}, signal: stop.signal })
       .then((r) => (r.ok ? r.json() : null), () => "offline").catch(() => null);
   }
 } catch (_) {}

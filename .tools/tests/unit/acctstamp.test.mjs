@@ -74,3 +74,30 @@ test('a page worked out afresh reads each file once, side by side rather than on
   assert.ok(most > 1, 'more than one read at a time');
   assert.ok(stampIn(page, 'crypto.js') && stampIn(page, 'app.js'));
 });
+
+test('a second Account document can finish while the first fingerprint read is pending', {timeout:5000}, async () => {
+  const {accountHost} = await import('../../../functions/_acctapp.js');
+  const store = assets();
+  const started = Promise.withResolvers(), release = Promise.withResolvers();
+  let blocked = false;
+  const env = { ASSETS: { async fetch(request) {
+    if (!blocked && new URL(request.url).pathname === '/min/account/boot.js') {
+      blocked = true;
+      started.resolve();
+      await release.promise;
+    }
+    return store.fetch(request);
+  } } };
+  const load = async () => {
+    const request = new Request('https://account.georgefarrowgreen.com/');
+    return (await accountHost({request, env}, new URL(request.url))).text();
+  };
+  const first = load();
+  try {
+    await started.promise;
+    assert.ok(stampIn(await load(), 'boot.js'));
+  } finally {
+    release.resolve();
+    await first;
+  }
+});
