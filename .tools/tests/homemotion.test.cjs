@@ -73,7 +73,7 @@ for(const assets of ['', 'min/']){
  test(`${assets||'source/'}hero depth freezes behind a sheet, sections reveal once, app handoff preserves navigation and Back`,async()=>{
   const f=await fixture(assets,{width:1440});
   try{
-   await f.p.evaluate(()=>scrollTo({top:document.querySelector('.contact').offsetTop-180,behavior:'instant'}));
+   await f.p.evaluate(()=>document.querySelector('.contact').scrollIntoView({block:'center',behavior:'instant'}));
    await f.p.waitForFunction(()=>document.querySelector('.contact').getAnimations().length>0);
    await f.p.waitForFunction(()=>!document.querySelector('.contact').getAnimations().length);
    await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.locator('.contact').scrollIntoViewIfNeeded();
@@ -81,9 +81,9 @@ for(const assets of ['', 'min/']){
    await f.p.evaluate(()=>scrollTo({top:120,behavior:'instant'}));await f.p.waitForFunction(()=>document.body.classList.contains('motion-lite')||parseFloat(document.querySelector('#bg').style.getPropertyValue('--hero-depth'))>0);
    const depth=await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth'));await open(f);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),depth);
    await close(f);await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.waitForFunction(()=>document.querySelector('#bg').style.getPropertyValue('--hero-depth')==='0px');
-   await f.p.locator('.app[aria-hidden=false] .app-link').scrollIntoViewIfNeeded();
+   await f.p.locator('#app-inflight').scrollIntoViewIfNeeded();
    for(const kind of ['modified','new-tab','download']){
-    const prevented=await f.p.locator('.app[aria-hidden=false] .app-link').evaluate((el,kind)=>{
+    const prevented=await f.p.locator('#app-inflight').evaluate((el,kind)=>{
      const target=el.getAttribute('target');if(kind==='new-tab')el.target='_blank';if(kind==='download')el.setAttribute('download','');
      let prevented;document.addEventListener('click',e=>{prevented=e.defaultPrevented;e.preventDefault();},{once:true});
      el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,button:0,ctrlKey:kind==='modified'}));
@@ -91,15 +91,15 @@ for(const assets of ['', 'min/']){
     },kind);
     assert.equal(prevented,false,kind+' retains the browser default');assert.equal(await f.p.locator('.app-handoff').count(),0);
    }
-   const departure=await f.p.locator('.app[aria-hidden=false] .app-link').evaluate(el=>{
-    el.click();const icon=document.querySelector('.app[aria-hidden=false] .app-grab img');
+   const departure=await f.p.locator('#app-inflight').evaluate(el=>{
+    el.click();const icon=document.querySelector('#app-inflight img');
     const result={cover:!!document.querySelector('.app-handoff'),opacity:icon.style.opacity};
     dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));return result;
    });
    assert.equal(departure.cover,true);assert.equal(departure.opacity,'0');
-   await f.p.waitForTimeout(700);assert.equal(new URL(f.p.url()).hostname,'motion.test');assert.equal(await f.p.locator('.app-handoff').count(),0);assert.equal(await f.p.locator('.app[aria-hidden=false] .app-grab img').evaluate(e=>e.style.opacity),'');
+   await f.p.waitForTimeout(700);assert.equal(new URL(f.p.url()).hostname,'motion.test');assert.equal(await f.p.locator('.app-handoff').count(),0);assert.equal(await f.p.locator('#app-inflight img').evaluate(e=>e.style.opacity),'');
    assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('leaving')),false);
-   await f.p.locator('.app[aria-hidden=false] .app-link').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
+   await f.p.locator('#app-inflight').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
   }finally{await f.cleanup();}
  });
  test(`${assets||'source/'}reduced motion skips spatial effects and completes the real send flow`,async()=>{
@@ -108,34 +108,12 @@ for(const assets of ['', 'min/']){
    await f.p.evaluate(()=>scrollTo({top:100,behavior:'instant'}));await f.p.waitForTimeout(80);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),'0px');
    await open(f);await fill(f);await f.p.locator('#contact-send').click();await f.p.locator('#contact-sent:not([hidden])').waitFor();
    assert.equal(await f.p.locator('.tick path').evaluate(e=>getComputedStyle(e).animationName),'none');
-   await close(f);await f.p.locator('.app[aria-hidden=false] .app-link').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
+   await close(f);await f.p.locator('#app-inflight').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
   }finally{await f.cleanup();}
  });
 }
 
 for(const assets of ['', 'min/']){
- test(`${assets||'source/'}rapid reversals keep the current card position and momentum without queued moves`,async()=>{
-  const f=await fixture(assets,{width:1440});
-  try{
-   await f.p.locator('.app[aria-hidden=false] .app-grab').focus();
-   const continuity=await f.p.evaluate(()=>{
-    document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
-    const start=performance.now();while(performance.now()-start<70){}
-    document.querySelector('#apps').getAnimations({subtree:true}).forEach(a=>a.currentTime=70);
-    const card=document.querySelector('#app-inflight'),old=new DOMMatrixReadOnly(getComputedStyle(card).transform).m41;
-    document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
-    const a=card.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),frames=a.effect.getKeyframes();
-    return{before:old,start:new DOMMatrixReadOnly(frames[0].transform).m41,next:new DOMMatrixReadOnly(frames[1].transform).m41,name:document.querySelector('.app[aria-hidden=false] b').textContent};
-   });
-   assert.equal(continuity.name,'Chat');assert.ok(Math.abs(continuity.before-continuity.start)<.5,'retarget starts from the currently painted position');
-   assert.ok(continuity.next<continuity.start,'inherited velocity is retained before reversing direction');
-   for(let i=0;i<7;i++)await f.p.keyboard.press('ArrowRight');
-   assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Markets','every new input retargets immediately');
-   await f.p.waitForFunction(()=>!document.querySelector('#apps').getAnimations({subtree:true}).length);
-   await f.p.waitForTimeout(600);assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Markets');
-   assert.equal(await f.p.locator('.app:not([inert])').count(),1);assert.deepEqual(f.errors,[]);
-  }finally{await f.cleanup();}
- });
  test(`${assets||'source/'}message confirmation scales only its surface and leaves text unscaled`,async()=>{
   const f=await fixture(assets);
   try{
@@ -166,14 +144,14 @@ for(const cadence of [1000/120,1000/60,1000/30])test(`frame monitor recognises $
   const result=await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample')[0].detail);
   assert.ok(Math.abs(result.cadence-cadence)<.2);assert.equal(result.light,cadence>24);
   assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),cadence>24);
-  await f.p.getByRole('button',{name:'Weather',exact:true}).click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');
+  assert.ok(await f.p.getByRole('link',{name:'Weather',exact:true}).isVisible());
   await f.p.waitForTimeout(300);assert.equal(await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample').length),1,'monitor is bounded');assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
-test('Save Data keeps the page decorative motion still while all card controls work',async()=>{
+test('Save Data keeps the page decorative motion still while app links remain available',async()=>{
  const f=await fixture('',{saveData:true});try{
   assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),true);
-  await f.p.getByRole('button',{name:'Weather',exact:true}).click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');assert.deepEqual(f.errors,[]);
+  assert.ok(await f.p.getByRole('link',{name:'Weather',exact:true}).isVisible());assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
 

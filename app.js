@@ -230,7 +230,7 @@ const linked = CSS.supports("animation-timeline: scroll()");
         a.finished.then(() => { animations = animations.filter(x => x !== a); }, () => {});
       }
     }, { threshold: 0.08 });
-    $$("#app-carousel, .projects, .contact").forEach(el => observer.observe(el));
+    $$(".projects, .contact").forEach(el => observer.observe(el));
   };
   document.addEventListener("focusin", e => { for (const a of animations) if (a.effect.target.contains(e.target)) a.finish(); });
   motion.addEventListener("change", start); start();
@@ -526,7 +526,7 @@ function showMe() {
   // (the account's page shows the way back here: #from=home)
   if (me.account) for (const a of $$("[data-account]")) a.href = `${me.account}/#from=home`;
   // (the apps' own addresses, as the server has them: inflite.ai's, or a test's)
-  for (const [k, v] of Object.entries(me.links || {})) { const card = $(`#app-${k}`), a = card && $("[data-app-link]", card); if (a) a.href = v; }
+  for (const [k, v] of Object.entries(me.links || {})) { const link = document.getElementById(`app-${k}`); if (link?.matches("[data-app-link]")) link.href = v; }
   $("#who").hidden = !me.signedIn;
   body.classList.toggle("signed", !!me.signedIn);
   body.classList.toggle("owner", !!me.owner);
@@ -596,150 +596,6 @@ function showLines() {
     small.classList.toggle("mine", !!line[key]);
   }
 }
-
-/* ---------------- the apps: a calm, manual card stack ---------------- */
-// Keep the four original cards, their account links and live summaries. Only the active card is interactive;
-// the next two make the visible stack. With no script all four links remain in normal document flow.
-(() => {
-  const region = $('#app-carousel'), viewport = $('#app-viewport'), track = $('#apps');
-  if (!region || !viewport || !track) return;
-  const cards = $$('.app', track), count = cards.length, status = $('#app-carousel-status');
-  if (count < 2) return;
-  const picker = $('.app-picker', region);
-  const choices = cards.map((card, i) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = $('b', card).textContent;
-    button.setAttribute('aria-controls', card.id);
-    button.addEventListener('click', () => { if (i !== index) move(i - index); });
-    picker.append(button);
-    return button;
-  });
-  picker.hidden = false;
-  let index = 0, busy = false, gesture = null, ignoreClick = 0, version = 0, animations = [];
-  const paths = new Map();
-  const stateAt = depth => ({ x: 0, y: Math.min(depth, 2) * 8, s: 1 - Math.min(depth, 2) * .025, r: 0, o: depth < 3 ? 1 : 0 });
-  const transform = p => `translate3d(${p.x}px,${p.y}px,0) scale(${p.s}) rotate(${p.r}deg)`;
-  const slot = depth => transform(stateAt(depth));
-  const snapshot = card => {
-    const style = getComputedStyle(card), matrix = new DOMMatrixReadOnly(style.transform);
-    return { x: matrix.m41, y: matrix.m42, s: Math.hypot(matrix.a, matrix.b), r: Math.atan2(matrix.b, matrix.a) * 180 / Math.PI, o: Number(style.opacity) };
-  };
-  const velocity = card => {
-    const path = paths.get(card); if (!path) return {};
-    const t = Math.min(path.duration, Math.max(0, performance.now() - path.at)) / 1000;
-    return Object.fromEntries(Object.keys(path.from).map(k => [k, springValue(path.from[k], path.to[k], path.v[k] || 0, t)[1]]));
-  };
-  const blocked = () => body.matches('.sheet-up, .edit, .leaving') || root.matches('.intro-loading, .intro-revealing') || document.hidden;
-  function render() {
-    cards.forEach((card, i) => {
-      const depth = (i - index + count) % count, target = stateAt(depth);
-      card.style.transform = transform(target); card.style.opacity = String(target.o); card.style.zIndex = String(count - depth);
-      card.inert = depth !== 0; card.setAttribute('aria-hidden', String(depth !== 0));
-      choices[i].setAttribute('aria-pressed', String(depth === 0));
-    });
-  }
-  function cancel() { version++; animations.forEach(a => a.cancel()); animations = []; paths.clear(); }
-  function springTo(card, from, to, v = {}, duration = MOTION.enter) {
-    const steps = 36, frames = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = duration * i / steps / 1000;
-      const p = Object.fromEntries(Object.keys(to).map(k => [k, i === steps ? to[k] : springValue(from[k], to[k], v[k] || 0, t)[0]]));
-      frames.push({ transform: transform(p), opacity: clamp(p.o), offset: i / steps });
-    }
-    const a = card.animate(frames, { duration, easing: 'linear', fill: 'both' }); animations.push(a);
-    paths.set(card, { from, to, v, duration, at: performance.now() });
-    return a;
-  }
-  const focusRole = card => card.contains(document.activeElement) ? document.activeElement.closest('.app-link') ? '.app-link' : '.app-grab' : null;
-  async function move(direction = 1, thrown = null) {
-    if (blocked()) return;
-    const outgoing = cards[index], focus = focusRole(outgoing), before = new Map(cards.map(c => [c, snapshot(c)])), velocities = new Map(cards.map(c => [c, velocity(c)]));
-    if (thrown) velocities.set(outgoing, thrown);
-    cancel(); busy = true; const token = version;
-    index = (index + direction + count) % count; render(); outgoing.style.zIndex = String(count + 1);
-    if (focus) $(focus, cards[index]).focus({ preventScroll: true });
-    status.textContent = `${$('b', cards[index]).textContent}, app ${index + 1} of ${count}`;
-    if (!motion.matches) {
-      const settling = cards.filter(c => c !== outgoing).map(c => springTo(c, before.get(c), stateAt((cards.indexOf(c) - index + count) % count), velocities.get(c)).finished.catch(() => {}));
-      const from = before.get(outgoing), target = { ...from, x: from.x - Math.sign(direction) * 58, y: -3, s: .99, r: -Math.sign(direction) * .45, o: 0 };
-      const exit = springTo(outgoing, from, target, velocities.get(outgoing), MOTION.exit);
-      await exit.finished.catch(() => {}); if (token !== version) return;
-      const depth = (cards.indexOf(outgoing) - index + count) % count;
-      outgoing.style.zIndex = String(count - depth); exit.cancel(); paths.delete(outgoing);
-      outgoing.style.transform = slot(depth); outgoing.style.opacity = '0';
-      if (depth < 3) {
-        const a = outgoing.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT, fill: 'both' });
-        animations.push(a); settling.push(a.finished.catch(() => {}));
-      }
-      await Promise.all(settling); if (token !== version) return;
-    }
-    cancel(); render(); busy = false;
-  }
-  async function settle(thrown = {}) {
-    const before = cards.map(snapshot), velocities = cards.map(velocity); cancel(); render(); busy = false;
-    const token = version;
-    if (!motion.matches) {
-      busy = true;
-      await Promise.all(cards.map((c, i) => springTo(c, before[i], stateAt((i - index + count) % count), i === index ? thrown : velocities[i]).finished.catch(() => {})));
-      if (version === token) { cancel(); render(); busy = false; }
-    }
-  }
-  function reset() {
-    const focus = focusRole(cards.find(c => c.contains(document.activeElement)) || cards[index]);
-    gesture = null; cancel(); busy = false; render();
-    if (focus) $(focus, cards[index]).focus({ preventScroll: true });
-  }
-  cards.forEach((card, i) => {
-    const grab = $('.app-grab', card);
-    grab.disabled = false; grab.setAttribute('aria-label', `${$('b', card).textContent}. Tap or swipe for the next app. Use left and right arrow keys to change app.`);
-    grab.addEventListener('click', () => { if (performance.now() > ignoreClick) move(); });
-    card.addEventListener('keydown', e => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-      e.preventDefault();
-      if (e.key === 'Home' || e.key === 'End') { reset(); index = e.key === 'Home' ? 0 : count - 1; render(); $('.app-grab', cards[index]).focus({ preventScroll: true }); status.textContent = `${$('b', cards[index]).textContent}, app ${index + 1} of ${count}`; }
-      else move(e.key === 'ArrowLeft' ? -1 : 1);
-    });
-    grab.addEventListener('dragstart', e => e.preventDefault());
-    grab.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || !e.isPrimary || blocked() || i !== index) return;
-      const held = cards.map(snapshot), originX = held[i].x;
-      cancel(); busy = false; cards.forEach((c, n) => { c.style.transform = transform(held[n]); c.style.opacity = String(held[n].o); });
-      gesture = { id: e.pointerId, grab, x: e.clientX, y: e.clientY, lastX: e.clientX, time: e.timeStamp, dx: 0, v: 0, originX, base: held[i], drag: false, vertical: false };
-      grab.setPointerCapture(e.pointerId);
-    });
-    grab.addEventListener('pointermove', e => {
-      const g = gesture; if (!g || g.grab !== grab || g.id !== e.pointerId) return;
-      const dx = e.clientX - g.x, dy = e.clientY - g.y;
-      if (!g.drag && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { g.vertical = true; return; }
-      if (g.vertical) return;
-      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) g.drag = true;
-      g.v = .65 * g.v + .35 * (e.clientX - g.lastX) / Math.max(8, e.timeStamp - g.time); g.lastX = e.clientX; g.time = e.timeStamp; g.dx = dx;
-      if (!g.drag) return;
-      const x = g.originX + 80 * Math.tanh(dx / 100), progress = Math.min(1, Math.abs(dx) / 160);
-      card.style.transform = transform({ ...g.base, x, y: g.base.y - progress * 2, r: g.base.r + (x - g.originX) * .006 });
-      cards[(index + 1) % count].style.transform = slot(1 - progress * .65);
-      cards[(index + 2) % count].style.transform = slot(2 - progress * .35);
-    });
-    const release = (e, aborted = false) => {
-      const g = gesture; if (!g || g.grab !== grab || g.id !== e.pointerId) return;
-      gesture = null;
-      if (g.drag || g.vertical) ignoreClick = performance.now() + 400;
-      const projected = g.dx + (e.timeStamp - g.time < 85 ? g.v : 0) * 65;
-      const vx = e.timeStamp - g.time < 85 ? g.v * 800 / Math.cosh(g.dx / 100) ** 2 : 0, momentum = { x: vx, r: vx * .006 };
-      if (g.drag && !aborted && Math.abs(projected) > Math.min(65, viewport.clientWidth * .15)) move(projected < 0 ? 1 : -1, momentum);
-      else settle(aborted ? {} : momentum);
-      if (grab.hasPointerCapture(e.pointerId)) grab.releasePointerCapture(e.pointerId);
-    };
-    grab.addEventListener('pointerup', e => release(e)); grab.addEventListener('pointercancel', e => release(e, true)); grab.addEventListener('lostpointercapture', e => release(e, true));
-  });
-  region.classList.add('is-stack'); region.setAttribute('aria-roledescription', 'carousel'); render();
-  motion.addEventListener('change', reset);
-  new ResizeObserver(() => { if (busy || gesture) reset(); }).observe(viewport);
-  new MutationObserver(() => { if (blocked() && (busy || gesture)) reset(); }).observe(body, { attributes: true, attributeFilter: ['class'] });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
-  addEventListener('pagehide', reset);
-})();
 
 /* ---------------- signing in, on the account's page: the way there, and back ---------------- */
 // The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
@@ -914,7 +770,7 @@ function warmApp(link) {
 for (const type of ["pointerover", "focusin", "pointerdown"]) document.addEventListener(type, e => warmApp(e.target.closest("a[data-app-link]")), { passive: true });
 function openApp(link) {
   if (appDeparture) return;
-  const image = $(".app-grab img", link.closest(".app"));
+  const image = $(".project-logo", link);
   if (motion.matches || !image?.complete || !image.naturalWidth) { location.assign(link.href); return; }
   const bounds = image.getBoundingClientRect(), overlay = document.createElement("div");
   if (bounds.width < 1) { location.assign(link.href); return; }

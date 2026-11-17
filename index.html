@@ -83,7 +83,7 @@
 
   <main class="page" id="page">
     <div class="bio-mast">
-      <nav aria-label="Page sections"><a href="#app-carousel">Apps</a><a href="#projects">Projects</a><a href="#get-in-touch">Contact</a></nav>
+      <nav aria-label="Page sections"><a href="#projects">Projects</a><a href="#apps">Apps</a><a href="#get-in-touch">Contact</a></nav>
     </div>
     <section class="hero" id="top" tabindex="-1" aria-label="About">
       <p class="eyebrow" data-c="role" data-edit>Photography · Cycling · Apps</p>
@@ -95,39 +95,6 @@
       <div class="segs" id="segs" aria-hidden="true"></div>
     </section>
 
-    <section class="app-carousel" id="app-carousel" aria-labelledby="apps-h">
-        <h2 class="head" id="apps-h">Apps</h2>
-        <div class="app-viewport" id="app-viewport">
-        <div class="apps" id="apps">
-          <article class="app inflight" id="app-inflight">
-            <button class="app-grab" type="button" disabled aria-label="Chat. Show next app">
-              <img src="/apps/inflight.png" alt="" width="56" height="56" /><span class="app-text"><b>Chat</b><small data-about="Messages, and letters by pigeon">Messages, and letters by pigeon</small></span>
-            </button>
-            <div class="app-bottom"><a class="app-link" data-app-link href="https://inflite.ai/chats/">Open Chat</a></div>
-          </article>
-          <article class="app weather" id="app-weather">
-            <button class="app-grab" type="button" disabled aria-label="Weather. Show next app">
-              <img src="/apps/weather.png" alt="" width="56" height="56" /><span class="app-text"><b>Weather</b><small data-about="Forecasts, radar and alerts">Forecasts, radar and alerts</small></span>
-            </button>
-            <div class="app-bottom"><a class="app-link" data-app-link href="https://inflite.ai/weather/">Open Weather</a></div>
-          </article>
-          <article class="app fitness" id="app-fitness">
-            <button class="app-grab" type="button" disabled aria-label="Fitness. Show next app">
-              <img src="/apps/fitness.png" alt="" width="56" height="56" /><span class="app-text"><b>Fitness</b><small data-about="Training, using AI">Training, using AI</small></span>
-            </button>
-            <div class="app-bottom"><a class="app-link" data-app-link href="https://inflite.ai/fitness/">Open Fitness</a></div>
-          </article>
-          <article class="app markets" id="app-markets">
-            <button class="app-grab" type="button" disabled aria-label="Markets. Show next app">
-              <img src="/apps/markets.png" alt="" width="56" height="56" /><span class="app-text"><b>Markets</b><small data-about="Your money, said simply">Your money, said simply</small></span>
-            </button>
-            <div class="app-bottom"><a class="app-link" data-app-link href="https://inflite.ai/markets/">Open Markets</a></div>
-          </article>
-        </div>
-        </div>
-        <div class="app-picker" role="group" aria-label="Choose an app" hidden></div>
-        <p class="vh" id="app-carousel-status" role="status" aria-live="polite"></p>
-      </section>
     <div class="grid">
       <section id="projects" class="projects" aria-labelledby="projects-h">
         <h2 class="head" id="projects-h">Projects</h2>
@@ -140,6 +107,31 @@
           <a class="project project-cottage" href="https://cottageholidaysblakeney.co.uk/" target="_blank" rel="noopener noreferrer" aria-labelledby="cottage-project-h">
             <img class="project-logo project-crown" src="/projects/cottage-holidays-blakeney.svg" alt="" width="36" height="24" loading="lazy" decoding="async" />
             <div class="project-copy"><h3 id="cottage-project-h">Cottage Holidays Blakeney</h3><span>Three family-run cottages in North Norfolk.</span></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
+          </a>
+        </div>
+      </section>
+      <section id="apps" class="projects" aria-labelledby="apps-h">
+        <h2 class="head" id="apps-h">Apps</h2>
+        <div class="project-grid">
+          <a class="project" id="app-inflight" data-app-link href="https://inflite.ai/chats/" aria-labelledby="inflight-app-h" aria-describedby="inflight-app-description">
+            <img class="project-logo" src="/apps/inflight.png" alt="" width="42" height="42" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="inflight-app-h">Chat</h3><small id="inflight-app-description" data-about="Messages, and letters by pigeon">Messages, and letters by pigeon</small></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
+          </a>
+          <a class="project" id="app-weather" data-app-link href="https://inflite.ai/weather/" aria-labelledby="weather-app-h" aria-describedby="weather-app-description">
+            <img class="project-logo" src="/apps/weather.png" alt="" width="42" height="42" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="weather-app-h">Weather</h3><small id="weather-app-description" data-about="Forecasts, radar and alerts">Forecasts, radar and alerts</small></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
+          </a>
+          <a class="project" id="app-fitness" data-app-link href="https://inflite.ai/fitness/" aria-labelledby="fitness-app-h" aria-describedby="fitness-app-description">
+            <img class="project-logo" src="/apps/fitness.png" alt="" width="42" height="42" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="fitness-app-h">Fitness</h3><small id="fitness-app-description" data-about="Training, using AI">Training, using AI</small></div>
+            <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
+          </a>
+          <a class="project" id="app-markets" data-app-link href="https://inflite.ai/markets/" aria-labelledby="markets-app-h" aria-describedby="markets-app-description">
+            <img class="project-logo" src="/apps/markets.png" alt="" width="42" height="42" loading="lazy" decoding="async" />
+            <div class="project-copy"><h3 id="markets-app-h">Markets</h3><small id="markets-app-description" data-about="Your money, said simply">Your money, said simply</small></div>
             <svg class="project-arrow" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg>
           </a>
         </div>
