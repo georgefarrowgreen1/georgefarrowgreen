@@ -69,7 +69,9 @@ async function drawn(w, range, said, change) {
 }
 async function scrub(w, amount, fraction = 1) {
   const box = w.p.locator(w.hosted ? '.m-markets [data-el=pbox]' : '#pbox');
-  await box.scrollIntoViewIfNeeded(); const visible = await box.boundingBox(); await box.tap({ position: { x: Math.min(visible.width - 4, visible.width * fraction), y: visible.height / 2 } });
+  // tap scrolls and retries against the current locator after a quote refresh replaces the chart.
+  const visible = await box.evaluate(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; });
+  await box.tap({ position: { x: Math.min(visible.width - 4, visible.width * fraction), y: visible.height / 2 } });
   await w.p.waitForFunction(({ hosted, amount }) => document.querySelector(hosted ? '.m-markets .pbox .scrub-tip' : '#pbox .scrub-tip')?.textContent.includes(amount), { hosted: w.hosted, amount });
 }
 for (const hosted of [true, false]) for (const day of ['missing', 'one']) test(`history renders when the initial day chart is ${day} ${hosted ? 'in Today' : 'standalone'}`, async () => {
