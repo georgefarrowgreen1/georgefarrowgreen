@@ -167,3 +167,17 @@ test('launcher shortcuts create real notes and Keep draft closes a contact witho
   assert.equal(await people.getByRole('textbox',{name:'Email',exact:true}).inputValue(),'');assert.deepEqual(errors,[]);
  }finally{await ctx.close()}
 });
+test('native Back restores a scrolled Notes collection and its originating record focus',{skip:!existsSync(resolve(PUBLIC,'notes/roof/releases/4.31/notes.js'))},async()=>{
+ const {ctx,page,errors}=await rootContext();try{
+  await launchApp(page,'Notes');
+  await page.evaluate(async owner=>{
+   const {createSystemClient,operationId}=await import('/roof/system-client.js'),client=createSystemClient({signal:new AbortController().signal,session:{user:{id:owner}}},{prefix:'/api/organise/'});
+   for(let i=0;i<14;i++)await client.request('record',{method:'PUT',body:{kind:'notes',id:operationId(),version:0,deleted:false,operationId:operationId(),value:{title:'Scroll reference '+i,text:'A real account record for navigation.',checklist:[],links:[]}}});
+   dispatchEvent(new CustomEvent('inflite:organise-change',{detail:{owner,kind:'notes'}}));
+  },c.owner);
+  const notes=page.locator('#m-notes'),record=notes.locator('.org-record').filter({hasText:'Scroll reference 0'});
+  await record.waitFor();await record.focus();await record.scrollIntoViewIfNeeded();const id=await record.getAttribute('data-record'),y=await page.evaluate(()=>scrollY);assert.ok(y>300,'the library is actually scrolled');
+  await record.evaluate(n=>n.addEventListener('click',()=>window.__libraryClickY=scrollY,{once:true,capture:true}));await record.click();await notes.getByRole('textbox',{name:'Title',exact:true}).waitFor();await page.getByRole('button',{name:'Back to Notes',exact:true}).click();await record.waitFor();await settled(page);
+  const position=await page.evaluate(()=>({actual:scrollY,clicked:window.__libraryClickY,focused:document.activeElement?.dataset.record}));assert.ok(Math.abs(position.actual-position.clicked)<3,'Back returns to the remembered library position: '+JSON.stringify({before:y,...position}));assert.equal(await page.evaluate(()=>document.activeElement?.dataset.record),id);assert.deepEqual(errors,[]);
+ }finally{await ctx.close()}
+});
