@@ -94,3 +94,28 @@ test('valid foreign owner requests cannot read, edit, delete or restore another 
 test('recurring completion atomically advances one occurrence and a lost acknowledgement cannot advance twice',async()=>{const o=await owner(),item=await create(o,{dueAt:Date.now()-864e5,recurrence:{frequency:'daily',timezone:'Europe/London'}});assert.equal(item.recurrence.frequency,'daily');const data={id:item.id,version:item.version,operationId:op(),status:'done'},r=await api(o,'PATCH','action',data);assert.equal(r.status,200,JSON.stringify(r.value));assert.equal(r.value.action.status,'open');assert.ok(r.value.action.dueAt>Date.now());assert.equal(r.value.action.repetitions,1);const retry=await api(o,'PATCH','action',data);assert.equal(retry.value.action.dueAt,r.value.action.dueAt);assert.equal(retry.value.action.repetitions,1);const other=await api(o,'PATCH','action',{...data,operationId:op()});assert.equal(other.status,409);const stop=await edit(o,r.value.action,{recurrence:null});assert.equal(stop.status,200);assert.equal(stop.value.action.recurrence,null);assert.equal((await edit(o,stop.value.action,{status:'done'})).value.action.status,'done')});
 test('simultaneous recurring completions cannot change the winning schedule and deleted-account repeat rows are removed',async()=>{const o=await owner(),item=await create(o,{dueAt:Date.now()+864e5,recurrence:{frequency:'weekly',timezone:'UTC'}}),r=await Promise.all([edit(o,item,{status:'done'}),edit(o,item,{recurrence:{frequency:'daily',timezone:'UTC'},status:'done'})]);assert.deepEqual(r.map(v=>v.status).sort(),[200,409]);const win=r.find(v=>v.status===200).value.action,actual=(await api(o,'GET','action?id='+item.id)).value.action;assert.equal(actual.recurrence.frequency,win.recurrence.frequency);assert.equal(actual.repetitions,1);await internal('remove',{owner:o.id});assert.equal((await internal('sql',{sql:'SELECT COUNT(*) n FROM ifl_action_repeats WHERE user_id=?',args:[o.id]})).value.results[0].n,0)});
 test('reminders can link notes, contacts and events while source metadata stays opaque',async()=>{const o=await owner();for(const app of ['notes','calendar','people']){const item=await create(o,{source:{app,id:'a'.repeat(32)}});assert.equal(item.source.app,app)}assert.equal((await api(o,'POST','actions',{title:'bad',recurrence:{frequency:'daily',timezone:'UTC'},operationId:op()})).status,400)});
+
+test('open tab leases withdraw independently, fence late heartbeats and exclude expired and remembered-only screens',async()=>{
+ const a=await owner(), other=await owner(), id=currentDevice(), receiver=currentDevice(), tabA=currentDevice(), tabB=currentDevice();
+ const transport={namespace:'files'};
+ const list=async(who=a,device=receiver)=>{
+  const r=await api(who,'GET','open-tabs?id='+device,undefined,transport);
+  assert.equal(r.status,200,JSON.stringify(r.value));return r.value.tabs;
+ };
+ const put=async(tab,seq,target)=>api(a,'PUT','open-tabs',{id,tab,seq,label:'Computer',target},transport);
+ await remember(a);assert.deepEqual(await list(),[]);
+ assert.equal((await put(tabA,2,null)).status,200);
+ assert.equal((await put(tabA,1,{path:'/weather/'})).status,200);
+ assert.deepEqual(await list(),[]);
+ assert.equal((await put(tabB,1,{path:'/notes/'})).status,200);
+ assert.deepEqual((await list()).map(t=>t.tab),[tabB]);
+ assert.deepEqual(await list(other),[]);assert.deepEqual(await list(a,id),[]);
+ await internal('sql',{sql:'UPDATE ifl_open_tabs SET expires=0 WHERE user_id=? AND tab_id=?',args:[a.id,tabB]});
+ assert.deepEqual(await list(),[]);
+ await put(tabB,2,{path:'/notes/'});
+ const registered=(await api(a,'GET','devices')).value.devices.find(d=>d.id===id);
+ assert.equal((await api(a,'DELETE','device?id='+id+'&version='+registered.revision)).status,200);
+ assert.equal((await put(tabB,3,{path:'/notes/'})).status,410);
+ assert.deepEqual(await list(),[]);
+ await remember(a,id);assert.deepEqual(await list(),[]);
+});

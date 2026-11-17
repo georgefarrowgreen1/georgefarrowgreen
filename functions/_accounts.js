@@ -76,7 +76,7 @@ export async function removeAccount(env, id) {
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
     D.prepare("UPDATE pg_handles_held SET user_id = NULL WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM ifl_files_accounts WHERE user_id = ?").bind(id),
-    ...["ifl_actions","ifl_action_repeats","ifl_action_operations","ifl_focus_dismissals","ifl_draft_backups","ifl_records","ifl_record_operations","ifl_life_prefs","ifl_calendars","ifl_security_permissions","ifl_security_tickets"].map(table=>D.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(id)),
+    ...["ifl_actions","ifl_action_repeats","ifl_action_operations","ifl_focus_dismissals","ifl_draft_backups","ifl_open_tabs","ifl_records","ifl_record_operations","ifl_life_prefs","ifl_calendars","ifl_security_permissions","ifl_security_tickets"].map(table=>D.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(id)),
     D.prepare("DELETE FROM ifl_continuity WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM ifl_workspaces WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),

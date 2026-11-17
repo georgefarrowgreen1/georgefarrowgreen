@@ -334,7 +334,6 @@ const IFL = (() => {
     if (!m) return;
     open = null;
     m.behind?.forEach((c) => { c.inert = false; });
-    m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
     window.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("resize", m.fit);
@@ -444,7 +443,6 @@ const IFL = (() => {
     window.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("scroll", fit);
-    anchor.classList.add("ifm-lit");
     anchor.setAttribute("aria-expanded", "true");
     open = { anchor, layer, pop, key, fit, cancelFit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
@@ -1201,6 +1199,9 @@ import { identityBase, siteUrlFor, returnFor } from "./identity-location.js";
 globalThis.SIGNIN_PAGE ??= false;
 const IDENTITY_BASE = identityBase(location);
 const inSettings = !SIGNIN_PAGE && location.pathname.startsWith("/settings/account/");
+const embeddedAccount = inSettings && location.search === "?embed=1" && !!window.frameElement;
+const settingsWindow = embeddedAccount ? window.parent : window;
+if (embeddedAccount) document.documentElement.classList.add("account-embedded");
 const identityAsset = path => IDENTITY_BASE + path;
 const API = IDENTITY_BASE + "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
@@ -1244,7 +1245,10 @@ const WAY_IN = /^#(signin|join)(=|$)|^#(forgot|invite=|reset=|qr=)/;
 // page, as it came, before anything here takes it out of the address)
 // Settings returns carry only an allowlisted section name. Identity credentials
 // and fragment-based recovery codes stay in their original flows.
-const accountSections = new Set(["profile","security","data"]);
+const accountSections = new Set(["profile","security","data","confirm","units","appearance","notify-inflight"]);
+function settingsAccountPath(part) {
+  return "/#settings=account" + (accountSections.has(part) ? "-" + part : "");
+}
 function settingsSignIn() {
   const part = new URLSearchParams(location.hash.slice(1)).get("open");
   return AUTH.auth + "/?return=settings-account" + (accountSections.has(part) ? "&part=" + part : "");
@@ -1253,7 +1257,7 @@ function accountAfterSignIn(welcome) {
   const query = new URLSearchParams(location.search);
   if (IDENTITY_BASE === "/auth" && query.get("return") === "settings-account") {
     const part = query.get("part");
-    return "/settings/account/" + (accountSections.has(part) ? "#open=" + part : "");
+    return settingsAccountPath(part);
   }
   return AUTH.account + "/" + (welcome ? "#welcome=" + welcome : "");
 }
@@ -1415,6 +1419,8 @@ function h(spec, props, ...kids) {
     else if (k === "value" || k === "disabled" || k === "hidden") el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
+  if (embeddedAccount && tag === "a" && el.origin === location.origin &&
+      /^\/(?:$|(?:chats|markets|weather|mail|fitness)\/)/.test(el.pathname) && !el.target && !el.hasAttribute("download")) el.target = "_parent";
   el.append(...kids.flat().filter((x) => x != null && x !== false && x !== ""));
   return el;
 }
@@ -1493,7 +1499,17 @@ const underBar = () => { if (navigator.standalone !== true || !matchMedia("(orie
 if (matchMedia("(hover: none)").matches && (!homeScreen || HANDOFF || fromApp() || underBar())) document.documentElement.classList.add("inbrowser");
 // (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand, as Weather has)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
+function matchesSettingsOwner(me) {
+  if (me?.signedIn && String(me.id) === window.frameElement?.dataset.owner) return true;
+  // Recheck the shell session before rendering any other account into this pane.
+  if (window.frameElement?.isConnected) {
+    if (me?.signedIn) settingsWindow.location.reload();
+    else settingsWindow.location.replace(settingsSignIn());
+  }
+  return false;
+}
 async function call(path, { method = "GET", body, type, keepalive = false, owner } = {}) {
+  if (embeddedAccount) owner ??= window.frameElement?.dataset.owner;
   let r;
   const headers = { ...(owner ? {"X-Inflite-Owner":owner} : {}), ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
   try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000), ...(keepalive ? { keepalive: true } : {}) }); }
@@ -1682,6 +1698,11 @@ async function load() {
       description: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message,
       content: h("button.btn", { type: "button", onclick: () => location.reload() }, "Try again") }));
   }
+  if (embeddedAccount && !matchesSettingsOwner(S.me)) return;
+  if (inSettings && !embeddedAccount && S.me.signedIn && (!ARRIVED || /^#open=[\w-]+$/.test(ARRIVED))) {
+    const part = new URLSearchParams(ARRIVED.slice(1)).get("open");
+    if (!part || accountSections.has(part)) return location.replace(settingsAccountPath(part));
+  }
   if (S.me.prefs) theme(S.me.prefs.appearance);
   // (the way out: where next said, or, the site's sign-in still on, whether to end it asked first)
   // (from the account's page: straight to signing in again, as it was there; from an app, where next)
@@ -1713,7 +1734,7 @@ async function load() {
 // picture of the old one.
 async function anew(fn) {
   if (sheetEl.open) await closeSheet();
-  if (!document.startViewTransition || still.matches || document.hidden) return fn();
+  if (embeddedAccount || !document.startViewTransition || still.matches || document.hidden) return fn();
   await viewTransition(fn).updateCallbackDone;
 }
 // A view transition, started; one the browser gives up on (the window resized as it runs, say) is no error, its change
@@ -1763,7 +1784,13 @@ addEventListener("hashchange", async () => {
   try { m = await call("me"); S.pulled = Date.now(); } catch (_) {}
   anew(() => { S.me = m; S.settled = false; render(); });
 });
+let presentedProfile;
 function render() {
+  if (embeddedAccount && S.me?.signedIn) {
+    const profile = JSON.stringify([S.me.name, S.me.handle, S.me.photoAt]);
+    if (presentedProfile && presentedProfile !== profile) window.frameElement?.dispatchEvent(new Event("inflite-profile-updated"));
+    presentedProfile = profile;
+  }
   // (settling into place the first time each way round: signed in, out, or being deleted; after that, drawn again in
   // place, from where everything was)
   const rise = !S.settled; S.settled = true;
@@ -1971,9 +1998,11 @@ function signedIn(r) {
       }, icon(symbol, 19), h("span", {text: label}))));
     const security = h("div.group.glass", {},
       row({icon:"shield",tint:todo ? "amber" : "green",title:"Sign-in and security",value:todo ? `${todo} to do` : "Secure",onclick:()=>openSheet(securityView)}),
-      row({icon:"key",tint:"grey",title:"Security Module",sub:"App access, devices and activity",onclick:()=>location.assign("/#settings=module")}),
+      row({icon:"key",tint:"grey",title:"Security Module",sub:"App access, devices and activity",onclick:()=>settingsWindow.location.assign("/#settings=module")}),
       row({icon:"data",tint:"grey",title:"Your data",onclick:()=>openSheet(exportView)}),
-      row({icon:"signout",tint:"grey",title:"Sign out",sub:"On this device",onclick:()=>location.assign("/#settings=signout")}));
+      row({icon:"signout",tint:"grey",title:"Sign out",sub:"On this device",onclick:()=>settingsWindow.location.assign("/#settings=signout")}));
+    if (embeddedAccount) return [h("div.account-layout", {},
+      h("div.account-detail", {}, top.filter(Boolean), security, apps, ...ending.filter(Boolean)))];
     return [heading, h("div.cols.account-layout", {},
       h("aside.col-a", {}, navigation),
       h("div.col-b.account-detail", {}, top.filter(Boolean), security, apps, ...ending.filter(Boolean)))];
@@ -2013,6 +2042,7 @@ function partOf(fn) {
 }
 function openPart(k) {
   if (SIGNIN_PAGE) return;
+  if (embeddedAccount && k === "notify-inflight") return openSheet(chatNotifyView);
   const f = PARTS[k]?.();
   if (f) return openSheet(f);
   if ((k === "admin" || k.startsWith("admin/")) && S.me?.admin) return loadAdmin().then((a) => { const v = a.parts?.[k]; if (v) openSheet(v); }, () => toast("Admin couldn’t be loaded. Try again.", true));
@@ -2041,7 +2071,7 @@ function findGo([, part, sub]) {
 // then each row of Account and Preferences, and Admin), and beside it the one you're on, its sheet drawn there rather
 // than over the page (pane()). Each item does just what its row does. Not shown at a phone's or a tablet's size.
 const PANE_MQ = matchMedia("(min-width: 1100px)");
-const pane = () => PANE_MQ.matches;
+const pane = () => !embeddedAccount && PANE_MQ.matches;
 // (a part's two columns in the pane, or three; on a phone, and in a sheet, the same things one after another: styles.css)
 const cols = (...parts) => h("div.pcols" + (parts.length > 2 ? ".three" : ""), {}, ...parts.map((p) => h("div.pcol", {}, ...[p].flat(Infinity).filter((x) => x != null && x !== false && x !== ""))));
 function acctNav(groups, admin) {
@@ -4150,7 +4180,7 @@ function confirmWays(ok, { checkBreaches = true } = {}) {
   return { pk, key, form, pw, said };
 }
 function securityConfirmView(){
-  const owner=S.me?.id,back=()=>location.assign("/#you=security");
+  const owner=S.me?.id,back=()=>settingsWindow.location.assign(embeddedAccount ? "/#settings=module" : "/#you=security");
   // This dedicated confirmation redirects. Keep optional breach checks on Account, not after leaving it.
   return confirmView(()=>{if(S.me?.id!==owner)return;S.me.fresh=true;back()},back,{checkBreaches:false});
 }
@@ -5679,6 +5709,7 @@ async function refresh() {
   const appearanceBefore = globalThis.InFliteAppearance?.snapshot();
   let m;
   try { m = await call("me"); } catch (_) { return; }
+  if (embeddedAccount && !matchesSettingsOwner(m)) return;
   const was = S.me, same = (x) => JSON.stringify({ ...x, fresh: 0, devices: x.devices?.map((d) => ({ ...d, seenAt: 0 })) });
   // A /me request begun before a local choice may arrive after that choice was
   // saved. Keep the last acknowledged preferences, and leave the live preview

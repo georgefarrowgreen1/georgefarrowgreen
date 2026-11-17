@@ -100,7 +100,7 @@ function dayStrip(sel) {
       h("button.strip-step", { type: "button", "aria-label": "The week after", disabled: mon >= addDays(thisMon, 7), onclick: () => step(1) }, icon("chev", 15, 2.6)),
       h("button.strip-all" + (S.agenda ? ".on" : ""), { type: "button", "aria-expanded": String(!!S.agenda), onclick: () => morph("agenda", () => { S.agenda = !S.agenda; S.agendaFx = S.agenda && !canMorph(); redraw(); }) }, icon("list", 14, 2.4), S.agenda ? "Fold" : "Two weeks")),
     h("div.strip-days", {}, days.map((d) => { const r = ring(d);
-      return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", "data-k": "day", "data-day": dayStamp(d), vars: d === sel ? { "view-transition-name": "sday-on" } : null, "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
+      return h("button.sday" + (d === sel ? ".on" : "") + (d === TODAY ? ".today" : ""), { type: "button", "data-k": "day", "data-day": dayStamp(d), "aria-pressed": String(d === sel), "aria-label": `${dayLong(d)}: ${r.name}${r.kind === "did" ? ", ridden" : r.kind === "missed" ? ", missed" : ""}`, onclick: () => lookAt(d) },
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), svgOf(`<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${r.svg}</svg>`)); })));
 }
 // On a computer, both weeks as one grid (this week and next, or last and this when looking back): each day what's on it,
@@ -729,7 +729,7 @@ function feelCard(w, inside = false) {
     rows.map(([k, label, ic, words]) => h("div.checkin-row", {},
       h("span.lab", {}, h("span.ico", {}, icon(ic, 14, 2.3)), h("span.lt", { text: label })),
       h("div.seg3", { role: "group", "aria-label": label }, words.map((word, i) =>
-        h("button.t" + i, { type: "button", vars: cur[k] === i ? { "view-transition-name": `seg-${k}` } : null, "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
+        h("button.t" + i, { type: "button", "aria-pressed": String(cur[k] === i), onclick: () => morph("feel", () => setFeel(k, i)) }, word))))),
     v ? h("div.checkin-said." + v[0], {}, h("span.cs-ic", {}, icon(v[1], 15, 2.8)), h("span.cs-tx", {}, h("b", { text: v[2] }), v[3] && h("small", { text: v[3] }))) :
       ws && h("small.checkin-hint", { text: ws ? (inside ? `Sleep’s from your ${ws.watch}: two taps for the rest.` : `Sleep’s from your ${ws.watch} (${ws.hm}): change it if it’s wrong. Two taps for the rest.`) : "" }));
 }

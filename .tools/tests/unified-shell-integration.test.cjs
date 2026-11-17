@@ -160,3 +160,36 @@ for (const width of [390,1440]) test(`Settings opens native app preferences and 
     await t.clean();
   } finally { await t.ctx.close(); }
 });
+
+for (const width of [390,1440]) test(`Account stays inside Settings at ${width}px`, async () => {
+  const t = await env.open({width,initialPath:'/?os=1',ready:'home'});
+  const {page} = t;
+  try {
+    let loads = 0;
+    await page.route('**/settings/account/?embed=1', route => {
+      loads++;
+      return route.fulfill({contentType:'text/html',body:'<label>Profile name <input></label>'});
+    });
+    await page.evaluate(() => { window.shellBeforeAccount = document; location.hash = 'settings'; });
+    await page.locator('#youAcct').click();
+    const pane = page.frameLocator('iframe[title="Account"]');
+    await pane.getByLabel('Profile name').fill('Draft name');
+    assert.equal(await page.evaluate(() => document === window.shellBeforeAccount),true);
+    assert.equal(new URL(page.url()).hash,'#settings=account');
+    assert.equal(await page.locator('.settings-back').isVisible(),width<900);
+    assert.equal(await page.locator('#you nav[aria-label="Settings categories"]').isVisible(),width>=900);
+    assert.equal(await page.locator(width<900 ? '.ws-dock:visible' : '.ws-sidebar-button[data-ws-action=settings]:visible').count()>0,true);
+    if (width<900) await page.locator('.settings-back').click();
+    else await page.locator('#you [data-category=apps]').click();
+    await page.locator('.settings-account-frame').waitFor({state:'detached'});
+    await page.locator('#you [data-category=account]').click();
+    await pane.getByLabel('Profile name').waitFor();
+    assert.equal(loads,2);
+    t.state.view.user.name = 'Updated Profile';
+    await page.locator('.settings-account-frame').evaluate(frame => frame.dispatchEvent(new Event('inflite-profile-updated')));
+    await page.locator('#youAcct').getByText('Updated Profile',{exact:true}).waitFor({state:'attached'});
+    assert.equal(loads,2,'profile refresh keeps the current editor mounted');
+    assert.equal(await page.evaluate(()=>document === window.shellBeforeAccount && document.documentElement.scrollWidth <= innerWidth + 1),true);
+    await t.clean();
+  } finally { await t.ctx.close(); }
+});

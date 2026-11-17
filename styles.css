@@ -833,6 +833,15 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
   --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
 }
+
+/* Tapping a control can move focus into a different surface. Keyboard
+   navigation and the user's high-contrast settings keep their focus cues. */
+@media (forced-colors: none) and (prefers-contrast: no-preference) {
+  :root[data-ifl-pointer-focus] :focus:not([aria-invalid="true"]),
+  :root[data-ifl-pointer-focus] :is(.settings-search, .wsl-search-field, .org-search-box, .org-date-picker, .row.pick):focus-within {
+    outline: none !important;
+  }
+}
 /* ==== end of InFlite design tokens ==== */
 
 /* The approved bio layout: one reading column and quiet project rows beneath the app stack. */

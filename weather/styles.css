@@ -1855,7 +1855,6 @@ html { touch-action: pan-x pan-y; }
 .ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
   text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
 .ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
-.ifm-lit { box-shadow: 0 0 0 2px var(--ifl-accent-ink) !important; border-radius: 50%; }
 
 .ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
   color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
@@ -2211,6 +2210,15 @@ html.ifl-colour-change::view-transition-new(inflite-dock) { animation: none; mix
   --ifl-contrast: #080a08; --ifl-on-contrast: #f4f7f2;
   --ifl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 9px 24px -18px rgba(0, 0, 0, 0.45);
   --ifl-shadow-control: 0 1px 3px rgba(0, 0, 0, 0.12), 0 5px 14px -10px rgba(0, 0, 0, 0.4);
+}
+
+/* Tapping a control can move focus into a different surface. Keyboard
+   navigation and the user's high-contrast settings keep their focus cues. */
+@media (forced-colors: none) and (prefers-contrast: no-preference) {
+  :root[data-ifl-pointer-focus] :focus:not([aria-invalid="true"]),
+  :root[data-ifl-pointer-focus] :is(.settings-search, .wsl-search-field, .org-search-box, .org-date-picker, .row.pick):focus-within {
+    outline: none !important;
+  }
 }
 /* Concentric surfaces: the inset is subtracted from the outer corner. */
 .ifm-pop { padding: var(--ifl-space-2); border-radius: var(--ifl-radius-card);

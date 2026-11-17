@@ -179,7 +179,16 @@ try {
     if(!pointerFrame)pointerFrame=requestAnimationFrame(()=>{pointerFrame=0;if(!pointer?.isConnected||!pointerAllowed()){clearPointer();return}const r=pointer.getBoundingClientRect();if(!r.width||!r.height)return clearPointer();pointer.style.setProperty('--ifl-pointer-x',Math.round(Math.max(0,Math.min(1,(pointerX-r.left)/r.width))*100)+'%');pointer.style.setProperty('--ifl-pointer-y',Math.round(Math.max(0,Math.min(1,(pointerY-r.top)/r.height))*100)+'%')});
   }
   document.addEventListener('pointermove',movePointer,{passive:true});
-  document.addEventListener('pointerdown',clearPointer,{passive:true});
+  // Menus and dialogs move focus when they open. Remember which input opened
+  // them so script-driven focus follows the same styling as the initial press.
+  document.addEventListener('pointerdown', () => {
+    root.setAttribute('data-ifl-pointer-focus', '');
+    clearPointer();
+  }, {capture:true, passive:true});
+  document.addEventListener('keydown', e => {
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing) root.removeAttribute('data-ifl-pointer-focus');
+  }, {capture:true});
+  globalThis.addEventListener('pagehide', () => root.removeAttribute('data-ifl-pointer-focus'));
   document.addEventListener('pointerout',e=>{if(pointer&&(!(e.relatedTarget instanceof Node)||!pointer.contains(e.relatedTarget)))clearPointer()},{passive:true});
   document.addEventListener('scroll',clearPointer,{passive:true,capture:true});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPointer()});

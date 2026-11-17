@@ -26,7 +26,6 @@ html { touch-action: pan-x pan-y; }
 .ifm-layer button, .ifm-layer a { appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit;
   text-align: left; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: none; min-height: 0; min-width: 0; width: auto; height: auto; }
 .ifm-layer button:focus-visible, .ifm-layer a:focus-visible { outline: 2px solid var(--ifm-tint); outline-offset: 2px; }
-.ifm-lit { box-shadow: 0 0 0 2px var(--ifl-accent-ink) !important; border-radius: 50%; }
 
 .ifm-pop { position: fixed; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 30px; display: grid; gap: 6px;
   color: var(--ifm-text); background: var(--ifm-sheet); -webkit-backdrop-filter: none; backdrop-filter: none;

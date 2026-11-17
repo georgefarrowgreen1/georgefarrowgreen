@@ -12,6 +12,12 @@ for(const width of [320,390,1440])test(`Fitness controls, weekly availability an
   await p.goto(KIT+'/?module=/fitness/roof/fitness.js&apps=weather,fitness');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/fitness/'));
   await p.locator('.week-overview').waitFor();
   if(width<980){await p.waitForFunction(()=>document.querySelector('.m-fitness .strip-all')?.getBoundingClientRect().height>=43.99);const two=p.locator('.m-fitness .strip-all');await two.click({trial:true});assert.ok(await two.evaluate(e=>e.getBoundingClientRect().height>=43.99));
+   const selectedDay=p.locator('.strip-days .sday[aria-pressed="true"]');
+   assert.equal(await selectedDay.evaluate(day=>getComputedStyle(day).viewTransitionName),'none','selected date is captured with its week during app transitions');
+   const anotherDay=p.locator('.strip-days .sday[aria-pressed="false"]').first();
+   const date=await anotherDay.getAttribute('data-day');await anotherDay.click();
+   await p.waitForFunction(date=>document.querySelector('.strip-days .sday[aria-pressed="true"]')?.dataset.day===date,date);
+   assert.equal(await selectedDay.count(),1);
    const back=p.getByRole('button',{name:'The week before',exact:true}).filter({visible:true});await back.click({trial:true});assert.ok(await back.evaluate(e=>e.getBoundingClientRect().height>=43.99));assert.ok(await back.evaluate(e=>parseFloat(getComputedStyle(e,'::after').width)>=43.99));assert.ok(await back.evaluate(e=>{const p=e.parentElement,n=p.querySelectorAll('.strip-step')[1];return n.getBoundingClientRect().right+6<=p.querySelector('.strip-all').getBoundingClientRect().left+1;}),'week-arrow hit areas do not overlap the two-week switch');await back.click();await p.waitForFunction(()=>document.querySelector('.strip-top b')?.textContent.includes('Last week'));
   }else await p.locator('.wgrid').waitFor();
   const week=p.locator('button.row').filter({hasText:/^Your week/}).filter({visible:true});await week.click();

@@ -42,6 +42,15 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   const seeded=await backend.request(new Request('https://inflite.ai/auth/api/account/signup',{method:'POST',headers:{Origin:'https://inflite.ai','Content-Type':'application/json'},body:JSON.stringify({name:'Identity Tester',handle:'identity'+width,email,salt,proof,vault:'v'.repeat(40),pub})}));assert.equal(seeded.status,201,await seeded.clone().text());
   await context.addInitScript(()=>{if(window.PublicKeyCredential)PublicKeyCredential.isConditionalMediationAvailable=async()=>false;});
   const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
+  // This fixture serves identity only. Supply its same-origin host document so
+  // real password, editor and download flows exercise the framed response.
+  const seededUser = await seeded.clone().json();
+  const fade = readFileSync(resolve(__dirname,'../../../inflite/today/public/fade.js'));
+  await page.route('https://inflite.ai/fade.js', route => route.fulfill({contentType:'text/javascript',body:fade}));
+  await page.route('https://inflite.ai/', route => route.fulfill({contentType:'text/html',body:`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings</title><style>@view-transition{navigation:auto}</style><script src="/fade.js"></script><main id="you"></main>
+    <script>const frame=document.createElement("iframe");frame.title="Account";frame.dataset.owner=${JSON.stringify(seededUser.id)};
+    frame.style.cssText="border:0;width:100%;height:90vh";frame.src="/settings/account/?embed=1"+(location.hash.startsWith("#settings=account-")?"#open="+location.hash.slice("#settings=account-".length):"");document.querySelector("main").append(frame);</script>`}));
+  const account = page.frameLocator('iframe[title=Account]');
   const fromSettings = width === 390;
   await page.goto(fromSettings ? 'https://inflite.ai/settings/account/#open=profile' : 'https://inflite.ai/auth/');
   await page.locator('.auth-panel[data-auth-state="signin"]').waitFor();
@@ -50,9 +59,9 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   const choice=page.getByRole('button',{name:'Use your password',exact:true});if(await choice.isVisible())await choice.click();
   await page.locator('input[type="email"]').fill(email);await page.locator('input[type="password"]').fill(password);
   await page.locator('.auth-panel button[type="submit"]').click();
-  await page.waitForURL(fromSettings ? 'https://inflite.ai/settings/account/**' : 'https://inflite.ai/account/**');
+  await page.waitForURL(fromSettings ? 'https://inflite.ai/#settings=account-profile' : 'https://inflite.ai/account/**');
   if (fromSettings) {
-    await page.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
+    await account.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
     await page.goto('https://inflite.ai/account/');
   }
   await page.locator('.poster-card').waitFor();
@@ -63,25 +72,30 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   await page.screenshot({path:out+'/'+engine+'-'+width+'.png',fullPage:false});
   for(const appearance of ['light','dark']){await page.evaluate(appearance=>InFliteAppearance.accept({...InFliteAppearance.snapshot(),appearance}),appearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));await page.locator('.app.glass').first().waitFor();const colours=await page.locator('.app.glass').evaluateAll(nodes=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d');return nodes.map(n=>{c.clearRect(0,0,1,1);c.fillStyle=getComputedStyle(n).backgroundColor;c.fillRect(0,0,1,1);return[...c.getImageData(0,0,1,1).data]})});for(const colour of colours)assert.ok(Math.max(...colour.slice(0,3))-Math.min(...colour.slice(0,3))<=2,'Account card material stays neutral');await page.screenshot({path:out+'/'+engine+'-'+width+'-neutral-'+appearance+'.png',fullPage:false})}
   await page.goto('https://inflite.ai/settings/account/');
-  await page.getByRole('heading',{name:'Account',exact:true}).waitFor();
-  assert.equal(await page.locator('.account-back').getAttribute('href'),'/#settings');
-  assert.equal(await page.locator('.account-categories').isVisible(),width>=900);
+  await page.waitForURL('https://inflite.ai/#settings=account');
+  await account.locator('.poster-card').waitFor();
+  assert.equal(await account.locator('.account-categories, .account-heading').count(),0);
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.screenshot({path:out+'/'+engine+'-'+width+'-settings-account.png'});
-  const edit = page.getByRole('button',{name:'Edit profile',exact:true});
+  const edit = account.getByRole('button',{name:'Edit profile',exact:true});
   await edit.click();
-  await page.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
-  assert.equal(new URL(page.url()).pathname,'/settings/account/');
+  await account.getByRole('heading',{name:'Edit profile',exact:true}).waitFor();
+  await account.locator('input[autocomplete=name]').fill('Updated Profile');
+  const saved = page.waitForResponse(r=>new URL(r.url()).pathname==='/account/api/account/me/profile' && r.request().method()==='PATCH');
+  await account.getByRole('button',{name:'Done',exact:true}).click();
+  assert.equal((await saved).status(),200);
+  await account.locator('.poster-card').getByText('Updated Profile',{exact:true}).waitFor();
+  assert.equal(new URL(page.url()).hash,'#settings=account');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
   await page.goto('https://inflite.ai/settings/account/#open=data');
-  const archiveButton=page.getByRole('button',{name:/Download full archive \(JSON\)/});await archiveButton.waitFor();
+  const archiveButton=account.getByRole('button',{name:/Download full archive \(JSON\)/});await archiveButton.waitFor();
   assert.equal(await archiveButton.evaluate(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1}),true);
   const downloaded=page.waitForEvent('download');await archiveButton.click();const file=await downloaded,exported=JSON.parse(readFileSync(await file.path(),'utf8'));
   assert.equal(exported.account.id,me.id);assert.ok(Array.isArray(exported.organise));assert.ok(exported.life);assert.ok(Array.isArray(exported.system.actions));
   await backend.env.DB.prepare('UPDATE pg_sessions SET auth_at=0 WHERE user_id=?').bind(me.id).run();
   await page.goto('https://inflite.ai/account/#open=confirm');await page.getByRole('heading',{name:'Confirm it’s you',exact:true}).waitFor();
   const redirectChecks=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/account/api/account/pwned')redirectChecks.push(r.url())});
-  await page.route('https://inflite.ai/',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><title>InFlite</title><h1>Security Module</h1>'}));
+  await page.route('https://inflite.ai/',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>InFlite</title><script src="/fade.js"></script><h1>Security Module</h1>'}));
   await page.locator('input[type=password]').fill(password);await page.locator('form').filter({has:page.locator('input[type=password]')}).getByRole('button',{name:'Continue',exact:true}).click();
   await page.waitForURL('https://inflite.ai/#you=security');const confirmed=await page.evaluate(()=>fetch('/account/api/account/me').then(r=>r.json()));assert.equal(confirmed.id,me.id);assert.equal(confirmed.fresh,true);assert.deepEqual(redirectChecks,[],'redirecting reauthentication must not start a background breach request');
   assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);assert.deepEqual([...new Set(origins)],['https://inflite.ai']);

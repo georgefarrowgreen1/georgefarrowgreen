@@ -320,7 +320,6 @@ const IFL = (() => {
     if (!m) return;
     open = null;
     m.behind?.forEach((c) => { c.inert = false; });
-    m.anchor.classList.remove("ifm-lit");
     document.removeEventListener("keydown", m.key, true);
     window.removeEventListener("resize", m.fit);
     window.visualViewport?.removeEventListener("resize", m.fit);
@@ -430,7 +429,6 @@ const IFL = (() => {
     window.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("resize", fit);
     window.visualViewport?.addEventListener("scroll", fit);
-    anchor.classList.add("ifm-lit");
     anchor.setAttribute("aria-expanded", "true");
     open = { anchor, layer, pop, key, fit, cancelFit, behind, onClose: o.onClose, redraw: (list) => {
       // (the focus kept on the row it was on, by its key)
