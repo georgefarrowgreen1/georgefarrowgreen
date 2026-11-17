@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
-import { OS_SECURITY_JS,OS_SECURITY_CSS,OS_LIFE_JS,OS_LIFE_CSS,OS_CAPTURE_FILES,OS_SYSTEM350_JS,OS_SYSTEM350_CSS, OS_CONTINUITY_JS, OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
+import { OS_LAUNCHER_JS,OS_LAUNCHER_CSS,OS_SECURITY_JS,OS_SECURITY_CSS,OS_LIFE_JS,OS_LIFE_CSS,OS_CAPTURE_FILES,OS_SYSTEM350_JS,OS_SYSTEM350_CSS, OS_CONTINUITY_JS, OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
 import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
@@ -100,7 +100,7 @@ test('all existing app connector assets remain valid static JS/CSS under the str
 test('OS next has independently bounded shell, file workflows, activity, sync, recovery and five adapters; ordinary app ceilings remain separate', { skip: skip || !haveEsbuild() && 'esbuild is not installed' }, t => {
   const costs = [...osFiles.filter(p => /\.(?:js|css)$/.test(p)), ...bridges].map(path => ({ path, bytes: gzipSync(minified(readFileSync(published(path), 'utf8'), path.endsWith('.css')), { level: 9 }).length }));
   const fileAssets = new Set([...OS_FILES_JS, ...OS_FILES_CSS].map(name => '/roof/' + name)), commandAssets = new Set(['/roof/workspace-commands.js', '/roof/workspace-commands.css']);
-  const extras = { SecurityModule:[...OS_SECURITY_JS,...OS_SECURITY_CSS],Life410:[...OS_LIFE_JS,...OS_LIFE_CSS,...OS_CAPTURE_FILES],System350:[...OS_SYSTEM350_JS,...OS_SYSTEM350_CSS], OpenSave: [...OS_DIALOG_JS, ...OS_DIALOG_CSS], Activity: [...OS_ACTIVITY_JS, ...OS_ACTIVITY_CSS], Sync: OS_SYNC_JS, Recovery: [...OS_RECOVERY_JS, ...OS_RECOVERY_CSS], Handoffs: OS_HANDOFF_JS, Continuity:OS_CONTINUITY_JS };
+  const extras = { Launcher420:[...OS_LAUNCHER_JS,...OS_LAUNCHER_CSS],SecurityModule:[...OS_SECURITY_JS,...OS_SECURITY_CSS],Life410:[...OS_LIFE_JS,...OS_LIFE_CSS,...OS_CAPTURE_FILES],System350:[...OS_SYSTEM350_JS,...OS_SYSTEM350_CSS], OpenSave: [...OS_DIALOG_JS, ...OS_DIALOG_CSS], Activity: [...OS_ACTIVITY_JS, ...OS_ACTIVITY_CSS], Sync: OS_SYNC_JS, Recovery: [...OS_RECOVERY_JS, ...OS_RECOVERY_CSS], Handoffs: OS_HANDOFF_JS, Continuity:OS_CONTINUITY_JS };
   const extraAssets = Object.fromEntries(Object.entries(extras).map(([name, files]) => [name, new Set(files.map(file => file.startsWith('/')?file:'/roof/' + file))]));
   const reviewed = new Set([...fileAssets, ...commandAssets, ...Object.values(extraAssets).flatMap(set => [...set])]);
   const base = p => p.startsWith('/roof/') && !reviewed.has(p);
@@ -118,7 +118,7 @@ test('OS next has independently bounded shell, file workflows, activity, sync, r
   check('base/window shell', group(base), 31, 7);
   check('Commands', group(p => commandAssets.has(p)), 4.75, 1);
   check('Files', group(p => fileAssets.has(p)), 36.5, 4.5);
-  for (const [name, jsCap, cssCap] of [['SecurityModule',9,2],['Life410',10,3],['System350',18,3],['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 5.25, 0.5], ['Handoffs', 1.5, 0],['Continuity',12,0]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
+  for (const [name, jsCap, cssCap] of [['Launcher420',4,4],['SecurityModule',9,2],['Life410',10,3],['System350',18,3],['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 5.25, 0.5], ['Handoffs', 1.5, 0],['Continuity',12,0]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
   for (const [app, cap] of [['fitness', 5], ['weather', 3.25], ['markets', 1.75], ['chats', 3.25], ['mail', 4.25]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
   // The new lazy daily-tools bucket has its own 10/3 KiB allowance; legacy component caps above stay fixed.
   check('complete optional OS with daily tools', costs, 153, 25);
