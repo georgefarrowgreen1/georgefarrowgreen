@@ -166,14 +166,14 @@ for(const cadence of [1000/120,1000/60,1000/30])test(`frame monitor recognises $
   const result=await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample')[0].detail);
   assert.ok(Math.abs(result.cadence-cadence)<.2);assert.equal(result.light,cadence>24);
   assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),cadence>24);
-  await f.p.locator('.app[aria-hidden=false] .app-next').click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');
+  await f.p.getByRole('button',{name:'Weather',exact:true}).click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');
   await f.p.waitForTimeout(300);assert.equal(await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample').length),1,'monitor is bounded');assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
 test('Save Data keeps the page decorative motion still while all card controls work',async()=>{
  const f=await fixture('',{saveData:true});try{
   assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),true);
-  await f.p.locator('.app[aria-hidden=false] .app-next').click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');assert.deepEqual(f.errors,[]);
+  await f.p.getByRole('button',{name:'Weather',exact:true}).click();assert.equal(await f.p.locator('.app[aria-hidden=false] b').innerText(),'Weather');assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
 

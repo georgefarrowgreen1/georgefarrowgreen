@@ -637,7 +637,6 @@ function showLines() {
       card.style.transform = transform(target); card.style.opacity = String(target.o); card.style.zIndex = String(count - depth);
       card.inert = depth !== 0; card.setAttribute('aria-hidden', String(depth !== 0));
       choices[i].setAttribute('aria-pressed', String(depth === 0));
-      $('.app-count', card).textContent = `${i + 1} / ${count}`;
     });
   }
   function cancel() { version++; animations.forEach(a => a.cancel()); animations = []; paths.clear(); }
@@ -652,7 +651,7 @@ function showLines() {
     paths.set(card, { from, to, v, duration, at: performance.now() });
     return a;
   }
-  const focusRole = card => card.contains(document.activeElement) ? document.activeElement.closest('.app-next') ? '.app-next' : document.activeElement.closest('.app-link') ? '.app-link' : '.app-grab' : null;
+  const focusRole = card => card.contains(document.activeElement) ? document.activeElement.closest('.app-link') ? '.app-link' : '.app-grab' : null;
   async function move(direction = 1, thrown = null) {
     if (blocked()) return;
     const outgoing = cards[index], focus = focusRole(outgoing), before = new Map(cards.map(c => [c, snapshot(c)])), velocities = new Map(cards.map(c => [c, velocity(c)]));
@@ -694,8 +693,6 @@ function showLines() {
   cards.forEach((card, i) => {
     const grab = $('.app-grab', card);
     grab.disabled = false; grab.setAttribute('aria-label', `${$('b', card).textContent}. Tap or swipe for the next app. Use left and right arrow keys to change app.`);
-    $('.app-next', card).hidden = false; $('.app-count', card).hidden = false;
-    $('.app-next', card).addEventListener('click', () => move());
     grab.addEventListener('click', () => { if (performance.now() > ignoreClick) move(); });
     card.addEventListener('keydown', e => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;

@@ -52,9 +52,9 @@ for (const assets of ['', 'min/']) {
       assert.equal(await title(f.p),'Chat'); assert.equal(await f.p.locator('.app:not([inert])').count(),1);
       assert.equal(await f.p.locator('#app-weather small').innerText(),'3 places · Alerts on');
       assert.equal(await f.p.locator('#app-weather .app-link').getAttribute('href'),signed.links.weather);
-      await active(f.p).locator('.app-next').click(); await wait(f.p); assert.equal(await title(f.p),'Weather');
-      assert.equal(await active(f.p).locator('.app-next').evaluate(e=>e===document.activeElement),true);
-      assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('leaving')),false,'Next never triggers the app navigation transition');
+      await active(f.p).locator('.app-grab').click(); await wait(f.p); assert.equal(await title(f.p),'Weather');
+      assert.equal(await active(f.p).locator('.app-grab').evaluate(e=>e===document.activeElement),true);
+      assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('leaving')),false,'Changing cards never triggers the app navigation transition');
       await f.p.waitForTimeout(700); assert.equal(await title(f.p),'Weather','the approved stack moves only on interaction');
       assert.deepEqual(f.errors,[]);
     } finally { await f.ctx.close(); }
@@ -66,7 +66,7 @@ for (const assets of ['', 'min/']) {
       await f.p.keyboard.press('Home'); assert.equal(await title(f.p),'Chat');
       await f.p.keyboard.press('ArrowRight'); await f.p.keyboard.press('ArrowRight'); await f.p.keyboard.press('ArrowRight');
       await f.p.waitForFunction(()=>document.querySelector('.app[aria-hidden="false"] b')?.textContent==='Markets');await wait(f.p);
-      await f.p.emulateMedia({reducedMotion:'reduce'});await active(f.p).locator('.app-next').click();assert.equal(await title(f.p),'Chat');
+      await f.p.emulateMedia({reducedMotion:'reduce'});await active(f.p).locator('.app-grab').click();assert.equal(await title(f.p),'Chat');
       assert.equal(await f.p.locator('#apps').evaluate(e=>e.getAnimations({subtree:true}).length),0);
       await active(f.p).locator('.app-grab').focus();await f.p.keyboard.press('End');assert.equal(await title(f.p),'Markets');
       assert.deepEqual(f.errors,[]);
@@ -86,16 +86,15 @@ for (const assets of ['', 'min/']) {
     try{
       const r=await active(f.p).locator('.app-grab').boundingBox(),cdp=await f.ctx.newCDPSession(f.p),x=r.x+r.width*.75,y=r.y+40;
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});for(let i=1;i<=10;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-i*12,y}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();await wait(f.p);assert.equal(await title(f.p),'Weather');
-      await active(f.p).locator('.app-next').click();await f.p.evaluate(()=>document.querySelector('[data-contact]').click());await f.p.locator('body.sheet-up').waitFor();await wait(f.p);
+      await active(f.p).locator('.app-grab').click();await f.p.evaluate(()=>document.querySelector('[data-contact]').click());await f.p.locator('body.sheet-up').waitFor();await wait(f.p);
       assert.equal(await f.p.locator('.app:not([inert])').count(),1);await f.p.keyboard.press('Escape');await f.p.locator('body:not(.sheet-up)').waitFor();
-      await active(f.p).locator('.app-next').click();await wait(f.p);assert.deepEqual(f.errors,[]);
+      await active(f.p).locator('.app-grab').click();await wait(f.p);assert.deepEqual(f.errors,[]);
     }finally{await f.ctx.close()}
   });
   for(const width of [320,390,768,1440])test(`${assets || 'source/'}${width}px stack, app picker and projects adapt without overflow`,async()=>{
     const f=await fixture(assets,{width,reduce:true});try{
       const bounds=await f.p.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,rows:[...document.querySelectorAll('.project')].map(e=>{const r=e.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right}}),height:document.querySelector('#apps').offsetHeight}));
-      assert.equal(bounds.overflow,false);if(width>=700)assert.ok(bounds.rows[1].left>=bounds.rows[0].right);
-      else assert.ok(bounds.rows[1].top>=bounds.rows[0].bottom);
+      assert.equal(bounds.overflow,false);assert.ok(bounds.rows[1].top>=bounds.rows[0].bottom);
       assert.equal(bounds.height,width>=900?198:186);
       const markets=f.p.getByRole('button',{name:'Markets',exact:true});
       await markets.click();assert.equal(await title(f.p),'Markets');assert.equal(await markets.getAttribute('aria-pressed'),'true');
@@ -107,7 +106,7 @@ for (const assets of ['', 'min/']) {
 }
 test('without JavaScript all four native app links remain horizontally reachable',async()=>{
   const f=await fixture('',{js:false});try{
-    assert.equal(await f.p.locator('.app-link').count(),4);assert.equal(await f.p.locator('.app-next:visible').count(),0);
+    assert.equal(await f.p.locator('.app-link').count(),4);assert.equal(await f.p.locator('.app-picker:visible').count(),0);
     assert.equal(await f.p.locator('#apps').evaluate(e=>getComputedStyle(e).overflowX),'auto');
     await f.p.locator('#app-markets .app-link').focus();assert.ok(await f.p.locator('#apps').evaluate(e=>e.scrollLeft)>0);
   }finally{await f.ctx.close()}
