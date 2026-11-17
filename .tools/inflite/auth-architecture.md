@@ -29,3 +29,11 @@ copies with `node .tools/minify.mjs`. Keep the CSP and auth-only API routing int
 
 Checks: `node .tools/tests/signinrefined.mjs`, `node .tools/tests/authflows.mjs`, and the unit suite. Set
 `AUTH_BROWSER=webkit` to check WebKit. Full local journeys: `.tools/tests/run.sh acctsignin acctjoin qrsignin`.
+
+
+Mobile and desktop refinement (November 2026):
+- The shared panel uses a neutral reading plane with a quiet glass edge; the form never adds a second glass layer. Short windows scroll naturally, including phone keyboard layouts.
+- Phone sign-in is an explicit desktop action. Its responsive availability is CSS-only; breakpoint changes never rebuild credential inputs. Opening and closing the QR view retains the original form DOM in memory and resumes conditional passkey autofill on return. Credentials are never copied into storage.
+- Field errors own their ARIA description and invalid state until the value changes; editing clears the obsolete message and restores prior ARIA state. A newer gate navigation supersedes pending focus callbacks.
+- Method-change fades respect reduced motion. Cancellation feedback retains reserved space so primary controls stay steady.
+- `signinrefined.mjs` verifies resize and QR form continuity, corrected error state, and submit access in a keyboard-sized viewport in Chromium and WebKit.

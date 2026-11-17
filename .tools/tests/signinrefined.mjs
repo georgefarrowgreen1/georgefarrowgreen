@@ -56,7 +56,7 @@ async function open({ width = 1440, height = 1000, mobile = false, last = null, 
   });
   const p = await ctx.newPage(); p.on('pageerror', e => errors.push(e.message));
   await p.goto(url);
-  await p.waitForSelector('.signin-main .signin-panel, .signout-complete');
+  await p.waitForSelector('.signin-main .signin-panel, .signout-complete').catch(async error => { console.error(JSON.stringify({ url: p.url(), errors, text: (await p.locator('body').innerText()).slice(0,1000) })); throw error; });
   await p.waitForTimeout(150);
   return { ctx, p, qrCalls: () => qrCalls, releaseAutofill };
 }
@@ -95,9 +95,36 @@ try {
     ok(await p.getByRole('button', { name: 'Sign in with a passkey', exact: true }).evaluate(el => el === document.activeElement), 'collapsing password returns focus to passkey');
     await p.getByRole('button', { name: 'Use your password', exact: true }).click();
     ok(await p.getByLabel('Email', { exact: true }).inputValue() === 'george@example.com' && await p.getByLabel('Password', { exact: true }).inputValue() === 'example-password', 'switching methods preserves form entries');
+    if (!mobile) {
+      const input = p.getByLabel('Email', { exact: true });
+      await input.evaluate(el => { window.__signinEmail = el; });
+      await p.setViewportSize({ width: 900, height: 700 });
+      await p.waitForTimeout(100);
+      ok(await input.evaluate(el => el === window.__signinEmail && el.value === 'george@example.com'), 'resizing retains the original email field and value');
+      ok(await p.getByLabel('Password', { exact: true }).inputValue() === 'example-password', 'resizing retains the password in the existing DOM');
+      await p.setViewportSize({ width: 1440, height: 1000 });
+      await p.getByRole('button', { name: 'Sign in with your phone', exact: true }).click();
+      await p.waitForSelector('#qrc');
+      await p.getByRole('button', { name: 'Use a password or passkey instead', exact: true }).click();
+      ok(await input.evaluate(el => el === window.__signinEmail && el.value === 'george@example.com'), 'returning from QR restores the original form');
+      ok(await p.getByLabel('Password', { exact: true }).inputValue() === 'example-password', 'phone method switching retains the password without storage');
+    }
     await p.getByLabel('Email', { exact: true }).fill('');
     await p.getByRole('button', { name: 'Sign in', exact: true }).click();
     ok((await p.locator('.said').innerText()).length > 0, 'empty sign-in displays a validation error');
+    ok(await p.getByLabel('Email', { exact: true }).getAttribute('aria-invalid') === 'true', 'invalid field is announced');
+    await p.getByLabel('Email', { exact: true }).fill('corrected@example.com');
+    ok(await p.getByLabel('Email', { exact: true }).getAttribute('aria-invalid') === null, 'correcting the field clears its stale invalid state');
+    ok(await p.locator('.signin-feedback').innerText() === '', 'editing the field clears its obsolete error message');
+    if (engine === 'chromium') await p.screenshot({ path: `${out}/password-${mobile ? 'mobile' : 'desktop'}.png`, fullPage: true, caret: 'initial' });
+    if (mobile) {
+      await p.setViewportSize({ width: 390, height: 480 });
+      await p.getByLabel('Password', { exact: true }).focus();
+      await p.locator('.signin form button[type=submit]').scrollIntoViewIfNeeded();
+      const submit = await p.locator('.signin form button[type=submit]').boundingBox();
+      ok(submit.y >= 0 && submit.y + submit.height <= 481, 'password submit remains reachable in a keyboard-sized viewport');
+      await p.setViewportSize({ width: 390, height: 844 });
+    }
     if (!mobile) {
       await p.getByRole('button', { name: 'Sign in with your phone', exact: true }).click();
       await p.waitForSelector('#qrc');
@@ -105,7 +132,7 @@ try {
       await p.getByRole('button', { name: 'Use a password or passkey instead', exact: true }).click();
       await p.waitForSelector('.signin-panel input[name=email]', { state: 'attached' });
       ok(await p.locator('h1').innerText() === 'Sign in', 'return from phone sign-in');
-    } else ok(await p.locator('.signin-phone').count() === 0, 'mobile omits desktop phone action');
+    } else ok(await p.locator('.signin-phone').isHidden(), 'mobile omits desktop phone action');
     if (await p.getByLabel('Password', { exact: true }).isHidden()) await p.getByRole('button', { name: 'Use your password', exact: true }).click();
     await p.getByRole('button', { name: 'Forgot password?', exact: true }).click();
     await p.waitForSelector('.welcome h1');

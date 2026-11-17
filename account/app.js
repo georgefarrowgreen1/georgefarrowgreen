@@ -2573,17 +2573,19 @@ const authBack = () => h("button.pill.quiet.backapp", { type: "button", onclick:
 }, "aria-label": "Back to sign in" }, icon("back", 17, 2.4), "Sign in");
 // (where the browser can, and motion's welcome, the card goes to its new size as the title and what's in it cross-fade:
 // the page as a picture of before and after, .vt-gate naming its parts while it's happening; else what's new fades in)
-let gating = 0;
+let gating = 0, gateRevision = 0;
 function gate(to) {
   // (the account's page: on the sign-in page, where every way in is)
   if (AUTH && !AUTH.here) return location.assign(`${AUTH.auth}/${to === "signin" ? "" : "#" + to}`);
+  const revision = ++gateRevision;
   const go = () => { S.gate = to; S.settled = true; render(); }, ready = () => {
+    if (revision !== gateRevision) return;
     const field = [...main.querySelectorAll(".signin input:not(.vh):not([disabled])")].find(el => el.getClientRects().length);
     (field || $("main .signin > .btn:not([disabled])") || $("main h1"))?.focus();
   };
   if (!document.startViewTransition || still.matches || document.hidden) {
     go();
-    for (const k of $("main .welcome")?.children || []) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+    if (!still.matches && !document.hidden) for (const k of $("main .welcome")?.children || []) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
     return ready();
   }
   gating++; main.classList.add("vt-gate");
@@ -2611,19 +2613,35 @@ function signedOut(r) {
 }
 // The two sign-in states share one responsive frame; phone sign-in opens only when requested.
 function signinScreen(r, last, to, phoneFirst = false) {
-  const qr = !phoneFirst && (QR_WIDE.matches || QR_ASK.matches) && S.qrAsk;
-  const card = qr ? qrCard("alone") : last ? rememberedCard(last, true) : signinCard(true);
-  const phone = !phoneFirst && (QR_WIDE.matches || QR_ASK.matches) && h("button.link.signin-phone", { type: "button", id: "qrask", "aria-expanded": !!qr, onclick: () => {
-    S.qrAsk = !S.qrAsk;
-    if (S.qrAsk) stopAutofill();
-    anew(() => { render(); if (S.qrAsk) $("#qrc")?.focus({ preventScroll: true }); else $("#qrask")?.focus({ preventScroll: true }); });
-  } }, qr ? "Use a password or passkey instead" : "Sign in with your phone");
-  if (qr) { card.setAttribute("tabindex", "-1"); card.setAttribute("aria-label", "Sign in with your phone"); }
-  return authPage(r, { state: qr ? "phone" : phoneFirst ? "phone-first" : "signin",
-    title: qr ? "Sign in with your phone" : phoneFirst ? "Sign in on this phone first" : last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in",
-    description: phoneFirst ? "Then you can approve the computer that showed the code." : qr ? "Use a phone that’s already signed in." : last ? last.email : "One account for all your apps.",
-    identity: !qr && last ? avatar(last, true) : null, content: card,
-    footer: qr ? phone : [last ? h("div.signin-switch", {}, notYouLine()) : joinLine(), phone] });
+  const card = last ? rememberedCard(last, true) : signinCard(true);
+  const title = phoneFirst ? "Sign in on this phone first" : last ? `Welcome back, ${String(last.name).trim().split(/\s+/)[0]}` : "Sign in";
+  const description = phoneFirst ? "Then you can approve the computer that showed the code." : last ? last.email : "One account for all your apps.";
+  const alternatives = h("div.auth-alternatives", {}, last ? h("div.signin-switch", {}, notYouLine()) : joinLine());
+  let qr = null;
+  const phone = !phoneFirst && h("button.link.signin-phone", { type: "button", id: "qrask", "aria-expanded": "false", "aria-controls": "auth-content", onclick: () => {
+    const panel = card.closest(".auth-panel") || qr?.closest(".auth-panel");
+    if (!panel) return;
+    morph(panel, () => {
+      if (!qr) {
+        stopAutofill(); qr = qrCard("alone");
+        qr.setAttribute("tabindex", "-1"); qr.setAttribute("aria-label", "Sign in with your phone");
+        card.replaceWith(qr);
+      } else {
+        clearTimeout(QRS.t); qr.replaceWith(card); qr = null;
+        resumeSignin.get(card)?.();
+      }
+      alternatives.hidden = !!qr;
+      phone.textContent = qr ? "Use a password or passkey instead" : "Sign in with your phone";
+      phone.setAttribute("aria-expanded", String(!!qr));
+      updateAuthScreen(qr || card, { state: qr ? "phone" : "signin", title: qr ? "Sign in with your phone" : title,
+        description: qr ? "Use a phone that’s already signed in." : description });
+      // The remembered identity belongs to the password/passkey view.
+      panel.querySelector(".signin-identity > .avatar")?.toggleAttribute("hidden", !!qr);
+    });
+    (qr || phone).focus({ preventScroll: true });
+  } }, "Sign in with your phone");
+  return authPage(r, { state: phoneFirst ? "phone-first" : "signin", title, description,
+    identity: last ? avatar(last, true) : null, content: card, footer: [alternatives, phone] });
 }
 // (how a new account's made: here, where anyone can, or with the invite this page was opened with; else, by invitation,
 // nothing said: the line kept, empty)
@@ -2833,13 +2851,14 @@ async function joinState() {
   else if (line) {
     const nu = joinLine(), rising = line.getAnimations().some((a) => a.animationName === "rise");
     line.className = nu.className + (line.classList.contains("rise") ? " rise" : ""); line.replaceChildren(...nu.childNodes);
-    if (!rising) line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: tok("--ease-out") });
+    if (!rising && !still.matches && !document.hidden) line.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: tok("--ease-out") });
   }
 }
 // a card on a signed-out page given what's new, in place: it goes to its new size as what's in it fades in
 function cardTo(old, nu) {
   morph(old, () => { old.className = nu.className + (old.classList.contains("rise") ? " rise" : ""); old.replaceChildren(...nu.childNodes); });
 }
+const resumeSignin = new WeakMap();
 function signinCard(refined = false) {
   const said = h("p.said" + (refined ? ".signin-feedback" : ""), { role: "status", "aria-atomic": "true" });
   const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true, placeholder: "you@example.com",
@@ -2850,12 +2869,14 @@ function signinCard(refined = false) {
   const form = h("form.form", { onsubmit: (e) => { e.preventDefault(); withPassword(email.value.trim(), email, pw, go, said); } }, field("Email", email), pwField("Password", pw), refined && forgot, go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey()) }, icon(refined ? "key" : "face", 21, 1.9), "Sign in with a passkey");
   if (pk) passkeySoon();
-  startAutofill(email, (o, a) => withPasskey(pk?.hidden ? go : pk || go, said, () => passkeySignedIn(o, a)));
+  const resume = () => startAutofill(email, (o, a) => withPasskey(pk?.hidden ? go : pk || go, said, () => passkeySignedIn(o, a)));
+  resume();
   const hint = pk && refined && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." });
   const pwBox = refined && h("div.pwbox", { hidden: !!pk, id: "signin-password" }, form);
   const card = h("div.signin.glass", {}, pk, hint, pk && !refined && h("div.or", { text: "or with your email" }), pwBox || form,
     !refined && forgot, said);
   if (pk && refined) card.insertBefore(passwordChoice(card, pwBox, email, pk, go, hint, said), said);
+  resumeSignin.set(card, resume);
   return card;
 }
 // You, signed in here before: your passkey first, if that's how you did (the password a tap away), or your password, your
@@ -2871,13 +2892,15 @@ function rememberedCard(l, refined = false) {
   const hint = refined && byKey && h("p.signin-keyhint", { text: "Use your fingerprint, face or device PIN." });
   const key = can && h("button.btn" + (byKey ? "" : ".quiet"), { type: "button", onclick: (e) => withPasskey(e.currentTarget, said, () => signInWithPasskey(byKey ? l.id : undefined)) },
     icon(refined ? "key" : "face", 21, 1.9), byKey ? (refined ? "Continue with a passkey" : "Continue with your passkey") : "Sign in with a passkey");
-  if (can) startAutofill(pw, (o, a) => withPasskey(key.hidden ? go : key, said, () => passkeySignedIn(o, a)));
+  const resume = () => { if (can) startAutofill(pw, (o, a) => withPasskey(key.hidden ? go : key, said, () => passkeySignedIn(o, a))); };
+  resume();
   if (byKey) passkeySoon(l.id);
   const card = h("div.signin.glass.remembered", {},
     !refined && byKey && h("span.last", {}, icon("face", 15, 2), "Last time, you used a passkey"),
     byKey ? [key, hint, pwBox] : [pwBox, key],
     !refined && forgot, said);
   if (byKey) card.insertBefore(passwordChoice(card, pwBox, pw, key, go, hint, said, refined), refined ? said : forgot);
+  resumeSignin.set(card, resume);
   return card;
 }
 // Both sign-in cards reveal the existing password form in place, retaining entries and keeping focus in the active method.
@@ -2905,10 +2928,8 @@ function notYouLine() {
 // once a phone's looked, with the number to tap there; once the phone's said yes, whose account it is, to continue as
 // (or not: someone else who saw the code may have scanned it), and then signed in here, as with a password (though not
 // as having just shown it's you). Something gone wrong is tried again later each time, and after four, left to be asked.
-// (Narrower, on a computer (QR_ASK), the code's there when asked for, in the card's place: as a phone's Sign in on a
-// computer sends you here for it)
-const QR_WIDE = matchMedia("(min-width: 960px)"), QR_ASK = matchMedia("(hover: hover) and (pointer: fine)");
-for (const q of [QR_WIDE, QR_ASK]) q.addEventListener("change", () => { if (S.me && !S.me.signedIn) render(); });
+// On a computer, the code appears only when requested. Returning restores the original form node.
+// The phone action responds through CSS. No media-query callback rebuilds credential fields.
 const QRS = { code: null, poll: null, until: 0, state: "waiting", num: null, phone: null, who: null, note: null, err: null, t: 0, made: 0, fails: 0 };
 function qrCard(alone) {
   const card = h("div.qrc.glass" + (alone ? ".alone" : ""), { id: "qrc" });
@@ -3453,7 +3474,7 @@ function pwField(label, input) {
     if (caps.hidden === !on) return;
     const change = () => { caps.hidden = !on; }, box = !caps.closest("#sheet") && caps.closest(".signin");
     if (box) morph(box, change, false); else change();
-    if (on) caps.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+    if (on && !still.matches && !document.hidden) caps.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
   };
   const sense = (e) => { if (e.getModifierState) shown(e.getModifierState("CapsLock")); };
   input.addEventListener("keydown", sense); input.addEventListener("keyup", sense);
@@ -3470,6 +3491,8 @@ function clearFieldFeedback(el) {
   const descriptions = (held.input.getAttribute("aria-describedby") || "").split(/\s+/).filter(id => id && id !== el.id);
   if (descriptions.length) held.input.setAttribute("aria-describedby", descriptions.join(" "));
   else held.input.removeAttribute("aria-describedby");
+  if (held.invalid === null) held.input.removeAttribute("aria-invalid");
+  else held.input.setAttribute("aria-invalid", held.invalid);
   held.input.removeEventListener("input", held.clear);
   feedbackFields.delete(el);
 }
@@ -3487,8 +3510,10 @@ function say(el, text, input, bad = !!text) {
     }
     const descriptions = new Set((input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
     descriptions.add(el.id); input.setAttribute("aria-describedby", [...descriptions].join(" "));
-    const clear = () => clearFieldFeedback(el);
-    feedbackFields.set(el, { input, clear }); input.addEventListener("input", clear, { once: true });
+    const clear = () => { clearFieldFeedback(el); say(el, ""); };
+    const invalid = input.getAttribute("aria-invalid");
+    if (bad) input.setAttribute("aria-invalid", "true");
+    feedbackFields.set(el, { input, clear, invalid }); input.addEventListener("input", clear, { once: true });
   }
   if (text && bad) shake(el);
   if (input) input.focus();
@@ -3509,7 +3534,7 @@ async function busy(btn, label, fn) {
   const kids = [...btn.childNodes], was = btn.disabled, wasBusy = btn.getAttribute("aria-busy"), wide = btn.style.minWidth, had = document.activeElement === btn;
   btn.style.minWidth = `${btn.offsetWidth}px`;
   btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(h("span.spin"), h("span", { text: label }));
-  for (const k of btn.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
+  if (!still.matches && !document.hidden) for (const k of btn.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms("--dur-fast"), easing: tok("--ease-out") });
   try { return await fn(); }
   finally {
     btn.disabled = was; btn.replaceChildren(...kids); btn.style.minWidth = wide;
@@ -3639,7 +3664,7 @@ function morph(box, change, fade = true) {
   const run = box.getAnimations().find((a) => a.id === "morph"), from = box.offsetHeight;
   run?.cancel();
   change();
-  if (fade) for (const k of box.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(still.matches ? "--dur-fast" : "--dur-base"), easing: tok("--ease-out") });
+  if (fade && !still.matches && !document.hidden) for (const k of box.children) k.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(still.matches ? "--dur-fast" : "--dur-base"), easing: tok("--ease-out") });
   const to = box.offsetHeight;
   if (still.matches || !box.isConnected || Math.abs(to - from) < 2) return;
   box.style.overflow = "hidden";

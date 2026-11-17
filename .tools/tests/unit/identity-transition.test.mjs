@@ -61,8 +61,23 @@ test('auth method transition still reports a genuine callback failure and releas
   const context = { AUTH:null, still:{matches:false}, document:{startViewTransition(){},hidden:false},
     main:{classList:{add:name=>classes.add(name),remove:name=>classes.delete(name)}}, viewTransition:()=>transition,
     reportError:error=>reported.push(error) };
-  vm.runInNewContext('let gating=0;\n' + gate + '\ngate("forgot")', context);
+  vm.runInNewContext('let gating=0, gateRevision=0;\n' + gate + '\ngate("forgot")', context);
   await new Promise(resolve=>setImmediate(resolve));
   assert.deepEqual(reported,[failure]);
   assert.equal(classes.has('vt-gate'),false);
+});
+
+
+test('only the latest auth navigation can move focus after transition completion', async () => {
+  const gate = /function gate\(to\) \{[\s\S]*?\n\}/.exec(app)[0];
+  const callbacks = [], fields = [], focused = [], classes = new Set();
+  const context = { AUTH:null, S:{}, still:{matches:false}, document:{startViewTransition(){},hidden:false},
+    main:{classList:{add:n=>classes.add(n),remove:n=>classes.delete(n)},querySelectorAll:()=>fields},
+    $:()=>null,render(){fields.splice(0,fields.length,{getClientRects:()=>[{}],focus:()=>focused.push(context.S.gate)})},
+    viewTransition(fn){fn();let resolve;const promise=new Promise(r=>resolve=r);callbacks.push(resolve);return{updateCallbackDone:promise,finished:promise}} };
+  vm.runInNewContext('let gating=0, gateRevision=0;\n'+gate+'\ngate("forgot");gate("signin");',context);
+  callbacks[0]();await new Promise(r=>setImmediate(r));
+  assert.deepEqual(focused,[],'an obsolete transition must not summon a keyboard or steal focus');
+  callbacks[1]();await new Promise(r=>setImmediate(r));
+  assert.deepEqual(focused,['signin']);assert.equal(classes.size,0);
 });

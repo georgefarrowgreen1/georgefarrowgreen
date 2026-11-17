@@ -1886,17 +1886,17 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 
 /* Every auth state shares this frame; Account's signed-in profile keeps its own layout. */
 main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
-.signin-shell { display: flex; flex-direction: column; width: 100%; min-width: 0; }
+.signin-shell { display: flex; flex-direction: column; width: 100%; min-width: 0; max-width: 1120px; margin-inline: auto; }
 .signin-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.signin-brand { display: flex; align-items: center; gap: 12px; font: 650 26px/1.1 var(--font-d); letter-spacing: -0.5px; }
+.signin-brand { display: flex; align-items: center; gap: 12px; font: 650 24px/1.1 var(--font-d); letter-spacing: -0.5px; }
 .signin-brand img { display: block; width: 44px; height: 44px; border-radius: 13px; }
-.signin-header .backapp { margin: 0; flex-shrink: 0; }
-.signin-stage { flex: 1; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 36px 0 16px; min-width: 0; }
-.signin-panel { width: 100%; max-width: 420px; margin: 0; padding: 32px; border-radius: var(--ifl-radius-card, 26px); display: grid; gap: 20px; justify-items: stretch; text-align: left; box-shadow: var(--ifl-shadow-card, 0 1px 2px rgba(14, 18, 16, .025), 0 9px 24px -18px rgba(14, 18, 16, .18)); }
+.signin-header .backapp { margin: 0; flex-shrink: 0; min-height: 44px; max-width: 52%; white-space: normal; text-align: center; padding: 10px 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.signin-stage { flex: 1; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 40px 0; min-width: 0; }
+.signin-panel { width: 100%; max-width: 448px; margin: 0; padding: 32px; border-radius: var(--ifl-radius-card, 26px); display: grid; gap: 20px; justify-items: stretch; text-align: left; box-shadow: var(--ifl-shadow-card, 0 1px 2px rgba(14, 18, 16, .025), 0 9px 24px -18px rgba(14, 18, 16, .18)); }
 .signin-intro { display: grid; gap: 12px; margin-bottom: 4px; }
 .signin-destination { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--glass-ctl); color: var(--text); font-size: 14px; font-weight: 500; margin-bottom: 8px; }
 .signin-destination img { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; }
-.signin-panel h1 { font: 700 28px/1.16 var(--font-d); letter-spacing: -.65px; margin: 0; overflow-wrap: anywhere; }
+.signin-panel h1 { font: 700 32px/1.12 var(--font-d); letter-spacing: -.8px; margin: 0; overflow-wrap: anywhere; }
 .signin-panel p { margin: 0; max-width: none; }
 .auth-panel { overflow-wrap: anywhere; }
 .auth-panel .link { max-width: 100%; white-space: normal; }
@@ -1908,7 +1908,7 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
   box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; display: grid; gap: 16px; }
 .auth-panel .auth-content > .signin::before, .auth-panel .auth-content > .signin::after { display: none; }
 .auth-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 16px; color: var(--tint-text); background: var(--glass-ctl); }
-.auth-panel .auth-footer { display: grid; gap: 8px; text-align: center; }
+.auth-panel .auth-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 16px; text-align: center; border-top: 1px solid var(--line); padding-top: 12px; }
 .auth-panel[data-auth-state="signin"], .auth-panel[data-auth-state="phone-first"] { row-gap: 16px; }
 .auth-panel:is([data-auth-state="signin"], [data-auth-state="phone-first"]) .auth-content > .signin { gap: 12px; }
 .auth-panel .auth-footer .foot, .auth-panel .auth-footer .new { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
@@ -1940,7 +1940,7 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .signin-panel .field input { background: var(--glass-ctl); min-height: 52px; border-radius: var(--ifl-radius-row, 16px); font-size: 16px; padding: 0 16px; }
 .signin-panel .pw input { padding-right: 52px; }
 .signin-panel .eye { min-width: 44px; min-height: 44px; }
-.signin-panel .forgot { justify-self: end; min-height: 44px; padding: 8px 0; margin-top: -14px; font-size: 14px; }
+.signin-panel .forgot, .signin-panel .signin .forgot { justify-self: end; min-height: 44px; padding: 8px 2px; margin-top: -10px; font-size: 14px; }
 .signin-panel .forgot::after, .signin-panel .usepw::after { content: none; }
 .signin-panel .pwbox { display: grid; gap: 16px; }
 .signin-panel .pwbox[hidden], .signin-panel [hidden] { display: none; }
@@ -1950,14 +1950,19 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .signin-panel .usepw { justify-self: stretch; }
 .signin-panel .signin-join { text-align: center; color: var(--text-2); font-size: 13px; line-height: 1.5; }
 .signin-join .link, .signin-switch .link { min-height: 44px; padding: 8px 2px; font-size: inherit; }
-.signin-panel .signin-switch { border-top: 1px solid var(--line); padding-top: 8px; text-align: center; }
+.signin-panel .signin-switch { text-align: center; }
 .signin-switch .new { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
 .signin-phone { min-height: 44px; padding: 10px; font-size: 14px; text-align: center; }
 .signin-panel .said { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .signin-panel .said:empty { display: none; }
 .signin-panel .signin-feedback, .signin-panel .signin-feedback:empty { display: block; min-height: 1.5em; }
 .signin-panel button:focus-visible { outline: 2px solid var(--tint-text); outline-offset: 4px; }
-body:has(.signin-shell) .aura { opacity: .28; }
+body:has(.signin-shell) .aura { opacity: .08; }
+body:has(.signin-shell) .sky { background: var(--ifl-page); }
+/* Responsive availability is CSS-only: resizing must not replace a live form. */
+@media (max-width: 959px) and (hover: none) {
+  .auth-panel:not([data-auth-state="phone"]) .signin-phone { display: none; }
+}
 @media (max-width: 599px) {
   .signin-stage { align-content: start; padding: 30px 0 0; gap: 16px; }
   .signin-brand { font-size: 24px; gap: 10px; }
@@ -2248,7 +2253,20 @@ dialog.sheet.pane { background: var(--ifl-surface); }
 }
 .field :is(input, textarea)::placeholder, .dk-text::placeholder { color: var(--text-3); opacity: 1; }
 .field :is(input, textarea)[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--danger); }
-.signin-panel.glass { padding: 32px; gap: 22px; }
+/* Auth has one quiet reading plane. Keep the glass edge, without a broad diagonal highlight. */
+.signin-panel.glass {
+  padding: 36px; gap: 24px; border-radius: 32px;
+  background: color-mix(in srgb, var(--ifl-surface) 92%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent), var(--ifl-shadow-card);
+}
+/* The nested form is structural, never a second sheet of glass. */
+.auth-panel .auth-content > .signin.glass { background: none; box-shadow: none; }
+.signin-panel .signin-feedback { margin: 0; }
+.signin-panel .signin-keyhint { margin-top: -4px; }
+.signin-header .backapp .ico, .signin-panel .btn .ico { flex: none; }
+@media (min-width: 600px) and (max-height: 720px) {
+  .signin-stage { align-content: start; padding-block: 28px; }
+}
 .signin-panel .signin-intro, .signin-panel .auth-heading { gap: 10px; }
 .auth-mark { width: 52px; height: 52px; border-radius: 17px; box-shadow: inset 0 0 0 1px var(--line); }
 .signin-panel .signin-destination { padding: 5px 12px 5px 5px; gap: 8px; box-shadow: inset 0 0 0 1px var(--line); }
@@ -2311,13 +2329,14 @@ button.mini, .row .val button.mini, .seg button, .seg.mini button, .dk-seg butto
   .at-bar { gap: 12px; }
 }
 @media (max-width: 599px) {
-  .signin-panel.glass { padding: 24px 20px; border-radius: var(--ifl-radius-card, 26px); gap: 20px; }
-  .signin-stage { padding-top: 20px; }
+  .signin-panel.glass { padding: 28px 24px; border-radius: 28px; gap: 20px; }
+  main.signin-main { padding-inline: max(16px, env(safe-area-inset-left)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+  .signin-stage { padding-top: 28px; padding-bottom: 24px; }
   .signin-panel .signin-identity { gap: 16px; }
 }
 @media (max-width: 359px) {
   main.signin-main { padding-inline: 12px; }
-  .signin-panel.glass { padding: 22px 16px; }
+  .signin-panel.glass { padding: 24px 18px; }
   .signin-panel .btn { padding-inline: 10px; }
   .row { padding-inline: 14px; gap: 10px; }
   .row .val { max-width: 36%; font-size: 14px; }

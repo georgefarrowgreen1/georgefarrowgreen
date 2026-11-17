@@ -20,7 +20,7 @@ export function authScreen({ state, title, description, content, footer, back, d
     description && el("p", "signin-lead", description)]);
   if (identity) intro.append(el("div", "signin-identity", [identity, heading]));
   else { if (mark) intro.append(el("div", "auth-mark", mark, { "aria-hidden": "true" })); intro.append(heading); }
-  const panel = el("section", "signin-panel auth-panel welcome glass", [intro, el("div", "auth-content", content),
+  const panel = el("section", "signin-panel auth-panel welcome glass", [intro, el("div", "auth-content", content, { id: "auth-content" }),
     footer && el("div", "auth-footer", footer)], { "data-auth-state": state, "aria-labelledby": "auth-title" });
   return el("div", "signin-shell auth-shell", [el("header", "signin-header", [brand, back]),
     el("div", "signin-stage", [panel, extra])]);
