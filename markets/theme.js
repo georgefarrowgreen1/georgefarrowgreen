@@ -115,7 +115,9 @@ try {
   function apply(animate=false){
     const draw=()=>{
     const dark=state.appearance==='dark'||(state.appearance==='auto'&&mq.matches), p=palettes[state.palette][dark?'dark':'light'];
-    const values={page:p[0],surface:p[1],'surface-2':p[2],raised:p[1],text:p[3],muted:p[4],subtle:p[4],line:p[5],press:`color-mix(in srgb, ${p[3]} 7%, transparent)`,accent:p[9],'accent-ink':p[9],'accent-fill':p[6],'on-accent':p[7],'accent-wash':p[8],'accent-soft':p[8],'accent-gradient':'linear-gradient(110deg, var(--ifl-accent-fill), var(--ifl-accent-fill))',contrast:dark?p[6]:p[3],'on-contrast':dark?p[7]:p[1]};
+    // Theme colour belongs to accents and page art; material planes stay neutral.
+    const material=dark?['#1b1b1b','#262626','#3d3d3d']:['#ffffff','#f1f1f1','#e0e0e0'];
+    const values={page:p[0],surface:material[0],'surface-2':material[1],raised:material[0],text:p[3],muted:p[4],subtle:p[4],line:material[2],press:`rgb(${dark?'255 255 255':'0 0 0'} / .07)`,accent:p[9],'accent-ink':p[9],'accent-fill':p[6],'on-accent':p[7],'accent-wash':p[8],'accent-soft':p[8],'accent-gradient':'linear-gradient(110deg, var(--ifl-accent-fill), var(--ifl-accent-fill))',contrast:dark?p[6]:p[3],'on-contrast':dark?p[7]:p[1]};
     // Commit the palette as one style update, preserving unrelated shell geometry.
     const style=document.createElement('span').style;style.cssText=root.style.cssText;
     for(const [k,v]of Object.entries(values))style.setProperty('--ifl-'+k,v);
@@ -145,7 +147,7 @@ try {
   function applyGlass(){
     const amount=state.glass?state.glassStrength/100:0;
     root.dataset.glass=state.glass?'on':'off';
-    const values={'glass-strength':amount,'glass-opacity':(100-30*amount)+'%','glass-window-opacity':(100-24*amount)+'%','glass-inset-opacity':(40-24*amount)+'%','glass-tint':state.appearance==='dark'||state.appearance==='auto'&&mq.matches?'color-mix(in srgb, var(--ifl-surface) 70%, black)':'var(--ifl-surface)','glass-strong-opacity':(100-3*amount)+'%','glass-control-opacity':(100-10*amount)+'%','glass-radius':(32*amount)+'px','glass-saturation':(100+50*amount)+'%','glass-rim-opacity':(62*amount)+'%','glass-light-opacity':(3*amount)+'%'};
+    const values={'glass-strength':amount,'glass-opacity':(100-30*amount)+'%','glass-window-opacity':(100-24*amount)+'%','glass-inset-opacity':(40-24*amount)+'%','glass-tint':state.appearance==='dark'||state.appearance==='auto'&&mq.matches?'color-mix(in srgb, var(--ifl-surface) 70%, black)':'var(--ifl-surface)','glass-strong-opacity':(100-3*amount)+'%','glass-control-opacity':(100-10*amount)+'%','glass-radius':(32*amount)+'px','glass-saturation':'0%','glass-rim-opacity':(62*amount)+'%','glass-light-opacity':(3*amount)+'%'};
     for(const[k,v]of Object.entries(values))root.style.setProperty('--ifl-'+k,String(v));
     if(!pointerAllowed())clearPointer();
   }
