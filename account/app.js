@@ -2727,7 +2727,7 @@ function unlockCard(m, said) {
   const go = h("button.btn" + (byKey ? ".quiet" : ""), { type: "submit" }, "Continue");
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
-    if (!pw.value) return say(said, "Enter your password.", pw);
+    if (!pw.value) return say(said, "Enter your password.", pw, true, true);
     try {
       const k = await working(go, "Checking", async () => {
         const k = await E2E.fromPassword(pw.value, m.salt);
@@ -3180,7 +3180,7 @@ function forgotCard() {
   const box = h("div.signin.glass");
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
-    if (!EMAIL_OK.test(email.value.trim())) return say(said, "Enter the email your account uses.", email);
+    if (!EMAIL_OK.test(email.value.trim())) return say(said, "Enter the email your account uses.", email, true, true);
     try {
       const response = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
       morph(box, () => {
@@ -3316,8 +3316,8 @@ async function withPasskey(btn, said, get) {
 }
 async function withPassword(email, emailIn, pw, go, said) {
   say(said, "");
-  if (!email) return say(said, "Enter your email.", emailIn);
-  if (!pw.value) return say(said, "Enter your password.", pw);
+  if (!email) return say(said, "Enter your email.", emailIn, true, true);
+  if (!pw.value) return say(said, "Enter your password.", pw, true, true);
   try {
     let k;
     const m = await working(go, "Signing in", async () => {
@@ -3496,7 +3496,7 @@ function clearFieldFeedback(el) {
   held.input.removeEventListener("input", held.clear);
   feedbackFields.delete(el);
 }
-function say(el, text, input, bad = !!text) {
+function say(el, text, input, bad = !!text, invalidField = false) {
   if (!el) return;
   clearFieldFeedback(el);
   const change = () => { el.setAttribute("role", bad ? "alert" : "status"); el.textContent = text; el.classList.toggle("bad", bad); }, box = text !== el.textContent && !el.closest("#sheet") && el.closest(".signin");
@@ -3512,7 +3512,7 @@ function say(el, text, input, bad = !!text) {
     descriptions.add(el.id); input.setAttribute("aria-describedby", [...descriptions].join(" "));
     const clear = () => { clearFieldFeedback(el); say(el, ""); };
     const invalid = input.getAttribute("aria-invalid");
-    if (bad) input.setAttribute("aria-invalid", "true");
+    if (bad && invalidField) input.setAttribute("aria-invalid", "true");
     feedbackFields.set(el, { input, clear, invalid }); input.addEventListener("input", clear, { once: true });
   }
   if (text && bad) shake(el);
@@ -4094,7 +4094,7 @@ function confirmWays(ok, { checkBreaches = true } = {}) {
   } }, icon("face", 21, 1.9), "Use a passkey");
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
-    if (!pw.value) return say(said, "Enter your password.", pw);
+    if (!pw.value) return say(said, "Enter your password.", pw, true, true);
     try {
       let proof;
       await busy(go, "Checking…", async () => { ({ proof } = await E2E.fromPassword(pw.value, m.salt)); return post("reauth", { proof }); });
@@ -4404,7 +4404,7 @@ function keyCopyView(id, secret, added = "") {
   const go = h("button.btn", { type: "submit" }, "Continue");
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
-    if (!pw.value) return say(said, "Enter your password.", pw);
+    if (!pw.value) return say(said, "Enter your password.", pw, true, true);
     try {
       await busy(go, "Locking a copy…", async () => {
         const { lockKey, proof } = await E2E.fromPassword(pw.value, m.salt);
@@ -4621,7 +4621,7 @@ function checkView() {
     h("p", { text: "See if your password has turned up in a known data breach. It’s checked here, on this device: only the first 5 characters of a scrambled copy of it are sent to Have I Been Pwned, so neither they nor the site learn it." }),
     h("form.form", { onsubmit: async (e) => {
       e.preventDefault(); say(said, "");
-      if (!pw.value) return say(said, "Enter your password.", pw);
+      if (!pw.value) return say(said, "Enter your password.", pw, true, true);
       try {
         const n = await busy(go, "Checking…", async () => {
           const n = await leakedCount(pw.value);
