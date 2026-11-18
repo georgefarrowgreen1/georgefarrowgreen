@@ -222,7 +222,7 @@ function setupOpening() {
     animate($("img",panel), [{opacity:0},{opacity:1}], {delay:990+i*30,duration:470,easing:"ease-out"});
     animate($("span",panel), [{opacity:0},{opacity:1}], {delay:1450,duration:360});
   });
-  for (const el of $$("#bar,.fi-bio,.fi-work,.fi-playbar,footer")) {
+  for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
     animate(el, [{opacity:0},{opacity:1}], {duration:380,delay:1430,easing:"ease-out"});
   }
   const options = {signal: listeners.signal};
