@@ -30,3 +30,11 @@ test('account preflight is confined to GET home documents, including the configu
   assert.equal(r.status, 302);
   assert.equal(new URL(r.headers.get('location')).origin, 'http://auth.ifl.test:8788');
 });
+
+test('messaging clients can read the public bio without following an account redirect', async () => {
+  const url = new URL('https://georgefarrowgreen.com/');
+  for (const agent of ['WhatsApp/2.0', 'facebookexternalhit/1.1 Twitterbot/1.0', 'Slackbot-LinkExpanding 1.0', 'Discordbot/2.0']) {
+    const request = new Request(url, { headers: { 'User-Agent': agent } });
+    assert.equal(await homeArrival({ request, env: {} }, url), null);
+  }
+});
