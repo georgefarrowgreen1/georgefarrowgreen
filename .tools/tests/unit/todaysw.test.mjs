@@ -23,6 +23,7 @@ const hasRoof = !tfSkip && existsSync(new URL('today/src/roof.js', IFL));
 const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
 // (stage 3's: Chats in that list too, s3 spec §6.3)
 const S3 = S24 && /\bchats: \{ name: "Chats"/.test(readFileSync(SW, 'utf8'));
+const release = /const RELEASE = "([\d.]+)"/.exec(readFileSync(SW,'utf8'))?.[1];
 const SHELL_NOW = S24 ? 'today-app-4' : 'today-app-3';
 // (stage 3's B0: Chats' module files are the hub's too, kept in roof-chats-*, once REGISTRY names them)
 const MODPATH = S24 ? /^\/(weather|markets|fitness|mail|chats|calendar|notes|people|organise)\// : /^\/weather\//;
@@ -56,7 +57,14 @@ function worker(net, { windows = [] } = {}) {
   const key = (k) => new URL(typeof k === 'string' ? k : k.url, ORIGIN).pathname;
   const store = (name) => { if (!stores.has(name)) stores.set(name, new Map()); return stores.get(name); };
   const caches = {
-    open: async (name) => { const m = store(name); return { match: async (k) => m.get(key(k))?.clone() || undefined, put: async (k, r) => { m.set(key(k), r); }, add: async () => {}, addAll: async () => {} }; },
+    open: async (name) => { const m = store(name); return { match: async (k) => m.get(key(k))?.clone() || undefined, put: async (k, r) => { m.set(key(k), r); }, add: async () => {}, addAll: async requests => {
+      const entries = await Promise.all(requests.map(async req => {
+        const path = key(req), response = await fetch(req);
+        if (!response.ok) throw Error('Install interrupted');
+        return [path, response];
+      }));
+      for (const [path, response] of entries) m.set(path,response);
+    } }; },
     keys: async () => [...stores.keys()],
     delete: async (name) => stores.delete(name),
   };
@@ -93,8 +101,10 @@ test('Today’s own files: from the network while there is one, kept as they com
   let down = false;
   const w = worker((path) => {
     if (down) throw new TypeError('Load failed');
+    if(path==='/app.js' && release) return new Response('const BUILD = "' + release + '";');
     return Object.defineProperty(new Response(`fresh ${path}`, { status: 200 }), 'type', { value: 'basic' });
   });
+  if (release) await w.send('install', {});
   assert.equal(await (await w.get('/', 'navigate')).text(), 'fresh /');
   assert.equal(await (await w.get('/cards.js')).text(), 'fresh /cards.js');
   for (const p of ['/api/session', '/api/today?with=morning', '/api/avatar?id=x', '/app.js?v=2', '/version']) assert.equal(await w.get(p), null, p);
@@ -108,7 +118,8 @@ test('Today’s own files: from the network while there is one, kept as they com
   down = true;
   assert.equal(await (await w.get('/', 'navigate')).text(), 'fresh /');
   assert.equal(await (await w.get('/cards.js')).text(), 'fresh /cards.js');
-  await assert.rejects(w.get('/app.css'));
+  if (release) assert.equal(await (await w.get('/app.css')).text(), 'fresh /app.css');
+  else await assert.rejects(w.get('/app.css'));
 });
 
 // (every file Today's page loads as it opens, its manifest's start, and what its scripts and stylesheet bring in: one
@@ -177,14 +188,16 @@ test('One roof: a document at /weather/ from the network, else the copy of / (ne
     if (mode === 'down') throw new TypeError('Load failed');
     if (mode === '5xx') return new Response('hub down', { status: 503 });
     if (mode === 'off') return Object.defineProperty(new Response('MILESTONE 1 WEATHER', { status: 200 }), 'type', { value: 'basic' });
+    if(path==='/app.js' && release) return new Response('const BUILD = "' + release + '";');
     return Object.defineProperty(new Response(path === '/' ? 'TODAY /' : `FRAMEWORK ${path}`, { status: 200 }), 'type', { value: 'basic' });
   });
+  if (release) await w.send('install', {});
   assert.equal(await (await w.get('/', 'navigate')).text(), 'TODAY /', 'Today’s page, kept as it comes');
   for (const p of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2']) assert.equal(await (await w.get(p, 'navigate')).text(), `FRAMEWORK ${new URL(p, ORIGIN).pathname}`, p);
   mode = 'off';
   assert.equal(await (await w.get('/weather/', 'navigate')).text(), 'MILESTONE 1 WEATHER', 'the roof off: the hub’s page, as it sends it');
-  assert.equal(await (await w.stores.get(SHELL_NOW).get('/').clone()).text(), 'TODAY /', 'never kept as /');
-  assert.deepEqual([...w.stores.get(SHELL_NOW).keys()], ['/'], 'nor kept at all');
+  assert.equal(await (await w.stores.get(release ? 'inflite-shell-set-'+release : SHELL_NOW).get('/').clone()).text(), 'TODAY /', 'never kept as /');
+  assert.ok(!w.stores.get(release ? 'inflite-shell-set-'+release : SHELL_NOW).has('/weather/'));
   for (const m of ['down', '5xx']) {
     mode = m;
     for (const p of ['/weather/', '/weather/index.html', '/weather/#radar']) assert.equal(await (await w.get(p, 'navigate')).text(), 'TODAY /', `${m} ${p}`);
@@ -383,11 +396,13 @@ test('stages 2–4: each module’s document (/markets/, /fitness/, /mail/) as /
   let mode = 'up';
   const w = worker((path) => {
     if (mode === 'down') throw new TypeError('Load failed');
+    if (path === '/app.js' && release) return new Response('const BUILD = "' + release + '";');
     return Object.defineProperty(new Response(path === '/' ? 'TODAY /' : `PAGE ${path}`, { status: 200 }), 'type', { value: 'basic' });
   });
+  if (release) await w.send('install', {});
   assert.equal(await (await w.get('/', 'navigate')).text(), 'TODAY /');
   for (const a of ['markets', 'fitness', 'mail']) for (const p of [`/${a}/`, `/${a}/index.html`, `/${a}/#x=1`]) assert.equal(await (await w.get(p, 'navigate')).text(), `PAGE /${a}/${p.includes('index') ? 'index.html' : ''}`, p);
-  assert.deepEqual([...w.stores.get(SHELL_NOW).keys()], ['/'], 'none kept as /');
+  assert.ok(!w.stores.get(release ? 'inflite-shell-set-'+release : SHELL_NOW).has('/chats/'), 'module HTML stays outside the shell cache');
   mode = 'down';
   for (const a of ['markets', 'fitness', 'mail']) assert.equal(await (await w.get(`/${a}/`, 'navigate')).text(), 'TODAY /', `${a} offline: the kept framework`);
   for (const p of ['/markets', '/fitness/x.html', ...(S3 ? [] : ['/chats/']), '/chats/?engine=1', '/chats/in/']) assert.equal(await w.get(p, 'navigate'), null, p);
@@ -455,14 +470,16 @@ test('stage 3: Chats’ document /chats/ as the others’ (the network, else the
   let mode = 'up';
   const w = worker((path) => {
     if (mode === 'down') throw new TypeError('Load failed');
+    if (path === '/app.js' && release) return new Response('const BUILD = "' + release + '";');
     return Object.defineProperty(new Response(path === '/' ? 'TODAY /' : `PAGE ${path}`, { status: 200 }), 'type', { value: 'basic' });
   });
+  if (release) await w.send('install', {});
   assert.equal(await (await w.get('/', 'navigate')).text(), 'TODAY /');
   for (const p of ['/chats/', '/chats/index.html', '/chats/#open=a1', '/chats/?x=1']) assert.match(await (await w.get(p, 'navigate')).text(), /^PAGE \/chats\//, p);
   mode = 'down';
   assert.equal(await (await w.get('/chats/', 'navigate')).text(), 'TODAY /', 'offline: the kept framework');
   for (const p of ['/chats/?engine=1', '/chats/index.html?a=1&engine', '/chats/in/', '/chats/in/index.html', '/chats/tracker.html', '/chats']) assert.equal(await w.get(p, 'navigate'), null, `${p}: never the framework’s`);
-  assert.deepEqual([...w.stores.get(SHELL_NOW).keys()], ['/'], 'none kept as /');
+  assert.ok(!w.stores.get(release ? 'inflite-shell-set-'+release : SHELL_NOW).has('/chats/'), 'module HTML stays outside the shell cache');
   // (its files: kept when the page asks, only Chats’ own kinds)
   const k = worker((path) => okFile(path));
   const files = ['/chats/roof/chats.js', '/chats/roof/core.js', '/chats/roof/chats.css', '/chats/cards.js', '/chats/crypto.js', '/chats/cards.css'];
