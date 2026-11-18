@@ -195,7 +195,7 @@ function setupOpening() {
   let interrupted = false;
   let start = null;
   let warmupFrame;
-  const glide = "cubic-bezier(.4,0,.2,1)";
+  const glide = "cubic-bezier(.34,.08,.24,1)";
   function animate(el, frames, timing) {
     const animation = el.animate(frames, {fill: "both", ...timing});
     animation.pause();
@@ -216,47 +216,60 @@ function setupOpening() {
     body.classList.remove("playing-opening");
   }
 
-  // Compress the actual header letters onto the stroke centres. Crossfade their
-  // counters into solid strokes as they narrow, without repainting SVG geometry.
-  const strokes = document.createElement("span");
-  strokes.className = "opening-strokes";
+  // Both the letters and the photograph apertures land on these exact bounds.
+  const stems = glyphs.map((_, i) => {
+    const width = 8, height = i === 1 ? 46 : 34;
+    return {left: 40 + (i - 1) * 12 - width / 2, top: 26 - height / 2, width, height};
+  });
   glyphs.forEach(({path, bounds}, i) => {
+    const stem = stems[i];
+    const letter = document.createElement("span");
+    letter.className = "opening-letter";
+    Object.assign(letter.style, {width: bounds.width + "px", height: bounds.height + "px"});
     const glyph = wordmark.cloneNode(false);
     glyph.removeAttribute("class");
+    glyph.setAttribute("viewBox", [bounds.x, bounds.y, bounds.width, bounds.height].join(" "));
+    glyph.setAttribute("preserveAspectRatio", "none");
     glyph.append(path.cloneNode(true));
-    mark.append(glyph);
-    strokes.append(document.createElement("i"));
-    const sx = 6 / bounds.width, sy = (i === 1 ? 46 : 32) / bounds.height;
-    const tx = 40 + (i - 1) * 10 - (bounds.x + bounds.width / 2) * sx;
-    const ty = 26 - (bounds.y + bounds.height / 2) * sy;
-    animate(glyph, [
-      {transform: "translate3d(0, 0, 0) scale(1, 1)"},
-      {transform: `translate3d(${tx}px, ${ty}px, 0) scale(${sx}, ${sy})`}
-    ], {delay: 120, duration: 620, easing: glide});
-    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 555, duration: 170});
-  });
-  mark.append(strokes);
-  animate(strokes, [{opacity: 0}, {opacity: 1}], {delay: 575, duration: 150});
-  animate(mark, [
-    {opacity: 1, offset: 0}, {opacity: 1, offset: .84}, {opacity: 0}
-  ], {duration: 900});
 
+    // Fill the counters while the glyph and its rounded core move together.
+    // Extending the core through the fixed crop gradually takes curvature out
+    // of the tips. The fully flat ends are the first edges of the photograph.
+    const core = document.createElement("span");
+    core.className = "opening-core";
+    core.style.borderRadius = `50% / ${50 * stem.width / stem.height}%`;
+    letter.append(core, glyph);
+    mark.append(letter);
+    animate(letter, [
+      {transform: `translate3d(${bounds.x}px, ${bounds.y}px, 0) scale(1, 1)`},
+      {transform: `translate3d(${stem.left}px, ${stem.top}px, 0) scale(${stem.width / bounds.width}, ${stem.height / bounds.height})`}
+    ], {delay: 120, duration: 655, easing: "cubic-bezier(.38,0,.18,1)"});
+    animate(core, [{opacity: 0}, {opacity: 1}], {delay: 390, duration: 215, easing: "ease-in-out"});
+    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 470, duration: 185, easing: "ease-in-out"});
+    animate(core, [
+      {transform: "scale(.52, 1)", easing: "ease-in-out"},
+      {transform: "scale(1, 1)", offset: .58, easing: "ease-in-out"},
+      {transform: `scale(1, ${stem.height / (stem.height - stem.width)})`}
+    ], {delay: 395, duration: 380});
+  });
+
+  const unfoldAt = 775;
   panels.forEach((panel, i) => {
-    const rect = panelRects[i];
-    const dx = x + (i - 1) * 10 - rect.left - rect.width / 2;
-    const dy = y - rect.top - rect.height / 2;
-    const cropX = rect.width - 6;
-    const cropY = rect.height - (i === 1 ? 46 : 32);
+    const rect = panelRects[i], stem = stems[i];
+    const dx = x - 40 + stem.left + stem.width / 2 - rect.left - rect.width / 2;
+    const dy = y - 26 + stem.top + stem.height / 2 - rect.top - rect.height / 2;
+    const cropX = rect.width - stem.width;
+    const cropY = rect.height - stem.height;
     // Two overlapping, fixed-size overflow boxes form the aperture. Move their
     // opposite edges apart; the photograph keeps its natural proportions.
-    const timing = {delay: 810, duration: 1150, easing: glide};
+    const timing = {delay: unfoldAt, duration: 1150, easing: glide};
     function slide(el, left, top) {
       animate(el, [{transform: `translate3d(${left}px, ${top}px, 0)`},
         {transform: "translate3d(0, 0, 0)"}], timing);
     }
     slide(panel, dx - cropX / 2, dy - cropY / 2);
     slide($(".fi-window", panel), cropX, cropY);
-    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 710, duration: 95, easing: "ease-in-out"});
+    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: unfoldAt - 30, duration: 30});
 
     // Decode in parallel with the wordmark. A slow photograph gets its own fade
     // when ready, without delaying the gallery, text or navigation.
@@ -280,6 +293,7 @@ function setupOpening() {
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
     animate($(".fi-caption", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
   });
+  animate(mark, [{opacity: 1}, {opacity: 0}], {delay: unfoldAt - 8, duration: 8});
   for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
   }
