@@ -5,3 +5,13 @@ async function setup(){const pair=await crypto.subtle.generateKey({name:'ECDH',n
  const client=connect({owner,idb:{get:async k=>db.get(k),set:async(k,v)=>{db.set(k,v);return k},del:async k=>db.delete(k)},locked:async(k,fn)=>fn(),live:()=>alive,seal:values=>E2E.seal(base,meta,{d:values}),open:async ct=>(await E2E.open(base,meta,ct)).d,read:async()=>local});return{client,db,remote,calls,local,seal:values=>E2E.seal(base,meta,{d:values}),lock:()=>alive=false,lose:()=>lose=true,done:()=>{globalThis.fetch=original}}}
 test('only encrypted envelopes leave the worker; recovery remains an explicit own-key read',async()=>{const e=await setup();try{const device='a'.repeat(32),other='b'.repeat(32);await e.client.save(device);assert.equal(e.remote.get(device).revision,1);assert.doesNotMatch(JSON.stringify(e.calls),/A private unsent draft/);assert.equal(e.db.size,0);e.remote.set(other,{revision:1,updatedAt:Date.now(),cipher:await e.seal([['friend','From another device']])});const copies=await e.client.copies('friend',device);assert.equal(copies[0].preview,'From another device');assert.deepEqual(e.local,[['friend','A private unsent draft']]);assert.equal(await e.client.restore(other,'friend'),'From another device');e.lock();await assert.rejects(()=>e.client.restore(other,'friend'));}finally{e.done()}});
 test('lost acknowledgements retry the exact encrypted operation before saving newer local text',async()=>{const e=await setup();try{e.lose();await e.client.save('a'.repeat(32));assert.equal(e.db.size,1);const pending=[...e.db.values()][0];e.local[0][1]='New local draft';await e.client.save('a'.repeat(32));const writes=e.calls.filter(c=>c.init.method==='PUT').map(c=>JSON.parse(c.init.body));assert.equal(writes[1].operationId,pending.operationId);assert.equal(writes[1].cipher,pending.cipher);assert.equal(e.remote.get('a'.repeat(32)).revision,2);assert.equal(e.db.size,0);assert.doesNotMatch(JSON.stringify(e.calls),/New local draft/);}finally{e.done()}});
+
+test('recovery lists only other devices even when this device has a different saved copy', async () => {
+ const e=await setup(), device='a'.repeat(32);
+ try {
+  await e.client.save(device);
+  e.local[0][1]='Newer local draft';
+  assert.deepEqual(await e.client.copies('friend',device),[]);
+  assert.ok(!e.calls.some(c=>c.url.endsWith('draft?device='+device)));
+ } finally {e.done()}
+});

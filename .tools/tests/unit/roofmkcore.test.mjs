@@ -356,3 +356,15 @@ test("your list couldn't come: S.err (offline said so), no list, and Try Again (
   assert.equal(core.S.err, null);
   core.stop();
 });
+
+test("the hosted Markets view waits for its own account after a session change", async () => {
+  NET.acc = account(Date.now(), "b"); NET.status = 0;
+  localStorage.removeItem("markets:last");
+  let checks = 0;
+  try {
+    await core.start(fakeFw({ id:"u-a-0001", lost:async () => { checks++; return false; } }));
+    assert.equal(checks, 1);
+    assert.equal(core.S.me, null);
+    assert.equal(localStorage.getItem("markets:last"), null);
+  } finally { core.stop(); NET.acc = account(); }
+});

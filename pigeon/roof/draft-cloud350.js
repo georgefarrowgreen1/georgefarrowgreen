@@ -27,7 +27,7 @@ export function connect({owner,idb,locked,live,seal,open,read}){
  }
  async function copies(chat,device){
   const list=await request('drafts'),out=[],here=new Map(await read());
-  for(const meta of (list.backups||[]).slice(0,6)){
+  for(const meta of (list.backups||[]).filter(entry=>entry.id!==device).slice(0,6)){
    try{const copy=await request('draft?device='+encodeURIComponent(meta.id));const values=await open(copy.cipher),text=values.find(([id])=>id===chat)?.[1];if(live()&&text?.trim()&&text!==here.get(chat))out.push({device:meta.id,updatedAt:copy.updatedAt,preview:text.slice(0,180)})}catch(e){if(!live())throw e}
   }return live()?out:[];
  }

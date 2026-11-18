@@ -4,6 +4,10 @@ import { MONITORS } from "./_monitorlist.js";
 // here but the list, so the ticker can carry it without the rest of the site.
 //   id: what it's kept under. group: where the page shows it. probe: what the ticker asks for (GET, ten seconds).
 //   app: the version it's on, where it's this Worker's own (functions/_version.js).
+// Accept both legacy major.minor and current major.feature.patch release numbers.
+export function statusVersion(value) {
+  return typeof value === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(value) ? value : null;
+}
 export const STATUS_SERVICES = [
   { id: "today", name: "Today", group: "apps", address: "inflite.ai", probe: "https://inflite.ai/version" },
   { id: "chat", name: "Chat", group: "apps", address: "inflite.ai/chats", probe: "https://chat.inflite.ai/version", app: "chat" },

@@ -419,7 +419,7 @@ test("a change sends the same PUT body app.js's mine() would, from the same stor
     // app.js's own mine(), from what's stored now
     const app = appOwn();
     app.loadSettings(); app.S.places = JSON.parse(mem.get("wx:places")); app.S.cur = JSON.parse(mem.get("wx:cur"));
-    assert.deepEqual(put.body, { base: 3, data: app.mine() });
+    assert.deepEqual(put.body, { base: 3, data: app.mine(), owner: ACCT.id });
     assert.equal(sync.canon(put.body.data), sync.canon(app.mine()), "key for key");
     put.answer(200, { ver: 4, data: put.body.data });
     await step;
@@ -450,4 +450,31 @@ test("opening Weather requests location with an approximate place already saved,
     core.stop();
     if (original) Object.defineProperty(globalThis, "navigator", original); else delete globalThis.navigator;
   }
+});
+
+test("Weather skips a damaged saved list and waits for its shell account before syncing", async () => {
+  reset({"wx:places":{}});
+  let checks = 0;
+  try {
+    core.start({ ...fw(), session:{user:{id:"another-id"}, lost:async () => { checks++; return false; }} });
+    assert.deepEqual(core.S.places, []);
+    assert.equal(core.S.acct, null);
+    await sync.adopt({id:"unexpected", signedIn:true});
+    assert.equal(checks,1);
+    assert.equal(core.S.acct,null);
+    assert.equal(core.S.ask,null);
+  } finally { core.stop(); }
+});
+
+test("saved places belong to the account that kept them, in Weather and cross-app search", async () => {
+  const { connector } = await import("../../../weather/roof/connector.js");
+  const places = [{ name: "Bath", lat: 51.38, lon: -2.36 }];
+  reset({ "wx:places": places, "wx:acct": ACCT });
+  try {
+    assert.equal(connector.search("Bath", {userId: ACCT.id}).length, 1);
+    assert.deepEqual(connector.search("Bath", {userId: "second"}), []);
+    core.start({...fw(), session: {user: {id: "second"}}});
+    assert.deepEqual(core.S.places, []);
+    assert.equal(core.S.acct, null);
+  } finally { core.stop(); }
 });

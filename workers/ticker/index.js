@@ -10,7 +10,7 @@
 // ticker's TICK_SITE says (wrangler.toml))
 import { API_PROBES } from "../../functions/_monitorlist.js";
 import { probeApi } from "./api-probe.js";
-import { STATUS_SERVICES, SLOW_MS } from "../../functions/_statuslist.js";
+import { STATUS_SERVICES, SLOW_MS, statusVersion } from "../../functions/_statuslist.js";
 
 const APPS_SITE = "https://inflite-apps.georgefarrowgreen.workers.dev";
 
@@ -22,12 +22,14 @@ export async function probe(svc) {
     const r = await fetch(svc.probe, { headers: { "User-Agent": "InFlite-Status/1 (+https://status.inflite.ai)", Accept: "application/json, text/html" }, redirect: "manual", signal: AbortSignal.timeout(10000) });
     const ms = Date.now() - t0, type = r.headers.get("content-type") || "";
     if (r.headers.get("cf-mitigated") === "challenge" || (r.status === 403 && type.includes("html"))) { await r.body?.cancel(); return { id: svc.id, s: "none", ms, why: "bot check" }; }
-    const fine = r.ok || (r.status >= 300 && r.status < 400);
+    const versionEndpoint = new URL(svc.probe).pathname === "/version";
+    const fine = r.ok || (!versionEndpoint && r.status >= 300 && r.status < 400);
     let version = null;
     if (r.ok && type.includes("json")) {
-      const j = await r.json().catch(() => null), v = (x) => (typeof x === "string" && /^\d{1,3}\.\d{2}$/.test(x) ? x : null);
-      version = v(j?.app) || v(j?.build);
+      const j = await r.json().catch(() => null);
+      version = statusVersion(j?.app) || statusVersion(j?.build);
     } else await r.body?.cancel();
+    if (versionEndpoint && r.ok && !version) return {id:svc.id, s:"down", ms, why:"Invalid version response", version:null};
     return { id: svc.id, s: !fine ? "down" : ms > SLOW_MS ? "warn" : "ok", ms, why: fine ? null : `HTTP ${r.status}`, version };
   } catch (e) {
     return { id: svc.id, s: "down", ms: null, why: e?.name === "TimeoutError" ? "no answer in 10 s" : "unreachable" };
@@ -42,10 +44,11 @@ export default {
       if (!secret) { console.error(path, "no secret set"); return { path, ok: false, ms: null }; }
       const t0 = Date.now();
       try {
-        const r = await fetch(SITE + path, { method: "POST", headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(55000) });
+        const r = await fetch(SITE + path, { method: "POST", redirect: "manual", headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(55000) });
+        await r.body?.cancel();
         if (r.ok) return { path, ok: true, ms: Date.now() - t0 };
-        console.error(path, r.status, (await r.text()).slice(0, 200));
-      } catch (e) { console.error(path, e && e.message); }
+        console.error(path, r.status);
+      } catch { console.error(path, "request failed"); }
       return { path, ok: false, ms: Date.now() - t0 };
     };
     const [jobs, checks, apis] = await Promise.all([
@@ -63,10 +66,11 @@ export default {
     // (status.inflite.ai's: what was found, kept by the site)
     if (env.INFLIGHT_TICK_SECRET) {
       try {
-        const r = await fetch(SITE + "/api/status/report", { method: "POST", headers: { Authorization: `Bearer ${env.INFLIGHT_TICK_SECRET}`, "Content-Type": "application/json" },
+        const r = await fetch(SITE + "/api/status/report", { method: "POST", redirect: "manual", headers: { Authorization: `Bearer ${env.INFLIGHT_TICK_SECRET}`, "Content-Type": "application/json" },
           body: JSON.stringify({ checks, jobs, apis }), signal: AbortSignal.timeout(20000) });
-        if (!r.ok) { console.error("/api/status/report", r.status, (await r.text()).slice(0, 200)); failed.push("/api/status/report"); }
-      } catch (e) { console.error("/api/status/report", e && e.message); failed.push("/api/status/report"); }
+        await r.body?.cancel();
+        if (!r.ok) { console.error("/api/status/report", r.status); failed.push("/api/status/report"); }
+      } catch { console.error("/api/status/report", "request failed"); failed.push("/api/status/report"); }
     }
     // (the run itself marked as failed, if any job did: so it's seen in the Worker's own list of its runs and its errors
     // in Cloudflare's dashboard, not only in its log)

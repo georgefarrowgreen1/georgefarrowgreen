@@ -13,6 +13,7 @@
 //   fileServerBug(env, src, e) → the code a server error's filed under (logError's)
 import { HttpError, db, clientNet, limit, readCapped, sha256, hex, serverSecret } from "./_pigeon.js";
 import { tickHost, appsSite } from "./_sites.js";
+import { ignoreDuplicateColumn, schemaSetup } from "./_schema.js";
 import { tickAuthOk } from "./_notify.js";
 
 // (each app's letter; S, the site's own servers)
@@ -42,20 +43,24 @@ export const scrub = (s, n = 500) => String(s ?? "").split("\n").map((line) => {
 const CODE = /^IF-[A-Z]-[0-9A-Z]{4,6}$/;
 const text = (v, n) => (typeof v === "string" ? scrub(v, n) : "");
 
-let ready = null;
-export const table = (env) => (ready ||= db(env).then((D) => D.batch([
-  D.prepare(`CREATE TABLE IF NOT EXISTS pg_bugs (id TEXT PRIMARY KEY, code TEXT NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
-    version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)`),
-  D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_unfiled ON pg_bugs(filed_at, at)"),
-  D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_code ON pg_bugs(code, at)"),
-  D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_app_at ON pg_bugs(app, at)"),
-  // (a server error's detail, for the Incident Desk: { sev: "slow" | "failed", limit, steps: [{ name, ms, done }] })
-]).then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN detail TEXT").run().catch(() => {}))
-  // (who sent it from the window, where they were signed in: told when it's fixed, functions/_desk.js tellFixed)
-  .then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN user_id TEXT").run().catch(() => {}))
-  // (where a report from the window came from, as a key that can't be read back (the network's, hashed with this server's
-  // secret): so a burst, or a fixed bug back again, is several people's, not one sender's over and over)
-  .then(() => D.prepare("ALTER TABLE pg_bugs ADD COLUMN reporter TEXT").run().catch(() => {})).then(() => D)).catch((e) => { ready = null; throw e; }));
+const ensureBugSchema = schemaSetup(async (env) => {
+  const D = await db(env);
+  await D.batch([
+    D.prepare(`CREATE TABLE IF NOT EXISTS pg_bugs (id TEXT PRIMARY KEY, code TEXT NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
+      version TEXT, words TEXT, at_where TEXT, stack TEXT, path TEXT, device TEXT, note TEXT, filed_at INTEGER, issue INTEGER)`),
+    D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_unfiled ON pg_bugs(filed_at, at)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_code ON pg_bugs(code, at)"),
+    D.prepare("CREATE INDEX IF NOT EXISTS pg_bugs_app_at ON pg_bugs(app, at)"),
+  ]);
+  // Upgrade older reports with server-side detail, the recipient of a fix, and a non-reversible reporter key.
+  for (const column of ["detail TEXT", "user_id TEXT", "reporter TEXT"]) {
+    await D.prepare(`ALTER TABLE pg_bugs ADD COLUMN ${column}`).run().catch(ignoreDuplicateColumn);
+  }
+});
+export async function table(env) {
+  await ensureBugSchema(env);
+  return db(env);
+}
 const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => ALPHA[b % 32]).join("");
 
 async function keep(env, r) {

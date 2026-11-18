@@ -61,6 +61,47 @@ async function authFixture(width, reducedMotion) {
   await p.locator('.auth-panel[data-auth-state="signin"]').waitFor();
   return { ctx, p, errors, completeReset };
 }
+test('sign-out confirmation keeps the current account visible until the server acknowledges it', async () => {
+  const {ctx,p,errors} = await authFixture(390,'reduce');
+  try {
+    await p.route('**/api/account/me', route => route.fulfill({json:{signedIn:true,id:'fixture-user',handle:'alex',name:'Alex'}}));
+    let attempts = 0;
+    await p.route('**/api/account/signout', route => {
+      assert.equal(route.request().headers()['x-inflite-owner'],'fixture-user');
+      attempts++;
+      if (attempts === 1) return route.abort('internetdisconnected');
+      return route.fulfill({json:attempts === 2 ? {} : {ok:true}});
+    });
+    await p.goto('https://auth.inflite.ai/?fixture=signout#signout=today&back=https%3A%2F%2Finflite.ai%2F');
+    const submit = p.getByRole('button',{name:'Sign Out',exact:true});
+    await submit.click();
+    await p.getByText('Reconnect to finish signing out.',{exact:true}).waitFor();
+    assert.ok(await submit.isEnabled());
+    assert.equal(await p.locator('[data-auth-state="signed-out"]').count(),0);
+    await submit.click();
+    await p.getByText('Couldn’t confirm sign-out. Try again.',{exact:true}).waitFor();
+    await submit.click();
+    await p.locator('[data-auth-state="signed-out"]').waitFor();
+    assert.equal(attempts,3);
+    assert.deepEqual(errors,[]);
+  } finally { await ctx.close(); }
+});
+test('a standalone Account document discards the old session after an account change', async () => {
+  const {ctx,p,errors} = await authFixture(390,'reduce');
+  try {
+    let id = 'first-owner';
+    await p.route('**/api/account/me', route => route.fulfill({json:{signedIn:true,id,handle:id,name:id}}));
+    const url = 'https://auth.inflite.ai/?fixture=switch#signout=today&back=https%3A%2F%2Finflite.ai%2F';
+    await p.goto(url);
+    await p.getByRole('button',{name:'Sign Out',exact:true}).waitFor();
+    id = 'second-owner';
+    await p.clock.setFixedTime(new Date(Date.now()+60000));
+    const navigation = p.waitForEvent('framenavigated',{predicate:frame=>frame===p.mainFrame()});
+    await p.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await navigation;
+    assert.deepEqual(errors,[]);
+  } finally { await ctx.close(); }
+});
 for (const width of [390, 1440]) for (const reducedMotion of ['no-preference', 'reduce']) {
   test(`auth method drafts, feedback, busy state and recovery remain usable ${width}/${reducedMotion}`, async () => {
     const f = await authFixture(width, reducedMotion), { p } = f;

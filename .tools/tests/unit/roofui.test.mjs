@@ -7,7 +7,10 @@
 // with comments stripped. Skips (with the reason) when the inflite repo beside has no roof.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { ROOF, IFL, roofSkip } from './fixtures/roof.mjs';
@@ -181,17 +184,27 @@ const OPTIONAL_WORKSPACE = new Set([...OS_CORE_JS, ...OS_RETIRED_JS]);
 // Bounded route memory, two-app preloading and coarse timing reports add under
 // 2 KiB gzip in 3.10. Verified, curated reopen references add a separately
 // reviewed 2 KiB ceiling in 3.11. Neither adds a runtime dependency.
-test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
+test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, async t => {
+  const builder = new URL('tools/build-shell-assets.mjs', IFL);
+  let delivered = f => strip(read(f));
+  if (existsSync(builder)) {
+    const temp = mkdtempSync(join(tmpdir(), 'inflite-core-budget-'));
+    t.after(() => rmSync(temp, { recursive: true, force: true }));
+    const destination = join(temp, 'assets');
+    const { buildShellAssets } = await import(builder);
+    buildShellAssets(destination, createRequire(import.meta.url)('esbuild').transformSync);
+    delivered = f => readFileSync(join(destination, 'roof', f), 'utf8');
+  }
   const lazySearch = 'search-render.js';
   if (files().includes(lazySearch)) {
-    assert.ok(gzipSync(strip(read(lazySearch))).length <= 2048, 'typed search rendering exceeds 2 KiB');
+    assert.ok(gzipSync(delivered(lazySearch)).length <= 2048, 'typed search rendering exceeds 2 KiB');
     assert.ok(!/^import .*search-render/m.test(read('search.js')), 'typed rendering stays off the initial search path');
   }
-  const all = files().filter(f => f !== lazySearch && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
-  assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
+  const all = files().filter(f => f !== lazySearch && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map(delivered).join('\n');
+  assert.ok(gzipSync(delivered('requests.js')).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
-  console.log(`# roof core: ${gz} bytes gzip (comments stripped, optional OS scripts separately bounded)`);
-  assert.ok(gz <= 39 * 1024, `roof core is ${gz} bytes gzipped (comments stripped), over 39936`);
+  console.log(`# roof core: ${gz} bytes gzip (delivered core, optional OS scripts separately bounded)`);
+  assert.ok(gz <= 39 * 1024, `roof core is ${gz} bytes gzipped, over 39936`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });
 

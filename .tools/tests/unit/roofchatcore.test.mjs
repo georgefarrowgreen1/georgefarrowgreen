@@ -347,6 +347,18 @@ test('signOut: logout on the server, then forget; state signin', async () => {
   assert.equal(k.lastOf('state').state, k.srv.signedIn ? 'signin' : 'signin');
 });
 
+test('a failed Chat sign-out keeps the session for a retry', async () => {
+  const k = await boot();
+  await k.call('start', { locked: false });
+  k.srv.offline = true;
+  assert.equal((await k.raw('signOut', [])).ok, false);
+  assert.ok(k.db.data.has('session'));
+  k.srv.offline = false;
+  assert.equal((await k.call('signOut')).ok, true);
+  assert.equal(k.srv.logout, 1);
+  assert.equal(k.db.data.has('session'), false);
+});
+
 test('no Chat session here: signed in to InFlite → key; not → signin; a 401 mid-session → ended', async () => {
   const k = await boot({ empty: true });
   assert.equal((await k.call('start', { locked: false })).state, 'key');

@@ -573,8 +573,9 @@ const stream = priceStream({ quotes: () => S.q, symbols: () => [...INDICES, ...S
   update: (quotes) => applyPrices({ quotes }, false, true) });
 // (a sign-in Markets was told is gone: the framework asks the session; signed out → stop, kept → nothing)
 async function lost() {
-  const out = await P.fw?.session?.lost?.().catch(() => false);
-  if (out === true) stop();
+  const owner = P.fw;
+  const out = await owner?.session?.lost?.().catch(() => false);
+  if (out === true && P.fw === owner) stop();
   return out === true;
 }
 
@@ -613,7 +614,8 @@ function loadMe(gen) {
   const failed = (words, offline = false) => { S.err = { words, offline }; emit("error", words); };
   return A.me().then(async (m) => {
     if (gen !== P.gen) return;
-    if (!m?.signedIn) { S.loading = false; emit("loading", false); if (!(await lost()) && gen === P.gen) failed("Couldn’t get your list just now"); return; }
+    const owner = P.fw?.session?.user?.id;
+    if (!m?.signedIn || (owner != null && m.id !== owner)) { S.loading = false; emit("loading", false); if (!(await lost()) && gen === P.gen) failed("Couldn’t get your list just now"); return; }
     if (S.me && S.me.id !== m.id) fresh();
     take(m);
     S.pricesAt = Date.now(); S.opening = 0; S.loading = false; S.err = null;

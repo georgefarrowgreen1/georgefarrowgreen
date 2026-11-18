@@ -34,6 +34,7 @@
 // change to it is run once more everywhere.
 // (Made by B0, the table and the reads in full; then batch CS's, which writes addTime and promoteTime; the names and
 // arguments stay.)
+import { schemaSetup } from "./_schema.js";
 import { HttpError } from "./_http.js";
 import { zoneOk } from "../pigeon/cards.js";
 
@@ -45,15 +46,14 @@ export const TIME_KEEP = 12 * 3600e3;
 const MIN = 60e3, QUARTER = 15 * MIN;
 export const TIME_SHORTEST = 15 * MIN, TIME_LONGEST = 240 * MIN, TIME_OPTS = 3, TIMES_PENDING_MAX = 20, TIMES_MAX = 200;
 
-let ready = null;
+const ensureTimesSchema = schemaSetup(async (env) => {
+  if ((await env.DB.prepare("SELECT v FROM td_meta WHERE k = 'times_fp'").first().catch(() => null))?.v === TIMES_FP) return;
+  await setup(env);
+  await env.DB.prepare("INSERT OR REPLACE INTO td_meta (k, v) VALUES ('times_fp', ?)").bind(TIMES_FP).run();
+});
 async function timesDb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
-  if (!ready) ready = (async () => {
-    if ((await env.DB.prepare("SELECT v FROM td_meta WHERE k = 'times_fp'").first().catch(() => null))?.v === TIMES_FP) return;
-    await setup(env);
-    await env.DB.prepare("INSERT OR REPLACE INTO td_meta (k, v) VALUES ('times_fp', ?)").bind(TIMES_FP).run();
-  })().catch((e) => { ready = null; throw e; });
-  await ready;
+  await ensureTimesSchema(env);
   return env.DB;
 }
 // (td_meta is Today's, made here too where this comes first. id: the invite letter's UUID; kind: call | meet; who: the

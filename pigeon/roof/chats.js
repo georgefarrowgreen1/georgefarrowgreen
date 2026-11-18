@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16.1";
-export const NEWS = "App versions now use major, feature and minor release numbers.";
+export const BUILD = "2.16.2";
+export const NEWS = "Sign-out waits for confirmation. Draft suggestions now show copies from your other devices.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

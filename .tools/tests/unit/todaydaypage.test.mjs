@@ -11,13 +11,15 @@
 // an inline handler or a box to type in. (The page itself, in Chromium against the stand-in account: todayphases.mjs.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { IFL } from "./fixtures/roof.mjs";
 import { register } from "node:module";
 
-const PUB = new URL("../../../../inflite/today/public/", import.meta.url);
+const PUB = IFL && pathToFileURL(realpathSync(new URL("today/public", IFL)) + "/");
 const FIX = (p) => JSON.parse(readFileSync(new URL(`../mocks/today/cards.${p}.json`, import.meta.url), "utf8"));
 const PHASES = ["morning", "midday", "preride", "riding", "after", "after-fit", "evening"];
-const skip = !existsSync(new URL("day.js", PUB)) && "the inflite repo isn’t beside this one";
+const skip = (!PUB || !existsSync(new URL("day.js", PUB))) && "the inflite repo isn’t beside this one";
 
 // (Today's modules import each other by the site's own paths, "/cards.js": resolved here to the files beside them)
 if (!skip) register(`data:text/javascript,${encodeURIComponent(`

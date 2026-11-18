@@ -145,3 +145,22 @@ test('the photos: two adds at 49, the second waiting on the first, make 50, not 
 });
 
 test.after(() => { globalThis.fetch = real; });
+
+test('contact storage retries a failed migration and keeps separate database bindings isolated', { skip: !sqlite }, async () => {
+  const first = d1(), second = d1();
+  first.s.exec('CREATE TABLE messages (id INTEGER PRIMARY KEY, name TEXT, email TEXT, body TEXT, created_at INTEGER)');
+  const prepare = first.prepare;
+  let interrupted = false;
+  first.prepare = sql => {
+    if (!interrupted && sql.startsWith('ALTER TABLE')) {
+      interrupted = true;
+      return { run: async () => { throw new Error('database temporarily unavailable'); } };
+    }
+    return prepare(sql);
+  };
+  const message = { name: 'Sender', email: 'sender@example.test', body: 'hello' };
+  await assert.rejects(saveMessage({ DB: first }, message), /temporarily unavailable/);
+  await saveMessage({ DB: first }, message);
+  assert.equal((await listMessages({ DB: first })).length, 1);
+  assert.deepEqual(await listMessages({ DB: second }), []);
+});

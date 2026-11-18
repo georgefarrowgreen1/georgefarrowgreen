@@ -176,9 +176,14 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
   const flush = so.indexOf('F?.flush?.()'), logout = so.indexOf('/api/logout'), dev = so.indexOf('currentSub()');
   assert.ok(flush > 0 && flush < dev && flush < logout, 'flushed before the device is let go of and before /api/logout');
   // (the device let go of by the logout itself, its subscription kept: signed in again, it has them again, syncPush)
-  assert.match(so, /call\("\/api\/logout", \{ method: "POST", body: endpoint \? \{ endpoint \} : \{\} \}\)/);
+  assert.match(so, /call\("\/api\/logout",\s*\{\s*method:\s*"POST",\s*body:\s*endpoint \? \{\s*endpoint\s*\} : \{\}\s*\}\)/);
   assert.doesNotMatch(so, /unsubscribe\(/);
-  assert.match(so, /if \(fl\?\.lost > 0 && !\(await anyway\(\)\)\) return;/, 'lost > 0: asked; Cancel signs nobody out');
+  if (so.includes('signOutAccount(')) {
+    const confirmation = so.indexOf('if (!confirmed) {');
+    assert.ok(confirmation > logout && confirmation < so.indexOf('forgetKept()'), 'the shell confirms logout before forgetting account data');
+    assert.match(so, /checkSession\(true\) === false/, 'an unconfirmed logout checks the authoritative session');
+  }
+  assert.match(so, /fl\?\.lost > 0 && !\(await anyway\(\)\)\)+ return;/, 'lost > 0: asked; Cancel signs nobody out');
   assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
   const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
@@ -194,7 +199,7 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
   // (sure only from the account's own answer, or the frame's lost(), which asks it first)
   assert.match(js, /lost: \(\) => signedOutNow\(true\)/);
   assert.match(js, /if \(e\.status === 401\) return signedOutNow\(true\);/); assert.match(js, /if \((?:!view\?\.signedIn|view\?\.signedIn === false)\) return signedOutNow\(true\);/);
-  assert.match(js, /if \(r\.status === 401 && S\.view\) signedOutNow\((?:path === "\/api\/session")?\);/, 'only the authoritative session endpoint may confirm a request’s 401');
+  assert.match(js, /if \(r\.status === 401 && S\.view(?: && path !== "\/api\/logout")?\) signedOutNow\((?:path === "\/api\/session")?\);/, 'only the authoritative session endpoint may confirm a request’s 401');
   assert.match(js, /const APP_SESSION_KEPT = \["mail:signin-verifier"\];/);
   assert.match(js, /for \(const k of APP_SESSION_KEPT\) sessionStorage\.removeItem\(k\)/);
   for (const k of ['mail:replies', 'mail:unsent', 'mail:outbox', 'mail:remote-images', 'mail:lens']) assert.ok(js.includes(`"${k}"`), `APP_KEPT: ${k}`);

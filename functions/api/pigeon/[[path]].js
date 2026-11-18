@@ -149,7 +149,11 @@ async function handback({ request, env }) {
 
 async function logout({ request, env }) {
   const u = await requireUser(request, env);
-  await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
+  const D = await db(env);
+  await D.batch([
+    D.prepare("DELETE FROM pg_push WHERE session = ? AND user_id = ?").bind(u.sessionHash, u.id),
+    D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash),
+  ]);
   // (the browser's sign-in for the whole site too, if it's this one: functions/_account.js)
   const c = cookieToken(request, env);
   return c && u.siteHash && (await hashOf(c)) === u.siteHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });

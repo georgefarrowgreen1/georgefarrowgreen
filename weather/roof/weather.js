@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.13.2";
-export const NEWS = "Offline Weather now keeps only its public app files and map libraries.";
+export const BUILD = "2.13.3";
+export const NEWS = "Weather updates more reliably and keeps saved places with the right account when you switch.";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

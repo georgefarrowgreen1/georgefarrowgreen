@@ -96,8 +96,8 @@ for(const width of (process.env.STATUS_WIDTHS?process.env.STATUS_WIDTHS.split(',
  await page.keyboard.press('Enter');
  if(!problem && [390,1100].includes(width)) {
   await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.locator('[data-operation-toggle="connectors"]').click();
   const midpoint=await page.locator('#operation-panel-connectors').evaluate(panel=>{
+   document.querySelector('[data-operation-toggle="connectors"]').click();
    const animation=panel.getAnimations()[0];
    if(!animation)return null;
    animation.pause();animation.currentTime=120;
@@ -109,8 +109,8 @@ for(const width of (process.env.STATUS_WIDTHS?process.env.STATUS_WIDTHS.split(',
   await page.evaluate(()=>Promise.all([...document.querySelectorAll('.operation-panel')].flatMap(p=>p.getAnimations().map(a=>a.finished.catch(()=>{})))));
   assert.equal(await page.locator('#operation-panel-connectors').evaluate(x=>x.hidden),true);
   assert.equal(await page.locator('#operation-panel-api-health').evaluate(x=>x.hidden),false);
-  await page.locator('[data-operation-toggle="api-health"]').click();
   const closing=await page.locator('#operation-panel-api-health').evaluate(panel=>{
+   document.querySelector('[data-operation-toggle="api-health"]').click();
    const animation=panel.getAnimations()[0];
    if(!animation)return false;
    const frames=animation.effect.getKeyframes();return parseFloat(frames[0].height)>0 && parseFloat(frames.at(-1).height)===0;

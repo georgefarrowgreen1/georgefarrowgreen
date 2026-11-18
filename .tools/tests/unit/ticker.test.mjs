@@ -11,14 +11,16 @@ import { STATUS_SERVICES } from "../../../functions/_statuslist.js";
 async function run(env, answer, look = (url) => { const svc = API_PROBES.find(s => s.probe === url); return new Response(JSON.stringify(svc ? { [svc.field]: svc.value } : { build: "1.50" }), { status: svc?.status || 200, headers: { "Content-Type": "application/json" } }); }) {
   const asked = [], looked = [], real = globalThis.fetch, said = console.error;
   let reported = null;
+  const logs = [];
   globalThis.fetch = async (url, o) => {
     const u = new URL(url), p = u.pathname;
     if (!o.headers.Authorization) { looked.push(u.href); return look(u.href); }
+    assert.equal(o.redirect, "manual", "credentialed scheduler requests stay on the configured worker");
     if (p === "/api/status/report") { reported = JSON.parse(o.body); return answer(p); }
     asked.push(`${p} ${o.headers.Authorization}`); return answer(p);
   };
-  console.error = () => {};
-  try { const threw = await ticker.scheduled({}, env, { waitUntil() {} }).then(() => null, (e) => e); return { asked: asked.sort(), looked, reported, threw }; }
+  console.error = (...message) => logs.push(message.join(" "));
+  try { const threw = await ticker.scheduled({}, env, { waitUntil() {} }).then(() => null, (e) => e); return { asked: asked.sort(), looked, reported, threw, logs }; }
   finally { globalThis.fetch = real; console.error = said; }
 }
 const env = { INFLIGHT_TICK_SECRET: "chat", WEATHER_TICK_SECRET: "wx" };
@@ -34,6 +36,7 @@ test("the scheduler asks for every job, each with its secret, and a run where al
 test("a run where a job fails (refused, or the site not answering) is said to have failed, naming it", async () => {
   const one = await run(env, (p) => new Response("Not allowed.", { status: p === "/api/markets/tick" ? 401 : 200 }));
   assert.match(one.threw?.message || "", /\/api\/markets\/tick/);
+  assert.ok(one.logs.every(line => !line.includes("Not allowed.")), "provider response bodies stay out of scheduler logs");
   assert.doesNotMatch(one.threw.message, /weather|pigeon|fitness|today/);
   // (Today's morning notification refused: named, alone)
   const today = await run(env, (p) => new Response("Not allowed.", { status: p === "/api/today/tick" ? 401 : 200 }));
@@ -68,12 +71,15 @@ test("one address: fine, slow, down, not answering, or behind a bot check (which
   try {
     assert.equal((await as(async () => new Response('{"app":"chat","build":"1.79"}', { headers: { "Content-Type": "application/json" } }))).version, "1.79");
     assert.equal((await as(async () => new Response('{"v":"9","app":"1.62"}', { headers: { "Content-Type": "application/json" } }))).version, "1.62", "Mail's");
+    assert.equal((await as(async () => Response.json({app:"today",build:"4.10.2"}))).version, "4.10.2");
     const down = await as(async () => new Response("x", { status: 502 }));
     assert.equal(down.s, "down"); assert.equal(down.why, "HTTP 502");
     const gone = await as(async () => { throw new TypeError("fetch failed"); });
     assert.equal(gone.s, "down"); assert.equal(gone.why, "unreachable");
     assert.equal((await as(async () => new Response("<html>", { status: 403, headers: { "Content-Type": "text/html", "cf-mitigated": "challenge" } }))).s, "none");
-    const slow = await as(async () => { await new Promise((r) => setTimeout(r, 5)); return new Response("ok"); });
+    assert.equal((await as(async () => new Response("A sign-in page", {headers:{"Content-Type":"text/html"}}))).s,"down");
+    assert.equal((await as(async () => new Response(null, {status:302}))).s,"down");
+    const slow = await as(async () => { await new Promise((r) => setTimeout(r, 5)); return Response.json({build:"4.10.2"}); });
     assert.equal(slow.s, "ok");
   } finally { globalThis.fetch = real; }
 });

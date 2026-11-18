@@ -58,6 +58,12 @@ test("a report kept: each address, its version, from outside or (where a bot che
   assert.equal(s.dayKeys.length, 90); assert.equal(s.dayKeys.at(-1), dayOf(T0)); assert.equal(s.since, dayOf(T0), "bars from the first day checked");
 });
 
+test("a missing internal asset binding cannot turn an unobserved release green", async () => {
+  const isolated = { ...env, DB: d1(), ASSETS: undefined };
+  await keepReport(isolated, report({ chat: { s: "none" } }), T0);
+  assert.equal((await summary(isolated, T0)).services.find(s => s.id === "chat").s, "none");
+});
+
 test("two failed checks in a row open an incident (what fails together, one), two fine ones close it", async () => {
   let t = T0 + 5 * 60e3;
   await keepReport(env, report({ chat: { s: "down", ms: null, why: "HTTP 502" } }), t);

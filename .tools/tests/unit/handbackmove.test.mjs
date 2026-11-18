@@ -129,3 +129,19 @@ test("a hand-back in a browser whose cookie isn't that sign-in moves nothing (th
   for (const table of Object.keys(SESSION_COLUMNS)) assert.equal(sessOf(table, "bo"), page.hash, `${table}: left where it was`);
   assert.ok(!batches.some((b) => b.some((q) => /^UPDATE \w+ SET (session|sess) = \?/.test(q.sql))), "no move at all");
 });
+
+test("Chat logout removes only this session and its push subscription", async () => {
+  const token = await issueSession(env, ANN, new Request("http://localhost/"));
+  const hash = hex(await sha256(token));
+  const other = await pageSignIn(ANN);
+  rowsFor(hash, "signed-out");
+  rowsFor(other.hash, "still-signed-in");
+  const res = await onRequest({ env, params: {}, waitUntil: () => {},
+    request: new Request("http://localhost/api/pigeon/logout", { method: "POST",
+      headers: { Origin: "http://localhost", Authorization: "Bearer " + token } }) });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).ok, true);
+  assert.equal(sessOf("pg_push", "signed-out"), undefined);
+  assert.equal(one("SELECT hash FROM pg_sessions WHERE hash = ?", hash), undefined);
+  assert.equal(sessOf("pg_push", "still-signed-in"), other.hash);
+});

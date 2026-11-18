@@ -219,7 +219,9 @@ const IFL = (() => {
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
-  const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
+  const busyNow = () => typing() || !!open || !!U.busy?.() ||
+    [...document.querySelectorAll("dialog[open], .ifa-layer, [aria-busy='true']")].some(node =>
+      node.getClientRects().length && getComputedStyle(node).visibility !== "hidden");
   // Three-part releases follow the legacy two-part series within each major.
   const older = (a, b) => {
     const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
@@ -236,6 +238,9 @@ const IFL = (() => {
     // (a service worker that's noticed the app's files change, as it opened: looked at now)
     navigator.serviceWorker?.addEventListener("message", (e) => { if (/:new$/.test(e.data?.type || "")) check(true); });
     setInterval(() => { if (document.visibilityState === "visible") check(); }, 5 * 60e3);
+    navigator.serviceWorker?.addEventListener("controllerchange", () => {
+      if (U.ready) { U.ready.retryAt = 0; soon(); }
+    });
     setInterval(soon, 4000);
     setTimeout(() => check(true), 2000);     // (as it opens, a moment after: out of the way of its opening)
   }
@@ -258,7 +263,7 @@ const IFL = (() => {
   }
   function soon() {
     const r = U.ready, t = Date.now();
-    if (!r || U.going || document.visibilityState !== "visible") return;
+    if (!r || U.going || t < (r.retryAt || 0) || document.visibilityState !== "visible") return;
     if (busyNow()) return tell();
     const fresh = t - U.back < 8e3 && !U.touch, still = t - (U.touch || U.back) > (window.__iflQuiet || 60e3);     // (__iflQuiet: tests' shorter minute)
     if (fresh || still || r.must) return apply();
@@ -279,25 +284,29 @@ const IFL = (() => {
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
       if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
-      sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
-    U.going = true;
     close(true);
+    if (busyNow()) {
+      if (asked) note(U.app, "Update waiting", "Finish your current task or close the open panel to continue.");
+      return;
+    }
+    U.going = true;
     if (!got) {
       const t = U.touch;
-      if (!(await afresh())) {
-        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
-        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
-        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
-        // app's (Mail's are fetched by the page, U.files))
+      const result = await afresh();
+      if (result !== true || U.ready?.build !== r.build) {
         U.going = false;
-        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
-        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        r.retryAt = Date.now() + 30000;
+        if (asked) note(U.app, "Update waiting", result === "other-windows"
+          ? "Close your other InFlite windows. This one will try again."
+          : "The update isn’t ready yet. InFlite will try again.");
         return;
       }
-      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
-      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+      U.fresh = r.build;
+      if (busyNow() || document.hidden || (!asked && !r.must && U.touch !== t)) { U.going = false; return; }
     }
+    // Only a real reload needs a loop guard. A blocked install must remain retryable.
+    try { sessionStorage.setItem(key, JSON.stringify({build:r.build, at:Date.now()})); } catch (_) {}
     // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
     location.reload();
@@ -1200,8 +1209,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.46.2";
-const NEWS = "Offline updates install together and keep the previous copy if interrupted.";
+const BUILD = "2.46.3";
+const NEWS = "Markets updates more reliably and checks your account before opening your portfolio.";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)

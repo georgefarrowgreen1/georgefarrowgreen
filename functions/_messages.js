@@ -3,18 +3,17 @@
 // (read_at). Each is kept until it's deleted there. The table's made the first time it's needed, once per copy of the
 // server.
 
-let ready = null;
-async function ensureTable(env) {
-  await (ready ||= (async () => {
-    await env.DB.prepare(
-      "CREATE TABLE IF NOT EXISTS messages (" +
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-        "name TEXT, email TEXT, body TEXT, created_at INTEGER, read_at INTEGER)"
-    ).run();
-    // (a table made before messages were marked read)
-    await env.DB.prepare("ALTER TABLE messages ADD COLUMN read_at INTEGER").run().catch(() => {});
-  })().catch((e) => { ready = null; throw e; }));
-}
+import { ignoreDuplicateColumn, schemaSetup } from "./_schema.js";
+
+const ensureTable = schemaSetup(async (env) => {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS messages (" +
+      "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+      "name TEXT, email TEXT, body TEXT, created_at INTEGER, read_at INTEGER)"
+  ).run();
+  // (a table made before messages were marked read)
+  await env.DB.prepare("ALTER TABLE messages ADD COLUMN read_at INTEGER").run().catch(ignoreDuplicateColumn);
+});
 
 export async function saveMessage(env, { name, email, body }) {
   await ensureTable(env);

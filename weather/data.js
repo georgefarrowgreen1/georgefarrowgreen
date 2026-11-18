@@ -298,6 +298,11 @@ export async function nameOf(lat, lon, { live = true } = {}) {
 }
 
 /* ---------- kept on the phone ---------- */
+export function savedPlaces() {
+  const places = store.get("wx:places");
+  return Array.isArray(places) ? places.filter(p => Number.isFinite(p?.lat) && Math.abs(p.lat) <= 90 &&
+    Number.isFinite(p.lon) && Math.abs(p.lon) <= 180) : [];
+}
 const store = {
   get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (_) { return false; } },

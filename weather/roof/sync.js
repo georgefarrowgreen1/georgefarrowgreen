@@ -77,7 +77,7 @@ export async function stepOnce(g = gen) {
     if (sameAs(now, k.snap)) { inStep("ok"); return; }
     inStep("saving");
     let r;
-    try { r = await A.save(k.ver, now); }
+    try { r = await A.save(k.ver, now, core.fwOf()?.session?.user?.id ?? k.id); }
     catch (e) { if (g !== gen) return; if (e.status === 401) await lost(g); else inStep(e.offline ? "waiting" : "error"); throw e; }
     if (g !== gen) return;
     if (!r.conflict) { store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) }); inStep("ok"); return; }
@@ -127,6 +127,8 @@ async function lost(g = gen) {
 export async function adopt(r, here = false, g = gen) {
   const { S } = core;
   if (g !== gen) return;
+  const owner = core.fwOf()?.session?.user?.id;
+  if (owner != null && r.id !== owner) { await lost(g); return; }
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
   // (Weather's first open at InFlite, signed in already: the place it opened on as a stand-in is no reason to ask, nor is
   // one the account has already; asked only for a place of this device's own the account hasn't)

@@ -226,7 +226,7 @@ export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
       return call("sendText", id, t).then(() => ({ ok: true }), (e) => ({ ok: false, why: e.why || "failed" }));
     },
     refresh() { return call("sync", { quiet: true }).then((r) => !!r?.ok, () => false); },
-    signOut() { return call("signOut").then(() => true, () => true); },
+    signOut() { return call("signOut").then(result => result.ok); },
   });
   // Standalone desktop retains its phone handoff. The trusted OS host can
   // activate the same account-owned service later without replacing its facade.

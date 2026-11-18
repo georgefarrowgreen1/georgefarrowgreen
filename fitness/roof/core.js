@@ -800,21 +800,20 @@ async function loadAccount() {
   try {
     kept = await lastMe.get();
     if (gone()) return;
-    const ask = fetchMe(kept);
+    const ask = fetchMe(uid == null || kept?.id === uid ? kept : null, uid);
     ask.catch(() => {});
     if (kept?.signedIn && Array.isArray(kept.acts) && uid != null && kept.id === uid) { early = true; meBase = kept; arrive(kept, true); }
     const m = await ask;
     if (gone()) return;
     if (!early && kept?.signedIn && !m.signedIn) forgetCopies();
-    else if (!early && kept?.signedIn && kept.id !== m.id) forgetFiles();
-    if (!m.signedIn) {
+    if (!m.signedIn || (uid != null && m.id !== uid)) {
       setLoading(false);
       const out = await signedOutHere();
       if (!out && !gone() && !S.me) setError("Fitness couldn’t check you’re signed in. Try again in a moment.");
       return;
     }
-    if (early && m.id !== kept.id) { stopData(); arrive(m); }
-    else if (early) takeUp(m); else arrive(m);
+    if (!early && kept?.signedIn && kept.id !== m.id) forgetFiles();
+    if (early) takeUp(m); else arrive(m);
     setError(null);
   } catch (e) {
     if (gone()) return;

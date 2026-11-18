@@ -1409,8 +1409,14 @@ const methods = {
   state: () => ({ state: stateNow() }),
   lock(on) { lockAsked = on; lockNow(on); return { state: stateNow() }; },
   async signOut() {
-    try { if (S.token) await api("logout", { method: "POST" }).catch(() => {}); } catch (_) {}
-    await forget(true).catch(() => {});
+    if (S.token) {
+      try {
+        if ((await api("logout", { method: "POST" })).ok !== true) throw new Error("Unconfirmed sign-out");
+      } catch (error) {
+        if (error.status !== 401 || error.field !== "session") throw error;
+      }
+    }
+    await forget(true);
     lastState = null; emitState();
     return { ok: true };
   },

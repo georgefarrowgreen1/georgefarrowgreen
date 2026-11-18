@@ -27,10 +27,11 @@ import { HttpError, db, pace, clientIp, fromB64url, body as readJson } from "./_
 import { appsSite, homeSite, tickHost, siteFetch, appOrigin } from "./_sites.js";
 import { tickAuthOk, pushTo, pushToSub, pushEndpointOk, vapid } from "./_notify.js";
 import { emailReady, sendEmail, emailBody } from "./_email.js";
+import { ignoreDuplicateColumn, schemaSetup } from "./_schema.js";
 import { buildOf } from "./_version.js";
 import { assets } from "./_min.js";
 import { notFound } from "./_app.js";
-import { STATUS_SERVICES, STATUS_JOBS, STATUS_DEPS, APP_JOB, APP_SVCS } from "./_statuslist.js";
+import { STATUS_SERVICES, STATUS_JOBS, STATUS_DEPS, APP_JOB, APP_SVCS, statusVersion } from "./_statuslist.js";
 
 import { MONITORS, MONITOR_IDS, MONITOR_POLICY } from "./_monitorlist.js";
 import { monitorChecks } from "./_monitoring.js";
@@ -70,8 +71,8 @@ export function dayState(r) {
 const and = (a) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
 const words = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
 
-let ready = null;
-const table = (env) => (ready ||= db(env).then(async (D) => {
+const ensureStatusSchema = schemaSetup(async (env) => {
+  const D = await db(env);
   await D.batch([
     D.prepare("CREATE TABLE IF NOT EXISTS status_checks (svc TEXT NOT NULL, at INTEGER NOT NULL, s INTEGER NOT NULL, ms INTEGER, PRIMARY KEY (svc, at))"),
     D.prepare("CREATE INDEX IF NOT EXISTS status_checks_at ON status_checks(at)"),
@@ -91,9 +92,12 @@ const table = (env) => (ready ||= db(env).then(async (D) => {
   // (what kind of incident, and a burst's bug code: added to a table made before them; and the Incident Desk's: whether it
   // was a real outage (null: not said), the uptime taken back for one that wasn't, the write-up, the owner's own notes)
   // (and held: a burst of people's reports, not shown until the owner says so)
-  for (const col of ["kind TEXT", "code TEXT", "outage INTEGER", "fixup TEXT", "writeup TEXT", "notes TEXT", "held INTEGER"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(() => {});
-  return D;
-}).catch((e) => { ready = null; throw e; }));
+  for (const col of ["kind TEXT", "code TEXT", "outage INTEGER", "fixup TEXT", "writeup TEXT", "notes TEXT", "held INTEGER"]) await D.prepare(`ALTER TABLE status_incidents ADD COLUMN ${col}`).run().catch(ignoreDuplicateColumn);
+});
+async function table(env) {
+  await ensureStatusSchema(env);
+  return db(env);
+}
 
 // ---- the owner's say: how they're told, and whether a burst of one bug code opens an incident (Admin) ----
 const PREFS = { push: true, email: true, burst: true };
@@ -147,7 +151,7 @@ async function tell(env, events) {
 }
 
 // ---- from inside: the other Workers over the direct links, the database and storage, and what the apps rely on ----
-const verOf = (j) => { const v = (x) => (typeof x === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(x) ? x : null); return v(j?.app) || v(j?.build); };
+const verOf = (j) => statusVersion(j?.app) || statusVersion(j?.build);
 async function timed(fn) {
   const t0 = Date.now();
   try { const r = await fn(); return { ms: Date.now() - t0, ...r }; } catch (e) { return { s: "down", ms: null, why: e?.name === "TimeoutError" ? "no answer" : "unreachable" }; }
@@ -158,7 +162,12 @@ async function inside(env) {
     if (typeof link?.fetch !== "function") return;
     out[id] = await timed(async () => {
       const r = await siteFetch(env, url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }, link);
-      return r.ok ? { s: "ok", version: verOf(await r.json().catch(() => null)) } : { s: "down", why: `HTTP ${r.status}` };
+      if (!r.ok || id === "home") {
+        await r.body?.cancel();
+        return r.ok ? {s:"ok"} : {s:"down", why:`HTTP ${r.status}`};
+      }
+      const version = verOf(await r.json().catch(() => null));
+      return version ? {s:"ok", version} : {s:"down", why:"Invalid version response"};
     });
     if (out[id].s === "down") out[id].ms = null;
   };
@@ -167,8 +176,9 @@ async function inside(env) {
     linked("mail", env.MAIL_APP, `https://email.${site}/version`),
     linked("home", env.GFG_APP, `https://${homeSite(env)}/`),
     ...STATUS_SERVICES.filter((s) => s.app).map(async (s) => {
-      const version = env.ASSETS ? await buildOf({ env }, new URL(`https://${s.address}/`), s.app).catch(() => null) : null;
-      out[s.id] = { s: "ok", ms: null, version };
+      if (!env.ASSETS) return;
+      const version = await buildOf({ env }, new URL(`https://${s.address}/`), s.app).catch(() => null);
+      out[s.id] = version ? { s: "ok", ms: null, version } : { s: "down", ms: null, why: "Missing app version" };
     }),
   ]);
   return out;
@@ -227,7 +237,7 @@ export async function keepReport(env, body, t = Date.now()) {
     if (i?.s === "down") { s = "down"; why = why || i.why || null; }
     else if (s === "none" && i) { s = i.s; ms = i.ms; }
     if (s === "down") ms = null;
-    const version = (typeof o?.version === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(o.version) ? o.version : null) || i?.version || null;
+    const version = statusVersion(o?.version) || i?.version || null;
     rows.push({ svc: svc.id, s, ms, version, why: typeof why === "string" ? why.slice(0, 40) : null, check: true });
   }
   for (const job of STATUS_JOBS) {

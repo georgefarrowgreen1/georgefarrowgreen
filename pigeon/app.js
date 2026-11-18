@@ -201,7 +201,9 @@ const IFL = (() => {
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
-  const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
+  const busyNow = () => typing() || !!open || !!U.busy?.() ||
+    [...document.querySelectorAll("dialog[open], .ifa-layer, [aria-busy='true']")].some(node =>
+      node.getClientRects().length && getComputedStyle(node).visibility !== "hidden");
   // Three-part releases follow the legacy two-part series within each major.
   const older = (a, b) => {
     const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
@@ -218,6 +220,9 @@ const IFL = (() => {
     // (a service worker that's noticed the app's files change, as it opened: looked at now)
     navigator.serviceWorker?.addEventListener("message", (e) => { if (/:new$/.test(e.data?.type || "")) check(true); });
     setInterval(() => { if (document.visibilityState === "visible") check(); }, 5 * 60e3);
+    navigator.serviceWorker?.addEventListener("controllerchange", () => {
+      if (U.ready) { U.ready.retryAt = 0; soon(); }
+    });
     setInterval(soon, 4000);
     setTimeout(() => check(true), 2000);     // (as it opens, a moment after: out of the way of its opening)
   }
@@ -240,7 +245,7 @@ const IFL = (() => {
   }
   function soon() {
     const r = U.ready, t = Date.now();
-    if (!r || U.going || document.visibilityState !== "visible") return;
+    if (!r || U.going || t < (r.retryAt || 0) || document.visibilityState !== "visible") return;
     if (busyNow()) return tell();
     const fresh = t - U.back < 8e3 && !U.touch, still = t - (U.touch || U.back) > (window.__iflQuiet || 60e3);     // (__iflQuiet: tests' shorter minute)
     if (fresh || still || r.must) return apply();
@@ -261,25 +266,29 @@ const IFL = (() => {
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
       if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
-      sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
-    U.going = true;
     close(true);
+    if (busyNow()) {
+      if (asked) note(U.app, "Update waiting", "Finish your current task or close the open panel to continue.");
+      return;
+    }
+    U.going = true;
     if (!got) {
       const t = U.touch;
-      if (!(await afresh())) {
-        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
-        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
-        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
-        // app's (Mail's are fetched by the page, U.files))
+      const result = await afresh();
+      if (result !== true || U.ready?.build !== r.build) {
         U.going = false;
-        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
-        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        r.retryAt = Date.now() + 30000;
+        if (asked) note(U.app, "Update waiting", result === "other-windows"
+          ? "Close your other InFlite windows. This one will try again."
+          : "The update isn’t ready yet. InFlite will try again.");
         return;
       }
-      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
-      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+      U.fresh = r.build;
+      if (busyNow() || document.hidden || (!asked && !r.must && U.touch !== t)) { U.going = false; return; }
     }
+    // Only a real reload needs a loop guard. A blocked install must remain retryable.
+    try { sessionStorage.setItem(key, JSON.stringify({build:r.build, at:Date.now()})); } catch (_) {}
     // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
     location.reload();
@@ -1243,8 +1252,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.16.1";            // shown in InFlite's menu
-const APP_NEWS = "App versions now use major, feature and minor release numbers.";       // (said once it's in)
+const APP_VERSION = "2.16.2";            // shown in InFlite's menu
+const APP_NEWS = "Sign-out waits for confirmation. Draft suggestions now show copies from your other devices.";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1450,6 +1459,15 @@ async function api(path, { method = "GET", body, form, raw, blob, size, onProgre
   // a reply with no message of ours came from somewhere in between: say which, so it can be traced
   if (!r.ok) throw Object.assign(new Error(data.error || `Something went wrong (error ${r.status}). Try again.`), { status: r.status, field: data.field });
   return data;
+}
+
+async function endChatSession() {
+  if (!S.token) return;
+  try {
+    if ((await api("logout", { method: "POST" })).ok !== true) throw new Error("Couldn’t confirm sign-out. Try again.");
+  } catch (error) {
+    if (error.status !== 401 || error.field !== "session") throw error;
+  }
 }
 
 /* ---------------- formatting ---------------- */
@@ -6171,13 +6189,11 @@ async function onClick1(e, t) {
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
     case "signoutgo": {
       if (!STILL.matches) await new Promise((r) => setTimeout(r, 280));    // (the action card goes first; then dusk, to the welcome)
+      try { await endChatSession(); }
+      catch (error) { return toast(esc(error.offline ? "Reconnect to finish signing out." : error.message)); }
       const night = dusk();
       try {
-        await pushDisable(true);
-        // (signed out on the server before the sign-in page, given a few seconds, so that page needn't ask again)
-        const out = api("logout", { method: "POST" }).catch(() => {});
-        await night.dark;
-        await Promise.race([out, new Promise((r) => setTimeout(r, 4000))]);                                                  // (dark now: what's under it can go)
+        await Promise.all([night.dark, pushDisable(true, true)]);
         await forget(); S.navQuiet = true; go("welcome");                  // (under the night: no change of screen of its own)
       } finally { night.done(); }
       // (and on to the sign-in page, which says so and offers the way back; none locally)
@@ -7036,12 +7052,15 @@ function askNotify() {
   if (ps !== "off") return toast(esc({ homescreen: "On iPhone, notifications need Chat on your Home Screen: tap Share, then Add to Home Screen.", denied: "Notifications are blocked for Chat. Turn them on in your phone’s Settings.", unsupported: "This browser can’t show notifications." }[ps] || "Notifications can’t be turned on here."));
   IFL.allow("chat", "Chat tells you when a pigeon lands, and when friends ask. What it tells you is set in your account.", async () => { await pushEnable(); return !!S.pushOn; });
 }
-async function pushDisable(quiet) {
+async function pushDisable(quiet, sessionEnded = false) {
   if (!pushSupported()) return;
   try {
     const reg = await navigator.serviceWorker.getRegistration("/pigeon/");
     const sub = reg && await reg.pushManager.getSubscription();
-    if (sub) { await api("push-sub", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
+    if (sub) {
+      if (!sessionEnded) await api("push-sub", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {});
+      await sub.unsubscribe();
+    }
   } catch (_) { /* nothing to undo */ }
   S.pushOn = false;
   if (!quiet) { toast("Notifications are off on this phone."); render(); if (S.sheet?.type === "notifications") renderSheet(); }
@@ -7443,8 +7462,8 @@ async function engineSince(id, t) {
   } catch (_) { return null; }
 }
 async function engineSignOut() {
-  try { if (S.token) await api("logout", { method: "POST" }).catch(() => {}); } catch (_) {}
-  await forget(true).catch(() => {});
+  await endChatSession();
+  await forget(true);
   engineKey = false;
   return true;
 }

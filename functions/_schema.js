@@ -28,3 +28,8 @@ export function schemaSetup(setup) {
     }
   };
 }
+
+// Re-running a column migration is safe. A different database error must leave setup retryable.
+export function ignoreDuplicateColumn(error) {
+  if (!/duplicate column name/i.test(error?.cause?.message || error?.message || "")) throw error;
+}

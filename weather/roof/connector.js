@@ -28,9 +28,7 @@ export const connector = {
     "/weather/roof/weather.css", "/weather/roof/wxcore.css", "/weather/roof/wxsettings.css", "/weather/roof/radar.css",
   ],
   lazy: ["/weather/roof/days.js", "/weather/roof/warnings.js", "/weather/roof/places.js", "/weather/roof/wxsettings.js", "/weather/roof/wxdetail.js", "/weather/roof/workspace.js", "/weather/roof/workspace.css"],
-  // mini(answer) → { kind: "num-bars", num, bars: [0..100 ×5], label } | null, from answer.cards.weather (functions/
-  // _todaywx.js weatherCard), null unless state "ok": num = now.temp as it is (already "14°"); bars = hours.list[0..4].pop;
-  // label from rain (v=2): "Raining now", "Rain from 15:00" (at, on the place's clock: offset s, clock "12"/"24"), else "".
+  // Five hourly rain probabilities and the time of the next rain.
   mini(answer) {
     const c = answer?.cards?.weather;
     if (!c || c.state !== "ok" || typeof c.now?.temp !== "string") return null;
@@ -43,11 +41,15 @@ export const connector = {
   },
   // search(q) → [{ title, sub, icon: "weather", href }]: wx:places whose name has q (any case), ≤ 8, then "Weather
   // Settings". On this device only: q never leaves the page (D16).
-  search(q) {
+  search(q, { userId } = {}) {
     const s = near(q).trim();
     if (!s) return [];
     let places = [];
-    try { places = JSON.parse(globalThis.localStorage?.getItem("wx:places") || "[]"); } catch (_) {}
+    try {
+      const storage = globalThis.localStorage;
+      const owner = JSON.parse(storage?.getItem("wx:acct") || "null")?.id;
+      if (owner == null || owner === userId) places = JSON.parse(storage?.getItem("wx:places") || "[]");
+    } catch (_) {}
     const out = (Array.isArray(places) ? places : []).filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && near(p.name).includes(s)).slice(0, 8)
       .map((p) => ({ title: String(p.name), sub: String(p.region || ""), icon: "weather", href: `/weather/?${new URLSearchParams({ lat: p.lat, lon: p.lon, name: p.name })}` }));
     if ("weather settings".includes(s)) out.push({ title: "Weather Settings", sub: "Weather", icon: "weather", href: "/weather/#settings" });

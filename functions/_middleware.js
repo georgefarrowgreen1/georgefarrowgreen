@@ -31,6 +31,7 @@ import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
 import { fillSecrets } from "./_kept.js";
 import { bugsRoute } from "./_bugs.js";
+import { infliteContact } from "./_inflite-contact.js";
 import { vitalsRoute } from "./_vitals.js";
 import { statusRoute, isStatus, statusHost } from "./_status.js";
 
@@ -52,6 +53,7 @@ async function route(ctx0) {
   const moved = canonicalDocument(ctx.request, ctx.env);
   if (moved) return moved;
   const url = new URL(ctx.request.url);
+  if (url.pathname === "/api/inflite-contact") return infliteContact(ctx);
   // (bug reports, at every address, each app's own: functions/_bugs.js)
   if (url.pathname.startsWith("/api/bugs") || url.pathname === "/api/account/bugs") { const r = await bugsRoute(ctx, url); if (r) return r; }
   // (how fast each page was on the device it was on, numbers only, at every address: functions/_vitals.js)

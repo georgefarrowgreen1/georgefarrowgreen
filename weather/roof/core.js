@@ -54,7 +54,7 @@ import { requestLocation } from "../location.js";
 //                                false leaves them on this device and clears S.ask (not asked again this page)
 // Added by WX (for weather.js, places.js and the views): shown(on), busy(), glanceAll(), look(p), headerLine(),
 //   SYNC_ERROR, FORECAST_BUSY, FORECAST_FAILED, pinHue(temp), skyOf(code, isDay); setError(v), syncError(on) (sync.js).
-import { load, due, nameOf, store, keepSafe, peek as peekKept, cell, hasKept } from "../data.js";
+import { load, due, nameOf, store, savedPlaces, keepSafe, peek as peekKept, cell, hasKept } from "../data.js";
 import { makeFormat, nowWall, keyOf, HOUR, DAY } from "../format.js";
 import * as I from "../insights.js";
 import { codeInfo, label } from "../codes.js";
@@ -563,8 +563,13 @@ export const nothingYet = () => !S.wx && !(place() && hasKept(place()));
 export const refreshSettings = () => sync.pull();
 export function start(fw) {
   P.fw = fw;
+  const owner = fw.session?.user?.id;
+  const account = store.get("wx:acct");
+  if (owner != null && account?.id != null && owner !== account.id) {
+    for (const key of ["acct", "places", "cur", "settings", "glances", "hero"]) store.del("wx:" + key);
+  }
   loadSettings();
-  S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
+  S.places = savedPlaces();
   // (My Location as kept by a version from before it was kept to three decimal places, its notifications' too)
   const fine = [...S.places, ...S.settings.notify.places, S.settings.notify.brief].filter((x) => x?.gps && (r3(x.lat) !== x.lat || r3(x.lon) !== x.lon));
   for (const x of fine) { x.lat = r3(x.lat); x.lon = r3(x.lon); }
@@ -576,7 +581,7 @@ export function start(fw) {
   if (g > 0) { const was = place(); S.places.unshift(...S.places.splice(g, 1)); S.cur = S.places.indexOf(was); savePlaces(); }
   // your account: signed in, as it was last time, till the server says
   const k = store.get("wx:acct");
-  S.acct = k?.handle ? { ...sync.profileOf(k), devices: k.devices || [], state: "ok" } : null;
+  S.acct = k?.handle && (!fw.session?.user?.id || fw.session.user.id === k.id) ? { ...sync.profileOf(k), devices: k.devices || [], state: "ok" } : null;
   S.ask = null; S.wx = null; S.error = null; P.fcErr = null; P.syncErr = false; S.stale = false; S.loading = false; S.updatedAt = null; S.now = Date.now();
   P.offs.push(fw.on?.("visible", opened) || (() => {}), fw.on?.("hidden", tickOff) || (() => {}));
 }

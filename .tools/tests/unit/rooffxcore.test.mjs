@@ -432,3 +432,15 @@ test("back after a minute, the account answers 401: the framework is asked (fw.s
 });
 
 test.after(() => { Date.now = realNow; });
+
+test("Fitness checks the shell account before keeping a fresh activity list", async () => {
+  let checks = 0;
+  core.start(fw({ session:{user:{id:"u-a"}, lost:async () => { checks++; return false; }} }));
+  answer = async () => json(200, FX.me("u-b"));
+  try {
+    await core.boot();
+    assert.equal(checks, 1);
+    assert.notEqual(core.S.me?.id, "u-b");
+    assert.notEqual((await core.lastMe.get())?.id, "u-b");
+  } finally { core.stop(); answer = async () => { throw new TypeError("offline (test)"); }; }
+});

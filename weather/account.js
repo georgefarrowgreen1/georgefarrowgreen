@@ -20,7 +20,7 @@ export const me = () => call("me");
 // this device's notifications its own again, signed out somewhere else (its push address is what shows it's this device)
 export const leave = (endpoint) => call("leave", { method: "POST", body: { endpoint } });
 // a change, made from version base: { ver, data } as kept now; or { conflict, ver, data } where it's moved on meanwhile
-export const save = (base, data) => call("me", { method: "PUT", body: { base, data } });
+export const save = (base, data, owner) => call("me", { method: "PUT", body: { base, data, owner } });
 
 // ---- the account's own page, opened signed in as you: a code good once, for a minute (functions/_wxacct.js) ----
 export const accountLink = () => call("account-link", { method: "POST", body: {} });

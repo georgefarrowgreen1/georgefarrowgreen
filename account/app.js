@@ -216,7 +216,9 @@ const IFL = (() => {
   //      be interrupted, save() → where you are (to JSON), files: what to fetch afresh where there's no service worker }
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
-  const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
+  const busyNow = () => typing() || !!open || !!U.busy?.() ||
+    [...document.querySelectorAll("dialog[open], .ifa-layer, [aria-busy='true']")].some(node =>
+      node.getClientRects().length && getComputedStyle(node).visibility !== "hidden");
   // Three-part releases follow the legacy two-part series within each major.
   const older = (a, b) => {
     const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
@@ -233,6 +235,9 @@ const IFL = (() => {
     // (a service worker that's noticed the app's files change, as it opened: looked at now)
     navigator.serviceWorker?.addEventListener("message", (e) => { if (/:new$/.test(e.data?.type || "")) check(true); });
     setInterval(() => { if (document.visibilityState === "visible") check(); }, 5 * 60e3);
+    navigator.serviceWorker?.addEventListener("controllerchange", () => {
+      if (U.ready) { U.ready.retryAt = 0; soon(); }
+    });
     setInterval(soon, 4000);
     setTimeout(() => check(true), 2000);     // (as it opens, a moment after: out of the way of its opening)
   }
@@ -255,7 +260,7 @@ const IFL = (() => {
   }
   function soon() {
     const r = U.ready, t = Date.now();
-    if (!r || U.going || document.visibilityState !== "visible") return;
+    if (!r || U.going || t < (r.retryAt || 0) || document.visibilityState !== "visible") return;
     if (busyNow()) return tell();
     const fresh = t - U.back < 8e3 && !U.touch, still = t - (U.touch || U.back) > (window.__iflQuiet || 60e3);     // (__iflQuiet: tests' shorter minute)
     if (fresh || still || r.must) return apply();
@@ -276,25 +281,29 @@ const IFL = (() => {
     try {
       const k = JSON.parse(sessionStorage.getItem(key) || "null");
       if (!asked && !got && k?.build === r.build && Date.now() - k.at < 10 * 60e3) return;
-      sessionStorage.setItem(key, JSON.stringify({ build: r.build, at: Date.now() }));
     } catch (_) {}
-    U.going = true;
     close(true);
+    if (busyNow()) {
+      if (asked) note(U.app, "Update waiting", "Finish your current task or close the open panel to continue.");
+      return;
+    }
+    U.going = true;
     if (!got) {
       const t = U.touch;
-      if (!(await afresh())) {
-        // (a new version's worker that couldn't fetch all its files (Weather's are all or none), or hasn't yet: loaded
-        // now, it'd be the old version again. Still offered, it's tried again once that worker's taken over, else in ten
-        // minutes; tried afresh, not taken as fresh: a worker taking over has fetched its own files, not always the
-        // app's (Mail's are fetched by the page, U.files))
+      const result = await afresh();
+      if (result !== true || U.ready?.build !== r.build) {
         U.going = false;
-        navigator.serviceWorker?.addEventListener("controllerchange", () => { if (U.ready?.build === r.build) try { sessionStorage.removeItem(key); } catch (_) {} }, { once: true });
-        if (asked) note(U.app, `${NAME[U.app]} couldn’t update just now`, "It tries again by itself");
+        r.retryAt = Date.now() + 30000;
+        if (asked) note(U.app, "Update waiting", result === "other-windows"
+          ? "Close your other InFlite windows. This one will try again."
+          : "The update isn’t ready yet. InFlite will try again.");
         return;
       }
-      // (and if you've started on something meanwhile (typing, a sheet, a tap), it waits for the next moment you're not)
-      if (!asked && (busyNow() || (!r.must && U.touch !== t))) { U.fresh = r.build; U.going = false; return; }
+      U.fresh = r.build;
+      if (busyNow() || document.hidden || (!asked && !r.must && U.touch !== t)) { U.going = false; return; }
     }
+    // Only a real reload needs a loop guard. A blocked install must remain retryable.
+    try { sessionStorage.setItem(key, JSON.stringify({build:r.build, at:Date.now()})); } catch (_) {}
     // (where you are kept as it goes, not before the wait: you may have scrolled meanwhile)
     try { const at = U.save?.(); if (at != null) sessionStorage.setItem(`ifl-here:${U.app}`, JSON.stringify({ at, t: Date.now() })); } catch (_) {}
     location.reload();
@@ -1230,10 +1239,9 @@ const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia(
 const tok = (name) => getComputedStyle(host?.element || document.documentElement).getPropertyValue(name).trim() || undefined;
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
-// (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
-// said once it's in)
-const BUILD = "2.35.1";
-const NEWS = "App versions now use major, feature and minor release numbers.";
+// Account's major, feature and patch version, and the release note shown on opening the update.
+const BUILD = "2.35.2";
+const NEWS = "Sign-out waits for confirmation, and switching accounts refreshes your open settings.";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -1530,18 +1538,23 @@ function matchesSettingsOwner(me) {
 async function call(path, { method = "GET", body, type, keepalive = false, owner } = {}) {
   if (!alive()) throw new DOMException("Account closed", "AbortError");
   if (embeddedAccount) owner ??= host?.owner ?? window.frameElement?.dataset.owner;
+  else if (S.me?.signedIn && method !== "GET") owner ??= S.me.id;
   let r;
   const headers = { ...(owner ? {"X-Inflite-Owner":owner} : {}), ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
   const timeout = AbortSignal.timeout(30000);
   const signal = host && AbortSignal.any ? AbortSignal.any([timeout, host.signal]) : timeout;
   try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal, ...(keepalive ? { keepalive: true } : {}) }); }
   catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
-  const j = await r.json().catch(() => ({}));
+  const j = await r.json().catch(() => null);
   if (!alive()) throw new DOMException("Account closed", "AbortError");
-  if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status, field: j.field });
+  if (!r.ok) throw Object.assign(new Error(j?.error || `Something went wrong (${r.status}).`), { status: r.status, field: j?.field });
+  if (j === null) throw new Error("Account couldn’t read the response. Try again.");
   return j;
 }
 const post = async(path,body={}) => {const owner=S.me?.id;if(owner&&["export","delete","devices/end"].includes(path)){const {protectedPost}=await import("./security-module.js");return protectedPost({path,body,owner,current:()=>S.me?.id===owner,call})}return call(path,{method:"POST",body})};
+async function endSession() {
+  if ((await post("signout")).ok !== true) throw new Error("Couldn’t confirm sign-out. Try again.");
+}
 // (what went wrong signing in, as one of a few words, for the site's counts of how signing in is going: nothing else
 // goes with it, and it's never waited on: functions/_signincount.js)
 function told(kind) { try { fetch(`${API}/signin/said`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }), keepalive: true, credentials: "same-origin" }).catch(() => {}); } catch (_) {} }
@@ -2765,7 +2778,7 @@ function outPage(r) {
   // else, asked about first. Staying, back where it came from)
   if (o.ask) {
     const go = h("button.btn.danger", { type: "button", onclick: async () => {
-      try { await busy(go, "Signing out…", () => post("signout")); } catch (e) { if (!e.offline) return toast(e.message, true); }
+      try { await busy(go, "Signing out…", endSession); } catch (e) { return toast(e.offline ? "Reconnect to finish signing out." : e.message, true); }
       S.me = { signedIn: false };
       duskFall();
       anew(() => { S.out = o.app === "account" ? null : { app: o.app, back: o.back }; if (!S.out) { S.said = { text: "Signed out." }; S.left = true; } S.settled = false; render(); scrollTo(0, 0); });
@@ -3545,8 +3558,8 @@ async function checkQuietly(pw, proof) {
 async function signOut(btn, next) {
   // (from InFlite's menu, whose button's gone with it: your photo up top turning instead, till the page moves on)
   const letGo = btn ? null : photoBusy("Signing out…");
-  try { await (btn ? busy(btn, "Signing out…", () => post("signout")) : post("signout")); }
-  catch (e) { if (!e.offline) { letGo?.(); return toast(e.message, true); } }
+  try { await (btn ? busy(btn, "Signing out…", endSession) : endSession()); }
+  catch (e) { letGo?.(); return toast(e.offline ? "Reconnect to finish signing out." : e.message, true); }
   fxKeep(null);                     // (Apple Health's new key, kept on this device: gone with the sign-in)
   // (signed out for something to follow, that's taken it from here: takeRefused)
   if (next && await next()) return;
@@ -5751,10 +5764,17 @@ function deleteView() {
 async function refresh() {
   if (document.hidden || !S.me || Date.now() - S.pulled < 15000) return;
   S.pulled = Date.now();
+  const ownerBefore = S.me.id, signedInBefore = S.me.signedIn;
   const appearanceBefore = globalThis.InFliteAppearance?.snapshot();
   let m;
   try { m = await call("me"); } catch (_) { return; }
+  if (S.me?.id !== ownerBefore || S.me?.signedIn !== signedInBefore) return;
   if (embeddedAccount && !matchesSettingsOwner(m)) return;
+  if (!embeddedAccount && signedInBefore && (!m.signedIn || m.id !== ownerBefore)) {
+    // Discard private sheets, cached admin data and in-flight editor callbacks together.
+    location.reload();
+    return;
+  }
   const was = S.me, same = (x) => JSON.stringify({ ...x, fresh: 0, devices: x.devices?.map((d) => ({ ...d, seenAt: 0 })) });
   // A /me request begun before a local choice may arrive after that choice was
   // saved. Keep the last acknowledged preferences, and leave the live preview

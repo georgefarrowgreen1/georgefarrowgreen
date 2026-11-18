@@ -314,8 +314,8 @@ test('with its key, /api/hub is ready only once Chat’s host takes that key: /_
   assert.equal(probe.url.href, 'https://chat.inflite.ai/_hub/version');
   assert.equal(probe.method, 'GET'); assert.equal(probe.redirect, 'manual');
   assert.equal(probe.headers.get('x-hub-key'), KEY, 'with the hub’s key');
-  assert.equal(probe.headers.get('x-hub-ip'), '203.0.113.9');
-  assert.deepEqual(geo(probe.headers), {});
+  assert.equal(probe.headers.get('x-hub-ip'), null, 'shared readiness checks omit the visitor’s IP');
+  assert.equal(probe.headers.get('x-hub-geo'), null, 'shared readiness checks omit the visitor’s location');
   assert.equal(probe.headers.get('origin'), 'https://chat.inflite.ai');
   assert.equal(probe.headers.get('cookie'), null, 'no cookie, none needed'); assert.equal(probe.headers.get('authorization'), null);
   // (where it connects, in a test: Chat's pass-through)

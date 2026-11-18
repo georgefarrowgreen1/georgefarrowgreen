@@ -11,11 +11,22 @@ self.addEventListener("push", (e) => {
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const url = new URL(e.notification.data?.url || self.registration.scope, self.registration.scope);
-  if (url.origin !== self.location.origin) url.href = self.registration.scope;
+  const url = new URL(self.registration.scope);
+  // Status notifications identify incidents by fragment. Keep legacy subscriptions
+  // working when a notification carries the new canonical status page address.
+  try {
+    const destination = new URL(e.notification.data?.url || url.href, url);
+    if (destination.origin === url.origin || (destination.origin === "https://inflite.ai" && destination.pathname === "/status/")) {
+      url.hash = destination.hash;
+    }
+  } catch { /* Fall back to the status overview. */ }
   e.waitUntil((async () => {
-    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    const w = wins.find((c) => new URL(c.url).origin === url.origin);
+    const wins = await self.clients.matchAll({ type: "window" });
+    const w = wins.find((client) => {
+      const page = new URL(client.url);
+      return client.frameType !== "nested" && page.origin === url.origin &&
+        (page.pathname === url.pathname || page.pathname === url.pathname + "index.html");
+    });
     if (w) { await w.focus(); return w.navigate ? w.navigate(url.href).catch(() => w.postMessage({ go: url.hash })) : w.postMessage({ go: url.hash }); }
     return self.clients.openWindow(url.href);
   })());

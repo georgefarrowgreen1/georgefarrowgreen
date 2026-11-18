@@ -66,6 +66,7 @@ export const ACCOUNT_ROUTES = {
   "PUT me": async ({ request, env }) => {
     sameOrigin(request);
     const u = await signedIn(request, env), b = await body(request);
+    if (b.owner != null && b.owner !== u.id) throw new HttpError(401, "Your account has changed. Reopen Weather.");
     await pace(env, `wxacct:${u.id}`, 240, 3600e3);
     const data = cleanData(b.data), base = Number.isInteger(b.base) ? b.base : -1, D = await wxdb(env), t = Date.now();
     const was = await kept(env, u.id);
