@@ -105,7 +105,7 @@ const photoIndices = panels.map(() => 0);
 function selectPanel(panel) {
   panels.forEach((item, index) => {
     const selected = item === panel;
-    const label = $("span", item).textContent;
+    const label = $(".fi-caption", item).textContent;
     item.setAttribute("aria-pressed", String(selected));
     item.setAttribute("aria-label", selected && collections[index].length > 1
       ? label + ", show next photograph" : "Expand " + label + " photograph");
@@ -117,7 +117,7 @@ function displayPhoto(panel, frame) {
   if (image.getAttribute("src") !== frame.src) image.src = frame.src;
   image.alt = frame.alt;
   image.style.objectPosition = frame.position;
-  $("span", panel).textContent = frame.label;
+  $(".fi-caption", panel).textContent = frame.label;
 }
 
 async function loadPhotos() {
@@ -166,7 +166,7 @@ function setupGalleryMenu() {
 }
 
 // The header and the opening share one vector drawing of the gfg mark.
-// Matching path commands let the browser interpolate each letter into a stroke.
+// Move each letter as a layer so its outline is rasterised once.
 function setupOpening() {
   const gallery = $(".fi-reel");
   const shouldPlay = root.classList.contains("photo-wait");
@@ -180,7 +180,10 @@ function setupOpening() {
   const viewportWidth = innerWidth;
   const x = galleryRect.left + galleryRect.width / 2;
   const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
-  const mark = $(".wordmark").cloneNode(true);
+  const wordmark = $(".wordmark");
+  const glyphs = $$("path", wordmark).map(path => ({path, bounds: path.getBBox()}));
+  const mark = document.createElement("div");
+  mark.setAttribute("aria-hidden", "true");
   mark.classList.add("opening-mark");
   Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
   document.body.append(mark);
@@ -190,12 +193,13 @@ function setupOpening() {
   const animations = [];
   const photoAnimations = [];
   let interrupted = false;
-  const start = document.timeline.currentTime;
-  const startWall = performance.now();
+  let start = null;
+  let warmupFrame;
   const glide = "cubic-bezier(.4,0,.2,1)";
   function animate(el, frames, timing) {
     const animation = el.animate(frames, {fill: "both", ...timing});
-    if (start !== null) animation.startTime = start;
+    animation.pause();
+    animation.currentTime = 0;
     animations.push(animation);
   }
 
@@ -205,54 +209,76 @@ function setupOpening() {
       photoAnimations.forEach(animation => animation.cancel());
       for (const panel of panels) $("img", panel).classList.remove("opening-photo-pending");
     }
+    cancelAnimationFrame(warmupFrame);
     listeners.abort();
     animations.forEach(animation => animation.cancel());
     mark.remove();
     body.classList.remove("playing-opening");
   }
 
-  for (const path of mark.querySelectorAll("path")) {
-    const morph = document.createElementNS("http://www.w3.org/2000/svg", "animate");
-    for (const [key, value] of Object.entries({attributeName:"d", from:path.getAttribute("d"),
-      to:path.dataset.stroke, begin:"indefinite", dur:".62s", fill:"freeze", calcMode:"spline", keyTimes:"0;1", keySplines:".4 0 .2 1"})) {
-      morph.setAttribute(key, value);
-    }
-    path.append(morph);
-    morph.beginElementAt(.12);
-  }
-  // The fully formed strokes stay opaque until the three gallery masks underneath match them.
+  // Compress the actual header letters onto the stroke centres. Crossfade their
+  // counters into solid strokes as they narrow, without repainting SVG geometry.
+  const strokes = document.createElement("span");
+  strokes.className = "opening-strokes";
+  glyphs.forEach(({path, bounds}, i) => {
+    const glyph = wordmark.cloneNode(false);
+    glyph.removeAttribute("class");
+    glyph.append(path.cloneNode(true));
+    mark.append(glyph);
+    strokes.append(document.createElement("i"));
+    const sx = 6 / bounds.width, sy = (i === 1 ? 46 : 32) / bounds.height;
+    const tx = 40 + (i - 1) * 10 - (bounds.x + bounds.width / 2) * sx;
+    const ty = 26 - (bounds.y + bounds.height / 2) * sy;
+    animate(glyph, [
+      {transform: "translate3d(0, 0, 0) scale(1, 1)"},
+      {transform: `translate3d(${tx}px, ${ty}px, 0) scale(${sx}, ${sy})`}
+    ], {delay: 120, duration: 620, easing: glide});
+    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 555, duration: 170});
+  });
+  mark.append(strokes);
+  animate(strokes, [{opacity: 0}, {opacity: 1}], {delay: 575, duration: 150});
   animate(mark, [
-    {opacity: 0, offset: 0, easing: "ease-out"},
-    {opacity: 1, offset: .15}, {opacity: 1, offset: .84}, {opacity: 0}
+    {opacity: 1, offset: 0}, {opacity: 1, offset: .84}, {opacity: 0}
   ], {duration: 900});
 
   panels.forEach((panel, i) => {
     const rect = panelRects[i];
     const dx = x + (i - 1) * 10 - rect.left - rect.width / 2;
     const dy = y - rect.top - rect.height / 2;
-    const insetY = rect.height / 2 - (i === 1 ? 23 : 16);
-    const insetX = rect.width / 2 - 3;
-    animate(panel, [
-      {transform: `translate(${dx}px, ${dy}px)`, clipPath: `inset(${insetY}px ${insetX}px round 2.6px)`},
-      {transform: "translate(0px, 0px)", clipPath: "inset(0px 0px round 0px)"}
-    ], {delay: 810, duration: 1150, easing: glide});
+    const cropX = rect.width - 6;
+    const cropY = rect.height - (i === 1 ? 46 : 32);
+    // Two overlapping, fixed-size overflow boxes form the aperture. Move their
+    // opposite edges apart; the photograph keeps its natural proportions.
+    const timing = {delay: 810, duration: 1150, easing: glide};
+    function slide(el, left, top) {
+      animate(el, [{transform: `translate3d(${left}px, ${top}px, 0)`},
+        {transform: "translate3d(0, 0, 0)"}], timing);
+    }
+    slide(panel, dx - cropX / 2, dy - cropY / 2);
+    slide($(".fi-window", panel), cropX, cropY);
     animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 710, duration: 95, easing: "ease-in-out"});
 
     // Decode in parallel with the wordmark. A slow photograph gets its own fade
     // when ready, without delaying the gallery, text or navigation.
     const image = $("img", panel);
+    slide(image, -cropX / 2, -cropY / 2);
     image.classList.add("opening-photo-pending");
     const source = image.src;
     const reveal = () => {
       image.classList.remove("opening-photo-pending");
       if (interrupted || motion.matches || image.src !== source || !image.naturalWidth) return;
-      photoAnimations.push(image.animate([{opacity: 0}, {opacity: 1}], {
-        delay: Math.max(0, 870 + i * 35 - (performance.now() - startWall)),
-        duration: 640, easing: "ease-in-out", fill: "backwards"
-      }));
+      const elapsed = start === null ? 0 : document.timeline.currentTime - start;
+      const fade = image.animate([{opacity: 0}, {opacity: 1}], {
+        delay: Math.max(0, 870 + i * 35 - elapsed), duration: 640, easing: "ease-in-out", fill: "backwards"
+      });
+      if (start === null) {
+        fade.pause();
+        fade.currentTime = 0;
+      }
+      photoAnimations.push(fade);
     };
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
-    animate($("span", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
+    animate($(".fi-caption", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
   });
   for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
@@ -267,6 +293,17 @@ function setupOpening() {
   addEventListener("resize", () => { if (innerWidth !== viewportWidth) finish(); }, options);
   addEventListener("pagehide", finish, options);
   motion.addEventListener("change", finish, options);
+  // Present the still logo and prime the compositor before starting the clock.
+  // A cold first paint then extends the initial hold rather than skipping part of the morph.
+  warmupFrame = requestAnimationFrame(() => {
+    warmupFrame = requestAnimationFrame(() => {
+      start = document.timeline.currentTime;
+      for (const animation of [...animations, ...photoAnimations]) {
+        animation.play();
+        animation.startTime = start;
+      }
+    });
+  });
   Promise.all(animations.map(animation => animation.finished)).then(() => finish(false), () => {});
 }
 
