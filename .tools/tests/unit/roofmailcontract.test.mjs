@@ -66,7 +66,10 @@ const SECTIONS = [['people', 'People'], ['updates', 'Updates'], ['later', 'Later
 const FILES = ['mail.js', 'store.js', 'api.js', 'logic.js', 'actions.js', 'list.js', 'rows.js', 'menus.js', 'icons.js', 'reader.js', 'bodyframe.js', 'outbox.js'].map((f) => `/mail/roof/${f}`);
 const CSS = ['mail.css', 'reader.css', 'mailsheets.css'].map((f) => `/mail/roof/${f}`);
 // (s24-contracts §8: Mail's NET is none, so lazy is every fw.lazy target less files; it overrides s4/spec §4.4's two)
-const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js', 'workspace.js', 'workspace.css'].map((f) => `/mail/roof/${f}`);
+// Mail 2.23 adds the contact card picker and review as an on-demand module.
+const [mailMajor, mailMinor] = skip ? [] : literalOf(src('mail.js'), 'BUILD').split('.').map(Number);
+const cardsAvailable = mailMajor > 2 || (mailMajor === 2 && mailMinor >= 23);
+const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js', 'workspace.js', 'workspace.css', ...(cardsAvailable ? ['contact-card.js'] : [])].map((f) => `/mail/roof/${f}`);
 const R = skip || fx.roofSkip ? null : await import(new URL('router.js', fx.ROOF));
 const { connector, CONNECTOR } = skip ? {} : await import(new URL('connector.js', MOD));
 const stubs = () => jsFiles().filter((f) => exportsOf(src(f)).has('STUB'));
