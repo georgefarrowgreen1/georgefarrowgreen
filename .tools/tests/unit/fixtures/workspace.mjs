@@ -17,7 +17,7 @@ export const OS_RECOVERY_JS = Object.freeze(['workspace-recovery.js', 'workspace
 export const OS_HANDOFF_JS = Object.freeze(['handoffs.js']);
 export const OS_RECOVERY_CSS = Object.freeze(['workspace-recovery.css']);
 export const OS_CONTINUITY_JS = Object.freeze(["continuity.js","offline-store.js","offline-prefs.js","ride-overview.js","files-history.js"].filter(f=>ROOF&&existsSync(new URL(f,ROOF))));
-export const OS_SYSTEM350_JS=Object.freeze(['system350.js', 'system-client.js', 'actions-store.js', 'actions-ui.js', 'device-id.js', 'devices-ui.js', 'discovery350.js', 'files-viewer350.js', 'files-recovery350.js']);
+export const OS_SYSTEM350_JS=Object.freeze(['system350.js', 'system-client.js', 'actions-store.js', 'actions-ui.js', 'device-id.js', 'devices-ui.js', 'discovery350.js', ...(ROOF && existsSync(new URL('search-file.js', ROOF)) ? ['search-file.js'] : []), 'files-viewer350.js', 'files-recovery350.js']);
 export const OS_SYSTEM350_CSS=Object.freeze(['system350.css', 'files-viewer350.css']);
 export const OS_SECURITY_JS=Object.freeze(['security-module.js','security-client.js']);
 export const OS_SECURITY_CSS=Object.freeze(['security-module.css']);

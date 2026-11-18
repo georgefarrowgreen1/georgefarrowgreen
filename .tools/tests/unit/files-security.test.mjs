@@ -169,6 +169,11 @@ test('owner boundaries cover foreign folders, metadata, contents, rename, move a
   assert.equal((await api(a, 'POST', 'move', { id: file.id, version: file.version, parentId: other.id })).status, 404);
   assert.equal((await api(b, 'DELETE', 'item', undefined, { query: '?id=' + file.id + '&version=' + file.version })).status, 404);
   assert.equal((await api(b, 'POST', 'uploads', { name: 'bad', size: 1, parentId: mine.id, operationId: operation() })).status, 404);
+  const search = { q: 'secret.txt', view: 'search', sort: 'modified' };
+  const match = await api(a, 'POST', 'search', search);
+  assert.deepEqual(match.value.items.map(item => [item.id, item.folderName]), [[file.id, mine.name]]);
+  const foreign = await api(b, 'POST', 'search', search);
+  assert.deepEqual(foreign.value.items, []);
   const own = await api(a, 'GET', 'list', undefined, { query: '?parentId=' + mine.id }); assert.equal(own.value.items[0].name, 'secret.txt'); metadata(own.value);
 });
 

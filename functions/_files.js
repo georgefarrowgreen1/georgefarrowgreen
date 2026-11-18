@@ -25,7 +25,7 @@ const mimeOf = value => typeof value === "string" && /^[A-Za-z0-9!#$&^_.+-]+\/[A
 const nameKey = name => name.toLocaleLowerCase("en-US");
 const liveSQL = "EXISTS (SELECT 1 FROM pg_users WHERE id = ?1 AND delete_at IS NULL)";
 const columns = "id, parent_id, kind, name, mime, size, state, created, modified, version, trash_at, trash_root, trash_parent, favourite";
-export const itemOf = row => row ? { id: row.id, parentId: (row.trash_root === row.id ? row.trash_parent : row.parent_id) || null, kind: row.kind, name: row.name, mime: row.kind === "folder" ? "inode/directory" : row.mime, size: row.kind === "folder" ? 0 : row.size, createdAt: row.created, modifiedAt: row.modified, version: row.version, status: row.state === "ready" ? "ready" : "pending", ...(row.trash_at ? { trashedAt: row.trash_at, trashRoot: row.trash_root } : {}), ...(row.favourite ? { favourite: true } : {}) } : null;
+export const itemOf = row => row ? { id: row.id, parentId: (row.trash_root === row.id ? row.trash_parent : row.parent_id) || null, kind: row.kind, name: row.name, ...(row.folder_name ? { folderName: row.folder_name } : {}), mime: row.kind === "folder" ? "inode/directory" : row.mime, size: row.kind === "folder" ? 0 : row.size, createdAt: row.created, modifiedAt: row.modified, version: row.version, status: row.state === "ready" ? "ready" : "pending", ...(row.trash_at ? { trashedAt: row.trash_at, trashRoot: row.trash_root } : {}), ...(row.favourite ? { favourite: true } : {}) } : null;
 
 async function make(D) {
   await D.batch([
@@ -161,7 +161,8 @@ export async function listFiles(env, owner, { parentId: parent, q = "", view = "
   const query = q.trim().toLocaleLowerCase("en-US"), scope = view === "trash" ? "trash_at > 0 AND trash_root = id" : "trash_at = 0 AND " + (view === "folder" ? "parent_id = ?2" : view === "recent" ? "kind = 'file' AND state = 'ready'" : view === "favourites" ? "favourite = 1 AND state = 'ready'" : "state = 'ready'");
   const condition = scope + (kind === "folder" ? " AND kind = 'folder'" : "") + (query ? " AND instr(name_key, ?3) > 0" : ""), order = ({ name: "name_key ASC", modified: "modified DESC", size: "size DESC" })[sort];
   // Indexed folder pages and a deliberately bounded recent/search listing.
-  const sql = `SELECT ${columns} FROM ifl_files_nodes WHERE user_id = ?1 AND ${condition} ORDER BY ${view === "recent" ? "" : "kind DESC, "}${order}, id ASC LIMIT ?4 OFFSET ?5`;
+  const folderName = view === "search" ? ", (SELECT p.name FROM ifl_files_nodes p WHERE p.user_id = ?1 AND p.id = n.parent_id AND p.kind = 'folder' AND p.trash_at = 0) AS folder_name" : "";
+  const sql = `SELECT ${columns}${folderName} FROM ifl_files_nodes n WHERE user_id = ?1 AND ${condition} ORDER BY ${view === "recent" ? "" : "kind DESC, "}${order}, id ASC LIMIT ?4 OFFSET ?5`;
   const { results } = await D.prepare(sql).bind(owner, parent, query, FILE_LIMITS.page + 1, offset).all();
   const current = await accountOf(D, owner);
   if (!current || current.closed) return failure(401, "Your account is unavailable. Sign in again.");

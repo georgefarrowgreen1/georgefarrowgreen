@@ -182,7 +182,12 @@ const OPTIONAL_WORKSPACE = new Set([...OS_CORE_JS, ...OS_RETIRED_JS]);
 // 2 KiB gzip in 3.10. Verified, curated reopen references add a separately
 // reviewed 2 KiB ceiling in 3.11. Neither adds a runtime dependency.
 test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip', { skip: roofSkip }, () => {
-  const all = files().filter(f => f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
+  const lazySearch = 'search-render.js';
+  if (files().includes(lazySearch)) {
+    assert.ok(gzipSync(strip(read(lazySearch))).length <= 2048, 'typed search rendering exceeds 2 KiB');
+    assert.ok(!/^import .*search-render/m.test(read('search.js')), 'typed rendering stays off the initial search path');
+  }
+  const all = files().filter(f => f !== lazySearch && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map((f) => strip(read(f))).join('\n');
   assert.ok(gzipSync(strip(read('requests.js'))).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
   console.log(`# roof core: ${gz} bytes gzip (comments stripped, optional OS scripts separately bounded)`);
