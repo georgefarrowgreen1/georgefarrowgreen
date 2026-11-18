@@ -6,7 +6,7 @@
 // which change far less often, are kept apart, across versions (LIBS: renamed when they're updated). The forecast
 // itself is kept by the page (data.js), never here. And its notifications: rain alerts and the morning briefing
 // (functions/_wxpush.js).
-const CACHE = "wx-2.13.1", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
+const CACHE = "wx-2.13.2", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4-public";
 // (the sky's colour at its top as it last was, kept by the page (app.js sky), written into the page as it's given here, as
 // its theme-color: an iPhone tints the strip behind its status bar with the page's theme-color as it arrives, and takes
 // no notice of it changed after; kept apart, across versions)
@@ -17,7 +17,7 @@ const SHELL = ["./", "./early.js", "./styles.css", "./boot.js", "./app.js", "./l
 // .tools/wxshell.mjs, checked by the tests. As it's installed, every file fetched is checked against them, so a phone
 // only ever keeps a whole version: straight after a release, a server can hand out a mix of the old and the new for a
 // moment, and kept, that mix would stay (an old radar.js in a new page, say) until the next.
-const SUMS = {"./early.js":"pqQ0qolr/fzkGP4BG7y3bZ3+2LQuR8ZSfLkUEWFxvEQ=","./styles.css":"VoNo2ntzjWv8aVg6Q81+cM7k8sU9n1TGhY5yXhzll5Q=","./boot.js":"0625VwnuhklBncp/LM1Z8ocwHyUTSNSrB/NYFrKDeBM=","./app.js":"vzX7PkFRdCdOUCXMSrbBl12ODAYZYXgvB8AzgWWFP6Y=","./location.js":"rmCxSTYGQL0qGToGQwpSwt0ztIS+FT6USDoJnzI9Lk4=","./detail.js":"wc8d6B7ha9M3DPa8jBoJYeXUL8g61RI8AhmG61RhfLs=","./settings.js":"yhHCQK5oJKFDyd/ntLuRzvgYxnJGpCM6pz70yp7DXJ0=","./data.js":"Kton/6j4aAz483LXrUBg32rJI/K++9h5qlSXSj5Dbuc=","./insights.js":"hJpUqqlkMOqd/3c16ZC9UbSnNU1UAdzTNMM48JFDa9M=","./format.js":"jn8oG8NB6xCRakbYdd80Tt++uLxVF2avsEIHiSZDsL4=","./codes.js":"dllq/dnHuCOWsS6RTwkqDkR4kYsp1Cf3vHCz7RjoxMA=","./climate.js":"OYnesUonPix6ndrjmBSQSqTaDFbolSKe1DDOQXu+l9w=","./sky.js":"RecpRXnB4LaQS+csAbFTHoWZEbi+XIdwa/ON2rw1lhw=","./charts.js":"Yej8rJUbUu+zV1HZyKxk+kdyI9srIX7yRXsBLY4FerQ=","./icons.js":"pgIfYXOImmUYOMiuNh2PL4hx1eKY5iVop3sa0tES7I0=","./skill.js":"gkAM68aJWQi1UFM2T07Q3SV5lwxyUf+CkCN2PRJBXfI=","./radar.js":"6Hz1uY5D/tliet9mUAEGwZZJt8ubFO8OrSV6ckW7ic0=","./radarrain.js":"BxlKFxSebY7aevLvv6USs5dt4F+XYVdlnwONFuUNpc8=","./rainmap.js":"AbdC5/JghsAuJIWgKlhwtl+putW40xbw521LbZJ28Ak=","./radarmix.js":"oQbg1m7vmQZtUHrU9ltZHUgEVcBB+A01unX+FJMGYjs=","./radarwork.js":"SWTcX26JnER0wRubKmKdd6X+UOPh0eG63ZAFaCLIK18=","./mapgl.js":"Mj7Jh4ccLWTtszJqdqNUso8ZO5kmQgzFPkHHynHGTLs=","./mapstyle.js":"l98jKbYlemzdupyKkH+kAX650NA7KRzOsC59n2or4i4=","./mapleaf.js":"fc9mrpGVtp3R/8p8zP2rVZtYdvl5Klas4+KXjRRYl9g=","./official.js":"klGkZyNJCWbPf3CJtoZhtrYdXyJmOnMEODO8NQ4/kec=","./agree.js":"axi1t0IPY9qi2texIqP/4OnyU7gzD2/dOZfJ40jDi4I=","./solar.js":"/HqTx8LIQm2x79Wx4sWPDv5rjr7LmD6H8NhZRVeKaGs=","./account.js":"h6GKLO16Sz8hEX+mDie9sQL3eYqjgvpqku0byvX0ICQ=","./send.js":"zJ9ZrBX4DGnRkOxgHZySTYlp4FYt7rKR4Wismp/syBk=","./manifest.webmanifest":"23Anp9S8qC7GlLB69suHk7PJ8JfhFoqBuJCYAyI+skE=","./icon.svg":"Mfwc5OH4F6BLd/7oUJGzE93BUHpdA9pP8ngJdHx/4GE=","./icon-192.png":"XB9hcjlwHuXlvCewcQrfsEaciriz+kH8TaL/9PN19eE="};
+const SUMS = {"./early.js":"pqQ0qolr/fzkGP4BG7y3bZ3+2LQuR8ZSfLkUEWFxvEQ=","./styles.css":"VoNo2ntzjWv8aVg6Q81+cM7k8sU9n1TGhY5yXhzll5Q=","./boot.js":"0625VwnuhklBncp/LM1Z8ocwHyUTSNSrB/NYFrKDeBM=","./app.js":"oqNZr4XaTsQAb9XsYw6iqn4u1n4zvcY1hTAuMPw1H/k=","./location.js":"rmCxSTYGQL0qGToGQwpSwt0ztIS+FT6USDoJnzI9Lk4=","./detail.js":"wc8d6B7ha9M3DPa8jBoJYeXUL8g61RI8AhmG61RhfLs=","./settings.js":"yhHCQK5oJKFDyd/ntLuRzvgYxnJGpCM6pz70yp7DXJ0=","./data.js":"Kton/6j4aAz483LXrUBg32rJI/K++9h5qlSXSj5Dbuc=","./insights.js":"hJpUqqlkMOqd/3c16ZC9UbSnNU1UAdzTNMM48JFDa9M=","./format.js":"jn8oG8NB6xCRakbYdd80Tt++uLxVF2avsEIHiSZDsL4=","./codes.js":"dllq/dnHuCOWsS6RTwkqDkR4kYsp1Cf3vHCz7RjoxMA=","./climate.js":"OYnesUonPix6ndrjmBSQSqTaDFbolSKe1DDOQXu+l9w=","./sky.js":"RecpRXnB4LaQS+csAbFTHoWZEbi+XIdwa/ON2rw1lhw=","./charts.js":"Yej8rJUbUu+zV1HZyKxk+kdyI9srIX7yRXsBLY4FerQ=","./icons.js":"pgIfYXOImmUYOMiuNh2PL4hx1eKY5iVop3sa0tES7I0=","./skill.js":"gkAM68aJWQi1UFM2T07Q3SV5lwxyUf+CkCN2PRJBXfI=","./radar.js":"6Hz1uY5D/tliet9mUAEGwZZJt8ubFO8OrSV6ckW7ic0=","./radarrain.js":"BxlKFxSebY7aevLvv6USs5dt4F+XYVdlnwONFuUNpc8=","./rainmap.js":"AbdC5/JghsAuJIWgKlhwtl+putW40xbw521LbZJ28Ak=","./radarmix.js":"oQbg1m7vmQZtUHrU9ltZHUgEVcBB+A01unX+FJMGYjs=","./radarwork.js":"SWTcX26JnER0wRubKmKdd6X+UOPh0eG63ZAFaCLIK18=","./mapgl.js":"Mj7Jh4ccLWTtszJqdqNUso8ZO5kmQgzFPkHHynHGTLs=","./mapstyle.js":"l98jKbYlemzdupyKkH+kAX650NA7KRzOsC59n2or4i4=","./mapleaf.js":"fc9mrpGVtp3R/8p8zP2rVZtYdvl5Klas4+KXjRRYl9g=","./official.js":"klGkZyNJCWbPf3CJtoZhtrYdXyJmOnMEODO8NQ4/kec=","./agree.js":"axi1t0IPY9qi2texIqP/4OnyU7gzD2/dOZfJ40jDi4I=","./solar.js":"/HqTx8LIQm2x79Wx4sWPDv5rjr7LmD6H8NhZRVeKaGs=","./account.js":"h6GKLO16Sz8hEX+mDie9sQL3eYqjgvpqku0byvX0ICQ=","./send.js":"zJ9ZrBX4DGnRkOxgHZySTYlp4FYt7rKR4Wismp/syBk=","./manifest.webmanifest":"23Anp9S8qC7GlLB69suHk7PJ8JfhFoqBuJCYAyI+skE=","./icon.svg":"Mfwc5OH4F6BLd/7oUJGzE93BUHpdA9pP8ngJdHx/4GE=","./icon-192.png":"XB9hcjlwHuXlvCewcQrfsEaciriz+kH8TaL/9PN19eE="};
 const sum = async (buf) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))));
 // (all of it or none: a version that couldn't all be fetched whole, on a poor connection or mid-release say, isn't
 // started, so the last whole one carries on, offline too, and it's tried again next time)
@@ -31,8 +31,8 @@ self.addEventListener("install", (e) => {
     // fingerprint (the page: by its version), or isn't to hand, is fetched, checked with the server first; and one
     // with no fingerprint always is)
     const take = async (u, cache) => {
-      const res = await fetch(new Request(u, { cache }));
-      if (!res.ok) throw new Error(`${u}: ${res.status}`);
+      const res = await fetch(new Request(u, { cache, credentials: "omit", redirect: "error" }));
+      if (!publicWeatherFile(u, res)) throw new Error(`${u}: unusable shell response`);
       const body = await res.clone().arrayBuffer();
       const whole = u === "./" ? new TextDecoder().decode(body).includes(`name="app-version" content="${CACHE}"`) : !SUMS[u] || (await sum(body)) === SUMS[u];
       return whole ? res : null;
@@ -52,21 +52,41 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("wx-") && k !== CACHE && k !== LIBS && k !== TINT).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-self.addEventListener("fetch", (e) => {
-  const req = e.request, u = new URL(req.url), page = req.mode === "navigate";
-  // (never /version: the updater every app shares asks it which version's deployed, IFL.updates, and a kept answer would
-  // say the same forever; and nothing outside Weather's own part of its address: at InFlite's hub, Weather is /weather/,
-  // and the page asks the site for things that aren't Weather's (its manifest, Chats' page), each answered as the site
-  // has it, never kept here)
-  if (req.method !== "GET" || u.origin !== self.location.origin || !req.url.startsWith(self.registration.scope) || u.pathname.startsWith("/api/") || u.pathname.endsWith("/version")) return;
+function publicWeatherFile(path, response) {
+  if (!response || response.status !== 200 || response.redirected ||
+      /(?:^|,)\s*no-store\b/i.test(response.headers.get("Cache-Control") || "")) return false;
+  const type = (response.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+  if (/\.m?js$/.test(path)) return /^(?:application|text)\/(?:javascript|ecmascript)$/.test(type);
+  if (path.endsWith(".css")) return type === "text/css";
+  if (path === "./") return type === "text/html";
+  if (path.endsWith(".webmanifest")) return type === "application/manifest+json" || type === "application/json";
+  return type.startsWith("image/");
+}
+const weatherFiles = new Set([
+  ...SHELL.map(file => file.slice(2)), "inflite.svg", "alerts.js",
+  "icon-180.png", "icon-512.png", "icon-maskable-512.png", "og.jpg"
+]);
+const mapFiles = new Set([
+  "vendor/leaflet.css", "vendor/leaflet.js", "vendor/maplibre-gl.css",
+  "vendor/maplibre-gl.mjs", "vendor/maplibre-gl-worker.mjs", "vendor/maplibre-gl-shared.mjs"
+]);
+self.addEventListener("fetch", e => {
+  const req = e.request, url = new URL(req.url), scope = new URL(self.registration.scope);
+  if (req.method !== "GET" || req.headers.has("Authorization") || req.headers.has("Range") || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
+  const path = url.pathname.slice(scope.pathname.length), page = req.mode === "navigate";
+  const library = mapFiles.has(path);
+  if (page ? path !== "" && path !== "index.html" : !path || url.search || !(library || weatherFiles.has(path))) return;
   e.respondWith((async () => {
-    // (a page is kept under the one address, not each link's own: those would pile up, and say where you've looked)
-    const cache = await caches.open(u.pathname.includes("/vendor/") ? LIBS : CACHE), key = page ? "./" : req;
-    const kept = await cache.match(key, { ignoreSearch: true });
-    if (kept) return page ? tinted(kept) : kept;
-    // (a page's own request can't take options; it's never kept by the browser anyway)
-    const res = await (page ? fetch(req) : fetch(req, { cache: "no-cache" }));
-    if (res.ok && res.type === "basic") cache.put(key, res.clone());
+    // Location parameters belong to the open page. Only fetch and keep its public shell.
+    const key = page ? scope.href : url.href;
+    const cache = await caches.open(library ? LIBS : CACHE).catch(() => null);
+    const kept = await cache?.match(key).catch(() => null);
+    const file = page ? "./" : path;
+    if (publicWeatherFile(file, kept)) return page ? tinted(kept) : kept;
+    const res = await fetch(key, { cache: "no-cache", credentials: "omit", redirect: "error" });
+    if (cache && res.type === "basic" && publicWeatherFile(file, res)) {
+      e.waitUntil(cache.put(key, res.clone()).catch(() => {}));
+    }
     return page && res.ok ? tinted(res) : res;
   })());
 });

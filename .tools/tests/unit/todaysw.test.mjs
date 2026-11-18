@@ -217,7 +217,7 @@ test('One roof: a document at /weather/ from the network, else the copy of / (ne
 // (a page of this site asking, as modules.js keepOffline does; the worker's own copies of each file it fetched)
 const FILES12 = ['/weather/roof/weather.js', '/weather/roof/connector.js', '/weather/roof/core.js', '/weather/data.js', '/weather/format.js', '/weather/roof/weather.css'];
 const keepFrom = (w, data, source = { url: `${ORIGIN}/weather/#radar` }) => w.send('message', { data, source, ports: [] });
-const okFile = (path) => Object.defineProperty(new Response(`file ${path}`, { status: 200 }), 'type', { value: 'basic' });
+const okFile = (path) => Object.defineProperty(new Response(`file ${path}`, { status: 200, headers: { 'Content-Type': path.includes('.css') ? 'text/css' : 'text/javascript' } }), 'type', { value: 'basic' });
 
 test('One roof: the module’s files kept when the page asks, in roof-weather-<build>, all of them or none; the build before let go only once the new one is whole', { skip: roofCase }, async () => {
   let failOn = null, opaque = null;
@@ -512,4 +512,23 @@ test('stage 3: Chats’ document /chats/ as the others’ (the network, else the
   assert.equal((await f.get('/chats/roof/core.js?v=0123456789ab')).status, 404, 'Chats off: the hub’s 404');
   for (const p of ['/chats/sw.js', '/chats/version', '/chats/in/', '/chats/in/inflite.svg', '/chats/roof/core.js?v=1', '/chats/roof/core.js?v=0123456789AB', '/chats/roof/core.js?retry=1', '/chats/cards.js?v=0123456789ab&x=1', '/chats/tracker.js', '/chats/handover.js', '/chats/inflite.svg'])
     assert.equal(await f.get(p), null, `${p}: not the worker’s`);
+});
+
+test('offline module delivery requires public code and chooses the newest usable build', { skip: roofCase }, async () => {
+  const path = '/weather/roof/weather.js';
+  const response = (body, headers) => Object.defineProperty(new Response(body, { headers }), 'type', { value: 'basic' });
+  const valid = response('valid', { 'Content-Type': 'application/javascript' });
+  const denied = response('unavailable', { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-store' });
+  for (const answer of [denied, response('unavailable', { 'Content-Type': 'text/html' }), response('{}', { 'Content-Type': 'application/json' })]) {
+    const w = worker(() => answer);
+    await keepFrom(w, { ifl: 'keep', app: 'weather', build: '2.10.1', files: [path] });
+    assert.equal(w.fetchInit[0].credentials, 'omit');
+    assert.equal(w.fetchInit[0].redirect, 'error');
+    assert.equal(w.stores.size, 0);
+  }
+  const w = worker(() => { throw Error('offline'); });
+  for (const [build, res] of [['2.9.2', okFile(path)], ['2.10.1', valid], ['2.11.1', denied]]) {
+    w.stores.set('roof-weather-' + build, new Map([[path, res]]));
+  }
+  assert.equal(await (await w.get(path)).text(), 'valid');
 });

@@ -45,20 +45,30 @@ self.addEventListener("notificationclick", (e) => {
 // is the one exception: it comes from the network while there is one (what's kept, offline or after three seconds), as
 // an iPhone takes what it says of the status bar from the page that's open as it's added to the Home Screen, and a
 // page kept from before said otherwise.
-const SHELL = "markets-app-2";
+const SHELL = "markets-app-2.46.2";
 const FILES = ["cash.js", "cash-store.js", "cashview.js", "./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "income.js", "stories.js", "desk.js", "send.js", "session.js", "live.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
 const at = (f) => new URL(f, self.registration.scope).href;
-const isFile = (u, scope) => u.pathname.startsWith(scope.pathname) && !u.pathname.slice(scope.pathname.length).includes("/") && /\.(js|css|webmanifest|svg|png)$/.test(u.pathname);
+const shellURLs = new Set(FILES.map(at));
+const staticFiles = new Set([...FILES, "inflite.svg", "icon-512.png", "icon-maskable-512.png"]);
+const isFile = (u, scope) => !u.search && u.pathname.startsWith(scope.pathname) && staticFiles.has(u.pathname.slice(scope.pathname.length));
+const cacheable = res => res.status === 200 && res.type === "basic" && !res.redirected &&
+  !/(?:^|,)\s*no-store\b/i.test(res.headers.get("Cache-Control") || "");
 const tagOf = (res) => res.headers.get("etag") || "";
-async function fill() {
-  const got = await Promise.all(FILES.map((f) => fetch(at(f), { cache: "no-cache" }).then((res) => (res.ok ? res.arrayBuffer().then((b) => [f, b, res]) : null), () => null)));
-  if (got.some((g) => !g)) throw new Error("Markets: not every file came");
-  const c = await caches.open(SHELL);
-  await Promise.all(got.map(([f, b, res]) => c.put(at(f), new Response(b, { status: res.status, headers: res.headers }))));
+let filling = null;
+function fill() {
+  // addAll commits the whole set atomically and streams the bodies through the browser.
+  if (!filling) {
+    const requests = FILES.map(file => new Request(at(file), {
+      cache: "no-cache", credentials: "omit", redirect: "error"
+    }));
+    filling = caches.open(SHELL).then(cache => cache.addAll(requests)).finally(() => { filling = null; });
+  }
+  return filling;
 }
-self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(fill().catch(() => {})); });
-// (the updater every app shares, about to load a new version: every file fetched afresh first, then told: IFL.updates)
-self.addEventListener("message", (e) => { if (e.data?.ifl === "renew") e.waitUntil(fill().catch(() => {}).then(() => e.ports[0]?.postMessage({ ifl: "renewed" }))); });
+self.addEventListener("install", e => e.waitUntil(fill().then(() => self.skipWaiting())));
+self.addEventListener("message", e => {
+  if (e.data?.ifl === "renew") e.waitUntil(fill().then(() => e.ports[0]?.postMessage({ ifl: "renewed" })));
+});
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k.startsWith("markets-app-") && k !== SHELL) await caches.delete(k);
   await self.clients.claim();
@@ -70,38 +80,53 @@ function renew() {
   }, () => {}).finally(() => { renewing = null; }));
 }
 async function served(e, key) {
-  const c = await caches.open(SHELL), hit = await c.match(key);
-  const now = fetch(e.request.mode === "navigate" ? key : e.request, { cache: "no-cache" });
+  const c = await caches.open(SHELL).catch(() => null), hit = await c?.match(key).catch(() => null);
+  const freshFile = () => fetch(e.request, { cache: "no-cache", credentials: "omit", redirect: "error" });
   if (!hit) {
     // (one of the set missing while the rest is kept, say a file new in this version, or one the browser let go: the whole
     // set fetched again together first, and this one served from it, never one new file beside the others kept from
     // before (a new app.js asking an old account.js for what it hasn't got). Where that can't be done, as before)
-    if ((await c.keys()).length) {
+    if (c && shellURLs.has(key) && (await c.keys().catch(() => [])).length) {
       await (renewing ||= fill().finally(() => { renewing = null; })).catch(() => {});
-      const fresh = await c.match(key);
-      if (fresh) { now.catch(() => {}); return fresh; }
+      const fresh = await c.match(key).catch(() => null);
+      if (fresh) return fresh;
     }
-    const res = await now;
-    if (res.ok && res.type === "basic") await c.put(key, res.clone());
+    const res = await freshFile();
+    if (c && cacheable(res)) e.waitUntil(c.put(key, res.clone()).catch(() => {}));
     return res;
   }
-  e.waitUntil(now.then((res) => { if (res.ok && tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) return renew(); }, () => {}));
+  const tag = tagOf(hit);
+  if (tag) e.waitUntil((async () => {
+    let res = await fetch(key, {
+      method: "HEAD", cache: "no-cache", credentials: "omit", redirect: "error",
+      headers: { "If-None-Match": tag }
+    });
+    if (res.status === 304) return;
+    if (res.status === 405 || res.status === 501 || (res.ok && !tagOf(res))) {
+      res = await freshFile();
+      res.body?.cancel().catch(() => {});
+    }
+    if (res.ok && tagOf(res) && tagOf(res) !== tag) await renew();
+  })().catch(() => {}));
   return hit;
 }
 // (the page: fresh where it can be, a change in it renewing the rest, as above)
 async function page(e, key) {
-  const c = await caches.open(SHELL), hit = await c.match(key);
+  const c = await caches.open(SHELL).catch(() => null), hit = await c?.match(key).catch(() => null);
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), hit ? 3000 : 20000);
   try {
-    const res = await Promise.race([fetch(key, { cache: "no-cache" }), new Promise((_, no) => setTimeout(() => no(new Error("slow")), hit ? 3000 : 20000))]);
-    if (!res.ok) return hit || res;
-    if (!hit) { if (res.type === "basic") e.waitUntil(c.put(key, res.clone())); }
+    const res = await fetch(key, { cache: "no-cache", credentials: "omit", signal: controller.signal });
+    if (!res.ok) return res.status >= 500 && hit ? hit : res;
+    if (!hit) { if (c && cacheable(res)) e.waitUntil(c.put(key, res.clone()).catch(() => {})); }
     else if (tagOf(res) && tagOf(hit) && tagOf(res) !== tagOf(hit)) e.waitUntil(renew());
     return res;
   } catch (err) { if (hit) return hit; throw err; }
+  finally { clearTimeout(deadline); }
 }
 self.addEventListener("fetch", (e) => {
   const r = e.request, u = new URL(r.url), scope = new URL(self.registration.scope);
-  if (r.method !== "GET" || u.origin !== scope.origin || u.pathname.includes("/api/")) return;
+  if (r.method !== "GET" || r.headers.has("Authorization") || r.headers.has("Range") || u.origin !== scope.origin || u.pathname.includes("/api/")) return;
   if (r.mode === "navigate") { if (u.pathname === scope.pathname || u.pathname === scope.pathname + "index.html") e.respondWith(page(e, at("./"))); return; }
   if (isFile(u, scope)) e.respondWith(served(e, u.origin + u.pathname));
 });

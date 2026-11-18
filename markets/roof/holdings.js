@@ -10,10 +10,17 @@
 // div.mk-hside: accounts, income, the year against the market), one after another on a phone; at 980 px and wider,
 // your holdings on the left and the rest on the right (markets.css .mk-hold).
 import * as core from "./core.js";
-import { cashSection } from "../cashview.js";
-import { cashContext } from "./mkui.js";
-import { h, C, el, M, toast, render, openSheet, pushSheet, closeBtn, incomeBars, allowBar, icon, keepFocus, afterDraw } from "./mkui.js";
+import { cashEditor, cashSection } from "../cashview.js";
+import { cashContext, Sheet, h, C, el, M, toast, render, openSheet, pushSheet, closeBtn, incomeBars, allowBar, icon, keepFocus, afterDraw } from "./mkui.js";
 import { itemRow, figOf, emptyView, notIn } from "./todayview.js";
+
+function cashView(id) { return [cashEditor(cashContext(), id)]; }
+cashView.sheet = "cash";
+cashView.focus = "#mk-cash-amount";
+
+export function openCash(ctx, id) {
+  return (Sheet.stack.length ? pushSheet : openSheet)(cashView, id);
+}
 
 const { S, A, ACCOUNT_NAME, BENCHES, KINDS_SAID, fmt, money, signed, pct, tone, plainSym, plural, kindOf, valueOf, divsOf, paidFor, totals, leftOutSaid, byAccount, income, isaYear, tracksIsa, aroundMonth, owned, rate } = core;
 // ---- the section ----

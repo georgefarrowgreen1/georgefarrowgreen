@@ -1,4 +1,3 @@
-import { cashEditor } from "../cashview.js";
 // Markets' module: its entry under InFlite's roof (One roof stage 2, spec §2.1, §2.5, §2.6, §4.1, §4.2, §4.7, S2-D2–D7,
 // D9, D18, D19, D21, D22). Loaded by the framework (roof/modules.js) with import("/markets/roof/markets.js") on first open
 // and kept for the life of the page.
@@ -19,17 +18,13 @@ import { cashEditor } from "../cashview.js";
 // A section out of sight for five minutes lets go of its DOM and is drawn afresh from core.S on its next show (S2-D22).
 import * as core from "./core.js";
 import { connector, want } from "./connector.js";
-import { h, cashContext, pushSheet, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, topArg } from "./mkui.js";
+import { h, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, topArg } from "./mkui.js";
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.46.1";
-export const NEWS = "Updated release numbering.";
+export const BUILD = "2.46.2";
+export const NEWS = "Offline updates install together and keep the previous copy if interrupted.";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
-
-function cashView(id) { return [cashEditor(cashContext(), id)]; }
-cashView.sheet = "cash";
-cashView.focus = "#mk-cash-amount";
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
 const DROP_AFTER = 5 * 60e3;
@@ -58,7 +53,7 @@ export async function mount(root, fw) {
     stock: via("stock", "openStock"),
     addStock: (q = "") => openAdd(q),
     holding: via("edit", "openHolding"),
-    cash: (id) => (Sheet.stack.length ? pushSheet : openSheet)(cashView, id),
+    cash: via("holdings", "openCash"),
     income: via("money", "openIncome"),
     isa: via("money", "openIsa"),
     vs: via("money", "openVs"),

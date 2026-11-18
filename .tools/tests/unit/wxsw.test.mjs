@@ -15,7 +15,7 @@ const CACHE = /const CACHE = "([^"]+)"/.exec(SW)[1], LIBS = /LIBS = "([^"]+)"/.e
 // (the worker at scope, its caches holding names (each a Map), the network answering each address with what net says)
 // (a same-origin answer, as a browser's fetch gives one: "basic", which the worker keeps)
 const basic = (res) => Object.defineProperty(res, "type", { value: "basic" });
-function worker(scope, names = [], net = (url) => basic(new Response(`from the network: ${url}`, { status: 200 }))) {
+function worker(scope, names = [], net = (url) => basic(new Response(`from the network: ${url}`, { headers: { "Content-Type": url.endsWith("/") ? "text/html" : url.endsWith(".css") ? "text/css" : url.endsWith(".webmanifest") ? "application/manifest+json" : "text/javascript" } }))) {
   const on = {}, stores = new Map(names.map((k) => [k, new Map()])), deleted = [], fetched = [];
   const origin = new URL(scope).origin;
   const self = {
@@ -83,8 +83,8 @@ test("at the hub, its own files and page are its own, kept as they come; its ver
   assert.ok(js.answered && js.res.ok, "its script");
   assert.equal(await js.res.text(), "from the network: https://inflite.ai/weather/app.js");
   assert.ok(w.stores.get(CACHE).has("https://inflite.ai/weather/app.js"), "kept with this version");
-  const lib = await w.get("/weather/vendor/maplibre-gl.js");
-  assert.ok(lib.answered && w.stores.get(LIBS).has("https://inflite.ai/weather/vendor/maplibre-gl.js"), "a library, kept with the libraries");
+  const lib = await w.get("/weather/vendor/maplibre-gl.mjs");
+  assert.ok(lib.answered && w.stores.get(LIBS).has("https://inflite.ai/weather/vendor/maplibre-gl.mjs"), "a library, kept with the libraries");
   const page = await w.nav("/weather/?lat=51.5&lon=-0.12&name=Soho");
   assert.ok(page.answered && page.res.ok, "its page, wherever it's opened on");
   assert.ok(w.stores.get(CACHE).has("https://inflite.ai/weather/"), "kept as its one page");
@@ -103,4 +103,16 @@ test("at Weather's own address, all of it Weather's: answered as it always has, 
   assert.equal(away.answered, false, "another site's: never");
   const post = await w.send("fetch", { request: new Request("https://weather.inflite.ai/app.js", { method: "POST", body: "x" }) });
   assert.equal(post.answered, false, "only GETs");
+});
+
+test("Weather handles only its public shell and leaves private responses out of offline storage", async () => {
+  const w = worker("https://inflite.ai/weather/", [], url => basic(new Response(url, { headers: { "Cache-Control": "no-store" } })));
+  for (const path of ["/weather/api/settings", "/weather/unknown.js", "/weather/roof/profile.js", "/weather/app.js?account=1"]) {
+    assert.equal((await w.get(path)).answered, false);
+    assert.equal((await w.nav(path)).answered, false);
+  }
+  await w.nav("/weather/?lat=51.5&lon=-0.12");
+  await w.get("/weather/app.js");
+  assert.deepEqual(w.fetched, ["https://inflite.ai/weather/", "https://inflite.ai/weather/app.js"]);
+  for (const entries of w.stores.values()) assert.equal(entries.size, 0);
 });

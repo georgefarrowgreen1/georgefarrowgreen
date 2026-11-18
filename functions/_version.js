@@ -4,19 +4,24 @@
 // knows it's behind by the number it carries. min: a version every copy is to update to as soon as it's not in your
 // way (REQUIRED, below), for a fix that can't wait for a quiet moment. Read once a minute at most, never kept by a
 // browser. (Mail, the inflite repo's Worker, answers its own: /api/version.)
-const SOURCES = { status: ["/status/app.js", "BUILD"], chat: ["/pigeon/app.js", "APP_VERSION"], weather: ["/weather/app.js", "BUILD"], fitness: ["/fitness/app.js", "BUILD"],
+import { APP_BUILDS } from "./_minfresh.js";
+export const SOURCES = { status: ["/status/app.js", "BUILD"], chat: ["/pigeon/app.js", "APP_VERSION"], weather: ["/weather/app.js", "BUILD"], fitness: ["/fitness/app.js", "BUILD"],
   markets: ["/markets/app.js", "BUILD"], account: ["/account/app.js", "BUILD"] };
 // (a version each app's copies must have: { markets: "1.76" }, set with a release that can't wait; none for now)
 export const REQUIRED = {};
+export function readAppBuild(script, name) {
+  return new RegExp(`\\bconst ${name} = "(\\d+\\.\\d+(?:\\.\\d+)?)"`).exec(script)?.[1] || null;
+}
 const memo = new Map();
 export async function buildOf(ctx, url, app) {
+  if (APP_BUILDS) return APP_BUILDS[app] || null;
   const hit = memo.get(app);
   if (hit && Date.now() - hit.at < 60e3) return hit.build;
   const [path, name] = SOURCES[app];
   let build = null;
   try {
     const r = await ctx.env.ASSETS.fetch(new Request(new URL(path, url)));
-    if (r.ok) build = new RegExp(`\\bconst ${name} = "([0-9.]+)"`).exec(await r.text())?.[1] || null;
+    if (r.ok) build = readAppBuild(await r.text(), name);
   } catch (_) {}
   if (build) memo.set(app, { build, at: Date.now() });
   return build;
