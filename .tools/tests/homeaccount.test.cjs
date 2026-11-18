@@ -123,6 +123,7 @@ for (const assets of ['', 'min/']) {
           assert.equal(await mark.count(), 0);
         } else {
           await mark.waitFor({ state: 'attached' });
+          await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
           assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
           assert.equal(await mark.locator('.opening-corner').count(), 12);
@@ -130,34 +131,38 @@ for (const assets of ['', 'min/']) {
             elements.flatMap(el => el.getAnimations().flatMap(a => Object.keys(a.effect.getKeyframes()[0]))));
           assert.ok(properties.includes('transform'));
           assert.ok(properties.every(key => ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key)));
-          // Seek the actual photo from capsule to rectangle. Its four arcs must
-          // track the visible corners and shrink with the same progress as the crop.
-          const edgeErrors = await page.evaluate(() => {
+          // Seek the real compositor animations through the width reversal. The
+          // glyph and photo must stay registered, and the photo must keep moving.
+          const motion = await page.evaluate(() => {
             const panels = [...document.querySelectorAll('.fi-reel button')];
             const corners = [...document.querySelectorAll('.opening-corner')];
-            const animations = [...panels, ...corners].flatMap(el => el.getAnimations({subtree: true}));
+            const letters = [...document.querySelectorAll('.opening-letter')];
+            const animations = [...panels, ...corners, ...letters].flatMap(el => el.getAnimations({subtree: true}));
             const times = animations.map(a => a.currentTime);
-            const unfold = panels[0].getAnimations().find(a => a.effect.getKeyframes()[0].transform);
-            const {delay, duration} = unfold.effect.getTiming();
-            const errors = [];
-            for (const fraction of [0, .1, .4, .8, .99]) {
-              animations.forEach(a => { a.currentTime = delay + duration * fraction; });
+            const errors = [], heights = [];
+            for (const time of [360, 520, 560, 600, 640, 680, 720, 1200, 1600, 1800]) {
+              animations.forEach(a => { a.currentTime = time; });
               for (const [index, panel] of panels.entries()) {
                 const outer = panel.getBoundingClientRect(), inner = panel.querySelector('.fi-window').getBoundingClientRect();
                 const left = Math.max(outer.left, inner.left), right = Math.min(outer.right, inner.right);
                 const top = Math.max(outer.top, inner.top), bottom = Math.min(outer.bottom, inner.bottom);
-                const remaining = (outer.width - (right - left)) / (outer.width - 8);
+                if (time <= 640) {
+                  const glyph = letters[index].getBoundingClientRect();
+                  errors.push(glyph.left - left, glyph.right - right, glyph.top - top, glyph.bottom - bottom);
+                }
+                if (index === 0 && time >= 520 && time <= 720) heights.push(bottom - top);
                 corners.slice(index * 4, index * 4 + 4).forEach((corner, i) => {
                   const tile = corner.getBoundingClientRect();
-                  errors.push(i >= 2 ? tile.right - right : tile.left - left, i % 2 ? tile.bottom - bottom : tile.top - top,
-                    tile.width - 4 * remaining);
+                  errors.push(i >= 2 ? tile.right - right : tile.left - left, i % 2 ? tile.bottom - bottom : tile.top - top);
+                  if (time === 1800) errors.push(tile.width);
                 });
               }
             }
             animations.forEach((a, i) => { a.currentTime = times[i]; });
-            return errors;
+            return {errors, heights};
           });
-          assert.ok(edgeErrors.every(d => Math.abs(d) < .5), JSON.stringify(edgeErrors));
+          assert.ok(motion.errors.every(d => Math.abs(d) < .5), JSON.stringify(motion.errors));
+          assert.ok(motion.heights.slice(1).every((h, i) => h > motion.heights[i] + 1), JSON.stringify(motion.heights));
           if (width === 1440) {
             await page.keyboard.press('Escape');
           } else {
