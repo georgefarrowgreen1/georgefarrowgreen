@@ -178,6 +178,7 @@ function setupOpening() {
   const galleryRect = gallery.getBoundingClientRect();
   const panelRects = panels.map(panel => panel.getBoundingClientRect());
   const viewportWidth = innerWidth;
+  const initialScroll = scrollY;
   const x = galleryRect.left + galleryRect.width / 2;
   const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
   const wordmark = $(".wordmark");
@@ -195,7 +196,6 @@ function setupOpening() {
   let interrupted = false;
   let start = null;
   let warmupFrame;
-  const glide = "cubic-bezier(.39,0,.24,1)";
   function animate(el, frames, timing) {
     const animation = el.animate(frames, {fill: "both", ...timing});
     animation.pause();
@@ -216,13 +216,40 @@ function setupOpening() {
     body.classList.remove("playing-opening");
   }
 
-  // The photograph starts inside the narrowing letter.
-  const stems = glyphs.map((_, i) => {
-    const width = 8, height = i === 1 ? 46 : 34;
-    return {left: 40 + (i - 1) * 12 - width / 2, top: 26 - height / 2, width, height};
+  // Start the vertical reveal while the letter is still narrowing. All edges,
+  // including the visible glyph, follow the same path through the turn.
+  const delay = 120, duration = 1680;
+  const sampleInterval = 35;
+  const mix = (a, b, t) => a + (b - a) * t;
+  function smootherstep(time, from, to) {
+    const t = Math.max(0, Math.min(1, (time - from) / (to - from)));
+    return t * t * t * (10 + t * (6 * t - 15));
+  }
+  // Prepare the path once. The compositor interpolates it at the display rate.
+  const steps = Array.from({length: duration / sampleInterval + 1}, (_, i) => {
+    const t = delay + i * sampleInterval;
+    return {fold: smootherstep(t, delay, 705), widen: smootherstep(t, 440, delay + duration), lift: smootherstep(t, 280, 1740)};
   });
-  glyphs.forEach(({path, bounds}, i) => {
-    const stem = stems[i];
+  const translate = (left, top) => `translate3d(${left}px, ${top}px, 0)`;
+  panels.forEach((panel, i) => {
+    const {path, bounds} = glyphs[i], rect = panelRects[i];
+    const finalLeft = rect.left - (x - 40), finalTop = rect.top - (y - 26);
+    const stemHeight = i === 1 ? 46 : 34;
+    const poses = steps.map(({fold, widen, lift}) => {
+      const foldedWidth = mix(bounds.width, 8, fold);
+      const width = mix(foldedWidth, rect.width, widen);
+      const height = mix(mix(bounds.height, stemHeight, fold), rect.height, lift);
+      const left = mix(mix(bounds.x, 36 + (i - 1) * 12, fold), finalLeft, widen);
+      const top = mix(mix(bounds.y, 26 - stemHeight / 2, fold), finalTop, lift);
+      return {left, top, width, height, radius: foldedWidth / 2 * (1 - widen),
+        cropX: rect.width - width, cropY: rect.height - height};
+    });
+    function follow(el, transform, until = delay + duration) {
+      const count = 1 + Math.ceil((until - delay) / sampleInterval);
+      const frames = poses.slice(0, count).map(pose => ({transform: transform(pose)}));
+      animate(el, frames, {delay, duration: sampleInterval * (count - 1)});
+    }
+
     const letter = document.createElement("span");
     letter.className = "opening-letter";
     Object.assign(letter.style, {width: bounds.width + "px", height: bounds.height + "px"});
@@ -231,60 +258,32 @@ function setupOpening() {
     glyph.setAttribute("viewBox", [bounds.x, bounds.y, bounds.width, bounds.height].join(" "));
     glyph.setAttribute("preserveAspectRatio", "none");
     glyph.append(path.cloneNode(true));
-
     letter.append(glyph);
     mark.append(letter);
-    animate(letter, [
-      {transform: `translate3d(${bounds.x}px, ${bounds.y}px, 0) scale(1, 1)`},
-      {transform: `translate3d(${stem.left}px, ${stem.top}px, 0) scale(${stem.width / bounds.width}, ${stem.height / bounds.height})`}
-    ], {delay: 120, duration: 655, easing: "cubic-bezier(.38,0,.18,1)"});
-    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 450, duration: 255, easing: "ease-in-out"});
-  });
+    // Stop sizing the glyph after it has faded. Only the photo continues to grow.
+    follow(letter, p => translate(p.left, p.top) + ` scale(${p.width / bounds.width}, ${p.height / bounds.height})`, 650);
+    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 410, duration: 240, easing: "ease-in-out"});
 
-  const unfoldAt = 660;
-  panels.forEach((panel, i) => {
-    const rect = panelRects[i], stem = stems[i];
-    const dx = x - 40 + stem.left + stem.width / 2 - rect.left - rect.width / 2;
-    const dy = y - 26 + stem.top + stem.height / 2 - rect.top - rect.height / 2;
-    const cropX = rect.width - stem.width;
-    const cropY = rect.height - stem.height;
-    // Two overlapping, fixed-size overflow boxes form the aperture. Move their
-    // opposite edges apart; the photograph keeps its natural proportions.
-    const timing = {delay: unfoldAt, duration: 1150, easing: glide};
-    function slide(el, left, top) {
-      animate(el, [{transform: `translate3d(${left}px, ${top}px, 0)`},
-        {transform: "translate3d(0, 0, 0)"}], timing);
-    }
-    slide(panel, dx - cropX / 2, dy - cropY / 2);
-    const aperture = $(".fi-window", panel);
-    slide(aperture, cropX, cropY);
-    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 435, duration: 235, easing: "ease-in-out"});
+    // Opposite window edges move apart while the photograph keeps its proportions.
+    follow(panel, p => translate(p.left - finalLeft - p.cropX, p.top - finalTop - p.cropY));
+    follow($(".fi-window", panel), p => translate(p.cropX, p.cropY));
+    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 390, duration: 235, easing: "ease-in-out"});
 
-    // This is the photo surface from the moment the counters fill. Keep each
-    // rounded corner on its moving edge and taper its radius with the same
-    // progress as the expansion. There is no frame that swaps in a square.
     for (const right of [false, true]) {
       for (const bottom of [false, true]) {
         const corner = document.createElement("span");
         corner.className = "opening-corner";
         mark.append(corner);
-        // Each tile is 8px square; reflection reuses its top-left quarter arc.
-        const scale = stem.width / 16;
-        const fromX = stem.left + (right ? stem.width : 0);
-        const fromY = stem.top + (bottom ? stem.height : 0);
-        const toX = (right ? rect.right : rect.left) - (x - 40);
-        const toY = (bottom ? rect.bottom : rect.top) - (y - 26);
-        animate(corner, [
-          {transform: `translate3d(${fromX}px, ${fromY}px, 0) scale(${right ? -scale : scale}, ${bottom ? -scale : scale})`},
-          {transform: `translate3d(${toX}px, ${toY}px, 0) scale(0, 0)`}
-        ], timing);
+        follow(corner, p => {
+          const position = translate(p.left + (right ? p.width : 0), p.top + (bottom ? p.height : 0));
+          const scale = p.radius / 8;
+          return position + ` scale(${right ? -scale : scale}, ${bottom ? -scale : scale})`;
+        });
       }
     }
 
-    // Decode in parallel with the wordmark. A slow photograph gets its own fade
-    // when ready, without delaying the gallery, text or navigation.
     const image = $("img", panel);
-    slide(image, -cropX / 2, -cropY / 2);
+    follow(image, p => translate(-p.cropX / 2, -p.cropY / 2));
     image.classList.add("opening-photo-pending");
     const source = image.src;
     const reveal = () => {
@@ -292,7 +291,7 @@ function setupOpening() {
       if (interrupted || motion.matches || image.src !== source || !image.naturalWidth) return;
       const elapsed = start === null ? 0 : document.timeline.currentTime - start;
       const fade = image.animate([{opacity: 0}, {opacity: 1}], {
-        delay: Math.max(0, 870 + i * 35 - elapsed), duration: 640, easing: "ease-in-out", fill: "backwards"
+        delay: Math.max(0, 710 + i * 25 - elapsed), duration: 640, easing: "ease-in-out", fill: "backwards"
       });
       if (start === null) {
         fade.pause();
@@ -314,7 +313,7 @@ function setupOpening() {
   // Mobile browser chrome can change the viewport height mid-opening while all
   // gallery bounds remain identical. Only a width change invalidates the masks.
   addEventListener("resize", () => { if (innerWidth !== viewportWidth) finish(); }, options);
-  addEventListener("scroll", finish, {...options, passive: true});
+  addEventListener("scroll", () => { if (Math.abs(scrollY - initialScroll) > 1) finish(); }, {...options, passive: true});
   addEventListener("pagehide", finish, options);
   motion.addEventListener("change", finish, options);
   // Present the still logo and prime the compositor before starting the clock.
