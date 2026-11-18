@@ -19,12 +19,9 @@ const clamp = (v) => Math.min(1, Math.max(0, v));
 const body = document.body, root = document.documentElement;
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const phone = matchMedia("(max-width: 600px)");
-// InFlite's cookie cannot be read on this domain. A visitor without a home-page session checks it through the
-// existing one-use hop before serving HTML; the client path below is a fallback for old/preview servers.
-// The return marker prevents a loop even when cookies/storage are
-// blocked; remove it from the address before the page is used or shared. Signed-in home visitors need no hop.
-const accountReturn = new URL(location.href), accountChecked = accountReturn.searchParams.get("__ifl_account") === "checked";
-if (accountChecked) {
+// Account discovery finishes on the server before rendering. Clean its return marker in place.
+const accountReturn = new URL(location.href);
+if (accountReturn.searchParams.get("__ifl_account") === "checked") {
   accountReturn.searchParams.delete("__ifl_account");
   history.replaceState(null, "", accountReturn.pathname + accountReturn.search + accountReturn.hash);
 }
@@ -246,12 +243,6 @@ function fadeOnLoad(img) {
 const plural = (n, one, many = one + "s") => `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
 async function loadMe() {
   try { me = await api("/api/me"); } catch (_) { me = { signedIn: false }; }
-  if (!me.signedIn && me.auth && !accountChecked && !arrival && !body.matches(".sheet-up, .edit, .leaving")) {
-    const to = new URL(location.href);
-    to.searchParams.set("__ifl_account", "checked");
-    location.replace(`/api/hop/start?to=${encodeURIComponent(to.href)}`);
-    return;
-  }
   showMe();
 }
 function showMe() {

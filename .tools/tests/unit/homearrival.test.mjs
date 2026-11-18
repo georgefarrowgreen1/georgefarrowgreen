@@ -19,7 +19,7 @@ test('anonymous homepage resolves the account before returning any HTML, preserv
   assert.match(r.headers.get('set-cookie'), /Path=\/api\/hop\/; HttpOnly; SameSite=Lax/);
   assert.equal(r.headers.get('cache-control'), 'no-store');
 });
-test('checked guests and existing sessions proceed to their document without another hand-off', async () => {
+test('checked guests and an unavailable session store can render the public document', async () => {
   assert.equal(await check('https://georgefarrowgreen.com/?__ifl_account=checked'), null);
   assert.equal(await check('https://georgefarrowgreen.com/', { cookie: '__Secure-account=' + 'a'.repeat(32) }), null);
 });
