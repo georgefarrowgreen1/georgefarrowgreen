@@ -1307,6 +1307,12 @@ html[data-theme="dark"] {
   font: 400 16px/1.42 var(--display);
 }
 #photo-index .fi-menu :focus-visible { outline: 2px dashed currentColor; outline-offset: -4px; }
+#photo-index :is([data-contact], .fi-menubtn):focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, .05em);
+  text-underline-offset: .15em;
+}
 #photo-index .fi-menubtn {
   background: var(--menu-surface);
   border: 1px solid var(--bio-rule);
