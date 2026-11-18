@@ -123,10 +123,6 @@ function displayPhoto(panel, frame) {
   $("span", panel).textContent = frame.label;
 }
 
-function updateReplay() {
-  $("[data-replay]").hidden = motion.matches || !$(".fi-reel").animate || panels.some(panel => panel.hidden);
-}
-
 async function loadPhotos() {
   const sequence = ++photoRequest;
   try {
@@ -143,7 +139,6 @@ async function loadPhotos() {
       });
       selectPanel(panels.find(panel => !panel.hidden && panel.getAttribute("aria-pressed") === "true")
         || panels.find(panel => !panel.hidden));
-      updateReplay();
     }
     showThumbs();
   } catch (_) { /* Keep the server-rendered gallery when the editor's library is unavailable. */ }
@@ -176,84 +171,69 @@ function setupGalleryMenu() {
 // The header and the opening share one vector drawing of the gfg mark.
 // Matching path commands let the browser interpolate each letter into a stroke.
 function setupOpening() {
-  const gallery = $(".fi-reel"), replay = $("[data-replay]");
-  const hasMotion = !!gallery.animate && !motion.matches;
-  const auto = hasMotion && root.classList.contains("photo-wait");
+  const gallery = $(".fi-reel");
+  const shouldPlay = root.classList.contains("photo-wait");
   root.classList.remove("photo-wait");
-  updateReplay();
-  let sequence = null;
+  const panels = $$(".fi-reel button:not([hidden])");
+  if (!shouldPlay || !gallery.animate || motion.matches || panels.length !== 3) return;
+
+  const listeners = new AbortController();
+  const animations = [];
+  const mark = $(".wordmark").cloneNode(true);
+  mark.classList.add("opening-mark");
 
   function finish() {
-    if (!sequence) return;
-    const {animations, mark, skip} = sequence;
-    sequence = null;
-    const restoreFocus = document.activeElement === skip;
+    listeners.abort();
     animations.forEach(animation => animation.cancel());
     mark.remove();
-    skip.remove();
     body.classList.remove("playing-opening");
-    if (restoreFocus) replay.focus({preventScroll: true});
   }
 
-  function play() {
-    finish();
-    const panels = $$(".fi-reel button:not([hidden])");
-    if (motion.matches || panels.length !== 3) return;
-    const mark = $(".wordmark").cloneNode(true);
-    mark.classList.add("opening-mark");
-    const skip = document.createElement("button");
-    skip.type = "button";
-    skip.className = "skip-opening";
-    skip.textContent = "Skip opening";
-    skip.addEventListener("click", finish);
-    const galleryRect = gallery.getBoundingClientRect();
-    const x = galleryRect.left + galleryRect.width / 2;
-    const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
-    Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
-    document.body.append(mark, skip);
-    body.classList.add("playing-opening");
-    if (document.activeElement === replay) skip.focus({preventScroll:true});
+  const galleryRect = gallery.getBoundingClientRect();
+  const x = galleryRect.left + galleryRect.width / 2;
+  const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
+  Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
+  document.body.append(mark);
+  body.classList.add("playing-opening");
 
-    const animations = [];
-    const current = sequence = {animations, mark, skip};
-    function animate(el, frames, timing) {
-      animations.push(el.animate(frames, {fill:"both", ...timing}));
-    }
-    const easing = "cubic-bezier(.46,0,.14,1)";
-    for (const path of mark.querySelectorAll("path")) {
-      const morph = document.createElementNS("http://www.w3.org/2000/svg", "animate");
-      for (const [key, value] of Object.entries({attributeName:"d", from:path.getAttribute("d"),
-        to:path.dataset.stroke, begin:"indefinite", dur:".55s", fill:"freeze", calcMode:"spline", keyTimes:"0;1", keySplines:".45 0 .16 1"})) {
-        morph.setAttribute(key, value);
-      }
-      path.append(morph);
-      morph.beginElementAt(.22);
-    }
-    animate(mark, [{opacity:1,offset:0},{opacity:1,offset:.95},{opacity:0}], {duration:920});
-    panels.forEach((panel,i) => {
-      const rect = panel.getBoundingClientRect();
-      const dx = x + (i-1)*10 - rect.left - rect.width/2;
-      const dy = y - rect.top - rect.height/2;
-      const h = i === 1 ? 23 : 16;
-      const closed = {transform:'translate('+dx+'px,'+dy+'px)',clipPath:'inset(calc(50% - '+h+'px) calc(50% - 3px) round 2.6px)'};
-      animate(panel, [{...closed,opacity:0,offset:0},{...closed,opacity:0,offset:.48},
-        {...closed,opacity:1,offset:.50,easing},{opacity:1,transform:"none",clipPath:"inset(0px round 0px)"}],
-        {duration:1800+i*32});
-      animate($("img",panel), [{opacity:0},{opacity:1}], {delay:990+i*30,duration:470,easing:"ease-out"});
-      animate($("span",panel), [{opacity:0},{opacity:1}], {delay:1450,duration:360});
-    });
-    for (const el of $$("#bar,.fi-bio,.fi-work,.fi-playbar,footer")) {
-      animate(el, [{opacity:0},{opacity:1}], {duration:380,delay:1430,easing:"ease-out"});
-    }
-    Promise.all(animations.map(a=>a.finished)).then(()=>{if(sequence===current)finish()},()=>{});
+  function animate(el, frames, timing) {
+    animations.push(el.animate(frames, {fill:"both", ...timing}));
   }
-  replay.addEventListener("click", play);
-  document.addEventListener("pointerdown",e=>{if(sequence && e.target!==sequence.skip)finish()},true);
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"||e.key==="Tab")finish()});
-  addEventListener("resize",finish);
-  addEventListener("pagehide",finish);
-  motion.addEventListener("change",()=>{finish();updateReplay()});
-  if(auto)play();
+  const easing = "cubic-bezier(.46,0,.14,1)";
+  for (const path of mark.querySelectorAll("path")) {
+    const morph = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+    for (const [key, value] of Object.entries({attributeName:"d", from:path.getAttribute("d"),
+      to:path.dataset.stroke, begin:"indefinite", dur:".55s", fill:"freeze", calcMode:"spline", keyTimes:"0;1", keySplines:".45 0 .16 1"})) {
+      morph.setAttribute(key, value);
+    }
+    path.append(morph);
+    morph.beginElementAt(.22);
+  }
+  animate(mark, [{opacity:1,offset:0},{opacity:1,offset:.95},{opacity:0}], {duration:920});
+  panels.forEach((panel,i) => {
+    const rect = panel.getBoundingClientRect();
+    const dx = x + (i-1)*10 - rect.left - rect.width/2;
+    const dy = y - rect.top - rect.height/2;
+    const h = i === 1 ? 23 : 16;
+    const closed = {transform:'translate('+dx+'px,'+dy+'px)',clipPath:'inset(calc(50% - '+h+'px) calc(50% - 3px) round 2.6px)'};
+    animate(panel, [{...closed,opacity:0,offset:0},{...closed,opacity:0,offset:.48},
+      {...closed,opacity:1,offset:.50,easing},{opacity:1,transform:"none",clipPath:"inset(0px round 0px)"}],
+      {duration:1800+i*32});
+    animate($("img",panel), [{opacity:0},{opacity:1}], {delay:990+i*30,duration:470,easing:"ease-out"});
+    animate($("span",panel), [{opacity:0},{opacity:1}], {delay:1450,duration:360});
+  });
+  for (const el of $$("#bar,.fi-bio,.fi-work,.fi-playbar,footer")) {
+    animate(el, [{opacity:0},{opacity:1}], {duration:380,delay:1430,easing:"ease-out"});
+  }
+  const options = {signal: listeners.signal};
+  document.addEventListener("pointerdown", finish, {...options, capture: true});
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" || event.key === "Tab") finish();
+  }, options);
+  addEventListener("resize", finish, options);
+  addEventListener("pagehide", finish, options);
+  motion.addEventListener("change", finish, options);
+  Promise.all(animations.map(animation => animation.finished)).then(finish, () => {});
 }
 
 // (a photo fades in as it arrives, rather than appearing: styles.css .loaded)
