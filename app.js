@@ -105,7 +105,7 @@ const photoIndices = panels.map(() => 0);
 function selectPanel(panel) {
   panels.forEach((item, index) => {
     const selected = item === panel;
-    const label = $(".fi-caption", item).textContent;
+    const label = item.dataset.label;
     item.setAttribute("aria-pressed", String(selected));
     item.setAttribute("aria-label", selected && collections[index].length > 1
       ? label + ", show next photograph" : "Expand " + label + " photograph");
@@ -117,7 +117,7 @@ function displayPhoto(panel, frame) {
   if (image.getAttribute("src") !== frame.src) image.src = frame.src;
   image.alt = frame.alt;
   image.style.objectPosition = frame.position;
-  $(".fi-caption", panel).textContent = frame.label;
+  panel.dataset.label = frame.label;
 }
 
 async function loadPhotos() {
@@ -300,7 +300,6 @@ function setupOpening() {
       photoAnimations.push(fade);
     };
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
-    animate($(".fi-caption", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
   });
   for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});

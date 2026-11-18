@@ -1049,30 +1049,6 @@ html[data-theme="dark"] {
 #photo-index .fi-reel button:nth-child(2) img {
   object-position: 50% 32%;
 }
-#photo-index .fi-window:after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, #0009, transparent 38%);
-  z-index: -1;
-}
-#photo-index .fi-reel .fi-caption {
-  position: absolute;
-  left: 12px;
-  bottom: 14px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  white-space: nowrap;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-}
-#photo-index .fi-reel [aria-pressed="true"] .fi-caption {
-  left: 20px;
-  bottom: 16px;
-  writing-mode: horizontal-tb;
-  transform: none;
-  font-size: 16px;
-}
 #photo-index .fi-work {
   margin: 0 var(--pad);
   display: grid;
@@ -1274,9 +1250,6 @@ html[data-theme="dark"] {
   }
   #photo-index .fi-reel button[aria-pressed="true"] {
     flex-grow: 4;
-  }
-  #photo-index .fi-reel .fi-caption {
-    left: 8px;
   }
   #photo-index .fi-drawer {
     gap: 12px;
@@ -1498,8 +1471,8 @@ html[data-theme="dark"] .fi-menubtn {
 #photo-index .fi-reel [data-scene="1"] img {
   object-position: 50% 32%;
 }
-#photo-index .fi-reel button:last-child img {
-  object-position: center;
+#photo-index .fi-reel [data-scene="2"] img {
+  object-position: 70% 72%;
 }
 body:has(.fi-float:not([hidden])) .fi-colophon {
   padding-bottom: calc(60px + env(safe-area-inset-bottom));

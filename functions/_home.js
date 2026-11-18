@@ -90,6 +90,7 @@ export async function homePage(ctx, url, res) {
       rewriter.on(selector, { element(el) {
         if (!frame) { el.setAttribute("hidden", ""); el.setAttribute("aria-pressed", "false"); return; }
         if (group.length > 1) el.setAttribute("data-collection", encodeURIComponent(JSON.stringify(group)));
+        el.setAttribute("data-label", frame.label);
         el.setAttribute("aria-label", "Expand " + frame.label + " photograph");
       } });
       if (!frame) {
@@ -99,7 +100,7 @@ export async function homePage(ctx, url, res) {
       rewriter.on(selector + " img", { element(el) {
         el.setAttribute("src", frame.src); el.setAttribute("alt", frame.alt);
         el.setAttribute("data-focus", frame.position);
-      } }).on(selector + " .fi-caption", { element(el) { el.setInnerContent(frame.label); } });
+      } });
     }
     const first = groups.findIndex(group => group.length);
     rewriter.on(`[data-scene="${first < 0 ? 2 : first}"]`, { element(el) { el.setAttribute("aria-pressed", "true"); } });
