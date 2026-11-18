@@ -159,7 +159,7 @@ function setupGalleryMenu() {
     toggle.setAttribute("aria-expanded",String(open));
   }
   toggle.addEventListener("click",()=>set(links.inert));
-  links.addEventListener("click",e=>{if(e.target.closest("button,a"))set(false)});
+  links.addEventListener("click",e=>{if(e.target.closest("a,[data-contact]"))set(false)});
   document.addEventListener("pointerdown",e=>{if(!dock.contains(e.target))set(false)});
   dock.addEventListener("focusout",e=>{if(!dock.contains(e.relatedTarget))set(false)});
   dock.addEventListener("keydown",e=>{if(e.key==="Escape"&&!links.inert){set(false);toggle.focus()}});
