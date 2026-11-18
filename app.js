@@ -595,7 +595,7 @@ function contactOrigin(b) {
   const scale = cs.transform === "none" ? 1 : Math.abs(new DOMMatrixReadOnly(cs.transform).a), w = r.width / (scale || 1), h = r.height / (scale || 1);
   return { el: b, left: r.left, top: r.top, width: r.width, height: r.height,
     radius: Math.min(parseFloat(cs.borderTopLeftRadius) || 18, r.height / 2),
-    color: b.classList.contains("tint") ? "#3478ec" : "rgba(30,32,42,.78)", viewport: innerWidth,
+    color: getComputedStyle(b.closest("nav, footer")).backgroundColor, viewport: innerWidth,
     rest: { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, radius: Math.min(parseFloat(cs.borderTopLeftRadius) || 18, h / 2) },
     label: { text: label.textContent.trim(), left: text.left, top: text.top, width: text.width, height: text.height, font: font.font, color: font.color } };
 }
@@ -657,8 +657,7 @@ function flyContact(d, from, to, closing = false) {
 }
 function contactSheetRect(d) {
   const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
-  // The travelling surface is opaque; its final crossfade introduces the stationary glass without a blur snap.
-  const color = getComputedStyle(d._surface).backgroundColor.replace(/^rgba\((.*),\s*[\d.]+\)$/, "rgb($1)");
+  const color = getComputedStyle(d._surface).backgroundColor;
   return { left: r.left, top: r.top, width: r.width, height: r.height,
     radius: parseFloat(cs.borderTopLeftRadius), color };
 }

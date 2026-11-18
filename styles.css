@@ -884,10 +884,12 @@ body.bio { background: #090c10; }
   .bio .contact .row { padding-inline: 14px; }
   .bio .contact .row::before { left: 60px; }
 }
-#photo-index {
+#photo-index, #contact-sheet {
   --paper: #f4f4f2;
   --ink: #1b1b1b;
   --line: #c9c9c7;
+}
+#photo-index {
   --pad: clamp(18px, 4.1%, 60px);
   container-type: inline-size;
   background: var(--paper);
@@ -1445,3 +1447,44 @@ body.photo-home {
 #photo-index .wordmark {display:block;width:44px;height:30px}
 #photo-index .fi-nav {min-height:calc(64px + env(safe-area-inset-top))}
 #photo-index #who .face {padding:0}
+
+/* Match the photographic index on both the resting sheet and its animated surface. */
+#contact-sheet {
+  color-scheme: light;
+  --font: "Space Grotesk", "Space Grotesk fallback", Arial, sans-serif;
+  --text: var(--ink);
+  --text-2: #51514f;
+  --text-3: #666662;
+  --tint-text: var(--ink);
+  --ctl: #fafaf8;
+  --glass-strong: var(--paper);
+  --rim: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-family: var(--font);
+  border-radius: 18px;
+}
+#contact-sheet::backdrop { background: rgb(24 24 22 / 38%); }
+#contact-sheet :is(.sheet-surface, .contact-flight) {
+  background: var(--paper);
+  box-shadow: var(--rim), 0 16px 48px -16px rgb(0 0 0 / 30%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+#contact-sheet .grab { width: 32px; height: 3px; background: #aeaeaa; }
+#contact-sheet .sheet-head { grid-template-columns: 1fr auto; gap: 12px; }
+#contact-sheet .sheet-head h3 { grid-column: 1; text-align: left; font-size: 22px; font-weight: 500; letter-spacing: -.045em; }
+#contact-sheet .sheet-head .x { grid-column: 2; width: 44px; height: 44px; }
+#contact-sheet :is(.x, .change) { background: transparent; color: var(--ink); box-shadow: var(--rim); }
+#contact-sheet :is(.fields, .sender-surface) { border-radius: 10px; }
+#contact-sheet :is(.fields.msg, .sender-surface) { box-shadow: var(--rim); }
+#contact-sheet .sender-morph:focus-within > .sender-surface,
+#contact-sheet .fields.msg:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
+#contact-sheet .from .face { background: var(--ink); color: var(--paper); }
+#contact-sheet .btn, #contact-sheet .sent .tick {
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: none;
+}
+#contact-sheet .btn { font-weight: 500; }
+#contact-sheet .btn.idle { opacity: 1; background: #dededa; color: #50504e; }
+#contact-sheet .err, #contact-sheet .fld:has([aria-invalid="true"]) > span:first-child { color: #842f2a; }
