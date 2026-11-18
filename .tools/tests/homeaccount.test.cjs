@@ -126,7 +126,13 @@ for (const assets of ['', 'min/']) {
           assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
           assert.equal(await mark.locator('path animate[attributeName="d"]').count(), 3);
-          if (width === 1440) await page.keyboard.press('Escape');
+          if (width === 1440) {
+            await page.keyboard.press('Escape');
+          } else {
+            // A phone's toolbar resizing the viewport height leaves the gallery geometry intact.
+            await page.setViewportSize({ width, height: 780 });
+            assert.equal(await mark.count(), 1);
+          }
           await mark.waitFor({ state: 'detached' });
         }
         assert.equal(await controls.count(), 0);

@@ -174,63 +174,100 @@ function setupOpening() {
   const panels = $$(".fi-reel button:not([hidden])");
   if (!shouldPlay || !gallery.animate || motion.matches || panels.length !== 3) return;
 
-  const listeners = new AbortController();
-  const animations = [];
+  // Measure the finished gallery once, before creating any animation layers.
+  const galleryRect = gallery.getBoundingClientRect();
+  const panelRects = panels.map(panel => panel.getBoundingClientRect());
+  const viewportWidth = innerWidth;
+  const x = galleryRect.left + galleryRect.width / 2;
+  const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
   const mark = $(".wordmark").cloneNode(true);
   mark.classList.add("opening-mark");
+  Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
+  document.body.append(mark);
+  body.classList.add("playing-opening");
 
-  function finish() {
+  const listeners = new AbortController();
+  const animations = [];
+  const photoAnimations = [];
+  let interrupted = false;
+  const start = document.timeline.currentTime;
+  const startWall = performance.now();
+  const glide = "cubic-bezier(.4,0,.2,1)";
+  function animate(el, frames, timing) {
+    const animation = el.animate(frames, {fill: "both", ...timing});
+    if (start !== null) animation.startTime = start;
+    animations.push(animation);
+  }
+
+  function finish(cancelPhotos = true) {
+    if (cancelPhotos) {
+      interrupted = true;
+      photoAnimations.forEach(animation => animation.cancel());
+      for (const panel of panels) $("img", panel).classList.remove("opening-photo-pending");
+    }
     listeners.abort();
     animations.forEach(animation => animation.cancel());
     mark.remove();
     body.classList.remove("playing-opening");
   }
 
-  const galleryRect = gallery.getBoundingClientRect();
-  const x = galleryRect.left + galleryRect.width / 2;
-  const y = Math.min(innerHeight * .44, galleryRect.top + galleryRect.height * .65);
-  Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
-  document.body.append(mark);
-  body.classList.add("playing-opening");
-
-  function animate(el, frames, timing) {
-    animations.push(el.animate(frames, {fill:"both", ...timing}));
-  }
-  const easing = "cubic-bezier(.46,0,.14,1)";
   for (const path of mark.querySelectorAll("path")) {
     const morph = document.createElementNS("http://www.w3.org/2000/svg", "animate");
     for (const [key, value] of Object.entries({attributeName:"d", from:path.getAttribute("d"),
-      to:path.dataset.stroke, begin:"indefinite", dur:".55s", fill:"freeze", calcMode:"spline", keyTimes:"0;1", keySplines:".45 0 .16 1"})) {
+      to:path.dataset.stroke, begin:"indefinite", dur:".62s", fill:"freeze", calcMode:"spline", keyTimes:"0;1", keySplines:".4 0 .2 1"})) {
       morph.setAttribute(key, value);
     }
     path.append(morph);
-    morph.beginElementAt(.22);
+    morph.beginElementAt(.12);
   }
-  animate(mark, [{opacity:1,offset:0},{opacity:1,offset:.95},{opacity:0}], {duration:920});
-  panels.forEach((panel,i) => {
-    const rect = panel.getBoundingClientRect();
-    const dx = x + (i-1)*10 - rect.left - rect.width/2;
-    const dy = y - rect.top - rect.height/2;
-    const h = i === 1 ? 23 : 16;
-    const closed = {transform:'translate('+dx+'px,'+dy+'px)',clipPath:'inset(calc(50% - '+h+'px) calc(50% - 3px) round 2.6px)'};
-    animate(panel, [{...closed,opacity:0,offset:0},{...closed,opacity:0,offset:.48},
-      {...closed,opacity:1,offset:.50,easing},{opacity:1,transform:"none",clipPath:"inset(0px round 0px)"}],
-      {duration:1800+i*32});
-    animate($("img",panel), [{opacity:0},{opacity:1}], {delay:990+i*30,duration:470,easing:"ease-out"});
-    animate($("span",panel), [{opacity:0},{opacity:1}], {delay:1450,duration:360});
+  // The fully formed strokes stay opaque until the three gallery masks underneath match them.
+  animate(mark, [
+    {opacity: 0, offset: 0, easing: "ease-out"},
+    {opacity: 1, offset: .15}, {opacity: 1, offset: .84}, {opacity: 0}
+  ], {duration: 900});
+
+  panels.forEach((panel, i) => {
+    const rect = panelRects[i];
+    const dx = x + (i - 1) * 10 - rect.left - rect.width / 2;
+    const dy = y - rect.top - rect.height / 2;
+    const insetY = rect.height / 2 - (i === 1 ? 23 : 16);
+    const insetX = rect.width / 2 - 3;
+    animate(panel, [
+      {transform: `translate(${dx}px, ${dy}px)`, clipPath: `inset(${insetY}px ${insetX}px round 2.6px)`},
+      {transform: "translate(0px, 0px)", clipPath: "inset(0px 0px round 0px)"}
+    ], {delay: 810, duration: 1150, easing: glide});
+    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 710, duration: 95, easing: "ease-in-out"});
+
+    // Decode in parallel with the wordmark. A slow photograph gets its own fade
+    // when ready, without delaying the gallery, text or navigation.
+    const image = $("img", panel);
+    image.classList.add("opening-photo-pending");
+    const source = image.src;
+    const reveal = () => {
+      image.classList.remove("opening-photo-pending");
+      if (interrupted || motion.matches || image.src !== source || !image.naturalWidth) return;
+      photoAnimations.push(image.animate([{opacity: 0}, {opacity: 1}], {
+        delay: Math.max(0, 870 + i * 35 - (performance.now() - startWall)),
+        duration: 640, easing: "ease-in-out", fill: "backwards"
+      }));
+    };
+    image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
+    animate($("span", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
   });
   for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
-    animate(el, [{opacity:0},{opacity:1}], {duration:380,delay:1430,easing:"ease-out"});
+    animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
   }
   const options = {signal: listeners.signal};
   document.addEventListener("pointerdown", finish, {...options, capture: true});
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" || event.key === "Tab") finish();
   }, options);
-  addEventListener("resize", finish, options);
+  // Mobile browser chrome can change the viewport height mid-opening while all
+  // gallery bounds remain identical. Only a width change invalidates the masks.
+  addEventListener("resize", () => { if (innerWidth !== viewportWidth) finish(); }, options);
   addEventListener("pagehide", finish, options);
   motion.addEventListener("change", finish, options);
-  Promise.all(animations.map(animation => animation.finished)).then(finish, () => {});
+  Promise.all(animations.map(animation => animation.finished)).then(() => finish(false), () => {});
 }
 
 // (a photo fades in as it arrives, rather than appearing: styles.css .loaded)
