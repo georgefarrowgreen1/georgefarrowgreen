@@ -413,7 +413,7 @@ export async function todayBuild(env) {
   try {
     const r = await siteFetch(env, `${todayOrigin(env)}/version`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2000) });
     const j = r.ok ? await r.json() : null;
-    if (typeof j?.build === "string" && /^\d{1,3}\.\d{2}$/.test(j.build)) build = j.build;
+    if (typeof j?.build === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(j.build)) build = j.build;
   } catch (_) {}
   built = { at: t, build, keep: build ? 10 * 60e3 : 60e3 };
   return build;

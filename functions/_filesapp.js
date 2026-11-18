@@ -9,6 +9,7 @@ import { FILE_LIMITS, listFiles, getFile, createFolder, reserveUpload, uploadFil
 import {cancelReplacement,fileHistory,reserveReplacement,uploadReplacement,historicalContent,restoreVersion} from './_fileversions.js';
 import {todayPrefs,savePrefs} from './_today.js';
 import {readContinuity,writeContinuity,listOpenTabs,updateOpenTab} from './_continuity.js';
+import {uploadParts} from "./_fileparts.js";
 const SAFE=PRIVATE_HEADERS;
 const answer = (value, status = 200) => { const response = json(value, status); for (const [key, val] of Object.entries(SAFE)) response.headers.set(key, val); return response; };
 const query = request => new URL(request.url).searchParams;
@@ -23,6 +24,8 @@ function route(changing, handler) {
 }
 const listing = q => ({ parentId: q.get("parentId"), view: q.get("view") || "folder", sort: q.get("sort") || undefined, kind: q.get("kind") || undefined, cursor: q.get("cursor") });
 export const FILES_ROUTES = {
+  ...Object.fromEntries(['GET','PUT','POST'].map(method => [method+' today/files/upload-parts',
+    route(method!=='GET', async(r,e,o) => answer(await uploadParts(e,o,r)))])),
   "GET today/files/preferences":route(false,async(r,e,o)=>answer({prefs:(await todayPrefs(e,o)).cards})),
   "PUT today/files/preferences":route(true,async(r,e,o)=>{const b=await body(r,4096);if(!b.expected||typeof b.expected!=='object')throw new HttpError(400,'Check the saved layout first.');return answer({prefs:(await savePrefs(e,o,b)).cards})}),
   "GET today/files/open-tabs":route(false,async(r,e,o)=>answer(await listOpenTabs(e,o,query(r).get('id')))),

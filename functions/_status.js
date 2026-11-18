@@ -1,3 +1,4 @@
+import { versionResponse } from "./_version.js";
 import { publicApp } from "./_canonical.js";
 // status.inflite.ai: whether each of InFlite's apps, its sign-in, its scheduled jobs, what they rely on outside InFlite
 // and the home page are working, for anyone to see. Every five minutes the ticker (workers/ticker) asks for each address
@@ -146,7 +147,7 @@ async function tell(env, events) {
 }
 
 // ---- from inside: the other Workers over the direct links, the database and storage, and what the apps rely on ----
-const verOf = (j) => { const v = (x) => (typeof x === "string" && /^\d{1,3}\.\d{2}$/.test(x) ? x : null); return v(j?.app) || v(j?.build); };
+const verOf = (j) => { const v = (x) => (typeof x === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(x) ? x : null); return v(j?.app) || v(j?.build); };
 async function timed(fn) {
   const t0 = Date.now();
   try { const r = await fn(); return { ms: Date.now() - t0, ...r }; } catch (e) { return { s: "down", ms: null, why: e?.name === "TimeoutError" ? "no answer" : "unreachable" }; }
@@ -226,7 +227,7 @@ export async function keepReport(env, body, t = Date.now()) {
     if (i?.s === "down") { s = "down"; why = why || i.why || null; }
     else if (s === "none" && i) { s = i.s; ms = i.ms; }
     if (s === "down") ms = null;
-    const version = (typeof o?.version === "string" && /^\d{1,3}\.\d{2}$/.test(o.version) ? o.version : null) || i?.version || null;
+    const version = (typeof o?.version === "string" && /^\d{1,3}\.(?:\d{2}|\d{1,4}\.\d{1,4})$/.test(o.version) ? o.version : null) || i?.version || null;
     rows.push({ svc: svc.id, s, ms, version, why: typeof why === "string" ? why.slice(0, 40) : null, check: true });
   }
   for (const job of STATUS_JOBS) {
@@ -667,6 +668,7 @@ const FILES = /^\/(app\.js|theme\.js|styles\.css|icon\.svg|icon-180\.png|icons\/
 export async function statusHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return (await statusRoute(ctx, url)) || json({ error: "Not found." }, 404);
   if (!["GET", "HEAD"].includes(ctx.request.method)) return new Response("Not allowed.", { status: 405 });
+  if (url.pathname === "/version") return versionResponse(ctx, url, "status");
   if (url.pathname === "/feed.xml") {
     try { return await cached(cacheKey(ctx.env, "/feed.xml"), () => feed(ctx.env), 120, (x) => new Response(x, { headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "public, max-age=120", "X-Content-Type-Options": "nosniff" } })); }
     catch (e) { console.error("status feed failed"); return new Response("The feed can’t be read just now.", { status: 503 }); }

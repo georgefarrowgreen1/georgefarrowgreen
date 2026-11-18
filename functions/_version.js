@@ -4,7 +4,7 @@
 // knows it's behind by the number it carries. min: a version every copy is to update to as soon as it's not in your
 // way (REQUIRED, below), for a fix that can't wait for a quiet moment. Read once a minute at most, never kept by a
 // browser. (Mail, the inflite repo's Worker, answers its own: /api/version.)
-const SOURCES = { chat: ["/pigeon/app.js", "APP_VERSION"], weather: ["/weather/app.js", "BUILD"], fitness: ["/fitness/app.js", "BUILD"],
+const SOURCES = { status: ["/status/app.js", "BUILD"], chat: ["/pigeon/app.js", "APP_VERSION"], weather: ["/weather/app.js", "BUILD"], fitness: ["/fitness/app.js", "BUILD"],
   markets: ["/markets/app.js", "BUILD"], account: ["/account/app.js", "BUILD"] };
 // (a version each app's copies must have: { markets: "1.76" }, set with a release that can't wait; none for now)
 export const REQUIRED = {};

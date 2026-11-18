@@ -1,7 +1,7 @@
 // Immutable, quota-charged file revisions. A replacement never hides the current
 // file; the account CAS commits bytes + history + quota in one transaction.
 import { HttpError, randomToken } from './_pigeon.js';
-import { filesdb, ensureFilesAccount, mutate, putExact, fileId, itemOf, FILE_LIMITS } from './_files.js';
+import { clearParts, filesdb, ensureFilesAccount, mutate, putExact, fileId, itemOf, FILE_LIMITS } from './_files.js';
 const fail=(s,m)=>{throw new HttpError(s,m)};
 const op=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{16,80}$/.test(v)?v:fail(400,'That upload reference is invalid.');
 const node=(D,o,id)=>D.prepare('SELECT * FROM ifl_files_nodes WHERE user_id=? AND id=?').bind(o,id).first();
@@ -20,13 +20,14 @@ export async function reserveReplacement(env,owner,input){
   if(prior){if(prior.file_id!==id||prior.expected!==input.version||prior.size!==size||prior.mime!==mime)fail(409,'That upload was used for different contents.');return {done:true,value:{uploadId:operationId,committed:prior.state==='committed'}}}
   const row=ready(await node(D,owner,id));if(row.version!==input.version)fail(409,'This file changed on another device. Refresh before replacing it.');
   const count=await D.prepare("SELECT COUNT(*) AS n FROM ifl_files_replacements WHERE user_id=? AND state!='committed'").bind(owner).first();if(count.n>=20)fail(429,'Finish or cancel earlier replacements first.');
-  return {reserved:size,statement:X=>X.prepare("INSERT INTO ifl_files_replacements(user_id,operation_id,file_id,expected,size,mime,state,expires) SELECT ?,?,?,?,?,?,'pending',? WHERE changes()>0").bind(owner,operationId,id,input.version,size,mime,Date.now()+FILE_LIMITS.uploadMs),result:()=>({uploadId:operationId,committed:false})};
+  return {reserved:size,statement:X=>X.prepare("INSERT INTO ifl_files_replacements(user_id,operation_id,file_id,expected,size,mime,state,expires,parts_token) SELECT ?,?,?,?,?,?,'pending',?,? WHERE changes()>0").bind(owner,operationId,id,input.version,size,mime,Date.now()+FILE_LIMITS.uploadMs,randomToken(24)),result:()=>({uploadId:operationId,committed:false})};
  });
 }
-export async function uploadReplacement(env,owner,uploadId,request){
+export async function uploadReplacement(env,owner,uploadId,request,partsToken){
  uploadId=op(uploadId);const key=`files/${owner}/revisions/${randomToken(24)}`;
  const claim=await mutate(env,owner,async D=>{
   const r=await reservation(D,owner,uploadId);if(!r)fail(404,'That replacement is no longer available.');
+  if(partsToken && (r.parts_token||uploadId)!==partsToken)fail(409,'That upload was replaced.');
   if(r.state==='committed')return {done:true,value:{item:itemOf(ready(await node(D,owner,r.file_id))),committed:true}};
   if(r.expires<=Date.now())fail(410,'That replacement expired. Choose the file again.');
   if(r.state==='uploading')fail(409,'This upload is still finishing. Retry in a few minutes.');
@@ -81,5 +82,12 @@ export async function sweepReplacements(env,now=Date.now()){
 }
 
 export async function cancelReplacement(env,owner,uploadId){
- uploadId=op(uploadId);return mutate(env,owner,async D=>{const r=await reservation(D,owner,uploadId);if(!r||r.state==='committed')return {done:true,value:{ok:true,committed:r?.state==='committed'}};return {reserved:-r.size,statement:X=>X.prepare('DELETE FROM ifl_files_replacements WHERE user_id=? AND operation_id=? AND changes()>0').bind(owner,uploadId)}});
+ uploadId=op(uploadId);
+ const result=await mutate(env,owner,async D=>{
+   const r=await reservation(D,owner,uploadId);
+   if(!r||r.state==='committed')return {done:true,value:{ok:true,committed:r?.state==='committed'}};
+   return {reserved:-r.size,statement:X=>X.prepare('DELETE FROM ifl_files_replacements WHERE user_id=? AND operation_id=? AND changes()>0').bind(owner,uploadId),result:()=>({token:r.parts_token||uploadId})};
+ });
+ if(result.token) await clearParts(env.FILES_R2,'files/'+owner+'/parts/replacement/'+result.token+'/');
+ return result.token?{ok:true}:result;
 }

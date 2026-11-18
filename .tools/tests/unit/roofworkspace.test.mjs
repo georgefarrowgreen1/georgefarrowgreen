@@ -117,7 +117,8 @@ test('OS next has independently bounded shell, file workflows, activity, sync, r
   // Ordinary core and native first-open caps are unchanged.
   check('base/window shell', group(base), 31, 7);
   check('Commands', group(p => commandAssets.has(p)), 4.75, 1);
-  check('Files', group(p => fileAssets.has(p)), 36.5, 4.5);
+  // The checkpoint transport adds a bounded 128 B to the existing Drive client.
+  check('Files', group(p => fileAssets.has(p)), 36.625, 4.5);
   for (const [name, jsCap, cssCap] of [['Launcher420',4,4],['SecurityModule',9,2],['Life410',10,3],['System350',18,3],['Search',5,0],['OpenSave', 4.75, 1], ['Activity', 4.5, 1], ['Sync', 5, 0], ['Recovery', 5.25, 0.5], ['Handoffs', 1.5, 0],['Continuity',12,0]]) check(name, group(p => extraAssets[name].has(p)), jsCap, cssCap);
   for (const [app, cap] of [['fitness', 5], ['weather', 3.25], ['markets', 1.75], ['chats', 3.25], ['mail', 4.25]]) check(app + ' adapter', group(p => p.startsWith('/' + app + '/')), cap, 1);
   // The new lazy daily-tools bucket has its own 10/3 KiB allowance; legacy component caps above stay fixed.

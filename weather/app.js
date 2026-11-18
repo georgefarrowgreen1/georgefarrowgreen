@@ -207,8 +207,11 @@ const IFL = (() => {
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
-  // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
-  const older = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
+  // Three-part releases follow the legacy two-part series within each major.
+  const older = (a, b) => {
+    const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+    return (x[0] - y[0] || x.length - y.length || x[1] - y[1] || (x[2] || 0) - (y[2] || 0)) < 0;
+  };
   function updates(o) {
     Object.assign(U, o);
     const touched = () => { U.touch = Date.now(); };
@@ -291,6 +294,7 @@ const IFL = (() => {
   // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
   // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
+    if (U.prepare) return U.prepare(U.ready.build, busyNow);
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
@@ -3723,8 +3727,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.13";
-const NEWS = "Safer private diagnostics";
+const BUILD = "2.13.1";
+const NEWS = "App versions now use major, feature and minor release numbers.";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

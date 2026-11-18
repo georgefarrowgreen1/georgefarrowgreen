@@ -555,3 +555,36 @@ test('large Trash subtrees purge historical metadata with a constant SQL paramet
  const trash=await api(f,'POST','trash',{id:dir.id,version:dir.version});assert.equal(trash.status,200,JSON.stringify(trash.value));
  const purge=await api(f,'DELETE','item',undefined,{query:'?id='+dir.id+'&version='+trash.value.item.version});assert.equal(purge.status,200,JSON.stringify(purge.value));assert.equal((await sql('SELECT COUNT(*) AS n FROM ifl_files_history WHERE user_id=?',[f.owner]))[0].n,0);assert.equal((await api(f,'GET','list')).value.usage.nodes,0);
 });
+
+test('Drive checkpoints survive retries and commit exactly once for new files and replacements', async () => {
+  const user = await fixture(), stranger = await fixture(), bytes = new Uint8Array(1024*1024).fill(65);
+  const item = await reserve(user,'Resumable.txt', bytes.length+1);
+  const headers = {'Content-Type':'application/octet-stream'};
+  async function transfer(query, tail) {
+    const put = async (part,data) => api(user,'PUT','upload-parts',data,{query:query+'&part='+part,headers});
+    assert.equal((await api(stranger,'GET','upload-parts',undefined,{query})).status,404);
+    const sent=await put(0,bytes); assert.equal(sent.status,200,JSON.stringify(sent.value));
+    assert.equal((await put(0,bytes)).status,200);
+    const mismatch = bytes.slice(); mismatch[0]++;
+    assert.equal((await put(0,mismatch)).status,409);
+    const incomplete = await api(user,'POST','upload-parts',{},{query});
+    assert.ok(incomplete.status >= 400);
+    const status = await api(user,'GET','upload-parts',undefined,{query});
+    assert.deepEqual(Object.keys(status.value.parts),['0']);
+    assert.match(status.value.parts[0],/^[a-f0-9]{64}$/);
+    assert.equal((await put(1,new Uint8Array([1,2]))).status,413);
+    assert.equal((await put(1,new Uint8Array([tail]))).status,200);
+    const done = await api(user,'POST','upload-parts',{},{query});
+    assert.equal(done.status,200,JSON.stringify(done.value));
+    const retry = await api(user,'POST','upload-parts',{},{query});
+    assert.equal(retry.value.item.version,done.value.item.version);
+    return done.value.item;
+  }
+  const first = await transfer('?id='+item.id,66);
+  const operationId=operation();
+  assert.equal((await api(user,'POST','replacements',{id:item.id,version:first.version,size:bytes.length+1,mime:'text/plain',operationId})).status,200);
+  await transfer('?uploadId='+operationId,67);
+  const content=await api(user,'GET','content',undefined,{query:'?id='+item.id});
+  assert.equal(content.value,'A'.repeat(bytes.length)+'C');
+  assert.equal((await api(user,'GET','history',undefined,{query:'?id='+item.id})).value.versions.length,1);
+});

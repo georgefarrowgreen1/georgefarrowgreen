@@ -217,8 +217,11 @@ const IFL = (() => {
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
-  // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
-  const older = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
+  // Three-part releases follow the legacy two-part series within each major.
+  const older = (a, b) => {
+    const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+    return (x[0] - y[0] || x.length - y.length || x[1] - y[1] || (x[2] || 0) - (y[2] || 0)) < 0;
+  };
   function updates(o) {
     Object.assign(U, o);
     const touched = () => { U.touch = Date.now(); };
@@ -301,6 +304,7 @@ const IFL = (() => {
   // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
   // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
+    if (U.prepare) return U.prepare(U.ready.build, busyNow);
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
@@ -1228,8 +1232,8 @@ const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // (the account page's version, in InFlite's menu: up by 0.01 with each change to it that goes out; and what's new in it,
 // said once it's in)
-const BUILD = "2.35";
-const NEWS = "Account and Admin open directly inside InFlite Settings";
+const BUILD = "2.35.1";
+const NEWS = "App versions now use major, feature and minor release numbers.";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,

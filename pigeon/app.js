@@ -202,8 +202,11 @@ const IFL = (() => {
   const U = { app: "", build: "", url: "version", field: "build", busy: null, save: null, files: null, ready: null, fresh: "", at: 0, back: Date.now(), touch: 0, going: false, told: "" };
   const typing = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !a.readOnly && !/^(button|checkbox|radio|range|submit|reset|file|color)$/.test(a.type))); };
   const busyNow = () => typing() || !!open || !!document.querySelector("dialog[open], .ifa-layer, [aria-busy='true']") || !!U.busy?.();
-  // (a version's parts as numbers: 1.76 after 1.8, as 1.80 is written)
-  const older = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
+  // Three-part releases follow the legacy two-part series within each major.
+  const older = (a, b) => {
+    const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+    return (x[0] - y[0] || x.length - y.length || x[1] - y[1] || (x[2] || 0) - (y[2] || 0)) < 0;
+  };
   function updates(o) {
     Object.assign(U, o);
     const touched = () => { U.touch = Date.now(); };
@@ -286,6 +289,7 @@ const IFL = (() => {
   // again; and without one, the page and its files asked of the network past the browser's own copy. → false if a new
   // worker was being installed and hasn't taken over (its files not all fetched, or not yet)
   async function afresh() {
+    if (U.prepare) return U.prepare(U.ready.build, busyNow);
     const sw = navigator.serviceWorker, wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
     try {
       const reg = await sw?.getRegistration();
@@ -1239,8 +1243,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.16";            // shown in InFlite's menu
-const APP_NEWS = "Encrypted file attachments from InFlite Files";       // (said once it's in)
+const APP_VERSION = "2.16.1";            // shown in InFlite's menu
+const APP_NEWS = "App versions now use major, feature and minor release numbers.";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)

@@ -45,6 +45,13 @@ async function make(D) {
     D.prepare("CREATE TABLE IF NOT EXISTS ifl_files_replacements (user_id TEXT NOT NULL,operation_id TEXT NOT NULL,file_id TEXT NOT NULL,expected INTEGER NOT NULL,size INTEGER NOT NULL,mime TEXT NOT NULL,storage_key TEXT,state TEXT NOT NULL,expires INTEGER NOT NULL,PRIMARY KEY(user_id,operation_id))"),
   ]);
   const { results } = await D.prepare("PRAGMA table_info(ifl_files_nodes)").all();
+  const replacements = await D.prepare("PRAGMA table_info(ifl_files_replacements)").all();
+  if (!replacements.results.some(column => column.name === "parts_token")) {
+    try { await D.prepare("ALTER TABLE ifl_files_replacements ADD COLUMN parts_token TEXT").run(); }
+    catch (error) {
+      if (!(await D.prepare("PRAGMA table_info(ifl_files_replacements)").all()).results.some(column => column.name === "parts_token")) throw error;
+    }
+  }
   const known = new Set(results.map(column => column.name));
   for (const [name, definition] of [["trash_at", "INTEGER NOT NULL DEFAULT 0"], ["trash_root", "TEXT"], ["trash_parent", "TEXT"], ["favourite", "INTEGER NOT NULL DEFAULT 0"]]) {
     if (!known.has(name)) try { await D.prepare(`ALTER TABLE ifl_files_nodes ADD COLUMN ${name} ${definition}`).run(); }
@@ -53,7 +60,7 @@ async function make(D) {
 }
 export async function filesdb(env, { requireStorage = true } = {}) {
   if (!env.DB || requireStorage && !env.FILES_R2) return failure(503, "Files storage is unavailable. Try again later.");
-  const D = await tablesOnce(env, "files-v3", make);
+  const D = await tablesOnce(env, "files-v4", make);
   return D.withSession ? D.withSession("first-primary") : D;
 }
 const rowOf = (D, owner, id) => D.prepare("SELECT * FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2").bind(owner, id).first();
@@ -224,8 +231,9 @@ async function removeNode(env, owner, id, expected, { stale = false } = {}) {
     }
     if (row.kind === "folder" && await D.prepare("SELECT 1 FROM ifl_files_nodes WHERE user_id = ? AND parent_id = ? LIMIT 1").bind(owner, id).first()) return failure(409, "This folder still contains files. Empty it before deleting it.");
     return { used: -historyBytes-(row.state === "ready" ? row.size : 0), reserved: -pendingBytes-(row.state === "ready" ? 0 : row.size), nodes: -1, after:cleanup, changes:[1,history.results.length,pending.results.length],
-      statement: X => X.prepare("DELETE FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id), result: () => ({ ok: true, keys:[...keys,...(row.storage_key?[row.storage_key]:[])] }) };
+      statement: X => X.prepare("DELETE FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id), result: () => ({ ok: true, checkpoint:row.state!=="ready", keys:[...keys,...(row.storage_key?[row.storage_key]:[])] }) };
   }, { deleting: stale });
+  if (result.checkpoint) await clearParts(env.FILES_R2, 'files/'+owner+'/parts/new/'+id+'/');
   if (result.keys?.length) for(let at=0;at<result.keys.length;at+=500) await env.FILES_R2.delete(result.keys.slice(at,at+500)).catch(error=>console.error("Files object cleanup",error?.message));
   if (result.key) await env.FILES_R2.delete(result.key).catch(error => console.error("Files object cleanup", error?.message));
   return { ok: result.ok };
@@ -311,7 +319,7 @@ export async function putExact(env, key, request, size) {
   catch (error) { abort(); await pump.catch(() => {}); throw error; }
   finally { request.signal.removeEventListener("abort", abort); }
 }
-export async function uploadFile(env, owner, id, request, { source = null } = {}) {
+export async function uploadFile(env, owner, id, request, { source = null, resumable = false } = {}) {
   id = fileId(id);
   const lease = randomToken(24);
   let taken;
@@ -352,6 +360,7 @@ export async function uploadFile(env, owner, id, request, { source = null } = {}
       await mutate(env, owner, async X => {
         const row = await rowOf(X, owner, id);
         if (!row || row.state === "ready" || row.upload_nonce !== claim.upload_nonce || row.storage_key !== claim.storage_key) return { done: true, value: null };
+        if (resumable) return { statement: Y => Y.prepare("UPDATE ifl_files_nodes SET state='pending', upload_nonce=NULL, storage_key=?3, expires=?4 WHERE user_id=?1 AND id=?2 AND changes()>0").bind(owner,id,`files/${owner}/${id}/${randomToken(24)}`,Date.now()+FILE_LIMITS.uploadMs) };
         return { reserved: -row.size, nodes: -1, statement: Y => Y.prepare("DELETE FROM ifl_files_nodes WHERE user_id = ?1 AND id = ?2 AND changes() > 0").bind(owner, id) };
       }, { deleting: true }).catch(() => {});
       const after = await rowOf(D, owner, id);
@@ -379,6 +388,15 @@ export async function fileContent(env, owner, id, { range } = {}) {
   if (object.size !== row.size) { object.body?.cancel().catch(() => {}); return failure(503, "That file couldn’t be read. Try again later."); }
   return { row, object, range: part };
 }
+export async function clearParts(bucket, prefix) {
+  if (!bucket) return;
+  let cursor;
+  do {
+    const page = await bucket.list({prefix, limit:500, cursor});
+    if (page.objects.length) await bucket.delete(page.objects.map(o=>o.key));
+    cursor = page.truncated ? page.cursor : null;
+  } while (cursor);
+}
 export async function dropFiles(env, owner) {
   const D = await filesdb(env, { requireStorage: false });
   // Keep this fence until pg_users is removed by the caller's final account
@@ -389,6 +407,7 @@ export async function dropFiles(env, owner) {
   const { results } = await D.prepare("SELECT storage_key FROM ifl_files_nodes WHERE user_id = ?1 AND storage_key IS NOT NULL UNION SELECT storage_key FROM ifl_files_history WHERE user_id=?1 UNION SELECT storage_key FROM ifl_files_replacements WHERE user_id=?1 AND storage_key IS NOT NULL").bind(owner).all();
   const keys = results.map(row => row.storage_key);
   if (keys.length && !env.FILES_R2) return failure(503, "Files storage is unavailable. Account deletion will be retried.");
+  await clearParts(env.FILES_R2, 'files/'+owner+'/parts/');
   for (let at = 0; at < keys.length; at += 500) await env.FILES_R2.delete(keys.slice(at, at + 500));
   await D.batch([D.prepare("DELETE FROM ifl_files_history WHERE user_id=?").bind(owner), D.prepare("DELETE FROM ifl_files_replacements WHERE user_id=?").bind(owner), D.prepare("DELETE FROM ifl_files_nodes WHERE user_id = ?").bind(owner), D.prepare("DELETE FROM ifl_files_operations WHERE user_id = ?").bind(owner), D.prepare("UPDATE ifl_files_accounts SET used = 0, reserved = 0, nodes = 0, revision = revision + 1 WHERE user_id = ?").bind(owner)]);
 }

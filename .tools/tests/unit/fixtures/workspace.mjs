@@ -16,13 +16,13 @@ export const OS_SYNC_JS = Object.freeze(savedLayouts ? ['workspace-sync.js', 'wo
 export const OS_RECOVERY_JS = Object.freeze(['workspace-recovery.js', 'workspace-recovery-view.js', 'connection.js']);
 export const OS_HANDOFF_JS = Object.freeze(['handoffs.js']);
 export const OS_RECOVERY_CSS = Object.freeze(['workspace-recovery.css']);
-export const OS_CONTINUITY_JS = Object.freeze(["continuity.js","offline-store.js","offline-prefs.js","ride-overview.js","files-history.js"].filter(f=>ROOF&&existsSync(new URL(f,ROOF))));
+export const OS_CONTINUITY_JS = Object.freeze(["continuity.js","offline-store.js","offline-prefs.js","ride-overview.js","files-history.js","upload-parts.js"].filter(f=>ROOF&&existsSync(new URL(f,ROOF))));
 export const OS_SYSTEM350_JS=Object.freeze(['system350.js', 'system-client.js', 'actions-store.js', 'actions-ui.js', 'device-id.js', 'devices-ui.js', 'discovery350.js', ...(ROOF && existsSync(new URL('search-file.js', ROOF)) ? ['search-file.js'] : []), 'files-viewer350.js', 'files-recovery350.js']);
 export const OS_SYSTEM350_CSS=Object.freeze(['system350.css', 'files-viewer350.css']);
 export const OS_SECURITY_JS=Object.freeze(['security-module.js','security-client.js']);
 export const OS_SECURITY_CSS=Object.freeze(['security-module.css']);
 export const OS_LIFE_JS=Object.freeze(['life410.js']);
-export const OS_CAPTURE_FILES=Object.freeze([ROOF&&existsSync(new URL('../organise/releases/4.31/store.js',ROOF))?'/organise/releases/4.31/store.js':ROOF&&existsSync(new URL('../organise/releases/4.30/store.js',ROOF))?'/organise/releases/4.30/store.js':'/organise/releases/4.10/store.js']);
+export const OS_CAPTURE_FILES=Object.freeze([ROOF&&existsSync(new URL('../organise/releases/4.31.1/store.js',ROOF))?'/organise/releases/4.31.1/store.js':ROOF&&existsSync(new URL('../organise/releases/4.31/store.js',ROOF))?'/organise/releases/4.31/store.js':ROOF&&existsSync(new URL('../organise/releases/4.30/store.js',ROOF))?'/organise/releases/4.30/store.js':'/organise/releases/4.10/store.js']);
 export const OS_LIFE_CSS=Object.freeze(['life410.css']);
 const launcher420=ROOF&&existsSync(new URL('launcher-model.js',ROOF));
 export const OS_LAUNCHER_JS=Object.freeze(launcher420?['launcher-model.js','launcher-motion.js',...(existsSync(new URL('launcher-input.js',ROOF))?['launcher-input.js']:[])]:[]);

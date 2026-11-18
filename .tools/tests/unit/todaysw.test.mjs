@@ -187,6 +187,7 @@ test('One roof: a document at /weather/ from the network, else the copy of / (ne
   const w = worker((path) => {
     if (mode === 'down') throw new TypeError('Load failed');
     if (mode === '5xx') return new Response('hub down', { status: 503 });
+    if (mode === 'updated-shell') return new Response('next shell html',{headers:{'X-InFlite-Shell':'1'}});
     if (mode === 'off') return Object.defineProperty(new Response('MILESTONE 1 WEATHER', { status: 200 }), 'type', { value: 'basic' });
     if(path==='/app.js' && release) return new Response('const BUILD = "' + release + '";');
     return Object.defineProperty(new Response(path === '/' ? 'TODAY /' : `FRAMEWORK ${path}`, { status: 200 }), 'type', { value: 'basic' });
@@ -194,6 +195,10 @@ test('One roof: a document at /weather/ from the network, else the copy of / (ne
   if (release) await w.send('install', {});
   assert.equal(await (await w.get('/', 'navigate')).text(), 'TODAY /', 'Today’s page, kept as it comes');
   for (const p of ['/weather/', '/weather/index.html', '/weather/?lat=1&lon=2']) assert.equal(await (await w.get(p, 'navigate')).text(), `FRAMEWORK ${new URL(p, ORIGIN).pathname}`, p);
+  if (release) {
+    mode = 'updated-shell';
+    assert.equal(await (await w.get('/weather/','navigate')).text(),'TODAY /','a controlled tab keeps its installed document');
+  }
   mode = 'off';
   assert.equal(await (await w.get('/weather/', 'navigate')).text(), 'MILESTONE 1 WEATHER', 'the roof off: the hub’s page, as it sends it');
   assert.equal(await (await w.stores.get(release ? 'inflite-shell-set-'+release : SHELL_NOW).get('/').clone()).text(), 'TODAY /', 'never kept as /');
