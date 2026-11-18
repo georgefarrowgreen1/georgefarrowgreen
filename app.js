@@ -646,106 +646,79 @@ const spring = () => getComputedStyle(root).getPropertyValue("--ease-spring").tr
 const behind = [$("#page"), $("#bar")];
 // (where it is now, mid-way through any of that)
 const currentY = (el) => { const t = getComputedStyle(el).transform; return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0; };
-function openSheet(d, origin = null) {
-  const painted = contactFlightRect(d);
-  stopContactFlight(d);
-  const going = d.classList.contains("closing");
+function openSheet(d, launcher = document.activeElement) {
+  const contactSheet = d.id === "contact-sheet";
+  let caughtThrow;
   if (!d.open) {
-    const opener = origin?.el || document.activeElement;
-    lastFocus = opener?.closest("#fi-floating-links") ? $(".fi-menubtn") : opener;
-  }
-  if (going) {
-    const y = currentY(d);
-    clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
-    d.getAnimations().forEach((a) => a.cancel());
+    lastFocus = launcher?.closest("#fi-floating-links") ? $(".fi-menubtn") : launcher;
+    d.classList.remove("closing", "shown");
+    d.showModal();
+  } else if (d.classList.contains("closing")) {
+    clearTimeout(d._done);
+    if (!contactSheet || d._throw) {
+      const y = currentY(d);
+      d.getAnimations().forEach(a => a.cancel()); d._throw = null;
+      d.style.transform = "";
+      if (contactSheet) caughtThrow = y;
+      else if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: MOTION.enter, easing: GLIDE });
+    }
     d.classList.remove("closing"); d.classList.add("shown");
-    d.style.transform = ""; d.style.removeProperty("--from");
-    if (!motion.matches && y) d.animate([{ transform: `translateY(${y}px)` }, { transform: "none" }], { duration: MOTION.enter, easing: GLIDE });
-  } else if (!d.open) d.classList.toggle("shown", !!origin && !motion.matches);
-  if (!d.open) d.showModal();
+  }
   pin();
-  // (the sheet itself takes the focus, not its first button, which a phone would ring as if it had been chosen)
   $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
-  return painted;
-}
-// The contact material grows from its actual launcher. Only this empty surface changes scale: the real form stays
-// crisp and unique. All geometry is sampled at the ends, then native keyframes do the travelling.
-function contactFlightRect(d) {
-  const el = d._flight?.surface;
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  return { left: r.left, top: r.top, width: r.width, height: r.height, tint: getComputedStyle(d._flight.tint).opacity, formOpacity: getComputedStyle($(".sheet-in", d)).opacity };
-}
-function contactOrigin(b) {
-  const r = b.getBoundingClientRect(), cs = getComputedStyle(b);
-  if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > innerHeight) return null;
-  const label = $(".tx", b) || b, text = label.getBoundingClientRect(), font = getComputedStyle(label);
-  // Opening starts from the pressed shape; returning ends at the resting button once its press has released.
-  const scale = cs.transform === "none" ? 1 : Math.abs(new DOMMatrixReadOnly(cs.transform).a), w = r.width / (scale || 1), h = r.height / (scale || 1);
-  return { el: b, left: r.left, top: r.top, width: r.width, height: r.height,
-    color: getComputedStyle(b.closest("nav, footer") || b).backgroundColor, viewport: innerWidth,
-    rest: { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h },
-    label: { text: label.textContent.trim(), left: text.left, top: text.top, width: text.width, height: text.height, font: font.font, color: font.color } };
-}
-function stopContactFlight(d) {
-  const state = d._flight;
-  if (!state) return;
-  d._flight = null; clearTimeout(state.timer);
-  state.animations.forEach(a => a.cancel()); state.surface.remove(); state.copy?.remove();
-  state.origin?.el.classList.remove("contact-source");
-  d.classList.remove("contact-travelling"); state.resolve();
-}
-function flyContact(d, from, to, closing = false) {
-  const box = $(".sheet-in", d), opacity = getComputedStyle(box).opacity;
-  stopContactFlight(d);
-  d._resize?.forEach(a => a.cancel()); d._resize = [];
-  const surface = document.createElement("div"); surface.className = "contact-flight"; surface.setAttribute("aria-hidden", "true");
-  const base = d.getBoundingClientRect(), width = base.width, height = base.height;
-  surface.style.width = width + "px"; surface.style.height = height + "px"; d.prepend(surface);
-  const state = d._flight = { surface, bounds: base, animations: [], origin: closing ? to : d._contactOrigin, resolve: null };
-  state.finished = new Promise(resolve => { state.resolve = resolve; });
-  state.origin?.el.classList.add("contact-source"); d.classList.add("contact-travelling", "shown");
-  const duration = closing ? MOTION.exit + MOTION.stagger : MOTION.enter + MOTION.stagger;
-  const animate = (el, frames, options = {}) => {
-    const a = el.animate(frames, { duration, easing: GLIDE, fill: "both", ...options }); state.animations.push(a); return a;
-  };
-  // Paint the card, its launcher colour and the form once. Two translated
-  // overflow windows reveal the full-size text within the moving card edges.
-  const tint = state.tint = document.createElement("span");
-  tint.className = "contact-flight-tint";
-  tint.style.backgroundColor = state.origin.color;
-  surface.append(tint);
-  const reveal = $(".contact-reveal", d), windowEl = $(".contact-window", d);
-  const translate = (x, y) => `translate3d(${x}px, ${y}px, 0)`;
-  const transform = (el, at) => animate(el, [from, to].map(rect => ({transform: at(rect)})));
-  transform(surface, r => translate(r.left, r.top) + ` scale(${r.width / width}, ${r.height / height})`);
-  transform(reveal, r => translate(r.left + r.width - base.right, r.top + r.height - base.bottom));
-  transform(windowEl, r => translate(width - r.width, height - r.height));
-  transform(box, r => translate(base.left - r.left, base.top - r.top));
-  animate(tint, [{opacity: from.tint ?? (closing ? 0 : 1)}, {opacity: closing ? 1 : 0}]);
-  animate(box, [{opacity: from.formOpacity ?? (closing ? opacity : 0)}, {opacity: closing ? 0 : 1}],
-    { duration: closing ? MOTION.fast : MOTION.layout, delay: closing || from.formOpacity != null ? 0 : MOTION.stagger, easing: EASE_OUT });
-  if (!closing && from.label) {
-    const copy = state.copy = document.createElement("span"), l = from.label;
-    copy.className = "contact-flight-copy"; copy.setAttribute("aria-hidden", "true"); copy.textContent = l.text;
-    Object.assign(copy.style, { left: l.left + "px", top: l.top + "px", width: l.width + "px", height: l.height + "px", font: l.font, color: l.color });
-    d.append(copy); animate(copy, [{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.fast });
+  if (contactSheet) {
+    d.style.bottom = ""; d.style.maxHeight = "";
+    d.classList.add("shown");
+    return presentContact(d, true, caughtThrow);
   }
-  if (closing && state.origin?.el.isConnected) animate(state.origin.el, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.fast, delay: duration - MOTION.fast });
-  const done = () => {
-    if (d._flight !== state) return;
-    stopContactFlight(d); if (closing) finishClose(d);
+}
+
+// The dialog and everything printed on it share one compositor animation. A
+// second tap can reverse that same timeline without measuring the form again.
+function presentContact(d, opening, caughtThrow) {
+  let animation = d._presentation;
+  if (!animation) {
+    const duration = motion.matches ? 110 : phone.matches ? 320 : 250;
+    const offset = caughtThrow ?? (phone.matches ? 48 : 16);
+    // The handle can still be springing back when Close is pressed.
+    const restingY = !opening && d._rebound ? currentY(d) : 0;
+    d._rebound?.cancel(); d._rebound = null;
+    const frames = motion.matches ? [{ opacity: 0 }, { opacity: 1 }] : [
+      { opacity: caughtThrow == null ? 0 : 1, transform: `translate3d(0, ${offset}px, 0)` },
+      { opacity: 1, transform: `translate3d(0, ${restingY}px, 0)` }
+    ];
+    animation = d._presentation = d.animate(frames, {
+      duration, easing: motion.matches ? "linear" : "cubic-bezier(.28,.12,.22,1)", fill: "both"
+    });
+    animation.currentTime = opening ? 0 : duration;
+  } else if (!opening && animation.currentTime <= 0) {
+    finishClose(d);
+    return;
+  }
+  animation.playbackRate = opening ? 1 : -1.25;
+  animation.onfinish = () => {
+    if (d._presentation !== animation) return;
+    if (d.classList.contains("closing")) finishClose(d);
+    else clearPresentation(d);
   };
-  Promise.all(state.animations.map(a => a.finished.catch(() => {}))).then(done);
-  state.timer = setTimeout(done, duration + 150);
+  animation.play();
+  return animation;
 }
-function contactSheetRect(d) {
-  const r = d.getBoundingClientRect();
-  return { left: r.left, top: r.top, width: r.width, height: r.height };
+function clearPresentation(d) {
+  const animation = d._presentation;
+  if (!animation) return;
+  animation.onfinish = null;
+  d._presentation = null;
+  animation.cancel();
 }
-addEventListener("pagehide", () => { for (const d of $$("dialog.sheet")) { if (d._flight && d.classList.contains("closing")) finishClose(d); else stopContactFlight(d); } });
-motion.addEventListener("change", () => { if (motion.matches) for (const d of $$("dialog.sheet")) { if (d._flight && d.classList.contains("closing")) finishClose(d); else stopContactFlight(d); } });
+function settlePresentation() {
+  const d = $("#contact-sheet");
+  if (d.classList.contains("closing")) finishClose(d);
+  else clearPresentation(d);
+}
+addEventListener("pagehide", settlePresentation);
+motion.addEventListener("change", () => { if (motion.matches) settlePresentation(); });
 // The page held still behind a sheet, pinned where it's scrolled to (an iPhone draws the caret of a field in a sheet as
 // far out as the page behind is scrolled, once the keyboard's up); what moves with the scroll held as it looks, as
 // pinned there's no scroll for it to follow, and let go with it
@@ -764,8 +737,10 @@ function unpin() {
 
 }
 function finishClose(d) {
-  clearTimeout(d._done); d._throw = null;
-  stopContactFlight(d); d._contactOrigin = null;
+  clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
+  clearPresentation(d);
+  d._rebound?.cancel(); d._rebound = null;
+  d.style.bottom = ""; d.style.maxHeight = "";
   if (d.id === "contact-sheet") stopSenderMorph();
   d._resize?.forEach(a => a.cancel()); d._resize = [];
   d.classList.remove("closing", "dragging", "shown");
@@ -774,22 +749,22 @@ function finishClose(d) {
 }
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
-  const origin = d._contactOrigin, painted = contactFlightRect(d) || (origin ? contactSheetRect(d) : null);
-  const returns = !thrown && !motion.matches && origin?.el.isConnected && origin.viewport === innerWidth;
+  const contactSheet = d.id === "contact-sheet";
+  if (contactSheet && phone.matches && parseFloat(root.style.getPropertyValue("--kb")) > 0) {
+    // Keep the closing sheet in place while iOS dismisses the keyboard behind it.
+    const style = getComputedStyle(d);
+    d.style.bottom = style.bottom; d.style.maxHeight = style.maxHeight;
+  }
   if (d.contains(document.activeElement) && document.activeElement.matches("input, textarea")) document.activeElement.blur();
-  if (d.id === "contact-sheet") contact.version++;
+  if (contactSheet) contact.version++;
   body.classList.remove("sheet-up", "pulling");
-  // Restore the scroll position after the returning card reaches its launcher.
-  if (!returns) unpin();
+  if (!contactSheet) unpin();
   for (const el of behind) el.style.transform = "";
-  if (returns) {
-    d.getAnimations().forEach(a => a.cancel()); d.style.transform = "";
-    const menuButton = origin.el.closest("#fi-floating-links") && $(".fi-menubtn");
-    const target = (menuButton && contactOrigin(menuButton)) || origin;
-    d.classList.add("closing", "shown"); flyContact(d, painted, { ...target, ...target.rest }, true);
+  if (contactSheet && (!thrown || motion.matches)) {
+    d.classList.add("closing");
+    presentContact(d, false);
     return;
   }
-  stopContactFlight(d);
   if (!thrown || motion.matches) {
     // (down from wherever it is: closed while it's still coming up, from there; done when its animation ends)
     d.style.setProperty("--from", `${currentY(d)}px`);
@@ -841,13 +816,15 @@ function settle(d, change, inEl) {
 for (const d of $$("dialog.sheet")) {
   // (up: from then on it can be dragged; closing: put away once it's down)
   d.addEventListener("animationend", (e) => {
-    if (e.target !== d || e.pseudoElement) return;
+    if (d.id === "contact-sheet" || e.target !== d || e.pseudoElement) return;
     if (d.classList.contains("closing")) { if (!d._throw) finishClose(d); }
     else d.classList.add("shown");
   });
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
-  d.addEventListener("close", () => { stopContactFlight(d); d._contactOrigin = null; body.classList.remove("sheet-up"); unpin(); lastFocus?.focus?.({ preventScroll: true }); });
-  d.addEventListener("focusin", (e) => { if (e.target.matches("input, textarea") && !d.classList.contains("closing")) stopContactFlight(d); });
+  d.addEventListener("close", () => {
+    if (d.open) return;
+    clearPresentation(d); body.classList.remove("sheet-up"); unpin(); lastFocus?.focus?.({ preventScroll: true });
+  });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
   // itself; and only a tap that began there, not a press that began in the sheet, choosing words, and let go outside it)
   let downOnDim = false;
@@ -863,11 +840,12 @@ for (const d of $$("dialog.sheet")) {
   let y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0;
   d.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a") || d.classList.contains("closing")) return;
-    stopContactFlight(d);
     // (caught on its way up: held where it is, and the page behind where that's got to, rather than either jumping)
-    const y = Math.max(0, currentY(d));
-    for (const el of behind) el.style.transform = getComputedStyle(el).transform;
+    const y = Math.max(0, currentY(d)), opacity = getComputedStyle(d).opacity;
+    clearPresentation(d);
+    if (d.id !== "contact-sheet") for (const el of behind) el.style.transform = getComputedStyle(el).transform;
     d.getAnimations().forEach((a) => a.cancel());
+    if (opacity < 1) d.animate([{ opacity }, { opacity: 1 }], { duration: 110 });
     d.classList.add("shown");
     d.style.transform = `translateY(${y}px)`;
     y0 = e.clientY - y; dy = y; lastY = e.clientY; lastT = e.timeStamp; v = 0;
@@ -882,6 +860,7 @@ for (const d of $$("dialog.sheet")) {
     v = 0.7 * ((e.clientY - lastY) / dt) + 0.3 * v; lastY = e.clientY; lastT = e.timeStamp;
     d.style.transform = `translateY(${dy}px)`;
     // the page comes forward as the sheet goes down
+    if (d.id === "contact-sheet") return;
     const p = clamp(dy / d.offsetHeight);
     for (const el of behind) el.style.transform = `scale(${0.94 + 0.06 * p}) translateY(${14 * (1 - p)}px)`;
   });
@@ -896,7 +875,8 @@ for (const d of $$("dialog.sheet")) {
     d.style.transform = "";
     if (dy && !motion.matches) {
       const frames = Array.from({ length: 37 }, (_, i) => ({ transform: `translateY(${i === 36 ? 0 : springValue(dy, 0, v * 1000, MOTION.enter * i / 36000)[0]}px)`, offset: i / 36 }));
-      d.animate(frames, { duration: MOTION.enter, easing: "linear" });
+      const rebound = d._rebound = d.animate(frames, { duration: MOTION.enter, easing: "linear" });
+      rebound.onfinish = () => { if (d._rebound === rebound) d._rebound = null; };
     }
   };
   d.addEventListener("pointerup", end);
@@ -928,8 +908,6 @@ if (window.visualViewport) {
     const inset = Math.max(0, Math.round(innerHeight - height - top));
     const k = open && (kb > 0 || (typingInSheet() && inset > 80)) ? inset : 0;
     if (k !== kb || (open && viewportChanged && typingInSheet())) {
-      // A field tapped during the entrance takes priority over the decorative flight.
-      if (open?._flight && !open.classList.contains("closing")) stopContactFlight(open);
       root.classList.add("viewport-moving");
       kb = k; root.style.setProperty("--kb", k + "px");
       clearTimeout(moved); moved = setTimeout(() => { root.classList.remove("viewport-moving"); keepVisible(); recaret(); }, 120);
@@ -941,14 +919,7 @@ if (window.visualViewport) {
     if (!frame) frame = requestAnimationFrame(lift);
   };
   vv.addEventListener("resize", () => queue()); vv.addEventListener("scroll", () => queue());
-  addEventListener("resize", () => {
-    const d = $("dialog.sheet[open]");
-    if (d?._flight && !d.classList.contains("closing")) {
-      const now = d.getBoundingClientRect(), before = d._flight.bounds;
-      if (["left", "top", "width", "height"].some(key => Math.abs(now[key] - before[key]) > 1)) stopContactFlight(d);
-    }
-    queue(700);
-  });
+  addEventListener("resize", () => queue(700));
   addEventListener("pageshow", () => queue(700));
   document.addEventListener("focusin", () => { if (typingInSheet()) queue(700); });
   document.addEventListener("input", () => { if (typingInSheet()) queue(); });
@@ -1048,25 +1019,22 @@ const contact = { sheet: $("#contact-sheet"), form: $("#contact-form"), sent: $(
 contact.sheet._surface = document.createElement("div");
 contact.sheet._surface.className = "sheet-surface"; contact.sheet._surface.setAttribute("aria-hidden", "true");
 contact.sheet.prepend(contact.sheet._surface); contact.sheet.classList.add("surface-sheet");
-contact.sheet.addEventListener("close", () => { contact.version++; stopSenderMorph(); });
+contact.sheet.addEventListener("close", () => { if (!contact.sheet.open) { contact.version++; stopSenderMorph(); } });
 for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
-  const origin = contactOrigin(b);
   contact.version++;
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
   // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
   fromMe();
   ready();
-  const painted = openSheet(contact.sheet, origin);
+  const presentation = openSheet(contact.sheet, b);
   grow(); fit();
-  contact.sheet._contactOrigin = origin;
-  if (origin && !motion.matches) flyContact(contact.sheet, painted || origin, contactSheetRect(contact.sheet));
   const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
   // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
   if (!phone.matches) {
     const focus = () => {
       if (contact.sheet.open && !contact.sheet.classList.contains("closing") && document.activeElement === $(".sheet-in", contact.sheet)) (empty || $("#c-message")).focus({ preventScroll: true });
     };
-    if (contact.sheet._flight) contact.sheet._flight.finished.then(focus); else focus();
+    presentation.finished.then(focus, () => {});
   }
 });
 // (their own details changed for this message: the two rows instead)

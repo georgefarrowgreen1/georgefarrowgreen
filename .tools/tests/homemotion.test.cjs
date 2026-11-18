@@ -189,43 +189,53 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}motion tokens preserv
   assert.deepEqual(await f.p.evaluate(()=>({...MOTION})),{fast:180,enter:420,exit:260,layout:340,stagger:50});assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
-for(const assets of ['', 'min/'])for(const launcher of [0,1])test(`${assets||'source/'}contact material grows from launcher ${launcher+1} and returns without scaling form text`,async()=>{
- const f=await fixture(assets);try{
-  if (launcher === 0) { await f.p.locator('.fi-menubtn').click(); await f.p.locator('#fi-floating-links').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished))); }
-  await f.p.locator('[data-contact]').nth(launcher).scrollIntoViewIfNeeded();
-  const opening=await f.p.evaluate(index=>{
-   const b=document.querySelectorAll('[data-contact]')[index];b.focus({preventScroll:true});if(index===0)b.style.transform='scale(.96)';const source=b.getBoundingClientRect(),restingWidth=b.offsetWidth;b.click();
-   const d=document.querySelector('#contact-sheet'),surface=d.querySelector('.contact-flight'),a=surface.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);
-   a.pause();a.currentTime=0;const start=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration/2;const middle=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration;const end=surface.getBoundingClientRect();a.currentTime=0;a.play();
-   const paintProperties = d.getAnimations({subtree:true}).filter(a=>a instanceof Animation && !(a instanceof CSSAnimation)).flatMap(a=>a.effect.getKeyframes()).flatMap(Object.keys).filter(k=>['clipPath','backgroundColor','borderRadius','height','width'].includes(k));
-   return{paintProperties,source:{left:source.left,top:source.top,width:source.width,height:source.height},start:{left:start.left,top:start.top,width:start.width,height:start.height},middle:middle.height,end:end.height,restingWidth,forms:d.querySelectorAll('form').length,
-    textFrames:d.querySelector('.sheet-in').getAnimations().flatMap(a=>a.effect.getKeyframes())};
-  },launcher);
-  assert.deepEqual(opening.paintProperties,[]);
-  for(const key of ['left','top','width','height'])assert.ok(Math.abs(opening.source[key]-opening.start[key])<1,`surface starts at launcher ${key}`);
-  assert.ok(opening.middle>opening.start.height&&opening.middle<opening.end);assert.equal(opening.forms,1);
-  assert.ok(opening.textFrames.every(frame=>!frame.transform?.includes('scale')));
-  await f.p.waitForFunction(()=>!document.querySelector('.contact-flight'));
-  const closing=await f.p.evaluate(index=>{document.querySelectorAll('[data-contact]')[index].style.transform='';const d=document.querySelector('#contact-sheet');closeSheet(d);const s=d.querySelector('.contact-flight'),a=s.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),last=a.effect.getKeyframes().at(-1),width=parseFloat(s.style.width)*new DOMMatrixReadOnly(last.transform).a;return{width,closing:d.classList.contains('closing')};},launcher);
-  assert.ok(Math.abs(closing.width-(launcher===0?(await f.p.locator('.fi-menubtn').boundingBox()).width:opening.restingWidth))<1,'return lands on the resting button rather than its pressed size');assert.equal(closing.closing,true);await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
-  assert.equal(await f.p.locator('.contact-flight,.contact-flight-copy,.contact-source').count(),0);
-  assert.equal(await f.p.locator(launcher === 0 ? '.fi-menubtn' : 'footer [data-contact]').evaluate(b=>b===document.activeElement),true);assert.deepEqual(f.errors,[]);
- }finally{await f.cleanup();}
-});
-for(const assets of ['', 'min/'])test(`${assets||'source/'}contact flight reverses from its painted shape and a field tap takes priority`,async()=>{
- const f=await fixture(assets);try{
-  await f.p.locator('footer [data-contact]').scrollIntoViewIfNeeded();
-  const continuity=await f.p.evaluate(()=>{
-   const b=document.querySelector('footer [data-contact]');b.focus();b.click();const d=document.querySelector('#contact-sheet');
-   const position=()=>{const el=d.querySelector('.contact-flight'),a=el.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);a.pause();return el.getBoundingClientRect();};
-   d.querySelector('.contact-flight').getAnimations().forEach(a=>a.currentTime=160);const before=position();closeSheet(d);const closed=position();b.click();const reopened=position();
-   return{before:{top:before.top,width:before.width,height:before.height},closed:{top:closed.top,width:closed.width,height:closed.height},reopened:{top:reopened.top,width:reopened.width,height:reopened.height}};
-  });
-  for(const key of ['top','width','height']){assert.ok(Math.abs(continuity.before[key]-continuity.closed[key])<1);assert.ok(Math.abs(continuity.closed[key]-continuity.reopened[key])<1);}
-  await f.p.locator('#c-name').fill('Sam Rider');assert.equal(await f.p.locator('.contact-flight').count(),0);assert.equal(await f.p.locator('#c-name').evaluate(el=>el===document.activeElement),true);
-  await f.p.keyboard.press('Escape');await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});assert.deepEqual(f.errors,[]);
- }finally{await f.cleanup();}
-});
+for (const assets of ['', 'min/']) for (const [width, launcher] of [[390, 'menu'], [1440, 'footer']]) {
+ test(`${assets || 'source/'}${width}px contact form moves together and reverses in place from the ${launcher}`, async () => {
+  const f = await fixture(assets, {width});
+  try {
+   if (launcher === 'menu') await f.p.locator('.fi-menubtn').click();
+   const selector = (launcher === 'menu' ? '#fi-floating-links' : 'footer') + ' [data-contact]';
+   await f.p.locator(selector).scrollIntoViewIfNeeded();
+   const initialScroll = await f.p.evaluate(() => scrollY);
+   const samples = await f.p.evaluate(selector => {
+    const trigger = document.querySelector(selector), dialog = document.querySelector('#contact-sheet');
+    trigger.click();
+    const animation = dialog._presentation;
+    animation.pause();
+    const sample = () => {
+     const box = dialog.getBoundingClientRect();
+     return {top:box.top, left:box.left, width:box.width, height:box.height, opacity:Number(getComputedStyle(dialog).opacity),
+      textOffset:dialog.querySelector('#c-message').getBoundingClientRect().top - box.top};
+    };
+    const duration = animation.effect.getTiming().duration;
+    animation.currentTime = 0; const start = sample();
+    animation.currentTime = duration; const end = sample();
+    animation.currentTime = duration * .4; const middle = sample();
+    dialog.querySelector('[data-close]').click(); const reversing = sample();
+    trigger.click(); const reopening = sample();
+    dialog.querySelector('#c-message').focus();
+    return {start, middle, end, reversing, reopening, sameAnimation:dialog._presentation === animation};
+   }, selector);
+   assert.ok(samples.sameAnimation);
+   assert.ok(samples.middle.top > samples.end.top && samples.middle.top < samples.start.top);
+   assert.ok(samples.middle.opacity > 0 && samples.middle.opacity < 1);
+   assert.ok(samples.start.top - samples.end.top <= (width < 600 ? 50 : 20));
+   for (const state of [samples.start, samples.middle, samples.reversing, samples.reopening]) {
+    for (const key of ['width','height','left','textOffset']) assert.ok(Math.abs(samples.end[key] - state[key]) < 1, key);
+   }
+   for (const state of [samples.reversing, samples.reopening]) {
+    assert.ok(Math.abs(samples.middle.top - state.top) < 1);
+    assert.ok(Math.abs(samples.middle.opacity - state.opacity) < .01);
+   }
+   await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._presentation);
+   assert.equal(await f.p.locator('#c-message').evaluate(el => el === document.activeElement), true);
+   await close(f);
+   await f.p.waitForFunction(selector => document.activeElement.matches(selector), launcher === 'menu' ? '.fi-menubtn' : selector);
+   assert.ok(Math.abs(await f.p.evaluate(() => scrollY) - initialScroll) < 2);
+   assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+ });
+}
 for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard viewport frames track directly, settle without polling, and preserve the draft`,async()=>{
  const f=await fixture(assets,{viewportEvents:true});try{
   await open(f);await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');await f.p.locator('#c-message').fill('Keep this draft');await f.p.waitForFunction(()=>!document.querySelector('.sender-word'));
@@ -243,4 +253,50 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard viewport fra
   for(const inset of [190,50,0]){await f.p.evaluate(inset=>setTestViewport({height:innerHeight-inset,scale:1}),inset);await f.p.waitForFunction(inset=>parseFloat(document.documentElement.style.getPropertyValue('--kb'))===inset,inset);}
   await close(f);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
+});
+
+test('dismissing with the keyboard raised holds the sheet above it until the fade finishes', async () => {
+ const f = await fixture('', {viewportEvents:true});
+ try {
+  await open(f);
+  await f.p.locator('#c-message').fill('Keep my draft');
+  await f.p.evaluate(() => setTestViewport({height:innerHeight - 290}));
+  await f.p.waitForFunction(() => document.documentElement.style.getPropertyValue('--kb') === '290px');
+  const bottom = await f.p.evaluate(() => {
+   const d = document.querySelector('#contact-sheet'), start = getComputedStyle(d).bottom;
+   d.querySelector('[data-close]').click();
+   d._presentation.pause();
+   setTestViewport({height:innerHeight});
+   return start;
+  });
+  await f.p.waitForFunction(() => document.documentElement.style.getPropertyValue('--kb') === '0px');
+  assert.equal(await f.p.locator('#contact-sheet').evaluate(d => getComputedStyle(d).bottom), bottom);
+  await f.p.evaluate(() => document.querySelector('#contact-sheet')._presentation.play());
+  await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
+  await open(f);
+  assert.equal(await f.p.locator('#c-message').inputValue(), 'Keep my draft');
+  assert.equal(await f.p.locator('#contact-sheet').evaluate(d => d.style.bottom), '');
+ } finally { await f.cleanup(); }
+});
+
+test('dragging the contact handle keeps the page still and a downward swipe dismisses it', async () => {
+ const f = await fixture('');
+ try {
+  await open(f);
+  await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._presentation);
+  const handle = await f.p.locator('#contact-sheet .grab').boundingBox();
+  const x = handle.x + handle.width / 2, y = handle.y + handle.height / 2;
+  await f.p.mouse.move(x, y);
+  await f.p.mouse.down();
+  await f.p.mouse.move(x, y + 140, {steps:8});
+  const state = await f.p.evaluate(() => ({
+   sheet:document.querySelector('#contact-sheet').getBoundingClientRect().top,
+   page:getComputedStyle(document.querySelector('#page')).transform
+  }));
+  assert.ok(state.sheet > handle.y + 100);
+  assert.equal(state.page, 'none');
+  await f.p.mouse.up();
+  await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
 });
