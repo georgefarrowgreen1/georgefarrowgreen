@@ -99,7 +99,7 @@ export async function homePage(ctx, url, res) {
       rewriter.on(selector + " img", { element(el) {
         el.setAttribute("src", frame.src); el.setAttribute("alt", frame.alt);
         el.setAttribute("data-focus", frame.position);
-      } }).on(selector + " span", { element(el) { el.setInnerContent(frame.label); } });
+      } }).on(selector + " .fi-caption", { element(el) { el.setInnerContent(frame.label); } });
     }
     const first = groups.findIndex(group => group.length);
     rewriter.on(`[data-scene="${first < 0 ? 2 : first}"]`, { element(el) { el.setAttribute("aria-pressed", "true"); } });

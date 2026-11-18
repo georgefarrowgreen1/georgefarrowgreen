@@ -125,7 +125,11 @@ for (const assets of ['', 'min/']) {
           await mark.waitFor({ state: 'attached' });
           assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
-          assert.equal(await mark.locator('path animate[attributeName="d"]').count(), 3);
+          assert.equal(await mark.locator('.opening-strokes i').count(), 3);
+          const properties = await page.locator('.fi-reel button, .fi-window, .opening-mark > svg').evaluateAll(elements =>
+            elements.flatMap(el => el.getAnimations().flatMap(a => Object.keys(a.effect.getKeyframes()[0]))));
+          assert.ok(properties.includes('transform'));
+          assert.ok(properties.every(key => ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key)));
           if (width === 1440) {
             await page.keyboard.press('Escape');
           } else {
