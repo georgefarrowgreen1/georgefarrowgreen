@@ -1445,6 +1445,8 @@ body:has(.fi-float:not([hidden])) .fi-colophon {
 }
 .photo-wait {background:#f4f4f2}
 .photo-wait #photo-index, .photo-wait .fi-float {visibility:hidden}
+.fi-reel img.opening-photo-pending {opacity:0}
+.playing-opening .fi-reel {overflow:clip}
 .opening-mark {position:fixed;width:80px;height:54px;color:#262626;pointer-events:none;z-index:10}
 #photo-index .wordmark {display:block;width:44px;height:30px}
 #photo-index .fi-nav {min-height:calc(64px + env(safe-area-inset-top))}
