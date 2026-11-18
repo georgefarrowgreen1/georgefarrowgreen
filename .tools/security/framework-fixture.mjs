@@ -4,8 +4,10 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
+// Keep historical two-part release pins valid while validating new three-part releases.
+const releaseBuild = /^(?:\d+\.\d{2}|(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2})$/;
 export function frameworkRevision(value){
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['commit','build'].includes(k))||typeof value.commit!=='string'||!/^[a-f0-9]{40}$/.test(value.commit)||typeof value.build!=='string'||!/^\d+\.\d{2}$/.test(value.build))throw Error('Invalid paired framework revision');
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['commit','build'].includes(k))||typeof value.commit!=='string'||!/^[a-f0-9]{40}$/.test(value.commit)||typeof value.build!=='string'||!releaseBuild.test(value.build))throw Error('Invalid paired framework revision');
  return {commit:value.commit,build:value.build};
 }
 export function selectFramework(dir,metadata){
