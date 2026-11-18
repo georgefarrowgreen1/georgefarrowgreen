@@ -1,3 +1,4 @@
+import { galleryCollections } from "../_gallery.js";
 import { requireOwner, failed, json } from "../_auth.js";
 
 // Background photos for the home page's slideshow (its owner changes them there: functions/_auth.js).
@@ -22,7 +23,7 @@ function normalize(list) {
   );
 }
 
-async function getList(env) {
+export async function getList(env) {
   if (!env.BIO_KV) return [];
   const v = await env.BIO_KV.get(LIST);
   if (v) return normalize(JSON.parse(v));
@@ -69,7 +70,10 @@ function sanitizeFocus(f) {
 export async function onRequestGet(ctx) {
   const { request, env } = ctx, url = new URL(request.url);
   let id = url.searchParams.get("id");
-  if (!id) return json({ images: await getList(env) }, 200, { "Cache-Control": "no-store" });
+  if (!id) {
+    const images = await getList(env);
+    return json(url.searchParams.has("gallery") ? { images, collections: galleryCollections(images) } : { images }, 200, { "Cache-Control": "no-store" });
+  }
   const cover = id === "cover", cache = cover ? "public, max-age=600" : "public, max-age=31536000, immutable";
   let small = url.searchParams.get("s") === "m";
 

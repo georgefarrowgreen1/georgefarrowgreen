@@ -3,6 +3,8 @@
 // there (asking again only when it's come back from the browser's history, which may keep an older copy, or when they
 // couldn't be read here: the page is marked data-words only when they're in it), and its owner edits them there. Its
 // scripts and styles are stamped with what's in them (?v=), so a browser never runs a new page with an old copy of any.
+import { galleryCollections } from "./_gallery.js";
+import { getList } from "./api/background.js";
 import { getContent } from "./_content.js";
 import { assets } from "./_min.js";
 import { HOME_FILES, HOME_STAMPS } from "./_minfresh.js";
@@ -58,11 +60,12 @@ export async function homePage(ctx, url, res) {
     return out;
   }
   if (!isPage(url) || ctx.request.method !== "GET" || res.status !== 200 || !(res.headers.get("content-type") || "").includes("text/html")) return res;
-  const [c, v] = await Promise.all([getContent(ctx.env).catch(() => null), stamps(ctx, url)]);
+  const [c, v, photos] = await Promise.all([getContent(ctx.env).catch(() => null), stamps(ctx, url), getList(ctx.env).catch(() => null)]);
+  const groups = photos && galleryCollections(photos);
   const text = (k) => ({ element: (el) => { if (c) el.setInnerContent(c[k]); } });
   const attr = (k) => ({ element: (el) => { if (c) el.setAttribute("content", c[k]); } });
   const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0]; if (v[f]) el.setAttribute(name, `${f}?v=${v[f]}`); } });
-  const out = new HTMLRewriter()
+  const rewriter = new HTMLRewriter()
     .on("html", { element: (el) => { if (c) el.setAttribute("data-words", ""); } })
     .on("[data-c=role]", text("role")).on("[data-c=name]", text("name")).on("[data-c=bio]", text("bio"))
     .on("title", { element: (el) => { if (c) el.setInnerContent(c.name); } })
@@ -72,8 +75,29 @@ export async function homePage(ctx, url, res) {
       url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] }).replace(/</g, "\\u003c"), { html: true }); } })
     .on('meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]', attr("bio"))
     .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:site_name"]', attr("name"))
-    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"], script[src^="loader.js"], script[src^="loader-portrait.js"]', stamp("src"))
-    .transform(res);
+    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"], script[src^="loader.js"], script[src^="loader-portrait.js"]', stamp("src"));
+  if (groups) {
+    for (const [index, group] of groups.entries()) {
+      const frame = group[0];
+      const selector = `[data-scene="${index}"]`;
+      rewriter.on(selector, { element(el) {
+        if (!frame) { el.setAttribute("hidden", ""); el.setAttribute("aria-pressed", "false"); return; }
+        if (group.length > 1) el.setAttribute("data-collection", encodeURIComponent(JSON.stringify(group)));
+        el.setAttribute("aria-label", "Expand " + frame.label + " photograph");
+      } });
+      if (!frame) {
+        rewriter.on(selector + " img", { element(el) { el.removeAttribute("src"); } });
+        continue;
+      }
+      rewriter.on(selector + " img", { element(el) {
+        el.setAttribute("src", frame.src); el.setAttribute("alt", frame.alt);
+        el.setAttribute("data-focus", frame.position);
+      } }).on(selector + " span", { element(el) { el.setInnerContent(frame.label); } });
+    }
+    const first = groups.findIndex(group => group.length);
+    rewriter.on(`[data-scene="${first < 0 ? 2 : first}"]`, { element(el) { el.setAttribute("aria-pressed", "true"); } });
+  }
+  const out = rewriter.transform(res);
   out.headers.delete("content-length"); out.headers.delete("etag");
   out.headers.set("Cache-Control", "no-cache");
   return out;

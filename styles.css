@@ -884,3 +884,575 @@ body.bio { background: #090c10; }
   .bio .contact .row { padding-inline: 14px; }
   .bio .contact .row::before { left: 60px; }
 }
+#photo-index {
+  --paper: #f4f4f2;
+  --ink: #1b1b1b;
+  --line: #c9c9c7;
+  --pad: clamp(18px, 4.1%, 60px);
+  container-type: inline-size;
+  background: var(--paper);
+  color: var(--ink);
+  font:
+    400 16px/1.42 "Space Grotesk",
+    Arial,
+    sans-serif;
+  text-align: left;
+  isolation: isolate;
+}
+#photo-index * {
+  box-sizing: border-box;
+}
+#photo-index :is(h1, h2, p) {
+  margin: 0;
+}
+#photo-index a {
+  color: inherit;
+  text-decoration: none;
+}
+#photo-index button,
+#photo-index summary {
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+#photo-index button {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+#photo-index [hidden] {
+  display: none !important;
+}
+#photo-index :focus-visible {
+  outline: 2px dashed currentColor;
+  outline-offset: -3px;
+}
+#photo-index .fi-nav {
+  margin: 0 var(--pad);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 64px;
+}
+#photo-index .fi-sign {
+  font:
+    650 30px/0.95 "Space Grotesk",
+    Arial;
+  letter-spacing: -0.13em;
+  padding: 8px 5px 12px 0;
+}
+.fi-sign span {
+  font-style: italic;
+}
+#photo-index nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(11px, 2.8cqw, 32px);
+}
+#photo-index nav :is(a, button),
+#photo-index .fi-bio a,
+#photo-index .fi-story a,
+#photo-index .fi-footer > a {
+  font-size: 13px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+#photo-index
+  :is(nav a:hover, .fi-bio a:hover, .fi-story a:hover, footer a:hover) {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+#photo-index .fi-bio {
+  max-width: 250px;
+  margin: 0 3% 0 0;
+}
+.fi-bio p {
+  font-size: clamp(16px, 1.95cqw, 22px);
+  line-height: 1.27;
+  letter-spacing: -0.035em;
+}
+#photo-index .fi-bio a {
+  gap: 16px;
+  border-bottom: 1px solid #9b9b9b;
+  margin-top: 10px;
+}
+#photo-index .fi-reel {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  height: clamp(330px, 53cqw, 610px);
+}
+#photo-index .fi-reel button {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #262626;
+  color: white;
+  text-align: left;
+  transition: flex-grow 0.72s cubic-bezier(0.22, 0.71, 0.15, 1);
+}
+#photo-index .fi-reel button[aria-pressed="true"] {
+  flex-grow: 4.5;
+}
+#photo-index .fi-reel img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1);
+  z-index: -2;
+}
+#photo-index .fi-reel button:first-child img {
+  object-position: 78% 50%;
+}
+#photo-index .fi-reel button:nth-child(2) img {
+  object-position: 50% 32%;
+}
+#photo-index .fi-reel button:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #0009, transparent 38%);
+  z-index: -1;
+}
+#photo-index .fi-reel span {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+#photo-index .fi-reel [aria-pressed="true"] span {
+  left: 20px;
+  bottom: 16px;
+  writing-mode: horizontal-tb;
+  transform: none;
+  font-size: 16px;
+}
+#photo-index .fi-work {
+  margin: 0 var(--pad);
+  display: grid;
+  grid-template-columns: 1fr 2.5fr;
+  gap: 20px;
+  padding-top: clamp(32px, 5cqw, 64px);
+}
+#photo-index .fi-work h2 {
+  font:
+    500 14px/1.3 "Space Grotesk",
+    Arial;
+  letter-spacing: -0.025em;
+  padding-top: 18px;
+}
+#photo-index .fi-list {
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+#photo-index summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 66px;
+  border-top: 1px solid var(--line);
+  font-size: clamp(20px, 2.6cqw, 31px);
+  letter-spacing: -0.054em;
+}
+#photo-index summary::-webkit-details-marker {
+  display: none;
+}
+#photo-index summary i {
+  height: 1px;
+  width: 16px;
+  background: currentColor;
+  position: relative;
+  flex: none;
+  margin-right: 5px;
+}
+#photo-index summary i:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  transform: rotate(90deg);
+  transition: transform 0.24s;
+}
+#photo-index details[open] summary i:after {
+  transform: rotate(0);
+}
+#photo-index .fi-drawer {
+  display: grid;
+  grid-template-columns: 0.95fr 1.1fr;
+  gap: 18px;
+  align-items: center;
+  padding: 0 0 20px;
+  animation: fi-arrive 0.34s ease-out;
+}
+@keyframes fi-arrive {
+  from {
+    opacity: 0.25;
+    transform: translateY(5px);
+  }
+}
+#photo-index .fi-art {
+  height: clamp(120px, 15cqw, 168px);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #262626;
+}
+#photo-index .fi-art img {
+  width: 56px;
+  max-height: 56px;
+  filter: grayscale(1);
+  object-fit: contain;
+}
+#photo-index .fi-sweep {
+  position: absolute;
+  z-index: -1;
+  width: 160%;
+  aspect-ratio: 1;
+  transform: translate(-24%, 4%) scaleY(0.63) rotate(-35deg);
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    ellipse,
+    #212121 0px,
+    #212121 7px,
+    #656565 8px,
+    #232323 9px
+  );
+}
+#photo-index .fi-house {
+  background:
+    linear-gradient(#1117, #1117),
+    url("/projects/blakeney.webp") center 42% / cover;
+  filter: grayscale(1);
+}
+#photo-index .fi-house img {
+  filter: brightness(0) invert(1);
+}
+#photo-index .fi-story p {
+  color: #484848;
+  font-size: 15px;
+  line-height: 1.45;
+}
+#photo-index .fi-story a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+#photo-index .fi-apps .fi-list > a {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid var(--line);
+  min-height: 60px;
+  padding: 5px 2px;
+  transition: background 0.22s;
+}
+#photo-index .fi-apps .fi-list > a:hover {
+  background: #e9e9e7;
+}
+#photo-index .fi-apps img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: 7px;
+  filter: grayscale(1);
+}
+#photo-index .fi-apps strong {
+  font-weight: 500;
+  font-size: 19px;
+  letter-spacing: -0.04em;
+}
+.fi-apps small {
+  margin-left: auto;
+  color: #606060;
+}
+#photo-index footer {
+  background: #1b1b1b;
+  color: #eee;
+  margin-top: clamp(40px, 6cqw, 76px);
+  padding: 28px var(--pad) 20px;
+}
+#photo-index .fi-footer,
+#photo-index .fi-colophon {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+#photo-index .fi-footer button {
+  font-size: clamp(28px, 5cqw, 54px);
+  line-height: 1.3;
+  letter-spacing: -0.06em;
+}
+#photo-index .fi-footer span {
+  display: inline-block;
+  transition: transform 0.25s;
+}
+.fi-footer button:hover span {
+  transform: translate(3px, -3px);
+}
+#photo-index .fi-colophon {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid #464646;
+  color: #bfbfbf;
+}
+#photo-index .fi-colophon a,
+#photo-index .fi-colophon small {
+  font-size: 12px;
+}
+.fi-colophon img {
+  width: 15px;
+  vertical-align: middle;
+  margin-right: 5px;
+  filter: grayscale(1);
+}
+@container (max-width:560px) {
+  #photo-index .fi-bio {
+    margin: 19px 0 0;
+    max-width: none;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #photo-index .fi-bio a {
+    margin: 0;
+  }
+  #photo-index .fi-work {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  #photo-index .fi-work h2 {
+    padding: 0;
+  }
+  #photo-index .fi-reel button[aria-pressed="true"] {
+    flex-grow: 4;
+  }
+  #photo-index .fi-reel span {
+    left: 8px;
+  }
+  #photo-index .fi-drawer {
+    gap: 12px;
+  }
+  #photo-index .fi-story p {
+    font-size: 14px;
+  }
+  #photo-index .fi-apps .fi-list > a {
+    gap: 9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #photo-index *,
+  #photo-index *:after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+#photo-index .fi-arrow {
+  display: inline-block;
+  position: relative;
+  width: 0.72em;
+  height: 0.72em;
+  color: inherit;
+  vertical-align: 0.03em;
+}
+#photo-index .fi-arrow:before {
+  content: "";
+  position: absolute;
+  top: 0.02em;
+  right: 0.02em;
+  width: 68%;
+  height: 68%;
+  border-right: 0.075em solid currentColor;
+  border-top: 0.075em solid currentColor;
+}
+#photo-index .fi-arrow:after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0.02em;
+  width: 127%;
+  height: 0.075em;
+  background: currentColor;
+  transform-origin: left center;
+  transform: rotate(-45deg);
+}
+#photo-index .fi-playbar {
+  margin: 0 var(--pad);
+  display: flex;
+  justify-content: flex-end;
+}
+#photo-index [data-replay] {
+  min-height: 44px;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+#photo-index .fi-playbar {
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+#photo-index .fi-float {
+  position: relative;
+  z-index: 2;
+  margin-left: auto;
+}
+#photo-index .fi-menubtn {
+  background: #202020;
+  color: #fafafa;
+  min-height: 44px;
+  padding: 0 17px;
+  border-radius: 28px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#photo-index .fi-menubtn span {
+  font: 20px/1 Arial;
+  transition: transform 0.22s;
+}
+#photo-index .fi-menubtn[aria-expanded="true"] span {
+  transform: rotate(45deg);
+}
+#photo-index #fi-floating-links {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: clamp(180px, 26cqw, 240px);
+  display: grid;
+  gap: 0;
+  padding: 8px 17px;
+  background: #202020;
+  color: #f4f4f4;
+  border: 1px solid #555;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px #0003;
+  transform-origin: bottom right;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.18s,
+    transform 0.23s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s;
+}
+#photo-index #fi-floating-links[inert] {
+  opacity: 0;
+  transform: translateY(7px) scale(0.98);
+  visibility: hidden;
+  transition-delay: 0s, 0s, 0.23s;
+}
+#photo-index #fi-floating-links :is(a, button) {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: inherit;
+  border-bottom: 1px solid #484848;
+  font:
+    400 14px "Space Grotesk",
+    Arial;
+  text-align: left;
+}
+#photo-index #fi-floating-links :last-child {
+  border-bottom: 0;
+}
+#photo-index #fi-floating-links b {
+  font: 400 16px Arial;
+}
+#photo-index .fi-bio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 18px;
+  flex-wrap: wrap;
+  max-width: none;
+  margin: 16px var(--pad) 0;
+}
+#photo-index .fi-bio p {
+  font-size: 16px;
+  margin: 0;
+}
+#photo-index .fi-bio a {
+  margin: 0;
+}
+#photo-index .fi-wordmark {
+  display: flex;
+  margin: 0;
+}
+
+html:has(.photo-home),
+body.photo-home {
+  background: #f4f4f2;
+}
+#photo-index {
+  color-scheme: light;
+}
+#photo-index #bar {
+  padding-top: env(safe-area-inset-top);
+}
+#photo-index #who {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#photo-index #who button {
+  background: #202020;
+  color: #fff;
+  border-radius: 24px;
+  padding: 0 18px;
+}
+#photo-index #me .face {
+  color: #fff;
+}
+#photo-index .edit-detail {
+  display: none;
+}
+.edit #photo-index .edit-detail {
+  display: block;
+}
+.edit #photo-index .edit-words {
+  display: grid;
+  gap: 14px;
+  padding: 12px 0;
+}
+#photo-index .fi-apps small {
+  min-width: 0;
+  text-align: right;
+}
+#photo-index .fi-reel [data-scene="0"] img {
+  object-position: 78% 50%;
+}
+#photo-index .fi-reel [data-scene="1"] img {
+  object-position: 50% 32%;
+}
+#photo-index .fi-reel button:last-child img {
+  object-position: center;
+}
+#photo-index .fi-colophon {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.photo-wait {background:#f4f4f2}
+.photo-wait #photo-index {visibility:hidden}
+.opening-mark {position:fixed;width:80px;height:54px;color:#262626;pointer-events:none;z-index:10}
+.skip-opening {position:fixed;z-index:11;right:max(18px,4%,env(safe-area-inset-right));bottom:max(24px,12svh);min-height:44px;padding:0 6px;font:400 14px var(--display);color:#222;background:#f4f4f2;text-decoration:underline;text-underline-offset:4px}
+#photo-index .wordmark {display:block;width:44px;height:30px}
+#photo-index .fi-nav {min-height:calc(64px + env(safe-area-inset-top))}
+#photo-index #who .face {padding:0}
