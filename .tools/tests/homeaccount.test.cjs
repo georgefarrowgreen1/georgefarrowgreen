@@ -116,21 +116,20 @@ for (const assets of ['', 'min/']) {
         const before = await geometry();
         gate.resolve();
         await page.locator('body.known').waitFor();
-        const replay = page.locator('[data-replay]');
+        const controls = page.getByText(/^(Skip|Replay) opening$/);
+        assert.equal(await controls.count(), 0);
+        const mark = page.locator('.opening-mark');
         if (reduced) {
-          assert.equal(await replay.isVisible(), false);
-          assert.equal(await page.locator('.opening-mark').count(), 0);
+          assert.equal(await mark.count(), 0);
         } else {
-          await page.locator('.skip-opening').waitFor({ state: 'detached' });
-          await replay.click();
-          assert.deepEqual(await page.locator('.opening-mark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
+          await mark.waitFor({ state: 'attached' });
+          assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
-          assert.equal(await page.locator('.opening-mark path animate[attributeName="d"]').count(), 3);
-          await page.locator('.skip-opening').click();
-          await page.locator('.opening-mark').waitFor({ state: 'detached' });
-          await replay.click();
-          await page.locator('.skip-opening').waitFor({ state: 'detached' });
+          assert.equal(await mark.locator('path animate[attributeName="d"]').count(), 3);
+          if (width === 1440) await page.keyboard.press('Escape');
+          await mark.waitFor({ state: 'detached' });
         }
+        assert.equal(await controls.count(), 0);
         const after = await geometry();
         for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(before[key] - after[key]) <= 1, key);
         const rider = page.locator('[data-scene="1"]');

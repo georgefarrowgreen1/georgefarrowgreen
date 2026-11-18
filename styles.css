@@ -1295,16 +1295,6 @@ body.bio { background: #090c10; }
   margin: 0 var(--pad);
   display: flex;
   justify-content: flex-end;
-}
-#photo-index [data-replay] {
-  min-height: 44px;
-  font-size: 13px;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-#photo-index .fi-playbar {
-  align-items: center;
-  justify-content: space-between;
   padding-top: 6px;
 }
 #photo-index .fi-float {
@@ -1452,7 +1442,6 @@ body.photo-home {
 .photo-wait {background:#f4f4f2}
 .photo-wait #photo-index {visibility:hidden}
 .opening-mark {position:fixed;width:80px;height:54px;color:#262626;pointer-events:none;z-index:10}
-.skip-opening {position:fixed;z-index:11;right:max(18px,4%,env(safe-area-inset-right));bottom:max(24px,12svh);min-height:44px;padding:0 6px;font:400 14px var(--display);color:#222;background:#f4f4f2;text-decoration:underline;text-underline-offset:4px}
 #photo-index .wordmark {display:block;width:44px;height:30px}
 #photo-index .fi-nav {min-height:calc(64px + env(safe-area-inset-top))}
 #photo-index #who .face {padding:0}
