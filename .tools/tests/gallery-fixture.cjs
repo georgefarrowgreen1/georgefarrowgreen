@@ -7,7 +7,7 @@ const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="100"><re
 let browser;
 before(async () => { browser = await chromium.launch({ executablePath: process.env.CHROMIUM || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox'] }); });
 after(async () => browser?.close());
-async function fixture(assets, { width = 390, reduce = false, back = false, js = true, hash = '', missing = '' } = {}) {
+async function fixture(assets, { width = 390, reduce = false, back = false, js = true, hash = '', missing = '', collection } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 740 }, hasTouch: width <= 600, isMobile: width <= 600,
     reducedMotion: reduce ? 'reduce' : 'no-preference', javaScriptEnabled: js });
   if (back) await ctx.addInitScript(() => {
@@ -18,7 +18,11 @@ async function fixture(assets, { width = 390, reduce = false, back = false, js =
   await ctx.route(`${HOME}/**`, async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === missing) return route.abort();
-    if (path === '/') return route.fulfill({ contentType: 'text/html', body: readFileSync(resolve(ROOT, 'index.html'), 'utf8').replace('<html lang="en-GB">', '<html lang="en-GB" data-words>') });
+    if (path === '/') {
+      let html = readFileSync(resolve(ROOT, 'index.html'), 'utf8').replace('<html lang="en-GB">', '<html lang="en-GB" data-words>');
+      if (collection) html = html.replace('data-scene="0"', `data-scene="0" data-collection="${encodeURIComponent(JSON.stringify(collection))}"`);
+      return route.fulfill({ contentType: 'text/html', body: html });
+    }
     if (path === '/api/me') return route.fulfill({ json: { signedIn: false } });
     if (path === '/api/content') return route.fulfill({ json: { name: 'George Farrow-Green', role: 'Fitness · Outdoors', bio: 'Bikes, fitness, outdoors.' } });
     if (path === '/api/background') return route.fulfill(new URL(route.request().url()).search ? { contentType: 'image/svg+xml', body: SVG } : { json: { images: [] } });
