@@ -195,7 +195,7 @@ function setupOpening() {
   let interrupted = false;
   let start = null;
   let warmupFrame;
-  const glide = "cubic-bezier(.34,.08,.24,1)";
+  const glide = "cubic-bezier(.39,0,.24,1)";
   function animate(el, frames, timing) {
     const animation = el.animate(frames, {fill: "both", ...timing});
     animation.pause();
@@ -216,7 +216,7 @@ function setupOpening() {
     body.classList.remove("playing-opening");
   }
 
-  // Both the letters and the photograph apertures land on these exact bounds.
+  // The photograph starts inside the narrowing letter.
   const stems = glyphs.map((_, i) => {
     const width = 8, height = i === 1 ? 46 : 34;
     return {left: 40 + (i - 1) * 12 - width / 2, top: 26 - height / 2, width, height};
@@ -232,28 +232,16 @@ function setupOpening() {
     glyph.setAttribute("preserveAspectRatio", "none");
     glyph.append(path.cloneNode(true));
 
-    // Fill the counters while the glyph and its rounded core move together.
-    // Extending the core through the fixed crop gradually takes curvature out
-    // of the tips. The fully flat ends are the first edges of the photograph.
-    const core = document.createElement("span");
-    core.className = "opening-core";
-    core.style.borderRadius = `50% / ${50 * stem.width / stem.height}%`;
-    letter.append(core, glyph);
+    letter.append(glyph);
     mark.append(letter);
     animate(letter, [
       {transform: `translate3d(${bounds.x}px, ${bounds.y}px, 0) scale(1, 1)`},
       {transform: `translate3d(${stem.left}px, ${stem.top}px, 0) scale(${stem.width / bounds.width}, ${stem.height / bounds.height})`}
     ], {delay: 120, duration: 655, easing: "cubic-bezier(.38,0,.18,1)"});
-    animate(core, [{opacity: 0}, {opacity: 1}], {delay: 390, duration: 215, easing: "ease-in-out"});
-    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 470, duration: 185, easing: "ease-in-out"});
-    animate(core, [
-      {transform: "scale(.52, 1)", easing: "ease-in-out"},
-      {transform: "scale(1, 1)", offset: .58, easing: "ease-in-out"},
-      {transform: `scale(1, ${stem.height / (stem.height - stem.width)})`}
-    ], {delay: 395, duration: 380});
+    animate(glyph, [{opacity: 1}, {opacity: 0}], {delay: 450, duration: 255, easing: "ease-in-out"});
   });
 
-  const unfoldAt = 775;
+  const unfoldAt = 660;
   panels.forEach((panel, i) => {
     const rect = panelRects[i], stem = stems[i];
     const dx = x - 40 + stem.left + stem.width / 2 - rect.left - rect.width / 2;
@@ -268,8 +256,30 @@ function setupOpening() {
         {transform: "translate3d(0, 0, 0)"}], timing);
     }
     slide(panel, dx - cropX / 2, dy - cropY / 2);
-    slide($(".fi-window", panel), cropX, cropY);
-    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: unfoldAt - 30, duration: 30});
+    const aperture = $(".fi-window", panel);
+    slide(aperture, cropX, cropY);
+    animate(panel, [{opacity: 0}, {opacity: 1}], {delay: 435, duration: 235, easing: "ease-in-out"});
+
+    // This is the photo surface from the moment the counters fill. Keep each
+    // rounded corner on its moving edge and taper its radius with the same
+    // progress as the expansion. There is no frame that swaps in a square.
+    for (const right of [false, true]) {
+      for (const bottom of [false, true]) {
+        const corner = document.createElement("span");
+        corner.className = "opening-corner";
+        mark.append(corner);
+        // Each tile is 8px square; reflection reuses its top-left quarter arc.
+        const scale = stem.width / 16;
+        const fromX = stem.left + (right ? stem.width : 0);
+        const fromY = stem.top + (bottom ? stem.height : 0);
+        const toX = (right ? rect.right : rect.left) - (x - 40);
+        const toY = (bottom ? rect.bottom : rect.top) - (y - 26);
+        animate(corner, [
+          {transform: `translate3d(${fromX}px, ${fromY}px, 0) scale(${right ? -scale : scale}, ${bottom ? -scale : scale})`},
+          {transform: `translate3d(${toX}px, ${toY}px, 0) scale(0, 0)`}
+        ], timing);
+      }
+    }
 
     // Decode in parallel with the wordmark. A slow photograph gets its own fade
     // when ready, without delaying the gallery, text or navigation.
@@ -293,7 +303,6 @@ function setupOpening() {
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
     animate($(".fi-caption", panel), [{opacity: 0}, {opacity: 1}], {delay: 1350 + i * 35, duration: 460, easing: "ease-in-out"});
   });
-  animate(mark, [{opacity: 1}, {opacity: 0}], {delay: unfoldAt - 8, duration: 8});
   for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
   }
@@ -305,6 +314,7 @@ function setupOpening() {
   // Mobile browser chrome can change the viewport height mid-opening while all
   // gallery bounds remain identical. Only a width change invalidates the masks.
   addEventListener("resize", () => { if (innerWidth !== viewportWidth) finish(); }, options);
+  addEventListener("scroll", finish, {...options, passive: true});
   addEventListener("pagehide", finish, options);
   motion.addEventListener("change", finish, options);
   // Present the still logo and prime the compositor before starting the clock.

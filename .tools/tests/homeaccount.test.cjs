@@ -125,28 +125,36 @@ for (const assets of ['', 'min/']) {
           await mark.waitFor({ state: 'attached' });
           assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
-          assert.equal(await mark.locator('.opening-letter .opening-core').count(), 3);
-          const properties = await page.locator('.fi-reel button, .fi-window, .opening-mark *').evaluateAll(elements =>
+          assert.equal(await mark.locator('.opening-corner').count(), 12);
+          const properties = await page.locator('.fi-reel button, .fi-window, .opening-corner, .opening-mark *').evaluateAll(elements =>
             elements.flatMap(el => el.getAnimations().flatMap(a => Object.keys(a.effect.getKeyframes()[0]))));
           assert.ok(properties.includes('transform'));
           assert.ok(properties.every(key => ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key)));
-          // At the handoff, every edge of the flat letter must meet the matching
-          // edge of the visible photo (the intersection of its two moving windows).
+          // Seek the actual photo from capsule to rectangle. Its four arcs must
+          // track the visible corners and shrink with the same progress as the crop.
           const edgeErrors = await page.evaluate(() => {
             const panels = [...document.querySelectorAll('.fi-reel button')];
+            const corners = [...document.querySelectorAll('.opening-corner')];
+            const animations = [...panels, ...corners].flatMap(el => el.getAnimations({subtree: true}));
+            const times = animations.map(a => a.currentTime);
             const unfold = panels[0].getAnimations().find(a => a.effect.getKeyframes()[0].transform);
-            const handoff = unfold.effect.getTiming().delay;
-            const animations = document.getAnimations().filter(a => a instanceof Animation && a.effect.target.closest('.opening-mark,.fi-reel'));
-            const originalTimes = animations.map(a => a.currentTime);
-            animations.forEach(a => { a.currentTime = handoff; });
-            const letters = document.querySelectorAll('.opening-letter');
-            const errors = panels.flatMap((panel, i) => {
-              const outer = panel.getBoundingClientRect(), inner = panel.querySelector('.fi-window').getBoundingClientRect();
-              const letter = letters[i].getBoundingClientRect();
-              return [letter.left - Math.max(outer.left, inner.left), letter.top - Math.max(outer.top, inner.top),
-                letter.right - Math.min(outer.right, inner.right), letter.bottom - Math.min(outer.bottom, inner.bottom)];
-            });
-            animations.forEach((a, i) => { a.currentTime = originalTimes[i]; });
+            const {delay, duration} = unfold.effect.getTiming();
+            const errors = [];
+            for (const fraction of [0, .1, .4, .8, .99]) {
+              animations.forEach(a => { a.currentTime = delay + duration * fraction; });
+              for (const [index, panel] of panels.entries()) {
+                const outer = panel.getBoundingClientRect(), inner = panel.querySelector('.fi-window').getBoundingClientRect();
+                const left = Math.max(outer.left, inner.left), right = Math.min(outer.right, inner.right);
+                const top = Math.max(outer.top, inner.top), bottom = Math.min(outer.bottom, inner.bottom);
+                const remaining = (outer.width - (right - left)) / (outer.width - 8);
+                corners.slice(index * 4, index * 4 + 4).forEach((corner, i) => {
+                  const tile = corner.getBoundingClientRect();
+                  errors.push(i >= 2 ? tile.right - right : tile.left - left, i % 2 ? tile.bottom - bottom : tile.top - top,
+                    tile.width - 4 * remaining);
+                });
+              }
+            }
+            animations.forEach((a, i) => { a.currentTime = times[i]; });
             return errors;
           });
           assert.ok(edgeErrors.every(d => Math.abs(d) < .5), JSON.stringify(edgeErrors));
@@ -158,6 +166,7 @@ for (const assets of ['', 'min/']) {
             assert.equal(await mark.count(), 1);
           }
           await mark.waitFor({ state: 'detached' });
+          assert.equal(await page.locator('.opening-corner').count(), 0);
         }
         assert.equal(await controls.count(), 0);
         const after = await geometry();
