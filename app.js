@@ -102,7 +102,64 @@ const panels = $$(".fi-reel button");
 const collections = panels.map(panel => JSON.parse(decodeURIComponent(panel.dataset.collection || "[]")));
 const photoIndices = panels.map(() => 0);
 
-function selectPanel(panel) {
+// The resting gallery uses flexbox. During a selection, slide three clipped
+// photo layers between the old and new apertures without reflowing every frame.
+const reel = $(".fi-reel");
+let galleryMotion, gallerySettled;
+function measureFrame(panel) {
+  const box = panel.getBoundingClientRect(), image = $("img", panel);
+  if (galleryMotion) {
+    const aperture = $(".fi-window", panel).getBoundingClientRect();
+    const photo = image.getBoundingClientRect();
+    return {left: box.left, width: aperture.right - box.left, x: photo.left - box.left, y: photo.top - box.top, photoWidth: photo.width, photoHeight: photo.height};
+  }
+  const scale = Math.max(box.width / image.naturalWidth, box.height / image.naturalHeight);
+  const photoWidth = image.naturalWidth * scale, photoHeight = image.naturalHeight * scale;
+  const [fx, fy] = getComputedStyle(image).objectPosition.split(" ").map(n => parseFloat(n) / 100);
+  return {left: box.left, width: box.width, x: (box.width - photoWidth) * fx, y: (box.height - photoHeight) * fy, photoWidth, photoHeight};
+}
+function settleGallery() {
+  if (!galleryMotion) return;
+  for (const animation of galleryMotion) animation.cancel();
+  galleryMotion = null;
+  reel.classList.remove("switching");
+}
+function moveGallery(items, previous) {
+  const next = items.map(measureFrame), left = reel.getBoundingClientRect().left;
+  const animations = galleryMotion = [];
+  const timing = {duration: 510, easing: "cubic-bezier(.32,.08,.2,1)", fill: "both"};
+  reel.classList.add("switching");
+  items.forEach((panel, i) => {
+    const from = previous[i], to = next[i], width = Math.max(from.width, to.width);
+    const image = $("img", panel);
+    panel.style.setProperty("--aperture", width + "px");
+    image.style.setProperty("--photo-width", to.photoWidth + "px");
+    image.style.setProperty("--photo-height", to.photoHeight + "px");
+    animations.push(panel.animate([from, to].map(frame => ({
+      transform: `translate3d(${frame.left - left}px, 0, 0)`
+    })), timing));
+    animations.push($(".fi-window", panel).animate([from, to].map(frame => ({
+      transform: `translate3d(${frame.width - width}px, 0, 0)`
+    })), timing));
+    animations.push(image.animate([from, to].map(frame => ({
+      transform: `translate3d(${frame.x + width - frame.width}px, ${frame.y}px, 0) scale(${frame.photoWidth / to.photoWidth})`
+    })), timing));
+  });
+  gallerySettled = Promise.all(animations.map(a => a.finished)).then(() => {
+    if (galleryMotion === animations) settleGallery();
+  }, () => {});
+}
+addEventListener("pagehide", settleGallery);
+motion.addEventListener("change", settleGallery);
+if (window.ResizeObserver) new ResizeObserver(settleGallery).observe(reel);
+
+function selectPanel(panel, travel = false) {
+  if (travel && panel.getAttribute("aria-pressed") === "true") return;
+  const items = panels.filter(item => !item.hidden);
+  const glide = travel && !motion.matches && !body.classList.contains("playing-opening") &&
+    items.every(item => { const imgs = $$("img", item); return imgs.length === 1 && imgs[0].complete && imgs[0].naturalWidth; });
+  const previous = glide ? items.map(measureFrame) : null;
+  settleGallery();
   panels.forEach((item, index) => {
     const selected = item === panel;
     const label = item.dataset.label;
@@ -110,6 +167,7 @@ function selectPanel(panel) {
     item.setAttribute("aria-label", selected && collections[index].length > 1
       ? label + ", show next photograph" : "Expand " + label + " photograph");
   });
+  if (glide) moveGallery(items, previous);
 }
 
 function displayPhoto(panel, frame) {
@@ -118,6 +176,42 @@ function displayPhoto(panel, frame) {
   image.alt = frame.alt;
   image.style.objectPosition = frame.position;
   panel.dataset.label = frame.label;
+}
+
+// Decode the next frame offscreen. Quick taps can supersede a pending image
+// while the currently visible photograph stays in place.
+const pendingPhotos = new WeakMap();
+async function advancePhoto(panel, frame) {
+  const original = $("img", panel);
+  const incoming = original.cloneNode(false);
+  incoming.removeAttribute("fetchpriority");
+  incoming.src = frame.src;
+  incoming.alt = frame.alt;
+  incoming.style.objectPosition = frame.position;
+  const previous = pendingPhotos.get(panel);
+  const request = { fading: previous?.fading };
+  pendingPhotos.set(panel, request);
+  try {
+    await incoming.decode();
+    await request.fading?.finished.catch(() => {});
+    while (galleryMotion && pendingPhotos.get(panel) === request) await gallerySettled;
+    if (pendingPhotos.get(panel) !== request) return;
+    const current = $("img", panel);
+    panel.dataset.label = frame.label;
+    const selected = panel.getAttribute("aria-pressed") === "true";
+    panel.setAttribute("aria-label", selected ? frame.label + ", show next photograph" : "Expand " + frame.label + " photograph");
+    if (!motion.matches && selected) {
+      incoming.setAttribute("aria-hidden", "true");
+      current.after(incoming);
+      request.fading = incoming.animate([{opacity: 0}, {opacity: 1}], {duration: 280, easing: "ease-in-out"});
+      await request.fading.finished.catch(() => {});
+      incoming.removeAttribute("aria-hidden");
+    }
+    if (current.isConnected) current.replaceWith(incoming);
+  } catch { /* A failed frame leaves the visible photograph in place. */ }
+  finally {
+    if (pendingPhotos.get(panel) === request) pendingPhotos.delete(panel);
+  }
 }
 
 async function loadPhotos() {
@@ -129,6 +223,13 @@ async function loadPhotos() {
     if (Array.isArray(data.collections)) {
       data.collections.forEach((group, index) => {
         const panel = panels[index];
+        const pending = pendingPhotos.get(panel);
+        pendingPhotos.delete(panel);
+        if (pending?.fading) {
+          pending.fading.cancel();
+          // A library refresh owns the new frame immediately.
+          for (const stale of $$("img", panel).slice(0, -1)) stale.remove();
+        }
         collections[index] = group;
         photoIndices[index] = 0;
         panel.hidden = !group.length;
@@ -146,10 +247,27 @@ panels.forEach((panel, index) => panel.addEventListener("click", () => {
   const group = collections[index];
   if (panel.getAttribute("aria-pressed") === "true" && group.length > 1) {
     photoIndices[index] = (photoIndices[index] + 1) % group.length;
-    displayPhoto(panel, group[photoIndices[index]]);
+    advancePhoto(panel, group[photoIndices[index]]);
   }
-  selectPanel(panel);
+  selectPanel(panel, true);
 }));
+
+$(".fi-reel").addEventListener("keydown", event => {
+  const visible = panels.filter(panel => !panel.hidden);
+  const index = visible.indexOf(event.target);
+  if (index < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+  let next;
+  switch (event.key) {
+    case "ArrowRight": next = (index + 1) % visible.length; break;
+    case "ArrowLeft": next = (index + visible.length - 1) % visible.length; break;
+    case "Home": next = 0; break;
+    case "End": next = visible.length - 1; break;
+    default: return;
+  }
+  event.preventDefault();
+  visible[next].focus({preventScroll: true});
+  selectPanel(visible[next], true);
+});
 
 function setupGalleryMenu() {
   const dock = $(".fi-menu"), toggle = $(".fi-menubtn"), links = $("nav",dock);
@@ -302,6 +420,7 @@ function setupOpening() {
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
   });
   for (const el of $$("#bar,.fi-bio,.fi-work,footer")) {
+    if (el.getBoundingClientRect().top >= innerHeight) continue;
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
   }
   const options = {signal: listeners.signal};
