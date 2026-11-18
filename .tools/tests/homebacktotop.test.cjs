@@ -7,6 +7,12 @@ for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
     const f = await fixture(assets, { width });
     try {
       const menu = f.p.locator('.fi-menubtn');
+      const bounds = await menu.boundingBox();
+      assert.ok(width - bounds.x - bounds.width >= 12 && width - bounds.x - bounds.width <= 26);
+      assert.ok(740 - bounds.y - bounds.height >= 12 && 740 - bounds.y - bounds.height <= 26);
+      await f.p.evaluate(() => scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+      assert.ok(await f.p.evaluate(() => scrollY > 0));
+      assert.deepEqual(await menu.boundingBox(), bounds);
       await menu.click();
       await f.p.locator('#fi-floating-links a[href="#projects"]').click();
       assert.equal(new URL(f.p.url()).hash, '#projects');

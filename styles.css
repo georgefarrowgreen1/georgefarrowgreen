@@ -1293,18 +1293,17 @@ body.bio { background: #090c10; }
   transform-origin: left center;
   transform: rotate(-45deg);
 }
-#photo-index .fi-playbar {
-  margin: 0 var(--pad);
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 6px;
+/* Keep navigation outside the gallery's size container so fixed offsets use the viewport. */
+.fi-float {
+  --dock-gap: clamp(14px, 2vw, 24px);
+  position: fixed;
+  z-index: 5;
+  right: calc(env(safe-area-inset-right, 0px) + var(--dock-gap));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--dock-gap));
+  font: 400 16px/1.42 var(--display);
 }
-#photo-index .fi-float {
-  position: relative;
-  z-index: 2;
-  margin-left: auto;
-}
-#photo-index .fi-menubtn {
+.fi-float :focus-visible { outline: 2px dashed currentColor; outline-offset: -4px; }
+.fi-menubtn {
   background: #202020;
   color: #fafafa;
   min-height: 44px;
@@ -1315,18 +1314,21 @@ body.bio { background: #090c10; }
   align-items: center;
   gap: 12px;
 }
-#photo-index .fi-menubtn span {
+.fi-menubtn span {
   font: 20px/1 Arial;
   transition: transform 0.22s;
 }
-#photo-index .fi-menubtn[aria-expanded="true"] span {
+.fi-menubtn[aria-expanded="true"] span {
   transform: rotate(45deg);
 }
-#photo-index #fi-floating-links {
+#fi-floating-links {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  width: clamp(180px, 26cqw, 240px);
+  width: clamp(180px, 26vw, 240px);
+  max-height: calc(100dvh - 60px - var(--dock-gap) - env(safe-area-inset-bottom) - env(safe-area-inset-top));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 0;
   padding: 8px 17px;
@@ -1343,13 +1345,13 @@ body.bio { background: #090c10; }
     transform 0.23s cubic-bezier(0.2, 0.7, 0.2, 1),
     visibility 0s;
 }
-#photo-index #fi-floating-links[inert] {
+#fi-floating-links[inert] {
   opacity: 0;
   transform: translateY(7px) scale(0.98);
   visibility: hidden;
   transition-delay: 0s, 0s, 0.23s;
 }
-#photo-index #fi-floating-links :is(a, button) {
+#fi-floating-links :is(a, button) {
   width: 100%;
   min-height: 44px;
   display: flex;
@@ -1362,10 +1364,10 @@ body.bio { background: #090c10; }
     Arial;
   text-align: left;
 }
-#photo-index #fi-floating-links :last-child {
+#fi-floating-links :last-child {
   border-bottom: 0;
 }
-#photo-index #fi-floating-links b {
+#fi-floating-links b {
   font: 400 16px Arial;
 }
 #photo-index .fi-bio {
@@ -1438,11 +1440,11 @@ body.photo-home {
 #photo-index .fi-reel button:last-child img {
   object-position: center;
 }
-#photo-index .fi-colophon {
-  padding-bottom: env(safe-area-inset-bottom);
+body:has(.fi-float:not([hidden])) .fi-colophon {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
 }
 .photo-wait {background:#f4f4f2}
-.photo-wait #photo-index {visibility:hidden}
+.photo-wait #photo-index, .photo-wait .fi-float {visibility:hidden}
 .opening-mark {position:fixed;width:80px;height:54px;color:#262626;pointer-events:none;z-index:10}
 #photo-index .wordmark {display:block;width:44px;height:30px}
 #photo-index .fi-nav {min-height:calc(64px + env(safe-area-inset-top))}
