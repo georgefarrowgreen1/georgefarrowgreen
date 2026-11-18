@@ -91,3 +91,42 @@ test('a slow gallery photo cannot overwrite a newer selection', async () => {
     assert.deepEqual(f.errors, []);
   } finally { await f.ctx.close(); }
 });
+
+test('touch drags follow the finger, settle once, and leave vertical scrolling native', async () => {
+  const f = await fixture('', {width:390, hash:'#top'});
+  try {
+    const page = f.p, reel = page.locator('.fi-reel'), session = await f.ctx.newCDPSession(page);
+    await reel.locator('img').evaluateAll(images => Promise.all(images.map(i => i.decode())));
+    const bounds = await reel.boundingBox(), x = Math.round(bounds.x + bounds.width * .6), y = Math.round(bounds.y + 100);
+    const touch = (type, px, py) => session.send('Input.dispatchTouchEvent', {type,
+      touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{x:px, y:py, id:1}]});
+    const active = () => reel.locator('[aria-pressed="true"]').getAttribute('data-scene');
+    const width = () => reel.locator('button').first().evaluate(b => Math.min(b.getBoundingClientRect().right,
+      b.querySelector('.fi-window').getBoundingClientRect().right) - b.getBoundingClientRect().left);
+    const original = await width();
+    await touch('touchStart',x,y); await touch('touchMove',x-40,y);
+    const partial = await width();
+    assert.ok(partial < original - 15 && partial > original - 55, 'visible edge tracks the drag');
+    assert.equal(await active(), '0');
+    await touch('touchCancel');
+    await page.waitForFunction(() => !document.querySelector('.fi-reel.switching'));
+    assert.ok(Math.abs(await width() - original) < 1);
+    await touch('touchStart',x,y); await touch('touchMove',x-50,y); await touch('touchMove',x-125,y); await touch('touchEnd');
+    await page.waitForFunction(() => !document.querySelector('.fi-reel.switching'));
+    assert.equal(await active(), '1');
+    // Preview the previous panel, then change direction before lifting.
+    await touch('touchStart',x,y); await touch('touchMove',x+45,y); await touch('touchMove',x-115,y);
+    await touch('touchEnd'); await page.waitForFunction(() => !document.querySelector('.fi-reel.switching'));
+    assert.equal(await active(), '2');
+    await reel.locator('[data-scene="1"]').click();
+    await page.waitForFunction(() => !document.querySelector('.fi-reel.switching'));
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await touch('touchStart',x,y); await touch('touchMove',x-100,y);
+    assert.equal(await reel.evaluate(el=>el.classList.contains('switching')),false);
+    await touch('touchEnd'); assert.equal(await active(),'2');
+    await touch('touchStart',x,y+100); await touch('touchMove',x,y+55); await touch('touchMove',x,y-65); await touch('touchEnd');
+    await page.waitForFunction(()=>scrollY>30);
+    assert.equal(await active(), '2');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.ctx.close(); }
+});

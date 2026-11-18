@@ -982,7 +982,7 @@ html[data-theme="dark"] {
 }
 #photo-index #who :is(a, button),
 #photo-index .fi-bio a,
-#photo-index .fi-story a,
+#photo-index .fi-project-cta,
 #photo-index .fi-footer > a {
   font-size: 13px;
   min-height: 44px;
@@ -1003,6 +1003,9 @@ html[data-theme="dark"] {
   height: clamp(330px, 48cqw, 660px);
   position: relative;
   contain: layout paint;
+  touch-action: pan-y pinch-zoom;
+  -webkit-user-select: none;
+  user-select: none;
   margin-inline: var(--frame);
 }
 #photo-index .fi-reel button {
@@ -1016,8 +1019,12 @@ html[data-theme="dark"] {
   text-align: left;
 
 }
-#photo-index .fi-reel button[aria-pressed="true"] {
+#photo-index .fi-reel button:is([aria-pressed="true"]:not(.preview-origin), .preview-target) {
   flex-grow: 4.5;
+}
+@media (hover: hover) and (pointer: fine) {
+  #photo-index .fi-reel button[aria-pressed="true"] { cursor: grab; }
+  #photo-index .fi-reel.dragging button { cursor: grabbing; }
 }
 #photo-index .fi-window {
   position: absolute;
@@ -1155,14 +1162,39 @@ html[data-theme="dark"] {
   border-radius: 22%;
   box-shadow: 0 8px 22px -8px #000a;
 }
-#photo-index .fi-house {
-  background:
-    linear-gradient(#1117, #1117),
-    url("/projects/blakeney.webp") center 42% / cover;
-  filter: grayscale(1);
+#photo-index .fi-art .fi-cottage-photo {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  object-position: 50% 42%;
+  filter: grayscale(1) brightness(.68);
 }
-#photo-index .fi-house img {
-  filter: brightness(0) invert(1);
+#photo-index .fi-house img:not(.fi-cottage-photo) { filter: brightness(0) invert(1); }
+#photo-index .fi-launch {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ffffff70;
+  border-radius: 50%;
+  background: #191919dc;
+  color: #f4f4f2;
+  transition: color .18s, background-color .18s;
+}
+#photo-index .fi-drawer:focus-visible .fi-launch { background: #f4f4f2; color: #191919; }
+@media (hover: hover) and (pointer: fine) {
+  #photo-index .fi-drawer:hover .fi-launch { background: #f4f4f2; color: #191919; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .fi-entry[open] .fi-cottage-photo { animation: cottage-arrival .65s var(--settle) both; }
+  @keyframes cottage-arrival { from { transform: scale(1.045); } to { transform: none; } }
 }
 #photo-index .fi-story p {
   color: var(--story-text);
@@ -1171,7 +1203,7 @@ html[data-theme="dark"] {
   letter-spacing: -.022em;
   max-width: 29ch;
 }
-#photo-index .fi-story a {
+#photo-index .fi-project-cta {
   text-decoration: underline;
   text-underline-offset: 5px;
   margin-top: 6px;
@@ -1252,7 +1284,7 @@ html[data-theme="dark"] {
   #photo-index .fi-work h2 {
     padding: 0;
   }
-  #photo-index .fi-reel button[aria-pressed="true"] {
+  #photo-index .fi-reel button:is([aria-pressed="true"]:not(.preview-origin), .preview-target) {
     flex-grow: 4;
   }
   #photo-index .fi-drawer {
@@ -1598,7 +1630,7 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 #photo-index .fi-menu a:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
 @media (hover: hover) and (pointer: fine) {
   #photo-index .fi-apps .fi-list > a:hover { background: var(--app-hover); }
-  #photo-index :is(.fi-apps a, .fi-story a, .fi-footer a):hover .fi-arrow { transform: translate(2px,-2px); }
+  #photo-index :is(.fi-apps a, .fi-drawer, .fi-footer a):hover .fi-arrow { transform: translate(2px,-2px); }
   #photo-index .fi-bio a:hover b, #fi-floating-links a:hover b { transform: translateY(3px); }
   #photo-index summary:hover i { background: var(--ink); color: var(--paper); }
 }
@@ -1628,4 +1660,12 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
       to { translate: 0 0; }
     }
   }
+}
+
+#photo-index .fi-drawer:focus-visible { outline: none; }
+#photo-index .fi-drawer:focus-visible .fi-project-cta { text-decoration-thickness: 2px; }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  #photo-index .fi-art > img:not(.fi-sweep, .fi-cottage-photo) { transition: transform 360ms var(--settle); }
+  #photo-index .fi-drawer:hover .fi-art > img:not(.fi-sweep, .fi-cottage-photo) { transform: translateY(-2px) scale(1.05); }
+  #photo-index .fi-drawer:hover .fi-project-cta { text-decoration-thickness: 2px; }
 }
