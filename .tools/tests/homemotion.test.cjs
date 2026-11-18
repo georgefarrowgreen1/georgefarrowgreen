@@ -197,15 +197,17 @@ for(const assets of ['', 'min/'])for(const launcher of [0,1])test(`${assets||'so
    const b=document.querySelectorAll('[data-contact]')[index];b.focus({preventScroll:true});if(index===0)b.style.transform='scale(.96)';const source=b.getBoundingClientRect(),restingWidth=b.offsetWidth;b.click();
    const d=document.querySelector('#contact-sheet'),surface=d.querySelector('.contact-flight'),a=surface.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);
    a.pause();a.currentTime=0;const start=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration/2;const middle=surface.getBoundingClientRect();a.currentTime=a.effect.getTiming().duration;const end=surface.getBoundingClientRect();a.currentTime=0;a.play();
-   return{source:{left:source.left,top:source.top,width:source.width,height:source.height},start:{left:start.left,top:start.top,width:start.width,height:start.height},middle:middle.height,end:end.height,restingWidth,forms:d.querySelectorAll('form').length,
+   const paintProperties = d.getAnimations({subtree:true}).filter(a=>a instanceof Animation && !(a instanceof CSSAnimation)).flatMap(a=>a.effect.getKeyframes()).flatMap(Object.keys).filter(k=>['clipPath','backgroundColor','borderRadius','height','width'].includes(k));
+   return{paintProperties,source:{left:source.left,top:source.top,width:source.width,height:source.height},start:{left:start.left,top:start.top,width:start.width,height:start.height},middle:middle.height,end:end.height,restingWidth,forms:d.querySelectorAll('form').length,
     textFrames:d.querySelector('.sheet-in').getAnimations().flatMap(a=>a.effect.getKeyframes())};
   },launcher);
+  assert.deepEqual(opening.paintProperties,[]);
   for(const key of ['left','top','width','height'])assert.ok(Math.abs(opening.source[key]-opening.start[key])<1,`surface starts at launcher ${key}`);
   assert.ok(opening.middle>opening.start.height&&opening.middle<opening.end);assert.equal(opening.forms,1);
   assert.ok(opening.textFrames.every(frame=>!frame.transform?.includes('scale')));
   await f.p.waitForFunction(()=>!document.querySelector('.contact-flight'));
   const closing=await f.p.evaluate(index=>{document.querySelectorAll('[data-contact]')[index].style.transform='';const d=document.querySelector('#contact-sheet');closeSheet(d);const s=d.querySelector('.contact-flight'),a=s.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),last=a.effect.getKeyframes().at(-1),width=parseFloat(s.style.width)*new DOMMatrixReadOnly(last.transform).a;return{width,closing:d.classList.contains('closing')};},launcher);
-  assert.ok(Math.abs(closing.width-opening.restingWidth)<1,'return lands on the resting button rather than its pressed size');assert.equal(closing.closing,true);await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
+  assert.ok(Math.abs(closing.width-(launcher===0?(await f.p.locator('.fi-menubtn').boundingBox()).width:opening.restingWidth))<1,'return lands on the resting button rather than its pressed size');assert.equal(closing.closing,true);await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
   assert.equal(await f.p.locator('.contact-flight,.contact-flight-copy,.contact-source').count(),0);
   assert.equal(await f.p.locator(launcher === 0 ? '.fi-menubtn' : 'footer [data-contact]').evaluate(b=>b===document.activeElement),true);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}

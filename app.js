@@ -152,7 +152,7 @@ panels.forEach((panel, index) => panel.addEventListener("click", () => {
 }));
 
 function setupGalleryMenu() {
-  const dock = $(".fi-float"), toggle = $(".fi-menubtn"), links = $("nav",dock);
+  const dock = $(".fi-menu"), toggle = $(".fi-menubtn"), links = $("nav",dock);
   dock.hidden = false;
   function set(open) {
     links.inert = !open;
@@ -301,7 +301,7 @@ function setupOpening() {
     };
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
   });
-  for (const el of $$("#bar,.fi-bio,.fi-work,.fi-float,footer")) {
+  for (const el of $$("#bar,.fi-bio,.fi-work,footer")) {
     animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
   }
   const options = {signal: listeners.signal};
@@ -650,7 +650,10 @@ function openSheet(d, origin = null) {
   const painted = contactFlightRect(d);
   stopContactFlight(d);
   const going = d.classList.contains("closing");
-  if (!d.open) lastFocus = document.activeElement?.closest("#fi-floating-links") ? $(".fi-menubtn") : document.activeElement;
+  if (!d.open) {
+    const opener = origin?.el || document.activeElement;
+    lastFocus = opener?.closest("#fi-floating-links") ? $(".fi-menubtn") : opener;
+  }
   if (going) {
     const y = currentY(d);
     clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
@@ -671,8 +674,8 @@ function openSheet(d, origin = null) {
 function contactFlightRect(d) {
   const el = d._flight?.surface;
   if (!el) return null;
-  const r = el.getBoundingClientRect(), cs = getComputedStyle(el), scale = new DOMMatrixReadOnly(cs.transform).a;
-  return { left: r.left, top: r.top, width: r.width, height: r.height, radius: parseFloat(cs.borderTopLeftRadius) * scale, color: cs.backgroundColor };
+  const r = el.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height, tint: getComputedStyle(d._flight.tint).opacity, formOpacity: getComputedStyle($(".sheet-in", d)).opacity };
 }
 function contactOrigin(b) {
   const r = b.getBoundingClientRect(), cs = getComputedStyle(b);
@@ -681,9 +684,8 @@ function contactOrigin(b) {
   // Opening starts from the pressed shape; returning ends at the resting button once its press has released.
   const scale = cs.transform === "none" ? 1 : Math.abs(new DOMMatrixReadOnly(cs.transform).a), w = r.width / (scale || 1), h = r.height / (scale || 1);
   return { el: b, left: r.left, top: r.top, width: r.width, height: r.height,
-    radius: Math.min(parseFloat(cs.borderTopLeftRadius) || 18, r.height / 2),
-    color: getComputedStyle(b.closest("nav, footer")).backgroundColor, viewport: innerWidth,
-    rest: { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, radius: Math.min(parseFloat(cs.borderTopLeftRadius) || 18, h / 2) },
+    color: getComputedStyle(b.closest("nav, footer") || b).backgroundColor, viewport: innerWidth,
+    rest: { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h },
     label: { text: label.textContent.trim(), left: text.left, top: text.top, width: text.width, height: text.height, font: font.font, color: font.color } };
 }
 function stopContactFlight(d) {
@@ -701,33 +703,29 @@ function flyContact(d, from, to, closing = false) {
   const surface = document.createElement("div"); surface.className = "contact-flight"; surface.setAttribute("aria-hidden", "true");
   const base = d.getBoundingClientRect(), width = base.width, height = base.height;
   surface.style.width = width + "px"; surface.style.height = height + "px"; d.prepend(surface);
-  const state = d._flight = { surface, animations: [], origin: d._contactOrigin, resolve: null };
+  const state = d._flight = { surface, bounds: base, animations: [], origin: closing ? to : d._contactOrigin, resolve: null };
   state.finished = new Promise(resolve => { state.resolve = resolve; });
   state.origin?.el.classList.add("contact-source"); d.classList.add("contact-travelling", "shown");
   const duration = closing ? MOTION.exit + MOTION.stagger : MOTION.enter + MOTION.stagger;
   const animate = (el, frames, options = {}) => {
     const a = el.animate(frames, { duration, easing: GLIDE, fill: "both", ...options }); state.animations.push(a); return a;
   };
-  const frames = Array.from({ length: 37 }, (_, i) => {
-    const p = i / 36, lerp = (a, b) => a + (b - a) * p;
-    const sx = lerp(from.width, to.width) / width, sy = lerp(from.height, to.height) / height, radius = lerp(from.radius, to.radius);
-    return { offset: p, transform: `translate(${lerp(from.left, to.left)}px,${lerp(from.top, to.top)}px) scale(${sx},${sy})`, borderRadius: `${radius / sx}px / ${radius / sy}px` };
-  });
-  animate(surface, frames);
-  animate(surface, [{ backgroundColor: from.color }, { backgroundColor: to.color }]);
-  // Clip the unscaled form to the travelling material, so no fields float outside it as it grows.
-  animate(box, frames.map((_, i) => {
-    const p = i / 36, lerp = (a, b) => a + (b - a) * p;
-    const left = lerp(from.left, to.left), top = lerp(from.top, to.top), w = lerp(from.width, to.width), h = lerp(from.height, to.height);
-    return { offset: p, clipPath: `inset(${top - base.top}px ${base.right - left - w}px ${base.bottom - top - h}px ${left - base.left}px round ${lerp(from.radius, to.radius)}px)` };
-  }));
-  animate(box, closing ? [{ opacity }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1 }],
-    { duration: closing ? MOTION.fast : MOTION.layout, delay: closing ? 0 : MOTION.stagger * 2, easing: EASE_OUT });
-  if (!closing) {
-    const material = { duration: MOTION.fast, delay: duration - MOTION.fast, easing: EASE_OUT };
-    animate(d._surface, [{ opacity: 0 }, { opacity: 1 }], material);
-    animate(surface, [{ opacity: 1 }, { opacity: 0 }], material);
-  }
+  // Paint the card, its launcher colour and the form once. Two translated
+  // overflow windows reveal the full-size text within the moving card edges.
+  const tint = state.tint = document.createElement("span");
+  tint.className = "contact-flight-tint";
+  tint.style.backgroundColor = state.origin.color;
+  surface.append(tint);
+  const reveal = $(".contact-reveal", d), windowEl = $(".contact-window", d);
+  const translate = (x, y) => `translate3d(${x}px, ${y}px, 0)`;
+  const transform = (el, at) => animate(el, [from, to].map(rect => ({transform: at(rect)})));
+  transform(surface, r => translate(r.left, r.top) + ` scale(${r.width / width}, ${r.height / height})`);
+  transform(reveal, r => translate(r.left + r.width - base.right, r.top + r.height - base.bottom));
+  transform(windowEl, r => translate(width - r.width, height - r.height));
+  transform(box, r => translate(base.left - r.left, base.top - r.top));
+  animate(tint, [{opacity: from.tint ?? (closing ? 0 : 1)}, {opacity: closing ? 1 : 0}]);
+  animate(box, [{opacity: from.formOpacity ?? (closing ? opacity : 0)}, {opacity: closing ? 0 : 1}],
+    { duration: closing ? MOTION.fast : MOTION.layout, delay: closing || from.formOpacity != null ? 0 : MOTION.stagger, easing: EASE_OUT });
   if (!closing && from.label) {
     const copy = state.copy = document.createElement("span"), l = from.label;
     copy.className = "contact-flight-copy"; copy.setAttribute("aria-hidden", "true"); copy.textContent = l.text;
@@ -743,10 +741,8 @@ function flyContact(d, from, to, closing = false) {
   state.timer = setTimeout(done, duration + 150);
 }
 function contactSheetRect(d) {
-  const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
-  const color = getComputedStyle(d._surface).backgroundColor;
-  return { left: r.left, top: r.top, width: r.width, height: r.height,
-    radius: parseFloat(cs.borderTopLeftRadius), color };
+  const r = d.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 addEventListener("pagehide", () => { for (const d of $$("dialog.sheet")) { if (d._flight && d.classList.contains("closing")) finishClose(d); else stopContactFlight(d); } });
 motion.addEventListener("change", () => { if (motion.matches) for (const d of $$("dialog.sheet")) { if (d._flight && d.classList.contains("closing")) finishClose(d); else stopContactFlight(d); } });
@@ -783,11 +779,14 @@ function closeSheet(d, thrown = null) {
   if (d.contains(document.activeElement) && document.activeElement.matches("input, textarea")) document.activeElement.blur();
   if (d.id === "contact-sheet") contact.version++;
   body.classList.remove("sheet-up", "pulling");
-  unpin();
+  // Restore the scroll position after the returning card reaches its launcher.
+  if (!returns) unpin();
   for (const el of behind) el.style.transform = "";
   if (returns) {
     d.getAnimations().forEach(a => a.cancel()); d.style.transform = "";
-    d.classList.add("closing", "shown"); flyContact(d, painted, { ...origin, ...origin.rest }, true);
+    const menuButton = origin.el.closest("#fi-floating-links") && $(".fi-menubtn");
+    const target = (menuButton && contactOrigin(menuButton)) || origin;
+    d.classList.add("closing", "shown"); flyContact(d, painted, { ...target, ...target.rest }, true);
     return;
   }
   stopContactFlight(d);
@@ -942,7 +941,14 @@ if (window.visualViewport) {
     if (!frame) frame = requestAnimationFrame(lift);
   };
   vv.addEventListener("resize", () => queue()); vv.addEventListener("scroll", () => queue());
-  addEventListener("resize", () => { const d = $("dialog.sheet[open]"); if (d?._flight && !d.classList.contains("closing")) stopContactFlight(d); queue(700); });
+  addEventListener("resize", () => {
+    const d = $("dialog.sheet[open]");
+    if (d?._flight && !d.classList.contains("closing")) {
+      const now = d.getBoundingClientRect(), before = d._flight.bounds;
+      if (["left", "top", "width", "height"].some(key => Math.abs(now[key] - before[key]) > 1)) stopContactFlight(d);
+    }
+    queue(700);
+  });
   addEventListener("pageshow", () => queue(700));
   document.addEventListener("focusin", () => { if (typingInSheet()) queue(700); });
   document.addEventListener("input", () => { if (typingInSheet()) queue(); });
