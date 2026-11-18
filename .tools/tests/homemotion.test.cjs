@@ -9,7 +9,7 @@ let browser;
 before(async()=>{browser=await (process.env.BIO_TEST_BROWSER==='webkit'?webkit:chromium).launch(process.env.BIO_TEST_BROWSER==='webkit'?{}:{executablePath:process.env.CHROMIUM||(existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});});
 after(async()=>browser?.close());
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,interruptIntro=false,viewportEvents=false}={}){
+async function fixture(assets,{width=390,reduce=false,viewportEvents=false}={}){
  const ctx=await browser.newContext({viewport:{width,height:740},isMobile:width<600,hasTouch:width<600,reducedMotion:reduce?'reduce':'no-preference'});
  if(viewportEvents)await ctx.addInitScript(()=>{
   const vv=new EventTarget(),state={height:innerHeight,offsetTop:0,scale:1};window.viewportReads=0;
@@ -17,8 +17,6 @@ async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,i
   Object.defineProperty(window,'visualViewport',{value:vv,configurable:true});
   window.setTestViewport=(patch,silent=false)=>{Object.assign(state,patch);if(!silent)vv.dispatchEvent(new Event('resize'));};
  });
- await ctx.addInitScript(()=>{const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/i.test(type)?null:get.call(this,type,...args);};});
- await ctx.addInitScript(({cadence,saveData,interruptIntro})=>{if(interruptIntro)addEventListener('home:revealed',()=>queueMicrotask(()=>{document.querySelector('.cta [data-contact]').focus({preventScroll:true});window.focusedIntroFrames=[...document.querySelectorAll('.hero>*')].flatMap(e=>e.getAnimations()).flatMap(a=>a.effect.getKeyframes()).filter(f=>f.translate).length;}),{once:true});if(saveData)Object.defineProperty(navigator,'connection',{value:{saveData:true},configurable:true});if(cadence){const raf=requestAnimationFrame;let now=1000;window.requestAnimationFrame=cb=>raf(t=>cb(cb.name==='sample'?(now+=cadence):t));}},{cadence,saveData,interruptIntro});
  const errors=[],posts=[],gates=[];let response={status:200,body:{ok:true},gate:null};
  await ctx.route(`${HOME}/**`,async route=>{
   const url=new URL(route.request().url()),path=url.pathname;
@@ -37,11 +35,11 @@ async function fixture(assets,{width=390,reduce=false,cadence=0,saveData=false,i
  });
  await ctx.route('https://chat.inflite.ai/**',r=>r.fulfill({contentType:'text/html',body:'<title>Chat destination</title><p>Chat</p>'}));
  const p=await ctx.newPage();p.setDefaultTimeout(6500);p.on('pageerror',e=>errors.push(e.message));await p.goto(HOME);
- await p.waitForFunction(()=>!document.documentElement.matches('.intro-loading,.intro-revealing')&&document.body.classList.contains('known'));
+ await p.waitForFunction(()=>!document.body.classList.contains('playing-opening')&&document.body.classList.contains('known'));
  await p.evaluate(()=>document.fonts.ready);
  return{ctx,p,errors,posts,reply:r=>{response=r;if(r.gate)gates.push(r.gate);},cleanup:async()=>{gates.forEach(g=>g.resolve());await ctx.close();}};
 }
-async function open(f){await f.p.locator('.cta [data-contact]').click();await f.p.locator('#contact-sheet[open]').waitFor();}
+async function open(f){await f.p.locator('footer [data-contact]').click();await f.p.locator('#contact-sheet[open]').waitFor();}
 async function close(f){await f.p.keyboard.press('Escape');await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});}
 async function fill(f,message='A message to George'){
  await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');await f.p.locator('#c-message').fill(message);
@@ -70,17 +68,9 @@ for(const assets of ['', 'min/']){
    assert.equal(await f.p.locator('#contact-sent').isVisible(),false);assert.deepEqual(f.errors,[]);
   }finally{await f.cleanup();}
  });
- test(`${assets||'source/'}hero depth freezes behind a sheet, sections reveal once, app handoff preserves navigation and Back`,async()=>{
+ test(`${assets||'source/'}app handoff preserves native navigation and Back`,async()=>{
   const f=await fixture(assets,{width:1440});
   try{
-   await f.p.evaluate(()=>document.querySelector('.contact').scrollIntoView({block:'center',behavior:'instant'}));
-   await f.p.waitForFunction(()=>document.querySelector('.contact').getAnimations().length>0);
-   await f.p.waitForFunction(()=>!document.querySelector('.contact').getAnimations().length);
-   await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.locator('.contact').scrollIntoViewIfNeeded();
-   assert.equal(await f.p.locator('.contact').evaluate(e=>e.getAnimations().length),0,'one-time entrance does not loop');
-   await f.p.evaluate(()=>scrollTo({top:120,behavior:'instant'}));await f.p.waitForFunction(()=>document.body.classList.contains('motion-lite')||parseFloat(document.querySelector('#bg').style.getPropertyValue('--hero-depth'))>0);
-   const depth=await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth'));await open(f);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),depth);
-   await close(f);await f.p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await f.p.waitForFunction(()=>document.querySelector('#bg').style.getPropertyValue('--hero-depth')==='0px');
    await f.p.locator('#app-inflight').scrollIntoViewIfNeeded();
    for(const kind of ['modified','new-tab','download']){
     const prevented=await f.p.locator('#app-inflight').evaluate((el,kind)=>{
@@ -105,7 +95,7 @@ for(const assets of ['', 'min/']){
  test(`${assets||'source/'}reduced motion skips spatial effects and completes the real send flow`,async()=>{
   const f=await fixture(assets,{width:320,reduce:true});
   try{
-   await f.p.evaluate(()=>scrollTo({top:100,behavior:'instant'}));await f.p.waitForTimeout(80);assert.equal(await f.p.locator('#bg').evaluate(e=>e.style.getPropertyValue('--hero-depth')),'0px');
+   assert.equal(await f.p.locator('[data-replay]').isVisible(),false);
    await open(f);await fill(f);await f.p.locator('#contact-send').click();await f.p.locator('#contact-sent:not([hidden])').waitFor();
    assert.equal(await f.p.locator('.tick path').evaluate(e=>getComputedStyle(e).animationName),'none');
    await close(f);await f.p.locator('#app-inflight').click();await f.p.waitForURL('https://chat.inflite.ai/?from=bio&keep=1');assert.deepEqual(f.errors,[]);
@@ -137,32 +127,6 @@ for(const assets of ['', 'min/']){
   }finally{await f.cleanup();}
  });
 }
-for(const cadence of [1000/120,1000/60,1000/30])test(`frame monitor recognises ${Math.round(1000/cadence)} Hz and only reduces decoration on slow frames`,async()=>{
- const f=await fixture('',{width:1440,cadence});
- try{
-  await f.p.waitForFunction(()=>performance.getEntriesByName('bio.motion.sample').length>0);
-  const result=await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample')[0].detail);
-  assert.ok(Math.abs(result.cadence-cadence)<.2);assert.equal(result.light,cadence>24);
-  assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),cadence>24);
-  assert.ok(await f.p.getByRole('link',{name:'Weather',exact:true}).isVisible());
-  await f.p.waitForTimeout(300);assert.equal(await f.p.evaluate(()=>performance.getEntriesByName('bio.motion.sample').length),1,'monitor is bounded');assert.deepEqual(f.errors,[]);
- }finally{await f.cleanup();}
-});
-test('Save Data keeps the page decorative motion still while app links remain available',async()=>{
- const f=await fixture('',{saveData:true});try{
-  assert.equal(await f.p.locator('body').evaluate(e=>e.classList.contains('motion-lite')),true);
-  assert.ok(await f.p.getByRole('link',{name:'Weather',exact:true}).isVisible());assert.deepEqual(f.errors,[]);
- }finally{await f.cleanup();}
-});
-
-for(const assets of ['', 'min/'])test(`${assets||'source/'}keyboard focus releases the intro immediately`,async()=>{
- const f=await fixture(assets,{interruptIntro:true});try{
-  assert.equal(await f.p.evaluate(()=>window.focusedIntroFrames),0);
-  assert.equal(await f.p.locator('.cta [data-contact]').evaluate(e=>e===document.activeElement),true);
-  assert.equal(await f.p.locator('.cta').evaluate(e=>getComputedStyle(e).opacity),'1');assert.deepEqual(f.errors,[]);
- }finally{await f.cleanup();}
-});
-
 for(const assets of ['', 'min/'])for(const kb of [0,330])test(`${assets||'source/'}sender folds and unfolds smoothly${kb?' above the keyboard':''}`,async()=>{
  const f=await fixture(assets);try{
   await open(f);await f.p.locator('#contact-sheet.shown').waitFor();
@@ -227,6 +191,7 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}motion tokens preserv
 });
 for(const assets of ['', 'min/'])for(const launcher of [0,1])test(`${assets||'source/'}contact material grows from launcher ${launcher+1} and returns without scaling form text`,async()=>{
  const f=await fixture(assets);try{
+  if (launcher === 0) { await f.p.locator('.fi-menubtn').click(); await f.p.locator('#fi-floating-links').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished))); }
   await f.p.locator('[data-contact]').nth(launcher).scrollIntoViewIfNeeded();
   const opening=await f.p.evaluate(index=>{
    const b=document.querySelectorAll('[data-contact]')[index];b.focus({preventScroll:true});if(index===0)b.style.transform='scale(.96)';const source=b.getBoundingClientRect(),restingWidth=b.offsetWidth;b.click();
@@ -242,13 +207,14 @@ for(const assets of ['', 'min/'])for(const launcher of [0,1])test(`${assets||'so
   const closing=await f.p.evaluate(index=>{document.querySelectorAll('[data-contact]')[index].style.transform='';const d=document.querySelector('#contact-sheet');closeSheet(d);const s=d.querySelector('.contact-flight'),a=s.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),last=a.effect.getKeyframes().at(-1),width=parseFloat(s.style.width)*new DOMMatrixReadOnly(last.transform).a;return{width,closing:d.classList.contains('closing')};},launcher);
   assert.ok(Math.abs(closing.width-opening.restingWidth)<1,'return lands on the resting button rather than its pressed size');assert.equal(closing.closing,true);await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});
   assert.equal(await f.p.locator('.contact-flight,.contact-flight-copy,.contact-source').count(),0);
-  assert.equal(await f.p.locator('[data-contact]').nth(launcher).evaluate(b=>b===document.activeElement),true);assert.deepEqual(f.errors,[]);
+  assert.equal(await f.p.locator(launcher === 0 ? '.fi-menubtn' : 'footer [data-contact]').evaluate(b=>b===document.activeElement),true);assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
 for(const assets of ['', 'min/'])test(`${assets||'source/'}contact flight reverses from its painted shape and a field tap takes priority`,async()=>{
  const f=await fixture(assets);try{
+  await f.p.locator('footer [data-contact]').scrollIntoViewIfNeeded();
   const continuity=await f.p.evaluate(()=>{
-   const b=document.querySelector('[data-contact]');b.click();const d=document.querySelector('#contact-sheet');
+   const b=document.querySelector('footer [data-contact]');b.focus();b.click();const d=document.querySelector('#contact-sheet');
    const position=()=>{const el=d.querySelector('.contact-flight'),a=el.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);a.pause();return el.getBoundingClientRect();};
    d.querySelector('.contact-flight').getAnimations().forEach(a=>a.currentTime=160);const before=position();closeSheet(d);const closed=position();b.click();const reopened=position();
    return{before:{top:before.top,width:before.width,height:before.height},closed:{top:closed.top,width:closed.width,height:closed.height},reopened:{top:reopened.top,width:reopened.width,height:reopened.height}};

@@ -45,10 +45,10 @@ for (const assets of ['', 'min/']) {
       const { ctx, p, errors } = await fixture(assets, { width });
       try {
         const links = p.locator('#apps [data-app-link]');
-        assert.deepEqual(await links.locator('h3').allTextContents(), ['Chat', 'Weather', 'Fitness', 'Markets']);
+        assert.deepEqual(await links.locator('strong').allTextContents(), ['Chat', 'Weather', 'Fitness', 'Markets']);
         assert.equal(await p.locator('#app-weather').getAttribute('href'), signed.links.weather);
         assert.equal(await p.locator('#app-weather small').innerText(), '3 places · Alerts on');
-        const layout = await p.evaluate(() => [...document.querySelectorAll('#projects .project, #apps .project')].map(el => {
+        const layout = await p.evaluate(() => [...document.querySelectorAll('#projects details, #apps [data-app-link]')].map(el => {
           const { x, width, top, bottom } = el.getBoundingClientRect();
           return { x, width, top, bottom };
         }));
