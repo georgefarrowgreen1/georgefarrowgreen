@@ -17,7 +17,8 @@ function describe(photo, slot) {
 }
 
 export function galleryCollections(photos) {
-  const remaining = new Set(photos);
+  // The third panel already displays this photograph as hillside-climb.webp.
+  const remaining = new Set(photos.filter(photo => photo.id !== "mqisobxefe7vd"));
   const groups = featured.map(slot => {
     const eligible = [...remaining].filter(p => !p.device || p.device === "both" || p.device === slot.device);
     const first = eligible.find(p => p.id === slot.id) || eligible.find(p => p.device === slot.device) || eligible[0];
