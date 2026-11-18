@@ -124,10 +124,10 @@ function settleGallery() {
   galleryMotion = null;
   reel.classList.remove("switching");
 }
-function moveGallery(items, previous) {
+function moveGallery(items, previous, options = {}) {
   const next = items.map(measureFrame), left = reel.getBoundingClientRect().left;
   const animations = galleryMotion = [];
-  const timing = {duration: 510, easing: "cubic-bezier(.32,.08,.2,1)", fill: "both"};
+  const timing = {duration: 510, easing: "cubic-bezier(.32,.08,.2,1)", fill: "both", ...options};
   reel.classList.add("switching");
   items.forEach((panel, i) => {
     const from = previous[i], to = next[i], width = Math.max(from.width, to.width);
@@ -153,11 +153,17 @@ addEventListener("pagehide", settleGallery);
 motion.addEventListener("change", settleGallery);
 if (window.ResizeObserver) new ResizeObserver(settleGallery).observe(reel);
 
+function galleryReady(items) {
+  return items.every(item => {
+    const images = $$("img", item);
+    return images.length === 1 && images[0].complete && images[0].naturalWidth;
+  });
+}
 function selectPanel(panel, travel = false) {
   if (travel && panel.getAttribute("aria-pressed") === "true") return;
   const items = panels.filter(item => !item.hidden);
   const glide = travel && !motion.matches && !body.classList.contains("playing-opening") &&
-    items.every(item => { const imgs = $$("img", item); return imgs.length === 1 && imgs[0].complete && imgs[0].naturalWidth; });
+    galleryReady(items);
   const previous = glide ? items.map(measureFrame) : null;
   settleGallery();
   panels.forEach((item, index) => {
@@ -268,6 +274,93 @@ $(".fi-reel").addEventListener("keydown", event => {
   visible[next].focus({preventScroll: true});
   selectPanel(visible[next], true);
 });
+
+// Keep the active photo selected until release. A horizontal gesture seeks the
+// same nine transforms as a tap; vertical scrolling and pinch zoom stay native.
+function setupGalleryDrag() {
+  let gesture = null, suppressClick = false;
+
+  function release(commit) {
+    const g = gesture;
+    gesture = null;
+    if (!g || !g.dragging) return;
+    if (reel.hasPointerCapture(g.id)) reel.releasePointerCapture(g.id);
+    reel.classList.remove("dragging");
+    if (!g.to || (g.track && g.track !== galleryMotion)) return;
+    const destination = commit ? g.to : g.from;
+    const remaining = commit ? 1 - g.progress : g.progress;
+    const painted = g.track && remaining > .01 ? g.items.map(measureFrame) : null;
+    selectPanel(destination);
+    if (painted && !motion.matches) {
+      moveGallery(g.items, painted, {duration: 110 + 230 * remaining, easing: EASE_OUT});
+    }
+  }
+
+  reel.addEventListener("pointerdown", e => {
+    if (!e.isPrimary) { release(false); return; }
+    if (e.button !== 0 || !e.target.closest("button")) return;
+    suppressClick = false;
+    const from = panels.find(item => !item.hidden && item.getAttribute("aria-pressed") === "true");
+    if (!from) return;
+    gesture = {id: e.pointerId, x: e.clientX, y: e.clientY, from, start: e.timeStamp, progress: 0};
+  });
+  reel.addEventListener("pointermove", e => {
+    const g = gesture;
+    if (!g || g.id !== e.pointerId) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.dragging) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 9) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.25) { gesture = null; return; }
+      g.dragging = suppressClick = true;
+      reel.setPointerCapture(g.id);
+      reel.classList.add("dragging");
+      g.items = panels.filter(item => !item.hidden);
+    }
+    const direction = dx < 0 ? 1 : -1;
+    if (direction !== g.direction && Math.abs(dx) > 8) {
+      // Crossing the starting point can reveal the neighbour on the other side.
+      if (g.track) settleGallery();
+      g.track = null; g.progress = 0; g.travel = 0;
+      g.direction = direction;
+      g.to = g.items[g.items.indexOf(g.from) + direction];
+      if (!g.to) return;
+      const painted = !motion.matches && galleryReady(g.items) ? g.items.map(measureFrame) : null;
+      settleGallery();
+      g.distance = Math.max(96, Math.abs(g.from.offsetWidth - g.to.offsetWidth));
+      if (painted) {
+        g.from.classList.add("preview-origin"); g.to.classList.add("preview-target");
+        moveGallery(g.items, painted, {duration: 1000, easing: "linear"});
+        g.from.classList.remove("preview-origin"); g.to.classList.remove("preview-target");
+        g.track = galleryMotion;
+        for (const animation of g.track) animation.pause();
+      }
+    }
+    if (!g.to) return;
+    g.travel = Math.max(0, -dx * g.direction - 8);
+    g.progress = Math.min(.999, g.travel / g.distance);
+    if (g.track === galleryMotion && g.track) {
+      for (const animation of g.track) animation.currentTime = 1000 * g.progress;
+    }
+  });
+  reel.addEventListener("pointerup", e => {
+    if (gesture?.id !== e.pointerId) return;
+    const g = gesture;
+    const flick = g.travel > 26 && g.travel / Math.max(1, e.timeStamp - g.start) > .45;
+    release(g.progress > .38 || g.travel > 110 || flick);
+  });
+  reel.addEventListener("pointercancel", e => { if (gesture?.id === e.pointerId) release(false); });
+  reel.addEventListener("lostpointercapture", e => {
+    if (e.target === reel && gesture?.id === e.pointerId) release(false);
+  });
+  reel.addEventListener("pointerleave", () => { if (gesture && !gesture.dragging) gesture = null; });
+  reel.addEventListener("click", e => {
+    if (suppressClick && e.detail) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  reel.addEventListener("dragstart", e => e.preventDefault());
+  reel.addEventListener("keydown", () => release(false), true);
+  addEventListener("pagehide", () => release(false));
+  motion.addEventListener("change", () => { if (gesture?.track) release(false); });
+}
 
 function setupGalleryMenu() {
   const dock = $(".fi-menu"), toggle = $(".fi-menubtn"), links = $("nav",dock);
@@ -1727,6 +1820,7 @@ showContent();      // (the Person block for search made from the words: index.h
 let wordsKnown = root.hasAttribute("data-words");
 const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown = true; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; });
 let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
+setupGalleryDrag();
 setupGalleryMenu();
 setupOpening();
 loadMe();
