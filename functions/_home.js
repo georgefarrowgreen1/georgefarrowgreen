@@ -8,7 +8,6 @@ import { getList } from "./api/background.js";
 import { getContent } from "./_content.js";
 import { assets } from "./_min.js";
 import { HOME_FILES, HOME_STAMPS } from "./_minfresh.js";
-import { cookieToken } from "./_account.js";
 import { homeSite } from "./_sites.js";
 import { hop } from "./_hop.js";
 
@@ -18,10 +17,18 @@ const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
 // blocked cookies to one check. Sessions already present on the home page skip this entirely.
 export async function homeArrival(ctx, url) {
   if (ctx.request.method !== "GET" || url.hostname !== homeSite(ctx.env) || !isPage(url) ||
-    url.searchParams.get("__ifl_account") === "checked" || cookieToken(ctx.request, ctx.env)) return null;
+    url.searchParams.get("__ifl_account") === "checked") return null;
   const to = new URL(url); to.searchParams.set("__ifl_account", "checked");
   const start = new URL("/api/hop/start", url); start.searchParams.set("to", to.href);
-  return hop(new Request(start, ctx.request), ctx.env, "start");
+  // The hop validates the session. An expired cookie follows the same preflight as a guest.
+  // For a current session its destination is already this page, so render it immediately.
+  try {
+    const response = await hop(new Request(start, ctx.request), ctx.env, "start");
+    return response.headers.get("Location") === to.href ? null : response;
+  } catch {
+    // The public bio can still render when account lookup is unavailable.
+    return null;
+  }
 }
 
 const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);

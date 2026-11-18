@@ -12,7 +12,7 @@ after(async () => browser?.close());
 for (const assets of ['', 'min/']) {
   for (const state of [
     { name: 'guest' },
-    { name: 'legacy preview guest', clientFallback: true },
+    { name: 'directly rendered guest', direct: true },
     { name: 'home member', home: true },
     { name: 'InFlite member', inflite: true },
     { name: 'owner returning from account', home: true, owner: true, hash: '#signedin' },
@@ -40,7 +40,7 @@ for (const assets of ['', 'min/']) {
         }
         if (path === '/api/hop/finish') { signed = !state.blocked; return redirect(url.searchParams.get('to')); }
         if (path === '/') {
-          if (!signed && !state.clientFallback && url.searchParams.get('__ifl_account') !== 'checked') {
+          if (!signed && !state.direct && url.searchParams.get('__ifl_account') !== 'checked') {
             const to = new URL(url); to.searchParams.set('__ifl_account', 'checked');
             return redirect(`${HOME}/api/hop/start?to=${encodeURIComponent(to.href)}`);
           }
@@ -75,8 +75,8 @@ for (const assets of ['', 'min/']) {
           assert.equal(await p.locator('#me').getAttribute('href'), 'https://account.inflite.test/#from=home');
           assert.equal(await p.locator('#edit').isVisible(), !!state.owner);
         } else assert.equal(await p.locator('#me').isVisible(), false);
-        assert.equal(documents, state.clientFallback ? 2 : 1, 'the homepage is only rendered after the server hand-off');
-        assert.equal(hops, state.home ? 0 : 1, 'one quiet hand-off for an unrecognised visitor; never a loop');
+        assert.equal(documents, 1, 'account lookup never navigates away from a rendered homepage');
+        assert.equal(hops, state.home || state.direct ? 0 : 1, 'one quiet hand-off for an unrecognised visitor; never a loop');
         assert.equal(new URL(p.url()).search, '?keep=ride', 'temporary marker removed, other query parameters preserved');
         await p.waitForTimeout(state.hash ? 1200 : 100);
         assert.deepEqual(errors, []);
