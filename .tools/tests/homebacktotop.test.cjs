@@ -40,3 +40,38 @@ test('the header wordmark links home without JavaScript', async () => {
     assert.deepEqual(f.errors, []);
   } finally { await f.ctx.close(); }
 });
+
+for (const assets of ['', 'min/']) {
+  test(`${assets || 'source/'}appearance switch follows the device until a visitor chooses`, async () => {
+    const f = await fixture(assets, { reduce: true });
+    try {
+      const { p } = f;
+      const menu = p.locator('.fi-menubtn');
+      const toggle = p.getByRole('switch', { name: 'Dark mode' });
+      const theme = () => p.locator('html').getAttribute('data-theme');
+      await p.emulateMedia({ colorScheme: 'dark' });
+      await p.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+      await menu.click();
+      assert.equal(await toggle.isChecked(), true);
+      await toggle.focus();
+      await p.keyboard.press('Space');
+      assert.equal(await theme(), 'light');
+      assert.equal(await menu.getAttribute('aria-expanded'), 'true');
+      assert.equal(await toggle.isChecked(), false);
+      assert.equal(await p.locator('meta[name="theme-color"]').getAttribute('content'), '#f4f4f2');
+      await p.reload();
+      assert.equal(await theme(), 'light');
+      await menu.click();
+      await toggle.click();
+      await p.emulateMedia({ colorScheme: 'light' });
+      await p.reload();
+      assert.equal(await theme(), 'dark');
+      assert.equal(await p.locator('meta[name="theme-color"]').getAttribute('content'), '#181818');
+      await menu.click();
+      await p.locator('#fi-floating-links [data-contact]').click();
+      await p.locator('#contact-sheet[open]').waitFor();
+      assert.equal(await p.locator('#contact-sheet').evaluate(el => getComputedStyle(el).colorScheme), 'dark');
+      assert.deepEqual(f.errors, []);
+    } finally { await f.ctx.close(); }
+  });
+}
