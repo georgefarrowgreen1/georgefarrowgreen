@@ -70,7 +70,14 @@ export async function getRecord(env,o,{kind:k,id:i}){const D=await organisedb(en
 export async function listRecords(env,o,input={}){
  keys(input,['kind','cursor','q','limit','fromDate','toDate','from','to','related']);const k=kind(input.kind),D=await organisedb(env),q=str(input.q??'',160,'the search'),args=[o,k],where=['user_id=?1','kind=?2','deleted=0',owned],limit=input.limit===undefined?60:input.limit;
  if(!Number.isSafeInteger(limit)||limit<1||limit>100)fail(400,'Check the page size.');
- if(input.related!==undefined){keys(input.related,['app','id']);const app=kind(input.related.app),i=id(input.related.id);args.push(app,i);where.push(`EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.links')) link WHERE json_extract(link.value,'$.app')=?${args.length-1} AND json_extract(link.value,'$.id')=?${args.length})`)}
+ if(input.related!==undefined){
+  keys(input.related,['app','id']);
+  const chat=k==='people'&&input.related.app==='chats';
+  const app=chat?'chats':kind(input.related.app);
+  const i=chat?str(input.related.id,40,'the Chat friend',true):id(input.related.id);
+  if(chat&&!/^[\w-]+$/.test(i))fail(400,'That Chat friend is invalid.');
+  args.push(app,i);where.push(`EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.links')) link WHERE json_extract(link.value,'$.app')=?${args.length-1} AND json_extract(link.value,'$.id')=?${args.length})`);
+ }
  if(input.fromDate!==undefined){if(k!=='calendar')fail(400,'Choose a calendar range.');const a=day(input.fromDate),b=day(input.toDate),from=stamp(input.from),to=stamp(input.to);if(b<=a||Date.parse(b)-Date.parse(a)>366*DAY||to<=from||to-from>367*DAY)fail(400,'Choose a smaller date range.');args.push(a,b,from,to);const n=args.length;where.push(`((json_extract(payload,'$.allDay')=1 AND json_extract(payload,'$.startDate')<?${n-2} AND json_extract(payload,'$.endDate')>?${n-3}) OR (json_extract(payload,'$.allDay')=0 AND json_extract(payload,'$.start')<?${n} AND json_extract(payload,'$.end')>?${n-1}))`)}
  if(q){args.push('%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%');where.push(`(title LIKE ?${args.length} ESCAPE '\\' OR json_extract(payload,'$.text') LIKE ?${args.length} ESCAPE '\\' OR json_extract(payload,'$.description') LIKE ?${args.length} ESCAPE '\\' OR json_extract(payload,'$.details') LIKE ?${args.length} ESCAPE '\\' OR json_extract(payload,'$.email') LIKE ?${args.length} ESCAPE '\\' OR json_extract(payload,'$.organisation') LIKE ?${args.length} ESCAPE '\\' OR EXISTS(SELECT 1 FROM json_each(json_extract(payload,'$.checklist')) c WHERE json_extract(c.value,'$.text') LIKE ?${args.length} ESCAPE '\\'))`)}
  const chronological=k==='calendar'&&input.fromDate!==undefined,sort=chronological?"COALESCE(json_extract(payload,'$.start'),CAST(strftime('%s',json_extract(payload,'$.startDate')) AS INTEGER)*1000)":'modified',direction=chronological?'ASC':'DESC',compare=chronological?'>':'<';
