@@ -86,7 +86,7 @@
 <a id="app-fitness" data-app-link href="https://inflite.ai/fitness/"><img class="project-logo" width="30" height="30" src="/apps/fitness.png" alt=""><strong>Fitness</strong><small data-about="Training and activity">Training and activity</small><b aria-hidden="true"><i class="fi-arrow" aria-hidden="true"></i></b></a>
 <a id="app-markets" data-app-link href="https://inflite.ai/markets/"><img class="project-logo" width="30" height="30" src="/apps/markets.png" alt=""><strong>Markets</strong><small data-about="Personal finance">Personal finance</small><b aria-hidden="true"><i class="fi-arrow" aria-hidden="true"></i></b></a>
 </div></section></main>
-<footer id="get-in-touch"><div class="fi-footer"><button type="button" data-contact>Get in touch <span aria-hidden="true"><i class="fi-arrow" aria-hidden="true"></i></span></button><a href="https://www.instagram.com/georgefarrowgreen/" target="_blank" rel="noopener">Instagram <i class="fi-arrow" aria-hidden="true"></i></a></div><div class="fi-colophon"><small>© <span id="year">2026</span> <span data-c="name">George Farrow-Green</span></small><a href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/projects/inflite-mono.webp" alt="">Powered by InFlite</a></div></footer>
+<footer id="get-in-touch"><div class="fi-footer"><button type="button" data-contact>Get in touch <span aria-hidden="true"><i class="fi-arrow" aria-hidden="true"></i></span></button><div class="fi-footer-links"><a id="my-details" href="/details/George-Farrow-Green.vcf" download>My details <i class="fi-arrow" aria-hidden="true"></i></a><a href="https://www.instagram.com/georgefarrowgreen/" target="_blank" rel="noopener">Instagram <i class="fi-arrow" aria-hidden="true"></i></a></div></div><div class="fi-colophon"><small>© <span id="year">2026</span> <span data-c="name">George Farrow-Green</span></small><a href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/projects/inflite-mono.webp" alt="">Powered by InFlite</a></div></footer>
 </div>
   <div class="editbar glass only-edit" id="editbar">
     <span class="thumbs" id="thumbs" aria-hidden="true"></span>
@@ -126,6 +126,36 @@
         <b id="sent-h">Sent</b>
         <span id="thanks">Thanks. You’ll hear back by email.</span>
         <button class="btn glass wide" type="button" data-close aria-describedby="sent-h thanks">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="details-sheet" aria-labelledby="details-heading">
+    <div class="sheet-in" tabindex="-1">
+      <div class="grab" aria-hidden="true"></div>
+      <header class="sheet-head">
+        <h3 id="details-heading">My details</h3>
+        <button class="x" type="button" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+      </header>
+      <button class="calling-flip" type="button" aria-label="Turn George Farrow-Green’s calling card over to see the QR code" aria-pressed="false">
+        <span class="calling-stock">
+          <span class="calling-side calling-front">
+            <img class="calling-engraving" loading="lazy" decoding="async" src="/details/road-engraving.webp" alt="">
+            <img class="calling-mark" src="/gfg-mark.svg" alt="">
+            <span class="calling-name">George<br>Farrow-Green</span>
+            <span class="calling-address">georgefarrowgreen.com</span>
+          </span>
+          <span class="calling-side calling-back" aria-hidden="true">
+            <img class="calling-mark" src="/gfg-mark.svg" alt="">
+            <span class="calling-invite">Open<br>my bio.</span>
+            <span class="calling-address">georgefarrowgreen.com</span>
+            <img class="calling-qr" loading="lazy" src="/details/bio-qr.png" alt="QR code for georgefarrowgreen.com">
+          </span>
+        </span>
+      </button>
+      <div class="calling-actions">
+        <button type="button" class="calling-switch" aria-pressed="false"><span class="calling-tiles" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="calling-caption">Show QR</span></button>
+        <a class="calling-save" href="/details/George-Farrow-Green.vcf" download="George-Farrow-Green.vcf"><span class="calling-add" aria-hidden="true"></span>Save contact</a>
       </div>
     </div>
   </dialog>

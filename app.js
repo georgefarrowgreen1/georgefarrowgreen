@@ -364,6 +364,66 @@ function setupGalleryDrag() {
 
 // Each disclosure has one reversible timeline. Keep native details semantics at
 // rest; while closing, keep the content painted but take its link out of focus.
+function setupDetailsCard() {
+  const launcher = $("#my-details");
+  const sheet = $("#details-sheet");
+  const card = $(".calling-flip", sheet);
+  const stock = $(".calling-stock", card);
+  const front = $(".calling-front", card);
+  const back = $(".calling-back", card);
+  const switchSide = $(".calling-switch", sheet);
+  const caption = $(".calling-caption", switchSide);
+  let progress = 0, target = 0, frame = 0, previousTime = null;
+
+  function paint() {
+    const phase = progress * progress * (3 - 2 * progress);
+    stock.style.transform = `rotateY(${-180 * phase}deg)`;
+    // Explicit face visibility also keeps the QR from showing through on WebKit.
+    front.style.visibility = phase < 0.5 ? "visible" : "hidden";
+    back.style.visibility = phase >= 0.5 ? "visible" : "hidden";
+  }
+
+  function tick(time) {
+    const step = previousTime === null ? 0 : (time - previousTime) / 610;
+    previousTime = time;
+    progress = clamp(progress + (target ? step : -step));
+    paint();
+    if (progress !== target) frame = requestAnimationFrame(tick);
+    else { frame = 0; previousTime = null; }
+  }
+
+  function showSide(reverse, immediately = false) {
+    target = Number(reverse);
+    card.setAttribute("aria-pressed", String(reverse));
+    switchSide.setAttribute("aria-pressed", String(reverse));
+    card.setAttribute("aria-label", reverse ? "Show the front of George Farrow-Green’s card" : "Show the QR code for George Farrow-Green’s bio");
+    caption.textContent = reverse ? "Show front" : "Show QR";
+    front.setAttribute("aria-hidden", String(reverse));
+    back.setAttribute("aria-hidden", String(!reverse));
+    if (immediately || motion.matches) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      previousTime = null;
+      progress = target;
+      paint();
+    } else if (!frame && progress !== target) {
+      frame = requestAnimationFrame(tick);
+    }
+  }
+
+  launcher.setAttribute("aria-haspopup", "dialog");
+  launcher.setAttribute("aria-controls", sheet.id);
+  launcher.addEventListener("click", event => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (!sheet.open) showSide(false, true);
+    openSheet(sheet, launcher);
+  });
+  for (const control of [card, switchSide]) control.addEventListener("click", () => showSide(!target));
+  sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
+  motion.addEventListener("change", () => { if (motion.matches && frame) showSide(Boolean(target), true); });
+}
+
 function setupProjectReveals() {
   if (!Element.prototype.animate) return;
   for (const entry of $$(".fi-entry")) {
@@ -1904,6 +1964,7 @@ let wordsKnown = root.hasAttribute("data-words");
 const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown = true; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; });
 let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
 setupProjectReveals();
+setupDetailsCard();
 setupGalleryDrag();
 setupGalleryMenu();
 setupOpening();
