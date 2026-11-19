@@ -126,11 +126,14 @@ try {
   function cancelGlassPreview(){if(!glassPreview)return;revision++;state={...state,...glassPreview};glassPreview=null;applyGlass();globalThis.dispatchEvent(new CustomEvent('inflite:appearance',{detail:snapshot()}));}
   function pointerAllowed(){return state.glass&&state.glassStrength>0&&hover.matches&&!still.matches&&!transparent.matches&&!contrast.matches&&!forced.matches&&!document.hidden}
   function clearPointer(){if(pointerFrame)cancelAnimationFrame(pointerFrame);pointerFrame=0;if(pointer){pointer.removeAttribute('data-ifl-pointer');pointer.style.removeProperty('--ifl-pointer-x');pointer.style.removeProperty('--ifl-pointer-y')}pointer=null}
-  const surfaces='.ifm-pop,.ifm-grp,.ifm-note,.ifm-card,.ifm-row,.ifh-acts,.ifh-act,.ifl-back,.ifl-tabs,.ifs-btn,.ifa-sheet,.ifb,.ifl-sheet,.glass,.ifl-card,.ifl-list,.ifl-tile,.ws-dock,.ws-dock-button,.ws-launcher button,.pill,.ifl-btn,.ifl-chip.action,.ifl-icon-btn,.appearance-glass-preview-pane,.ch-composer,.ch-field,.mr-bar,.ifx-toolbar,.ifx-sidebar,.ch-attach,.ch-send,.mk-ib,.mv,.ib,.chip-btn,.addb,.tool,.btn:is(.quiet,.ghost),.appearance-palette,.appear,.org-record,.org-date,.ifx-button,.ifx-icon-button,.ifx-action,.ifx-file-main,.ifx-location,button.gbtn,button.c-tool,button.menu-item,.icon-btn,.pill-btn,.row-btn,.acct-btn,.round:not(.me),button.row';
+  const cardSurfaces='.ifm-grp,.ifm-note,.ifm-card,.glass,.ifl-card,.ifl-list,.ifl-tile,.appearance-glass-preview-pane,.org-record,.ifx-file-main';
+  const surfaces='.ifm-pop,.ifm-row,.ifh-acts,.ifh-act,.ifl-back,.ifl-tabs,.ifs-btn,.ifa-sheet,.ifb,.ifl-sheet,.ws-dock,.ws-dock-button,.ws-launcher button,.pill,.ifl-btn,.ifl-chip.action,.ifl-icon-btn,.ch-composer,.ch-field,.mr-bar,.ifx-toolbar,.ifx-sidebar,.ch-attach,.ch-send,.mk-ib,.mv,.ib,.chip-btn,.addb,.tool,.btn:is(.quiet,.ghost),.appearance-palette,.appear,.org-date,.ifx-button,.ifx-icon-button,.ifx-action,.ifx-location,button.gbtn,button.c-tool,button.menu-item,.icon-btn,.pill-btn,.row-btn,.acct-btn,.round:not(.me),button.row';
   const excluded='.primary,.destructive,.filled,.on,.selected,.warn,.error,.danger,.is-primary,.is-destructive,:disabled,[aria-disabled=true],[aria-pressed=true],[aria-selected=true],[data-selected=true],[aria-current],[data-glass-static]';
   function surface(target){
     if(!(target instanceof Element))return null;
+    const card=target.closest(cardSurfaces);
     for(let node=target.closest(surfaces);node;node=node.parentElement?.closest(surfaces)){
+      if(card&&node.contains(card))return null;
       if(node.matches(excluded)||node.closest('[inert], [hidden], .ibars, .ichart')||node.matches('.ib')&&node.querySelector(':scope > i'))continue;
       if(node===pointer)return node;
       if(node.querySelector('canvas,iframe,video,.map,.chart,.sparkline,[data-map]'))continue;

@@ -55,7 +55,7 @@
 }
 
 /* Liquid Glass: shared surface depth, geometry and accessible controls. */
-.ifl-sheet[data-sheet="places"] :is(.wx-place, .wx-find, .wx-found-row) { background: var(--ifl-glass-control, var(--ifl-surface-2)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); }
+.ifl-sheet[data-sheet="places"] :is(.wx-place, .wx-find, .wx-found-row) { background: var(--ifl-glass-control, var(--ifl-surface-2)); box-shadow: inset 0 0 0 1px var(--line); }
 .ifl-sheet[data-sheet="places"] .wx-place[aria-current="true"] { background: color-mix(in srgb, var(--ifl-accent-fill, var(--acc)) 20%, var(--ifl-surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent); }
 .ifl-sheet[data-sheet="places"] :is(.wx-place-go, .wx-found-row) { gap: 12px; }
 .ifl-sheet[data-sheet="places"] .wx-place-tools { flex: none; }

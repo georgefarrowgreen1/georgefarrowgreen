@@ -16,7 +16,7 @@
   --tint: var(--ifl-accent-fill); --tint-ink: var(--ifl-on-accent); --tint-text: var(--ifl-accent-ink); --ift-tint: var(--tint-text);
   --ctl: var(--ifl-surface-2); --field: var(--ctl); --thumb: var(--ifl-raised);
   --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --sheet: var(--glass-strong); --dim: rgba(0, 0, 0, 0.4); --sky-c: var(--ifl-page);
-  --edge: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); --lift: var(--ifl-glass-shadow, var(--ifl-shadow-card)); --sheen: linear-gradient(160deg, var(--ifl-glass-highlight, #ffffff18), transparent 40%); --blur: none;
+  --edge: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); --lift: var(--ifl-glass-shadow, var(--ifl-shadow-card)); --blur: none;
   --m1: light-dark(#1f6feb, #4f9dff); --m2: light-dark(#6a55e0, #8e7cff); --m3: light-dark(#0d9c92, #3ed6c0); --m4: light-dark(#dd8300, #ffb340); --m5: light-dark(#e0446a, #ff6b8b); --m6: light-dark(#8a90a0, #8c93a3);
   --violet: light-dark(#6a55d8, #b6a8ff); --blue: light-dark(#2f6fd6, #7db8ff);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
@@ -37,7 +37,7 @@
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .num { font-variant-numeric: tabular-nums; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .up-t { color: var(--up); } :is(.m-markets[class], .ifl-sheet[data-app=markets]) .down-t { color: var(--down); } :is(.m-markets[class], .ifl-sheet[data-app=markets]) .flat-t { color: var(--text-2); }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-:is(.m-markets[class], .ifl-sheet[data-app=markets]) .glass { position: relative; background: var(--sheen), var(--glass); box-shadow: var(--edge), var(--lift); }
+:is(.m-markets[class], .ifl-sheet[data-app=markets]) .glass { position: relative; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, none); }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .press { transition: transform var(--ifl-motion-release) var(--ease-spring); }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .press:active { transform: scale(var(--ifl-press-scale)); transition-duration: var(--ifl-motion-press); }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .rise { animation: mk-rise var(--ifl-motion-enter) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 5) * var(--ifl-motion-stagger)); }
@@ -168,7 +168,7 @@
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .range52 i { position: absolute; top: -4px; left: var(--at); width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--c, transparent); animation: mk-slide 0.38s var(--ease-out) backwards; }
 @keyframes mk-slide { from { opacity: 0.6; transform: scale(0.8); } }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .range52 + .ends { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); margin-top: 8px; }
-:is(.m-markets[class], .ifl-sheet[data-app=markets]) .list { margin: 0 24px; padding: 0 4px; border-radius: var(--ifl-radius-card, 26px); background: var(--glass); box-shadow: var(--edge), var(--lift); }
+:is(.m-markets[class], .ifl-sheet[data-app=markets]) .list { margin: 0 24px; padding: 0 4px; border-radius: var(--ifl-radius-card, 26px); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, none); }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(84px, auto); align-items: center; gap: 12px; padding: 14px 12px; border-top: 0.5px solid var(--line); transition: opacity 0.2s; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item:first-child { border-top: 0; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item:active { opacity: 0.82; }
@@ -642,19 +642,19 @@
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .field:has(select)::after { content: ""; position: absolute; right: 18px; top: 50%; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
 
 /* Liquid Glass materials share the existing surface aliases; content never samples the backdrop. */
-:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.list:not(.flush), .plan, .ystat, .ryou, .field, .tool:not(.on), .range-controls, .per) { background-image: var(--sheen); }
-:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.plan, .ystat, .ryou, .tool:not(.on), .mv, .addb, .nmore, .del, .rtwo button) { box-shadow: var(--edge); }
+:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.list:not(.flush), .plan, .ystat, .ryou, .field, .tool:not(.on), .range-controls, .per) { background-image: none; }
+:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.plan, .ystat, .ryou, .tool:not(.on), .mv, .addb, .nmore, .del, .rtwo button) { box-shadow: inset 0 0 0 1px var(--line); }
 :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.btn, .readit, .choice button, .chip) { box-shadow: var(--edge), var(--ifl-shadow-control, none); }
 :is(.m-markets, .ifl-sheet[data-app=markets]) .field input::placeholder { color: var(--text-2); opacity: 1; }
 :is(.m-markets, .ifl-sheet[data-app=markets]) .del::after { inset: 0; }
 :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.mk-ic, .tool svg, .mv svg, .addb svg) { flex-shrink: 0; }
 :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.item, .res, .srow) { border-radius: var(--ifl-radius-row, 16px); }
 /* News actions are floating chrome, like the framework's sheets. */
-:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.amg, .amc) { background: var(--sheen), var(--ifl-glass-strong, var(--glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
+:is(.m-markets, .ifl-sheet[data-app=markets]) :is(.amg, .amc) { background: var(--ifl-glass-strong, var(--glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
 @media (hover: hover) and (pointer: fine) { :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.item, .res, .srow, .story):hover { background-color: var(--ifl-press, var(--ctl)); } }
 @media (prefers-reduced-motion: reduce) { :is(.m-markets, .ifl-sheet[data-app=markets]) .live, :is(.m-markets, .ifl-sheet[data-app=markets]) .nowdot::after { animation: none; } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :is(.m-markets, .ifl-sheet[data-app=markets]) { --sheen: linear-gradient(transparent, transparent); --edge: inset 0 0 0 1px var(--line); }
+  :is(.m-markets, .ifl-sheet[data-app=markets]) { --edge: inset 0 0 0 1px var(--line); }
   :is(.m-markets, .ifl-sheet[data-app=markets]) :is(.amg, .amc) { background: var(--glass-strong); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (forced-colors: active) {

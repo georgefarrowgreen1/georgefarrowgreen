@@ -224,19 +224,19 @@
 .m-chats .ch-row.unread .ch-rline { font-weight: 500; }
 
 /* Liquid Glass content stays static; the keyboard-aware composer is the floating chrome. */
-.m-chats { --ch-rim: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); --ch-sheen: linear-gradient(155deg, var(--ifl-glass-highlight, #ffffff18), transparent 42%); }
-.m-chats :is(.ch-list, .ch-req, .ch-news, .ch-airp, .ch-b.sealed) { background: var(--ch-sheen), var(--ifl-surface, var(--glass)); box-shadow: var(--ch-rim), var(--ifl-glass-shadow, var(--lift)); }
-.m-chats .ch-b:not(.sealed):not(.up) { box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff18); }
+.m-chats { --ch-rim: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); }
+.m-chats :is(.ch-list, .ch-req, .ch-news, .ch-airp, .ch-b.sealed) { background: var(--ifl-surface, var(--glass)); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--lift)); }
+.m-chats .ch-b:not(.sealed):not(.up) { box-shadow: inset 0 0 0 1px var(--line); }
 .m-chats .ch-r { min-height: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 2px 8px; background: var(--ifl-raised, var(--solid)); }
 .m-chats .ch-r.mine { border-color: var(--acc-ink); background: var(--ifl-accent-wash, var(--glass-ctl)); box-shadow: inset 0 0 0 1px var(--acc-ink); }
 .m-chats .ch-rx { flex-wrap: wrap; max-width: calc(100% - 44px); }
 .m-chats .ch-composer { background: var(--ifl-glass-strong, var(--ifl-page, var(--solid))); border-top-color: var(--ifl-glass-line, var(--line)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
-.m-chats .ch-field { background: var(--ch-sheen), var(--ifl-surface-2, var(--field)); }
+.m-chats .ch-field { background: var(--ifl-surface-2, var(--field)); }
 .m-chats :is(.ch-send, .ch-attach) { box-shadow: var(--ch-rim), var(--ifl-shadow-control, none); }
-.m-chats .ch-latest { background: var(--ch-sheen), var(--ifl-glass-strong, var(--solid)); box-shadow: var(--ch-rim), var(--ifl-glass-shadow, var(--lift)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
+.m-chats .ch-latest { background: var(--ifl-glass-strong, var(--solid)); box-shadow: var(--ch-rim), var(--ifl-glass-shadow, var(--lift)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); }
 @media (hover: hover) and (pointer: fine) { .m-chats .ch-row:hover { background: var(--ifl-press, var(--press)); } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .m-chats { --ch-sheen: linear-gradient(transparent, transparent); --ch-rim: inset 0 0 0 1px var(--line); }
+  .m-chats { --ch-rim: inset 0 0 0 1px var(--line); }
   .m-chats :is(.ch-composer, .ch-latest) { background: var(--ifl-page, var(--solid)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (forced-colors: active) {

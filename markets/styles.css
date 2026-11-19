@@ -827,7 +827,7 @@ button.rcell { width: 100%; padding: 8px; } button.rcell[aria-expanded="true"] >
 /* ---- the desk's News screen: a note for the morning across the top; your list, the stories, and the one chosen ---- */
 .nscreen { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
 .nwait { justify-content: center; align-items: center; }
-.nnote { display: grid; grid-template-columns: 1.25fr 1.3fr 1fr; gap: 32px; padding: 16px 20px 15px; background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--ift-tint) 12%, transparent), transparent 60%), var(--sheen), var(--glass); }
+.nnote { display: grid; grid-template-columns: 1.25fr 1.3fr 1fr; gap: 32px; padding: 16px 20px 15px; background: var(--glass); }
 .nnote h3 { margin: 0 0 7px; font: 650 11.5px/1.2 var(--font); letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-2); }
 .nnote p { margin: 0; font: 500 15.5px/1.45 var(--font-d); letter-spacing: -0.15px; color: var(--text); text-wrap: pretty; }
 .nnote p.sub { margin-top: 5px; font: 400 13px/1.45 var(--font); letter-spacing: 0; color: var(--text-2); }
@@ -1448,11 +1448,11 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 
 /* Pointer light follows one curated surface; content, primary fills and input geometry stay stable. */
 @media (hover: hover) and (pointer: fine) {
-  :root[data-glass="on"] :is(.ifm-pop, .ifm-grp, .ifm-note, .ifm-card, .ifm-row, .ifh-acts, .ifh-act, .ifl-back, .ifl-tabs, .ifs-btn, .ifa-sheet, .ifb, .ifl-sheet, .glass, .ifl-card, .ifl-list, .ifl-tile, .ws-dock, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-composer, .ch-field, .mr-bar, .ifx-toolbar, .ifx-sidebar, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row)[data-ifl-pointer]:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+  :root[data-glass="on"] :is(.ifm-pop, .ifm-row, .ifh-acts, .ifh-act, .ifl-back, .ifl-tabs, .ifs-btn, .ifa-sheet, .ifb, .ifl-sheet, .ws-dock, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-composer, .ch-field, .mr-bar, .ifx-toolbar, .ifx-sidebar, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row)[data-ifl-pointer]:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
     background-image: var(--ifl-glass-shine, none);
   }
 }
-:root[data-glass="on"] :is(.ifh-act, .ifl-back, .ifs-btn, .ifm-card, .ifm-row, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):focus-visible:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+:root[data-glass="on"] :is(.ifh-act, .ifl-back, .ifs-btn, .ifm-row, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):focus-visible:not(:is(.ifm-grp, .ifm-note, .ifm-card, .glass, .ifl-card, .ifl-list, .ifl-tile, .appearance-glass-preview-pane, .org-record, .ifx-file-main, .primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
   background-image: var(--ifl-glass-shine, none);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -1726,14 +1726,14 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 @media (prefers-reduced-motion: reduce) { html.bio-arrival::before, html.bio-arrival::after { display: none; } }
 /* ==== End Bio arrival ==== */
 
-/* Liquid Glass: quiet specular rims on content; chart geometry remains renderer-owned. */
+/* Liquid Glass: quiet neutral content surfaces; chart geometry remains renderer-owned. */
 :root {
   --mk-rim: inset 0 1px 0 var(--ifl-glass-highlight, #ffffff30), inset 0 0 0 1px var(--ifl-glass-line, var(--line));
-  --mk-sheen: linear-gradient(160deg, var(--ifl-glass-highlight, #ffffff18), transparent 40%);
+
 }
-:is(.glass, .list:not(.flush), .bcard) { background: var(--mk-sheen), var(--glass); box-shadow: var(--mk-rim), var(--ifl-glass-shadow, var(--lift)); }
-:is(.plan, .ystat, .ryou, .tool:not(.on)) { background: var(--mk-sheen), var(--ctl); box-shadow: var(--mk-rim); }
-:is(.field, .range-controls, .per) { background: var(--mk-sheen), var(--field); }
+:is(.glass, .list:not(.flush), .bcard) { background: var(--glass); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--lift)); }
+:is(.plan, .ystat, .ryou, .tool:not(.on)) { background: var(--ctl); box-shadow: inset 0 0 0 1px var(--line); }
+:is(.field, .range-controls, .per) { background: var(--field); }
 .field { min-height: 52px; }
 .field input::placeholder { color: var(--text-2); opacity: 1; }
 :is(.btn, .readit, .choice button, .chip, .rtwo button) { box-shadow: var(--mk-rim), var(--ifl-shadow-control, none); }
@@ -1759,7 +1759,7 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
   .live, .nowdot::after { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --mk-sheen: linear-gradient(transparent, transparent); --mk-rim: inset 0 0 0 1px var(--line); }
+  :root { --mk-rim: inset 0 0 0 1px var(--line); }
 }
 @media (forced-colors: active) {
   :is(.glass, .list:not(.flush), .bcard, .plan, .ystat, .ryou, .field, .btn, .tool, .choice button, .chip, .rtwo button, .range-controls) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }
@@ -1767,7 +1767,7 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 }
 
 /* Only floating chrome samples the content behind it. */
-:is(.sheet, .amg, .amc, .dmenu, .tabs) { background: var(--mk-sheen), var(--ifl-glass-strong, var(--glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); box-shadow: var(--mk-rim), var(--ifl-glass-shadow, var(--lift)); }
+:is(.sheet, .amg, .amc, .dmenu, .tabs) { background: var(--ifl-glass-strong, var(--glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none); box-shadow: var(--mk-rim), var(--ifl-glass-shadow, var(--lift)); }
 .dmenu button { min-height: 44px; }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   :is(.sheet, .amg, .amc, .dmenu, .tabs) { background: var(--glass-strong); -webkit-backdrop-filter: none; backdrop-filter: none; }

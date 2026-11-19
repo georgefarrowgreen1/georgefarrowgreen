@@ -60,7 +60,7 @@
 @media (min-width: 980px) { .m-fitness .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; align-items: start; } }
 
 /* ---- from fitness/styles.css ---- */
-.m-fitness .glass{position: relative; background: var(--glass); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--edge), var(--lift);}
+.m-fitness .glass{position: relative; background: var(--glass); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--line), var(--lift);}
 .m-fitness .rise{animation: fx-rise var(--ifl-motion-enter, .36s) var(--ifl-motion-spring, ease-out) backwards; animation-delay: calc(min(var(--i, 0), 3) * var(--ifl-motion-stagger, 24ms));}
 @keyframes fx-rise { from { transform: translateY(var(--ifl-motion-distance, 8px)); } }
 .m-fitness .screen.in{animation: none;}
@@ -960,7 +960,7 @@
 @media (prefers-reduced-motion: reduce) { .m-fitness .day-in, .m-fitness .checkin-said { animation: none; } }.m-fitness:is([data-motion-paused] *) .bringing .bar i, .m-fitness:is([data-motion-paused] *) .wait::after, .m-fitness:is([data-motion-paused] *) .share-frame::after, .m-fitness[hidden] *, .m-fitness[hidden] *::before, .m-fitness[hidden] *::after, .m-fitness .fx-sec[hidden] *, .m-fitness .fx-sec[hidden] *::before, .m-fitness .fx-sec[hidden] *::after, .m-fitness:is([hidden] *) .bringing .bar i, .m-fitness:is([hidden] *) .share-frame::after { animation-play-state: paused; }
 
 /* Liquid Glass: shared surface depth, geometry and accessible controls. */
-.m-fitness .glass { background-image: linear-gradient(145deg, color-mix(in srgb, var(--ifl-glass-highlight, transparent) 32%, transparent), transparent 55%); }
+.m-fitness .glass { background-image: none; }
 .m-fitness :is(.card, .group) { min-width: 0; }
 .m-fitness :is(.verdict, .fit-tiles > div, .mv-day, .pt-part, .hk-box, .nt, .nc-effect, .rv-day, .gday, .ride-at, .repeat, .p-record, .p-lens button) { border-radius: var(--ifl-radius-row, 16px); }
 .m-fitness :is(.note, .drop-zone, .note-garmin) { border-radius: var(--ifl-radius-group, 22px); }
@@ -976,7 +976,6 @@
 .m-fitness :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--tint-text); outline-offset: 3px; }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .m-fitness { --glass: var(--ifl-surface); --glass-strong: var(--ifl-raised); --glass-ctl: var(--ifl-surface-2); --field: var(--ifl-surface-2); }
-  .m-fitness .glass { background-image: none; }
 }
 @media (forced-colors: active) {
   .m-fitness :is(.glass, .choice, .pick, .field, .seg, .seg3 button, .pill, .btn, .stepper) { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; }

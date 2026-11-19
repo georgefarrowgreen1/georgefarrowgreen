@@ -3229,11 +3229,11 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
 
 /* Pointer light follows one curated surface; content, primary fills and input geometry stay stable. */
 @media (hover: hover) and (pointer: fine) {
-  :root[data-glass="on"] :is(.ifm-pop, .ifm-grp, .ifm-note, .ifm-card, .ifm-row, .ifh-acts, .ifh-act, .ifl-back, .ifl-tabs, .ifs-btn, .ifa-sheet, .ifb, .ifl-sheet, .glass, .ifl-card, .ifl-list, .ifl-tile, .ws-dock, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-composer, .ch-field, .mr-bar, .ifx-toolbar, .ifx-sidebar, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row)[data-ifl-pointer]:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+  :root[data-glass="on"] :is(.ifm-pop, .ifm-row, .ifh-acts, .ifh-act, .ifl-back, .ifl-tabs, .ifs-btn, .ifa-sheet, .ifb, .ifl-sheet, .ws-dock, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-composer, .ch-field, .mr-bar, .ifx-toolbar, .ifx-sidebar, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row)[data-ifl-pointer]:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
     background-image: var(--ifl-glass-shine, none);
   }
 }
-:root[data-glass="on"] :is(.ifh-act, .ifl-back, .ifs-btn, .ifm-card, .ifm-row, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-record, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-file-main, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):focus-visible:not(:is(.primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
+:root[data-glass="on"] :is(.ifh-act, .ifl-back, .ifs-btn, .ifm-row, .ws-dock-button, .ws-launcher button, .pill, .ifl-btn, .ifl-chip.action, .ifl-icon-btn, .ch-attach, .ch-send, .mk-ib, .mv, .ib:not(:has(> i)), .chip-btn, .addb, .tool, .btn:is(.quiet,.ghost), .appearance-palette, .appear, .org-date, .ifx-button, .ifx-icon-button, .ifx-action, .ifx-location, button.gbtn, button.c-tool, button.menu-item, .icon-btn, .pill-btn, .row-btn, .acct-btn, .round:not(.me), button.row):focus-visible:not(:is(.ifm-grp, .ifm-note, .ifm-card, .glass, .ifl-card, .ifl-list, .ifl-tile, .appearance-glass-preview-pane, .org-record, .ifx-file-main, .primary, .is-primary, .destructive, .is-destructive, .filled, .ch-send, .on, .selected, .warn, .error, .danger, :disabled, [aria-disabled="true"], [aria-pressed="true"], [aria-selected="true"], [data-selected="true"], [aria-current])) {
   background-image: var(--ifl-glass-shine, none);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -3351,22 +3351,22 @@ html.bio-arrival.bio-arrived::before, html.bio-arrival.bio-arrived::after { anim
 /* ==== End Bio arrival ==== */
 
 /* Liquid Glass: static content rims; blur is reserved for floating conversation chrome. */
-:root { --chat-rim: inset 0 1px 0 var(--ifl-glass-highlight,#ffffff30), inset 0 0 0 1px var(--ifl-glass-line,var(--sep)); --chat-sheen: linear-gradient(155deg,var(--ifl-glass-highlight,#ffffff18),transparent 42%); }
-:is(.group, .acard, .heldrow, .replybar, .attach) { background-image: var(--chat-sheen); box-shadow: var(--chat-rim), var(--ifl-glass-shadow,var(--lift)); }
-:is(.sheet, .menu-pop, .asheet .grp, .asheet .cancel) { background: var(--chat-sheen), var(--ifl-glass-strong,var(--pane-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur,none); backdrop-filter: var(--ifl-glass-blur,none); box-shadow: var(--chat-rim), var(--ifl-glass-shadow,var(--lift)); }
+:root { --chat-rim: inset 0 1px 0 var(--ifl-glass-highlight,#ffffff30), inset 0 0 0 1px var(--ifl-glass-line,var(--sep)); }
+:is(.group, .acard, .heldrow, .replybar, .attach) { background-image: none; box-shadow: inset 0 0 0 1px var(--sep), var(--ifl-shadow-card,var(--lift)); }
+:is(.sheet, .menu-pop, .asheet .grp, .asheet .cancel) { background: var(--ifl-glass-strong,var(--pane-strong)); -webkit-backdrop-filter: var(--ifl-glass-blur,none); backdrop-filter: var(--ifl-glass-blur,none); box-shadow: var(--chat-rim), var(--ifl-glass-shadow,var(--lift)); }
 .compose { background: var(--ifl-glass-strong,var(--bg)); border-top-color: var(--ifl-glass-line,var(--sep)); -webkit-backdrop-filter: var(--ifl-glass-blur,none); backdrop-filter: var(--ifl-glass-blur,none); }
-.compose .field-wrap { background: var(--chat-sheen), var(--cell-2); box-shadow: var(--chat-rim); }
+.compose .field-wrap { background: var(--cell-2); box-shadow: var(--chat-rim); }
 .compose .field-wrap:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
 .compose .mic { width: 44px; min-height: 44px; }
 :is(.plus, .nbtn, .compose .send) { box-shadow: var(--chat-rim), var(--ifl-shadow-control,none); }
 .rpill.mine { box-shadow: inset 0 0 0 1px var(--tint), 0 0 0 2px var(--bg); }
-.rrow button { background: var(--chat-sheen), var(--cell-2); box-shadow: var(--chat-rim); }
+.rrow button { background: var(--cell-2); box-shadow: var(--chat-rim); }
 .rrow button.on { background: var(--ifl-accent-wash,var(--fill)); box-shadow: inset 0 0 0 1.5px var(--tint); }
 .btn.small { min-height: 44px; }
 :is(.replybar button, .attach button) { width: 44px; height: 44px; }
 @media (hover: hover) and (pointer: fine) { :is(.mrow, .cell, .menu-pop .mi):hover { background-color: var(--fill); } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --chat-sheen: linear-gradient(transparent,transparent); --chat-rim: inset 0 0 0 1px var(--sep); }
+  :root { --chat-rim: inset 0 0 0 1px var(--sep); }
   :is(.sheet, .menu-pop, .asheet .grp, .asheet .cancel, .compose) { background: var(--pane-strong); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (forced-colors: active) {

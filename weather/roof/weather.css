@@ -370,8 +370,8 @@
 
 /* Liquid Glass: shared surface depth, geometry and accessible controls. */
 .m-weather { --wx-gap: var(--ifl-space-4, 16px); }
-.m-weather .wx-hero { background: var(--ifl-glass-strong, var(--ifl-surface)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)), var(--ifl-glass-shadow, var(--ifl-shadow-card)); }
-.m-weather :is(.wx-tile, .wx-win) { background: var(--ifl-glass-control, var(--ifl-surface-2)); box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), inset 0 0 0 1px var(--ifl-glass-line, var(--line)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.m-weather .wx-hero { background: var(--ifl-glass-strong, var(--ifl-surface)); box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, none); }
+.m-weather :is(.wx-tile, .wx-win) { background: var(--ifl-glass-control, var(--ifl-surface-2)); box-shadow: inset 0 0 0 1px var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .m-weather :is(.wx-tile-k, .win-name, .wx-card-title, .wx-facts > li) { min-width: 0; overflow-wrap: anywhere; }
 .m-weather :is(.wx-g, .wx-chev) { flex: none; place-items: center; }
 .m-weather :is(.wx-alert, .wx-card, .wx-hero) { min-width: 0; }

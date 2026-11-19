@@ -10,6 +10,18 @@ for(const width of [320,390,1440])test(`Markets comparisons and chart ranges wor
  const p=await ctx.newPage();p.setDefaultTimeout(8000);p.on('pageerror',e=>errors.push(e.message));
  try{await p.goto(KIT+'/?module=/markets/roof/markets.js&apps=weather,markets');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/'));await p.locator('.pseg.range-controls').waitFor();
  assert.deepEqual(await p.locator('.pseg button').allTextContents(),['Day','Week','Month','Year']);
+ if (width === 390) {
+   for (const selector of ['.mk-portfolio.glass', '.pseg.range-controls', '.cards .card.glass']) {
+     const surface = p.locator(selector).first();
+     await surface.waitFor();
+     const style = await surface.evaluate(node => {
+       const { backgroundImage, boxShadow } = getComputedStyle(node);
+       return { backgroundImage, boxShadow };
+     });
+     assert.equal(style.backgroundImage, 'none', selector);
+     assert.doesNotMatch(style.boxShadow, /0px 1px 0px 0px inset/, selector);
+   }
+ }
  await p.locator('.pseg button[data-r="1mo"]').click();await p.waitForFunction(()=>document.querySelector('[data-el=ps]')?.textContent==='this month');assert.equal(await p.locator('.pseg [aria-pressed=true]').getAttribute('data-r'),'1mo');
  await p.evaluate(()=>kit.F.nav.go('/markets/#holdings'));const overview=p.locator('.portfolio-overview');await overview.waitFor();assert.deepEqual(await overview.locator('dt').allTextContents(),['Portfolio','Total return','Cash','Paid dividends']);
  const text=await overview.textContent();assert.match(text,/£/);assert.doesNotMatch(text,/NaN|undefined/);assert.match(await p.locator('.stats-note').textContent(),/Return covers 3 of 4/);

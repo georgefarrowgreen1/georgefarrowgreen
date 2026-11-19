@@ -649,8 +649,8 @@ body {
 }
 .glass {
   border-radius: var(--ifl-radius-card, 26px);
-  background: linear-gradient(155deg, var(--ifl-glass-highlight, transparent), transparent 48%), var(--card);
-  box-shadow: inset 0 1px 0 var(--ifl-glass-highlight, transparent), var(--ifl-glass-shadow, var(--shadow));
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--ifl-shadow-card, var(--shadow));
 }
 .mark { background: var(--ifl-surface-2); box-shadow: inset 0 0 0 1px var(--line); }
 .word { letter-spacing: -.04em; }
