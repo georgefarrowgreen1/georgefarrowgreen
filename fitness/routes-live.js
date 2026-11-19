@@ -1,7 +1,14 @@
 // Live Routes uses Fitness's own surfaces and controls. No sample geometry or forecast.
 import { icon, sportIcon } from "./ui.js";
-import { geometry, profile, estimate, toGPX, pointOK } from "./routes-geometry.js";
+import { geometry, profile, estimate, toGPX, pointOK, RIDE_TYPES, routeLabel } from "./routes-geometry.js";
 import { generateRoutes, readRoutePlan, saveRoutePlan } from "./routes-account.js";
+
+const rideOptions = RIDE_TYPES.map(type => [type, routeLabel(type)]);
+const terrainDescriptions = {
+  gravel: "Firm unpaved tracks and gravel, linked by quieter roads.",
+  mtb: "Off-road trails and tracks, with roads between them.",
+};
+
 function createLiveRoutes(root, opts = {}) {
   const doc = root.ownerDocument, owner = opts.owner, metric = opts.metric !== false, speed = opts.speed || 22;
   const e = (t, c, text) => {
@@ -257,7 +264,10 @@ function createLiveRoutes(root, opts = {}) {
     tile.append(sportIcon("ride", 20));
     copy.append(e("b", "", opts.workout?.name || "A ride from here"), e("span", "", opts.workout ? `${duration(opts.workout.minutes)} planned` : "A cycling loop back to where you start"));
     row.append(tile, copy);
-    context.append(row, e("p", "fr-location", loc ? "Starts and finishes near your selected location." : "Use your current location as the start and finish."));
+    const terrainDescription = surface === "road"
+      ? avoidUnpaved ? "Paved roads, lanes and cycleways." : "Roads and lanes, with some unpaved sections possible."
+      : terrainDescriptions[surface];
+    context.append(row, e("p", "fr-location", terrainDescription));
     const controls = e("div", "group glass fr-filters");
     const rowDistance = e("label", "row plain fr-field"), txDistance = e("span", "tx"), wrapDistance = e("span", "pick fr-distance"), input = e("input");
     txDistance.append(e("b", "", "Distance"));
@@ -278,7 +288,7 @@ function createLiveRoutes(root, opts = {}) {
     }, {signal:events.signal});
     wrapDistance.append(input, e("span", "", metric ? "km" : "mi"));
     rowDistance.append(txDistance, wrapDistance);
-    controls.append(rowDistance, pick("Surface", [["road", "Road cycling"], ["mixed", "Mixed surface"]], surface, v => { surface = v; }));
+    controls.append(rowDistance, pick("Ride type", rideOptions, surface, v => { surface = v; }));
     if(surface==="road"){
       controls.append(pick("Roads",[["main","Main roads"],["quiet","Quiet lanes"]],roadPreference,v=>{roadPreference=v;}));
       const row=e("label","row plain fr-field fr-paved-toggle"),copy=e("span","tx"),toggle=e("span","fr-road-switch"),input=e("input"),track=e("span","fr-road-track");
@@ -306,7 +316,7 @@ function createLiveRoutes(root, opts = {}) {
       const d = "M24 56C7 39 20 12 43 22S83 8 99 30S88 70 66 62S38 76 24 56Z";
       animation.append(svg("path", {d, class:"fr-loading-track"}), svg("path", {d, pathLength:100, class:"fr-loading-sweep"}), svg("circle", {cx:24,cy:56,r:4,class:"fr-loading-start"}));
       const copy = e("div", "fr-loading-copy");
-      copy.append(e("b", "", "Planning your loop"), e("span", "", `Around ${distance} ${metric ? "km" : "mi"} · ${surface === "road" ? "Road cycling" : "Mixed surface"}`));
+      copy.append(e("b", "", "Planning your loop"), e("span", "", `Around ${distance} ${metric ? "km" : "mi"} · ${routeLabel(surface)}`));
       loading.append(animation, copy);
       locate.append(loading);
     }
@@ -330,7 +340,9 @@ function createLiveRoutes(root, opts = {}) {
         const tx = e("span", "tx fr-route-copy"), name = e("span", "fr-route-name"), meta = e("span", "fr-route-meta");
         name.append(e("b", "", r.name));
         if (!i) meta.append(e("span", "badge plan", "Best match"));
-        meta.append(e("span", "fr-surface", r.surface === "road" ? "Road cycling" : "Mixed surface"));
+        meta.append(e("span", "fr-surface", routeLabel(r.surface)));
+        if (r.surface === "gravel" && r.terrain) meta.append(e("span", "fr-surface", `${r.terrain.gravel}% gravel and firm track`));
+        if (r.surface === "mtb" && r.terrain) meta.append(e("span", "fr-surface", `${r.terrain.trail}% mapped trail`));
         if(r.surface==="road"&&r.roadPreference)meta.append(e("span","fr-surface",r.roadPreference==="quiet"?"Quiet lanes":"Main roads"));
         if(r.targetMetres){const error=Math.abs(r.metres-r.targetMetres)/r.targetMetres;meta.append(e("span","fr-surface",`Within ${error<=.05?5:10}% of ${km(r.targetMetres)}`));}
         tx.append(name, e("small", "", `${km(r.metres)} · ${r.ascent == null ? "Elevation unavailable" : "↑ " + up(r.ascent)} · ≈ ${duration(estimate(r, speed))}`), meta);
@@ -395,7 +407,7 @@ function createLiveRoutes(root, opts = {}) {
     root.replaceChildren(btn("‹ All routes", () => showList(true), "link fr-back"));
     const layout = e("div", "cols fr-detail-grid"), main = e("div", "fr-detail-main"), aside = e("div", "fr-detail-aside"), hero = e("section", "card glass session fr-route-hero"), kind = e("span", "sport"), tile = e("i", "s-ride");
     tile.append(sportIcon("ride", 14));
-    kind.append(tile, doc.createTextNode(r.source === "imported-gpx" ? "Ride · Imported GPX" : r.surface === "road" ? "Ride · Road cycling" : "Ride · Mixed surface"));
+    kind.append(tile, doc.createTextNode(r.source === "imported-gpx" ? "Ride · Imported GPX" : `Ride · ${routeLabel(r.surface)}`));
     const heading = e("div", "fr-detail-title"), h = e("h2", "", r.name);
     heading.append(kind, h, e("p", "about", r.source === "imported-gpx" ? "Review your imported route before planning the ride." : "A cycling loop back to your starting point."));
     hero.append(heading);
@@ -419,8 +431,14 @@ function createLiveRoutes(root, opts = {}) {
       stats.append(stat);
     }
     hero.append(stats);
+    if (r.terrain) {
+      const { paved, gravel, unpaved, unknown } = r.terrain;
+      const surfaces = [[paved, "paved"], [gravel, "gravel or firm track"], [unpaved, "other unpaved"], [unknown, "surface unknown"]];
+      const summary = surfaces.filter(([percent]) => percent > 0).map(([percent, label]) => `${percent}% ${label}`).join(" · ");
+      hero.append(e("p", "fr-surface-info", summary));
+    }
     const note = e("p", "fr-fit-note");
-    note.append(icon("today", 15, 2), e("span", "", r.source === "imported-gpx" ? "Imported GPX · Road access, surface and cycling suitability have not been checked." : r.snap > 15 ? `Starts and finishes on a cycling road ${r.snap} m from your selected location.` : "Starts and finishes at your selected location, snapped to a cycling road."));
+    note.append(icon("today", 15, 2), e("span", "", r.source === "imported-gpx" ? "Imported GPX · Road access, surface and cycling suitability have not been checked." : r.snap > 15 ? `Starts and finishes ${r.snap} m from your selected location.` : "Starts and finishes near your selected location."));
     hero.append(note);
     const exportButton = btn("Export GPX", () => {
       const url = URL.createObjectURL(new Blob([toGPX(r)], { type: "application/gpx+xml" })), a = e("a");

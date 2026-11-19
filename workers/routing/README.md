@@ -21,23 +21,23 @@ the Java gateway checks/restarts its engine after a crash, with a restart ceilin
 minutes. Container internet access is disabled: serving routes needs no public routing server, map download or
 external credential. The site's map tiles remain its existing OpenFreeMap renderer.
 
-The owned road profile (`profiles/road.brf`) derives from BRouter `fastbike`, with a light traffic penalty, lower
-costs for paved primary/secondary/tertiary roads, and higher costs for residential/service shortcuts and unpaved
-sections. Steps and ferries are disabled; the upstream motorway, trunk and access restrictions are retained. Main roads and Quiet lanes are separate immutable variants: quiet lanes strengthen traffic avoidance and reduce the
-residential penalty. Avoid unpaved selects a strict variant that excludes known unpaved surfaces and grade 2–5 tracks;
-missing map surface tags remain unknown. Mixed still derives from `trekking`.
+The owned profiles in `profiles/road.brf` derive from BRouter `fastbike`. Road offers Main roads, Quiet lanes and
+an Avoid unpaved switch. Gravel favours aggregate and firm tracks with quieter connections. Mountain bike favours
+mapped trails and tracks and avoids the harder mapped technical grades. The profiles respect mapped riding
+restrictions and exclude motor roads, steps, ferries and fords. The legacy Mixed profile remains available for
+existing clients and saved plans.
 
-Distance controls waypoint radius and adaptive scaling. The planner tries six directions with at most nine sequential
-calculations and the existing 75-second deadline, refining candidates towards 5% and rejecting distances outside 10%.
-Ranking considers distance error, repeated roads and the selected road preference. Alternatives share at most 65%
-of their sampled 40 m road corridors; reversed/resampled versions of the same loop do not count as new choices.
-Flatter/More climbing labels require measured elevation and at least 30 m / 15% difference from the recommendation.
-Fewer genuine alternatives are returned when necessary. Climbing affects labels, not the distance target. The API
-reserves nine calculations against its existing global budget; account and concurrency limits remain in force. Already-open 2.05 clients can still send their legacy time request during rollout. Intermediate waypoints can snap up to
-1 km to a cycling road, which avoids rejecting a loop merely because a proposed via point falls in a field.
-All five profiles enable misplaced-via correction without a spur-length cap: arbitrary shaping points must not force
-out-and-back dead-end visits. Fitness independently rejects a start snapped over 250 m away, invalid/discontinuous/open
-tracks, internal reverse-travel spurs over 10 m, excessive overlap and unsuitable distances. BRouter/OpenStreetMap access data is not a guarantee of current conditions.
+The planner tries six bearings across the compass and compares wider and narrower loops. The remaining budget
+refines distances against measured routes and can reuse a mapped gravel or trail section as a waypoint. It
+allows at most nine sequential requests with a 75-second deadline and a 10% distance tolerance. Candidates with
+internal turn-back spurs, too much retracing, large start offsets or unsuitable terrain are dropped. Options
+share at most 65% of their sampled corridors, and climbing labels require matching elevation evidence.
+
+Gravel requires at least 18% mapped gravel or firm track. Mountain bike requires at least 25% mapped trail.
+Unknown surface stays visible in the breakdown. Map access, trail grades and surface are taken from the
+snapshot. Local signs, conditions and temporary closures can differ. Existing account and concurrency limits
+apply, and intermediate waypoints can snap up to 1 km. Release checks exercise real Road, Gravel and Mountain
+bike loops and validate the mapped terrain on the two off-road profiles.
 
 ## Deployment and readiness
 

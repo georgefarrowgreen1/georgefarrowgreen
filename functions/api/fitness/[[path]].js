@@ -2,7 +2,7 @@ import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
-//   POST   /api/fitness/routes/generate  bicycle loops from a GPS point, duration and surface
+//   POST   /api/fitness/routes/generate  road, gravel and mountain-bike loops from a GPS point and target distance
 //   GET|PUT|DELETE /api/fitness/routes/plan the account’s planned route and departure
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
 //                                    (?since=<ms>: only those changed since, and every one's id); your rides' times of day

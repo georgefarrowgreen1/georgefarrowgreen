@@ -1,5 +1,9 @@
 // Shared calculations for generated routes. No sample catalog, network or account state.
 const MAX_POINTS = 12e3;
+const RIDE_TYPES = Object.freeze(["road", "gravel", "mtb"]);
+const RIDE_LABELS = Object.freeze({ road: "Road", gravel: "Gravel", mtb: "Mountain bike", mixed: "Mixed surface" });
+const routeLabel = (surface) => RIDE_LABELS[surface] || RIDE_LABELS.mixed;
+const supportedSurface = (surface) => typeof surface === "string" && Object.hasOwn(RIDE_LABELS, surface);
 const pointOK = (p) => Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number" && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) < 85;
 function metresBetween(a, b) {
   const r = Math.PI / 180, dlat = (b[1] - a[1]) * r, dlon = (b[0] - a[0]) * r;
@@ -30,7 +34,7 @@ function trackStats(coords) {
 }
 function cleanRoute(r) {
   const imported = r?.source === "imported-gpx";
-  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !["road", "mixed"].includes(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < (imported ? 2 : 10) || r.coords.length > MAX_POINTS) return null;
+  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !supportedSurface(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < (imported ? 2 : 10) || r.coords.length > MAX_POINTS) return null;
   const coords = [];
   for (const c of r.coords) {
     if (!pointOK(c) || c.length > 3 || c[2] != null && (!Number.isFinite(c[2]) || c[2] < -500 || c[2] > 1e4)) return null;
@@ -40,7 +44,15 @@ function cleanRoute(r) {
   if (stats.metres < (imported ? 100 : 1e3) || stats.metres > (imported ? 5e5 : 22e4) || !imported && metresBetween(coords[0], coords.at(-1)) > 25 || snap > (imported ? 1 : 250)) return null;
   for (let i = 1; i < coords.length; i++) if (metresBetween(coords[i - 1], coords[i]) > 2500) return null;
   const planning=!imported&&Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
-  return { ...planning,id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+  const terrain = imported ? null : cleanTerrain(r.terrain);
+  return { ...planning, id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(terrain ? { terrain } : {}), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+}
+function cleanTerrain(data) {
+  if (!data || typeof data !== "object") return null;
+  const { paved, gravel, unpaved, unknown, trail } = data;
+  if (![paved, gravel, unpaved, unknown, trail].every(n => Number.isInteger(n) && n >= 0 && n <= 100) ||
+      paved + gravel + unpaved + unknown !== 100 || trail > 100 - paved) return null;
+  return { paved, gravel, unpaved, unknown, trail };
 }
 const shapes = /* @__PURE__ */ new WeakMap();
 function geometry(route) {
@@ -56,7 +68,9 @@ function geometry(route) {
   return out;
 }
 function estimate(route, speed = 22) {
-  return Math.max(1, Math.round(route.metres / 1e3 / Math.min(40, Math.max(10, Number(speed) || 22)) * (route.surface === "mixed" ? 1.2 : 1) * 60 + (route.ascent || 0) / 30 + 5));
+  const roadSpeed = Math.min(40, Math.max(10, Number(speed) || 22));
+  const terrainFactor = { road: 1, mixed: 1.2, gravel: 1.25, mtb: 1.6 }[route.surface] || 1;
+  return Math.max(1, Math.round(route.metres / 1000 / roadSpeed * terrainFactor * 60 + (route.ascent || 0) / 30 + 5));
 }
 function profile(route) {
   const g = geometry(route), z = g.coords.map((c) => c[2] ?? 0), lo = Math.min(...z), hi = Math.max(...z), span = Math.max(20, hi - lo);
@@ -69,6 +83,7 @@ function toGPX(route) {
 }
 export {
   MAX_POINTS,
+  RIDE_TYPES,
   cleanRoute,
   destination,
   estimate,
@@ -76,6 +91,8 @@ export {
   metresBetween,
   pointOK,
   profile,
+  routeLabel,
+  supportedSurface,
   toGPX,
   trackStats
 };

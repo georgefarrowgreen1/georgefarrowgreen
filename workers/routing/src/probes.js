@@ -14,7 +14,9 @@ export const LOOP_CHECKS={
  'loops':{start:PROBES[0].start,metres:33000,surface:'road',seed:1},
  'loops-quiet':{start:PROBES[0].start,metres:33000,surface:'road',roadPreference:'quiet',seed:1},
  'loops-mixed':{start:PROBES[0].start,metres:33000,surface:'mixed',seed:1},
- 'loops-norfolk':{start:[.847,52.682],metres:100000,surface:'road',seed:1}
+ 'loops-norfolk':{start:[.847,52.682],metres:100000,surface:'road',seed:1},
+ 'loops-gravel':{start:[.635,52.439],metres:40000,surface:'gravel',seed:1},
+ 'loops-mtb':{start:[-2.553,51.801],metres:21000,surface:'mtb',seed:3}
 };
 export function probeBody(start){const [x,y]=start;const points=[start,[x+.006,y+.003],[x+.006,y+.006],[x-.003,y+.003],start];return new URLSearchParams({lonlats:points.map(p=>p.map(n=>n.toFixed(6)).join(',')).join('|'),profile:'road'}).toString();}
 export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECKS.loops}={}) {
@@ -26,7 +28,22 @@ export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECK
  }
  let loops={ready:false,count:0};
  if(loop){const attempts=[];
-  try {const generated=await generateRoutes(query,{fetcher:(url,init)=>fetcher(new Request(url,init)),onAttempt:a=>attempts.push(a)});loops={ready:generated.routes.length>0,count:generated.routes.length,metres:generated.routes.map(r=>r.metres),maxDistanceError:Math.max(...generated.routes.map(r=>Math.abs(r.metres-query.metres)/query.metres)),maxBacktrack:Math.max(...generated.routes.map(r=>routeQuality(r.coords).longestBacktrack))};}catch(e){loops.error={status:e.status||0,message:e.message};}
+  try {
+   const { routes } = await generateRoutes(query, { fetcher: (url, init) => fetcher(new Request(url, init)), onAttempt: a => attempts.push(a) });
+   const measure = query.surface === 'gravel' ? 'gravel' : query.surface === 'mtb' ? 'trail' : null;
+   const terrain = measure && routes.map(route => route.terrain?.[measure] || 0);
+   const expected = measure === 'gravel' ? 18 : 25;
+   loops = {
+    ready: routes.length > 0 && (!terrain || terrain.every(percent => percent >= expected)),
+    count: routes.length,
+    metres: routes.map(route => route.metres),
+    maxDistanceError: Math.max(...routes.map(route => Math.abs(route.metres - query.metres) / query.metres)),
+    maxBacktrack: Math.max(...routes.map(route => routeQuality(route.coords).longestBacktrack)),
+    ...(terrain ? { terrain } : {}),
+   };
+  } catch (error) {
+   loops.error = { status: error.status || 0, message: error.message };
+  }
   loops.attempts=attempts;
  }
  return {ready:checks.every(c=>c.status===200&&c.closed&&c.points>5)&&(!loop||loops.ready),checks,...(loop?{loops}:{})};

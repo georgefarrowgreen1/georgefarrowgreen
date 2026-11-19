@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.46.6";
-export const NEWS = "Removed unused Fitness code.";
+export const BUILD = "2.47.1";
+export const NEWS = "Plan loops for road, gravel and mountain biking.";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

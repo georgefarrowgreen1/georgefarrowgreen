@@ -7,4 +7,11 @@ test('a healthy primary is used once; failure/busy falls over to the standby wit
 test('unroutable candidates are not retried against identical data, and outage attempts are capped',async()=>{let calls=0;const r=await handleRoute(request(PROBES[0].start),{}, {get:()=>({fetch:async()=>{calls++;return new Response('{}',{status:422});}})});assert.equal(r.status,422);assert.equal(calls,1);calls=0;const down=await handleRoute(request(PROBES[0].start),{}, {get:()=>({fetch:async()=>{calls++;throw Error('unavailable');}})});assert.equal(down.status,503);assert.equal(calls,2);});
 test('outside-UK inputs never start a container',async()=>{const r=await handleRoute(request([-6.26,53.35]),{}, {get(){throw Error('must not be called');}});assert.equal(r.status,422);assert.equal((await r.json()).error,'outside_coverage');});
 
-test('private service accepts only the five owned cycling profiles',async()=>{for(const profile of ['road','road-quiet','road-paved','road-quiet-paved','mixed','car','../road']){const form=new URLSearchParams(probeBody(PROBES[0].start));form.set('profile',profile);const r=await routeInput(new Request('http://router/route',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form}));assert.equal(Boolean(r),!['car','../road'].includes(profile));}});
+test('only the owned cycling profiles and the legacy mixed profile reach the private service', async () => {
+ for (const profile of ['road', 'road-quiet', 'road-paved', 'road-quiet-paved', 'gravel', 'mtb', 'mixed', 'car', '../road']) {
+  const form = new URLSearchParams(probeBody(PROBES[0].start));
+  form.set('profile', profile);
+  const r = await routeInput(new Request('http://router/route', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form }));
+  assert.equal(Boolean(r), !['car', '../road'].includes(profile), profile);
+ }
+});

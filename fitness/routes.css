@@ -71,6 +71,7 @@
 .m-fitness .fr-fit-note { display: flex; gap: 7px; align-items: baseline; margin: 12px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
 .m-fitness .fr-fit-note > svg { color: var(--good-text); flex: none; }
 .m-fitness .fr-fit-note.fr-fit-over > svg { color: var(--text-3); }
+.m-fitness .fr-route-hero > .fr-surface-info { margin: 12px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
 .m-fitness .fr-profile { display: block; width: 100%; height: 112px; overflow: visible; }
 .m-fitness .fr-profile-area { fill: var(--ele); }
 .m-fitness .fr-profile-line { fill: none; stroke: var(--text-2); stroke-width: 1.6; }

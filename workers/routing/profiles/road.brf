@@ -1,4 +1,4 @@
-# InFlite road cycling: paved through-roads over residential shortcuts and paths.
+# InFlite cycling profiles. The build selects road, gravel or mountain-bike costs.
 # Derived from BRouter 1.7.10 fastbike (MIT; see LICENSE-BROUTER.txt).
 #
 # A fastbike could be a racing bike or a speed pedelec.
@@ -21,6 +21,9 @@
 assign validForBikes = true
 assign quiet_roads = false
 assign paved_only = false
+assign gravel_bike = false
+assign mountain_bike = false
+assign offroad_bike = or gravel_bike mountain_bike
 
 # Use the following switches to change behaviour
 assign allow_steps           = false   # %allow_steps% | Set to false to disallow steps | boolean
@@ -29,7 +32,7 @@ assign allow_motorways       = false  # %allow_motorways% | Set to true to allow
 
 assign use_proposed_cycleroutes = false  # %use_proposed_cycleroutes% | Set to true to consider proposed and regular cycleroutes as equals | boolean
 
-assign consider_traffic      = if quiet_roads then 1 else 0.1      # %consider_traffic% | avoiding roads that usually have traffic is? | [1=very important, 0.5=pretty important, 0.3=important, 0.1=slightly preferred, 0.0=do not consider traffic]
+assign consider_traffic      = if or quiet_roads offroad_bike then 1 else 0.1
 assign consider_noise        = false  # %consider_noise% | Activate to prefer a low-noise route | boolean
 assign consider_river        = false  # %consider_river% | Activate to prefer a route along rivers, lakes, etc. | boolean
 assign consider_forest       = false  # %consider_forest% | Activate to prefer a route in forest or parks | boolean
@@ -38,7 +41,7 @@ assign consider_town         = false  # %consider_town% | Activate to bypass cit
 
 # Change elevation parameters
 assign consider_elevation = true  # %consider_elevation% | Set to false to ignore elevation in routing | boolean
-assign downhillcost       = 60    # %downhillcost% | Cost for going downhill | number
+assign downhillcost       = if mountain_bike then 18 else if gravel_bike then 40 else 60
 assign downhillcutoff     = 1.5   # %downhillcutoff% | Gradients below this value in percents are not counted. | number
 assign uphillcost         = 0     # %uphillcost% | Cost for going uphill | number
 assign uphillcutoff       = 1.5   # %uphillcutoff% | Gradients below this value in percents are not counted.  | number
@@ -75,8 +78,10 @@ assign any_cycleroute
 
 assign nodeaccessgranted or any_cycleroute lcn=yes
 
-assign ispaved or surface=paved or surface=asphalt or surface=concrete or surface=paving_stones or surface=sett or smoothness=excellent smoothness=good
-assign isunpaved not or ispaved or ( and surface= smoothness= ) or surface=fine_gravel or surface=cobblestone smoothness=intermediate
+assign ispaved surface=paved|asphalt|concrete|paving_stones|sett|cobblestone|metal
+assign isunpaved or
+  surface=unpaved|gravel|fine_gravel|compacted|pebblestone|ground|dirt|earth|grass|mud|sand|rock|stone|clay|grass_paver
+  and surface= tracktype=grade2|grade3|grade4|grade5
 
 assign turncost = if junction=roundabout then 0
                   else 90
@@ -236,10 +241,10 @@ assign town_penalty
      switch estimated_town_class=6  1 99 0
 
 # Avoid unpaved sections even when the way is classified as a main road.
-assign road_unpaved = or isunpaved or surface=fine_gravel|compacted tracktype=grade2|grade3|grade4|grade5
+assign road_unpaved = isunpaved
 assign road_surface_penalty = if road_unpaved then 20 else 0
 
-assign costfactor
+assign road_cost
   switch and paved_only road_unpaved 10000
   switch and highway= not route=ferry  10000
   switch or highway=proposed highway=abandoned 10000
@@ -276,6 +281,60 @@ assign costfactor
    switch or bicycle=designated bicycle_road=yes switch isunpaved 3 1.2
    switch ispaved 2.0 switch isunpaved 15.0 5.0
   10.0
+
+# Respect specific bicycle access before general access and track preference.
+assign cycle_access =
+  if bicycle=yes|designated|permissive then true
+  else if bicycle=mtb then mountain_bike
+  else if bicycle=no|private|dismount|use_sidepath|destination|permit then false
+  else if vehicle=no|private|destination|agricultural|permit|military then false
+  else if access=no|private|destination|customers|agricultural|delivery|permit|military then false
+  else true
+
+assign usable_gravel = or surface=gravel|fine_gravel|compacted|pebblestone
+  or ( and ( or surface= surface=unpaved ) tracktype=grade2 )
+     ( and surface=ground|dirt|earth ( or smoothness=excellent|good|intermediate tracktype=grade1|grade2 ) )
+
+assign difficult_gravel = or smoothness=very_bad|horrible|very_horrible|impassable|high_clearance
+  or tracktype=grade4|grade5 or surface=mud|sand|rock|stone mtb:scale=2|2+|3|4|5|6
+assign difficult_mountain = or smoothness=impassable
+  or mtb:scale=3|4|5|6 mtb:scale:uphill=5
+
+assign offroad_path = highway=track|path|bridleway|footway
+assign graded_mountain_path = and mountain_bike and highway=path
+  and not foot=designated mtb:scale=0|0+|0-|1|1+|1-|2|2-|2+
+assign gravel_terrain_cost =
+  if usable_gravel then 1
+  else if highway=bridleway|track then if ispaved then 1.6 else 1.35
+  else if highway=path|cycleway|footway then if ispaved then 1.6 else 1.65
+  else if highway=unclassified|residential|living_street|service then 1.8
+  else if highway=secondary|secondary_link|tertiary|tertiary_link then 2.65
+  else if highway=primary|primary_link|trunk|trunk_link then 5.0
+  else 3.0
+
+assign mountain_terrain_cost =
+  if and offroad_path mtb:scale=0|0+|0-|1|1+|1-|2|2-|2+ then 1
+  else if offroad_path then if ispaved then 2.2 else 1.18
+  else if highway=cycleway then if isunpaved then 1.25 else 2.1
+  else if highway=unclassified|residential|living_street|service then 2.35
+  else if highway=secondary|secondary_link|tertiary|tertiary_link then 3.4
+  else if highway=primary|primary_link|trunk|trunk_link then 6.5
+  else 3.8
+
+assign offroad_cost =
+  if and highway=path|footway|pedestrian
+     not ( or graded_mountain_path or any_cycleroute bicycle=yes|designated|permissive|mtb ) then 10000
+  else if and gravel_bike difficult_gravel then 10000
+  else if and mountain_bike difficult_mountain then 10000
+  else add trafficpenalty ( if mountain_bike then mountain_terrain_cost else gravel_terrain_cost )
+
+assign costfactor =
+  if not cycle_access then 10000
+  else if highway=motorway|motorway_link|steps|construction|proposed|abandoned then 10000
+  else if or motorroad=yes or route=ferry ford=yes|stepping_stones then 10000
+  else if greater onewaypenalty 0 then 10000
+  else if offroad_bike then offroad_cost
+  else road_cost
 
 # way priorities used for voice hint generation
 
@@ -324,7 +383,7 @@ assign classifiermask add          isbadoneway
                           multiply isgoodforcars 16
 
 # include `smoothness=` tags in the response's WayTags for track analysis
-assign dummyUsage = smoothness=
+assign dummyUsage = add smoothness= add mtb:scale= add tracktype= surface=
 
 
 ---context:node  # following code refers to node tags
@@ -357,6 +416,8 @@ assign footaccess
                         1
 
 assign initialcost
+    switch or barrier=stile|kissing_gate|turnstile|full-height_turnstile
+              or ford=yes|stepping_stones bicycle=no|private|dismount 1000000
     switch or highway=traffic_signals and highway=crossing crossing=traffic_signals 20
        switch bikeaccess
               0
