@@ -1209,21 +1209,16 @@ html[data-theme="dark"] {
   border-radius: 50%;
 }
 #photo-index .fi-contact-arrow .fi-arrow { font-size: .48em; }
-#photo-index .fi-footer-links {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  column-gap: clamp(12px, 3.5cqw, 40px);
-  color: var(--story-text);
-}
-#photo-index .fi-footer-links :is(a, button), #photo-index .fi-colophon a {
+#photo-index .fi-footer-social, #photo-index .fi-colophon a {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   min-height: 44px;
 }
-#photo-index .fi-footer-links :is(a, button) {
+#photo-index .fi-footer-social {
+  grid-column: 1 / -1;
+  justify-self: start;
+  color: var(--story-text);
   font-size: clamp(13px, 1.2cqw, 16px);
   letter-spacing: -.02em;
 }
@@ -1256,7 +1251,7 @@ html[data-theme="dark"] {
   #photo-index .fi-contact-page:hover .fi-arrow { transform: translate(1.5px, -1.5px); }
 }
 @container (max-width: 359px) {
-  #photo-index .fi-footer-links .bio-icon { display: none; }
+  #photo-index .fi-footer-social .bio-icon { display: none; }
   #photo-index .fi-colophon { font-size: 11px; }
 }
 @container (max-width:560px) {
@@ -1461,7 +1456,7 @@ html[data-theme="dark"] {
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
   .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
   .appearance-ready #photo-index summary i { transition: background-color .2s, border-color var(--paper-motion); }
-  .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-links, .lost-status, .lost-status span,
+  .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-social, .lost-status, .lost-status span,
     .lost-address, #where-path, #meant, #back, .lost-report) { transition: color var(--ink-motion); }
   .appearance-ready #photo-index .fi-footer-mark::before, .appearance-ready .lost-status span::after { transition: background-color var(--ink-motion); }
   .appearance-ready .fi-switch-track::after { transition: transform var(--paper-motion), background-color var(--ink-motion); }
