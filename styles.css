@@ -1083,13 +1083,6 @@ html[data-theme="dark"] {
 #photo-index .fi-list { min-width: 0; }
 #photo-index summary {
   list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding-block: 12px;
-  min-height: 60px;
-  font-size: clamp(22px, 2.15cqw, 34px);
   line-height: 1.12;
   letter-spacing: -.048em;
 }
@@ -1099,6 +1092,7 @@ html[data-theme="dark"] {
   display: none;
 }
 #photo-index summary i {
+  margin-left: auto;
   display: grid;
   place-items: center;
   width: 32px;
@@ -1209,6 +1203,7 @@ html[data-theme="dark"] {
   text-underline-offset: 5px;
   margin-top: 6px;
 }
+#photo-index .fi-entry summary,
 #photo-index .fi-apps .fi-list > a {
   display: flex;
   align-items: center;
@@ -1218,13 +1213,18 @@ html[data-theme="dark"] {
   transition: background-color .2s;
 }
 
-#photo-index .fi-apps img {
+#photo-index .fi-list .project-logo {
   width: 30px;
   height: 30px;
   object-fit: contain;
   border-radius: 7px;
   filter: grayscale(1);
 }
+#photo-index .project-logo.fi-crown {
+  padding: 5px;
+  background: #333;
+}
+#photo-index .fi-entry summary strong,
 #photo-index .fi-apps strong {
   font-weight: 500;
   font-size: clamp(19px, 1.7cqw, 26px);
@@ -1294,6 +1294,7 @@ html[data-theme="dark"] {
   #photo-index .fi-story p {
     font-size: 14px;
   }
+  #photo-index .fi-entry summary,
   #photo-index .fi-apps .fi-list > a {
     gap: 9px;
   }
