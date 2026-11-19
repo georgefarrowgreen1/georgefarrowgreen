@@ -56,6 +56,7 @@
     if (!toggle) return;
     apply();
     toggle.hidden = false;
+    root.classList.add("appearance-ready");
     toggle.addEventListener("click", () => {
       choice = root.dataset.theme === "dark" ? "light" : "dark";
       apply();
