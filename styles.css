@@ -983,7 +983,7 @@ html[data-theme="dark"] {
 #photo-index #who :is(a, button),
 #photo-index .fi-bio a,
 #photo-index .fi-project-cta,
-#photo-index .fi-footer-links a {
+#photo-index .fi-footer-links :is(a, button) {
   font-size: 13px;
   min-height: 44px;
   display: inline-flex;
@@ -1250,7 +1250,7 @@ html[data-theme="dark"] {
   align-items: center;
   gap: 10px;
 }
-#photo-index .fi-footer button {
+#photo-index .fi-footer .fi-contact-page {
   font-size: clamp(32px, 4.8cqw, 76px);
   line-height: 1.3;
   letter-spacing: -0.06em;
@@ -1259,7 +1259,7 @@ html[data-theme="dark"] {
   display: inline-block;
   transition: transform 0.25s;
 }
-.fi-footer button:hover span {
+.fi-contact-page:hover span {
   transform: translate(3px, -3px);
 }
 #photo-index .fi-colophon {
