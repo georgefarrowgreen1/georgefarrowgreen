@@ -4,16 +4,17 @@
    about me, then the apps, projects and a way to get in touch.
 ---------------------------------------------------------------------- */
 
-/* the name's typeface, from the site itself (asked for first: index.html), so it never arrives late and shifts */
+/* The bio's self-hosted text face is preloaded on each entry page. */
 @font-face {
-  font-family: "Space Grotesk";
-  src: url("/fonts/space-grotesk.woff2") format("woff2");
-  font-weight: 300 700;
+  font-family: "GFG Text";
+  src: url("/fonts/gfg-text.woff2") format("woff2");
+  font-weight: 500;
   font-display: swap;
 }
 /* (until it arrives, a system face sized to take up the same room, so the hero's lines don't move when it does) */
 @font-face {
-  font-family: "Space Grotesk fallback";
+  font-family: "GFG Text Fallback";
+  font-weight: 500;
   src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
   size-adjust: 100.4%; ascent-override: 97.6%; descent-override: 28.9%; line-gap-override: 0%;
 }
@@ -29,8 +30,9 @@
   --tint: #2f74ee;
   --tint-text: #8dbbff;
   --rim: inset 0 1px 0.5px rgba(255, 255, 255, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-  --display: "Space Grotesk", "Space Grotesk fallback", var(--font);
+  --font: "GFG Text", "GFG Text Fallback", Arial, sans-serif;
+  --display: var(--font);
+  font-synthesis: none;
   /* The site's motion, the same in every app (here, pigeon/, account/ and weather/): out for what arrives and for
      colour, glide for what slides (sheets, screens, the page behind one), in for what leaves quickly, and a spring for
      a press let go (the faintest overshoot); with the durations to go with them */
@@ -49,7 +51,7 @@ body {
   background: #07090d;
   color: var(--text);
   touch-action: manipulation;     /* (pinching still zooms; a quick double tap on a button doesn't) */
-  font: 17px/1.4 var(--font);
+  font: 500 17px/1.4 var(--font);
   letter-spacing: -0.2px;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -437,7 +439,7 @@ body.edit-out .editbar.only-edit { display: flex !important; animation: sink var
 #sender.known .fld:not(.from, .ghost) { display: none; }
 .fields input, .fields textarea {
   display: block; width: 100%; min-width: 0; border: 0; background: none; color: var(--text);
-  font: 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
+  font: 500 17px/1.35 var(--font); padding: 15px 0; outline: none; resize: none; border-radius: 0;
 }
 /* (the message grows a line at a time as it's written, smoothly) */
 .fields textarea { padding: 14px 16px; min-height: 148px; max-height: 40vh; overflow-y: auto; transition: height var(--dur-fast) var(--ease-out); }
@@ -912,10 +914,7 @@ html[data-theme="dark"] {
   container-type: inline-size;
   background: var(--paper);
   color: var(--ink);
-  font:
-    400 16px/1.42 "Space Grotesk",
-    Arial,
-    sans-serif;
+  font: 500 16px/1.42 var(--font);
   text-align: left;
   isolation: isolate;
 }
@@ -957,9 +956,7 @@ html[data-theme="dark"] {
   min-height: 64px;
 }
 #photo-index .fi-sign {
-  font:
-    650 30px/0.95 "Space Grotesk",
-    Arial;
+  font: 500 30px/0.95 var(--font);
   letter-spacing: -0.13em;
   padding: 8px 5px 12px 0;
 }
@@ -1065,7 +1062,7 @@ html[data-theme="dark"] {
 }
 #photo-index .fi-work h2 {
   font-size: clamp(21px, 2.3cqw, 36px);
-  font-weight: 450;
+  font-weight: 500;
   letter-spacing: -.055em;
   line-height: 1.12;
   padding-top: 12px;
@@ -1378,7 +1375,7 @@ html[data-theme="dark"] {
   position: relative;
   z-index: 5;
   margin-left: 10px;
-  font: 400 16px/1.42 var(--display);
+  font: 500 16px/1.42 var(--font);
 }
 #photo-index .fi-menu :focus-visible { outline: 2px dashed currentColor; outline-offset: -4px; }
 #photo-index :is([data-contact], .fi-menubtn):focus-visible {
@@ -1444,9 +1441,7 @@ html[data-theme="dark"] {
   justify-content: space-between;
   color: inherit;
   border-bottom: 1px solid var(--bio-rule);
-  font:
-    400 15px "Space Grotesk",
-    Arial;
+  font: 500 15px var(--font);
   text-align: left;
 }
 #fi-floating-links > :last-child {
@@ -1591,7 +1586,6 @@ body.photo-home { transition: none; }
 /* Match the photographic index on both the resting sheet and its animated surface. */
 #contact-sheet {
   color-scheme: inherit;
-  --font: "Space Grotesk", "Space Grotesk fallback", Arial, sans-serif;
   --text: var(--ink);
   --text-2: var(--story-text);
   --text-3: var(--secondary-text);
@@ -1694,7 +1688,7 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 }
 
 #details-sheet {
-  font-family: "Space Grotesk", Arial, sans-serif;
+  font-family: var(--font);
   background: var(--sheet-paper);
   color: var(--ink);
   border-radius: 18px;
@@ -1824,13 +1818,13 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
   position: absolute;
   left: 6%;
   bottom: 22%;
-  font: 450 8.1cqw/.95 "Space Grotesk", sans-serif;
+  font: 500 8.1cqw/.95 var(--font);
   letter-spacing: -.065em;
 }
-#details-sheet .calling-address { position: absolute; left: 6%; bottom: 7%; font: 400 clamp(11px,2.5cqw,14px)/1.1 "Space Grotesk",sans-serif; letter-spacing: -.025em; }
+#details-sheet .calling-address { position: absolute; left: 6%; bottom: 7%; font: 500 clamp(11px,2.5cqw,14px)/1.1 var(--font); letter-spacing: -.025em; }
 #details-sheet .calling-qr { position: absolute; right: 5%; top: 50%; transform: translateY(-50%); width: 40%; height: auto; image-rendering: pixelated; mix-blend-mode: multiply; }
 #details-sheet .calling-actions{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-top:16px}
-#details-sheet .calling-actions>*{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font:500 14px/1 "Space Grotesk",sans-serif;text-decoration:none;cursor:pointer;border-radius:50px;padding:0 16px;transition:transform .16s ease,background-color .2s,color .2s}
+#details-sheet .calling-actions>*{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font:500 14px/1 var(--font);text-decoration:none;cursor:pointer;border-radius:50px;padding:0 16px;transition:transform .16s ease,background-color .2s,color .2s}
 #details-sheet .calling-switch{color:inherit;background:transparent;border:1px solid var(--bio-rule)}
 #details-sheet .calling-save{background:var(--ink);color:var(--paper)}
 #details-sheet .calling-actions>*:active{transform:scale(.965)}
