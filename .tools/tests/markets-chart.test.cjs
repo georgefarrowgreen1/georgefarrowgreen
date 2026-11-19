@@ -23,7 +23,7 @@ async function world({ hosted, day = 'missing', cash = false, motion = 'reduce',
     if (!file.startsWith(ROOT + '/markets/') || !existsSync(file)) return route.fulfill({ status: 404, body: 'not found' });
     return route.fulfill({ body: readFileSync(file), contentType: MIME[extname(file)] || 'application/octet-stream' });
   });
-  const acc = fixtures.account(); acc.holdings = acc.holdings.filter((x) => x.symbol === 'TSCO.L');
+  const acc = fixtures.kitAccount(); acc.holdings = acc.holdings.filter((x) => x.symbol === 'TSCO.L');
   acc.cash = cash ? [{ id: '00000000-0000-4000-8000-000000000001', name: 'Savings', amount: 5000, rate: 4, tier: null, payout: null, account: null, added: Date.now(), updated: Date.now() }] : [];
   if (cash) acc.holdings = [];
   const clearDay = (kind = 'missing') => { for (const q of Object.values(acc.quotes)) { q.sparkT = kind === 'one' ? [Math.floor(Date.now() / 1000)] : []; q.spark = kind === 'one' ? [q.price] : []; } };

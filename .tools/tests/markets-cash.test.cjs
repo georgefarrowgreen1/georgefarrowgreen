@@ -8,7 +8,7 @@ async function world({width,hosted,cashOnly=false,loseFirst=false,pauseWrite=fal
  const ctx=await browser.newContext({viewport:{width,height:1000},colorScheme:width===390?'dark':'light',reducedMotion:'reduce',serviceWorkers:'block'});
  if(hosted)await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
  else await ctx.route('http://finance.kit.test/**',async r=>{const u=new URL(r.request().url());if(u.pathname.startsWith('/api/'))return r.fallback();let file=resolve(ROOT+'/markets','.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(ROOT+'/markets/')||!existsSync(file))return r.fulfill({status:404,body:'not found'});const body=quietProbe&&file.endsWith('/app.js')?readFileSync(file,'utf8')+'\nexport { render as quietProbeRender };':readFileSync(file);return r.fulfill({body,contentType:MIME[extname(file)]||'application/octet-stream'});});
- const acc=fixtures.account();acc.cash=[];if(cashOnly)acc.holdings=[];const api=fixtures.marketsApi({acc}),writes=[];let lose=loseFirst,release;const pending=new Promise(ok=>{release=ok;});
+ const acc=fixtures.kitAccount();acc.cash=[];if(cashOnly)acc.holdings=[];const api=fixtures.marketsApi({acc}),writes=[];let lose=loseFirst,release;const pending=new Promise(ok=>{release=ok;});
  await ctx.route('**/api/markets/**',async r=>{
   const req=r.request(),u=new URL(req.url()),path=u.pathname.split('/').at(-1),method=req.method();
   if(path==='cash'){

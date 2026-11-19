@@ -12,7 +12,7 @@ after(async () => browser?.close());
 test('real Markets retains its store, selected chart range and cash draft through pane/native reparenting', async () => {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 980 }, colorScheme: 'light', reducedMotion: 'reduce' });
   await serveKit(ctx, { main: ROOT + '/', ifl: IFL + '/' });
-  const acc = fixtures.account(); acc.id = 'u-kit-0001';
+  const acc = fixtures.kitAccount();
   const api = fixtures.marketsApi({ acc }), writes = [];
   await ctx.route('**/api/markets/**', async r => {
     if (r.request().method() !== 'GET') writes.push(r.request().url());

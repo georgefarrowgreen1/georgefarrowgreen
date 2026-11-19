@@ -57,6 +57,11 @@ export function account(now = Date.now(), who = "a") {
   };
 }
 
+// The hosted browser harness signs in as Sam with the identity from roofkit/kit.js.
+export function kitAccount(now) {
+  return { ...account(now), id: "u-kit-0001" };
+}
+
 // the state app.js's S and core.S share, from an account (what take() and the loaders leave)
 export function stateOf(acc) {
   return {

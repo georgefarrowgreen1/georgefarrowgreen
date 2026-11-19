@@ -3,12 +3,12 @@
 // context. Every call kept in st.log ({ method, path, query, body }) so a test can see what left the page.
 // (mocks/marketsmock.mjs is the Yahoo stand-in behind the real server, untouched; this one stands in for the server.)
 //   const st = await routeMarkets(ctx, 'http://kit.test', { now })   → { log, acc, status (set 401 for a lapsed sign-in) }
-import { account } from '../unit/fixtures/mk.mjs';
+import { kitAccount } from '../unit/fixtures/mk.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 
 export async function routeMarkets(ctx, base, { now = Date.now() } = {}) {
-  const st = { log: [], acc: account(now), status: 0 };
+  const st = { log: [], acc: kitAccount(now), status: 0 };
   const j = (r, o, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(o) });
   const chart = (sym, r) => {
     const q = st.acc.quotes[sym];

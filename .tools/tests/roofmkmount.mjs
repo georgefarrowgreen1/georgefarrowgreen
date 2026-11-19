@@ -169,7 +169,6 @@ await ctx.close();
 {
   const { p, st, ctx } = await phone();
   // (this phone's copy is the session user's: Markets opened once, in an earlier page)
-  st.acc.id = 'u-kit-0001';
   await openMarkets(p);
   await until(() => visible(p, H.MK_HERO), 10000);
   ok(await until(() => p.evaluate(() => JSON.parse(localStorage.getItem('markets:last') || 'null')?.id === 'u-kit-0001')), 'markets:last kept for the session’s user');

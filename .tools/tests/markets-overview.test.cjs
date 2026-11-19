@@ -5,7 +5,7 @@ before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));fixtures=a
 after(async()=>browser?.close());
 for(const width of [320,390,1440])test(`Markets comparisons and chart ranges work at ${width}px`,async()=>{
  const ctx=await browser.newContext({viewport:{width,height:950},colorScheme:width===390?'dark':'light',reducedMotion:'reduce'});await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
- const acc=fixtures.account(),api=fixtures.marketsApi({acc}),errors=[];
+ const acc=fixtures.kitAccount(),api=fixtures.marketsApi({acc}),errors=[];
  await ctx.route('**/api/markets/**',async r=>{if(new URL(r.request().url()).pathname.endsWith('/chart')){const t=Math.floor(Date.now()/1000);return r.fulfill({json:{t:[t-86400*30,t-86400*15,t],c:[2.9,3,3.12],prev:3.05,cur:'GBP',tz:'Europe/London'}});}const v=await api.fetch(r.request().url(),{method:r.request().method(),body:r.request().postData()});return r.fulfill({status:v.ok?200:404,json:await v.json()});});
  const p=await ctx.newPage();p.setDefaultTimeout(8000);p.on('pageerror',e=>errors.push(e.message));
  try{await p.goto(KIT+'/?module=/markets/roof/markets.js&apps=weather,markets');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/markets/'));await p.locator('.pseg.range-controls').waitFor();
