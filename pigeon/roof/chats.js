@@ -27,7 +27,7 @@ import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
 export const BUILD = "2.16.4";
-export const NEWS = "Locking Chats closes open media sheets.";
+export const NEWS = "Locking Chats closes open conversations and media sheets.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

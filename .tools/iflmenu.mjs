@@ -22,7 +22,9 @@ const ownOf = (dir) => Object.keys(OWN).find((a) => new RegExp(`(^|/)${a}/public
 const mini = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<\?xml[^>]*>/, "").replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
 export const jsBlock = (own) => {
   const icons = Object.fromEntries([...APPS, ...(own ? [own] : [])].map((a) => [a, mini(readFileSync(`${ROOT}.tools/inflite/icons/${a}.svg`, "utf8"))]));
-  let js = readFileSync(`${ROOT}.tools/inflite/menu.js`, "utf8").trim().replace("/*ICONS*/{}", JSON.stringify(icons));
+  let js = readFileSync(`${ROOT}.tools/inflite/menu.js`, "utf8").trim()
+    .replace("/*ICONS*/{}", JSON.stringify(icons))
+    .replace("/*TODAY_ICONS*/", own === "today" ? ',"files"' : "");
   if (own) {
     const last = '["account", "Account"]];';
     if (!js.includes(last)) throw new Error(`.tools/inflite/menu.js's APPS no longer ends ${last}: say in iflmenu.mjs where ${own} goes`);

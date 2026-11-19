@@ -145,7 +145,7 @@ function markets(){
  const source=readFileSync(new URL('../../../markets/app.js',import.meta.url),'utf8'),job=deferred(),S={me:{id:'ann'},list:[{symbol:'ANN'}],years:{},yearsAt:0,tab:'today',paid:null,inc:null},writes=[],applied=[];let signedOut=0;
  const deps={S,A:{years:()=>job.promise,paid:()=>job.promise,income:()=>job.promise,quotes:()=>job.promise},BENCHES:[],owned:()=>S.list,store:{set:(k,v)=>writes.push([k,v])},calm:()=>true,render(){},Sheet:{stack:[]},$:()=>null,stockView(){},incomeView(){},drawSheet(){},
  document:{hidden:false},INDICES:[],cashStore:{sync(){}},applyPrices:r=>applied.push(r),stream:{sync(){}},signedOut:()=>signedOut++,sayLine(){}};
- const names=['loadYears','loadPaid','loadIncome','refresh'],api=new Function(...Object.keys(deps),`let cashEpoch=0;${names.map(n=>decl(source,n)).join('\n')}return{${names.join(',')},release(){cashEpoch++;}};`)(...Object.values(deps));
+ const names=['loadYears','loadPaid','loadIncome','refresh'],api=new Function(...Object.keys(deps),`let cashEpoch=0,quoteReading=null;${names.map(n=>decl(source,n)).join('\n')}return{${names.join(',')},release(){cashEpoch++;}};`)(...Object.values(deps));
  return{...api,S,job,writes,applied,signedOut:()=>signedOut};
 }
 for(const method of ['loadYears','loadPaid','loadIncome','refresh'])for(const change of ['owner','same-owner lifetime'])test(`Markets ${method} ignores a late private response after ${change} change`,async()=>{

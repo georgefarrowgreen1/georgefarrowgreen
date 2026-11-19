@@ -37,12 +37,14 @@ const later = [];
 const ctx = { waitUntil: (p) => later.push(Promise.resolve(p).catch(() => {})) };
 const settle = async () => { while (later.length) await later.shift(); };
 const realFetch = globalThis.fetch;
+const owner = 'synthetic-mail-owner';
 globalThis.fetch = async (u, init) => (String(u).startsWith(env.ACCOUNT_ORIGIN)
-  ? new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } })
+  ? new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, id: owner, name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } })
   : realFetch(u, init));
 // (from InFlite's page: a hub's CORS write)
 const call = async (path, body, { origin = 'https://inflite.ai', method = 'POST' } = {}) => {
   const { default: worker } = await load('src/index.js');
+  if (origin && method === 'POST' && body && ['/api/drafts', '/api/send'].includes(path)) body = { ...body, accountOwner: owner };
   const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Origin: 'https://email.inflite.ai', Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json',
     ...(origin ? { Origin: origin, 'Sec-Fetch-Site': 'same-site' } : { 'Sec-Fetch-Site': 'same-origin' }) }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
   return { status: res.status, data: await res.json() };

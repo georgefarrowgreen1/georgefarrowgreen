@@ -221,7 +221,7 @@ test('setRoof: still busy after 10 s → waits for hidden (flushed again), stays
   assert.equal(kit.reloads, 1, 'exactly one');
 }));
 
-test('F.flush: every mounted module’s flush(), each capped at 2 s; lost summed', { skip }, timed(async (_, keep) => {
+test('F.flush: counts work reported lost and uncertain after 2 s for each mounted module', { skip }, timed(async (_, keep) => {
   const { F } = await boot('/weather/'); keep(F);
   F.nav.go('/markets/'); await settle();
   kit.flushR.markets = new Promise(() => {});
@@ -230,7 +230,7 @@ test('F.flush: every mounted module’s flush(), each capped at 2 s; lost summed
   F.flush().then((r) => (got = r)); await settle();
   assert.equal(got, null);
   await tick(1999); assert.equal(got, null);
-  await tick(1); assert.deepEqual(got, { lost: 2 });
+  await tick(1); assert.deepEqual(got, { lost: 3 });
 }));
 
 test('fw.lazy: q "" then "?retry=<n>" after a failed import; /<app>/version beside it at most once a minute and at once on a failure; a new build → stale, the reload once idle', { skip }, timed(async (_, keep) => {
