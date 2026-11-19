@@ -92,7 +92,7 @@ for(const width of [390,1440])test(`real canonical auth/account UI: resources, p
   assert.ok(Math.abs(layout.end-layout.left)<0.5,JSON.stringify(layout));
   assert.equal(await account.getByRole('heading',{name:'Your apps',exact:true}).count(),0);
   assert.equal(await account.locator('[data-sec="apps"], .apps, .open-app').count(),0);
-  assert.ok(await account.getByRole('button',{name:/Sign-in and security/i}).isVisible());
+  assert.ok(await account.locator('button[data-k=Security]').isVisible());
   assert.equal(await account.locator('.account-categories, .account-heading').count(),0);
   await page.waitForFunction(()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running'));
   await page.screenshot({path:out+'/'+engine+'-'+width+'-settings-account.png'});

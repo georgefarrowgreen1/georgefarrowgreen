@@ -1240,8 +1240,8 @@ const tok = (name) => getComputedStyle(host?.element || document.documentElement
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // Account's major, feature and patch version, and the release note shown on opening the update.
-const BUILD = "2.35.3";
-const NEWS = "Account cards now use a flat surface.";
+const BUILD = "2.35.4";
+const NEWS = "Account settings now open a single Security hub.";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -2035,8 +2035,10 @@ function signedIn(r) {
         "aria-current": key === "account" ? "page" : null
       }, icon(symbol, 19), h("span", {text: label}))));
     const security = h("div.group.glass", {},
-      row({icon:"shield",tint:todo ? "amber" : "green",title:"Sign-in and security",value:todo ? `${todo} to do` : "Secure",onclick:()=>openSheet(securityView)}),
-      row({icon:"key",tint:"grey",title:"Security Module",sub:"App access, devices and activity",onclick:()=>settingsWindow.location.assign("/#settings=module")}),
+      row({icon:"shield",tint:todo ? "amber" : "green",title:"Security",sub:"Sign-in, sessions and app access",value:todo ? `${todo} to do` : "Secure",onclick:()=>{
+        if (host) return host.onSecurity ? host.onSecurity() : openSheet(securityView);
+        settingsWindow.location.assign("/#settings=module");
+      }}),
       row({icon:"data",tint:"grey",title:"Your data",onclick:()=>openSheet(exportView)}),
       row({icon:"signout",tint:"grey",title:"Sign out",sub:"On this device",onclick:()=>settingsWindow.location.assign("/#settings=signout")}));
     if (embeddedAccount) return [h("div.account-layout", {},
@@ -3981,7 +3983,7 @@ function draw(mode) {
   const body0 = $(".sheet-body:not(.going)", sheetEl), head0 = $(".sheet-head:not(.going)", sheetEl);
   Sheet.mode = mode; Sheet.waited = !!body0?.querySelector(".adm-wait, [aria-busy='true']");
   const v = Sheet.stack.at(-1)(), deep = Sheet.stack.length > 1;
-  const left = v.left || (deep ? h("button.link.back", { type: "button", onclick: () => (v.onBack || popSheet)() }, h("span.vh", { text: "Back" }), icon("back", 22, 2.4)) : null);
+  const left = v.left || (deep || host?.action ? h("button.link.back", { type: "button", onclick: () => (v.onBack || popSheet)() }, h("span.vh", { text: "Back" }), icon("back", 22, 2.4)) : null);
   const right = v.right || h("button.x", { type: "button", "aria-label": "Close", onclick: closeSheet }, icon("x", 17, 2.6));
   if (mode === "same" && body0 && head0) return again(v, left, right, body0, head0);
   const head = h("div.sheet-head", {}, h("div.l", {}, left), h(v.quiet ? "h2.vh" : "h2", { id: "sheet-title", text: v.title, tabindex: "-1" }), h("div.r", {}, right));
@@ -5850,6 +5852,17 @@ function loadComponent() {
   return call("me").then(me => {
     if (!matchesSettingsOwner(me)) return;
     S.me = me; S.pulled = Date.now(); S.settled = true;
+    if (host.action) {
+      const views = new Map([
+        ["email", emailView], ["passkeys", passkeysView], ["password", passwordView],
+        ["password-check", checkView], ["computer", scanView],
+        ["confirm", () => confirmView(closeSheet, closeSheet, {checkBreaches:false})]
+      ]);
+      const view = views.get(host.action);
+      if (!view || me.deleting) return false;
+      openSheet(view);
+      return true;
+    }
     render();
     if (host.part && accountSections.has(host.part)) openPart(host.part);
   });
