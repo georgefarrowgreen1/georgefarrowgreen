@@ -138,6 +138,7 @@ for (const width of [390, 432, 1440]) {
       const page = f.p;
       const row = page.locator('.fi-entry').last();
       await page.locator('body.known').waitFor();
+      assert.equal(await page.locator('.fi-entry[open]').count(), 0);
       const result = await row.evaluate(entry => {
         const summary = entry.querySelector('summary'), fold = entry.querySelector('.fi-fold');
         const pose = () => [fold.offsetHeight, getComputedStyle(entry.querySelector('.fi-shutter-left')).transform,
@@ -169,7 +170,7 @@ for (const width of [390, 432, 1440]) {
       await page.waitForFunction(() => !document.querySelector('.project-moving'));
       await page.keyboard.press('Enter');
       assert.ok(await row.evaluate(e => !e.open && !e.querySelector('.fi-fold').inert));
-      assert.ok(await page.locator('.fi-entry').first().evaluate(e => e.open));
+      assert.equal(await page.locator('.fi-entry[open]').count(), 0);
       assert.deepEqual(f.errors, []);
     } finally { await f.ctx.close(); }
   });
