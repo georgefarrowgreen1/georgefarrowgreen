@@ -1116,8 +1116,7 @@ html[data-theme="dark"] {
   background: currentColor;
 }
 #photo-index summary i::after { transform: rotate(90deg); transition: transform 290ms var(--settle); }
-#photo-index details[open] summary i::after { transform: rotate(0); }
-#photo-index .fi-fold { min-height: 0; overflow: hidden; }
+#photo-index details[open] summary:not([aria-expanded="false"]) i::after { transform: rotate(0); }
 #photo-index .fi-drawer {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
@@ -1125,15 +1124,21 @@ html[data-theme="dark"] {
   align-items: center;
   padding-block: 8px clamp(20px, 2.5cqw, 38px);
 }
-@supports selector(details::details-content) {
-  .fi-entry::details-content {
-    display: grid;
-    grid-template-rows: 0fr;
-    opacity: 0;
-    transition: grid-template-rows 360ms var(--settle), opacity 240ms ease, content-visibility 360ms allow-discrete;
-  }
-  .fi-entry[open]::details-content { grid-template-rows: 1fr; opacity: 1; }
+/* The fold sets the real row height. Its inner grid item can shrink all
+   the way to zero even when the cover and caption stack at phone widths. */
+#photo-index .fi-fold { display: grid; grid-template-rows: 1fr; min-height: 0; overflow: hidden; }
+#photo-index .fi-panel { min-height: 0; overflow: hidden; }
+.fi-shutter-left, .fi-shutter-right { display: none; }
+.project-moving .fi-shutter-left, .project-moving .fi-shutter-right {
+  display: block;
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--paper);
 }
+.fi-shutter-left { clip-path: polygon(0 0, 30.3% 0, 46.3% 100%, 0 100%); }
+.fi-shutter-right { clip-path: polygon(30% 0, 100% 0, 100% 100%, 46% 100%); }
 #photo-index .fi-art {
   height: clamp(145px, 18cqw, 285px);
   position: relative;
@@ -1191,10 +1196,6 @@ html[data-theme="dark"] {
 #photo-index .fi-drawer:focus-visible .fi-launch { background: #f4f4f2; color: #191919; }
 @media (hover: hover) and (pointer: fine) {
   #photo-index .fi-drawer:hover .fi-launch { background: #f4f4f2; color: #191919; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .fi-entry[open] .fi-cottage-photo { animation: cottage-arrival .65s var(--settle) both; }
-  @keyframes cottage-arrival { from { transform: scale(1.045); } to { transform: none; } }
 }
 #photo-index .fi-story p {
   color: var(--story-text);
@@ -1644,28 +1645,10 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
   #photo-index .fi-art { height: clamp(140px, 45cqw, 190px); }
   #photo-index .fi-story p { font-size: 16px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .fi-entry::details-content { transition: none; }
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .fi-art { view-timeline-name: --project-art; }
-    .fi-art .fi-sweep {
-      animation: contour-arrival linear both;
-      animation-timeline: --project-art;
-      animation-range: entry 0% entry 100%;
-    }
-    @keyframes contour-arrival {
-      from { translate: -3% 0; }
-      to { translate: 0 0; }
-    }
-  }
-}
-
 #photo-index .fi-drawer:focus-visible { outline: none; }
 #photo-index .fi-drawer:focus-visible .fi-project-cta { text-decoration-thickness: 2px; }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  #photo-index .fi-art > img:not(.fi-sweep, .fi-cottage-photo) { transition: transform 360ms var(--settle); }
-  #photo-index .fi-drawer:hover .fi-art > img:not(.fi-sweep, .fi-cottage-photo) { transform: translateY(-2px) scale(1.05); }
+  #photo-index .fi-emblem { transition: translate 360ms var(--settle), scale 360ms var(--settle); }
+  #photo-index .fi-drawer:hover .fi-emblem { translate: 0 -2px; scale: 1.05; }
   #photo-index .fi-drawer:hover .fi-project-cta { text-decoration-thickness: 2px; }
 }
