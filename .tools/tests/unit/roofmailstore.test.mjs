@@ -41,6 +41,7 @@ function fakeFw() {
   const toasts = [], closed = [], subs = {};
   return {
     toasts, closed, changed: 0,
+    session: { user: { id: 'fixture-owner' } },
     toast(text, o) { const t = { text, o }; toasts.push(t); return { close: () => closed.push(text) }; },
     on(ev, fn) { (subs[ev] ||= []).push(fn); return () => {}; },
     emit(ev) { for (const f of subs[ev] || []) f(); },
@@ -96,10 +97,10 @@ test('store: local.put keeps every mail:* key together under the 256 KB cap', { 
   mem.clear();
   assert.equal(S.local.put(S.STORAGE.lens, 'later'), true);
   assert.equal(S.local.get(S.STORAGE.lens), 'later');
-  mem.set('mail:replies', 'x'.repeat(S.CAP - 100));
+  mem.set(S.STORAGE.replies, 'x'.repeat(S.CAP - 100));
   assert.throws(() => S.local.put(S.STORAGE.unsent, { text: 'y'.repeat(200) }), { name: 'QuotaExceededError' });
   mem.set('other:key', 'z'.repeat(S.CAP));
-  mem.delete('mail:replies');
+  mem.delete(S.STORAGE.replies);
   assert.equal(S.local.put(S.STORAGE.unsent, { text: 'ok' }), true, 'only mail:* keys count');
   mem.clear();
 });
@@ -264,7 +265,9 @@ test('outbox: offline, a message with files is refused, one without is kept text
   assert.deepEqual(withFile, { ok: false, offline: true, error: 'Files need a connection. Try Again' });
   const r = await ob.send({ ...DRAFT, files: [new Blob(['x'])] }, []);
   assert.equal(r.queued, true);
-  const kept = JSON.parse(mem.get(S.STORAGE.outbox));
+  const stored = JSON.parse(mem.get(S.STORAGE.outbox));
+  const kept = S.privateJournal ? stored.value : stored;
+  if (S.privateJournal) assert.equal(stored.owner, 'fixture-owner');
   assert.equal(kept.length, 1);
   assert.equal(kept[0].draft.text, 'Yes!');
   assert.ok(!JSON.stringify(kept).includes('content') && !('files' in kept[0].draft), 'never file bytes');

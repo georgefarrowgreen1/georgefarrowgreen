@@ -1,4 +1,4 @@
-const BUILD = "1.0.3";
+const BUILD = "1.0.4";
 "use strict";
 // ==== InFlite motion: shared lifecycle ====
 // Pause presentation motion before first paint and while the page is in the app
@@ -84,21 +84,36 @@ const BUILD = "1.0.3";
   syncTheme();
 
   // ---- asking ----
-  function seed() { try { const el = $("seed"); return el ? JSON.parse(el.textContent) : null; } catch (_) { return null; } }
+  const isSnapshot = (value) => ["services", "jobs", "dayKeys", "incidents", "bugs"].every(key => Array.isArray(value?.[key]));
+  function seed() {
+    try {
+      const el = $("seed"), value = el ? JSON.parse(el.textContent) : null;
+      return isSnapshot(value) ? value : null;
+    } catch (_) { return null; }
+  }
   // (one ask at a time; one that fails keeps what's shown, says the page is behind rather than the checks, and tries again
   // in 15 seconds, as a phone that's just woken often has no connection for its first few)
   let loading = null, retryT = 0;
   function load() {
     if (loading) return loading;
     clearTimeout(retryT);
+    const previous = data;
     return (loading = (async () => {
       try {
         const r = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
         if (!r.ok) throw new Error(String(r.status));
-        data = await r.json(); data.fetched = Date.now();
+        const value = await r.json();
+        if (!isSnapshot(value)) throw new Error("Invalid status snapshot");
+        data = { ...value, fetched: Date.now() };
         draw();
       } catch (_) {
-        if (!data) unreachable(); else { data.failed = Date.now(); verdict(); }
+        const redraw = data !== previous;
+        data = previous;
+        if (!data) unreachable();
+        else {
+          data.failed = Date.now();
+          if (redraw) draw(); else verdict();
+        }
         retryT = setTimeout(load, 15e3);
       } finally { loading = null; }
     })());

@@ -1072,6 +1072,7 @@ function cbor(u8, at, depth = 0, budget = { left: 256 }) {
 }
 export async function verifyAssertion(cred, request, b, env) {
   const authData = fromB64url(b.authenticatorData);
+  if (authData.length < 37) return false;
   // (for the site this passkey belongs to, and only one of the two this address may ask: passkeySites)
   const rp = rpOf(cred, request, env), s = passkeySites(request, env);
   if (rp !== s.home && rp !== s.apps) return false;
@@ -1095,8 +1096,13 @@ export async function verifyAssertion(cred, request, b, env) {
   // (a passkey that counts its uses must count up: one that's fallen behind is a copy. Most of a phone's own say 0)
   const count = ((authData[33] << 24) | (authData[34] << 16) | (authData[35] << 8) | authData[36]) >>> 0, had = cred.sign_count || 0;
   if ((count || had) && count <= had) return false;
-  if (count) await (await db(env)).prepare("UPDATE pg_passkeys SET sign_count = ? WHERE id = ?").bind(count, cred.id).run();
-  return true;
+  // Accept only against the credential still stored after verification. A
+  // synced passkey can keep using zero while its recorded counter is zero.
+  const updated = await (await db(env)).prepare(`UPDATE pg_passkeys SET sign_count = ?1, used_at = ?2
+    WHERE id = ?3 AND user_id = ?4 AND public_key = ?5
+      AND (?1 > COALESCE(sign_count, 0) OR (?1 = 0 AND COALESCE(sign_count, 0) = 0))`)
+    .bind(count, Date.now(), cred.id, cred.user_id, cred.public_key).run();
+  return updated.meta.changes === 1;
 }
 
 /* ---------------- validation ---------------- */

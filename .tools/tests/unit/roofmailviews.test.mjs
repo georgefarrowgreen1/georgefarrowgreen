@@ -219,7 +219,7 @@ test('compose: a draft’s own files ({ i }, from api.draft) go with Send and wi
   // the outbox (MM's) passes { i } on to Mail's /api/drafts: a draft with one stored file, sent, carries { i: 0 }
   const O = await import(new URL('outbox.js', MR).href);
   const posted = [];
-  const ctx = { store: M.store.createStore({}), fw: { toast: () => ({ close() {} }), on: () => () => {} }, open: {},
+  const ctx = { store: M.store.createStore({ access: 'ok' }), fw: { session: { user: { id: 'fixture-owner' } }, toast: () => ({ close() {} }), on: () => () => {} }, open: {},
     api: { saveDraft: async (d) => { posted.push(d); return { id: 'd-files' }; }, sendDraft: async () => ({ id: 'x' }), sent: async () => ({ sent: [] }) } };
   const ob = O.createOutbox(ctx);
   try {
@@ -382,12 +382,13 @@ test('reader: a quick reply the outbox refuses puts the words back and says why;
   answer({ ok: false, error: 'Couldn’t send' });
   await tick();
   assert.equal(f.value, 'Yes, 1pm', 'the words back in the field');
-  assert.equal(JSON.parse(localStorage.getItem('mail:replies') || '{}')['t-q']?.text, 'Yes, 1pm', 'and in mail:replies');
+  const kept = JSON.parse(localStorage.getItem(M.store.STORAGE.replies) || '{}');
+  assert.equal((M.store.privateJournal ? kept.value : kept)?.['t-q']?.text, 'Yes, 1pm', 'and in mail:replies');
   assert.ok(r.toasts.includes('Couldn’t send'), r.toasts.join(' | '));
   assert.ok(!send.disabled, 'Send on again');
   v.destroy();
   el.remove();
-  localStorage.removeItem('mail:replies');
+  localStorage.removeItem(M.store.STORAGE.replies);
 });
 
 test('Mail Settings: only its own keys saved, never isDefault; no New Address, Delete Address or Send From inside InFlite', { skip }, async () => {

@@ -57,8 +57,11 @@ test('actual Root empty libraries, native creation and profiles fit both themes 
   }
   for(const app of ['notes','people','calendar']){
    await launchApp(page,app[0].toUpperCase()+app.slice(1));const root=page.locator('#m-'+app);
-   await root.getByRole('button',{name:app==='notes'?'New note':app==='people'?'Add person':'New event',exact:true}).click();
-   const title=root.getByRole('textbox',{name:app==='people'?'Name':'Title',exact:true});await title.waitFor();await reviewState(page,root,app+'-create',{keyboard:true});
+   await root.getByRole('button',{name:app==='notes'?'New note':app==='people'?'Add person':'New event',exact:true}).press('Enter');
+   const titleLabel=app==='people'?'Name':'Title';
+   const title=root.getByRole('textbox',{name:titleLabel,exact:true});await title.waitFor();
+   await page.waitForFunction(({app,titleLabel})=>document.activeElement?.closest('#m-'+app)&&document.activeElement.getAttribute('aria-label')===titleLabel,{app,titleLabel});
+   await reviewState(page,root,app+'-create',{keyboard:true});
    await title.fill(app==='notes'?'A quiet thought':app==='people'?'Maya Review':'A riverside coffee');
    if(app==='notes'){await root.getByRole('textbox',{name:'Note',exact:true}).fill('A saved thought with room to breathe.');await root.locator('.org-save-state').getByText('Saved to your account',{exact:true}).waitFor();}
    else{
@@ -176,8 +179,22 @@ test('native Back restores a scrolled Notes collection and its originating recor
    dispatchEvent(new CustomEvent('inflite:organise-change',{detail:{owner,kind:'notes'}}));
   },c.owner);
   const notes=page.locator('#m-notes'),record=notes.locator('.org-record').filter({hasText:'Scroll reference 0'});
-  await record.waitFor();await record.focus();await record.scrollIntoViewIfNeeded();const id=await record.getAttribute('data-record'),y=await page.evaluate(()=>scrollY);assert.ok(y>300,'the library is actually scrolled');
-  await record.evaluate(n=>n.addEventListener('click',()=>window.__libraryClickY=scrollY,{once:true,capture:true}));await record.click();await notes.getByRole('textbox',{name:'Title',exact:true}).waitFor();await page.getByRole('button',{name:'Back to Notes',exact:true}).click();await record.waitFor();await settled(page);
+  await record.waitFor();await settled(page);
+  const id=await record.evaluate(node=>{
+   node.focus({preventScroll:true});
+   node.scrollIntoView({block:'center',behavior:'instant'});
+   return node.dataset.record;
+  });
+  await page.waitForFunction(()=>scrollY>300);
+  const y=await page.evaluate(()=>scrollY);
+  await notes.locator('.org-list').evaluate((list,id)=>{
+   list.addEventListener('click',function remember(event){
+    if(event.target.closest('[data-record]')?.dataset.record!==id)return;
+    window.__libraryClickY=scrollY;
+    list.removeEventListener('click',remember,true);
+   },true);
+  },id);
+  await record.click();await notes.getByRole('textbox',{name:'Title',exact:true}).waitFor();await page.getByRole('button',{name:'Back to Notes',exact:true}).click();await record.waitFor();await settled(page);
   const position=await page.evaluate(()=>({actual:scrollY,clicked:window.__libraryClickY,focused:document.activeElement?.dataset.record}));assert.ok(Math.abs(position.actual-position.clicked)<3,'Back returns to the remembered library position: '+JSON.stringify({before:y,...position}));assert.equal(await page.evaluate(()=>document.activeElement?.dataset.record),id);assert.deepEqual(errors,[]);
  }finally{await ctx.close()}
 });

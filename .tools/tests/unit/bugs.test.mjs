@@ -19,7 +19,7 @@ function d1() {
 }
 const DB = d1(), TICK = "inflite-apps.example.workers.dev";
 const env = { DB, PIGEON_TICK_SECRET: "tick-secret", TICK_HOST: TICK };
-const ctx = (method, url, body, headers = {}) => ({ env, request: new Request(url, { method, body, headers: { "CF-Connecting-IP": "203.0.113.9", ...headers } }) });
+const ctx = (method, url, body, headers = {}) => ({ env, request: new Request(url, { method, body, headers: { Origin: new URL(url).origin, "CF-Connecting-IP": "203.0.113.9", ...headers } }) });
 const call = async (method, url, body, headers) => { const r = await bugsRoute(ctx(method, url, body, headers), new URL(url)); return { status: r.status, json: await r.json() }; };
 
 test("one code for one issue: the same whatever differs from one time to the next, another for another", () => {
@@ -36,6 +36,16 @@ test("nothing of anyone's: emails, long keys and any address's query taken out",
 });
 
 const CHAT = issueCode("chat", "crash", "TypeError: x of bob@example.com", "/pigeon/app.js:12");
+test("browser reports require same-origin evidence and authenticated proxy reports still work", async () => {
+  const url = "https://chat.inflite.ai/api/bugs";
+  for (const headers of [{}, { Origin: "null" }, { Origin: "https://outside.example" }, { Origin: "https://chat.inflite.ai", "Sec-Fetch-Site": "same-site" }]) {
+    const r = await bugsRoute({ env: {}, request: new Request(url, { method: "POST", headers, body: "{}" }) }, new URL(url));
+    assert.equal(r.status, 403);
+  }
+  const proxy = await call("POST", "https://account.inflite.ai/api/account/bugs", '{"app":"today","kind":"manual"}', { Origin: "https://inflite.ai", "X-Hub-Ok": "1", "CF-Connecting-IP": "192.0.2.15" });
+  assert.equal(proxy.status, 200);
+});
+
 test("a report from the window: kept under its code, the page's path alone, a few an hour from one address", async () => {
   const r = await call("POST", "https://chat.inflite.ai/api/bugs", JSON.stringify({ code: CHAT, app: "chat", kind: "crash", version: "1.79", words: "TypeError: x of bob@example.com", where: "/pigeon/app.js:12", path: "/chats/x?with=1#secret", device: "iPhone · Safari 18", note: "Tapped send" }));
   assert.equal(r.status, 200); assert.equal(r.json.code, CHAT);

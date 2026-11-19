@@ -16,6 +16,8 @@ import vm from 'node:vm';
 const SRC = new URL('../../../../inflite/today/src/mailhost.js', import.meta.url);
 const PAGE_JS = new URL('../../../../inflite/today/public/mailhost.js', import.meta.url);
 const skip = !existsSync(SRC) && 'the inflite repo isn’t beside this one';
+const ownerBound = !skip && readFileSync(PAGE_JS, 'utf8').includes('v: 2, owner');
+const unsentKey = !skip && /const UNSENT = "([^"]+)"/.exec(readFileSync(PAGE_JS, 'utf8'))?.[1] || 'mail:unsent';
 const { mailPage, HOST_CSS } = skip ? {} : await import(SRC);
 const ROOF = new URL('../../../../inflite/today/src/roof.js', import.meta.url);
 const roofed = skip || (!existsSync(new URL('../../../../inflite/today/src/mailroof.js', import.meta.url)) && 'the inflite repo beside has no Mail roof (today/src/mailroof.js)')
@@ -113,7 +115,7 @@ test('without Mail’s address and the sign-in page’s (or with something that 
 // ---- the page's script, in a page made up for it ----
 // (hash: the page's own #; kept: this tab's sessionStorage as the page opens (null: none to be had); answers what was
 // done: the frame's address, addresses gone to, replaced, posted to the frame, said to the root worker, kept)
-function page({ hash = '', mail = MAIL, auth = AUTH, kept = {}, cloneable = false, local } = {}) {
+function page({ hash = '', mail = MAIL, auth = AUTH, kept = {}, cloneable = false, local, owner = 'fixture-owner' } = {}) {
   const did = { assigned: [], replaced: [], backs: 0, posted: [], listeners: {}, sw: {}, clicks: [], worker: [], docListeners: {}, frames: [] };
   const store = kept === null ? null : new Map(Object.entries(kept));
   const sessionStorage = store && { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
@@ -139,6 +141,11 @@ function page({ hash = '', mail = MAIL, auth = AUTH, kept = {}, cloneable = fals
     navigator: { serviceWorker: { addEventListener: (t, f) => { did.sw[t] = f; }, getRegistration: (scope) => (did.scope = scope, { then: (ok) => ok(reg) }) } },
     addEventListener: (t, f) => { (did.listeners[t] ||= []).push(f); },
     URLSearchParams, URL,
+    fetch: async (path, options) => {
+      assert.equal(path, '/api/session');
+      assert.equal(options.cache, 'no-store');
+      return Response.json({ user: { id: owner }, apps: { mail: true } });
+    },
   };
   if (store) ctx.sessionStorage = sessionStorage;
   else Object.defineProperty(ctx, 'sessionStorage', { get() { throw new Error('denied'); } });
@@ -351,36 +358,56 @@ test('the roof branch: with Mail’s switch on the framework’s page, off this 
   }
 });
 
-test('what InFlite’s Mail was writing as its switch went off (mail:unsent): handed to Mail after its hello, to Mail’s address alone, and let go once Mail has saved it (One roof stage 4, §8)', { skip }, () => {
+test('the hosted Mail draft handoff checks its frame, current account and acknowledgement before removal', { skip }, async () => {
   const u = { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: [], bcc: [], subject: 'Roof switch draft', text: 'Words', quote: { of: 'm-1', mode: 'reply' }, quoteOld: false,
     inReplyTo: '<a@x>', references: '<a@x>', threadId: 't-1', draftId: 'd-1', at: 1700000000000 };
-  let p = page({ local: { 'mail:unsent': JSON.stringify(u), 'today:card': '1' } });
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  const stamped = value => JSON.stringify(ownerBound ? { v: 1, owner: 'fixture-owner', value } : value);
+  const packet = (at, extra) => ({ ifl: 'unsent', ...(ownerBound ? { v: 2, owner: 'fixture-owner' } : { v: 1 }), at, ...extra });
+  let p = page({ local: { [unsentKey]: stamped(u), 'today:card': '1' } });
   p.hear({ ifl: 'hello', v: 1 });
+  await tick();
   const { at, threadId, quoteOld, ...words } = u;
-  assert.deepEqual(p.did.posted, [[{ ifl: 'hello', v: 1 }, MAIL], [{ ifl: 'unsent', v: 1, at, draft: words }, MAIL]], 'after the hello, the words to Mail’s address alone');
+  assert.deepEqual(p.did.posted, [[{ ifl: 'hello', v: 1 }, MAIL], [packet(at, { draft: words }), MAIL]], 'after the hello, the words to Mail’s address alone');
   // (Mail's word that it's saved: only from the frame at Mail's address, and only for that copy)
-  p.hear({ ifl: 'unsent', v: 1, at, saved: true }, { source: { postMessage() {} } });
-  p.hear({ ifl: 'unsent', v: 1, at, saved: true }, { origin: 'https://evil.example' });
-  p.hear({ ifl: 'unsent', v: 1, at: at + 1, saved: true });
-  p.hear({ ifl: 'unsent', v: 1, at });
-  assert.ok(p.did.local.has('mail:unsent'), 'kept till Mail has that very copy');
-  p.hear({ ifl: 'unsent', v: 1, at, saved: true });
-  assert.equal(p.did.local.has('mail:unsent'), false, 'let go once Mail has it');
+  p.hear(packet(at, { saved: true }), { source: { postMessage() {} } });
+  p.hear(packet(at, { saved: true }), { origin: 'https://evil.example' });
+  p.hear(packet(at + 1, { saved: true }));
+  p.hear(packet(at));
+  if (ownerBound) p.hear(packet(at, { owner: 'other-owner', saved: true }));
+  assert.ok(p.did.local.has(unsentKey), 'kept till Mail has that very copy');
+  p.hear(packet(at, { saved: true }));
+  assert.equal(p.did.local.has(unsentKey), false, 'let go once Mail has it');
   assert.equal(p.did.local.get('today:card'), '1', 'nothing else touched');
   assert.deepEqual(p.did.assigned, []);
   // (a quote Mail on its own made (quoteOld): no quote key, so Mail keeps the one the draft has)
-  p = page({ local: { 'mail:unsent': JSON.stringify({ ...u, quoteOld: true }) } });
+  p = page({ local: { [unsentKey]: stamped({ ...u, quoteOld: true }) } });
   p.hear({ ifl: 'hello', v: 1 });
+  await tick();
   assert.equal('quote' in p.did.posted[1][0].draft, false);
   // (nothing worth keeping, nothing readable, or no storage at all: only the hello answered)
-  for (const local of [{}, { 'mail:unsent': JSON.stringify({ ...u, to: [], subject: '', text: '  ' }) }, { 'mail:unsent': '{nope' }, { 'mail:unsent': JSON.stringify({ ...u, at: 'x' }) }, undefined]) {
+  for (const local of [{}, { [unsentKey]: stamped({ ...u, to: [], subject: '', text: '  ' }) }, { [unsentKey]: '{nope' }, { [unsentKey]: stamped({ ...u, at: 'x' }) }, undefined]) {
     p = page({ local });
     p.hear({ ifl: 'hello', v: 1 });
+    await tick();
     assert.deepEqual(p.did.posted, [[{ ifl: 'hello', v: 1 }, MAIL]], JSON.stringify(local));
   }
   // (a hello from anywhere else: nothing handed)
-  p = page({ local: { 'mail:unsent': JSON.stringify(u) } });
+  p = page({ local: { [unsentKey]: stamped(u) } });
   p.hear({ ifl: 'hello', v: 1 }, { origin: SITE });
   p.hear({ ifl: 'hello', v: 1 }, { source: { postMessage() {} } });
   assert.deepEqual(p.did.posted, []);
+  if (ownerBound) for (const raw of [stamped(u), JSON.stringify(u)]) {
+    p = page({ local: { [unsentKey]: raw }, owner: 'other-owner' });
+    p.hear({ ifl: 'hello', v: 1 });
+    await tick();
+    assert.deepEqual(p.did.posted, [[{ ifl: 'hello', v: 1 }, MAIL]]);
+    assert.equal(p.did.local.get(unsentKey), raw);
+  }
+  if (unsentKey !== 'mail:unsent') {
+    p = page({ local: { 'mail:unsent': JSON.stringify(u) } });
+    p.hear({ ifl: 'hello', v: 1 });
+    await tick();
+    assert.deepEqual(p.did.posted, [[{ ifl: 'hello', v: 1 }, MAIL]], 'a sender using an earlier asset cannot hand off unowned words');
+  }
 });

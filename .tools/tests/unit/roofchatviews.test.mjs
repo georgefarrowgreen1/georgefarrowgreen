@@ -90,7 +90,7 @@ async function world({ state = "ready", device = false } = {}) {
     header: { set: (o) => log.header.push(o) },
     nav: { href: (k, a) => `/chats/#${k}=${a}`, go: (p, o) => log.go.push([p, o]), back() {}, depth: () => 1, section() {} },
     sheet: { open: (spec) => { const el = doc.createElement("dialog"); el.dataset.sheet = spec.sheet; const body = doc.createElement("div"); el.append(body);
-      if (spec.body?.nodeType) body.append(spec.body); const h = { el, body, closed: false, close() { h.closed = true; spec.onClose?.(); }, setBusy() {}, push() {}, pop() {} }; log.sheets.push([spec.sheet, h, spec]); return h; } },
+      if (spec.body?.nodeType) body.append(spec.body); const h = { el, body, closed: false, close() { h.closed = true; spec.onClose?.(); }, now() { h.close(); }, setBusy() {}, push() {}, pop() {} }; log.sheets.push([spec.sheet, h, spec]); return h; } },
     toast: (t) => { log.toasts.push(t); return { close() {} }; },
     lazy: () => Promise.reject(new Error("not in this test")),
     service: async () => svc,

@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { forecast } from "../mocks/wxappdata.mjs";
 
 // ---- the browser bits the modules touch: storage, events, a network that never answers ----
 const mem = new Map();
@@ -26,7 +27,7 @@ const A = await import(new URL("account.js", WX));
 const I = await import(new URL("insights.js", WX));
 const { makeFormat } = await import(new URL("format.js", WX));
 const { FACES, PITCHES, MAX_ZONES } = await import(new URL("solar.js", WX));
-const { store } = await import(new URL("data.js", WX));
+const { cell, forgetKept, load, store } = await import(new URL("data.js", WX));
 const APP = readFileSync(new URL("app.js", WX), "utf8");
 
 // ---- taking a function or a const out of app.js by name: its whole source, brackets matched, strings and comments
@@ -281,6 +282,48 @@ const offline = () => { globalThis.fetch = async () => { throw Object.assign(new
 const tick = (ms = 0) => new Promise((ok) => setTimeout(ok, ms));
 const ACCT = { id: "u1", name: "Ann", handle: "ann", email: "ann@example.com", emailOk: true, photoAt: null, devices: [], ver: 3,
   snap: { places: ["53.80,-1.55"], settings: "null", notify: null } };
+
+test("a warning refresh can’t make a cached forecast fresh after its network request failed", async () => {
+  const place = { name: "London", lat: 51.5072, lon: -0.1276 };
+  const id = cell(place.lat, place.lon), now = Date.now(), old = now - 20 * 60e3;
+  const savedForecast = forecast(now);
+  reset({
+    [`wx:${id}`]: { forecast: { at: old, j: savedForecast } },
+    [`climf:${id}`]: { at: now, of: now, on: Object.fromEntries(savedForecast.daily.time.map(day => [day, {}])) },
+    [`skill4:${id}`]: { at: now },
+  });
+  forgetKept(id);
+  let sendWarnings;
+  const warningResponse = new Promise(resolve => { sendWarnings = resolve; });
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (String(url).startsWith("/api/weather/warnings?")) return warningResponse;
+    return Response.json({}, { status: 404 });
+  };
+  try {
+    const updates = [];
+    const result = await load(place, (wx, state) => {
+      updates.push({ wx, ...state });
+      if (state.error) sendWarnings(Response.json({ warnings: [] }));
+    }, { force: true });
+    assert.equal(result.fetchedAt, old);
+    assert.ok(updates.some(update => update.error));
+    assert.deepEqual(updates.at(-1).wx.official, []);
+    assert.equal(updates.at(-1).stale, true);
+    assert.equal(updates.at(-1).wx.fetchedAt, old);
+
+    globalThis.fetch = async url => String(url).includes("forecast_minutely_15")
+      ? Response.json(savedForecast)
+      : Response.json({}, { status: 404 });
+    await load(place, (wx, state) => updates.push({ wx, ...state }), { force: true });
+    assert.equal(updates.at(-1).stale, false);
+    assert.ok(updates.at(-1).wx.fetchedAt >= now);
+  } finally {
+    globalThis.fetch = fetch;
+    forgetKept(id);
+    reset();
+  }
+});
 
 test("an account answer that comes after unmount (sign-out) writes nothing: not wx:acct, wx:places or wx:settings", async () => {
   try {

@@ -279,6 +279,40 @@ function statusData() {
       updates: [{ at: now - 1800e3, k: 'Resolved', w: 'Alerts are being delivered normally.' }] }], bugs: [], maint: [],
   };
 }
+
+test('Status keeps its last checks and retries after a malformed refresh', async () => {
+  const ctx = await context(390, 'reduce', 'status-refresh'), page = await ctx.newPage();
+  const data = statusData(), errors = [];
+  const fresh = structuredClone(data);
+  data.at -= 30 * 60e3;
+  fresh.at += 60e3;
+  fresh.services.find(service => service.id === 'weather').s = 'ok';
+  let reads = 0;
+  await page.clock.install();
+  page.on('pageerror', error => errors.push(error.message));
+  await ctx.route('https://status.test/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/status') {
+      reads++;
+      return route.fulfill({ json: reads === 1 ? data : reads === 2 ? {} : fresh });
+    }
+    const file = ROOT + '/status/' + (path === '/' ? 'index.html' : path.slice(1));
+    return existsSync(file) ? route.fulfill({ body: readFileSync(file), contentType: MIME[extname(file)] || 'application/octet-stream' })
+      : route.fulfill({ status: 404, body: '' });
+  });
+  try {
+    await page.goto('https://status.test/');
+    await page.getByRole('heading', { name: 'The checks are running late', exact: true }).waitFor();
+    await page.clock.fastForward(60e3);
+    await page.getByRole('heading', { name: 'This page is out of date', exact: true }).waitFor({ timeout: 7000 });
+    assert.equal(await page.locator('[data-id="weather"] .arow').isVisible(), true);
+    await page.clock.fastForward(15e3);
+    await page.getByRole('heading', { name: 'Everything’s working', exact: true }).waitFor();
+    assert.equal(reads, 3);
+    assert.deepEqual(errors, []);
+  } finally { await ctx.close(); }
+});
+
 for (const width of [390, 1440]) for (const reducedMotion of ['no-preference', 'reduce']) {
   test(`Status details preserve focus and close immediately to input ${width}/${reducedMotion}`, async () => {
     const ctx = await context(width, reducedMotion, 'status-video'), data = statusData();

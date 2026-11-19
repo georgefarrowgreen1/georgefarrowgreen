@@ -7,9 +7,10 @@
 //   record(env, body)         one page's numbers (POST /api/vitals; Today's and Mail's own addresses pass theirs on)
 //   speed(D, first, last)     → { rows: [{ app, dev, m: { metric: { p75, n, days: [p75 or null, oldest first] } } }] }
 //   vitalsRoute(ctx)          POST /api/vitals (and /api/account/vitals, as Today's Worker asks it): a page's own, from its
-//                             own address (Sec-Fetch-Site), a few a minute from each network; 204 whatever came of it
+//                             own address, a few a minute from each network; 204 when the sample is accepted
 //   band(v) / bandValue(b)    the band a number's in, and the number a band stands for (its geometric middle)
 import { db, DAY, londonOffset, pace, clientNet, readCapped } from "./_pigeon.js";
+import { diagnosticsOrigin } from "./_diagnostics-origin.js";
 
 // (the apps that send: Today, and each app as a part of it at InFlite's hub; the hub's other pages; the sign-in page;
 // the home site)
@@ -79,8 +80,7 @@ export async function speed(D, first, last) {
 export async function vitalsRoute(ctx) {
   const req = ctx.request, none = (status = 204) => new Response(null, { status, headers: { "Cache-Control": "no-store" } });
   if (req.method !== "POST") return none(405);
-  const site = req.headers.get("Sec-Fetch-Site");
-  if (site && site !== "same-origin") return none(403);
+  if (!diagnosticsOrigin(req)) return none(403);
   try {
     // (a few hundred bytes at most: more refused before it's read, by what it says it is, and never read past)
     const raw = new TextDecoder().decode(await readCapped(req, 600));

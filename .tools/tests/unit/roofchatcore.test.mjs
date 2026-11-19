@@ -547,6 +547,35 @@ test('photo: only the open chat’s, decrypted to a Blob; another chat’s is ne
   assert.equal(await k.call('photo', 'm-pat-ph'), null, 'locked: nothing');
 });
 
+test('a delayed media response cannot cross a lock or open conversation lifetime', async t => {
+  const k = await boot();
+  const original = k.srv.fetch, photo = 'm-pat-ph';
+  t.after(() => { globalThis.fetch = original; });
+  await k.call('start', { locked: false, visible: true, screen: true });
+  await k.call('open', k.srv.ids.pat);
+  for (const transition of ['lock and unlock', 'leave and reopen']) {
+    const entered = Promise.withResolvers(), held = Promise.withResolvers();
+    globalThis.fetch = async (url, init) => {
+      if (String(url) === `/api/pigeon/photo/${photo}`) { entered.resolve(); await held.promise; }
+      return original(url, init);
+    };
+    const pending = k.call('photo', photo);
+    await entered.promise;
+    try {
+      if (transition === 'lock and unlock') {
+        await k.call('lock', true);
+        await k.call('lock', false);
+      } else {
+        await k.call('leave');
+        await k.call('open', k.srv.ids.pat);
+      }
+    } finally { held.resolve(); }
+    assert.equal(await pending, null, transition);
+  }
+  globalThis.fetch = original;
+  assert.ok(await k.call('photo', photo) instanceof Blob, 'a fresh authorised request still opens the photo');
+});
+
 test('a phone with no pins yet opens nothing from a kept copy before the server’s pins have answered (B3)', async () => {
   const srv = await makeWorld(), db = fakeIDB();
   db.data.set('session', { token: 'tok-SECRET-1234', me: { id: srv.ids.me, name: 'Sam Taylor', handle: 'sam', pub: srv.me.pub }, priv: srv.me.priv, pub: srv.me.pub });

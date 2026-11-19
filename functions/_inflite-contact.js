@@ -1,6 +1,6 @@
 import { body, json } from "./_accountapi.js";
 import { clientIp, clientNet, EMAIL_RE, hex, HttpError, limit } from "./_pigeon.js";
-import { saveMessage } from "./_messages.js";
+import { hasMessageReceipt, saveMessage } from "./_messages.js";
 
 const invalid = () => json({ error: "Invalid contact message." }, 400);
 const busy = () => json({ error: "Contact is unavailable." }, 503);
@@ -23,6 +23,8 @@ export async function infliteContact({ request, env }) {
   if (new URL(request.url).origin !== "https://account.inflite.ai" || request.headers.get("X-Hub-Ok") !== "1") return json({ error: "Not found." }, 404);
   if (request.method !== "POST") return json({ error: "Method unavailable." }, 405);
   if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") return json({ error: "Use JSON." }, 415);
+  const attempt = request.headers.get("Idempotency-Key");
+  if (attempt !== null && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(attempt)) return invalid();
   if (!env.DB || !env.HUB_KEY || !request.headers.get("X-Hub-IP")) return busy();
   let input;
   try { input = await body(request, 24 * 1024); } catch (error) {
@@ -36,8 +38,12 @@ export async function infliteContact({ request, env }) {
       !message || message.length > 4000 || noBodyControls.test(message)) return invalid();
 
   try {
+    // Retrying the same submission retrieves its receipt even after the sender has reached the rate limit.
+    const receipt = attempt && hex(new Uint8Array(await crypto.subtle.digest("SHA-256",
+      new TextEncoder().encode(JSON.stringify([attempt, name, email, message])))));
+    if (receipt && await hasMessageReceipt(env, receipt)) return json({ ok: true }, 201);
     await countNetwork(env, request);
-    await saveMessage(env, { name, email, body: message });
+    await saveMessage(env, { name, email, body: message, receipt });
     return json({ ok: true }, 201);
   } catch (error) {
     if (error instanceof HttpError && error.status === 429) return json({ error: "Please try again later." }, 429);

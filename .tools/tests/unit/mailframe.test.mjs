@@ -20,6 +20,7 @@ const skip = (!existsSync(new URL('src/index.js', MAIL)) && 'the inflite repo is
   (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
 const worker = skip ? null : (await import(new URL('src/index.js', MAIL).href)).default;
 const src = skip ? '' : readFileSync(new URL('public/app.js', MAIL), 'utf8');
+const ownerBound = src.includes('accountOwner');
 
 // (Mail's policy as public/_headers gives every file: its /* rule)
 const filesPolicy = () => {
@@ -132,7 +133,7 @@ const part = (re, what) => re.exec(src)?.[0] || assert.fail(`app.js: ${what}`);
 // it (ancestorOrigins: undefined where it doesn't, 'throws' for one that can't be read); → its embed mode's parts, working)
 // (unsent: with the hand-in of what InFlite's Mail was writing as its switch went off, Mail's saves answered by it:
 // (draft) → a promise; what was saved, toasted, and the list and counts asked again, in saved, toasts, again)
-function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl-mail', parentThrows = false, ancestors, unsent } = {}) {
+function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl-mail', parentThrows = false, ancestors, unsent, owner = 'fixture-owner' } = {}) {
   const posted = [], listeners = {}, classes = [];
   const win = { name };
   const parent = { postMessage: (m, o) => { if (parentThrows) throw new Error('gone'); posted.push([JSON.parse(JSON.stringify(m)), o]); } };
@@ -148,7 +149,7 @@ function embed({ origin = 'https://email.inflite.ai', framed = true, name = 'ifl
     ${unsent ? `${fn('unsentDraft')}\n  const handedIn = new Set();${fn('fromHubUnsent')}` : 'const fromHubUnsent = null;'}
     ({ EMBED, HUBS, hub: () => HUB, toHub, fromHub, fromHubUnsent, heard: () => hubHeard })`;
   const saved = [], toasts = [], again = [];
-  if (unsent) Object.assign(ctx, { api: { saveDraft: (d) => (saved.push(JSON.parse(JSON.stringify(d))), unsent(d)) }, toast: (t) => toasts.push(t), S: { me: {} },
+  if (unsent) Object.assign(ctx, { api: { session: async () => ({ access: 'ok', user: { id: owner } }), saveDraft: (d) => (saved.push(JSON.parse(JSON.stringify(d))), unsent(d)) }, toast: (t) => toasts.push(t), S: { me: {} },
     refreshCounts: () => again.push('counts'), loadList: (o) => again.push(o) });
   return { ...vm.runInNewContext(code, ctx), posted, listeners, classes, parent, win, saved, toasts, again };
 }
@@ -252,26 +253,27 @@ test('in the frame: nothing in your photo’s place (the hub’s bar has Back to
   assert.match(fn('signOut'), /if \(!EMBED && authOrigin\(\) !== accountOrigin\) location\.assign\(/);
 });
 
-test('what InFlite’s Mail was writing as its switch went off, handed in by the hub’s page: saved as a draft only from the hub holding the frame, after its hello; the hub told by the copy’s time alone (One roof stage 4, §8)', { skip }, async () => {
+test('Mail verifies the framed draft handoff and authorizes the save for its owner before acknowledgement', { skip }, async () => {
   const tick = () => new Promise((ok) => setTimeout(ok, 0));
   const words = { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com', extra: 1 }, { name: 'x' }, null], cc: [], bcc: [], subject: 'Roof switch draft', text: 'Words',
     inReplyTo: '<a@x>', references: '<a@x>', quote: { of: 'm-1', mode: 'replyAll' } };
-  const msg = (draft = words, at = 1700000000000) => ({ ifl: 'unsent', v: 1, at, draft });
+  const version = ownerBound ? { v: 2, owner: 'fixture-owner' } : { v: 1 };
+  const msg = (draft = words, at = 1700000000000) => ({ ifl: 'unsent', ...version, at, draft });
   let m = embed({ unsent: async () => ({ id: 'd-9' }) });
   // (before the hub's answered the hello, or from anywhere but the hub holding the frame: nothing saved)
   assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), false, 'not before the hello');
   m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });
   for (const e of [{ source: {}, origin: 'https://inflite.ai' }, { source: m.parent, origin: 'https://next.inflite.ai' }, { source: m.parent, origin: 'https://evil.example' }, { source: m.parent, origin: 'https://email.inflite.ai' }])
     assert.equal(m.fromHubUnsent({ ...e, data: msg() }), false, e.origin);
-  for (const data of [null, 'unsent', { ...msg(), v: 2 }, { ...msg(), ifl: 'hello' }, { ...msg(), at: 'x' }, msg(null), msg({ ...words, to: [], subject: '', text: ' ' }), msg('words')])
+  for (const data of [null, 'unsent', { ...msg(), v: ownerBound ? 1 : 2 }, { ...msg(), ifl: 'hello' }, { ...msg(), at: 'x' }, msg(null), msg({ ...words, to: [], subject: '', text: ' ' }), msg('words')])
     assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data }), false, JSON.stringify(data));
   assert.deepEqual(m.saved, []);
   m.posted.length = 0;
   assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), true);
   await tick();
   assert.deepEqual(m.saved, [{ from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: [], bcc: [], subject: 'Roof switch draft', text: 'Words', inReplyTo: '<a@x>', references: '<a@x>',
-    attachments: [], quote: { of: 'm-1', mode: 'replyAll' } }], 'a new draft, its people as Mail keeps them, the quote by which message it is');
-  assert.deepEqual(m.posted, [[{ ifl: 'unsent', v: 1, at: 1700000000000, saved: true }, 'https://inflite.ai']], 'the hub told, by the copy’s time alone (none of the words)');
+    attachments: [], quote: { of: 'm-1', mode: 'replyAll' }, ...(ownerBound && { accountOwner: 'fixture-owner' }) }], 'a new draft, its people as Mail keeps them, the quote by which message it is');
+  assert.deepEqual(m.posted, [[{ ifl: 'unsent', ...version, at: 1700000000000, saved: true }, 'https://inflite.ai']], 'the acknowledgement carries the copy identifiers');
   assert.deepEqual(m.toasts, ['Draft Saved']);
   assert.deepEqual(plain(m.again), ['counts', { quiet: true }]);
   // (the same copy again: saved once)
@@ -296,6 +298,15 @@ test('what InFlite’s Mail was writing as its switch went off, handed in by the
   await tick();
   assert.deepEqual(m.posted, []);
   assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), true, 'taken again');
+  if (ownerBound) for (const owner of ['other-owner', null]) {
+    m = embed({ owner, unsent: async () => ({ id: 'd-9' }) });
+    m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });
+    m.posted.length = 0;
+    m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() });
+    await tick();
+    assert.deepEqual(m.saved, []);
+    assert.deepEqual(m.posted, []);
+  }
   // (Mail at its own address: nothing)
   m = embed({ framed: false, unsent: async () => ({}) });
   assert.equal(m.fromHubUnsent({ source: m.win, origin: 'https://inflite.ai', data: msg() }), false);

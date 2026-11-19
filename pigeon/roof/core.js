@@ -1017,7 +1017,8 @@ function emitTyping() {
 }
 function emitKeywarn() { if (ready()) emit("keywarn", keywarnView()); }
 // (locked, or the open chat let go: its words leave the page's store, risk I2)
-function dropTopics(id) { if (!id) return; emit("chat:" + id, null); emit("typing:" + id, null); }
+let mediaRevision = 0;
+function dropTopics(id) { if (!id) return; mediaRevision++; emit("chat:" + id, null); emit("typing:" + id, null); }
 
 /* ---------------- keys and accounts: resume and forget (app.js 2716-2738, core half) ---------------- */
 // (lockPrefs, as the engine read it before it answered anything: here, what the service read of inflight-lock, and
@@ -1349,6 +1350,9 @@ async function photo(id) {
   const p = readable(id), o = S.outbox.find((x) => x.id === id && x.to === chat);
   if (!m && !o) return null;
   if (!p || !(p.p || p.v)) return null;
+  const owner = privacyLease(), revision = mediaRevision;
+  const current = () => privacyLive(owner) && revision === mediaRevision && stateNow() === "ready" &&
+    S.view === "chat" && S.chat === chat && readable(id) === p;
   const type = p.p?.f ? "application/octet-stream" : p.v ? (typeof p.v.m === "string" && /^audio\/[\w.+-]+$/.test(p.v.m) ? p.v.m : "audio/mp4") : p.p.m === "image/gif" ? "image/gif" : "image/jpeg";
   try {
     let bytes;
@@ -1358,8 +1362,9 @@ async function photo(id) {
       const r = await api((group(chat) ? "group-photo/" : "photo/") + encodeURIComponent(m.id), { raw: true });
       bytes = await r.arrayBuffer();
     }
+    if (!current()) return null;
     const plain = p.v ? await E2E.openPhoto(id, p.v, bytes, "voice") : await E2E.openPhoto(id, p.p, bytes);
-    return new Blob([plain], { type });
+    return current() ? new Blob([plain], { type }) : null;
   } catch (_) { return null; }
 }
 

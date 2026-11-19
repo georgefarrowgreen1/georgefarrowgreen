@@ -395,12 +395,14 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
   const fresh = (k) => !(force && (k === "forecast" || k === "warnings")) && kept[k] && Date.now() - kept[k].at < life[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
   const wait = (k) => fresh(k) || (!force && resting(id, k));
   const build = () => (raw.forecast ? buildWx(raw, place) : null);
+  let forecastUpdated = false;
+  const forecastStale = () => !forecastUpdated && !fresh("forecast");
   // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
   if (raw.forecast && !quiet) {
     let wx = null;
     try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill4:${id}`); keptMemo.delete(id); }
     // (and a fault in drawing it never keeps the new one from being asked for)
-    if (wx) try { onUpdate(wx, { partial: true, stale: !fresh("forecast") }); } catch (e) { console.error(e); }
+    if (wx) try { onUpdate(wx, { partial: true, stale: forecastStale() }); } catch (e) { console.error(e); }
   }
   // (kept in memory as each piece comes; written to storage, the whole record each time, as the forecast comes (what the
   // page opens with next time), and once more when the rest is all in, not as each piece of it comes)
@@ -427,9 +429,12 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
     }
     catch (e) { failed.set(`${id}|${k}`, Date.now()); if (k === "forecast") throw e; return; }
     keptMemo.set(id, raw); unsaved = true;
-    if (k === "forecast") save();
+    if (k === "forecast") {
+      forecastUpdated = true;
+      save();
+    }
     // (drawn outside the asking: a fault in drawing it isn't taken for the network failing, nor asked again for nothing)
-    if (!quiet) try { onUpdate(build(), { partial: k !== "forecast", stale: false }); } catch (e) { console.error(e); }
+    if (!quiet) try { onUpdate(build(), { partial: k !== "forecast", stale: forecastStale() }); } catch (e) { console.error(e); }
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);
@@ -442,9 +447,9 @@ export async function load(place, onUpdate, { force = false, quiet = false } = {
   // (nor drawn from here: its page beside the one shown is made from what's kept, when the page is idle)
   if (quiet) { if (!saving()) await Promise.all([loadSkill(place).catch(() => null), climateBeside(place).catch(() => null)]); return null; }
   // the climate, once a year per place, in the background (it's a lot to ask for)
-  climateSoon(place, (c) => { if (c !== null && raw.forecast) try { onUpdate(build(), { partial: false, stale: false }); } catch (e) { console.error(e); } });
+  climateSoon(place, (c) => { if (c !== null && raw.forecast) try { onUpdate(build(), { partial: false, stale: forecastStale() }); } catch (e) { console.error(e); } });
   // how the models have done here, twice a day per place, in the background too
-  if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); }).catch((e) => console.error(e));
+  if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: forecastStale() }); }).catch((e) => console.error(e));
   return build();
 }
 // What mustn't be lost (your places, your settings): written, and where the phone's storage is full, room made for it

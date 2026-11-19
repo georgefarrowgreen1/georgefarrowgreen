@@ -132,7 +132,10 @@ test('each file exports its frozen names: openers, views, the store’s keys, th
   const store = src('store.js');
   assert.deepEqual(literalOf(store, 'KEYS'), ['access', 'me', 'counts', 'version', 'offline', 'updatedAt', 'lens', 'filter', 'address', 'box', 'query', 'list', 'threadId', 'thread', 'layout', 'compose', 'sending', 'outbox']);
   assert.equal(literalOf(store, 'CAP'), 262144);
-  assert.match(store, /export const STORAGE = \{ replies: "mail:replies", unsent: "mail:unsent", outbox: "mail:outbox", remoteImages: "mail:remote-images", lens: "mail:lens" \};/);
+  const storage = store.includes('export function privateJournal')
+    ? '{ replies: "mail:replies:v1", unsent: "mail:unsent:v1", outbox: "mail:outbox:v1", owner: "mail:owner", remoteImages: "mail:remote-images", lens: "mail:lens" }'
+    : '{ replies: "mail:replies", unsent: "mail:unsent", outbox: "mail:outbox", remoteImages: "mail:remote-images", lens: "mail:lens" }';
+  assert.ok(store.includes(`export const STORAGE = ${storage};`));
   assert.match(store, /export const SESSION = \{ verifier: "mail:signin-verifier" \};/);
   // (the API: §4.7's methods, each in createApi's answer; MAIL by modules.js's rule)
   const api = src('api.js');

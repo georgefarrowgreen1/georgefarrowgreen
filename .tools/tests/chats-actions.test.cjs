@@ -123,3 +123,22 @@ for (const [width, theme, motion] of [[320, 'light', 'reduce'], [390, 'light', '
     } finally { await ctx.close(); }
   });
 }
+
+test('locking Chats dismisses an open decrypted voice message and revokes its URL', async () => {
+  const { ctx, page, errors } = await open(390, 'dark', 'reduce');
+  try {
+    await page.locator('.ch-vn').click();
+    const audio = page.locator('dialog[data-sheet="view"] .chs-audio');
+    await audio.waitFor({ state: 'attached' });
+    const src = await audio.getAttribute('src');
+    await page.evaluate(async () => {
+      const service = await kit.F.forModule('chats').service();
+      await service.call('lock', true);
+    });
+    await page.getByRole('heading', { name: 'Chats is locked' }).waitFor();
+    assert.equal(await page.locator('dialog[data-sheet="view"]').count(), 0);
+    assert.equal(await page.locator('.ch-words').count(), 0);
+    assert.equal(await page.evaluate(url => __mediaUrls.revoked.includes(url), src), true);
+    assert.deepEqual(errors, []);
+  } finally { await ctx.close(); }
+});

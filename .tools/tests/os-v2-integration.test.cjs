@@ -48,7 +48,7 @@ async function augment(ctx, state, json) {
     }
     const value = await api.fetch(req.url(), { method: req.method(), body: req.postData() }); return json(r, await value.json(), value.ok ? 200 : 404);
   });
-  state.mail = mailMock({ origin: ORIGIN, now: Date.UTC(2026, 10, 10, 10) });
+  state.mail = mailMock({ origin: ORIGIN, now: Date.UTC(2026, 10, 10, 10), owner: state.view.user.id });
   await ctx.route(MAIL + '/**', state.mail.handle);
   let core = readFileSync(resolve(__dirname, 'roofkit/chatcore-stub.js'), 'utf8').replace('"__KIT_STATE__"', '"ready"')
     .replace('const calls = (self.kitCalls = {});', 'const calls = (self.kitCalls = {}), drafts = new Map();')

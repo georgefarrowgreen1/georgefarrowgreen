@@ -30,7 +30,10 @@ const size = (buf) => [buf.readUInt32BE(16), buf.readUInt32BE(20)];
 test('Today’s copies are this repository’s, byte for byte', { skip }, () => {
   assert.ok(pub('wxicons.js').equals(here('weather/icons.js')), 'today/public/wxicons.js differs from weather/icons.js: copy it again');
   for (const a of ['chat', 'weather', 'fitness', 'markets', 'mail']) assert.ok(pub(`apps/${a}.svg`).equals(here(`.tools/inflite/icons/${a}.svg`)), `apps/${a}.svg differs from .tools/inflite/icons/${a}.svg`);
-  assert.deepEqual(readdirSync(new URL('apps/', PUB)).sort(), ['calendar.svg','chat.svg', 'fitness.svg', 'mail.svg', 'markets.svg','notes.svg','people.svg', 'weather.svg']);
+  assert.deepEqual(readdirSync(new URL('apps/', PUB)).sort(), [
+    'calendar.svg', 'chat.svg', 'files.svg', 'fitness.svg', 'mail.svg',
+    'markets.svg', 'notes.svg', 'people.svg', 'weather.svg',
+  ]);
   assert.ok(pub('icon.svg').equals(here('.tools/inflite/inflite.svg')), 'icon.svg differs from .tools/inflite/inflite.svg');
   assert.ok(pub('inflite.svg').equals(here('.tools/inflite/inflite.svg')), 'inflite.svg differs from .tools/inflite/inflite.svg');
 });
@@ -79,7 +82,7 @@ test('its headers: HSTS without preload, a CSP with nothing inline and no other 
   // (frame-src 'self': Chat's engine, its own page in a frame over Today's)
   // (stages 2–4: Mail's Worker beside it, for Mail's module's bodies, s24-contracts §11)
   for (const d of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'", "object-src 'none'"]) assert.ok(csp.includes(d), d);
-  assert.ok(/(^|; )frame-src 'self'(;| https:\/\/email\.inflite\.ai http:\/\/email\.ifl\.test:8788;)/.test(csp), "frame-src 'self' (and Mail's Worker)");
+  assert.match(csp, /(^|; )frame-src 'self'(?: https:\/\/email\.inflite\.ai(?: http:\/\/email\.ifl\.test:8788)?)?;/, "frame-src 'self' (and Mail's Worker)");
   for (const f of ['/sw.js', '/', '/app.js', '/cards.js', '/day.js', '/day.css', '/apps.js', '/you.js', '/wxicons.js', '/app.css', '/theme.js']) assert.match(h, new RegExp(`^${f.replace(/[.*/]/g, '\\$&')}\\n  Cache-Control: no-cache$`, 'm'), f);
 });
 
@@ -89,13 +92,15 @@ test('milestone 1: geolocation is no one’s', { skip: m1Case }, () => {
 
 test('One roof: the CSP matches PAGE_HEADERS and allows only the apps’ explicit origins; geolocation its own; framework files stay current and are kept offline', { skip: roofCase }, async () => {
   const h = String(pub('_headers'));
-  const { PAGE_HEADERS } = await import(ROOFJS);
+  const { PAGE_HEADERS, usesLocalMailFixture } = await import(ROOFJS);
   const csp = /Content-Security-Policy: (.*)/.exec(h)[1];
   assert.equal(csp, PAGE_HEADERS['Content-Security-Policy'], '_headers and PAGE_HEADERS: one CSP');
   const wx = String(here('functions/_wxapp.js'));
   const list = (n) => [...new RegExp(`const ${n} = \\[([\\s\\S]*?)\\];`).exec(wx)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const dir = (d) => (new RegExp(`(?:^|;)\\s*${d} ([^;]*)`).exec(csp) || [])[1].trim().split(/\s+/);
-  const mail = dir('connect-src').includes('https://email.inflite.ai') ? ['https://email.inflite.ai', 'http://email.ifl.test:8788'] : [];
+  const mail = dir('connect-src').includes('https://email.inflite.ai') ? ['https://email.inflite.ai'] : [];
+  // Support the prior paired release while newer builds only allow the test origin in fixture responses.
+  if (mail.length && !usesLocalMailFixture) mail.push('http://email.ifl.test:8788');
   // The companion hub can precede this app's release: only the exact pricing-stream host, when present.
   const markets = dir('connect-src').includes('wss://streamer.finance.yahoo.com') ? ['wss://streamer.finance.yahoo.com'] : [];
   assert.deepEqual(dir('connect-src'), ["'self'", ...markets, ...mail, ...list('CONNECT').filter((o) => !/cloudflareinsights/.test(o))]);

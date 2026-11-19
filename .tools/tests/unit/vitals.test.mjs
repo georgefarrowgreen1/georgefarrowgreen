@@ -68,19 +68,21 @@ test('the admin’s figures: the 75th in a hundred over the days asked, and each
 
 test('the route: a page’s own, a few a minute; never anything back but 204', async () => {
   const sent = [];
-  const req = (h = {}, body = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } })) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.9', ...h }, body });
+  const req = (h = {}, body = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } })) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { Origin: 'https://inflite.ai', 'CF-Connecting-IP': '203.0.113.9', ...h }, body });
   // (the Workers rate limiter, as wrangler.worker.jsonc binds it: each RL<n> lets everything through here)
   const envOf = () => new Proxy({ DB: fakeDb(sent) }, { get: (t, k) => (k in t ? t[k] : /^RL\d+$/.test(String(k)) ? { limit: async () => ({ success: true }) } : undefined) });
   const ctx = (r) => ({ request: r, env: envOf(), waitUntil: () => {} });
   let res = await vitalsRoute({ ...ctx(req({ 'Sec-Fetch-Site': 'cross-site' })) });
   assert.equal(res.status, 403, 'another site’s page: refused');
+  assert.equal((await vitalsRoute(ctx(req({ Origin: 'null' })))).status, 403);
+  assert.equal((await vitalsRoute(ctx(req({ Origin: 'https://outside.example' })))).status, 403);
   res = await vitalsRoute(ctx(new Request('https://inflite.ai/api/vitals')));
   assert.equal(res.status, 405);
   res = await vitalsRoute(ctx(req({}, 'x'.repeat(700))));
   assert.equal(res.status, 413);
   res = await vitalsRoute(ctx(req({}, 'not json')));
   assert.equal(res.status, 204, 'unreadable: nothing kept, nothing said');
-  res = await vitalsRoute({ request: req({ 'Sec-Fetch-Site': 'same-origin' }), env: envOf() });
+  res = await vitalsRoute({ request: req({ Origin: 'null', 'Sec-Fetch-Site': 'same-origin' }), env: envOf() });
   assert.equal(res.status, 204);
   assert.equal(sent.length, 1, 'kept');
 });
@@ -113,7 +115,7 @@ test('a day’s numbers for one app and device: kept up to a cap, so made-up one
 
 test('the route: a few from each network (an IPv6 /48, not each /64), and too big refused before it’s read', async () => {
   const DB = d1(), env = { DB };
-  const req = (ip, body = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } }), h = {}) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'CF-Connecting-IP': ip, ...h }, body });
+  const req = (ip, body = JSON.stringify({ app: 'hub', dev: 'phone', m: { fcp: 400 } }), h = {}) => new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { Origin: 'https://inflite.ai', 'CF-Connecting-IP': ip, ...h }, body });
   let last;
   for (let i = 0; i < 41; i++) last = await vitalsRoute({ request: req(`2001:db8:aa:${i.toString(16)}::1`), env });
   assert.equal(last.status, 204);
@@ -121,10 +123,10 @@ test('the route: a few from each network (an IPv6 /48, not each /64), and too bi
   assert.equal(DB.sql.prepare("SELECT key FROM pg_limits WHERE key LIKE 'vitals:%'").get().key, 'vitals:2001:db8:aa::/48');
   let read = false;
   const stream = new ReadableStream({ pull(c) { read = true; c.enqueue(new TextEncoder().encode('x'.repeat(100))); } }, { highWaterMark: 0 });
-  const big = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'Content-Length': '5000000', 'CF-Connecting-IP': '203.0.113.5' }, body: stream, duplex: 'half' });
+  const big = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { Origin: 'https://inflite.ai', 'Content-Length': '5000000', 'CF-Connecting-IP': '203.0.113.5' }, body: stream, duplex: 'half' });
   assert.equal((await vitalsRoute({ request: big, env })).status, 413);
   assert.equal(read, false, 'never read');
-  const sly = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.5' }, body: new ReadableStream({ pull(c) { c.enqueue(new TextEncoder().encode('x'.repeat(400))); } }), duplex: 'half' });
+  const sly = new Request('https://inflite.ai/api/vitals', { method: 'POST', headers: { Origin: 'https://inflite.ai', 'CF-Connecting-IP': '203.0.113.5' }, body: new ReadableStream({ pull(c) { c.enqueue(new TextEncoder().encode('x'.repeat(400))); } }), duplex: 'half' });
   assert.equal((await vitalsRoute({ request: sly, env })).status, 413, 'saying nothing of its size: read no further than the cap');
 });
 

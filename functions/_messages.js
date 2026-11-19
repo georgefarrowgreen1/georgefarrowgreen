@@ -13,13 +13,21 @@ const ensureTable = schemaSetup(async (env) => {
   ).run();
   // (a table made before messages were marked read)
   await env.DB.prepare("ALTER TABLE messages ADD COLUMN read_at INTEGER").run().catch(ignoreDuplicateColumn);
+  await env.DB.prepare("ALTER TABLE messages ADD COLUMN contact_receipt TEXT").run().catch(ignoreDuplicateColumn);
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS messages_contact_receipt ON messages (contact_receipt)").run();
 });
 
-export async function saveMessage(env, { name, email, body }) {
+export async function hasMessageReceipt(env, receipt) {
+  await ensureTable(env);
+  return !!await env.DB.prepare("SELECT 1 FROM messages WHERE contact_receipt = ?").bind(receipt).first();
+}
+
+export async function saveMessage(env, { name, email, body, receipt = null }) {
   await ensureTable(env);
   await env.DB.prepare(
-    "INSERT INTO messages (name, email, body, created_at) VALUES (?, ?, ?, ?)"
-  ).bind(name, email, body, Date.now()).run();
+    "INSERT INTO messages (name, email, body, created_at, contact_receipt) VALUES (?, ?, ?, ?, ?) " +
+    "ON CONFLICT (contact_receipt) DO NOTHING"
+  ).bind(name, email, body, Date.now(), receipt).run();
 }
 
 // (Admin shows the latest 200, and so can mark only those seen: the count of new ones is of those, too, or one older

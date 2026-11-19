@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { checkRegistration, b64url } from '../../../functions/_pigeon.js';
 
 const request = new Request('https://account.georgefarrowgreen.com/api/account/passkeys', { method: 'POST' });
@@ -120,9 +121,10 @@ test('signed in to nothing, an email sent changes nothing: the answer never says
   }
 });
 // (a passkey's answer, signed with its key, for the site it says)
-async function signed(rpId) {
-  const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+async function signed(rpId, count = 0, kp = null) {
+  kp ||= await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const ad = new Uint8Array([...(await sha(rpId)), 0x05, 0, 0, 0, 0]);
+  new DataView(ad.buffer).setUint32(33, count);
   const cdj = new TextEncoder().encode(JSON.stringify({ type: 'webauthn.get', challenge: 'c', origin: 'https://auth.inflite.ai' }));
   const msg = new Uint8Array([...ad, ...(await sha2(cdj))]);
   const raw = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, msg));
@@ -132,11 +134,56 @@ async function signed(rpId) {
   return { b: { authenticatorData: b64url(ad), clientDataJSON: b64url(cdj), signature: b64url(sig) }, public_key: b64url(new Uint8Array(await crypto.subtle.exportKey('spki', kp.publicKey))) };
 }
 const sha2 = async (u8) => new Uint8Array(await crypto.subtle.digest('SHA-256', u8));
-test('a passkey’s answer is checked for the site it belongs to, and only where that site may be asked', async () => {
+function assertionStore(t, ...credentials) {
+  const sqlite = new DatabaseSync(':memory:');
+  t.after(() => sqlite.close());
+  sqlite.exec('CREATE TABLE pg_passkeys (id TEXT PRIMARY KEY, user_id TEXT, public_key TEXT, sign_count INTEGER, used_at INTEGER)');
+  const insert = sqlite.prepare('INSERT INTO pg_passkeys (id, user_id, public_key, sign_count) VALUES (?, ?, ?, ?)');
+  for (const cred of credentials) insert.run(cred.id, cred.user_id, cred.public_key, cred.sign_count ?? null);
+  const fixture = fakeDb();
+  const DB = { ...fixture, prepare(sql) {
+    if (!sql.startsWith('UPDATE pg_passkeys SET sign_count = ')) return fixture.prepare(sql);
+    return { bind: (...values) => ({ run: async () => {
+      const indexed = Object.fromEntries(values.map((value, n) => [String(n + 1), value]));
+      return { meta: sqlite.prepare(sql).run(indexed) };
+    } }) };
+  } };
+  return { sqlite, env: { DB } };
+}
+test('a passkey’s answer is checked for the site it belongs to, and only where that site may be asked', async t => {
   const mine = await signed('inflite.ai'), old = await signed('georgefarrowgreen.com');
-  assert.equal(await verifyAssertion({ id: 'x', alg: -7, public_key: mine.public_key, rp: 'inflite.ai' }, AUTH, mine.b, {}), true);
-  assert.equal(await verifyAssertion({ id: 'x', alg: -7, public_key: old.public_key, rp: null }, AUTH, old.b, {}), true, 'one from before: the home site’s, still taken');
-  assert.equal(await verifyAssertion({ id: 'x', alg: -7, public_key: mine.public_key, rp: null }, AUTH, mine.b, {}), false, 'an inflite.ai answer for a passkey of the home site’s');
-  assert.equal(await verifyAssertion({ id: 'x', alg: -7, public_key: old.public_key, rp: 'inflite.ai' }, AUTH, old.b, {}), false);
-  assert.equal(await verifyAssertion({ id: 'x', alg: -7, public_key: mine.public_key, rp: 'inflite.ai' }, HOME, mine.b, {}), false, 'inflite.ai’s passkey isn’t the home page’s to ask');
+  const current = { id: 'current', user_id: 'owner', alg: -7, public_key: mine.public_key, rp: 'inflite.ai' };
+  const earlier = { id: 'earlier', user_id: 'owner', alg: -7, public_key: old.public_key, rp: null };
+  const { env } = assertionStore(t, current, earlier);
+  assert.equal(await verifyAssertion(current, AUTH, mine.b, env), true);
+  assert.equal(await verifyAssertion(earlier, AUTH, old.b, env), true, 'one from before: the home site’s, still taken');
+  assert.equal(await verifyAssertion({ ...current, rp: null }, AUTH, mine.b, env), false, 'an inflite.ai answer for a passkey of the home site’s');
+  assert.equal(await verifyAssertion({ ...earlier, rp: 'inflite.ai' }, AUTH, old.b, env), false);
+  assert.equal(await verifyAssertion(current, HOME, mine.b, env), false, 'inflite.ai’s passkey isn’t the home page’s to ask');
+});
+
+test('passkey counters stay monotonic when verified requests have the same earlier credential snapshot', async t => {
+  const key = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const first = await signed('inflite.ai', 7, key), next = await signed('inflite.ai', 8, key);
+  const credential = { id: 'device', user_id: 'owner', alg: -7, public_key: first.public_key, rp: 'inflite.ai', sign_count: 6 };
+  const { sqlite, env } = assertionStore(t, credential);
+  assert.equal(await verifyAssertion(credential, AUTH, next.b, env), true);
+  assert.equal(await verifyAssertion(credential, AUTH, first.b, env), false);
+  assert.equal(await verifyAssertion(credential, AUTH, next.b, env), false);
+  assert.equal(sqlite.prepare('SELECT sign_count FROM pg_passkeys').get().sign_count, 8);
+});
+
+test('counterless passkeys stay usable until the credential changes, gains a counter, or is revoked', async t => {
+  const answer = await signed('inflite.ai');
+  const credential = { id: 'synced', user_id: 'owner', alg: -7, public_key: answer.public_key, rp: 'inflite.ai' };
+  const { sqlite, env } = assertionStore(t, credential);
+  assert.equal(await verifyAssertion(credential, AUTH, answer.b, env), true);
+  assert.equal(await verifyAssertion(credential, AUTH, answer.b, env), true);
+  assert.ok(sqlite.prepare('SELECT used_at FROM pg_passkeys').get().used_at);
+  sqlite.exec('UPDATE pg_passkeys SET sign_count = 1');
+  assert.equal(await verifyAssertion(credential, AUTH, answer.b, env), false);
+  sqlite.exec("UPDATE pg_passkeys SET sign_count = 0, public_key = 'new-key'");
+  assert.equal(await verifyAssertion(credential, AUTH, answer.b, env), false);
+  sqlite.exec('DELETE FROM pg_passkeys');
+  assert.equal(await verifyAssertion(credential, AUTH, answer.b, env), false);
 });

@@ -135,9 +135,13 @@ test('Recent: what was opened, newest first, at most 8, the account’s own, Mai
   remember(F, { title: 'Away', href: 'https://evil.example/' });
   assert.deepEqual(recents(F).map((r) => r.title), ['London', 'Pat'], 'newest first, one address once; a result that only runs, or goes off the site, not kept');
   assert.deepEqual(Object.keys(recents(F)[1]).sort(), ['avatar', 'href', 'sub', 'title'], 'only what draws its row');
+  assert.deepEqual(JSON.parse(data['ifl:recent']).list.map(r => r.title), ['London'], 'the private Chat result stays in this frame');
   for (let i = 0; i < 12; i++) remember(F, { title: `P${i}`, href: `/weather/?${i}` });
   assert.equal(recents(F).length, 8, 'at most 8');
+  F.session.view.apps.mail = true;
   remember(F, { title: 'Quarterly figures', href: '/mail/#thread=t1' });
+  assert.ok(!data['ifl:recent'].includes('Quarterly figures'), 'a private Mail result stays in this frame');
+  F.session.view.apps.mail = false;
   assert.ok(!recents(F).some((r) => r.href.startsWith('/mail/')), 'Mail’s, for anyone but the admin: not shown');
   F.session.view.apps.mail = true;
   assert.equal(recents(F)[0].title, 'Quarterly figures', 'the admin’s: shown');
@@ -153,7 +157,7 @@ test('the sheet: the empty field, typing, keys, Show all, opening a result into 
   const doc = globalThis.document = fakeDocument();
   globalThis.IFL = { glyph: () => '<svg viewBox="0 0 24 24"><path d="M0 0"/></svg>', iconUrl: () => 'blob:x' };
   const ui = await import(new URL('ui.js', ROOF));
-  const { createSearch } = await import(new URL('search.js', ROOF));
+  const { createSearch, recents } = await import(new URL('search.js', ROOF));
   let opened = null, closed = 0;
   const F = {
     ui, session: { view: { user: { id: 'u1' }, apps: {} }, apps: {} },
@@ -238,7 +242,8 @@ test('the sheet: the empty field, typing, keys, Show all, opening a result into 
   lb2.querySelector('[role=option]').addEventListener('click', () => { went++; });
   i2.dispatch('keydown', { key: 'Enter', preventDefault() {} });
   assert.equal(went, 1, 'Enter opens the Top hit: its link clicked (the frame’s link handler takes it there)');
-  assert.deepEqual(JSON.parse(kept.at(-1)).list.map((r) => r.title), ['Pat'], 'and it’s kept in Recent');
+  assert.deepEqual(recents(F).map((r) => r.title), ['Pat'], 'and it’s kept in Recent for this frame');
+  assert.equal(kept.length, 0, 'the private result was never persisted');
   assert.ok(kept.every((v) => !v || !/“pat”|"pat"/.test(v)), 'never what was typed');
   closed = 0;
   i2.dispatch('keydown', { key: 'Escape', preventDefault() {} });

@@ -200,6 +200,33 @@ test("the news whenever Markets shows, at most every fifteen minutes (BI12)", as
   core.stop();
 });
 
+test("a delayed poll cannot replace a newer forced quote refresh", async () => {
+  NET.acc = account();
+  NET.status = 0;
+  const originalFetch = globalThis.fetch, replies = [];
+  try {
+    await core.start(fakeFw());
+    globalThis.fetch = (url, init) => String(url).startsWith("/api/markets/quotes?")
+      ? new Promise(resolve => replies.push(resolve))
+      : originalFetch(url, init);
+    const start = core.S.q.AAPL;
+    const olderPoll = core.refresh();
+    const freshPoll = core.refresh(true);
+    assert.equal(replies.length, 2);
+    replies[1](Response.json({ quotes: { AAPL: { ...start, price: 199, time: start.time + 1 } } }));
+    await freshPoll;
+    assert.equal(core.S.q.AAPL.price, 199);
+    replies[0](Response.json({ quotes: { AAPL: start } }));
+    await olderPoll;
+    assert.equal(core.S.q.AAPL.price, 199);
+    assert.equal(JSON.parse(localStorage.getItem("markets:last")).quotes.AAPL.price, 199);
+  } finally {
+    for (const reply of replies) reply(Response.json({ quotes: {} }));
+    globalThis.fetch = originalFetch;
+    core.stop();
+  }
+});
+
 test("start(A) → stop → start(B) keeps nothing of A (RI7); a kept copy is drawn only for its own account (S2-D9)", async () => {
   localStorage.clear();
   NET.acc = account(Date.now(), "a"); NET.status = 0;

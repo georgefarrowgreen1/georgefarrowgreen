@@ -63,7 +63,7 @@ export function view(el, ctx) {
   };
 }
 
-export function watch(ctx, root) {
+export function watch(ctx, root, closeSheets) {
   const { fw, svc, store } = ctx;
   let hiddenAt = 0;
   const offs = [
@@ -71,6 +71,7 @@ export function watch(ctx, root) {
       if (!lockPrefs(store.get("me")?.id)) return;
       hiddenAt = Date.now();
       root.classList.add("ch-veiled");
+      closeSheets?.();
     }),
     fw.on("visible", () => {
       root.classList.remove("ch-veiled");

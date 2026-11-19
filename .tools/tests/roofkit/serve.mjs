@@ -56,6 +56,11 @@ export async function serveKit(context, { main = new URL('../../../', import.met
     const doc = /^\/(\w+)\/(?:index\.html)?$/.exec(p)?.[1];
     if (p === '/' || p === '/index.html' || p === '/weather/' || p === '/weather/index.html' || (doc && on.includes(doc))) return page(route, readFileSync(`${HERE}index.html`, 'utf8'));
     if (p === '/kit/shared.js') return send(route, shared, 'text/javascript');
+    // The kit stands in for app.js, including its early session-start marker.
+    // Otherwise theme.js can hide the signed-in test shell twelve seconds later.
+    if (p === '/theme.js' && fileOk(`${ifl}today/public/theme.js`)) {
+      return send(route, `globalThis.__iflSessionStarted = true;\n${readFileSync(`${ifl}today/public/theme.js`, 'utf8')}`, 'text/javascript');
+    }
     if (p === '/kit/fixtures/chats.mjs') return send(route, readFileSync(`${HERE}../unit/fixtures/chats.mjs`), 'text/javascript');
     if (p.startsWith('/kit/')) { const f = HERE + p.slice(5); return fileOk(f) && !f.includes('..') ? send(route, readFileSync(f), typeOf(f)) : route.fulfill({ status: 404, body: 'not found' }); }
     if (!real && p === '/weather/roof/weather.js') return send(route, readFileSync(`${HERE}fake-module.js`), 'text/javascript');

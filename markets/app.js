@@ -1209,8 +1209,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.46.4";
-const NEWS = "Portfolio, range and insight cards now have flat surfaces.";
+const BUILD = "2.46.5";
+const NEWS = "Markets keeps newer quotes when overlapping refreshes finish out of order.";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3379,25 +3379,29 @@ function liveSwitch() {
 let cashEpoch = 0;
 const cashStore = createCashStore({ state: S, api: A, owner: () => S.me ? `${cashEpoch}:${S.me.id}` : null,
   keep: () => store.set("last", { me: S.me, holdings: S.list, cash: S.cash, quotes: S.q, rates: S.fx, isa: S.isa, at: S.pricesAt }), changed: () => render(false) });
+let quoteReading = null;
 async function refresh(force = false) {
   // (one at a time: a slow answer isn't asked for again over itself; one that's needed now, after a change, still is)
-  if (!S.me || (!force && (document.hidden || refresh.busy))) return;
+  const epoch = cashEpoch;
+  if (!S.me || (!force && (document.hidden || quoteReading?.epoch === epoch))) return;
   const stock = Sheet.stack.find(([view]) => view === stockView)?.[1]?.[0];
   const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(stock ? [stock] : [])])];
-  const epoch = cashEpoch, owner = S.me.id;
-  refresh.busy = true;
+  const owner = S.me.id, reading = quoteReading = { epoch };
+  const current = () => quoteReading === reading && epoch === cashEpoch && owner === S.me?.id;
   cashStore.sync();
   try {
     const r = await A.quotes(syms);
-    if (epoch !== cashEpoch || owner !== S.me?.id) return;
+    if (!current()) return;
     applyPrices(r, force);
     stream.sync();
   } catch (e) {
     // (signed out somewhere else meanwhile; else offline a moment, tried again in half a minute, the prices said as old
     // once they are)
-    if (epoch !== cashEpoch || owner !== S.me?.id) return;
+    if (!current()) return;
     if (e.status === 401) signedOut(); else sayLine();
-  } finally { refresh.busy = false; }
+  } finally {
+    if (quoteReading === reading) quoteReading = null;
+  }
 }
 function applyPrices(r, force = false, fromStream = false) {
     const was = { ...S.q }, wasT = totals(), wasOut = unpriced().map((x) => x.symbol).join();

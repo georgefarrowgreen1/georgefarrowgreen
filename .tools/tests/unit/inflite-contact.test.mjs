@@ -20,9 +20,14 @@ test("public contact delivers only to the local admin inbox and reports unsucces
     return backend.dispatch(request);
   } } };
   try {
-    const accepted = await submit();
-    assert.equal(accepted.status, 201);
-    assert.deepEqual(await accepted.json(), { ok: true });
+    const attempt = { "Idempotency-Key": "a3d84639-2c2a-46bc-98f5-ea3d297bb733" };
+    const lostResponse = { ...bindings, APPS: { async fetch(request) {
+      const receipt = await bindings.APPS.fetch(request);
+      assert.equal(receipt.status, 201);
+      await receipt.body.cancel();
+      throw Error("Connection dropped after saving");
+    } } };
+    assert.equal((await submit(input, attempt, lostResponse)).status, 503);
     const messages = await listMessages(backend.env);
     assert.equal(messages.length, 1);
     assert.deepEqual([messages[0].name, messages[0].email, messages[0].body, messages[0].read_at], [input.name, input.email, input.message, null]);
@@ -37,6 +42,10 @@ test("public contact delivers only to the local admin inbox and reports unsucces
     assert.equal(counters.length, 3);
     assert.ok(counters.every(row => !row.key.includes("192.0.2.8")));
     backend.env.DB.sql.exec("UPDATE pg_limits SET count=5 WHERE key LIKE 'ifl-contact:hour:%'");
+    const retry = await submit(input, attempt);
+    assert.equal(retry.status, 201);
+    assert.deepEqual(await retry.json(), { ok: true });
+    assert.equal((await submit({ ...input, message: "A different message" }, attempt)).status, 429);
     assert.equal((await submit()).status, 429);
     assert.equal((await listMessages(backend.env)).length, 1);
 

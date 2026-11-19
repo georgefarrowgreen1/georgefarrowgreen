@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16.3";
-export const NEWS = "Chat cards and lists now use a flat surface.";
+export const BUILD = "2.16.4";
+export const NEWS = "Locking Chats closes open media sheets.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
@@ -58,10 +58,18 @@ export async function mount(root, fw) {
   const ui = fw.ui, el = ui.el, doc = root.ownerDocument;
   root.classList.add("m-chats");
   const store = createStore();
-  const ctx = { fw, svc: null, store, open: {} };
+  const sheets = new Set();
+  const sheet = { open(spec) {
+    const handle = fw.sheet.open({ ...spec, onClose() { sheets.delete(handle); spec.onClose?.(); } });
+    if (!handle.closed) sheets.add(handle);
+    return handle;
+  } };
+  const closeSheets = () => { for (const handle of [...sheets].reverse()) handle.now(); };
+  const ctx = { fw: Object.create(fw, { sheet: { value: sheet } }), svc: null, store, open: {} };
   let dead = false, onScreen = false, episode = 0, workspace = null, workspaceP = null, pendingReply = null;
   const live = () => !dead && !fw.signal?.aborted;
   const here = (mine) => live() && onScreen && episode === mine;
+  const readyHere = (mine) => here(mine) && stateNow === "ready" && fw.visible();
   const activateWorkspace = () => {
     if (!live() || !fw.workspace?.enabled) return Promise.resolve(null);
     if (stateNow === "device") { stateNow = null; connect(); paint(); if (onScreen) timers(); }
@@ -92,17 +100,18 @@ export async function mount(root, fw) {
   };
   const lz = (file, name) => (...a) => {
     const mine = episode;
-    if (!here(mine)) return Promise.resolve(null);
-    return L[file]().then((m) => here(mine) ? m[name](ctx, ...a) : null, () => here(mine) ? lazyFail() : null);
+    if (!readyHere(mine)) return Promise.resolve(null);
+    return L[file]().then((m) => readyHere(mine) ? m[name](ctx, ...a) : null, () => readyHere(mine) ? lazyFail() : null);
   };
   Object.assign(ctx.open, {
-    newChat: () => openNewChat(ctx), newGroup: () => openNewGroup(ctx), requests: () => openRequests(ctx), addFriend: (h) => openAddFriend(ctx, h),
+    newChat: () => readyHere(episode) && openNewChat(ctx), newGroup: () => readyHere(episode) && openNewGroup(ctx),
+    requests: () => readyHere(episode) && openRequests(ctx), addFriend: (h) => readyHere(episode) && openAddFriend(ctx, h),
     friendInfo: lz("sheets", "openFriendInfo"), groupInfo: lz("sheets", "openGroupInfo"), safety: lz("sheets", "openSafety"),
     view: lz("sheets", "openView"), hold: lz("sheets", "openHold"),
     map: lz("flight", "openMap"), flightLog: lz("flight", "openFlightLog"), news: lz("flight", "openNews"),
     settings: lz("settings", "openChatSettings"),
     photo: lz("media", "pickPhoto"), voice: lz("media", "recordVoice"), gifs: lz("media", "openGifs"),
-    send: (o) => { const mine = episode; return here(mine) ? L.send().then((m) => here(mine) ? m.openSend(fw, ctx.svc, o) : null, () => here(mine) ? lazyFail() : null) : Promise.resolve(null); },
+    send: (o) => { const mine = episode; return readyHere(mine) ? L.send().then((m) => readyHere(mine) ? m.openSend(ctx.fw, ctx.svc, o) : null, () => readyHere(mine) ? lazyFail() : null) : Promise.resolve(null); },
   });
   Object.freeze(ctx);
 
@@ -120,7 +129,7 @@ export async function mount(root, fw) {
   views.set("friends", friendsView(secs.get("friends"), ctx));
   const chat = chatView(host, ctx);
   const lock = lockView(lockBox, ctx);
-  const unwatch = lockWatch(ctx, root);
+  const unwatch = lockWatch(ctx, root, closeSheets);
 
   let shown = null, route = null, stateNow = deviceOf() === "computer" && !fw.workspace?.enabled ? "device" : null, failed = false, syncT = 0, opening = 0;
   const offs = [];
@@ -188,7 +197,13 @@ export async function mount(root, fw) {
     if (s === "device" && fw.workspace?.enabled) { call("start", { visible: onScreen && fw.visible(), screen: onScreen }).catch(() => {}); return; }
     const was = stateNow;
     stateNow = s;
-    if (s === "locked" || was === "ready") forgetWords();
+    if (s === "locked" || was === "ready") {
+      episode++;
+      opening++;
+      pendingReply = null;
+      closeSheets();
+      forgetWords();
+    }
     paint();
     if (s === "ready" && onScreen) openRoute(route);
   }
@@ -306,6 +321,7 @@ export async function mount(root, fw) {
     unmount() {
       this.hide();
       dead = true;
+      closeSheets();
       workspace?.destroy(); workspace = null;
       for (const f of offs) { try { f?.(); } catch (_) {} }
       offs.length = 0;

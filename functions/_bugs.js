@@ -15,6 +15,7 @@ import { HttpError, db, clientNet, limit, readCapped, sha256, hex, serverSecret 
 import { tickHost, appsSite } from "./_sites.js";
 import { ignoreDuplicateColumn, schemaSetup } from "./_schema.js";
 import { tickAuthOk } from "./_notify.js";
+import { diagnosticsOrigin } from "./_diagnostics-origin.js";
 
 // (each app's letter; S, the site's own servers)
 export const APP_LETTER = { chat: "C", chats: "C", weather: "W", fitness: "F", markets: "M", finance: "M", account: "A", auth: "A", today: "T", mail: "E", email: "E", home: "H", fitting: "P", server: "S" };
@@ -123,6 +124,7 @@ export async function bugsRoute(ctx, url) {
     // ---- a report, from the window (anyone's, a few an hour from each network, a few hundred an hour in all) ----
     if (p === "/api/bugs") {
       if (req.method !== "POST") return json({ error: "Not found." }, 404);
+      if (!diagnosticsOrigin(req)) return json({ error: "That request didn't come from InFlite." }, 403);
       const raw = new TextDecoder().decode(await readCapped(req, 12000, "That report is too long."));
       let r; try { r = JSON.parse(raw); } catch (_) { throw new HttpError(400, "That report wasn’t readable."); }
       const app = Object.hasOwn(APP_LETTER, r?.app) ? r.app : null;

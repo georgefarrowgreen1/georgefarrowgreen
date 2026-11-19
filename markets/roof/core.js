@@ -541,21 +541,27 @@ export const cashStore = createCashStore({ state: S, api: A, owner: () => S.me ?
   keep: () => keep(), changed: () => emit("list") });
 // Prices again: every 15 seconds while Markets shows and the page is in front; each change flashed where it shows
 // (mkui.paint, on "quotes")
+let quoteReading = null;
 async function refresh(force = false) {
-  if (!S.me || (!force && (refresh.busy || !P.fw?.visible?.()))) return;
-  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])])], gen = P.gen;
-  refresh.busy = true;
+  const gen = P.gen;
+  if (!S.me || (!force && (quoteReading?.gen === gen || !P.fw?.visible?.()))) return;
+  const syms = [...new Set([...INDICES, ...S.list.map((x) => x.symbol), ...(P.stock ? [P.stock] : [])])];
+  const reading = quoteReading = { gen };
+  const current = () => quoteReading === reading && gen === P.gen;
   cashStore.sync();
   try {
     const r = await A.quotes(syms);
-    if (gen !== P.gen) return;
+    if (!current()) return;
     applyPrices(r, force);
     stream.sync();
   } catch (e) {
     // (a 401: signed out only once the framework's own check says so; else offline a moment, said as old once it is)
-    if (gen === P.gen && e.status === 401) lost();
-    else if (gen === P.gen) emit("quotes", { was: null });
-  } finally { refresh.busy = false; }
+    if (!current()) return;
+    if (e.status === 401) lost();
+    else emit("quotes", { was: null });
+  } finally {
+    if (quoteReading === reading) quoteReading = null;
+  }
 }
 function applyPrices(r, force = false, fromStream = false) {
   const was = { ...S.q }, wasOut = unpriced().map((x) => x.symbol).join();
@@ -586,7 +592,7 @@ function fresh() {
     inc: null, imode: "coming", goal: 100, add: 0, reinvest: true, buyAmt: 1000, newsTopics: {}, nfilter: "all", newsSince: null });
   S.charts = new Map();
   for (const k of ["yearsAt", "newsAt", "newsErr", "pricesAt", "opening", "loading", "err"]) delete S[k];
-  loadIncome.failed = 0; loadIncome.busy = false; loadNews.busy = false; refresh.busy = false;
+  loadIncome.failed = 0; loadIncome.busy = false; loadNews.busy = false; quoteReading = null;
 }
 // this phone's copy, when it's this account's (its id, or the id of the me inside it, as app.js wrote it)
 function keptFor(id) {

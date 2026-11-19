@@ -23,7 +23,7 @@ export const MAIL_KIT = 'http://email.kit.test';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const RASTER = /^image\/(png|jpeg|gif|webp|avif|heic|bmp)$/;
 
-export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date.now(), build = '1.48' } = {}) {
+export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date.now(), build = '1.48', owner = 'u-kit-0001' } = {}) {
   const min = 60000, hr = 60 * min, dayMs = 24 * hr;
   const ME = { name: 'George Farrow-Green', email: 'hello@inflite.ai' };
   const P = {
@@ -89,7 +89,7 @@ export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date
   };
   const contacts = Object.values(P);
   const sends = [], log = [];
-  let state = { access, offline: false, fail: {}, build };
+  let state = { access, offline: false, fail: {}, build, owner };
 
   const summary = ({ text, html, attachments, compose, ...m }) => m;
   const meta = (m) => ({ ...summary(m), attachments: (m.attachments || []).map(({ id, filename, type, size }) => ({ id, filename, type, size })) });
@@ -223,11 +223,11 @@ export function mailMock({ origin = 'http://kit.test', access = 'ok', now = Date
     if (!path.startsWith('/api/')) return no(404, 'Not found');
     if (method !== 'GET' && method !== 'HEAD' && !inflite) return no(403, 'Missing request header');
     if (path === '/api/logout' || path.startsWith('/api/push/')) return no(403, 'That isn’t InFlite’s to ask.');
-    if (path === '/api/session' && method === 'GET') return json({ access: state.access, accountOrigin: 'http://auth.kit.test', user: state.access === 'signin' ? null : { name: ME.name, handle: 'george', email: ME.email, admin: state.access !== 'notadmin' } });
+    if (path === '/api/session' && method === 'GET') return json({ access: state.access, accountOrigin: 'http://auth.kit.test', user: state.access === 'signin' ? null : { ...(state.owner && { id: state.owner }), name: ME.name, handle: 'george', email: ME.email, admin: state.access !== 'notadmin' } });
     if (path === '/api/auth/handback' && method === 'POST') {
       if (!body?.code || !body?.verifier) return no(400, 'That sign-in didn’t work. Try again.');
       state.access = 'ok';
-      return json({ access: 'ok', accountOrigin: 'http://auth.kit.test', user: { name: ME.name, handle: 'george', email: ME.email, admin: true } });
+      return json({ access: 'ok', accountOrigin: 'http://auth.kit.test', user: { ...(state.owner && { id: state.owner }), name: ME.name, handle: 'george', email: ME.email, admin: true } });
     }
     if (!ok) return [401, { error: state.access === 'notadmin' ? 'Mail is only for the site’s admin.' : 'Sign in to open Mail.', access: state.access }];
     if (path === '/api/notify') {

@@ -90,7 +90,7 @@ async function mailView(env, u) {
   const admin = await adminOf(env).catch(() => null), isAdmin = !!admin && admin.id === u.id;
   return {
     signedIn: true, admin: isAdmin, passkey: isAdmin && admin.passkeys > 0, fresh: Date.now() - (u.authAt || 0) < ADMIN_LOOK,
-    name: u.name, handle: u.handle, email: isAdmin ? u.email : null, photoAt: u.avatar_at || null,
+    id: u.id, name: u.name, handle: u.handle, email: isAdmin ? u.email : null, photoAt: u.avatar_at || null,
     // (the account's look, for every app on the site: Automatic, Light or Dark)
     ...appearanceOf(u),
     // (the account's Quiet Hours, every app's, from its Notifications page: Mail keeps new mail's notices to them)

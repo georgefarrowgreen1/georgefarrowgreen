@@ -58,10 +58,10 @@ for (const [width, theme] of [[320, 'dark'], [390, 'dark'], [1280, 'dark'], [390
       const photo = page.locator('[data-mid=geometry-live] .ch-photo');
       await photo.click(); await page.locator('dialog[data-sheet=view] [data-close]').click();
       await page.locator('dialog[data-sheet=view]').waitFor({ state: 'detached' });
-      const returned = await photo.evaluate(n => { const s = getComputedStyle(n); return { visible: n.matches(':focus-visible'), style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset, radius: s.borderRadius }; });
-      // WebKit may retain :focus-visible when native dialog focus is restored.
-      // Keep that accessibility choice, with the same quiet inset treatment.
-      if (returned.visible) assert.deepEqual(returned, { visible: true, style: 'solid', width: '2px', offset: '-3px', radius: '22px' });
+      const { pointer, ...returned } = await photo.evaluate(n => { const s = getComputedStyle(n); return { pointer: document.documentElement.hasAttribute('data-ifl-pointer-focus'), visible: n.matches(':focus-visible'), style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset, radius: s.borderRadius }; });
+      // WebKit can retain :focus-visible after a pointer closes a dialog.
+      // The shell's input mode takes precedence over that restored state.
+      if (returned.visible && !pointer) assert.deepEqual(returned, { visible: true, style: 'solid', width: '2px', offset: '-3px', radius: '22px' });
       else assert.equal(returned.style, 'none', 'ordinary pointer focus stays quiet');
       await photo.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
       const focus = await photo.evaluate(n => { const s = getComputedStyle(n); return { visible: n.matches(':focus-visible'), width: s.outlineWidth, offset: s.outlineOffset, radius: s.borderRadius }; });

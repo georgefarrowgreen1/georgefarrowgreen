@@ -189,7 +189,6 @@ export async function passkeyUser(env, request, b, { deleting = false } = {}) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
   if (!u) throw new HttpError(401, "This account no longer exists.");
   if (u.delete_at && !deleting) refuseDeleting(u);
-  await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
   return { u, cred };
 }
 

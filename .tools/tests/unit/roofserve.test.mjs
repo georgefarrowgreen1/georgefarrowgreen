@@ -61,8 +61,8 @@ test('roofPage: the assets’ /, asked afresh with no condition, cookie or query
 });
 
 // (Mail's Worker, which Mail's module calls and frames its bodies from (stage 4, s4 C13; s24-contracts §11): in
-// connect-src and frame-src alone, its live address and the test stack's, once the inflite repo beside has stage 4's R0)
-const MAIL_ORIGINS = ['https://email.inflite.ai', 'http://email.ifl.test:8788'];
+// connect-src and frame-src alone, with compatibility for the previous paired release's shared fixture policy)
+const MAIL_ORIGINS = ['https://email.inflite.ai', ...(!R?.usesLocalMailFixture ? ['http://email.ifl.test:8788'] : [])];
 test('PAGE_HEADERS: exactly these; its CSP is _headers’ /* CSP, naming exactly Weather’s origins (_wxapp.js CONNECT without the beacon, and IMAGES) and Mail’s Worker, nothing inline, no other site; geolocation for itself alone', { skip }, () => {
   const csp = R.PAGE_HEADERS['Content-Security-Policy'];
   assert.deepEqual(R.PAGE_HEADERS, {
