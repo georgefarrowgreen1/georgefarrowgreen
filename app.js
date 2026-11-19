@@ -362,8 +362,6 @@ function setupGalleryDrag() {
   motion.addEventListener("change", () => { if (gesture?.track) release(false); });
 }
 
-// Each disclosure has one reversible timeline. Keep native details semantics at
-// rest; while closing, keep the content painted but take its link out of focus.
 function setupDetailsCard() {
   const launcher = $("#my-details");
   const sheet = $("#details-sheet");
@@ -371,46 +369,158 @@ function setupDetailsCard() {
   const stock = $(".calling-stock", card);
   const front = $(".calling-front", card);
   const back = $(".calling-back", card);
+  const glint = $(".calling-glint", front);
+  const metal = $(".calling-metal", front);
   const switchSide = $(".calling-switch", sheet);
   const caption = $(".calling-caption", switchSide);
-  let progress = 0, target = 0, frame = 0, previousTime = null;
+  const duration = 740;
+  const timing = {duration, fill: "both", easing: "cubic-bezier(.333333,0,.666667,1)"};
+  let showingBack = false, tracks = null, gesture = null, suppressClick = false;
+  let lightFrame = 0, pointerX = 0, pointerY = 0;
 
-  function paint() {
-    const phase = progress * progress * (3 - 2 * progress);
-    stock.style.transform = `rotateY(${-180 * phase}deg)`;
-    // Explicit face visibility also keeps the QR from showing through on WebKit.
-    front.style.visibility = phase < 0.5 ? "visible" : "hidden";
-    back.style.visibility = phase >= 0.5 ? "visible" : "hidden";
+  // Tap, drag and reversal all use the same clock. Explicit face visibility
+  // prevents the QR bleeding through the front in WebKit.
+  function startTurn() {
+    if (tracks) return;
+    const poses = [0, .25, .5, .75, 1].map(p => {
+      const lift = p === 1 ? 0 : 4 * Math.sin(Math.PI * p);
+      return {transform: `translateY(${-lift}px) rotateY(${-180*p}deg) rotateX(${lift}deg)`};
+    });
+    const visibility = (first, last) => [
+      {visibility: first, easing: "step-end"}, {visibility: last, offset: .5}, {visibility: last}
+    ];
+    tracks = [
+      stock.animate(poses, timing),
+      glint.animate([{transform: "translateX(-15%)"}, {transform: "translateX(133%)"}], timing),
+      metal.animate([{transform: "translateX(-24.3%)"}, {transform: "translateX(-56.5%)"}], timing),
+      front.animate(visibility("visible", "hidden"), timing),
+      back.animate(visibility("hidden", "visible"), timing)
+    ];
+    for (const track of tracks) {
+      track.pause();
+      track.currentTime = showingBack ? duration : 0;
+    }
   }
 
-  function tick(time) {
-    const step = previousTime === null ? 0 : (time - previousTime) / 610;
-    previousTime = time;
-    progress = clamp(progress + (target ? step : -step));
-    paint();
-    if (progress !== target) frame = requestAnimationFrame(tick);
-    else { frame = 0; previousTime = null; }
+  function finishTurn() {
+    if (!tracks) return;
+    tracks[0].onfinish = null;
+    for (const track of tracks) track.cancel();
+    tracks = null;
+  }
+
+  function resetLight() {
+    cancelAnimationFrame(lightFrame);
+    lightFrame = 0;
+    card.style.removeProperty("--calling-x");
+    card.style.removeProperty("--calling-y");
+  }
+
+  function paintLight() {
+    lightFrame = 0;
+    const box = card.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    card.style.setProperty("--calling-x", 2 * clamp((pointerX - box.left) / box.width) - 1);
+    card.style.setProperty("--calling-y", 2 * clamp((pointerY - box.top) / box.height) - 1);
+  }
+
+  function clearGesture() {
+    const active = gesture;
+    gesture = null;
+    if (active && card.hasPointerCapture(active.id)) card.releasePointerCapture(active.id);
   }
 
   function showSide(reverse, immediately = false) {
-    target = Number(reverse);
+    clearGesture();
+    resetLight();
+    const animate = !immediately && !motion.matches && !document.hidden && stock.animate;
+    if (animate && reverse !== showingBack) startTurn();
+    showingBack = reverse;
     card.setAttribute("aria-pressed", String(reverse));
     switchSide.setAttribute("aria-pressed", String(reverse));
     card.setAttribute("aria-label", reverse ? "Show the front of George Farrow-Green’s card" : "Show the QR code for George Farrow-Green’s bio");
     caption.textContent = reverse ? "Show front" : "Show QR";
     front.setAttribute("aria-hidden", String(reverse));
     back.setAttribute("aria-hidden", String(!reverse));
-    if (immediately || motion.matches) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-      previousTime = null;
-      progress = target;
-      paint();
-    } else if (!frame && progress !== target) {
-      frame = requestAnimationFrame(tick);
+    if (!tracks) return;
+    const clock = tracks[0];
+    if (!animate || (reverse ? clock.currentTime >= duration : clock.currentTime <= 0)) {
+      finishTurn();
+      return;
+    }
+    clock.onfinish = () => { if (tracks?.[0] === clock && clock.playState === "finished") finishTurn(); };
+    for (const track of tracks) {
+      track.updatePlaybackRate(reverse ? 1 : -1);
+      track.play();
     }
   }
 
+  card.addEventListener("pointerdown", event => {
+    if (!event.isPrimary) { if (gesture) showSide(showingBack); return; }
+    if (event.button !== 0) return;
+    suppressClick = false;
+    gesture = {id: event.pointerId, x: event.clientX, y: event.clientY, start: event.timeStamp, dragging: false};
+  });
+  card.addEventListener("pointermove", event => {
+    const drag = gesture;
+    if (!drag) {
+      if (event.pointerType === "mouse" && !event.buttons && !showingBack && !tracks && !motion.matches) {
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        if (!lightFrame) lightFrame = requestAnimationFrame(paintLight);
+      }
+      return;
+    }
+    if (event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    if (!drag.dragging) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 7) return;
+      suppressClick = true;
+      if (Math.abs(dx) < 1.15 * Math.abs(dy)) { clearGesture(); return; }
+      drag.dragging = true;
+      drag.width = card.getBoundingClientRect().width;
+      card.setPointerCapture(event.pointerId);
+      resetLight();
+      if (!motion.matches && stock.animate) {
+        startTurn();
+        for (const track of tracks) track.pause();
+      }
+      const t = tracks ? clamp(tracks[0].currentTime / duration) : Number(showingBack);
+      drag.from = t * t * (3 - 2 * t);
+    }
+    drag.turn = clamp(drag.from - dx / drag.width);
+    if (tracks) {
+      // Invert the easing so the angle follows the finger one-to-one.
+      const time = duration * (.5 - Math.sin(Math.asin(1 - 2 * drag.turn) / 3));
+      for (const track of tracks) track.currentTime = time;
+    }
+  });
+  function release(event, commit) {
+    const drag = gesture;
+    if (!drag || event.pointerId !== drag.id) return;
+    clearGesture();
+    if (!drag.dragging) return;
+    let reverse = showingBack;
+    if (commit) {
+      const dx = event.clientX - drag.x;
+      const flick = Math.abs(dx) > 32 && Math.abs(dx) / Math.max(1, event.timeStamp - drag.start) > .5;
+      reverse = flick ? dx < 0 : drag.turn >= .5;
+    }
+    showSide(reverse);
+  }
+  card.addEventListener("pointerup", event => release(event, true));
+  card.addEventListener("pointercancel", event => release(event, false));
+  card.addEventListener("lostpointercapture", event => {
+    if (event.target === card) release(event, false);
+  });
+  card.addEventListener("pointerleave", () => {
+    if (gesture && !gesture.dragging) clearGesture();
+    resetLight();
+  });
+  card.addEventListener("click", event => {
+    if (!suppressClick || !event.detail) showSide(!showingBack);
+  });
+  switchSide.addEventListener("click", () => showSide(!showingBack));
   launcher.setAttribute("aria-haspopup", "dialog");
   launcher.setAttribute("aria-controls", sheet.id);
   launcher.addEventListener("click", event => {
@@ -419,9 +529,11 @@ function setupDetailsCard() {
     if (!sheet.open) showSide(false, true);
     openSheet(sheet, launcher);
   });
-  for (const control of [card, switchSide]) control.addEventListener("click", () => showSide(!target));
   sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
-  motion.addEventListener("change", () => { if (motion.matches && frame) showSide(Boolean(target), true); });
+  function settle() { if (sheet.open) showSide(showingBack, true); }
+  motion.addEventListener("change", settle);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) settle(); });
+  addEventListener("pagehide", settle);
 }
 
 function setupProjectReveals() {
