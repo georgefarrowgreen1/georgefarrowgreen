@@ -16,13 +16,15 @@
   <link rel="stylesheet" href="/contact/contact.css">
   <script src="/loader.js"></script>
   <script src="/contact/contact.js" defer></script>
+  <link rel="stylesheet" href="/contact/transition.css">
+  <link rel="preload" as="image" href="/contact/gfg-outline.svg" media="(prefers-reduced-motion: no-preference)" fetchpriority="low">
 </head>
 <body>
   <header class="mast"><a href="/" aria-label="George Farrow-Green, home"><img src="/gfg-mark.svg" alt="" width="49" height="49"></a><a class="back" href="/"><span aria-hidden="true">←</span> Back to bio</a></header>
   <main>
     <section class="cover" aria-labelledby="contact-title">
       <img src="/projects/open-road.webp" width="1150" height="706" alt="" fetchpriority="high">
-      <h1 id="contact-title">Get in<br>touch<span>.</span></h1>
+      <h1 id="contact-title" aria-label="Get in touch"><span class="line"><span>Get in</span></span><span class="line"><span>touch<i>.</i></span></span></h1>
       <a class="down" href="#message" aria-label="Go to message form">↓</a>
     </section>
     <section class="correspondence" id="message" aria-label="Contact George">

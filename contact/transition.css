@@ -1,0 +1,37 @@
+/* Two page snapshots uncover the strip between them. Its monogram is printed
+   on the stationary layer, so it stays still while both paper edges pass. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+
+  html.contact-handoff::view-transition-group(root) {
+    animation: none;
+    background: #252624;
+  }
+  html.contact-handoff::view-transition-image-pair(root) {
+    isolation: isolate;
+    background: #252624 url("/contact/gfg-outline.svg") center / clamp(54px, 7vw, 82px) auto no-repeat;
+  }
+  html.contact-handoff::view-transition-old(root),
+  html.contact-handoff::view-transition-new(root) {
+    height: 100%;
+    mix-blend-mode: normal;
+    animation-duration: 680ms;
+    animation-timing-function: cubic-bezier(.47,.06,.27,.98);
+    animation-fill-mode: both;
+  }
+  html.contact-handoff::view-transition-old(root) { animation-name: contact-lift; }
+  html.contact-handoff::view-transition-new(root) { animation-name: contact-unveil; }
+  html.contact-handoff.to-bio::view-transition-old(root) { animation-name: contact-unveil; animation-direction: reverse; }
+  html.contact-handoff.to-bio::view-transition-new(root) { animation-name: contact-lift; animation-direction: reverse; }
+
+  @keyframes contact-lift {
+    from { clip-path: inset(0); transform: translateY(0); }
+    48% { clip-path: inset(0 0 62%); }
+    to { clip-path: inset(0 0 100%); transform: translateY(-2%); }
+  }
+  @keyframes contact-unveil {
+    from { clip-path: inset(100% 0 0); transform: translateY(2%); }
+    48% { clip-path: inset(62% 0 0); }
+    to { clip-path: inset(0); transform: translateY(0); }
+  }
+}

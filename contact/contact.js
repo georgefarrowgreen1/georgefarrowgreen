@@ -65,3 +65,16 @@ document.querySelector('#again').addEventListener('click', () => {
   form.hidden = false;
   form.elements.name.focus();
 });
+
+// A visit from the bio has an actual place to return to, often its footer.
+// Preserve the normal home link for direct visits and modified clicks.
+document.querySelector('.back').addEventListener('click', event => {
+  if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  const nav = window.navigation;
+  const previous = nav?.entries()[nav.currentEntry.index - 1];
+  if (!previous?.url) return;
+  const url = new URL(previous.url);
+  if (url.origin !== location.origin || !['/', '/index.html'].includes(url.pathname)) return;
+  event.preventDefault();
+  history.back();
+});
