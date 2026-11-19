@@ -204,3 +204,39 @@ for (const width of [390, 1440]) {
     } finally { await ctx.close(); }
   });
 }
+
+test('swiping My details scrubs the turn, cancellation restores the face, and the QR settles flat', async () => {
+  const {p, ctx, errors} = await fixture('min/', {width:390, hash:'#get-in-touch'});
+  try {
+    await p.locator('#my-details').click();
+    const card = p.locator('.calling-flip'), stock = card.locator('.calling-stock');
+    await card.click({trial:true}); // Wait for the opening sheet to settle.
+    const box = await card.boundingBox();
+    const cdp = await ctx.newCDPSession(p);
+    const touch = (type, across) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: across == null ? [] : [
+      {x: box.x + across * box.width, y: box.y + box.height * .5}
+    ]});
+    await touch('touchStart', .85);
+    await touch('touchMove', .58);
+    await touch('touchMove', .21);
+    const angle = await stock.evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m11);
+    assert.ok(angle < 0 && angle > -1, 'the card follows the drag past its edge before release');
+    await touch('touchEnd');
+    await p.waitForFunction(() => !document.querySelector('.calling-stock').getAnimations().length);
+    assert.equal(await card.getAttribute('aria-pressed'), 'true');
+    assert.equal(await stock.evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m11), -1);
+    await touch('touchStart', .17);
+    await touch('touchMove', .7);
+    await touch('touchCancel');
+    await p.waitForFunction(() => !document.querySelector('.calling-stock').getAnimations().length);
+    assert.equal(await card.getAttribute('aria-pressed'), 'true');
+    await p.emulateMedia({reducedMotion:'reduce'});
+    await touch('touchStart', .13);
+    await touch('touchMove', .48);
+    assert.equal(await stock.evaluate(el => el.getAnimations().length), 0);
+    await touch('touchMove', .86);
+    await touch('touchEnd');
+    assert.equal(await card.getAttribute('aria-pressed'), 'false');
+    assert.deepEqual(errors, []);
+  } finally { await ctx.close(); }
+});
