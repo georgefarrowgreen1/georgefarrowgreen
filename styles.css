@@ -1639,6 +1639,7 @@ html[data-theme="dark"] #contact-sheet::backdrop { background: rgb(0 0 0 / 58%);
 #contact-sheet .btn { font-weight: 500; }
 #contact-sheet .btn.idle { opacity: 1; background: var(--disabled-fill); color: var(--story-text); }
 #contact-sheet .err, #contact-sheet .fld:has([aria-invalid="true"]) > span:first-child { color: var(--error-text); }
+#contact-sheet .err.info { color: inherit; }
 
 /* Keep motion at the point of interaction. Touch and keyboard use the same destinations. */
 #photo-index .fi-arrow, #photo-index .fi-bio .bio-icon {

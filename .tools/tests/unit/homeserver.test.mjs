@@ -8,8 +8,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequestPost as contact } from '../../../functions/api/contact.js';
 import { saveMessage, listMessages, markRead, messageCounts } from '../../../functions/_messages.js';
-import { sanitize, tooLong, LIMITS } from '../../../functions/_content.js';
-import { updateList, addPhoto } from '../../../functions/api/background.js';
+import { sanitize, tooLong, LIMITS, saveContent, getHistory } from '../../../functions/_content.js';
+import { updateList, addPhoto, onRequestPut as uploadPhoto, onRequestGet as photo, onRequestHead as photoHead, onRequestDelete as removePhoto } from '../../../functions/api/background.js';
+import { onRequestPost as restoreVersion } from '../../../functions/api/history.js';
+import { onRequestPut as writeContent } from '../../../functions/api/content.js';
+import { db, sha256, hex } from '../../../functions/_pigeon.js';
+import { readFileSync } from 'node:fs';
 
 const sqlite = await import('node:sqlite').catch(() => null);
 // D1, as the server asks it
@@ -27,15 +31,15 @@ const DB = sqlite && d1(), env = { DB, WEB3FORMS_KEY: 'test' };
 const count = (q) => DB.s.prepare(q).get().n;
 const fresh = () => { DB.s.exec('DELETE FROM pg_limits'); DB.s.exec('DELETE FROM messages'); };
 // a message from the form, from an address (and a page, if it says)
-async function send(ip, origin = 'https://georgefarrowgreen.com', i = 0) {
-  const r = await contact({ env, request: new Request('https://georgefarrowgreen.com/api/contact', { method: 'POST',
+async function send(ip, origin = 'https://georgefarrowgreen.com', i = 0, bindings = env, waitUntil) {
+  const r = await contact({ env: bindings, waitUntil, request: new Request('https://georgefarrowgreen.com/api/contact', { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, ...(origin ? { Origin: origin } : {}) },
     body: JSON.stringify({ name: 'Pat Lee', email: `pat${i}@example.com`, message: `Hello number ${i}` }) }) });
   return { status: r.status, ...(await r.json()) };
 }
 let mailed = 0;
 const real = globalThis.fetch;
-globalThis.fetch = async (url) => { if (String(url).startsWith('https://api.web3forms.com/')) { mailed++; return new Response('{}', { status: 200 }); } return real(url); };
+globalThis.fetch = async (url) => { if (String(url).startsWith('https://api.web3forms.com/')) { mailed++; return Response.json({success:true}); } return real(url); };
 
 test('Get in touch: not from another site\'s page; from its own, or a tool that says nothing of where it is', { skip: !sqlite }, async () => {
   const away = await send('198.51.100.1', 'https://elsewhere.example');
@@ -145,6 +149,134 @@ test('the photos: two adds at 49, the second waiting on the first, make 50, not 
 });
 
 test.after(() => { globalThis.fetch = real; });
+
+test('contact delivery requires storage or an explicit provider receipt', {skip:!sqlite}, async t => {
+  let outcome;
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (outcome instanceof Error) throw outcome;
+    return new Response(outcome, {status:200});
+  });
+  const stored = {DB:d1(), WEB3FORMS_KEY:'test'}, mailOnly = {WEB3FORMS_KEY:'test'};
+  for (outcome of [new Error('provider offline'), '{"success":false}', '<p>Unavailable</p>']) {
+    const durable = await send('198.51.100.8', undefined, 0, stored);
+    assert.equal(durable.ok, true);
+    assert.equal((await send('198.51.100.8', undefined, 0, mailOnly)).status, 502);
+  }
+  assert.equal((await listMessages(stored)).length,3);
+  outcome = '{"success":true}';
+  assert.equal((await send('198.51.100.8', undefined, 0, mailOnly)).ok,true);
+});
+
+test('a saved message has its receipt while its email notification is still pending', {skip:!sqlite, timeout:3000}, async t => {
+  const gate=Promise.withResolvers(), tasks=[];
+  t.mock.method(globalThis,'fetch',()=>gate.promise);
+  const stored={DB:d1(),WEB3FORMS_KEY:'test'};
+  try {
+    const receipt=await send('198.51.100.7', undefined, 1, stored, task=>tasks.push(task));
+    assert.equal(receipt.ok,true);
+    assert.equal((await listMessages(stored)).length,1);
+    assert.equal(tasks.length,1);
+  } finally {
+    gate.resolve(Response.json({success:true}));
+    await Promise.all(tasks);
+  }
+});
+
+test('photo revalidation checks existence and uses R2 metadata without reading image bytes', async () => {
+  const heads=[], reads=[];
+  const env = {BIO_R2:{
+    head:async key=>{heads.push(key);return key==='bg/ride'?{httpMetadata:{contentType:'image/webp'}}:null;},
+    get:async key=>{reads.push(key);return {body:'photo',httpMetadata:{contentType:'image/webp'}};},
+  }};
+  const request = (id,method,tag) => new Request('https://bio.test/api/background?id='+id,{method,headers:tag?{'If-None-Match':tag}:{}});
+  const first = await photoHead({env, request:request('ride&s=m','HEAD')});
+  assert.equal(first.status,200);assert.equal(first.body,null);
+  assert.equal(first.headers.get('Content-Type'),'image/webp');
+  assert.deepEqual(heads,['bg/ride-m','bg/ride']);
+  assert.equal((await photo({env,request:request('ride','GET','W/"bg-ride"')})).status,304);
+  assert.equal((await photo({env,request:request('removed','GET','"bg-removed"')})).status,404);
+  assert.deepEqual(reads,[]);
+  assert.equal(await (await photo({env,request:request('ride','GET')})).text(),'photo');
+  assert.deepEqual(reads,['bg/ride']);
+});
+
+test('owner mutations recover from interrupted storage, validate their inputs and report expired authorisation', { skip: !sqlite }, async () => {
+  const keys = new Map([['bg_list', '["original"]']]);
+  const objects = new Map();
+  let interrupt = true, failDelete = false, listWrites = 0;
+  const env = { DB: d1(), BIO_KV: {
+    get: async key => keys.get(key),
+    put: async (key, value) => { if (key === 'bg_list') listWrites++; keys.set(key, value); },
+    delete: async key => keys.delete(key),
+  }, BIO_R2: {
+    put: async (key, value) => {
+      if (interrupt && key.endsWith('-m')) throw Error('storage unavailable');
+      objects.set(key, value);
+    },
+    delete: async list => {
+      if (failDelete) throw Error('storage unavailable');
+      list.forEach(key => objects.delete(key));
+    },
+  }};
+  await db(env);
+  const sql = env.DB.s, now = Date.now(), token = crypto.randomUUID();
+  sql.prepare("INSERT INTO pg_users (id,handle,name,email,pub,salt,proof_hash,vault,swift,swift_at,created_at) VALUES ('owner','owner','Owner','owner@example.test','{}','s','p','v',3,?,?)").run(now,now);
+  sql.prepare("INSERT INTO pg_meta (k,v) VALUES ('admin_user','owner')").run();
+  sql.prepare("INSERT INTO pg_sessions (hash,user_id,created_at,seen_at,auth_at,site_hash) VALUES ('owner-session','owner',?,?,?,?)").run(now,now,now,hex(await sha256(token)));
+  const call = (handler, path, method, body) => handler({env, request: new Request('https://bio.test/api/' + path, {
+    method, headers: {Origin: 'https://bio.test', Cookie: '__Secure-account=' + token, 'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  })});
+  const image = 'data:image/webp;base64,' + readFileSync(new URL('../../../projects/inflite-mono.webp', import.meta.url)).toString('base64');
+  const put = () => call(uploadPhoto, 'background', 'PUT', {image, small: image});
+  assert.equal((await put()).status, 503);
+  assert.equal(objects.size, 0);
+  assert.deepEqual(JSON.parse(keys.get('bg_list')), ['original']);
+  interrupt = false;
+  const {ok, id, images} = await (await put()).json();
+  assert.equal(ok, true);
+  assert.deepEqual(images.map(entry => entry.id), ['original', id]);
+  assert.equal(images[1].m, 1);
+  assert.deepEqual([...objects.keys()], ['bg/' + id, 'bg/' + id + '-m']);
+
+  assert.equal((await call(writeContent, 'content', 'PUT', [])).status, 400);
+  assert.equal((await call(restoreVersion, 'history', 'POST', {index: null})).status, 400);
+  assert.equal((await call(removePhoto, 'background', 'DELETE', {})).status, 400);
+  assert.equal(listWrites, 1);
+  failDelete = true;
+  assert.equal((await call(removePhoto, 'background', 'DELETE', {id})).status, 503);
+  failDelete = false;
+  const retry = await call(removePhoto, 'background', 'DELETE', {id});
+  assert.equal(retry.status, 200);
+  assert.deepEqual((await retry.json()).images.map(entry => entry.id), ['original']);
+  assert.equal(listWrites, 2, 'the retry cleans up without writing the list again');
+  assert.equal(objects.size, 0);
+
+  sql.prepare("UPDATE pg_sessions SET auth_at=? WHERE user_id='owner'").run(now - 48 * 3600e3);
+  const expired = await put();
+  assert.equal(expired.status, 403);
+  assert.equal((await expired.json()).field, 'reauth');
+  assert.equal(objects.size, 0);
+});
+
+test('retrying a bio save keeps just one undo snapshot', async () => {
+  const previous = {name: 'George', role: 'Rider', bio: 'Previous bio'};
+  const next = {...previous, bio: 'New bio'};
+  const keys = new Map([['content', JSON.stringify(previous)]]);
+  let interrupt = true;
+  const env = {BIO_KV: {
+    get: async key => keys.get(key),
+    put: async (key, value) => {
+      if (key === 'content' && interrupt) throw Error('temporarily unavailable');
+      keys.set(key, value);
+    },
+  }};
+  await assert.rejects(saveContent(env, next), /temporarily unavailable/);
+  interrupt = false;
+  assert.deepEqual(await saveContent(env, next), next);
+  assert.deepEqual(await saveContent(env, next), next);
+  assert.deepEqual((await getHistory(env)).map(entry => entry.content), [previous]);
+});
 
 test('contact storage retries a failed migration and keeps separate database bindings isolated', { skip: !sqlite }, async () => {
   const first = d1(), second = d1();

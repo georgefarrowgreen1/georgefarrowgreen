@@ -1,5 +1,6 @@
 import { galleryCollections } from "../_gallery.js";
 import { requireOwner, failed, json } from "../_auth.js";
+import { body as readBody } from "../_accountapi.js";
 
 // Background photos for the home page's slideshow (its owner changes them there: functions/_auth.js).
 //   Image bytes live in R2 (env.BIO_R2) when bound; otherwise KV. A photo never changes under its id, so it's kept
@@ -14,6 +15,8 @@ const KV_IMG = (id) => `bg:${id}`;
 const R2_KEY = (id) => `bg/${id}`;
 const DEFAULT_FOCUS = "50% 50%";
 const MAX = 50;
+const MAX_IMAGE_LENGTH = 8_000_000, MAX_SMALL_LENGTH = 3_000_000;
+const photoId = /^[\w-]{1,40}$/;
 
 function normalize(list) {
   return (list || []).map((e) =>
@@ -53,7 +56,9 @@ export const addPhoto = (entry) => (l) => { if (l.length >= MAX) return false; l
 function dataUrlToBytes(a) {
   const m = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(a || "");
   if (!m) return null;
-  const bin = atob(m[2]);
+  if (!m[2]) return null;
+  let bin;
+  try { bin = atob(m[2]); } catch (_) { return null; }
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return { type: m[1], bytes };
@@ -86,36 +91,37 @@ export async function onRequestGet(ctx) {
     if (!pick) return new Response(null, { status: 404 });
     id = pick.id; small = want === "mobile" && !!pick.m;
   }
-  if (!/^[\w-]{1,40}$/.test(id)) return new Response(null, { status: 404 });
+  if (!photoId.test(id)) return new Response(null, { status: 404 });
   // A photo's bytes never change under its id, so its id is its tag: a browser asking again about the cover it has
   // (once its 10 minutes are up) is told it's the same, not sent it again, unless the cover's become another photo.
   const tag = `"bg-${id}${small ? "-m" : ""}"`;
-  if ((request.headers.get("If-None-Match") || "").split(/\s*,\s*/).includes(tag)) return new Response(null, { status: 304, headers: { ETag: tag, "Cache-Control": cache } });
+  const unchanged = (request.headers.get("If-None-Match") || "").split(/\s*,\s*/).some(value => value === "*" || value.replace(/^W\//, "") === tag);
+  const metadataOnly = request.method === "HEAD" || unchanged;
+  const send = (type, body) => new Response(metadataOnly ? null : body, {
+    status: unchanged ? 304 : 200, headers: { "Content-Type": type, "Cache-Control": cache, ETag: tag },
+  });
   // and kept at the edge by its id for a day, so it's read from storage once a day there, not for each visit (a day,
   // not for good: a photo taken off the page is gone from every edge by the next day)
   const edge = typeof caches !== "undefined" ? caches.default : null, key = new Request(`${url.origin}/api/background?id=${encodeURIComponent(id)}${small ? "&s=m" : ""}&edge=1`);
   const hit = await edge?.match(key).catch(() => null);
-  if (hit) { const r = new Response(hit.body, hit); r.headers.set("Cache-Control", cache); r.headers.set("ETag", tag); return r; }
+  if (hit) return send(hit.headers.get("Content-Type"), hit.body);
 
   if (env.BIO_R2) {
-    const obj = (small && (await env.BIO_R2.get(R2_KEY(id) + "-m"))) || (await env.BIO_R2.get(R2_KEY(id)));
+    const read = key => metadataOnly ? env.BIO_R2.head(key) : env.BIO_R2.get(key);
+    const obj = (small && (await read(R2_KEY(id) + "-m"))) || (await read(R2_KEY(id)));
     if (obj) {
       const type = (obj.httpMetadata && obj.httpMetadata.contentType) || "image/jpeg";
-      if (edge) {
+      if (edge && !metadataOnly) {
         const [a, b] = obj.body.tee();
         ctx.waitUntil?.(edge.put(key, new Response(b, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=86400" } })).catch(() => {}));
-        return new Response(a, { headers: { "Content-Type": type, "Cache-Control": cache, ETag: tag } });
+        return send(type, a);
       }
-      return new Response(obj.body, { headers: { "Content-Type": type, "Cache-Control": cache, ETag: tag } });
+      return send(type, obj.body);
     }
   }
   if (env.BIO_KV) {
     const parsed = dataUrlToBytes(await env.BIO_KV.get(id === "legacy" ? LEGACY : KV_IMG(id)));
-    if (parsed) {
-      return new Response(parsed.bytes, {
-        headers: { "Content-Type": parsed.type, "Cache-Control": cache, ETag: tag },
-      });
-    }
+    if (parsed) return send(parsed.type, parsed.bytes);
   }
   return new Response(null, { status: 404 });
 }
@@ -129,33 +135,38 @@ export async function onRequestPut({ request, env }) {
   try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
-  try { body = await request.json(); } catch (_) { return json({ error: "Invalid JSON." }, 400); }
+  try { body = await readBody(request, MAX_IMAGE_LENGTH + MAX_SMALL_LENGTH + 65536); } catch (e) { return failed(e); }
   const a = String(body.image || "");
-  if (!/^data:image\/(png|jpeg|jpg|webp);base64,/.test(a) || a.length > 8000000) {
+  if (!/^data:image\/(png|jpeg|jpg|webp);base64,/.test(a) || a.length > MAX_IMAGE_LENGTH) {
     return json({ error: "Invalid or oversized image." }, 400);
   }
   // (refused before anything's stored: one past the most was cut from the list as it was saved, while the sheet showed
   // it added and its files stayed with nothing pointing to them; and asked again of the list as it's saved: addPhoto)
-  if ((await getList(env)).length >= MAX) return json({ error: `There can be ${MAX} photos at most. Remove one first.` }, 400);
+  const full = () => json({ error: `There can be ${MAX} photos at most. Remove one first.` }, 400);
+  try { if ((await getList(env)).length >= MAX) return full(); } catch (_) { return unsaved(); }
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   // (and a phone-sized copy, made by the page as it's added: phones are sent that, about a third of the size)
-  const sm = String(body.small || ""), withSmall = !!env.BIO_R2 && /^data:image\/(jpeg|jpg|webp);base64,/.test(sm) && sm.length <= 3000000;
-  if (env.BIO_R2) {
-    const p = dataUrlToBytes(a);
-    await env.BIO_R2.put(R2_KEY(id), p.bytes, { httpMetadata: { contentType: p.type } });
-    if (withSmall) { const q = dataUrlToBytes(sm); await env.BIO_R2.put(R2_KEY(id) + "-m", q.bytes, { httpMetadata: { contentType: q.type } }); }
-  } else {
-    await env.BIO_KV.put(KV_IMG(id), a);
-  }
-  let list;
-  try { list = await updateList(env, addPhoto({ id, focus: DEFAULT_FOCUS, device: "both", ...(withSmall ? { m: 1 } : {}) })); }
-  catch (_) { list = undefined; }
-  if (!list) {
-    // (not in the list, so its files are taken away again: nothing would point to them, and nothing sweeps bg/)
+  const sm = String(body.small || ""), withSmall = !!env.BIO_R2 && /^data:image\/(jpeg|jpg|webp);base64,/.test(sm) && sm.length <= MAX_SMALL_LENGTH;
+  const image = dataUrlToBytes(a), small = withSmall && dataUrlToBytes(sm);
+  if (!image || (withSmall && !small)) return json({ error: "Invalid image." }, 400);
+  const discard = async () => {
     if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]).catch(() => {});
     else await env.BIO_KV.delete(KV_IMG(id)).catch(() => {});
-    return list === null ? json({ error: `There can be ${MAX} photos at most. Remove one first.` }, 400) : unsaved();
+  };
+  try {
+    if (env.BIO_R2) {
+      await env.BIO_R2.put(R2_KEY(id), image.bytes, { httpMetadata: { contentType: image.type } });
+      if (small) await env.BIO_R2.put(R2_KEY(id) + "-m", small.bytes, { httpMetadata: { contentType: small.type } });
+    } else await env.BIO_KV.put(KV_IMG(id), a);
+  } catch (_) { await discard(); return unsaved(); }
+  let list;
+  try { list = await updateList(env, addPhoto({ id, focus: DEFAULT_FOCUS, device: "both", ...(small ? { m: 1 } : {}) })); }
+  catch (_) {
+    // A failed acknowledgement can follow a committed write. Keep referenced bytes intact.
+    try { list = await getList(env); } catch (_) { return unsaved(); }
+    if (!list.some(photo => photo.id === id)) { await discard(); return unsaved(); }
   }
+  if (!list) { await discard(); return full(); }
   return json({ ok: true, id, images: list });
 }
 
@@ -165,7 +176,8 @@ export async function onRequestPost({ request, env }) {
   try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
-  try { body = await request.json(); } catch (_) {}
+  try { body = await readBody(request); } catch (e) { return failed(e); }
+  if (typeof body.id !== "string" || !photoId.test(body.id)) return json({error: "Choose a photo."}, 400);
   let list;
   try {
     list = await updateList(env, (l) => {
@@ -185,12 +197,20 @@ export async function onRequestDelete({ request, env }) {
   try { await requireOwner(request, env); } catch (e) { return failed(e); }
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
-  try { body = await request.json(); } catch (_) {}
+  try { body = await readBody(request); } catch (e) { return failed(e); }
   const id = body.id;
+  if (typeof id !== "string" || !photoId.test(id)) return json({error: "Choose a photo."}, 400);
   let list;
-  try { list = await updateList(env, (l) => { const k = l.findIndex((e) => e.id === id); if (k >= 0) l.splice(k, 1); }); } catch (_) { return unsaved(); }
-  if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]);
+  try {
+    await updateList(env, current => {
+      list = current;
+      const index = list.findIndex(entry => entry.id === id);
+      if (index < 0) return false;
+      list.splice(index, 1);
+    });
+    if (env.BIO_R2) await env.BIO_R2.delete([R2_KEY(id), R2_KEY(id) + "-m"]);
+    await env.BIO_KV.delete(id === "legacy" ? LEGACY : KV_IMG(id));
+  } catch (_) { return json({error: "Couldn’t finish removing the photo. Please try again."}, 503); }
   if (typeof caches !== "undefined") for (const s of ["", "&s=m"]) await caches.default.delete(new Request(`${new URL(request.url).origin}/api/background?id=${encodeURIComponent(id)}${s}&edge=1`)).catch(() => {});
-  await env.BIO_KV.delete(id === "legacy" ? LEGACY : KV_IMG(id));
   return json({ ok: true, images: list });
 }

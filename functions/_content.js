@@ -14,6 +14,7 @@ export const DEFAULT_CONTENT = {
 
 // (a line left empty shows what's above)
 const filled = (c) => ({ name: c.name || DEFAULT_CONTENT.name, role: c.role || DEFAULT_CONTENT.role, bio: c.bio || DEFAULT_CONTENT.bio });
+const sameWords = (a, b) => Object.keys(DEFAULT_CONTENT).every(key => (a[key] || "") === (b[key] || ""));
 
 export async function getContent(env) {
   const stored = env.BIO_KV ? await env.BIO_KV.get(KEY) : null;
@@ -30,9 +31,14 @@ export async function getHistory(env) {
 // that can be undone).
 export async function saveContent(env, clean) {
   const prev = await env.BIO_KV.get(KEY);
+  const previous = prev ? JSON.parse(prev) : {};
+  if (sameWords(previous, clean)) return filled(clean);
   const history = await getHistory(env);
-  history.unshift({ savedAt: Date.now(), content: prev ? JSON.parse(prev) : {} });
-  await env.BIO_KV.put(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
+  // A retry may find the snapshot already written while the content write is still pending.
+  if (!history[0]?.content || !sameWords(history[0].content, previous)) {
+    history.unshift({ savedAt: Date.now(), content: previous });
+    await env.BIO_KV.put(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
+  }
   await env.BIO_KV.put(KEY, JSON.stringify(clean));
   return filled(clean);
 }

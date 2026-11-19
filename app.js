@@ -80,8 +80,12 @@ async function api(path, { method = "GET", body: data, timeout = 20000 } = {}) {
     const slow = !!signal?.aborted;
     throw Object.assign(new Error(slow ? "That’s taking too long: the signal may be weak. Try again in a moment." : "You’re offline. Try again when you’re back online."), { offline: !slow, slow });
   }
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(d.error || "Something went wrong. Try again."), { status: r.status, field: d.field });
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(d?.error || "Something went wrong. Try again."), { status: r.status, field: d?.field });
+  if (method !== "GET" && d?.ok !== true) {
+    throw new Error(path === "/api/contact" ? "Delivery couldn’t be confirmed. Your draft is still here." : "The change couldn’t be confirmed. Please try again.");
+  }
+  if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("Couldn’t load the latest information. Try again.");
   return d;
 }
 
@@ -591,13 +595,6 @@ function setupDetailsCard() {
       openSheet(sheet, link);
     });
   }
-  // An error page links here so the same card and download work from either footer.
-  if (location.hash === "#my-details") {
-    history.replaceState(null, "", location.pathname + location.search);
-    launcher.scrollIntoView({block: "nearest", behavior: "instant"});
-    launcher.focus({preventScroll: true});
-    launcher.click();
-  }
   sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
   function settle() { if (sheet.open) showSide(showingBack, true); }
   // The preference can change between pointerdown and pointerup. Stop the 3D
@@ -885,20 +882,6 @@ function showMe() {
   body.classList.add("known");
   // (from Admin on the account page: #edit, straight into changing the words)
   if (location.hash === "#edit") { history.replaceState(null, "", location.pathname + location.search); if (me.owner) startEdit(); }
-  // (from the page for an address that isn't one, 404.html: #contact=<that address>, a message about it to send)
-  if (location.hash.startsWith("#contact")) {
-    let about = "", from = "";
-    try { [about, from = ""] = location.hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
-    history.replaceState(null, "", location.pathname + location.search);
-    if (about && !$("#c-message").value) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
-    const openContact = () => {
-      const trigger = $("footer [data-contact]");
-      trigger.focus({ preventScroll: true });
-      trigger.click();
-    };
-    if (root.classList.contains("intro-loading")) addEventListener("home:revealed", openContact, { once: true });
-    else openContact();
-  }
   const face = $("#face");
   face.textContent = "";
   if (me.signedIn && me.photoAt) {
@@ -915,10 +898,12 @@ function showMe() {
   // a message from them is from them: their name and email filled in, shown as one From row (only while the fields
   // still hold theirs: not over others put in for this message, when it's shown again back from the account's page)
   if (me.signedIn && me.name && me.email) {
-    if (!$("#c-name").value) $("#c-name").value = me.name;
-    if (!$("#c-email").value) $("#c-email").value = me.email;
+    const name = $("#c-name"), email = $("#c-email");
+    if (!name.value && document.activeElement !== name) name.value = me.name;
+    if (!email.value && document.activeElement !== email) email.value = me.email;
+    if (document.activeElement !== name && document.activeElement !== email) fromMe();
+    if (contact.sheet.open) { ready(); fit(); }
   }
-  fromMe();
   // (back, signed in: the photo on its way; back, but not signed in after all: the picture fades, the page as ever)
   if (welcome) arrive(back); else if (back) arriveEnd(back, true);
 }
@@ -1727,7 +1712,9 @@ contact.sheet._surface = document.createElement("div");
 contact.sheet._surface.className = "sheet-surface"; contact.sheet._surface.setAttribute("aria-hidden", "true");
 contact.sheet.prepend(contact.sheet._surface); contact.sheet.classList.add("surface-sheet");
 contact.sheet.addEventListener("close", () => { if (!contact.sheet.open) { contact.version++; stopSenderMorph(); } });
-for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
+for (const b of $$("[data-contact]")) b.addEventListener("click", event => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
   contact.version++;
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
   // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
@@ -1744,6 +1731,21 @@ for (const b of $$("[data-contact]")) b.addEventListener("click", () => {
     presentation.finished.then(focus, () => {});
   }
 });
+function openLinkedSheet() {
+  const hash = location.hash;
+  const details = hash === "#my-details";
+  if (!details && hash !== "#contact" && !hash.startsWith("#contact=")) return;
+  const trigger = details ? $("#my-details") : $("footer [data-contact]");
+  history.replaceState(history.state, "", location.pathname + location.search);
+  if (details) trigger.scrollIntoView({block: "nearest", behavior: "instant"});
+  else if (hash.startsWith("#contact=") && !$("#c-message").value) {
+    let about = "", from = "";
+    try { [about, from = ""] = hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
+    if (about) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
+  }
+  trigger.focus({ preventScroll: true });
+  trigger.click();
+}
 // (their own details changed for this message: the two rows instead)
 $("#from-change").addEventListener("click", () => {
   morphFrom(false);
@@ -1936,8 +1938,14 @@ const fit = () => {
     el.style.fontSize = `${Math.max(16, Math.floor((px * el.clientWidth) / el.scrollWidth * 10) / 10)}px`;
   }
 };
-const say = (t) => settle(contact.sheet, () => { contact.err.textContent = t; contact.err.hidden = !t; }, t ? contact.err : null);
+const say = (t, info = false) => settle(contact.sheet, () => {
+  contact.err.classList.toggle("info", info);
+  contact.err.setAttribute("role", info ? "status" : "alert");
+  contact.err.textContent = t; contact.err.hidden = !t;
+}, t ? contact.err : null);
+let draftRevision = 0;
 contact.form.addEventListener("input", (e) => {
+  draftRevision++;
   e.target.removeAttribute?.("aria-invalid");
   if (e.target.matches("#c-name, #c-email")) releaseSenderWord(e.target);
   if (!contact.err.hidden) say("");
@@ -1956,20 +1964,26 @@ contact.form.addEventListener("submit", async (e) => {
   if (!msg.message) return wrong("#c-message", "Please write a message.");
   say(""); busyLabel(contact.send, "Sending…", true);
   const version = contact.version;
+  const revision = draftRevision;
+  const currentSheet = () => version === contact.version && contact.sheet.open;
   contact.form.setAttribute("aria-busy", "true");
   try {
     await api("/api/contact", { method: "POST", body: msg });
-    // A draft edited while the request was in flight belongs to the writer, even after the earlier message succeeds.
-    if ($("#c-message").value.trim() === msg.message) $("#c-message").value = "";
-    if (version !== contact.version || !contact.sheet.open) return;
-    contact.send.classList.add("confirmed");
-    fadeText($(".lbl", contact.send), "Sent");
-    const activity = $(".send-activity", contact.send);
-    activity?.replaceChildren($(".tick svg", contact.sent).cloneNode(true));
-    if (!motion.matches) {
-      await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT }).finished.catch(() => {});
+    if (currentSheet() && revision === draftRevision) {
+      contact.send.classList.add("confirmed");
+      fadeText($(".lbl", contact.send), "Sent");
+      const activity = $(".send-activity", contact.send);
+      activity?.replaceChildren($(".tick svg", contact.sent).cloneNode(true));
+      if (!motion.matches) {
+        await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT }).finished.catch(() => {});
+      }
     }
-    if (version !== contact.version || !contact.sheet.open) return;
+    if (revision !== draftRevision) {
+      if (currentSheet()) say("Your previous message was sent. Your new draft is here.", true);
+      return;
+    }
+    $("#c-message").value = "";
+    if (!currentSheet()) return;
     $("#thanks").textContent = `Thanks, ${msg.name.split(/\s+/)[0]}. You’ll hear back by email.`;
     settle(contact.sheet, () => { stopSenderMorph(); contact.form.hidden = true; contact.sent.hidden = false; }, contact.sent);
     $("button", contact.sent).focus({ preventScroll: true });
@@ -1988,15 +2002,31 @@ contact.form.addEventListener("submit", async (e) => {
 const editables = $$("[data-edit]"), hero = $(".edit-words");
 let before = null, editOut = null;
 const guard = (e) => e.preventDefault();      // (leaving with the words half changed: the browser asks first)
-function startEdit() {
-  if (editing || !me?.owner) return;
-  if (wordsDue) { wordsDue.then(startEdit); return; }     // (the words asked for again, back from history: start from them)
+const editButton = $("#edit");
+const hasWords = value => value && ["name", "role", "bio"].every(key => typeof value[key] === "string");
+async function writeWords(path, method, data) {
+  editButton.setAttribute("aria-disabled", "true");
+  editButton.textContent = method === "PUT" ? "Saving…" : "Undoing…";
+  try {
+    const result = await api(path, {method, body: data});
+    if (!hasWords(result.content)) throw new Error("The change couldn’t be confirmed. Please try again.");
+    return result.content;
+  } finally {
+    editButton.removeAttribute("aria-disabled");
+    editButton.textContent = "Edit";
+  }
+}
+function startEdit(draft = null) {
+  if (editing || !me?.owner || editButton.hasAttribute("aria-disabled")) return;
+  if (wordsDue) { wordsDue.then(() => startEdit(draft)); return; }     // (the words asked for again, back from history: start from them)
   // (and not from the defaults, the words not in the page as it came and not come since: asked for again, to start then)
-  if (!wordsKnown) { wordsDue = askWords(); wordsDue.then(() => (wordsKnown ? startEdit() : toast("Couldn’t load the words. Try again in a moment."))); return; }
+  if (!wordsKnown) { wordsDue = askWords(); wordsDue.then(() => (wordsKnown ? startEdit(draft) : toast("Couldn’t load the words. Try again in a moment."))); return; }
   // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
   if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
   // (and what was typed before a save that didn't go, back where it was)
-  let draft = null; try { draft = JSON.parse(sessionStorage.getItem("home-draft") || "null"); sessionStorage.removeItem("home-draft"); } catch (_) {}
+  try { draft ??= JSON.parse(sessionStorage.getItem("home-draft") || "null"); sessionStorage.removeItem("home-draft"); } catch (_) {}
+  const undo = $("#toast-undo");
+  if (!undo.hidden) { undo.hidden = true; undo.onclick = null; hideToast(); }
   editing = true; before = { ...content };
   // (the words held where they are, growing downwards as they're typed, not pushing the lines above them up)
   loadPhotos();
@@ -2037,23 +2067,23 @@ async function endEdit(keep = true) {
   showContent();
   if (!changed) return;
   try {
-    content = (await api("/api/content", { method: "PUT", body: next })).content;
+    content = await writeWords("/api/content", "PUT", next);
     showContent();
     toast("Saved", async () => {
-      try { content = (await api("/api/history", { method: "POST", body: { index: 0 } })).content; showContent(); toast("Undone"); }
+      try { content = await writeWords("/api/history", "POST", { index: 0 }); showContent(); toast("Undone"); }
       catch (err) { toast(err.message); }
     });
   } catch (err) {
     content = before; showContent(); toast(err.message);
     try { sessionStorage.setItem("home-draft", JSON.stringify(next)); } catch (_) {}
     if (err.field === "reauth") me.fresh = false;
-    startEdit();
+    startEdit(next);
   }
 }
 $("#editbar").addEventListener("animationend", (e) => { if (e.target === e.currentTarget && !editing) { clearTimeout(editOut); body.classList.remove("edit-out"); } });
 // (a line of plain text: what was typed, its spaces run together)
 const text = (el) => el.textContent.replace(/\s+/g, " ").trim();
-$("#edit").addEventListener("click", startEdit);
+editButton.addEventListener("click", () => startEdit());
 $("#done").addEventListener("click", () => endEdit(true));
 for (const el of editables) {
   // Return finishes the line; what's pasted comes in as plain text
@@ -2313,10 +2343,16 @@ showContent();      // (the Person block for search made from the words: index.h
 // The same when the server couldn't read them as it sent the page (it marks it data-words when they're in it), so the
 // defaults it's written with aren't edited, to be saved over the real ones; and for the page kept whole: pageshow)
 let wordsKnown = root.hasAttribute("data-words");
-const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown = true; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; });
+const askWords = () => api("/api/content").then((c) => {
+  if (!hasWords(c)) return;
+  content = c; wordsKnown = true; if (!editing) showContent();
+}, () => {}).finally(() => { wordsDue = null; });
 let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
 setupProjectReveals();
 setupDetailsCard();
 setupGalleryDrag();
 setupOpening();
+// Let the first pagereveal settle before replacing the fragment or showing a modal.
+requestAnimationFrame(openLinkedSheet);
+addEventListener("hashchange", openLinkedSheet);
 loadMe();
