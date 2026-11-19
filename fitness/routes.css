@@ -17,7 +17,27 @@
 .m-fitness .fr-field { min-width: 0; }
 .m-fitness .fr-field .pick { max-width: 60%; height: 44px; }
 .m-fitness .fr-field .pick select { min-width: 0; width: 100%; max-width: 100%; font-size: 15px; }
-.m-fitness .fr-field select:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; border-radius: inherit; }
+.m-fitness .fr-picker {
+  border: 0; padding: 0 28px 0 13px;
+  color: var(--text); font: 600 15px/1.2 var(--font); text-align: start; cursor: pointer;
+}
+.m-fitness .fr-picker:disabled { cursor: default; opacity: .55; }
+.m-fitness .fr-field :is(select, .fr-picker):focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.m-fitness .fr-picker-menu {
+  position: fixed; inset: auto; box-sizing: border-box; margin: 0; padding: 6px;
+  overflow: auto; overscroll-behavior: contain;
+  color: var(--text); background: var(--glass-strong);
+  border: 1px solid var(--line); border-radius: var(--ifl-radius-group);
+  box-shadow: var(--ifl-shadow-control, 0 8px 24px rgb(0 0 0 / .22));
+  -webkit-backdrop-filter: var(--ifl-glass-blur, none); backdrop-filter: var(--ifl-glass-blur, none);
+}
+.m-fitness .fr-picker-option {
+  display: grid; width: 100%; min-height: 44px; grid-template-columns: 16px 1fr; align-items: center; gap: 10px;
+  padding: 0 10px; border: 0; border-radius: var(--ifl-radius-row); background: none;
+  color: inherit; font: 500 15px/1.3 var(--font); text-align: start; cursor: pointer;
+}
+.m-fitness .fr-picker-option:is(:hover, :focus-visible) { background: var(--glass-ctl); }
+.m-fitness .fr-picker-option:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
 .m-fitness .fr-suggestions { margin: 0; }
 .m-fitness .fr-route-list { display: block; }
 .m-fitness .fr-route-card { min-height: 104px; padding: 14px 18px; }

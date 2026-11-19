@@ -43,7 +43,89 @@ function createLiveRoutes(root, opts = {}) {
     s.append(svg("path", { d: g.path, class: "fr-route-halo" }), svg("path", { d: g.path, class: "fr-route-line" }), svg("circle", { cx: g.positions[0][0], cy: g.positions[0][1], r: 6, class: "fr-route-start" }));
     return s;
   }
+  let openPicker = null;
+  const closePicker = () => { if (openPicker?.matches(":popover-open")) openPicker.hidePopover(); };
+  const viewport = doc.defaultView;
+  viewport.addEventListener("resize", closePicker, { signal: events.signal });
+  viewport.visualViewport?.addEventListener("resize", closePicker, { signal: events.signal });
+  doc.addEventListener("scroll", event => {
+    if (openPicker && !openPicker.contains(event.target)) closePicker();
+  }, { capture: true, passive: true, signal: events.signal });
+
   function pick(label, values, value, change) {
+    const choose = (next, trigger) => {
+      closePicker();
+      if (next !== value) {
+        change(next);
+        dirty = true;
+        notice = routes.length ? "Preferences changed. Find new loops to update your routes." : "";
+        showList();
+      }
+      (trigger.isConnected ? trigger : root.querySelector(`[data-route-picker="${label}"]`))?.focus({ preventScroll: true });
+    };
+    if (typeof viewport.HTMLElement.prototype.showPopover === "function") {
+      const row = e("div", "row plain fr-field"), tx = e("span", "tx");
+      const selected = values.find(([key]) => key === value)[1];
+      const trigger = e("button", "pick fr-picker", selected);
+      const menu = e("div", "fr-picker-menu");
+      trigger.type = "button";
+      trigger.disabled = pending;
+      trigger.dataset.routePicker = label;
+      trigger.setAttribute("aria-label", `${label}: ${selected}`);
+      trigger.setAttribute("aria-haspopup", "menu");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.append(icon("chev", 14, 2));
+      menu.popover = "auto";
+      trigger.popoverTargetElement = menu;
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", label);
+      const options = values.map(([key, text]) => {
+        const option = btn("", () => choose(key, trigger), "fr-picker-option");
+        const checked = key === value, mark = e("span", "fr-picker-mark");
+        option.setAttribute("role", "menuitemradio");
+        option.setAttribute("aria-checked", String(checked));
+        option.tabIndex = -1;
+        option.autofocus = checked;
+        if (checked) mark.append(icon("check", 14, 2));
+        mark.setAttribute("aria-hidden", "true");
+        option.append(mark, e("span", "", text));
+        return option;
+      });
+      menu.append(...options);
+      menu.addEventListener("beforetoggle", event => {
+        const opened = event.newState === "open";
+        trigger.setAttribute("aria-expanded", String(opened));
+        if (!opened) {
+          if (openPicker === menu) openPicker = null;
+          return;
+        }
+        openPicker = menu;
+        const anchor = trigger.getBoundingClientRect(), visual = viewport.visualViewport;
+        const left = visual?.offsetLeft ?? 0, top = visual?.offsetTop ?? 0;
+        const right = left + (visual?.width ?? viewport.innerWidth);
+        const bottom = top + (visual?.height ?? viewport.innerHeight);
+        const width = Math.min(Math.max(196, anchor.width), right - left - 16);
+        const height = options.length * 44 + 14;
+        const below = bottom - anchor.bottom, above = anchor.top - top;
+        const down = below >= height + 14 || below >= above;
+        menu.style.width = width + "px";
+        menu.style.left = Math.max(left + 8, Math.min(anchor.right, right - 8) - width) + "px";
+        menu.style.maxHeight = Math.max(44, (down ? below : above) - 14) + "px";
+        menu.style.top = (down ? anchor.bottom + 6 : Math.max(top + 8, anchor.top - height - 6)) + "px";
+      });
+      menu.addEventListener("keydown", event => {
+        const index = options.indexOf(doc.activeElement);
+        const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+        if (!direction && event.key !== "Home" && event.key !== "End") return;
+        event.preventDefault();
+        const next = direction ? (index + direction + options.length) % options.length
+          : event.key === "Home" ? 0 : options.length - 1;
+        options[next].focus();
+      });
+      tx.append(e("b", "", label));
+      row.append(tx, trigger, menu);
+      return row;
+    }
     const row = e("label", "row plain fr-field"), tx = e("span", "tx"), wrap = e("span", "pick"), select = e("select");
     tx.append(e("b", "", label));
     select.setAttribute("aria-label", label);
@@ -54,13 +136,8 @@ function createLiveRoutes(root, opts = {}) {
     }
     select.value = String(value);
     select.disabled = pending;
-    select.addEventListener("change", () => {
-      change(select.value);
-      dirty = true;
-      notice = routes.length ? "Preferences changed. Find new loops to update your routes." : "";
-      showList();
-      root.querySelector(`select[aria-label="${label}"]`)?.focus({ preventScroll: true });
-    }, { signal: events.signal });
+    select.dataset.routePicker = label;
+    select.addEventListener("change", () => choose(select.value, select), { signal: events.signal });
     wrap.append(select, icon("chev", 14, 2));
     row.append(tx, wrap);
     return row;
@@ -168,6 +245,7 @@ function createLiveRoutes(root, opts = {}) {
   }
   function showList(focus = false) {
     if (!alive()) return;
+    closePicker();
     clearMap();
     active = null;
     drawn = true;
@@ -461,12 +539,14 @@ function createLiveRoutes(root, opts = {}) {
     else if (!active) showList();
     refreshPlan();
   }, hide() {
+    closePicker();
     closeMapData();
     const wasPending = pending;
     cancel();
     if (wasPending) { notice = "Route planning cancelled."; root.querySelector(".fr-loading")?.remove(); }
     clearMap();
   }, destroy() {
+    closePicker();
     closeMapData();
     dead = true;
     cancel();
