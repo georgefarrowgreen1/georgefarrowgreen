@@ -37,8 +37,40 @@
     });
   }, {once: true});
 
-  if (location.hash || matchMedia("(prefers-reduced-motion: reduce)").matches ||
-      performance.getEntriesByType("navigation")[0]?.type === "back_forward") return;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  let active;
+
+  function route(url) {
+    if (!url) return null;
+    const target = new URL(url);
+    if (target.origin !== location.origin) return null;
+    if (target.pathname === "/" || target.pathname === "/index.html") return "bio";
+    if (/^\/contact(?:\/|\/index\.html)?$/.test(target.pathname)) return "contact";
+    return null;
+  }
+
+  addEventListener("pagereveal", event => {
+    const transition = event.viewTransition;
+    if (!transition) return;
+    const from = route(window.navigation?.activation?.from?.url || document.referrer);
+    const to = route(location.href);
+    if (reduced.matches || !to || from === to) {
+      transition.skipTransition();
+      return;
+    }
+    active = transition;
+    root.classList.add("contact-handoff", "contact-settled");
+    root.classList.toggle("to-bio", to === "bio");
+    transition.finished.finally(() => {
+      if (active !== transition) return;
+      active = undefined;
+      root.classList.remove("contact-handoff", "to-bio");
+    });
+  });
+  reduced.addEventListener("change", () => { if (reduced.matches) active?.skipTransition(); });
+
+  if (route(document.referrer) === "contact" || route(location.href) !== "bio" ||
+      location.hash || reduced.matches || performance.getEntriesByType("navigation")[0]?.type === "back_forward") return;
   root.classList.add("photo-wait");
   setTimeout(() => root.classList.remove("photo-wait"), 1800);
 })();
