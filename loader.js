@@ -92,9 +92,16 @@
   if (returning) {
     revealReturn();
     // Account discovery may have replaced the history entry and its scroll offset.
-    if (Number.isFinite(returning.y)) document.addEventListener("DOMContentLoaded", () => {
-      scrollTo({ top: returning.y, behavior: "instant" });
-    }, { once: true });
+    if (Number.isFinite(returning.y)) {
+      const previousMode = history.scrollRestoration;
+      history.scrollRestoration = "manual";
+      const restore = () => scrollTo({ top: returning.y, behavior: "instant" });
+      document.addEventListener("DOMContentLoaded", restore, { once: true });
+      addEventListener("pageshow", () => requestAnimationFrame(() => {
+        restore();
+        history.scrollRestoration = previousMode;
+      }), { once: true });
+    }
   }
 
   addEventListener("pagereveal", event => {
