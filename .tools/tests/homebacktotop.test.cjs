@@ -9,14 +9,19 @@ for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
       const menu = f.p.locator('.fi-menubtn');
       const bounds = await menu.boundingBox();
       const header = await f.p.locator('#bar').boundingBox();
+      const popup = f.p.locator('#fi-floating-links');
       assert.ok(bounds.y >= header.y && bounds.y + bounds.height <= header.y + header.height);
       assert.ok(Math.abs(header.x + header.width - bounds.x - bounds.width) < 1);
+      assert.deepEqual(await popup.boundingBox(), bounds);
       await menu.click();
-      const popup = f.p.locator('#fi-floating-links');
       await popup.evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
       // The browser may scroll the trigger into view when the opening finishes.
       const openedButton = await menu.boundingBox();
-      assert.ok((await popup.boundingBox()).y >= openedButton.y + openedButton.height);
+      const panel = await popup.boundingBox();
+      assert.equal(panel.y, openedButton.y);
+      assert.ok(Math.abs(panel.x + panel.width - openedButton.x - openedButton.width) < 1);
+      assert.ok(panel.width > openedButton.width);
+      assert.ok((await popup.locator('a').first().boundingBox()).y >= openedButton.y + openedButton.height - 1);
       await f.p.locator('#fi-floating-links a[href="#projects"]').click();
       assert.equal(new URL(f.p.url()).hash, '#projects');
       assert.equal(await menu.getAttribute('aria-expanded'), 'false');
@@ -35,6 +40,47 @@ for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
     } finally { await f.ctx.close(); }
   });
 }
+
+test('the unfolding menu reverses from its visible outline with the label and rows anchored', async () => {
+  const { p, ctx } = await fixture('min/', { hash: '#top' });
+  try {
+    const { start, mid, reversed, closed, open } = await p.evaluate(async () => {
+      const toggle = document.querySelector('.fi-menubtn');
+      const panel = document.getElementById('fi-floating-links');
+      const row = panel.querySelector('a');
+      const measure = () => {
+        const { width, height, top, right } = panel.getBoundingClientRect();
+        const link = row.getBoundingClientRect();
+        return { width, height, top, right, label: toggle.getBoundingClientRect().toJSON(), linkX: link.x, linkWidth: link.width };
+      };
+      const finish = () => Promise.all(panel.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {})));
+      const start = measure();
+      toggle.click();
+      for (const track of panel.getAnimations({ subtree: true })) {
+        track.pause();
+        track.currentTime = track.effect.getTiming().duration * .4;
+      }
+      const mid = measure();
+      toggle.click();
+      const reversed = measure();
+      await finish();
+      const closed = measure();
+      toggle.click();
+      await finish();
+      return { start, mid, reversed, closed, open: measure() };
+    });
+    for (const key of ['width', 'height']) {
+      assert.ok(start[key] < mid[key] && mid[key] < open[key]);
+      assert.ok(Math.abs(mid[key] - reversed[key]) < 1);
+    }
+    assert.deepEqual(closed, start);
+    for (const frame of [mid, reversed, open]) {
+      assert.deepEqual(frame.label, start.label);
+      for (const key of ['top', 'right', 'linkX', 'linkWidth']) assert.ok(Math.abs(frame[key] - start[key]) < 1);
+    }
+  } finally { await ctx.close(); }
+});
+
 test('the My details shortcut from the 404 footer opens the bio calling card', async () => {
   const f = await fixture('', { hash: '#my-details' });
   try {
