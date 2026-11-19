@@ -634,11 +634,13 @@ function setupGalleryMenu() {
 // The header and the opening share one vector drawing of the gfg mark.
 // Move each letter as a layer so its outline is rasterised once.
 function setupOpening() {
+  if (!root.classList.contains("photo-wait")) return;
   const gallery = $(".fi-reel");
-  const shouldPlay = root.classList.contains("photo-wait");
-  root.classList.remove("photo-wait");
   const panels = $$(".fi-reel button:not([hidden])");
-  if (!shouldPlay || !gallery.animate || motion.matches || panels.length !== 3) return;
+  if (!gallery?.animate || motion.matches || panels.length !== 3) {
+    root.classList.remove("photo-wait");
+    return;
+  }
 
   // Measure the finished gallery once, before creating any animation layers.
   const galleryRect = gallery.getBoundingClientRect();
@@ -653,8 +655,6 @@ function setupOpening() {
   mark.setAttribute("aria-hidden", "true");
   mark.classList.add("opening-mark");
   Object.assign(mark.style, {left: (x - 40) + "px", top: (y - 26) + "px"});
-  document.body.append(mark);
-  body.classList.add("playing-opening");
 
   const listeners = new AbortController();
   const animations = [];
@@ -767,10 +767,15 @@ function setupOpening() {
     };
     image.decode().then(reveal, () => image.classList.remove("opening-photo-pending"));
   });
-  for (const el of $$("#bar,.fi-bio,.fi-work,footer")) {
-    if (el.getBoundingClientRect().top >= innerHeight) continue;
-    animate(el, [{opacity: 0}, {opacity: 1}], {delay: 1300, duration: 560, easing: "ease-in-out"});
+  // All sections share the handoff, including those below the initial viewport.
+  for (const el of $$("#bar, .fi-bio, .fi-work, #get-in-touch")) {
+    animate(el, [{visibility: "visible", opacity: 0}, {visibility: "visible", opacity: 1}], {
+      delay: delay + duration, duration: MOTION.layout, easing: "ease-out", fill: "forwards"
+    });
   }
+  body.append(mark);
+  body.classList.add("playing-opening");
+  root.classList.remove("photo-wait");
   const options = {signal: listeners.signal};
   document.addEventListener("pointerdown", finish, {...options, capture: true});
   document.addEventListener("keydown", event => {

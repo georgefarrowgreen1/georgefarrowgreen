@@ -1562,7 +1562,15 @@ body.photo-home { transition: none; }
   object-position: 70% 72%;
 }
 .photo-wait {background:var(--paper)}
-.photo-wait #photo-index {visibility:hidden}
+/* Keep the full document laid out. Only the mark and photo panels paint during
+   the opening, even when Safari's toolbar uncovers more of the page. */
+.photo-wait body,
+.playing-opening > :not(#photo-index, .opening-mark),
+.playing-opening #photo-index > :not(#page),
+.playing-opening #page > :not(#fi-photos) {
+  visibility: hidden;
+  opacity: 0;
+}
 .fi-reel img.opening-photo-pending {opacity:0}
 .playing-opening .fi-reel {overflow:clip}
 .opening-mark {position:fixed;width:80px;height:54px;color:var(--opening-ink);pointer-events:none;z-index:10}
