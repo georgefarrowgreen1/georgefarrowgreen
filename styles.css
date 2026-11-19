@@ -1359,11 +1359,11 @@ html[data-theme="dark"] {
   align-items: center;
   gap: 12px;
 }
-.fi-menubtn span {
-  font: 20px/1 Arial;
+.bio-icon { display: inline-block; flex: none; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.fi-menubtn .bio-icon {
   transition: transform 0.22s;
 }
-.fi-menubtn[aria-expanded="true"] span {
+.fi-menubtn[aria-expanded="true"] .bio-icon {
   transform: rotate(45deg);
 }
 #fi-floating-links {
@@ -1443,9 +1443,6 @@ html[data-theme="dark"] {
 @media (prefers-reduced-motion: reduce) {
   .fi-switch-track::after {transition: none}
 }
-#fi-floating-links b {
-  font: 400 16px Arial;
-}
 #photo-index .fi-bio {
   display: flex;
   align-items: flex-end;
@@ -1465,7 +1462,6 @@ html[data-theme="dark"] {
   border-bottom: 1px solid var(--secondary-text);
   gap: 18px;
 }
-#photo-index .fi-bio a b { font-weight: 400; }
 #photo-index .fi-wordmark {
   display: flex;
   margin: 0;
@@ -1607,7 +1603,7 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 #contact-sheet .err, #contact-sheet .fld:has([aria-invalid="true"]) > span:first-child { color: var(--error-text); }
 
 /* Keep motion at the point of interaction. Touch and keyboard use the same destinations. */
-#photo-index .fi-arrow, #photo-index .fi-bio a b, #fi-floating-links b {
+#photo-index .fi-arrow, #photo-index .fi-bio .bio-icon {
   transition: transform 260ms var(--settle);
 }
 #photo-index footer::before {
@@ -1632,7 +1628,7 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 @media (hover: hover) and (pointer: fine) {
   #photo-index .fi-apps .fi-list > a:hover { background: var(--app-hover); }
   #photo-index :is(.fi-apps a, .fi-drawer, .fi-footer a):hover .fi-arrow { transform: translate(2px,-2px); }
-  #photo-index .fi-bio a:hover b, #fi-floating-links a:hover b { transform: translateY(3px); }
+  #photo-index .fi-bio a:hover .bio-icon { transform: translateY(3px); }
   #photo-index summary:hover i { background: var(--ink); color: var(--paper); }
 }
 @container (max-width: 560px) {
