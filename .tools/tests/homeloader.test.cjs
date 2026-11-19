@@ -290,6 +290,15 @@ for (const width of [390, 1440]) {
       await p.locator('#details-sheet').waitFor({state:'hidden'});
       assert.equal(await mark.evaluate(el => el === document.activeElement && getComputedStyle(el,'::before').visibility === 'visible'), true);
       assert.equal(await p.locator('.details-flight').count(), 0);
+      await p.emulateMedia({reducedMotion:'reduce'});
+      assert.ok(await p.evaluate(async () => {
+        document.querySelector('.fi-footer-mark').click();
+        document.querySelector('#details-sheet [data-close]').click();
+        const next = document.querySelector('#my-details');
+        next.focus();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return document.activeElement === next;
+      }));
       assert.deepEqual(errors, []);
     } finally { await ctx.close(); }
   });

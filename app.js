@@ -1513,7 +1513,13 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
   d.addEventListener("close", () => {
     if (d.open) return;
-    if (d === detailsSheet) { clearDetailsTrip(); footerMark.classList.remove("mark-away"); }
+    if (d === detailsSheet) {
+      // finishClose already restored focus in the landing frame. A later
+      // native close event must not steal the visitor's next keyboard focus.
+      if (!footerMark.classList.contains("mark-away")) return;
+      clearDetailsTrip();
+      footerMark.classList.remove("mark-away");
+    }
     clearPresentation(d); body.classList.remove("sheet-up"); unpin(); lastFocus?.focus?.({ preventScroll: true });
   });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
