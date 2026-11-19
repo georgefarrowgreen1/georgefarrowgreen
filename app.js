@@ -1952,11 +1952,21 @@ contact.form.addEventListener("input", (e) => {
   ready();
   if (e.target.id === "c-message") grow(); else fit();
 });
-contact.form.addEventListener("change", fit);      // (filled in by the browser, where that's not an input)
+contact.form.addEventListener("change", event => {
+  if (event.target.matches("#c-name, #c-email") && $("#sender").classList.contains("known")) {
+    const draft = contactDraft();
+    if (draft.name !== $("#from-name").textContent || draft.email !== $("#from-email").textContent) morphFrom(false);
+  }
+  fit();
+});
+function contactDraft() {
+  const {name, email, message} = contact.form.elements;
+  return {name: name.value.trim(), email: email.value.trim(), message: message.value.trim(), website: $("#c-website").value};
+}
 contact.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (contact.send.classList.contains("busy")) return;
-  const msg = { name: $("#c-name").value.trim(), email: $("#c-email").value.trim(), message: $("#c-message").value.trim(), website: $("#c-website").value };
+  const msg = contactDraft();
   const wrong = (sel, t) => { const el = $(sel); el.setAttribute("aria-invalid", "true"); if ($("#sender").classList.contains("known") && sel !== "#c-message") $("#from-change").click(); el.focus(); say(t); };
   if (!msg.name) return wrong("#c-name", "Please add your name.");
   if (!msg.email) return wrong("#c-email", "Please add your email, for the reply.");
@@ -1966,10 +1976,14 @@ contact.form.addEventListener("submit", async (e) => {
   const version = contact.version;
   const revision = draftRevision;
   const currentSheet = () => version === contact.version && contact.sheet.open;
+  const sameDraft = () => {
+    const current = contactDraft();
+    return revision === draftRevision && current.name === msg.name && current.email === msg.email && current.message === msg.message;
+  };
   contact.form.setAttribute("aria-busy", "true");
   try {
     await api("/api/contact", { method: "POST", body: msg });
-    if (currentSheet() && revision === draftRevision) {
+    if (currentSheet() && sameDraft()) {
       contact.send.classList.add("confirmed");
       fadeText($(".lbl", contact.send), "Sent");
       const activity = $(".send-activity", contact.send);
@@ -1978,7 +1992,7 @@ contact.form.addEventListener("submit", async (e) => {
         await contact.send.animate([{ opacity: .9 }, { opacity: 1 }], { duration: MOTION.fast, easing: EASE_OUT }).finished.catch(() => {});
       }
     }
-    if (revision !== draftRevision) {
+    if (!sameDraft()) {
       if (currentSheet()) say("Your previous message was sent. Your new draft is here.", true);
       return;
     }

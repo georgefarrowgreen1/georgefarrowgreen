@@ -93,6 +93,18 @@ for(const assets of ['', 'min/']){
    assert.equal(await f.p.locator('#c-message').inputValue(),'Second message');
    assert.equal(await f.p.locator('#contact-sent').isVisible(),false);
    assert.match(await f.p.locator('#contact-err').innerText(),/previous message was sent/);
+   const autofill=deferred();
+   f.reply({status:200,body:{ok:true},gate:autofill});
+   await f.p.locator('#contact-send').click();
+   await f.p.locator('#contact-send.busy').waitFor();
+   await f.p.locator('#c-email').evaluate(field=>{
+    field.value='another@example.com';
+    field.dispatchEvent(new Event('change',{bubbles:true}));
+   });
+   autofill.resolve();
+   await f.p.locator('#contact-send:not(.busy)').waitFor();
+   assert.equal(await f.p.locator('#c-message').inputValue(),'Second message');
+   assert.equal(await f.p.locator('#c-email').inputValue(),'another@example.com');
    assert.deepEqual(f.errors,[]);
   } finally {await f.cleanup();}
  });
