@@ -250,6 +250,49 @@ for (const width of [390, 1440]) {
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`the footer mark departs, lands on the embossing, and reverses the same tracks at ${width}px`, async () => {
+    const {p, ctx, errors} = await fixture('min/', {width, hash:'#get-in-touch'});
+    try {
+      const mark = p.locator('.fi-footer-mark');
+      await mark.scrollIntoViewIfNeeded();
+      await mark.focus();
+      const result = await p.evaluate(() => {
+        const mark = document.querySelector('.fi-footer-mark'), sheet = document.querySelector('#details-sheet');
+        const rect = el => {
+          const {x, y, width, height} = el.getBoundingClientRect();
+          return [x, y, width, height];
+        };
+        const origin = rect(mark);
+        mark.click();
+        const flyer = sheet.querySelector('.details-flight'), tracks = sheet.getAnimations({subtree:true})
+          .filter(a => a.effect.target === sheet || flyer.contains(a.effect.target));
+        const clock = sheet.getAnimations()[0], duration = clock.effect.getTiming().duration;
+        const seek = t => { for (const a of tracks) { a.pause(); a.currentTime = t * duration; } };
+        seek(0);
+        const start = rect(flyer);
+        seek(1);
+        const landing = rect(flyer), stamp = rect(sheet.querySelector('.calling-stamp'));
+        seek(.43);
+        const middle = rect(flyer);
+        sheet.querySelector('[data-close]').click();
+        return {origin, start, landing, stamp, middle, reverse:rect(flyer),
+          sameClock:sheet.getAnimations().includes(clock), sourceHidden:getComputedStyle(mark,'::before').visibility};
+      });
+      const sameBox = (a,b) => a.every((v,i) => Math.abs(v-b[i]) < 1);
+      assert.ok(sameBox(result.start, result.origin));
+      assert.ok(sameBox(result.landing, result.stamp));
+      assert.ok(!sameBox(result.middle, result.origin) && !sameBox(result.middle, result.stamp));
+      assert.ok(sameBox(result.middle, result.reverse) && result.sameClock);
+      assert.equal(result.sourceHidden, 'hidden');
+      await p.locator('#details-sheet').waitFor({state:'hidden'});
+      assert.equal(await mark.evaluate(el => el === document.activeElement && getComputedStyle(el,'::before').visibility === 'visible'), true);
+      assert.equal(await p.locator('.details-flight').count(), 0);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+}
+
 test('swiping My details scrubs the turn, cancellation restores the face, and the QR settles flat', async () => {
   const {p, ctx, errors} = await fixture('min/', {width:390, hash:'#get-in-touch'});
   try {
