@@ -1306,6 +1306,11 @@ html[data-theme="dark"] {
   transform: rotate(-45deg);
 }
 .fi-menu {
+  --menu-button-width: max(92px, 5.75rem);
+  --menu-button-height: max(44px, 2.75rem);
+  --menu-width: min(clamp(208px, 23vw, 264px), calc(100vw - 32px));
+  --menu-time: 240ms;
+  --menu-ease: cubic-bezier(.27,.03,.19,1);
   position: relative;
   z-index: 5;
   margin-left: 10px;
@@ -1319,49 +1324,63 @@ html[data-theme="dark"] {
   text-underline-offset: .15em;
 }
 #photo-index .fi-menubtn {
-  background: var(--menu-surface);
-  border: 1px solid var(--bio-rule);
-  min-height: 44px;
-  padding: 0 17px;
-  border-radius: 28px;
+  position: relative;
+  z-index: 1;
+  width: var(--menu-button-width);
+  height: var(--menu-button-height);
+  border-radius: 99px;
   font-size: 14px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
 }
 .bio-icon { display: inline-block; flex: none; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.fi-menubtn .bio-icon {
-  transition: transform 0.22s;
-}
+.fi-menubtn[aria-expanded="false"], #fi-floating-links[inert] { --menu-time: 180ms; }
 .fi-menubtn[aria-expanded="true"] .bio-icon {
   transform: rotate(45deg);
 }
+/* The nav paints both the pill and the panel. Only its outline changes size.
+   The trigger stays in the header and the rows keep their open width. */
 #fi-floating-links {
   position: absolute;
+  top: 0;
   right: 0;
-  top: calc(100% + 8px);
-  width: clamp(208px, 23vw, 264px);
-  max-height: calc(100dvh - 76px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  width: var(--menu-width);
   display: grid;
-  gap: 0;
-  padding: 8px 17px;
+  grid-template: 1fr / minmax(0, 1fr);
+  padding-top: calc(var(--menu-button-height) - 2px);
+  overflow: hidden;
   background: var(--menu-surface);
   border: 1px solid var(--bio-rule);
-  border-radius: 12px;
-  box-shadow: 0 14px 38px -14px #0005;
-  transform-origin: top right;
-  opacity: 1;
-  visibility: visible;
-  --menu-reveal: opacity .18s, transform .23s cubic-bezier(.2,.7,.2,1), visibility 0s var(--menu-hide-delay, 0s);
-  transition: var(--menu-reveal);
+  border-radius: 17px;
+  box-shadow: 0 9px 26px -15px #0005;
 }
 #fi-floating-links[inert] {
+  width: var(--menu-button-width);
+  grid-template-rows: 0fr;
+  border-radius: calc(var(--menu-button-height) / 2);
+  box-shadow: 0 9px 26px -15px transparent;
+  pointer-events: none;
+}
+.fi-menu-fold {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+  overflow: hidden;
+}
+.fi-menu-links {
+  flex: none;
+  align-self: flex-start;
+  width: calc(var(--menu-width) - 2px);
+  max-height: calc(100dvh - var(--menu-button-height) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 0 16px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#fi-floating-links[inert] .fi-menu-links {
   opacity: 0;
-  transform: translateY(-5px) scale(0.98);
-  visibility: hidden;
-  --menu-hide-delay: .23s;
+  transform: translateY(-4px);
 }
 #fi-floating-links :is(a, button) {
   width: 100%;
@@ -1374,7 +1393,8 @@ html[data-theme="dark"] {
   font: 500 15px var(--font);
   text-align: left;
 }
-#fi-floating-links > :last-child {
+#fi-floating-links .fi-menu-links > :first-child { border-top: 1px solid var(--bio-rule); }
+#fi-floating-links .fi-menu-links > :last-child {
   border-bottom: 0;
 }
 #fi-floating-links #fi-theme {
@@ -1415,11 +1435,16 @@ html[data-theme="dark"] {
   .appearance-ready #photo-index { transition: background-color var(--paper-motion), color var(--ink-motion); }
   /* The menu and footer inherit the page's moving ink. Giving their text its
      own transition would make it chase the parent on each painted frame. */
-  .appearance-ready #photo-index :is(.fi-menubtn, .fi-switch-track, footer) { transition: var(--surface-fade); }
-  .appearance-ready #fi-floating-links { transition: var(--menu-reveal), var(--surface-fade); }
+  .appearance-ready #photo-index :is(.fi-switch-track, footer) { transition: var(--surface-fade); }
+  .appearance-ready #fi-floating-links {
+    --unfold: var(--menu-time) var(--menu-ease);
+    transition: width var(--unfold), grid-template-rows var(--unfold), border-radius var(--unfold), box-shadow var(--unfold), var(--surface-fade);
+  }
+  .appearance-ready .fi-menu-links { transition: opacity var(--menu-time) ease-out, transform var(--menu-time) var(--menu-ease); }
+  .appearance-ready .fi-menubtn .bio-icon { transition: transform var(--menu-time) var(--menu-ease); }
   .appearance-ready #photo-index .fi-colophon { transition: border-color var(--paper-motion), color var(--ink-motion); }
   .appearance-ready #photo-index .lost-home { transition: background-color var(--ink-motion), color var(--paper-motion); }
-  .appearance-ready #fi-floating-links > :is(a, button),
+  .appearance-ready #fi-floating-links :is(a, button),
   .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
   .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
@@ -1460,9 +1485,8 @@ html[data-theme="dark"] {
 
 html:has(.photo-home), body.photo-home { background: var(--paper); }
 body.photo-home { transition: none; }
-#photo-index .fi-menubtn[aria-expanded="true"] { background: var(--app-hover); }
 @media (hover:hover) {
-  #photo-index .fi-menubtn:hover {background:var(--app-hover)}
+  .fi-menubtn:hover + #fi-floating-links[inert] { background: var(--app-hover); }
   #fi-floating-links a:hover, #fi-floating-links [data-contact]:hover {text-decoration:underline;text-underline-offset:4px}
 }
 #photo-index #bar {
@@ -1582,7 +1606,6 @@ html[data-theme="dark"] #contact-sheet::backdrop { background: rgb(0 0 0 / 58%);
 #contact-sheet :is(.fields.msg, .sender-surface) { box-shadow: var(--rim); }
 /* A focus-ring fade during dismissal would repaint the card as it moves. */
 #contact-sheet.closing :is(.fields, .sender-surface) {transition:none}
-body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 #contact-sheet .sender-morph:focus-within > .sender-surface,
 #contact-sheet .fields.msg:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
 /* Native autofill can lock the background colour. Paint the form surface over it. */
