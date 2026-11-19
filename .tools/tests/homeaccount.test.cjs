@@ -91,7 +91,7 @@ for (const assets of ['', 'min/']) {
   for (const width of [320, 390, 1440]) {
     test(`${assets || 'source/'}photographic opening and static gallery at ${width}px`, async () => {
       const reduced = width === 320;
-      const ctx = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion: reduced ? 'reduce' : 'no-preference' });
+      const ctx = await browser.newContext({ viewport: { width, height: width === 390 ? 650 : 844 }, reducedMotion: reduced ? 'reduce' : 'no-preference' });
       const gate = Promise.withResolvers();
       await ctx.route('https://startup.test/**', async route => {
         const path = new URL(route.request().url()).pathname;
@@ -114,6 +114,10 @@ for (const assets of ['', 'min/']) {
         });
         const geometry = () => page.locator('.fi-reel').boundingBox();
         const before = await geometry();
+        const chrome = page.locator('#bar, .fi-bio, #projects, #apps, #get-in-touch');
+        const painted = nodes => nodes.filter(el => el.checkVisibility({opacityProperty:true, visibilityProperty:true}))
+          .map(el => el.id || el.className);
+        if (!reduced) assert.deepEqual(await chrome.evaluateAll(painted), [], 'nothing behind the pending opening can paint');
         gate.resolve();
         await page.locator('body.known').waitFor();
         const controls = page.getByText(/^(Skip|Replay) opening$/);
@@ -123,6 +127,27 @@ for (const assets of ['', 'min/']) {
           assert.equal(await mark.count(), 0);
         } else {
           await mark.waitFor({ state: 'attached' });
+          if (width === 390) {
+            // Safari's toolbar can uncover content beyond the original viewport.
+            const height = await page.locator('#apps h2').evaluate(el => Math.ceil(el.getBoundingClientRect().bottom) + 40);
+            await page.setViewportSize({width, height});
+          }
+          assert.deepEqual(await chrome.evaluateAll(painted), [], 'only the opening is visible, including beyond the initial fold');
+          const leaked = await chrome.evaluateAll(nodes => {
+            const tracks = document.getAnimations();
+            const times = tracks.map(a => a.currentTime);
+            const landed = Math.max(...document.querySelector('.fi-reel button').getAnimations().map(a => a.effect.getComputedTiming().endTime));
+            const visible = [];
+            for (const fraction of [.3, .82, .99]) {
+              tracks.forEach(a => { a.currentTime = landed * fraction; });
+              for (const el of nodes) {
+                if (el.checkVisibility({opacityProperty:true, visibilityProperty:true})) visible.push(el.id || el.className);
+              }
+            }
+            tracks.forEach((a, i) => { a.currentTime = times[i]; });
+            return visible;
+          });
+          assert.deepEqual(leaked, [], 'page content waits until the photographs land');
           await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
           assert.deepEqual(await mark.locator('path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))),
             await page.locator('header .wordmark path').evaluateAll(paths => paths.map(p => p.getAttribute('d'))));
@@ -173,6 +198,7 @@ for (const assets of ['', 'min/']) {
           await mark.waitFor({ state: 'detached' });
           assert.equal(await page.locator('.opening-corner').count(), 0);
         }
+        assert.equal((await chrome.evaluateAll(painted)).length, 5, 'the complete page is revealed');
         assert.equal(await controls.count(), 0);
         const after = await geometry();
         for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(before[key] - after[key]) <= 1, key);
