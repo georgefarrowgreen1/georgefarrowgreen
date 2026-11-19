@@ -159,6 +159,50 @@ function galleryReady(items) {
     return images.length === 1 && images[0].complete && images[0].naturalWidth;
   });
 }
+
+// Browsers without cross-document snapshots move the actual gallery windows.
+// Clip their edges independently of the photos so the rider keeps his proportions.
+document.addEventListener("gfg-photo-return", ({ detail: { frames, windows } }) => {
+  if (motion.matches || !reel.animate || !galleryReady(windows) || scrollY > 1) return;
+  const destinations = windows.map(win => win.getBoundingClientRect());
+  const timing = { duration: 440, easing: "cubic-bezier(.32,.08,.2,1)", fill: "both" };
+  const animations = [];
+  const listeners = new AbortController();
+  function finish() {
+    listeners.abort();
+    animations.forEach(a => a.cancel());
+    reel.classList.remove("photo-flight");
+  }
+  reel.classList.add("photo-flight");
+  windows.forEach((win, i) => {
+    const image = $("img", win), destination = destinations[i];
+    const width = Math.max(frames[i].width, destination.width);
+    const height = Math.max(frames[i].height, destination.height);
+    const poses = [frames[i], { ...destination.toJSON(), focus: getComputedStyle(image).objectPosition }];
+    animations.push(win.animate(poses.map(box => ({
+      width: width + "px", height: height + "px",
+      transform: `translate3d(${box.x - destination.x}px, ${box.y - destination.y}px, 0)`,
+      clipPath: `inset(0 ${width - box.width}px ${height - box.height}px 0)`
+    })), timing));
+    animations.push(image.animate(poses.map(box => {
+      const scale = Math.max(box.width / image.naturalWidth, box.height / image.naturalHeight);
+      const [fx, fy] = box.focus.split(" ").map(n => parseFloat(n) / 100);
+      const x = (box.width - image.naturalWidth * scale) * fx;
+      const y = (box.height - image.naturalHeight * scale) * fy;
+      return { width: image.naturalWidth + "px", height: image.naturalHeight + "px", transformOrigin: "0 0",
+        transform: `translate3d(${x}px, ${y}px, 0) scale(${scale})` };
+    }), timing));
+  });
+  const third = $('[data-scene="2"]:not([hidden]) .fi-window', reel);
+  if (third) animations.push(third.animate([{clipPath: "inset(0 100% 0 0)"}, {clipPath: "inset(0)"}],
+    { ...timing, delay: 65, duration: 375 }));
+  for (const type of ["pagehide", "resize", "scroll", "pointerdown", "keydown"]) {
+    addEventListener(type, finish, { passive: true, signal: listeners.signal });
+  }
+  motion.addEventListener("change", finish, { signal: listeners.signal });
+  Promise.all(animations.map(a => a.finished)).then(finish, finish);
+}, { once: true });
+
 function selectPanel(panel, travel = false) {
   if (travel && panel.getAttribute("aria-pressed") === "true") return;
   const items = panels.filter(item => !item.hidden);

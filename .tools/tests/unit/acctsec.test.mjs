@@ -46,10 +46,11 @@ async function account(handle, pw) {
 const ACCT = 'http://account.localhost:8788', req = (path, { cookie, ip = '198.51.100.1' } = {}, host = ACCT) =>
   new Request(host + path, { headers: { Origin: host, 'CF-Connecting-IP': ip, ...(cookie ? { Cookie: cookie } : {}) } });
 
-test('bio arrival validates the home session before deciding to render or check InFlite', async () => {
+test('an InFlite referral validates the home session and a public visit needs no preflight', async () => {
   const u = await account('bioarrival', 'test password');
   const site = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const request = req('/', { cookie: `__Secure-account=${site}` }, 'https://georgefarrowgreen.com');
+  request.headers.set('Referer', 'https://inflite.ai/');
   const url = new URL(request.url);
   const hash = hex(await sha256(await issueSession(env, u.id, request)));
   await D.prepare('UPDATE pg_sessions SET site_hash = ? WHERE hash = ?').bind(hex(await sha256(site)), hash).run();
@@ -59,6 +60,8 @@ test('bio arrival validates the home session before deciding to render or check 
   assert.equal(expired.status, 302);
   assert.equal(new URL(expired.headers.get('location')).origin, 'https://auth.inflite.ai');
   assert.equal(await expired.text(), '');
+  request.headers.delete('Referer');
+  assert.equal(await homeArrival({ request, env }, url), null);
 });
 
 test('a reset link keeps one server key for its life: opened again elsewhere, the first tab still keeps the key', async () => {

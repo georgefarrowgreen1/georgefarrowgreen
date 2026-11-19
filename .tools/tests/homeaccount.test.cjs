@@ -12,16 +12,17 @@ after(async () => browser?.close());
 for (const assets of ['', 'min/']) {
   for (const state of [
     { name: 'guest' },
-    { name: 'directly rendered guest', direct: true },
-    { name: 'home member', home: true },
-    { name: 'InFlite member', inflite: true },
+    { name: 'guest from InFlite', referred: true },
+    { name: 'home member with a slow profile response', home: true, slow: true },
+    { name: 'member from InFlite', inflite: true, referred: true },
     { name: 'owner returning from account', home: true, owner: true, hash: '#signedin' },
-    { name: 'cookies unavailable', inflite: true, blocked: true },
+    { name: 'cookies unavailable on return from InFlite', inflite: true, referred: true, blocked: true },
     { name: 'account service unavailable', error: true },
   ]) {
     test(`${assets || 'source/'}${state.name}: no Sign in button, profile only for a recognised member`, async () => {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
       let hops = 0, documents = 0, signed = !!state.home;
+      const profile = Promise.withResolvers();
       if (state.inflite) await ctx.addCookies([{ name: 'ifl_session', value: 'member', domain: '.inflite.test', path: '/', httpOnly: true, secure: true, sameSite: 'Lax' }]);
       await ctx.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url()), path = url.pathname;
@@ -40,17 +41,20 @@ for (const assets of ['', 'min/']) {
         }
         if (path === '/api/hop/finish') { signed = !state.blocked; return redirect(url.searchParams.get('to')); }
         if (path === '/') {
-          if (!signed && !state.direct && url.searchParams.get('__ifl_account') !== 'checked') {
+          if (!signed && request.headers().referer === 'https://inflite.test/' && url.searchParams.get('__ifl_account') !== 'checked') {
             const to = new URL(url); to.searchParams.set('__ifl_account', 'checked');
             return redirect(`${HOME}/api/hop/start?to=${encodeURIComponent(to.href)}`);
           }
           documents++;
           return route.fulfill({ contentType: 'text/html', body: readFileSync(resolve(ROOT, 'index.html'), 'utf8').replace('<html lang="en-GB">', '<html lang="en-GB" data-words>') });
         }
-        if (path === '/api/me') return route.fulfill({ status: state.error ? 503 : 200, json: state.error ? { error: 'Unavailable' } : {
-          signedIn: signed, account: 'https://account.inflite.test', auth: AUTH, owner: signed && !!state.owner,
-          ...(signed ? { name: 'Sam Rider', email: 'sam@example.test', photoAt: 123, apps: {} } : {}),
-        } });
+        if (path === '/api/me') {
+          if (state.slow) await profile.promise;
+          return route.fulfill({ status: state.error ? 503 : 200, json: state.error ? { error: 'Unavailable' } : {
+            signedIn: signed, account: 'https://account.inflite.test', auth: AUTH, owner: signed && !!state.owner,
+            ...(signed ? { name: 'Sam Rider', email: 'sam@example.test', photoAt: 123, apps: {} } : {}),
+          } });
+        }
         if (path === '/api/background') return route.fulfill({ json: { images: [] } });
         if (path === '/api/me/photo' || path.startsWith('/apps/')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56"><rect width="56" height="56" fill="#3377cc"/></svg>' });
         if (['/styles.css', '/app.js', '/signedin.js'].includes(path) || path.startsWith('/fonts/') || path === '/inflite.svg') {
@@ -62,7 +66,12 @@ for (const assets of ['', 'min/']) {
       const p = await ctx.newPage(), errors = [];
       p.on('pageerror', e => { errors.push(e.message); console.error('PAGE ERROR',e.message); });
       try {
-        await p.goto(`${HOME}/?keep=ride${state.hash || ''}`);
+        await p.goto(`${HOME}/?keep=ride${state.hash || ''}`, state.referred ? { referer: 'https://inflite.test/' } : {});
+        if (state.slow) {
+          assert.equal(await p.locator('#fi-photos').isVisible(), true);
+          assert.equal(await p.locator('body.known').count(), 0);
+          profile.resolve();
+        }
         await p.locator('body.known').waitFor();
         const member = !!state.home || (!!state.inflite && !state.blocked);
         assert.equal(await p.locator('#sign-in').count(), 0);
@@ -76,11 +85,11 @@ for (const assets of ['', 'min/']) {
           assert.equal(await p.locator('#edit').isVisible(), !!state.owner);
         } else assert.equal(await p.locator('#me').isVisible(), false);
         assert.equal(documents, 1, 'account lookup never navigates away from a rendered homepage');
-        assert.equal(hops, state.home || state.direct ? 0 : 1, 'one quiet hand-off for an unrecognised visitor; never a loop');
+        assert.equal(hops, !state.home && state.referred ? 1 : 0, 'only the visit from InFlite uses the account handoff');
         assert.equal(new URL(p.url()).search, '?keep=ride', 'temporary marker removed, other query parameters preserved');
         await p.waitForTimeout(state.hash ? 1200 : 100);
         assert.deepEqual(errors, []);
-      } finally { await ctx.close(); }
+      } finally { profile.resolve(); await ctx.close(); }
     });
   }
 }

@@ -1083,14 +1083,13 @@ html[data-theme="dark"] {
   position: absolute;
   z-index: -1;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  max-height: none;
-  object-fit: cover;
-  object-position: 50% 42%;
+  background-position: 50% 42%;
+  background-size: cover;
+  background-repeat: no-repeat;
   filter: grayscale(1) brightness(.68);
 }
-#photo-index .fi-house img:not(.fi-cottage-photo) { filter: brightness(0) invert(1); }
+#photo-index .fi-entry[open] .fi-cottage-photo { background-image: url("/projects/blakeney.webp"); }
+#photo-index .fi-house .fi-emblem { filter: brightness(0) invert(1); }
 #photo-index .fi-launch {
   position: absolute;
   right: 12px;
@@ -1841,6 +1840,45 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
   #photo-index .lost-home:hover { text-decoration: underline; text-underline-offset: .22em; }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .photo-leaving .lost-road,
+  .photo-native [data-scene="0"] .fi-window { view-transition-name: road-print; }
+  .photo-leaving .lost-rider,
+  .photo-native [data-scene="1"] .fi-window { view-transition-name: rider-print; }
+  .photo-native [data-scene="2"]:not([hidden]) .fi-window { view-transition-name: hill-print; }
+  .photo-native::view-transition { pointer-events: none; }
+  .photo-native::view-transition-group(root) { animation-duration: 150ms; }
+  .photo-native::view-transition-group(road-print),
+  .photo-native::view-transition-group(rider-print) {
+    overflow: clip;
+    animation-duration: 440ms;
+    animation-timing-function: cubic-bezier(.32,.08,.2,1);
+  }
+  .photo-native::view-transition-image-pair(road-print) {
+    background-image: var(--road-photo);
+    --crop-from: var(--road-from);
+    --crop-to: var(--road-to);
+  }
+  .photo-native::view-transition-image-pair(rider-print) {
+    background-image: var(--rider-photo);
+    --crop-from: var(--rider-from);
+    --crop-to: var(--rider-to);
+  }
+  .photo-native::view-transition-image-pair(road-print),
+  .photo-native::view-transition-image-pair(rider-print) {
+    height: 100%; background-size: cover; background-repeat: no-repeat;
+    animation: print-crop 440ms cubic-bezier(.32,.08,.2,1) both;
+  }
+  @keyframes print-crop { from { background-position: var(--crop-from); } to { background-position: var(--crop-to); } }
+  .photo-native::view-transition-old(road-print), .photo-native::view-transition-new(road-print),
+  .photo-native::view-transition-old(rider-print), .photo-native::view-transition-new(rider-print) {
+    animation: none; opacity: 0;
+  }
+  .photo-native::view-transition-new(hill-print) {
+    animation: hill-unfold 375ms 65ms cubic-bezier(.32,.08,.2,1) both;
+  }
+  @keyframes hill-unfold { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+  #photo-index .fi-reel.photo-flight { contain: layout; z-index: 2; }
+  #photo-index .photo-flight button { overflow: visible; }
   .lost-prints img { animation: lost-print-in 650ms cubic-bezier(.22,.72,.18,1) backwards; }
   .lost-rider img { animation-delay: 70ms; }
   .lost-home .bio-icon { transition: transform 180ms ease; }

@@ -8,19 +8,22 @@ import { getList } from "./api/background.js";
 import { getContent } from "./_content.js";
 import { assets } from "./_min.js";
 import { HOME_FILES, HOME_STAMPS } from "./_minfresh.js";
-import { homeSite } from "./_sites.js";
+import { homeSite, siteOf } from "./_sites.js";
 import { hop } from "./_hop.js";
 
 // Link preview readers fetch public metadata without an interactive account session.
 // Some stop when the first redirect leaves the shared origin.
 const previewReader = /facebookexternalhit|Facebot|WhatsApp|Twitterbot|Slackbot|Discordbot|LinkedInBot|TelegramBot|Applebot|GoogleMessages|SkypeUriPreview|Iframely/i;
 const isPage = (url) => url.pathname === "/" || url.pathname === "/index.html";
-// Complete the cross-domain account check before sending any HTML. A late client redirect paints the page twice,
-// repeats its entrance and discards the first cover download. The existing return marker also bounds guests with
-// blocked cookies to one check. Sessions already present on the home page skip this entirely.
+// Public visits render immediately. /api/me fills in a recognised home session in place.
+// Follow the account handoff when arriving from InFlite; the hop still verifies the session.
 export async function homeArrival(ctx, url) {
   if (ctx.request.method !== "GET" || url.hostname !== homeSite(ctx.env) || !isPage(url) ||
     url.searchParams.get("__ifl_account") === "checked" || previewReader.test(ctx.request.headers.get("User-Agent") || "")) return null;
+  const referrer = ctx.request.headers.get("Referer");
+  if (!referrer || !URL.canParse(referrer)) return null;
+  const from = new URL(referrer);
+  if (!["https:", "http:"].includes(from.protocol) || siteOf(from.hostname, ctx.env) !== "apps") return null;
   const to = new URL(url); to.searchParams.set("__ifl_account", "checked");
   const start = new URL("/api/hop/start", url); start.searchParams.set("to", to.href);
   // The hop validates the session. An expired cookie follows the same preflight as a guest.
