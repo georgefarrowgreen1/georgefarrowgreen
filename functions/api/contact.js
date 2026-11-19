@@ -28,6 +28,7 @@ async function notifyOwner(env, request, { name, email, message }) {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ access_key: env.WEB3FORMS_KEY, subject, from_name: name, name, email, replyto: email, message }),
+      signal: AbortSignal.timeout(10000),
     });
     return res.ok && (await res.json())?.success === true;
   }
@@ -35,7 +36,7 @@ async function notifyOwner(env, request, { name, email, message }) {
   const reply = `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent("Re: your message")}`;
   const { text, html } = emailBody({ brand: "website", origin: linkOrigin(request), title: `A message from ${name}`, preheader: message.slice(0, 140),
     pill: ["mail", email], quote: message, rows: [["Sent", ukTime(Date.now())]], button: { label: `Reply to ${name.split(/\s+/)[0]}`, url: reply } });
-  await sendEmail(env, { brand: "website", to, replyTo: email, subject, text, html });
+  await sendEmail(env, { brand: "website", to, replyTo: email, subject, text, html }, { requireReceipt: true });
   return true;
 }
 
@@ -78,7 +79,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   if (env.DB) {
     try { await saveMessage(env, { name, email, body: message }); saved = true; } catch (_) {}
   }
-  if (!env.WEB3FORMS_KEY && !emailReady(env)) {
+  if (!env.WEB3FORMS_KEY && !emailReady(env, "website")) {
     return saved ? json({ ok: true }) : json({ error: "The contact form isn’t set up yet." }, 503);
   }
   // (the site's sender is shared by every app's email: past 60 a day, a message is kept but not emailed)

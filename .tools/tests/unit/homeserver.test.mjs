@@ -165,6 +165,13 @@ test('contact delivery requires storage or an explicit provider receipt', {skip:
   assert.equal((await listMessages(stored)).length,3);
   outcome = '{"success":true}';
   assert.equal((await send('198.51.100.8', undefined, 0, mailOnly)).ok,true);
+  const resend = {RESEND_API_KEY: 'test'};
+  outcome = '{}';
+  assert.equal((await send('198.51.100.8', undefined, 0, resend)).status, 502);
+  outcome = '{"id":"fixture-email"}';
+  assert.equal((await send('198.51.100.8', undefined, 0, resend)).ok, true);
+  const appsOnly = {CF_EMAIL_TOKEN: 'fixture', CF_ACCOUNT_ID: 'fixture'};
+  assert.equal((await send('198.51.100.8', undefined, 0, appsOnly)).status, 503);
 });
 
 test('a saved message has its receipt while its email notification is still pending', {skip:!sqlite, timeout:3000}, async t => {
