@@ -17,6 +17,23 @@ if (document.referrer && history.length > 1) {
   back.addEventListener("click", () => history.back());
 }
 
+// Keep the two visible crops for this tab's journey home. Other links and new tabs
+// retain their normal navigation. Only public image paths and screen geometry travel.
+document.addEventListener("click", event => {
+  const link = event.target.closest?.(".lost-home, .fi-sign");
+  if (!link || link.pathname !== "/" || link.hash || link.target || event.defaultPrevented ||
+      event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const frames = [...document.querySelectorAll(".lost-prints img")].map(img => {
+    const { x, y, width, height } = img.parentElement.getBoundingClientRect();
+    return { src: img.getAttribute("src"), x, y, width, height, focus: getComputedStyle(img).objectPosition };
+  });
+  try {
+    sessionStorage.setItem("gfg-photo-return", JSON.stringify({ from: location.pathname, at: Date.now(), width: innerWidth, frames }));
+    document.documentElement.classList.add("photo-leaving");
+  } catch (_) {}
+});
+addEventListener("pageshow", () => document.documentElement.classList.remove("photo-leaving"));
+
 for (const link of document.querySelectorAll("[data-quick-message]")) link.href = "/#contact";
 const report = document.getElementById("report");
 const source = document.referrer ? new URL(document.referrer) : null;

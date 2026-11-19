@@ -2,6 +2,51 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { fixture } = require('./gallery-fixture.cjs');
 
+for (const js of [true, false]) {
+  test(`the cottage photograph is fetched by opening its project (JavaScript ${js})`, async () => {
+    const { ctx, p } = await fixture('', { js, hash: '#projects' });
+    try {
+      const cottage = p.locator('.fi-entry').last();
+      await cottage.scrollIntoViewIfNeeded();
+      await p.waitForLoadState('load');
+      assert.equal(await cottage.evaluate(el => el.open), false);
+      assert.equal(await p.evaluate(() => performance.getEntriesByType('resource').some(r => r.name.endsWith('/projects/blakeney.webp'))), false);
+      const photo = p.waitForResponse(r => new URL(r.url()).pathname === '/projects/blakeney.webp');
+      await cottage.locator('summary').focus();
+      await p.keyboard.press('Enter');
+      assert.equal((await photo).status(), 200);
+      assert.equal(await cottage.evaluate(el => el.open), true);
+    } finally { await ctx.close(); }
+  });
+}
+
+for (const variant of ['shared', 'reduced', 'different photo']) {
+  test(`404 photographs return to the bio gallery: ${variant}`, async () => {
+    const { ctx, p, errors } = await fixture('', { reduce: variant === 'reduced', hash: '#fi-photos' });
+    try {
+      await ctx.route('**/missing-ride', route => route.fulfill({ status: 404, contentType: 'text/html', path: require.resolve('../../404.html') }));
+      assert.equal((await p.goto(new URL('/missing-ride', p.url()).href)).status(), 404);
+      if (variant === 'different photo') await p.locator('.lost-road img').evaluate(img => { img.src = '/projects/hillside-climb.webp'; });
+      await p.locator('.lost-prints img').evaluateAll(images => Promise.all(images.map(img => img.decode())));
+      await ctx.addInitScript(() => {
+        window.arrival = { shared: false, intro: false };
+        new MutationObserver(() => {
+          window.arrival.intro ||= !!document.querySelector('.photo-wait,.opening-mark,.contact-handoff,.contact-return');
+          window.arrival.shared ||= !!document.querySelector('.photo-native,.photo-flight');
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+      });
+      await p.locator('.lost-home').click();
+      await p.waitForURL(url => url.pathname === '/');
+      if (variant === 'shared') await p.waitForFunction(() => window.arrival.shared);
+      await p.locator('body.known').waitFor();
+      assert.deepEqual(await p.evaluate(() => window.arrival), { shared: variant === 'shared', intro: false });
+      await p.waitForFunction(() => !document.querySelector('.photo-native,.photo-flight'));
+      assert.equal(await p.locator('.fi-reel [aria-pressed="true"]').count(), 1);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+}
+
 for (const assets of ['', 'min/']) {
   for (const options of [{ reduce: true }, { back: true }, { hash: '#apps' }, { js: false }, { missing: '/loader.js' }, { missing: '/app.js' }]) {
     test(`${assets || 'source/'}the photographic page stays usable with ${JSON.stringify(options)}`, async () => {
