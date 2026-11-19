@@ -130,3 +130,47 @@ test('touch drags follow the finger, settle once, and leave vertical scrolling n
     assert.deepEqual(f.errors, []);
   } finally { await f.ctx.close(); }
 });
+
+for (const width of [390, 432, 1440]) {
+  test(`project reveal at ${width}px reverses from its visible pose and restores native focus behaviour`, async () => {
+    const f = await fixture('min/', {width, hash:'#projects'});
+    try {
+      const page = f.p;
+      const row = page.locator('.fi-entry').last();
+      await page.locator('body.known').waitFor();
+      const result = await row.evaluate(entry => {
+        const summary = entry.querySelector('summary'), fold = entry.querySelector('.fi-fold');
+        const pose = () => [fold.offsetHeight, getComputedStyle(entry.querySelector('.fi-shutter-left')).transform,
+          getComputedStyle(entry.querySelector('.fi-story p')).opacity];
+        summary.click();
+        for (const track of fold.getAnimations({subtree:true})) {
+          track.pause();
+          track.currentTime = 255;
+        }
+        const openPose = pose();
+        summary.click();
+        const closingPose = pose(), inert = fold.inert;
+        summary.click();
+        return {openPose, closingPose, reopenedPose:pose(), inert};
+      });
+      assert.deepEqual(result.openPose, result.closingPose);
+      assert.deepEqual(result.openPose, result.reopenedPose);
+      assert.ok(result.openPose[0] > 0 && +result.openPose[2] > 0 && +result.openPose[2] < 1);
+      assert.ok(result.inert);
+      await page.waitForFunction(() => !document.querySelector('.project-moving'));
+      assert.ok(await row.evaluate(e => e.open && e.querySelector('.fi-fold').offsetHeight > 0));
+      await row.locator('a').focus();
+      await row.locator('summary').evaluate(el => el.click());
+      assert.ok(await row.locator('summary').evaluate(el => el === document.activeElement));
+      await page.waitForFunction(() => !document.querySelector('.fi-entry:last-of-type').open);
+      await page.keyboard.press('Space');
+      await page.waitForFunction(() => document.querySelector('.fi-entry:last-of-type').open);
+      await page.emulateMedia({reducedMotion:'reduce'});
+      await page.waitForFunction(() => !document.querySelector('.project-moving'));
+      await page.keyboard.press('Enter');
+      assert.ok(await row.evaluate(e => !e.open && !e.querySelector('.fi-fold').inert));
+      assert.ok(await page.locator('.fi-entry').first().evaluate(e => e.open));
+      assert.deepEqual(f.errors, []);
+    } finally { await f.ctx.close(); }
+  });
+}

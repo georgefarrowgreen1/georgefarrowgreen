@@ -362,6 +362,89 @@ function setupGalleryDrag() {
   motion.addEventListener("change", () => { if (gesture?.track) release(false); });
 }
 
+// Each disclosure has one reversible timeline. Keep native details semantics at
+// rest; while closing, keep the content painted but take its link out of focus.
+function setupProjectReveals() {
+  if (!Element.prototype.animate) return;
+  for (const entry of $$(".fi-entry")) {
+    const summary = $("summary", entry), fold = $(".fi-fold", entry);
+    const art = $(".fi-art", entry), landscape = $(".fi-scene", art);
+    const emblem = $(".fi-emblem", art);
+    const inflite = art.classList.contains("fi-inflite");
+    const duration = 640;
+    let tracks = null, expanded = entry.open;
+
+    function settle() {
+      if (!tracks) return;
+      entry.open = expanded;
+      for (const track of tracks) track.cancel();
+      tracks = null;
+      entry.classList.remove("project-moving");
+      summary.removeAttribute("aria-expanded");
+      fold.inert = false;
+    }
+
+    function compose() {
+      const sequence = [];
+      // Hold the end poses outside each part's interval so a reversal also
+      // reverses the spacing between the cover, the typography and the link.
+      function part(el, first, last, start = 0, end = 1, easing = "cubic-bezier(.25,.12,.25,1)") {
+        const frames = [{...first, offset: start, easing}, {...last, offset: end}];
+        if (start > 0) frames.unshift({...first, offset: 0});
+        if (end < 1) frames.push({...last, offset: 1});
+        const track = el.animate(frames, {duration, fill: "both"});
+        track.pause();
+        sequence.push(track);
+      }
+      part(fold, {gridTemplateRows: "0fr"}, {gridTemplateRows: "1fr"});
+      part($(".fi-shutter-left", art), {transform: "none"}, {transform: "translateX(-47%)"}, 0, .82);
+      part($(".fi-shutter-right", art), {transform: "none"}, {transform: "translateX(72%)"}, 0, .90);
+      part(landscape, {transform: inflite ? "translateX(-2.5%) scale(1.07)" : "scale(1.11)"}, {transform: "none"});
+      part(emblem, {opacity: 0, transform: inflite ? "translateY(8px) rotate(-16deg) scale(.85)" : "translateY(10px) scale(.94)"},
+        {opacity: 1, transform: "none"}, .12, .84);
+      part($(".fi-story p", entry), {opacity: 0, transform: "translateY(12px)"}, {opacity: 1, transform: "none"}, .16, .85);
+      part($(".fi-project-cta", entry), {opacity: 0, transform: "translateY(7px)"}, {opacity: 1, transform: "none"}, .30, .96);
+      part($(".fi-launch", art), {opacity: 0, transform: "translate(-4px,4px)"}, {opacity: 1, transform: "none"}, .32, .95);
+      return sequence;
+    }
+
+    summary.addEventListener("click", event => {
+      if (event.defaultPrevented || motion.matches) return;
+      event.preventDefault();
+      const reversing = Boolean(tracks);
+      expanded = !(reversing ? expanded : entry.open);
+      const time = reversing ? Number(tracks[0].currentTime) : expanded ? 0 : duration;
+      if (!tracks) {
+        entry.open = true;
+        entry.classList.add("project-moving");
+        tracks = compose();
+      }
+      summary.setAttribute("aria-expanded", String(expanded));
+      if (!expanded && fold.contains(document.activeElement)) summary.focus({preventScroll: true});
+      fold.inert = !expanded;
+      if (expanded ? time >= duration : time <= 0) { settle(); return; }
+      const clock = tracks[0];
+      clock.onfinish = () => { if (tracks?.[0] === clock && clock.playState === "finished") settle(); };
+      for (const track of tracks) {
+        const rate = expanded ? 1 : -1.35;
+        if (reversing) {
+          // Preserve the compositor's current pose across direction changes.
+          track.updatePlaybackRate(rate);
+        } else {
+          track.currentTime = time;
+          track.playbackRate = rate;
+        }
+        if (track.playState !== "running") track.play();
+      }
+    });
+    entry.addEventListener("toggle", () => {
+      if (tracks && !entry.open) { expanded = false; settle(); }
+    });
+    motion.addEventListener("change", settle);
+    addEventListener("pagehide", settle);
+  }
+}
+
 function setupGalleryMenu() {
   const dock = $(".fi-menu"), toggle = $(".fi-menubtn"), links = $("nav",dock);
   dock.hidden = false;
@@ -1820,6 +1903,7 @@ showContent();      // (the Person block for search made from the words: index.h
 let wordsKnown = root.hasAttribute("data-words");
 const askWords = () => api("/api/content").then((c) => { content = c; wordsKnown = true; if (!editing) showContent(); }, () => {}).finally(() => { wordsDue = null; });
 let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_forward" || !wordsKnown) ? askWords() : null;
+setupProjectReveals();
 setupGalleryDrag();
 setupGalleryMenu();
 setupOpening();
