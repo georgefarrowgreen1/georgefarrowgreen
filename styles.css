@@ -805,6 +805,11 @@ body.bio { background: #090c10; }
 }
 html:has(.photo-home), html[data-theme] {
   color-scheme: light;
+  --appearance-duration: 210ms;
+  --paper-motion: var(--appearance-duration) cubic-bezier(.46,.02,.28,1);
+  /* Ink crosses the midtones more quickly so small type stays legible for
+     more of the move. Both curves start and settle with the thumb. */
+  --ink-motion: var(--appearance-duration) cubic-bezier(.9,0,.015,1);
   --paper: #f4f4f2;
   --ink: #1b1b1b;
   --bio-rule: #c9c9c7;
@@ -1016,9 +1021,9 @@ html[data-theme="dark"] {
   width: 32px;
   height: 32px;
   flex: none;
+  color: var(--ink);
   border: 1px solid var(--bio-rule);
   border-radius: 50%;
-  transition: background-color .2s, color .2s;
 }
 #photo-index summary i::before, #photo-index summary i::after {
   grid-area: 1 / 1;
@@ -1352,16 +1357,14 @@ html[data-theme="dark"] {
   transform-origin: top right;
   opacity: 1;
   visibility: visible;
-  transition:
-    opacity 0.18s,
-    transform 0.23s cubic-bezier(0.2, 0.7, 0.2, 1),
-    visibility 0s;
+  --menu-reveal: opacity .18s, transform .23s cubic-bezier(.2,.7,.2,1), visibility 0s var(--menu-hide-delay, 0s);
+  transition: var(--menu-reveal);
 }
 #fi-floating-links[inert] {
   opacity: 0;
   transform: translateY(-5px) scale(0.98);
   visibility: hidden;
-  transition-delay: 0s, 0s, 0.23s;
+  --menu-hide-delay: .23s;
 }
 #fi-floating-links :is(a, button) {
   width: 100%;
@@ -1391,6 +1394,7 @@ html[data-theme="dark"] {
   border: 1px solid var(--switch-edge);
   border-radius: 7px;
   background: var(--paper);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 6%);
 }
 .fi-switch-track::after {
   content: "";
@@ -1398,15 +1402,36 @@ html[data-theme="dark"] {
   height: 14px;
   border-radius: 8px;
   background: var(--ink);
-  transition: transform .24s var(--ease-glide);
+  box-shadow: inset 0 1px rgb(255 255 255 / 12%), 0 1px 2px rgb(0 0 0 / 16%);
 }
 #fi-theme[aria-checked="true"] .fi-switch-track::after {transform: translateX(40px)}
-@media (forced-colors: active) {
-  .fi-switch-track {border-color: ButtonText}
-  .fi-switch-track::after {forced-color-adjust: none; background: ButtonText}
+#photo-index #fi-theme:focus-visible { outline: none; }
+#fi-theme:focus-visible .fi-switch-track { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Transition just the properties that paint the page. Gallery frames keep
+     their own layers, and a second tap reverses from the current colours. */
+  html.appearance-ready {
+    --colour-fade: background-color var(--paper-motion), color var(--ink-motion), border-color var(--paper-motion);
+    transition: background-color var(--paper-motion);
+  }
+  .appearance-ready body.photo-home { transition: background-color var(--paper-motion); }
+  .appearance-ready #photo-index,
+  .appearance-ready #photo-index :is(.fi-menubtn, .fi-switch-track, footer, .fi-colophon, .lost-home) { transition: var(--colour-fade); }
+  .appearance-ready #fi-floating-links { transition: var(--menu-reveal), var(--colour-fade); }
+  .appearance-ready #fi-floating-links > :is(a, button),
+  .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
+  .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
+  .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
+  .appearance-ready #photo-index summary i { transition: background-color .2s, color var(--ink-motion), border-color var(--paper-motion); }
+  .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-links, .lost-status, .lost-status span,
+    .lost-address, #where-path, #meant, #back, .lost-report) { transition: color var(--ink-motion); }
+  .appearance-ready #photo-index .fi-footer::after, .appearance-ready .lost-status span::after { transition: background-color var(--ink-motion); }
+  .appearance-ready .fi-switch-track::after { transition: transform var(--paper-motion), background-color var(--ink-motion); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .fi-switch-track::after {transition: none}
+@media (forced-colors: active) {
+  html.appearance-ready { --appearance-duration: 0s; }
+  .fi-switch-track {border-color: ButtonText; box-shadow: none}
+  .fi-switch-track::after {forced-color-adjust: none; background: ButtonText; box-shadow: none}
 }
 #photo-index .fi-bio {
   display: flex;
@@ -1438,11 +1463,6 @@ body.photo-home { transition: none; }
 @media (hover:hover) {
   #photo-index .fi-menubtn:hover {background:var(--app-hover)}
   #fi-floating-links a:hover, #fi-floating-links [data-contact]:hover {text-decoration:underline;text-underline-offset:4px}
-}
-@media (prefers-reduced-motion:no-preference) {
-  #photo-index, #photo-index .fi-menubtn, .fi-switch-track {transition:background-color .16s ease, color .16s ease, border-color .16s ease}
-  #fi-floating-links {transition-property:opacity, transform, visibility, background-color, color, border-color; transition-duration:.18s,.23s,0s,.16s,.16s,.16s}
-  #fi-floating-links[inert] {transition-delay:0s,0s,.23s,0s,0s,0s}
 }
 #photo-index #bar {
   padding-top: env(safe-area-inset-top);

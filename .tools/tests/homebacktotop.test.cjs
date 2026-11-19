@@ -93,3 +93,48 @@ for (const assets of ['', 'min/']) {
     } finally { await f.ctx.close(); }
   });
 }
+
+test('the menu switch moves the palette and thumb together and reverses in place', async () => {
+  const { p, ctx, errors } = await fixture('min/', { hash: '#top' });
+  try {
+    await p.locator('.fi-menubtn').click();
+    const result = await p.evaluate(async () => {
+      const root = document.documentElement, toggle = document.querySelector('#fi-theme');
+      const menu = toggle.closest('nav');
+      await Promise.all(menu.getAnimations().map(a => a.finished));
+      const style = selector => getComputedStyle(document.querySelector(selector));
+      const sample = () => {
+        const thumb = getComputedStyle(toggle.firstElementChild, '::after');
+        return {
+          paper: style('#photo-index').backgroundColor, ink: style('#photo-index').color,
+          projectIcon: style('.fi-entry summary i').color,
+          rule: style('#projects').borderTopColor, menuRule: getComputedStyle(menu).borderTopColor,
+          thumbInk: thumb.backgroundColor, x: thumb.transform === 'none' ? 0 : new DOMMatrixReadOnly(thumb.transform).m41,
+          photos: [...document.querySelectorAll('.fi-reel img')].map(img =>
+            [img.src, img.getBoundingClientRect().toJSON(), getComputedStyle(img).filter, getComputedStyle(img).opacity])
+        };
+      };
+      const start = sample();
+      toggle.click();
+      const tracks = document.getAnimations().filter(a => a.transitionProperty);
+      for (const a of tracks) { a.pause(); a.currentTime = a.effect.getTiming().duration * .42; }
+      const during = sample();
+      toggle.click();
+      const reversed = sample();
+      await Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})));
+      return { start, during, reversed, end: sample() };
+    });
+    for (const prop of ['paper', 'ink', 'rule']) {
+      assert.notEqual(result.during[prop], result.start[prop]);
+      assert.equal(result.reversed[prop], result.during[prop]);
+    }
+    assert.ok(result.during.x > 0 && result.during.x < 40);
+    assert.ok(Math.abs(result.reversed.x - result.during.x) < 1);
+    assert.equal(result.during.rule, result.during.menuRule);
+    assert.equal(result.during.ink, result.during.thumbInk);
+    assert.equal(result.during.ink, result.during.projectIcon);
+    assert.deepEqual(result.during.photos, result.start.photos);
+    assert.deepEqual(result.end, result.start);
+    assert.deepEqual(errors, []);
+  } finally { await ctx.close(); }
+});
