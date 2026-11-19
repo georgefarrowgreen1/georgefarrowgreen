@@ -35,7 +35,7 @@ export async function requireOwner(request, env, write = true) {
 }
 // An answer for an error a request ran into (an HttpError says what; anything else is the server's)
 export function failed(e) {
-  if (e instanceof HttpError) return json({ error: e.message }, e.status);
+  if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
   throw e;
 }
 

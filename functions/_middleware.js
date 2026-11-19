@@ -27,6 +27,7 @@ import { isAccount, isAuth, accountHost } from "./_acctapp.js";
 import { isFitting, fittingHost } from "./_fitstudio.js";
 import { accountPage } from "./_pigeon.js";
 import { homePage, homeArrival } from "./_home.js";
+import { HOME_FILES } from "./_minfresh.js";
 import { assets } from "./_min.js";
 import { versionResponse } from "./_version.js";
 import { fillSecrets } from "./_kept.js";
@@ -125,7 +126,7 @@ async function route(ctx0) {
     const arrival = await homeArrival(ctx, url);
     if (arrival) return arrival;
     // (the home page's own script and styles minified, as every app's: functions/_min.js)
-    const res = /^\/(app\.js|styles\.css|loader(?:-portrait)?\.js)$/.test(url.pathname) && ["GET", "HEAD"].includes(ctx.request.method) ? await assets(ctx.env).fetch(ctx.request) : await ctx.next();
+    const res = HOME_FILES.includes(url.pathname.slice(1)) && ["GET", "HEAD"].includes(ctx.request.method) ? await assets(ctx.env).fetch(ctx.request) : await ctx.next();
     // (the home page, with its words in it: functions/_home.js)
     if (!url.pathname.startsWith("/api/")) return homePage(ctx, url, res);
     // (the site's own API answers: never taken for anything but what they say they are)

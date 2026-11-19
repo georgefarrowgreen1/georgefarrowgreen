@@ -25,6 +25,7 @@ async function fixture(assets,{width=390,reduce=false,viewportEvents=false}={}){
   if(path==='/api/content')return route.fulfill({json:{name:'George Farrow-Green',role:'Fitness · Outdoors',bio:'Bikes, fitness, outdoors.'}});
   if(path==='/api/contact'){
    const current=response;posts.push(route.request().postDataJSON());if(current.gate)await current.gate.promise;
+   if(typeof current.body==='string')return route.fulfill({status:current.status,contentType:'text/html',body:current.body});
    return route.fulfill({status:current.status,json:current.body});
   }
   if(path==='/api/background')return route.fulfill(url.search?{contentType:'image/png',body:readFileSync(resolve(ROOT,'pigeon/icon-180.png'))}:{json:{images:[]}});
@@ -46,6 +47,88 @@ async function fill(f,message='A message to George'){
  await f.p.waitForTimeout(450);
 }
 for(const assets of ['', 'min/']){
+ test(`${assets||'source/'}the owner cannot reopen an unfinished save and keeps the draft on failure`,async()=>{
+  const f=await fixture(assets,{width:1440,reduce:true}),gate=deferred();
+  let writes=0;
+  try {
+   await f.p.route('**/api/me',route=>route.fulfill({json:{signedIn:true,owner:true,fresh:true,name:'Test owner'}}));
+   await f.p.route('**/api/content',async route=>{
+    if(route.request().method()!=='PUT')return route.fallback();
+    writes++;
+    await gate.promise;
+    return route.fulfill({json:{ok:true}});
+   });
+   await f.p.reload();
+   await f.p.locator('#edit').click();
+   const bio=f.p.locator('[data-c=bio][data-edit]');
+   await bio.fill('Keep this edit');
+   await f.p.evaluate(()=>{Storage.prototype.setItem=()=>{throw new Error('storage unavailable');};});
+   await f.p.locator('#done').click();
+   await f.p.locator('#edit[aria-disabled=true]').waitFor();
+   await f.p.locator('#edit').focus();
+   await f.p.keyboard.press('Enter');
+   assert.equal(await bio.evaluate(el=>el.isContentEditable),false);
+   gate.resolve();
+   await f.p.locator('body.edit').waitFor();
+   assert.equal(await bio.innerText(),'Keep this edit');
+   assert.equal(writes,1);
+   assert.deepEqual(f.errors,[]);
+  } finally {gate.resolve();await f.cleanup();}
+ });
+ test(`${assets||'source/'}only a confirmed contact response consumes its own draft`,async()=>{
+  const f=await fixture(assets,{reduce:true});
+  try {
+   await open(f);await fill(f,'First message');
+   for(const body of [{ok:false},'<p>Connection interrupted</p>']){
+    f.reply({status:200,body});await f.p.locator('#contact-send').click();
+    await f.p.locator('#contact-err:visible').waitFor();
+    assert.match(await f.p.locator('#contact-err').innerText(),/confirmed/);
+    assert.equal(await f.p.locator('#c-message').inputValue(),'First message');
+    assert.equal(await f.p.locator('#contact-sent').isVisible(),false);
+   }
+   const gate=deferred();f.reply({status:200,body:{ok:true},gate});
+   await f.p.locator('#contact-send').click();await f.p.locator('#contact-send.busy').waitFor();
+   await f.p.locator('#c-message').fill('Second message');gate.resolve();
+   await f.p.locator('#contact-send:not(.busy)').waitFor();
+   assert.equal(await f.p.locator('#c-message').inputValue(),'Second message');
+   assert.equal(await f.p.locator('#contact-sent').isVisible(),false);
+   assert.match(await f.p.locator('#contact-err').innerText(),/previous message was sent/);
+   const autofill=deferred();
+   f.reply({status:200,body:{ok:true},gate:autofill});
+   await f.p.locator('#contact-send').click();
+   await f.p.locator('#contact-send.busy').waitFor();
+   await f.p.locator('#c-email').evaluate(field=>{
+    field.value='another@example.com';
+    field.dispatchEvent(new Event('change',{bubbles:true}));
+   });
+   autofill.resolve();
+   await f.p.locator('#contact-send:not(.busy)').waitFor();
+   assert.equal(await f.p.locator('#c-message').inputValue(),'Second message');
+   assert.equal(await f.p.locator('#c-email').inputValue(),'another@example.com');
+   assert.deepEqual(f.errors,[]);
+  } finally {await f.cleanup();}
+ });
+ test(`${assets||'source/'}a broken-link report opens while the account is loading`,async()=>{
+  const f=await fixture(assets,{reduce:true}),gate=deferred();
+  try {
+   await f.p.route('**/api/me',async route=>{
+    await gate.promise;
+    await route.fulfill({json:{signedIn:true,name:'Test Rider',email:'test@example.com'}});
+   });
+   await f.p.goto(HOME+'/?keep=1#contact=example.test%2Fold%20road|https%3A%2F%2Fexample.test%2Flinks',{waitUntil:'domcontentloaded'});
+   await f.p.locator('#contact-sheet[open]').waitFor({timeout:2500});
+   assert.match(await f.p.locator('#c-message').inputValue(),/example.test\/old road.*https:\/\/example.test\/links/);
+   assert.equal(new URL(f.p.url()).search,'?keep=1');assert.equal(new URL(f.p.url()).hash,'');
+   await f.p.locator('#c-name').fill('My own name');gate.resolve();
+   await f.p.waitForFunction(()=>document.body.classList.contains('known'));
+   assert.equal(await f.p.locator('#c-name').inputValue(),'My own name');
+   assert.equal(await f.p.locator('#c-email').inputValue(),'test@example.com');
+   await f.p.goto(HOME+'/#contact-list');await f.p.waitForFunction(()=>document.body.classList.contains('known'));
+   assert.equal(await f.p.locator('#contact-sheet').isVisible(),false);
+   assert.equal(new URL(f.p.url()).hash,'#contact-list');
+   assert.deepEqual(f.errors,[]);
+  } finally {gate.resolve();await f.cleanup();}
+ });
  test(`${assets||'source/'}contact keeps existing sheet, validates, waits for real success, and restores errors/drafts`,async()=>{
   const f=await fixture(assets);
   try{

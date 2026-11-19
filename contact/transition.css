@@ -1,6 +1,6 @@
 /* Two page snapshots uncover the strip between them. Its monogram is printed
    on the stationary layer, so it stays still while both paper edges pass. */
-@media (prefers-reduced-motion: no-preference) {
+@media (prefers-reduced-motion: no-preference) and (scripting: enabled) {
   @view-transition { navigation: auto; }
 
   html.contact-handoff::view-transition-group(root) {

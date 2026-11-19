@@ -21,7 +21,26 @@ const BUSY = "The form’s had a lot of messages today. Please try again tomorro
 function clip(s, n, lines = false) { return String(s == null ? "" : s).replace(lines ? /[\u0000-\u0009\u000b-\u001f\u007f]/g : /[\u0000-\u001f\u007f]+/g, " ").slice(0, n).trim(); }
 const validEmail = (e) => EMAIL_RE.test(e);
 
-export async function onRequestPost({ request, env }) {
+async function notifyOwner(env, request, { name, email, message }) {
+  const subject = `A message from ${name} via your site`;
+  if (env.WEB3FORMS_KEY) {
+    const res = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ access_key: env.WEB3FORMS_KEY, subject, from_name: name, name, email, replyto: email, message }),
+      signal: AbortSignal.timeout(10000),
+    });
+    return res.ok && (await res.json())?.success === true;
+  }
+  const to = env.CONTACT_TO || "georgefarrowgreen@icloud.com";
+  const reply = `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent("Re: your message")}`;
+  const { text, html } = emailBody({ brand: "website", origin: linkOrigin(request), title: `A message from ${name}`, preheader: message.slice(0, 140),
+    pill: ["mail", email], quote: message, rows: [["Sent", ukTime(Date.now())]], button: { label: `Reply to ${name.split(/\s+/)[0]}`, url: reply } });
+  await sendEmail(env, { brand: "website", to, replyTo: email, subject, text, html }, { requireReceipt: true });
+  return true;
+}
+
+export async function onRequestPost({ request, env, waitUntil }) {
   // (a page on another site can't send one: the site's own page says where it's from, and a tool says nothing)
   const from = request.headers.get("Origin");
   if (from && from !== new URL(request.url).origin) return json({ error: "Invalid request." }, 403);
@@ -60,38 +79,26 @@ export async function onRequestPost({ request, env }) {
   if (env.DB) {
     try { await saveMessage(env, { name, email, body: message }); saved = true; } catch (_) {}
   }
+  if (!env.WEB3FORMS_KEY && !emailReady(env, "website")) {
+    return saved ? json({ ok: true }) : json({ error: "The contact form isn’t set up yet." }, 503);
+  }
   // (the site's sender is shared by every app's email: past 60 a day, a message is kept but not emailed)
   if (env.DB) {
     try { await limit(env, "contact:all", 60, 24 * 3600e3); }
-    catch (e) { if (!(e instanceof HttpError && e.status === 429)) throw e; return saved ? json({ ok: true }) : json({ error: BUSY }, 429); }
+    catch (e) {
+      if (saved) return json({ ok: true });
+      if (e instanceof HttpError && e.status === 429) return json({ error: BUSY }, 429);
+      throw e;
+    }
   }
 
-  // (one wording, the subject's and the email's title alike)
-  const subject = `A message from ${name} via your site`;
-
-  // --- Web3Forms (preferred: no domain verification) ---
-  if (env.WEB3FORMS_KEY) {
-    const res = await fetch("https://api.web3forms.com/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ access_key: env.WEB3FORMS_KEY, subject, from_name: name, name, email, replyto: email, message }),
-    });
-    if (!res.ok && !saved) return json({ error: "Couldn’t send right now. Please try again later." }, 502);
+  const delivery = notifyOwner(env, request, {name, email, message}).catch(() => false);
+  if (saved && waitUntil) {
+    // The inbox already holds the message. Keep the notification alive after the response.
+    waitUntil(delivery);
     return json({ ok: true });
   }
-
-  // --- Resend (fallback): from "Website" <website@…>, a reply going to whoever wrote ---
-  if (emailReady(env)) {
-    const to = env.CONTACT_TO || "georgefarrowgreen@icloud.com";
-    const reply = `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}?subject=${encodeURIComponent("Re: your message")}`;
-    const { text, html } = emailBody({ brand: "website", origin: linkOrigin(request), title: `A message from ${name}`, preheader: message.slice(0, 140),
-      pill: ["mail", email], quote: message, rows: [["Sent", ukTime(Date.now())]], button: { label: `Reply to ${name.split(/\s+/)[0]}`, url: reply } });
-    try { await sendEmail(env, { brand: "website", to, replyTo: email, subject, text, html }); }
-    catch (_) { if (!saved) return json({ error: "Couldn’t send right now. Please try again later." }, 502); }
-    return json({ ok: true });
-  }
-
-  // No email provider configured — success only if we at least recorded it.
-  return saved ? json({ ok: true }) : json({ error: "The contact form isn’t set up yet." }, 503);
+  const delivered = await delivery;
+  return delivered || saved ? json({ ok: true }) : json({ error: "Couldn’t send right now. Please try again later." }, 502);
 }
 

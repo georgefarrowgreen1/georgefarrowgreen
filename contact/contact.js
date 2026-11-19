@@ -3,23 +3,27 @@ const notice = document.querySelector('#notice');
 const sent = document.querySelector('#sent');
 const submit = form.querySelector('[type=submit]');
 const message = form.elements.message;
+const email = form.elements.email;
+const EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]$/;
 
 function topicPrefix() {
   const topic = form.elements.topic.value;
   return topic ? topic + '\n\n' : '';
 }
 
-function validateLength() {
+function validateDraft() {
   const limit = 4000 - topicPrefix().length;
   message.setCustomValidity(message.value.trim().length > limit ? 'Please keep your message within ' + limit + ' characters for this topic.' : '');
+  email.setCustomValidity(email.value && !EMAIL.test(email.value) ? 'Please enter a valid email address for the reply.' : '');
 }
-form.addEventListener('input', validateLength);
+form.addEventListener('input', validateDraft);
+form.addEventListener('change', validateDraft);
 form.hidden = false;
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
   if (submit.disabled) return;
-  validateLength();
+  validateDraft();
   if (!form.reportValidity()) return;
   const payload = Object.fromEntries(new FormData(form));
   payload.name = payload.name.trim();
@@ -34,6 +38,7 @@ form.addEventListener('submit', async event => {
   payload.message = topicPrefix() + payload.message;
   delete payload.topic;
   const controls = Array.from(form.elements);
+  const focused = form.contains(document.activeElement) ? document.activeElement : submit;
   controls.forEach(control => { control.disabled = true; });
   submit.firstChild.textContent = 'Sending… ';
   form.setAttribute('aria-busy', 'true');
@@ -58,6 +63,7 @@ form.addEventListener('submit', async event => {
     controls.forEach(control => { control.disabled = false; });
     submit.firstChild.textContent = 'Send message ';
     form.removeAttribute('aria-busy');
+    if (!form.hidden && document.activeElement === document.body) focused.focus({preventScroll: true});
   }
 });
 document.querySelector('#again').addEventListener('click', () => {

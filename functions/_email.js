@@ -94,7 +94,7 @@ const brandOf = (brand) => { const B = Object.hasOwn(BRANDS, brand) && BRANDS[br
 // With no sender set for Resend, its test sender for all.
 const APPS_MAIL = "inflite.ai";
 const viaCloudflare = (env, brand) => brand !== "website" && !!(env.CF_EMAIL_TOKEN && env.CF_ACCOUNT_ID);
-export const emailReady = (env) => !!env.RESEND_API_KEY || !!(env.CF_EMAIL_TOKEN && env.CF_ACCOUNT_ID);
+export const emailReady = (env, brand) => !!env.RESEND_API_KEY || viaCloudflare(env, brand);
 const senderAddress = (env, brand) => {
   if (viaCloudflare(env, brand)) return `${brandOf(brand).from || brand}@${env.APPS_MAIL_DOMAIN || APPS_MAIL}`;
   const f = String((brand === "website" ? env.CONTACT_FROM || env.PIGEON_FROM : env.PIGEON_FROM || env.CONTACT_FROM) || "onboarding@resend.dev"), a = (/<([^>]+)>/.exec(f) || [, f.trim()])[1];
@@ -105,7 +105,7 @@ const senderAddress = (env, brand) => {
 export const senderName = (brand) => brandOf(brand).sender || `InFlite ${brandOf(brand).name}`;
 export const emailFrom = (env, brand) => `${senderName(brand)} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)
-export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false } = {}) {
+export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false, requireReceipt = false } = {}) {
   const cf = viaCloudflare(env, brand), service = cf ? "Cloudflare" : "Resend";
   if (!(cf || env.RESEND_API_KEY)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const body = cf
@@ -120,9 +120,10 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
   // (Cloudflare says how it went in its answer too: a recipient that bounced for good is one it couldn't send to)
-  const d = r ? await r.json().catch(() => ({})) : {};
+  const d = (r && await r.json().catch(() => null)) || {};
   const bounced = cf && r?.ok && d.result?.permanent_bounces?.length;
-  if (!r?.ok || (cf && d.success === false) || bounced) {
+  const missingReceipt = requireReceipt && (cf ? d.success !== true : typeof d.id !== "string" || !d.id.trim());
+  if (!r?.ok || (cf && d.success === false) || bounced || missingReceipt) {
     const why = bounced ? "The address bounced" : cf ? (d.errors || []).map((e) => e.message).filter(Boolean).join(", ") : d.message || d.error || "";
     console.error("email delivery failed", service, brand, r?.status);
     await noteSend(env, why || (r ? `${service} refused it (${r.status})` : `Couldn’t reach ${service}`));

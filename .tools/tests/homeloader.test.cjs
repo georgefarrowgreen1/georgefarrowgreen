@@ -48,6 +48,20 @@ for (const variant of ['shared', 'reduced', 'different photo']) {
 }
 
 for (const assets of ['', 'min/']) {
+  for (const [link, sheet] of [['#report', '#contact-sheet'], ['.fi-footer-mark', '#details-sheet']]) {
+    test(`${assets || 'source/'}404 link to ${sheet} opens after the native page reveal`, async () => {
+      const {ctx, p, errors} = await fixture(assets, {hash:'#apps'});
+      try {
+        await ctx.route('**/missing-ride', route => route.fulfill({status:404, contentType:'text/html', path:require.resolve('../../404.html')}));
+        await p.goto(new URL('/missing-ride',p.url()).href);
+        await p.locator(link).click();
+        await p.locator(sheet+'[open]').waitFor();
+        await p.keyboard.press('Escape');
+        await p.locator(sheet).waitFor({state:'hidden'});
+        assert.deepEqual(errors,[]);
+      } finally { await ctx.close(); }
+    });
+  }
   for (const options of [{ reduce: true }, { back: true }, { hash: '#apps' }, { js: false }, { missing: '/loader.js' }, { missing: '/app.js' }]) {
     test(`${assets || 'source/'}the photographic page stays usable with ${JSON.stringify(options)}`, async () => {
       const f = await fixture(assets, options);
@@ -56,6 +70,12 @@ for (const assets of ['', 'min/']) {
         assert.equal(await f.p.locator('.opening-mark, .skip-opening').count(), 0);
         assert.equal(await f.p.locator('#apps a').count(), 4);
         assert.equal(await f.p.locator('#apps a').first().isVisible(), true);
+        if (options.js === false || options.missing === '/app.js') {
+          await f.ctx.route('**/contact/', route => route.fulfill({contentType:'text/html',path:require.resolve('../../contact/index.html')}));
+          await f.p.locator('footer [data-contact]').click();
+          await f.p.waitForURL(url => url.pathname === '/contact/');
+          await f.p.locator('.direct a[href^="mailto:"]').waitFor({state: 'visible'});
+        }
         assert.deepEqual(f.errors, []);
       } finally { await f.ctx.close(); }
     });

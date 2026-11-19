@@ -9,9 +9,11 @@ import { EMAIL_RE } from '../../../functions/_pigeon.js';
 const src = readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
 const m = /^const EMAIL = \/(.+)\/;$/m.exec(src);
 
-test('the page’s email pattern is the server’s', () => {
+test('both contact forms use the server’s email pattern', () => {
   assert.ok(m, 'app.js has its EMAIL');
   assert.equal(m[1], EMAIL_RE.source);
+  const dedicated = readFileSync(new URL('../../../contact/contact.js', import.meta.url), 'utf8');
+  assert.equal(/^const EMAIL = \/(.+)\/;$/m.exec(dedicated)?.[1], EMAIL_RE.source);
 });
 test('so the slips the server refuses are said on the page, at the field', () => {
   const page = new RegExp(m[1]);

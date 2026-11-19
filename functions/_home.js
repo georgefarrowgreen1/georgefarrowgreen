@@ -52,33 +52,53 @@ async function stamps(ctx, url) {
   return out;
 }
 
+function documentHeaders(res) {
+  res.headers.delete("content-length");
+  res.headers.delete("etag");
+  res.headers.delete("last-modified");
+  res.headers.set("Cache-Control", "no-cache");
+  return res;
+}
+
+function stampAssets(versions) {
+  const stamp = (name) => ({ element(el) {
+    const path = el.getAttribute(name).split("?")[0], version = versions[path.replace(/^\//, "")];
+    if (version) el.setAttribute(name, `${path}?v=${version}`);
+  } });
+  return new HTMLRewriter().on('link[rel="stylesheet"][href]', stamp("href")).on('script[src]', stamp("src"));
+}
+
 export async function homePage(ctx, url, res) {
+  const method = ctx.request.method;
+  if (method !== "GET" && method !== "HEAD") return res;
   // the script and styles, asked for by the stamp the page gave them: kept for good, as that address only ever means
   // this copy (asked for any other way, or by a stamp that isn't this copy's, they're checked each time)
   const f = url.pathname.slice(1);
-  if (HOME_FILES.includes(f) && ["GET", "HEAD"].includes(ctx.request.method) && res.status === 200) {
+  if (HOME_FILES.includes(f) && (res.status === 200 || res.status === 304)) {
     const want = url.searchParams.get("v"), v = want ? (await stamps(ctx, url))[f] : null;
     const out = new Response(res.body, res);
     out.headers.set("Cache-Control", want && want === v ? "public, max-age=31536000, immutable" : "no-cache");
     return out;
   }
-  // the page for an address that isn't one (404.html), with its styles and script stamped the same way: asked for
-  // plain, they can be kept for hours on the way, and the page then drawn with an older copy of either
-  if (res.status === 404 && ctx.request.method === "GET" && (res.headers.get("content-type") || "").includes("text/html")) {
-    const v = await stamps(ctx, url);
-    const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0].replace(/^\//, ""); if (v[f]) el.setAttribute(name, `/${f}?v=${v[f]}`); } });
-    const out = new HTMLRewriter().on('link[rel="stylesheet"][href^="/styles.css"]', stamp("href")).on('script[src^="/404.js"], script[src^="/loader.js"]', stamp("src")).transform(res);
-    out.headers.delete("content-length"); out.headers.delete("etag");
-    out.headers.set("Cache-Control", "no-cache");
-    return out;
+  const home = isPage(url);
+  const known = home || ["/contact/", "/contact/index.html", "/404", "/404.html"].includes(url.pathname);
+  const html = response => (response.headers.get("content-type") || "").includes("text/html");
+  // A validator for the static template says nothing about current gallery data or asset versions.
+  if (res.status === 304 && (known || html(res))) {
+    const headers = new Headers(ctx.request.headers);
+    headers.delete("if-none-match"); headers.delete("if-modified-since");
+    const template = await ctx.env.ASSETS.fetch(new Request(ctx.request, { headers }));
+    if (!known && template.status !== 404) return res;
+    res = template;
   }
-  if (!isPage(url) || ctx.request.method !== "GET" || res.status !== 200 || !(res.headers.get("content-type") || "").includes("text/html")) return res;
-  const [c, v, photos] = await Promise.all([getContent(ctx.env).catch(() => null), stamps(ctx, url), getList(ctx.env).catch(() => null)]);
+  if (!html(res) || !(res.status === 404 || (known && res.status === 200))) return res;
+  if (method === "HEAD") return documentHeaders(new Response(null, res));
+  if (!home || res.status === 404) return documentHeaders(stampAssets(await stamps(ctx, url)).transform(res));
+  const [c, versions, photos] = await Promise.all([getContent(ctx.env).catch(() => null), stamps(ctx, url), getList(ctx.env).catch(() => null)]);
   const groups = photos && galleryCollections(photos);
   const text = (k) => ({ element: (el) => { if (c) el.setInnerContent(c[k]); } });
   const attr = (k) => ({ element: (el) => { if (c) el.setAttribute("content", c[k]); } });
-  const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0]; if (v[f]) el.setAttribute(name, `${f}?v=${v[f]}`); } });
-  const rewriter = new HTMLRewriter()
+  const rewriter = stampAssets(versions)
     .on("html", { element: (el) => { if (c) el.setAttribute("data-words", ""); } })
     .on("[data-c=role]", text("role")).on("[data-c=name]", text("name")).on("[data-c=bio]", text("bio"))
     .on("title", { element: (el) => { if (c) el.setInnerContent(c.name); } })
@@ -87,8 +107,7 @@ export async function homePage(ctx, url, res) {
     .on("#ld-person", { element: (el) => { if (c) el.setInnerContent(JSON.stringify({ "@context": "https://schema.org", "@type": "Person", name: c.name, description: c.bio,
       url: "https://georgefarrowgreen.com/", sameAs: ["https://instagram.com/georgefarrowgreen"] }).replace(/</g, "\\u003c"), { html: true }); } })
     .on('meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]', attr("bio"))
-    .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:site_name"]', attr("name"))
-    .on('link[rel="stylesheet"][href^="styles.css"]', stamp("href")).on('script[src^="app.js"], script[src^="signedin.js"], script[src^="loader.js"], script[src^="loader-portrait.js"]', stamp("src"));
+    .on('meta[property="og:title"], meta[name="twitter:title"], meta[property="og:site_name"]', attr("name"));
   if (groups) {
     for (const [index, group] of groups.entries()) {
       const frame = group[0];
@@ -111,8 +130,5 @@ export async function homePage(ctx, url, res) {
     const first = groups.findIndex(group => group.length);
     rewriter.on(`[data-scene="${first < 0 ? 2 : first}"]`, { element(el) { el.setAttribute("aria-pressed", "true"); } });
   }
-  const out = rewriter.transform(res);
-  out.headers.delete("content-length"); out.headers.delete("etag");
-  out.headers.set("Cache-Control", "no-cache");
-  return out;
+  return documentHeaders(rewriter.transform(res));
 }
