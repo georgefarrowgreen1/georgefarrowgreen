@@ -422,10 +422,26 @@ function setupDetailsCard() {
   let showingBack = false, tracks = null, gesture = null, suppressClick = false;
   let lightFrame = 0, pointerX = 0, pointerY = 0;
 
+  // Decode the print near the footer so the first tap can move the finished card.
+  if ("IntersectionObserver" in window && !navigator.connection?.saveData) {
+    const nearby = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      nearby.disconnect();
+      const print = $(".calling-engraving", front);
+      print.fetchPriority = "low"; print.loading = "eager";
+      const foil = new Image();
+      foil.fetchPriority = "low"; foil.src = "/details/road-foil.webp";
+      for (const image of [print, foil]) image.decode().catch(() => {});
+    }, {rootMargin: "160px"});
+    nearby.observe(footerMark);
+  }
+
   // Tap, drag and reversal all use the same clock. Explicit face visibility
   // prevents the QR bleeding through the front in WebKit.
   function startTurn() {
     if (tracks) return;
+    // If the visitor picks up the card early, its real stamp turns with it.
+    releaseTravellingMark();
     const poses = [0, .25, .5, .75, 1].map(p => {
       const lift = p === 1 ? 0 : 4 * Math.sin(Math.PI * p);
       return {transform: `translateY(${-lift}px) rotateY(${-180*p}deg) rotateX(${lift}deg)`};
@@ -508,7 +524,7 @@ function setupDetailsCard() {
   card.addEventListener("pointermove", event => {
     const drag = gesture;
     if (!drag) {
-      if (event.pointerType === "mouse" && !event.buttons && !showingBack && !tracks && !motion.matches) {
+      if (event.pointerType === "mouse" && !event.buttons && !showingBack && !tracks && !detailsTrip && !motion.matches) {
         pointerX = event.clientX;
         pointerY = event.clientY;
         if (!lightFrame) lightFrame = requestAnimationFrame(paintLight);
@@ -565,23 +581,28 @@ function setupDetailsCard() {
     if (!suppressClick || !event.detail) showSide(!showingBack);
   });
   switchSide.addEventListener("click", () => showSide(!showingBack));
-  launcher.setAttribute("aria-haspopup", "dialog");
-  launcher.setAttribute("aria-controls", sheet.id);
-  launcher.addEventListener("click", event => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    if (!sheet.open) showSide(false, true);
-    openSheet(sheet, launcher);
-  });
+  for (const link of [launcher, footerMark]) {
+    link.setAttribute("aria-haspopup", "dialog");
+    link.setAttribute("aria-controls", sheet.id);
+    link.addEventListener("click", event => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (!sheet.open) showSide(false, true);
+      openSheet(sheet, link);
+    });
+  }
   // An error page links here so the same card and download work from either footer.
   if (location.hash === "#my-details") {
     history.replaceState(null, "", location.pathname + location.search);
+    launcher.scrollIntoView({block: "nearest", behavior: "instant"});
     launcher.focus({preventScroll: true});
     launcher.click();
   }
   sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
   function settle() { if (sheet.open) showSide(showingBack, true); }
-  motion.addEventListener("change", settle);
+  // The preference can change between pointerdown and pointerup. Stop the 3D
+  // effect while letting that swipe finish choosing the visible side.
+  motion.addEventListener("change", () => { if (motion.matches) { resetLight(); finishTurn(); } });
   document.addEventListener("visibilitychange", () => { if (document.hidden) settle(); });
   addEventListener("pagehide", settle);
 }
@@ -1154,16 +1175,148 @@ const spring = () => getComputedStyle(root).getPropertyValue("--ease-spring").tr
 const behind = [$("#page"), $("#bar")];
 // (where it is now, mid-way through any of that)
 const currentY = (el) => { const t = getComputedStyle(el).transform; return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0; };
+const detailsSheet = $("#details-sheet"), footerMark = $(".fi-footer-mark");
+let detailsTrip = null;
+
+function clearDetailsTrip() {
+  if (!detailsTrip) return;
+  for (const animation of detailsTrip.tracks) animation.cancel();
+  detailsTrip.flyer?.remove();
+  detailsSheet.classList.remove("mark-moving");
+  detailsTrip = null;
+}
+
+function releaseTravellingMark() {
+  const flyer = detailsTrip?.flyer;
+  if (!flyer || !detailsSheet.classList.contains("mark-moving")) return;
+  detailsSheet.classList.remove("mark-moving");
+  flyer.animate([{opacity: getComputedStyle(flyer).opacity}, {opacity: 0}], {duration: 95, fill: "forwards"});
+}
+
+// The travelling mask sits alongside the modal in the browser's top layer. Its
+// coordinates stay in viewport space while the sheet fades in and the page is pinned.
+function startDetailsTrip(opening, source) {
+  const sheet = detailsSheet, front = $(".calling-front", sheet);
+  const face = getComputedStyle(front).visibility === "visible" ? front : $(".calling-back", sheet);
+  const stamp = $(".calling-mark", face), target = stamp.getBoundingClientRect();
+  const panel = $(".sheet-in", sheet).getBoundingClientRect();
+  const inView = box => box.width > 8 && box.height > 8 && box.right > 0 && box.left < innerWidth &&
+    box.top + box.height / 2 > 0 && box.top + box.height / 2 < innerHeight;
+  const travel = "showPopover" in HTMLElement.prototype && inView(source) && inView(target) &&
+    target.top + target.height / 2 >= panel.top && target.top + target.height / 2 <= panel.bottom;
+  const dx = target.x - source.x, dy = target.y - source.y, distance = Math.hypot(dx, dy);
+  const duration = travel ? Math.round(Math.min(470, 350 + distance * .18)) : 180;
+  const timing = {duration, easing: "cubic-bezier(.36,.02,.18,1)", fill: "both"};
+  const y = opening ? 0 : currentY(sheet);
+  const opacity = opening ? 1 : Number(getComputedStyle(sheet).opacity);
+  clearDetailsTrip();
+  sheet._rebound?.cancel(); sheet._rebound = null;
+  sheet.style.transform = "";
+  const rest = `translateY(${y}px)`;
+  const tracks = [sheet.animate([
+    {opacity: 0, transform: `translateY(${y + (phone.matches ? 20 : 12)}px)`},
+    {opacity, transform: rest, offset: .78},
+    {opacity, transform: rest}
+  ], timing)];
+  let flyer;
+  if (travel) {
+    const ink = getComputedStyle(footerMark, "::before");
+    const startOpacity = Number(ink.opacity);
+    const size = Math.max(source.width, target.width);
+    flyer = document.createElement("span");
+    flyer.className = "details-flight"; flyer.popover = "manual"; flyer.inert = true;
+    flyer.setAttribute("aria-hidden", "true");
+    Object.assign(flyer.style, {width: `${size}px`, height: `${size}px`, backgroundColor: ink.backgroundColor});
+    const imprint = document.createElement("span");
+    imprint.className = "details-imprint";
+    const metal = $(".calling-metal", stamp);
+    if (metal) {
+      imprint.style.backgroundColor = getComputedStyle(stamp).backgroundColor;
+      imprint.append(metal.cloneNode(false));
+    }
+    flyer.append(imprint);
+    sheet.append(flyer);
+    flyer.showPopover();
+    const lift = Math.min(32, distance * .085);
+    const frames = Array.from({length: 13}, (_, i) => {
+      const p = i / 12, x = source.x + dx * p;
+      const top = source.y + dy * p - 4 * lift * p * (1 - p);
+      const w = source.width + (target.width - source.width) * p;
+      const h = source.height + (target.height - source.height) * p;
+      return {transform: `translate3d(${x}px,${top}px,0) scale(${w / size},${h / size})`,
+        opacity: startOpacity + (1 - startOpacity) * p};
+    });
+    tracks.push(flyer.animate(frames, timing), imprint.animate([
+      {opacity: 0}, {opacity: 0, offset: .30}, {opacity: 1, offset: .92}, {opacity: 1}
+    ], timing));
+    sheet.classList.add("mark-moving");
+  }
+  for (const animation of tracks) {
+    animation.pause();
+    animation.playbackRate = opening ? 1 : -1.2;
+    animation.currentTime = opening ? 0 : duration;
+  }
+  return {tracks, flyer, y, opacity};
+}
+
+function presentDetails(opening, source) {
+  if (motion.matches || document.hidden || !detailsSheet.animate) {
+    clearDetailsTrip();
+    if (!opening) finishClose(detailsSheet);
+    return;
+  }
+  // A turn or viewport change can give the ink back to the real stamp early.
+  // Dismissing then starts from the face that is actually on screen.
+  if (!detailsTrip || (!opening && detailsTrip.flyer && !detailsSheet.classList.contains("mark-moving"))) {
+    detailsTrip = startDetailsTrip(opening, source || footerMark.getBoundingClientRect());
+  }
+  const trip = detailsTrip;
+  const clock = trip.tracks[0];
+  if (!opening && clock.currentTime <= 0) return finishClose(detailsSheet);
+  clock.onfinish = () => {
+    if (detailsTrip !== trip || clock.playState !== "finished") return;
+    if (detailsSheet.classList.contains("closing")) return finishClose(detailsSheet);
+    clearDetailsTrip();
+    if (trip.y || trip.opacity < 1) detailsSheet._rebound = detailsSheet.animate([
+      {transform: `translateY(${trip.y}px)`, opacity: trip.opacity}, {transform: "none", opacity: 1}
+    ], {duration: MOTION.fast, easing: EASE_OUT});
+  };
+  for (const animation of trip.tracks) {
+    animation.updatePlaybackRate(opening ? 1 : -1.2);
+    animation.play();
+  }
+  return clock;
+}
+
+function settleDetailsTrip() {
+  if (!detailsTrip) return;
+  if (detailsSheet.classList.contains("closing")) finishClose(detailsSheet);
+  else clearDetailsTrip();
+}
+addEventListener("pagehide", settleDetailsTrip);
+addEventListener("resize", releaseTravellingMark);
+$(".sheet-in", detailsSheet).addEventListener("scroll", releaseTravellingMark, {passive: true});
+motion.addEventListener("change", () => { if (motion.matches) settleDetailsTrip(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) settleDetailsTrip(); });
+
 function openSheet(d, launcher = document.activeElement) {
   const contactSheet = d.id === "contact-sheet";
+  const source = d === detailsSheet && !d.open ? footerMark.getBoundingClientRect() : null;
   let caughtThrow;
   if (!d.open) {
     lastFocus = launcher?.closest("#fi-floating-links") ? $(".fi-menubtn") : launcher;
     d.classList.remove("closing", "shown");
+    // Settle the scroll offset before WebKit creates the card's 3D layers.
+    // Otherwise its first stamp bounds can include the page's old scrollY.
+    if (d === detailsSheet) {
+      if (root.clientWidth < innerWidth) root.classList.add("details-scrollbar");
+      pin();
+      void root.scrollTop;
+    }
     d.showModal();
   } else if (d.classList.contains("closing")) {
     clearTimeout(d._done);
-    if (!contactSheet || d._throw) {
+    if (d !== detailsSheet && (!contactSheet || d._throw)) {
       const y = currentY(d);
       d.getAnimations().forEach(a => a.cancel()); d._throw = null;
       d.style.transform = "";
@@ -1175,6 +1328,10 @@ function openSheet(d, launcher = document.activeElement) {
   pin();
   $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
+  if (d === detailsSheet) {
+    footerMark.classList.add("mark-away");
+    return presentDetails(true, source);
+  }
   if (contactSheet) {
     d.style.bottom = ""; d.style.maxHeight = "";
     d.classList.add("shown");
@@ -1240,11 +1397,16 @@ function unpin() {
   if (pinned === null) return;
   const y = pinned;
   Object.assign(body.style, { position: "", top: "", left: "", right: "" });
+  root.classList.remove("details-scrollbar");
   scrollTo({ top: y, behavior: "instant" });
   pinned = null;
 
 }
 function finishClose(d) {
+  if (d === detailsSheet) {
+    clearDetailsTrip();
+    footerMark.classList.remove("mark-away");
+  }
   clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
   clearPresentation(d);
   d._rebound?.cancel(); d._rebound = null;
@@ -1254,6 +1416,10 @@ function finishClose(d) {
   d.classList.remove("closing", "dragging", "shown");
   d.style.transform = ""; d.style.removeProperty("--from");
   if (d.open) d.close();
+  if (d === detailsSheet) {
+    unpin();
+    lastFocus?.focus?.({preventScroll: true});
+  }
 }
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
@@ -1266,8 +1432,12 @@ function closeSheet(d, thrown = null) {
   if (d.contains(document.activeElement) && document.activeElement.matches("input, textarea")) document.activeElement.blur();
   if (contactSheet) contact.version++;
   body.classList.remove("sheet-up", "pulling");
-  if (!contactSheet) unpin();
+  if (!contactSheet && d !== detailsSheet) unpin();
   for (const el of behind) el.style.transform = "";
+  if (d === detailsSheet) {
+    d.classList.add("closing");
+    return presentDetails(false);
+  }
   if (contactSheet && (!thrown || motion.matches)) {
     d.classList.add("closing");
     presentContact(d, false);
@@ -1331,6 +1501,7 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
   d.addEventListener("close", () => {
     if (d.open) return;
+    if (d === detailsSheet) { clearDetailsTrip(); footerMark.classList.remove("mark-away"); }
     clearPresentation(d); body.classList.remove("sheet-up"); unpin(); lastFocus?.focus?.({ preventScroll: true });
   });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
@@ -1345,13 +1516,18 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
   d.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, d) && e.cancelable) e.preventDefault(); }, { passive: false });
   // dragged down by its top
-  let y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0;
+  let y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0, openingSwipe = null;
   d.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a") || d.classList.contains("closing")) return;
+    if (d === detailsSheet && detailsTrip) {
+      openingSwipe = e.clientY;
+      d.setPointerCapture(e.pointerId);
+      return;
+    }
     // (caught on its way up: held where it is, and the page behind where that's got to, rather than either jumping)
     const y = Math.max(0, currentY(d)), opacity = getComputedStyle(d).opacity;
     clearPresentation(d);
-    if (d.id !== "contact-sheet") for (const el of behind) el.style.transform = getComputedStyle(el).transform;
+    if (d !== detailsSheet && d.id !== "contact-sheet") for (const el of behind) el.style.transform = getComputedStyle(el).transform;
     d.getAnimations().forEach((a) => a.cancel());
     if (opacity < 1) d.animate([{ opacity }, { opacity: 1 }], { duration: 110 });
     d.classList.add("shown");
@@ -1360,6 +1536,10 @@ for (const d of $$("dialog.sheet")) {
     d.setPointerCapture(e.pointerId); d.classList.add("dragging"); body.classList.add("pulling");
   });
   d.addEventListener("pointermove", (e) => {
+    if (openingSwipe !== null) {
+      if (e.clientY - openingSwipe > 28) { openingSwipe = null; closeSheet(d); }
+      return;
+    }
     if (y0 === null) return;
     // (upwards it gives a little and no more, as a sheet does)
     const raw = e.clientY - y0;
@@ -1368,11 +1548,12 @@ for (const d of $$("dialog.sheet")) {
     v = 0.7 * ((e.clientY - lastY) / dt) + 0.3 * v; lastY = e.clientY; lastT = e.timeStamp;
     d.style.transform = `translateY(${dy}px)`;
     // the page comes forward as the sheet goes down
-    if (d.id === "contact-sheet") return;
+    if (d === detailsSheet || d.id === "contact-sheet") return;
     const p = clamp(dy / d.offsetHeight);
     for (const el of behind) el.style.transform = `scale(${0.94 + 0.06 * p}) translateY(${14 * (1 - p)}px)`;
   });
   const end = (e) => {
+    openingSwipe = null;
     if (y0 === null) return;
     y0 = null; d.classList.remove("dragging");
     if (e && e.timeStamp - lastT > 80) v = 0;    // (held still before letting go: not thrown)
