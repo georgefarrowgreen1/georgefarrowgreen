@@ -173,6 +173,10 @@
     }
   }
 
+  addEventListener("pageswap", event => {
+    // An outgoing snapshot can be cancelled before the next page opts in.
+    event.viewTransition?.ready.catch(() => {});
+  });
   addEventListener("pagereveal", event => {
     const transition = event.viewTransition;
     const restoredReturn = takeReturn();
@@ -201,11 +205,12 @@
       });
       root.classList.add("photo-native");
       active = transition;
-      transition.finished.then(() => {
+      const clearPhotos = () => {
         root.classList.remove("photo-native");
         for (const property of properties) root.style.removeProperty(property);
         if (active === transition) active = undefined;
-      });
+      };
+      transition.finished.then(clearPhotos, clearPhotos);
       return;
     }
     const from = route(window.navigation?.activation?.from?.url || document.referrer);
@@ -217,11 +222,12 @@
     active = transition;
     root.classList.add("contact-handoff", "contact-settled");
     root.classList.toggle("to-bio", to === "bio");
-    transition.finished.finally(() => {
+    const clearContact = () => {
       if (active !== transition) return;
       active = undefined;
       root.classList.remove("contact-handoff", "to-bio");
-    });
+    };
+    transition.finished.then(clearContact, clearContact);
   });
   reduced.addEventListener("change", () => { if (reduced.matches) active?.skipTransition(); });
 
