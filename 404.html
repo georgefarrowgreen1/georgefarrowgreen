@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Not found · George Farrow-Green</title>
+  <title>Page not found · George Farrow-Green</title>
   <!-- (any address that isn't a page: the asset service sends this, with a 404; every path in it is from the root, as it's sent at
        whatever depth the address was) -->
   <meta name="robots" content="noindex" />
-  <meta name="theme-color" content="#07090d" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#f4f4f2" />
+  <meta name="color-scheme" content="light dark" />
   <link rel="icon" href="/favicon.ico?v=gfg1" sizes="16x16 32x32 48x48" />
   <link rel="icon" href="/favicon-32.png?v=gfg1" type="image/png" sizes="32x32" />
   <link rel="icon" href="/favicon-192.png?v=gfg1" type="image/png" sizes="192x192" />
@@ -17,73 +17,57 @@
   <link rel="mask-icon" href="/gfg-mark.svg" color="#191919" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preload" href="/fonts/gfg-text.woff2" as="font" type="font/woff2" crossorigin />
+  <script src="/loader.js"></script>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/contact/transition.css" />
 </head>
-<body class="lost">
-  <!-- the cover photo, as on the home page, darkened behind the words -->
-  <div class="bg" aria-hidden="true">
-    <picture>
-      <source media="(min-width: 601px)" srcset="/api/background?id=cover&amp;d=desktop" />
-      <img class="slide on" src="/api/background?id=cover&amp;d=mobile" alt="" />
-    </picture>
-  </div>
-
-  <header class="bar">
-    <a class="mid glass" href="/" aria-label="George Farrow-Green, home"><img src="/logo.png?v=gfg1" width="40" height="27" alt="" /></a>
-  </header>
-
-  <main class="page lost-page">
-    <!-- a route on a map, drawn in from the start, that runs out where nothing is: a pin drops there, asking -->
-    <svg class="map" viewBox="0 0 240 150" aria-hidden="true">
-      <defs>
-        <mask id="drawn" maskUnits="userSpaceOnUse" x="-20" y="0" width="280" height="160">
-          <path class="draw" d="M10 138 C 40 128, 52 112, 78 110 S 112 120, 132 100 S 150 70, 168 64" pathLength="1" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" />
-        </mask>
-      </defs>
-      <g class="contours" fill="none" stroke-width="1">
-        <path d="M-10 118 C 40 96, 70 128, 118 104 S 200 84, 250 102" />
-        <path d="M-10 96 C 36 74, 78 108, 122 84 S 196 60, 250 78" />
-        <path d="M24 70 C 52 44, 98 52, 120 62 S 168 70, 186 48 S 214 18, 250 30" />
-        <path d="M58 52 C 74 30, 104 32, 118 42 S 150 52, 160 36 S 178 12, 206 10" />
-        <path d="M86 40 C 96 26, 112 28, 120 34 S 138 38, 142 28" />
-      </g>
-      <path class="route" mask="url(#drawn)" d="M10 138 C 40 128, 52 112, 78 110 S 112 120, 132 100 S 150 70, 168 64" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 9" />
-      <circle class="start" cx="10" cy="138" r="5" />
-      <g class="pin">
-        <g class="drop">
-          <path d="M0 -26 C 12 -26, 19 -17, 19 -8 C 19 6, 0 22, 0 22 C 0 22, -19 6, -19 -8 C -19 -17, -12 -26, 0 -26 Z" />
-          <text x="0" y="-1" text-anchor="middle">?</text>
-        </g>
-      </g>
-    </svg>
-
-    <p class="eyebrow">Error 404</p>
-    <h1>Off the map.</h1>
-    <p class="where" id="where" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg><span id="where-path"></span></p>
-    <p class="lede">Nothing lives at this address. It may have moved, or there’s a slip in the link.</p>
-    <div class="cta">
-      <a class="btn tint" href="/">Back to the home page</a>
-      <button class="btn glass" type="button" id="back" hidden>Go back</button>
-    </div>
-
-    <!-- (filled in by 404.js when the address looks like a near miss for somewhere that is) -->
-    <section id="meant" hidden aria-labelledby="meant-h">
-      <h2 class="head" id="meant-h">Did you mean</h2>
-      <div class="group glass"><a class="row" id="meant-row" href="/"></a></div>
-    </section>
-
-    <p class="report">Followed a link here? <a id="report" href="/#contact">Tell me where it was</a></p>
-    <footer class="foot">
-      <div class="foot-row">
-        <span>© <span id="year">2026</span> <span data-c="name">George Farrow-Green</span></span>
+<body class="photo-home lost">
+  <div id="photo-index">
+    <header class="fi-nav" id="bar">
+      <a class="fi-sign" href="/" aria-label="George Farrow-Green, home"><svg class="wordmark" viewBox="0 0 80 54" width="44" height="30" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3.62,26.49 3.62,25.63 3.64,24.58 3.72,23.57 3.86,22.59 4.04,21.66 4.28,20.76 4.58,19.90 4.92,19.08 5.32,18.30 5.77,17.56 6.25,16.86 6.76,16.21 7.31,15.60 7.90,15.04 8.52,14.52 9.18,14.05 9.87,13.62 10.59,13.24 11.32,12.91 12.08,12.63 12.84,12.40 13.63,12.23 14.43,12.10 15.25,12.02 16.09,12.00 17.01,12.02 17.87,12.08 18.68,12.19 19.43,12.34 20.12,12.53 20.75,12.76 21.33,13.04 21.85,13.35 22.33,13.70 22.77,14.04 23.18,14.39 23.56,14.75 23.90,15.10 24.21,15.47 24.49,15.84 24.73,16.21 25.69,16.21 25.69,12.77 32.18,12.77 32.18,45.01 32.16,45.68 32.08,46.31 31.96,46.91 31.78,47.47 31.56,48.00 31.28,48.49 30.96,48.95 30.59,49.37 30.17,49.75 29.72,50.08 29.23,50.36 28.71,50.59 28.16,50.77 27.57,50.90 26.95,50.97 26.29,51.00 8.03,51.00 8.03,45.22 24.02,45.22 24.39,45.19 24.71,45.12 24.97,44.99 25.19,44.81 25.36,44.57 25.48,44.29 25.56,43.96 25.58,43.57 25.58,36.09 24.62,36.09 24.47,36.32 24.31,36.55 24.13,36.78 23.94,37.01 23.74,37.25 23.52,37.48 23.28,37.71 23.04,37.95 22.77,38.18 22.49,38.40 22.18,38.61 21.85,38.81 21.51,39.00 21.14,39.18 20.75,39.35 20.34,39.51 19.90,39.65 19.44,39.78 18.95,39.89 18.43,39.97 17.89,40.04 17.31,40.09 16.71,40.12 16.09,40.13 15.25,40.10 14.43,40.03 13.63,39.90 12.84,39.72 12.08,39.49 11.32,39.22 10.59,38.89 9.87,38.50 9.18,38.08 8.52,37.60 7.90,37.08 7.31,36.52 6.76,35.92 6.25,35.26 5.77,34.57 5.32,33.83 4.92,33.04 4.58,32.22 4.28,31.36 4.04,30.47 3.86,29.53 3.72,28.56 3.64,27.54 3.62,26.49Z M17.96,34.35 18.77,34.32 19.55,34.22 20.29,34.05 20.99,33.82 21.67,33.53 22.30,33.16 22.91,32.74 23.47,32.24 23.99,31.69 24.44,31.08 24.82,30.42 25.13,29.71 25.37,28.95 25.54,28.13 25.65,27.26 25.68,26.33 25.68,25.79 25.65,24.86 25.54,23.98 25.37,23.15 25.13,22.38 24.83,21.67 24.45,21.01 24.01,20.41 23.50,19.86 22.94,19.37 22.34,18.95 21.70,18.59 21.02,18.30 20.31,18.07 19.57,17.91 18.78,17.81 17.96,17.78 17.15,17.81 16.38,17.91 15.63,18.07 14.93,18.30 14.26,18.59 13.62,18.95 13.02,19.37 12.45,19.86 11.93,20.41 11.48,21.01 11.10,21.67 10.79,22.38 10.55,23.15 10.38,23.98 10.27,24.86 10.24,25.79 10.24,26.33 10.27,27.26 10.38,28.13 10.55,28.95 10.79,29.71 11.10,30.42 11.48,31.08 11.93,31.69 12.45,32.24 13.02,32.74 13.62,33.16 14.26,33.53 14.93,33.82 15.63,34.05 16.38,34.22 17.15,34.32 17.96,34.35Z"/><path fill-rule="evenodd" d="M35.39,40.00 39.63,18.25 32.54,18.25 33.61,12.77 40.70,12.77 41.73,7.49 41.89,6.82 42.09,6.19 42.33,5.59 42.62,5.03 42.95,4.50 43.32,4.01 43.74,3.55 44.21,3.13 44.70,2.75 45.22,2.42 45.76,2.14 46.33,1.91 46.91,1.73 47.52,1.60 48.15,1.53 48.80,1.50 55.90,1.50 54.83,6.98 49.99,6.98 49.63,7.01 49.30,7.08 49.00,7.21 48.75,7.39 48.54,7.62 48.36,7.91 48.22,8.24 48.12,8.63 47.32,12.77 54.63,12.77 53.56,18.25 46.25,18.25 42.01,40.00Z"/><path fill-rule="evenodd" d="M48.50,26.49 48.50,25.63 48.52,24.58 48.60,23.57 48.74,22.59 48.92,21.66 49.16,20.76 49.46,19.90 49.80,19.08 50.20,18.30 50.65,17.56 51.13,16.86 51.64,16.21 52.19,15.60 52.78,15.04 53.40,14.52 54.06,14.05 54.75,13.62 55.47,13.24 56.20,12.91 56.96,12.63 57.72,12.40 58.51,12.23 59.31,12.10 60.13,12.02 60.97,12.00 61.89,12.02 62.75,12.08 63.56,12.19 64.31,12.34 65.00,12.53 65.63,12.76 66.21,13.04 66.73,13.35 67.21,13.70 67.65,14.04 68.06,14.39 68.44,14.75 68.78,15.10 69.09,15.47 69.37,15.84 69.61,16.21 70.57,16.21 70.57,12.77 77.06,12.77 77.06,45.01 77.04,45.68 76.96,46.31 76.84,46.91 76.66,47.47 76.44,48.00 76.16,48.49 75.84,48.95 75.47,49.37 75.05,49.75 74.60,50.08 74.11,50.36 73.59,50.59 73.04,50.77 72.45,50.90 71.83,50.97 71.17,51.00 52.91,51.00 52.91,45.22 68.90,45.22 69.27,45.19 69.59,45.12 69.85,44.99 70.07,44.81 70.24,44.57 70.36,44.29 70.44,43.96 70.46,43.57 70.46,36.09 69.50,36.09 69.35,36.32 69.19,36.55 69.01,36.78 68.82,37.01 68.62,37.25 68.40,37.48 68.16,37.71 67.92,37.95 67.65,38.18 67.37,38.40 67.06,38.61 66.73,38.81 66.39,39.00 66.02,39.18 65.63,39.35 65.22,39.51 64.78,39.65 64.32,39.78 63.83,39.89 63.31,39.97 62.77,40.04 62.19,40.09 61.59,40.12 60.97,40.13 60.13,40.10 59.31,40.03 58.51,39.90 57.72,39.72 56.96,39.49 56.20,39.22 55.47,38.89 54.75,38.50 54.06,38.08 53.40,37.60 52.78,37.08 52.19,36.52 51.64,35.92 51.13,35.26 50.65,34.57 50.20,33.83 49.80,33.04 49.46,32.22 49.16,31.36 48.92,30.47 48.74,29.53 48.60,28.56 48.52,27.54 48.50,26.49Z M62.84,34.35 63.65,34.32 64.43,34.22 65.17,34.05 65.87,33.82 66.55,33.53 67.18,33.16 67.79,32.74 68.35,32.24 68.87,31.69 69.32,31.08 69.70,30.42 70.01,29.71 70.25,28.95 70.42,28.13 70.53,27.26 70.56,26.33 70.56,25.79 70.53,24.86 70.42,23.98 70.25,23.15 70.01,22.38 69.71,21.67 69.33,21.01 68.89,20.41 68.38,19.86 67.82,19.37 67.22,18.95 66.58,18.59 65.90,18.30 65.19,18.07 64.45,17.91 63.66,17.81 62.84,17.78 62.03,17.81 61.26,17.91 60.51,18.07 59.81,18.30 59.14,18.59 58.50,18.95 57.90,19.37 57.33,19.86 56.81,20.41 56.36,21.01 55.98,21.67 55.67,22.38 55.43,23.15 55.26,23.98 55.15,24.86 55.12,25.79 55.12,26.33 55.15,27.26 55.26,28.13 55.43,28.95 55.67,29.71 55.98,30.42 56.36,31.08 56.81,31.69 57.33,32.24 57.90,32.74 58.50,33.16 59.14,33.53 59.81,33.82 60.51,34.05 61.26,34.22 62.03,34.32 62.84,34.35Z"/></svg></a>
+      <div class="fi-menu" hidden>
+      <button class="fi-menubtn" type="button" aria-expanded="false" aria-controls="fi-floating-links">Menu <svg class="bio-icon" width="16" height="16" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#plus"/></svg></button>
+      <nav id="fi-floating-links" aria-label="Section shortcuts" inert>
+      <a href="/#fi-photos">Photography <svg class="bio-icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#camera"/></svg></a>
+      <a href="/#projects">Projects <svg class="bio-icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#portfolio"/></svg></a>
+      <a href="/#apps">Apps <svg class="bio-icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#apps"/></svg></a>
+      <a href="/contact/">Contact <svg class="bio-icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#envelope"/></svg></a>
+      <a href="/contact/" data-quick-message>Quick message <svg class="bio-icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#message"/></svg></a>
+      <button type="button" id="fi-theme" role="switch" aria-label="Dark mode" aria-checked="false" hidden><span class="fi-switch-track" aria-hidden="true"></span></button>
+      </nav></div>
+    </header>
+    <main id="lost-main" aria-labelledby="lost-title">
+      <div class="lost-prints" aria-hidden="true">
+        <div class="lost-road"><img src="/projects/open-road.webp" width="1150" height="706" alt="" fetchpriority="high"></div>
+        <div class="lost-rider"><img src="/projects/in-the-saddle.webp" width="560" height="800" alt=""></div>
       </div>
-      <a class="foot-brand" href="https://inflite.ai/">
-        <img src="/inflite.svg" alt="" width="18" height="18" />
-        <span>Powered by <b>InFlite</b></span>
-      </a>
+      <div class="lost-copy">
+        <p class="lost-status"><span>404</span> Page not found</p>
+        <h1 id="lost-title"><span>Wrong</span> <span>turn.</span></h1>
+        <p class="lost-address"><span id="lost-note">This address doesn’t lead to a page.</span><bdi id="where-path" hidden></bdi></p>
+        <p id="meant" hidden>Did you mean <a id="meant-row" href="/"></a>?</p>
+        <div class="lost-actions">
+          <a class="lost-home" href="/"><svg class="bio-icon" width="18" height="18" aria-hidden="true"><use href="/bio-icons.svg#back"/></svg>Back to the bio</a>
+          <button type="button" id="back" hidden>Go back</button>
+        </div>
+        <a class="lost-report" id="report" href="/contact/">Report a broken link<span class="fi-arrow" aria-hidden="true"></span></a>
+      </div>
+    </main>
+    <footer id="get-in-touch">
+      <div class="fi-footer">
+        <a class="fi-contact-page" href="/contact/">Get in touch<span class="fi-contact-arrow" aria-hidden="true"><i class="fi-arrow"></i></span></a>
+        <nav class="fi-footer-links" aria-label="Contact options">
+          <a href="/contact/" data-quick-message><svg class="bio-icon" width="16" height="16" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#message"/></svg>Quick message</a>
+          <a href="/#my-details"><svg class="bio-icon" width="16" height="16" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#contact-card"/></svg>My details</a>
+          <a href="https://www.instagram.com/georgefarrowgreen/" target="_blank" rel="noopener"><svg class="bio-icon" width="16" height="16" aria-hidden="true" focusable="false"><use href="/bio-icons.svg#instagram"/></svg>Instagram</a>
+        </nav>
+      </div>
+      <div class="fi-colophon">
+        <small>© <span id="year">2026</span> <span data-c="name">George Farrow-Green</span></small>
+        <a href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/projects/inflite-mono.webp" width="16" height="16" alt="">Powered by InFlite</a>
+      </div>
     </footer>
-  </main>
-
+  </div>
   <script src="/404.js"></script>
 </body>
 </html>

@@ -14,7 +14,9 @@ for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
       await menu.click();
       const popup = f.p.locator('#fi-floating-links');
       await popup.evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
-      assert.ok((await popup.boundingBox()).y >= bounds.y + bounds.height);
+      // The browser may scroll the trigger into view when the opening finishes.
+      const openedButton = await menu.boundingBox();
+      assert.ok((await popup.boundingBox()).y >= openedButton.y + openedButton.height);
       await f.p.locator('#fi-floating-links a[href="#projects"]').click();
       assert.equal(new URL(f.p.url()).hash, '#projects');
       assert.equal(await menu.getAttribute('aria-expanded'), 'false');
@@ -33,6 +35,17 @@ for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
     } finally { await f.ctx.close(); }
   });
 }
+test('the My details shortcut from the 404 footer opens the bio calling card', async () => {
+  const f = await fixture('', { hash: '#my-details' });
+  try {
+    await f.p.locator('#details-sheet[open]').waitFor();
+    assert.equal(new URL(f.p.url()).hash, '');
+    await f.p.locator('.calling-switch').click();
+    assert.equal(await f.p.locator('.calling-switch').getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.ctx.close(); }
+});
+
 test('the header wordmark links home without JavaScript', async () => {
   const f = await fixture('', { js: false });
   try {

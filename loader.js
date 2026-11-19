@@ -26,6 +26,32 @@
     }
   });
   document.addEventListener("DOMContentLoaded", () => {
+    const menu = document.querySelector(".fi-menu");
+    if (menu) {
+      const button = menu.querySelector(".fi-menubtn");
+      const links = menu.querySelector("nav");
+      function setMenu(open) {
+        links.inert = !open;
+        button.setAttribute("aria-expanded", String(open));
+      }
+      menu.hidden = false;
+      button.addEventListener("click", () => setMenu(links.inert));
+      links.addEventListener("click", event => {
+        if (event.target.closest("a, [data-contact]")) setMenu(false);
+      });
+      document.addEventListener("pointerdown", event => {
+        if (!menu.contains(event.target)) setMenu(false);
+      });
+      menu.addEventListener("focusout", event => {
+        if (!menu.contains(event.relatedTarget)) setMenu(false);
+      });
+      menu.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !links.inert) {
+          setMenu(false);
+          button.focus();
+        }
+      });
+    }
     toggle = document.getElementById("fi-theme");
     if (!toggle) return;
     apply();
@@ -73,7 +99,7 @@
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const link = event.target.closest?.("a[href]");
     if (onBio && link && route(link.href) === "contact") rememberPosition();
-    if (!onBio && link?.closest(".mast")) markReturn(link.matches(".back"));
+    if (!onBio && link?.closest(".mast") && route(link.href) === "bio") markReturn(link.matches(".back"));
   }, true);
   function takeReturn() {
     if (!onBio) return null;
@@ -111,6 +137,8 @@
       if (restoredReturn) revealReturn();
       return;
     }
+    // A cross-document transition can be skipped or superseded by another navigation.
+    transition.ready.catch(() => {});
     root.classList.remove("contact-return");
     const from = route(window.navigation?.activation?.from?.url || document.referrer);
     const to = route(location.href);
