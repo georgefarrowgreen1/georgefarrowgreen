@@ -58,6 +58,16 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 Space,Arial,sans-serif;letter-spacing:-
   font: inherit;
   font-size: 1rem;
 }
+/* Native autofill can lock the background colour. Paint the form surface over it. */
+@media not (forced-colors: active) {
+  #enquiry :is(input, textarea, select):is(:autofill, :-webkit-autofill) {
+    -webkit-background-clip: text;
+    background-clip: text;
+    box-shadow: inset 0 0 0 100vmax var(--surface);
+    -webkit-text-fill-color: var(--ink);
+    caret-color: var(--ink);
+  }
+}
 .form-row input, .topic-choice select { min-height: 52px; padding: 12px 0; }
 .topic-choice { position: relative; }
 .topic-choice select {
