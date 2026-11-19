@@ -1176,10 +1176,11 @@ const behind = [$("#page"), $("#bar")];
 // (where it is now, mid-way through any of that)
 const currentY = (el) => { const t = getComputedStyle(el).transform; return t && t !== "none" ? new DOMMatrixReadOnly(t).m42 : 0; };
 const detailsSheet = $("#details-sheet"), footerMark = $(".fi-footer-mark");
-let detailsTrip = null;
+let detailsTrip = null, detailsPainted = false;
 
 function clearDetailsTrip() {
   if (!detailsTrip) return;
+  cancelAnimationFrame(detailsTrip.primingFrame);
   for (const animation of detailsTrip.tracks) animation.cancel();
   detailsTrip.flyer?.remove();
   detailsSheet.classList.remove("mark-moving");
@@ -1281,10 +1282,21 @@ function presentDetails(opening, source) {
       {transform: `translateY(${trip.y}px)`, opacity: trip.opacity}, {transform: "none", opacity: 1}
     ], {duration: MOTION.fast, easing: EASE_OUT});
   };
-  for (const animation of trip.tracks) {
-    animation.updatePlaybackRate(opening ? 1 : -1.2);
-    animation.play();
-  }
+  cancelAnimationFrame(trip.primingFrame);
+  const play = () => {
+    if (detailsTrip !== trip || !detailsSheet.open) return;
+    for (const animation of trip.tracks) {
+      animation.updatePlaybackRate(opening ? 1 : -1.2);
+      animation.play();
+    }
+  };
+  // On the first visit WebKit paints the dialog and its foil mask in two layers.
+  // Give that first paint the resting logo, then start both layers together.
+  if (opening && !detailsPainted && trip.flyer && clock.currentTime === 0) {
+    trip.primingFrame = requestAnimationFrame(() => {
+      trip.primingFrame = requestAnimationFrame(() => { detailsPainted = true; play(); });
+    });
+  } else play();
   return clock;
 }
 
