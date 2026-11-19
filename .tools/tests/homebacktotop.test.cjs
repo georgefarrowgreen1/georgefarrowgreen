@@ -138,3 +138,27 @@ test('the menu switch moves the palette and thumb together and reverses in place
     assert.deepEqual(errors, []);
   } finally { await ctx.close(); }
 });
+
+test('desktop menu lettering matches the page on every painted frame', async () => {
+  const { p, ctx } = await fixture('min/', { width: 1440, hash: '#top' });
+  try {
+    await p.locator('.fi-menubtn').click();
+    const frames = await p.evaluate(async () => {
+      const page = document.querySelector('#photo-index');
+      const menu = document.querySelector('#fi-floating-links');
+      const label = menu.querySelector('a');
+      const button = document.querySelector('.fi-menubtn');
+      await Promise.all(menu.getAnimations().map(a => a.finished));
+      document.getElementById('fi-theme').click();
+      const ink = page.getAnimations().find(a => a.transitionProperty === 'color');
+      const frames = [];
+      do {
+        await new Promise(requestAnimationFrame);
+        frames.push([page, label, button].map(el => getComputedStyle(el).color));
+      } while (ink.playState === 'running');
+      return frames;
+    });
+    assert.ok(new Set(frames.map(([page]) => page)).size > 1);
+    for (const [page, label, button] of frames) assert.deepEqual([label, button], [page, page]);
+  } finally { await ctx.close(); }
+});
