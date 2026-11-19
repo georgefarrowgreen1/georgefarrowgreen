@@ -1669,6 +1669,15 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 }
 #details-sheet .sheet-head { grid-template-columns: 1fr auto; }
 #details-sheet .sheet-head h3 { grid-column: 1; text-align: left; font-size: 23px; font-weight: 500; letter-spacing: -.045em; }
+#details-sheet .details-email {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--story-text);
+  font-size: 15px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 #details-sheet .sheet-head .x { grid-column: 2; width: 44px; height: 44px; background: transparent; color: inherit; border: 1px solid var(--bio-rule); }
 #details-sheet .grab { height: 3px; width: 32px; background: var(--secondary-text); }
 @media (min-width: 601px) {

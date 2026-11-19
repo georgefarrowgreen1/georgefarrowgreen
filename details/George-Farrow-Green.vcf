@@ -2,6 +2,7 @@ BEGIN:VCARD
 VERSION:3.0
 N:Farrow-Green;George;;;
 FN:George Farrow-Green
+EMAIL;TYPE=INTERNET:geo@inflite.ai
 URL:https://georgefarrowgreen.com/
 PHOTO;ENCODING=b;TYPE=PNG:iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAIAAAAErfB6AAAe
  V0lEQVR4nO19eZhUxbn3qaqz9TLdPTMww+zMxrDpsF7MhYCAIlFJNC4JefSCXj/lEZL7xM+Iic
