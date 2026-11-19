@@ -35,3 +35,19 @@
     to { clip-path: inset(0); transform: translateY(0); }
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  html.contact-return::after {
+    content: "";
+    position: fixed;
+    z-index: 10000;
+    inset: 0;
+    pointer-events: none;
+    background: #252624 url("/contact/gfg-outline.svg") center / clamp(54px, 7vw, 82px) auto no-repeat;
+    animation: contact-return-edge 520ms cubic-bezier(.38,.04,.23,1) both;
+  }
+  @keyframes contact-return-edge {
+    from { clip-path: inset(0); }
+    to { clip-path: inset(100% 0 0); }
+  }
+}

@@ -49,9 +49,62 @@
     return null;
   }
 
+  // Cross-origin account discovery can discard the outgoing snapshot.
+  // Mark just the journey back to the bio, in this tab, before the browser leaves.
+  const returnKey = "gfg-contact-return";
+  const onBio = route(location.href) === "bio";
+  const positionKey = "gfg-contact-origin-y";
+  const fromBio = route(document.referrer) === "bio";
+  function rememberPosition() {
+    try { sessionStorage.setItem(positionKey, String(scrollY)); } catch (_) {}
+  }
+  function markReturn(restorePosition) {
+    try {
+      const position = restorePosition && fromBio ? sessionStorage.getItem(positionKey) : null;
+      sessionStorage.setItem(returnKey, JSON.stringify({ at: Date.now(), y: position === null ? null : Number(position) }));
+    } catch (_) {}
+  }
+  window.navigation?.addEventListener("navigate", event => {
+    const to = route(event.destination.url);
+    if (onBio && to === "contact") rememberPosition();
+    if (!onBio && to === "bio") markReturn(event.navigationType === "traverse");
+  });
+  document.addEventListener("click", event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const link = event.target.closest?.("a[href]");
+    if (onBio && link && route(link.href) === "contact") rememberPosition();
+    if (!onBio && link?.closest(".mast")) markReturn(link.matches(".back"));
+  }, true);
+  function takeReturn() {
+    if (!onBio) return null;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(returnKey));
+      sessionStorage.removeItem(returnKey);
+      return saved && Date.now() - saved.at < 30000 ? saved : null;
+    } catch (_) { return null; }
+  }
+  function revealReturn() {
+    if (reduced.matches) return;
+    root.classList.add("contact-return");
+    setTimeout(() => root.classList.remove("contact-return"), 650);
+  }
+  const returning = takeReturn();
+  if (returning) {
+    revealReturn();
+    // Account discovery may have replaced the history entry and its scroll offset.
+    if (Number.isFinite(returning.y)) document.addEventListener("DOMContentLoaded", () => {
+      scrollTo({ top: returning.y, behavior: "instant" });
+    }, { once: true });
+  }
+
   addEventListener("pagereveal", event => {
     const transition = event.viewTransition;
-    if (!transition) return;
+    const restoredReturn = takeReturn();
+    if (!transition) {
+      if (restoredReturn) revealReturn();
+      return;
+    }
+    root.classList.remove("contact-return");
     const from = route(window.navigation?.activation?.from?.url || document.referrer);
     const to = route(location.href);
     if (reduced.matches || !to || from === to) {
@@ -69,7 +122,7 @@
   });
   reduced.addEventListener("change", () => { if (reduced.matches) active?.skipTransition(); });
 
-  if (route(document.referrer) === "contact" || route(location.href) !== "bio" ||
+  if (returning || route(document.referrer) === "contact" || route(location.href) !== "bio" ||
       location.hash || reduced.matches || performance.getEntriesByType("navigation")[0]?.type === "back_forward") return;
   root.classList.add("photo-wait");
   setTimeout(() => root.classList.remove("photo-wait"), 1800);
