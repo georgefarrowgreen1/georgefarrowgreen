@@ -2,6 +2,22 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { fixture } = require('./gallery-fixture.cjs');
 
+test('the bio and 404 footers offer Get in touch, the GFG mark and Instagram', async () => {
+  const { ctx, p } = await fixture('', { js: false });
+  try {
+    await ctx.route('**/missing-ride', route => route.fulfill({ status: 404, contentType: 'text/html', path: require.resolve('../../404.html') }));
+    for (const path of ['/', '/missing-ride']) {
+      await p.goto(new URL(path, p.url()).href);
+      const footer = p.locator('footer');
+      assert.deepEqual(await footer.locator('.fi-footer :is(a, button)').allTextContents(), ['Get in touch', '', 'Instagram']);
+      const mark = footer.getByRole('link', { name: 'Open My details' });
+      assert.equal(await mark.getAttribute('href'), path === '/' ? '/details/George-Farrow-Green.vcf' : '/#my-details');
+    }
+    await p.locator('footer .fi-footer-mark').click();
+    assert.ok(await p.locator('.fi-footer-mark').evaluate(el => el.matches(':target') && el.hasAttribute('download')));
+  } finally { await ctx.close(); }
+});
+
 for (const js of [true, false]) {
   test(`the cottage photograph is fetched by opening its project (JavaScript ${js})`, async () => {
     const { ctx, p } = await fixture('', { js, hash: '#projects' });
@@ -58,6 +74,8 @@ for (const assets of ['', 'min/']) {
         await p.locator(sheet+'[open]').waitFor();
         await p.keyboard.press('Escape');
         await p.locator(sheet).waitFor({state:'hidden'});
+        const returnFocus = sheet === '#details-sheet' ? '.fi-footer-mark' : '.fi-menubtn';
+        await p.waitForFunction(selector => document.activeElement.matches(selector), returnFocus);
         assert.deepEqual(errors,[]);
       } finally { await ctx.close(); }
     });
@@ -72,7 +90,12 @@ for (const assets of ['', 'min/']) {
         assert.equal(await f.p.locator('#apps a').first().isVisible(), true);
         if (options.js === false || options.missing === '/app.js') {
           await f.ctx.route('**/contact/', route => route.fulfill({contentType:'text/html',path:require.resolve('../../contact/index.html')}));
-          await f.p.locator('footer [data-contact]').click();
+          if (options.js === false) {
+            await f.p.getByRole('link', {name:'Get in touch'}).click();
+          } else {
+            await f.p.locator('.fi-menubtn').click();
+            await f.p.getByRole('link', {name:'Quick message'}).click();
+          }
           await f.p.waitForURL(url => url.pathname === '/contact/');
           await f.p.locator('.direct a[href^="mailto:"]').waitFor({state: 'visible'});
         }
@@ -80,14 +103,19 @@ for (const assets of ['', 'min/']) {
       } finally { await f.ctx.close(); }
     });
   }
-  test(`${assets || 'source/'}a reported link opens its prefilled contact sheet directly`, async () => {
-    const f = await fixture(assets, { hash: '#contact=%2Fmissing' });
-    try {
-      await f.p.locator('#contact-sheet[open]').waitFor();
-      assert.match(await f.p.locator('#c-message').inputValue(), /missing/);
-      assert.equal(await f.p.locator('.skip-opening').count(), 0);
-    } finally { await f.ctx.close(); }
-  });
+  for (const missing of ['', '/loader.js']) {
+    test(`${assets || 'source/'}a reported link opens and restores focus ${missing ? 'without the menu loader' : 'to the menu'}`, async () => {
+      const f = await fixture(assets, { hash: '#contact=%2Fmissing', missing });
+      try {
+        await f.p.locator('#contact-sheet[open]').waitFor();
+        assert.match(await f.p.locator('#c-message').inputValue(), /missing/);
+        assert.equal(await f.p.locator('.skip-opening').count(), 0);
+        await f.p.keyboard.press('Escape');
+        await f.p.waitForFunction(selector => document.activeElement.matches(selector), missing ? '.fi-contact-page' : '.fi-menubtn');
+        assert.deepEqual(f.errors, []);
+      } finally { await f.ctx.close(); }
+    });
+  }
 }
 
 for (const width of [390, 1440]) {
@@ -314,7 +342,7 @@ for (const width of [390, 1440]) {
       assert.ok(await p.evaluate(async () => {
         document.querySelector('.fi-footer-mark').click();
         document.querySelector('#details-sheet [data-close]').click();
-        const next = document.querySelector('#my-details');
+        const next = document.querySelector('.fi-footer-social');
         next.focus();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         return document.activeElement === next;

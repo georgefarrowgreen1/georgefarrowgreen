@@ -40,7 +40,11 @@ async function fixture(assets,{width=390,reduce=false,viewportEvents=false}={}){
  await p.evaluate(()=>document.fonts.ready);
  return{ctx,p,errors,posts,reply:r=>{response=r;if(r.gate)gates.push(r.gate);},cleanup:async()=>{gates.forEach(g=>g.resolve());await ctx.close();}};
 }
-async function open(f){await f.p.locator('footer [data-contact]').click();await f.p.locator('#contact-sheet[open]').waitFor();}
+async function open(f){
+ await f.p.locator('.fi-menubtn').click();
+ await f.p.getByRole('link',{name:'Quick message'}).click();
+ await f.p.locator('#contact-sheet[open]').waitFor();
+}
 async function close(f){await f.p.keyboard.press('Escape');await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});}
 async function fill(f,message='A message to George'){
  await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');await f.p.locator('#c-message').fill(message);
@@ -272,12 +276,12 @@ for(const assets of ['', 'min/'])test(`${assets||'source/'}motion tokens preserv
   assert.deepEqual(await f.p.evaluate(()=>({...MOTION})),{fast:180,enter:420,exit:260,layout:340,stagger:50});assert.deepEqual(f.errors,[]);
  }finally{await f.cleanup();}
 });
-for (const assets of ['', 'min/']) for (const [width, launcher] of [[390, 'menu'], [1440, 'footer']]) {
- test(`${assets || 'source/'}${width}px contact form moves together and reverses in place from the ${launcher}`, async () => {
+for (const assets of ['', 'min/']) for (const width of [390, 1440]) {
+ test(`${assets || 'source/'}${width}px contact form moves together and reverses in place from the menu`, async () => {
   const f = await fixture(assets, {width});
   try {
-   if (launcher === 'menu') await f.p.locator('.fi-menubtn').click();
-   const selector = (launcher === 'menu' ? '#fi-floating-links' : 'footer') + ' [data-contact]';
+   await f.p.locator('.fi-menubtn').click();
+   const selector = '#fi-floating-links [data-contact]';
    await f.p.locator(selector).scrollIntoViewIfNeeded();
    const initialScroll = await f.p.evaluate(() => scrollY);
    const samples = await f.p.evaluate(selector => {
@@ -313,7 +317,7 @@ for (const assets of ['', 'min/']) for (const [width, launcher] of [[390, 'menu'
    await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._presentation);
    assert.equal(await f.p.locator('#c-message').evaluate(el => el === document.activeElement), true);
    await close(f);
-   await f.p.waitForFunction(selector => document.activeElement.matches(selector), launcher === 'menu' ? '.fi-menubtn' : selector);
+   await f.p.waitForFunction(() => document.activeElement.matches('.fi-menubtn'));
    assert.ok(Math.abs(await f.p.evaluate(() => scrollY) - initialScroll) < 2);
    assert.deepEqual(f.errors, []);
   } finally { await f.cleanup(); }

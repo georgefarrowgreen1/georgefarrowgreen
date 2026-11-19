@@ -411,7 +411,6 @@ function setupGalleryDrag() {
 }
 
 function setupDetailsCard() {
-  const launcher = $("#my-details");
   const sheet = $("#details-sheet");
   const card = $(".calling-flip", sheet);
   const stock = $(".calling-stock", card);
@@ -585,16 +584,14 @@ function setupDetailsCard() {
     if (!suppressClick || !event.detail) showSide(!showingBack);
   });
   switchSide.addEventListener("click", () => showSide(!showingBack));
-  for (const link of [launcher, footerMark]) {
-    link.setAttribute("aria-haspopup", "dialog");
-    link.setAttribute("aria-controls", sheet.id);
-    link.addEventListener("click", event => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      if (!sheet.open) showSide(false, true);
-      openSheet(sheet, link);
-    });
-  }
+  footerMark.setAttribute("aria-haspopup", "dialog");
+  footerMark.setAttribute("aria-controls", sheet.id);
+  footerMark.addEventListener("click", event => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (!sheet.open) showSide(false, true);
+    openSheet(sheet, footerMark);
+  });
   sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
   function settle() { if (sheet.open) showSide(showingBack, true); }
   // The preference can change between pointerdown and pointerup. Stop the 3D
@@ -1505,7 +1502,10 @@ for (const d of $$("dialog.sheet")) {
       clearDetailsTrip();
       footerMark.classList.remove("mark-away");
     }
-    clearPresentation(d); body.classList.remove("sheet-up"); unpin(); lastFocus?.focus?.({ preventScroll: true });
+    clearPresentation(d); body.classList.remove("sheet-up"); unpin();
+    // A 404 link can open Quick message before the header menu is ready.
+    const returnTo = lastFocus || $(".fi-menu:not([hidden]) .fi-menubtn") || $(".fi-contact-page");
+    returnTo?.focus({ preventScroll: true });
   });
   // (a tap on the dimmed page closes it: the sheet's own padding is inside .sheet-in, so only the backdrop is the dialog
   // itself; and only a tap that began there, not a press that began in the sheet, choosing words, and let go outside it)
@@ -1712,15 +1712,13 @@ contact.sheet._surface = document.createElement("div");
 contact.sheet._surface.className = "sheet-surface"; contact.sheet._surface.setAttribute("aria-hidden", "true");
 contact.sheet.prepend(contact.sheet._surface); contact.sheet.classList.add("surface-sheet");
 contact.sheet.addEventListener("close", () => { if (!contact.sheet.open) { contact.version++; stopSenderMorph(); } });
-for (const b of $$("[data-contact]")) b.addEventListener("click", event => {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  event.preventDefault();
+function openContact(launcher = null) {
   contact.version++;
   contact.form.hidden = false; contact.sent.hidden = true; contact.err.hidden = true;
   // (their own details, if those are still what the fields hold: that row again, rather than the two fields)
   fromMe();
   ready();
-  const presentation = openSheet(contact.sheet, b);
+  const presentation = openSheet(contact.sheet, launcher);
   grow(); fit();
   const empty = ["#c-name", "#c-email", "#c-message"].map((s) => $(s)).find((el) => !el.value);
   // (on a phone the keyboard would cover the sheet as it opens: there, a tap on a field brings it up)
@@ -1730,21 +1728,29 @@ for (const b of $$("[data-contact]")) b.addEventListener("click", event => {
     };
     presentation.finished.then(focus, () => {});
   }
+}
+for (const link of $$("[data-contact]")) link.addEventListener("click", event => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  openContact(link);
 });
 function openLinkedSheet() {
   const hash = location.hash;
   const details = hash === "#my-details";
   if (!details && hash !== "#contact" && !hash.startsWith("#contact=")) return;
-  const trigger = details ? $("#my-details") : $("footer [data-contact]");
   history.replaceState(history.state, "", location.pathname + location.search);
-  if (details) trigger.scrollIntoView({block: "nearest", behavior: "instant"});
-  else if (hash.startsWith("#contact=") && !$("#c-message").value) {
+  if (details) {
+    footerMark.scrollIntoView({block: "nearest", behavior: "instant"});
+    footerMark.focus({preventScroll: true});
+    footerMark.click();
+    return;
+  }
+  if (hash.startsWith("#contact=") && !$("#c-message").value) {
     let about = "", from = "";
     try { [about, from = ""] = hash.slice(9).split("|").map(decodeURIComponent); } catch (_) {}
     if (about) $("#c-message").value = `A link to ${about} doesn’t go anywhere. ${from ? `It’s on ${from}` : "I found it on "}`;
   }
-  trigger.focus({ preventScroll: true });
-  trigger.click();
+  openContact();
 }
 // (their own details changed for this message: the two rows instead)
 $("#from-change").addEventListener("click", () => {
