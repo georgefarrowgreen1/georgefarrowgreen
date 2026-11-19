@@ -81,7 +81,7 @@ test('actual cold command opens native Mail, attaches real Drive bytes and prese
   const compose=sheet(page,'mail-compose'),draft=compose.locator('textarea');await draft.waitFor();await draft.fill('Unsent native attachment proof');
   await compose.getByRole('button',{name:'Remove '+item.name,exact:true}).waitFor();
   await page.evaluate(()=>window.__nativeMailDraft=document.querySelector('dialog[data-sheet="mail-compose"] textarea'));
-  await compose.getByRole('button',{name:'From InFlite Files',exact:true}).click();await chooseFile(page,item.name);assert.equal(await draft.inputValue(),'Unsent native attachment proof');assert.equal(await compose.getByRole('button',{name:'Remove '+item.name,exact:true}).count(),2,'native composer also accepts a nested Open dialog');
+  await compose.getByRole('button',{name:'Attach from InFlite Files',exact:true}).click();await chooseFile(page,item.name);assert.equal(await draft.inputValue(),'Unsent native attachment proof');assert.equal(await compose.getByRole('button',{name:'Remove '+item.name,exact:true}).count(),2,'native composer also accepts a nested Open dialog');
   await page.setViewportSize({width:390,height:844});assert.equal(await draft.inputValue(),'Unsent native attachment proof');
   assert.equal(await page.evaluate(()=>__nativeMailDraft===document.querySelector('dialog[data-sheet="mail-compose"] textarea')),true);
   assert.equal(t.state.mail.sends.length,0);assert.ok(t.state.fileRequests.some(r=>r.action==='content'&&r.method==='GET'&&r.status===200));

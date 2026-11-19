@@ -25,7 +25,8 @@ jobs:
   ui-audit:
     # The locked Playwright browser build supports Ubuntu 24.04, not 26.04.
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # Browser installation shares this budget with the UI checks.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -52,7 +53,7 @@ jobs:
   files-integration:
     # Current pinned engines, native private HTTPS downloads and real D1/R2.
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -148,7 +149,8 @@ jobs:
   iphone:
     # The locked Playwright browser build supports Ubuntu 24.04, not 26.04.
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # Browser installation shares this budget with the UI checks.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
