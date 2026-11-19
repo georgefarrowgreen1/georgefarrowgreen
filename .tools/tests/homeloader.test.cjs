@@ -174,3 +174,32 @@ for (const width of [390, 432, 1440]) {
     } finally { await f.ctx.close(); }
   });
 }
+
+for (const width of [390, 1440]) {
+  test(`My details at ${width}px opens front-facing, flips, and returns focus to the footer`, async () => {
+    const {p, ctx, errors} = await fixture('min/', {width, hash:'#get-in-touch'});
+    try {
+      const launcher = p.locator('#my-details'), sheet = p.locator('#details-sheet');
+      const toggle = sheet.locator('.calling-switch');
+      await launcher.click();
+      await sheet.waitFor({state:'visible'});
+      assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+      await sheet.locator('.calling-flip').click();
+      assert.equal(await toggle.innerText(), 'Show front');
+      await toggle.focus();
+      await p.keyboard.press('Enter');
+      await toggle.click();
+      await p.emulateMedia({reducedMotion:'reduce'});
+      assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+      await p.keyboard.press('Escape');
+      await sheet.waitFor({state:'hidden'});
+      assert.ok(await launcher.evaluate(el => el === document.activeElement));
+      await launcher.click();
+      assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+      const download = p.waitForEvent('download');
+      await sheet.locator('.calling-save').click();
+      assert.equal((await download).suggestedFilename(), 'George-Farrow-Green.vcf');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+}
