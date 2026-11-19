@@ -325,20 +325,13 @@ body.paused .segs i.on::after { animation-play-state: paused; }
 .row .tx { flex: 1; font-weight: 500; }
 .row .val { color: var(--text-2); font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .chev { color: var(--text-3); }
-/* (a row too narrow for its name and what it says beside it on one line: what it says goes under the name, smaller,
-   rather than cut short. The page for an address that isn't one says more there, so sooner) */
+/* A secondary label wraps beneath its row title on narrow screens. */
 .group { container-type: inline-size; }
 @container (max-width: 340px) {
   .row:has(> .val) { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; row-gap: 1px; }
-  .row > .ic, .row > .appic { grid-row: 1 / 3; }
+  .row > .ic { grid-row: 1 / 3; }
   .row > .val { grid-column: 2; grid-row: 2; font-size: 14px; white-space: normal; }
   .row:has(> .val) > .chev { grid-column: 3; grid-row: 1 / 3; }
-}
-@container (max-width: 400px) {
-  .lost .row:has(> .val) { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; row-gap: 1px; }
-  .lost .row > .ic, .lost .row > .appic { grid-row: 1 / 3; }
-  .lost .row > .val { grid-column: 2; grid-row: 2; font-size: 14px; white-space: normal; }
-  .lost .row:has(> .val) > .chev { grid-column: 3; grid-row: 1 / 3; }
 }
 .foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 34px; font-size: 11px; color: var(--text-2); }
 .foot a { color: var(--text-2); display: inline-block; padding: 13px 4px; margin: -13px -4px; transition: color var(--dur-fast) var(--ease-out); }
@@ -573,68 +566,6 @@ html.back-face .back-in::before { content: var(--back-i, ""); position: absolute
 /* (and Remove and Keep, asked on a photo: as they look, but a finger's width to tap all the same) */
 .tile .ask button { position: relative; }
 .tile .ask button::after { content: ""; position: absolute; inset: -7px; }
-
-/* ---------------- an address that isn't a page (404.html) ---------------- */
-/* the cover photo, darker, and fading in as it comes; the name in the bar from the start, a way home; the words in the
-   middle of the screen, over a map whose route runs out at a question */
-.lost .slide { opacity: 0; transition: opacity 1.2s ease; }
-.lost .slide.loaded { opacity: 1; }
-.lost .bg::after { z-index: 2; background: linear-gradient(180deg, rgba(5, 7, 12, 0.6) 0%, rgba(5, 7, 12, 0.72) 45%, rgba(5, 7, 12, 0.92) 100%); }
-.lost .bar .mid { opacity: 1; transform: none; animation: none; }
-/* (and to a finger, a finger's height to tap, drawn as it is: more above and below it, its words still cut short at its
-   side were they ever too long. Only where it can be clipped at its side alone: elsewhere (an older Safari) as it was,
-   rather than a scroller) */
-@supports (overflow: clip) {
-  @media (pointer: coarse) {
-    .lost .bar .mid { position: relative; overflow-x: clip; overflow-y: visible; }
-    .lost .bar .mid::after { content: ""; position: absolute; inset: -5px 0; }
-  }
-}
-.lost-page { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 84px); }
-.lost-page > * { animation: arrive 0.6s var(--ease-out) backwards; }
-.lost-page > :nth-child(2) { animation-delay: 0.04s; }
-.lost-page > :nth-child(3) { animation-delay: 0.08s; }
-.lost-page > :nth-child(4) { animation-delay: 0.12s; }
-.lost-page > :nth-child(5) { animation-delay: 0.16s; }
-.lost-page > :nth-child(n + 6) { animation-delay: 0.22s; }
-.lost-page h1 { font: 700 50px/0.98 var(--display); letter-spacing: -0.035em; text-wrap: balance; }
-.lost .where {
-  align-self: flex-start; max-width: 100%; margin-top: 16px; padding: 7px 13px 7px 11px; border-radius: 999px;
-  display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 500; color: var(--text);
-  background: var(--ctl); box-shadow: var(--rim);
-}
-.lost .where svg { color: var(--text-2); }
-.lost .where span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lost .lede { margin-top: 14px; max-width: 34ch; }
-.lost .cta { flex-wrap: wrap; }
-.lost .head { margin-top: 38px; }
-.lost .report { margin-top: 30px; text-align: center; font-size: 14px; color: var(--text-2); }
-.lost .report a { color: var(--tint-text); font-weight: 500; display: inline-block; padding: 13px 4px; margin: -13px -4px; }   /* (a finger's width to tap, as the footer's are) */
-.lost .foot { margin-top: 26px; }     /* (clear of the report link's tap area above it) */
-.appic { flex: none; width: 32px; height: 32px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
-.map { width: 210px; height: auto; margin: 0 0 22px -8px; overflow: visible; }
-.map .contours { stroke: rgba(255, 255, 255, 0.16); }
-.map .route { stroke: var(--tint-text); animation: march 1.6s linear 4; }
-.map .start { fill: #fff; transform-box: fill-box; transform-origin: center; animation: pop 0.4s var(--ease-spring) 0.2s backwards; }
-.map .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.9s var(--ease-glide) 0.35s forwards; }
-.map .pin { transform: translate(186px, 56px); }
-.map .drop { transform-box: fill-box; transform-origin: 50% 100%; animation: drop 0.7s var(--ease-out) 1.9s backwards, bob 2.8s var(--ease-out) 2.6s 4 alternate; }
-.map .drop path { fill: #ff6b5e; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
-.map .drop text { fill: #fff; font: 700 20px var(--display); }
-@keyframes march { to { stroke-dashoffset: -20; } }
-@keyframes draw { to { stroke-dashoffset: 0; } }
-@keyframes drop { from { opacity: 0; transform: scale(0.94); } }
-@keyframes bob { to { transform: translateY(-6px); } }
-@media (min-width: 601px) {
-  .page.lost-page { max-width: 600px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 96px) 20px 48px; }
-  .lost .bar { padding-inline: calc(max(0px, (100% - 600px) / 2) + 20px); }
-  .lost-page h1 { font-size: 72px; }
-  .map { width: 250px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .lost-page > *, .map .route, .map .drop, .map .start { animation: none; }
-  .map .draw { animation: none; stroke-dashoffset: 0; }
-}
 
 /* ---------------- larger screens ---------------- */
 @media (min-width: 601px) {
@@ -1837,3 +1768,91 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
 #details-sheet :focus-visible{outline:2px solid currentColor;outline-offset:4px}
 @media(hover:hover){#details-sheet .calling-switch:hover{background:var(--field-surface)}#details-sheet .calling-save:hover{opacity:.87}}
 @media(prefers-reduced-motion:reduce){#details-sheet .calling-stock,#details-sheet .calling-actions>*{transition:none}}
+
+/* The missing-page spread uses the same paper, ink, photo gutters and navigation as the bio. */
+.lost #photo-index { display: flex; flex-direction: column; min-height: 100svh; }
+#lost-main {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr);
+  align-items: center;
+  column-gap: clamp(36px, 5cqw, 88px);
+  padding: clamp(12px, 1.4cqw, 28px) var(--frame) clamp(30px, 4.4cqw, 80px) var(--pad);
+}
+.lost-prints {
+  grid-area: 1 / 2;
+  display: grid;
+  grid-template-columns: minmax(0, 3.15fr) minmax(0, 1fr);
+  gap: clamp(3px, .4cqw, 7px);
+  height: clamp(330px, 36cqw, 630px);
+}
+.lost-prints > div { overflow: hidden; background: var(--app-hover); }
+.lost-prints img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lost-road img { object-position: 79% 54%; }
+.lost-rider img { object-position: 53% 45%; }
+.lost-copy { grid-area: 1 / 1; min-width: 0; padding-block: 12px; }
+.lost-status {
+  display: flex; gap: 12px; align-items: center;
+  color: var(--secondary-text); font-size: 14px;
+}
+.lost-status span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.lost-status span::after {
+  content: ""; display: inline-block; height: .85em; width: 1px;
+  background: var(--secondary-text); margin-left: 12px; vertical-align: -.05em;
+  transform: skew(-19deg);
+}
+#photo-index #lost-title {
+  margin-block: clamp(22px, 3.1cqw, 54px) clamp(20px, 2.4cqw, 40px);
+  font-weight: 500; font-size: clamp(78px, 8.5cqw, 156px);
+  letter-spacing: -.062em; line-height: .91;
+}
+#lost-title span { display: block; }
+.lost-address, #meant {
+  color: var(--story-text); font-size: clamp(16px, 1.35cqw, 22px);
+  line-height: 1.5; letter-spacing: -.02em; overflow-wrap: anywhere;
+}
+#where-path { color: var(--ink); }
+#photo-index #meant { margin-top: 6px; }
+#photo-index #meant-row, #photo-index .lost-report {
+  text-decoration: underline; text-underline-offset: .22em;
+  text-decoration-thickness: 1px;
+}
+.lost-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 22px;
+  margin-top: clamp(22px, 2.25cqw, 42px);
+}
+#photo-index .lost-home {
+  display: inline-flex; align-items: center; gap: 12px; min-height: 48px;
+  padding: 10px 22px; border-radius: 40px; color: var(--paper); background: var(--ink);
+  letter-spacing: -.02em;
+}
+#photo-index #back, #photo-index .lost-report {
+  display: inline-flex; align-items: center; gap: 9px; min-height: 44px;
+  color: var(--secondary-text); font-size: 14px;
+}
+#photo-index .lost-report { margin-top: 8px; }
+#photo-index .lost-report .fi-arrow { font-size: 12px; }
+#photo-index :is(.lost-home, .lost-report, #meant-row, #back):focus-visible {
+  outline: none; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: .22em;
+}
+@media (hover: hover) {
+  #photo-index :is(.lost-report, #meant-row, #back):hover { color: var(--ink); text-decoration: underline; }
+  #photo-index .lost-home:hover { text-decoration: underline; text-underline-offset: .22em; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lost-prints img { animation: lost-print-in 650ms cubic-bezier(.22,.72,.18,1) backwards; }
+  .lost-rider img { animation-delay: 70ms; }
+  .lost-home .bio-icon { transition: transform 180ms ease; }
+  .lost-home:hover .bio-icon { transform: translateX(-3px); }
+  @keyframes lost-print-in { from { transform: translateY(6px) scale(1.045); } }
+}
+@media (max-width: 760px) {
+  #lost-main { display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 0; padding: 0 0 18px; }
+  .lost-prints { height: clamp(170px, 51vw, 330px); margin-inline: var(--frame); grid-template-columns: minmax(0, 2.85fr) minmax(0, 1fr); }
+  .lost-copy { padding: clamp(24px, 5.4vw, 40px) var(--pad) 0; }
+  #photo-index #lost-title { margin-block: 16px 12px; font-size: clamp(53px, 10.5vw, 78px); line-height: 1; }
+  #lost-title span { display: inline; }
+  .lost-actions { margin-top: 20px; }
+  #photo-index .lost-report { margin-top: 3px; }
+}

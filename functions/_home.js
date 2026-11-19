@@ -64,7 +64,7 @@ export async function homePage(ctx, url, res) {
   if (res.status === 404 && ctx.request.method === "GET" && (res.headers.get("content-type") || "").includes("text/html")) {
     const v = await stamps(ctx, url);
     const stamp = (name) => ({ element: (el) => { const f = (el.getAttribute(name) || "").split("?")[0].replace(/^\//, ""); if (v[f]) el.setAttribute(name, `/${f}?v=${v[f]}`); } });
-    const out = new HTMLRewriter().on('link[rel="stylesheet"][href^="/styles.css"]', stamp("href")).on('script[src^="/404.js"]', stamp("src")).transform(res);
+    const out = new HTMLRewriter().on('link[rel="stylesheet"][href^="/styles.css"]', stamp("href")).on('script[src^="/404.js"], script[src^="/loader.js"]', stamp("src")).transform(res);
     out.headers.delete("content-length"); out.headers.delete("etag");
     out.headers.set("Cache-Control", "no-cache");
     return out;

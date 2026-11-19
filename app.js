@@ -529,6 +529,12 @@ function setupDetailsCard() {
     if (!sheet.open) showSide(false, true);
     openSheet(sheet, launcher);
   });
+  // An error page links here so the same card and download work from either footer.
+  if (location.hash === "#my-details") {
+    history.replaceState(null, "", location.pathname + location.search);
+    launcher.focus({preventScroll: true});
+    launcher.click();
+  }
   sheet.addEventListener("close", () => { if (!sheet.open) showSide(false, true); });
   function settle() { if (sheet.open) showSide(showingBack, true); }
   motion.addEventListener("change", settle);
@@ -615,20 +621,6 @@ function setupProjectReveals() {
     motion.addEventListener("change", settle);
     addEventListener("pagehide", settle);
   }
-}
-
-function setupGalleryMenu() {
-  const dock = $(".fi-menu"), toggle = $(".fi-menubtn"), links = $("nav",dock);
-  dock.hidden = false;
-  function set(open) {
-    links.inert = !open;
-    toggle.setAttribute("aria-expanded",String(open));
-  }
-  toggle.addEventListener("click",()=>set(links.inert));
-  links.addEventListener("click",e=>{if(e.target.closest("a,[data-contact]"))set(false)});
-  document.addEventListener("pointerdown",e=>{if(!dock.contains(e.target))set(false)});
-  dock.addEventListener("focusout",e=>{if(!dock.contains(e.relatedTarget))set(false)});
-  dock.addEventListener("keydown",e=>{if(e.key==="Escape"&&!links.inert){set(false);toggle.focus()}});
 }
 
 // The header and the opening share one vector drawing of the gfg mark.
@@ -2083,6 +2075,5 @@ let wordsDue = (performance.getEntriesByType?.("navigation")[0]?.type === "back_
 setupProjectReveals();
 setupDetailsCard();
 setupGalleryDrag();
-setupGalleryMenu();
 setupOpening();
 loadMe();
