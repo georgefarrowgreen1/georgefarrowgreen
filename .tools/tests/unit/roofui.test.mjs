@@ -15,6 +15,7 @@ import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { ROOF, IFL, roofSkip } from './fixtures/roof.mjs';
 import { OS_CORE_JS, OS_RETIRED_JS } from './fixtures/workspace.mjs';
+import { staticImports } from './fixtures/budget.mjs';
 import { fakeDocument } from '../roofkit/fakedom.mjs';
 import { JS_START, JS_END } from '../../iflmenu.mjs';
 
@@ -181,6 +182,30 @@ test('the header’s row 1 is the shared block’s own skeleton (IFL.headerHtml,
 // Workspace v1 adds controlled view ownership to the core (35 KiB); its five
 // optional scripts have their own served-size budget in roofworkspace.test.mjs.
 const OPTIONAL_WORKSPACE = new Set([...OS_CORE_JS, ...OS_RETIRED_JS]);
+const DEFERRED_SHELL = new Map([
+  ['search-render.js', 2 * 1024],
+  ['connectors.js', 2.5 * 1024],
+  ['modules.js', 3 * 1024],
+  ['refractor.js', 2.25 * 1024],
+]);
+
+function startupFiles() {
+  const html = readFileSync(new URL('today/public/index.html', IFL), 'utf8');
+  const loaded = new Set();
+  function walk(path) {
+    if (loaded.has(path) || !path.startsWith('/')) return;
+    const file = new URL('today/public' + path, IFL);
+    if (!existsSync(file)) return;
+    loaded.add(path);
+    for (const spec of staticImports(readFileSync(file, 'utf8'))) {
+      const target = new URL(spec, 'https://inflite.ai' + path);
+      if (target.origin === 'https://inflite.ai') walk(target.pathname);
+    }
+  }
+  for (const match of html.matchAll(/<(?:script\b[^>]*\bsrc|link\s+rel="modulepreload"\s+href)="(\/[^"?#]+\.js)"/g)) walk(match[1]);
+  assert.ok(loaded.has('/roof/frame.js') && loaded.has('/roof/search.js'), 'the startup graph includes the frame and synchronous Search UI');
+  return loaded;
+}
 // Bounded route memory, two-app preloading and coarse timing reports add under
 // 2 KiB gzip in 3.10. Verified, curated reopen references add a separately
 // reviewed 2 KiB ceiling in 3.11. Neither adds a runtime dependency.
@@ -195,15 +220,18 @@ test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip'
     buildShellAssets(destination, createRequire(import.meta.url)('esbuild').transformSync);
     delivered = f => readFileSync(join(destination, 'roof', f), 'utf8');
   }
-  const lazySearch = 'search-render.js';
-  if (files().includes(lazySearch)) {
-    assert.ok(gzipSync(delivered(lazySearch)).length <= 2048, 'typed search rendering exceeds 2 KiB');
-    assert.ok(!/^import .*search-render/m.test(read('search.js')), 'typed rendering stays off the initial search path');
+  const startup = startupFiles(), deferred = new Set();
+  for (const [file, limit] of DEFERRED_SHELL) {
+    if (!files().includes(file) || startup.has('/roof/' + file)) continue;
+    const bytes = gzipSync(delivered(file)).length;
+    assert.ok(bytes <= limit, `${file} is ${bytes} bytes gzipped, over ${limit}`);
+    deferred.add(file);
   }
-  const all = files().filter(f => f !== lazySearch && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map(delivered).join('\n');
+  if (files().includes('search-render.js')) assert.ok(deferred.has('search-render.js'), 'typed rendering stays off the initial search path');
+  const all = files().filter(f => !deferred.has(f) && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map(delivered).join('\n');
   assert.ok(gzipSync(delivered('requests.js')).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
-  console.log(`# roof core: ${gz} bytes gzip (delivered core, optional OS scripts separately bounded)`);
+  console.log(`# roof core: ${gz} bytes gzip (deferred shell and optional OS scripts separately bounded)`);
   assert.ok(gz <= 39 * 1024, `roof core is ${gz} bytes gzipped, over 39936`);
   assert.ok(strip('a(); // x\n/* y */b();').trim() === 'a();\nb();', 'the stripping takes comments, not code');
 });

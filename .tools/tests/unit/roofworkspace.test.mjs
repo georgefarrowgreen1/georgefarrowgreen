@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
@@ -16,7 +17,7 @@ const published = p => p.startsWith('/roof/') || p === '/os.webmanifest' ? new U
 const plain = v => JSON.parse(JSON.stringify(v));
 function worker(url) {
   const context = vm.createContext({ URL, self: { location: new URL(url), addEventListener() {} } });
-  vm.runInContext(pub('sw.js') + '\nglobalThis.inspect = { files: FILES, optional: OS_FILES, mode: OS_MODE, keepList, mail: MAIL(), openAt };', context);
+  vm.runInContext(pub('sw.js') + '\nglobalThis.inspect = { files: FILES, optional: OS_FILES, mode: OS_MODE, keepList, mail: MAIL(), openAt, integrity: typeof INTEGRITY === "object" ? INTEGRITY : null };', context);
   return context.inspect;
 }
 function hostMode(url) {
@@ -39,9 +40,20 @@ test('unified assets are cacheable only on the exact Apex/legacy OS host or an e
     assert.deepEqual(plain(sw.optional), osFiles);
     assert.deepEqual(plain(sw.files.filter(f => osFiles.includes(f))), enabled ? osFiles : [], url);
     assert.equal(new Set(sw.files).size, sw.files.length, 'no duplicate shell assets');
-    assert.ok(sw.files.every(f => f === '/' || /^\/[\w./-]+\.(?:js|css|svg|png|webmanifest)$/.test(f)), 'shell assets contain no API, auth query, share payload or account response');
+    for (const file of sw.files) {
+      assert.ok(file === '/' || /^\/(?:[\w.-]+\/)*[\w.-]+\.(?:js|css|svg|png|webp|webmanifest)$/.test(file) &&
+        !file.split('/').some(part => /^(?:\.{1,2}|api)$/i.test(part)), `${file} is a public static shell path`);
+    }
   }
   const sw = worker('https://os.inflite.ai/sw.js');
+  if (sw.integrity?.['/']) {
+    assert.deepEqual(Object.keys(sw.integrity).sort(), [...sw.files].sort());
+    for (const path of sw.files) {
+      const file = new URL('today/public' + (path === '/' ? '/index.html' : path), IFL);
+      const hash = 'sha256-' + createHash('sha256').update(readFileSync(file)).digest('base64');
+      assert.equal(sw.integrity[path], hash, `${path} is sealed to its source bytes`);
+    }
+  }
   assert.equal(sw.mail, 'https://email.inflite.ai');
   assert.equal(sw.openAt('weather', 'https://weather.inflite.ai/#days'), '/weather/#days');
 });
