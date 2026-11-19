@@ -1321,7 +1321,6 @@ html[data-theme="dark"] {
 #photo-index .fi-menubtn {
   background: var(--menu-surface);
   border: 1px solid var(--bio-rule);
-  color: var(--ink);
   min-height: 44px;
   padding: 0 17px;
   border-radius: 28px;
@@ -1349,7 +1348,6 @@ html[data-theme="dark"] {
   gap: 0;
   padding: 8px 17px;
   background: var(--menu-surface);
-  color: var(--ink);
   border: 1px solid var(--bio-rule);
   border-radius: 12px;
   box-shadow: 0 14px 38px -14px #0005;
@@ -1410,13 +1408,17 @@ html[data-theme="dark"] {
   /* Transition just the properties that paint the page. Gallery frames keep
      their own layers, and a second tap reverses from the current colours. */
   html.appearance-ready {
-    --colour-fade: background-color var(--paper-motion), color var(--ink-motion), border-color var(--paper-motion);
+    --surface-fade: background-color var(--paper-motion), border-color var(--paper-motion);
     transition: background-color var(--paper-motion);
   }
   .appearance-ready body.photo-home { transition: background-color var(--paper-motion); }
-  .appearance-ready #photo-index,
-  .appearance-ready #photo-index :is(.fi-menubtn, .fi-switch-track, footer, .fi-colophon, .lost-home) { transition: var(--colour-fade); }
-  .appearance-ready #fi-floating-links { transition: var(--menu-reveal), var(--colour-fade); }
+  .appearance-ready #photo-index { transition: background-color var(--paper-motion), color var(--ink-motion); }
+  /* The menu and footer inherit the page's moving ink. Giving their text its
+     own transition would make it chase the parent on each painted frame. */
+  .appearance-ready #photo-index :is(.fi-menubtn, .fi-switch-track, footer) { transition: var(--surface-fade); }
+  .appearance-ready #fi-floating-links { transition: var(--menu-reveal), var(--surface-fade); }
+  .appearance-ready #photo-index .fi-colophon { transition: border-color var(--paper-motion), color var(--ink-motion); }
+  .appearance-ready #photo-index .lost-home { transition: background-color var(--ink-motion), color var(--paper-motion); }
   .appearance-ready #fi-floating-links > :is(a, button),
   .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
